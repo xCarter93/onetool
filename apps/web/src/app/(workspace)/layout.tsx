@@ -1,8 +1,18 @@
 import type { ReactNode } from "react";
+import { currentUser } from "@clerk/nextjs/server";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
+import { AdminFab } from "@/components/layout/admin-fab";
 
-export default function WorkspaceLayout({ children }: { children: ReactNode }) {
+export default async function WorkspaceLayout({
+	children,
+}: {
+	children: ReactNode;
+}) {
+	const user = await currentUser();
+	const hasAdminAccess =
+		(user?.privateMetadata as Record<string, unknown>)
+			?.has_admin_dashboard_access === true;
 	return (
 		<div className="min-h-screen flex-1 md:min-h-min">
 			<AnalyticsIdentity />
@@ -29,6 +39,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 				/>
 
 				<SidebarWithHeader>{children}</SidebarWithHeader>
+				{hasAdminAccess && <AdminFab />}
 			</div>
 		</div>
 	);
