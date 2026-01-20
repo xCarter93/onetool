@@ -1,6 +1,8 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { OrgList } from "./components/org-list";
 
+export const dynamic = "force-dynamic";
+
 interface OrgWithUsers {
 	org: {
 		id: string;
