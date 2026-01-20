@@ -40,102 +40,107 @@ async function getAdminData(): Promise<{
 		publicMetadata: Record<string, unknown>;
 	}>;
 }> {
-	const client = await clerkClient();
+	try {
+		const client = await clerkClient();
 
-	// Fetch all organizations
-	const orgsResponse = await client.organizations.getOrganizationList({
-		limit: 100,
-	});
+		// Fetch all organizations
+		const orgsResponse = await client.organizations.getOrganizationList({
+			limit: 500,
+		});
 
-	// Fetch all users
-	const usersResponse = await client.users.getUserList({
-		limit: 100,
-	});
+		// Fetch all users
+		const usersResponse = await client.users.getUserList({
+			limit: 500,
+		});
 
-	const allUsers = usersResponse.data;
-	const userOrgMap = new Map<string, string[]>(); // userId -> orgIds
+		const allUsers = usersResponse.data;
+		const userOrgMap = new Map<string, string[]>(); // userId -> orgIds
 
-	// Build org data with users
-	const orgsWithUsers: OrgWithUsers[] = await Promise.all(
-		orgsResponse.data.map(async (org) => {
-			const orgHasPremium =
-				(org.publicMetadata as Record<string, unknown>)
-					?.has_premium_feature_access === true;
+		// Build org data with users
+		const orgsWithUsers: OrgWithUsers[] = await Promise.all(
+			orgsResponse.data.map(async (org) => {
+				const orgHasPremium =
+					(org.publicMetadata as Record<string, unknown>)
+						?.has_premium_feature_access === true;
 
-			// Fetch memberships for this org
-			const memberships =
-				await client.organizations.getOrganizationMembershipList({
-					organizationId: org.id,
-					limit: 100,
-				});
+				// Fetch memberships for this org
+				const memberships =
+					await client.organizations.getOrganizationMembershipList({
+						organizationId: org.id,
+						limit: 500,
+					});
 
-			const users = memberships.data
-				.map((membership) => {
-					const user = allUsers.find(
-						(u) => u.id === membership.publicUserData?.userId
-					);
-					if (!user) return null;
+				const users = memberships.data
+					.map((membership) => {
+						const user = allUsers.find(
+							(u) => u.id === membership.publicUserData?.userId
+						);
+						if (!user) return null;
 
-					// Track which orgs this user belongs to
-					const userOrgs = userOrgMap.get(user.id) || [];
-					userOrgs.push(org.id);
-					userOrgMap.set(user.id, userOrgs);
+						// Track which orgs this user belongs to
+						const userOrgs = userOrgMap.get(user.id) || [];
+						userOrgs.push(org.id);
+						userOrgMap.set(user.id, userOrgs);
 
-					const hasDirectPremium =
-						(user.publicMetadata as Record<string, unknown>)
-							?.has_premium_feature_access === true;
+						const hasDirectPremium =
+							(user.publicMetadata as Record<string, unknown>)
+								?.has_premium_feature_access === true;
 
-					return {
-						user: {
-							id: user.id,
-							firstName: user.firstName,
-							lastName: user.lastName,
-							emailAddresses: user.emailAddresses.map((e) => ({
-								emailAddress: e.emailAddress,
-							})),
-							imageUrl: user.imageUrl,
-							lastSignInAt: user.lastSignInAt,
-							createdAt: user.createdAt,
-							publicMetadata: user.publicMetadata as Record<string, unknown>,
-						},
-						role: membership.role,
-						hasDirectPremium,
-						hasOrgPremium: orgHasPremium,
-					};
-				})
-				.filter(Boolean) as OrgWithUsers["users"];
+						return {
+							user: {
+								id: user.id,
+								firstName: user.firstName,
+								lastName: user.lastName,
+								emailAddresses: user.emailAddresses.map((e) => ({
+									emailAddress: e.emailAddress,
+								})),
+								imageUrl: user.imageUrl,
+								lastSignInAt: user.lastSignInAt,
+								createdAt: user.createdAt,
+								publicMetadata: user.publicMetadata as Record<string, unknown>,
+							},
+							role: membership.role,
+							hasDirectPremium,
+							hasOrgPremium: orgHasPremium,
+						};
+					})
+					.filter(Boolean) as OrgWithUsers["users"];
 
-			return {
-				org: {
-					id: org.id,
-					name: org.name,
-					slug: org.slug,
-					createdAt: org.createdAt,
-					publicMetadata: org.publicMetadata as Record<string, unknown>,
-				},
-				hasPremium: orgHasPremium,
-				users,
-			};
-		})
-	);
+				return {
+					org: {
+						id: org.id,
+						name: org.name,
+						slug: org.slug,
+						createdAt: org.createdAt,
+						publicMetadata: org.publicMetadata as Record<string, unknown>,
+					},
+					hasPremium: orgHasPremium,
+					users,
+				};
+			})
+		);
 
-	// Find users without any organization
-	const usersWithoutOrg = allUsers
-		.filter((user) => !userOrgMap.has(user.id))
-		.map((user) => ({
-			id: user.id,
-			firstName: user.firstName,
-			lastName: user.lastName,
-			emailAddresses: user.emailAddresses.map((e) => ({
-				emailAddress: e.emailAddress,
-			})),
-			imageUrl: user.imageUrl,
-			lastSignInAt: user.lastSignInAt,
-			createdAt: user.createdAt,
-			publicMetadata: user.publicMetadata as Record<string, unknown>,
-		}));
+		// Find users without any organization
+		const usersWithoutOrg = allUsers
+			.filter((user) => !userOrgMap.has(user.id))
+			.map((user) => ({
+				id: user.id,
+				firstName: user.firstName,
+				lastName: user.lastName,
+				emailAddresses: user.emailAddresses.map((e) => ({
+					emailAddress: e.emailAddress,
+				})),
+				imageUrl: user.imageUrl,
+				lastSignInAt: user.lastSignInAt,
+				createdAt: user.createdAt,
+				publicMetadata: user.publicMetadata as Record<string, unknown>,
+			}));
 
-	return { orgsWithUsers, usersWithoutOrg };
+		return { orgsWithUsers, usersWithoutOrg };
+	} catch (error) {
+		console.error("Failed to fetch admin data from Clerk:", error);
+		throw new Error("Failed to load admin data. Please try again later.");
+	}
 }
 
 export default async function AdminPage() {

@@ -153,7 +153,7 @@ export function OrgList({ orgsWithUsers, usersWithoutOrg }: OrgListProps) {
 													<div className="flex items-center gap-3">
 														<img
 															src={userData.user.imageUrl}
-															alt=""
+															alt={`${userData.user.firstName ?? ""} ${userData.user.lastName ?? ""}`}
 															className="h-8 w-8 rounded-full"
 														/>
 														<div>
@@ -220,7 +220,7 @@ export function OrgList({ orgsWithUsers, usersWithoutOrg }: OrgListProps) {
 									<div className="flex items-center gap-3">
 										<img
 											src={user.imageUrl}
-											alt=""
+											alt={`${user.firstName ?? ""} ${user.lastName ?? ""}`}
 											className="h-8 w-8 rounded-full"
 										/>
 										<div>

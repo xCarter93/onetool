@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Calendar, Crown, Users, Loader2, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -49,6 +50,7 @@ export function OrgSheet({
 	onOpenChange,
 	onPremiumChange,
 }: OrgSheetProps) {
+	const router = useRouter();
 	const { success, error } = useToast();
 	const [isUpdating, setIsUpdating] = useState(false);
 
@@ -68,6 +70,7 @@ export function OrgSheet({
 			}
 
 			onPremiumChange(org.org.id, checked);
+			router.refresh();
 			success(
 				"Premium status updated",
 				`${org.org.name} is now ${checked ? "premium" : "standard"}`
@@ -189,7 +192,7 @@ export function OrgSheet({
 										<div className="flex items-center gap-2">
 											<img
 												src={userData.user.imageUrl}
-												alt=""
+												alt={`${userData.user.firstName ?? ""} ${userData.user.lastName ?? ""}`}
 												className="h-6 w-6 rounded-full"
 											/>
 											<div>

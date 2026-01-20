@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, Calendar, Crown, Loader2, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,6 +43,7 @@ export function UserSheet({
 	onOpenChange,
 	onPremiumChange,
 }: UserSheetProps) {
+	const router = useRouter();
 	const { success, error } = useToast();
 	const [isUpdating, setIsUpdating] = useState(false);
 
@@ -63,6 +65,7 @@ export function UserSheet({
 			}
 
 			onPremiumChange(user.user.id, checked);
+			router.refresh();
 			success(
 				"Premium status updated",
 				`${user.user.firstName} ${user.user.lastName} is now ${checked ? "premium" : "standard"}`
@@ -93,7 +96,7 @@ export function UserSheet({
 					<div className="flex items-center gap-4">
 						<img
 							src={user.user.imageUrl}
-							alt=""
+							alt={`${user.user.firstName ?? ""} ${user.user.lastName ?? ""}`}
 							className="h-16 w-16 rounded-full"
 						/>
 						<div>
