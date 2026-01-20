@@ -183,7 +183,7 @@ export function TourStartModal({
 								)}
 							>
 								<p className="text-sm font-medium text-foreground mb-3">
-									In this tour, you'll learn how to:
+									In this tour, you&apos;ll learn how to:
 								</p>
 								<ul className="space-y-2 text-sm text-muted-foreground">
 									<li className="flex items-center gap-2">
@@ -236,7 +236,7 @@ export function TourStartModal({
 											"text-primary focus:ring-primary focus:ring-offset-0"
 										)}
 									/>
-									Don't show this again
+									Don&apos;t show this again
 								</label>
 							</div>
 						</div>

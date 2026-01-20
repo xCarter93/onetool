@@ -47,7 +47,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				<AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
 				<h3 className="text-lg font-medium text-foreground mb-2">No data available</h3>
 				<p className="text-sm text-muted-foreground max-w-sm">
-					There's no data matching your report criteria. Try adjusting the date range or data source.
+					There&apos;s no data matching your report criteria. Try adjusting the date range or data source.
 				</p>
 			</div>
 		);
