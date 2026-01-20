@@ -147,7 +147,7 @@ export default function PublicCommunityPage() {
 						{error || "Page not found"}
 					</h1>
 					<p className="text-muted-fg mb-6">
-						This community page doesn't exist or is not publicly accessible.
+						This community page doesn&apos;t exist or is not publicly accessible.
 					</p>
 					<Link
 						href="/"
@@ -283,7 +283,7 @@ export default function PublicCommunityPage() {
 										Interested in our services?
 									</StyledCardTitle>
 									<StyledCardDescription>
-										Leave your contact information and we'll get back to you soon.
+										Leave your contact information and we&apos;ll get back to you soon.
 									</StyledCardDescription>
 								</StyledCardHeader>
 
@@ -297,7 +297,7 @@ export default function PublicCommunityPage() {
 												Thank you!
 											</h3>
 											<p className="text-muted-fg text-sm">
-												We've received your information and will be in touch soon.
+												We&apos;ve received your information and will be in touch soon.
 											</p>
 										</div>
 									) : (
