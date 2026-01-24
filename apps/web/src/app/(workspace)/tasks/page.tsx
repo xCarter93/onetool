@@ -7,27 +7,34 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TaskSheet } from "@/components/shared/task-sheet";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
+	StyledBadge,
+	StyledButton,
+	StyledTable,
+	StyledTableBody,
+	StyledTableCell,
+	StyledTableHead,
+	StyledTableHeader,
+	StyledTableRow,
 	StyledFilters,
 	type Filter,
 	type FilterFieldConfig,
-} from "@/components/ui/styled/styled-filters";
-import { motion, AnimatePresence } from "motion/react";
+} from "@/components/ui/styled";
+import {
+	ColumnDef,
+	flexRender,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import {
 	Calendar,
-	Clock,
 	User,
 	Plus,
 	CheckCircle2,
 	Circle,
 	Search,
-	SortAsc,
-	SortDesc,
-	AlertTriangle,
 	Building2,
 	FolderOpen,
 	Edit,
@@ -36,264 +43,350 @@ import {
 	X,
 } from "lucide-react";
 import { Task } from "@/types/task";
+import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 
-const statusConfig = {
-	pending: {
-		color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-		label: "Pending",
-	},
-	"in-progress": {
-		color: "bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-300",
-		label: "In Progress",
-	},
-	completed: {
-		color: "bg-green-100 text-green-700 dark:bg-green-800 dark:text-green-300",
-		label: "Completed",
-	},
-	cancelled: {
-		color: "bg-red-100 text-red-700 dark:bg-red-800 dark:text-red-300",
-		label: "Cancelled",
-	},
-};
+// --- Grouping logic ---
 
-interface TaskRowProps {
-	task: Task;
-	onStatusChange: (taskId: Id<"tasks">, newStatus: Task["status"]) => void;
-	onEdit: (task: Task) => void;
-	onDelete: (taskId: Id<"tasks">) => void;
-	isUpdating: boolean;
+interface TaskGroup {
+	label: string;
+	tasks: Task[];
+	variant: "destructive" | "default" | "secondary" | "outline";
 }
 
-function TaskRow({
-	task,
-	onStatusChange,
-	onEdit,
-	onDelete,
-	isUpdating,
-}: TaskRowProps) {
-	const [showActions, setShowActions] = useState(false);
+function groupTasks(tasks: Task[]): TaskGroup[] {
+	const now = new Date();
+	const todayStart = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+	const todayEnd = todayStart + 86400000; // +1 day in ms
 
-	const clients = useQuery(api.clients.list, {});
-	const projects = useQuery(api.projects.list, {});
-	const users = useQuery(api.users.listByOrg, {});
+	// End of current week (Sunday end)
+	const dayOfWeek = now.getUTCDay(); // 0=Sun
+	const daysUntilEndOfWeek = 7 - dayOfWeek;
+	const endOfWeek = todayStart + daysUntilEndOfWeek * 86400000;
 
-	const client = clients?.find((c) => c._id === task.clientId);
-	const project = projects?.find((p) => p._id === task.projectId);
-	const assignee = users?.find(
-		(u: { _id: Id<"users">; name?: string; email: string }) =>
-			u._id === task.assigneeUserId
-	);
+	const overdue: Task[] = [];
+	const today: Task[] = [];
+	const thisWeek: Task[] = [];
+	const upcoming: Task[] = [];
+	const completed: Task[] = [];
 
-	// Create date in UTC to avoid timezone shifts
-	const taskDate = new Date(task.date);
-	const taskDateUTC = new Date(
-		taskDate.getUTCFullYear(),
-		taskDate.getUTCMonth(),
-		taskDate.getUTCDate()
-	);
+	for (const task of tasks) {
+		if (task.status === "completed") {
+			completed.push(task);
+		} else if (task.date < todayStart) {
+			overdue.push(task);
+		} else if (task.date >= todayStart && task.date < todayEnd) {
+			today.push(task);
+		} else if (task.date >= todayEnd && task.date < endOfWeek) {
+			thisWeek.push(task);
+		} else {
+			upcoming.push(task);
+		}
+	}
 
-	const todayUTC = new Date();
-	todayUTC.setHours(0, 0, 0, 0);
-	const todayUTCDate = new Date(
-		Date.UTC(todayUTC.getFullYear(), todayUTC.getMonth(), todayUTC.getDate())
-	);
+	return [
+		{ label: "Overdue", tasks: overdue, variant: "destructive" as const },
+		{ label: "Today", tasks: today, variant: "default" as const },
+		{ label: "This Week", tasks: thisWeek, variant: "secondary" as const },
+		{ label: "Upcoming", tasks: upcoming, variant: "outline" as const },
+		{ label: "Completed", tasks: completed, variant: "outline" as const },
+	].filter((g) => g.tasks.length > 0);
+}
 
-	const isOverdue =
-		task.date < todayUTCDate.getTime() && task.status !== "completed";
-	const isToday = task.date === todayUTCDate.getTime();
+// --- Date formatting ---
 
-	const formatTime = (time?: string) => {
-		if (!time) return null;
-		const [hours, minutes] = time.split(":");
-		const hour = parseInt(hours);
-		const ampm = hour >= 12 ? "PM" : "AM";
-		const displayHour = hour % 12 || 12;
-		return `${displayHour}:${minutes} ${ampm}`;
-	};
+function formatRelativeDate(timestamp: number): string {
+	const now = new Date();
+	const todayStart = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+	const todayEnd = todayStart + 86400000;
+	const tomorrowEnd = todayEnd + 86400000;
 
-	const formatDate = (date: Date) => {
-		if (isToday) return "Today";
+	if (timestamp >= todayStart && timestamp < todayEnd) return "Today";
+	if (timestamp >= todayEnd && timestamp < tomorrowEnd) return "Tomorrow";
 
-		const tomorrow = new Date(todayUTCDate);
-		tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+	const date = new Date(timestamp);
+	const diffDays = Math.round((timestamp - todayStart) / 86400000);
 
-		if (date.getTime() === tomorrow.getTime()) return "Tomorrow";
+	if (diffDays === -1) return "Yesterday";
 
-		// Use UTC methods to display the date consistently
-		return date.toLocaleDateString("en-US", {
-			weekday: "short",
-			month: "short",
-			day: "numeric",
-			year:
-				date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-		});
-	};
+	return date.toLocaleDateString("en-US", {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+		year: date.getUTCFullYear() !== now.getFullYear() ? "numeric" : undefined,
+	});
+}
 
-	const handleToggleComplete = () => {
-		if (isUpdating) return;
+function isOverdue(task: Task): boolean {
+	const now = new Date();
+	const todayStart = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+	return task.date < todayStart && task.status !== "completed";
+}
 
-		const newStatus = task.status === "completed" ? "pending" : "completed";
-		onStatusChange(task._id, newStatus);
-	};
+// --- Columns ---
 
-	return (
-		<motion.tr
-			initial={{ opacity: 0, y: 10 }}
-			animate={{ opacity: 1, y: 0 }}
-			exit={{ opacity: 0, y: -10 }}
-			className={cn(
-				"group hover:bg-muted/50 transition-colors",
-				isOverdue && "bg-red-50/30 dark:bg-red-900/10",
-				task.status === "completed" && "opacity-60"
-			)}
-			onMouseEnter={() => setShowActions(true)}
-			onMouseLeave={() => setShowActions(false)}
-		>
-			{/* Status/Checkbox */}
-			<td className="w-12 px-4 py-3">
-				<button
-					onClick={handleToggleComplete}
-					disabled={isUpdating}
-					className={cn(
-						"p-0.5 rounded-full transition-colors",
-						"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-						isUpdating && "opacity-50 cursor-not-allowed"
-					)}
-				>
-					{task.status === "completed" ? (
-						<CheckCircle2 className="h-5 w-5 text-green-600" />
-					) : (
-						<Circle className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-					)}
-				</button>
-			</td>
-
-			{/* Title and Description */}
-			<td className="px-4 py-3">
-				<div className="min-w-0">
-					<div className="flex items-center gap-2 mb-1">
-						<h3
-							className={cn(
-								"font-medium text-foreground truncate",
-								task.status === "completed" &&
-									"line-through text-muted-foreground"
-							)}
-						>
-							{task.title}
-						</h3>
-						{isOverdue && (
-							<AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+function createColumns(
+	clients: { _id: Id<"clients">; companyName: string }[] | undefined,
+	projects: { _id: Id<"projects">; title: string }[] | undefined,
+	users:
+		| { _id: Id<"users">; name?: string; email: string }[]
+		| undefined,
+	onToggleComplete: (task: Task) => void,
+	onEdit: (task: Task) => void,
+	onDelete: (task: Task) => void,
+	updatingTasks: Set<Id<"tasks">>
+): ColumnDef<Task>[] {
+	return [
+		{
+			id: "complete",
+			header: "",
+			size: 48,
+			cell: ({ row }) => {
+				const task = row.original;
+				const isUpdating = updatingTasks.has(task._id);
+				return (
+					<button
+						onClick={() => onToggleComplete(task)}
+						disabled={isUpdating}
+						className={cn(
+							"p-0.5 rounded-full transition-colors",
+							"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+							isUpdating && "opacity-50 cursor-not-allowed"
+						)}
+					>
+						{task.status === "completed" ? (
+							<CheckCircle2 className="h-5 w-5 text-green-600" />
+						) : (
+							<Circle className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+						)}
+					</button>
+				);
+			},
+		},
+		{
+			accessorKey: "title",
+			header: "Task",
+			cell: ({ row }) => {
+				const task = row.original;
+				return (
+					<div className="min-w-0">
+						<div className="flex items-center gap-2">
+							<span
+								className={cn(
+									"font-medium text-foreground truncate",
+									task.status === "completed" &&
+										"line-through text-muted-foreground"
+								)}
+							>
+								{task.title}
+							</span>
+						</div>
+						{task.description && (
+							<p className="text-sm text-muted-foreground truncate max-w-[300px]">
+								{task.description}
+							</p>
 						)}
 					</div>
-					{task.description && (
-						<p className="text-sm text-muted-foreground truncate">
-							{task.description}
-						</p>
-					)}
-				</div>
-			</td>
-
-			{/* Client */}
-			<td className="px-4 py-3">
-				<div className="flex items-center gap-1 text-sm">
-					<Building2 className="h-3 w-3 text-muted-foreground shrink-0" />
-					<span className="truncate">{client?.companyName || "Unknown"}</span>
-				</div>
-			</td>
-
-			{/* Project */}
-			<td className="px-4 py-3">
-				{project ? (
-					<div className="flex items-center gap-1 text-sm">
-						<FolderOpen className="h-3 w-3 text-muted-foreground shrink-0" />
-						<span className="truncate">{project.title}</span>
+				);
+			},
+		},
+		{
+			accessorKey: "date",
+			header: "Due Date",
+			cell: ({ row }) => {
+				const task = row.original;
+				const overdue = isOverdue(task);
+				return (
+					<div
+						className={cn(
+							"flex items-center gap-1.5 text-sm",
+							overdue
+								? "text-red-600 dark:text-red-400"
+								: "text-muted-foreground"
+						)}
+					>
+						<Calendar className="h-3.5 w-3.5 shrink-0" />
+						<span>{formatRelativeDate(task.date)}</span>
 					</div>
-				) : (
-					<span className="text-sm text-muted-foreground">—</span>
-				)}
-			</td>
-
-			{/* Date */}
-			<td className="px-4 py-3">
-				<div
-					className={cn(
-						"flex items-center gap-1 text-sm",
-						isOverdue ? "text-red-600" : "text-muted-foreground"
-					)}
-				>
-					<Calendar className="h-3 w-3 shrink-0" />
-					<span>{formatDate(taskDateUTC)}</span>
-				</div>
-			</td>
-
-			{/* Time */}
-			<td className="px-4 py-3">
-				{task.startTime || task.endTime ? (
-					<div className="flex items-center gap-1 text-sm text-muted-foreground">
-						<Clock className="h-3 w-3 shrink-0" />
-						<span>
-							{task.startTime && formatTime(task.startTime)}
-							{task.startTime && task.endTime && " - "}
-							{task.endTime && formatTime(task.endTime)}
+				);
+			},
+		},
+		{
+			id: "client",
+			header: "Client",
+			cell: ({ row }) => {
+				const task = row.original;
+				const client = clients?.find((c) => c._id === task.clientId);
+				if (!client) {
+					return <span className="text-sm text-muted-foreground">—</span>;
+				}
+				return (
+					<StyledBadge
+						variant="outline"
+						className="gap-1.5 font-normal text-xs"
+					>
+						<Building2 className="h-3 w-3 text-primary" />
+						<span className="truncate max-w-[120px]">
+							{client.companyName}
 						</span>
-					</div>
-				) : (
-					<span className="text-sm text-muted-foreground">—</span>
-				)}
-			</td>
-
-			{/* Assignee */}
-			<td className="px-4 py-3">
-				{assignee ? (
-					<div className="flex items-center gap-1 text-sm">
-						<User className="h-3 w-3 text-muted-foreground shrink-0" />
-						<span className="truncate">{assignee.name || assignee.email}</span>
-					</div>
-				) : (
-					<span className="text-sm text-muted-foreground">Unassigned</span>
-				)}
-			</td>
-
-			{/* Status */}
-			<td className="px-4 py-3">
-				<Badge variant="secondary" className={statusConfig[task.status].color}>
-					{statusConfig[task.status].label}
-				</Badge>
-			</td>
-
-			{/* Actions */}
-			<td className="w-16 px-4 py-3">
-				<AnimatePresence>
-					{(showActions || isUpdating) && (
-						<motion.div
-							initial={{ opacity: 0, scale: 0.8 }}
-							animate={{ opacity: 1, scale: 1 }}
-							exit={{ opacity: 0, scale: 0.8 }}
-							className="flex items-center gap-1"
+					</StyledBadge>
+				);
+			},
+		},
+		{
+			id: "project",
+			header: "Project",
+			cell: ({ row }) => {
+				const task = row.original;
+				const project = projects?.find((p) => p._id === task.projectId);
+				if (!project) {
+					return <span className="text-sm text-muted-foreground">—</span>;
+				}
+				return (
+					<StyledBadge
+						variant="outline"
+						className="gap-1.5 font-normal text-xs"
+					>
+						<FolderOpen className="h-3 w-3 text-primary" />
+						<span className="truncate max-w-[120px]">{project.title}</span>
+					</StyledBadge>
+				);
+			},
+		},
+		{
+			id: "assignee",
+			header: "Assignee",
+			cell: ({ row }) => {
+				const task = row.original;
+				const assignee = users?.find((u) => u._id === task.assigneeUserId);
+				if (!assignee) {
+					return (
+						<span className="text-sm text-muted-foreground">Unassigned</span>
+					);
+				}
+				return (
+					<StyledBadge
+						variant="outline"
+						className="gap-1.5 font-normal text-xs"
+					>
+						<User className="h-3 w-3 text-primary" />
+						<span className="truncate max-w-[100px]">
+							{assignee.name || assignee.email}
+						</span>
+					</StyledBadge>
+				);
+			},
+		},
+		{
+			id: "actions",
+			header: "",
+			size: 80,
+			cell: ({ row }) => {
+				const task = row.original;
+				const isUpdating = updatingTasks.has(task._id);
+				return (
+					<div className="flex items-center gap-1">
+						<button
+							onClick={() => onEdit(task)}
+							disabled={isUpdating}
+							className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+							title="Edit task"
 						>
-							<button
-								onClick={() => onEdit(task)}
-								disabled={isUpdating}
-								className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-								title="Edit task"
+							<Edit className="h-3.5 w-3.5" />
+						</button>
+						<button
+							onClick={() => onDelete(task)}
+							disabled={isUpdating}
+							className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 transition-colors"
+							title="Delete task"
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+						</button>
+					</div>
+				);
+			},
+		},
+	];
+}
+
+// --- Group Table ---
+
+function GroupTable({
+	group,
+	columns,
+}: {
+	group: TaskGroup;
+	columns: ColumnDef<Task>[];
+}) {
+	const table = useReactTable({
+		data: group.tasks,
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+	});
+
+	return (
+		<div className="mb-6">
+			{/* Group header */}
+			<div className="flex items-center gap-2 px-4 py-2 mb-1">
+				<StyledBadge variant={group.variant} className="text-xs">
+					{group.label}
+				</StyledBadge>
+				<span className="text-xs text-muted-foreground">
+					{group.tasks.length} {group.tasks.length === 1 ? "task" : "tasks"}
+				</span>
+			</div>
+
+			{/* Table for this group */}
+			<div className="overflow-hidden rounded-lg border">
+				<StyledTable>
+					<StyledTableHeader>
+						{table.getHeaderGroups().map((headerGroup) => (
+							<StyledTableRow key={headerGroup.id}>
+								{headerGroup.headers.map((header) => (
+									<StyledTableHead
+										key={header.id}
+										style={
+											header.column.getSize() !== 150
+												? { width: header.column.getSize() }
+												: undefined
+										}
+									>
+										{header.isPlaceholder
+											? null
+											: flexRender(
+													header.column.columnDef.header,
+													header.getContext()
+												)}
+									</StyledTableHead>
+								))}
+							</StyledTableRow>
+						))}
+					</StyledTableHeader>
+					<StyledTableBody>
+						{table.getRowModel().rows.map((row) => (
+							<StyledTableRow
+								key={row.id}
+								className={cn(
+									row.original.status === "completed" && "opacity-60"
+								)}
 							>
-								<Edit className="h-3 w-3" />
-							</button>
-							<button
-								onClick={() => onDelete(task._id)}
-								disabled={isUpdating}
-								className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 transition-colors"
-								title="Delete task"
-							>
-								<Trash2 className="h-3 w-3" />
-							</button>
-						</motion.div>
-					)}
-				</AnimatePresence>
-			</td>
-		</motion.tr>
+								{row.getVisibleCells().map((cell) => (
+									<StyledTableCell key={cell.id}>
+										{flexRender(
+											cell.column.columnDef.cell,
+											cell.getContext()
+										)}
+									</StyledTableCell>
+								))}
+							</StyledTableRow>
+						))}
+					</StyledTableBody>
+				</StyledTable>
+			</div>
+		</div>
 	);
 }
+
+// --- Main Page ---
 
 export default function TasksPage() {
 	const searchParams = useSearchParams();
@@ -303,12 +396,12 @@ export default function TasksPage() {
 
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filters, setFilters] = useState<Filter<unknown>[]>([]);
-	const [sortBy, setSortBy] = useState<"date" | "status">("date");
-	const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 	const [editingTask, setEditingTask] = useState<Task | null>(null);
 	const [updatingTasks, setUpdatingTasks] = useState<Set<Id<"tasks">>>(
 		new Set()
 	);
+	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+	const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 
 	// Queries
 	const allTasks = useQuery(api.tasks.list, {});
@@ -398,11 +491,11 @@ export default function TasksPage() {
 		];
 	}, [clients, projects, users]);
 
-	// Filter and sort tasks
-	const filteredAndSortedTasks = useMemo(() => {
+	// Filter tasks
+	const filteredTasks = useMemo(() => {
 		if (!allTasks) return [];
 
-		let filtered = allTasks;
+		let filtered = allTasks as Task[];
 
 		// Project filter (from URL parameter)
 		if (projectIdFromUrl) {
@@ -452,7 +545,7 @@ export default function TasksPage() {
 			}
 		});
 
-		// Search filter (applies to filtered results)
+		// Search filter
 		if (searchQuery.trim()) {
 			const query = searchQuery.toLowerCase();
 			filtered = filtered.filter(
@@ -462,45 +555,30 @@ export default function TasksPage() {
 			);
 		}
 
-		// Sort
-		filtered.sort((a, b) => {
-			let comparison = 0;
-
-			switch (sortBy) {
-				case "date":
-					comparison = a.date - b.date;
-					break;
-				case "status":
-					comparison = a.status.localeCompare(b.status);
-					break;
-			}
-
-			return sortOrder === "desc" ? -comparison : comparison;
-		});
+		// Sort by date ascending within groups
+		filtered.sort((a, b) => a.date - b.date);
 
 		return filtered;
-	}, [allTasks, projectIdFromUrl, filters, searchQuery, sortBy, sortOrder]);
+	}, [allTasks, projectIdFromUrl, filters, searchQuery]);
 
-	const handleStatusChange = async (
-		taskId: Id<"tasks">,
-		newStatus: Task["status"]
-	) => {
-		setUpdatingTasks((prev) => new Set(prev).add(taskId));
+	// Group tasks
+	const groups = useMemo(() => groupTasks(filteredTasks), [filteredTasks]);
 
+	// Handlers
+	const handleToggleComplete = async (task: Task) => {
+		setUpdatingTasks((prev) => new Set(prev).add(task._id));
 		try {
-			if (newStatus === "completed") {
-				await completeTaskMutation({ id: taskId });
-				console.log("Task marked as completed!");
+			if (task.status === "completed") {
+				await updateTaskMutation({ id: task._id, status: "pending" });
 			} else {
-				await updateTaskMutation({ id: taskId, status: newStatus });
-				console.log("Task status updated!");
+				await completeTaskMutation({ id: task._id });
 			}
 		} catch (error) {
 			console.error("Error updating task:", error);
 		} finally {
 			setUpdatingTasks((prev) => {
 				const newSet = new Set(prev);
-				newSet.delete(taskId);
+				newSet.delete(task._id);
 				return newSet;
 			});
 		}
@@ -510,74 +588,87 @@ export default function TasksPage() {
 		setEditingTask(task);
 	};
 
-	const handleDelete = async (taskId: Id<"tasks">) => {
-		if (!window.confirm("Are you sure you want to delete this task?")) return;
+	const handleDeleteRequest = (task: Task) => {
+		setTaskToDelete(task);
+		setDeleteModalOpen(true);
+	};
 
-		setUpdatingTasks((prev) => new Set(prev).add(taskId));
-
+	const confirmDelete = async () => {
+		if (!taskToDelete) return;
+		setUpdatingTasks((prev) => new Set(prev).add(taskToDelete._id));
 		try {
-			await deleteTaskMutation({ id: taskId });
-			console.log("Task deleted successfully!");
+			await deleteTaskMutation({ id: taskToDelete._id });
+			setDeleteModalOpen(false);
+			setTaskToDelete(null);
 		} catch (error) {
 			console.error("Error deleting task:", error);
 		} finally {
-			setUpdatingTasks((prev) => {
-				const newSet = new Set(prev);
-				newSet.delete(taskId);
-				return newSet;
-			});
+			if (taskToDelete) {
+				setUpdatingTasks((prev) => {
+					const newSet = new Set(prev);
+					newSet.delete(taskToDelete._id);
+					return newSet;
+				});
+			}
 		}
 	};
 
-	const toggleSort = (field: typeof sortBy) => {
-		if (sortBy === field) {
-			setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-		} else {
-			setSortBy(field);
-			setSortOrder("asc");
-		}
-	};
-
-	// Stats - Calculate today in UTC for consistent comparisons
-	const todayUTC = new Date();
-	todayUTC.setHours(0, 0, 0, 0);
-	const todayUTCTimestamp = Date.UTC(
-		todayUTC.getFullYear(),
-		todayUTC.getMonth(),
-		todayUTC.getDate()
-	);
-
+	// Stats
+	const todayStart = (() => {
+		const now = new Date();
+		return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+	})();
 	const totalTasks = allTasks?.length || 0;
 	const completedTasks =
 		allTasks?.filter((t) => t.status === "completed").length || 0;
 	const overdueTasks =
 		allTasks?.filter(
-			(t) => t.date < todayUTCTimestamp && t.status !== "completed"
+			(t) => t.date < todayStart && t.status !== "completed"
 		).length || 0;
 
+	// Columns
+	const columns = useMemo(
+		() =>
+			createColumns(
+				clients as
+					| { _id: Id<"clients">; companyName: string }[]
+					| undefined,
+				projects as
+					| { _id: Id<"projects">; title: string }[]
+					| undefined,
+				users as
+					| { _id: Id<"users">; name?: string; email: string }[]
+					| undefined,
+				handleToggleComplete,
+				handleEdit,
+				handleDeleteRequest,
+				updatingTasks
+			),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[clients, projects, users, updatingTasks]
+	);
+
 	return (
-		<motion.div
-			className="p-4 sm:p-6 lg:p-8 space-y-6"
-			initial={{ opacity: 0, y: 20 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.5 }}
-		>
+		<div className="p-4 sm:p-6 lg:p-8 space-y-6">
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
-				<div className="space-y-1">
-					<h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-						Tasks
-						{filteredProject && (
-							<span className="text-lg sm:text-xl font-normal text-muted-foreground ml-2">
-								for {filteredProject.title}
-							</span>
-						)}
-					</h1>
-					<p className="text-muted-foreground">
-						{isLoading
-							? "Loading tasks..."
-							: `${totalTasks} total • ${completedTasks} completed • ${overdueTasks} overdue`}
-					</p>
+				<div className="flex items-center gap-3">
+					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
+					<div>
+						<h1 className="text-2xl font-bold text-foreground">
+							Tasks
+							{filteredProject && (
+								<span className="text-lg font-normal text-muted-foreground ml-2">
+									for {filteredProject.title}
+								</span>
+							)}
+						</h1>
+						<p className="text-muted-foreground text-sm">
+							{isLoading
+								? "Loading tasks..."
+								: `${totalTasks} total \u2022 ${completedTasks} completed \u2022 ${overdueTasks} overdue`}
+						</p>
+					</div>
 				</div>
 				<TaskSheet
 					mode="create"
@@ -591,130 +682,69 @@ export default function TasksPage() {
 				/>
 			</div>
 
-		{/* Filters and Search */}
-		<div className="flex flex-col sm:flex-row gap-4 items-start">
-			{/* Filters with integrated clear button on the left */}
-			<StyledFilters
-				filters={filters}
-				fields={filterFields}
-				onChange={setFilters}
-				addButtonText="Filter"
-				addButtonIcon={<FilterIcon className="h-4 w-4" />}
-				size="md"
-				variant="outline"
-				showClearButton={true}
-				clearButtonText="Clear"
-				clearButtonIcon={<X className="h-4 w-4" />}
-			/>
-
-			{/* Search in the middle */}
-			<div className="relative flex-1">
-				<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-				<Input
-					placeholder="Search tasks..."
-					value={searchQuery}
-					onChange={(e) => setSearchQuery(e.target.value)}
-					className="pl-10"
+			{/* Filters and Search */}
+			<div className="flex flex-col sm:flex-row gap-4 items-start">
+				<StyledFilters
+					filters={filters}
+					fields={filterFields}
+					onChange={setFilters}
+					addButtonText="Filter"
+					addButtonIcon={<FilterIcon className="h-4 w-4" />}
+					size="md"
+					variant="outline"
+					showClearButton={true}
+					clearButtonText="Clear"
+					clearButtonIcon={<X className="h-4 w-4" />}
 				/>
+
+				<div className="relative flex-1">
+					<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+					<Input
+						placeholder="Search tasks..."
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						className="pl-10"
+					/>
+				</div>
+
+				{searchQuery.trim() !== "" && filters.length === 0 && (
+					<StyledButton
+						label="Clear"
+						icon={<X className="h-4 w-4" />}
+						intent="outline"
+						onClick={() => setSearchQuery("")}
+						showArrow={false}
+					/>
+				)}
 			</div>
 
-			{/* Additional clear button for search only */}
-			{searchQuery.trim() !== "" && filters.length === 0 && (
-				<StyledButton
-					label="Clear"
-					icon={<X className="h-4 w-4" />}
-					intent="outline"
-					onClick={() => setSearchQuery("")}
-					showArrow={false}
-				/>
-			)}
-		</div>
-
-			{/* Tasks Table */}
-			<div className="bg-card rounded-lg border overflow-hidden">
-				{isLoading ? (
-					<div className="p-8">
-						<div className="space-y-4">
-							{[1, 2, 3, 4, 5].map((i) => (
-								<div key={i} className="flex items-center gap-4">
-									<Skeleton className="h-5 w-5 rounded-full" />
-									<Skeleton className="h-5 flex-1" />
-									<Skeleton className="h-5 w-20" />
-									<Skeleton className="h-5 w-16" />
-									<Skeleton className="h-5 w-24" />
-								</div>
-							))}
-						</div>
+			{/* Tasks Content */}
+			{isLoading ? (
+				<div className="bg-card rounded-lg border p-8">
+					<div className="space-y-4">
+						{[1, 2, 3, 4, 5].map((i) => (
+							<div key={i} className="flex items-center gap-4">
+								<Skeleton className="h-5 w-5 rounded-full" />
+								<Skeleton className="h-5 flex-1" />
+								<Skeleton className="h-5 w-20" />
+								<Skeleton className="h-5 w-16" />
+								<Skeleton className="h-5 w-24" />
+							</div>
+						))}
 					</div>
-				) : filteredAndSortedTasks.length > 0 ? (
-					<div className="overflow-x-auto">
-						<table className="w-full">
-							<thead className="bg-muted/30">
-								<tr className="text-left">
-									<th className="w-12 px-4 py-3"></th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										Task
-									</th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										Client
-									</th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										Project
-									</th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										<button
-											onClick={() => toggleSort("date")}
-											className="flex items-center gap-1 hover:text-foreground"
-										>
-											Date
-											{sortBy === "date" &&
-												(sortOrder === "asc" ? (
-													<SortAsc className="h-3 w-3" />
-												) : (
-													<SortDesc className="h-3 w-3" />
-												))}
-										</button>
-									</th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										Time
-									</th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										Assignee
-									</th>
-									<th className="px-4 py-3 font-medium text-muted-foreground">
-										<button
-											onClick={() => toggleSort("status")}
-											className="flex items-center gap-1 hover:text-foreground"
-										>
-											Status
-											{sortBy === "status" &&
-												(sortOrder === "asc" ? (
-													<SortAsc className="h-3 w-3" />
-												) : (
-													<SortDesc className="h-3 w-3" />
-												))}
-										</button>
-									</th>
-									<th className="w-16 px-4 py-3"></th>
-								</tr>
-							</thead>
-							<tbody>
-								<AnimatePresence>
-									{filteredAndSortedTasks.map((task) => (
-										<TaskRow
-											key={task._id}
-											task={task}
-											onStatusChange={handleStatusChange}
-											onEdit={handleEdit}
-											onDelete={handleDelete}
-											isUpdating={updatingTasks.has(task._id)}
-										/>
-									))}
-								</AnimatePresence>
-							</tbody>
-						</table>
-					</div>
-				) : (
+				</div>
+			) : groups.length > 0 ? (
+				<div className="space-y-2">
+					{groups.map((group) => (
+						<GroupTable
+							key={group.label}
+							group={group}
+							columns={columns}
+						/>
+					))}
+				</div>
+			) : (
+				<div className="bg-card rounded-lg border">
 					<div className="text-center py-12">
 						<div className="space-y-4">
 							<div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full">
@@ -742,17 +772,33 @@ export default function TasksPage() {
 							)}
 						</div>
 					</div>
-				)}
-			</div>
+				</div>
+			)}
 
 			{/* Edit Task Sheet */}
 			{editingTask && (
 				<TaskSheet
 					task={editingTask}
 					mode="edit"
+					isOpen={true}
 					onOpenChange={(open) => !open && setEditingTask(null)}
 				/>
 			)}
-		</motion.div>
+
+			{/* Delete Confirmation Modal */}
+			{taskToDelete && (
+				<DeleteConfirmationModal
+					isOpen={deleteModalOpen}
+					onClose={() => {
+						setDeleteModalOpen(false);
+						setTaskToDelete(null);
+					}}
+					onConfirm={confirmDelete}
+					title="Delete Task"
+					itemName={taskToDelete.title}
+					itemType="Task"
+				/>
+			)}
+		</div>
 	);
 }
