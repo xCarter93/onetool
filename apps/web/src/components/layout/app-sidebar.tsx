@@ -15,6 +15,7 @@ import {
 	ListCheck,
 	BarChart3,
 	Globe,
+	Zap,
 } from "lucide-react";
 
 import { NavMain } from "@/components/layout/nav-main";
@@ -86,6 +87,11 @@ const data = {
 			title: "Tasks",
 			url: "/tasks",
 			icon: ListCheck,
+		},
+		{
+			title: "Automations",
+			url: "/automations",
+			icon: Zap,
 		},
 		{
 			title: "Quotes",
@@ -200,6 +206,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
 		if (title === "Tasks") {
 			return pathname.startsWith("/tasks") || pathname.startsWith("/task");
+		}
+
+		if (title === "Automations") {
+			return pathname.startsWith("/automations") || pathname.startsWith("/automation");
 		}
 
 		if (title === "Quotes") {
