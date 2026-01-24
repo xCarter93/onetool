@@ -14,6 +14,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Task/Schedule operations
@@ -564,6 +565,7 @@ export const update = mutation({
 
 		// Get current task for validation
 		const currentTask = await getTaskOrThrow(ctx, id);
+		const oldStatus = currentTask.status;
 
 		// Validate time logic with current or updated values
 		const startTime =
@@ -593,8 +595,23 @@ export const update = mutation({
 
 		// Get updated task for activity logging
 		const task = await ctx.db.get(id);
-		if (task && isBeingCompleted) {
-			await ActivityHelpers.taskCompleted(ctx, task as TaskDocument);
+		if (task) {
+			if (isBeingCompleted) {
+				await ActivityHelpers.taskCompleted(ctx, task as TaskDocument);
+			}
+
+			// Emit status change event if status changed
+			if (args.status && args.status !== oldStatus) {
+				await emitStatusChangeEvent(
+					ctx,
+					task.orgId,
+					"task",
+					task._id,
+					oldStatus,
+					args.status,
+					"tasks.update"
+				);
+			}
 		}
 
 		return id;

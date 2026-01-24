@@ -13,6 +13,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Invoice operations
@@ -475,6 +476,7 @@ export const update = mutation({
 
 		// Get current invoice to check for status changes
 		const currentInvoice = await getInvoiceOrThrow(ctx, id);
+		const oldStatus = currentInvoice.status;
 
 		// Handle status-specific updates
 		if (
@@ -522,6 +524,19 @@ export const update = mutation({
 					ctx,
 					updatedInvoice as InvoiceDocument,
 					clientName
+				);
+			}
+
+			// Emit status change event if status changed
+			if (args.status && args.status !== oldStatus) {
+				await emitStatusChangeEvent(
+					ctx,
+					updatedInvoice.orgId,
+					"invoice",
+					updatedInvoice._id,
+					oldStatus,
+					args.status,
+					"invoices.update"
 				);
 			}
 		}

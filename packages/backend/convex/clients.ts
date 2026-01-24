@@ -17,6 +17,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Client operations
@@ -389,12 +390,29 @@ export const update = mutation({
 		const filteredUpdates = filterUndefined(updates);
 		requireUpdates(filteredUpdates);
 
+		// Get existing client to track status changes
+		const existingClient = await getClientOrThrow(ctx, id);
+		const oldStatus = existingClient.status;
+
 		await updateClientWithValidation(ctx, id, filteredUpdates);
 
 		// Get the updated client for activity logging
 		const client = await ctx.db.get(id);
 		if (client) {
 			await ActivityHelpers.clientUpdated(ctx, client as ClientDocument);
+
+			// Emit status change event if status changed
+			if (args.status && args.status !== oldStatus) {
+				await emitStatusChangeEvent(
+					ctx,
+					client.orgId,
+					"client",
+					client._id,
+					oldStatus,
+					args.status,
+					"clients.update"
+				);
+			}
 		}
 
 		return id;
