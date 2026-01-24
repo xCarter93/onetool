@@ -14,7 +14,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, Save, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, Zap } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -25,6 +25,9 @@ import { WorkflowCanvas } from "../components/workflow-canvas";
 import { TriggerNode, STATUS_OPTIONS, type TriggerConfig } from "../components/trigger-node";
 import { WorkflowNodeComponent, type WorkflowNode, FIELD_OPTIONS } from "../components/workflow-node";
 import { AddStepButton } from "../components/add-step-button";
+import { NodeEditorSidebar } from "../components/node-editor-sidebar";
+import { BranchingNodeRenderer } from "../components/branching-node-renderer";
+import { validateFlatArray, buildNodeTree, flattenNodeTree } from "../lib/node-tree-utils";
 
 // Helper to generate unique IDs
 function generateId(): string {
@@ -132,13 +135,23 @@ function AutomationEditorContent() {
 	// Form state
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
-	const [trigger, setTrigger] = useState<TriggerConfig>({
-		objectType: "quote",
-		toStatus: "approved",
-	});
+	const [trigger, setTrigger] = useState<TriggerConfig | null>(null);
 	const [nodes, setNodes] = useState<WorkflowNode[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
 	const [hasInitialized, setHasInitialized] = useState(false);
+
+	// Sidebar state
+	type SelectedNode =
+		| { type: "trigger" }
+		| { type: "condition"; id: string }
+		| { type: "action"; id: string };
+	const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
+	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+	// Convert flat nodes array to tree structure for rendering
+	const nodeTree = React.useMemo(() => {
+		return buildNodeTree(nodes);
+	}, [nodes]);
 
 	// Initialize form with existing data
 	useEffect(() => {
@@ -155,26 +168,152 @@ function AutomationEditorContent() {
 		}
 	}, [existingAutomation, hasInitialized]);
 
-	// Add a default action node when creating new automation
-	useEffect(() => {
-		if (!isEditing && nodes.length === 0 && !hasInitialized) {
-			const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
-			setNodes([
-				{
+	// Sidebar handlers (defined first so they can be used by other handlers)
+	const handleOpenSidebar = useCallback((node: SelectedNode) => {
+		// If opening trigger sidebar and trigger is null, initialize with defaults
+		if (node.type === "trigger" && !trigger) {
+			setTrigger({
+				objectType: "quote",
+				toStatus: "approved",
+			});
+		}
+		setSelectedNode(node);
+		setIsSidebarOpen(true);
+	}, [trigger]);
+
+	const handleCloseSidebar = useCallback(() => {
+		setIsSidebarOpen(false);
+		// Don't clear selectedNode immediately to allow for smooth transition
+		setTimeout(() => setSelectedNode(null), 300);
+	}, []);
+
+	const handleNodeChangeFromSidebar = useCallback((nodeId: string, updates: Partial<WorkflowNode>) => {
+		setNodes((prev) =>
+			prev.map((n) => (n.id === nodeId ? { ...n, ...updates } : n))
+		);
+	}, []);
+
+	const handleTriggerChangeFromSidebar = useCallback((newTrigger: TriggerConfig) => {
+		setTrigger(newTrigger);
+	}, []);
+
+	// Add node to a specific branch - used by sidebar
+	const handleAddTrueBranch = useCallback((parentNodeId: string) => {
+		if (!trigger) return;
+
+		// For now, default to action. Could add node type selector later.
+		const newNode: WorkflowNode = {
+			id: generateId(),
+			type: "action",
+			action: {
+				targetType: "self",
+				actionType: "update_status",
+				newStatus: (STATUS_OPTIONS[trigger.objectType] || [])[0]?.value || "",
+			},
+		};
+
+		setNodes((prev) => {
+			// Add the new node to the array
+			const updated = [...prev, newNode];
+
+			// Update the parent node to link to the new node in true branch
+			return updated.map(node => {
+				if (node.id === parentNodeId) {
+					return { ...node, nextNodeId: newNode.id };
+				}
+				return node;
+			});
+		});
+
+		// Auto-open sidebar to configure the new node
+		setTimeout(() => {
+			handleOpenSidebar({ type: "action", id: newNode.id });
+		}, 0);
+	}, [trigger, handleOpenSidebar]);
+
+	const handleAddFalseBranch = useCallback((parentNodeId: string) => {
+		if (!trigger) return;
+
+		// For now, default to action. Could add node type selector later.
+		const newNode: WorkflowNode = {
+			id: generateId(),
+			type: "action",
+			action: {
+				targetType: "self",
+				actionType: "update_status",
+				newStatus: (STATUS_OPTIONS[trigger.objectType] || [])[0]?.value || "",
+			},
+		};
+
+		setNodes((prev) => {
+			// Add the new node to the array
+			const updated = [...prev, newNode];
+
+			// Update the parent node to link to the new node in false branch
+			return updated.map(node => {
+				if (node.id === parentNodeId) {
+					return { ...node, elseNodeId: newNode.id };
+				}
+				return node;
+			});
+		});
+
+		// Auto-open sidebar to configure the new node
+		setTimeout(() => {
+			handleOpenSidebar({ type: "action", id: newNode.id });
+		}, 0);
+	}, [trigger, handleOpenSidebar]);
+
+	// Add node to a specific branch
+	const handleAddNodeToBranch = useCallback((parentNodeId: string, branch: "true" | "false" | "next", nodeType: "condition" | "action") => {
+		if (!trigger) return;
+
+		const newNode: WorkflowNode = nodeType === "condition"
+			? {
+					id: generateId(),
+					type: "condition",
+					condition: {
+						field: (FIELD_OPTIONS[trigger.objectType] || [])[0]?.value || "status",
+						operator: "equals",
+						value: "",
+					},
+			  }
+			: {
 					id: generateId(),
 					type: "action",
 					action: {
 						targetType: "self",
 						actionType: "update_status",
-						newStatus: statusOptions[0]?.value || "",
+						newStatus: (STATUS_OPTIONS[trigger.objectType] || [])[0]?.value || "",
 					},
-				},
-			]);
-			setHasInitialized(true);
-		}
-	}, [isEditing, nodes.length, trigger.objectType, hasInitialized]);
+			  };
 
+		setNodes((prev) => {
+			// Add the new node to the array
+			const updated = [...prev, newNode];
+
+			// Update the parent node to link to the new node
+			return updated.map(node => {
+				if (node.id === parentNodeId) {
+					if (branch === "true" || branch === "next") {
+						return { ...node, nextNodeId: newNode.id };
+					} else if (branch === "false") {
+						return { ...node, elseNodeId: newNode.id };
+					}
+				}
+				return node;
+			});
+		});
+
+		// Auto-open sidebar to configure the new node
+		setTimeout(() => {
+			handleOpenSidebar({ type: nodeType, id: newNode.id });
+		}, 0);
+	}, [trigger, handleOpenSidebar]);
+
+	// Legacy handlers for the bottom add button (adds to end of linear flow)
 	const handleAddCondition = useCallback(() => {
+		if (!trigger) return;
 		const fieldOptions = FIELD_OPTIONS[trigger.objectType] || [];
 		const newNode: WorkflowNode = {
 			id: generateId(),
@@ -186,9 +325,14 @@ function AutomationEditorContent() {
 			},
 		};
 		setNodes((prev) => [...prev, newNode]);
-	}, [trigger.objectType]);
+		// Auto-open sidebar to configure the new node
+		setTimeout(() => {
+			handleOpenSidebar({ type: "condition", id: newNode.id });
+		}, 0);
+	}, [trigger, handleOpenSidebar]);
 
 	const handleAddAction = useCallback(() => {
+		if (!trigger) return;
 		const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
 		const newNode: WorkflowNode = {
 			id: generateId(),
@@ -200,7 +344,11 @@ function AutomationEditorContent() {
 			},
 		};
 		setNodes((prev) => [...prev, newNode]);
-	}, [trigger.objectType]);
+		// Auto-open sidebar to configure the new node
+		setTimeout(() => {
+			handleOpenSidebar({ type: "action", id: newNode.id });
+		}, 0);
+	}, [trigger, handleOpenSidebar]);
 
 	const handleUpdateNode = useCallback((index: number, node: WorkflowNode) => {
 		setNodes((prev) => prev.map((n, i) => (i === index ? node : n)));
@@ -210,10 +358,44 @@ function AutomationEditorContent() {
 		setNodes((prev) => prev.filter((_, i) => i !== index));
 	}, []);
 
+	// Delete node by ID (removes node and entire subtree)
+	const handleDeleteNodeById = useCallback((nodeId: string) => {
+		setNodes((prev) => {
+			// Find all node IDs in the subtree starting from nodeId
+			const nodesToDelete = new Set<string>();
+			const nodeMap = new Map(prev.map((n) => [n.id, n]));
+
+			function collectSubtree(id: string) {
+				if (nodesToDelete.has(id)) return;
+				nodesToDelete.add(id);
+
+				const node = nodeMap.get(id);
+				if (!node) return;
+
+				if (node.nextNodeId) {
+					collectSubtree(node.nextNodeId);
+				}
+				if (node.elseNodeId) {
+					collectSubtree(node.elseNodeId);
+				}
+			}
+
+			collectSubtree(nodeId);
+
+			// Remove all nodes in the subtree
+			return prev.filter((n) => !nodesToDelete.has(n.id));
+		});
+	}, []);
+
 	const handleSave = async () => {
 		// Validation
 		if (!name.trim()) {
 			toast.error("Validation Error", "Please enter an automation name");
+			return;
+		}
+
+		if (!trigger) {
+			toast.error("Validation Error", "Please configure a trigger");
 			return;
 		}
 
@@ -239,12 +421,19 @@ function AutomationEditorContent() {
 			}
 		}
 
-		// Link nodes together: each node's nextNodeId should point to the next node in sequence
-		// The last node should have undefined nextNodeId
-		const linkedNodes = nodes.map((node, index) => ({
-			...node,
-			nextNodeId: index < nodes.length - 1 ? nodes[index + 1].id : undefined,
-		}));
+		// Nodes already have nextNodeId and elseNodeId set from handleAddNodeToBranch
+		// Don't override the existing structure
+		const linkedNodes = nodes;
+
+		// Validate the linked structure
+		const validation = validateFlatArray(linkedNodes);
+		if (!validation.isValid) {
+			toast.error(
+				"Validation Error",
+				validation.error || "Invalid workflow structure"
+			);
+			return;
+		}
 
 		setIsSaving(true);
 
@@ -338,91 +527,144 @@ function AutomationEditorContent() {
 	}
 
 	return (
-		<div className="relative p-6 space-y-6">
-			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-4">
-					<Button intent="outline" size="sq-md" onPress={() => router.back()}>
-						<ArrowLeft className="h-4 w-4" />
-					</Button>
-					<div>
-						<h1 className="text-2xl font-bold text-foreground">
-							{isEditing ? "Edit Automation" : "Create Automation"}
-						</h1>
-						<p className="text-muted-foreground text-sm">
-							{isEditing
-								? "Modify your workflow automation"
-								: "Build a new workflow automation"}
-						</p>
+		<div className="flex flex-col h-screen">
+			{/* Top bar - fixed height */}
+			<div className="p-6 space-y-4 border-b">
+				{/* Header */}
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-4">
+						<Button intent="outline" size="sq-md" onPress={() => router.back()}>
+							<ArrowLeft className="h-4 w-4" />
+						</Button>
+						<div>
+							<h1 className="text-2xl font-bold text-foreground">
+								{isEditing ? "Edit Automation" : "Create Automation"}
+							</h1>
+							<p className="text-muted-foreground text-sm">
+								{isEditing
+									? "Modify your workflow automation"
+									: "Build a new workflow automation"}
+							</p>
+						</div>
+					</div>
+					<StyledButton
+						intent="primary"
+						onClick={handleSave}
+						disabled={isSaving}
+						icon={
+							isSaving ? (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							) : (
+								<Save className="h-4 w-4" />
+							)
+						}
+					>
+						{isSaving ? "Saving..." : "Save Automation"}
+					</StyledButton>
+				</div>
+
+				{/* Basic Info - Inline */}
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div className="space-y-2">
+						<Label htmlFor="name" className="text-sm font-medium">
+							Name *
+						</Label>
+						<Input
+							id="name"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="e.g., Auto-complete project on quote approval"
+							className="bg-background"
+						/>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="description" className="text-sm font-medium">
+							Description
+						</Label>
+						<Input
+							id="description"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="Optional: what does this automation do?"
+							className="bg-background"
+						/>
 					</div>
 				</div>
-				<StyledButton
-					intent="primary"
-					onClick={handleSave}
-					disabled={isSaving}
-					icon={
-						isSaving ? (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						) : (
-							<Save className="h-4 w-4" />
-						)
-					}
-				>
-					{isSaving ? "Saving..." : "Save Automation"}
-				</StyledButton>
 			</div>
 
-			{/* Basic Info - Inline */}
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-				<div className="space-y-2">
-					<Label htmlFor="name" className="text-sm font-medium">
-						Name *
-					</Label>
-					<Input
-						id="name"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						placeholder="e.g., Auto-complete project on quote approval"
-						className="bg-background"
-					/>
+			{/* Canvas + Sidebar - fills remaining height */}
+			<div className="flex-1 flex overflow-hidden">
+				{/* Canvas - flexible width */}
+				<div className="flex-1 overflow-auto">
+					<WorkflowCanvas>
+						{!trigger && !isEditing ? (
+							/* Empty state for new automations */
+							<button
+								onClick={() => handleOpenSidebar({ type: "trigger" })}
+								className="group flex flex-col items-center justify-center gap-4 p-12 rounded-2xl border-2 border-dashed border-border hover:border-primary/50 transition-colors cursor-pointer bg-muted/20 hover:bg-muted/40"
+							>
+								<div className="flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg group-hover:scale-110 transition-transform">
+									<Zap className="h-8 w-8 text-white" />
+								</div>
+								<div className="text-center">
+									<h3 className="text-lg font-semibold text-foreground mb-1">
+										Set a trigger to get started
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Click here to configure when this automation should run
+									</p>
+								</div>
+							</button>
+						) : trigger ? (
+							<>
+								{/* Trigger Node */}
+								<TriggerNode
+									trigger={trigger}
+									onClick={() => handleOpenSidebar({ type: "trigger" })}
+								/>
+
+								{/* Workflow Nodes - Branching Tree View */}
+								{nodeTree ? (
+									<>
+										{/* Connector from trigger to first node */}
+										<div className="w-[2.5px] h-8 bg-border" />
+										<BranchingNodeRenderer
+											node={nodeTree}
+											onNodeClick={(nodeId, nodeType) =>
+												handleOpenSidebar({ type: nodeType, id: nodeId })
+											}
+											onNodeDelete={handleDeleteNodeById}
+											onAddNode={(parentId, branch) => handleAddNodeToBranch(parentId, branch, "action")}
+										/>
+									</>
+								) : (
+									/* Add Step Button when no nodes */
+									<>
+										<div className="w-[2.5px] h-8 bg-border" />
+										<AddStepButton
+											onAddCondition={handleAddCondition}
+											onAddAction={handleAddAction}
+										/>
+									</>
+								)}
+							</>
+						) : null}
+					</WorkflowCanvas>
 				</div>
-				<div className="space-y-2">
-					<Label htmlFor="description" className="text-sm font-medium">
-						Description
-					</Label>
-					<Input
-						id="description"
-						value={description}
-						onChange={(e) => setDescription(e.target.value)}
-						placeholder="Optional: what does this automation do?"
-						className="bg-background"
-					/>
-				</div>
-			</div>
 
-			{/* Workflow Canvas */}
-			<WorkflowCanvas>
-				{/* Trigger Node */}
-				<TriggerNode trigger={trigger} onChange={setTrigger} />
-
-				{/* Workflow Nodes */}
-				{nodes.map((node, index) => (
-					<WorkflowNodeComponent
-						key={node.id}
-						node={node}
-						triggerObjectType={trigger.objectType}
-						onUpdate={(updatedNode) => handleUpdateNode(index, updatedNode)}
-						onDelete={() => handleDeleteNode(index)}
-						isLast={index === nodes.length - 1 && nodes.length > 0}
-					/>
-				))}
-
-				{/* Add Step Button */}
-				<AddStepButton
-					onAddCondition={handleAddCondition}
-					onAddAction={handleAddAction}
+				{/* Sidebar - slides in/out */}
+				<NodeEditorSidebar
+					isOpen={isSidebarOpen}
+					selectedNode={selectedNode}
+					trigger={trigger}
+					nodes={nodes}
+					onClose={handleCloseSidebar}
+					onTriggerChange={handleTriggerChangeFromSidebar}
+					onNodeChange={handleNodeChangeFromSidebar}
+					onAddTrueBranch={handleAddTrueBranch}
+					onAddFalseBranch={handleAddFalseBranch}
 				/>
-			</WorkflowCanvas>
+			</div>
 		</div>
 	);
 }

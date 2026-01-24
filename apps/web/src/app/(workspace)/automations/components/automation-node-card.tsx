@@ -50,7 +50,7 @@ export function AutomationNodeCard({
 		<div className="relative">
 			{/* Connector line */}
 			{index > 0 && (
-				<div className="absolute -top-4 left-8 w-0.5 h-4 bg-border" />
+				<div className="absolute -top-4 left-8 w-[2.5px] h-4 bg-border" />
 			)}
 
 			<Card

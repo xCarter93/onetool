@@ -22,7 +22,7 @@ export function AddStepButton({
 	return (
 		<div className="flex flex-col items-center">
 			{/* Connector line coming from above */}
-			<div className="w-0.5 h-8 bg-border" />
+			<div className="w-[2.5px] h-8 bg-border" />
 
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>

@@ -11,6 +11,7 @@
 import type * as activities from "../activities.js";
 import type * as aggregates from "../aggregates.js";
 import type * as automationExecutor from "../automationExecutor.js";
+import type * as automations from "../automations.js";
 import type * as billingWebhook from "../billingWebhook.js";
 import type * as boldsign from "../boldsign.js";
 import type * as boldsignActions from "../boldsignActions.js";
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   activities: typeof activities;
   aggregates: typeof aggregates;
   automationExecutor: typeof automationExecutor;
+  automations: typeof automations;
   billingWebhook: typeof billingWebhook;
   boldsign: typeof boldsign;
   boldsignActions: typeof boldsignActions;

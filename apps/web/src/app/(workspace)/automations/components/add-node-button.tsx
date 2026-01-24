@@ -24,7 +24,7 @@ export function AddNodeButton({
 	return (
 		<div className="flex flex-col items-center gap-2 py-4">
 			{/* Connector line */}
-			<div className="w-0.5 h-4 bg-border" />
+			<div className="w-[2.5px] h-4 bg-border" />
 
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>

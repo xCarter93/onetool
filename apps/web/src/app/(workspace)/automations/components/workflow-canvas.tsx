@@ -16,7 +16,7 @@ export function WorkflowCanvas({ children, className }: WorkflowCanvasProps) {
 			size={1.5}
 			spacing={15}
 			className={cn(
-				"relative min-h-[600px] rounded-xl border border-border/50 overflow-hidden bg-background dark:bg-background",
+				"relative h-full rounded-xl border border-border/50 overflow-hidden bg-background dark:bg-background",
 				className
 			)}
 			style={{
