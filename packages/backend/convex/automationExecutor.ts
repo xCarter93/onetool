@@ -561,6 +561,14 @@ async function executeActionNode(
 		return { success: true, skipped: true };
 	}
 
+	// Validate that target type matches expected type
+	if (targetInfo.type !== targetType) {
+		return {
+			success: false,
+			error: `Target resolution returned ${targetInfo.type} but expected ${targetType}`,
+		};
+	}
+
 	// Validate the new status is valid for the target type
 	const validStatuses = OBJECT_STATUS_MAP[targetInfo.type] as readonly string[];
 	if (!validStatuses.includes(newStatus)) {
@@ -606,15 +614,18 @@ async function executeActionNode(
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		await ctx.db.patch(targetInfo.id, updatePayload as any);
 
-		// IMPORTANT: Update aggregates to keep them in sync with direct database patches
+		// IMPORTANT: Update aggregates atomically in the same transaction
 		// This prevents "key not found" errors when entities are later deleted or updated
 		if (oldStatus && oldStatus !== newStatus) {
-			const updatedObject = await getObject(
-				ctx,
-				targetInfo.type,
-				targetInfo.id
-			);
-			if (updatedObject && targetObject) {
+			const updatedObject = await ctx.db.get(targetInfo.id);
+			if (!updatedObject) {
+				return {
+					success: false,
+					error: "Target object was deleted during update",
+				};
+			}
+
+			if (targetObject) {
 				switch (targetInfo.type) {
 					case "project":
 						await AggregateHelpers.updateProject(
