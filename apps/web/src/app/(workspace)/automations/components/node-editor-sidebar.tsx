@@ -3,7 +3,7 @@
 import React from "react";
 import { X, Zap, GitBranch, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -84,14 +84,15 @@ export function NodeEditorSidebar({
 							</>
 						)}
 					</div>
-					<Button
+					<StyledButton
 						intent="outline"
-						size="sq-sm"
-						onPress={onClose}
+						size="sm"
+						onClick={onClose}
+						icon={<X className="h-4 w-4" />}
+						showArrow={false}
 						aria-label="Close sidebar"
-					>
-						<X className="h-4 w-4" />
-					</Button>
+						className="p-1"
+					/>
 				</div>
 
 				{/* Content */}
@@ -342,13 +343,14 @@ function ConditionEditor({
 									{trueNode.type === "condition" ? "Condition" : "Action"}
 								</span>
 							</div>
-							<Button
-								intent="ghost"
-								size="sq-sm"
-								onPress={() => onChange({ nextNodeId: undefined })}
-							>
-								<X className="h-3.5 w-3.5" />
-							</Button>
+							<StyledButton
+								intent="plain"
+								size="sm"
+								onClick={() => onChange({ nextNodeId: undefined })}
+								icon={<X className="h-3.5 w-3.5" />}
+								showArrow={false}
+								className="p-1"
+							/>
 						</div>
 					) : (
 						<button
@@ -377,13 +379,14 @@ function ConditionEditor({
 									{falseNode.type === "condition" ? "Condition" : "Action"}
 								</span>
 							</div>
-							<Button
-								intent="ghost"
-								size="sq-sm"
-								onPress={() => onChange({ elseNodeId: undefined })}
-							>
-								<X className="h-3.5 w-3.5" />
-							</Button>
+							<StyledButton
+								intent="plain"
+								size="sm"
+								onClick={() => onChange({ elseNodeId: undefined })}
+								icon={<X className="h-3.5 w-3.5" />}
+								showArrow={false}
+								className="p-1"
+							/>
 						</div>
 					) : (
 						<button
