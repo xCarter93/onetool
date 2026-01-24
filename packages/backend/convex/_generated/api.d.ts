@@ -10,6 +10,7 @@
 
 import type * as activities from "../activities.js";
 import type * as aggregates from "../aggregates.js";
+import type * as automationExecutor from "../automationExecutor.js";
 import type * as billingWebhook from "../billingWebhook.js";
 import type * as boldsign from "../boldsign.js";
 import type * as boldsignActions from "../boldsignActions.js";
@@ -22,6 +23,7 @@ import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as emailAttachments from "../emailAttachments.js";
 import type * as emailMessages from "../emailMessages.js";
+import type * as eventBus from "../eventBus.js";
 import type * as homeStats from "../homeStats.js";
 import type * as homeStatsOptimized from "../homeStatsOptimized.js";
 import type * as http from "../http.js";
@@ -75,6 +77,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   activities: typeof activities;
   aggregates: typeof aggregates;
+  automationExecutor: typeof automationExecutor;
   billingWebhook: typeof billingWebhook;
   boldsign: typeof boldsign;
   boldsignActions: typeof boldsignActions;
@@ -87,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   documents: typeof documents;
   emailAttachments: typeof emailAttachments;
   emailMessages: typeof emailMessages;
+  eventBus: typeof eventBus;
   homeStats: typeof homeStats;
   homeStatsOptimized: typeof homeStatsOptimized;
   http: typeof http;

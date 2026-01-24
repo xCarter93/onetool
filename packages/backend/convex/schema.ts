@@ -978,12 +978,47 @@ export default defineSchema({
 			})
 		),
 
-		// Metadata
+		// Tracking
 		createdBy: v.id("users"),
 		createdAt: v.number(),
 		updatedAt: v.number(),
+		lastTriggeredAt: v.optional(v.number()),
+		triggerCount: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
-		.index("by_org_active", ["orgId", "isActive"])
-		.index("by_trigger_type", ["trigger.objectType", "isActive"]),
+		.index("by_org_active", ["orgId", "isActive"]),
+
+	// Workflow Execution Logs - tracks automation execution history
+	workflowExecutions: defineTable({
+		orgId: v.id("organizations"),
+		automationId: v.id("workflowAutomations"),
+		triggeredBy: v.string(), // ID of the object that triggered it
+		triggeredAt: v.number(),
+		status: v.union(
+			v.literal("running"),
+			v.literal("completed"),
+			v.literal("failed"),
+			v.literal("skipped")
+		),
+		completedAt: v.optional(v.number()),
+		nodesExecuted: v.array(
+			v.object({
+				nodeId: v.string(),
+				result: v.union(
+					v.literal("success"),
+					v.literal("skipped"),
+					v.literal("failed")
+				),
+				error: v.optional(v.string()),
+			})
+		),
+		error: v.optional(v.string()),
+		// Recursion tracking - chain of automation IDs that led to this execution
+		executionChain: v.optional(v.array(v.id("workflowAutomations"))),
+		// Depth of recursion (for quick limit check)
+		recursionDepth: v.optional(v.number()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_automation", ["automationId"])
+		.index("by_org_triggeredAt", ["orgId", "triggeredAt"]),
 });

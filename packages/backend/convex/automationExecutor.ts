@@ -219,8 +219,9 @@ export const handleStatusChangeEvent = internalMutation({
 						isCascade: currentDepth > 0,
 					},
 				},
-				status: "processed", // Informational event, already processed
+				status: "completed", // Informational event, already processed
 				processedAt: Date.now(),
+				attemptCount: 0,
 				correlationId: args.correlationId,
 				causationId: args.eventId,
 				createdAt: Date.now(),
