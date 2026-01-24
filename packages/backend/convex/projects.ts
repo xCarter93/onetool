@@ -15,6 +15,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Project operations
@@ -471,6 +472,7 @@ export const update = mutation({
 
 		// Get current project for date validation
 		const currentProject = await getProjectOrThrow(ctx, id);
+		const oldStatus = currentProject.status;
 		const startDate = filteredUpdates.startDate ?? currentProject.startDate;
 		const endDate = filteredUpdates.endDate ?? currentProject.endDate;
 
@@ -510,6 +512,19 @@ export const update = mutation({
 				await ActivityHelpers.projectCompleted(ctx, project as ProjectDocument);
 			} else {
 				await ActivityHelpers.projectUpdated(ctx, project as ProjectDocument);
+			}
+
+			// Emit status change event if status changed
+			if (args.status && args.status !== oldStatus) {
+				await emitStatusChangeEvent(
+					ctx,
+					(project as ProjectDocument).orgId,
+					"project",
+					(project as ProjectDocument)._id,
+					oldStatus,
+					args.status,
+					"projects.update"
+				);
 			}
 		}
 

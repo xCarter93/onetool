@@ -13,6 +13,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Quote operations
@@ -572,6 +573,7 @@ export const update = mutation({
 
 		// Get current quote to check for status changes
 		const currentQuote = await getQuoteOrThrow(ctx, id);
+		const oldStatus = currentQuote.status;
 
 		// Handle status-specific updates
 		if (
@@ -632,6 +634,19 @@ export const update = mutation({
 					ctx,
 					updatedQuote as QuoteDocument,
 					clientName
+				);
+			}
+
+			// Emit status change event if status changed
+			if (args.status && args.status !== oldStatus) {
+				await emitStatusChangeEvent(
+					ctx,
+					updatedQuote.orgId,
+					"quote",
+					updatedQuote._id,
+					oldStatus,
+					args.status,
+					"quotes.update"
 				);
 			}
 		}

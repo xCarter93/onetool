@@ -876,4 +876,149 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_creator", ["createdBy"]),
+
+	// Domain Events - Event-driven architecture event store
+	domainEvents: defineTable({
+		orgId: v.id("organizations"),
+		// Event metadata
+		eventType: v.string(), // e.g., "entity.status_changed", "automation.triggered"
+		eventSource: v.string(), // e.g., "quotes.update", "projects.update"
+		// Event payload
+		payload: v.object({
+			entityType: v.union(
+				v.literal("client"),
+				v.literal("project"),
+				v.literal("quote"),
+				v.literal("invoice"),
+				v.literal("task")
+			),
+			entityId: v.string(),
+			field: v.optional(v.string()),
+			oldValue: v.optional(v.any()),
+			newValue: v.optional(v.any()),
+			metadata: v.optional(v.any()), // Additional context
+		}),
+		// Processing state
+		status: v.union(
+			v.literal("pending"),
+			v.literal("processing"),
+			v.literal("completed"),
+			v.literal("failed")
+		),
+		processedAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+		attemptCount: v.number(),
+		// Event tracing
+		correlationId: v.optional(v.string()), // Groups related events
+		causationId: v.optional(v.string()), // Points to triggering event
+		// Timestamps
+		createdAt: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_status", ["orgId", "status"])
+		.index("by_type_status", ["eventType", "status"])
+		.index("by_correlation", ["correlationId"]),
+
+	// Workflow Automations - main automation definition
+	workflowAutomations: defineTable({
+		orgId: v.id("organizations"),
+		name: v.string(),
+		description: v.optional(v.string()),
+		isActive: v.boolean(),
+
+		// Trigger definition
+		trigger: v.object({
+			objectType: v.union(
+				v.literal("client"),
+				v.literal("project"),
+				v.literal("quote"),
+				v.literal("invoice"),
+				v.literal("task")
+			),
+			fromStatus: v.optional(v.string()), // Optional: specific "from" status
+			toStatus: v.string(), // Required: target status
+		}),
+
+		// Workflow nodes (linear with conditional branches)
+		nodes: v.array(
+			v.object({
+				id: v.string(),
+				type: v.union(v.literal("condition"), v.literal("action")),
+				// Condition node fields
+				condition: v.optional(
+					v.object({
+						field: v.string(), // e.g., "priorityLevel", "projectType"
+						operator: v.union(
+							v.literal("equals"),
+							v.literal("not_equals"),
+							v.literal("contains"),
+							v.literal("exists")
+						),
+						value: v.any(),
+					})
+				),
+				// Action node fields
+				action: v.optional(
+					v.object({
+						targetType: v.union(
+							v.literal("self"),
+							v.literal("project"),
+							v.literal("client"),
+							v.literal("quote"),
+							v.literal("invoice")
+						),
+						actionType: v.literal("update_status"),
+						newStatus: v.string(),
+					})
+				),
+				// Flow control
+				nextNodeId: v.optional(v.string()),
+				elseNodeId: v.optional(v.string()), // For condition nodes
+			})
+		),
+
+		// Tracking
+		createdBy: v.id("users"),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		lastTriggeredAt: v.optional(v.number()),
+		triggerCount: v.optional(v.number()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_active", ["orgId", "isActive"]),
+
+	// Workflow Execution Logs - tracks automation execution history
+	workflowExecutions: defineTable({
+		orgId: v.id("organizations"),
+		automationId: v.id("workflowAutomations"),
+		triggeredBy: v.string(), // ID of the object that triggered it
+		triggeredAt: v.number(),
+		status: v.union(
+			v.literal("running"),
+			v.literal("completed"),
+			v.literal("failed"),
+			v.literal("skipped")
+		),
+		completedAt: v.optional(v.number()),
+		nodesExecuted: v.array(
+			v.object({
+				nodeId: v.string(),
+				result: v.union(
+					v.literal("success"),
+					v.literal("skipped"),
+					v.literal("failed")
+				),
+				error: v.optional(v.string()),
+			})
+		),
+		error: v.optional(v.string()),
+		// Recursion tracking - chain of automation IDs that led to this execution
+		executionChain: v.optional(v.array(v.id("workflowAutomations"))),
+		// Depth of recursion (for quick limit check)
+		recursionDepth: v.optional(v.number()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_automation", ["automationId"])
+		.index("by_org_triggeredAt", ["orgId", "triggeredAt"]),
 });

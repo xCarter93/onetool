@@ -15,6 +15,7 @@ import {
 	ListCheck,
 	BarChart3,
 	Globe,
+	Zap,
 } from "lucide-react";
 
 import { NavMain } from "@/components/layout/nav-main";
@@ -108,6 +109,11 @@ const data = {
 			icon: Globe,
 		},
 		{
+			title: "Automations",
+			url: "/automations",
+			icon: Zap,
+		},
+		{
 			title: "Settings",
 			url: "/organization/profile",
 			icon: Settings,
@@ -152,6 +158,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
+	const isAutomationsEnabled = useFeatureFlagEnabled("workflow-automation-access");
 
 	// Check if user can create new clients
 	const {
@@ -200,6 +207,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
 		if (title === "Tasks") {
 			return pathname.startsWith("/tasks") || pathname.startsWith("/task");
+		}
+
+		if (title === "Automations") {
+			return pathname.startsWith("/automations") || pathname.startsWith("/automation");
 		}
 
 		if (title === "Quotes") {
@@ -284,13 +295,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			const isCommunityDisabled =
 				item.title === "Community" && !isCommunityEnabled;
 
+			// Automations is disabled unless feature flag is enabled
+			const isAutomationsDisabled =
+				item.title === "Automations" && !isAutomationsEnabled;
+
 			return {
 				...item,
 				items: subItems,
 				isActive,
-				disabled: isDisabled || isCommunityDisabled,
+				disabled: isDisabled || isCommunityDisabled || isAutomationsDisabled,
 				disabledTooltip: isCommunityDisabled
 					? "Communities feature coming soon"
+					: isAutomationsDisabled
+					? "Automations feature coming soon"
 					: undefined,
 				badgeCount:
 					item.title === "Tasks" && tasksDueToday > 0
