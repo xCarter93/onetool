@@ -49,6 +49,12 @@ PRD.md
 
 /.claude
 /.cursor
+/.agent
+/.agents
+/.codex
+/.gemini
+/.kiro
+/.github
 
 # Debug routes (should not be in production)
 src/app/(workspace)/settings/debug/

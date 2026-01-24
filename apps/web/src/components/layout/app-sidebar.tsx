@@ -154,7 +154,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
 	const taskStats = useQuery(api.tasks.getStats, {});
-	const tasksDueToday = taskStats?.todayTasks ?? 0;
+	const tasksBadgeCount = (taskStats?.todayTasks ?? 0) + (taskStats?.overdue ?? 0);
 	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
@@ -310,8 +310,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					? "Automations feature coming soon"
 					: undefined,
 				badgeCount:
-					item.title === "Tasks" && tasksDueToday > 0
-						? tasksDueToday
+					item.title === "Tasks" && tasksBadgeCount > 0
+						? tasksBadgeCount
 						: undefined,
 				badgeVariant: item.title === "Tasks" ? ("alert" as const) : undefined,
 			};
