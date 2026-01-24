@@ -518,9 +518,9 @@ export const update = mutation({
 			if (args.status && args.status !== oldStatus) {
 				await emitStatusChangeEvent(
 					ctx,
-					project.orgId,
+					(project as ProjectDocument).orgId,
 					"project",
-					project._id,
+					(project as ProjectDocument)._id,
 					oldStatus,
 					args.status,
 					"projects.update"
