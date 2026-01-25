@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useQuery, useMutation } from "convex/react";
 import { cn } from "@/lib/utils";
 
@@ -35,8 +36,8 @@ export function NavFavorites() {
 	const hasOverflow = (favorites?.length ?? 0) > MAX_VISIBLE_FAVORITES;
 	const isEmpty = !favorites || favorites.length === 0;
 
-	const handleUnfavorite = async (clientId: string) => {
-		await toggleFavorite({ clientId: clientId as never });
+	const handleUnfavorite = async (clientId: Id<"clients">) => {
+		await toggleFavorite({ clientId });
 	};
 
 	return (
