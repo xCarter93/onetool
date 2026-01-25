@@ -31,13 +31,9 @@ export function NavFavorites() {
 	const [popoverOpen, setPopoverOpen] = React.useState(false);
 	const router = useRouter();
 
-	// Don't render anything if no favorites or loading
-	if (!favorites || favorites.length === 0) {
-		return null;
-	}
-
-	const visibleFavorites = favorites.slice(0, MAX_VISIBLE_FAVORITES);
-	const hasOverflow = favorites.length > MAX_VISIBLE_FAVORITES;
+	const visibleFavorites = favorites?.slice(0, MAX_VISIBLE_FAVORITES) ?? [];
+	const hasOverflow = (favorites?.length ?? 0) > MAX_VISIBLE_FAVORITES;
+	const isEmpty = !favorites || favorites.length === 0;
 
 	const handleUnfavorite = async (clientId: string) => {
 		await toggleFavorite({ clientId: clientId as never });
@@ -47,19 +43,29 @@ export function NavFavorites() {
 		<SidebarGroup>
 			<SidebarGroupLabel>Favorites</SidebarGroupLabel>
 			<SidebarMenu>
-				{visibleFavorites.map((favorite) => (
-					<SidebarMenuItem key={favorite._id}>
-						<SidebarMenuButton
-							tooltip={favorite.companyName}
-							onClick={() => router.push(`/clients/${favorite.clientId}`)}
-						>
-							<Heart className="fill-rose-500 text-rose-500" />
-							<span className="truncate">{favorite.companyName}</span>
-						</SidebarMenuButton>
+				{isEmpty ? (
+					<SidebarMenuItem>
+						<div className="px-2 py-1.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+							No favorites yet
+						</div>
 					</SidebarMenuItem>
-				))}
+				) : (
+					<>
+						{visibleFavorites.map((favorite) => (
+							<SidebarMenuItem key={favorite._id}>
+								<SidebarMenuButton
+									tooltip={favorite.companyName}
+									onClick={() => router.push(`/clients/${favorite.clientId}`)}
+								>
+									<Heart className="fill-rose-500 text-rose-500" />
+									<span className="truncate">{favorite.companyName}</span>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						))}
+					</>
+				)}
 
-				{hasOverflow && (
+				{hasOverflow && favorites && (
 					<SidebarMenuItem>
 						<Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
 							<PopoverTrigger asChild>
