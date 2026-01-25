@@ -20,6 +20,7 @@ import {
 
 import { NavMain } from "@/components/layout/nav-main";
 import { NavFavorites } from "@/components/layout/nav-favorites";
+import { NavGettingStarted } from "@/components/layout/nav-getting-started";
 import { NavUser } from "@/components/layout/nav-user";
 import { TeamSwitcher } from "@/components/layout/team-switcher";
 import {
@@ -349,6 +350,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					/>
 				</TourElement>
 				<NavFavorites />
+				{isAdmin && <NavGettingStarted />}
 			</SidebarContent>
 			<SidebarFooter>
 				<TourElement<HomeTour>
