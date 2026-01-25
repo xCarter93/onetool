@@ -402,6 +402,7 @@ export function NavMain({
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<SidebarMenuButton
+												tooltip={item.title}
 												className="opacity-60 cursor-not-allowed"
 												onClick={(e) => e.preventDefault()}
 											>
@@ -419,11 +420,13 @@ export function NavMain({
 
 						return (
 							<SidebarMenuItem key={item.title}>
-								<SidebarMenuButton asChild isActive={item.isActive}>
-									<Link href={item.url}>
-										{item.icon && <item.icon />}
-										<span>{item.title}</span>
-									</Link>
+								<SidebarMenuButton
+									tooltip={item.title}
+									isActive={item.isActive}
+									onClick={() => router.push(item.url)}
+								>
+									{item.icon && <item.icon />}
+									<span>{item.title}</span>
 								</SidebarMenuButton>
 								{typeof item.badgeCount === "number" && item.badgeCount > 0 && (
 									<SidebarMenuBadge

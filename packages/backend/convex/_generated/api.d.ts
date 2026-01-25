@@ -25,6 +25,7 @@ import type * as documents from "../documents.js";
 import type * as emailAttachments from "../emailAttachments.js";
 import type * as emailMessages from "../emailMessages.js";
 import type * as eventBus from "../eventBus.js";
+import type * as favorites from "../favorites.js";
 import type * as homeStats from "../homeStats.js";
 import type * as homeStatsOptimized from "../homeStatsOptimized.js";
 import type * as http from "../http.js";
@@ -93,6 +94,7 @@ declare const fullApi: ApiFromModules<{
   emailAttachments: typeof emailAttachments;
   emailMessages: typeof emailMessages;
   eventBus: typeof eventBus;
+  favorites: typeof favorites;
   homeStats: typeof homeStats;
   homeStatsOptimized: typeof homeStatsOptimized;
   http: typeof http;

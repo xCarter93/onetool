@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { NavMain } from "@/components/layout/nav-main";
+import { NavFavorites } from "@/components/layout/nav-favorites";
 import { NavUser } from "@/components/layout/nav-user";
 import { TeamSwitcher } from "@/components/layout/team-switcher";
 import {
@@ -347,6 +348,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						clientLimit={clientLimit}
 					/>
 				</TourElement>
+				<NavFavorites />
 			</SidebarContent>
 			<SidebarFooter>
 				<TourElement<HomeTour>

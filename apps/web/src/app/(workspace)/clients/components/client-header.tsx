@@ -1,6 +1,8 @@
 "use client";
 
 import { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { useQuery, useMutation } from "convex/react";
 import { BuildingOffice2Icon, PencilIcon } from "@heroicons/react/24/outline";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import {
@@ -22,11 +24,13 @@ import {
 	Receipt,
 	FileText,
 	ClipboardList,
+	Heart,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = ["lead", "active", "inactive", "archived"] as const;
 
@@ -99,6 +103,27 @@ export function ClientHeader({
 	const router = useRouter();
 	const toast = useToast();
 
+	// Favorite functionality
+	const isFavorited = useQuery(api.favorites.isFavorited, {
+		clientId: clientId as Id<"clients">,
+	});
+	const toggleFavorite = useMutation(api.favorites.toggle);
+
+	const handleToggleFavorite = async () => {
+		try {
+			const result = await toggleFavorite({
+				clientId: clientId as Id<"clients">,
+			});
+			if (result.action === "added") {
+				toast.success("Added to favorites");
+			} else {
+				toast.success("Removed from favorites");
+			}
+		} catch {
+			toast.error("Failed to update favorites");
+		}
+	};
+
 	return (
 		<div className="mb-8">
 			<div className="flex items-start justify-between gap-6 mb-6">
@@ -135,6 +160,24 @@ export function ClientHeader({
 									entityType="client"
 								/>
 							)}
+							<button
+								onClick={handleToggleFavorite}
+								className={cn(
+									"p-2 rounded-md transition-colors",
+									"hover:bg-gray-100 dark:hover:bg-gray-800",
+									"focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+								)}
+								aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
+							>
+								<Heart
+									className={cn(
+										"h-7 w-7 transition-colors",
+										isFavorited
+											? "fill-rose-500 text-rose-500"
+											: "text-gray-400 hover:text-rose-400"
+									)}
+								/>
+							</button>
 						</div>
 						{!isEditing && (
 							<button

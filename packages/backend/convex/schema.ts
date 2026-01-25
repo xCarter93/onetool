@@ -1021,4 +1021,14 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_automation", ["automationId"])
 		.index("by_org_triggeredAt", ["orgId", "triggeredAt"]),
+
+	// User Favorites - user-specific client favorites
+	userFavorites: defineTable({
+		userId: v.id("users"),
+		orgId: v.id("organizations"),
+		clientId: v.id("clients"),
+		createdAt: v.number(),
+	})
+		.index("by_user_org", ["userId", "orgId"])
+		.index("by_user_client", ["userId", "clientId"]),
 });
