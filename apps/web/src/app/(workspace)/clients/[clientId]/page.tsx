@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -14,6 +14,7 @@ import { useState } from "react";
 
 export default function ClientDetailPage() {
 	const params = useParams();
+	const router = useRouter();
 	const clientId = params.clientId as string;
 	const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 	const [isEmailSheetOpen, setIsEmailSheetOpen] = useState(false);
@@ -118,12 +119,19 @@ export default function ClientDetailPage() {
 
 	return (
 		<>
-			<div className="relative min-h-screen p-6 pb-20">
+			<div className="relative min-h-screen p-6 pb-0">
 				{/* Header */}
 				<ClientDetailHeader
 					client={client}
 					clientId={clientId}
 					onComposeEmail={handleComposeEmail}
+					onAddTask={() => setIsTaskSheetOpen(true)}
+					onCreateProject={() =>
+						router.push(`/projects/new?clientId=${clientId}`)
+					}
+					onCreateQuote={() =>
+						router.push(`/quotes/new?clientId=${clientId}`)
+					}
 					hasPrimaryContactEmail={!!primaryContact?.email}
 				/>
 

@@ -7,7 +7,7 @@ import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge
 import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
 import { StyledCard, StyledCardContent } from "@/components/ui/styled";
-import { FolderOpen, DollarSign, TrendingUp, Pencil, Check, X, ChevronRight } from "lucide-react";
+import { FolderOpen, DollarSign, TrendingUp, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -21,8 +21,8 @@ interface OverviewTabProps {
 	clientName: string;
 }
 
-function formatCurrency(cents: number) {
-	return "$" + (cents / 100).toLocaleString(undefined, {
+function formatCurrency(amount: number) {
+	return "$" + amount.toLocaleString(undefined, {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2,
 	});
@@ -37,34 +37,47 @@ function formatDate(timestamp?: number) {
 	});
 }
 
-function RelatedAccordion({
+function sortedByNewest<T extends { _creationTime: number }>(
+	items: T[] | undefined
+): T[] {
+	if (!items) return [];
+	return [...items].sort((a, b) => b._creationTime - a._creationTime);
+}
+
+function RelatedEntityColumn<T>({
 	label,
 	count,
-	children,
+	emptyMessage,
+	items,
+	renderItem,
 }: {
 	label: string;
 	count: number;
-	children: React.ReactNode;
+	emptyMessage: string;
+	items: T[] | undefined;
+	renderItem: (item: T) => React.ReactNode;
 }) {
-	const [isOpen, setIsOpen] = useState(false);
-
 	return (
-		<div className="border border-border rounded-lg">
-			<button
-				onClick={() => setIsOpen(!isOpen)}
-				className="flex items-center justify-between w-full px-3 py-2.5 text-left hover:bg-muted/50 transition-colors rounded-lg"
-			>
-				<div className="flex items-center gap-2">
-					<ChevronRight
-						className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
-					/>
-					<span className="text-sm font-medium text-foreground">{label}</span>
+		<div className="flex flex-col min-w-0">
+			<div className="flex items-center justify-between mb-2 px-1">
+				<span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+					{label}
+				</span>
+				{count > 0 && (
+					<span className="text-[11px] text-muted-foreground/70 tabular-nums">
+						{count}
+					</span>
+				)}
+			</div>
+			{count === 0 ? (
+				<div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+					<p className="text-sm text-muted-foreground/50">
+						{emptyMessage}
+					</p>
 				</div>
-				<span className="text-xs text-muted-foreground tabular-nums">{count}</span>
-			</button>
-			{isOpen && (
-				<div className="px-3 pb-3">
-					{children}
+			) : (
+				<div className="overflow-y-auto max-h-[320px] rounded-lg border border-border/60 divide-y divide-border/40">
+					{(items ?? []).map(renderItem)}
 				</div>
 			)}
 		</div>
@@ -149,7 +162,7 @@ export function OverviewTab({
 
 			{/* Highlights */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 					Highlights
 				</h3>
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -203,9 +216,9 @@ export function OverviewTab({
 
 			<Separator className="my-6" />
 
-			{/* Notes - inline editable */}
+		{/* Notes - inline editable */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 					Notes
 				</h3>
 				{isEditingNotes ? (
@@ -264,197 +277,101 @@ export function OverviewTab({
 
 			<Separator className="my-6" />
 
-			{/* Related Entities */}
+			{/* Related Entities — 3-column grid with independent scroll */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 					Related
 				</h3>
-				<div className="space-y-2">
-					<RelatedAccordion
+				<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+					{/* Projects */}
+					<RelatedEntityColumn
 						label="Projects"
 						count={projects?.length ?? 0}
-					>
-						{projects && projects.length > 0 ? (
-							<div className="border border-border rounded-lg overflow-hidden">
-								<table className="w-full text-sm">
-									<thead>
-										<tr className="bg-muted/40">
-											<th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
-												Title
-											</th>
-											<th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
-												Status
-											</th>
-											<th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">
-												Created
-											</th>
-										</tr>
-									</thead>
-									<tbody className="divide-y divide-border">
-										{projects.slice(0, 5).map((project) => (
-											<tr
-												key={project._id}
-												className="hover:bg-muted/30 transition-colors"
-											>
-												<td className="px-3 py-2">
-													<Link
-														href={`/projects/${project._id}`}
-														className="text-sm text-primary hover:text-primary/80 font-medium"
-													>
-														{project.title}
-													</Link>
-												</td>
-												<td className="px-3 py-2">
-													<ProminentStatusBadge
-														status={project.status}
-														size="default"
-														showIcon={false}
-														entityType="project"
-													/>
-												</td>
-												<td className="px-3 py-2 text-right text-muted-foreground">
-													{formatDate(project._creationTime)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-								{projects.length > 5 && (
-									<div className="px-3 py-2 bg-muted/20 text-xs text-muted-foreground text-center">
-										+{projects.length - 5} more
-									</div>
-								)}
-							</div>
-						) : (
-							<p className="text-sm text-muted-foreground py-2">
-								No projects yet
-							</p>
+						emptyMessage="No projects yet"
+						items={sortedByNewest(projects)}
+						renderItem={(project) => (
+							<Link
+								key={project._id}
+								href={`/projects/${project._id}`}
+								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
+							>
+								<div className="flex items-center justify-between gap-2">
+									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
+										{project.title}
+									</span>
+									<ProminentStatusBadge
+										status={project.status}
+										size="default"
+										showIcon={false}
+										entityType="project"
+									/>
+								</div>
+								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
+									{formatDate(project._creationTime)}
+								</span>
+							</Link>
 						)}
-					</RelatedAccordion>
+					/>
 
-					<RelatedAccordion
+					{/* Quotes */}
+					<RelatedEntityColumn
 						label="Quotes"
 						count={quotes?.length ?? 0}
-					>
-						{quotes && quotes.length > 0 ? (
-							<div className="border border-border rounded-lg overflow-hidden">
-								<table className="w-full text-sm">
-									<thead>
-										<tr className="bg-muted/40">
-											<th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
-												Quote #
-											</th>
-											<th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
-												Status
-											</th>
-											<th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">
-												Total
-											</th>
-										</tr>
-									</thead>
-									<tbody className="divide-y divide-border">
-										{quotes.slice(0, 5).map((quote) => (
-											<tr
-												key={quote._id}
-												className="hover:bg-muted/30 transition-colors"
-											>
-												<td className="px-3 py-2">
-													<Link
-														href={`/quotes/${quote._id}`}
-														className="text-sm text-primary hover:text-primary/80 font-medium"
-													>
-														{quote.quoteNumber || quote.title || "Untitled"}
-													</Link>
-												</td>
-												<td className="px-3 py-2">
-													<ProminentStatusBadge
-														status={quote.status}
-														size="default"
-														showIcon={false}
-														entityType="quote"
-													/>
-												</td>
-												<td className="px-3 py-2 text-right text-foreground">
-													{formatCurrency(quote.total)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-								{quotes.length > 5 && (
-									<div className="px-3 py-2 bg-muted/20 text-xs text-muted-foreground text-center">
-										+{quotes.length - 5} more
-									</div>
-								)}
-							</div>
-						) : (
-							<p className="text-sm text-muted-foreground py-2">
-								No quotes yet
-							</p>
+						emptyMessage="No quotes yet"
+						items={sortedByNewest(quotes)}
+						renderItem={(quote) => (
+							<Link
+								key={quote._id}
+								href={`/quotes/${quote._id}`}
+								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
+							>
+								<div className="flex items-center justify-between gap-2">
+									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
+										{quote.quoteNumber || quote.title || "Untitled"}
+									</span>
+									<ProminentStatusBadge
+										status={quote.status}
+										size="default"
+										showIcon={false}
+										entityType="quote"
+									/>
+								</div>
+								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
+									{formatCurrency(quote.total)}
+								</span>
+							</Link>
 						)}
-					</RelatedAccordion>
+					/>
 
-					<RelatedAccordion
+					{/* Invoices */}
+					<RelatedEntityColumn
 						label="Invoices"
 						count={invoices?.length ?? 0}
-					>
-						{invoices && invoices.length > 0 ? (
-							<div className="border border-border rounded-lg overflow-hidden">
-								<table className="w-full text-sm">
-									<thead>
-										<tr className="bg-muted/40">
-											<th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
-												Invoice #
-											</th>
-											<th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
-												Status
-											</th>
-											<th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">
-												Total
-											</th>
-										</tr>
-									</thead>
-									<tbody className="divide-y divide-border">
-										{invoices.slice(0, 5).map((invoice) => (
-											<tr
-												key={invoice._id}
-												className="hover:bg-muted/30 transition-colors"
-											>
-												<td className="px-3 py-2">
-													<Link
-														href={`/invoices/${invoice._id}`}
-														className="text-sm text-primary hover:text-primary/80 font-medium"
-													>
-														{invoice.invoiceNumber}
-													</Link>
-												</td>
-												<td className="px-3 py-2">
-													<ProminentStatusBadge
-														status={invoice.status}
-														size="default"
-														showIcon={false}
-														entityType="invoice"
-													/>
-												</td>
-												<td className="px-3 py-2 text-right text-foreground">
-													{formatCurrency(invoice.total)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-								{invoices.length > 5 && (
-									<div className="px-3 py-2 bg-muted/20 text-xs text-muted-foreground text-center">
-										+{invoices.length - 5} more
-									</div>
-								)}
-							</div>
-						) : (
-							<p className="text-sm text-muted-foreground py-2">
-								No invoices yet
-							</p>
+						emptyMessage="No invoices yet"
+						items={sortedByNewest(invoices)}
+						renderItem={(invoice) => (
+							<Link
+								key={invoice._id}
+								href={`/invoices/${invoice._id}`}
+								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
+							>
+								<div className="flex items-center justify-between gap-2">
+									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
+										{invoice.invoiceNumber}
+									</span>
+									<ProminentStatusBadge
+										status={invoice.status}
+										size="default"
+										showIcon={false}
+										entityType="invoice"
+									/>
+								</div>
+								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
+									{formatCurrency(invoice.total)}
+								</span>
+							</Link>
 						)}
-					</RelatedAccordion>
+					/>
 				</div>
 			</div>
 

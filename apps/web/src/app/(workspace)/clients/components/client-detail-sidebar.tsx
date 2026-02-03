@@ -237,7 +237,7 @@ export function ClientDetailSidebar({
 	return (
 		<div className="px-5 py-4">
 			{/* Record Details Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 				Record Details
 			</h3>
 			<div className="space-y-0">
@@ -450,7 +450,7 @@ export function ClientDetailSidebar({
 			<Separator className="my-4" />
 
 			{/* Primary Contact & Address Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 				Primary Contact & Address
 			</h3>
 			{primaryContact ? (
@@ -539,7 +539,7 @@ export function ClientDetailSidebar({
 			<Separator className="my-4" />
 
 			{/* Billing Summary Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 				Billing Summary
 			</h3>
 			<div className="space-y-0">

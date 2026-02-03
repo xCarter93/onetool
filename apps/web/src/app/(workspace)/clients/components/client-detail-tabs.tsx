@@ -63,7 +63,7 @@ export function ClientDetailTabs({
 			{/* Two-column layout: tabs + content on left, sidebar on right */}
 			<div className="flex gap-0">
 				{/* Left: Tabs list + tab content */}
-				<div className="flex-1 min-w-0 pr-6 pt-6">
+				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
 					<StyledTabsList className="overflow-x-auto">
 						<StyledTabsTrigger value="overview">Overview</StyledTabsTrigger>
 						<StyledTabsTrigger value="activity">Activity</StyledTabsTrigger>
@@ -130,7 +130,7 @@ export function ClientDetailTabs({
 				</div>
 
 				{/* Right: Persistent sidebar (desktop) — border extends from top */}
-				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-[calc(100vh-12rem)]">
+				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/20">
 					<div className="sticky top-24">
 						<ClientDetailSidebar
 							client={client}
@@ -144,7 +144,7 @@ export function ClientDetailTabs({
 			</div>
 
 			{/* Sidebar for mobile (below content) */}
-			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6">
+			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/20 rounded-lg">
 				<ClientDetailSidebar
 					client={client}
 					clientId={clientId}
