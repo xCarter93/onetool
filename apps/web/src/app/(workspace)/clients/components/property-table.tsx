@@ -55,12 +55,14 @@ interface PropertyTableProps {
 	clientId: Id<"clients">;
 	properties: Doc<"clientProperties">[];
 	onChange?: () => void;
+	hideCardWrapper?: boolean;
 }
 
 export function PropertyTable({
 	clientId,
 	properties,
 	onChange,
+	hideCardWrapper,
 }: PropertyTableProps) {
 	const toast = useToast();
 	const createProperty = useMutation(api.clientProperties.create);
@@ -229,6 +231,67 @@ export function PropertyTable({
 		}
 	};
 
+	const header = (
+		<div className="flex items-center justify-between pb-6">
+			<h3 className="text-xl font-semibold text-foreground">Properties</h3>
+			<Button intent="outline" size="sm" onPress={handleAddProperty}>
+				<PlusIcon className="h-4 w-4 mr-2" />
+				New Property
+			</Button>
+		</div>
+	);
+
+	const content = allProperties && allProperties.length > 0 ? (
+		<div className="overflow-hidden rounded-lg border">
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead className="w-[40%]">Address</TableHead>
+						<TableHead className="w-[20%]">City</TableHead>
+						<TableHead className="w-[15%]">State</TableHead>
+						<TableHead className="w-[15%]">ZIP</TableHead>
+						<TableHead className="w-[5%]">Primary</TableHead>
+						<TableHead className="w-[5%]">Actions</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{allProperties.map((property) => (
+						<PropertyRow
+							key={property._id}
+							property={property}
+							isEditing={editingId === property._id}
+							onEdit={() => handleEditProperty(property._id)}
+							onSave={handleSaveProperty}
+							onCancel={() => setEditingId(null)}
+							onDelete={() => handleDeleteProperty(property._id)}
+						/>
+					))}
+				</TableBody>
+			</Table>
+		</div>
+	) : (
+		<div className="flex flex-col items-center justify-center py-12 text-center">
+			<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center mb-4">
+				<BuildingOffice2Icon className="h-8 w-8 text-gray-400" />
+			</div>
+			<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+				No properties
+			</h3>
+			<p className="text-gray-600 dark:text-gray-400">
+				No properties have been added for this client yet.
+			</p>
+		</div>
+	);
+
+	if (hideCardWrapper) {
+		return (
+			<div>
+				{header}
+				{content}
+			</div>
+		);
+	}
+
 	return (
 		<StyledCard>
 			<StyledCardHeader className="flex flex-row items-center justify-between pb-6">
@@ -239,47 +302,7 @@ export function PropertyTable({
 				</Button>
 			</StyledCardHeader>
 			<StyledCardContent>
-				{allProperties && allProperties.length > 0 ? (
-					<div className="overflow-hidden rounded-lg border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="w-[40%]">Address</TableHead>
-									<TableHead className="w-[20%]">City</TableHead>
-									<TableHead className="w-[15%]">State</TableHead>
-									<TableHead className="w-[15%]">ZIP</TableHead>
-									<TableHead className="w-[5%]">Primary</TableHead>
-									<TableHead className="w-[5%]">Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{allProperties.map((property) => (
-									<PropertyRow
-										key={property._id}
-										property={property}
-										isEditing={editingId === property._id}
-										onEdit={() => handleEditProperty(property._id)}
-										onSave={handleSaveProperty}
-										onCancel={() => setEditingId(null)}
-										onDelete={() => handleDeleteProperty(property._id)}
-									/>
-								))}
-							</TableBody>
-						</Table>
-					</div>
-				) : (
-					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center mb-4">
-							<BuildingOffice2Icon className="h-8 w-8 text-gray-400" />
-						</div>
-						<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-							No properties
-						</h3>
-						<p className="text-gray-600 dark:text-gray-400">
-							No properties have been added for this client yet.
-						</p>
-					</div>
-				)}
+				{content}
 			</StyledCardContent>
 		</StyledCard>
 	);

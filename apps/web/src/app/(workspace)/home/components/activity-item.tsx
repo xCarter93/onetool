@@ -210,42 +210,177 @@ function getActivityAmount(activity: ActivityWithUser): string | null {
 	return null;
 }
 
-function iconForActivity(activity: ActivityItemType) {
-	const activityType = isConvexActivity(activity)
-		? activity.activityType
-		: activity.type;
-
-	switch (activityType) {
-		case "client_created":
-		case "client_updated":
-			return UserIcon;
-		case "project_created":
-		case "project_updated":
-		case "project_completed":
-			return BriefcaseIcon;
-		case "quote_created":
-		case "quote_sent":
-		case "quote_approved":
-		case "quote_declined":
-			return DocumentTextIcon;
-		case "invoice_created":
-		case "invoice_sent":
-		case "invoice_paid":
-			return CurrencyDollarIcon;
-		case "task_created":
-		case "task_completed":
-			return ClipboardDocumentListIcon;
-		case "user_invited":
-		case "user_removed":
-			return UserGroupIcon;
-		case "organization_updated":
-			return BuildingOfficeIcon;
-		case "email_sent":
-		case "email_received":
-			return EnvelopeIcon;
-		default:
-			return null;
+// Get icon and color scheme for each activity type
+function getActivityStyle(activityType: string): {
+	icon: typeof UserIcon | null;
+	iconColor: string;
+	bgColor: string;
+	ringColor: string;
+} {
+	// Success states — green
+	if (
+		activityType === "invoice_paid" ||
+		activityType === "project_completed" ||
+		activityType === "quote_approved" ||
+		activityType === "payment_paid" ||
+		activityType === "task_completed"
+	) {
+		const icon =
+			activityType === "invoice_paid" || activityType === "payment_paid"
+				? CurrencyDollarIcon
+				: activityType === "project_completed"
+					? BriefcaseIcon
+					: activityType === "task_completed"
+						? ClipboardDocumentListIcon
+						: DocumentTextIcon;
+		return {
+			icon,
+			iconColor: "text-green-600 dark:text-green-400",
+			bgColor: "bg-green-100 dark:bg-green-900/30",
+			ringColor: "ring-green-200 dark:ring-green-800/50",
+		};
 	}
+
+	// Financial — amber/orange
+	if (
+		activityType === "invoice_created" ||
+		activityType === "invoice_sent" ||
+		activityType === "payment_created" ||
+		activityType === "payment_updated" ||
+		activityType === "payments_configured" ||
+		activityType === "payment_cancelled"
+	) {
+		return {
+			icon: CurrencyDollarIcon,
+			iconColor: "text-amber-600 dark:text-amber-400",
+			bgColor: "bg-amber-100 dark:bg-amber-900/30",
+			ringColor: "ring-amber-200 dark:ring-amber-800/50",
+		};
+	}
+
+	// Quotes — primary
+	if (
+		activityType === "quote_created" ||
+		activityType === "quote_sent" ||
+		activityType === "quote_declined" ||
+		activityType === "quote_pdf_generated"
+	) {
+		return {
+			icon: DocumentTextIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
+	// Projects — blue
+	if (
+		activityType === "project_created" ||
+		activityType === "project_updated"
+	) {
+		return {
+			icon: BriefcaseIcon,
+			iconColor: "text-blue-600 dark:text-blue-400",
+			bgColor: "bg-blue-100 dark:bg-blue-900/30",
+			ringColor: "ring-blue-200 dark:ring-blue-800/50",
+		};
+	}
+
+	// Clients — primary
+	if (activityType === "client_created" || activityType === "client_updated") {
+		return {
+			icon: UserIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
+	// Tasks — primary
+	if (activityType === "task_created") {
+		return {
+			icon: ClipboardDocumentListIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
+	// Email — primary
+	if (
+		activityType === "email_sent" ||
+		activityType === "email_delivered" ||
+		activityType === "email_opened" ||
+		activityType === "email_received"
+	) {
+		return {
+			icon: EnvelopeIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
+	// Team — primary
+	if (activityType === "user_invited" || activityType === "user_removed") {
+		return {
+			icon: UserGroupIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
+	if (activityType === "organization_updated") {
+		return {
+			icon: BuildingOfficeIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
+	// Default fallback
+	return {
+		icon: null,
+		iconColor: "text-muted-foreground",
+		bgColor: "bg-muted",
+		ringColor: "ring-border",
+	};
+}
+
+// Format the activity type into a readable label
+function getActivityLabel(activityType: string): string | null {
+	const labels: Record<string, string> = {
+		client_created: "Client",
+		client_updated: "Client",
+		project_created: "Project",
+		project_updated: "Project",
+		project_completed: "Completed",
+		quote_created: "Quote",
+		quote_sent: "Quote Sent",
+		quote_approved: "Approved",
+		quote_declined: "Declined",
+		quote_pdf_generated: "PDF",
+		invoice_created: "Invoice",
+		invoice_sent: "Invoice Sent",
+		invoice_paid: "Paid",
+		payment_created: "Payment",
+		payment_updated: "Payment",
+		payment_paid: "Paid",
+		payment_cancelled: "Cancelled",
+		payments_configured: "Payments",
+		task_created: "Task",
+		task_completed: "Completed",
+		email_sent: "Email",
+		email_delivered: "Delivered",
+		email_opened: "Opened",
+		email_received: "Received",
+		user_invited: "Team",
+		user_removed: "Team",
+		organization_updated: "Org",
+	};
+	return labels[activityType] || null;
 }
 
 function describeEvent(activity: ActivityItemType): string {
@@ -284,97 +419,132 @@ function describeEvent(activity: ActivityItemType): string {
 }
 
 export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
-	const Icon = iconForActivity(activity);
 	const isConvex = isConvexActivity(activity);
+	const activityType = isConvex ? activity.activityType : activity.type;
+	const style = getActivityStyle(activityType);
 
 	// Extract common data based on activity type
 	const userName = isConvex ? activity.user.name : activity.person.name;
 	const activityDate = isConvex
 		? formatDate(activity.timestamp)
 		: activity.date;
-	const activityType = isConvex ? activity.activityType : activity.type;
+
+	// Success states get special treatment
+	const isSuccess =
+		activityType === "invoice_paid" ||
+		activityType === "project_completed" ||
+		activityType === "quote_approved" ||
+		activityType === "payment_paid" ||
+		activityType === "task_completed";
+
+	// For Convex activities, build inline badge + amount
+	const label = isConvex ? getActivityLabel(activityType) : null;
+	const amount =
+		isConvex &&
+		(activityType.includes("quote") ||
+			activityType.includes("invoice") ||
+			activityType.includes("payment"))
+			? getActivityAmount(activity)
+			: null;
 
 	return (
-		<li className="relative flex gap-x-4 items-center">
+		<li className="relative flex gap-x-3 items-start">
+			{/* Timeline line */}
 			<div
 				className={classNames(
-					isLast ? "h-6" : "-bottom-6",
-					"absolute left-0 top-0 flex w-6 justify-center"
+					isLast ? "h-6" : "-bottom-5",
+					"absolute left-0 top-0 flex w-8 justify-center"
 				)}
 			>
-				<div className="w-px bg-border/70 dark:bg-border/60" />
+				<div className="w-px bg-primary/15" />
 			</div>
 
 			{activityType === "comment" && !isConvex ? (
 				<>
-					<Avatar className="relative size-6 flex-none">
+					<Avatar className="relative size-8 flex-none ring-4 ring-background">
 						<AvatarImage
 							src={(activity as CommentActivity).imageUrl}
 							alt={(activity as CommentActivity).person.name}
 						/>
-						<AvatarFallback className="bg-muted text-muted-foreground">
+						<AvatarFallback className="bg-primary/10 text-primary text-xs">
 							{getInitials((activity as CommentActivity).person.name)}
 						</AvatarFallback>
 					</Avatar>
-					<div className="flex-auto rounded-md p-3 ring-1 ring-inset ring-border/40 align-middle">
+					<div className="flex-auto rounded-lg border border-border bg-muted/30 p-3">
 						<div className="flex justify-between gap-x-4">
-							<div className="py-0.5 text-xs text-muted-foreground">
+							<div className="text-sm text-muted-foreground">
 								<span className="font-medium text-foreground">
 									{(activity as CommentActivity).person.name}
 								</span>{" "}
 								commented
 							</div>
-							<span className="flex-none py-0.5 text-xs text-muted-foreground">
+							<span className="flex-none text-xs text-muted-foreground">
 								{(activity as CommentActivity).date}
 							</span>
 						</div>
-						<p className="text-sm text-muted-foreground">
+						<p className="text-sm text-foreground/80 mt-1">
 							{(activity as CommentActivity).comment}
 						</p>
 					</div>
 				</>
 			) : (
 				<>
-					<div className="relative flex size-6 flex-none items-center justify-center">
-						{activityType === "invoice_paid" ||
-						activityType === "project_completed" ? (
+					{/* Icon with colored background + opaque ring to cover the timeline line */}
+					<div
+						className={classNames(
+							"relative flex size-8 flex-none items-center justify-center rounded-full ring-4 ring-background",
+							style.bgColor
+						)}
+					>
+						{isSuccess ? (
 							<CheckCircleIcon
 								aria-hidden="true"
-								className="size-5 text-green-500"
+								className="size-4 text-green-600 dark:text-green-400"
 							/>
-						) : Icon ? (
-							<Icon
+						) : style.icon ? (
+							<style.icon
 								aria-hidden="true"
-								className="size-4 text-muted-foreground"
+								className={classNames("size-3.5", style.iconColor)}
 							/>
 						) : (
-							<div className="size-1.5 rounded-full bg-foreground/10 ring ring-border/40" />
+							<div className="size-1.5 rounded-full bg-primary/40" />
 						)}
 					</div>
-					<div className="flex-auto py-0.5">
-						<p className="text-xs text-muted-foreground">
+
+					{/* Content — description + badge + amount + timestamp */}
+					<div className="flex-auto flex flex-wrap items-start gap-x-2 gap-y-1 min-w-0 py-1">
+						<p className="text-sm text-muted-foreground leading-snug min-w-0">
 							<span className="font-medium text-foreground">{userName}</span>{" "}
 							{describeEvent(activity)}
 						</p>
-						{/* Show amount for financial activities */}
-						{isConvex &&
-							(activityType.includes("quote") ||
-								activityType.includes("invoice")) &&
-							(() => {
-								const amount = getActivityAmount(activity);
-								return amount ? (
-									<p className="text-xs text-muted-foreground mt-1">
-										Amount:{" "}
-										<span className="font-medium text-foreground">
-											{amount}
-										</span>
-									</p>
-								) : null;
-							})()}
+
+						{/* Inline badge */}
+						{label && (
+							<span
+								className={classNames(
+									"inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded shrink-0",
+									isSuccess
+										? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+										: activityType.includes("invoice") || activityType.includes("payment")
+											? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+											: "bg-primary/10 text-primary"
+								)}
+							>
+								{label}
+							</span>
+						)}
+
+						{/* Inline amount */}
+						{amount && (
+							<span className="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded shrink-0 bg-foreground/5 text-foreground">
+								{amount}
+							</span>
+						)}
+
+						<span className="flex-none text-xs text-muted-foreground whitespace-nowrap ml-auto">
+							{activityDate}
+						</span>
 					</div>
-					<span className="flex-none py-0.5 text-xs text-muted-foreground">
-						{activityDate}
-					</span>
 				</>
 			)}
 		</li>

@@ -47,12 +47,14 @@ interface ContactTableProps {
 	clientId: Id<"clients">;
 	contacts: Doc<"clientContacts">[];
 	onChange?: () => void;
+	hideCardWrapper?: boolean;
 }
 
 export function ContactTable({
 	clientId,
 	contacts,
 	onChange,
+	hideCardWrapper,
 }: ContactTableProps) {
 	const toast = useToast();
 	const createContact = useMutation(api.clientContacts.create);
@@ -208,6 +210,67 @@ export function ContactTable({
 		}
 	};
 
+	const header = (
+		<div className="flex items-center justify-between pb-6">
+			<h3 className="text-xl font-semibold text-foreground">Contacts</h3>
+			<Button intent="outline" size="sm" onPress={handleAddContact}>
+				<PlusIcon className="h-4 w-4 mr-2" />
+				New Contact
+			</Button>
+		</div>
+	);
+
+	const content = allContacts && allContacts.length > 0 ? (
+		<div className="overflow-hidden rounded-lg border">
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead className="w-[25%]">Name</TableHead>
+						<TableHead className="w-[25%]">Job Title</TableHead>
+						<TableHead className="w-[20%]">Phone</TableHead>
+						<TableHead className="w-[20%]">Email</TableHead>
+						<TableHead className="w-[5%]">Primary</TableHead>
+						<TableHead className="w-[5%]">Actions</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{allContacts.map((contact) => (
+						<ContactRow
+							key={contact._id}
+							contact={contact}
+							isEditing={editingId === contact._id}
+							onEdit={() => handleEditContact(contact._id)}
+							onSave={handleSaveContact}
+							onCancel={() => setEditingId(null)}
+							onDelete={() => handleDeleteContact(contact._id)}
+						/>
+					))}
+				</TableBody>
+			</Table>
+		</div>
+	) : (
+		<div className="flex flex-col items-center justify-center py-12 text-center">
+			<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center mb-4">
+				<EnvelopeIcon className="h-8 w-8 text-gray-400" />
+			</div>
+			<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+				No contacts
+			</h3>
+			<p className="text-gray-600 dark:text-gray-400">
+				No contacts have been added for this client yet.
+			</p>
+		</div>
+	);
+
+	if (hideCardWrapper) {
+		return (
+			<div>
+				{header}
+				{content}
+			</div>
+		);
+	}
+
 	return (
 		<StyledCard>
 			<StyledCardHeader className="flex flex-row items-center justify-between pb-6">
@@ -218,47 +281,7 @@ export function ContactTable({
 				</Button>
 			</StyledCardHeader>
 			<StyledCardContent>
-				{allContacts && allContacts.length > 0 ? (
-					<div className="overflow-hidden rounded-lg border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="w-[25%]">Name</TableHead>
-									<TableHead className="w-[25%]">Job Title</TableHead>
-									<TableHead className="w-[20%]">Phone</TableHead>
-									<TableHead className="w-[20%]">Email</TableHead>
-									<TableHead className="w-[5%]">Primary</TableHead>
-									<TableHead className="w-[5%]">Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{allContacts.map((contact) => (
-									<ContactRow
-										key={contact._id}
-										contact={contact}
-										isEditing={editingId === contact._id}
-										onEdit={() => handleEditContact(contact._id)}
-										onSave={handleSaveContact}
-										onCancel={() => setEditingId(null)}
-										onDelete={() => handleDeleteContact(contact._id)}
-									/>
-								))}
-							</TableBody>
-						</Table>
-					</div>
-				) : (
-					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center mb-4">
-							<EnvelopeIcon className="h-8 w-8 text-gray-400" />
-						</div>
-						<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-							No contacts
-						</h3>
-						<p className="text-gray-600 dark:text-gray-400">
-							No contacts have been added for this client yet.
-						</p>
-					</div>
-				)}
+				{content}
 			</StyledCardContent>
 		</StyledCard>
 	);
