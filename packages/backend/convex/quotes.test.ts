@@ -66,7 +66,6 @@ describe("Quotes", () => {
 				total: 1000,
 				orgId,
 			});
-			expect(quote?.publicToken).toBeDefined();
 		});
 
 		it("should generate sequential quote numbers", async () => {

@@ -11,6 +11,9 @@ import {
 	EnvelopeIcon,
 } from "@heroicons/react/24/solid";
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import ActivityChangesTooltip, {
+	type FieldChange,
+} from "./activity-changes-tooltip";
 
 // Real activity data from Convex
 export interface ActivityWithUser extends Doc<"activities"> {
@@ -513,10 +516,37 @@ export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
 
 					{/* Content — description + badge + amount + timestamp */}
 					<div className="flex-auto flex flex-wrap items-start gap-x-2 gap-y-1 min-w-0 py-1">
-						<p className="text-sm text-muted-foreground leading-snug min-w-0">
-							<span className="font-medium text-foreground">{userName}</span>{" "}
-							{describeEvent(activity)}
-						</p>
+						{(() => {
+							const changes =
+								isConvex &&
+								activity.metadata &&
+								typeof activity.metadata === "object" &&
+								"changes" in activity.metadata
+									? (activity.metadata as { changes?: FieldChange[] }).changes
+									: undefined;
+
+							if (changes && changes.length > 0) {
+								return (
+									<ActivityChangesTooltip changes={changes}>
+										<p className="text-sm text-muted-foreground leading-snug min-w-0 cursor-help border-b border-dashed border-muted-foreground/30">
+											<span className="font-medium text-foreground">
+												{userName}
+											</span>{" "}
+											{describeEvent(activity)}
+										</p>
+									</ActivityChangesTooltip>
+								);
+							}
+
+							return (
+								<p className="text-sm text-muted-foreground leading-snug min-w-0">
+									<span className="font-medium text-foreground">
+										{userName}
+									</span>{" "}
+									{describeEvent(activity)}
+								</p>
+							);
+						})()}
 
 						{/* Inline badge */}
 						{label && (

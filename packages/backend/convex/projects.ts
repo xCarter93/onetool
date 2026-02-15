@@ -16,6 +16,7 @@ import {
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
+import { computeFieldChanges } from "./lib/changeTracking";
 
 /**
  * Project operations
@@ -491,6 +492,13 @@ export const update = mutation({
 			filteredUpdates.completedAt = Date.now();
 		}
 
+		// Compute field-level changes before applying the update
+		const changes = computeFieldChanges(
+			"project",
+			currentProject as unknown as Record<string, unknown>,
+			filteredUpdates as Record<string, unknown>
+		);
+
 		await updateProjectWithValidation(ctx, id, filteredUpdates);
 
 		// Get updated project for activity logging and aggregates
@@ -509,9 +517,17 @@ export const update = mutation({
 			}
 
 			if (isBeingCompleted) {
-				await ActivityHelpers.projectCompleted(ctx, project as ProjectDocument);
+				await ActivityHelpers.projectCompleted(
+					ctx,
+					project as ProjectDocument,
+					changes
+				);
 			} else {
-				await ActivityHelpers.projectUpdated(ctx, project as ProjectDocument);
+				await ActivityHelpers.projectUpdated(
+					ctx,
+					project as ProjectDocument,
+					changes
+				);
 			}
 
 			// Emit status change event if status changed

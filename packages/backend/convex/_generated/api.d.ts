@@ -35,6 +35,7 @@ import type * as invoices from "../invoices.js";
 import type * as lib_activities from "../lib/activities.js";
 import type * as lib_aggregates from "../lib/aggregates.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_changeTracking from "../lib/changeTracking.js";
 import type * as lib_crud from "../lib/crud.js";
 import type * as lib_lineItems from "../lib/lineItems.js";
 import type * as lib_memberships from "../lib/memberships.js";
@@ -108,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   "lib/activities": typeof lib_activities;
   "lib/aggregates": typeof lib_aggregates;
   "lib/auth": typeof lib_auth;
+  "lib/changeTracking": typeof lib_changeTracking;
   "lib/crud": typeof lib_crud;
   "lib/lineItems": typeof lib_lineItems;
   "lib/memberships": typeof lib_memberships;

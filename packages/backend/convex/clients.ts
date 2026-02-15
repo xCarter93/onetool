@@ -18,6 +18,7 @@ import {
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
+import { computeFieldChanges } from "./lib/changeTracking";
 
 /**
  * Client operations
@@ -394,12 +395,19 @@ export const update = mutation({
 		const existingClient = await getClientOrThrow(ctx, id);
 		const oldStatus = existingClient.status;
 
+		// Compute field-level changes before applying the update
+		const changes = computeFieldChanges(
+			"client",
+			existingClient as unknown as Record<string, unknown>,
+			filteredUpdates as Record<string, unknown>
+		);
+
 		await updateClientWithValidation(ctx, id, filteredUpdates);
 
 		// Get the updated client for activity logging
 		const client = await ctx.db.get(id);
 		if (client) {
-			await ActivityHelpers.clientUpdated(ctx, client as ClientDocument);
+			await ActivityHelpers.clientUpdated(ctx, client as ClientDocument, changes);
 
 			// Emit status change event if status changed
 			if (args.status && args.status !== oldStatus) {
