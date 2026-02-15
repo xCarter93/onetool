@@ -35,6 +35,7 @@ import {
 	Check,
 	X,
 } from "lucide-react";
+import { ClientDocumentsSection } from "./client-documents-section";
 
 function formatLeadSource(leadSource?: string): string {
 	if (!leadSource) return "Not specified";
@@ -237,7 +238,7 @@ export function ClientDetailSidebar({
 	return (
 		<div className="px-5 py-4">
 			{/* Record Details Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 				Record Details
 			</h3>
 			<div className="space-y-0">
@@ -450,7 +451,7 @@ export function ClientDetailSidebar({
 			<Separator className="my-4" />
 
 			{/* Primary Contact & Address Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 				Primary Contact & Address
 			</h3>
 			{primaryContact ? (
@@ -539,7 +540,7 @@ export function ClientDetailSidebar({
 			<Separator className="my-4" />
 
 			{/* Billing Summary Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 				Billing Summary
 			</h3>
 			<div className="space-y-0">
@@ -571,6 +572,9 @@ export function ClientDetailSidebar({
 					</div>
 				</div>
 			</div>
+
+			<Separator className="my-4" />
+			<ClientDocumentsSection clientId={clientId as Id<"clients">} />
 		</div>
 	);
 }
