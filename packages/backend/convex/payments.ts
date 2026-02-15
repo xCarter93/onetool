@@ -1,4 +1,11 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	internalQuery,
+	QueryCtx,
+	MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -593,11 +600,10 @@ export const createDefaultPayment = mutation({
 });
 
 /**
- * Mark payment as paid by public token (for Stripe webhook/confirm)
- * This is a public mutation - no auth required
+ * Mark payment as paid by public token (internal only - called after Stripe verification)
  * Auto-updates invoice status when all payments are paid
  */
-export const markPaidByPublicToken = mutation({
+export const markPaidByPublicTokenInternal = internalMutation({
 	args: {
 		publicToken: v.string(),
 		stripeSessionId: v.string(),
@@ -633,6 +639,35 @@ export const markPaidByPublicToken = mutation({
 		await updateInvoiceStatusIfFullyPaid(ctx, payment.invoiceId, payment._id);
 
 		return payment._id;
+	},
+});
+
+/**
+ * Internal query: get payment by public token (for use in actions)
+ */
+export const getByPublicTokenInternal = internalQuery({
+	args: { publicToken: v.string() },
+	handler: async (ctx, args) => {
+		return await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) =>
+				q.eq("publicToken", args.publicToken)
+			)
+			.unique();
+	},
+});
+
+/**
+ * Internal query: get organization Stripe Connect account ID for a payment
+ */
+export const getOrgStripeAccount = internalQuery({
+	args: { orgId: v.id("organizations") },
+	handler: async (ctx, args) => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) return null;
+		return {
+			stripeConnectAccountId: org.stripeConnectAccountId,
+		};
 	},
 });
 

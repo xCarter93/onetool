@@ -222,7 +222,7 @@ export async function getCurrentUserRole(
 
 /**
  * Check if the current user is an admin in their organization
- * Admin is defined as any role containing "admin" (case-insensitive)
+ * Uses explicit role comparison to prevent substring matching attacks
  */
 export async function isAdmin(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 	const role = await getCurrentUserRole(ctx);
@@ -230,7 +230,8 @@ export async function isAdmin(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 		return false;
 	}
 
-	return role.toLowerCase().includes("admin");
+	const normalized = role.toLowerCase().trim();
+	return normalized === "org:admin" || normalized === "admin" || normalized === "owner";
 }
 
 /**
