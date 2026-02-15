@@ -42,6 +42,7 @@ import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_shared from "../lib/shared.js";
 import type * as lib_storage from "../lib/storage.js";
+import type * as lib_stripe from "../lib/stripe.js";
 import type * as lib_webhooks from "../lib/webhooks.js";
 import type * as messageAttachments from "../messageAttachments.js";
 import type * as migrations_addReceivingAddresses from "../migrations/addReceivingAddresses.js";
@@ -57,6 +58,7 @@ import type * as payments from "../payments.js";
 import type * as projects from "../projects.js";
 import type * as quoteLineItems from "../quoteLineItems.js";
 import type * as quotes from "../quotes.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as reportData from "../reportData.js";
 import type * as reports from "../reports.js";
 import type * as resend from "../resend.js";
@@ -65,6 +67,7 @@ import type * as resendWebhook from "../resendWebhook.js";
 import type * as serviceStatus from "../serviceStatus.js";
 import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
+import type * as stripePaymentActions from "../stripePaymentActions.js";
 import type * as tasks from "../tasks.js";
 import type * as usage from "../usage.js";
 import type * as userTour from "../userTour.js";
@@ -111,6 +114,7 @@ declare const fullApi: ApiFromModules<{
   "lib/queries": typeof lib_queries;
   "lib/shared": typeof lib_shared;
   "lib/storage": typeof lib_storage;
+  "lib/stripe": typeof lib_stripe;
   "lib/webhooks": typeof lib_webhooks;
   messageAttachments: typeof messageAttachments;
   "migrations/addReceivingAddresses": typeof migrations_addReceivingAddresses;
@@ -126,6 +130,7 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   quoteLineItems: typeof quoteLineItems;
   quotes: typeof quotes;
+  rateLimits: typeof rateLimits;
   reportData: typeof reportData;
   reports: typeof reports;
   resend: typeof resend;
@@ -134,6 +139,7 @@ declare const fullApi: ApiFromModules<{
   serviceStatus: typeof serviceStatus;
   serviceStatusActions: typeof serviceStatusActions;
   skus: typeof skus;
+  stripePaymentActions: typeof stripePaymentActions;
   tasks: typeof tasks;
   usage: typeof usage;
   userTour: typeof userTour;
@@ -1244,6 +1250,140 @@ export declare const components: {
         },
         null
       >;
+    };
+  };
+  rateLimiter: {
+    lib: {
+      checkRateLimit: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+      getValue: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          key?: string;
+          name: string;
+          sampleShards?: number;
+        },
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          shard: number;
+          ts: number;
+          value: number;
+        }
+      >;
+      rateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      resetRateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        { key?: string; name: string },
+        null
+      >;
+    };
+    time: {
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
     };
   };
 };
