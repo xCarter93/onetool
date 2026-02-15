@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Mail, Inbox } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,7 @@ export function EmailThreadListButton({
 
 	// Count unread threads
 	const unreadCount = threads
-		? threads.filter((t: { hasUnread: boolean }) => t.hasUnread).length
+		? (threads as EmailThreadSummary[]).filter((t) => t.hasUnread).length
 		: 0;
 
 	if (variant === "icon") {

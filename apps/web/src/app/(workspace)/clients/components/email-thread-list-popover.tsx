@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import {
 	Popover,
 	PopoverContent,
@@ -31,15 +32,7 @@ export function EmailThreadListPopover({
 
 	// Fetch all email threads for this client
 	const threads = useQuery(api.emailMessages.listThreadsByClient, { clientId }) as
-		| Array<{
-				threadId: string;
-				subject: string;
-				latestMessage: string;
-				latestMessageAt: number;
-				messageCount: number;
-				hasUnread: boolean;
-				participants: string[];
-		  }>
+		| EmailThreadSummary[]
 		| undefined;
 
 	const handleThreadClick = (threadId: string) => {
