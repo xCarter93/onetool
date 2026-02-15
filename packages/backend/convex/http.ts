@@ -312,23 +312,23 @@ http.route({
 			return webhookSuccess("OK");
 		}
 
-		// Verify webhook signature for actual events (if secret configured)
-		if (process.env.BOLDSIGN_WEBHOOK_SECRET) {
-			const result = await verifyBoldSignWebhook(
-				request,
-				process.env.BOLDSIGN_WEBHOOK_SECRET
-			);
-
-			if (!result.valid) {
-				console.error("BoldSign webhook verification failed:", result.error);
-				return webhookUnauthorized();
-			}
-			console.log("BoldSign webhook signature verified successfully");
-		} else {
-			console.log(
-				"BoldSign webhook received (signature verification skipped - no secret configured)"
-			);
+		// Verify webhook signature for actual events (mandatory)
+		const boldsignSecret = process.env.BOLDSIGN_WEBHOOK_SECRET;
+		if (!boldsignSecret) {
+			console.error("BOLDSIGN_WEBHOOK_SECRET not configured - rejecting webhook");
+			return webhookError(500, "Webhook verification not configured");
 		}
+
+		const boldsignVerification = await verifyBoldSignWebhook(
+			request,
+			boldsignSecret
+		);
+
+		if (!boldsignVerification.valid) {
+			console.error("BoldSign webhook verification failed:", boldsignVerification.error);
+			return webhookUnauthorized();
+		}
+		console.log("BoldSign webhook signature verified successfully");
 
 		const eventType = event.event?.eventType;
 		const boldsignDocumentId = event.data?.documentId || event.documentId;
@@ -581,22 +581,22 @@ http.route({
 				};
 			};
 
-			if (process.env.RESEND_WEBHOOK_SECRET) {
-				const result = await verifySvixWebhook(
-					request,
-					process.env.RESEND_WEBHOOK_SECRET
-				);
-
-				if (!result.valid || !result.payload) {
-					console.error("Resend webhook verification failed:", result.error);
-					return webhookUnauthorized();
-				}
-				event = result.payload as typeof event;
-			} else {
-				// No verification - just parse the payload
-				const payloadString = await request.text();
-				event = JSON.parse(payloadString);
+			const resendSecret = process.env.RESEND_WEBHOOK_SECRET;
+			if (!resendSecret) {
+				console.error("RESEND_WEBHOOK_SECRET not configured - rejecting webhook");
+				return webhookError(500, "Webhook verification not configured");
 			}
+
+			const resendVerification = await verifySvixWebhook(
+				request,
+				resendSecret
+			);
+
+			if (!resendVerification.valid || !resendVerification.payload) {
+				console.error("Resend webhook verification failed:", resendVerification.error);
+				return webhookUnauthorized();
+			}
+			event = resendVerification.payload as typeof event;
 
 			const eventType = event.type;
 			const emailId = event.data?.email_id;

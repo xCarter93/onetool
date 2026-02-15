@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
 	createTestOrg,
@@ -809,7 +809,7 @@ describe("Payments", () => {
 			});
 
 			// No authentication required
-			const result = await t.mutation(api.payments.markPaidByPublicToken, {
+			const result = await t.mutation(internal.payments.markPaidByPublicTokenInternal, {
 				publicToken: paymentToken,
 				stripeSessionId: "cs_test_123",
 				stripePaymentIntentId: "pi_test_123",
@@ -857,7 +857,7 @@ describe("Payments", () => {
 			);
 
 			// Should not throw, should return success
-			const result = await t.mutation(api.payments.markPaidByPublicToken, {
+			const result = await t.mutation(internal.payments.markPaidByPublicTokenInternal, {
 				publicToken: paymentToken,
 				stripeSessionId: "cs_new",
 				stripePaymentIntentId: "pi_new",
@@ -911,7 +911,7 @@ describe("Payments", () => {
 			});
 
 			// Mark second payment as paid
-			await t.mutation(api.payments.markPaidByPublicToken, {
+			await t.mutation(internal.payments.markPaidByPublicTokenInternal, {
 				publicToken: paymentToken2,
 				stripeSessionId: "cs_test",
 				stripePaymentIntentId: "pi_test",
@@ -960,7 +960,7 @@ describe("Payments", () => {
 			});
 
 			// Mark only first payment as paid
-			await t.mutation(api.payments.markPaidByPublicToken, {
+			await t.mutation(internal.payments.markPaidByPublicTokenInternal, {
 				publicToken: paymentToken1,
 				stripeSessionId: "cs_test",
 				stripePaymentIntentId: "pi_test",
@@ -976,7 +976,7 @@ describe("Payments", () => {
 
 		it("should throw error for non-existent token", async () => {
 			await expect(
-				t.mutation(api.payments.markPaidByPublicToken, {
+				t.mutation(internal.payments.markPaidByPublicTokenInternal, {
 					publicToken: "non_existent_token",
 					stripeSessionId: "cs_test",
 					stripePaymentIntentId: "pi_test",

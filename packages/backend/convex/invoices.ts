@@ -1,4 +1,11 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	internalQuery,
+	QueryCtx,
+	MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -337,10 +344,10 @@ export const getByPublicToken = query({
 // ============================================================================
 
 /**
- * Public: mark an invoice as paid after hosted Checkout success.
- * Entity-specific: uses public token flow, no auth required
+ * Internal: mark an invoice as paid after Stripe verification.
+ * Called only from the verifyAndMarkInvoicePaid action.
  */
-export const markPaidByPublicToken = mutation({
+export const markPaidByPublicTokenInternal = internalMutation({
 	args: {
 		publicToken: v.string(),
 		stripeSessionId: v.string(),
@@ -376,6 +383,16 @@ export const markPaidByPublicToken = mutation({
 		}
 
 		return invoice._id;
+	},
+});
+
+/**
+ * Internal query: get invoice by public token (for use in actions)
+ */
+export const getByPublicTokenInternal = internalQuery({
+	args: { publicToken: v.string() },
+	handler: async (ctx, args) => {
+		return await getInvoiceByPublicToken(ctx, args.publicToken);
 	},
 });
 

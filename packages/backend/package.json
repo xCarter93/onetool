@@ -20,6 +20,10 @@
     "./convex/_generated/server": {
       "types": "./convex/_generated/server.d.ts",
       "default": "./convex/_generated/server.js"
+    },
+    "./convex/emailMessages": {
+      "types": "./convex/emailMessages.ts",
+      "default": "./convex/emailMessages.ts"
     }
   },
   "scripts": {
@@ -35,6 +39,7 @@
     "@clerk/backend": "^2.19.1",
     "@convex-dev/aggregate": "^0.1.25",
     "@convex-dev/migrations": "^0.2.9",
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/resend": "^0.2.0",
     "boldsign": "^2.0.1",
     "convex": "^1.30.0",

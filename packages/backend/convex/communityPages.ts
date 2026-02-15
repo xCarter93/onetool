@@ -5,6 +5,7 @@ import {
 	getCurrentUserOrThrow,
 	getCurrentUserOrgId,
 } from "./lib/auth";
+import { rateLimiter } from "./rateLimits";
 
 // Type definitions
 type CommunityPageDocument = Doc<"communityPages">;
@@ -139,11 +140,13 @@ export const generateUploadUrl = mutation({
 });
 
 /**
- * Get image URL from storage
+ * Get image URL from storage (authenticated)
  */
 export const getImageUrl = query({
 	args: { storageId: v.id("_storage") },
 	handler: async (ctx, args): Promise<string | null> => {
+		const user = await getCurrentUserOrThrow(ctx);
+		if (!user) return null;
 		return await ctx.storage.getUrl(args.storageId);
 	},
 });
@@ -314,6 +317,12 @@ export const submitInterest = mutation({
 		message: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// Rate limit per slug (org's community page)
+		await rateLimiter.limit(ctx, "communityInterest", {
+			key: args.slug,
+			throws: true,
+		});
+
 		// Input validation
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		if (!emailRegex.test(args.email)) {

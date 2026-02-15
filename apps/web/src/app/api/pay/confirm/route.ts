@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
-import { getStripeClient } from "@/lib/stripe";
 
 export async function POST(request: NextRequest) {
 	try {
@@ -26,43 +25,16 @@ export async function POST(request: NextRequest) {
 
 		// If payment found, use payment-specific flow
 		if (paymentData) {
-			const accountId = paymentData.org?.stripeConnectAccountId;
-			if (!accountId) {
-				return NextResponse.json(
-					{ error: "Payments are not enabled for this organization." },
-					{ status: 400 }
-				);
-			}
-
 			// If already paid, short-circuit
 			if (paymentData.payment.status === "paid") {
 				return NextResponse.json({ status: "already_paid" });
 			}
 
-			const stripe = getStripeClient();
-			const session = await stripe.checkout.sessions.retrieve(
-				body.sessionId,
-				{ expand: ["payment_intent"] },
-				{ stripeAccount: accountId }
-			);
-
-			if (session.payment_status !== "paid" || !session.payment_intent) {
-				return NextResponse.json(
-					{ error: "Payment not completed yet." },
-					{ status: 400 }
-				);
-			}
-
-			const paymentIntentId =
-				typeof session.payment_intent === "string"
-					? session.payment_intent
-					: session.payment_intent.id;
-
-			// Mark the payment as paid (this will auto-update invoice status when all payments are complete)
-			await convex.mutation(api.payments.markPaidByPublicToken, {
+			// Verify with Stripe and mark paid via Convex action
+			// The action handles Stripe verification server-side
+			await convex.action(api.stripePaymentActions.verifyAndMarkPaid, {
 				publicToken: body.token,
-				stripeSessionId: session.id,
-				stripePaymentIntentId: paymentIntentId,
+				stripeSessionId: body.sessionId,
 			});
 
 			return NextResponse.json({ status: "paid" });
@@ -77,42 +49,15 @@ export async function POST(request: NextRequest) {
 			return NextResponse.json({ error: "Invoice or payment not found" }, { status: 404 });
 		}
 
-		const accountId = invoiceData.org?.stripeConnectAccountId;
-		if (!accountId) {
-			return NextResponse.json(
-				{ error: "Payments are not enabled for this organization." },
-				{ status: 400 }
-			);
-		}
-
 		// If already paid, short-circuit
 		if (invoiceData.invoice.status === "paid") {
 			return NextResponse.json({ status: "already_paid" });
 		}
 
-		const stripe = getStripeClient();
-		const session = await stripe.checkout.sessions.retrieve(
-			body.sessionId,
-			{ expand: ["payment_intent"] },
-			{ stripeAccount: accountId }
-		);
-
-		if (session.payment_status !== "paid" || !session.payment_intent) {
-			return NextResponse.json(
-				{ error: "Payment not completed yet." },
-				{ status: 400 }
-			);
-		}
-
-		const paymentIntentId =
-			typeof session.payment_intent === "string"
-				? session.payment_intent
-				: session.payment_intent.id;
-
-		await convex.mutation(api.invoices.markPaidByPublicToken, {
+		// Verify with Stripe and mark paid via Convex action
+		await convex.action(api.stripePaymentActions.verifyAndMarkInvoicePaid, {
 			publicToken: body.token,
-			stripeSessionId: session.id,
-			stripePaymentIntentId: paymentIntentId,
+			stripeSessionId: body.sessionId,
 		});
 
 		return NextResponse.json({ status: "paid" });

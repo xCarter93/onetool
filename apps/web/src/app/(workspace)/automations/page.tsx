@@ -34,7 +34,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useRoleAccess } from "@/hooks/use-role-access";
@@ -160,7 +160,7 @@ function AutomationsContent() {
 		name: string;
 	} | null>(null);
 
-	const automations = useQuery(api.automations.list);
+	const automations: Doc<"workflowAutomations">[] | undefined = useQuery(api.automations.list);
 	const toggleActive = useMutation(api.automations.toggleActive);
 	const deleteAutomation = useMutation(api.automations.remove);
 

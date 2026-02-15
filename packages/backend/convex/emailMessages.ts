@@ -230,7 +230,7 @@ export const getEmailThread = query({
 /**
  * Thread summary type for grouped email conversations
  */
-interface EmailThreadSummary {
+export interface EmailThreadSummary {
 	threadId: string;
 	subject: string;
 	latestMessage: string;

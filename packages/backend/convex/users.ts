@@ -44,12 +44,24 @@ export const listByOrg = query({
 });
 
 /**
- * Get a user by ID
+ * Get a user by ID (authenticated, returns limited fields)
  */
 export const get = query({
 	args: { id: v.id("users") },
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
+		const currentUser = await getCurrentUser(ctx);
+		if (!currentUser) return null;
+
+		const user = await ctx.db.get(args.id);
+		if (!user) return null;
+
+		return {
+			_id: user._id,
+			_creationTime: user._creationTime,
+			name: user.name,
+			email: user.email,
+			image: user.image,
+		};
 	},
 });
 
