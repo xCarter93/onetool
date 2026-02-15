@@ -33,8 +33,7 @@ export async function verifyStripeSession(
 		headers["Stripe-Account"] = stripeAccountId;
 	}
 
-	const url = `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`;
-	const res = await fetch(url, { headers });
+	const url = `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent`;
 
 	if (!res.ok) {
 		const errorBody = await res.text().catch(() => "");
