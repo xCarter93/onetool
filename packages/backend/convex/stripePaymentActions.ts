@@ -2,6 +2,7 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 import { verifyStripeSession } from "./lib/stripe";
 
 /**
@@ -13,7 +14,7 @@ export const verifyAndMarkPaid = action({
 		publicToken: v.string(),
 		stripeSessionId: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<Id<"payments">> => {
 		// 1. Look up payment by public token
 		const payment = await ctx.runQuery(
 			internal.payments.getByPublicTokenInternal,
@@ -57,7 +58,7 @@ export const verifyAndMarkInvoicePaid = action({
 		publicToken: v.string(),
 		stripeSessionId: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<Id<"invoices">> => {
 		// 1. Look up invoice by public token
 		const invoice = await ctx.runQuery(
 			internal.invoices.getByPublicTokenInternal,

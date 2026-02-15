@@ -34,6 +34,7 @@ export async function verifyStripeSession(
 	}
 
 	const url = `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent`;
+	const res = await fetch(url, { headers });
 
 	if (!res.ok) {
 		const errorBody = await res.text().catch(() => "");

@@ -21,7 +21,9 @@ export function EmailThreadListButton({
 	const threads = useQuery(api.emailMessages.listThreadsByClient, { clientId });
 
 	// Count unread threads
-	const unreadCount = threads?.filter((t) => t.hasUnread).length || 0;
+	const unreadCount = threads
+		? threads.filter((t: { hasUnread: boolean }) => t.hasUnread).length
+		: 0;
 
 	if (variant === "icon") {
 		return (

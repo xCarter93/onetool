@@ -30,7 +30,17 @@ export function EmailThreadListPopover({
 	>();
 
 	// Fetch all email threads for this client
-	const threads = useQuery(api.emailMessages.listThreadsByClient, { clientId });
+	const threads = useQuery(api.emailMessages.listThreadsByClient, { clientId }) as
+		| Array<{
+				threadId: string;
+				subject: string;
+				latestMessage: string;
+				latestMessageAt: number;
+				messageCount: number;
+				hasUnread: boolean;
+				participants: string[];
+		  }>
+		| undefined;
 
 	const handleThreadClick = (threadId: string) => {
 		setSelectedThreadId(threadId);
