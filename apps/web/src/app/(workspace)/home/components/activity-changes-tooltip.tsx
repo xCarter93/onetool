@@ -17,13 +17,25 @@ interface ActivityChangesTooltipProps {
 	children: React.ReactNode;
 }
 
+const DATE_FIELDS = new Set([
+	"Start Date",
+	"End Date",
+	"Due Date",
+	"Valid Until",
+]);
+
 /** Format a single value for display in the tooltip. */
-function formatValue(value: unknown): string {
-	if (value == null || value === "") return "—";
+function formatValue(value: unknown, field?: string): string {
+	if (value == null || value === "") return "\u2014";
 	if (typeof value === "boolean") return value ? "Yes" : "No";
 	if (typeof value === "number") {
-		// Currency heuristic: field values in cents or dollar amounts
-		// We display raw numbers; the field label provides context
+		if (field && DATE_FIELDS.has(field)) {
+			return new Date(value).toLocaleDateString(undefined, {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+			});
+		}
 		return value.toLocaleString();
 	}
 	if (Array.isArray(value)) {
@@ -81,11 +93,11 @@ function renderChange(change: FieldChange): React.ReactNode {
 			</p>
 			<p className="text-xs">
 				<span className="line-through text-red-500/70 dark:text-red-400/70">
-					{formatValue(change.oldValue)}
+					{formatValue(change.oldValue, change.field)}
 				</span>
-				<span className="mx-1 text-muted-foreground">→</span>
+				<span className="mx-1 text-muted-foreground">{"\u2192"}</span>
 				<span className="font-medium text-foreground">
-					{formatValue(change.newValue)}
+					{formatValue(change.newValue, change.field)}
 				</span>
 			</p>
 		</div>

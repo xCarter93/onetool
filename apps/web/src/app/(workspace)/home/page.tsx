@@ -72,7 +72,7 @@ export default function Page() {
 		if (prevTourActive.current && !tourContext?.state.isActive && tourStarted) {
 			// Check if all steps were completed
 			const allCompleted = ORDERED_HOME_TOUR.every((id) =>
-				tourContext?.state.completedSteps.has(id)
+				tourContext?.state.completedSteps.has(id),
 			);
 
 			if (allCompleted) {
@@ -82,7 +82,12 @@ export default function Page() {
 		}
 
 		prevTourActive.current = tourContext?.state.isActive;
-	}, [tourContext?.state.isActive, tourContext?.state.completedSteps, tourStarted, markTourComplete]);
+	}, [
+		tourContext?.state.isActive,
+		tourContext?.state.completedSteps,
+		tourStarted,
+		markTourComplete,
+	]);
 
 	// Save view preference to localStorage
 	const handleViewChange = (mode: ViewMode) => {
@@ -172,7 +177,9 @@ export default function Page() {
 							stepId={HomeTour.VIEW_TOGGLE}
 							title={HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].title}
 							description={HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].description}
-							tooltipPosition={HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].tooltipPosition}
+							tooltipPosition={
+								HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].tooltipPosition
+							}
 						>
 							<ButtonGroup>
 								<button
@@ -183,7 +190,7 @@ export default function Page() {
 										"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
 										viewMode === "dashboard"
 											? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-											: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+											: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700",
 									)}
 								>
 									<LayoutDashboard className="w-4 h-4" />
@@ -197,7 +204,7 @@ export default function Page() {
 										"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
 										viewMode === "calendar"
 											? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-											: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+											: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700",
 									)}
 								>
 									<CalendarDays className="w-4 h-4" />
@@ -225,7 +232,9 @@ export default function Page() {
 								stepId={HomeTour.HOME_STATS}
 								title={HOME_TOUR_CONTENT[HomeTour.HOME_STATS].title}
 								description={HOME_TOUR_CONTENT[HomeTour.HOME_STATS].description}
-								tooltipPosition={HOME_TOUR_CONTENT[HomeTour.HOME_STATS].tooltipPosition}
+								tooltipPosition={
+									HOME_TOUR_CONTENT[HomeTour.HOME_STATS].tooltipPosition
+								}
 							>
 								<HomeStats />
 							</TourElement>
@@ -251,7 +260,9 @@ export default function Page() {
 										stepId={HomeTour.TASKS}
 										title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
 										description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
+										tooltipPosition={
+											HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition
+										}
 									>
 										<HomeTaskList />
 									</TourElement>
@@ -267,8 +278,12 @@ export default function Page() {
 										TourContext={HomeTourContext}
 										stepId={HomeTour.REVENUE_GOAL}
 										title={HOME_TOUR_CONTENT[HomeTour.REVENUE_GOAL].title}
-										description={HOME_TOUR_CONTENT[HomeTour.REVENUE_GOAL].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.REVENUE_GOAL].tooltipPosition}
+										description={
+											HOME_TOUR_CONTENT[HomeTour.REVENUE_GOAL].description
+										}
+										tooltipPosition={
+											HOME_TOUR_CONTENT[HomeTour.REVENUE_GOAL].tooltipPosition
+										}
 									>
 										<RevenueGoalSetter />
 									</TourElement>
@@ -289,8 +304,13 @@ export default function Page() {
 										TourContext={HomeTourContext}
 										stepId={HomeTour.GETTING_STARTED}
 										title={HOME_TOUR_CONTENT[HomeTour.GETTING_STARTED].title}
-										description={HOME_TOUR_CONTENT[HomeTour.GETTING_STARTED].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.GETTING_STARTED].tooltipPosition}
+										description={
+											HOME_TOUR_CONTENT[HomeTour.GETTING_STARTED].description
+										}
+										tooltipPosition={
+											HOME_TOUR_CONTENT[HomeTour.GETTING_STARTED]
+												.tooltipPosition
+										}
 									>
 										<GettingStarted />
 									</TourElement>
@@ -300,7 +320,7 @@ export default function Page() {
 							{/* Activity Feed - Single instance, conditionally rendered for desktop vs mobile */}
 							{isDesktop ? (
 								<motion.div
-									className="w-[450px] shrink-0"
+									className="w-[650px] shrink-0"
 									initial={{ opacity: 0, x: 20 }}
 									animate={{ opacity: 1, x: 0 }}
 									transition={{
@@ -315,8 +335,13 @@ export default function Page() {
 											TourContext={HomeTourContext}
 											stepId={HomeTour.ACTIVITY_FEED}
 											title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
-											description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
-											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
+											description={
+												HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description
+											}
+											tooltipPosition={
+												HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED]
+													.tooltipPosition
+											}
 										>
 											<ActivityFeed />
 										</TourElement>
