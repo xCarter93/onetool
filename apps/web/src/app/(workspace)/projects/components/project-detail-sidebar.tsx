@@ -20,13 +20,12 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
 	CircleDot,
 	Layers,
 	Calendar as CalendarIcon,
 	CalendarCheck,
-	FileText,
 	Users,
 	Hash,
 	Building2,
@@ -35,14 +34,15 @@ import {
 	Phone,
 	MapPin,
 	Receipt,
-	CheckCircle,
 	DollarSign,
-	FolderOpen,
+	AlertCircle,
+	Type,
 	Pencil,
 	Check,
 	X,
 } from "lucide-react";
 import Link from "next/link";
+import { ProjectDocumentsSection } from "./project-documents-section";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
@@ -72,7 +72,7 @@ const TYPE_OPTIONS = [
 	{ value: "recurring", label: "Recurring" },
 ];
 
-type EditingField = "status" | "projectType" | "startDate" | "endDate" | "description" | "assignedUserIds" | null;
+type EditingField = "title" | "status" | "projectType" | "startDate" | "endDate" | "assignedUserIds" | null;
 
 interface ProjectDetailSidebarProps {
 	project: Doc<"projects">;
@@ -81,6 +81,7 @@ interface ProjectDetailSidebarProps {
 	primaryContact: Doc<"clientContacts"> | null | undefined;
 	primaryProperty: Doc<"clientProperties"> | null | undefined;
 	quotes: Doc<"quotes">[] | undefined;
+	invoices: Doc<"invoices">[] | undefined;
 }
 
 export function ProjectDetailSidebar({
@@ -90,6 +91,7 @@ export function ProjectDetailSidebar({
 	primaryContact,
 	primaryProperty,
 	quotes,
+	invoices,
 }: ProjectDetailSidebarProps) {
 	const toast = useToast();
 	const updateProject = useMutation(api.projects.update);
@@ -99,15 +101,6 @@ export function ProjectDetailSidebar({
 	const [editValue, setEditValue] = useState("");
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(undefined);
 	const [editAssignedUsers, setEditAssignedUsers] = useState<string[]>([]);
-	const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-	useEffect(() => {
-		if (editingField === "description" && textareaRef.current) {
-			textareaRef.current.focus();
-			textareaRef.current.selectionStart = textareaRef.current.value.length;
-		}
-	}, [editingField]);
-
 	const startEditing = (field: EditingField, currentValue: string) => {
 		setEditingField(field);
 		setEditValue(currentValue);
@@ -137,11 +130,11 @@ export function ProjectDetailSidebar({
 				[field]: value,
 			});
 			const labels: Record<string, string> = {
+				title: "Title",
 				status: "Status",
 				projectType: "Project type",
 				startDate: "Start date",
 				endDate: "End date",
-				description: "Description",
 				assignedUserIds: "Assigned users",
 			};
 			const label = labels[field] || field;
@@ -153,20 +146,22 @@ export function ProjectDetailSidebar({
 		}
 	};
 
-	const handleDescriptionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && !e.shiftKey) {
+	const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") {
 			e.preventDefault();
-			saveField("description", editValue || undefined);
+			if (editValue.trim()) {
+				saveField("title", editValue.trim());
+			}
 		}
 		if (e.key === "Escape") {
 			cancelEditing();
 		}
 	};
 
-	// Compute quote summary
-	const totalQuotes = quotes?.length ?? 0;
-	const approvedQuotes = quotes?.filter((q) => q.status === "approved").length ?? 0;
-	const totalQuoted = quotes?.reduce((sum, q) => sum + (q.total || 0), 0) ?? 0;
+	// Compute billing summary
+	const totalInvoices = invoices?.length ?? 0;
+	const totalBilled = invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
+	const outstanding = invoices?.filter((inv) => inv.status !== "paid").reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
 
 	// Shared save/cancel button pair
 	const renderActions = (onSave: () => void) => (
@@ -200,6 +195,38 @@ export function ProjectDetailSidebar({
 				Record Details
 			</h3>
 			<div className="space-y-0">
+				{/* Title */}
+				<div
+					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					onClick={() => editingField !== "title" && startEditing("title", project.title)}
+				>
+					<Type className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+					<span className="text-sm text-muted-foreground w-28 shrink-0">Title</span>
+					<div className="flex-1 min-w-0" onClick={(e) => editingField === "title" && e.stopPropagation()}>
+						{editingField === "title" ? (
+							<input
+								type="text"
+								value={editValue}
+								onChange={(e) => setEditValue(e.target.value)}
+								onKeyDown={handleTitleKeyDown}
+								autoFocus
+								className="w-full text-sm rounded-md border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+								placeholder="Project title..."
+							/>
+						) : (
+							<span className="text-sm text-foreground font-medium">
+								{project.title}
+							</span>
+						)}
+					</div>
+					{editingField === "title"
+						? renderActions(() => {
+							if (editValue.trim()) saveField("title", editValue.trim());
+						})
+						: renderPencil()
+					}
+				</div>
+
 				{/* Status */}
 				<div
 					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
@@ -347,45 +374,6 @@ export function ProjectDetailSidebar({
 						)}
 					</div>
 					{editingField !== "endDate" && renderPencil()}
-				</div>
-
-				{/* Description */}
-				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
-					onClick={() => editingField !== "description" && startEditing("description", project.description || "")}
-				>
-					<FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Description</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "description" && e.stopPropagation()}>
-						{editingField === "description" ? (
-							<div className="space-y-1.5">
-								<textarea
-									ref={textareaRef}
-									value={editValue}
-									onChange={(e) => setEditValue(e.target.value)}
-									onKeyDown={handleDescriptionKeyDown}
-									rows={3}
-									className="w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-									placeholder="Add a description..."
-								/>
-								<span className="text-xs text-muted-foreground">Enter to save, Esc to cancel</span>
-							</div>
-						) : (
-							<span className="text-sm text-foreground">
-								{project.description ? (
-									project.description.length > 120
-										? project.description.slice(0, 120) + "..."
-										: project.description
-								) : (
-									<span className="text-muted-foreground italic">Add description...</span>
-								)}
-							</span>
-						)}
-					</div>
-					{editingField === "description"
-						? renderActions(() => saveField("description", editValue || undefined))
-						: renderPencil()
-					}
 				</div>
 
 				{/* Assigned Users */}
@@ -548,31 +536,33 @@ export function ProjectDetailSidebar({
 
 			<Separator className="my-4" />
 
-			{/* Quote Summary Section */}
+			{/* Billing Summary Section */}
 			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Quote Summary
+				Billing Summary
 			</h3>
 			<div className="space-y-0">
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Receipt className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Quotes</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Invoices</span>
 					<div className="flex-1 min-w-0">
-						<span className="text-sm text-foreground">{totalQuotes}</span>
-					</div>
-				</div>
-				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-					<CheckCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Approved</span>
-					<div className="flex-1 min-w-0">
-						<span className="text-sm font-medium text-foreground">{approvedQuotes}</span>
+						<span className="text-sm text-foreground">{totalInvoices}</span>
 					</div>
 				</div>
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Quoted</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Billed</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
-							{formatCurrency(totalQuoted)}
+							{formatCurrency(totalBilled)}
+						</span>
+					</div>
+				</div>
+				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
+					<AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+					<span className="text-sm text-muted-foreground w-28 shrink-0">Outstanding</span>
+					<div className="flex-1 min-w-0">
+						<span className="text-sm font-medium text-foreground">
+							{formatCurrency(outstanding)}
 						</span>
 					</div>
 				</div>
@@ -581,10 +571,7 @@ export function ProjectDetailSidebar({
 			<Separator className="my-4" />
 
 			{/* Documents Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Documents
-			</h3>
-			<ProjectDocumentsSidebar projectId={projectId} />
+			<ProjectDocumentsSection projectId={projectId} />
 		</div>
 	);
 }
@@ -609,67 +596,3 @@ function AssignedUserNames({
 	return <>{names.join(", ")}</>;
 }
 
-// Condensed documents view for sidebar
-function ProjectDocumentsSidebar({ projectId }: { projectId: Id<"projects"> }) {
-	const attachments = useQuery(api.messageAttachments.listByEntity, {
-		entityType: "project",
-		entityId: projectId,
-	});
-	const signedDocuments = useQuery(api.documents.listSignedByProject, {
-		projectId,
-	});
-
-	if (attachments === undefined || signedDocuments === undefined) {
-		return (
-			<div className="animate-pulse space-y-2">
-				<div className="h-4 bg-muted rounded w-3/4" />
-				<div className="h-4 bg-muted rounded w-1/2" />
-			</div>
-		);
-	}
-
-	const totalDocs = (attachments?.length ?? 0) + (signedDocuments?.length ?? 0);
-
-	if (totalDocs === 0) {
-		return (
-			<div className="flex items-center gap-3 py-2.5 -mx-2 px-2">
-				<FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-				<span className="text-sm text-muted-foreground italic">No documents yet</span>
-			</div>
-		);
-	}
-
-	// Show most recent document
-	const allDocs = [
-		...(attachments || []).map((a) => ({ name: a.fileName, time: a.uploadedAt })),
-		...(signedDocuments || []).map((d) => ({ name: d.fileName, time: d.uploadedAt })),
-	].sort((a, b) => b.time - a.time);
-
-	const mostRecent = allDocs[0];
-
-	return (
-		<div className="space-y-0">
-			<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-				<FolderOpen className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-				<span className="text-sm text-muted-foreground w-28 shrink-0">Latest</span>
-				<div className="flex-1 min-w-0">
-					<span className="text-sm text-foreground truncate block">
-						{mostRecent.name}
-					</span>
-					<span className="text-xs text-muted-foreground">
-						{formatDate(mostRecent.time)}
-					</span>
-				</div>
-			</div>
-			{totalDocs > 1 && (
-				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-					<div className="h-4 w-4 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0" />
-					<span className="text-xs text-muted-foreground">
-						+{totalDocs - 1} more document{totalDocs - 1 !== 1 ? "s" : ""}
-					</span>
-				</div>
-			)}
-		</div>
-	);
-}

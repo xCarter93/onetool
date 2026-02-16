@@ -1,7 +1,7 @@
 "use client";
 
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
-import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
+import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { ListTodo, FileText, Receipt, Trash2 } from "lucide-react";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 
@@ -25,19 +25,30 @@ export function ProjectDetailHeader({
 	return (
 		<div className="border-b border-border pb-4 mb-0">
 			<div className="flex items-center justify-between gap-4">
-				<div className="flex items-center gap-3 min-w-0 flex-1">
-					<h1 className="text-2xl font-bold text-foreground truncate">
-						{project.title}
-					</h1>
-					<ProminentStatusBadge
+				<h1 className="text-2xl font-bold text-foreground truncate shrink-0">
+					{project.title}
+				</h1>
+				<div className="flex-1 min-w-0 max-w-3xl">
+					<StatusProgressBar
 						status={project.status}
-						size="large"
-						showIcon={true}
-						entityType="project"
+						steps={[
+							{ id: "planned", name: "Planned", order: 1 },
+							{ id: "in-progress", name: "In Progress", order: 2 },
+							{ id: "completed", name: "Completed", order: 3 },
+						]}
+						events={[
+							{ type: "planned", timestamp: project._creationTime },
+							...(project.startDate
+								? [{ type: "in-progress", timestamp: project.startDate }]
+								: []),
+							...(project.endDate && project.status === "completed"
+								? [{ type: "completed", timestamp: project.endDate }]
+								: []),
+						]}
+						failureStatuses={["cancelled"]}
+						successStatuses={["completed"]}
 					/>
 				</div>
-
-				{/* Right side - Quick action buttons */}
 				<div className="flex items-center gap-2 shrink-0">
 					<StyledButton
 						intent="outline"

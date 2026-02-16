@@ -1,10 +1,14 @@
 "use client";
 
-import { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Plus, ClipboardList } from "lucide-react";
+import { Plus, ClipboardList, CheckCircle2, Circle } from "lucide-react";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "No date";
@@ -30,27 +34,37 @@ function getStatusColor(status: string) {
 	}
 }
 
-function getStatusDotColor(status: string) {
-	switch (status) {
-		case "completed":
-			return "bg-green-500";
-		case "in-progress":
-			return "bg-yellow-500";
-		case "pending":
-			return "bg-blue-500";
-		case "cancelled":
-			return "bg-red-500";
-		default:
-			return "bg-gray-500";
-	}
-}
-
 interface TasksTabProps {
 	tasks: Doc<"tasks">[] | undefined;
 	onAddTask: () => void;
 }
 
 export function TasksTab({ tasks, onAddTask }: TasksTabProps) {
+	const [updatingTasks, setUpdatingTasks] = useState<Set<Id<"tasks">>>(
+		new Set()
+	);
+	const updateTaskMutation = useMutation(api.tasks.update);
+	const completeTaskMutation = useMutation(api.tasks.complete);
+
+	const handleToggleComplete = async (task: Doc<"tasks">) => {
+		setUpdatingTasks((prev) => new Set(prev).add(task._id));
+		try {
+			if (task.status === "completed") {
+				await updateTaskMutation({ id: task._id, status: "pending" });
+			} else {
+				await completeTaskMutation({ id: task._id });
+			}
+		} catch (error) {
+			console.error("Error updating task:", error);
+		} finally {
+			setUpdatingTasks((prev) => {
+				const newSet = new Set(prev);
+				newSet.delete(task._id);
+				return newSet;
+			});
+		}
+	};
+
 	return (
 		<div>
 			<div className="flex items-center justify-between mb-1 min-h-8">
@@ -66,30 +80,54 @@ export function TasksTab({ tasks, onAddTask }: TasksTabProps) {
 
 			{tasks && tasks.length > 0 ? (
 				<div className="space-y-2">
-					{tasks.map((task) => (
-						<div
-							key={task._id}
-							className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-						>
+					{tasks.map((task) => {
+						const isUpdating = updatingTasks.has(task._id);
+						return (
 							<div
-								className={`w-2 h-2 rounded-full shrink-0 ${getStatusDotColor(task.status)}`}
-							/>
-							<div className="flex-1 min-w-0">
-								<p className="text-sm font-medium text-foreground truncate">
-									{task.title}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									{formatDate(task.date)}
-								</p>
-							</div>
-							<Badge
-								className={getStatusColor(task.status)}
-								variant="outline"
+								key={task._id}
+								className={cn(
+									"flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors",
+									task.status === "completed" && "opacity-60"
+								)}
 							>
-								{task.status}
-							</Badge>
-						</div>
-					))}
+								<button
+									onClick={() => handleToggleComplete(task)}
+									disabled={isUpdating}
+									className={cn(
+										"p-0.5 rounded-full transition-colors shrink-0",
+										"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+										isUpdating && "opacity-50 cursor-not-allowed"
+									)}
+								>
+									{task.status === "completed" ? (
+										<CheckCircle2 className="h-5 w-5 text-green-600" />
+									) : (
+										<Circle className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+									)}
+								</button>
+								<div className="flex-1 min-w-0">
+									<p
+										className={cn(
+											"text-sm font-medium text-foreground truncate",
+											task.status === "completed" &&
+												"line-through text-muted-foreground"
+										)}
+									>
+										{task.title}
+									</p>
+									<p className="text-xs text-muted-foreground">
+										{formatDate(task.date)}
+									</p>
+								</div>
+								<Badge
+									className={getStatusColor(task.status)}
+									variant="outline"
+								>
+									{task.status}
+								</Badge>
+							</div>
+						);
+					})}
 				</div>
 			) : (
 				<div className="flex flex-col items-center justify-center py-12 text-center">

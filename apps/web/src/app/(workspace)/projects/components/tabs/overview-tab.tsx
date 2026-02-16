@@ -1,23 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { useMutation } from "convex/react";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
 import { StyledCard, StyledCardContent } from "@/components/ui/styled";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, DollarSign, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { ClipboardList, DollarSign, CheckCircle, Pencil } from "lucide-react";
 import Link from "next/link";
 
 interface OverviewTabProps {
 	projectId: Id<"projects">;
 	projectTitle: string;
+	projectDescription?: string;
 	projectType: "one-off" | "recurring";
 	startDate?: number;
 	endDate?: number;
 	tasks: Doc<"tasks">[] | undefined;
 	quotes: Doc<"quotes">[] | undefined;
+	invoices: Doc<"invoices">[] | undefined;
 }
 
 function formatCurrency(amount: number) {
@@ -41,6 +46,46 @@ function sortedByNewest<T extends { _creationTime: number }>(
 ): T[] {
 	if (!items) return [];
 	return [...items].sort((a, b) => b._creationTime - a._creationTime);
+}
+
+function RelatedEntityColumn<T>({
+	label,
+	count,
+	emptyMessage,
+	items,
+	renderItem,
+}: {
+	label: string;
+	count: number;
+	emptyMessage: string;
+	items: T[] | undefined;
+	renderItem: (item: T) => React.ReactNode;
+}) {
+	return (
+		<div className="flex flex-col min-w-0">
+			<div className="flex items-center justify-between mb-2 px-1">
+				<span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+					{label}
+				</span>
+				{count > 0 && (
+					<span className="text-[11px] text-muted-foreground/70 tabular-nums">
+						{count}
+					</span>
+				)}
+			</div>
+			{count === 0 ? (
+				<div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+					<p className="text-sm text-muted-foreground/50">
+						{emptyMessage}
+					</p>
+				</div>
+			) : (
+				<div className="overflow-y-auto max-h-[320px] rounded-lg border border-border/60 divide-y divide-border/40">
+					{(items ?? []).map(renderItem)}
+				</div>
+			)}
+		</div>
+	);
 }
 
 function getCalendarDays(date: Date) {
@@ -70,12 +115,61 @@ function formatDisplayDate(timestamp?: number) {
 export function OverviewTab({
 	projectId,
 	projectTitle,
+	projectDescription,
 	projectType,
 	startDate,
 	endDate,
 	tasks,
 	quotes,
+	invoices,
 }: OverviewTabProps) {
+	const toast = useToast();
+	const updateProject = useMutation(api.projects.update);
+	const [isEditingDescription, setIsEditingDescription] = useState(false);
+	const [descriptionValue, setDescriptionValue] = useState("");
+	const descriptionRef = useRef<HTMLTextAreaElement>(null);
+
+	useEffect(() => {
+		if (isEditingDescription && descriptionRef.current) {
+			descriptionRef.current.focus();
+			descriptionRef.current.selectionStart = descriptionRef.current.value.length;
+		}
+	}, [isEditingDescription]);
+
+	const startEditingDescription = () => {
+		setDescriptionValue(projectDescription || "");
+		setIsEditingDescription(true);
+	};
+
+	const cancelEditingDescription = () => {
+		setIsEditingDescription(false);
+		setDescriptionValue("");
+	};
+
+	const saveDescription = async () => {
+		try {
+			await updateProject({
+				id: projectId,
+				description: descriptionValue || undefined,
+			});
+			toast.success("Updated", "Description saved.");
+			cancelEditingDescription();
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Failed to save";
+			toast.error("Error", message);
+		}
+	};
+
+	const handleDescriptionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault();
+			saveDescription();
+		}
+		if (e.key === "Escape") {
+			cancelEditingDescription();
+		}
+	};
+
 	const initialCalendarDate = startDate
 		? new Date(startDate)
 		: new Date();
@@ -109,7 +203,7 @@ export function OverviewTab({
 
 			{/* Highlights */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 					Highlights
 				</h3>
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -165,9 +259,58 @@ export function OverviewTab({
 
 			{/* Schedule */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 					Schedule
 				</h3>
+
+				{/* Description — full-width, click to edit */}
+				<div
+					className="mb-4 text-sm rounded-md -mx-2 px-2 py-2 transition-colors group cursor-pointer hover:bg-muted/50"
+					onClick={() => !isEditingDescription && startEditingDescription()}
+				>
+					<span className="text-muted-foreground">Description</span>
+					{isEditingDescription ? (
+						<div className="mt-1" onClick={(e) => e.stopPropagation()}>
+							<textarea
+								ref={descriptionRef}
+								value={descriptionValue}
+								onChange={(e) => setDescriptionValue(e.target.value)}
+								onKeyDown={handleDescriptionKeyDown}
+								rows={3}
+								className="w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+								placeholder="Add a description..."
+							/>
+							<div className="flex items-center justify-between mt-1.5">
+								<span className="text-xs text-muted-foreground">Enter to save, Shift+Enter for new line, Esc to cancel</span>
+								<div className="flex items-center gap-1">
+									<button
+										onClick={saveDescription}
+										className="text-xs font-medium text-primary hover:text-primary/80 transition-colors px-2 py-1 rounded-md hover:bg-primary/10"
+									>
+										Save
+									</button>
+									<button
+										onClick={cancelEditingDescription}
+										className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+									>
+										Cancel
+									</button>
+								</div>
+							</div>
+						</div>
+					) : (
+						<div className="flex items-start gap-2 mt-1">
+							<div className="flex-1 min-w-0">
+								{projectDescription ? (
+									<p className="text-foreground font-medium whitespace-pre-wrap">{projectDescription}</p>
+								) : (
+									<p className="text-muted-foreground italic">Add a description...</p>
+								)}
+							</div>
+							<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
+						</div>
+					)}
+				</div>
 
 				{/* Date info row */}
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm mb-4">
@@ -354,14 +497,19 @@ export function OverviewTab({
 
 			<Separator className="my-6" />
 
-			{/* Related Quotes */}
+			{/* Related Entities — 2-column grid with independent scroll */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
-					Related Quotes
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+					Related
 				</h3>
-				{quotes && quotes.length > 0 ? (
-					<div className="overflow-y-auto max-h-[320px] rounded-lg border border-border/60 divide-y divide-border/40">
-						{sortedByNewest(quotes).map((quote) => (
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+					{/* Quotes */}
+					<RelatedEntityColumn
+						label="Quotes"
+						count={quotes?.length ?? 0}
+						emptyMessage="No quotes yet"
+						items={sortedByNewest(quotes)}
+						renderItem={(quote) => (
 							<Link
 								key={quote._id}
 								href={`/quotes/${quote._id}`}
@@ -372,25 +520,49 @@ export function OverviewTab({
 										{quote.quoteNumber || quote.title || "Untitled"}
 									</span>
 									<ProminentStatusBadge
-										status={quote.status || "draft"}
+										status={quote.status}
 										size="default"
 										showIcon={false}
 										entityType="quote"
 									/>
 								</div>
 								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
-									{formatCurrency(quote.total || 0)}
+									{formatCurrency(quote.total)}
 								</span>
 							</Link>
-						))}
-					</div>
-				) : (
-					<div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
-						<p className="text-sm text-muted-foreground/50">
-							No quotes yet
-						</p>
-					</div>
-				)}
+						)}
+					/>
+
+					{/* Invoices */}
+					<RelatedEntityColumn
+						label="Invoices"
+						count={invoices?.length ?? 0}
+						emptyMessage="No invoices yet"
+						items={sortedByNewest(invoices)}
+						renderItem={(invoice) => (
+							<Link
+								key={invoice._id}
+								href={`/invoices/${invoice._id}`}
+								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
+							>
+								<div className="flex items-center justify-between gap-2">
+									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
+										{invoice.invoiceNumber}
+									</span>
+									<ProminentStatusBadge
+										status={invoice.status}
+										size="default"
+										showIcon={false}
+										entityType="invoice"
+									/>
+								</div>
+								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
+									{formatCurrency(invoice.total)}
+								</span>
+							</Link>
+						)}
+					/>
+				</div>
 			</div>
 
 			<Separator className="my-6" />

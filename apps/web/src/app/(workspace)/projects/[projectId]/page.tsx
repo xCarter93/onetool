@@ -38,6 +38,10 @@ export default function ProjectDetailPage() {
 		api.quotes.list,
 		project === null || isDeleting ? "skip" : { projectId }
 	);
+	const projectInvoices = useQuery(
+		api.invoices.list,
+		project === null || isDeleting ? "skip" : { projectId }
+	);
 	const activities = useQuery(
 		api.activities.getByEntity,
 		project === null || isDeleting
@@ -143,6 +147,7 @@ export default function ProjectDetailPage() {
 					projectId={projectId}
 					tasks={projectTasks}
 					quotes={projectQuotes}
+					invoices={projectInvoices}
 					activities={activities}
 					client={client}
 					primaryContact={primaryContact}

@@ -21,6 +21,7 @@ interface ProjectDetailTabsProps {
 	// Data
 	tasks: Doc<"tasks">[] | undefined;
 	quotes: Doc<"quotes">[] | undefined;
+	invoices: Doc<"invoices">[] | undefined;
 	activities: ActivityWithUser[] | undefined;
 	client: Doc<"clients"> | null | undefined;
 	primaryContact: Doc<"clientContacts"> | null | undefined;
@@ -36,6 +37,7 @@ export function ProjectDetailTabs({
 	projectId,
 	tasks,
 	quotes,
+	invoices,
 	activities,
 	client,
 	primaryContact,
@@ -60,11 +62,13 @@ export function ProjectDetailTabs({
 						<OverviewTab
 							projectId={projectId}
 							projectTitle={project.title}
+							projectDescription={project.description}
 							projectType={project.projectType}
 							startDate={project.startDate}
 							endDate={project.endDate}
 							tasks={tasks}
 							quotes={quotes}
+							invoices={invoices}
 						/>
 					</StyledTabsContent>
 
@@ -87,6 +91,7 @@ export function ProjectDetailTabs({
 							primaryContact={primaryContact}
 							primaryProperty={primaryProperty}
 							quotes={quotes}
+							invoices={invoices}
 						/>
 					</div>
 				</div>
@@ -101,6 +106,7 @@ export function ProjectDetailTabs({
 					primaryContact={primaryContact}
 					primaryProperty={primaryProperty}
 					quotes={quotes}
+					invoices={invoices}
 				/>
 			</div>
 		</StyledTabs>
