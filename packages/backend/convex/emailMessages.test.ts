@@ -20,7 +20,8 @@ describe("EmailMessages", () => {
 	 * Helper to create a test email message
 	 */
 	async function createTestEmailMessage(
-		ctx: { db: { insert: (table: string, data: unknown) => Promise<Id<"emailMessages">> } },
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		ctx: any,
 		orgId: Id<"organizations">,
 		clientId: Id<"clients">,
 		overrides: {

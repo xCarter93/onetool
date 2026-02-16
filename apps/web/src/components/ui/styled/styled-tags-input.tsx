@@ -3,6 +3,8 @@
 import { cn } from "@/lib/utils";
 import React, { useState, useRef, useEffect } from "react";
 
+type TagsInputSize = "default" | "sm";
+
 interface StyledTagsInputProps {
 	tags: string[];
 	setTags: React.Dispatch<React.SetStateAction<string[]>>;
@@ -12,6 +14,7 @@ interface StyledTagsInputProps {
 	className?: string;
 	placeholder?: string;
 	disabled?: boolean;
+	size?: TagsInputSize;
 }
 
 export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
@@ -23,7 +26,9 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 	className,
 	placeholder = "Add a tag...",
 	disabled = false,
+	size = "default",
 }) => {
+	const isCompact = size === "sm";
 	const [input, setInput] = useState("");
 	const [editingIndex, setEditingIndex] = useState<number | null>(null);
 	const editInputRef = useRef<HTMLInputElement>(null);
@@ -90,10 +95,11 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 	return (
 		<div
 			className={cn(
-				"flex flex-wrap w-full items-center gap-2 p-3 rounded-lg border transition-colors",
+				"flex flex-wrap w-full items-center border transition-colors",
 				"bg-white dark:bg-gray-900/50",
 				"border-gray-200 dark:border-white/10",
 				!disabled && "focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20",
+				isCompact ? "gap-1.5 p-2 rounded-md" : "gap-2 p-3 rounded-lg",
 				className
 			)}
 		>
@@ -108,10 +114,11 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 							onKeyDown={handleAddTag}
 							onBlur={handleBlur}
 							className={cn(
-								"px-3 py-1.5 text-sm rounded-md border outline-none transition-colors",
+								"rounded-md border outline-none transition-colors",
 								"bg-gray-50 dark:bg-gray-800",
 								"border-gray-300 dark:border-gray-600",
-								"focus:border-primary focus:ring-1 focus:ring-primary/20"
+								"focus:border-primary focus:ring-1 focus:ring-primary/20",
+								isCompact ? "px-2 py-0.5 text-xs" : "px-3 py-1.5 text-sm"
 							)}
 							placeholder="Edit tag..."
 							style={{ width: `${Math.max(input.length + 1, 8)}ch` }}
@@ -122,9 +129,10 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 						<div
 							onClick={() => !disabled && handleEditTag(index)}
 							className={cn(
-								"flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+								"flex items-center font-medium rounded-md transition-all",
 								"bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground",
 								"border border-primary/20 dark:border-primary/30",
+								isCompact ? "gap-1 px-2 py-0.5 text-xs" : "gap-1.5 px-3 py-1.5 text-sm",
 								!disabled
 									? "cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 hover:border-primary/30"
 									: "cursor-default"
@@ -138,8 +146,9 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 										handleRemoveTag(tag);
 									}}
 									className={cn(
-										"ml-0.5 -mr-1 text-primary/70 hover:text-primary dark:text-primary-foreground/70 dark:hover:text-primary-foreground",
-										"focus:outline-none transition-colors text-lg leading-none hover:scale-110"
+										"text-primary/70 hover:text-primary dark:text-primary-foreground/70 dark:hover:text-primary-foreground",
+										"focus:outline-none transition-colors leading-none hover:scale-110",
+										isCompact ? "ml-0 -mr-0.5 text-sm" : "ml-0.5 -mr-1 text-lg"
 									)}
 									aria-label="Remove tag"
 								>
@@ -157,9 +166,10 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={handleAddTag}
 					className={cn(
-						"flex-grow min-w-[120px] px-2 py-1 text-sm border-none outline-none",
+						"flex-grow border-none outline-none",
 						"bg-transparent",
 						"placeholder:text-gray-500 dark:placeholder:text-gray-400",
+						isCompact ? "min-w-[80px] px-1 py-0.5 text-xs" : "min-w-[120px] px-2 py-1 text-sm",
 						editingIndex !== null ? "opacity-0" : "opacity-100"
 					)}
 					placeholder={placeholder}

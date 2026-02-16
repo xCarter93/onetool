@@ -14,6 +14,7 @@ import {
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
+import { computeFieldChanges } from "./lib/changeTracking";
 
 /**
  * Quote operations
@@ -575,6 +576,13 @@ export const update = mutation({
 		const currentQuote = await getQuoteOrThrow(ctx, id);
 		const oldStatus = currentQuote.status;
 
+		// Compute field-level changes before applying the update
+		const changes = computeFieldChanges(
+			"quote",
+			currentQuote as unknown as Record<string, unknown>,
+			filteredUpdates as Record<string, unknown>
+		);
+
 		// Handle status-specific updates
 		if (
 			filteredUpdates.status &&
@@ -621,19 +629,22 @@ export const update = mutation({
 				await ActivityHelpers.quoteSent(
 					ctx,
 					updatedQuote as QuoteDocument,
-					clientName
+					clientName,
+					changes
 				);
 			} else if (filteredUpdates.status === "approved") {
 				await ActivityHelpers.quoteApproved(
 					ctx,
 					updatedQuote as QuoteDocument,
-					clientName
+					clientName,
+					changes
 				);
 			} else if (filteredUpdates.status === "declined") {
 				await ActivityHelpers.quoteDeclined(
 					ctx,
 					updatedQuote as QuoteDocument,
-					clientName
+					clientName,
+					changes
 				);
 			}
 

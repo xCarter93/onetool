@@ -11,6 +11,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { computeFieldChanges } from "./lib/changeTracking";
 
 /**
  * Client Property operations
@@ -366,12 +367,19 @@ export const update = mutation({
 			await handlePrimaryProperty(ctx, clientId, id);
 		}
 
+		// Compute field-level changes before applying the update
+		const changes = computeFieldChanges(
+			"clientProperty",
+			currentProperty as unknown as Record<string, unknown>,
+			filteredUpdates as Record<string, unknown>
+		);
+
 		await ctx.db.patch(id, filteredUpdates);
 
 		// Log activity on the client
 		const client = await ctx.db.get(clientId);
 		if (client) {
-			await ActivityHelpers.clientUpdated(ctx, client);
+			await ActivityHelpers.clientUpdated(ctx, client, changes);
 		}
 
 		return id;
@@ -596,10 +604,8 @@ export const getStats = query({
 					retail: 0,
 					office: 0,
 					"mixed-use": 0,
+					unspecified: 0,
 				},
-				primaryProperties: 0,
-				withPhotos: 0,
-				citiesServed: 0,
 			};
 		}
 

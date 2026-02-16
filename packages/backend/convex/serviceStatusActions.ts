@@ -13,11 +13,15 @@ export const checkServiceStatus = internalAction({
 					fetch("https://status.boldsign.com/api/v2/summary.json"),
 				]);
 
-			const [convexData, clerkData, boldsignData] = await Promise.all([
+			const [convexData, clerkData, boldsignData] = (await Promise.all([
 				convexResponse.json(),
 				clerkResponse.json(),
 				boldsignResponse.json(),
-			]);
+			])) as [
+				{ components: Array<{ name: string; status: string; updated_at?: string }> },
+				{ components: Array<{ name: string; status: string; updated_at?: string }> },
+				{ components: Array<{ name: string; group?: boolean; status: string; updated_at?: string }> },
+			];
 
 			// Extract specific service statuses
 			const convexDatabase = convexData.components.find(
@@ -33,8 +37,7 @@ export const checkServiceStatus = internalAction({
 				(c: { name: string }) => c.name === "Billing"
 			);
 			const boldsignAPI = boldsignData.components.find(
-				(c: { name: string; group: boolean }) =>
-					c.name === "API" && c.group === true
+				(c) => c.name === "API" && c.group === true
 			);
 
 			// Update database with results (with error handling for missing data)

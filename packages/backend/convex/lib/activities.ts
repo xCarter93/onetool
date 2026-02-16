@@ -1,6 +1,10 @@
 import { MutationCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUserOrThrow, getCurrentUserOrgIdOptional } from "./auth";
+import {
+	FieldChange,
+	buildChangeDescription,
+} from "./changeTracking";
 
 type ActivityType = Doc<"activities">["activityType"];
 type EntityType = Doc<"activities">["entityType"];
@@ -64,13 +68,23 @@ export const ActivityHelpers = {
 		});
 	},
 
-	async clientUpdated(ctx: MutationCtx, client: Doc<"clients">) {
+	async clientUpdated(
+		ctx: MutationCtx,
+		client: Doc<"clients">,
+		changes?: FieldChange[]
+	) {
+		const description =
+			changes && changes.length > 0
+				? buildChangeDescription(client.companyName, changes)
+				: `Updated client: ${client.companyName}`;
+
 		return createActivity(ctx, {
 			activityType: "client_updated",
 			entityType: "client",
 			entityId: client._id,
 			entityName: client.companyName,
-			description: `Updated client: ${client.companyName}`,
+			description,
+			metadata: changes && changes.length > 0 ? { changes } : undefined,
 		});
 	},
 
@@ -84,23 +98,38 @@ export const ActivityHelpers = {
 		});
 	},
 
-	async projectUpdated(ctx: MutationCtx, project: Doc<"projects">) {
+	async projectUpdated(
+		ctx: MutationCtx,
+		project: Doc<"projects">,
+		changes?: FieldChange[]
+	) {
+		const description =
+			changes && changes.length > 0
+				? buildChangeDescription(project.title, changes)
+				: `Updated project: ${project.title}`;
+
 		return createActivity(ctx, {
 			activityType: "project_updated",
 			entityType: "project",
 			entityId: project._id,
 			entityName: project.title,
-			description: `Updated project: ${project.title}`,
+			description,
+			metadata: changes && changes.length > 0 ? { changes } : undefined,
 		});
 	},
 
-	async projectCompleted(ctx: MutationCtx, project: Doc<"projects">) {
+	async projectCompleted(
+		ctx: MutationCtx,
+		project: Doc<"projects">,
+		changes?: FieldChange[]
+	) {
 		return createActivity(ctx, {
 			activityType: "project_completed",
 			entityType: "project",
 			entityId: project._id,
 			entityName: project.title,
 			description: `Completed project: ${project.title}`,
+			metadata: changes && changes.length > 0 ? { changes } : undefined,
 		});
 	},
 
@@ -119,21 +148,31 @@ export const ActivityHelpers = {
 		});
 	},
 
-	async quoteSent(ctx: MutationCtx, quote: Doc<"quotes">, clientName: string) {
+	async quoteSent(
+		ctx: MutationCtx,
+		quote: Doc<"quotes">,
+		clientName: string,
+		changes?: FieldChange[]
+	) {
 		return createActivity(ctx, {
 			activityType: "quote_sent",
 			entityType: "quote",
 			entityId: quote._id,
 			entityName: quote.title || `Quote ${quote.quoteNumber || quote._id}`,
 			description: `Sent quote to ${clientName}`,
-			metadata: { quoteNumber: quote.quoteNumber, total: quote.total },
+			metadata: {
+				quoteNumber: quote.quoteNumber,
+				total: quote.total,
+				...(changes && changes.length > 0 ? { changes } : {}),
+			},
 		});
 	},
 
 	async quoteApproved(
 		ctx: MutationCtx,
 		quote: Doc<"quotes">,
-		clientName: string
+		clientName: string,
+		changes?: FieldChange[]
 	) {
 		return createActivity(ctx, {
 			activityType: "quote_approved",
@@ -141,14 +180,19 @@ export const ActivityHelpers = {
 			entityId: quote._id,
 			entityName: quote.title || `Quote ${quote.quoteNumber || quote._id}`,
 			description: `Quote approved by ${clientName}`,
-			metadata: { quoteNumber: quote.quoteNumber, total: quote.total },
+			metadata: {
+				quoteNumber: quote.quoteNumber,
+				total: quote.total,
+				...(changes && changes.length > 0 ? { changes } : {}),
+			},
 		});
 	},
 
 	async quoteDeclined(
 		ctx: MutationCtx,
 		quote: Doc<"quotes">,
-		clientName: string
+		clientName: string,
+		changes?: FieldChange[]
 	) {
 		return createActivity(ctx, {
 			activityType: "quote_declined",
@@ -156,7 +200,11 @@ export const ActivityHelpers = {
 			entityId: quote._id,
 			entityName: quote.title || `Quote ${quote.quoteNumber || quote._id}`,
 			description: `Quote declined by ${clientName}`,
-			metadata: { quoteNumber: quote.quoteNumber, total: quote.total },
+			metadata: {
+				quoteNumber: quote.quoteNumber,
+				total: quote.total,
+				...(changes && changes.length > 0 ? { changes } : {}),
+			},
 		});
 	},
 
@@ -193,7 +241,8 @@ export const ActivityHelpers = {
 	async invoiceSent(
 		ctx: MutationCtx,
 		invoice: Doc<"invoices">,
-		clientName: string
+		clientName: string,
+		changes?: FieldChange[]
 	) {
 		return createActivity(ctx, {
 			activityType: "invoice_sent",
@@ -201,14 +250,19 @@ export const ActivityHelpers = {
 			entityId: invoice._id,
 			entityName: `Invoice ${invoice.invoiceNumber}`,
 			description: `Sent invoice to ${clientName}`,
-			metadata: { invoiceNumber: invoice.invoiceNumber, total: invoice.total },
+			metadata: {
+				invoiceNumber: invoice.invoiceNumber,
+				total: invoice.total,
+				...(changes && changes.length > 0 ? { changes } : {}),
+			},
 		});
 	},
 
 	async invoicePaid(
 		ctx: MutationCtx,
 		invoice: Doc<"invoices">,
-		clientName: string
+		clientName: string,
+		changes?: FieldChange[]
 	) {
 		return createActivity(ctx, {
 			activityType: "invoice_paid",
@@ -216,7 +270,11 @@ export const ActivityHelpers = {
 			entityId: invoice._id,
 			entityName: `Invoice ${invoice.invoiceNumber}`,
 			description: `Payment received from ${clientName}`,
-			metadata: { invoiceNumber: invoice.invoiceNumber, total: invoice.total },
+			metadata: {
+				invoiceNumber: invoice.invoiceNumber,
+				total: invoice.total,
+				...(changes && changes.length > 0 ? { changes } : {}),
+			},
 		});
 	},
 

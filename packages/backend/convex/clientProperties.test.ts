@@ -27,7 +27,7 @@ describe("ClientProperties", () => {
 			const { clientId } = await t.run(async (ctx) => {
 				const clients = await ctx.db
 					.query("clients")
-					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.filter((q) => q.eq(q.field("orgId"), orgId))
 					.first();
 				return { clientId: clients!._id };
 			});
@@ -71,7 +71,7 @@ describe("ClientProperties", () => {
 			const { clientId } = await t.run(async (ctx) => {
 				const clients = await ctx.db
 					.query("clients")
-					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.filter((q) => q.eq(q.field("orgId"), orgId))
 					.first();
 				return { clientId: clients!._id };
 			});
@@ -113,7 +113,7 @@ describe("ClientProperties", () => {
 			const { clientId } = await t.run(async (ctx) => {
 				const clients = await ctx.db
 					.query("clients")
-					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.filter((q) => q.eq(q.field("orgId"), orgId))
 					.first();
 				return { clientId: clients!._id };
 			});
