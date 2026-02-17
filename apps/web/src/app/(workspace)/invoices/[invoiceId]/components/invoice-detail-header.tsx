@@ -2,6 +2,7 @@
 
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
+import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import {
 	Mail,
 	FileText,
@@ -11,6 +12,8 @@ import {
 	RotateCcw,
 } from "lucide-react";
 import { StyledButton } from "@/components/ui/styled/styled-button";
+import { AnimatePresence, motion } from "motion/react";
+import { cn } from "@/lib/utils";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -119,83 +122,103 @@ export function InvoiceDetailHeader({
 	);
 
 	return (
-		<div className="border-b border-border pb-4 mb-0">
-			<div className="flex items-center justify-between gap-4">
-				<div className="shrink-0">
-					<h1 className="text-2xl font-bold text-foreground truncate">
-						{invoice.invoiceNumber ||
-							`Invoice #${invoice._id.slice(-6)}`}
-					</h1>
-					<p className="text-sm text-muted-foreground">Invoice</p>
-				</div>
-				<div className="flex-1 min-w-0 max-w-3xl">
-					<StatusProgressBar
-						status={computedStatus}
-						steps={[
-							{ id: "draft", name: "Draft", order: 1 },
-							{ id: "sent", name: "Sent", order: 2 },
-							{ id: "paid", name: "Paid", order: 3 },
-						]}
-						events={[
-							...(invoice._creationTime
-								? [
-										{
-											type: "draft",
-											timestamp: invoice._creationTime,
-										},
-									]
-								: []),
-							...(invoice.issuedDate
-								? [
-										{
-											type: "sent",
-											timestamp: invoice.issuedDate,
-										},
-									]
-								: []),
-							...(invoice.paidAt
-								? [
-										{
-											type: "paid",
-											timestamp: invoice.paidAt,
-										},
-									]
-								: []),
-						]}
-						failureStatuses={["overdue", "cancelled"]}
-						successStatuses={["paid"]}
-					/>
-				</div>
-				<div className="flex items-center gap-2 shrink-0">
-					{renderStatusActions()}
-					<StyledButton
-						intent="outline"
-						size="sm"
-						onClick={onSendToClient}
-						icon={<Mail className="h-4 w-4" />}
-						label="Send to Client"
-						showArrow={false}
-					/>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						onClick={onGeneratePdf}
-						icon={<FileText className="h-4 w-4" />}
-						label="Generate PDF"
-						showArrow={false}
-					/>
-					{currentStatus !== "cancelled" && (
+		<StickyDetailHeader>
+			{(isSticky) => (
+				<div className="flex items-center justify-between gap-4">
+					<div className="shrink-0">
+						<h1
+							className={cn(
+								"font-bold text-foreground truncate transition-all duration-300",
+								isSticky ? "text-lg" : "text-2xl"
+							)}
+						>
+							{invoice.invoiceNumber ||
+								`Invoice #${invoice._id.slice(-6)}`}
+						</h1>
+						{!isSticky && (
+							<p className="text-sm text-muted-foreground">Invoice</p>
+						)}
+					</div>
+					<AnimatePresence initial={false}>
+						{!isSticky && (
+							<motion.div
+								className="flex-1 min-w-0 max-w-3xl"
+								initial={{ opacity: 0, height: 0, scaleY: 0 }}
+								animate={{ opacity: 1, height: "auto", scaleY: 1 }}
+								exit={{ opacity: 0, height: 0, scaleY: 0 }}
+								transition={{ duration: 0.25, ease: "easeOut" }}
+								style={{ originY: 0 }}
+							>
+								<StatusProgressBar
+									status={computedStatus}
+									steps={[
+										{ id: "draft", name: "Draft", order: 1 },
+										{ id: "sent", name: "Sent", order: 2 },
+										{ id: "paid", name: "Paid", order: 3 },
+									]}
+									events={[
+										...(invoice._creationTime
+											? [
+													{
+														type: "draft",
+														timestamp: invoice._creationTime,
+													},
+												]
+											: []),
+										...(invoice.issuedDate
+											? [
+													{
+														type: "sent",
+														timestamp: invoice.issuedDate,
+													},
+												]
+											: []),
+										...(invoice.paidAt
+											? [
+													{
+														type: "paid",
+														timestamp: invoice.paidAt,
+													},
+												]
+											: []),
+									]}
+									failureStatuses={["overdue", "cancelled"]}
+									successStatuses={["paid"]}
+								/>
+							</motion.div>
+						)}
+					</AnimatePresence>
+					<div className="flex items-center gap-2 shrink-0">
+						{renderStatusActions()}
 						<StyledButton
-							intent="destructive"
+							intent="outline"
 							size="sm"
-							onClick={onCancel}
-							icon={<XCircle className="h-4 w-4" />}
-							label="Cancel"
+							onClick={onSendToClient}
+							icon={<Mail className="h-4 w-4" />}
+							label="Send to Client"
 							showArrow={false}
 						/>
-					)}
+						<StyledButton
+							intent="outline"
+							size="sm"
+							onClick={onGeneratePdf}
+							icon={<FileText className="h-4 w-4" />}
+							label="Generate PDF"
+							showArrow={false}
+						/>
+						{currentStatus !== "cancelled" && (
+							<StyledButton
+								intent="destructive"
+								size="sm"
+								onClick={onCancel}
+								icon={<XCircle className="h-4 w-4" />}
+								label="Cancel"
+								showArrow={false}
+							/>
+						)}
+					</div>
 				</div>
-			</div>
-		</div>
+			)}
+		</StickyDetailHeader>
 	);
 }
