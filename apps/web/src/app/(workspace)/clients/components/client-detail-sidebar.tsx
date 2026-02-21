@@ -119,11 +119,13 @@ export function ClientDetailSidebar({
 	const nameInputRef = useRef<HTMLInputElement>(null);
 
 	// Keep localTags in sync with client data
-	const clientTagsStr = JSON.stringify(client.tags || []);
-	const localTagsStr = JSON.stringify(localTags);
-	if (localTagsStr !== clientTagsStr && editingField === null) {
-		setLocalTags(client.tags || []);
-	}
+	useEffect(() => {
+		const clientTagsStr = JSON.stringify(client.tags || []);
+		const localTagsStr = JSON.stringify(localTags);
+		if (localTagsStr !== clientTagsStr && editingField === null) {
+			setLocalTags(client.tags || []);
+		}
+	}, [client.tags, localTags, editingField]);
 
 	// Auto-focus inputs when entering edit mode
 	useEffect(() => {
