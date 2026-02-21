@@ -47,11 +47,19 @@ type Organization = {
 	email?: string;
 };
 
+type Payment = {
+	paymentAmount: number;
+	dueDate: number;
+	description?: string;
+	sortOrder: number;
+};
+
 export interface InvoicePDFProps {
 	invoice: Invoice;
 	client?: Client | null;
 	items: InvoiceLineItem[];
 	organization?: Organization | null;
+	payments?: Payment[];
 }
 
 const styles = StyleSheet.create({
@@ -296,6 +304,37 @@ const styles = StyleSheet.create({
 		color: "#666666",
 		textAlign: "center",
 	},
+	// Payment schedule table
+	paymentScheduleTable: {
+		marginBottom: 16,
+	},
+	paymentScheduleHeader: {
+		flexDirection: "row" as const,
+		borderBottomWidth: 1,
+		borderBottomColor: "#000000",
+		paddingBottom: 4,
+		marginBottom: 4,
+	},
+	paymentScheduleRow: {
+		flexDirection: "row" as const,
+		borderBottomWidth: 0.5,
+		borderBottomColor: "#CCCCCC",
+		paddingVertical: 6,
+	},
+	colPayDescription: {
+		flex: 3,
+		fontSize: 9,
+	},
+	colPayAmount: {
+		flex: 1,
+		fontSize: 9,
+		textAlign: "right" as const,
+	},
+	colPayDueDate: {
+		flex: 1,
+		fontSize: 9,
+		textAlign: "right" as const,
+	},
 });
 
 const formatCurrency = (amount: number) =>
@@ -315,6 +354,7 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 	client,
 	items,
 	organization,
+	payments,
 }) => {
 	const isPaid = invoice.status === "paid";
 	const isOverdue =
@@ -458,6 +498,43 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 						</View>
 					</View>
 				</View>
+
+				{/* Payment Schedule */}
+				{payments && payments.length > 1 && (
+					<>
+						<View style={{ marginTop: 16 }}>
+							<View style={styles.sectionBar}>
+								<Text style={styles.sectionBarText}>PAYMENT SCHEDULE:</Text>
+							</View>
+							<View style={styles.paymentScheduleTable}>
+								<View style={styles.paymentScheduleHeader}>
+									<Text style={[styles.colPayDescription, styles.tableHeaderText]}>
+										Description
+									</Text>
+									<Text style={[styles.colPayAmount, styles.tableHeaderText]}>
+										Amount
+									</Text>
+									<Text style={[styles.colPayDueDate, styles.tableHeaderText]}>
+										Due Date
+									</Text>
+								</View>
+								{payments.map((payment, index) => (
+									<View key={index} style={styles.paymentScheduleRow}>
+										<Text style={styles.colPayDescription}>
+											{payment.description || `Payment ${index + 1}`}
+										</Text>
+										<Text style={styles.colPayAmount}>
+											{formatCurrency(payment.paymentAmount)}
+										</Text>
+										<Text style={styles.colPayDueDate}>
+											{formatDate(payment.dueDate)}
+										</Text>
+									</View>
+								))}
+							</View>
+						</View>
+					</>
+				)}
 
 				{/* Payment Status Notices */}
 				<View style={styles.noticeSection}>

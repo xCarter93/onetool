@@ -178,8 +178,11 @@ describe("Users", () => {
 			const membership = await t.run(async (ctx) => {
 				return await ctx.db
 					.query("organizationMemberships")
-					.withIndex("by_org_user", (q) =>
-						q.eq("orgId", orgId).eq("userId", newUserId)
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("orgId"), orgId),
+							q.eq(q.field("userId"), newUserId)
+						)
 					)
 					.first();
 			});
@@ -224,8 +227,11 @@ describe("Users", () => {
 			const membership = await t.run(async (ctx) => {
 				return await ctx.db
 					.query("organizationMemberships")
-					.withIndex("by_org_user", (q) =>
-						q.eq("orgId", orgId).eq("userId", existingUserId)
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("orgId"), orgId),
+							q.eq(q.field("userId"), existingUserId)
+						)
 					)
 					.first();
 			});
@@ -244,13 +250,13 @@ describe("Users", () => {
 						last_name: "Doe",
 						email_addresses: [{ email_address: "john.doe@example.com" }],
 						image_url: "https://example.com/johndoe.jpg",
-					},
+					} as any,
 				});
 
 				const user = await t.run(async (ctx) => {
 					return await ctx.db
 						.query("users")
-						.withIndex("by_external_id", (q) => q.eq("externalId", "clerk_user_new"))
+						.filter((q) => q.eq(q.field("externalId"), "clerk_user_new"))
 						.first();
 				});
 
@@ -281,7 +287,7 @@ describe("Users", () => {
 						last_name: "Name",
 						email_addresses: [{ email_address: "new@example.com" }],
 						image_url: "https://example.com/new.jpg",
-					},
+					} as any,
 				});
 
 				const user = await t.run(async (ctx) => {
@@ -304,14 +310,14 @@ describe("Users", () => {
 						last_name: null,
 						email_addresses: [{ email_address: "noname@example.com" }],
 						image_url: "",
-					},
+					} as any,
 				});
 
 				const user = await t.run(async (ctx) => {
 					return await ctx.db
 						.query("users")
-						.withIndex("by_external_id", (q) =>
-							q.eq("externalId", "clerk_user_noname")
+						.filter((q) =>
+							q.eq(q.field("externalId"), "clerk_user_noname")
 						)
 						.first();
 				});
@@ -427,8 +433,11 @@ describe("Users", () => {
 				const membership = await t.run(async (ctx) => {
 					return await ctx.db
 						.query("organizationMemberships")
-						.withIndex("by_org_user", (q) =>
-							q.eq("orgId", orgId).eq("userId", userId)
+						.filter((q) =>
+							q.and(
+								q.eq(q.field("orgId"), orgId),
+								q.eq(q.field("userId"), userId)
+							)
 						)
 						.first();
 				});

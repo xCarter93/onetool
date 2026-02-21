@@ -22,20 +22,16 @@ import {
 } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { CalendarWidget } from "@/components/ui/calendar-widget";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { MagnifyingGlassIcon, UserIcon } from "@heroicons/react/16/solid";
-import { MapPinIcon } from "@heroicons/react/24/outline";
-import ComboBox from "@/components/ui/combo-box";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { cn } from "@/lib/utils";
 import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
 import { User } from "lucide-react";
+import { ProjectCreationSidebar } from "./project-creation-sidebar";
 
 type ClientId = Id<"clients">;
 type ClientContactId = Id<"clientContacts">;
@@ -43,23 +39,14 @@ type ClientPropertyId = Id<"clientProperties">;
 type UserId = Id<"users">;
 
 export interface ProjectFormData {
-	// Client Selection
 	clientId: string;
-
-	// Project Information
 	title: string;
 	description: string;
 	projectType: "one-off" | "recurring";
-
-	// Dates
 	startDate: Date | undefined;
 	endDate: Date | undefined;
-
-	// Time (for recurring projects)
 	startTime: string;
 	endTime: string;
-
-	// Assignment (multiple users)
 	assignedUserIds: string[];
 }
 
@@ -81,7 +68,6 @@ const initialFormData: ProjectFormData = {
 	assignedUserIds: [],
 };
 
-// Zod validation schema
 const formSchema = z
 	.object({
 		clientId: z.string().min(1, "Client selection is required"),
@@ -117,22 +103,6 @@ const formatDisplayDate = (date?: Date | number) => {
 	});
 };
 
-const getStatusBadgeClass = (status?: string) => {
-	switch (status) {
-		case "lead":
-		case "prospect":
-			return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
-		case "active":
-			return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
-		case "inactive":
-			return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
-		case "archived":
-			return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400";
-		default:
-			return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
-	}
-};
-
 const getPropertyDisplayName = (property: {
 	propertyName?: string;
 	streetAddress: string;
@@ -162,7 +132,6 @@ function DateFieldsSection({
 
 	return (
 		<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-			{/* Start Date */}
 			<form.Field
 				name="startDate"
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -200,8 +169,6 @@ function DateFieldsSection({
 					</Field>
 				)}
 			/>
-
-			{/* End Date */}
 			<form.Field
 				name="endDate"
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -302,14 +269,12 @@ export function ProjectOnboardingForm({
 
 	const createProject = useMutation(api.projects.create);
 
-	// Set up form with preselected client
 	const form = useForm({
 		defaultValues: {
 			...initialFormData,
 			clientId: preselectedClientId || "",
 		},
 		onSubmit: async ({ value }) => {
-			// Validate with Zod
 			const result = formSchema.safeParse(value);
 			if (!result.success) {
 				const errors = result.error.flatten();
@@ -330,7 +295,6 @@ export function ProjectOnboardingForm({
 					projectType: value.projectType,
 					startDate: value.startDate ? value.startDate.getTime() : undefined,
 					endDate: value.endDate ? value.endDate.getTime() : undefined,
-					// Handle multiple assigned users
 					assignedUserIds:
 						value.assignedUserIds.length > 0
 							? (value.assignedUserIds as UserId[])
@@ -354,7 +318,6 @@ export function ProjectOnboardingForm({
 		},
 	});
 
-	// Update form when preselected client changes
 	useEffect(() => {
 		if (preselectedClientId) {
 			setSelectedClientId(preselectedClientId);
@@ -362,13 +325,11 @@ export function ProjectOnboardingForm({
 		}
 	}, [preselectedClientId, form]);
 
-	// Reset property and contact when client changes
 	useEffect(() => {
 		setSelectedPropertyId(null);
 		setSelectedContactId(null);
 	}, [selectedClientId]);
 
-	// Auto-select primary property
 	useEffect(() => {
 		if (!clientProperties) return;
 		setSelectedPropertyId((current) => {
@@ -386,7 +347,6 @@ export function ProjectOnboardingForm({
 		});
 	}, [clientProperties]);
 
-	// Auto-select primary contact
 	useEffect(() => {
 		if (!clientContacts) return;
 		setSelectedContactId((current) => {
@@ -513,13 +473,11 @@ export function ProjectOnboardingForm({
 		const currentEndDate = form.getFieldValue("endDate");
 
 		if (!currentStartDate) {
-			// Set start date
 			form.setFieldValue("startDate", clickedDate);
 			return;
 		}
 
 		if (!currentEndDate) {
-			// Validate that end date is not before start date
 			const startNormalized = new Date(
 				typeof currentStartDate === "number"
 					? currentStartDate
@@ -528,7 +486,6 @@ export function ProjectOnboardingForm({
 			startNormalized.setHours(0, 0, 0, 0);
 
 			if (clickedDate < startNormalized) {
-				// If clicked date is before start, reset start date to clicked date
 				form.setFieldValue("startDate", clickedDate);
 				form.setFieldValue("endDate", undefined);
 				toast.error(
@@ -538,534 +495,293 @@ export function ProjectOnboardingForm({
 				return;
 			}
 
-			// Set end date
 			form.setFieldValue("endDate", clickedDate);
 			return;
 		}
 
-		// Reset and start over
 		form.setFieldValue("startDate", clickedDate);
 		form.setFieldValue("endDate", undefined);
 	};
 
 	return (
 		<>
-			<div className="w-full px-6">
-				<div className="w-full pt-8 pb-24">
-					{/* Header */}
-					<div className="mb-8">
-						<h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-							Create New Project
-						</h1>
-						<p className="mt-3 text-base text-gray-600 dark:text-gray-400 max-w-2xl">
-							Set up your project with all the essential details for successful
-							execution.
-						</p>
-					</div>
+			<div className="relative min-h-screen p-6 pb-0">
+				{/* Header */}
+				<div className="border-b border-border pb-4 mb-0">
+					<h1 className="text-2xl font-bold text-foreground">
+						Create New Project
+					</h1>
+					<p className="mt-1 text-sm text-muted-foreground">
+						Set up your project with all the essential details for successful execution.
+					</p>
+				</div>
 
-					<form
-						id="project-onboarding-form"
-						onSubmit={(e) => {
-							e.preventDefault();
-							form.handleSubmit();
-						}}
-					>
-						{/* Client, Property, Contact Cards */}
-						<div className="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-8">
-							{/* Client Information Card */}
-							<Card className="shadow-sm border-gray-200/60 dark:border-white/10">
-								<CardHeader className="pb-4">
-									<CardTitle className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
-										<MagnifyingGlassIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-										Client Information
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-4">
-									<div className="grid gap-2">
-										<label className="text-sm text-gray-600 dark:text-gray-400 text-left">
-											Selected Client *
-										</label>
-										<form.Field
-											name="clientId"
-											children={(field) => (
-												<ComboBox
-													options={clientOptions}
-													placeholder={
-														selectedClient?.companyName ?? "Select a client..."
+				{/* Two-column layout: form on left, sidebar on right */}
+				<div className="flex gap-0">
+					{/* Left: Form content */}
+					<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
+						<form
+							id="project-onboarding-form"
+							onSubmit={(e) => {
+								e.preventDefault();
+								form.handleSubmit();
+							}}
+							className="space-y-8"
+						>
+							{/* Project Title */}
+							<FieldGroup>
+								<form.Field
+									name="title"
+									children={(field) => {
+										const isInvalid =
+											field.state.meta.isTouched &&
+											field.state.meta.errors.length > 0;
+										return (
+											<Field data-invalid={isInvalid}>
+												<FieldLabel htmlFor={field.name}>
+													Project Title *
+												</FieldLabel>
+												<Input
+													id={field.name}
+													name={field.name}
+													value={field.state.value}
+													onBlur={field.handleBlur}
+													onChange={(e) =>
+														field.handleChange(e.target.value)
 													}
-													onSelect={(value) => {
-														handleClientSelect(value);
-														field.handleChange(
-															value
-																? clients.find((c) => c.companyName === value)
-																		?._id || ""
-																: ""
-														);
-													}}
+													aria-invalid={isInvalid}
+													placeholder="e.g., Workshop & Festival"
 													disabled={isLoading}
 												/>
-											)}
-										/>
-									</div>
+												{isInvalid && (
+													<FieldError errors={field.state.meta.errors} />
+												)}
+											</Field>
+										);
+									}}
+								/>
+							</FieldGroup>
 
-									{clientDetails ? (
-										<div className="grid grid-cols-2 gap-4 text-sm">
-											<div>
-												<span className="text-gray-500 dark:text-gray-400">
-													Status:
-												</span>
-												<div className="flex items-center gap-2 mt-1">
-													<Badge
-														className={getStatusBadgeClass(
-															clientDetails.status
-														)}
-														variant="outline"
-													>
-														{clientDetails.status}
-													</Badge>
-												</div>
-											</div>
-											{clientDetails.companyDescription && (
-												<div className="col-span-2">
-													<span className="text-gray-500 dark:text-gray-400">
-														Description:
-													</span>
-													<div className="mt-1 text-gray-900 dark:text-white">
-														{clientDetails.companyDescription}
-													</div>
-												</div>
-											)}
-										</div>
-									) : selectedClientId ? (
-										<div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-											Loading client details...
-										</div>
-									) : (
-										<div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-											Select a client to view details
-										</div>
-									)}
-								</CardContent>
-							</Card>
+							{/* Description */}
+							<FieldGroup>
+								<form.Field
+									name="description"
+									children={(field) => {
+										const isInvalid =
+											field.state.meta.isTouched &&
+											field.state.meta.errors.length > 0;
+										return (
+											<Field data-invalid={isInvalid}>
+												<FieldLabel htmlFor={field.name}>
+													Description
+												</FieldLabel>
+												<Textarea
+													id={field.name}
+													name={field.name}
+													value={field.state.value}
+													onBlur={field.handleBlur}
+													onChange={(e) =>
+														field.handleChange(e.target.value)
+													}
+													aria-invalid={isInvalid}
+													rows={4}
+													placeholder="Describe the project details and context"
+													disabled={isLoading}
+												/>
+												{isInvalid && (
+													<FieldError errors={field.state.meta.errors} />
+												)}
+											</Field>
+										);
+									}}
+								/>
+							</FieldGroup>
 
-							{/* Property Address Card */}
-							<Card className="shadow-sm border-gray-200/60 dark:border-white/10">
-								<CardHeader className="pb-4">
-									<CardTitle className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
-										<MapPinIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
-										Property Address
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-4">
-									<div className="grid gap-2">
-										<label className="text-sm text-gray-600 dark:text-gray-400 text-left">
-											Selected Property
-										</label>
-										<ComboBox
-											options={propertyOptions}
-											placeholder={
-												selectedProperty
-													? getPropertyDisplayName(selectedProperty)
-													: selectedClientId
-														? propertyOptions.length > 0
-															? "Select a property..."
-															: "No properties for this client"
-														: "Select a client first..."
-											}
-											onSelect={handlePropertySelect}
-											disabled={
-												!selectedClientId || propertyOptions.length === 0
-											}
-										/>
-									</div>
+							{/* Assigned Users */}
+							<FieldGroup>
+								<form.Field
+									name="assignedUserIds"
+									children={(field) => {
+										const currentValues = (field.state.value ||
+											[]) as string[];
 
-									{selectedProperty ? (
-										<div className="grid grid-cols-2 gap-4 text-sm">
-											{selectedProperty.propertyName && (
-												<div className="col-span-2">
-													<span className="text-gray-500 dark:text-gray-400">
-														Property Name:
-													</span>
-													<div className="mt-1 text-gray-900 dark:text-white font-medium">
-														{selectedProperty.propertyName}
-													</div>
-												</div>
-											)}
-											<div>
-												<span className="text-gray-500 dark:text-gray-400">
-													Type:
-												</span>
-												<div className="mt-1 text-gray-900 dark:text-white capitalize">
-													{selectedProperty.propertyType || "Not specified"}
-												</div>
-											</div>
-											<div className="col-span-2">
-												<span className="text-gray-500 dark:text-gray-400">
-													Address:
-												</span>
-												<div className="mt-1 text-gray-900 dark:text-white">
-													<div className="font-medium">
-														{selectedProperty.streetAddress}
-													</div>
-													<div className="text-gray-600 dark:text-gray-400">
-														{selectedProperty.city}, {selectedProperty.state}{" "}
-														{selectedProperty.zipCode}
-														{selectedProperty.country
-															? `, ${selectedProperty.country}`
-															: ""}
-													</div>
-												</div>
-											</div>
-										</div>
-									) : selectedClientId ? (
-										<div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-											{propertyOptions.length === 0
-												? "No properties available for this client"
-												: "Select a property above to view details"}
-										</div>
-									) : (
-										<div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-											Select a client to view property information
-										</div>
-									)}
-								</CardContent>
-							</Card>
+										return (
+											<Field>
+												<FieldLabel
+													htmlFor={field.name}
+													className="flex items-center gap-2"
+												>
+													<User className="h-4 w-4 text-primary" />
+													Assign To
+												</FieldLabel>
+												<StyledMultiSelector
+													options={
+														users?.map((user) => ({
+															label: user.name || user.email,
+															value: user._id,
+														})) || []
+													}
+													value={currentValues}
+													onValueChange={(values) =>
+														field.handleChange(values as UserId[])
+													}
+													placeholder="Select team members"
+													maxCount={2}
+													disabled={isLoading}
+													className="w-full"
+												/>
+											</Field>
+										);
+									}}
+								/>
+							</FieldGroup>
 
-							{/* Contact Details Card */}
-							<Card className="shadow-sm border-gray-200/60 dark:border-white/10">
-								<CardHeader className="pb-4">
-									<CardTitle className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
-										<UserIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-										Contact Details
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-4">
-									<div className="grid gap-2">
-										<label className="text-sm text-gray-600 dark:text-gray-400 text-left">
-											Selected Contact
-										</label>
-										<ComboBox
-											options={contactOptions}
-											placeholder={
-												selectedContact
-													? getContactDisplayName(selectedContact)
-													: selectedClientId
-														? contactOptions.length > 0
-															? "Select a contact..."
-															: "No contacts for this client"
-														: "Select a client first..."
-											}
-											onSelect={handleContactSelect}
-											disabled={
-												!selectedClientId || contactOptions.length === 0
-											}
-										/>
-									</div>
-
-									{selectedContact ? (
-										<div className="grid grid-cols-2 gap-4 text-sm">
-											<div className="col-span-2">
-												<span className="text-gray-500 dark:text-gray-400">
-													Name:
-												</span>
-												<div className="mt-1 text-gray-900 dark:text-white font-medium">
-													{selectedContact.firstName} {selectedContact.lastName}
-												</div>
-											</div>
-											{selectedContact.jobTitle && (
-												<div>
-													<span className="text-gray-500 dark:text-gray-400">
-														Job Title:
-													</span>
-													<div className="mt-1 text-gray-900 dark:text-white">
-														{selectedContact.jobTitle}
-													</div>
-												</div>
-											)}
-											{selectedContact.email && (
-												<div>
-													<span className="text-gray-500 dark:text-gray-400">
-														Email:
-													</span>
-													<div className="mt-1">
-														<a
-															href={`mailto:${selectedContact.email}`}
-															className="text-blue-600 dark:text-blue-400 hover:underline"
-														>
-															{selectedContact.email}
-														</a>
-													</div>
-												</div>
-											)}
-											{selectedContact.phone && (
-												<div>
-													<span className="text-gray-500 dark:text-gray-400">
-														Phone:
-													</span>
-													<div className="mt-1">
-														<a
-															href={`tel:${selectedContact.phone}`}
-															className="text-blue-600 dark:text-blue-400 hover:underline"
-														>
-															{selectedContact.phone}
-														</a>
-													</div>
-												</div>
-											)}
-										</div>
-									) : selectedClientId ? (
-										<div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-											{contactOptions.length === 0
-												? "No contacts available for this client"
-												: "Select a contact above to view details"}
-										</div>
-									) : (
-										<div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-											Select a client to view contact information
-										</div>
-									)}
-								</CardContent>
-							</Card>
-						</div>
-
-						{/* Project Information Section */}
-						<div className="space-y-8">
-							<Card className="shadow-sm border-gray-200/60 dark:border-white/10">
-								<CardHeader className="pb-4">
-									<CardTitle className="text-xl font-semibold text-gray-900 dark:text-white">
-										Project Information
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-6">
-									<FieldGroup className="sm:col-span-4">
-										<form.Field
-											name="title"
-											children={(field) => {
-												const isInvalid =
-													field.state.meta.isTouched &&
-													field.state.meta.errors.length > 0;
-												return (
-													<Field data-invalid={isInvalid}>
-														<FieldLabel htmlFor={field.name}>
-															Project Title *
-														</FieldLabel>
-														<Input
-															id={field.name}
-															name={field.name}
-															value={field.state.value}
-															onBlur={field.handleBlur}
-															onChange={(e) =>
-																field.handleChange(e.target.value)
-															}
-															aria-invalid={isInvalid}
-															placeholder="e.g., Workshop & Festival"
-															disabled={isLoading}
-														/>
-														{isInvalid && (
-															<FieldError errors={field.state.meta.errors} />
-														)}
-													</Field>
-												);
-											}}
-										/>
-									</FieldGroup>
-
-									<FieldGroup className="col-span-full">
-										<form.Field
-											name="description"
-											children={(field) => {
-												const isInvalid =
-													field.state.meta.isTouched &&
-													field.state.meta.errors.length > 0;
-												return (
-													<Field data-invalid={isInvalid}>
-														<FieldLabel htmlFor={field.name}>
-															Description
-														</FieldLabel>
-														<Textarea
-															id={field.name}
-															name={field.name}
-															value={field.state.value}
-															onBlur={field.handleBlur}
-															onChange={(e) =>
-																field.handleChange(e.target.value)
-															}
-															aria-invalid={isInvalid}
-															rows={4}
-															placeholder="Describe the project details and context"
-															disabled={isLoading}
-														/>
-														{isInvalid && (
-															<FieldError errors={field.state.meta.errors} />
-														)}
-													</Field>
-												);
-											}}
-										/>
-									</FieldGroup>
-
-									{/* Assigned Users */}
-									<FieldGroup className="sm:col-span-4">
-										<form.Field
-											name="assignedUserIds"
-											children={(field) => {
-												// Get current value as strings for the multi-selector
-												const currentValues = (field.state.value ||
-													[]) as string[];
-
-												return (
-													<Field>
-														<FieldLabel
-															htmlFor={field.name}
-															className="flex items-center gap-2"
-														>
-															<User className="h-4 w-4 text-primary" />
-															Assign To
-														</FieldLabel>
-														<StyledMultiSelector
-															options={
-																users?.map((user) => ({
-																	label: user.name || user.email,
-																	value: user._id,
-																})) || []
-															}
-															value={currentValues}
-															onValueChange={(values) =>
-																field.handleChange(values as UserId[])
-															}
-															placeholder="Select team members"
-															maxCount={2}
-															disabled={isLoading}
-															className="w-full"
-														/>
-													</Field>
-												);
-											}}
-										/>
-									</FieldGroup>
-
-									<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-										<div>
-											<span className="block text-sm font-medium text-gray-900 dark:text-white">
-												Project Number
-											</span>
-											<p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-												Automatically assigned after creation
-											</p>
-										</div>
-									</div>
-								</CardContent>
-							</Card>
-
-							{/* Schedule & Project Details */}
-							<Card className="shadow-sm border-gray-200/60 dark:border-white/10">
-								<CardHeader className="pb-4">
-									<CardTitle className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
-										<CalendarIcon className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+							{/* Schedule Section */}
+							<div className="space-y-6 border-t border-border pt-6">
+								<div className="flex items-center gap-2 mb-2">
+									<CalendarIcon className="h-5 w-5 text-muted-foreground" />
+									<h3 className="text-sm font-medium text-foreground">
 										Schedule & Project Details
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-6">
-									<div>
-										<label className="block text-sm font-medium text-gray-900 dark:text-white mb-3">
-											Project Type
-										</label>
-										<ButtonGroup>
-											<button
-												type="button"
-												onClick={() => handleProjectTypeChange("one-off")}
-												className={cn(
-													"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-													projectType === "one-off"
-														? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-														: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-												)}
-											>
-												One-off Project
-											</button>
-											<button
-												type="button"
-												onClick={() => handleProjectTypeChange("recurring")}
-												className={cn(
-													"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-													projectType === "recurring"
-														? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-														: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-												)}
-											>
-												Recurring Project
-											</button>
-										</ButtonGroup>
-									</div>
+									</h3>
+								</div>
 
-									<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-										<div className="space-y-6">
-											<DateFieldsSection form={form} isLoading={isLoading} />
+								{/* Project Type */}
+								<div>
+									<label className="block text-sm font-medium text-foreground mb-3">
+										Project Type
+									</label>
+									<ButtonGroup>
+										<button
+											type="button"
+											onClick={() => handleProjectTypeChange("one-off")}
+											className={cn(
+												"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
+												projectType === "one-off"
+													? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
+													: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+											)}
+										>
+											One-off Project
+										</button>
+										<button
+											type="button"
+											onClick={() => handleProjectTypeChange("recurring")}
+											className={cn(
+												"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
+												projectType === "recurring"
+													? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
+													: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+											)}
+										>
+											Recurring Project
+										</button>
+									</ButtonGroup>
+								</div>
 
-											{/* Time inputs for recurring projects */}
-											<form.Field
-												name="projectType"
-												children={(typeField) =>
-													typeField.state.value === "recurring" && (
-														<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-															<form.Field
-																name="startTime"
-																children={(field) => (
-																	<Field>
-																		<FieldLabel htmlFor={field.name}>
-																			Start Time
-																		</FieldLabel>
-																		<Input
-																			id={field.name}
-																			type="time"
-																			value={field.state.value}
-																			onChange={(e) =>
-																				field.handleChange(e.target.value)
-																			}
-																			disabled={isLoading}
-																		/>
-																	</Field>
-																)}
-															/>
-															<form.Field
-																name="endTime"
-																children={(field) => (
-																	<Field>
-																		<FieldLabel htmlFor={field.name}>
-																			End Time
-																		</FieldLabel>
-																		<Input
-																			id={field.name}
-																			type="time"
-																			value={field.state.value}
-																			onChange={(e) =>
-																				field.handleChange(e.target.value)
-																			}
-																			disabled={isLoading}
-																		/>
-																	</Field>
-																)}
-															/>
-														</div>
-													)
-												}
-											/>
-										</div>
+								<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+									<div className="space-y-6">
+										<DateFieldsSection form={form} isLoading={isLoading} />
 
-										{/* Large Calendar Component */}
-										<CalendarWidget
-											form={form}
-											calendarDate={calendarDate}
-											handleCalendarNavigation={handleCalendarNavigation}
-											handleDateClick={handleDateClick}
-											formatDisplayDate={formatDisplayDate}
-											variant="default"
+										{/* Time inputs for recurring projects */}
+										<form.Field
+											name="projectType"
+											children={(typeField) =>
+												typeField.state.value === "recurring" && (
+													<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+														<form.Field
+															name="startTime"
+															children={(field) => (
+																<Field>
+																	<FieldLabel htmlFor={field.name}>
+																		Start Time
+																	</FieldLabel>
+																	<Input
+																		id={field.name}
+																		type="time"
+																		value={field.state.value}
+																		onChange={(e) =>
+																			field.handleChange(e.target.value)
+																		}
+																		disabled={isLoading}
+																	/>
+																</Field>
+															)}
+														/>
+														<form.Field
+															name="endTime"
+															children={(field) => (
+																<Field>
+																	<FieldLabel htmlFor={field.name}>
+																		End Time
+																	</FieldLabel>
+																	<Input
+																		id={field.name}
+																		type="time"
+																		value={field.state.value}
+																		onChange={(e) =>
+																			field.handleChange(e.target.value)
+																		}
+																		disabled={isLoading}
+																	/>
+																</Field>
+															)}
+														/>
+													</div>
+												)
+											}
 										/>
 									</div>
-								</CardContent>
-							</Card>
+
+									<CalendarWidget
+										form={form}
+										calendarDate={calendarDate}
+										handleCalendarNavigation={handleCalendarNavigation}
+										handleDateClick={handleDateClick}
+										formatDisplayDate={formatDisplayDate}
+										variant="default"
+									/>
+								</div>
+							</div>
+						</form>
+					</div>
+
+					{/* Right: Persistent sidebar (desktop) */}
+					<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/20">
+						<div className="sticky top-24">
+							<ProjectCreationSidebar
+								clientOptions={clientOptions}
+								selectedClient={selectedClient}
+								clientDetails={clientDetails}
+								selectedClientId={selectedClientId}
+								onClientSelect={handleClientSelect}
+								isLoading={isLoading}
+								propertyOptions={propertyOptions}
+								selectedProperty={selectedProperty}
+								onPropertySelect={handlePropertySelect}
+								contactOptions={contactOptions}
+								selectedContact={selectedContact}
+								onContactSelect={handleContactSelect}
+							/>
 						</div>
-					</form>
+					</div>
+				</div>
+
+				{/* Sidebar for mobile (below form) */}
+				<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/20 rounded-lg">
+					<ProjectCreationSidebar
+						clientOptions={clientOptions}
+						selectedClient={selectedClient}
+						clientDetails={clientDetails}
+						selectedClientId={selectedClientId}
+						onClientSelect={handleClientSelect}
+						isLoading={isLoading}
+						propertyOptions={propertyOptions}
+						selectedProperty={selectedProperty}
+						onPropertySelect={handlePropertySelect}
+						contactOptions={contactOptions}
+						selectedContact={selectedContact}
+						onContactSelect={handleContactSelect}
+					/>
 				</div>
 			</div>
 			<StickyFormFooter

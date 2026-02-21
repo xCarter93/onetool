@@ -15,12 +15,16 @@ interface MentionSectionProps {
 	entityType: "client" | "project" | "quote";
 	entityId: string;
 	entityName: string;
+	hideCardWrapper?: boolean;
+	pageSize?: number;
 }
 
 export function MentionSection({
 	entityType,
 	entityId,
 	entityName,
+	hideCardWrapper,
+	pageSize,
 }: MentionSectionProps) {
 	const [refreshKey, setRefreshKey] = useState(0);
 
@@ -29,34 +33,55 @@ export function MentionSection({
 		setRefreshKey((prev) => prev + 1);
 	};
 
+	const headerContent = (
+		<>
+			<div className="flex items-center gap-2">
+				<MessageSquare className="h-5 w-5 text-primary" />
+				<h3 className="text-lg font-semibold text-foreground">
+					Team Communication
+				</h3>
+			</div>
+			<p className="text-sm text-muted-foreground mt-1">
+				Mention team members to notify them about this {entityType}
+			</p>
+		</>
+	);
+
+	const bodyContent = (
+		<div className="space-y-6">
+			{/* Message Input */}
+			<div className="pb-6 border-b border-border">
+				<MentionInput
+					entityType={entityType}
+					entityId={entityId}
+					entityName={entityName}
+					onMentionCreated={handleMentionCreated}
+				/>
+			</div>
+
+			{/* Message Feed */}
+			<div key={refreshKey}>
+				<MentionFeed entityType={entityType} entityId={entityId} pageSize={pageSize} />
+			</div>
+		</div>
+	);
+
+	if (hideCardWrapper) {
+		return (
+			<div>
+				<div className="mb-4">{headerContent}</div>
+				{bodyContent}
+			</div>
+		);
+	}
+
 	return (
 		<StyledCard>
 			<StyledCardHeader>
-				<div className="flex items-center gap-2">
-					<MessageSquare className="h-5 w-5 text-primary" />
-					<StyledCardTitle className="text-lg">
-						Team Communication
-					</StyledCardTitle>
-				</div>
-				<p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-					Mention team members to notify them about this {entityType}
-				</p>
+				{headerContent}
 			</StyledCardHeader>
 			<StyledCardContent className="space-y-6">
-				{/* Message Input */}
-				<div className="pb-6 border-b border-gray-200 dark:border-gray-700">
-					<MentionInput
-						entityType={entityType}
-						entityId={entityId}
-						entityName={entityName}
-						onMentionCreated={handleMentionCreated}
-					/>
-				</div>
-
-				{/* Message Feed */}
-				<div key={refreshKey}>
-					<MentionFeed entityType={entityType} entityId={entityId} />
-				</div>
+				{bodyContent}
 			</StyledCardContent>
 		</StyledCard>
 	);

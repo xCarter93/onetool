@@ -43,8 +43,9 @@ export default function NewQuotePage() {
 	const searchParams = useSearchParams();
 	const toast = useToast();
 
-	// Get project ID from URL params if provided
+	// Get project ID or client ID from URL params if provided
 	const projectIdParam = searchParams.get("projectId") as Id<"projects"> | null;
+	const clientIdParam = searchParams.get("clientId") as Id<"clients"> | null;
 
 	// Form state
 	const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -89,6 +90,16 @@ export default function NewQuotePage() {
 			}
 		}
 	}, [projectFromParam, clients, selectedProject, selectedClient]);
+
+	// Set client from clientId URL param (when no projectId is provided)
+	useEffect(() => {
+		if (clientIdParam && !projectIdParam && !selectedClient && clients.length > 0) {
+			const client = clients.find((c) => c._id === clientIdParam);
+			if (client) {
+				setSelectedClient(client);
+			}
+		}
+	}, [clientIdParam, projectIdParam, clients, selectedClient]);
 
 	const clientOptions = useMemo(
 		() => clients.map((client) => client.companyName),

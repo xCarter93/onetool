@@ -8,13 +8,15 @@ import {
 	formatRelativeTime,
 	parseMessageParts,
 } from "@/lib/notification-utils";
-import { MessageSquare, Download, FileIcon } from "lucide-react";
+import { MessageSquare, Download, FileIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import Image from "next/image";
 
 interface MentionFeedProps {
 	entityType: "client" | "project" | "quote";
 	entityId: string;
+	pageSize?: number;
 }
 
 // Component to display attachments
@@ -131,11 +133,12 @@ function AttachmentDownloadLink({
 	);
 }
 
-export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
+export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps) {
 	const mentions = useQuery(api.notifications.listByEntity, {
 		entityType,
 		entityId,
 	});
+	const [currentPage, setCurrentPage] = useState(1);
 
 	// Get initials for avatar fallback
 	const getInitials = (name: string) => {
@@ -181,9 +184,17 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 		);
 	}
 
+	// Pagination
+	const perPage = pageSize ?? mentions.length;
+	const totalPages = Math.max(1, Math.ceil(mentions.length / perPage));
+	const startIdx = (currentPage - 1) * perPage;
+	const paginatedMentions = pageSize
+		? mentions.slice(startIdx, startIdx + perPage)
+		: mentions;
+
 	return (
 		<div className="space-y-6">
-			{mentions.map((mention) => (
+			{paginatedMentions.map((mention) => (
 				<div key={mention._id} className="flex gap-3">
 					{/* Avatar - showing the author (person who sent the message) */}
 					<Avatar className="h-10 w-10 shrink-0">
@@ -239,6 +250,37 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 					</div>
 				</div>
 			))}
+
+			{/* Pagination */}
+			{pageSize && totalPages > 1 && (
+				<div className="flex items-center justify-between pt-4 mt-4 border-t border-border">
+					<span className="text-xs text-muted-foreground">
+						{startIdx + 1}–{Math.min(startIdx + perPage, mentions.length)} of{" "}
+						{mentions.length}
+					</span>
+					<div className="flex items-center gap-1">
+						<button
+							onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+							disabled={currentPage === 1}
+							className="p-1.5 rounded-md hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+						>
+							<ChevronLeft className="h-4 w-4" />
+						</button>
+						<span className="text-xs text-muted-foreground px-2">
+							{currentPage} / {totalPages}
+						</span>
+						<button
+							onClick={() =>
+								setCurrentPage((p) => Math.min(totalPages, p + 1))
+							}
+							disabled={currentPage === totalPages}
+							className="p-1.5 rounded-md hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+						>
+							<ChevronRight className="h-4 w-4" />
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

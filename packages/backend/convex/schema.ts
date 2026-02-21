@@ -1022,6 +1022,50 @@ export default defineSchema({
 		.index("by_automation", ["automationId"])
 		.index("by_org_triggeredAt", ["orgId", "triggeredAt"]),
 
+	// Client Documents - files uploaded directly to client records
+	clientDocuments: defineTable({
+		orgId: v.id("organizations"),
+		clientId: v.id("clients"),
+
+		// Document metadata
+		name: v.string(), // User-friendly display name
+		fileName: v.string(), // Original filename
+		fileSize: v.number(), // Size in bytes
+		mimeType: v.string(),
+
+		// Storage
+		storageId: v.id("_storage"),
+
+		// Tracking
+		uploadedAt: v.number(),
+		uploadedBy: v.id("users"),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_client", ["clientId"])
+		.index("by_client_uploaded", ["clientId", "uploadedAt"]),
+
+	// Project Documents - files uploaded directly to project records
+	projectDocuments: defineTable({
+		orgId: v.id("organizations"),
+		projectId: v.id("projects"),
+
+		// Document metadata
+		name: v.string(), // User-friendly display name
+		fileName: v.string(), // Original filename
+		fileSize: v.number(), // Size in bytes
+		mimeType: v.string(),
+
+		// Storage
+		storageId: v.id("_storage"),
+
+		// Tracking
+		uploadedAt: v.number(),
+		uploadedBy: v.id("users"),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_project", ["projectId"])
+		.index("by_project_uploaded", ["projectId", "uploadedAt"]),
+
 	// User Favorites - user-specific client favorites
 	userFavorites: defineTable({
 		userId: v.id("users"),

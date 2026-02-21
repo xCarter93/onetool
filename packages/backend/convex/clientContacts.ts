@@ -12,6 +12,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { computeFieldChanges } from "./lib/changeTracking";
 
 /**
  * Client Contact operations
@@ -265,12 +266,19 @@ export const update = mutation({
 			await handlePrimaryContact(ctx, clientId, id);
 		}
 
+		// Compute field-level changes before applying the update
+		const changes = computeFieldChanges(
+			"clientContact",
+			currentContact as unknown as Record<string, unknown>,
+			filteredUpdates as Record<string, unknown>
+		);
+
 		await ctx.db.patch(id, filteredUpdates);
 
 		// Log activity on the client
 		const client = await ctx.db.get(clientId);
 		if (client) {
-			await ActivityHelpers.clientUpdated(ctx, client);
+			await ActivityHelpers.clientUpdated(ctx, client, changes);
 		}
 
 		return id;

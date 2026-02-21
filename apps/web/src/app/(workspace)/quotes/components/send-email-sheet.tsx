@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import {
 	Sheet,
 	SheetContent,
+	SheetHeader,
+	SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { TagsInput } from "@/components/ui/tags-input";
@@ -142,14 +144,10 @@ export function SendEmailSheet({
 			>
 				<div className="flex flex-col h-full">
 					{/* Header */}
-					<div className="flex items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-						<div className="flex items-center gap-2">
-							<Mail className="h-5 w-5 text-primary" />
-							<h3 className="font-semibold text-gray-900 dark:text-white">
-								Send Quote for Signature
-							</h3>
-						</div>
-					</div>
+					<SheetHeader className="flex flex-row items-center gap-2 px-6 py-4 border-b border-gray-200 dark:border-gray-700 space-y-0">
+						<Mail className="h-5 w-5 text-primary shrink-0" />
+						<SheetTitle>Send Quote for Signature</SheetTitle>
+					</SheetHeader>
 
 					{/* Content - Scrollable */}
 					<div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">

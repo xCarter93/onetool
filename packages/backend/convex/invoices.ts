@@ -21,6 +21,7 @@ import {
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
+import { computeFieldChanges } from "./lib/changeTracking";
 
 /**
  * Invoice operations
@@ -495,6 +496,13 @@ export const update = mutation({
 		const currentInvoice = await getInvoiceOrThrow(ctx, id);
 		const oldStatus = currentInvoice.status;
 
+		// Compute field-level changes before applying the update
+		const changes = computeFieldChanges(
+			"invoice",
+			currentInvoice as unknown as Record<string, unknown>,
+			filteredUpdates as Record<string, unknown>
+		);
+
 		// Handle status-specific updates
 		if (
 			filteredUpdates.status &&
@@ -534,13 +542,15 @@ export const update = mutation({
 				await ActivityHelpers.invoiceSent(
 					ctx,
 					updatedInvoice as InvoiceDocument,
-					clientName
+					clientName,
+					changes
 				);
 			} else if (filteredUpdates.status === "paid") {
 				await ActivityHelpers.invoicePaid(
 					ctx,
 					updatedInvoice as InvoiceDocument,
-					clientName
+					clientName,
+					changes
 				);
 			}
 
