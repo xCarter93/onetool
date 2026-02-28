@@ -353,12 +353,14 @@ export default function PublicCommunityPage() {
 											)}
 										</div>
 										<div className="relative rounded-2xl overflow-hidden border border-border/60 bg-muted/20 aspect-[16/10]">
-											<Image
-												src={galleryImages[activeSlide]?.url}
-												alt={`Gallery image ${activeSlide + 1}`}
-												fill
-												className="object-cover"
-											/>
+											{galleryImages[activeSlide] && (
+												<Image
+													src={galleryImages[activeSlide].url}
+													alt={`Gallery image ${activeSlide + 1}`}
+													fill
+													className="object-cover"
+												/>
+											)}
 										</div>
 										{galleryImages.length > 1 && (
 											<div className="flex items-center justify-center gap-2">
