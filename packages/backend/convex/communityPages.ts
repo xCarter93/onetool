@@ -10,6 +10,7 @@ import { rateLimiter } from "./rateLimits";
 // Type definitions
 type CommunityPageDocument = Doc<"communityPages">;
 type CommunityPageId = Id<"communityPages">;
+type PricingMode = "structured" | "richText";
 
 // ============================================
 // AUTHENTICATED QUERIES/MUTATIONS (Admin use)
@@ -41,12 +42,41 @@ export const upsert = mutation({
 		bannerStorageId: v.optional(v.id("_storage")),
 		avatarStorageId: v.optional(v.id("_storage")),
 		draftContent: v.optional(v.any()),
+		draftBioContent: v.optional(v.any()),
+		draftServicesContent: v.optional(v.any()),
+		pricingModeDraft: v.optional(
+			v.union(v.literal("structured"), v.literal("richText"))
+		),
+		draftPricingContent: v.optional(v.any()),
+		draftPricingTiers: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					price: v.string(),
+					description: v.optional(v.string()),
+				})
+			)
+		),
+		galleryItemsDraft: v.optional(
+			v.array(
+				v.object({
+					storageId: v.id("_storage"),
+					sortOrder: v.number(),
+				})
+			)
+		),
 		pageTitle: v.optional(v.string()),
 		metaDescription: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
+		if (args.draftPricingTiers !== undefined) {
+			validatePricingTiers(args.draftPricingTiers);
+		}
+		if (args.galleryItemsDraft !== undefined) {
+			validateGalleryItems(args.galleryItemsDraft);
+		}
 
 		const existing = await ctx.db
 			.query("communityPages")
@@ -73,6 +103,18 @@ export const upsert = mutation({
 				updates.avatarStorageId = args.avatarStorageId;
 			if (args.draftContent !== undefined)
 				updates.draftContent = args.draftContent;
+			if (args.draftBioContent !== undefined)
+				updates.draftBioContent = args.draftBioContent;
+			if (args.draftServicesContent !== undefined)
+				updates.draftServicesContent = args.draftServicesContent;
+			if (args.pricingModeDraft !== undefined)
+				updates.pricingModeDraft = args.pricingModeDraft;
+			if (args.draftPricingContent !== undefined)
+				updates.draftPricingContent = args.draftPricingContent;
+			if (args.draftPricingTiers !== undefined)
+				updates.draftPricingTiers = args.draftPricingTiers;
+			if (args.galleryItemsDraft !== undefined)
+				updates.galleryItemsDraft = args.galleryItemsDraft;
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
 			if (args.metaDescription !== undefined)
 				updates.metaDescription = args.metaDescription;
@@ -94,6 +136,12 @@ export const upsert = mutation({
 				bannerStorageId: args.bannerStorageId,
 				avatarStorageId: args.avatarStorageId,
 				draftContent: args.draftContent,
+				draftBioContent: args.draftBioContent,
+				draftServicesContent: args.draftServicesContent,
+				pricingModeDraft: args.pricingModeDraft,
+				draftPricingContent: args.draftPricingContent,
+				draftPricingTiers: args.draftPricingTiers,
+				galleryItemsDraft: args.galleryItemsDraft,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
 				createdAt: now,
@@ -118,10 +166,26 @@ export const publish = mutation({
 			.first();
 
 		if (!page) throw new Error("Community page not found");
-		if (!page.draftContent) throw new Error("No draft content to publish");
+
+		const hasLegacyContent = !!page.draftContent;
+		const hasSectionContent =
+			!!page.draftBioContent ||
+			!!page.draftServicesContent ||
+			!!page.draftPricingContent ||
+			(page.draftPricingTiers?.length ?? 0) > 0 ||
+			(page.galleryItemsDraft?.length ?? 0) > 0;
+		if (!hasLegacyContent && !hasSectionContent) {
+			throw new Error("No draft content to publish");
+		}
 
 		await ctx.db.patch(page._id, {
 			publishedContent: page.draftContent,
+			publishedBioContent: page.draftBioContent,
+			publishedServicesContent: page.draftServicesContent,
+			pricingModePublished: page.pricingModeDraft,
+			publishedPricingContent: page.draftPricingContent,
+			publishedPricingTiers: page.draftPricingTiers,
+			galleryItemsPublished: page.galleryItemsDraft,
 			publishedAt: Date.now(),
 			updatedAt: Date.now(),
 		});
@@ -148,6 +212,22 @@ export const getImageUrl = query({
 		const user = await getCurrentUserOrThrow(ctx);
 		if (!user) return null;
 		return await ctx.storage.getUrl(args.storageId);
+	},
+});
+
+export const getImageUrls = query({
+	args: { storageIds: v.array(v.id("_storage")) },
+	handler: async (
+		ctx,
+		args
+	): Promise<Array<{ storageId: Id<"_storage">; url: string | null }>> => {
+		await getCurrentUserOrThrow(ctx);
+		return await Promise.all(
+			args.storageIds.map(async (storageId) => ({
+				storageId,
+				url: await ctx.storage.getUrl(storageId),
+			}))
+		);
 	},
 });
 
@@ -250,12 +330,35 @@ export const getBySlug = query({
 		const avatarUrl = page.avatarStorageId
 			? await ctx.storage.getUrl(page.avatarStorageId)
 			: org?.logoUrl || null;
+		const publishedGalleryItems = [...(page.galleryItemsPublished ?? [])].sort(
+			(a, b) => a.sortOrder - b.sortOrder
+		);
+		const galleryImages = (
+			await Promise.all(
+				publishedGalleryItems.map(async (item) => {
+					const url = await ctx.storage.getUrl(item.storageId);
+					return url
+						? {
+								storageId: item.storageId,
+								sortOrder: item.sortOrder,
+								url,
+							}
+						: null;
+				})
+			)
+		).filter((item): item is NonNullable<typeof item> => item !== null);
 
 		return {
 			slug: page.slug,
 			pageTitle: page.pageTitle || org?.name || "Community Page",
 			metaDescription: page.metaDescription,
 			content: page.publishedContent,
+			bioContent: page.publishedBioContent ?? page.publishedContent,
+			servicesContent: page.publishedServicesContent,
+			pricingMode: (page.pricingModePublished ?? "richText") as PricingMode,
+			pricingContent: page.publishedPricingContent,
+			pricingTiers: page.publishedPricingTiers ?? [],
+			galleryImages,
 			bannerUrl,
 			avatarUrl,
 			organization: org
@@ -470,3 +573,59 @@ async function validateSlugUnique(
 		throw new Error("This URL slug is already taken. Please choose another.");
 	}
 }
+
+function validatePricingTiers(
+	tiers: Array<{ name: string; price: string; description?: string }>
+): void {
+	if (tiers.length > 10) {
+		throw new Error("You can add up to 10 pricing tiers");
+	}
+
+	for (const tier of tiers) {
+		const name = tier.name.trim();
+		const price = tier.price.trim();
+		const description = tier.description?.trim();
+
+		if (!name) {
+			throw new Error("Each pricing tier needs a name");
+		}
+		if (name.length > 80) {
+			throw new Error("Pricing tier name must be 80 characters or less");
+		}
+		if (!price) {
+			throw new Error("Each pricing tier needs a price");
+		}
+		if (price.length > 40) {
+			throw new Error("Pricing tier price must be 40 characters or less");
+		}
+		if (description && description.length > 240) {
+			throw new Error(
+				"Pricing tier description must be 240 characters or less"
+			);
+		}
+	}
+}
+
+function validateGalleryItems(
+	items: Array<{ storageId: Id<"_storage">; sortOrder: number }>
+): void {
+	if (items.length > 5) {
+		throw new Error("You can upload up to 5 gallery images");
+	}
+	const ids = new Set<string>();
+	for (const item of items) {
+		const key = String(item.storageId);
+		if (ids.has(key)) {
+			throw new Error("Duplicate gallery images are not allowed");
+		}
+		ids.add(key);
+		if (!Number.isInteger(item.sortOrder) || item.sortOrder < 0) {
+			throw new Error("Gallery image order is invalid");
+		}
+	}
+}
+
+export const __testUtils = {
+	validatePricingTiers,
+	validateGalleryItems,
+};

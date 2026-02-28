@@ -803,6 +803,50 @@ export default defineSchema({
 		// Content (TipTap JSON format)
 		draftContent: v.optional(v.any()), // Current editing state (TipTap JSON)
 		publishedContent: v.optional(v.any()), // What's publicly visible (TipTap JSON)
+		draftBioContent: v.optional(v.any()),
+		publishedBioContent: v.optional(v.any()),
+		draftServicesContent: v.optional(v.any()),
+		publishedServicesContent: v.optional(v.any()),
+		pricingModeDraft: v.optional(v.union(v.literal("structured"), v.literal("richText"))),
+		pricingModePublished: v.optional(
+			v.union(v.literal("structured"), v.literal("richText"))
+		),
+		draftPricingContent: v.optional(v.any()),
+		publishedPricingContent: v.optional(v.any()),
+		draftPricingTiers: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					price: v.string(),
+					description: v.optional(v.string()),
+				})
+			)
+		),
+		publishedPricingTiers: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					price: v.string(),
+					description: v.optional(v.string()),
+				})
+			)
+		),
+		galleryItemsDraft: v.optional(
+			v.array(
+				v.object({
+					storageId: v.id("_storage"),
+					sortOrder: v.number(),
+				})
+			)
+		),
+		galleryItemsPublished: v.optional(
+			v.array(
+				v.object({
+					storageId: v.id("_storage"),
+					sortOrder: v.number(),
+				})
+			)
+		),
 
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)
