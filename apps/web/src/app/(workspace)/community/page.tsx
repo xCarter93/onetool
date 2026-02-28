@@ -45,6 +45,22 @@ export default function CommunityPage() {
 	const [slugError, setSlugError] = useState<string | null>(null);
 	const [isCreating, setIsCreating] = useState(false);
 	const [copied, setCopied] = useState(false);
+	const [debouncedSlug, setDebouncedSlug] = useState("");
+
+	// Debounce slug for availability check
+	useEffect(() => {
+		if (slug.length < 3) {
+			setDebouncedSlug("");
+			return;
+		}
+		const timer = setTimeout(() => setDebouncedSlug(slug), 300);
+		return () => clearTimeout(timer);
+	}, [slug]);
+
+	const isSlugAvailable = useQuery(
+		api.communityPages.checkSlugAvailable,
+		debouncedSlug.length >= 3 ? { slug: debouncedSlug } : "skip",
+	);
 
 	// Initialize form from organization data
 	useEffect(() => {
@@ -95,15 +111,12 @@ export default function CommunityPage() {
 				isPublic: false,
 				pageTitle: pageTitle || undefined,
 			});
-			toast.success(
-				"Community page created",
-				"Now customize your page"
-			);
+			toast.success("Community page created", "Now customize your page");
 			router.push("/community/edit");
 		} catch (error) {
 			toast.error(
 				"Creation failed",
-				error instanceof Error ? error.message : "Please try again"
+				error instanceof Error ? error.message : "Please try again",
 			);
 		} finally {
 			setIsCreating(false);
@@ -146,94 +159,130 @@ export default function CommunityPage() {
 	// No community page exists - show creation prompt
 	if (communityPage === null) {
 		return (
-			<div className="relative p-4 sm:p-6 lg:p-8">
-				<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-8">
-					{/* Header */}
-					<div className="text-center space-y-4">
-						<div className="size-20 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-							<Globe className="size-10 text-primary" />
+			<div className="p-6 lg:p-8 space-y-12">
+				{/* Header */}
+				<div className="text-center space-y-4 mt-8">
+					<div className="size-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+						<Globe className="size-8 text-primary" />
+					</div>
+					<div>
+						<h1 className="text-3xl font-bold text-fg tracking-tight">
+							Create Your Community Page
+						</h1>
+						<p className="text-muted-fg mt-3 max-w-md mx-auto text-base">
+							Build a public page to showcase your business, share your
+							services, and let potential customers express their interest.
+						</p>
+					</div>
+				</div>
+
+				{/* Benefits */}
+				<div className="grid gap-6 sm:grid-cols-3">
+					<div className="flex flex-col items-center text-center p-6 rounded-2xl bg-muted/20 border border-border/40">
+						<div className="size-10 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+							<Globe className="size-5 text-primary" />
 						</div>
-						<div>
-							<h1 className="text-3xl font-bold text-foreground">
-								Create Your Community Page
-							</h1>
-							<p className="text-muted-foreground mt-2 max-w-md mx-auto">
-								Build a public page to showcase your business, share your services,
-								and let potential customers express their interest.
-							</p>
+						<h3 className="font-semibold text-fg mb-2">Online Presence</h3>
+						<p className="text-sm text-muted-fg">
+							Create a professional landing page for your business
+						</p>
+					</div>
+					<div className="flex flex-col items-center text-center p-6 rounded-2xl bg-muted/20 border border-border/40">
+						<div className="size-10 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+							<ImageIcon className="size-5 text-primary" />
 						</div>
+						<h3 className="font-semibold text-fg mb-2">Rich Content</h3>
+						<p className="text-sm text-muted-fg">
+							Add banners, images, and formatted content
+						</p>
+					</div>
+					<div className="flex flex-col items-center text-center p-6 rounded-2xl bg-muted/20 border border-border/40">
+						<div className="size-10 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+							<Send className="size-5 text-primary" />
+						</div>
+						<h3 className="font-semibold text-fg mb-2">Collect Leads</h3>
+						<p className="text-sm text-muted-fg">
+							Let visitors submit interest forms directly
+						</p>
+					</div>
+				</div>
+
+				<hr className="border-border/40" />
+
+				{/* Setup Form */}
+				<div className="max-w-xl mx-auto space-y-6">
+					<div className="space-y-2">
+						<Label htmlFor="pageTitle">Page Title</Label>
+						<StyledInput
+							id="pageTitle"
+							value={pageTitle}
+							onChange={(e) => setPageTitle(e.target.value)}
+							placeholder={organization?.name || "Your Business Name"}
+						/>
 					</div>
 
-					{/* Benefits */}
-					<div className="grid gap-4 sm:grid-cols-3">
-						<div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-							<div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-								<Globe className="size-5 text-primary" />
-							</div>
-							<h3 className="font-semibold text-foreground mb-1">Online Presence</h3>
-							<p className="text-sm text-muted-foreground">
-								Create a professional landing page for your business
-							</p>
-						</div>
-						<div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-							<div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-								<ImageIcon className="size-5 text-primary" />
-							</div>
-							<h3 className="font-semibold text-foreground mb-1">Rich Content</h3>
-							<p className="text-sm text-muted-foreground">
-								Add banners, images, and formatted content
-							</p>
-						</div>
-						<div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-							<div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-								<Send className="size-5 text-primary" />
-							</div>
-							<h3 className="font-semibold text-foreground mb-1">Collect Leads</h3>
-							<p className="text-sm text-muted-foreground">
-								Let visitors submit interest forms directly
-							</p>
-						</div>
-					</div>
-
-					{/* Setup Form */}
-					<div className="space-y-4 pt-4 border-t border-border/50">
-						<div className="space-y-2">
-							<Label htmlFor="pageTitle">Page Title</Label>
-							<StyledInput
-								id="pageTitle"
-								value={pageTitle}
-								onChange={(e) => setPageTitle(e.target.value)}
-								placeholder={organization?.name || "Your Business Name"}
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="slug">URL Slug</Label>
-							<div className="flex items-center gap-2">
-								<span className="text-sm text-muted-foreground whitespace-nowrap">
-									/communities/
-								</span>
-								<StyledInput
+					<div className="space-y-2">
+						<Label htmlFor="slug">Page URL</Label>
+						<div className="flex items-center gap-3">
+							<div className="flex">
+								<div className="flex shrink-0 items-center rounded-l-md bg-muted/50 px-3 py-2 text-sm text-muted-fg border border-r-0 border-border">
+									onetool.biz/communities/
+								</div>
+								<input
 									id="slug"
+									type="text"
 									value={slug}
 									onChange={handleSlugChange}
 									placeholder="your-business-name"
-									className={cn(slugError && "border-danger")}
+									className={cn(
+										"block w-full sm:w-48 rounded-r-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent",
+										slugError && "border-danger focus:ring-danger",
+										!slugError &&
+											isSlugAvailable === false &&
+											"border-danger focus:ring-danger",
+									)}
 								/>
 							</div>
-							{slugError && (
-								<p className="text-sm text-danger">{slugError}</p>
-							)}
+							{slugError ? (
+								<span className="text-sm text-danger">{slugError}</span>
+							) : slug.length >= 3 &&
+							  (debouncedSlug !== slug || isSlugAvailable === undefined) ? (
+								<Loader2 className="size-4 animate-spin text-muted-fg" />
+							) : slug.length >= 3 &&
+							  debouncedSlug === slug &&
+							  isSlugAvailable !== undefined ? (
+								<div className="flex items-center gap-1.5">
+									<span
+										className={cn(
+											"size-2 rounded-full",
+											isSlugAvailable ? "bg-emerald-500" : "bg-red-500",
+										)}
+									/>
+									<span
+										className={cn(
+											"text-sm font-medium",
+											isSlugAvailable
+												? "text-emerald-600 dark:text-emerald-400"
+												: "text-red-600 dark:text-red-400",
+										)}
+									>
+										{isSlugAvailable ? "Available" : "Taken"}
+									</span>
+								</div>
+							) : null}
 						</div>
+						<p className="text-xs text-muted-fg">
+							Only lowercase letters, numbers, and hyphens allowed
+						</p>
 					</div>
 
 					{/* Create Button */}
-					<div className="flex justify-center pt-4">
+					<div className="pt-6">
 						<StyledButton
 							intent="primary"
-							size="lg"
+							className="w-full justify-center py-6 text-base"
 							onClick={handleCreatePage}
-							disabled={isCreating || !slug || !!slugError}
+							disabled={isCreating || !slug || !!slugError || isSlugAvailable === false}
 						>
 							{isCreating ? (
 								<Loader2 className="size-5 mr-2 animate-spin" />
@@ -251,69 +300,70 @@ export default function CommunityPage() {
 	// Page exists but not public (draft)
 	if (!communityPage.isPublic) {
 		return (
-			<div className="relative p-4 sm:p-6 lg:p-8">
-				<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-6">
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-						<div className="space-y-2">
-							<div className="flex items-center gap-3">
-								<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-								<h1 className="text-2xl font-semibold text-foreground tracking-tight">
-									Community Page
-								</h1>
-								<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">
-									<Clock className="size-3" />
-									Draft
-								</span>
-							</div>
-							<p className="text-muted-foreground text-sm leading-relaxed max-w-xl">
-								Your community page is set up but not yet visible to the public.
+			<div className="p-6 lg:p-8 space-y-8">
+				<div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-border/40 pb-6">
+					<div className="space-y-2">
+						<div className="flex items-center gap-3">
+							<h1 className="text-2xl font-bold text-fg tracking-tight">
+								Community Page
+							</h1>
+							<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">
+								<Clock className="size-3" />
+								Draft
+							</span>
+						</div>
+						<p className="text-muted-fg text-sm">
+							Your community page is set up but not yet visible to the public.
+						</p>
+					</div>
+				</div>
+
+				<div className="flex flex-col md:flex-row items-start gap-8 py-4">
+					<div className="size-16 rounded-2xl bg-amber-100/50 dark:bg-amber-900/20 flex items-center justify-center shrink-0 border border-amber-200/50 dark:border-amber-800/30">
+						<Globe className="size-8 text-amber-600 dark:text-amber-400" />
+					</div>
+
+					<div className="flex-1 space-y-2">
+						<h3 className="text-xl font-semibold text-fg">
+							{communityPage.pageTitle ||
+								clerkOrganization?.name ||
+								"Your Community Page"}
+						</h3>
+						<div className="flex items-center gap-2 text-sm text-muted-fg font-mono">
+							<span>{pageUrl || `/communities/${communityPage.slug}`}</span>
+						</div>
+						{communityPage.updatedAt && (
+							<p className="text-xs text-muted-fg pt-1">
+								Last updated: {formatDate(communityPage.updatedAt)}
 							</p>
-						</div>
+						)}
 					</div>
 
-					{/* Page Details Card */}
-					<div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-5 space-y-4">
-						<div className="flex items-start gap-4">
-							<div className="size-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
-								<Globe className="size-6 text-amber-700 dark:text-amber-400" />
-							</div>
-							<div className="flex-1 min-w-0 space-y-1">
-								<h3 className="font-semibold text-foreground">
-									{communityPage.pageTitle || clerkOrganization?.name || "Your Community Page"}
-								</h3>
-								<p className="text-sm text-muted-foreground font-mono truncate">
-									/communities/{communityPage.slug}
-								</p>
-								{communityPage.updatedAt && (
-									<p className="text-xs text-muted-foreground">
-										Last updated: {formatDate(communityPage.updatedAt)}
-									</p>
-								)}
-							</div>
-						</div>
-
-						<div className="flex flex-wrap gap-2 pt-2">
-							<StyledButton
-								intent="primary"
-								size="sm"
-								onClick={() => router.push("/community/edit")}
-							>
-								<Edit className="size-4 mr-2" />
-								Edit Page
-							</StyledButton>
-							<StyledButton
-								intent="secondary"
-								size="sm"
-								onClick={() => router.push("/community/edit")}
-							>
-								<Eye className="size-4 mr-2" />
-								Make Public
-							</StyledButton>
-						</div>
+					<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-4 md:mt-0">
+						<StyledButton
+							intent="secondary"
+							onClick={() => router.push("/community/edit")}
+							className="w-full sm:w-auto"
+						>
+							<Edit className="size-4 mr-2" />
+							Edit Page
+						</StyledButton>
+						<StyledButton
+							intent="primary"
+							onClick={() => router.push("/community/edit")}
+							className="w-full sm:w-auto"
+						>
+							<Eye className="size-4 mr-2" />
+							Publish to Public
+						</StyledButton>
 					</div>
+				</div>
 
-					<p className="text-sm text-muted-foreground">
-						Once you make your page public, anyone with the link can view it and submit interest forms.
+				<div className="rounded-xl border border-border/40 bg-muted/20 p-5 mt-4">
+					<p className="text-sm text-muted-fg flex items-center gap-2">
+						<strong className="text-fg font-medium">Ready to go live?</strong>
+						Once you make your page public, anyone with the link can view it and
+						submit interest forms.
 					</p>
 				</div>
 			</div>
@@ -322,93 +372,99 @@ export default function CommunityPage() {
 
 	// Page exists and is public
 	return (
-		<div className="relative p-4 sm:p-6 lg:p-8">
-			<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-6">
-				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-					<div className="space-y-2">
-						<div className="flex items-center gap-3">
-							<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-							<h1 className="text-2xl font-semibold text-foreground tracking-tight">
-								Community Page
-							</h1>
-							<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
-								<CheckCircle2 className="size-3" />
-								Live
-							</span>
-						</div>
-						<p className="text-muted-foreground text-sm leading-relaxed max-w-xl">
-							Your community page is live and accessible to anyone with the link.
-						</p>
+		<div className="p-6 lg:p-8 space-y-8">
+			<div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-border/40 pb-6">
+				<div className="space-y-2">
+					<div className="flex items-center gap-3">
+						<h1 className="text-2xl font-bold text-fg tracking-tight">
+							Community Page
+						</h1>
+						<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
+							<CheckCircle2 className="size-3" />
+							Live
+						</span>
 					</div>
+					<p className="text-muted-fg text-sm">
+						Your community page is live and accessible to anyone with the link.
+					</p>
+				</div>
+			</div>
+
+			<div className="flex flex-col md:flex-row items-start gap-8 py-4">
+				<div className="size-16 rounded-2xl bg-emerald-100/50 dark:bg-emerald-900/20 flex items-center justify-center shrink-0 border border-emerald-200/50 dark:border-emerald-800/30">
+					<Globe className="size-8 text-emerald-600 dark:text-emerald-400" />
 				</div>
 
-				{/* Live Page Card */}
-				<div className="rounded-xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-5 space-y-4">
-					<div className="flex items-start gap-4">
-						<div className="size-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
-							<CheckCircle2 className="size-6 text-emerald-700 dark:text-emerald-400" />
-						</div>
-						<div className="flex-1 min-w-0 space-y-1">
-							<h3 className="font-semibold text-foreground">
-								{communityPage.pageTitle || clerkOrganization?.name || "Your Community Page"}
-							</h3>
-							<p className="text-sm text-muted-foreground font-mono truncate">
-								{pageUrl}
-							</p>
-							{communityPage.publishedAt && (
-								<p className="text-xs text-muted-foreground">
-									Published: {formatDate(communityPage.publishedAt)}
-								</p>
-							)}
-						</div>
-					</div>
-
-					<div className="flex flex-wrap gap-2 pt-2">
+				<div className="flex-1 space-y-2">
+					<h3 className="text-xl font-semibold text-fg">
+						{communityPage.pageTitle ||
+							clerkOrganization?.name ||
+							"Your Community Page"}
+					</h3>
+					<div className="flex items-center gap-2 text-sm text-muted-fg font-mono">
 						<a
 							href={pageUrl}
 							target="_blank"
 							rel="noopener noreferrer"
-							className="inline-flex"
+							className="hover:text-fg hover:underline transition-colors flex items-center gap-1"
 						>
-							<StyledButton intent="primary" size="sm">
-								<ExternalLink className="size-4 mr-2" />
-								View Live Page
-							</StyledButton>
+							{pageUrl}
+							<ExternalLink className="size-3" />
 						</a>
-						<StyledButton
-							intent="secondary"
-							size="sm"
-							onClick={() => router.push("/community/edit")}
-						>
-							<Edit className="size-4 mr-2" />
-							Edit Page
-						</StyledButton>
-						<StyledButton
-							intent="plain"
-							size="sm"
-							onClick={handleCopyUrl}
-						>
-							{copied ? (
-								<>
-									<Check className="size-4 mr-2 text-emerald-600" />
-									Copied!
-								</>
-							) : (
-								<>
-									<Copy className="size-4 mr-2" />
-									Copy Link
-								</>
-							)}
-						</StyledButton>
 					</div>
+					{communityPage.publishedAt && (
+						<p className="text-xs text-muted-fg pt-1">
+							Published: {formatDate(communityPage.publishedAt)}
+						</p>
+					)}
 				</div>
 
-				<div className="rounded-lg border border-border/60 bg-muted/30 p-4">
-					<p className="text-sm text-muted-foreground">
-						<strong className="text-foreground">Tip:</strong> Share your community page link on social media,
-						business cards, or email signatures to attract potential customers and generate leads.
-					</p>
+				<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-4 md:mt-0">
+					<StyledButton
+						intent="plain"
+						onClick={handleCopyUrl}
+						className="w-full sm:w-auto"
+					>
+						{copied ? (
+							<>
+								<Check className="size-4 mr-2 text-emerald-600" />
+								Copied!
+							</>
+						) : (
+							<>
+								<Copy className="size-4 mr-2" />
+								Copy Link
+							</>
+						)}
+					</StyledButton>
+					<StyledButton
+						intent="secondary"
+						onClick={() => router.push("/community/edit")}
+						className="w-full sm:w-auto"
+					>
+						<Edit className="size-4 mr-2" />
+						Edit Page
+					</StyledButton>
+					<a
+						href={pageUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="w-full sm:w-auto"
+					>
+						<StyledButton intent="primary" className="w-full sm:w-auto">
+							<ExternalLink className="size-4 mr-2" />
+							View Live
+						</StyledButton>
+					</a>
 				</div>
+			</div>
+
+			<div className="rounded-xl border border-border/40 bg-muted/20 p-5 mt-4">
+				<p className="text-sm text-muted-fg">
+					<strong className="text-fg font-medium">Tip:</strong> Share your
+					community page link on social media, business cards, or email
+					signatures to attract potential customers and generate leads.
+				</p>
 			</div>
 		</div>
 	);

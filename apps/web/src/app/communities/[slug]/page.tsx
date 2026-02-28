@@ -12,6 +12,8 @@ import {
 	Send,
 	CheckCircle,
 	AlertCircle,
+	ChevronLeft,
+	ChevronRight,
 } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
@@ -28,11 +30,27 @@ import { Label } from "@/components/ui/label";
 import { CommunityPageContent } from "@/components/tiptap/community-editor";
 import { cn } from "@/lib/utils";
 
+type PricingMode = "structured" | "richText";
+
 interface CommunityPageData {
 	slug: string;
 	pageTitle: string;
 	metaDescription?: string;
-	content: JSONContent;
+	content?: JSONContent;
+	bioContent?: JSONContent;
+	servicesContent?: JSONContent;
+	pricingMode?: PricingMode;
+	pricingContent?: JSONContent;
+	pricingTiers?: Array<{
+		name: string;
+		price: string;
+		description?: string;
+	}>;
+	galleryImages?: Array<{
+		storageId: string;
+		sortOrder: number;
+		url: string;
+	}>;
 	bannerUrl: string | null;
 	avatarUrl: string | null;
 	organization: {
@@ -56,8 +74,8 @@ export default function PublicCommunityPage() {
 	const [pageData, setPageData] = useState<CommunityPageData | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [activeSlide, setActiveSlide] = useState(0);
 
-	// Interest form state
 	const [formState, setFormState] = useState<InterestFormState>({
 		name: "",
 		email: "",
@@ -67,7 +85,6 @@ export default function PublicCommunityPage() {
 	const [submitSuccess, setSubmitSuccess] = useState(false);
 	const [submitError, setSubmitError] = useState<string | null>(null);
 
-	// Fetch page data
 	useEffect(() => {
 		async function fetchPage() {
 			try {
@@ -82,6 +99,7 @@ export default function PublicCommunityPage() {
 				}
 				const data = await response.json();
 				setPageData(data);
+				setActiveSlide(0);
 			} catch {
 				setError("Failed to load page");
 			} finally {
@@ -94,7 +112,24 @@ export default function PublicCommunityPage() {
 		}
 	}, [slug]);
 
-	// Handle form submission
+	const galleryImages = pageData?.galleryImages ?? [];
+
+	useEffect(() => {
+		if (galleryImages.length <= 1) return;
+		const timer = setInterval(() => {
+			setActiveSlide((prev) => (prev + 1) % galleryImages.length);
+		}, 4500);
+		return () => clearInterval(timer);
+	}, [galleryImages.length]);
+
+	useEffect(() => {
+		if (galleryImages.length === 0) {
+			setActiveSlide(0);
+		} else if (activeSlide >= galleryImages.length) {
+			setActiveSlide(0);
+		}
+	}, [galleryImages.length, activeSlide]);
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		setIsSubmitting(true);
@@ -120,15 +155,12 @@ export default function PublicCommunityPage() {
 			setSubmitSuccess(true);
 			setFormState({ name: "", email: "", phone: "" });
 		} catch (err) {
-			setSubmitError(
-				err instanceof Error ? err.message : "Something went wrong"
-			);
+			setSubmitError(err instanceof Error ? err.message : "Something went wrong");
 		} finally {
 			setIsSubmitting(false);
 		}
 	};
 
-	// Loading state
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-bg">
@@ -137,7 +169,6 @@ export default function PublicCommunityPage() {
 		);
 	}
 
-	// Error state
 	if (error || !pageData) {
 		return (
 			<div className="min-h-screen flex flex-col items-center justify-center bg-bg px-4">
@@ -160,9 +191,17 @@ export default function PublicCommunityPage() {
 		);
 	}
 
+	const hasStructuredPricing =
+		pageData.pricingMode === "structured" && (pageData.pricingTiers?.length ?? 0) > 0;
+	const hasSectionedContent =
+		!!pageData.bioContent ||
+		!!pageData.servicesContent ||
+		hasStructuredPricing ||
+		!!pageData.pricingContent ||
+		galleryImages.length > 0;
+
 	return (
 		<div className="min-h-screen bg-bg">
-			{/* Banner with improved gradient overlay */}
 			{pageData.bannerUrl && (
 				<div className="relative w-full h-56 sm:h-72 md:h-96 lg:h-[28rem]">
 					<Image
@@ -172,13 +211,11 @@ export default function PublicCommunityPage() {
 						className="object-cover"
 						priority
 					/>
-					{/* Multi-layer gradient for better text visibility */}
 					<div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/60 to-transparent" />
 					<div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-transparent" />
 				</div>
 			)}
 
-			{/* Header Section with backdrop blur for readability */}
 			<div
 				className={cn(
 					"relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8",
@@ -186,7 +223,6 @@ export default function PublicCommunityPage() {
 				)}
 			>
 				<div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 sm:gap-8">
-					{/* Avatar with enhanced shadow */}
 					{pageData.avatarUrl && (
 						<div className="relative size-28 sm:size-36 md:size-40 rounded-3xl overflow-hidden border-4 border-bg shadow-2xl bg-bg ring-1 ring-black/5">
 							<Image
@@ -198,17 +234,20 @@ export default function PublicCommunityPage() {
 						</div>
 					)}
 
-					{/* Title and Organization Info with backdrop */}
 					<div className="flex-1 text-center sm:text-left pb-4">
-						{/* Backdrop blur container for better contrast */}
-						<div className={cn(
-							"inline-block",
-							pageData.bannerUrl && "backdrop-blur-md bg-black/40 px-6 py-4 rounded-2xl border border-white/20 shadow-lg"
-						)}>
-							<h1 className={cn(
-								"text-3xl sm:text-4xl md:text-5xl font-bold mb-3",
-								pageData.bannerUrl ? "text-white drop-shadow-md" : "text-fg"
-							)}>
+						<div
+							className={cn(
+								"inline-block",
+								pageData.bannerUrl &&
+									"backdrop-blur-md bg-black/40 px-6 py-4 rounded-2xl border border-white/20 shadow-lg"
+							)}
+						>
+							<h1
+								className={cn(
+									"text-3xl sm:text-4xl md:text-5xl font-bold mb-3",
+									pageData.bannerUrl ? "text-white drop-shadow-md" : "text-fg"
+								)}
+							>
 								{pageData.pageTitle}
 							</h1>
 							{pageData.organization && (
@@ -224,7 +263,9 @@ export default function PublicCommunityPage() {
 											rel="noopener noreferrer"
 											className={cn(
 												"flex items-center gap-1.5 hover:text-primary transition-colors duration-200",
-												pageData.bannerUrl ? "text-gray-200 hover:text-white" : "text-muted-fg"
+												pageData.bannerUrl
+													? "text-gray-200 hover:text-white"
+													: "text-muted-fg"
 											)}
 										>
 											<Globe className="size-4" />
@@ -236,7 +277,9 @@ export default function PublicCommunityPage() {
 											href={`mailto:${pageData.organization.email}`}
 											className={cn(
 												"flex items-center gap-1.5 hover:text-primary transition-colors duration-200",
-												pageData.bannerUrl ? "text-gray-200 hover:text-white" : "text-muted-fg"
+												pageData.bannerUrl
+													? "text-gray-200 hover:text-white"
+													: "text-muted-fg"
 											)}
 										>
 											<Mail className="size-4" />
@@ -248,7 +291,9 @@ export default function PublicCommunityPage() {
 											href={`tel:${pageData.organization.phone}`}
 											className={cn(
 												"flex items-center gap-1.5 hover:text-primary transition-colors duration-200",
-												pageData.bannerUrl ? "text-gray-200 hover:text-white" : "text-muted-fg"
+												pageData.bannerUrl
+													? "text-gray-200 hover:text-white"
+													: "text-muted-fg"
 											)}
 										>
 											<Phone className="size-4" />
@@ -262,19 +307,128 @@ export default function PublicCommunityPage() {
 				</div>
 			</div>
 
-			{/* Content with Sticky Sidebar Form */}
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
 				<div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
-					{/* Main Content - Left Side */}
-					<div className="flex-1 min-w-0">
-						{pageData.content && (
-							<div className="prose prose-slate dark:prose-invert max-w-none">
-								<CommunityPageContent content={pageData.content} />
-							</div>
+					<div className="flex-1 min-w-0 space-y-10">
+						{hasSectionedContent ? (
+							<>
+								{pageData.bioContent && (
+									<section className="space-y-3">
+										<h2 className="text-2xl font-semibold text-fg">Bio</h2>
+										<div className="prose prose-slate dark:prose-invert max-w-none">
+											<CommunityPageContent content={pageData.bioContent} />
+										</div>
+									</section>
+								)}
+
+								{galleryImages.length > 0 && (
+									<section className="space-y-4">
+										<div className="flex items-center justify-between gap-4">
+											<h2 className="text-2xl font-semibold text-fg">Image Gallery</h2>
+											{galleryImages.length > 1 && (
+												<div className="flex items-center gap-2">
+													<StyledButton
+														intent="secondary"
+														size="sm"
+														onClick={() =>
+															setActiveSlide(
+																(prev) =>
+																	(prev - 1 + galleryImages.length) %
+																	galleryImages.length
+															)
+														}
+													>
+														<ChevronLeft className="size-4" />
+													</StyledButton>
+													<StyledButton
+														intent="secondary"
+														size="sm"
+														onClick={() =>
+															setActiveSlide((prev) => (prev + 1) % galleryImages.length)
+														}
+													>
+														<ChevronRight className="size-4" />
+													</StyledButton>
+												</div>
+											)}
+										</div>
+										<div className="relative rounded-2xl overflow-hidden border border-border/60 bg-muted/20 aspect-[16/10]">
+											{galleryImages[activeSlide] && (
+												<Image
+													src={galleryImages[activeSlide].url}
+													alt={`Gallery image ${activeSlide + 1}`}
+													fill
+													className="object-cover"
+												/>
+											)}
+										</div>
+										{galleryImages.length > 1 && (
+											<div className="flex items-center justify-center gap-2">
+												{galleryImages.map((item, index) => (
+													<button
+														type="button"
+														key={item.storageId}
+														onClick={() => setActiveSlide(index)}
+														className={cn(
+															"h-2 rounded-full transition-all",
+															index === activeSlide
+																? "w-6 bg-primary"
+																: "w-2 bg-muted-fg/40 hover:bg-muted-fg/70"
+														)}
+														aria-label={`Go to gallery image ${index + 1}`}
+													/>
+												))}
+											</div>
+										)}
+									</section>
+								)}
+
+								{pageData.servicesContent && (
+									<section className="space-y-3">
+										<h2 className="text-2xl font-semibold text-fg">Services</h2>
+										<div className="prose prose-slate dark:prose-invert max-w-none">
+											<CommunityPageContent content={pageData.servicesContent} />
+										</div>
+									</section>
+								)}
+
+								{(hasStructuredPricing || pageData.pricingContent) && (
+									<section className="space-y-4">
+										<h2 className="text-2xl font-semibold text-fg">Pricing</h2>
+										{hasStructuredPricing ? (
+											<div className="grid gap-4 md:grid-cols-2">
+												{pageData.pricingTiers?.map((tier, index) => (
+													<div
+														key={`${tier.name}-${index}`}
+														className="rounded-xl border border-border/60 bg-card/40 p-5 space-y-2"
+													>
+														<h3 className="text-lg font-semibold text-fg">{tier.name}</h3>
+														<p className="text-2xl font-bold text-primary">{tier.price}</p>
+														{tier.description && (
+															<p className="text-sm text-muted-fg">{tier.description}</p>
+														)}
+													</div>
+												))}
+											</div>
+										) : (
+											pageData.pricingContent && (
+												<div className="prose prose-slate dark:prose-invert max-w-none">
+													<CommunityPageContent content={pageData.pricingContent} />
+												</div>
+											)
+										)}
+									</section>
+								)}
+							</>
+						) : (
+							pageData.content && (
+								<div className="prose prose-slate dark:prose-invert max-w-none">
+									<CommunityPageContent content={pageData.content} />
+								</div>
+							)
 						)}
 					</div>
 
-					{/* Interest Form - Right Side Sticky */}
 					<div className="lg:w-[380px] xl:w-[420px] flex-shrink-0">
 						<div className="lg:sticky lg:top-6">
 							<StyledCard>
@@ -283,7 +437,8 @@ export default function PublicCommunityPage() {
 										Interested in our services?
 									</StyledCardTitle>
 									<StyledCardDescription>
-										Leave your contact information and we&apos;ll get back to you soon.
+										Leave your contact information and we&apos;ll get back to you
+										soon.
 									</StyledCardDescription>
 								</StyledCardHeader>
 
@@ -297,7 +452,8 @@ export default function PublicCommunityPage() {
 												Thank you!
 											</h3>
 											<p className="text-muted-fg text-sm">
-												We&apos;ve received your information and will be in touch soon.
+												We&apos;ve received your information and will be in touch
+												soon.
 											</p>
 										</div>
 									) : (
@@ -374,7 +530,6 @@ export default function PublicCommunityPage() {
 				</div>
 			</div>
 
-			{/* Footer */}
 			<footer className="border-t border-border bg-muted/20 mt-auto">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-fg">
