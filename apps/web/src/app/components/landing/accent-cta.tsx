@@ -4,15 +4,26 @@ import { ArrowDownRight } from "lucide-react";
 import Link from "next/link";
 import { forwardRef } from "react";
 
-interface AccentCTAProps
-	extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface AccentCTALinkProps {
+	href: string;
 	size?: "sm" | "default";
-	href?: string;
+	children: React.ReactNode;
+	className?: string;
+}
+
+interface AccentCTAButtonProps
+	extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+	href?: never;
+	size?: "sm" | "default";
 	children: React.ReactNode;
 }
 
+type AccentCTAProps = AccentCTALinkProps | AccentCTAButtonProps;
+
 const AccentCTA = forwardRef<HTMLButtonElement, AccentCTAProps>(
-	({ size = "default", href, children, className = "", ...props }, ref) => {
+	({ size = "default", children, className = "", ...rest }, ref) => {
+		const href = "href" in rest ? rest.href : undefined;
+		const { href: _href, ...props } = rest as AccentCTAButtonProps & { href?: string };
 		const sm = size === "sm";
 		const inner = (
 			<>

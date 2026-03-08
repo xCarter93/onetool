@@ -38,6 +38,7 @@ export default function BlurInHeadline() {
 		let rafId: number;
 
 		const onScroll = () => {
+			cancelAnimationFrame(rafId);
 			rafId = requestAnimationFrame(updateWords);
 		};
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import Modal from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ export default function ScheduleDemoModal({
 	isOpen,
 	onClose,
 }: ScheduleDemoModalProps) {
+	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [formData, setFormData] = useState({
 		name: "",
@@ -28,6 +29,22 @@ export default function ScheduleDemoModal({
 		type: "success" | "error" | null;
 		message: string;
 	}>({ type: null, message: "" });
+
+	useEffect(() => {
+		return () => {
+			if (timerRef.current) clearTimeout(timerRef.current);
+		};
+	}, []);
+
+	const resetForm = () => {
+		setFormData({ name: "", email: "", company: "", phone: "", message: "" });
+		setFormStatus({ type: null, message: "" });
+	};
+
+	const handleClose = () => {
+		resetForm();
+		onClose();
+	};
 
 	const handleScheduleDemo = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -52,16 +69,9 @@ export default function ScheduleDemoModal({
 					"Thank you! We'll be in touch within 24 hours to schedule your demo.",
 			});
 
-			setTimeout(() => {
-				setFormData({
-					name: "",
-					email: "",
-					company: "",
-					phone: "",
-					message: "",
-				});
+			timerRef.current = setTimeout(() => {
+				resetForm();
 				onClose();
-				setFormStatus({ type: null, message: "" });
 			}, 2000);
 		} catch (error) {
 			setFormStatus({
@@ -77,7 +87,7 @@ export default function ScheduleDemoModal({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} title="Schedule a Demo" size="md">
+		<Modal isOpen={isOpen} onClose={handleClose} title="Schedule a Demo" size="md">
 			<div className="space-y-4">
 				<p className="text-sm text-muted-foreground">
 					Fill out the form below and we&apos;ll reach out within 24 hours to
@@ -177,7 +187,7 @@ export default function ScheduleDemoModal({
 						<StyledButton
 							type="button"
 							intent="outline"
-							onClick={onClose}
+							onClick={handleClose}
 							disabled={isSubmitting}
 						>
 							Cancel
