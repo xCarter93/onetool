@@ -153,7 +153,7 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 						"relative z-10 w-fit sm:h-12 h-10 rounded-full sm:px-6 px-3 sm:py-2 py-1 font-medium transition-colors",
 						selected === "0"
 							? "text-white"
-							: "text-muted-foreground hover:text-foreground"
+							: "text-muted-foreground hover:text-foreground",
 					)}
 				>
 					{selected === "0" && (
@@ -172,7 +172,7 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 						"relative z-10 w-fit sm:h-12 h-10 shrink-0 rounded-full sm:px-6 px-3 sm:py-2 py-1 font-medium transition-colors",
 						selected === "1"
 							? "text-white"
-							: "text-muted-foreground hover:text-foreground"
+							: "text-muted-foreground hover:text-foreground",
 					)}
 				>
 					{selected === "1" && (
@@ -220,15 +220,15 @@ export default function PricingSection() {
 					const hardcodedPlan = plans.find(
 						(p) =>
 							p.name.toLowerCase() === clerkPlan.name.toLowerCase() ||
-							p.name === "Business"
+							p.name === "Business",
 					);
 
 					const monthlyPrice = clerkPlan.fee?.amount
 						? clerkPlan.fee.amount / 100
-						: hardcodedPlan?.price ?? 0;
+						: (hardcodedPlan?.price ?? 0);
 					const yearlyPrice = clerkPlan.annualFee?.amount
 						? clerkPlan.annualFee.amount / 100
-						: hardcodedPlan?.yearlyPrice ?? 0;
+						: (hardcodedPlan?.yearlyPrice ?? 0);
 
 					return {
 						name: clerkPlan.name,
@@ -288,12 +288,12 @@ export default function PricingSection() {
 					<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-foreground mb-4">
 						Plans that work best for your{" "}
 						<span className="border border-dashed border-primary px-2 py-1 rounded-xl bg-primary/10 inline-block">
-							business
+							Business
 						</span>
 					</h2>
 					<p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto">
-						We help teams all around the world. Explore which option is right for
-						you.
+						We help teams all around the world. Explore which option is right
+						for you.
 					</p>
 				</motion.div>
 
@@ -334,7 +334,7 @@ export default function PricingSection() {
 							<div
 								className={cn(
 									"relative z-[1] h-full rounded-2xl bg-white dark:bg-black border border-border p-6 sm:p-8",
-									plan.popular && "border-transparent"
+									plan.popular && "border-transparent",
 								)}
 							>
 								{/* Plan header */}
@@ -416,9 +416,7 @@ export default function PricingSection() {
 					transition={{ duration: 0.5, delay: 0.3 }}
 					className="flex justify-center mt-10"
 				>
-					<AccentCTA onClick={handleGetStarted}>
-						Get Started
-					</AccentCTA>
+					<AccentCTA onClick={handleGetStarted}>Get Started</AccentCTA>
 				</motion.div>
 			</div>
 		</section>
