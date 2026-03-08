@@ -35,7 +35,10 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 				capture_pageleave: true, // Track when users leave pages
 				// Performance & debugging (can disable if data volume is a concern)
 				capture_performance: true, // Web vitals & performance metrics
-				autocapture: true, // Auto-track clicks, form submissions, etc.
+				autocapture: {
+					dom_event_allowlist: ["click", "change", "submit"],
+					element_allowlist: ["a", "button", "form", "input", "select", "textarea"],
+				},
 				capture_exceptions: true, // Capture JavaScript errors
 				// Heatmaps (can disable if not using this feature)
 				capture_heatmaps: true,

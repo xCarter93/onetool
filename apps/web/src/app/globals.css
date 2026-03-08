@@ -37,6 +37,9 @@
 	--color-popover: var(--popover);
 	--color-card-foreground: var(--card-foreground);
 	--color-card: var(--card);
+	--color-frame: var(--frame);
+	--color-card-primary: var(--card-primary);
+	--color-card-secondary: var(--card-secondary);
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
@@ -45,7 +48,7 @@
 
 :root {
 	--radius: 0.5rem;
-	--bg: oklch(1 0 0);
+	--bg: oklch(0.97 0 0);
 	--fg: oklch(0.141 0.005 285.823);
 	--background: var(--bg);
 	--foreground: var(--fg);
@@ -115,6 +118,9 @@
 	--card-foreground: oklch(0.141 0.005 285.823);
 	--popover: oklch(1 0 0);
 	--popover-foreground: oklch(0.141 0.005 285.823);
+	--frame: #ffffff;
+	--card-primary: oklch(0.82 0.12 230);
+	--card-secondary: oklch(0.94 0.04 230);
 }
 
 .dark {
@@ -179,6 +185,9 @@
 	--card-foreground: oklch(0.985 0 0);
 	--popover: oklch(0.15 0.005 285.823);
 	--popover-foreground: oklch(0.985 0 0);
+	--frame: #000000;
+	--card-primary: oklch(0.45 0.12 230);
+	--card-secondary: oklch(0.22 0.05 230);
 }
 
 @layer base {
@@ -447,6 +456,49 @@
 		}
 		to {
 			transform: translateY(100%);
+		}
+	}
+}
+
+@layer components {
+	/* ========================================================================
+	   Site Frame Effect
+	   ======================================================================== */
+	.site-frame {
+		display: block;
+		position: fixed;
+		z-index: 9999;
+		pointer-events: none;
+		background-color: var(--frame);
+	}
+	.site-frame-top {
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 10px;
+	}
+	.site-frame-bottom {
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 10px;
+	}
+	.site-frame-left {
+		top: 0;
+		bottom: 0;
+		left: 0;
+		width: 10px;
+	}
+	.site-frame-right {
+		top: 0;
+		bottom: 0;
+		right: 0;
+		width: 10px;
+	}
+
+	@media (max-width: 850px) {
+		.site-frame {
+			display: none;
 		}
 	}
 }
