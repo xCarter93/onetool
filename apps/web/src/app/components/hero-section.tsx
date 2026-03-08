@@ -49,9 +49,9 @@ export default function HeroSection() {
 		mouseY.set(0);
 	};
 
-	if (!mounted || !resolvedTheme) {
-		return null;
-	}
+	const dashboardSrc = mounted && resolvedTheme === "dark"
+		? "/Dashboard-dark.png"
+		: "/Dashboard-light.png";
 
 	return (
 		<section
@@ -62,15 +62,17 @@ export default function HeroSection() {
 			onMouseLeave={handleMouseLeave}
 		>
 			{/* Background image with parallax - scale-105 ensures no edge gaps during movement */}
-			<motion.div
-				className="absolute inset-0 min-[850px]:inset-2.5 bg-cover bg-center bg-no-repeat -z-10 brightness-125 rounded-br-4xl rounded-bl-4xl min-[850px]:scale-105"
-				style={{
-					backgroundImage: "url(/BG.png)",
-					x,
-					y,
-				}}
-				aria-hidden="true"
-			/>
+			{mounted && (
+				<motion.div
+					className="absolute inset-0 min-[850px]:inset-2.5 bg-cover bg-center bg-no-repeat -z-10 brightness-125 rounded-br-4xl rounded-bl-4xl min-[850px]:scale-105"
+					style={{
+						backgroundImage: "url(/BG.png)",
+						x,
+						y,
+					}}
+					aria-hidden="true"
+				/>
+			)}
 			{/* Overlay for readability */}
 			<div className="absolute inset-0 bg-white/70 dark:bg-black/70 -z-[5]" />
 
@@ -153,11 +155,7 @@ export default function HeroSection() {
 							}}
 						>
 							<Image
-								src={
-									resolvedTheme === "dark"
-										? "/Dashboard-dark.png"
-										: "/Dashboard-light.png"
-								}
+								src={dashboardSrc}
 								alt="OneTool Dashboard"
 								width={1920}
 								height={1080}

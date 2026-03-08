@@ -24,12 +24,14 @@ export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
 
 		const lenis = new Lenis(LENIS_OPTIONS);
 
+		let rafId: number;
+
 		function raf(time: number) {
 			lenis.raf(time);
-			requestAnimationFrame(raf);
+			rafId = requestAnimationFrame(raf);
 		}
 
-		requestAnimationFrame(raf);
+		rafId = requestAnimationFrame(raf);
 
 		// Anchor link scroll handling
 		function handleAnchorClick(e: MouseEvent) {
@@ -51,6 +53,7 @@ export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
 
 		return () => {
 			document.removeEventListener("click", handleAnchorClick);
+			cancelAnimationFrame(rafId);
 			lenis.destroy();
 		};
 	}, []);

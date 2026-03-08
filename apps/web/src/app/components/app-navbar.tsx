@@ -18,11 +18,15 @@ const navigationLinks = [
 ];
 
 function scrollToSection(href: string) {
-	const targetId = href.replace("#", "");
-	const element = document.getElementById(targetId);
-	if (element) {
-		element.scrollIntoView({ behavior: "smooth", block: "start" });
-	}
+	const element = document.querySelector(href);
+	if (!element) return;
+	// Dispatch a click on a temporary anchor so Lenis intercepts it
+	const anchor = document.createElement("a");
+	anchor.href = href;
+	anchor.style.display = "none";
+	document.body.appendChild(anchor);
+	anchor.click();
+	anchor.remove();
 }
 
 // Animated hamburger icon
