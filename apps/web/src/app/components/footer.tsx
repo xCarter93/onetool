@@ -1,4 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
+import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Calendar } from "lucide-react";
+import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
 
 const navigation = {
 	solutions: [
@@ -44,85 +50,124 @@ const navigation = {
 };
 
 export default function Footer() {
+	const [isScheduleDemoOpen, setIsScheduleDemoOpen] = useState(false);
+
 	return (
-		<footer className="bg-white dark:bg-gray-900">
-			<div className="mx-auto max-w-7xl px-4 sm:px-6 pt-12 pb-6 sm:pt-16 sm:pb-8 lg:px-8 lg:pt-32">
-				{/* Mobile-first: Stack everything, then use grid on larger screens */}
-				<div className="flex flex-col gap-10 lg:grid lg:grid-cols-3 lg:gap-8">
-					{/* Logo and Description */}
-					<div className="space-y-6 text-center lg:text-left">
-						<div className="flex items-center justify-center lg:justify-start gap-3">
-							<Image
-								src="/OneTool.png"
-								alt="OneTool Logo"
-								width={150}
-								height={150}
-								className="rounded-md dark:brightness-0 dark:invert sm:w-[180px]"
-							/>
-						</div>
-						<p className="text-sm leading-6 text-balance text-gray-600 dark:text-gray-400 max-w-xs mx-auto lg:mx-0">
-							Streamlining business operations for companies that serve
-							their communities. Built by entrepreneurs, for entrepreneurs.
-						</p>
-						{/* Social icons - centered on mobile */}
-						<div className="flex justify-center lg:justify-start gap-x-5">
-							{navigation.social.map((item) => (
-								<a
-									key={item.name}
-									href={item.href}
-									className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
-								>
-									<span className="sr-only">{item.name}</span>
-									<item.icon aria-hidden="true" className="size-5 sm:size-6" />
-								</a>
-							))}
-						</div>
+		<footer className="relative">
+			{/* CTA Card - overlapping the footer */}
+			<div className="relative z-10 mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 mb-[-80px]">
+				<div className="relative overflow-hidden rounded-3xl p-8 sm:p-12 text-center">
+					{/* BG image blurred */}
+					<div className="absolute inset-0">
+						<Image
+							src="/BG.png"
+							alt=""
+							fill
+							className="object-cover blur-sm brightness-110"
+						/>
+						<div className="absolute inset-0 bg-white/60 dark:bg-black/60" />
 					</div>
 
-					{/* Navigation Links - 2 columns on mobile, adjusts on larger screens */}
-					<div className="grid grid-cols-2 gap-4 sm:gap-8 lg:col-span-2">
-						{/* Solutions */}
-						<div>
-							<h3 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">
-								Solutions
-							</h3>
-							<ul role="list" className="mt-3 sm:mt-6 space-y-2 sm:space-y-4">
-								{navigation.solutions.map((item) => (
-									<li key={item}>
-										<span className="text-xs sm:text-sm leading-5 text-gray-600 dark:text-gray-400">
-											{item}
-										</span>
-									</li>
-								))}
-							</ul>
-						</div>
-
-						{/* Legal */}
-						<div>
-							<h3 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">
-								Legal
-							</h3>
-							<ul role="list" className="mt-3 sm:mt-6 space-y-2 sm:space-y-4">
-								{navigation.legal.map((item) => (
-									<li key={item.name}>
-										<a
-											href={item.href}
-											className="text-xs sm:text-sm leading-5 text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
-										>
-											{item.name}
-										</a>
-									</li>
-								))}
-							</ul>
-						</div>
+					<div className="relative z-10">
+						<h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-foreground mb-6">
+							Ready to simplify your business?
+						</h2>
+						<StyledButton
+							intent="outline"
+							size="lg"
+							onClick={() => setIsScheduleDemoOpen(true)}
+							icon={<Calendar className="h-4 w-4" />}
+						>
+							Schedule a Demo
+						</StyledButton>
 					</div>
 				</div>
+			</div>
 
-				{/* Copyright */}
-				<div className="mt-10 sm:mt-16 border-t border-gray-900/10 pt-6 sm:pt-8 lg:mt-24 dark:border-white/10">
-					<p className="text-xs sm:text-sm text-center lg:text-left text-gray-600 dark:text-gray-400">
-						&copy; 2025 OneTool. All rights reserved.
-					</p>
+			<ScheduleDemoModal
+				isOpen={isScheduleDemoOpen}
+				onClose={() => setIsScheduleDemoOpen(false)}
+			/>
+
+			{/* Accent Footer */}
+			<div className="bg-primary rounded-tr-[3rem] rounded-tl-[3rem] pt-32 pb-8 px-4 sm:px-6 lg:px-8">
+				<div className="mx-auto max-w-7xl">
+					<div className="flex flex-col gap-10 lg:grid lg:grid-cols-3 lg:gap-8">
+						{/* Logo and Description */}
+						<div className="space-y-5 text-center lg:text-left">
+							<div className="flex items-center justify-center lg:justify-start gap-3">
+								<Image
+									src="/OneTool.png"
+									alt="OneTool Logo"
+									width={150}
+									height={150}
+									className="rounded-md brightness-0 invert sm:w-[180px]"
+								/>
+							</div>
+							<p className="text-sm leading-6 text-white/70 max-w-xs mx-auto lg:mx-0">
+								Streamlining business operations for companies that serve
+								their communities. Built by entrepreneurs, for entrepreneurs.
+							</p>
+							{/* Social icons */}
+							<div className="flex justify-center lg:justify-start gap-x-5">
+								{navigation.social.map((item) => (
+									<a
+										key={item.name}
+										href={item.href}
+										className="text-white/60 hover:text-white transition-colors"
+									>
+										<span className="sr-only">{item.name}</span>
+										<item.icon aria-hidden="true" className="size-5 sm:size-6" />
+									</a>
+								))}
+							</div>
+						</div>
+
+						{/* Navigation Links */}
+						<div className="grid grid-cols-2 gap-4 sm:gap-8 lg:col-span-2">
+							{/* Solutions */}
+							<div>
+								<h3 className="text-sm font-semibold text-white">
+									Solutions
+								</h3>
+								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
+									{navigation.solutions.map((item) => (
+										<li key={item}>
+											<span className="text-sm text-white/60">
+												{item}
+											</span>
+										</li>
+									))}
+								</ul>
+							</div>
+
+							{/* Legal */}
+							<div>
+								<h3 className="text-sm font-semibold text-white">
+									Legal
+								</h3>
+								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
+									{navigation.legal.map((item) => (
+										<li key={item.name}>
+											<a
+												href={item.href}
+												className="text-sm text-white/60 hover:text-white transition-colors"
+											>
+												{item.name}
+											</a>
+										</li>
+									))}
+								</ul>
+							</div>
+						</div>
+					</div>
+
+					{/* Copyright */}
+					<div className="mt-12 sm:mt-16 border-t border-white/20 pt-6 sm:pt-8">
+						<p className="text-sm text-center lg:text-left text-white/50">
+							&copy; 2025 OneTool. All rights reserved.
+						</p>
+					</div>
 				</div>
 			</div>
 		</footer>
