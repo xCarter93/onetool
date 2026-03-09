@@ -13,7 +13,7 @@ import Footer from "@/app/components/footer";
 export default function Home() {
 	return (
 		<SmoothScroll>
-			<main className="flex-1 overflow-x-hidden">
+			<main className="flex-1 overflow-x-clip">
 				<PageFrame />
 				<AppNavbar />
 				<HeroSection />
