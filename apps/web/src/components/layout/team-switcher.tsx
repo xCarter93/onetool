@@ -130,6 +130,7 @@ export function TeamSwitcher() {
 						createOrganizationUrl="/organization/complete?creating=true"
 						organizationProfileUrl="/organization/profile"
 						afterCreateOrganizationUrl="/organization/complete"
+						afterSelectOrganizationUrl="/"
 						hidePersonal={true}
 					/>
 				</div>
