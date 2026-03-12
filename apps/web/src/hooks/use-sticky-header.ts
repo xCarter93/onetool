@@ -14,7 +14,7 @@ export function useStickyHeader() {
 			([entry]) => {
 				setIsSticky(!entry.isIntersecting);
 			},
-			{ threshold: 0, rootMargin: "-80px 0px 0px 0px" }
+			{ threshold: 0, rootMargin: "-44px 0px 0px 0px" }
 		);
 
 		observer.observe(sentinel);

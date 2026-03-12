@@ -505,7 +505,7 @@ export function ProjectOnboardingForm({
 
 	return (
 		<>
-			<div className="relative min-h-screen p-6 pb-0">
+			<div className="relative min-h-screen pl-6 pt-6">
 				{/* Header */}
 				<div className="border-b border-border pb-4 mb-0">
 					<h1 className="text-2xl font-bold text-foreground">

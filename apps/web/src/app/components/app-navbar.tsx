@@ -78,9 +78,9 @@ function AppNavBar() {
 						<Image
 							src="/OneTool.png"
 							alt="OneTool Logo"
-							width={120}
-							height={120}
-							className="rounded-md dark:brightness-0 dark:invert sm:w-[140px]"
+							width={160}
+							height={160}
+							className="rounded-md dark:brightness-0 dark:invert w-[140px] sm:w-[170px]"
 						/>
 					</Link>
 

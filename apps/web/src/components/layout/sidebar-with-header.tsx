@@ -5,11 +5,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
 import { SettingsPopover } from "@/components/layout/settings-popover";
-import {
-	SidebarInset,
-	SidebarProvider,
-	SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
 	TourContextProvider,
 	HomeTour,
@@ -21,61 +17,79 @@ interface SidebarWithHeaderProps {
 	children: ReactNode;
 }
 
+const HEADER_CONNECTOR_SIZE = 20;
+
 /**
- * Concave corner using a radial-gradient — no rotation math needed.
- * The transparent quarter-circle shows the content background,
- * while the rest fills with the sidebar color.
+ * SVG-based convex corner for smooth curved notch transitions.
+ * Uses cubic bezier curves for a softer, organic profile.
  *
- * `corner` describes which corner of the element is the transparent cutout:
- *   bottom-left  → gradient origin at 0% 100%  (ear for left side of notch)
- *   bottom-right → gradient origin at 100% 100% (ear for right side of notch)
+ * corner="bottom-right" → left ear convex bridge
+ * corner="bottom-left"  → right ear convex bridge
  */
-function ConcaveCorner({
+function ConvexCorner({
 	corner,
-	size = 10,
+	size = 12,
 	className,
 }: {
 	corner: "bottom-left" | "bottom-right";
 	size?: number;
 	className?: string;
 }) {
-	const origin = corner === "bottom-left" ? "0% 100%" : "100% 100%";
+	const s = size;
+	const k = 0.3;
+
+	const d =
+		corner === "bottom-right"
+			? `M 0,0 H ${s} V ${s} C ${s},${s * k} ${s * k},0 0,0 Z`
+			: `M ${s},0 H 0 V ${s} C 0,${s * k} ${s * (1 - k)},0 ${s},0 Z`;
 
 	return (
-		<div
+		<svg
+			width={size}
+			height={size}
+			viewBox={`0 0 ${size} ${size}`}
 			className={className}
-			style={{
-				width: size,
-				height: size,
-				background: `radial-gradient(circle at ${origin}, transparent ${size}px, var(--sidebar) ${size}px)`,
-			}}
-		/>
+			aria-hidden="true"
+		>
+			<path d={d} style={{ fill: "var(--sidebar)" }} />
+		</svg>
 	);
 }
 
 /**
- * Wraps a child element in a notch shape that "bulges" downward from the navbar.
- * Concave corners are absolutely positioned at the bottom corners, outside the
- * notch, curving smoothly back into the bar.
+ * Wraps a child element in a notch shape that bulges downward from the navbar.
+ * Convex ears sit at the junction where the bar ends and the notch extends below.
  */
-function NotchedItem({ children }: { children: ReactNode }) {
+function NotchedItem({
+	children,
+	contentClassName,
+	showRightEar = true,
+}: {
+	children: ReactNode;
+	contentClassName?: string;
+	showRightEar?: boolean;
+}) {
 	return (
 		<div className="relative">
-			<div className="relative bg-sidebar rounded-b-xl px-2 pb-1 pt-0 flex items-center">
+			<div
+				className={`relative bg-sidebar rounded-b-xl px-2 pb-1 pt-0 flex items-center ${contentClassName ?? ""}`}
+			>
 				{children}
 			</div>
-			{/* Left concave ear */}
-			<ConcaveCorner
-				corner="bottom-left"
-				size={10}
-				className="absolute -left-[10px] bottom-0"
-			/>
-			{/* Right concave ear */}
-			<ConcaveCorner
+			{/* Left convex ear — positioned at bar/notch junction */}
+			<ConvexCorner
 				corner="bottom-right"
-				size={10}
-				className="absolute -right-[10px] bottom-0"
+				size={HEADER_CONNECTOR_SIZE}
+				className="absolute -left-[20px] top-3 z-10"
 			/>
+			{/* Right convex ear */}
+			{showRightEar && (
+				<ConvexCorner
+					corner="bottom-left"
+					size={HEADER_CONNECTOR_SIZE}
+					className="absolute -right-[20px] top-3 z-10"
+				/>
+			)}
 		</div>
 	);
 }
@@ -92,25 +106,13 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 					{/* Thin navbar with notched items */}
 					<header className="sticky top-0 z-30">
 						{/* Thin navbar rail — notched items hang below */}
-						<div className="flex items-start justify-between bg-sidebar pt-2 h-5">
-							{/* Far left — Sidebar trigger with curve from sidebar */}
-							<div className="relative">
-								<div className="relative bg-sidebar rounded-br-xl px-1 pb-1 pt-0 flex items-center">
-									<SidebarTrigger className="size-8" />
-								</div>
-								{/* Concave corner connecting sidebar into bottom of trigger */}
-								<ConcaveCorner
-									corner="bottom-left"
-									size={14}
-									className="absolute -left-[14px] bottom-0"
-								/>
-								{/* Right ear — curves trigger back into the bar */}
-								<ConcaveCorner
-									corner="bottom-right"
-									size={10}
-									className="absolute -right-[10px] bottom-0"
-								/>
-							</div>
+						<div className="relative flex items-start justify-between bg-sidebar pt-2 h-5">
+							{/* Sidebar to header transition curve */}
+							<ConvexCorner
+								corner="bottom-left"
+								size={HEADER_CONNECTOR_SIZE}
+								className="absolute left-0 top-5 z-10"
+							/>
 
 							{/* Left spacer */}
 							<div className="flex-1" />
@@ -123,19 +125,11 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 							{/* Right spacer */}
 							<div className="flex-1" />
 
-							{/* Right side — shared notch, left curve only */}
-							<div className="relative">
-								<div className="relative bg-sidebar rounded-bl-xl px-2 pb-1 pt-0 flex items-center gap-1">
-									<NotificationBell />
-									<SettingsPopover />
-								</div>
-								{/* Left ear — curves bar into the shared notch */}
-								<ConcaveCorner
-									corner="bottom-left"
-									size={10}
-									className="absolute -left-[10px] bottom-0"
-								/>
-							</div>
+							{/* Right side controls notch */}
+							<NotchedItem contentClassName="gap-1" showRightEar={false}>
+								<NotificationBell />
+								<SettingsPopover />
+							</NotchedItem>
 						</div>
 					</header>
 

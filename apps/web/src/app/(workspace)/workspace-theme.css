@@ -1,0 +1,38 @@
+/*
+ * Workspace-scoped theme overrides for visual zone separation.
+ * Increases contrast between sidebar/header "chrome", main content "canvas",
+ * and right sidebar "panel".
+ *
+ * Does NOT affect the landing page or any route outside (workspace).
+ */
+
+/* ── Light mode ─────────────────────────────────────────────── */
+html:not(.dark) .workspace-zone {
+	/* Sidebar + header: cool-toned gray — the "chrome" shell */
+	--sidebar: oklch(0.94 0.005 265);
+	--sidebar-accent: oklch(0.895 0.008 265);
+	--sidebar-border: oklch(0.88 0.008 265);
+
+	/* Main content area: near-white — the "paper" canvas */
+	--background: oklch(0.995 0 0);
+
+	/* Slightly stronger border for clearer panel edges */
+	--border: oklch(0.89 0.006 265);
+}
+
+/* ── Dark mode ──────────────────────────────────────────────── */
+html.dark .workspace-zone {
+	/* Content area: slightly deeper void for crisper sidebar contrast */
+	--background: oklch(0.15 0.018 264);
+
+	/* Sidebar + header: subtle warm shift adds a temperature axis to the depth */
+	--sidebar: oklch(0.215 0.01 275);
+	--sidebar-accent: oklch(0.265 0.008 275);
+	--sidebar-border: oklch(0.28 0.01 275);
+
+	/* Borders: a touch brighter for cleaner panel delineation */
+	--border: oklch(0.29 0.012 270);
+
+	/* Muted: raised slightly so right-sidebar tint is more legible */
+	--muted: oklch(0.23 0.008 270);
+}

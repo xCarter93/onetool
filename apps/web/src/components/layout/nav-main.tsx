@@ -27,6 +27,7 @@ import {
 	SidebarMenuSubButton,
 	SidebarMenuSubItem,
 	SidebarMenuBadge,
+	useSidebar,
 } from "@/components/ui/sidebar";
 import {
 	DropdownMenu,
@@ -46,30 +47,37 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+type NavItem = {
+	title: string;
+	url: string;
+	icon?: LucideIcon;
+	isActive?: boolean;
+	disabled?: boolean;
+	disabledTooltip?: string;
+	badgeCount?: number;
+	badgeVariant?: "alert";
+	items?: {
+		title: string;
+		url: string;
+		isActive?: boolean;
+		isLocked?: boolean;
+	}[];
+};
+
+type NavGroup = {
+	label: string;
+	items: NavItem[];
+};
+
 export function NavMain({
-	items,
+	groups,
 	showQuickActions = true,
 	canCreateClient = true,
 	clientLimitReason,
 	clientCurrentUsage,
 	clientLimit,
 }: {
-	items: {
-		title: string;
-		url: string;
-		icon?: LucideIcon;
-		isActive?: boolean;
-		disabled?: boolean;
-		disabledTooltip?: string;
-		badgeCount?: number;
-		badgeVariant?: "alert";
-		items?: {
-			title: string;
-			url: string;
-			isActive?: boolean;
-			isLocked?: boolean;
-		}[];
-	}[];
+	groups: NavGroup[];
 	showQuickActions?: boolean;
 	canCreateClient?: boolean;
 	clientLimitReason?: string;
@@ -79,6 +87,8 @@ export function NavMain({
 	const [openQuickActions, setOpenQuickActions] = React.useState(false);
 	const [taskSheetOpen, setTaskSheetOpen] = React.useState(false);
 	const isMobile = useIsMobile();
+	const { state: sidebarState } = useSidebar();
+	const isCollapsed = sidebarState === "collapsed";
 	const toast = useToast();
 	const router = useRouter();
 	const openTimerRef = React.useRef<number | null>(null);
@@ -329,120 +339,137 @@ export function NavMain({
 				</SidebarGroup>
 			)}
 
-			<SidebarGroup>
-				<SidebarGroupLabel>Platform</SidebarGroupLabel>
-				<SidebarMenu>
-					{items.map((item) => {
-						// If item has nested items, use collapsible structure
-						if (item.items && item.items.length > 0) {
-							return (
-								<Collapsible
-									key={item.title}
-									asChild
-									defaultOpen={item.isActive}
-									className="group/collapsible"
-								>
-									<SidebarMenuItem>
-										<CollapsibleTrigger asChild>
+			{groups.map((group) => (
+				<SidebarGroup key={group.label}>
+					<SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+					<SidebarMenu>
+						{group.items.map((item) => {
+							// If item has nested items, use collapsible structure
+							if (item.items && item.items.length > 0) {
+								// When collapsed, navigate directly to the item's URL
+								if (isCollapsed) {
+									return (
+										<SidebarMenuItem key={item.title}>
 											<SidebarMenuButton
 												tooltip={item.title}
 												isActive={item.isActive}
+												onClick={() => router.push(item.url)}
 											>
 												{item.icon && <item.icon />}
 												<span>{item.title}</span>
-												<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
 											</SidebarMenuButton>
-										</CollapsibleTrigger>
-										<CollapsibleContent>
-											<SidebarMenuSub>
-												{item.items.map((subItem) => (
-													<SidebarMenuSubItem key={subItem.title}>
-														{subItem.isLocked ? (
-															<Tooltip>
-																<TooltipTrigger asChild>
-																	<SidebarMenuSubButton
-																		className="opacity-60 cursor-not-allowed"
-																		onClick={(e) => e.preventDefault()}
-																	>
-																		<Lock className="mr-2 h-3 w-3" />
-																		<span>{subItem.title}</span>
-																	</SidebarMenuSubButton>
-																</TooltipTrigger>
-																<TooltipContent>
-																	<div className="space-y-1">
-																		<p className="font-semibold">Premium Feature</p>
-																		<p>Upgrade to access {subItem.title}</p>
-																	</div>
-																</TooltipContent>
-															</Tooltip>
-														) : (
-															<SidebarMenuSubButton
-																asChild
-																isActive={subItem.isActive}
-															>
-																<Link href={subItem.url}>
-																	<span>{subItem.title}</span>
-																</Link>
-															</SidebarMenuSubButton>
-														)}
-													</SidebarMenuSubItem>
-												))}
-											</SidebarMenuSub>
-										</CollapsibleContent>
-									</SidebarMenuItem>
-								</Collapsible>
-							);
-						}
+										</SidebarMenuItem>
+									);
+								}
 
-						// If no nested items, render as simple link
-						// Handle disabled items with tooltip
-						if (item.disabled) {
+								return (
+									<Collapsible
+										key={item.title}
+										asChild
+										defaultOpen={item.isActive}
+										className="group/collapsible"
+									>
+										<SidebarMenuItem>
+											<CollapsibleTrigger asChild>
+												<SidebarMenuButton
+													tooltip={item.title}
+													isActive={item.isActive}
+												>
+													{item.icon && <item.icon />}
+													<span>{item.title}</span>
+													<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+												</SidebarMenuButton>
+											</CollapsibleTrigger>
+											<CollapsibleContent>
+												<SidebarMenuSub>
+													{item.items.map((subItem) => (
+														<SidebarMenuSubItem key={subItem.title}>
+															{subItem.isLocked ? (
+																<Tooltip>
+																	<TooltipTrigger asChild>
+																		<SidebarMenuSubButton
+																			className="opacity-60 cursor-not-allowed"
+																			onClick={(e) => e.preventDefault()}
+																		>
+																			<Lock className="mr-2 h-3 w-3" />
+																			<span>{subItem.title}</span>
+																		</SidebarMenuSubButton>
+																	</TooltipTrigger>
+																	<TooltipContent>
+																		<div className="space-y-1">
+																			<p className="font-semibold">Premium Feature</p>
+																			<p>Upgrade to access {subItem.title}</p>
+																		</div>
+																	</TooltipContent>
+																</Tooltip>
+															) : (
+																<SidebarMenuSubButton
+																	asChild
+																	isActive={subItem.isActive}
+																>
+																	<Link href={subItem.url}>
+																		<span>{subItem.title}</span>
+																	</Link>
+																</SidebarMenuSubButton>
+															)}
+														</SidebarMenuSubItem>
+													))}
+												</SidebarMenuSub>
+											</CollapsibleContent>
+										</SidebarMenuItem>
+									</Collapsible>
+								);
+							}
+
+							// Handle disabled items with tooltip
+							if (item.disabled) {
+								return (
+									<SidebarMenuItem key={item.title}>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<SidebarMenuButton
+													tooltip={item.title}
+													className="opacity-60 cursor-not-allowed"
+													onClick={(e) => e.preventDefault()}
+												>
+													{item.icon && <item.icon />}
+													<span>{item.title}</span>
+												</SidebarMenuButton>
+											</TooltipTrigger>
+											<TooltipContent>
+												<p>{item.disabledTooltip || "This feature is not available"}</p>
+											</TooltipContent>
+										</Tooltip>
+									</SidebarMenuItem>
+								);
+							}
+
 							return (
 								<SidebarMenuItem key={item.title}>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<SidebarMenuButton
-												tooltip={item.title}
-												className="opacity-60 cursor-not-allowed"
-												onClick={(e) => e.preventDefault()}
-											>
-												{item.icon && <item.icon />}
-												<span>{item.title}</span>
-											</SidebarMenuButton>
-										</TooltipTrigger>
-										<TooltipContent>
-											<p>{item.disabledTooltip || "This feature is not available"}</p>
-										</TooltipContent>
-									</Tooltip>
+									<SidebarMenuButton
+										tooltip={item.title}
+										isActive={item.isActive}
+										onClick={() => router.push(item.url)}
+									>
+										{item.icon && <item.icon />}
+										<span>{item.title}</span>
+									</SidebarMenuButton>
+									{typeof item.badgeCount === "number" && item.badgeCount > 0 && (
+										<SidebarMenuBadge
+											className={cn(
+												item.badgeVariant === "alert" &&
+													"bg-red-500 text-white ring-2 ring-red-300 shadow-[0_0_0_2px_rgba(255,255,255,0.35)]"
+											)}
+										>
+											{item.badgeCount}
+										</SidebarMenuBadge>
+									)}
 								</SidebarMenuItem>
 							);
-						}
-
-						return (
-							<SidebarMenuItem key={item.title}>
-								<SidebarMenuButton
-									tooltip={item.title}
-									isActive={item.isActive}
-									onClick={() => router.push(item.url)}
-								>
-									{item.icon && <item.icon />}
-									<span>{item.title}</span>
-								</SidebarMenuButton>
-								{typeof item.badgeCount === "number" && item.badgeCount > 0 && (
-									<SidebarMenuBadge
-										className={cn(
-											item.badgeVariant === "alert" &&
-												"bg-red-500 text-white ring-2 ring-red-300 shadow-[0_0_0_2px_rgba(255,255,255,0.35)]"
-										)}
-									>
-										{item.badgeCount}
-									</SidebarMenuBadge>
-								)}
-							</SidebarMenuItem>
-						);
-					})}
-				</SidebarMenu>
-			</SidebarGroup>
+						})}
+					</SidebarMenu>
+				</SidebarGroup>
+			))}
 
 			{/* Task Sheet for Quick Action */}
 			<TaskSheet

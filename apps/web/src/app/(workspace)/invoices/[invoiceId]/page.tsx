@@ -264,7 +264,7 @@ export default function InvoiceDetailPage() {
 	// Loading state
 	if (invoice === undefined) {
 		return (
-			<div className="relative px-6 pt-8 pb-20">
+			<div className="relative pl-6 pt-8 pb-20">
 				<div className="mx-auto">
 					<div className="space-y-6">
 						<Skeleton className="h-12 w-64" />
@@ -280,7 +280,7 @@ export default function InvoiceDetailPage() {
 	// Invoice not found
 	if (invoice === null) {
 		return (
-			<div className="relative px-6 pt-8 pb-20">
+			<div className="relative pl-6 pt-8 pb-20">
 				<div className="mx-auto">
 					<div className="flex flex-col items-center justify-center py-12 text-center">
 						<div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mb-4">
@@ -307,7 +307,7 @@ export default function InvoiceDetailPage() {
 
 	return (
 		<>
-			<div className="relative min-h-screen p-6 pb-0">
+			<div className="relative min-h-screen pl-6 pt-6">
 				{/* Header */}
 				<InvoiceDetailHeader
 					invoice={invoice}

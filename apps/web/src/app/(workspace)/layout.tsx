@@ -3,6 +3,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
 import { AdminFab } from "@/components/layout/admin-fab";
+import "./workspace-theme.css";
 
 export default async function WorkspaceLayout({
 	children,
@@ -14,7 +15,7 @@ export default async function WorkspaceLayout({
 		(user?.privateMetadata as Record<string, unknown>)
 			?.has_admin_dashboard_access === true;
 	return (
-		<div className="min-h-screen flex-1 md:min-h-min">
+		<div className="workspace-zone min-h-screen flex-1 md:min-h-min">
 			<AnalyticsIdentity />
 			{/* Modern Background with Subtle Texture */}
 			<div className="relative bg-background min-h-screen">
