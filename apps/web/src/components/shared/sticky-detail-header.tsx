@@ -28,7 +28,7 @@ export function StickyDetailHeader({ children }: StickyDetailHeaderProps) {
 					"transition-all duration-300",
 					isSticky
 						? "sticky top-[44px] z-20 bg-background shadow-md border-b border-border/60 py-4 -ml-6 pl-6 pr-6 xl:mr-[480px]"
-						: "border-b border-border pb-4 mb-0 pr-6"
+						: "border-b border-border pt-4 pb-4 mb-0 pr-6"
 				)}
 			>
 				{children(isSticky)}
