@@ -386,7 +386,7 @@ export default function ProjectsPage() {
 	);
 
 	return (
-		<div className="relative p-6 space-y-6">
+		<div className="relative px-6 pt-8 pb-6 space-y-6">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
 					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />

@@ -239,7 +239,7 @@ export default function ActivityFeed({
 								</p>
 							</div>
 						) : (
-							<ul role="list" className="space-y-3 pr-4">
+							<ul role="list" className="space-y-3 pl-1 pr-4 py-1">
 								{currentPageActivities.map((activityItem, activityItemIdx) => (
 									<ActivityItem
 										key={
