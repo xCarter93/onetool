@@ -20,6 +20,16 @@ const navigationLinks = [
 function scrollToSection(href: string) {
 	const element = document.querySelector(href);
 	if (!element) return;
+
+	const prefersReducedMotion = window.matchMedia(
+		"(prefers-reduced-motion: reduce)"
+	).matches;
+
+	if (prefersReducedMotion) {
+		element.scrollIntoView({ block: "start" });
+		return;
+	}
+
 	// Dispatch a click on a temporary anchor so Lenis intercepts it
 	const anchor = document.createElement("a");
 	anchor.href = href;

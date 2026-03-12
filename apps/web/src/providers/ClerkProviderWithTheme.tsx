@@ -38,6 +38,7 @@ export function ClerkProviderWithTheme({
 			publishableKey={env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 			afterSignOutUrl="/"
 			appearance={{
+				cssLayerName: "clerk",
 				baseTheme: isDark ? dark : undefined,
 				elements: {
 					logoImage: elements.logoImage,
