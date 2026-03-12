@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
 	AudioWaveform,
@@ -29,7 +30,10 @@ import {
 	SidebarFooter,
 	SidebarHeader,
 	SidebarRail,
+	SidebarTrigger,
+	useSidebar,
 } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import {
@@ -69,88 +73,128 @@ const data = {
 			plan: "Free",
 		},
 	],
-	navMain: [
+	navGroups: [
 		{
-			title: "Home",
-			url: "/home",
-			icon: Home,
-		},
-		{
-			title: "Clients",
-			url: "/clients",
-			icon: Users,
-		},
-		{
-			title: "Projects",
-			url: "/projects",
-			icon: Briefcase,
-		},
-		{
-			title: "Tasks",
-			url: "/tasks",
-			icon: ListCheck,
-		},
-		{
-			title: "Quotes",
-			url: "/quotes",
-			icon: FileText,
-		},
-		{
-			title: "Invoices",
-			url: "/invoices",
-			icon: Receipt,
-		},
-		{
-			title: "Reports",
-			url: "/reports",
-			icon: BarChart3,
-		},
-		{
-			title: "Community",
-			url: "/community",
-			icon: Globe,
-		},
-		{
-			title: "Automations",
-			url: "/automations",
-			icon: Zap,
-		},
-		{
-			title: "Settings",
-			url: "/organization/profile",
-			icon: Settings,
+			label: "Workspace",
 			items: [
 				{
-					title: "Overview",
+					title: "Home",
+					url: "/home",
+					icon: Home,
+				},
+				{
+					title: "Clients",
+					url: "/clients",
+					icon: Users,
+				},
+				{
+					title: "Projects",
+					url: "/projects",
+					icon: Briefcase,
+				},
+				{
+					title: "Tasks",
+					url: "/tasks",
+					icon: ListCheck,
+				},
+				{
+					title: "Quotes",
+					url: "/quotes",
+					icon: FileText,
+				},
+				{
+					title: "Invoices",
+					url: "/invoices",
+					icon: Receipt,
+				},
+			],
+		},
+		{
+			label: "Insights",
+			items: [
+				{
+					title: "Reports",
+					url: "/reports",
+					icon: BarChart3,
+				},
+			],
+		},
+		{
+			label: "Manage",
+			items: [
+				{
+					title: "Automations",
+					url: "/automations",
+					icon: Zap,
+				},
+				{
+					title: "Community",
+					url: "/community",
+					icon: Globe,
+				},
+				{
+					title: "Settings",
 					url: "/organization/profile",
+					icon: Settings,
+					items: [
+						{
+							title: "Overview",
+							url: "/organization/profile",
+						},
+						{
+							title: "Business Info",
+							url: "/organization/profile?tab=business",
+						},
+						{
+							title: "Payments",
+							url: "/organization/profile?tab=payments",
+							requiresPremium: true,
+						},
+						{
+							title: "Documents",
+							url: "/organization/profile?tab=documents",
+							requiresPremium: true,
+						},
+						{
+							title: "SKUs",
+							url: "/organization/profile?tab=skus",
+							requiresPremium: true,
+						},
+					] as Array<{
+						title: string;
+						url: string;
+						requiresPremium?: boolean;
+					}>,
 				},
-				{
-					title: "Business Info",
-					url: "/organization/profile?tab=business",
-				},
-				{
-					title: "Payments",
-					url: "/organization/profile?tab=payments",
-					requiresPremium: true,
-				},
-				{
-					title: "Documents",
-					url: "/organization/profile?tab=documents",
-					requiresPremium: true,
-				},
-				{
-					title: "SKUs",
-					url: "/organization/profile?tab=skus",
-					requiresPremium: true,
-				},
-			] as Array<{
-				title: string;
-				url: string;
-				requiresPremium?: boolean;
-			}>,
+			],
 		},
 	],
 };
+
+function SidebarBrandHeader() {
+	const { state } = useSidebar();
+	const isCollapsed = state === "collapsed";
+
+	return (
+		<div className="flex flex-col gap-2">
+			{/* Toggle + Logo row */}
+			<div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-2"}`}>
+				<SidebarTrigger className="size-8 shrink-0" />
+				{!isCollapsed && (
+					<Image
+						src="/OneTool.png"
+						alt="OneTool"
+						width={420}
+						height={108}
+						className="dark:invert dark:brightness-0 h-20 w-auto"
+						priority
+					/>
+				)}
+			</div>
+			{!isCollapsed && <Separator className="bg-sidebar-border" />}
+		</div>
+	);
+}
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const pathname = usePathname();
@@ -237,91 +281,84 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		return pathname.startsWith(navUrl);
 	};
 
-	// Create navigation items with dynamic isActive property
-	const navigationItems = data.navMain
-		.filter((item) => {
-			// Filter navigation items based on user role
-			// Members can only see Projects and Tasks (not Community, Settings, etc.)
-			if (isMember && hasOrganization) {
-				return item.title === "Projects" || item.title === "Tasks";
-			}
-			// Admins see all items (default behavior)
-			return true;
-		})
-		.map((item) => {
-			const subItems = item.items?.map((subItem) => {
-				// For URLs with search params, we need to compare both pathname and params
-				const [subItemPath, subItemParams] = subItem.url.split("?");
-				const currentPath = pathname;
-				const currentParams = searchParams.toString();
+	// Process each group's items with dynamic isActive property
+	const processItem = (item: (typeof data.navGroups)[number]["items"][number]) => {
+		const subItems = item.items?.map((subItem) => {
+			const [subItemPath, subItemParams] = subItem.url.split("?");
+			const currentPath = pathname;
+			const currentParams = searchParams.toString();
 
-				let isSubItemActive = false;
+			let isSubItemActive = false;
 
-				if (subItemParams) {
-					// URL has search params (like ?tab=business)
-					// Use order-insensitive comparison for query parameters
-					isSubItemActive =
-						currentPath === subItemPath &&
-						areQueryParamsEqual(currentParams, subItemParams);
+			if (subItemParams) {
+				isSubItemActive =
+					currentPath === subItemPath &&
+					areQueryParamsEqual(currentParams, subItemParams);
+			} else {
+				if (subItem.url === "/organization/profile") {
+					isSubItemActive = pathname === subItem.url && currentParams === "";
 				} else {
-					// No search params in the URL - should match only when current page has no params either
-					// Special case: for organization/profile, only match when there are no search params
-					if (subItem.url === "/organization/profile") {
-						isSubItemActive = pathname === subItem.url && currentParams === "";
-					} else {
-						// Use original logic for other routes
-						isSubItemActive =
-							pathname === subItem.url ||
-							(subItem.url !== item.url &&
-								pathname.startsWith(`${subItem.url}/`));
-					}
+					isSubItemActive =
+						pathname === subItem.url ||
+						(subItem.url !== item.url &&
+							pathname.startsWith(`${subItem.url}/`));
 				}
-
-				return {
-					...subItem,
-					isActive: isSubItemActive,
-					isLocked: subItem.requiresPremium && !hasPremiumAccess,
-				};
-			});
-
-			const isActive =
-				isNavItemActive(item.url, item.title) ||
-				subItems?.some((subItem) => subItem.isActive);
-
-			// Determine if item should be disabled
-			// Users without an organization can only access Settings
-			const isDisabled =
-				!hasOrganization && item.title !== "Settings" && item.title !== "Home";
-
-			// Community is disabled unless feature flag is enabled
-			const isCommunityDisabled =
-				item.title === "Community" && !isCommunityEnabled;
-
-			// Automations is disabled unless feature flag is enabled
-			const isAutomationsDisabled =
-				item.title === "Automations" && !isAutomationsEnabled;
+			}
 
 			return {
-				...item,
-				items: subItems,
-				isActive,
-				disabled: isDisabled || isCommunityDisabled || isAutomationsDisabled,
-				disabledTooltip: isCommunityDisabled
-					? "Communities feature coming soon"
-					: isAutomationsDisabled
-					? "Automations feature coming soon"
-					: undefined,
-				badgeCount:
-					item.title === "Tasks" && tasksBadgeCount > 0
-						? tasksBadgeCount
-						: undefined,
-				badgeVariant: item.title === "Tasks" ? ("alert" as const) : undefined,
+				...subItem,
+				isActive: isSubItemActive,
+				isLocked: subItem.requiresPremium && !hasPremiumAccess,
 			};
 		});
 
+		const isActive =
+			isNavItemActive(item.url, item.title) ||
+			subItems?.some((subItem) => subItem.isActive);
+
+		const isDisabled =
+			!hasOrganization && item.title !== "Settings" && item.title !== "Home";
+
+		const isCommunityDisabled =
+			item.title === "Community" && !isCommunityEnabled;
+
+		const isAutomationsDisabled =
+			item.title === "Automations" && !isAutomationsEnabled;
+
+		return {
+			...item,
+			items: subItems,
+			isActive,
+			disabled: isDisabled || isCommunityDisabled || isAutomationsDisabled,
+			disabledTooltip: isCommunityDisabled
+				? "Communities feature coming soon"
+				: isAutomationsDisabled
+				? "Automations feature coming soon"
+				: undefined,
+			badgeCount:
+				item.title === "Tasks" && tasksBadgeCount > 0
+					? tasksBadgeCount
+					: undefined,
+			badgeVariant: item.title === "Tasks" ? ("alert" as const) : undefined,
+		};
+	};
+
+	const navigationGroups = data.navGroups.map((group) => ({
+		label: group.label,
+		items: group.items
+			.filter((item) => {
+				if (isMember && hasOrganization) {
+					return item.title === "Projects" || item.title === "Tasks";
+				}
+				return true;
+			})
+			.map(processItem),
+	})).filter((group) => group.items.length > 0);
+
 	return (
 		<Sidebar collapsible="icon" {...props}>
-			<SidebarHeader className="pl-0">
+			<SidebarHeader>
+				<SidebarBrandHeader />
 				<TourElement<HomeTour>
 					TourContext={HomeTourContext}
 					stepId={HomeTour.TEAM_SWITCHER}
@@ -341,7 +378,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					tooltipPosition={HOME_TOUR_CONTENT[HomeTour.SIDEBAR_NAV].tooltipPosition}
 				>
 					<NavMain
-						items={navigationItems}
+						groups={navigationGroups}
 						showQuickActions={isAdmin}
 						canCreateClient={canCreateClient}
 						clientLimitReason={clientLimitReason}

@@ -149,7 +149,7 @@ export default function Page() {
 			<TourAutoStart tourStarted={tourStarted} />
 
 			<motion.div
-				className={`relative p-4 sm:p-6 lg:p-8 flex flex-col ${
+				className={`relative p-4 sm:p-6 lg:px-8 lg:pb-8 lg:pt-12 flex flex-col ${
 					viewMode === "calendar" ? "h-[calc(100vh-5rem)]" : ""
 				}`}
 				initial={{ opacity: 0, y: 20 }}

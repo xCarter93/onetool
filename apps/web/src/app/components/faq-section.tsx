@@ -3,6 +3,8 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { StyledButton } from "@/components/ui/styled/styled-button";
+import { AccentCTA } from "@/app/components/landing/accent-cta";
 
 const faqs = [
 	{
@@ -75,44 +77,41 @@ export default function FAQSection() {
 	};
 
 	return (
-		<div className="bg-white py-16 sm:py-24 lg:py-32 dark:bg-gray-900">
-			<div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+		<section id="faq" className="py-24 sm:py-32 lg:py-40 px-4 sm:px-6 lg:px-8">
+			<div className="mx-auto max-w-3xl">
 				{/* Header */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					whileInView={{ opacity: 1, y: 0 }}
 					viewport={{ once: true }}
 					transition={{ duration: 0.5 }}
-					className="text-center"
+					className="text-center mb-12"
 				>
-					<h2 className="text-sm sm:text-base font-semibold leading-7 text-primary">
-						FAQ
-					</h2>
-					<p className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 lg:text-4xl dark:text-white">
+					<p className="text-sm font-semibold text-primary mb-4">FAQ</p>
+					<h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-4">
 						Frequently Asked Questions
-					</p>
-					<p className="mt-4 sm:mt-6 text-sm sm:text-lg leading-7 sm:leading-8 text-gray-600 dark:text-gray-400 px-2">
-						Everything you need to know about OneTool and how it can transform
-						your small business.
+					</h2>
+					<p className="text-base sm:text-lg text-muted-foreground">
+						Everything you need to know about OneTool
 					</p>
 				</motion.div>
 
 				{/* FAQ Items */}
-				<div className="mt-10 sm:mt-16 space-y-3 sm:space-y-4">
+				<div className="space-y-3">
 					{faqs.map((faq, index) => (
 						<motion.div
 							key={index}
 							initial={{ opacity: 0, y: 20 }}
 							whileInView={{ opacity: 1, y: 0 }}
 							viewport={{ once: true }}
-							transition={{ duration: 0.3, delay: index * 0.05 }}
-							className="overflow-hidden rounded-lg border border-gray-200 bg-white transition-all duration-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900"
+							transition={{ duration: 0.3, delay: index * 0.03 }}
+							className="rounded-2xl bg-white dark:bg-black border border-border shadow-sm overflow-hidden"
 						>
 							<button
 								onClick={() => toggleFAQ(index)}
-								className="flex w-full items-center justify-between px-4 sm:px-6 py-4 sm:py-5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-800/50 active:bg-gray-100 dark:active:bg-gray-700"
+								className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-accent/50"
 							>
-								<span className="text-sm sm:text-lg font-semibold text-gray-900 dark:text-white pr-2">
+								<span className="text-sm sm:text-base font-semibold text-foreground pr-4">
 									{faq.question}
 								</span>
 								<motion.div
@@ -120,7 +119,7 @@ export default function FAQSection() {
 									transition={{ duration: 0.3 }}
 									className="shrink-0"
 								>
-									<ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+									<ChevronDown className="h-4 w-4 text-primary" />
 								</motion.div>
 							</button>
 
@@ -133,8 +132,8 @@ export default function FAQSection() {
 										transition={{ duration: 0.3 }}
 										className="overflow-hidden"
 									>
-										<div className="border-t border-gray-200 px-4 sm:px-6 py-4 sm:py-5 dark:border-gray-800">
-											<p className="text-sm sm:text-base leading-6 sm:leading-7 text-gray-600 dark:text-gray-400">
+										<div className="border-t border-border px-5 py-4">
+											<p className="text-sm leading-relaxed text-muted-foreground">
 												{faq.answer}
 											</p>
 										</div>
@@ -145,25 +144,20 @@ export default function FAQSection() {
 					))}
 				</div>
 
-				{/* Bottom CTA */}
+				{/* Bottom CTAs */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					whileInView={{ opacity: 1, y: 0 }}
 					viewport={{ once: true }}
-					transition={{ duration: 0.5, delay: 0.5 }}
-					className="mt-16 text-center"
+					transition={{ duration: 0.5, delay: 0.3 }}
+					className="mt-12 text-center flex flex-col sm:flex-row items-center justify-center gap-3"
 				>
-					<p className="text-base leading-7 text-gray-600 dark:text-gray-400">
-						Still have questions?
-					</p>
-					<a
-						href="mailto:support@onetool.biz"
-						className="mt-2 inline-flex items-center text-base font-semibold text-primary transition-colors hover:text-primary/80"
-					>
-						Contact our support team →
+					<AccentCTA href="/sign-up">Get Started</AccentCTA>
+					<a href="mailto:support@onetool.biz">
+						<StyledButton intent="outline">Contact Support</StyledButton>
 					</a>
 				</motion.div>
 			</div>
-		</div>
+		</section>
 	);
 }

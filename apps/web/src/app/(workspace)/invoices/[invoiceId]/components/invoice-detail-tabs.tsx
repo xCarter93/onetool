@@ -133,7 +133,7 @@ export function InvoiceDetailTabs({
 				</div>
 
 				{/* Right: Persistent sidebar (desktop) */}
-				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/20">
+				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/40 dark:bg-muted/50">
 					<div className="sticky top-24">
 						<InvoiceDetailSidebar {...sidebarProps} />
 					</div>
@@ -141,7 +141,7 @@ export function InvoiceDetailTabs({
 			</div>
 
 			{/* Sidebar for mobile (below content) */}
-			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/20 rounded-lg">
+			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
 				<InvoiceDetailSidebar {...sidebarProps} />
 			</div>
 		</StyledTabs>
