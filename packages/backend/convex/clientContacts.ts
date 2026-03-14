@@ -350,9 +350,9 @@ export const search = query({
 });
 
 /**
- * Bulk create contacts for a client
+ * Bulk create contacts for a client.
+ * Used by Phase 5 contact import flow.
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const bulkCreate = mutation({
 	args: {
 		clientId: v.id("clients"),
