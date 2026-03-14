@@ -8,8 +8,8 @@
 ### Upload & Parsing
 
 - [ ] **UPLD-01**: User can drag-and-drop or click to upload a .csv file with size validation
-- [ ] **UPLD-02**: System strips UTF-8 BOM before parsing to prevent header corruption
-- [ ] **UPLD-03**: System parses all CSV values as strings (no dynamicTyping) to preserve phone numbers
+- [x] **UPLD-02**: System strips UTF-8 BOM before parsing to prevent header corruption
+- [x] **UPLD-03**: System parses all CSV values as strings (no dynamicTyping) to preserve phone numbers
 - [ ] **UPLD-04**: User can download a template CSV with human-readable column headers derived from schema
 - [ ] **UPLD-05**: User can view an inline schema guide showing required/optional fields and expected data types
 
@@ -18,8 +18,8 @@
 - [ ] **MAP-01**: System auto-maps CSV columns to schema fields using AI (Mastra/GPT-4o) with real per-field confidence scores
 - [ ] **MAP-02**: User can manually override or remove any column mapping via dropdown
 - [ ] **MAP-03**: User can see a live data preview panel that updates as mappings change
-- [ ] **MAP-04**: System sends only headers + sample rows to AI (not full CSV content)
-- [ ] **MAP-05**: AI analysis route requires authentication and has maxDuration configured
+- [x] **MAP-04**: System sends only headers + sample rows to AI (not full CSV content)
+- [x] **MAP-05**: AI analysis route requires authentication and has maxDuration configured
 - [ ] **MAP-06**: Contact fields (name, email, phone) are recognized and mappable from flat CSV columns
 
 ### Review & Validation
@@ -69,15 +69,15 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | UPLD-01 | Phase 2 | Pending |
-| UPLD-02 | Phase 1 | Pending |
-| UPLD-03 | Phase 1 | Pending |
+| UPLD-02 | Phase 1 | Complete |
+| UPLD-03 | Phase 1 | Complete |
 | UPLD-04 | Phase 2 | Pending |
 | UPLD-05 | Phase 2 | Pending |
 | MAP-01 | Phase 2 | Pending |
 | MAP-02 | Phase 2 | Pending |
 | MAP-03 | Phase 2 | Pending |
-| MAP-04 | Phase 1 | Pending |
-| MAP-05 | Phase 1 | Pending |
+| MAP-04 | Phase 1 | Complete |
+| MAP-05 | Phase 1 | Complete |
 | MAP-06 | Phase 2 | Pending |
 | REV-01 | Phase 3 | Pending |
 | REV-02 | Phase 3 | Pending |
