@@ -68,37 +68,37 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UPLD-01 | — | Pending |
-| UPLD-02 | — | Pending |
-| UPLD-03 | — | Pending |
-| UPLD-04 | — | Pending |
-| UPLD-05 | — | Pending |
-| MAP-01 | — | Pending |
-| MAP-02 | — | Pending |
-| MAP-03 | — | Pending |
-| MAP-04 | — | Pending |
-| MAP-05 | — | Pending |
-| MAP-06 | — | Pending |
-| REV-01 | — | Pending |
-| REV-02 | — | Pending |
-| REV-03 | — | Pending |
-| REV-04 | — | Pending |
-| REV-05 | — | Pending |
-| IMP-01 | — | Pending |
-| IMP-02 | — | Pending |
-| IMP-03 | — | Pending |
-| IMP-04 | — | Pending |
-| IMP-05 | — | Pending |
-| INT-01 | — | Pending |
-| INT-02 | — | Pending |
-| INT-03 | — | Pending |
-| INT-04 | — | Pending |
+| UPLD-01 | Phase 2 | Pending |
+| UPLD-02 | Phase 1 | Pending |
+| UPLD-03 | Phase 1 | Pending |
+| UPLD-04 | Phase 2 | Pending |
+| UPLD-05 | Phase 2 | Pending |
+| MAP-01 | Phase 2 | Pending |
+| MAP-02 | Phase 2 | Pending |
+| MAP-03 | Phase 2 | Pending |
+| MAP-04 | Phase 1 | Pending |
+| MAP-05 | Phase 1 | Pending |
+| MAP-06 | Phase 2 | Pending |
+| REV-01 | Phase 3 | Pending |
+| REV-02 | Phase 3 | Pending |
+| REV-03 | Phase 3 | Pending |
+| REV-04 | Phase 3 | Pending |
+| REV-05 | Phase 3 | Pending |
+| IMP-01 | Phase 4 | Pending |
+| IMP-02 | Phase 4 | Pending |
+| IMP-03 | Phase 4 | Pending |
+| IMP-04 | Phase 5 | Pending |
+| IMP-05 | Phase 5 | Pending |
+| INT-01 | Phase 4 | Pending |
+| INT-02 | Phase 5 | Pending |
+| INT-03 | Phase 5 | Pending |
+| INT-04 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25
+- Mapped to phases: 25
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after initial definition*
+*Last updated: 2026-03-14 — phase mapping added after roadmap creation*
