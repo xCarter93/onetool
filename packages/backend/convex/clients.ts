@@ -168,6 +168,32 @@ export const list = query({
 });
 
 /**
+ * Get lightweight client names for the current user's organization.
+ * Used for duplicate detection during CSV import.
+ * Returns only {_id, companyName} to minimize data transfer.
+ * Excludes archived clients to match the default list behavior.
+ */
+export const listNamesForOrg = query({
+	args: {},
+	handler: async (ctx) => {
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return [];
+
+		const clients = await ctx.db
+			.query("clients")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+
+		return clients
+			.filter((c) => c.status !== "archived")
+			.map((c) => ({
+				_id: c._id,
+				companyName: c.companyName,
+			}));
+	},
+});
+
+/**
  * Get only archived clients for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
