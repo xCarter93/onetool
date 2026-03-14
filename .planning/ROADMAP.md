@@ -12,7 +12,7 @@ The import wizard is built in strict dependency order. Phase 1 fixes pre-existin
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Wizard hook, layout, backend functions, and pre-existing bug fixes
+- [x] **Phase 1: Foundation** - Wizard hook, layout, backend functions, and pre-existing bug fixes (completed 2026-03-14)
 - [ ] **Phase 2: Upload and Mapping** - File upload step and AI column mapping step wired end-to-end
 - [ ] **Phase 3: Review** - Duplicate detection, per-row validation, and plan limit pre-check
 - [ ] **Phase 4: Import Execution** - Import step with progress, results, and old modal replacement
@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. PapaParse parses all CSV values as strings — a phone number like `07911123456` is not converted to a number
   4. The AI route receives only headers and sample rows, not full CSV content, and has `maxDuration` set to prevent Vercel timeouts
   5. The `clients.listNamesForOrg` Convex query and `clientContacts.bulkCreate` mutation exist and are callable
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 01-01-PLAN.md — Cherry-pick wizard files, extract useImportWizard hook, fix pre-existing bugs
@@ -100,7 +100,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/2 | In Progress|  |
+| 1. Foundation | 2/2 | Complete   | 2026-03-14 |
 | 2. Upload and Mapping | 0/TBD | Not started | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
