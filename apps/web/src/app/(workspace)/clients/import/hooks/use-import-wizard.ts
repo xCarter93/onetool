@@ -94,11 +94,19 @@ export function useImportWizard() {
 			}));
 
 			try {
+				// Parse CSV to extract headers and sample rows for AI analysis
+				// Full content stays in state for later import use
+				const rows = await parseCsvData(content);
+				const headers =
+					rows.length > 0 ? Object.keys(rows[0]) : [];
+				const sampleRows = rows.slice(0, 5);
+
 				const response = await fetch("/api/analyze-csv", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						csvContent: content,
+						headers,
+						sampleRows,
 						entityType: "clients",
 					}),
 				});

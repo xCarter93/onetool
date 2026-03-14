@@ -51,11 +51,17 @@ export function transformValue(value: unknown, dataType: string): unknown {
 export async function parseCsvData(
 	fileContent: string
 ): Promise<Record<string, unknown>[]> {
+	// Strip UTF-8 BOM if present (common in Excel-exported CSVs)
+	const cleanContent =
+		fileContent.charCodeAt(0) === 0xfeff
+			? fileContent.slice(1)
+			: fileContent;
+
 	const Papa = (await import("papaparse")).default;
-	const parseResult = Papa.parse(fileContent, {
+	const parseResult = Papa.parse(cleanContent, {
 		header: true,
 		skipEmptyLines: true,
-		dynamicTyping: true,
+		dynamicTyping: false,
 	});
 	return parseResult.data as Record<string, unknown>[];
 }

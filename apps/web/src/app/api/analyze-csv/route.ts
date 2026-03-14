@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { mastra } from "@/mastra";
 import type {
 	CsvAnalysisResult,
@@ -6,24 +7,30 @@ import type {
 	ValidationError,
 } from "@/types/csv-import";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+	// Auth guard — unauthenticated requests get 401
+	const { userId } = await auth();
+	if (!userId) {
+		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+	}
+
 	try {
 		const body = await request.json();
-		const { csvContent, entityType } = body;
+		const { headers, sampleRows, entityType } = body;
 
-		// Validate input
-		if (!csvContent || typeof csvContent !== "string") {
+		// Validate input — expects headers + sampleRows, not full CSV content
+		if (!headers || !Array.isArray(headers) || headers.length === 0) {
 			return NextResponse.json(
-				{ error: "CSV content is required" },
+				{ error: "CSV headers array is required" },
 				{ status: 400 }
 			);
 		}
 
-		if (csvContent.length > MAX_FILE_SIZE) {
+		if (!sampleRows || !Array.isArray(sampleRows)) {
 			return NextResponse.json(
-				{ error: "File size exceeds 5MB limit" },
+				{ error: "Sample rows array is required" },
 				{ status: 400 }
 			);
 		}
@@ -45,10 +52,26 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// Build a CSV sample string from headers + sample rows for the prompt
+		const csvSample = [
+			headers.join(","),
+			...sampleRows.map((row: Record<string, string>) =>
+				headers
+					.map((h: string) => {
+						const val = row[h] ?? "";
+						// Quote values that contain commas
+						return String(val).includes(",")
+							? `"${String(val)}"`
+							: String(val);
+					})
+					.join(",")
+			),
+		].join("\n");
+
 		// Prepare the prompt for the agent
 		const prompt = entityType
-			? `Analyze this CSV file for ${entityType} data. Parse the CSV, map the columns to the schema fields, and validate the data. Here's the CSV content:\n\n${csvContent}`
-			: `Analyze this CSV file and determine if it contains client or project data. Then parse, map, and validate accordingly. Here's the CSV content:\n\n${csvContent}`;
+			? `Analyze this CSV file for ${entityType} data. Parse the CSV, map the columns to the schema fields, and validate the data. Here are the CSV headers and first ${sampleRows.length} sample rows:\n\n${csvSample}`
+			: `Analyze this CSV file and determine if it contains client or project data. Then parse, map, and validate accordingly. Here are the CSV headers and sample rows:\n\n${csvSample}`;
 
 		// Call the agent to analyze the CSV
 		const response = await agent.generate(prompt, { maxSteps: 10 });
