@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { mastra } from "@/mastra";
-import type {
-	CsvAnalysisResult,
-	FieldMapping,
-	ValidationError,
-} from "@/types/csv-import";
+import { mapSchemaTool } from "@/mastra/tools/map-schema-tool";
+import { validateDataTool } from "@/mastra/tools/validate-data-tool";
+import type { CsvAnalysisResult } from "@/types/csv-import";
 
 export const maxDuration = 60;
 
@@ -42,101 +39,62 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Get the CSV import agent
-		const agent = mastra.getAgent("csvImportAgent");
+		const resolvedEntityType = entityType || "clients";
 
-		if (!agent) {
+		// Call mapSchemaTool directly — no LLM needed, purely deterministic logic
+		const mapRaw = await mapSchemaTool.execute({
+			entityType: resolvedEntityType,
+			headers,
+			sampleRows,
+		});
+
+		// Mastra execute returns a union with ValidationError — check for error case
+		if ("error" in mapRaw && mapRaw.error === true) {
 			return NextResponse.json(
-				{ error: "CSV import agent not found" },
+				{ error: "Schema mapping failed", details: mapRaw.message },
 				{ status: 500 }
 			);
 		}
+		const mapResult = mapRaw;
 
-		// Build a CSV sample string from headers + sample rows for the prompt
-		const csvSample = [
-			headers.join(","),
-			...sampleRows.map((row: Record<string, string>) =>
-				headers
-					.map((h: string) => {
-						const val = row[h] ?? "";
-						// Quote values that contain commas
-						return String(val).includes(",")
-							? `"${String(val)}"`
-							: String(val);
-					})
-					.join(",")
-			),
-		].join("\n");
+		// Call validateDataTool directly with mapping results
+		const validateRaw = await validateDataTool.execute({
+			entityType: resolvedEntityType,
+			mappings: mapResult.mappings,
+			sampleRows,
+		});
 
-		// Prepare the prompt for the agent
-		const prompt = entityType
-			? `Analyze this CSV file for ${entityType} data. Parse the CSV, map the columns to the schema fields, and validate the data. Here are the CSV headers and first ${sampleRows.length} sample rows:\n\n${csvSample}`
-			: `Analyze this CSV file and determine if it contains client or project data. Then parse, map, and validate accordingly. Here are the CSV headers and sample rows:\n\n${csvSample}`;
+		if ("error" in validateRaw && validateRaw.error === true) {
+			return NextResponse.json(
+				{ error: "Data validation failed", details: validateRaw.message },
+				{ status: 500 }
+			);
+		}
+		const validateResult = validateRaw;
 
-		// Call the agent to analyze the CSV
-		const response = await agent.generate(prompt, { maxSteps: 10 });
+		// Compute overall confidence from actual mapping scores (not hardcoded)
+		const avgConfidence =
+			mapResult.mappings.length > 0
+				? mapResult.mappings.reduce(
+						(sum: number, m: { confidence: number }) =>
+							sum + m.confidence,
+						0
+					) / mapResult.mappings.length
+				: 0;
 
-		// Extract tool results from the agent's response
-		type ToolResult = {
-			payload?: {
-				toolName?: string;
-				result?: unknown;
-			};
-		};
-
-		// In Mastra v1, toolName uses the property name from the tools object
-		const parseResult = response.toolResults?.find(
-			(tr: ToolResult) => tr.payload?.toolName === "parseCsv"
-		)?.payload?.result as
-			| {
-					sampleRows: Record<string, string>[];
-					headers: string[];
-					totalRows: number;
-			  }
-			| undefined;
-
-		const mapResult = response.toolResults?.find(
-			(tr: ToolResult) => tr.payload?.toolName === "mapSchema"
-		)?.payload?.result as
-			| {
-					mappings: FieldMapping[];
-					unmappedColumns: string[];
-					missingRequiredFields: string[];
-			  }
-			| undefined;
-
-		const validateResult = response.toolResults?.find(
-			(tr: ToolResult) => tr.payload?.toolName === "validateData"
-		)?.payload?.result as
-			| {
-					isValid: boolean;
-					errors: ValidationError[];
-					warnings: ValidationError[];
-					missingRequiredFields: string[];
-					suggestedDefaults: Record<string, string>;
-			  }
-			| undefined;
-
-		// Build the analysis result from tool outputs
+		// Build the analysis result from direct tool outputs
 		const analysisResult: CsvAnalysisResult = {
-			entityType: entityType || "clients",
-			detectedFields: mapResult?.mappings || [],
-			validation: validateResult
-				? {
-						isValid: validateResult.isValid,
-						errors: validateResult.errors,
-						warnings: validateResult.warnings,
-						missingRequiredFields: validateResult.missingRequiredFields,
-					}
-				: {
-						isValid: false,
-						errors: [],
-						warnings: [],
-						missingRequiredFields: mapResult?.missingRequiredFields || [],
-					},
-			suggestedDefaults: validateResult?.suggestedDefaults || {},
-			confidence: 0.8,
-			sampleData: parseResult?.sampleRows || [],
+			entityType: resolvedEntityType,
+			detectedFields: mapResult.mappings,
+			validation: {
+				isValid: validateResult.isValid,
+				errors: validateResult.errors,
+				warnings: validateResult.warnings,
+				missingRequiredFields: validateResult.missingRequiredFields,
+			},
+			suggestedDefaults: validateResult.suggestedDefaults,
+			confidence: Math.round(avgConfidence * 100) / 100,
+			sampleData: sampleRows,
 		};
 
 		return NextResponse.json(analysisResult);
