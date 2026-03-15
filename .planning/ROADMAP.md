@@ -44,10 +44,11 @@ Plans:
 **Goal:** Replace deterministic synonym/substring column mapping with LLM-powered mapping via AI SDK generateObject and GPT-5 nano, keeping the tool's external interface unchanged
 **Requirements**: None (inserted urgent phase)
 **Depends on:** Phase 1
-**Plans:** 1/1 plans complete
+**Plans:** 2 plans (1 complete, 1 gap closure)
 
 Plans:
-- [ ] 01.1-01-PLAN.md — Rewrite mapSchemaTool internals with generateObject LLM call, delete deterministic code, add unit tests
+- [x] 01.1-01-PLAN.md — Rewrite mapSchemaTool internals with generateObject LLM call, delete deterministic code, add unit tests
+- [ ] 01.1-02-PLAN.md — Gap closure: fix silent LLM failure signaling and csv-import-sheet API contract mismatch
 
 ### Phase 2: Upload and Mapping
 **Goal**: Users can upload a CSV file, receive AI column mapping suggestions with real confidence scores, manually override any mapping, and see a live preview of the mapped data before proceeding
@@ -114,7 +115,7 @@ Phases execute in numeric order: 1 → 1.1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/4 | Gap closure | - |
-| 1.1. LLM Column Mapping | 0/1 | Planning complete | - |
+| 1.1. LLM Column Mapping | 1/2 | Gap closure | - |
 | 2. Upload and Mapping | 0/TBD | Not started | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
