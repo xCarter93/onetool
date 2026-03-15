@@ -120,6 +120,37 @@ export function buildImportRecords(
 }
 
 /**
+ * Resolve a value from a transformed import record given a dot-namespaced header.
+ *
+ * After buildImportRecords, dot-namespaced keys no longer exist as flat properties:
+ *   "contact.firstName" -> record.contacts[0].firstName
+ *   "property.streetAddress" -> record.properties[0].streetAddress
+ *   "companyName" -> record.companyName (unchanged)
+ *
+ * This function bridges that gap for the preview table.
+ */
+export function resolveRecordValue(
+	record: Record<string, unknown>,
+	header: string
+): unknown {
+	if (header.startsWith("contact.")) {
+		const field = header.slice("contact.".length);
+		const contacts = record.contacts as
+			| Record<string, unknown>[]
+			| undefined;
+		return contacts?.[0]?.[field];
+	}
+	if (header.startsWith("property.")) {
+		const field = header.slice("property.".length);
+		const properties = record.properties as
+			| Record<string, unknown>[]
+			| undefined;
+		return properties?.[0]?.[field];
+	}
+	return record[header];
+}
+
+/**
  * Validate import records before sending to bulkCreate.
  * Catches missing required fields and invalid enum values early.
  * Does NOT auto-default any required fields.

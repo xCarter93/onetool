@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import type { FieldMapping, ImportResult } from "@/types/csv-import";
-import { parseCsvData, buildImportRecords } from "../utils/transform-csv";
+import { parseCsvData, buildImportRecords, resolveRecordValue } from "../utils/transform-csv";
 import {
 	Table,
 	TableBody,
@@ -185,7 +185,7 @@ export function StepPreviewImport({
 										{rowIndex + 1}
 									</TableCell>
 									{columnHeaders.map((header) => {
-										const val = record[header];
+										const val = resolveRecordValue(record, header);
 										return (
 											<TableCell
 												key={header}

@@ -73,11 +73,12 @@ Plans:
 **Goal:** Fix the clients.bulkCreate mutation to accept contact and property data from the import wizard, restructure dot-namespaced CSV fields into nested objects, add frontend pre-validation, and display per-row results with warnings
 **Requirements**: BULK-01, BULK-02, BULK-03, BULK-04, BULK-05, BULK-06
 **Depends on:** Phase 2
-**Plans:** 2/2 plans complete
+**Plans:** 3 plans (2 complete, 1 gap closure)
 
 Plans:
-- [ ] 02.1-01-PLAN.md — Expand bulkCreate mutation with contacts/properties support, rewrite buildImportRecords, add validation
-- [ ] 02.1-02-PLAN.md — Wire validation and real results into import wizard hook and results UI
+- [x] 02.1-01-PLAN.md — Expand bulkCreate mutation with contacts/properties support, rewrite buildImportRecords, add validation
+- [x] 02.1-02-PLAN.md — Wire validation and real results into import wizard hook and results UI
+- [ ] 02.1-03-PLAN.md — Gap closure: fix preview table showing dashes for contact/property sub-record columns
 
 ### Phase 3: Review
 **Goal**: Users can inspect all rows before committing — seeing validation errors per row, duplicate flags with skip/import choice per flagged row, and a plan limit warning if the import would exceed their quota
@@ -131,7 +132,7 @@ Phases execute in numeric order: 1 → 1.1 → 2 → 2.1 → 3 → 4 → 5
 | 1. Foundation | 2/4 | Gap closure | - |
 | 1.1. LLM Column Mapping | 1/2 | Gap closure | - |
 | 2. Upload and Mapping | 2/4 | Gap closure | - |
-| 2.1. bulkCreate Fix | 0/2 | Planned | - |
+| 2.1. bulkCreate Fix | 2/3 | Gap closure | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
 | 5. Fast Follows | 0/TBD | Not started | - |
