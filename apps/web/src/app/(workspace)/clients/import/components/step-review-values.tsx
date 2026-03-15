@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -19,9 +19,16 @@ import {
 	resolveRecordValue,
 } from "../utils/transform-csv";
 import { detectDuplicates } from "../utils/duplicate-detection";
+import {
+	cellKey,
+	initializeCellValues,
+	rebuildRecordsFromCells,
+	getFieldMeta,
+} from "../utils/editable-cells";
 import type { ReviewRow, FilterTab } from "../utils/review-types";
 import { ReviewSummaryBar } from "./review-summary-bar";
 import { ReviewFilterTabs } from "./review-filter-tabs";
+
 interface StepReviewValuesProps {
 	fileContent: string;
 	mappings: FieldMapping[];
@@ -40,6 +47,8 @@ export function StepReviewValues({
 	const parentRef = useRef<HTMLDivElement>(null);
 	const [activeTab, setActiveTab] = useState<FilterTab>("all");
 	const [parsedRows, setParsedRows] = useState<Record<string, unknown>[] | null>(null);
+	const [editingCell, setEditingCell] = useState<string | null>(null);
+	const [cellValues, setCellValues] = useState<Map<string, string> | null>(null);
 
 	// Parse CSV content (async due to dynamic papaparse import)
 	useEffect(() => {
@@ -58,11 +67,29 @@ export function StepReviewValues({
 		[mappings]
 	);
 
-	// Build import records from parsed rows + mappings
-	const records = useMemo(() => {
+	const columnHeaders = useMemo(
+		() => activeMappings.map((m) => m.schemaField),
+		[activeMappings]
+	);
+
+	// Build initial import records from parsed rows + mappings
+	const initialRecords = useMemo(() => {
 		if (!parsedRows) return [];
 		return buildImportRecords(parsedRows, activeMappings);
 	}, [parsedRows, activeMappings]);
+
+	// Initialize cellValues once from initial records
+	useEffect(() => {
+		if (initialRecords.length > 0 && cellValues === null) {
+			setCellValues(initializeCellValues(initialRecords as unknown as Record<string, unknown>[], columnHeaders));
+		}
+	}, [initialRecords, columnHeaders, cellValues]);
+
+	// Derive records from cellValues (reflects edits) or fall back to initial
+	const records = useMemo(() => {
+		if (!cellValues || cellValues.size === 0) return initialRecords;
+		return rebuildRecordsFromCells(cellValues, activeMappings, initialRecords.length);
+	}, [cellValues, activeMappings, initialRecords]);
 
 	// Query existing clients for duplicate detection
 	const existingClients = useQuery(api.clients.listNamesForOrg) ?? [];
@@ -176,6 +203,29 @@ export function StepReviewValues({
 		return row.errors.find((e) => e.field === field)?.message;
 	};
 
+	// Cell editing handlers
+	const handleCellClick = useCallback((rowIndex: number, field: string) => {
+		setEditingCell(cellKey(rowIndex, field));
+	}, []);
+
+	const handleCellChange = useCallback((key: string, value: string) => {
+		setCellValues((prev) => {
+			const next = new Map(prev ?? []);
+			next.set(key, value);
+			return next;
+		});
+	}, []);
+
+	const handleCellBlur = useCallback(() => {
+		setEditingCell(null);
+	}, []);
+
+	const handleCellKeyDown = useCallback((e: React.KeyboardEvent) => {
+		if (e.key === "Enter" || e.key === "Escape") {
+			setEditingCell(null);
+		}
+	}, []);
+
 	if (!parsedRows) {
 		return (
 			<div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
@@ -217,8 +267,8 @@ export function StepReviewValues({
 					className="h-[500px] overflow-auto"
 				>
 					{/* Sticky table header */}
-					<div className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm border-b">
-						<div className="flex min-w-max">
+					<div className="sticky top-0 z-10 border-b min-w-max bg-muted/80 backdrop-blur-sm">
+						<div className="flex">
 							<div className="w-12 shrink-0 px-2 py-2 text-xs font-medium text-muted-foreground">#</div>
 							<div className="w-10 shrink-0 px-2 py-2" />
 							{activeMappings.map((mapping) => (
@@ -303,18 +353,24 @@ export function StepReviewValues({
 
 									{/* Data columns */}
 									{activeMappings.map((mapping) => {
-										const value = resolveRecordValue(
+										const field = mapping.schemaField;
+										const key = cellKey(row.rowIndex, field);
+										const isEditing = editingCell === key;
+										const cellVal = cellValues?.get(key) ?? "";
+										const displayValue = cellVal || resolveRecordValue(
 											row.record as Record<string, unknown>,
-											mapping.schemaField
+											field
 										);
-										const displayValue =
-											value !== undefined && value !== null
-												? String(value)
+										const displayStr =
+											displayValue !== undefined && displayValue !== null
+												? String(displayValue)
 												: "";
-										const hasError = errorFields.has(mapping.schemaField);
+										const hasError = errorFields.has(field);
 										const errorMsg = hasError
-											? getFieldError(row, mapping.schemaField)
+											? getFieldError(row, field)
 											: undefined;
+										const meta = hasError ? getFieldMeta(field) : undefined;
+										const isEnum = meta?.type === "enum" && meta.options;
 
 										return (
 											<div
@@ -325,29 +381,61 @@ export function StepReviewValues({
 														: ""
 												}`}
 											>
-												{hasError ? (
+												{isEditing ? (
+													isEnum ? (
+														<select
+															autoFocus
+															className="w-full text-sm bg-background border border-input rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+															value={cellVal}
+															onChange={(e) => {
+																handleCellChange(key, e.target.value);
+																setEditingCell(null);
+															}}
+															onBlur={handleCellBlur}
+														>
+															<option value="">Select...</option>
+															{meta.options!.map((opt) => (
+																<option key={opt} value={opt}>{opt}</option>
+															))}
+														</select>
+													) : (
+														<input
+															autoFocus
+															type="text"
+															className="w-full text-sm bg-background border border-input rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+															value={cellVal}
+															onChange={(e) => handleCellChange(key, e.target.value)}
+															onBlur={handleCellBlur}
+															onKeyDown={handleCellKeyDown}
+														/>
+													)
+												) : hasError ? (
 													<Tooltip>
 														<TooltipTrigger asChild>
-															<div className="truncate text-sm text-red-700 dark:text-red-300 cursor-help">
-																{displayValue || (
+															<div
+																className="truncate text-sm text-red-700 dark:text-red-300 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/40 rounded px-1 -mx-1"
+																onClick={() => handleCellClick(row.rowIndex, field)}
+															>
+																{displayStr || (
 																	<span className="italic text-red-400">empty</span>
 																)}
 															</div>
 														</TooltipTrigger>
 														<TooltipContent>
 															<p className="text-xs">{errorMsg}</p>
+															<p className="text-xs text-muted-foreground mt-1">Click to edit</p>
 														</TooltipContent>
 													</Tooltip>
 												) : (
 													<div className="space-y-0">
 														<div className="truncate text-sm text-foreground">
-															{displayValue || (
+															{displayStr || (
 																<span className="text-muted-foreground">-</span>
 															)}
 														</div>
 														{/* Show duplicate match info below companyName */}
 														{row.status === "duplicate" &&
-															mapping.schemaField === "companyName" &&
+															field === "companyName" &&
 															row.duplicateMatch && (
 																<p className="text-xs text-muted-foreground truncate">
 																	Possible match: {row.duplicateMatch.matchedName}
