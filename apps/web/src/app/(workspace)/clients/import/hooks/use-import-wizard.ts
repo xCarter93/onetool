@@ -48,6 +48,20 @@ export function useImportWizard() {
 		importResult: null,
 	});
 
+	// --- Review skip/import state ---
+	const setRowSkip = useCallback((rowIndex: number, skip: boolean) => {
+		setState((prev) => {
+			const next = new Set(prev.reviewSkippedRows ?? new Set<number>());
+			if (skip) next.add(rowIndex);
+			else next.delete(rowIndex);
+			return { ...prev, reviewSkippedRows: next };
+		});
+	}, []);
+
+	const initReviewSkippedRows = useCallback((rows: Set<number>) => {
+		setState((prev) => ({ ...prev, reviewSkippedRows: rows }));
+	}, []);
+
 	const [selectedMappingColumn, setSelectedMappingColumn] = useState<
 		string | null
 	>(null);
@@ -89,6 +103,7 @@ export function useImportWizard() {
 			mappings: [],
 			isImporting: false,
 			importResult: null,
+			reviewSkippedRows: undefined,
 		});
 		setSelectedMappingColumn(null);
 		setManualOverrides(new Set());
@@ -268,6 +283,12 @@ export function useImportWizard() {
 				records = buildImportRecords(rows, activeMappings);
 			}
 
+			// Filter out rows the user marked as "skip" in the review step
+			const skipped = state.reviewSkippedRows ?? new Set<number>();
+			if (skipped.size > 0) {
+				records = records.filter((_, i) => !skipped.has(i));
+			}
+
 			// Pre-validate records before sending to backend
 			const validationErrors = validateImportRecords(records);
 			if (validationErrors.length > 0) {
@@ -390,5 +411,7 @@ export function useImportWizard() {
 		handleClearFile,
 		handleProceedUnmapped,
 		handleImportData,
+		setRowSkip,
+		initReviewSkippedRows,
 	};
 }

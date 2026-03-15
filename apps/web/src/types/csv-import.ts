@@ -107,6 +107,7 @@ export interface CsvImportState {
 	isImporting?: boolean;
 	importResult?: ImportResult | null;
 	skipImport?: boolean;
+	reviewSkippedRows?: Set<number>;
 }
 
 // Schema field definitions for reference - must match convex/schema.ts clients table
