@@ -11,6 +11,14 @@ import {
 	TooltipTrigger,
 	TooltipContent,
 } from "@/components/ui/tooltip";
+import {
+	StyledSelect,
+	StyledSelectTrigger,
+	StyledSelectContent,
+	SelectItem,
+	SelectValue,
+} from "@/components/ui/styled/styled-select";
+import { StyledInput } from "@/components/ui/styled/styled-input";
 import type { FieldMapping, ImportRecord, RecordValidationError } from "@/types/csv-import";
 import {
 	parseCsvData,
@@ -383,26 +391,31 @@ export function StepReviewValues({
 											>
 												{isEditing ? (
 													isEnum ? (
-														<select
-															autoFocus
-															className="w-full text-sm bg-background border border-input rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
-															value={cellVal}
-															onChange={(e) => {
-																handleCellChange(key, e.target.value);
+														<StyledSelect
+															value={cellVal || undefined}
+															onValueChange={(val) => {
+																handleCellChange(key, val);
 																setEditingCell(null);
 															}}
-															onBlur={handleCellBlur}
+															open
+															onOpenChange={(open) => {
+																if (!open) setEditingCell(null);
+															}}
 														>
-															<option value="">Select...</option>
-															{meta.options!.map((opt) => (
-																<option key={opt} value={opt}>{opt}</option>
-															))}
-														</select>
+															<StyledSelectTrigger size="sm" className="w-full h-7 text-sm">
+																<SelectValue placeholder="Select..." />
+															</StyledSelectTrigger>
+															<StyledSelectContent>
+																{meta.options!.map((opt) => (
+																	<SelectItem key={opt} value={opt}>{opt}</SelectItem>
+																))}
+															</StyledSelectContent>
+														</StyledSelect>
 													) : (
-														<input
+														<StyledInput
 															autoFocus
 															type="text"
-															className="w-full text-sm bg-background border border-input rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+															className="h-7 text-sm"
 															value={cellVal}
 															onChange={(e) => handleCellChange(key, e.target.value)}
 															onBlur={handleCellBlur}
