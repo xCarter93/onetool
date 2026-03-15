@@ -3,6 +3,12 @@ import type {
 	ImportRecord,
 	RecordValidationError,
 } from "@/types/csv-import";
+import { CLIENT_SCHEMA_FIELDS } from "@/types/csv-import";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const VALID_LEAD_SOURCES = CLIENT_SCHEMA_FIELDS.leadSource.options as readonly string[];
+const VALID_COMMUNICATION_PREFERENCES = CLIENT_SCHEMA_FIELDS.communicationPreference.options as readonly string[];
 
 /**
  * Coerce a raw CSV value to the target data type.
@@ -174,6 +180,42 @@ export function validateImportRecords(
 				rowIndex,
 				field: "status",
 				message: `Status must be one of: ${validStatuses.join(", ")}`,
+			});
+		}
+
+		// Email format validation on first contact
+		const email = record.contacts?.[0]?.email;
+		if (email && !EMAIL_REGEX.test(String(email))) {
+			errors.push({
+				rowIndex,
+				field: "contact.email",
+				message: "Must be a valid email address",
+			});
+		}
+
+		// leadSource enum validation
+		if (
+			record.leadSource &&
+			!VALID_LEAD_SOURCES.includes(String(record.leadSource))
+		) {
+			errors.push({
+				rowIndex,
+				field: "leadSource",
+				message: `Lead source must be one of: ${VALID_LEAD_SOURCES.join(", ")}`,
+			});
+		}
+
+		// communicationPreference enum validation
+		if (
+			record.communicationPreference &&
+			!VALID_COMMUNICATION_PREFERENCES.includes(
+				String(record.communicationPreference)
+			)
+		) {
+			errors.push({
+				rowIndex,
+				field: "communicationPreference",
+				message: `Communication preference must be one of: ${VALID_COMMUNICATION_PREFERENCES.join(", ")}`,
 			});
 		}
 	});
