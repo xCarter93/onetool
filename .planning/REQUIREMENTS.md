@@ -7,11 +7,11 @@
 
 ### Upload & Parsing
 
-- [ ] **UPLD-01**: User can drag-and-drop or click to upload a .csv file with size validation
+- [x] **UPLD-01**: User can drag-and-drop or click to upload a .csv file with size validation
 - [x] **UPLD-02**: System strips UTF-8 BOM before parsing to prevent header corruption
 - [x] **UPLD-03**: System parses all CSV values as strings (no dynamicTyping) to preserve phone numbers
-- [ ] **UPLD-04**: User can download a template CSV with human-readable column headers derived from schema
-- [ ] **UPLD-05**: User can view an inline schema guide showing required/optional fields and expected data types
+- [x] **UPLD-04**: User can download a template CSV with human-readable column headers derived from schema
+- [x] **UPLD-05**: User can view an inline schema guide showing required/optional fields and expected data types
 
 ### Column Mapping
 
@@ -68,11 +68,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UPLD-01 | Phase 2 | Pending |
+| UPLD-01 | Phase 2 | Complete |
 | UPLD-02 | Phase 1 | Complete |
 | UPLD-03 | Phase 1 | Complete |
-| UPLD-04 | Phase 2 | Pending |
-| UPLD-05 | Phase 2 | Pending |
+| UPLD-04 | Phase 2 | Complete |
+| UPLD-05 | Phase 2 | Complete |
 | MAP-01 | Phase 2 | Pending |
 | MAP-02 | Phase 2 | Pending |
 | MAP-03 | Phase 2 | Pending |

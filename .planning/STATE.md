@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-03-15T14:04:12.401Z"
+last_updated: "2026-03-15T14:21:02.487Z"
 last_activity: "2026-03-15 - Completed quick task 1: Replace deprecated generateObject with generateText Output.object pattern and fix preview table overflow"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Users can reliably import their existing client data into OneTool with minimal manual effort
-**Current focus:** Phase 1.1 — Leverage Mastra tool call for column mapping
+**Current focus:** Phase 2 — Upload and Mapping UI
 
 ## Current Position
 
-Phase: 1.1 of 5 (LLM Column Mapping)
-Plan: 2 of 2 in current phase (complete)
+Phase: 2 of 5 (Upload and Mapping)
+Plan: 1 of 2 in current phase
 Status: Executing
-Last activity: 2026-03-15 - Completed quick task 1: Replace deprecated generateObject with generateText Output.object pattern and fix preview table overflow
+Last activity: 2026-03-15 - Completed 02-01: template CSV generation, mapping utilities, StepUpload enhancements
 
-Progress: [██████████] 100%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | Phase 01 P04 | 2min | 2 tasks | 3 files |
 | Phase 01.1 P01 | 3min | 2 tasks | 4 files |
 | Phase 01.1 P02 | 3min | 2 tasks | 4 files |
+| Phase 02 P01 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Recent decisions affecting current work:
 - [01.1-01]: Used z.nullable() instead of z.optional() in LLM response schema for OpenAI structured output compatibility
 - [Phase 01.1]: Used boolean llmFailed flag for simple binary LLM health signal in mapSchemaTool output
 - [Phase 01.1]: Reused parseCsvData in csv-import-sheet.tsx for DRY BOM stripping and dynamicTyping: false
+- [02-01]: Used intent/onPress props for Button component (react-aria-components API, not shadcn variant/onClick)
+- [02-01]: Separated generateTemplateCsvData from downloadTemplateCsv for testability without browser APIs
 
 ### Roadmap Evolution
 
@@ -103,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T14:04:12.398Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-upload-and-mapping/02-CONTEXT.md
+Last session: 2026-03-15T14:20:12Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: .planning/phases/02-upload-and-mapping/02-01-SUMMARY.md
