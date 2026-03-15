@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 Phase: 1.1 of 5 (LLM Column Mapping)
 Plan: 2 of 2 in current phase (complete)
 Status: Executing
-Last activity: 2026-03-15 — Completed 01.1-02 (LLM failure signaling and API contract fix)
+Last activity: 2026-03-15 - Completed quick task 1: Replace deprecated generateObject with generateText Output.object pattern and fix preview table overflow
 
 Progress: [██████████] 100%
 
@@ -77,7 +77,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Handle Mastra ValidationError union type with explicit error-property check before accessing results
 - [01-04]: Dot-namespaced fields (contact.firstName, property.streetAddress) avoid collisions between sub-entity fields
 - [01-04]: Synonym map checked before substring matching with confidence scoring to prevent ambiguous header matches
-- [01.1-01]: Used generateObject from ai SDK directly (not Mastra agent.generate) for simpler single-call structured extraction
+- [01.1-01]: Used generateText + Output.object from ai SDK directly (not Mastra agent.generate) for simpler single-call structured extraction
 - [01.1-01]: Used z.nullable() instead of z.optional() in LLM response schema for OpenAI structured output compatibility
 - [Phase 01.1]: Used boolean llmFailed flag for simple binary LLM health signal in mapSchemaTool output
 - [Phase 01.1]: Reused parseCsvData in csv-import-sheet.tsx for DRY BOM stripping and dynamicTyping: false
@@ -94,6 +94,12 @@ None yet.
 
 - **[Research]**: Pre-existing bugs must be fixed in Phase 1 before any step UI is built: auth missing on analyze-csv route, dynamicTyping corrupts phone numbers, bulkCreate bypasses plan limits, UTF-8 BOM corrupts headers, hardcoded 0.8 confidence score, no maxDuration on analyze-csv route
 - **[Research]**: Phase 5 contact import requires coordinated changes to CLIENT_SCHEMA_FIELDS, AI agent instructions, and bulkCreate mutation — all three must ship together
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Replace deprecated generateObject with generateText Output.object pattern and fix preview table overflow | 2026-03-15 | 154ccb4 | [1-replace-deprecated-generateobject-with-g](./quick/1-replace-deprecated-generateobject-with-g/) |
 
 ## Session Continuity
 
