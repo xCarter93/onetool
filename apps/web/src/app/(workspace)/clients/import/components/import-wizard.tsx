@@ -9,7 +9,6 @@ import { ImportStepNav } from "./import-step-nav";
 import { StepUpload } from "./step-upload";
 import { StepMapColumns } from "./step-map-columns";
 import { StepReviewValues } from "./step-review-values";
-import { StepPreviewImport } from "./step-preview-import";
 
 export function ImportWizard() {
 	const router = useRouter();
@@ -68,16 +67,10 @@ export function ImportWizard() {
 				const noDuplicates = mappedFields.size === activeMappings.length;
 				return allRequiredMapped && noDuplicates;
 			}
-			case "review":
-				// Review step is always continuable - errors are flagged for
-				// awareness and can be fixed in the editable preview step (step 4)
-				return !!state.fileContent;
-			case "preview":
-				return !state.isImporting;
 			default:
 				return false;
 		}
-	}, [currentStep, state]);
+	}, [currentStep, state, unmappedRequiredFields]);
 
 	// --- Footer buttons ---
 	const footerButtons = useMemo(() => {
@@ -112,8 +105,8 @@ export function ImportWizard() {
 			});
 		}
 
-		// Right side: Continue (preview step uses its own inline import button)
-		if (currentStep !== "preview") {
+		// Right side: Continue (review step uses its own inline import button)
+		if (currentStep !== "review") {
 			buttons.push({
 				label: "Continue",
 				onClick: goNext,
@@ -128,7 +121,6 @@ export function ImportWizard() {
 		currentStep,
 		state.analysisResult,
 		state.isImporting,
-		state.importResult,
 		canContinue,
 		startOver,
 		goBack,
@@ -138,7 +130,7 @@ export function ImportWizard() {
 	// --- Step heading info ---
 	const stepHeading = useMemo(() => {
 		// Hide heading when showing import result
-		if (currentStep === "preview" && state.importResult) return null;
+		if (currentStep === "review" && state.importResult) return null;
 
 		switch (currentStep) {
 			case "upload":
@@ -153,13 +145,8 @@ export function ImportWizard() {
 				};
 			case "review":
 				return {
-					title: "Review data",
-					subtitle: "Review your import data for errors and duplicates before proceeding.",
-				};
-			case "preview":
-				return {
-					title: "Preview import",
-					subtitle: "Review the transformed data before importing.",
+					title: "Review & import",
+					subtitle: "Review your data, fix errors, and import when ready.",
 				};
 			default:
 				return null;
@@ -204,14 +191,6 @@ export function ImportWizard() {
 						reviewSkippedRows={state.reviewSkippedRows ?? new Set()}
 						setRowSkip={setRowSkip}
 						initReviewSkippedRows={initReviewSkippedRows}
-					/>
-				);
-			case "preview":
-				if (!state.fileContent || !state.analysisResult) return null;
-				return (
-					<StepPreviewImport
-						fileContent={state.fileContent}
-						mappings={state.mappings || []}
 						isImporting={state.isImporting ?? false}
 						importResult={state.importResult ?? null}
 						onImport={handleImportData}
@@ -244,8 +223,8 @@ export function ImportWizard() {
 				{renderStep()}
 			</div>
 
-			{/* Sticky footer */}
-			{!state.importResult && (
+			{/* Sticky footer - hidden on review step (it has its own import button) */}
+			{currentStep !== "review" && (
 				<StickyFormFooter buttons={footerButtons} />
 			)}
 		</div>

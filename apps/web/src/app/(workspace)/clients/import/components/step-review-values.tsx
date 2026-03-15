@@ -4,8 +4,10 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	Tooltip,
 	TooltipTrigger,
@@ -19,7 +21,7 @@ import {
 	SelectValue,
 } from "@/components/ui/styled/styled-select";
 import { StyledInput } from "@/components/ui/styled/styled-input";
-import type { FieldMapping, ImportRecord, RecordValidationError } from "@/types/csv-import";
+import type { FieldMapping, ImportRecord, ImportResult, ImportResultItem, RecordValidationError } from "@/types/csv-import";
 import {
 	parseCsvData,
 	buildImportRecords,
@@ -37,12 +39,51 @@ import type { ReviewRow, FilterTab } from "../utils/review-types";
 import { ReviewSummaryBar } from "./review-summary-bar";
 import { ReviewFilterTabs } from "./review-filter-tabs";
 
+// ---------------------------------------------------------------------------
+// StatusIcon -- per-row import result icon
+// ---------------------------------------------------------------------------
+
+function StatusIcon({ item }: { item: ImportResultItem }) {
+	const hasWarnings = (item.warnings?.length ?? 0) > 0;
+
+	let icon: React.ReactNode;
+	let tooltipText: string | undefined;
+
+	if (item.success && !hasWarnings) {
+		icon = <CheckCircle2 className="w-4 h-4 text-green-500" />;
+	} else if (item.success && hasWarnings) {
+		icon = <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+		tooltipText = item.warnings!.join("\n");
+	} else {
+		icon = <XCircle className="w-4 h-4 text-red-500" />;
+		tooltipText = item.error || "Import failed";
+	}
+
+	if (tooltipText) {
+		return (
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<span className="inline-flex">{icon}</span>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs whitespace-pre-wrap">
+					{tooltipText}
+				</TooltipContent>
+			</Tooltip>
+		);
+	}
+
+	return <span className="inline-flex">{icon}</span>;
+}
+
 interface StepReviewValuesProps {
 	fileContent: string;
 	mappings: FieldMapping[];
 	reviewSkippedRows: Set<number>;
 	setRowSkip: (rowIndex: number, skip: boolean) => void;
 	initReviewSkippedRows: (skippedSet: Set<number>) => void;
+	isImporting: boolean;
+	importResult: ImportResult | null;
+	onImport: (records: ImportRecord[]) => void;
 }
 
 export function StepReviewValues({
@@ -51,6 +92,9 @@ export function StepReviewValues({
 	reviewSkippedRows,
 	setRowSkip,
 	initReviewSkippedRows,
+	isImporting,
+	importResult,
+	onImport,
 }: StepReviewValuesProps) {
 	const parentRef = useRef<HTMLDivElement>(null);
 	const [activeTab, setActiveTab] = useState<FilterTab>("all");
@@ -179,6 +223,17 @@ export function StepReviewValues({
 		[reviewRows]
 	);
 
+	// Import-related derived state
+	const isResultsMode = importResult !== null;
+	const hasValidationErrors = validationErrors.length > 0;
+	const importableCount = records.length - skippedCount;
+
+	// Handle import click: rebuild records from edited cells and pass to parent
+	const handleImportClick = useCallback(() => {
+		const builtRecords = rebuildRecordsFromCells(cellValues ?? new Map(), activeMappings, records.length);
+		onImport(builtRecords);
+	}, [cellValues, activeMappings, records.length, onImport]);
+
 	// Filter rows based on active tab
 	const filteredRows = useMemo(() => {
 		switch (activeTab) {
@@ -213,8 +268,9 @@ export function StepReviewValues({
 
 	// Cell editing handlers
 	const handleCellClick = useCallback((rowIndex: number, field: string) => {
+		if (isResultsMode) return; // No editing in results mode
 		setEditingCell(cellKey(rowIndex, field));
-	}, []);
+	}, [isResultsMode]);
 
 	const handleCellChange = useCallback((key: string, value: string) => {
 		setCellValues((prev) => {
@@ -278,7 +334,9 @@ export function StepReviewValues({
 					<div className="sticky top-0 z-10 border-b min-w-max bg-muted/80 backdrop-blur-sm">
 						<div className="flex">
 							<div className="w-12 shrink-0 px-2 py-2 text-xs font-medium text-muted-foreground">#</div>
-							<div className="w-10 shrink-0 px-2 py-2" />
+							<div className="w-10 shrink-0 px-2 py-2 text-xs font-medium text-muted-foreground">
+								{isResultsMode ? "Status" : ""}
+							</div>
 							{activeMappings.map((mapping) => (
 								<div
 									key={mapping.csvColumn}
@@ -288,7 +346,7 @@ export function StepReviewValues({
 									{mapping.schemaField}
 								</div>
 							))}
-							{counts.duplicates > 0 && (
+							{!isResultsMode && counts.duplicates > 0 && (
 								<div className="w-24 shrink-0 px-3 py-2 text-xs font-medium text-muted-foreground">
 									Action
 								</div>
@@ -335,27 +393,42 @@ export function StepReviewValues({
 
 									{/* Status icon */}
 									<div className="w-10 shrink-0 px-2 flex items-center justify-center">
-										{row.status === "valid" && (
-											<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-										)}
-										{row.status === "error" && (
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<XCircle className="h-4 w-4 text-red-600 dark:text-red-400 cursor-help" />
-												</TooltipTrigger>
-												<TooltipContent>
-													<div className="space-y-1">
-														{row.errors.map((e, i) => (
-															<p key={i} className="text-xs">
-																<span className="font-medium">{e.field}:</span> {e.message}
-															</p>
-														))}
-													</div>
-												</TooltipContent>
-											</Tooltip>
-										)}
-										{row.status === "duplicate" && (
-											<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+										{isResultsMode ? (
+											(() => {
+												const resultItem = importResult.items.find(
+													(i) => i.rowIndex === row.rowIndex
+												);
+												return resultItem ? (
+													<StatusIcon item={resultItem} />
+												) : (
+													<span className="text-muted-foreground">-</span>
+												);
+											})()
+										) : (
+											<>
+												{row.status === "valid" && (
+													<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+												)}
+												{row.status === "error" && (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<XCircle className="h-4 w-4 text-red-600 dark:text-red-400 cursor-help" />
+														</TooltipTrigger>
+														<TooltipContent>
+															<div className="space-y-1">
+																{row.errors.map((e, i) => (
+																	<p key={i} className="text-xs">
+																		<span className="font-medium">{e.field}:</span> {e.message}
+																	</p>
+																))}
+															</div>
+														</TooltipContent>
+													</Tooltip>
+												)}
+												{row.status === "duplicate" && (
+													<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+												)}
+											</>
 										)}
 									</div>
 
@@ -363,7 +436,7 @@ export function StepReviewValues({
 									{activeMappings.map((mapping) => {
 										const field = mapping.schemaField;
 										const key = cellKey(row.rowIndex, field);
-										const isEditing = editingCell === key;
+										const isEditing = !isResultsMode && editingCell === key;
 										const cellVal = cellValues?.get(key) ?? "";
 										const displayValue = cellVal || resolveRecordValue(
 											row.record as Record<string, unknown>,
@@ -384,12 +457,18 @@ export function StepReviewValues({
 											<div
 												key={mapping.csvColumn}
 												className={`w-40 shrink-0 px-3 py-1.5 ${
-													hasError
+													hasError && !isResultsMode
 														? "bg-red-50 dark:bg-red-950/30 border-l border-r border-red-300 dark:border-red-700"
 														: ""
 												}`}
 											>
-												{isEditing ? (
+												{isResultsMode ? (
+													<div className="truncate text-sm text-foreground">
+														{displayStr || (
+															<span className="text-muted-foreground">-</span>
+														)}
+													</div>
+												) : isEditing ? (
 													isEnum ? (
 														<StyledSelect
 															value={cellVal || undefined}
@@ -464,7 +543,7 @@ export function StepReviewValues({
 									})}
 
 									{/* Action column for duplicates */}
-									{counts.duplicates > 0 && (
+									{!isResultsMode && counts.duplicates > 0 && (
 										<div className="w-24 shrink-0 px-3 flex items-center">
 											{row.status === "duplicate" && (
 												<Button
@@ -486,6 +565,56 @@ export function StepReviewValues({
 					</div>
 				</div>
 			</div>
+
+			{/* Import button / results footer */}
+			{!isResultsMode && !isImporting && (
+				<div className="flex justify-center pt-2">
+					{hasValidationErrors ? (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span>
+									<StyledButton
+										intent="primary"
+										size="lg"
+										disabled
+										label={`Import ${importableCount} Client${importableCount !== 1 ? "s" : ""}`}
+									/>
+								</span>
+							</TooltipTrigger>
+							<TooltipContent>
+								{validationErrors.length} validation error{validationErrors.length !== 1 ? "s" : ""} found. Fix errors before importing.
+							</TooltipContent>
+						</Tooltip>
+					) : (
+						<StyledButton
+							intent="primary"
+							size="lg"
+							onClick={handleImportClick}
+							label={`Import ${importableCount} Client${importableCount !== 1 ? "s" : ""}`}
+						/>
+					)}
+				</div>
+			)}
+
+			{isImporting && (
+				<div className="flex justify-center pt-2">
+					<StyledButton
+						intent="primary"
+						size="lg"
+						isLoading={true}
+						disabled
+						label="Importing..."
+					/>
+				</div>
+			)}
+
+			{isResultsMode && (
+				<div className="flex justify-center pt-2">
+					<Link href="/clients">
+						<StyledButton intent="primary" label="Go to Clients" />
+					</Link>
+				</div>
+			)}
 		</div>
 	);
 }
