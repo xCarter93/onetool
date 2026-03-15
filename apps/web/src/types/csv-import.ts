@@ -43,7 +43,49 @@ export interface ImportResultItem {
 	success: boolean;
 	id?: string;
 	error?: string;
+	warnings?: string[];
 	rowIndex: number;
+}
+
+/**
+ * A single import record matching the expanded bulkCreate validator shape.
+ * Produced by buildImportRecords, consumed by clients.bulkCreate.
+ */
+export interface ImportRecord {
+	companyName: string;
+	status: "lead" | "active" | "inactive" | "archived";
+	companyDescription?: string;
+	leadSource?: string;
+	communicationPreference?: string;
+	isActive?: boolean;
+	tags?: string[];
+	notes?: string;
+	contacts?: Array<{
+		firstName: string;
+		lastName: string;
+		email?: string;
+		phone?: string;
+		jobTitle?: string;
+	}>;
+	properties?: Array<{
+		propertyName?: string;
+		propertyType?: string;
+		streetAddress: string;
+		city: string;
+		state: string;
+		zipCode: string;
+		country?: string;
+	}>;
+	[key: string]: unknown;
+}
+
+/**
+ * Validation error for a specific field in an import record.
+ */
+export interface RecordValidationError {
+	rowIndex: number;
+	field: string;
+	message: string;
 }
 
 export interface ImportResult {
