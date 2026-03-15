@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1.1 context gathered
-last_updated: "2026-03-15T11:50:21.948Z"
-last_activity: 2026-03-15 — Completed 01-04 (contact/property schema recognition)
+stopped_at: Completed 01.1-01-PLAN.md
+last_updated: "2026-03-15T12:09:26Z"
+last_activity: 2026-03-15 — Completed 01.1-01 (LLM-powered column mapping)
 progress:
   total_phases: 6
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Users can reliably import their existing client data into OneTool with minimal manual effort
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 1.1 — Leverage Mastra tool call for column mapping
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation)
-Plan: 4 of 4 in current phase
+Phase: 1.1 of 5 (LLM Column Mapping)
+Plan: 1 of 1 in current phase
 Status: Executing
-Last activity: 2026-03-15 — Completed 01-04 (contact/property schema recognition)
+Last activity: 2026-03-15 — Completed 01.1-01 (LLM-powered column mapping)
 
 Progress: [██████████] 100%
 
@@ -53,6 +53,7 @@ Progress: [██████████] 100%
 | Phase 01-foundation P01 | 5min | 2 tasks | 13 files |
 | Phase 01 P03 | 3min | 2 tasks | 2 files |
 | Phase 01 P04 | 2min | 2 tasks | 3 files |
+| Phase 01.1 P01 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Handle Mastra ValidationError union type with explicit error-property check before accessing results
 - [01-04]: Dot-namespaced fields (contact.firstName, property.streetAddress) avoid collisions between sub-entity fields
 - [01-04]: Synonym map checked before substring matching with confidence scoring to prevent ambiguous header matches
+- [01.1-01]: Used generateObject from ai SDK directly (not Mastra agent.generate) for simpler single-call structured extraction
+- [01.1-01]: Used z.nullable() instead of z.optional() in LLM response schema for OpenAI structured output compatibility
 
 ### Roadmap Evolution
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T11:50:21.945Z
-Stopped at: Phase 1.1 context gathered
-Resume file: .planning/phases/01.1-leverage-mastra-tool-call-for-column-mapping/01.1-CONTEXT.md
+Last session: 2026-03-15T12:09:26Z
+Stopped at: Completed 01.1-01-PLAN.md
+Resume file: .planning/phases/01.1-leverage-mastra-tool-call-for-column-mapping/01.1-01-SUMMARY.md

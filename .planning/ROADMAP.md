@@ -44,7 +44,7 @@ Plans:
 **Goal:** Replace deterministic synonym/substring column mapping with LLM-powered mapping via AI SDK generateObject and GPT-5 nano, keeping the tool's external interface unchanged
 **Requirements**: None (inserted urgent phase)
 **Depends on:** Phase 1
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 01.1-01-PLAN.md — Rewrite mapSchemaTool internals with generateObject LLM call, delete deterministic code, add unit tests
