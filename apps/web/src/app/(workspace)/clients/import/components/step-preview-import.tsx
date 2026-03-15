@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import type { FieldMapping, ImportResult } from "@/types/csv-import";
 import { parseCsvData, buildImportRecords } from "../utils/transform-csv";
 import {
@@ -59,15 +59,27 @@ export function StepPreviewImport({
 	}, [fileContent]);
 
 	if (importResult) {
-		const allSuccess = importResult.failureCount === 0;
+		const warningCount = importResult.items.filter(
+			(i) => i.success && i.warnings?.length,
+		).length;
+		const hasFailures = importResult.failureCount > 0;
+		const hasWarnings = warningCount > 0;
+		const allSuccess = !hasFailures && !hasWarnings;
+
 		return (
 			<div className="max-w-lg mx-auto text-center space-y-6 py-8">
 				<div className="flex justify-center">
-					{allSuccess ? (
+					{allSuccess && (
 						<div className="rounded-full bg-green-100 dark:bg-green-950/40 p-4">
 							<CheckCircle2 className="w-10 h-10 text-green-600 dark:text-green-400" />
 						</div>
-					) : (
+					)}
+					{!allSuccess && hasWarnings && !hasFailures && (
+						<div className="rounded-full bg-yellow-100 dark:bg-yellow-950/40 p-4">
+							<AlertTriangle className="w-10 h-10 text-yellow-600 dark:text-yellow-400" />
+						</div>
+					)}
+					{hasFailures && (
 						<div className="rounded-full bg-red-100 dark:bg-red-950/40 p-4">
 							<XCircle className="w-10 h-10 text-red-600 dark:text-red-400" />
 						</div>
@@ -76,14 +88,52 @@ export function StepPreviewImport({
 
 				<div className="space-y-2">
 					<h2 className="text-xl font-semibold text-foreground">
-						{allSuccess ? "Import complete" : "Import finished with errors"}
+						{allSuccess
+							? "Import complete"
+							: hasFailures
+								? "Import finished with errors"
+								: "Import complete with warnings"}
 					</h2>
 					<p className="text-sm text-muted-foreground">
 						{importResult.successCount} client{importResult.successCount !== 1 && "s"} imported successfully
-						{importResult.failureCount > 0 && (
+						{hasWarnings && <> ({warningCount} with warnings)</>}
+						{hasFailures && (
 							<>, {importResult.failureCount} failed</>
 						)}
 					</p>
+				</div>
+
+				{/* Per-row results */}
+				<div className="max-h-64 overflow-y-auto space-y-1 text-left">
+					{importResult.items.map((item) => (
+						<div
+							key={item.rowIndex}
+							className="flex items-start gap-2 text-sm px-2 py-1 rounded"
+						>
+							{item.success && !item.warnings?.length && (
+								<CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+							)}
+							{item.success && (item.warnings?.length ?? 0) > 0 && (
+								<AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+							)}
+							{!item.success && (
+								<XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+							)}
+							<div>
+								<span className="text-foreground">Row {item.rowIndex + 1}</span>
+								{item.warnings?.map((w, i) => (
+									<p key={i} className="text-xs text-yellow-600 dark:text-yellow-400">
+										{w}
+									</p>
+								))}
+								{item.error && (
+									<p className="text-xs text-red-600 dark:text-red-400">
+										{item.error}
+									</p>
+								)}
+							</div>
+						</div>
+					))}
 				</div>
 
 				<Link href="/clients">
