@@ -15,9 +15,9 @@
 
 ### Column Mapping
 
-- [ ] **MAP-01**: System auto-maps CSV columns to schema fields using AI (Mastra/GPT-4o) with real per-field confidence scores
-- [ ] **MAP-02**: User can manually override or remove any column mapping via dropdown
-- [ ] **MAP-03**: User can see a live data preview panel that updates as mappings change
+- [x] **MAP-01**: System auto-maps CSV columns to schema fields using AI (Mastra/GPT-4o) with real per-field confidence scores
+- [x] **MAP-02**: User can manually override or remove any column mapping via dropdown
+- [x] **MAP-03**: User can see a live data preview panel that updates as mappings change
 - [x] **MAP-04**: System sends only headers + sample rows to AI (not full CSV content)
 - [x] **MAP-05**: AI analysis route requires authentication and has maxDuration configured
 - [x] **MAP-06**: Contact fields (name, email, phone) are recognized and mappable from flat CSV columns
@@ -73,9 +73,9 @@
 | UPLD-03 | Phase 1 | Complete |
 | UPLD-04 | Phase 2 | Complete |
 | UPLD-05 | Phase 2 | Complete |
-| MAP-01 | Phase 2 | Pending |
-| MAP-02 | Phase 2 | Pending |
-| MAP-03 | Phase 2 | Pending |
+| MAP-01 | Phase 2 | Complete |
+| MAP-02 | Phase 2 | Complete |
+| MAP-03 | Phase 2 | Complete |
 | MAP-04 | Phase 1 | Complete |
 | MAP-05 | Phase 1 | Complete |
 | MAP-06 | Phase 2 | Complete |

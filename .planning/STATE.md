@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 2 of 5 (Upload and Mapping)
-Plan: 1 of 2 in current phase
+Plan: 2 of 2 in current phase
 Status: Executing
-Last activity: 2026-03-15 - Completed 02-01: template CSV generation, mapping utilities, StepUpload enhancements
+Last activity: 2026-03-15 - Completed 02-02: auto-advance, confidence indicators, summary banner, preview panel enhancements
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [█████████░] 88%
 | Phase 01.1 P01 | 3min | 2 tasks | 4 files |
 | Phase 01.1 P02 | 3min | 2 tasks | 4 files |
 | Phase 02 P01 | 3min | 2 tasks | 5 files |
+| Phase 02 P02 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 01.1]: Reused parseCsvData in csv-import-sheet.tsx for DRY BOM stripping and dynamicTyping: false
 - [02-01]: Used intent/onPress props for Button component (react-aria-components API, not shadcn variant/onClick)
 - [02-01]: Separated generateTemplateCsvData from downloadTemplateCsv for testability without browser APIs
+- [02-02]: Required-field message rendered as floating text above StickyFormFooter since footer lacks disabledReason prop
+- [02-02]: handleProceedUnmapped sets all mappings to __skip__ with confidence 0 for manual mapping from scratch
+- [02-02]: ConfidenceIndicator uses fixed w-16 column width for consistent alignment
 
 ### Roadmap Evolution
 
@@ -106,6 +110,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T14:20:12Z
-Stopped at: Completed 02-01-PLAN.md
-Resume file: .planning/phases/02-upload-and-mapping/02-01-SUMMARY.md
+Last session: 2026-03-15T14:26:55Z
+Stopped at: Completed 02-02-PLAN.md
+Resume file: .planning/phases/02-upload-and-mapping/02-02-SUMMARY.md

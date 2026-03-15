@@ -13,7 +13,7 @@ The import wizard is built in strict dependency order. Phase 1 fixes pre-existin
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Wizard hook, layout, backend functions, pre-existing bug fixes, and UAT gap closure
-- [ ] **Phase 2: Upload and Mapping** - File upload step and AI column mapping step wired end-to-end
+- [x] **Phase 2: Upload and Mapping** - File upload step and AI column mapping step wired end-to-end (completed 2026-03-15)
 - [ ] **Phase 3: Review** - Duplicate detection, per-row validation, and plan limit pre-check
 - [ ] **Phase 4: Import Execution** - Import step with progress, results, and old modal replacement
 - [ ] **Phase 5: Fast Follows** - Onboarding embed, contact import, and analytics instrumentation
@@ -60,7 +60,7 @@ Plans:
   3. User can view an inline schema guide listing which fields are required vs optional with expected data types
   4. After upload, each CSV column shows an AI-suggested field mapping with a real per-field confidence score (not a hardcoded 0.8)
   5. User can override any column mapping via a dropdown and see the data preview panel update immediately to reflect the change
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — Utility functions (template CSV, confidence state, type mismatch) with tests + upload step enhancements
@@ -117,7 +117,7 @@ Phases execute in numeric order: 1 → 1.1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/4 | Gap closure | - |
 | 1.1. LLM Column Mapping | 1/2 | Gap closure | - |
-| 2. Upload and Mapping | 0/2 | Planned | - |
+| 2. Upload and Mapping | 2/2 | Complete   | 2026-03-15 |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
 | 5. Fast Follows | 0/TBD | Not started | - |
