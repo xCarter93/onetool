@@ -85,7 +85,7 @@ Plans:
 **Goal:** Make preview table cells editable before import (single-click, Google Sheets-style) and replace the centered icon-list results UI with the same data table annotated with a per-row status column showing success/warning/error icons after import
 **Requirements**: EDIT-01, EDIT-02, EDIT-03, EDIT-04
 **Depends on:** Phase 02.1
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02.1.1-01-PLAN.md — Editable cell state helpers (init, rebuild, validate, field meta) with tests + hook records parameter
