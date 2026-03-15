@@ -78,7 +78,18 @@ Plans:
 Plans:
 - [x] 02.1-01-PLAN.md — Expand bulkCreate mutation with contacts/properties support, rewrite buildImportRecords, add validation
 - [x] 02.1-02-PLAN.md — Wire validation and real results into import wizard hook and results UI
-- [ ] 02.1-03-PLAN.md — Gap closure: fix preview table showing dashes for contact/property sub-record columns
+- [x] 02.1-03-PLAN.md — Gap closure: fix preview table showing dashes for contact/property sub-record columns
+
+### Phase 02.1.1: add inline edit to import preview table and after import success/failure show the initial table with success or error icons for each row that succeeded/failed instead of the current UI (INSERTED)
+
+**Goal:** Make preview table cells editable before import (single-click, Google Sheets-style) and replace the centered icon-list results UI with the same data table annotated with a per-row status column showing success/warning/error icons after import
+**Requirements**: EDIT-01, EDIT-02, EDIT-03, EDIT-04
+**Depends on:** Phase 02.1
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02.1.1-01-PLAN.md — Editable cell state helpers (init, rebuild, validate, field meta) with tests + hook records parameter
+- [ ] 02.1.1-02-PLAN.md — Refactor StepPreviewImport with editable cells, validation feedback, and results-as-table
 
 ### Phase 3: Review
 **Goal**: Users can inspect all rows before committing — seeing validation errors per row, duplicate flags with skip/import choice per flagged row, and a plan limit warning if the import would exceed their quota
@@ -125,14 +136,15 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 1.1 → 2 → 2.1 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 1.1 → 2 → 2.1 → 2.1.1 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/4 | Gap closure | - |
 | 1.1. LLM Column Mapping | 1/2 | Gap closure | - |
 | 2. Upload and Mapping | 2/4 | Gap closure | - |
-| 2.1. bulkCreate Fix | 2/3 | Gap closure | - |
+| 2.1. bulkCreate Fix | 3/3 | Complete | - |
+| 2.1.1. Inline Edit + Results Table | 0/2 | Planning complete | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
 | 5. Fast Follows | 0/TBD | Not started | - |
