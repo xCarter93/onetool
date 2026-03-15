@@ -111,19 +111,8 @@ export function ImportWizard() {
 			});
 		}
 
-		// Right side: Continue / Import Data
-		if (currentStep === "preview") {
-			if (!state.importResult) {
-				buttons.push({
-					label: state.isImporting ? "Importing..." : "Import Data",
-					onClick: handleImportData,
-					intent: "primary",
-					position: "right",
-					disabled: !canContinue,
-					isLoading: state.isImporting,
-				});
-			}
-		} else {
+		// Right side: Continue (preview step uses its own inline import button)
+		if (currentStep !== "preview") {
 			buttons.push({
 				label: "Continue",
 				onClick: goNext,
@@ -143,7 +132,6 @@ export function ImportWizard() {
 		startOver,
 		goBack,
 		goNext,
-		handleImportData,
 	]);
 
 	// --- Step heading info ---
