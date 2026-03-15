@@ -73,7 +73,7 @@ Plans:
 **Goal:** Fix the clients.bulkCreate mutation to accept contact and property data from the import wizard, restructure dot-namespaced CSV fields into nested objects, add frontend pre-validation, and display per-row results with warnings
 **Requirements**: BULK-01, BULK-02, BULK-03, BULK-04, BULK-05, BULK-06
 **Depends on:** Phase 2
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02.1-01-PLAN.md — Expand bulkCreate mutation with contacts/properties support, rewrite buildImportRecords, add validation

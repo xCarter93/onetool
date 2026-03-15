@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-01-PLAN.md
-last_updated: "2026-03-15T17:53:24Z"
-last_activity: "2026-03-15 - Completed 02.1-01: expand bulkCreate with contacts/properties, rewrite buildImportRecords"
+stopped_at: Completed 02.1-02-PLAN.md
+last_updated: "2026-03-15T17:58:06Z"
+last_activity: "2026-03-15 - Completed 02.1-02: wire validation and real results into import wizard"
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 12
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 02.1 (bulkCreate not working with new client import wizard)
-Plan: 1 of 1 in current phase
+Plan: 2 of 2 in current phase
 Status: Complete
-Last activity: 2026-03-15 - Completed 02.1-01: expand bulkCreate with contacts/properties, rewrite buildImportRecords
+Last activity: 2026-03-15 - Completed 02.1-02: wire validation and real results into import wizard
 
 Progress: [██████████] 100%
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100%
 | Phase 02 P03 | 2min | 1 tasks | 1 files |
 | Phase 02 P04 | 2min | 1 tasks | 2 files |
 | Phase 02.1 P01 | 3min | 2 tasks | 5 files |
+| Phase 02.1 P02 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase 02.1]: Sub-record validation done before insert with skip+warning, not relying on Convex errors
 - [Phase 02.1]: First contact/property in array gets isPrimary: true, rest get false
 - [Phase 02.1]: getCurrentUserOrgId called once at top of bulkCreate handler, shared across sub-record inserts
+- [Phase 02.1]: Validation errors block import entirely and render as red X rows in results view
+- [Phase 02.1]: Backend results used directly via mapped ImportResultItem, no fabricated all-success
 
 ### Roadmap Evolution
 
@@ -120,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:53:24Z
-Stopped at: Completed 02.1-01-PLAN.md
-Resume file: .planning/phases/02.1-bulkcreate-not-working-with-new-client-import-wizard/02.1-01-SUMMARY.md
+Last session: 2026-03-15T17:58:06Z
+Stopped at: Completed 02.1-02-PLAN.md
+Resume file: .planning/phases/02.1-bulkcreate-not-working-with-new-client-import-wizard/02.1-02-SUMMARY.md
