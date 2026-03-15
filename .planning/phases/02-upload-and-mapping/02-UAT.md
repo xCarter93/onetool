@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 02-upload-and-mapping
 source: 02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md
 started: 2026-03-15T15:00:00Z
-updated: 2026-03-15T15:08:00Z
+updated: 2026-03-15T15:10:00Z
 ---
 
 ## Current Test
@@ -61,5 +61,15 @@ skipped: 0
   reason: "User reported: disabling the save button works, but the error message should be displayed inline with the required field indicating that it's required to be mapped before proceeding"
   severity: minor
   test: 6
-  artifacts: []
-  missing: []
+  root_cause: "Required-field validation is a single floating banner in import-wizard.tsx (lines 212-218) positioned fixed above footer. The canContinue logic computes which required fields are unmapped but only derives a boolean - never passes granular info to ColumnMappingRow. No per-row inline validation exists."
+  artifacts:
+    - path: "apps/web/src/app/(workspace)/clients/import/components/import-wizard.tsx"
+      issue: "Floating banner shows generic message; unmapped required field set not passed to children"
+    - path: "apps/web/src/app/(workspace)/clients/import/components/step-map-columns.tsx"
+      issue: "Does not accept or forward unmapped required field info to rows"
+    - path: "apps/web/src/app/(workspace)/clients/import/components/column-mapping-row.tsx"
+      issue: "No prop or UI for inline 'Required' indicator on unmapped required rows"
+  missing:
+    - "Remove floating banner, pass unmapped required field set down to StepMapColumns and ColumnMappingRow"
+    - "Add inline 'Required' text/badge on mapping rows where the target schema field is required but unmapped"
+  debug_session: ".planning/debug/required-field-inline-validation.md"
