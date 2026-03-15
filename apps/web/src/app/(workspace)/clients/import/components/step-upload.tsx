@@ -2,19 +2,38 @@
 
 import { CsvUploadZone } from "@/app/(workspace)/clients/components/csv-upload-zone";
 import { CsvSchemaGuide } from "@/app/(workspace)/clients/components/csv-schema-guide";
-import { Loader2, CheckCircle2, FileSpreadsheet } from "lucide-react";
+import { downloadTemplateCsv } from "../utils/template-csv";
+import { Button } from "@/components/ui/button";
+import {
+	Loader2,
+	CheckCircle2,
+	FileSpreadsheet,
+	Download,
+	AlertTriangle,
+	RotateCcw,
+	Upload,
+	ArrowRight,
+} from "lucide-react";
 import type { CsvAnalysisResult } from "@/types/csv-import";
 
 interface StepUploadProps {
 	isAnalyzing: boolean;
 	analysisResult: CsvAnalysisResult | null;
+	analysisError?: string | null;
 	onFileSelect: (file: File, content: string) => void;
+	onRetryAnalysis?: () => void;
+	onClearFile?: () => void;
+	onProceedUnmapped?: () => void;
 }
 
 export function StepUpload({
 	isAnalyzing,
 	analysisResult,
+	analysisError,
 	onFileSelect,
+	onRetryAnalysis,
+	onClearFile,
+	onProceedUnmapped,
 }: StepUploadProps) {
 	return (
 		<div className="max-w-2xl mx-auto space-y-6">
@@ -28,6 +47,15 @@ export function StepUpload({
 
 			<CsvUploadZone onFileSelect={onFileSelect} disabled={isAnalyzing} />
 
+			<button
+				type="button"
+				onClick={() => void downloadTemplateCsv()}
+				className="text-sm text-primary hover:underline cursor-pointer flex items-center gap-1.5"
+			>
+				<Download className="w-3.5 h-3.5" />
+				Download template CSV
+			</button>
+
 			{isAnalyzing && (
 				<div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg">
 					<Loader2 className="w-5 h-5 text-primary animate-spin" />
@@ -36,6 +64,40 @@ export function StepUpload({
 						<p className="text-xs text-muted-foreground">
 							Our AI is detecting columns and mapping fields
 						</p>
+					</div>
+				</div>
+			)}
+
+			{analysisError && !isAnalyzing && (
+				<div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg space-y-3">
+					<div className="flex items-start gap-3">
+						<AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+						<div>
+							<p className="text-sm font-medium text-foreground">AI analysis failed</p>
+							<p className="text-xs text-muted-foreground mt-0.5">
+								{analysisError}
+							</p>
+						</div>
+					</div>
+					<div className="flex flex-wrap gap-2 ml-8">
+						{onRetryAnalysis && (
+							<Button intent="outline" size="sm" onPress={onRetryAnalysis}>
+								<RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+								Try again
+							</Button>
+						)}
+						{onClearFile && (
+							<Button intent="outline" size="sm" onPress={onClearFile}>
+								<Upload className="w-3.5 h-3.5 mr-1.5" />
+								Upload different file
+							</Button>
+						)}
+						{onProceedUnmapped && (
+							<Button intent="plain" size="sm" onPress={onProceedUnmapped}>
+								<ArrowRight className="w-3.5 h-3.5 mr-1.5" />
+								Continue without AI mapping
+							</Button>
+						)}
 					</div>
 				</div>
 			)}
