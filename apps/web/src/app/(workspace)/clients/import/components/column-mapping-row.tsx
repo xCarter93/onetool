@@ -23,6 +23,8 @@ interface ColumnMappingRowProps {
 	usedSchemaFields: Set<string>;
 	onMappingChange: (csvColumn: string, newSchemaField: string) => void;
 	onSelect: (csvColumn: string) => void;
+	originalSuggestion?: string;
+	unmappedRequiredFields?: Set<string>;
 }
 
 const SKIP_VALUE = "__skip__";
@@ -81,12 +83,23 @@ export function ColumnMappingRow({
 	usedSchemaFields,
 	onMappingChange,
 	onSelect,
+	originalSuggestion,
+	unmappedRequiredFields,
 }: ColumnMappingRowProps) {
 	const grouped = getFieldsByGroup(CLIENT_SCHEMA_FIELDS);
 	const confidenceState = getConfidenceState(
 		{ schemaField, confidence },
 		isManuallyOverridden
 	);
+
+	// Show a red "Required" badge when the row is skipped but the AI originally
+	// suggested a required field that is still unmapped.
+	const showRequiredBadge =
+		schemaField === SKIP_VALUE &&
+		originalSuggestion !== undefined &&
+		unmappedRequiredFields !== undefined &&
+		unmappedRequiredFields.has(originalSuggestion) &&
+		(CLIENT_SCHEMA_FIELDS as Record<string, { required: boolean }>)[originalSuggestion]?.required === true;
 
 	return (
 		<div
@@ -161,9 +174,15 @@ export function ColumnMappingRow({
 				</Select>
 			</div>
 
-			{/* Confidence indicator */}
+			{/* Confidence indicator or Required badge */}
 			<div className="w-16 shrink-0 flex justify-end">
-				<ConfidenceIndicator state={confidenceState} />
+				{showRequiredBadge ? (
+					<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-semibold uppercase leading-none">
+						Required
+					</span>
+				) : (
+					<ConfidenceIndicator state={confidenceState} />
+				)}
 			</div>
 		</div>
 	);
