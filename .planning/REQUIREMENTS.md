@@ -25,10 +25,10 @@
 ### Review & Validation
 
 - [x] **REV-01**: System validates each row against schema and displays per-row errors with field name and reason
-- [ ] **REV-02**: System pre-checks plan limits and warns user if import would exceed capacity
+- [x] **REV-02**: System pre-checks plan limits and warns user if import would exceed capacity (N/A: import is paid-only, limit check redundant)
 - [x] **REV-03**: System detects potential duplicate clients using fuzzy matching (fuse.js) against existing org clients
 - [x] **REV-04**: User can choose to skip or import each flagged duplicate row
-- [ ] **REV-05**: Review table is virtualized for performance with 100+ row files
+- [x] **REV-05**: Review table is virtualized for performance with 100+ row files
 
 ### Import Execution
 
@@ -80,10 +80,10 @@
 | MAP-05 | Phase 1 | Complete |
 | MAP-06 | Phase 2 | Complete |
 | REV-01 | Phase 3 | Complete |
-| REV-02 | Phase 3 | Pending |
+| REV-02 | Phase 3 | Complete (N/A) |
 | REV-03 | Phase 3 | Complete |
 | REV-04 | Phase 3 | Complete |
-| REV-05 | Phase 3 | Pending |
+| REV-05 | Phase 3 | Complete |
 | IMP-01 | Phase 4 | Pending |
 | IMP-02 | Phase 4 | Pending |
 | IMP-03 | Phase 4 | Pending |

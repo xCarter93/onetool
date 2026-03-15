@@ -103,8 +103,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Validation expansion, fuse.js duplicate detection, review types, wizard skip state
-- [ ] 03-02-PLAN.md — Rewrite review step with virtualized table, filter tabs, summary bar, plan limit banner
+- [x] 03-01-PLAN.md — Validation expansion, fuse.js duplicate detection, review types, wizard skip state
+- [x] 03-02-PLAN.md — Rewrite review step with virtualized table, filter tabs, summary bar, inline editing
 
 ### Phase 4: Import Execution
 **Goal**: Users can commit the import and see exactly what happened — progress during the operation, and a per-row result for every row showing success, failure with reason, or skipped — and the old modal import is gone
@@ -146,6 +146,6 @@ Phases execute in numeric order: 1 → 1.1 → 2 → 2.1 → 2.1.1 → 3 → 4 �
 | 2. Upload and Mapping | 2/4 | Gap closure | - |
 | 2.1. bulkCreate Fix | 3/3 | Complete | - |
 | 2.1.1. Inline Edit + Results Table | 0/2 | Planning complete | - |
-| 3. Review | 0/2 | Planning complete | - |
+| 3. Review | 2/2 | Complete | 2026-03-15 |
 | 4. Import Execution | 0/TBD | Not started | - |
 | 5. Fast Follows | 0/TBD | Not started | - |
