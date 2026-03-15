@@ -30,6 +30,8 @@ export function ImportWizard() {
 		handleClearFile,
 		handleProceedUnmapped,
 		handleImportData,
+		setRowSkip,
+		initReviewSkippedRows,
 	} = useImportWizard();
 
 	// --- Step guard: redirect to upload if state is missing ---
@@ -67,10 +69,9 @@ export function ImportWizard() {
 				return allRequiredMapped && noDuplicates;
 			}
 			case "review":
-				return (
-					state.analysisResult?.validation.isValid ||
-					(state.analysisResult?.validation.errors.length === 0)
-				);
+				// Review step is always continuable - errors are flagged for
+				// awareness and can be fixed in the editable preview step (step 4)
+				return !!state.fileContent;
 			case "preview":
 				return !state.isImporting;
 			default:
@@ -152,8 +153,8 @@ export function ImportWizard() {
 				};
 			case "review":
 				return {
-					title: "Review mappings",
-					subtitle: "Confirm your column mappings before importing.",
+					title: "Review data",
+					subtitle: "Review your import data for errors and duplicates before proceeding.",
 				};
 			case "preview":
 				return {
@@ -195,11 +196,14 @@ export function ImportWizard() {
 					/>
 				);
 			case "review":
-				if (!state.analysisResult) return null;
+				if (!state.fileContent) return null;
 				return (
 					<StepReviewValues
+						fileContent={state.fileContent}
 						mappings={state.mappings || []}
-						analysisResult={state.analysisResult}
+						reviewSkippedRows={state.reviewSkippedRows ?? new Set()}
+						setRowSkip={setRowSkip}
+						initReviewSkippedRows={initReviewSkippedRows}
 					/>
 				);
 			case "preview":
