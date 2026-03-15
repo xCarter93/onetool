@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01.1-01-PLAN.md
-last_updated: "2026-03-15T12:12:57.138Z"
+stopped_at: Completed 01.1-02-PLAN.md
+last_updated: "2026-03-15T12:51:41.388Z"
 last_activity: 2026-03-15 — Completed 01.1-01 (LLM-powered column mapping)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 1.1 of 5 (LLM Column Mapping)
-Plan: 1 of 1 in current phase
+Plan: 2 of 2 in current phase (complete)
 Status: Executing
-Last activity: 2026-03-15 — Completed 01.1-01 (LLM-powered column mapping)
+Last activity: 2026-03-15 — Completed 01.1-02 (LLM failure signaling and API contract fix)
 
 Progress: [██████████] 100%
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100%
 | Phase 01 P03 | 3min | 2 tasks | 2 files |
 | Phase 01 P04 | 2min | 2 tasks | 3 files |
 | Phase 01.1 P01 | 3min | 2 tasks | 4 files |
+| Phase 01.1 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [01-04]: Synonym map checked before substring matching with confidence scoring to prevent ambiguous header matches
 - [01.1-01]: Used generateObject from ai SDK directly (not Mastra agent.generate) for simpler single-call structured extraction
 - [01.1-01]: Used z.nullable() instead of z.optional() in LLM response schema for OpenAI structured output compatibility
+- [Phase 01.1]: Used boolean llmFailed flag for simple binary LLM health signal in mapSchemaTool output
+- [Phase 01.1]: Reused parseCsvData in csv-import-sheet.tsx for DRY BOM stripping and dynamicTyping: false
 
 ### Roadmap Evolution
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T12:09:26Z
-Stopped at: Completed 01.1-01-PLAN.md
-Resume file: .planning/phases/01.1-leverage-mastra-tool-call-for-column-mapping/01.1-01-SUMMARY.md
+Last session: 2026-03-15T12:51:41.386Z
+Stopped at: Completed 01.1-02-PLAN.md
+Resume file: None
