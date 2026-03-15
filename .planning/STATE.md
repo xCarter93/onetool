@@ -133,9 +133,10 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 1 | Replace deprecated generateObject with generateText Output.object pattern and fix preview table overflow | 2026-03-15 | 154ccb4 | [1-replace-deprecated-generateobject-with-g](./quick/1-replace-deprecated-generateobject-with-g/) |
 | 2 | Side-by-side upload layout, inline required badges, sticky panel alignment | 2026-03-15 | 146f170 | [2-import-wizard-ui-tweaks-side-by-side-upl](./quick/2-import-wizard-ui-tweaks-side-by-side-upl/) |
+| 3 | Merge review and preview import steps into single Review & Import step | 2026-03-15 | 75c571b | [3-merge-review-and-preview-import-steps-in](./quick/3-merge-review-and-preview-import-steps-in/) |
 
 ## Session Continuity
 
-Last session: 2026-03-15T20:00:11Z
-Stopped at: Completed 03-01-PLAN.md
-Resume file: .planning/phases/03-review/03-01-SUMMARY.md
+Last session: 2026-03-15T20:42:43Z
+Stopped at: Completed quick task 3
+Resume file: .planning/quick/3-merge-review-and-preview-import-steps-in/3-SUMMARY.md
