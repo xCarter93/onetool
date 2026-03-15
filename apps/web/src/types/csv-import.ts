@@ -45,6 +45,7 @@ export interface ImportResultItem {
 	error?: string;
 	warnings?: string[];
 	rowIndex: number;
+	skipped?: boolean;
 }
 
 /**
@@ -91,6 +92,7 @@ export interface RecordValidationError {
 export interface ImportResult {
 	successCount: number;
 	failureCount: number;
+	skippedCount?: number;
 	items: ImportResultItem[];
 }
 
@@ -106,6 +108,12 @@ export interface CsvImportState {
 	mappings?: FieldMapping[];
 	isImporting?: boolean;
 	importResult?: ImportResult | null;
+	importProgress?: {
+		current: number;
+		total: number;
+		succeeded: number;
+		failed: number;
+	};
 	skipImport?: boolean;
 	reviewSkippedRows?: Set<number>;
 }

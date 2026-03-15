@@ -116,10 +116,12 @@ Plans:
   3. The `bulkCreate` mutation enforces plan limits server-side — an import that would exceed limits is rejected even if the pre-check was bypassed
   4. The clients page no longer shows the old modal CSV import sheet — the import entry point links to the new wizard
   5. The old modal import component files have been deleted from the codebase
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Batching utilities (chunkArray, buildCompositeResults) with tests + type updates for progress and skipped rows
+- [ ] 04-02-PLAN.md — Wire batched import into hook with progress tracking, update review step UI for progress bar, skipped icons, and results summary
+- [ ] 04-03-PLAN.md — Remove old modal import from clients page, redirect import button to wizard, delete superseded files
 
 ### Phase 5: Fast Follows
 **Goal**: The wizard is reachable from onboarding, supports importing contact data alongside clients from flat CSV columns, and all wizard steps emit PostHog events for funnel analysis
@@ -147,5 +149,5 @@ Phases execute in numeric order: 1 → 1.1 → 2 → 2.1 → 2.1.1 → 3 → 4 �
 | 2.1. bulkCreate Fix | 3/3 | Complete | - |
 | 2.1.1. Inline Edit + Results Table | 0/2 | Planning complete | - |
 | 3. Review | 2/2 | Complete | 2026-03-15 |
-| 4. Import Execution | 0/TBD | Not started | - |
+| 4. Import Execution | 0/3 | Planning complete | - |
 | 5. Fast Follows | 0/TBD | Not started | - |
