@@ -20,7 +20,7 @@
 - [ ] **MAP-03**: User can see a live data preview panel that updates as mappings change
 - [x] **MAP-04**: System sends only headers + sample rows to AI (not full CSV content)
 - [x] **MAP-05**: AI analysis route requires authentication and has maxDuration configured
-- [ ] **MAP-06**: Contact fields (name, email, phone) are recognized and mappable from flat CSV columns
+- [x] **MAP-06**: Contact fields (name, email, phone) are recognized and mappable from flat CSV columns
 
 ### Review & Validation
 
@@ -78,7 +78,7 @@
 | MAP-03 | Phase 2 | Pending |
 | MAP-04 | Phase 1 | Complete |
 | MAP-05 | Phase 1 | Complete |
-| MAP-06 | Phase 2 | Pending |
+| MAP-06 | Phase 2 | Complete |
 | REV-01 | Phase 3 | Pending |
 | REV-02 | Phase 3 | Pending |
 | REV-03 | Phase 3 | Pending |
