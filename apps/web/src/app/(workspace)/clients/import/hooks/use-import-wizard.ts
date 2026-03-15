@@ -9,9 +9,16 @@ import type {
 	CsvAnalysisResult,
 	CsvImportState,
 	FieldMapping,
+	ImportRecord,
 	ImportResult,
+	ImportResultItem,
+	RecordValidationError,
 } from "@/types/csv-import";
-import { parseCsvData, buildImportRecords } from "../utils/transform-csv";
+import {
+	parseCsvData,
+	buildImportRecords,
+	validateImportRecords,
+} from "../utils/transform-csv";
 import type { ImportStep } from "../components/import-step-nav";
 
 const STEP_ORDER: ImportStep[] = ["upload", "map", "review", "preview"];
@@ -242,7 +249,7 @@ export function useImportWizard() {
 	}, [state.mappings, state.fileContent, navigateTo]);
 
 	const handleImportData = useCallback(async () => {
-		if (!state.fileContent || !state.analysisResult) return;
+		if (!state.fileContent || !state.mappings?.length) return;
 
 		setState((prev) => ({ ...prev, isImporting: true }));
 
@@ -253,17 +260,66 @@ export function useImportWizard() {
 			);
 			const records = buildImportRecords(rows, activeMappings);
 
-			await bulkCreateClients({
-				clients: records as Parameters<typeof bulkCreateClients>[0]["clients"],
-			});
+			// Pre-validate records before sending to backend
+			const validationErrors = validateImportRecords(records);
+			if (validationErrors.length > 0) {
+				// Group errors by row for display
+				const errorsByRow = new Map<number, string[]>();
+				for (const err of validationErrors) {
+					const existing = errorsByRow.get(err.rowIndex) || [];
+					existing.push(`${err.field}: ${err.message}`);
+					errorsByRow.set(err.rowIndex, existing);
+				}
+
+				const items: ImportResultItem[] = records.map((_, index) => {
+					const rowErrors = errorsByRow.get(index);
+					return {
+						success: !rowErrors,
+						rowIndex: index,
+						error: rowErrors ? rowErrors.join("; ") : undefined,
+					};
+				});
+
+				const failureCount = items.filter((i) => !i.success).length;
+
+				setState((prev) => ({
+					...prev,
+					isImporting: false,
+					importResult: {
+						successCount: 0,
+						failureCount,
+						items,
+					},
+				}));
+
+				toast.error(
+					"Validation Failed",
+					`${validationErrors.length} validation error${validationErrors.length !== 1 ? "s" : ""} found. Fix your data and try again.`,
+				);
+				return;
+			}
+
+			// ImportRecord matches the bulkCreate validator shape (safe cast due to shared type definition)
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const backendResults = await bulkCreateClients({ clients: records as any });
+			const items: ImportResultItem[] = backendResults.map((r, index) => ({
+				success: r.success,
+				id: r.id ? String(r.id) : undefined,
+				error: r.error,
+				warnings: r.warnings,
+				rowIndex: index,
+			}));
+
+			const successCount = items.filter((i) => i.success).length;
+			const failureCount = items.filter((i) => !i.success).length;
+			const warningCount = items.filter(
+				(i) => i.success && i.warnings?.length,
+			).length;
 
 			const result: ImportResult = {
-				successCount: records.length,
-				failureCount: 0,
-				items: records.map((_, index) => ({
-					success: true,
-					rowIndex: index,
-				})),
+				successCount,
+				failureCount,
+				items,
 			};
 
 			setState((prev) => ({
@@ -272,10 +328,23 @@ export function useImportWizard() {
 				importResult: result,
 			}));
 
-			toast.success(
-				"Import Complete",
-				`Successfully imported ${records.length} clients`,
-			);
+			// Contextual toast message
+			if (failureCount > 0) {
+				toast.error(
+					"Import Finished",
+					`Imported ${successCount} client${successCount !== 1 ? "s" : ""}, ${failureCount} failed`,
+				);
+			} else if (warningCount > 0) {
+				toast.success(
+					"Import Complete",
+					`Imported ${successCount} client${successCount !== 1 ? "s" : ""} (${warningCount} with warnings)`,
+				);
+			} else {
+				toast.success(
+					"Import Complete",
+					`Successfully imported ${successCount} client${successCount !== 1 ? "s" : ""}`,
+				);
+			}
 		} catch (err) {
 			console.error("Error importing data:", err);
 
@@ -294,13 +363,7 @@ export function useImportWizard() {
 				err instanceof Error ? err.message : "Failed to import data",
 			);
 		}
-	}, [
-		state.fileContent,
-		state.analysisResult,
-		state.mappings,
-		bulkCreateClients,
-		toast,
-	]);
+	}, [state.fileContent, state.mappings, bulkCreateClients, toast]);
 
 	return {
 		state,

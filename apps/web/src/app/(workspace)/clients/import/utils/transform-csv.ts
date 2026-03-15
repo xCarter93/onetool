@@ -109,10 +109,10 @@ export function buildImportRecords(
 
 		// Only include contacts/properties if at least one field has a value
 		if (Object.keys(contactFields).length > 0) {
-			record.contacts = [contactFields as ImportRecord["contacts"][0]];
+			record.contacts = [contactFields as NonNullable<ImportRecord["contacts"]>[0]];
 		}
 		if (Object.keys(propertyFields).length > 0) {
-			record.properties = [propertyFields as ImportRecord["properties"][0]];
+			record.properties = [propertyFields as NonNullable<ImportRecord["properties"]>[0]];
 		}
 
 		return record;
