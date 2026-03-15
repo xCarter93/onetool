@@ -11,7 +11,6 @@ import {
 	TooltipTrigger,
 	TooltipContent,
 } from "@/components/ui/tooltip";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
 import type { FieldMapping, ImportRecord, RecordValidationError } from "@/types/csv-import";
 import {
 	parseCsvData,
@@ -23,8 +22,6 @@ import { detectDuplicates } from "../utils/duplicate-detection";
 import type { ReviewRow, FilterTab } from "../utils/review-types";
 import { ReviewSummaryBar } from "./review-summary-bar";
 import { ReviewFilterTabs } from "./review-filter-tabs";
-import { PlanLimitBanner } from "./plan-limit-banner";
-
 interface StepReviewValuesProps {
 	fileContent: string;
 	mappings: FieldMapping[];
@@ -161,10 +158,6 @@ export function StepReviewValues({
 		}
 	}, [reviewRows, activeTab]);
 
-	// Plan limits
-	const { planLimits, currentUsage, hasPremiumAccess } = useFeatureAccess();
-	const importableCount = reviewRows.filter((r) => !r.skipImport && r.status !== "error").length;
-
 	// Virtualizer
 	const virtualizer = useVirtualizer({
 		count: filteredRows.length,
@@ -201,14 +194,6 @@ export function StepReviewValues({
 
 	return (
 		<div className="space-y-4">
-			{/* Plan limit banner */}
-			<PlanLimitBanner
-				currentCount={currentUsage?.clientsCount ?? 0}
-				importableCount={importableCount}
-				clientLimit={planLimits.clients}
-				hasPremiumAccess={hasPremiumAccess}
-			/>
-
 			{/* Summary stats bar */}
 			<ReviewSummaryBar
 				totalRows={reviewRows.length}
