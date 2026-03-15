@@ -226,13 +226,18 @@ export function StepReviewValues({
 	// Import-related derived state
 	const isResultsMode = importResult !== null;
 	const hasValidationErrors = validationErrors.length > 0;
-	const importableCount = records.length - skippedCount;
+	const importableCount = reviewRows.filter((r) => !r.skipImport && r.status !== "error").length;
 
-	// Handle import click: rebuild records from edited cells and pass to parent
+	// Handle import click: rebuild records, filter out skipped/error rows, pass to parent
 	const handleImportClick = useCallback(() => {
 		const builtRecords = rebuildRecordsFromCells(cellValues ?? new Map(), activeMappings, records.length);
-		onImport(builtRecords);
-	}, [cellValues, activeMappings, records.length, onImport]);
+		// Filter to only importable rows (not skipped, not error)
+		const importableRecords = builtRecords.filter((_, i) => {
+			const row = reviewRows[i];
+			return row && !row.skipImport && row.status !== "error";
+		});
+		onImport(importableRecords);
+	}, [cellValues, activeMappings, records.length, reviewRows, onImport]);
 
 	// Filter rows based on active tab
 	const filteredRows = useMemo(() => {

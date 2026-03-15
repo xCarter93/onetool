@@ -272,7 +272,7 @@ export function useImportWizard() {
 			let records: ImportRecord[];
 
 			if (preBuiltRecords) {
-				// Use pre-built records (from inline editing) — skip CSV re-parsing
+				// Use pre-built records (already filtered by review step)
 				records = preBuiltRecords;
 			} else {
 				// Default path: parse CSV and build records from mappings
@@ -281,12 +281,6 @@ export function useImportWizard() {
 					(m) => m.schemaField !== "__skip__",
 				);
 				records = buildImportRecords(rows, activeMappings);
-			}
-
-			// Filter out rows the user marked as "skip" in the review step
-			const skipped = state.reviewSkippedRows ?? new Set<number>();
-			if (skipped.size > 0) {
-				records = records.filter((_, i) => !skipped.has(i));
 			}
 
 			// Pre-validate records before sending to backend
