@@ -369,7 +369,7 @@ export function StepReviewValues({
 										const errorMsg = hasError
 											? getFieldError(row, field)
 											: undefined;
-										const meta = hasError ? getFieldMeta(field) : undefined;
+										const meta = getFieldMeta(field);
 										const isEnum = meta?.type === "enum" && meta.options;
 
 										return (
@@ -427,7 +427,10 @@ export function StepReviewValues({
 														</TooltipContent>
 													</Tooltip>
 												) : (
-													<div className="space-y-0">
+													<div
+														className="space-y-0 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1"
+														onClick={() => handleCellClick(row.rowIndex, field)}
+													>
 														<div className="truncate text-sm text-foreground">
 															{displayStr || (
 																<span className="text-muted-foreground">-</span>
