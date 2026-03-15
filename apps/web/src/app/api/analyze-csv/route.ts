@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
 		const resolvedEntityType = entityType || "clients";
 
-		// Call mapSchemaTool directly — no LLM needed, purely deterministic logic
+		// Call mapSchemaTool directly — uses LLM (GPT-5 nano) for column mapping
 		const mapRaw = await mapSchemaTool.execute({
 			entityType: resolvedEntityType,
 			headers,
