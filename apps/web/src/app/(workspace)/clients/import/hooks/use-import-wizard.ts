@@ -45,6 +45,11 @@ export function useImportWizard() {
 		string | null
 	>(null);
 
+	const [manualOverrides, setManualOverrides] = useState<Set<string>>(
+		new Set()
+	);
+	const [analysisError, setAnalysisError] = useState<string | null>(null);
+
 	// --- Navigation helpers ---
 	const navigateTo = useCallback(
 		(step: ImportStep) => {
@@ -79,6 +84,8 @@ export function useImportWizard() {
 			importResult: null,
 		});
 		setSelectedMappingColumn(null);
+		setManualOverrides(new Set());
+		setAnalysisError(null);
 		navigateTo("upload");
 	}, [navigateTo]);
 
@@ -129,24 +136,38 @@ export function useImportWizard() {
 
 				const analysisResult: CsvAnalysisResult = await response.json();
 
+				setAnalysisError(null);
+				setManualOverrides(new Set());
+
 				setState((prev) => ({
 					...prev,
 					isAnalyzing: false,
 					analysisResult,
 					mappings: analysisResult.detectedFields,
 				}));
+
+				// Auto-advance to mapping step after brief delay
+				// 1s delay ensures React commits state before step guard checks
+				setTimeout(() => {
+					navigateTo("map");
+				}, 1000);
 			} catch (err) {
 				clearTimeout(timeoutId);
 				const isTimeout =
 					err instanceof DOMException && err.name === "AbortError";
 				console.error("Error analyzing CSV:", err);
+
+				const errorMessage = isTimeout
+					? "The analysis took too long. Please try again with a smaller file."
+					: err instanceof Error
+						? err.message
+						: "Failed to analyze CSV file";
+
+				setAnalysisError(errorMessage);
+
 				toast.error(
 					isTimeout ? "Analysis Timed Out" : "Analysis Failed",
-					isTimeout
-						? "The analysis took too long. Please try again with a smaller file."
-						: err instanceof Error
-							? err.message
-							: "Failed to analyze CSV file",
+					errorMessage,
 				);
 				setState((prev) => ({
 					...prev,
@@ -154,11 +175,12 @@ export function useImportWizard() {
 				}));
 			}
 		},
-		[toast],
+		[toast, navigateTo],
 	);
 
 	const handleMappingChange = useCallback(
 		(csvColumn: string, newSchemaField: string) => {
+			setManualOverrides((prev) => new Set(prev).add(csvColumn));
 			setState((prev) => ({
 				...prev,
 				mappings: (prev.mappings || []).map((m) =>
@@ -168,6 +190,43 @@ export function useImportWizard() {
 		},
 		[],
 	);
+
+	// --- Error recovery handlers ---
+	const handleRetryAnalysis = useCallback(() => {
+		if (state.file && state.fileContent) {
+			handleFileSelect(state.file, state.fileContent);
+		}
+	}, [state.file, state.fileContent, handleFileSelect]);
+
+	const handleClearFile = useCallback(() => {
+		setState((prev) => ({
+			...prev,
+			file: null,
+			fileContent: null,
+			analysisResult: null,
+			mappings: [],
+		}));
+		setAnalysisError(null);
+		setManualOverrides(new Set());
+	}, []);
+
+	const handleProceedUnmapped = useCallback(() => {
+		if (!state.mappings || state.mappings.length === 0) {
+			// No mappings to proceed with
+			return;
+		}
+		// Set all columns to __skip__ with confidence 0 so user can manually map
+		setState((prev) => ({
+			...prev,
+			mappings: (prev.mappings || []).map((m) => ({
+				...m,
+				schemaField: "__skip__",
+				confidence: 0,
+			})),
+		}));
+		setAnalysisError(null);
+		navigateTo("map");
+	}, [state.mappings, navigateTo]);
 
 	const handleImportData = useCallback(async () => {
 		if (!state.fileContent || !state.analysisResult) return;
@@ -235,12 +294,17 @@ export function useImportWizard() {
 		currentStep,
 		selectedMappingColumn,
 		setSelectedMappingColumn,
+		manualOverrides,
+		analysisError,
 		navigateTo,
 		goNext,
 		goBack,
 		startOver,
 		handleFileSelect,
 		handleMappingChange,
+		handleRetryAnalysis,
+		handleClearFile,
+		handleProceedUnmapped,
 		handleImportData,
 	};
 }

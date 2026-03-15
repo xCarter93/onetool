@@ -18,12 +18,17 @@ export function ImportWizard() {
 		currentStep,
 		selectedMappingColumn,
 		setSelectedMappingColumn,
+		manualOverrides,
+		analysisError,
 		navigateTo,
 		goNext,
 		goBack,
 		startOver,
 		handleFileSelect,
 		handleMappingChange,
+		handleRetryAnalysis,
+		handleClearFile,
+		handleProceedUnmapped,
 		handleImportData,
 	} = useImportWizard();
 
@@ -143,6 +148,10 @@ export function ImportWizard() {
 						isAnalyzing={state.isAnalyzing}
 						analysisResult={state.analysisResult}
 						onFileSelect={handleFileSelect}
+						analysisError={analysisError}
+						onRetryAnalysis={handleRetryAnalysis}
+						onClearFile={handleClearFile}
+						onProceedUnmapped={handleProceedUnmapped}
 					/>
 				);
 			case "map":
@@ -155,6 +164,7 @@ export function ImportWizard() {
 						selectedColumn={selectedMappingColumn}
 						onMappingChange={handleMappingChange}
 						onSelectColumn={setSelectedMappingColumn}
+						manualOverrides={manualOverrides}
 					/>
 				);
 			case "review":
@@ -198,7 +208,16 @@ export function ImportWizard() {
 
 			{/* Sticky footer */}
 			{!state.importResult && (
-				<StickyFormFooter buttons={footerButtons} />
+				<>
+					{currentStep === "map" && !canContinue && (
+						<div className="fixed bottom-16 left-0 right-0 z-40 flex justify-center pointer-events-none">
+							<p className="text-xs text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border">
+								Map required fields to continue
+							</p>
+						</div>
+					)}
+					<StickyFormFooter buttons={footerButtons} />
+				</>
 			)}
 		</div>
 	);
