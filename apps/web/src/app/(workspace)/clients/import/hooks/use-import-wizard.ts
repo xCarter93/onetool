@@ -21,7 +21,7 @@ import {
 } from "../utils/transform-csv";
 import type { ImportStep } from "../components/import-step-nav";
 
-const STEP_ORDER: ImportStep[] = ["upload", "map", "review", "preview"];
+const STEP_ORDER: ImportStep[] = ["upload", "map", "review"];
 
 function isValidStep(s: string | null): s is ImportStep {
 	return s !== null && STEP_ORDER.includes(s as ImportStep);

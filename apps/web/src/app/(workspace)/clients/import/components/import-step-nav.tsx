@@ -5,15 +5,14 @@ import {
 	type StepBreadcrumbItem,
 } from "@/components/ui/styled/styled-breadcrumbs";
 
-export type ImportStep = "upload" | "map" | "review" | "preview";
+export type ImportStep = "upload" | "map" | "review";
 
-const STEP_ORDER: ImportStep[] = ["upload", "map", "review", "preview"];
+const STEP_ORDER: ImportStep[] = ["upload", "map", "review"];
 
 const STEP_LABELS: Record<ImportStep, string> = {
 	upload: "Upload file",
 	map: "Map columns",
-	review: "Review values",
-	preview: "Preview & import",
+	review: "Review & Import",
 };
 
 interface ImportStepNavProps {
