@@ -1,4 +1,8 @@
-import type { FieldMapping } from "@/types/csv-import";
+import type {
+	FieldMapping,
+	ImportRecord,
+	RecordValidationError,
+} from "@/types/csv-import";
 
 /**
  * Coerce a raw CSV value to the target data type.
@@ -69,24 +73,79 @@ export async function parseCsvData(
 /**
  * Apply column mappings to parsed CSV rows, producing records
  * ready for Convex bulk-create mutations.
+ *
+ * Dot-namespaced fields (contact.firstName, property.streetAddress) are
+ * restructured into nested contacts/properties arrays. Each CSV row
+ * produces at most one contact and one property sub-record. If all
+ * sub-record fields for a group are empty/undefined, the array is omitted.
  */
 export function buildImportRecords(
 	rows: Record<string, unknown>[],
 	mappings: FieldMapping[]
-): Record<string, unknown>[] {
+): ImportRecord[] {
 	return rows.map((row) => {
-		const record: Record<string, unknown> = {};
+		const clientFields: Record<string, unknown> = {};
+		const contactFields: Record<string, unknown> = {};
+		const propertyFields: Record<string, unknown> = {};
 
 		mappings.forEach((mapping) => {
 			if (mapping.schemaField === "__skip__") return;
 			const csvValue = row[mapping.csvColumn];
 			const transformedValue = transformValue(csvValue, mapping.dataType);
+			if (transformedValue === undefined) return;
 
-			if (transformedValue !== undefined) {
-				record[mapping.schemaField] = transformedValue;
+			if (mapping.schemaField.startsWith("contact.")) {
+				contactFields[mapping.schemaField.slice("contact.".length)] =
+					transformedValue;
+			} else if (mapping.schemaField.startsWith("property.")) {
+				propertyFields[mapping.schemaField.slice("property.".length)] =
+					transformedValue;
+			} else {
+				clientFields[mapping.schemaField] = transformedValue;
 			}
 		});
 
+		const record: ImportRecord = clientFields as ImportRecord;
+
+		// Only include contacts/properties if at least one field has a value
+		if (Object.keys(contactFields).length > 0) {
+			record.contacts = [contactFields as ImportRecord["contacts"][0]];
+		}
+		if (Object.keys(propertyFields).length > 0) {
+			record.properties = [propertyFields as ImportRecord["properties"][0]];
+		}
+
 		return record;
 	});
+}
+
+/**
+ * Validate import records before sending to bulkCreate.
+ * Catches missing required fields and invalid enum values early.
+ * Does NOT auto-default any required fields.
+ */
+export function validateImportRecords(
+	records: ImportRecord[]
+): RecordValidationError[] {
+	const errors: RecordValidationError[] = [];
+	const validStatuses = ["lead", "active", "inactive", "archived"];
+
+	records.forEach((record, rowIndex) => {
+		if (!record.companyName || !String(record.companyName).trim()) {
+			errors.push({
+				rowIndex,
+				field: "companyName",
+				message: "Company name is required",
+			});
+		}
+		if (!record.status || !validStatuses.includes(String(record.status))) {
+			errors.push({
+				rowIndex,
+				field: "status",
+				message: `Status must be one of: ${validStatuses.join(", ")}`,
+			});
+		}
+	});
+
+	return errors;
 }
