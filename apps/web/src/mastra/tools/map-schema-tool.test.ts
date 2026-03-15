@@ -2,17 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the ai module before importing the tool
 vi.mock("ai", () => ({
-	generateObject: vi.fn(),
+	generateText: vi.fn(),
+	Output: { object: vi.fn((opts: unknown) => opts) },
 }));
 
 vi.mock("@ai-sdk/openai", () => ({
 	openai: vi.fn(() => "mock-model"),
 }));
 
-import { generateObject } from "ai";
+import { generateText } from "ai";
 import { mapSchemaTool } from "./map-schema-tool";
 
-const mockedGenerateObject = vi.mocked(generateObject);
+const mockedGenerateText = vi.mocked(generateText);
 
 // Test fixtures
 const sampleHeaders = [
@@ -112,9 +113,9 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		vi.clearAllMocks();
 	});
 
-	it("Test 1: returns enriched mappings with dataType, isRequired, and sampleValue from schema when generateObject returns valid mappings", async () => {
-		mockedGenerateObject.mockResolvedValueOnce({
-			object: validLlmResponse,
+	it("Test 1: returns enriched mappings with dataType, isRequired, and sampleValue from schema when generateText returns valid mappings", async () => {
+		mockedGenerateText.mockResolvedValueOnce({
+			output: validLlmResponse,
 		} as never);
 
 		const result = await mapSchemaTool.execute({
@@ -164,8 +165,8 @@ describe("mapSchemaTool (LLM-powered)", () => {
 	});
 
 	it("Test 2: moves column to unmappedColumns when LLM returns a schemaField that does not exist in CLIENT_SCHEMA_FIELDS", async () => {
-		mockedGenerateObject.mockResolvedValueOnce({
-			object: responseWithInvalidField,
+		mockedGenerateText.mockResolvedValueOnce({
+			output: responseWithInvalidField,
 		} as never);
 
 		const result = await mapSchemaTool.execute({
@@ -188,8 +189,8 @@ describe("mapSchemaTool (LLM-powered)", () => {
 	});
 
 	it("Test 3: resolves duplicate field assignments by keeping highest confidence mapping", async () => {
-		mockedGenerateObject.mockResolvedValueOnce({
-			object: responseWithDuplicateField,
+		mockedGenerateText.mockResolvedValueOnce({
+			output: responseWithDuplicateField,
 		} as never);
 
 		const result = await mapSchemaTool.execute({
@@ -219,8 +220,8 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(unmappedColumns).toContain("First Name");
 	});
 
-	it("Test 4: returns empty mappings with all headers in unmappedColumns and llmFailed: true when generateObject throws API error", async () => {
-		mockedGenerateObject.mockRejectedValueOnce(
+	it("Test 4: returns empty mappings with all headers in unmappedColumns and llmFailed: true when generateText throws API error", async () => {
+		mockedGenerateText.mockRejectedValueOnce(
 			new Error("OpenAI API rate limit exceeded")
 		);
 
@@ -249,8 +250,8 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(llmFailed).toBe(true);
 	});
 
-	it("Test 5: returns graceful fallback with llmFailed: true when generateObject throws AbortError (timeout)", async () => {
-		mockedGenerateObject.mockRejectedValueOnce(
+	it("Test 5: returns graceful fallback with llmFailed: true when generateText throws AbortError (timeout)", async () => {
+		mockedGenerateText.mockRejectedValueOnce(
 			new DOMException("signal timed out", "AbortError")
 		);
 
@@ -276,9 +277,9 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(llmFailed).toBe(true);
 	});
 
-	it("Test 6: prompt passed to generateObject includes all schema field names and mentions dot-namespace convention", async () => {
-		mockedGenerateObject.mockResolvedValueOnce({
-			object: validLlmResponse,
+	it("Test 6: prompt passed to generateText includes all schema field names and mentions dot-namespace convention", async () => {
+		mockedGenerateText.mockResolvedValueOnce({
+			output: validLlmResponse,
 		} as never);
 
 		await mapSchemaTool.execute({
@@ -287,9 +288,9 @@ describe("mapSchemaTool (LLM-powered)", () => {
 			sampleRows,
 		});
 
-		expect(mockedGenerateObject).toHaveBeenCalledTimes(1);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(1);
 
-		const callArgs = mockedGenerateObject.mock.calls[0][0] as {
+		const callArgs = mockedGenerateText.mock.calls[0][0] as {
 			prompt: string;
 		};
 		const prompt = callArgs.prompt;
@@ -323,8 +324,8 @@ describe("mapSchemaTool (LLM-powered)", () => {
 			],
 		};
 
-		mockedGenerateObject.mockResolvedValueOnce({
-			object: partialResponse,
+		mockedGenerateText.mockResolvedValueOnce({
+			output: partialResponse,
 		} as never);
 
 		const result = await mapSchemaTool.execute({
@@ -342,8 +343,8 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(missingRequiredFields).not.toContain("contact.email");
 	});
 
-	it("Test 8: returns llmFailed: true when generateObject throws any error", async () => {
-		mockedGenerateObject.mockRejectedValueOnce(
+	it("Test 8: returns llmFailed: true when generateText throws any error", async () => {
+		mockedGenerateText.mockRejectedValueOnce(
 			new Error("Connection refused")
 		);
 
@@ -357,9 +358,9 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(llmFailed).toBe(true);
 	});
 
-	it("Test 9: returns llmFailed: false when generateObject succeeds", async () => {
-		mockedGenerateObject.mockResolvedValueOnce({
-			object: validLlmResponse,
+	it("Test 9: returns llmFailed: false when generateText succeeds", async () => {
+		mockedGenerateText.mockResolvedValueOnce({
+			output: validLlmResponse,
 		} as never);
 
 		const result = await mapSchemaTool.execute({

@@ -1,5 +1,5 @@
 import { createTool } from "@mastra/core/tools";
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import {
@@ -193,14 +193,18 @@ export const mapSchemaTool = createTool({
 				: (PROJECT_SCHEMA_FIELDS as unknown as SchemaFields);
 
 		try {
-			const { object } = await generateObject({
+			const { output } = await generateText({
 				model: openai("gpt-5-nano"),
-				schema: llmMappingSchema,
+				output: Output.object({ schema: llmMappingSchema }),
 				prompt: buildMappingPrompt(entityType, headers, sampleRows, schema),
 				abortSignal: AbortSignal.timeout(30_000),
 			});
 
-			return { ...postProcessMappings(object, headers, schema), llmFailed: false };
+			if (!output) {
+				throw new Error("LLM returned no structured output");
+			}
+
+			return { ...postProcessMappings(output, headers, schema), llmFailed: false };
 		} catch (error) {
 			// LLM failure -- return all columns as unmapped (user maps manually)
 			console.error("mapSchemaTool LLM error:", error);
