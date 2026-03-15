@@ -60,12 +60,13 @@ Plans:
   3. User can view an inline schema guide listing which fields are required vs optional with expected data types
   4. After upload, each CSV column shows an AI-suggested field mapping with a real per-field confidence score (not a hardcoded 0.8)
   5. User can override any column mapping via a dropdown and see the data preview panel update immediately to reflect the change
-**Plans:** 3 plans (2 complete, 1 gap closure)
+**Plans:** 4 plans (2 complete, 2 gap closure)
 
 Plans:
 - [x] 02-01-PLAN.md — Utility functions (template CSV, confidence state, type mismatch) with tests + upload step enhancements
 - [x] 02-02-PLAN.md — Auto-advance, manual override tracking, confidence indicators, summary banner, and preview panel enhancements
-- [ ] 02-03-PLAN.md — Gap closure: fix dead "Continue without AI mapping" button after AI failure
+- [x] 02-03-PLAN.md — Gap closure: fix dead "Continue without AI mapping" button after AI failure
+- [ ] 02-04-PLAN.md — Gap closure: move required-field validation from floating banner to inline indicators
 
 ### Phase 3: Review
 **Goal**: Users can inspect all rows before committing — seeing validation errors per row, duplicate flags with skip/import choice per flagged row, and a plan limit warning if the import would exceed their quota
@@ -118,7 +119,7 @@ Phases execute in numeric order: 1 → 1.1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/4 | Gap closure | - |
 | 1.1. LLM Column Mapping | 1/2 | Gap closure | - |
-| 2. Upload and Mapping | 2/3 | Gap closure | - |
+| 2. Upload and Mapping | 2/4 | Gap closure | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
 | 5. Fast Follows | 0/TBD | Not started | - |
