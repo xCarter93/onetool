@@ -4,11 +4,13 @@ import { ArrowRight } from "lucide-react";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
+	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { CLIENT_SCHEMA_FIELDS } from "@/types/csv-import";
+import { CLIENT_SCHEMA_FIELDS, getFieldsByGroup } from "@/types/csv-import";
 import { cn } from "@/lib/utils";
 
 interface ColumnMappingRowProps {
@@ -22,6 +24,21 @@ interface ColumnMappingRowProps {
 
 const SKIP_VALUE = "__skip__";
 
+/**
+ * Strips the namespace prefix from a field name for display.
+ * e.g., "contact.firstName" -> "firstName", "companyName" -> "companyName"
+ */
+function displayFieldName(fieldName: string): string {
+	const dotIndex = fieldName.indexOf(".");
+	return dotIndex >= 0 ? fieldName.slice(dotIndex + 1) : fieldName;
+}
+
+const GROUP_LABELS: Record<string, string> = {
+	client: "Client",
+	contact: "Contact",
+	property: "Property",
+};
+
 export function ColumnMappingRow({
 	csvColumn,
 	schemaField,
@@ -30,7 +47,7 @@ export function ColumnMappingRow({
 	onMappingChange,
 	onSelect,
 }: ColumnMappingRowProps) {
-	const fieldEntries = Object.entries(CLIENT_SCHEMA_FIELDS);
+	const grouped = getFieldsByGroup(CLIENT_SCHEMA_FIELDS);
 
 	return (
 		<div
@@ -65,29 +82,42 @@ export function ColumnMappingRow({
 						<SelectItem value={SKIP_VALUE}>
 							<span className="text-muted-foreground italic">Do not import</span>
 						</SelectItem>
-						{fieldEntries.map(([name, info]) => {
-							const isUsedElsewhere =
-								usedSchemaFields.has(name) && schemaField !== name;
-							return (
-								<SelectItem
-									key={name}
-									value={name}
-									disabled={isUsedElsewhere}
-								>
-									<span className={cn(isUsedElsewhere && "opacity-50")}>
-										{name}
-										{info.required && (
-											<span className="text-red-500 ml-0.5">*</span>
-										)}
-										{isUsedElsewhere && (
-											<span className="text-xs text-muted-foreground ml-1">
-												(already mapped)
+						{(
+							Object.entries(grouped) as [
+								string,
+								[string, { required: boolean }][],
+							][]
+						).map(([groupKey, fields]) => (
+							<SelectGroup key={groupKey}>
+								<SelectLabel>{GROUP_LABELS[groupKey] ?? groupKey}</SelectLabel>
+								{fields.map(([name, info]) => {
+									const isUsedElsewhere =
+										usedSchemaFields.has(name) && schemaField !== name;
+									return (
+										<SelectItem
+											key={name}
+											value={name}
+											disabled={isUsedElsewhere}
+										>
+											<span className={cn(isUsedElsewhere && "opacity-50")}>
+												<span className="text-xs text-muted-foreground mr-1">
+													{GROUP_LABELS[groupKey]}:
+												</span>
+												{displayFieldName(name)}
+												{info.required && (
+													<span className="text-red-500 ml-0.5">*</span>
+												)}
+												{isUsedElsewhere && (
+													<span className="text-xs text-muted-foreground ml-1">
+														(already mapped)
+													</span>
+												)}
 											</span>
-										)}
-									</span>
-								</SelectItem>
-							);
-						})}
+										</SelectItem>
+									);
+								})}
+							</SelectGroup>
+						))}
 					</SelectContent>
 				</Select>
 			</div>
