@@ -15,6 +15,7 @@ import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useToast } from "@/hooks/use-toast";
 import { Upload } from "lucide-react";
 import { CsvImportStep } from "@/app/(workspace)/clients/components/csv-import-step";
+import { parseCsvData } from "@/app/(workspace)/clients/import/utils/transform-csv";
 import type { CsvAnalysisResult, CsvImportState } from "@/types/csv-import";
 
 interface CsvImportSheetProps {
@@ -56,13 +57,23 @@ export function CsvImportSheet({
 		}));
 
 		try {
+			// Parse CSV to extract headers and sample rows for the API
+			const rows = await parseCsvData(content);
+			const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+			const sampleRows = rows.slice(0, 5).map((row) =>
+				Object.fromEntries(
+					Object.entries(row).map(([k, v]) => [k, String(v ?? "")])
+				)
+			);
+
 			const response = await fetch("/api/analyze-csv", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					csvContent: content,
+					headers,
+					sampleRows,
 					entityType: csvImportState.entityType,
 				}),
 			});
@@ -74,6 +85,14 @@ export function CsvImportSheet({
 			}
 
 			const analysisResult: CsvAnalysisResult = await response.json();
+
+			// Warn user if LLM mapping failed (they need to map manually)
+			if ((analysisResult as unknown as Record<string, unknown>).llmFailed) {
+				toast.warning(
+					"AI Mapping Unavailable",
+					"Automatic column mapping failed. Please map columns manually."
+				);
+			}
 
 			setCsvImportState((prev) => ({
 				...prev,
@@ -152,14 +171,7 @@ export function CsvImportSheet({
 		setError(null);
 
 		try {
-			const Papa = (await import("papaparse")).default;
-			const parseResult = Papa.parse(csvImportState.fileContent, {
-				header: true,
-				skipEmptyLines: true,
-				dynamicTyping: true,
-			});
-
-			const rows = parseResult.data as Record<string, unknown>[];
+			const rows = await parseCsvData(csvImportState.fileContent);
 
 			const records = rows.map((row) => {
 				const record: Record<string, unknown> = {};
