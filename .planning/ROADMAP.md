@@ -23,24 +23,26 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 1: Foundation
 **Goal**: The wizard has a working shell with all infrastructure in place — state hook, step navigation, backend queries/mutations, and every pre-existing bug fixed before any step UI is built
 **Depends on**: Nothing (first phase)
-**Requirements**: UPLD-02, UPLD-03, MAP-04, MAP-05
+**Requirements**: UPLD-02, UPLD-03, MAP-04, MAP-05, MAP-06
 **Success Criteria** (what must be TRUE):
   1. The `/clients/import` route renders a multi-step wizard shell with step navigation that advances and retreats between steps
   2. The `analyze-csv` API route requires authentication — unauthenticated requests receive a 401 and no AI call is made
   3. PapaParse parses all CSV values as strings — a phone number like `07911123456` is not converted to a number
   4. The AI route receives only headers and sample rows, not full CSV content, and has `maxDuration` set to prevent Vercel timeouts
   5. The `clients.listNamesForOrg` Convex query and `clientContacts.bulkCreate` mutation exist and are callable
-**Plans:** 3 plans (2 complete, 1 gap closure)
+  6. The CSV mapper recognizes contact fields (first name, last name, email, phone) and property fields (address, city, state, zip code) from uploaded CSVs
+**Plans:** 4 plans (2 complete, 2 gap closure)
 
 Plans:
 - [x] 01-01-PLAN.md — Cherry-pick wizard files, extract useImportWizard hook, fix pre-existing bugs
 - [x] 01-02-PLAN.md — Add clients.listNamesForOrg query and verify clientContacts.bulkCreate
-- [ ] 01-03-PLAN.md — Gap closure: replace Mastra agent loop with direct tool calls, add frontend timeout
+- [x] 01-03-PLAN.md — Gap closure: replace Mastra agent loop with direct tool calls, add frontend timeout
+- [ ] 01-04-PLAN.md — Gap closure: add contact/property fields to schema mapper and group UI dropdown
 
 ### Phase 2: Upload and Mapping
 **Goal**: Users can upload a CSV file, receive AI column mapping suggestions with real confidence scores, manually override any mapping, and see a live preview of the mapped data before proceeding
 **Depends on**: Phase 1
-**Requirements**: UPLD-01, UPLD-04, UPLD-05, MAP-01, MAP-02, MAP-03, MAP-06
+**Requirements**: UPLD-01, UPLD-04, UPLD-05, MAP-01, MAP-02, MAP-03
 **Success Criteria** (what must be TRUE):
   1. User can drag-and-drop or click to upload a .csv file, with validation rejecting oversized or non-CSV files
   2. User can download a template CSV with human-readable headers derived from the schema
@@ -101,7 +103,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | Gap closure | - |
+| 1. Foundation | 2/4 | Gap closure | - |
 | 2. Upload and Mapping | 0/TBD | Not started | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
