@@ -93,8 +93,11 @@ export function useImportWizard() {
 				importResult: null,
 			}));
 
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
 			try {
-				// Parse CSV to extract headers and sample rows for AI analysis
+				// Parse CSV to extract headers and sample rows for analysis
 				// Full content stays in state for later import use
 				const rows = await parseCsvData(content);
 				const headers =
@@ -109,7 +112,10 @@ export function useImportWizard() {
 						sampleRows,
 						entityType: "clients",
 					}),
+					signal: controller.signal,
 				});
+
+				clearTimeout(timeoutId);
 
 				if (!response.ok) {
 					const errorData = await response
@@ -129,12 +135,17 @@ export function useImportWizard() {
 					mappings: analysisResult.detectedFields,
 				}));
 			} catch (err) {
+				clearTimeout(timeoutId);
+				const isTimeout =
+					err instanceof DOMException && err.name === "AbortError";
 				console.error("Error analyzing CSV:", err);
 				toast.error(
-					"Analysis Failed",
-					err instanceof Error
-						? err.message
-						: "Failed to analyze CSV file"
+					isTimeout ? "Analysis Timed Out" : "Analysis Failed",
+					isTimeout
+						? "The analysis took too long. Please try again with a smaller file."
+						: err instanceof Error
+							? err.message
+							: "Failed to analyze CSV file"
 				);
 				setState((prev) => ({
 					...prev,
