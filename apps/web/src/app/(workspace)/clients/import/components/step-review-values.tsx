@@ -31,30 +31,24 @@ export function StepReviewValues({
 		.map(([name]) => name);
 
 	const mappedRequired = requiredFields.filter((f) =>
-		activeMappings.some((m) => m.schemaField === f)
+		activeMappings.some((m) => m.schemaField === f),
 	);
 	const missingRequired = requiredFields.filter(
-		(f) => !activeMappings.some((m) => m.schemaField === f)
+		(f) => !activeMappings.some((m) => m.schemaField === f),
 	);
 
 	const rowCount = analysisResult.sampleData?.length ?? 0;
 
 	return (
-		<div className="max-w-3xl mx-auto space-y-6">
-			<div className="space-y-2">
-				<h2 className="text-xl font-semibold text-foreground">Review mappings</h2>
-				<p className="text-sm text-muted-foreground">
-					Confirm your column mappings before importing.
-				</p>
-			</div>
-
+		<div className="mx-auto space-y-6">
 			{/* Validation summary */}
 			{validation.errors.length > 0 && (
 				<div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg space-y-2">
 					<div className="flex items-center gap-2">
 						<AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
 						<span className="text-sm font-medium text-red-800 dark:text-red-200">
-							{validation.errors.length} error{validation.errors.length !== 1 && "s"} found
+							{validation.errors.length} error
+							{validation.errors.length !== 1 && "s"} found
 						</span>
 					</div>
 					<ul className="space-y-1 ml-6">
@@ -72,13 +66,18 @@ export function StepReviewValues({
 					<div className="flex items-center gap-2">
 						<AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
 						<span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-							{validation.warnings.length} warning{validation.warnings.length !== 1 && "s"}
+							{validation.warnings.length} warning
+							{validation.warnings.length !== 1 && "s"}
 						</span>
 					</div>
 					<ul className="space-y-1 ml-6">
 						{validation.warnings.map((warn, i) => (
-							<li key={i} className="text-sm text-yellow-700 dark:text-yellow-300">
-								<span className="font-medium">{warn.field}:</span> {warn.message}
+							<li
+								key={i}
+								className="text-sm text-yellow-700 dark:text-yellow-300"
+							>
+								<span className="font-medium">{warn.field}:</span>{" "}
+								{warn.message}
 							</li>
 						))}
 					</ul>
@@ -110,8 +109,12 @@ export function StepReviewValues({
 			{/* Stats row */}
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">
 				<span>{activeMappings.length} columns mapped</span>
-				<span>{mappedRequired.length}/{requiredFields.length} required fields</span>
-				<span>{rowCount > 0 ? `~${rowCount} rows` : "Row count unavailable"}</span>
+				<span>
+					{mappedRequired.length}/{requiredFields.length} required fields
+				</span>
+				<span>
+					{rowCount > 0 ? `~${rowCount} rows` : "Row count unavailable"}
+				</span>
 			</div>
 
 			{/* Mapping table */}

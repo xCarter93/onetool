@@ -146,6 +146,37 @@ export function ImportWizard() {
 		handleImportData,
 	]);
 
+	// --- Step heading info ---
+	const stepHeading = useMemo(() => {
+		// Hide heading when showing import result
+		if (currentStep === "preview" && state.importResult) return null;
+
+		switch (currentStep) {
+			case "upload":
+				return {
+					title: "Upload your CSV file",
+					subtitle: "Upload a CSV file with your client data. Our AI will automatically detect columns and map them to the correct fields.",
+				};
+			case "map":
+				return {
+					title: "Map columns",
+					subtitle: `Match your CSV columns to client fields. ${state.file?.name ?? "CSV file"}`,
+				};
+			case "review":
+				return {
+					title: "Review mappings",
+					subtitle: "Confirm your column mappings before importing.",
+				};
+			case "preview":
+				return {
+					title: "Preview import",
+					subtitle: "Review the transformed data before importing.",
+				};
+			default:
+				return null;
+		}
+	}, [currentStep, state.file?.name, state.importResult]);
+
 	// --- Render step content ---
 	const renderStep = () => {
 		switch (currentStep) {
@@ -172,7 +203,7 @@ export function ImportWizard() {
 						onMappingChange={handleMappingChange}
 						onSelectColumn={setSelectedMappingColumn}
 						manualOverrides={manualOverrides}
-					unmappedRequiredFields={unmappedRequiredFields}
+						unmappedRequiredFields={unmappedRequiredFields}
 					/>
 				);
 			case "review":
@@ -200,9 +231,9 @@ export function ImportWizard() {
 	};
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex flex-col h-[calc(100dvh-3.5rem)]">
 			{/* Step navigation */}
-			<div className="border-b border-border px-6 py-4 bg-background">
+			<div className="border-b border-border px-6 py-4 bg-background shrink-0">
 				<ImportStepNav
 					currentStep={currentStep}
 					onStepClick={navigateTo}
@@ -210,7 +241,14 @@ export function ImportWizard() {
 			</div>
 
 			{/* Step content */}
-			<div className="flex-1 overflow-y-auto px-6 py-6 pb-24">
+			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 pb-24">
+				{/* Step heading - consistent position across all steps */}
+				{stepHeading && (
+					<div className="space-y-1 mb-6">
+						<h2 className="text-xl font-semibold text-foreground">{stepHeading.title}</h2>
+						<p className="text-sm text-muted-foreground">{stepHeading.subtitle}</p>
+					</div>
+				)}
 				{renderStep()}
 			</div>
 

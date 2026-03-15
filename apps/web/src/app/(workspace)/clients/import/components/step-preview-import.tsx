@@ -95,22 +95,18 @@ export function StepPreviewImport({
 
 	return (
 		<div className="space-y-6 min-w-0">
-			<div className="space-y-2">
-				<h2 className="text-xl font-semibold text-foreground">Preview import</h2>
+			{totalRows > 0 && (
 				<p className="text-sm text-muted-foreground">
-					Review the transformed data before importing.{" "}
-					{totalRows > 0 && (
-						<span className="font-medium text-foreground">
-							{totalRows} total row{totalRows !== 1 && "s"}
-						</span>
-					)}
+					<span className="font-medium text-foreground">
+						{totalRows} total row{totalRows !== 1 && "s"}
+					</span>
 					{totalRows > MAX_PREVIEW_ROWS && (
-						<span className="text-muted-foreground">
+						<span>
 							{" "}(showing first {MAX_PREVIEW_ROWS})
 						</span>
 					)}
 				</p>
-			</div>
+			)}
 
 			{isLoading ? (
 				<div className="flex items-center justify-center gap-3 p-8">

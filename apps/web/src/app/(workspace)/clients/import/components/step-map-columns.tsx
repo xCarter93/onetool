@@ -98,17 +98,9 @@ export function StepMapColumns({
 	}, [analysisResult.detectedFields]);
 
 	return (
-		<div className="flex gap-6 h-full">
+		<div className="flex gap-6">
 			{/* Left panel - column mapping list */}
 			<div className="flex-1 min-w-0 space-y-4">
-				<div className="space-y-1">
-					<h2 className="text-xl font-semibold text-foreground">Map columns</h2>
-					<p className="text-sm text-muted-foreground">
-						Match your CSV columns to client fields.{" "}
-						<span className="font-medium text-foreground">{fileName}</span>
-					</p>
-				</div>
-
 				{/* Summary banner */}
 				<MappingSummaryBanner mappings={mappings} />
 
@@ -141,7 +133,7 @@ export function StepMapColumns({
 			</div>
 
 			{/* Right panel - data preview (offset to align with first mapping row) */}
-			<div className="w-72 lg:w-80 shrink-0 border border-border rounded-lg bg-muted/10 sticky top-4 self-start lg:mt-[7.5rem] max-h-[calc(100vh-16rem)] overflow-y-auto">
+			<div className="w-72 lg:w-80 shrink-0 border border-border rounded-lg bg-muted/10 sticky top-0 self-start mt-[5.5rem] max-h-[calc(100vh-16rem)] overflow-y-auto">
 				<DataPreviewPanel
 					selectedColumn={selectedColumn}
 					mappings={mappings}

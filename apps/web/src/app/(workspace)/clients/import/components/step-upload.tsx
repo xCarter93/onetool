@@ -36,18 +36,10 @@ export function StepUpload({
 	onProceedUnmapped,
 }: StepUploadProps) {
 	return (
-		<div className="max-w-5xl mx-auto">
-			<div className="grid grid-cols-1 lg:grid-cols-[1fr,20rem] gap-6">
+		<div className="mx-auto">
+			<div className="grid grid-cols-1 lg:grid-cols-[1fr_30rem] gap-6">
 				{/* Left column: upload zone and status */}
 				<div className="space-y-6">
-					<div className="space-y-2">
-						<h2 className="text-xl font-semibold text-foreground">Upload your CSV file</h2>
-						<p className="text-sm text-muted-foreground">
-							Upload a CSV file with your client data. Our AI will automatically
-							detect columns and map them to the correct fields.
-						</p>
-					</div>
-
 					<CsvUploadZone onFileSelect={onFileSelect} disabled={isAnalyzing} />
 
 					<button
@@ -63,7 +55,9 @@ export function StepUpload({
 						<div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg">
 							<Loader2 className="w-5 h-5 text-primary animate-spin" />
 							<div>
-								<p className="text-sm font-medium text-foreground">Analyzing your CSV file...</p>
+								<p className="text-sm font-medium text-foreground">
+									Analyzing your CSV file...
+								</p>
 								<p className="text-xs text-muted-foreground">
 									Our AI is detecting columns and mapping fields
 								</p>
@@ -76,7 +70,9 @@ export function StepUpload({
 							<div className="flex items-start gap-3">
 								<AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
 								<div>
-									<p className="text-sm font-medium text-foreground">AI analysis failed</p>
+									<p className="text-sm font-medium text-foreground">
+										AI analysis failed
+									</p>
 									<p className="text-xs text-muted-foreground mt-0.5">
 										{analysisError}
 									</p>
@@ -109,7 +105,9 @@ export function StepUpload({
 						<div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
 							<CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
 							<div className="flex-1">
-								<p className="text-sm font-medium text-foreground">Analysis complete</p>
+								<p className="text-sm font-medium text-foreground">
+									Analysis complete
+								</p>
 								<div className="flex items-center gap-4 mt-1">
 									<span className="text-xs text-muted-foreground flex items-center gap-1">
 										<FileSpreadsheet className="w-3.5 h-3.5" />
