@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import {
 	Select,
 	SelectContent,
@@ -12,10 +12,13 @@ import {
 } from "@/components/ui/select";
 import { CLIENT_SCHEMA_FIELDS, getFieldsByGroup } from "@/types/csv-import";
 import { cn } from "@/lib/utils";
+import { getConfidenceState, type ConfidenceState } from "../utils/mapping-utils";
 
 interface ColumnMappingRowProps {
 	csvColumn: string;
 	schemaField: string;
+	confidence: number;
+	isManuallyOverridden: boolean;
 	isSelected: boolean;
 	usedSchemaFields: Set<string>;
 	onMappingChange: (csvColumn: string, newSchemaField: string) => void;
@@ -39,15 +42,51 @@ const GROUP_LABELS: Record<string, string> = {
 	property: "Property",
 };
 
+function ConfidenceIndicator({ state }: { state: ConfidenceState }) {
+	if (state === "skipped") return null;
+
+	if (state === "manual") {
+		return (
+			<div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+				<Check className="w-3 h-3" />
+				<span>Manual</span>
+			</div>
+		);
+	}
+
+	if (state === "high") {
+		return (
+			<div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+				<span className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-400" />
+				<span>High</span>
+			</div>
+		);
+	}
+
+	// low
+	return (
+		<div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+			<span className="w-1.5 h-1.5 rounded-full bg-amber-600 dark:bg-amber-400" />
+			<span>Low</span>
+		</div>
+	);
+}
+
 export function ColumnMappingRow({
 	csvColumn,
 	schemaField,
+	confidence,
+	isManuallyOverridden,
 	isSelected,
 	usedSchemaFields,
 	onMappingChange,
 	onSelect,
 }: ColumnMappingRowProps) {
 	const grouped = getFieldsByGroup(CLIENT_SCHEMA_FIELDS);
+	const confidenceState = getConfidenceState(
+		{ schemaField, confidence },
+		isManuallyOverridden
+	);
 
 	return (
 		<div
@@ -120,6 +159,11 @@ export function ColumnMappingRow({
 						))}
 					</SelectContent>
 				</Select>
+			</div>
+
+			{/* Confidence indicator */}
+			<div className="w-16 shrink-0 flex justify-end">
+				<ConfidenceIndicator state={confidenceState} />
 			</div>
 		</div>
 	);

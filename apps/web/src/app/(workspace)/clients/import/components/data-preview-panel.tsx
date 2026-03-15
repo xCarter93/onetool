@@ -1,14 +1,67 @@
 "use client";
 
-import { Eye } from "lucide-react";
+import { Eye, AlertTriangle } from "lucide-react";
 import type { FieldMapping, CsvAnalysisResult } from "@/types/csv-import";
 import { CLIENT_SCHEMA_FIELDS } from "@/types/csv-import";
 import { Badge } from "@/components/ui/badge";
+import { detectTypeMismatches } from "../utils/mapping-utils";
 
 interface DataPreviewPanelProps {
 	selectedColumn: string | null;
 	mappings: FieldMapping[];
 	analysisResult: CsvAnalysisResult;
+}
+
+function MappingSummaryStats({ mappings }: { mappings: FieldMapping[] }) {
+	const total = mappings.length;
+	const activeMappings = mappings.filter((m) => m.schemaField !== "__skip__");
+	const mapped = activeMappings.length;
+
+	const requiredFields = Object.entries(CLIENT_SCHEMA_FIELDS)
+		.filter(([, info]) => info.required)
+		.map(([name]) => name);
+
+	const mappedFieldSet = new Set(activeMappings.map((m) => m.schemaField));
+
+	return (
+		<div className="space-y-4 p-4">
+			<div className="flex items-center gap-2">
+				<div className="rounded-full bg-muted p-2">
+					<Eye className="w-5 h-5 text-muted-foreground" />
+				</div>
+				<div>
+					<p className="text-sm font-medium text-foreground">Mapping overview</p>
+					<p className="text-xs text-muted-foreground">
+						{mapped} of {total} columns mapped
+					</p>
+				</div>
+			</div>
+
+			<div className="border-t border-border pt-3 space-y-2">
+				<h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
+					Required fields
+				</h4>
+				{requiredFields.map((field) => {
+					const isMapped = mappedFieldSet.has(field);
+					return (
+						<div key={field} className="flex items-center justify-between text-xs">
+							<span className="text-foreground">{field}</span>
+							<Badge
+								variant={isMapped ? "default" : "outline"}
+								className="text-xs"
+							>
+								{isMapped ? "Mapped" : "Unmapped"}
+							</Badge>
+						</div>
+					);
+				})}
+			</div>
+
+			<p className="text-xs text-muted-foreground mt-2">
+				Click a row on the left to see sample values
+			</p>
+		</div>
+	);
 }
 
 export function DataPreviewPanel({
@@ -17,19 +70,7 @@ export function DataPreviewPanel({
 	analysisResult,
 }: DataPreviewPanelProps) {
 	if (!selectedColumn) {
-		return (
-			<div className="flex flex-col items-center justify-center h-full text-center p-6">
-				<div className="rounded-full bg-muted p-3 mb-3">
-					<Eye className="w-6 h-6 text-muted-foreground" />
-				</div>
-				<p className="text-sm font-medium text-muted-foreground">
-					Select a column to preview
-				</p>
-				<p className="text-xs text-muted-foreground mt-1">
-					Click a row on the left to see sample values
-				</p>
-			</div>
-		);
+		return <MappingSummaryStats mappings={mappings} />;
 	}
 
 	const mapping = mappings.find((m) => m.csvColumn === selectedColumn);
@@ -49,6 +90,12 @@ export function DataPreviewPanel({
 			}
 		}
 	}
+
+	// Detect type mismatches for mapped fields
+	const typeMismatches: string[] =
+		fieldDef && sampleValues.length > 0
+			? detectTypeMismatches(sampleValues, fieldDef).slice(0, 3)
+			: [];
 
 	return (
 		<div className="space-y-4 p-4">
@@ -86,6 +133,21 @@ export function DataPreviewPanel({
 				<p className="text-xs text-muted-foreground italic">
 					This column will not be imported
 				</p>
+			)}
+
+			{/* Type mismatch warnings */}
+			{typeMismatches.length > 0 && (
+				<div className="space-y-1.5">
+					{typeMismatches.map((msg, i) => (
+						<div
+							key={i}
+							className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+						>
+							<AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+							<span>{msg}</span>
+						</div>
+					))}
+				</div>
 			)}
 
 			<div className="border-t border-border pt-3">
