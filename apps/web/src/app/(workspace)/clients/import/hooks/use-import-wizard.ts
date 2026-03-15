@@ -41,14 +41,16 @@ export function useImportWizard() {
 		importResult: null,
 	});
 
-	const [selectedMappingColumn, setSelectedMappingColumn] = useState<string | null>(null);
+	const [selectedMappingColumn, setSelectedMappingColumn] = useState<
+		string | null
+	>(null);
 
 	// --- Navigation helpers ---
 	const navigateTo = useCallback(
 		(step: ImportStep) => {
 			router.replace(`/clients/import?step=${step}`);
 		},
-		[router]
+		[router],
 	);
 
 	const goNext = useCallback(() => {
@@ -94,14 +96,13 @@ export function useImportWizard() {
 			}));
 
 			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 30_000);
+			const timeoutId = setTimeout(() => controller.abort(), 60_000);
 
 			try {
 				// Parse CSV to extract headers and sample rows for analysis
 				// Full content stays in state for later import use
 				const rows = await parseCsvData(content);
-				const headers =
-					rows.length > 0 ? Object.keys(rows[0]) : [];
+				const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
 				const sampleRows = rows.slice(0, 5);
 
 				const response = await fetch("/api/analyze-csv", {
@@ -122,7 +123,7 @@ export function useImportWizard() {
 						.json()
 						.catch(() => ({ error: "Unknown error" }));
 					throw new Error(
-						errorData.details || errorData.error || "Failed to analyze CSV"
+						errorData.details || errorData.error || "Failed to analyze CSV",
 					);
 				}
 
@@ -145,7 +146,7 @@ export function useImportWizard() {
 						? "The analysis took too long. Please try again with a smaller file."
 						: err instanceof Error
 							? err.message
-							: "Failed to analyze CSV file"
+							: "Failed to analyze CSV file",
 				);
 				setState((prev) => ({
 					...prev,
@@ -153,7 +154,7 @@ export function useImportWizard() {
 				}));
 			}
 		},
-		[toast]
+		[toast],
 	);
 
 	const handleMappingChange = useCallback(
@@ -161,13 +162,11 @@ export function useImportWizard() {
 			setState((prev) => ({
 				...prev,
 				mappings: (prev.mappings || []).map((m) =>
-					m.csvColumn === csvColumn
-						? { ...m, schemaField: newSchemaField }
-						: m
+					m.csvColumn === csvColumn ? { ...m, schemaField: newSchemaField } : m,
 				),
 			}));
 		},
-		[]
+		[],
 	);
 
 	const handleImportData = useCallback(async () => {
@@ -178,14 +177,12 @@ export function useImportWizard() {
 		try {
 			const rows = await parseCsvData(state.fileContent);
 			const activeMappings = (state.mappings || []).filter(
-				(m) => m.schemaField !== "__skip__"
+				(m) => m.schemaField !== "__skip__",
 			);
 			const records = buildImportRecords(rows, activeMappings);
 
 			await bulkCreateClients({
-				clients: records as Parameters<
-					typeof bulkCreateClients
-				>[0]["clients"],
+				clients: records as Parameters<typeof bulkCreateClients>[0]["clients"],
 			});
 
 			const result: ImportResult = {
@@ -205,7 +202,7 @@ export function useImportWizard() {
 
 			toast.success(
 				"Import Complete",
-				`Successfully imported ${records.length} clients`
+				`Successfully imported ${records.length} clients`,
 			);
 		} catch (err) {
 			console.error("Error importing data:", err);
@@ -222,10 +219,16 @@ export function useImportWizard() {
 
 			toast.error(
 				"Import Failed",
-				err instanceof Error ? err.message : "Failed to import data"
+				err instanceof Error ? err.message : "Failed to import data",
 			);
 		}
-	}, [state.fileContent, state.analysisResult, state.mappings, bulkCreateClients, toast]);
+	}, [
+		state.fileContent,
+		state.analysisResult,
+		state.mappings,
+		bulkCreateClients,
+		toast,
+	]);
 
 	return {
 		state,
