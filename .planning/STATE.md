@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-03-15T15:22:42.123Z"
-last_activity: "2026-03-15 - Completed 02-02: auto-advance, confidence indicators, summary banner, preview panel enhancements"
+stopped_at: Completed 02.1-01-PLAN.md
+last_updated: "2026-03-15T17:53:24Z"
+last_activity: "2026-03-15 - Completed 02.1-01: expand bulkCreate with contacts/properties, rewrite buildImportRecords"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 3
   total_plans: 10
   completed_plans: 10
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Users can reliably import their existing client data into OneTool with minimal manual effort
-**Current focus:** Phase 2 — Upload and Mapping UI
+**Current focus:** Phase 02.1 — bulkCreate fix for client import wizard
 
 ## Current Position
 
-Phase: 2 of 5 (Upload and Mapping)
-Plan: 2 of 2 in current phase
-Status: Executing
-Last activity: 2026-03-15 - Completed 02-02: auto-advance, confidence indicators, summary banner, preview panel enhancements
+Phase: 02.1 (bulkCreate not working with new client import wizard)
+Plan: 1 of 1 in current phase
+Status: Complete
+Last activity: 2026-03-15 - Completed 02.1-01: expand bulkCreate with contacts/properties, rewrite buildImportRecords
 
 Progress: [██████████] 100%
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100%
 | Phase 02 P02 | 4min | 2 tasks | 5 files |
 | Phase 02 P03 | 2min | 1 tasks | 1 files |
 | Phase 02 P04 | 2min | 1 tasks | 2 files |
+| Phase 02.1 P01 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -92,10 +93,14 @@ Recent decisions affecting current work:
 - [02-02]: ConfidenceIndicator uses fixed w-16 column width for consistent alignment
 - [Phase 02]: Reused parseCsvData for header extraction in handleProceedUnmapped to stay consistent with handleFileSelect
 - [Phase 02]: Extracted unmappedRequiredFields as separate useMemo for prop passing and reuse in canContinue
+- [Phase 02.1]: Sub-record validation done before insert with skip+warning, not relying on Convex errors
+- [Phase 02.1]: First contact/property in array gets isPrimary: true, rest get false
+- [Phase 02.1]: getCurrentUserOrgId called once at top of bulkCreate handler, shared across sub-record inserts
 
 ### Roadmap Evolution
 
 - Phase 01.1 inserted after Phase 1: Leverage Mastra tool call for column mapping (URGENT)
+- Phase 02.1 inserted after Phase 2: bulkCreate not working with new client import wizard (URGENT)
 
 ### Pending Todos
 
@@ -115,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T16:51:29Z
-Stopped at: Completed quick task 2
-Resume file: None
+Last session: 2026-03-15T17:53:24Z
+Stopped at: Completed 02.1-01-PLAN.md
+Resume file: .planning/phases/02.1-bulkcreate-not-working-with-new-client-import-wizard/02.1-01-SUMMARY.md
