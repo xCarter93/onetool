@@ -13,6 +13,7 @@ interface StepMapColumnsProps {
 	onMappingChange: (csvColumn: string, newSchemaField: string) => void;
 	onSelectColumn: (csvColumn: string) => void;
 	manualOverrides: Set<string>;
+	unmappedRequiredFields: Set<string>;
 }
 
 function MappingSummaryBanner({ mappings }: { mappings: FieldMapping[] }) {
@@ -74,6 +75,7 @@ export function StepMapColumns({
 	onMappingChange,
 	onSelectColumn,
 	manualOverrides,
+	unmappedRequiredFields,
 }: StepMapColumnsProps) {
 	// Track which schema fields are currently mapped (excluding __skip__)
 	const usedSchemaFields = useMemo(() => {
@@ -100,6 +102,28 @@ export function StepMapColumns({
 
 				{/* Summary banner */}
 				<MappingSummaryBanner mappings={mappings} />
+
+				{/* Inline required-field validation */}
+				{unmappedRequiredFields.size > 0 && (
+					<div className="px-4 py-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm">
+						<p className="text-red-700 dark:text-red-400 mb-2">
+							The following required fields must be mapped to a CSV column before continuing:
+						</p>
+						<div className="flex flex-wrap gap-2">
+							{[...unmappedRequiredFields].map((field) => (
+								<span
+									key={field}
+									className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300 text-xs font-medium"
+								>
+									{field}
+									<span className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[10px] font-semibold uppercase leading-none">
+										Required
+									</span>
+								</span>
+							))}
+						</div>
+					</div>
+				)}
 
 				{/* Header row */}
 				<div className="flex items-center gap-3 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">

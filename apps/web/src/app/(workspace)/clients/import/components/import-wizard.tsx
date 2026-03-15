@@ -39,22 +39,29 @@ export function ImportWizard() {
 		}
 	}, [currentStep, state.analysisResult, router]);
 
+	// --- Compute unmapped required fields for inline validation ---
+	const unmappedRequiredFields = useMemo(() => {
+		const requiredFields = Object.entries(CLIENT_SCHEMA_FIELDS)
+			.filter(([, info]) => info.required)
+			.map(([name]) => name);
+		const activeMappings = (state.mappings || []).filter(
+			(m) => m.schemaField !== "__skip__"
+		);
+		const mappedFields = new Set(activeMappings.map((m) => m.schemaField));
+		return new Set(requiredFields.filter((f) => !mappedFields.has(f)));
+	}, [state.mappings]);
+
 	// --- Compute "Continue" enabled state ---
 	const canContinue = useMemo(() => {
 		switch (currentStep) {
 			case "upload":
 				return !!state.analysisResult && !state.isAnalyzing;
 			case "map": {
-				const requiredFields = Object.entries(CLIENT_SCHEMA_FIELDS)
-					.filter(([, info]) => info.required)
-					.map(([name]) => name);
 				const activeMappings = (state.mappings || []).filter(
 					(m) => m.schemaField !== "__skip__"
 				);
 				const mappedFields = new Set(activeMappings.map((m) => m.schemaField));
-				const allRequiredMapped = requiredFields.every((f) =>
-					mappedFields.has(f)
-				);
+				const allRequiredMapped = unmappedRequiredFields.size === 0;
 				// Check no duplicate mappings
 				const noDuplicates = mappedFields.size === activeMappings.length;
 				return allRequiredMapped && noDuplicates;
@@ -165,6 +172,7 @@ export function ImportWizard() {
 						onMappingChange={handleMappingChange}
 						onSelectColumn={setSelectedMappingColumn}
 						manualOverrides={manualOverrides}
+					unmappedRequiredFields={unmappedRequiredFields}
 					/>
 				);
 			case "review":
@@ -208,16 +216,7 @@ export function ImportWizard() {
 
 			{/* Sticky footer */}
 			{!state.importResult && (
-				<>
-					{currentStep === "map" && !canContinue && (
-						<div className="fixed bottom-16 left-0 right-0 z-40 flex justify-center pointer-events-none">
-							<p className="text-xs text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border">
-								Map required fields to continue
-							</p>
-						</div>
-					)}
-					<StickyFormFooter buttons={footerButtons} />
-				</>
+				<StickyFormFooter buttons={footerButtons} />
 			)}
 		</div>
 	);
