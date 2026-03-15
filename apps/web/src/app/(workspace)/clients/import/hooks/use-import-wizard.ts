@@ -248,17 +248,25 @@ export function useImportWizard() {
 		navigateTo("map");
 	}, [state.mappings, state.fileContent, navigateTo]);
 
-	const handleImportData = useCallback(async () => {
-		if (!state.fileContent || !state.mappings?.length) return;
+	const handleImportData = useCallback(async (preBuiltRecords?: ImportRecord[]) => {
+		if (!preBuiltRecords && (!state.fileContent || !state.mappings?.length)) return;
 
 		setState((prev) => ({ ...prev, isImporting: true }));
 
 		try {
-			const rows = await parseCsvData(state.fileContent);
-			const activeMappings = (state.mappings || []).filter(
-				(m) => m.schemaField !== "__skip__",
-			);
-			const records = buildImportRecords(rows, activeMappings);
+			let records: ImportRecord[];
+
+			if (preBuiltRecords) {
+				// Use pre-built records (from inline editing) — skip CSV re-parsing
+				records = preBuiltRecords;
+			} else {
+				// Default path: parse CSV and build records from mappings
+				const rows = await parseCsvData(state.fileContent!);
+				const activeMappings = (state.mappings || []).filter(
+					(m) => m.schemaField !== "__skip__",
+				);
+				records = buildImportRecords(rows, activeMappings);
+			}
 
 			// Pre-validate records before sending to backend
 			const validationErrors = validateImportRecords(records);
