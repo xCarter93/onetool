@@ -210,23 +210,36 @@ export function useImportWizard() {
 		setManualOverrides(new Set());
 	}, []);
 
-	const handleProceedUnmapped = useCallback(() => {
-		if (!state.mappings || state.mappings.length === 0) {
-			// No mappings to proceed with
-			return;
-		}
-		// Set all columns to __skip__ with confidence 0 so user can manually map
-		setState((prev) => ({
-			...prev,
-			mappings: (prev.mappings || []).map((m) => ({
-				...m,
+	const handleProceedUnmapped = useCallback(async () => {
+		if (state.mappings && state.mappings.length > 0) {
+			// AI succeeded — set all columns to __skip__ with confidence 0 so user can manually map
+			setState((prev) => ({
+				...prev,
+				mappings: (prev.mappings || []).map((m) => ({
+					...m,
+					schemaField: "__skip__",
+					confidence: 0,
+				})),
+			}));
+		} else if (state.fileContent) {
+			// AI failed — construct stub mappings from CSV headers on demand
+			const rows = await parseCsvData(state.fileContent);
+			const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+			const stubMappings: FieldMapping[] = headers.map((h) => ({
+				csvColumn: h,
 				schemaField: "__skip__",
 				confidence: 0,
-			})),
-		}));
+				dataType: "string",
+				isRequired: false,
+			}));
+			setState((prev) => ({ ...prev, mappings: stubMappings }));
+		} else {
+			// Neither mappings nor fileContent exist — nothing to work with
+			return;
+		}
 		setAnalysisError(null);
 		navigateTo("map");
-	}, [state.mappings, navigateTo]);
+	}, [state.mappings, state.fileContent, navigateTo]);
 
 	const handleImportData = useCallback(async () => {
 		if (!state.fileContent || !state.analysisResult) return;
