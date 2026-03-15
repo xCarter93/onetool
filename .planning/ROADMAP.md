@@ -12,7 +12,7 @@ The import wizard is built in strict dependency order. Phase 1 fixes pre-existin
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Foundation** - Wizard hook, layout, backend functions, and pre-existing bug fixes (completed 2026-03-14)
+- [ ] **Phase 1: Foundation** - Wizard hook, layout, backend functions, pre-existing bug fixes, and UAT gap closure
 - [ ] **Phase 2: Upload and Mapping** - File upload step and AI column mapping step wired end-to-end
 - [ ] **Phase 3: Review** - Duplicate detection, per-row validation, and plan limit pre-check
 - [ ] **Phase 4: Import Execution** - Import step with progress, results, and old modal replacement
@@ -30,11 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. PapaParse parses all CSV values as strings — a phone number like `07911123456` is not converted to a number
   4. The AI route receives only headers and sample rows, not full CSV content, and has `maxDuration` set to prevent Vercel timeouts
   5. The `clients.listNamesForOrg` Convex query and `clientContacts.bulkCreate` mutation exist and are callable
-**Plans:** 2/2 plans complete
+**Plans:** 3 plans (2 complete, 1 gap closure)
 
 Plans:
-- [ ] 01-01-PLAN.md — Cherry-pick wizard files, extract useImportWizard hook, fix pre-existing bugs
-- [ ] 01-02-PLAN.md — Add clients.listNamesForOrg query and verify clientContacts.bulkCreate
+- [x] 01-01-PLAN.md — Cherry-pick wizard files, extract useImportWizard hook, fix pre-existing bugs
+- [x] 01-02-PLAN.md — Add clients.listNamesForOrg query and verify clientContacts.bulkCreate
+- [ ] 01-03-PLAN.md — Gap closure: replace Mastra agent loop with direct tool calls, add frontend timeout
 
 ### Phase 2: Upload and Mapping
 **Goal**: Users can upload a CSV file, receive AI column mapping suggestions with real confidence scores, manually override any mapping, and see a live preview of the mapped data before proceeding
@@ -100,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/2 | Complete   | 2026-03-14 |
+| 1. Foundation | 2/3 | Gap closure | - |
 | 2. Upload and Mapping | 0/TBD | Not started | - |
 | 3. Review | 0/TBD | Not started | - |
 | 4. Import Execution | 0/TBD | Not started | - |
