@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 02.1-02-PLAN.md
-last_updated: "2026-03-15T18:02:25.456Z"
-last_activity: "2026-03-15 - Completed 02.1-02: wire validation and real results into import wizard"
+stopped_at: Completed 02.1-03-PLAN.md
+last_updated: "2026-03-15T18:25:35.806Z"
+last_activity: "2026-03-15 - Completed 02.1-03: fix preview table for dot-namespaced sub-record columns"
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 13
+  completed_plans: 13
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 02.1 (bulkCreate not working with new client import wizard)
-Plan: 2 of 2 in current phase
+Plan: 3 of 3 in current phase
 Status: Complete
-Last activity: 2026-03-15 - Completed 02.1-02: wire validation and real results into import wizard
+Last activity: 2026-03-15 - Completed 02.1-03: fix preview table for dot-namespaced sub-record columns
 
 Progress: [██████████] 100%
 
@@ -61,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 02 P04 | 2min | 1 tasks | 2 files |
 | Phase 02.1 P01 | 3min | 2 tasks | 5 files |
 | Phase 02.1 P02 | 2min | 2 tasks | 3 files |
+| Phase 02.1 P03 | 1min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,7 @@ Recent decisions affecting current work:
 - [Phase 02.1]: getCurrentUserOrgId called once at top of bulkCreate handler, shared across sub-record inserts
 - [Phase 02.1]: Validation errors block import entirely and render as red X rows in results view
 - [Phase 02.1]: Backend results used directly via mapped ImportResultItem, no fabricated all-success
+- [Phase 02.1]: resolveRecordValue as standalone exported function for reuse and testability
 
 ### Roadmap Evolution
 
@@ -123,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:58:06Z
-Stopped at: Completed 02.1-02-PLAN.md
-Resume file: .planning/phases/02.1-bulkcreate-not-working-with-new-client-import-wizard/02.1-02-SUMMARY.md
+Last session: 2026-03-15T18:25:35.803Z
+Stopped at: Completed 02.1-03-PLAN.md
+Resume file: None
