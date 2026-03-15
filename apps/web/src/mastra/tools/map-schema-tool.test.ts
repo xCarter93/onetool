@@ -219,7 +219,7 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(unmappedColumns).toContain("First Name");
 	});
 
-	it("Test 4: returns empty mappings with all headers in unmappedColumns when generateObject throws API error", async () => {
+	it("Test 4: returns empty mappings with all headers in unmappedColumns and llmFailed: true when generateObject throws API error", async () => {
 		mockedGenerateObject.mockRejectedValueOnce(
 			new Error("OpenAI API rate limit exceeded")
 		);
@@ -230,10 +230,11 @@ describe("mapSchemaTool (LLM-powered)", () => {
 			sampleRows,
 		});
 
-		const { mappings, unmappedColumns, missingRequiredFields } = result as {
+		const { mappings, unmappedColumns, missingRequiredFields, llmFailed } = result as {
 			mappings: Array<unknown>;
 			unmappedColumns: string[];
 			missingRequiredFields: string[];
+			llmFailed: boolean;
 		};
 
 		expect(mappings).toHaveLength(0);
@@ -243,9 +244,12 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		// All required fields should be listed as missing
 		expect(missingRequiredFields).toContain("companyName");
 		expect(missingRequiredFields).toContain("status");
+
+		// LLM failure flag must be set
+		expect(llmFailed).toBe(true);
 	});
 
-	it("Test 5: returns graceful fallback when generateObject throws AbortError (15s timeout)", async () => {
+	it("Test 5: returns graceful fallback with llmFailed: true when generateObject throws AbortError (timeout)", async () => {
 		mockedGenerateObject.mockRejectedValueOnce(
 			new DOMException("signal timed out", "AbortError")
 		);
@@ -256,16 +260,20 @@ describe("mapSchemaTool (LLM-powered)", () => {
 			sampleRows,
 		});
 
-		const { mappings, unmappedColumns, missingRequiredFields } = result as {
+		const { mappings, unmappedColumns, missingRequiredFields, llmFailed } = result as {
 			mappings: Array<unknown>;
 			unmappedColumns: string[];
 			missingRequiredFields: string[];
+			llmFailed: boolean;
 		};
 
 		expect(mappings).toHaveLength(0);
 		expect(unmappedColumns).toEqual(expect.arrayContaining(sampleHeaders));
 		expect(missingRequiredFields).toContain("companyName");
 		expect(missingRequiredFields).toContain("status");
+
+		// LLM failure flag must be set
+		expect(llmFailed).toBe(true);
 	});
 
 	it("Test 6: prompt passed to generateObject includes all schema field names and mentions dot-namespace convention", async () => {
@@ -332,5 +340,35 @@ describe("mapSchemaTool (LLM-powered)", () => {
 		expect(missingRequiredFields).toContain("companyName");
 		expect(missingRequiredFields).toContain("status");
 		expect(missingRequiredFields).not.toContain("contact.email");
+	});
+
+	it("Test 8: returns llmFailed: true when generateObject throws any error", async () => {
+		mockedGenerateObject.mockRejectedValueOnce(
+			new Error("Connection refused")
+		);
+
+		const result = await mapSchemaTool.execute({
+			entityType: "clients",
+			headers: sampleHeaders,
+			sampleRows,
+		});
+
+		const { llmFailed } = result as { llmFailed: boolean };
+		expect(llmFailed).toBe(true);
+	});
+
+	it("Test 9: returns llmFailed: false when generateObject succeeds", async () => {
+		mockedGenerateObject.mockResolvedValueOnce({
+			object: validLlmResponse,
+		} as never);
+
+		const result = await mapSchemaTool.execute({
+			entityType: "clients",
+			headers: sampleHeaders,
+			sampleRows,
+		});
+
+		const { llmFailed } = result as { llmFailed: boolean };
+		expect(llmFailed).toBe(false);
 	});
 });

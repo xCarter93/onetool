@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 				: 0;
 
 		// Build the analysis result from direct tool outputs
-		const analysisResult: CsvAnalysisResult = {
+		const analysisResult: CsvAnalysisResult & { llmFailed?: boolean } = {
 			entityType: resolvedEntityType,
 			detectedFields: mapResult.mappings,
 			validation: {
@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
 			suggestedDefaults: validateResult.suggestedDefaults,
 			confidence: Math.round(avgConfidence * 100) / 100,
 			sampleData: sampleRows,
+			llmFailed: (mapResult as Record<string, unknown>).llmFailed === true,
 		};
 
 		return NextResponse.json(analysisResult);

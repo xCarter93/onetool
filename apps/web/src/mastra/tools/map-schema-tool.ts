@@ -179,6 +179,9 @@ export const mapSchemaTool = createTool({
 		missingRequiredFields: z
 			.array(z.string())
 			.describe("Required schema fields not found in CSV"),
+		llmFailed: z
+			.boolean()
+			.describe("Whether the LLM call failed (true = mappings are empty fallback)"),
 	}),
 	execute: async (input) => {
 		const { entityType, headers, sampleRows } = input;
@@ -194,10 +197,10 @@ export const mapSchemaTool = createTool({
 				model: openai("gpt-5-nano"),
 				schema: llmMappingSchema,
 				prompt: buildMappingPrompt(entityType, headers, sampleRows, schema),
-				abortSignal: AbortSignal.timeout(15_000),
+				abortSignal: AbortSignal.timeout(30_000),
 			});
 
-			return postProcessMappings(object, headers, schema);
+			return { ...postProcessMappings(object, headers, schema), llmFailed: false };
 		} catch (error) {
 			// LLM failure -- return all columns as unmapped (user maps manually)
 			console.error("mapSchemaTool LLM error:", error);
@@ -207,6 +210,7 @@ export const mapSchemaTool = createTool({
 				missingRequiredFields: Object.entries(schema)
 					.filter(([, info]) => info.required)
 					.map(([name]) => name),
+				llmFailed: true,
 			};
 		}
 	},
