@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 02.1-03-PLAN.md
-last_updated: "2026-03-15T18:30:50.276Z"
-last_activity: "2026-03-15 - Completed 02.1-03: fix preview table for dot-namespaced sub-record columns"
+status: in-progress
+stopped_at: Completed 02.1.1-01-PLAN.md
+last_updated: "2026-03-15T19:04:57.911Z"
+last_activity: "2026-03-15 - Completed 02.1.1-01: editable cell state helpers"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 15
+  completed_plans: 14
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Users can reliably import their existing client data into OneTool with minimal manual effort
-**Current focus:** Phase 02.1 — bulkCreate fix for client import wizard
+**Current focus:** Phase 02.1.1 — inline edit + results table for import wizard
 
 ## Current Position
 
-Phase: 02.1 (bulkCreate not working with new client import wizard)
-Plan: 3 of 3 in current phase
-Status: Complete
-Last activity: 2026-03-15 - Completed 02.1-03: fix preview table for dot-namespaced sub-record columns
+Phase: 02.1.1 (inline edit + results table for import wizard)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-03-15 - Completed 02.1.1-01: editable cell state helpers
 
-Progress: [██████████] 100%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [██████████] 100%
 | Phase 02.1 P01 | 3min | 2 tasks | 5 files |
 | Phase 02.1 P02 | 2min | 2 tasks | 3 files |
 | Phase 02.1 P03 | 1min | 1 tasks | 2 files |
+| Phase 02.1.1 P01 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -101,11 +102,14 @@ Recent decisions affecting current work:
 - [Phase 02.1]: Validation errors block import entirely and render as red X rows in results view
 - [Phase 02.1]: Backend results used directly via mapped ImportResultItem, no fabricated all-success
 - [Phase 02.1]: resolveRecordValue as standalone exported function for reuse and testability
+- [Phase 02.1.1]: Synthetic row delegation: rebuildRecordsFromCells constructs flat rows keyed by csvColumn then delegates to buildImportRecords
+- [Phase 02.1.1]: resolveRecordValue reuse in initializeCellValues for dot-namespaced field resolution
 
 ### Roadmap Evolution
 
 - Phase 01.1 inserted after Phase 1: Leverage Mastra tool call for column mapping (URGENT)
 - Phase 02.1 inserted after Phase 2: bulkCreate not working with new client import wizard (URGENT)
+- Phase 02.1.1 inserted after Phase 02.1: add inline edit to import preview table and show row-level success/error icons after import (URGENT)
 
 ### Pending Todos
 
@@ -125,6 +129,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T18:25:35.803Z
-Stopped at: Completed 02.1-03-PLAN.md
+Last session: 2026-03-15T19:04:15Z
+Stopped at: Completed 02.1.1-01-PLAN.md
 Resume file: None
