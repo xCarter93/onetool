@@ -68,20 +68,23 @@ export interface CsvImportState {
 }
 
 // Schema field definitions for reference - must match convex/schema.ts clients table
+// Each field has a `group` property for UI categorization (client, contact, property)
 export const CLIENT_SCHEMA_FIELDS = {
-	// Required fields (from schema)
-	companyName: { type: "string", required: true },
+	// Required client fields (from schema)
+	companyName: { type: "string", required: true, group: "client" },
 	status: {
 		type: "enum",
 		required: true,
+		group: "client",
 		options: ["lead", "active", "inactive", "archived"],
 	},
 
-	// Optional fields (from schema)
-	companyDescription: { type: "string", required: false },
+	// Optional client fields (from schema)
+	companyDescription: { type: "string", required: false, group: "client" },
 	leadSource: {
 		type: "enum",
 		required: false,
+		group: "client",
 		options: [
 			"word-of-mouth",
 			"website",
@@ -97,11 +100,69 @@ export const CLIENT_SCHEMA_FIELDS = {
 	communicationPreference: {
 		type: "enum",
 		required: false,
+		group: "client",
 		options: ["email", "phone", "both"],
 	},
-	tags: { type: "array", required: false },
-	notes: { type: "string", required: false },
+	tags: { type: "array", required: false, group: "client" },
+	notes: { type: "string", required: false, group: "client" },
+
+	// Contact fields (namespaced to avoid collisions with client-level fields)
+	// All marked required: false for CSV mapping — table-level constraints enforced at import time (Phase 5)
+	"contact.firstName": { type: "string", required: false, group: "contact" },
+	"contact.lastName": { type: "string", required: false, group: "contact" },
+	"contact.email": { type: "string", required: false, group: "contact" },
+	"contact.phone": { type: "string", required: false, group: "contact" },
+	"contact.jobTitle": { type: "string", required: false, group: "contact" },
+
+	// Property fields (namespaced to avoid collisions)
+	// All marked required: false for CSV mapping — table-level constraints enforced at import time (Phase 5)
+	"property.propertyName": {
+		type: "string",
+		required: false,
+		group: "property",
+	},
+	"property.propertyType": {
+		type: "enum",
+		required: false,
+		group: "property",
+		options: [
+			"residential",
+			"commercial",
+			"industrial",
+			"retail",
+			"office",
+			"mixed-use",
+		],
+	},
+	"property.streetAddress": {
+		type: "string",
+		required: false,
+		group: "property",
+	},
+	"property.city": { type: "string", required: false, group: "property" },
+	"property.state": { type: "string", required: false, group: "property" },
+	"property.zipCode": { type: "string", required: false, group: "property" },
+	"property.country": { type: "string", required: false, group: "property" },
 } as const;
+
+export type SchemaFieldGroup = "client" | "contact" | "property";
+
+/**
+ * Returns CLIENT_SCHEMA_FIELDS entries grouped by their `group` property.
+ * Used by the column mapping UI to render grouped dropdowns.
+ */
+export function getFieldsByGroup(fields: typeof CLIENT_SCHEMA_FIELDS) {
+	const entries = Object.entries(fields) as [
+		keyof typeof CLIENT_SCHEMA_FIELDS,
+		(typeof CLIENT_SCHEMA_FIELDS)[keyof typeof CLIENT_SCHEMA_FIELDS],
+	][];
+
+	return {
+		client: entries.filter(([, info]) => info.group === "client"),
+		contact: entries.filter(([, info]) => info.group === "contact"),
+		property: entries.filter(([, info]) => info.group === "property"),
+	};
+}
 
 // Schema field definitions for reference - must match convex/schema.ts projects table
 export const PROJECT_SCHEMA_FIELDS = {
