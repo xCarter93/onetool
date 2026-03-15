@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 01-foundation
 source: [01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md]
 started: 2026-03-15T00:30:00Z
-updated: 2026-03-15T01:00:00Z
+updated: 2026-03-15T01:15:00Z
 ---
 
 ## Current Test
@@ -57,7 +57,18 @@ skipped: 0
   reason: "User reported: It doesn't seem like the csv importer recognizes any of the client contact or property fields"
   severity: major
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "CLIENT_SCHEMA_FIELDS in apps/web/src/types/csv-import.ts only defines 7 fields from the top-level clients table. It completely omits all fields from clientContacts (firstName, lastName, email, phone, jobTitle) and clientProperties (propertyName, propertyType, streetAddress, city, state, zipCode, country). The map-schema-tool does deterministic string matching against this constant, so contact and property columns can never be recognized."
+  artifacts:
+    - path: "apps/web/src/types/csv-import.ts"
+      issue: "CLIENT_SCHEMA_FIELDS only has 7 client-table fields, zero contact or property fields"
+    - path: "apps/web/src/mastra/tools/map-schema-tool.ts"
+      issue: "Mapper iterates Object.entries(schema) where schema is CLIENT_SCHEMA_FIELDS — missing fields are impossible to match"
+    - path: "apps/web/src/app/(workspace)/clients/import/utils/transform-csv.ts"
+      issue: "buildImportRecords produces flat records with no multi-table handling"
+  missing:
+    - "Add contact fields (firstName, lastName, email, phone, jobTitle) to CLIENT_SCHEMA_FIELDS with namespace prefix (e.g., contact.firstName)"
+    - "Add property fields (propertyName, streetAddress, city, state, zipCode, etc.) to CLIENT_SCHEMA_FIELDS with namespace prefix (e.g., property.streetAddress)"
+    - "Update map-schema-tool to handle namespaced field matching for common CSV patterns"
+    - "Update buildImportRecords to split mapped fields into client, contact, and property groups"
+    - "Update import handler to create associated contacts and properties alongside clients"
+  debug_session: ".planning/debug/contact-property-fields-missing.md"
