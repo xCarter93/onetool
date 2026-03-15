@@ -94,7 +94,7 @@ export function StepPreviewImport({
 	}
 
 	return (
-		<div className="space-y-6">
+		<div className="space-y-6 min-w-0">
 			<div className="space-y-2">
 				<h2 className="text-xl font-semibold text-foreground">Preview import</h2>
 				<p className="text-sm text-muted-foreground">
