@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-16T00:29:30.367Z"
-last_activity: "2026-03-16 - Completed 04-03: remove old modal import"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-16T00:47:56Z"
+last_activity: "2026-03-16 - Completed 05-02: embedded import wizard mode"
 progress:
   total_phases: 8
   completed_phases: 7
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 05-fast-follows (analytics, embedded import, and polish)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-03-16 - Completed 05-01: import wizard analytics
+Last activity: 2026-03-16 - Completed 05-02: embedded import wizard mode
 
 Progress: [██████████] 100%
 
@@ -70,6 +70,7 @@ Progress: [██████████] 100%
 | Phase 04-import-execution P03 | 3min | 2 tasks | 5 files |
 | Phase 04-import-execution P02 | 4min | 2 tasks | 4 files |
 | Phase 05-fast-follows P01 | 2min | 1 tasks | 2 files |
+| Phase 05-fast-follows P02 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,8 @@ Recent decisions affecting current work:
 - [Phase 04-03]: Simple link stub in onboarding page -- Phase 5 will build full embedded import experience
 - [Phase 04-02]: BATCH_SIZE=10 for balanced progress feedback vs network overhead
 - [Phase 04-02]: Batch-level failures mark all rows in batch as failed, remaining batches continue
+- [Phase 05-02]: Embedded mode uses useState for step tracking instead of URL searchParams
+- [Phase 05-02]: Inline StyledButton footer replaces StickyFormFooter in embedded mode to avoid fixed positioning
 - [Phase 05-01]: useRef for hasFiredStarted guard prevents double-fire in React Strict Mode
 - [Phase 05-01]: Step timing uses useRef to avoid unnecessary re-renders
 - [Phase 05-01]: Added embedded param to hook signature now to avoid merge conflict with Plan 02
@@ -152,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T00:44:53Z
-Stopped at: Completed 05-01-PLAN.md
-Resume file: .planning/phases/05-fast-follows/05-01-SUMMARY.md
+Last session: 2026-03-16T00:47:56Z
+Stopped at: Completed 05-02-PLAN.md
+Resume file: .planning/phases/05-fast-follows/05-02-SUMMARY.md
