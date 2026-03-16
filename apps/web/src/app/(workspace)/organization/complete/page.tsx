@@ -19,9 +19,7 @@ import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { Users, Building2, Globe, Upload } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { CsvImportStep } from "@/app/(workspace)/clients/components/csv-import-step";
 import { StyledButton } from "@/components/ui/styled/styled-button";
-import type { CsvAnalysisResult, CsvImportState } from "@/types/csv-import";
 import Image from "next/image";
 
 interface FormData {
@@ -45,8 +43,6 @@ export default function CompleteOrganizationMetadata() {
 	const { resolvedTheme } = useTheme();
 	const router = useRouter();
 	const completeMetadata = useMutation(api.organizations.completeMetadata);
-	const bulkCreateClients = useMutation(api.clients.bulkCreate);
-	const bulkCreateProjects = useMutation(api.projects.bulkCreate);
 	const organization = useQuery(api.organizations.get);
 	const needsCompletion = useQuery(api.organizations.needsMetadataCompletion);
 	const toast = useToast();
@@ -81,17 +77,6 @@ export default function CompleteOrganizationMetadata() {
 		logoInvertInDarkMode: true,
 	});
 
-	const [csvImportState, setCsvImportState] = useState<CsvImportState>({
-		file: null,
-		fileContent: null,
-		entityType: "clients",
-		isAnalyzing: false,
-		analysisResult: null,
-		mappings: [],
-		isImporting: false,
-		importResult: null,
-		skipImport: false,
-	});
 
 	// Check if we're creating a new organization (from query param)
 	const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -325,205 +310,6 @@ export default function CompleteOrganizationMetadata() {
 	const invertPreviewStyles = formData.logoInvertInDarkMode
 		? "invert brightness-0"
 		: "";
-
-	// CSV Import Handlers
-	const handleFileSelect = async (file: File, content: string) => {
-		setCsvImportState((prev) => ({
-			...prev,
-			file,
-			fileContent: content,
-			isAnalyzing: true,
-			analysisResult: null,
-			mappings: [],
-		}));
-
-		try {
-			// Call API to analyze CSV
-			const response = await fetch("/api/analyze-csv", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					csvContent: content,
-					entityType: csvImportState.entityType,
-				}),
-			});
-
-			if (!response.ok) {
-				throw new Error("Failed to analyze CSV");
-			}
-
-			const analysisResult: CsvAnalysisResult = await response.json();
-
-			setCsvImportState((prev) => ({
-				...prev,
-				isAnalyzing: false,
-				analysisResult,
-				mappings: analysisResult.detectedFields,
-			}));
-		} catch (error) {
-			console.error("Error analyzing CSV:", error);
-			toast.error(
-				"Analysis Failed",
-				error instanceof Error ? error.message : "Failed to analyze CSV file"
-			);
-			setCsvImportState((prev) => ({
-				...prev,
-				isAnalyzing: false,
-			}));
-		}
-	};
-
-	const handleMappingChange = (csvColumn: string, newSchemaField: string) => {
-		setCsvImportState((prev) => ({
-			...prev,
-			mappings: (prev.mappings || []).map((m) =>
-				m.csvColumn === csvColumn ? { ...m, schemaField: newSchemaField } : m
-			),
-		}));
-	};
-
-	const handleImportData = async () => {
-		if (!csvImportState.fileContent || !csvImportState.analysisResult) {
-			return;
-		}
-
-		setCsvImportState((prev) => ({ ...prev, isImporting: true }));
-		setError(null);
-
-		try {
-			// Parse CSV with papaparse
-			const Papa = (await import("papaparse")).default;
-			const parseResult = Papa.parse(csvImportState.fileContent, {
-				header: true,
-				skipEmptyLines: true,
-				dynamicTyping: true,
-			});
-
-			const rows = parseResult.data as Record<string, unknown>[];
-
-			// Helper function to transform values based on data type
-			const transformValue = (value: unknown, dataType: string): unknown => {
-				if (value === null || value === undefined || value === "") {
-					return undefined;
-				}
-
-				const strValue = String(value).trim();
-
-				switch (dataType) {
-					case "boolean":
-						// Handle various boolean representations
-						return (
-							strValue.toLowerCase() === "true" ||
-							strValue === "1" ||
-							strValue === "yes"
-						);
-
-					case "number":
-						const num = Number(strValue);
-						return isNaN(num) ? undefined : num;
-
-					case "array":
-						// Handle semicolon or comma-separated values
-						if (typeof value === "string") {
-							return strValue
-								.split(/[;,]/)
-								.map((v) => v.trim())
-								.filter((v) => v.length > 0);
-						}
-						return Array.isArray(value) ? value : [value];
-
-					default:
-						return strValue;
-				}
-			};
-
-			// Map CSV rows to schema format with type transformation
-			const mappedData = rows.map((row) => {
-				const mapped: Record<string, unknown> = {};
-
-				(csvImportState.mappings || []).forEach((mapping) => {
-					const value = row[mapping.csvColumn];
-					if (value !== null && value !== undefined && value !== "") {
-						const transformedValue = transformValue(value, mapping.dataType);
-						if (transformedValue !== undefined) {
-							mapped[mapping.schemaField] = transformedValue;
-						}
-					}
-				});
-
-				// Apply defaults from analysis (these are already the correct type)
-				Object.entries(
-					csvImportState.analysisResult!.suggestedDefaults
-				).forEach(([key, value]) => {
-					if (!(key in mapped)) {
-						// Transform default values too
-						const mapping = (csvImportState.mappings || []).find(
-							(m) => m.schemaField === key
-						);
-						if (mapping && typeof value === "string") {
-							mapped[key] = transformValue(value, mapping.dataType);
-						} else {
-							mapped[key] = value;
-						}
-					}
-				});
-
-				return mapped;
-			});
-
-			// Call appropriate bulk create mutation
-			let result;
-			if (csvImportState.entityType === "clients") {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				result = await bulkCreateClients({ clients: mappedData as any });
-			} else {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				result = await bulkCreateProjects({ projects: mappedData as any });
-			}
-
-			const successCount = result.filter((r) => r.success).length;
-			const failureCount = result.filter((r) => !r.success).length;
-
-			setCsvImportState((prev) => ({
-				...prev,
-				isImporting: false,
-				importResult: {
-					successCount,
-					failureCount,
-					items: result.map((r, idx) => ({
-						success: r.success,
-						id: r.id,
-						error: r.error,
-						rowIndex: idx,
-					})),
-				},
-			}));
-
-			if (failureCount === 0) {
-				toast.success(
-					"Import Successful",
-					`Successfully imported ${successCount} ${csvImportState.entityType}`
-				);
-			} else {
-				toast.warning(
-					"Import Partially Complete",
-					`Imported ${successCount} ${csvImportState.entityType}, ${failureCount} failed`
-				);
-			}
-		} catch (error) {
-			console.error("Error importing data:", error);
-			toast.error(
-				"Import Failed",
-				error instanceof Error ? error.message : "Failed to import data"
-			);
-			setCsvImportState((prev) => ({
-				...prev,
-				isImporting: false,
-			}));
-		}
-	};
 
 	const handleCompleteSetup = async () => {
 		// First complete metadata
@@ -1368,28 +1154,17 @@ export default function CompleteOrganizationMetadata() {
 				</div>
 			)}
 
-			{/* CSV Import Step Component */}
-			<CsvImportStep
-				entityType={csvImportState.entityType}
-				onEntityTypeChange={(value) =>
-					setCsvImportState((prev) => ({
-						...prev,
-						entityType: value,
-						analysisResult: null,
-						mappings: [],
-					}))
-				}
-				isAnalyzing={csvImportState.isAnalyzing}
-				onFileSelect={handleFileSelect}
-				analysisResult={csvImportState.analysisResult}
-				mappings={csvImportState.mappings || []}
-				onMappingChange={handleMappingChange}
-				importResult={csvImportState.importResult ?? null}
-				error={error}
-				showTitle={true}
-				disabledEntityTypes={["projects"]}
-				disabled={!hasPremiumAccess}
-			/>
+			{/* Import Clients -- simple link to wizard (Phase 5 will build embedded experience) */}
+			<div className="flex flex-col items-center gap-3 py-8">
+				<Upload className="h-8 w-8 text-muted-foreground" />
+				<p className="text-sm text-muted-foreground">Import your existing clients from a CSV file</p>
+				<StyledButton
+					intent="outline"
+					size="md"
+					onClick={() => router.push("/clients/import")}
+					label="Import Clients"
+				/>
+			</div>
 
 			{/* Action Buttons */}
 			<div className="flex justify-between pt-6">
@@ -1398,61 +1173,20 @@ export default function CompleteOrganizationMetadata() {
 					onClick={handlePrevious}
 					intent="secondary"
 					size="md"
-					disabled={
-						isLoading ||
-						csvImportState.isAnalyzing ||
-						csvImportState.isImporting
-					}
+					disabled={isLoading}
 					showArrow={false}
 				>
 					Previous
 				</StyledButton>
 
 				<div className="flex gap-3">
-					{/* Skip & Continue Button */}
-					<button
-						type="button"
+					<StyledButton
+						intent="primary"
 						onClick={handleCompleteSetup}
-						disabled={isLoading}
-						className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-all duration-200 px-4 py-2"
+						isLoading={isLoading}
 					>
-						Skip & Continue
-					</button>
-
-					{/* Import Data Button */}
-					{hasPremiumAccess &&
-						csvImportState.analysisResult &&
-						!csvImportState.importResult && (
-							<StyledButton
-								intent="primary"
-								onClick={handleImportData}
-								isLoading={csvImportState.isImporting}
-								disabled={!csvImportState.analysisResult?.validation.isValid}
-							>
-								{csvImportState.isImporting ? (
-									<>
-										<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-										Importing...
-									</>
-								) : (
-									<>
-										<Upload className="w-4 h-4" />
-										Import Data
-									</>
-								)}
-							</StyledButton>
-						)}
-
-					{/* Complete Setup Button (shown after import or if no file uploaded) */}
-					{(csvImportState.importResult || !csvImportState.file) && (
-						<StyledButton
-							intent="primary"
-							onClick={handleCompleteSetup}
-							isLoading={isLoading}
-						>
-							{isLoading ? "Completing..." : "Complete Setup"}
-						</StyledButton>
-					)}
+						{isLoading ? "Completing..." : "Complete Setup"}
+					</StyledButton>
 				</div>
 			</div>
 		</div>
