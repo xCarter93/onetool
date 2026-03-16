@@ -16,9 +16,8 @@ export const enum HomeTour {
 	VIEW_TOGGLE = "view-toggle",
 	HOME_STATS = "home-stats",
 	MAP_TOGGLE = "map-toggle",
-	GETTING_STARTED = "getting-started",
+	ONBOARDING_BANNER = "onboarding-banner",
 	TASKS = "tasks",
-	REVENUE_GOAL = "revenue-goal",
 	ACTIVITY_FEED = "activity-feed",
 }
 
@@ -33,9 +32,8 @@ export const ORDERED_HOME_TOUR: HomeTour[] = [
 	HomeTour.VIEW_TOGGLE,
 	HomeTour.HOME_STATS,
 	HomeTour.MAP_TOGGLE,
-	HomeTour.GETTING_STARTED,
+	HomeTour.ONBOARDING_BANNER,
 	HomeTour.TASKS,
-	HomeTour.REVENUE_GOAL,
 	HomeTour.ACTIVITY_FEED,
 ];
 
@@ -86,22 +84,16 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 			"Click here to see all your client properties on an interactive map. Quickly visualize where your clients are located and navigate to their details.",
 		tooltipPosition: "right",
 	},
-	[HomeTour.GETTING_STARTED]: {
-		title: "Quick Setup Checklist",
+	[HomeTour.ONBOARDING_BANNER]: {
+		title: "Setup Progress",
 		description:
-			"Complete these essential steps to get your OneTool workspace ready. Add clients, create your first project, and set up your organization profile.",
-		tooltipPosition: "right",
+			"Track your onboarding progress here. Complete each step to get your workspace fully set up and ready for business.",
+		tooltipPosition: "bottom",
 	},
 	[HomeTour.TASKS]: {
 		title: "Manage Your Tasks",
 		description:
 			"View and manage your upcoming tasks. Click on any task to see details, or use the quick actions to mark tasks complete. Stay organized and never miss a deadline.",
-		tooltipPosition: "top",
-	},
-	[HomeTour.REVENUE_GOAL]: {
-		title: "Set Revenue Goals",
-		description:
-			"Track your monthly revenue against your targets. Set goals, monitor progress, and celebrate when you hit your targets!",
 		tooltipPosition: "top",
 	},
 	[HomeTour.ACTIVITY_FEED]: {
