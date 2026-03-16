@@ -1,29 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mastra } from "@/mastra";
-import type {
-	CsvAnalysisResult,
-	FieldMapping,
-	ValidationError,
-} from "@/types/csv-import";
+import { auth } from "@clerk/nextjs/server";
+import { mapSchemaTool } from "@/mastra/tools/map-schema-tool";
+import { validateDataTool } from "@/mastra/tools/validate-data-tool";
+import type { CsvAnalysisResult } from "@/types/csv-import";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+	// Auth guard — unauthenticated requests get 401
+	const { userId } = await auth();
+	if (!userId) {
+		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+	}
+
 	try {
 		const body = await request.json();
-		const { csvContent, entityType } = body;
+		const { headers, sampleRows, entityType } = body;
 
-		// Validate input
-		if (!csvContent || typeof csvContent !== "string") {
+		// Validate input — expects headers + sampleRows, not full CSV content
+		if (!headers || !Array.isArray(headers) || headers.length === 0) {
 			return NextResponse.json(
-				{ error: "CSV content is required" },
+				{ error: "CSV headers array is required" },
 				{ status: 400 }
 			);
 		}
 
-		if (csvContent.length > MAX_FILE_SIZE) {
+		if (!sampleRows || !Array.isArray(sampleRows)) {
 			return NextResponse.json(
-				{ error: "File size exceeds 5MB limit" },
+				{ error: "Sample rows array is required" },
 				{ status: 400 }
 			);
 		}
@@ -35,85 +39,63 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Get the CSV import agent
-		const agent = mastra.getAgent("csvImportAgent");
+		const resolvedEntityType = entityType || "clients";
 
-		if (!agent) {
+		// Call mapSchemaTool directly — uses LLM (GPT-5 nano) for column mapping
+		const mapRaw = await mapSchemaTool.execute({
+			entityType: resolvedEntityType,
+			headers,
+			sampleRows,
+		});
+
+		// Mastra execute returns a union with ValidationError — check for error case
+		if ("error" in mapRaw && mapRaw.error === true) {
 			return NextResponse.json(
-				{ error: "CSV import agent not found" },
+				{ error: "Schema mapping failed", details: mapRaw.message },
 				{ status: 500 }
 			);
 		}
+		const mapResult = mapRaw;
 
-		// Prepare the prompt for the agent
-		const prompt = entityType
-			? `Analyze this CSV file for ${entityType} data. Parse the CSV, map the columns to the schema fields, and validate the data. Here's the CSV content:\n\n${csvContent}`
-			: `Analyze this CSV file and determine if it contains client or project data. Then parse, map, and validate accordingly. Here's the CSV content:\n\n${csvContent}`;
+		// Call validateDataTool directly with mapping results
+		const validateRaw = await validateDataTool.execute({
+			entityType: resolvedEntityType,
+			mappings: mapResult.mappings,
+			sampleRows,
+		});
 
-		// Call the agent to analyze the CSV
-		const response = await agent.generate(prompt, { maxSteps: 10 });
+		if ("error" in validateRaw && validateRaw.error === true) {
+			return NextResponse.json(
+				{ error: "Data validation failed", details: validateRaw.message },
+				{ status: 500 }
+			);
+		}
+		const validateResult = validateRaw;
 
-		// Extract tool results from the agent's response
-		type ToolResult = {
-			payload?: {
-				toolName?: string;
-				result?: unknown;
-			};
-		};
+		// Compute overall confidence from actual mapping scores (not hardcoded)
+		const avgConfidence =
+			mapResult.mappings.length > 0
+				? mapResult.mappings.reduce(
+						(sum: number, m: { confidence: number }) =>
+							sum + m.confidence,
+						0
+					) / mapResult.mappings.length
+				: 0;
 
-		// In Mastra v1, toolName uses the property name from the tools object
-		const parseResult = response.toolResults?.find(
-			(tr: ToolResult) => tr.payload?.toolName === "parseCsv"
-		)?.payload?.result as
-			| {
-					sampleRows: Record<string, string>[];
-					headers: string[];
-					totalRows: number;
-			  }
-			| undefined;
-
-		const mapResult = response.toolResults?.find(
-			(tr: ToolResult) => tr.payload?.toolName === "mapSchema"
-		)?.payload?.result as
-			| {
-					mappings: FieldMapping[];
-					unmappedColumns: string[];
-					missingRequiredFields: string[];
-			  }
-			| undefined;
-
-		const validateResult = response.toolResults?.find(
-			(tr: ToolResult) => tr.payload?.toolName === "validateData"
-		)?.payload?.result as
-			| {
-					isValid: boolean;
-					errors: ValidationError[];
-					warnings: ValidationError[];
-					missingRequiredFields: string[];
-					suggestedDefaults: Record<string, string>;
-			  }
-			| undefined;
-
-		// Build the analysis result from tool outputs
-		const analysisResult: CsvAnalysisResult = {
-			entityType: entityType || "clients",
-			detectedFields: mapResult?.mappings || [],
-			validation: validateResult
-				? {
-						isValid: validateResult.isValid,
-						errors: validateResult.errors,
-						warnings: validateResult.warnings,
-						missingRequiredFields: validateResult.missingRequiredFields,
-					}
-				: {
-						isValid: false,
-						errors: [],
-						warnings: [],
-						missingRequiredFields: mapResult?.missingRequiredFields || [],
-					},
-			suggestedDefaults: validateResult?.suggestedDefaults || {},
-			confidence: 0.8,
-			sampleData: parseResult?.sampleRows || [],
+		// Build the analysis result from direct tool outputs
+		const analysisResult: CsvAnalysisResult & { llmFailed?: boolean } = {
+			entityType: resolvedEntityType,
+			detectedFields: mapResult.mappings,
+			validation: {
+				isValid: validateResult.isValid,
+				errors: validateResult.errors,
+				warnings: validateResult.warnings,
+				missingRequiredFields: validateResult.missingRequiredFields,
+			},
+			suggestedDefaults: validateResult.suggestedDefaults,
+			confidence: Math.round(avgConfidence * 100) / 100,
+			sampleData: sampleRows,
+			llmFailed: (mapResult as Record<string, unknown>).llmFailed === true,
 		};
 
 		return NextResponse.json(analysisResult);

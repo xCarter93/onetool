@@ -168,6 +168,32 @@ export const list = query({
 });
 
 /**
+ * Get lightweight client names for the current user's organization.
+ * Used for duplicate detection during CSV import.
+ * Returns only {_id, companyName} to minimize data transfer.
+ * Excludes archived clients to match the default list behavior.
+ */
+export const listNamesForOrg = query({
+	args: {},
+	handler: async (ctx) => {
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return [];
+
+		const clients = await ctx.db
+			.query("clients")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+
+		return clients
+			.filter((c) => c.status !== "archived")
+			.map((c) => ({
+				_id: c._id,
+				companyName: c.companyName,
+			}));
+	},
+});
+
+/**
  * Get only archived clients for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -282,6 +308,7 @@ export const bulkCreate = mutation({
 						v.literal("advertising"),
 						v.literal("trade-show"),
 						v.literal("cold-outreach"),
+						v.literal("community-page"),
 						v.literal("other")
 					)
 				),
@@ -297,17 +324,61 @@ export const bulkCreate = mutation({
 				// Metadata
 				tags: v.optional(v.array(v.string())),
 				notes: v.optional(v.string()),
+
+				// Optional nested sub-records for CSV import
+				contacts: v.optional(
+					v.array(
+						v.object({
+							firstName: v.string(),
+							lastName: v.string(),
+							email: v.optional(v.string()),
+							phone: v.optional(v.string()),
+							jobTitle: v.optional(v.string()),
+						})
+					)
+				),
+				properties: v.optional(
+					v.array(
+						v.object({
+							propertyName: v.optional(v.string()),
+							propertyType: v.optional(
+								v.union(
+									v.literal("residential"),
+									v.literal("commercial"),
+									v.literal("industrial"),
+									v.literal("retail"),
+									v.literal("office"),
+									v.literal("mixed-use")
+								)
+							),
+							streetAddress: v.string(),
+							city: v.string(),
+							state: v.string(),
+							zipCode: v.string(),
+							country: v.optional(v.string()),
+						})
+					)
+				),
 			})
 		),
 	},
 	handler: async (
 		ctx,
 		args
-	): Promise<Array<{ success: boolean; id?: ClientId; error?: string }>> => {
+	): Promise<
+		Array<{
+			success: boolean;
+			id?: ClientId;
+			error?: string;
+			warnings?: string[];
+		}>
+	> => {
+		const userOrgId = await getCurrentUserOrgId(ctx);
 		const results: Array<{
 			success: boolean;
 			id?: ClientId;
 			error?: string;
+			warnings?: string[];
 		}> = [];
 
 		for (const clientData of args.clients) {
@@ -321,8 +392,14 @@ export const bulkCreate = mutation({
 					continue;
 				}
 
+				// Separate contacts/properties from client fields before insertion
+				const { contacts, properties, ...clientFields } = clientData;
+
 				// Type assertion needed because schema still has deprecated fields
-				const clientId = await createClientWithOrg(ctx, clientData as any);
+				const clientId = await createClientWithOrg(
+					ctx,
+					clientFields as any
+				);
 
 				// Get the created client for activity logging and aggregates
 				const client = await ctx.db.get(clientId);
@@ -331,9 +408,79 @@ export const bulkCreate = mutation({
 					await AggregateHelpers.addClient(ctx, client as ClientDocument);
 				}
 
+				// Create sub-records with warning-on-failure semantics
+				const warnings: string[] = [];
+
+				// Create contacts
+				if (contacts && contacts.length > 0) {
+					for (let i = 0; i < contacts.length; i++) {
+						const contact = contacts[i];
+						try {
+							// Validate required contact fields
+							if (
+								!contact.firstName ||
+								!contact.firstName.trim() ||
+								!contact.lastName ||
+								!contact.lastName.trim()
+							) {
+								warnings.push(
+									`Contact creation skipped: firstName and lastName are both required`
+								);
+								continue;
+							}
+							await ctx.db.insert("clientContacts", {
+								...contact,
+								clientId,
+								orgId: userOrgId,
+								isPrimary: i === 0,
+							});
+						} catch (err) {
+							warnings.push(
+								`Contact creation failed: ${err instanceof Error ? err.message : "Unknown error"}`
+							);
+						}
+					}
+				}
+
+				// Create properties
+				if (properties && properties.length > 0) {
+					for (let i = 0; i < properties.length; i++) {
+						const property = properties[i];
+						try {
+							// Validate required property fields
+							if (
+								!property.streetAddress ||
+								!property.streetAddress.trim() ||
+								!property.city ||
+								!property.city.trim() ||
+								!property.state ||
+								!property.state.trim() ||
+								!property.zipCode ||
+								!property.zipCode.trim()
+							) {
+								warnings.push(
+									`Property creation skipped: streetAddress, city, state, and zipCode are all required`
+								);
+								continue;
+							}
+							await ctx.db.insert("clientProperties", {
+								...property,
+								clientId,
+								orgId: userOrgId,
+								isPrimary: i === 0,
+							});
+						} catch (err) {
+							warnings.push(
+								`Property creation failed: ${err instanceof Error ? err.message : "Unknown error"}`
+							);
+						}
+					}
+				}
+
 				results.push({
 					success: true,
 					id: clientId,
+					warnings: warnings.length > 0 ? warnings : undefined,
 				});
 			} catch (error) {
 				results.push({

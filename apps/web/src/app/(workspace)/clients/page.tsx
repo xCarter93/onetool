@@ -54,7 +54,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { StyledBadge } from "@/components/ui/styled";
-import { CsvImportSheet } from "@/app/(workspace)/clients/components/csv-import-sheet";
+
 import {
 	useCanPerformAction,
 	useFeatureAccess,
@@ -285,7 +285,7 @@ export default function ClientsPage() {
 	const toast = useToast();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-	const [importModalOpen, setImportModalOpen] = useState(false);
+
 	const [clientToDelete, setClientToDelete] = useState<{
 		id: string;
 		name: string;
@@ -598,7 +598,7 @@ export default function ClientsPage() {
 								<StyledButton
 									intent="outline"
 									size="md"
-									onClick={() => setImportModalOpen(true)}
+									onClick={() => router.push("/clients/import")}
 									disabled={!hasPremiumAccess}
 								>
 									<Upload className="h-4 w-4" />
@@ -1103,18 +1103,6 @@ export default function ClientsPage() {
 				/>
 			)}
 
-			{/* Import Clients Sheet */}
-			<CsvImportSheet
-				isOpen={importModalOpen}
-				onOpenChange={setImportModalOpen}
-				onComplete={() => {
-					setImportModalOpen(false);
-					toast.success(
-						"Clients Imported",
-						"Your clients have been successfully imported."
-					);
-				}}
-			/>
 		</div>
 	);
 }

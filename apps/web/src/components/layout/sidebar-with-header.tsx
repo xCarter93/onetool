@@ -102,7 +102,7 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 		>
 			<SidebarProvider>
 				<AppSidebar />
-				<SidebarInset>
+				<SidebarInset className="min-w-0">
 					{/* Thin navbar with notched items */}
 					<header className="sticky top-0 z-30">
 						{/* Thin navbar rail — notched items hang below */}
@@ -133,7 +133,7 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 						</div>
 					</header>
 
-					<div className="flex flex-1 flex-col gap-4 pt-0">{children}</div>
+					<div className="flex flex-1 flex-col gap-4 pt-0 min-w-0">{children}</div>
 				</SidebarInset>
 			</SidebarProvider>
 		</TourContextProvider>

@@ -58,3 +58,5 @@ PRD.md
 
 # Debug routes (should not be in production)
 src/app/(workspace)/settings/debug/
+
+/.planning

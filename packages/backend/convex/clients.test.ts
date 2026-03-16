@@ -643,6 +643,527 @@ describe("Clients", () => {
 		});
 	});
 
+	describe("listNamesForOrg", () => {
+		it("should return empty array when org has no clients", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const names = await asUser.query(api.clients.listNamesForOrg, {});
+			expect(names).toEqual([]);
+		});
+
+		it("should return only _id and companyName for each client", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			await asUser.mutation(api.clients.create, {
+				companyName: "Acme Corp",
+				status: "active",
+				leadSource: "website",
+				notes: "Some notes",
+			});
+
+			await asUser.mutation(api.clients.create, {
+				companyName: "Beta Inc",
+				status: "lead",
+			});
+
+			const names = await asUser.query(api.clients.listNamesForOrg, {});
+			expect(names).toHaveLength(2);
+
+			// Verify each result only has _id and companyName
+			for (const entry of names) {
+				expect(Object.keys(entry)).toHaveLength(2);
+				expect(entry).toHaveProperty("_id");
+				expect(entry).toHaveProperty("companyName");
+			}
+
+			const companyNames = names.map((n: { companyName: string }) => n.companyName).sort();
+			expect(companyNames).toEqual(["Acme Corp", "Beta Inc"]);
+		});
+
+		it("should not return clients from other organizations", async () => {
+			await t.run(async (ctx) => {
+				// Org 1
+				const userId1 = await ctx.db.insert("users", {
+					name: "User One",
+					email: "user1@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_org1",
+				});
+
+				const orgId1 = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_one",
+					name: "Org One",
+					ownerUserId: userId1,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId: orgId1,
+					userId: userId1,
+					role: "admin",
+				});
+
+				// Org 2
+				const userId2 = await ctx.db.insert("users", {
+					name: "User Two",
+					email: "user2@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_org2",
+				});
+
+				const orgId2 = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_two",
+					name: "Org Two",
+					ownerUserId: userId2,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId: orgId2,
+					userId: userId2,
+					role: "admin",
+				});
+
+				// Create client directly in org2
+				await ctx.db.insert("clients", {
+					orgId: orgId2,
+					companyName: "Other Org Client",
+					status: "active",
+				});
+			});
+
+			const asUser1 = t.withIdentity({
+				subject: "user_org1",
+				activeOrgId: "org_one",
+			});
+
+			await asUser1.mutation(api.clients.create, {
+				companyName: "My Client",
+				status: "active",
+			});
+
+			const names = await asUser1.query(api.clients.listNamesForOrg, {});
+			expect(names).toHaveLength(1);
+			expect(names[0].companyName).toBe("My Client");
+		});
+
+		it("should not return archived clients", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+
+				// Create an archived client directly in db
+				await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Archived Client",
+					status: "archived",
+					archivedAt: Date.now(),
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			// Also create an active client via API
+			await asUser.mutation(api.clients.create, {
+				companyName: "Active Client",
+				status: "active",
+			});
+
+			const names = await asUser.query(api.clients.listNamesForOrg, {});
+			expect(names).toHaveLength(1);
+			expect(names[0].companyName).toBe("Active Client");
+		});
+	});
+
+	describe("bulkCreate with contacts and properties", () => {
+		it("should create a client with contacts array", async () => {
+			const { orgId } = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+
+				return { orgId };
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const results = await asUser.mutation(api.clients.bulkCreate, {
+				clients: [
+					{
+						companyName: "Acme Corp",
+						status: "active",
+						contacts: [
+							{
+								firstName: "John",
+								lastName: "Doe",
+								email: "john@acme.com",
+								phone: "555-1234",
+							},
+						],
+					},
+				],
+			});
+
+			expect(results).toHaveLength(1);
+			expect(results[0].success).toBe(true);
+			expect(results[0].id).toBeDefined();
+
+			// Verify contact was created in DB
+			const contacts = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("clientContacts")
+					.filter((q) => q.eq(q.field("orgId"), orgId))
+					.collect();
+			});
+
+			expect(contacts).toHaveLength(1);
+			expect(contacts[0]).toMatchObject({
+				firstName: "John",
+				lastName: "Doe",
+				email: "john@acme.com",
+				isPrimary: true,
+			});
+		});
+
+		it("should create a client with properties array", async () => {
+			const { orgId } = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+
+				return { orgId };
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const results = await asUser.mutation(api.clients.bulkCreate, {
+				clients: [
+					{
+						companyName: "Beta Inc",
+						status: "lead",
+						properties: [
+							{
+								streetAddress: "123 Main St",
+								city: "Springfield",
+								state: "IL",
+								zipCode: "62701",
+							},
+						],
+					},
+				],
+			});
+
+			expect(results).toHaveLength(1);
+			expect(results[0].success).toBe(true);
+
+			// Verify property was created in DB
+			const properties = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("clientProperties")
+					.filter((q) => q.eq(q.field("orgId"), orgId))
+					.collect();
+			});
+
+			expect(properties).toHaveLength(1);
+			expect(properties[0]).toMatchObject({
+				streetAddress: "123 Main St",
+				city: "Springfield",
+				state: "IL",
+				zipCode: "62701",
+				isPrimary: true,
+			});
+		});
+
+		it("should return warning when contact creation fails (missing lastName)", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const results = await asUser.mutation(api.clients.bulkCreate, {
+				clients: [
+					{
+						companyName: "Gamma LLC",
+						status: "active",
+						contacts: [
+							{
+								firstName: "Jane",
+								lastName: "", // empty = should produce warning
+							},
+						],
+					},
+				],
+			});
+
+			expect(results).toHaveLength(1);
+			expect(results[0].success).toBe(true);
+			expect(results[0].id).toBeDefined();
+			expect(results[0].warnings).toBeDefined();
+			expect(results[0].warnings!.length).toBeGreaterThan(0);
+		});
+
+		it("should return warning when property creation fails (missing required address fields)", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const results = await asUser.mutation(api.clients.bulkCreate, {
+				clients: [
+					{
+						companyName: "Delta Corp",
+						status: "active",
+						properties: [
+							{
+								streetAddress: "456 Oak Ave",
+								city: "",
+								state: "",
+								zipCode: "",
+							},
+						],
+					},
+				],
+			});
+
+			expect(results).toHaveLength(1);
+			expect(results[0].success).toBe(true);
+			expect(results[0].id).toBeDefined();
+			expect(results[0].warnings).toBeDefined();
+			expect(results[0].warnings!.length).toBeGreaterThan(0);
+		});
+
+		it("should handle empty or omitted contacts/properties arrays", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const results = await asUser.mutation(api.clients.bulkCreate, {
+				clients: [
+					{
+						companyName: "No Subs 1",
+						status: "active",
+						contacts: [],
+						properties: [],
+					},
+					{
+						companyName: "No Subs 2",
+						status: "lead",
+						// contacts and properties omitted entirely
+					},
+				],
+			});
+
+			expect(results).toHaveLength(2);
+			expect(results.every((r) => r.success)).toBe(true);
+		});
+
+		it("should accept community-page as leadSource", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const results = await asUser.mutation(api.clients.bulkCreate, {
+				clients: [
+					{
+						companyName: "Community Client",
+						status: "active",
+						leadSource: "community-page",
+					},
+				],
+			});
+
+			expect(results).toHaveLength(1);
+			expect(results[0].success).toBe(true);
+		});
+	});
+
 	describe("listWithProjectCounts", () => {
 		it("should return clients with project counts", async () => {
 			const { userId, clientId } = await t.run(async (ctx) => {
