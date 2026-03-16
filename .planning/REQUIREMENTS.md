@@ -41,7 +41,7 @@
 ### Integration
 
 - [x] **INT-01**: Old modal CSV import sheet on clients page replaced with link to new wizard
-- [ ] **INT-02**: Import wizard accessible from onboarding flow as embedded simplified version
+- [x] **INT-02**: Import wizard accessible from onboarding flow as embedded simplified version
 - [x] **INT-03**: PostHog tracks import started, step progression, completion, and errors
 - [x] **INT-04**: Existing old import modal components removed after new wizard is deployed
 
@@ -90,7 +90,7 @@
 | IMP-04 | Phase 5 | Complete |
 | IMP-05 | Phase 5 | Complete |
 | INT-01 | Phase 4 | Complete |
-| INT-02 | Phase 5 | Pending |
+| INT-02 | Phase 5 | Complete |
 | INT-03 | Phase 5 | Complete |
 | INT-04 | Phase 4 | Complete |
 
