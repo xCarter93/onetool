@@ -19,6 +19,8 @@ import {
 	buildImportRecords,
 	validateImportRecords,
 } from "../utils/transform-csv";
+import { chunkArray, buildCompositeResults } from "../utils/import-batching";
+import type { ReviewRow } from "../utils/review-types";
 import type { ImportStep } from "../components/import-step-nav";
 
 const STEP_ORDER: ImportStep[] = ["upload", "map", "review"];
@@ -263,109 +265,117 @@ export function useImportWizard() {
 		navigateTo("map");
 	}, [state.mappings, state.fileContent, navigateTo]);
 
-	const handleImportData = useCallback(async (preBuiltRecords?: ImportRecord[]) => {
-		if (!preBuiltRecords && (!state.fileContent || !state.mappings?.length)) return;
+	const handleImportData = useCallback(async (preBuiltRecords: ImportRecord[], reviewRows: ReviewRow[]) => {
+		const BATCH_SIZE = 10;
 
-		setState((prev) => ({ ...prev, isImporting: true }));
+		// Track which reviewRow indices were sent to backend
+		const importedIndices: number[] = [];
+		for (let i = 0; i < reviewRows.length; i++) {
+			const row = reviewRows[i];
+			if (!row.skipImport && row.status !== "error") {
+				importedIndices.push(i);
+			}
+		}
+
+		// Initialize progress
+		setState((prev) => ({
+			...prev,
+			isImporting: true,
+			importProgress: { current: 0, total: preBuiltRecords.length, succeeded: 0, failed: 0 },
+		}));
 
 		try {
-			let records: ImportRecord[];
+			// Batch the records
+			const batches = chunkArray(preBuiltRecords, BATCH_SIZE);
+			const allBackendResults: ImportResultItem[] = [];
+			let succeeded = 0;
+			let failed = 0;
+			let batchOffset = 0;
 
-			if (preBuiltRecords) {
-				// Use pre-built records (already filtered by review step)
-				records = preBuiltRecords;
-			} else {
-				// Default path: parse CSV and build records from mappings
-				const rows = await parseCsvData(state.fileContent!);
-				const activeMappings = (state.mappings || []).filter(
-					(m) => m.schemaField !== "__skip__",
-				);
-				records = buildImportRecords(rows, activeMappings);
-			}
-
-			// Pre-validate records before sending to backend
-			const validationErrors = validateImportRecords(records);
-			if (validationErrors.length > 0) {
-				// Group errors by row for display
-				const errorsByRow = new Map<number, string[]>();
-				for (const err of validationErrors) {
-					const existing = errorsByRow.get(err.rowIndex) || [];
-					existing.push(`${err.field}: ${err.message}`);
-					errorsByRow.set(err.rowIndex, existing);
+			for (const batch of batches) {
+				try {
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					const batchResults = await bulkCreateClients({ clients: batch as any });
+					for (let j = 0; j < batchResults.length; j++) {
+						const r = batchResults[j];
+						allBackendResults.push({
+							success: r.success,
+							id: r.id ? String(r.id) : undefined,
+							error: r.error,
+							warnings: r.warnings,
+							rowIndex: batchOffset + j,
+						});
+						if (r.success) succeeded++;
+						else failed++;
+					}
+				} catch (err) {
+					// Batch-level failure: mark all rows in this batch as failed
+					for (let j = 0; j < batch.length; j++) {
+						allBackendResults.push({
+							success: false,
+							rowIndex: batchOffset + j,
+							error: err instanceof Error ? err.message : "Batch import failed",
+						});
+						failed++;
+					}
 				}
+				batchOffset += batch.length;
 
-				const items: ImportResultItem[] = records.map((_, index) => {
-					const rowErrors = errorsByRow.get(index);
-					return {
-						success: !rowErrors,
-						rowIndex: index,
-						error: rowErrors ? rowErrors.join("; ") : undefined,
-					};
-				});
-
-				const failureCount = items.filter((i) => !i.success).length;
-
+				// Update progress after each batch
 				setState((prev) => ({
 					...prev,
-					isImporting: false,
-					importResult: {
-						successCount: 0,
-						failureCount,
-						items,
+					importProgress: {
+						current: allBackendResults.length,
+						total: preBuiltRecords.length,
+						succeeded,
+						failed,
 					},
 				}));
-
-				toast.error(
-					"Validation Failed",
-					`${validationErrors.length} validation error${validationErrors.length !== 1 ? "s" : ""} found. Fix your data and try again.`,
-				);
-				return;
 			}
 
-			// ImportRecord matches the bulkCreate validator shape (safe cast due to shared type definition)
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const backendResults = await bulkCreateClients({ clients: records as any });
-			const items: ImportResultItem[] = backendResults.map((r, index) => ({
-				success: r.success,
-				id: r.id ? String(r.id) : undefined,
-				error: r.error,
-				warnings: r.warnings,
-				rowIndex: index,
-			}));
+			// Build composite results merging backend results with skipped/error rows
+			const compositeItems = buildCompositeResults({
+				backendResults: allBackendResults,
+				reviewRows,
+				importedIndices,
+			});
 
-			const successCount = items.filter((i) => i.success).length;
-			const failureCount = items.filter((i) => !i.success).length;
-			const warningCount = items.filter(
+			const skippedCount = compositeItems.filter((i) => i.skipped).length;
+			const warningCount = allBackendResults.filter(
 				(i) => i.success && i.warnings?.length,
 			).length;
 
 			const result: ImportResult = {
-				successCount,
-				failureCount,
-				items,
+				successCount: succeeded,
+				failureCount: failed,
+				skippedCount,
+				items: compositeItems,
 			};
 
 			setState((prev) => ({
 				...prev,
 				isImporting: false,
+				importProgress: undefined,
 				importResult: result,
 			}));
 
 			// Contextual toast message
-			if (failureCount > 0) {
-				toast.error(
-					"Import Finished",
-					`Imported ${successCount} client${successCount !== 1 ? "s" : ""}, ${failureCount} failed`,
-				);
+			const parts: string[] = [];
+			parts.push(`${succeeded} imported`);
+			if (failed > 0) parts.push(`${failed} failed`);
+			if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
+
+			if (failed > 0) {
+				toast.error("Import Finished", parts.join(", "));
 			} else if (warningCount > 0) {
 				toast.success(
 					"Import Complete",
-					`Imported ${successCount} client${successCount !== 1 ? "s" : ""} (${warningCount} with warnings)`,
+					`${succeeded} client${succeeded !== 1 ? "s" : ""} imported (${warningCount} with warnings)${skippedCount > 0 ? `, ${skippedCount} skipped` : ""}`,
 				);
 			} else {
 				toast.success(
 					"Import Complete",
-					`Successfully imported ${successCount} client${successCount !== 1 ? "s" : ""}`,
+					`Successfully imported ${succeeded} client${succeeded !== 1 ? "s" : ""}${skippedCount > 0 ? `, ${skippedCount} skipped` : ""}`,
 				);
 			}
 		} catch (err) {
@@ -374,6 +384,7 @@ export function useImportWizard() {
 			setState((prev) => ({
 				...prev,
 				isImporting: false,
+				importProgress: undefined,
 				importResult: {
 					successCount: 0,
 					failureCount: 1,
@@ -386,7 +397,7 @@ export function useImportWizard() {
 				err instanceof Error ? err.message : "Failed to import data",
 			);
 		}
-	}, [state.fileContent, state.mappings, bulkCreateClients, toast]);
+	}, [bulkCreateClients, toast]);
 
 	return {
 		state,

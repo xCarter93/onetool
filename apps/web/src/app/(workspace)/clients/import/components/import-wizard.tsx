@@ -193,6 +193,7 @@ export function ImportWizard() {
 						initReviewSkippedRows={initReviewSkippedRows}
 						isImporting={state.isImporting ?? false}
 						importResult={state.importResult ?? null}
+						importProgress={state.importProgress}
 						onImport={handleImportData}
 					/>
 				);

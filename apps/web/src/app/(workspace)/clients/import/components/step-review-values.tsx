@@ -83,7 +83,8 @@ interface StepReviewValuesProps {
 	initReviewSkippedRows: (skippedSet: Set<number>) => void;
 	isImporting: boolean;
 	importResult: ImportResult | null;
-	onImport: (records: ImportRecord[]) => void;
+	importProgress?: { current: number; total: number; succeeded: number; failed: number };
+	onImport: (records: ImportRecord[], reviewRows: ReviewRow[]) => void;
 }
 
 export function StepReviewValues({
@@ -94,6 +95,7 @@ export function StepReviewValues({
 	initReviewSkippedRows,
 	isImporting,
 	importResult,
+	importProgress,
 	onImport,
 }: StepReviewValuesProps) {
 	const parentRef = useRef<HTMLDivElement>(null);
@@ -236,7 +238,7 @@ export function StepReviewValues({
 			const row = reviewRows[i];
 			return row && !row.skipImport && row.status !== "error";
 		});
-		onImport(importableRecords);
+		onImport(importableRecords, reviewRows);
 	}, [cellValues, activeMappings, records.length, reviewRows, onImport]);
 
 	// Filter rows based on active tab
