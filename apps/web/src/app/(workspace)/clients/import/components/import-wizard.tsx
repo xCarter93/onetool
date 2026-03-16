@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
+import { StyledButton } from "@/components/ui/styled/styled-button";
 import { CLIENT_SCHEMA_FIELDS } from "@/types/csv-import";
 import { useImportWizard } from "../hooks/use-import-wizard";
 import { ImportStepNav } from "./import-step-nav";
@@ -10,7 +11,12 @@ import { StepUpload } from "./step-upload";
 import { StepMapColumns } from "./step-map-columns";
 import { StepReviewValues } from "./step-review-values";
 
-export function ImportWizard() {
+interface ImportWizardProps {
+	embedded?: boolean;
+	onComplete?: (result: { successCount: number }) => void;
+}
+
+export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps = {}) {
 	const router = useRouter();
 	const {
 		state,
@@ -31,14 +37,24 @@ export function ImportWizard() {
 		handleImportData,
 		setRowSkip,
 		initReviewSkippedRows,
-	} = useImportWizard();
+	} = useImportWizard({
+		embedded,
+		source: embedded ? 'onboarding' : 'clients_page',
+	});
 
-	// --- Step guard: redirect to upload if state is missing ---
+	// --- Step guard: redirect to upload if state is missing (standalone only) ---
 	useEffect(() => {
-		if (currentStep !== "upload" && !state.analysisResult) {
+		if (!embedded && currentStep !== "upload" && !state.analysisResult) {
 			router.replace("/clients/import?step=upload");
 		}
-	}, [currentStep, state.analysisResult, router]);
+	}, [embedded, currentStep, state.analysisResult, router]);
+
+	// --- Notify host page when import completes in embedded mode ---
+	useEffect(() => {
+		if (embedded && state.importResult && onComplete) {
+			onComplete({ successCount: state.importResult.successCount });
+		}
+	}, [embedded, state.importResult, onComplete]);
 
 	// --- Compute unmapped required fields for inline validation ---
 	const unmappedRequiredFields = useMemo(() => {
@@ -201,6 +217,68 @@ export function ImportWizard() {
 				return null;
 		}
 	};
+
+	// --- Render inline footer for embedded mode ---
+	const renderInlineFooter = () => {
+		if (currentStep === "review") return null;
+
+		const leftButtons = footerButtons.filter((b) => b.position === "left");
+		const rightButtons = footerButtons.filter((b) => b.position === "right");
+
+		if (leftButtons.length === 0 && rightButtons.length === 0) return null;
+
+		return (
+			<div className="flex items-center justify-between gap-x-3 py-4 border-t border-border mt-4">
+				<div className="flex items-center gap-x-3">
+					{leftButtons.map((button) => (
+						<StyledButton
+							key={button.label}
+							label={button.label}
+							onClick={button.onClick}
+							intent={button.intent}
+							disabled={button.disabled}
+							isLoading={button.isLoading}
+						/>
+					))}
+				</div>
+				<div className="flex items-center gap-x-3">
+					{rightButtons.map((button) => (
+						<StyledButton
+							key={button.label}
+							label={button.label}
+							onClick={button.onClick}
+							intent={button.intent}
+							disabled={button.disabled}
+							isLoading={button.isLoading}
+						/>
+					))}
+				</div>
+			</div>
+		);
+	};
+
+	if (embedded) {
+		return (
+			<div className="flex flex-col">
+				{/* Step content - no fixed height, no breadcrumbs */}
+				<div className="px-6 py-6">
+					{/* Step heading - consistent position across all steps */}
+					{stepHeading && (
+						<div className="space-y-1 mb-6">
+							<h2 className="text-xl font-semibold text-foreground">{stepHeading.title}</h2>
+							<p className="text-sm text-muted-foreground">{stepHeading.subtitle}</p>
+						</div>
+					)}
+					{renderStep()}
+				</div>
+
+				{/* Inline footer - not sticky, not fixed */}
+				<div className="px-6">
+					{renderInlineFooter()}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="flex flex-col h-[calc(100dvh-3.5rem)]">
