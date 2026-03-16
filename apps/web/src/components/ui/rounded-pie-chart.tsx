@@ -96,7 +96,7 @@ export function RoundedPieChart() {
 								fontSize={12}
 								fontWeight={500}
 								fill="currentColor"
-								formatter={(value: number) => value.toString()}
+								formatter={(value: unknown) => String(value)}
 							/>
 						</Pie>
 					</PieChart>
@@ -165,7 +165,7 @@ export function RoundedPieChartCore({
 						fontSize={12}
 						fontWeight={500}
 						fill="currentColor"
-						formatter={(value: number) => value.toString()}
+						formatter={(value: unknown) => String(value)}
 					/>
 				</Pie>
 			</PieChart>

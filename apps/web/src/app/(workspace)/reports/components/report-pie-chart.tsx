@@ -146,7 +146,6 @@ export function ReportPieChart({
 						paddingAngle={2}
 						dataKey="value"
 						nameKey="name"
-						activeIndex={activeIndex}
 						activeShape={renderActiveShape}
 						onMouseEnter={onPieEnter}
 						onMouseLeave={onPieLeave}
