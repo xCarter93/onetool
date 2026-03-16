@@ -32,11 +32,15 @@ function isValidStep(s: string | null): s is ImportStep {
 }
 
 export function useImportWizard(options?: { embedded?: boolean; source?: 'clients_page' | 'onboarding' }) {
+	const embedded = options?.embedded ?? false;
 	const source = options?.source ?? 'clients_page';
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
 	const bulkCreateClients = useMutation(api.clients.bulkCreate);
+
+	// Embedded mode uses state-based step tracking (no URL side effects)
+	const [embeddedStep, setEmbeddedStep] = useState<ImportStep>("upload");
 
 	// Analytics refs
 	const stepStartTime = useRef<number>(Date.now());
@@ -52,7 +56,11 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 	}, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const rawStep = searchParams.get("step");
-	const currentStep: ImportStep = isValidStep(rawStep) ? rawStep : "upload";
+	const currentStep: ImportStep = embedded
+		? embeddedStep
+		: isValidStep(rawStep)
+			? rawStep
+			: "upload";
 
 	// Wizard state
 	const [state, setState] = useState<CsvImportState>({
@@ -100,9 +108,13 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 				source,
 			});
 			stepStartTime.current = Date.now();
-			router.replace(`/clients/import?step=${step}`);
+			if (embedded) {
+				setEmbeddedStep(step);
+			} else {
+				router.replace(`/clients/import?step=${step}`);
+			}
 		},
-		[router, currentStep, source],
+		[embedded, router, currentStep, source],
 	);
 
 	const goNext = useCallback(() => {
@@ -229,7 +241,7 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 				}));
 			}
 		},
-		[toast, navigateTo, source],
+		[toast, navigateTo],
 	);
 
 	const handleMappingChange = useCallback(
@@ -420,12 +432,6 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 		} catch (err) {
 			console.error("Error importing data:", err);
 
-			trackEvent(AnalyticsEvents.CSV_IMPORT_ERROR, {
-				error_type: 'batch_failure',
-				error_message: err instanceof Error ? err.message : String(err),
-				source,
-			});
-
 			setState((prev) => ({
 				...prev,
 				isImporting: false,
@@ -442,9 +448,10 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 				err instanceof Error ? err.message : "Failed to import data",
 			);
 		}
-	}, [bulkCreateClients, toast, source]);
+	}, [bulkCreateClients, toast]);
 
 	return {
+		embedded,
 		state,
 		currentStep,
 		selectedMappingColumn,
