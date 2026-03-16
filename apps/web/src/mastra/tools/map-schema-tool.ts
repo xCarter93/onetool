@@ -16,7 +16,7 @@ const llmMappingSchema = z.object({
 			schemaField: z.string(),
 			confidence: z.number(),
 			sampleValue: z.string().nullable(),
-		})
+		}),
 	),
 	unmappedColumns: z.array(z.string()),
 });
@@ -38,19 +38,17 @@ function buildMappingPrompt(
 	entityType: string,
 	headers: string[],
 	sampleRows: Record<string, string>[] | undefined,
-	schema: SchemaFields
+	schema: SchemaFields,
 ): string {
-	const schemaDescription = Object.entries(schema).map(
-		([name, info]) => ({
-			fieldName: name,
-			type: info.type,
-			required: info.required,
-			...(info.group ? { group: info.group } : {}),
-			...("options" in info && info.options
-				? { allowedValues: info.options }
-				: {}),
-		})
-	);
+	const schemaDescription = Object.entries(schema).map(([name, info]) => ({
+		fieldName: name,
+		type: info.type,
+		required: info.required,
+		...(info.group ? { group: info.group } : {}),
+		...("options" in info && info.options
+			? { allowedValues: info.options }
+			: {}),
+	}));
 
 	const rows = sampleRows?.slice(0, 5);
 
@@ -83,7 +81,7 @@ ${rows ? JSON.stringify(rows, null, 2) : "No sample data provided"}
 function postProcessMappings(
 	llmResult: z.infer<typeof llmMappingSchema>,
 	headers: string[],
-	schema: SchemaFields
+	schema: SchemaFields,
 ) {
 	const validFieldNames = new Set(Object.keys(schema));
 	const usedFields = new Set<string>();
@@ -99,7 +97,7 @@ function postProcessMappings(
 
 	// Sort by confidence descending so higher-confidence mappings win duplicates
 	const sorted = [...llmResult.mappings].sort(
-		(a, b) => b.confidence - a.confidence
+		(a, b) => b.confidence - a.confidence,
 	);
 
 	for (const mapping of sorted) {
@@ -170,7 +168,7 @@ export const mapSchemaTool = createTool({
 					dataType: z.string(),
 					isRequired: z.boolean(),
 					sampleValue: z.string().optional(),
-				})
+				}),
 			)
 			.describe("Proposed mappings from CSV columns to schema fields"),
 		unmappedColumns: z
@@ -181,7 +179,9 @@ export const mapSchemaTool = createTool({
 			.describe("Required schema fields not found in CSV"),
 		llmFailed: z
 			.boolean()
-			.describe("Whether the LLM call failed (true = mappings are empty fallback)"),
+			.describe(
+				"Whether the LLM call failed (true = mappings are empty fallback)",
+			),
 	}),
 	execute: async (input) => {
 		const { entityType, headers, sampleRows } = input;
@@ -197,14 +197,17 @@ export const mapSchemaTool = createTool({
 				model: openai("gpt-5-nano"),
 				output: Output.object({ schema: llmMappingSchema }),
 				prompt: buildMappingPrompt(entityType, headers, sampleRows, schema),
-				abortSignal: AbortSignal.timeout(30_000),
+				abortSignal: AbortSignal.timeout(60_000),
 			});
 
 			if (!output) {
 				throw new Error("LLM returned no structured output");
 			}
 
-			return { ...postProcessMappings(output, headers, schema), llmFailed: false };
+			return {
+				...postProcessMappings(output, headers, schema),
+				llmFailed: false,
+			};
 		} catch (error) {
 			// LLM failure -- return all columns as unmapped (user maps manually)
 			console.error("mapSchemaTool LLM error:", error);
