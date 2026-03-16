@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCardSkeleton } from "@/components/stat-card-skeleton";
+import { ChartSkeleton } from "@/components/chart-skeleton";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import LineChart6, {
@@ -291,6 +294,22 @@ export default function HomeStatsReal() {
 		]
 	);
 
+	const sparklineData: MetricDataMap = useMemo(() => {
+		const result: MetricDataMap = {};
+		for (const [key, data] of Object.entries(dataByMetric)) {
+			result[key] = data.slice(-7);
+		}
+		return result;
+	}, [dataByMetric]);
+
+	const isAnyMetricLoading =
+		isClientsLoading ||
+		isProjectsLoading ||
+		isQuotesLoading ||
+		isInvoicesLoading ||
+		isRevenueLoading ||
+		isTasksLoading;
+
 	const chartConfig: ChartConfig = useMemo(
 		() => ({
 			clients: { label: "Clients", color: "var(--chart-1)" },
@@ -475,11 +494,32 @@ export default function HomeStatsReal() {
 
 	return (
 		<div className="mb-8 space-y-4">
-			{viewMode === "chart" ? (
+			{isAnyMetricLoading && !homeStats ? (
+				<div className="space-y-4">
+					{/* Skeleton header matching LineChart6 header */}
+					<div className="space-y-3 pb-4">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+							<div className="space-y-1">
+								<Skeleton className="h-3 w-16" />
+								<Skeleton className="h-5 w-40" />
+							</div>
+							<Skeleton className="h-9 w-56" />
+						</div>
+						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+							{Array.from({ length: 6 }).map((_, i) => (
+								<StatCardSkeleton key={i} />
+							))}
+						</div>
+					</div>
+					<ChartSkeleton />
+					<hr className="border-border/60" />
+				</div>
+			) : viewMode === "chart" ? (
 				<LineChart6
 					metrics={metrics}
 					chartConfig={chartConfig}
 					dataByMetric={dataByMetric}
+					sparklineData={sparklineData}
 					selectedMetric={activeMetric}
 					onMetricChange={setActiveMetric}
 					title="Business Overview"
