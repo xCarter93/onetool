@@ -40,10 +40,10 @@
 
 ### Integration
 
-- [ ] **INT-01**: Old modal CSV import sheet on clients page replaced with link to new wizard
+- [x] **INT-01**: Old modal CSV import sheet on clients page replaced with link to new wizard
 - [ ] **INT-02**: Import wizard accessible from onboarding flow as embedded simplified version
 - [ ] **INT-03**: PostHog tracks import started, step progression, completion, and errors
-- [ ] **INT-04**: Existing old import modal components removed after new wizard is deployed
+- [x] **INT-04**: Existing old import modal components removed after new wizard is deployed
 
 ## v2 Requirements
 
@@ -89,10 +89,10 @@
 | IMP-03 | Phase 4 | Complete |
 | IMP-04 | Phase 5 | Pending |
 | IMP-05 | Phase 5 | Pending |
-| INT-01 | Phase 4 | Pending |
+| INT-01 | Phase 4 | Complete |
 | INT-02 | Phase 5 | Pending |
 | INT-03 | Phase 5 | Pending |
-| INT-04 | Phase 4 | Pending |
+| INT-04 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 25 total

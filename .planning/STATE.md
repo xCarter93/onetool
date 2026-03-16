@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 04-import-execution (batching and execution)
-Plan: 1 of 2 in current phase
-Status: In Progress
-Last activity: 2026-03-15 - Completed 04-01: import batching utilities
+Plan: 3 of 3 in current phase
+Status: Completed
+Last activity: 2026-03-16 - Completed 04-03: remove old modal import
 
 Progress: [██████████] 100%
 
@@ -67,6 +67,7 @@ Progress: [██████████] 100%
 | Phase 03-review P01 | 2min | 2 tasks | 7 files |
 | Phase 03-review P02 | 45min | 3 tasks | 6 files |
 | Phase 04-import-execution P01 | 2min | 2 tasks | 4 files |
+| Phase 04-import-execution P03 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,7 @@ Recent decisions affecting current work:
 - [Phase 03-02]: Added inline editing for ALL cells using StyledInput/StyledSelect, not read-only as originally planned
 - [Phase 03-02]: Merged review and preview steps into single "Review & Import" step
 - [Phase 04-01]: importedIndices Map for O(1) lookup when mapping backend results to reviewRow positions
+- [Phase 04-03]: Simple link stub in onboarding page -- Phase 5 will build full embedded import experience
 
 ### Roadmap Evolution
 
@@ -143,6 +145,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T23:59:55Z
-Stopped at: Completed 04-01-PLAN.md
-Resume file: .planning/phases/04-import-execution/04-01-SUMMARY.md
+Last session: 2026-03-16T00:04:48Z
+Stopped at: Completed 04-03-PLAN.md
+Resume file: .planning/phases/04-import-execution/04-03-SUMMARY.md
