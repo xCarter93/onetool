@@ -432,6 +432,12 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 		} catch (err) {
 			console.error("Error importing data:", err);
 
+			trackEvent(AnalyticsEvents.CSV_IMPORT_ERROR, {
+				error_type: "batch_failure",
+				error_message: err instanceof Error ? err.message : String(err),
+				source: options?.source ?? "standalone",
+			});
+
 			setState((prev) => ({
 				...prev,
 				isImporting: false,
