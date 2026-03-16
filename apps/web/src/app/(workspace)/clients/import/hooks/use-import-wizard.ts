@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -22,6 +22,8 @@ import {
 import { chunkArray, buildCompositeResults } from "../utils/import-batching";
 import type { ReviewRow } from "../utils/review-types";
 import type { ImportStep } from "../components/import-step-nav";
+import { trackEvent } from "@/lib/analytics";
+import { AnalyticsEvents } from "@/lib/analytics-events";
 
 const STEP_ORDER: ImportStep[] = ["upload", "map", "review"];
 
@@ -29,11 +31,25 @@ function isValidStep(s: string | null): s is ImportStep {
 	return s !== null && STEP_ORDER.includes(s as ImportStep);
 }
 
-export function useImportWizard() {
+export function useImportWizard(options?: { embedded?: boolean; source?: 'clients_page' | 'onboarding' }) {
+	const source = options?.source ?? 'clients_page';
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
 	const bulkCreateClients = useMutation(api.clients.bulkCreate);
+
+	// Analytics refs
+	const stepStartTime = useRef<number>(Date.now());
+	const hasFiredStarted = useRef(false);
+
+	// Fire import_started once on mount (React Strict Mode safe)
+	useEffect(() => {
+		if (!hasFiredStarted.current) {
+			trackEvent(AnalyticsEvents.CSV_IMPORT_STARTED, { source });
+			hasFiredStarted.current = true;
+			stepStartTime.current = Date.now();
+		}
+	}, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const rawStep = searchParams.get("step");
 	const currentStep: ImportStep = isValidStep(rawStep) ? rawStep : "upload";
@@ -76,9 +92,17 @@ export function useImportWizard() {
 	// --- Navigation helpers ---
 	const navigateTo = useCallback(
 		(step: ImportStep) => {
+			const durationSeconds = Math.round((Date.now() - stepStartTime.current) / 1000);
+			trackEvent(AnalyticsEvents.CSV_IMPORT_STEP_TRANSITION, {
+				from_step: currentStep,
+				to_step: step,
+				duration_seconds: durationSeconds,
+				source,
+			});
+			stepStartTime.current = Date.now();
 			router.replace(`/clients/import?step=${step}`);
 		},
-		[router],
+		[router, currentStep, source],
 	);
 
 	const goNext = useCallback(() => {
@@ -189,6 +213,12 @@ export function useImportWizard() {
 
 				setAnalysisError(errorMessage);
 
+				trackEvent(AnalyticsEvents.CSV_IMPORT_ERROR, {
+					error_type: 'analysis_failure',
+					error_message: errorMessage,
+					source,
+				});
+
 				toast.error(
 					isTimeout ? "Analysis Timed Out" : "Analysis Failed",
 					errorMessage,
@@ -199,7 +229,7 @@ export function useImportWizard() {
 				}));
 			}
 		},
-		[toast, navigateTo],
+		[toast, navigateTo, source],
 	);
 
 	const handleMappingChange = useCallback(
@@ -352,6 +382,15 @@ export function useImportWizard() {
 				items: compositeItems,
 			};
 
+			trackEvent(AnalyticsEvents.CSV_IMPORT_COMPLETED, {
+				total_rows: reviewRows.length,
+				imported_count: succeeded,
+				failed_count: failed,
+				skipped_count: skippedCount,
+				has_contacts: preBuiltRecords.some(r => r.contacts && r.contacts.length > 0),
+				source,
+			});
+
 			setState((prev) => ({
 				...prev,
 				isImporting: false,
@@ -381,6 +420,12 @@ export function useImportWizard() {
 		} catch (err) {
 			console.error("Error importing data:", err);
 
+			trackEvent(AnalyticsEvents.CSV_IMPORT_ERROR, {
+				error_type: 'batch_failure',
+				error_message: err instanceof Error ? err.message : String(err),
+				source,
+			});
+
 			setState((prev) => ({
 				...prev,
 				isImporting: false,
@@ -397,7 +442,7 @@ export function useImportWizard() {
 				err instanceof Error ? err.message : "Failed to import data",
 			);
 		}
-	}, [bulkCreateClients, toast]);
+	}, [bulkCreateClients, toast, source]);
 
 	return {
 		state,

@@ -42,6 +42,8 @@ export const AnalyticsEvents = {
 	// Feature usage
 	CSV_IMPORT_STARTED: "csv_import_started",
 	CSV_IMPORT_COMPLETED: "csv_import_completed",
+	CSV_IMPORT_STEP_TRANSITION: "csv_import_step_transition",
+	CSV_IMPORT_ERROR: "csv_import_error",
 	REPORT_GENERATED: "report_generated",
 	STRIPE_CONNECTED: "stripe_connected",
 
