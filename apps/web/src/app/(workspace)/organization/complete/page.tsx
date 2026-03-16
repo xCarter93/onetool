@@ -17,9 +17,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
-import { Users, Building2, Globe, Upload } from "lucide-react";
+import { Users, Building2, Globe, Upload, Check } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { StyledButton } from "@/components/ui/styled/styled-button";
+import { ImportWizard } from "../../clients/import/components/import-wizard";
 import Image from "next/image";
 
 interface FormData {
@@ -58,6 +59,14 @@ export default function CompleteOrganizationMetadata() {
 	const [error, setError] = useState<string | null>(null);
 	const [mounted, setMounted] = useState(false);
 	const [hasCreatedOrg, setHasCreatedOrg] = useState(false);
+
+	// Import wizard state machine: collapsed -> expanded -> completed
+	type ImportSectionState = "collapsed" | "expanded" | "completed";
+	const [importState, setImportState] =
+		useState<ImportSectionState>("collapsed");
+	const [importSummary, setImportSummary] = useState<{
+		count: number;
+	} | null>(null);
 
 	// Track the initial org ID when in "creating new" mode to detect when a new org is created
 	const initialOrgIdRef = React.useRef<string | null>(null);
@@ -1154,17 +1163,49 @@ export default function CompleteOrganizationMetadata() {
 				</div>
 			)}
 
-			{/* Import Clients -- simple link to wizard (Phase 5 will build embedded experience) */}
-			<div className="flex flex-col items-center gap-3 py-8">
-				<Upload className="h-8 w-8 text-muted-foreground" />
-				<p className="text-sm text-muted-foreground">Import your existing clients from a CSV file</p>
-				<StyledButton
-					intent="outline"
-					size="md"
-					onClick={() => router.push("/clients/import")}
-					label="Import Clients"
-				/>
-			</div>
+			{/* Import Clients -- collapsible embedded wizard */}
+			{hasPremiumAccess && importState === "collapsed" && (
+				<div className="border border-border/60 rounded-xl p-6 flex items-start gap-4 bg-muted/20">
+					<Upload className="h-5 w-5 text-muted-foreground mt-0.5" />
+					<div className="flex-1">
+						<p className="font-semibold text-foreground mb-1">
+							Import your existing clients
+						</p>
+						<p className="text-sm text-muted-foreground">
+							Upload a CSV file to import clients in bulk
+						</p>
+					</div>
+					<StyledButton
+						intent="outline"
+						size="sm"
+						onClick={() => setImportState("expanded")}
+						label="Import from CSV"
+					/>
+				</div>
+			)}
+
+			{hasPremiumAccess && importState === "expanded" && (
+				<div className="border border-border/60 rounded-xl p-4 bg-muted/10">
+					<ImportWizard
+						embedded
+						onComplete={(result) => {
+							setImportSummary({ count: result.successCount });
+							setImportState("completed");
+						}}
+					/>
+				</div>
+			)}
+
+			{hasPremiumAccess && importState === "completed" && (
+				<div className="flex items-center gap-2 py-4 px-6">
+					<Check className="h-5 w-5 text-green-500" />
+					<span className="text-sm text-foreground">
+						{importSummary?.count} client
+						{importSummary?.count === 1 ? "" : "s"} imported
+						successfully
+					</span>
+				</div>
+			)}
 
 			{/* Action Buttons */}
 			<div className="flex justify-between pt-6">
