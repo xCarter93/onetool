@@ -155,10 +155,8 @@ export default function LineChart6({
 
 	const activeMetricKey = selectedMetric ?? internalMetric;
 
-	const getMetricColor = useCallback(
-		(key: string) => chartConfig[key]?.color ?? "var(--chart-1)",
-		[chartConfig]
-	);
+	// Uniform chart color for all metrics
+	const uniformColor = "var(--chart-1)";
 
 	const activeMetric = useMemo(
 		() => metrics.find((metric) => metric.key === activeMetricKey),
@@ -169,7 +167,7 @@ export default function LineChart6({
 		() => dataByMetric[activeMetricKey] ?? [],
 		[dataByMetric, activeMetricKey]
 	);
-	const activeColor = getMetricColor(activeMetricKey);
+	const activeColor = uniformColor;
 
 	const { isFlatLine, flatValue } = useMemo(() => {
 		if (!chartData.length) return { isFlatLine: false, flatValue: undefined };
@@ -287,7 +285,6 @@ export default function LineChart6({
 									: ArrowRight;
 
 						const isActive = metric.key === activeMetricKey;
-						const metricColor = getMetricColor(metric.key);
 
 						return (
 							<button
@@ -298,7 +295,7 @@ export default function LineChart6({
 									"flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card/60 p-4 text-left transition-all duration-150 hover:border-primary/60 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
 									isActive && "bg-primary/5 shadow-sm"
 								)}
-								style={isActive ? { borderColor: metricColor } : undefined}
+								style={isActive ? { borderColor: uniformColor } : undefined}
 							>
 								<div className="flex w-full items-center justify-between gap-3">
 									<span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -336,9 +333,7 @@ export default function LineChart6({
 											<StatCardSparkline
 												data={sparklineData[metric.key]}
 												dataKey={metric.key}
-												color={
-													chartConfig[metric.key]?.color ?? "var(--chart-1)"
-												}
+												color={uniformColor}
 												isActive={isActive}
 												width={sparklineWidth}
 												height={28}

@@ -294,13 +294,8 @@ export default function HomeStatsReal() {
 		]
 	);
 
-	const sparklineData: MetricDataMap = useMemo(() => {
-		const result: MetricDataMap = {};
-		for (const [key, data] of Object.entries(dataByMetric)) {
-			result[key] = data.slice(-7);
-		}
-		return result;
-	}, [dataByMetric]);
+	// Sparklines use the same full-range data as the main chart
+	const sparklineData = dataByMetric;
 
 	const isAnyMetricLoading =
 		isClientsLoading ||
