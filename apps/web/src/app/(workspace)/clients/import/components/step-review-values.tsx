@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
@@ -49,7 +49,10 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
 	let icon: React.ReactNode;
 	let tooltipText: string | undefined;
 
-	if (item.success && !hasWarnings) {
+	if (item.skipped) {
+		icon = <MinusCircle className="w-4 h-4 text-muted-foreground" />;
+		tooltipText = "Skipped (duplicate)";
+	} else if (item.success && !hasWarnings) {
 		icon = <CheckCircle2 className="w-4 h-4 text-green-500" />;
 	} else if (item.success && hasWarnings) {
 		icon = <AlertTriangle className="w-4 h-4 text-yellow-500" />;
@@ -297,6 +300,13 @@ export function StepReviewValues({
 		}
 	}, []);
 
+	// Helper: check if a row's result is skipped in results mode
+	const isResultSkipped = useCallback((rowIndex: number): boolean => {
+		if (!importResult) return false;
+		const resultItem = importResult.items.find((i) => i.rowIndex === rowIndex);
+		return resultItem?.skipped === true;
+	}, [importResult]);
+
 	if (!parsedRows) {
 		return (
 			<div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
@@ -322,6 +332,11 @@ export function StepReviewValues({
 				errorCount={counts.errors}
 				duplicateCount={counts.duplicates}
 				skippedCount={skippedCount}
+				resultsMode={isResultsMode ? {
+					importedCount: importResult.successCount,
+					failedCount: importResult.failureCount,
+					skippedCount: importResult.skippedCount ?? 0,
+				} : undefined}
 			/>
 
 			{/* Filter tabs */}
@@ -335,7 +350,7 @@ export function StepReviewValues({
 			<div className="overflow-hidden rounded-lg border">
 				<div
 					ref={parentRef}
-					className="h-[500px] overflow-auto"
+					className={`h-[500px] overflow-auto ${isImporting ? "opacity-60 pointer-events-none" : ""}`}
 				>
 					{/* Sticky table header */}
 					<div className="sticky top-0 z-10 border-b min-w-max bg-muted/80 backdrop-blur-sm">
@@ -373,6 +388,7 @@ export function StepReviewValues({
 							const row = filteredRows[virtualRow.index];
 							const errorFields = getRowErrorFields(row);
 							const isSkipped = row.skipImport;
+							const resultSkipped = isResultsMode && isResultSkipped(row.rowIndex);
 
 							return (
 								<div
@@ -386,7 +402,7 @@ export function StepReviewValues({
 										transform: `translateY(${virtualRow.start}px)`,
 									}}
 									className={`flex min-w-max items-center border-b border-border/50 ${
-										isSkipped ? "opacity-50" : ""
+										isSkipped || resultSkipped ? "opacity-50" : ""
 									} ${
 										row.status === "error"
 											? "bg-red-50/50 dark:bg-red-950/10"
@@ -604,14 +620,31 @@ export function StepReviewValues({
 			)}
 
 			{isImporting && (
-				<div className="flex justify-center pt-2">
-					<StyledButton
-						intent="primary"
-						size="lg"
-						isLoading={true}
-						disabled
-						label="Importing..."
-					/>
+				<div className="flex flex-col items-center pt-4">
+					{importProgress ? (
+						<div className="space-y-2 w-full max-w-md mx-auto">
+							<div className="h-2 bg-muted rounded-full overflow-hidden">
+								<div
+									className="h-full bg-primary rounded-full transition-all duration-300"
+									style={{ width: `${importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0}%` }}
+								/>
+							</div>
+							<p className="text-sm text-center text-muted-foreground">
+								Importing {importProgress.current} of {importProgress.total} clients...
+							</p>
+							<p className="text-xs text-center text-muted-foreground">
+								{importProgress.succeeded} succeeded{" "}&middot;{" "}{importProgress.failed} failed
+							</p>
+						</div>
+					) : (
+						<StyledButton
+							intent="primary"
+							size="lg"
+							isLoading={true}
+							disabled
+							label="Importing..."
+						/>
+					)}
 				</div>
 			)}
 
