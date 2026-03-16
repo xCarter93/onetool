@@ -32,9 +32,9 @@
 
 ### Import Execution
 
-- [ ] **IMP-01**: System imports clients in batches with a visible progress indicator
-- [ ] **IMP-02**: System displays per-row results (success, failed with reason, skipped as duplicate)
-- [ ] **IMP-03**: System enforces plan limits in bulkCreate mutation (not just pre-check)
+- [x] **IMP-01**: System imports clients in batches with a visible progress indicator
+- [x] **IMP-02**: System displays per-row results (success, failed with reason, skipped as duplicate)
+- [x] **IMP-03**: System enforces plan limits in bulkCreate mutation (not just pre-check)
 - [ ] **IMP-04**: System creates client contacts from flat CSV columns after client records are created
 - [ ] **IMP-05**: New clientContacts.bulkCreate mutation handles batch contact creation
 
@@ -84,9 +84,9 @@
 | REV-03 | Phase 3 | Complete |
 | REV-04 | Phase 3 | Complete |
 | REV-05 | Phase 3 | Complete |
-| IMP-01 | Phase 4 | Pending |
-| IMP-02 | Phase 4 | Pending |
-| IMP-03 | Phase 4 | Pending |
+| IMP-01 | Phase 4 | Complete |
+| IMP-02 | Phase 4 | Complete |
+| IMP-03 | Phase 4 | Complete |
 | IMP-04 | Phase 5 | Pending |
 | IMP-05 | Phase 5 | Pending |
 | INT-01 | Phase 4 | Pending |
