@@ -6,6 +6,8 @@ import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import HomeTaskList from "@/app/(workspace)/home/components/home-task-list";
 import OnboardingBanner from "@/app/(workspace)/home/components/onboarding-banner";
 import { CalendarContainer } from "@/app/(workspace)/home/components/calendar/calendar-container";
+import { WeeklyAgenda } from "@/app/(workspace)/home/components/weekly-agenda";
+import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
@@ -230,6 +232,35 @@ export default function Page() {
 								>
 									<HomeStats />
 								</TourElement>
+							</div>
+						</motion.div>
+
+						{/* Animation Group 1.5: Weekly Calendar + Map - 50ms delay */}
+						<motion.div
+							className="border-t border-border pt-6 mt-6"
+							initial={{ opacity: 0, y: 10 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
+						>
+							<div className="flex flex-col lg:flex-row lg:gap-8">
+								{/* Weekly Calendar - 65% */}
+								<div className="lg:basis-[65%] flex-1 min-w-0">
+									<WeeklyAgenda
+										onEventClick={() => {
+											handleViewChange("calendar");
+										}}
+									/>
+								</div>
+
+								{/* Map - 35% */}
+								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0">
+									<h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-3">
+										Client Locations
+									</h3>
+									<div className="rounded-lg border border-border overflow-hidden h-[360px] lg:h-full lg:min-h-[360px]">
+										<ClientPropertiesMap />
+									</div>
+								</div>
 							</div>
 						</motion.div>
 
