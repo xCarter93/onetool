@@ -163,7 +163,7 @@ export function WeeklyAgenda({ onEventClick }: WeeklyAgendaProps) {
 			{/* Header */}
 			<div className="flex items-center justify-between mb-3 min-h-[2.75rem]">
 				<div>
-					<h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+					<h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
 						This Week
 					</h3>
 					<p className="text-xs text-muted-foreground mt-0.5">
@@ -239,11 +239,9 @@ export function WeeklyAgenda({ onEventClick }: WeeklyAgendaProps) {
 
 				{/* Empty state */}
 				{!isLoading && events.length === 0 && (
-					<div className="flex flex-col items-center justify-center py-12 gap-2">
-						<CalendarDays className="h-8 w-8 text-muted-foreground" />
-						<p className="text-sm font-medium">No events this week</p>
-						<p className="text-xs text-muted-foreground">
-							Nothing scheduled for {dateRangeString}.
+					<div className="flex items-center justify-center py-12">
+						<p className="text-sm text-muted-foreground">
+							No tasks scheduled this week
 						</p>
 					</div>
 				)}

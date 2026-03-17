@@ -7,6 +7,7 @@ import ActivityItem from "./activity-item";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaginationControls } from "@/components/ui/pagination";
+import { Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type TimeFilter = "1d" | "3d" | "7d" | "2w";
@@ -138,7 +139,8 @@ export default function ActivityFeed({
 							</div>
 						) : currentPageActivities.length === 0 ? (
 							<div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-								<p className="text-sm">No recent activity found</p>
+								<Activity className="h-6 w-6 mb-2 text-muted-foreground" />
+								<p className="text-sm font-semibold">No recent activity</p>
 								<p className="text-xs mt-1">
 									Activity will appear here as you work
 								</p>

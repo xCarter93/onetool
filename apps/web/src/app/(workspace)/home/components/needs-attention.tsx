@@ -191,7 +191,7 @@ function InvoiceRow({ invoice, clientName, isLast }: InvoiceRowProps) {
 						{clientName}
 					</span>
 				</div>
-				<span className="text-sm font-semibold shrink-0">
+				<span className="text-sm font-semibold shrink-0 max-w-[120px] truncate">
 					{formatCurrency(invoice.total)}
 				</span>
 			</div>
@@ -249,7 +249,7 @@ function QuoteRow({ quote, clientName, isLast }: QuoteRowProps) {
 						{clientName}
 					</span>
 				</div>
-				<span className="text-sm font-semibold shrink-0">
+				<span className="text-sm font-semibold shrink-0 max-w-[120px] truncate">
 					{formatCurrency(quote.total)}
 				</span>
 			</div>
@@ -309,7 +309,7 @@ function AttentionSection({
 					)}
 				/>
 				<span className="ml-2 mr-2 shrink-0">{icon}</span>
-				<span className="text-[13px] font-medium">{title}</span>
+				<span className="text-[13px] font-semibold">{title}</span>
 				<Badge variant="secondary" className="ml-2 text-[11px] px-1.5 py-0">
 					{count}
 				</Badge>
@@ -495,10 +495,10 @@ export function NeedsAttention() {
 		return (
 			<div className="space-y-4">
 				<div>
-					<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+					<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
 						Needs Attention
 					</p>
-					<p className="text-sm font-medium mt-1">
+					<p className="text-sm font-semibold mt-1">
 						Needs Attention (0)
 					</p>
 				</div>
@@ -509,7 +509,7 @@ export function NeedsAttention() {
 					<div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full">
 						<CheckCircle2 className="h-8 w-8 text-muted-foreground" />
 					</div>
-					<h3 className="text-lg font-medium mt-4">
+					<h3 className="text-lg font-semibold mt-4">
 						You&apos;re all caught up
 					</h3>
 					<p className="text-sm text-muted-foreground mt-1 max-w-sm text-center">
@@ -600,11 +600,11 @@ export function NeedsAttention() {
 		<div className="space-y-4">
 			{/* Header */}
 			<div>
-				<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+				<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
 					Needs Attention
 				</p>
 				<div className="flex items-center gap-2 mt-1">
-					<p className="text-sm font-medium">
+					<p className="text-sm font-semibold">
 						Needs Attention ({totalCount})
 					</p>
 					{totalOverdue > 0 && (

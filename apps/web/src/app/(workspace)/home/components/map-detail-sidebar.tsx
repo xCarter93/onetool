@@ -51,7 +51,7 @@ export function MapDetailSidebar({
 						</div>
 
 						{/* Address */}
-						<p className="text-sm font-medium text-foreground leading-snug mt-2">
+						<p className="text-sm font-semibold text-foreground leading-snug mt-2 line-clamp-2">
 							{property.address}
 						</p>
 
@@ -63,7 +63,7 @@ export function MapDetailSidebar({
 						)}
 
 						{/* Client name */}
-						<p className="text-xs text-muted-foreground mt-1">
+						<p className="text-xs text-muted-foreground mt-1 truncate">
 							{property.clientCompanyName}
 						</p>
 
