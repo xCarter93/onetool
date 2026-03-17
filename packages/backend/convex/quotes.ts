@@ -872,6 +872,28 @@ export const getStats = query({
 });
 
 /**
+ * Get quotes awaiting client signature (sent more than 3 days ago)
+ */
+export const getAwaitingSigning = query({
+	args: {},
+	handler: async (ctx) => {
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return emptyListResult();
+
+		const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+
+		const quotes = await ctx.db
+			.query("quotes")
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "sent"))
+			.collect();
+
+		return quotes.filter(
+			(quote) => quote.sentAt !== undefined && quote.sentAt < threeDaysAgo
+		);
+	},
+});
+
+/**
  * Get quotes expiring soon
  */
 export const getExpiringSoon = query({
