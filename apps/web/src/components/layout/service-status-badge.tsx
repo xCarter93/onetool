@@ -32,7 +32,7 @@ export function ServiceStatusBadge() {
 	return (
 		<Popover>
 			<PopoverTrigger asChild>
-				<button className="relative flex items-center gap-3 bg-card/30 dark:bg-card/10 backdrop-blur-sm border border-border/30 dark:border-border/20 rounded-full px-4 py-2 shadow-sm hover:bg-card/40 transition-colors cursor-pointer">
+				<button className="relative flex items-center gap-3 rounded-full px-4 py-2 transition-all duration-200 cursor-pointer hover:ring-2 hover:ring-primary/30">
 					<span
 						className={`relative inline-flex h-2.5 w-2.5 ${hasIssues ? "" : "animate-pulse"}`}
 					>

@@ -3,6 +3,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
+import {
+	createTestOrg,
+	createTestClient,
+	createTestQuote,
+	createTestIdentity,
+} from "./test.helpers";
 
 describe("Quotes", () => {
 	let t: ReturnType<typeof convexTest>;
@@ -367,6 +373,158 @@ describe("Quotes", () => {
 
 			const quote = await asUser.query(api.quotes.get, { id: quoteId });
 			expect(quote?.status).toBe("sent");
+		});
+	});
+
+	describe("getAwaitingSigning", () => {
+		const DAY_MS = 24 * 60 * 60 * 1000;
+
+		it("should return sent quotes with validUntil within 7 days", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				// Quote valid until 3 days from now
+				await ctx.db.insert("quotes", {
+					orgId,
+					clientId,
+					title: "Expiring Soon Quote",
+					status: "sent",
+					sentAt: Date.now() - 4 * DAY_MS,
+					validUntil: Date.now() + 3 * DAY_MS,
+					subtotal: 1000,
+					total: 1000,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(1);
+			expect(quotes[0].title).toBe("Expiring Soon Quote");
+		});
+
+		it("should return sent quotes with validUntil already passed", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				// Quote expired 2 days ago
+				await ctx.db.insert("quotes", {
+					orgId,
+					clientId,
+					title: "Expired Quote",
+					status: "sent",
+					sentAt: Date.now() - 10 * DAY_MS,
+					validUntil: Date.now() - 2 * DAY_MS,
+					subtotal: 1000,
+					total: 1000,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(1);
+			expect(quotes[0].title).toBe("Expired Quote");
+		});
+
+		it("should exclude sent quotes with validUntil more than 7 days away", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				// Quote valid until 14 days from now
+				await ctx.db.insert("quotes", {
+					orgId,
+					clientId,
+					title: "Far Future Quote",
+					status: "sent",
+					sentAt: Date.now() - 1 * DAY_MS,
+					validUntil: Date.now() + 14 * DAY_MS,
+					subtotal: 1000,
+					total: 1000,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(0);
+		});
+
+		it("should exclude sent quotes with no validUntil field", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				await ctx.db.insert("quotes", {
+					orgId,
+					clientId,
+					title: "No ValidUntil Quote",
+					status: "sent",
+					subtotal: 1000,
+					total: 1000,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(0);
+		});
+
+		it("should exclude quotes with non-sent statuses", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				for (const status of ["draft", "approved", "declined", "expired"] as const) {
+					await ctx.db.insert("quotes", {
+						orgId,
+						clientId,
+						title: `${status} Quote`,
+						status,
+						validUntil: Date.now() + 3 * DAY_MS,
+						subtotal: 1000,
+						total: 1000,
+					});
+				}
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(0);
+		});
+
+		it("should return empty array when no org context", async () => {
+			const quotes = await t.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toEqual([]);
+		});
+
+		it("should not return quotes from other organizations", async () => {
+			const { clerkUserId1, clerkOrgId1 } = await t.run(async (ctx) => {
+				const { orgId: orgId1, clerkUserId: clerkUserId1, clerkOrgId: clerkOrgId1 } =
+					await createTestOrg(ctx, { clerkUserId: "user_1", clerkOrgId: "org_1" });
+				const clientId1 = await createTestClient(ctx, orgId1);
+
+				const { orgId: orgId2 } = await createTestOrg(ctx, {
+					clerkUserId: "user_2",
+					clerkOrgId: "org_2",
+				});
+				const clientId2 = await createTestClient(ctx, orgId2);
+				await ctx.db.insert("quotes", {
+					orgId: orgId2,
+					clientId: clientId2,
+					title: "Other Org Quote",
+					status: "sent",
+					validUntil: Date.now() + 3 * DAY_MS,
+					subtotal: 1000,
+					total: 1000,
+				});
+
+				return { clerkUserId1, clerkOrgId1 };
+			});
+
+			const asUser1 = t.withIdentity(createTestIdentity(clerkUserId1, clerkOrgId1));
+			const quotes = await asUser1.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(0);
 		});
 	});
 

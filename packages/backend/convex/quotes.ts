@@ -872,6 +872,32 @@ export const getStats = query({
 });
 
 /**
+ * Get sent quotes expiring or already expired within the next 7 days
+ */
+export const getAwaitingSigning = query({
+	args: {},
+	handler: async (ctx) => {
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return [];
+
+		const now = Date.now();
+		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
+
+		// Get all sent quotes (non-completed, non-approved, non-declined, non-expired)
+		const quotes = await ctx.db
+			.query("quotes")
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "sent"))
+			.collect();
+
+		// Return quotes whose validUntil date is within the next 7 days (or already past)
+		return quotes.filter(
+			(quote) =>
+				quote.validUntil !== undefined && quote.validUntil <= sevenDaysFromNow
+		);
+	},
+});
+
+/**
  * Get quotes expiring soon
  */
 export const getExpiringSoon = query({

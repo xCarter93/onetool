@@ -247,6 +247,145 @@ describe("Invoices", () => {
 		});
 	});
 
+	describe("getOverdue", () => {
+		const DAY_MS = 24 * 60 * 60 * 1000;
+
+		it("should return sent invoices with unpaid payments due in the past", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
+					status: "sent",
+					dueDate: Date.now() - 7 * DAY_MS,
+				});
+				await ctx.db.insert("payments", {
+					orgId,
+					invoiceId,
+					paymentAmount: 1100,
+					dueDate: Date.now() - 7 * DAY_MS,
+					description: "Full Payment",
+					sortOrder: 0,
+					status: "pending",
+					publicToken: `tok-${Date.now()}`,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(1);
+			expect(invoices[0].status).toBe("sent");
+		});
+
+		it("should return sent invoices with unpaid payments due within 7 days", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
+					status: "sent",
+					dueDate: Date.now() + 3 * DAY_MS,
+				});
+				await ctx.db.insert("payments", {
+					orgId,
+					invoiceId,
+					paymentAmount: 1100,
+					dueDate: Date.now() + 3 * DAY_MS,
+					description: "Full Payment",
+					sortOrder: 0,
+					status: "pending",
+					publicToken: `tok-${Date.now()}`,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(1);
+		});
+
+		it("should exclude invoices where all payments are paid", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
+					status: "sent",
+					dueDate: Date.now() - 7 * DAY_MS,
+				});
+				await ctx.db.insert("payments", {
+					orgId,
+					invoiceId,
+					paymentAmount: 1100,
+					dueDate: Date.now() - 7 * DAY_MS,
+					description: "Full Payment",
+					sortOrder: 0,
+					status: "paid",
+					publicToken: `tok-${Date.now()}`,
+					paidAt: Date.now(),
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(0);
+		});
+
+		it("should exclude invoices with unpaid payments due more than 7 days out", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
+					status: "sent",
+					dueDate: Date.now() + 14 * DAY_MS,
+				});
+				await ctx.db.insert("payments", {
+					orgId,
+					invoiceId,
+					paymentAmount: 1100,
+					dueDate: Date.now() + 14 * DAY_MS,
+					description: "Full Payment",
+					sortOrder: 0,
+					status: "pending",
+					publicToken: `tok-${Date.now()}`,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(0);
+		});
+
+		it("should exclude invoices with status paid, draft, or cancelled", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const pastDue = Date.now() - 7 * DAY_MS;
+				for (const status of ["paid", "draft", "cancelled"] as const) {
+					const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
+						status,
+						dueDate: pastDue,
+					});
+					await ctx.db.insert("payments", {
+						orgId,
+						invoiceId,
+						paymentAmount: 1100,
+						dueDate: pastDue,
+						description: "Full Payment",
+						sortOrder: 0,
+						status: "pending",
+						publicToken: `tok-${Date.now()}-${status}`,
+					});
+				}
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(0);
+		});
+	});
+
 	describe("organization isolation", () => {
 		it("should not return invoices from other organizations", async () => {
 			const { clerkUserId1, clerkOrgId1, clerkOrgId2 } = await t.run(

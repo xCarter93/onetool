@@ -702,26 +702,72 @@ export const getStats = query({
 });
 
 /**
- * Get overdue invoices
+ * Get overdue or soon-due invoices for the Needs Attention widget.
+ * Returns invoices enriched with the earliest unpaid payment due date
+ * so the frontend can display accurate urgency labels.
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const getOverdue = query({
 	args: {},
-	handler: async (ctx): Promise<InvoiceDocument[]> => {
+	handler: async (ctx) => {
 		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!orgId) return [];
 
 		const now = Date.now();
+		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
 
+		// Get invoices that are sent or overdue
 		const invoices = await ctx.db
 			.query("invoices")
-			.withIndex("by_due_date", (q) =>
-				q.eq("orgId", orgId).lt("dueDate", now)
-			)
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "sent"))
 			.collect();
 
-		// Only return sent invoices that are overdue
-		return invoices.filter((invoice) => invoice.status === "sent");
+		const overdueInvoices = await ctx.db
+			.query("invoices")
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "overdue"))
+			.collect();
+
+		const allInvoices = [...invoices, ...overdueInvoices];
+
+		// Fetch all payments for this org in a single query to avoid N+1
+		const allPayments = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+
+		// Group payments by invoiceId
+		const paymentsByInvoice = new Map<string, typeof allPayments>();
+		for (const p of allPayments) {
+			const list = paymentsByInvoice.get(p.invoiceId) ?? [];
+			list.push(p);
+			paymentsByInvoice.set(p.invoiceId, list);
+		}
+
+		// Filter to invoices that need attention and enrich with earliest payment due date
+		const results: (InvoiceDocument & { earliestPaymentDueDate?: number })[] = [];
+		for (const invoice of allInvoices) {
+			const payments = paymentsByInvoice.get(invoice._id) ?? [];
+			if (payments.length === 0) {
+				// No payment records — include if invoice itself is past due
+				if (invoice.dueDate <= now) {
+					results.push(invoice);
+				}
+				continue;
+			}
+
+			const unpaidPayments = payments.filter(
+				(p) =>
+					p.status !== "paid" &&
+					p.status !== "cancelled" &&
+					p.dueDate <= sevenDaysFromNow
+			);
+
+			if (unpaidPayments.length > 0) {
+				const earliestDueDate = Math.min(...unpaidPayments.map((p) => p.dueDate));
+				results.push({ ...invoice, earliestPaymentDueDate: earliestDueDate });
+			}
+		}
+
+		return results;
 	},
 });
 

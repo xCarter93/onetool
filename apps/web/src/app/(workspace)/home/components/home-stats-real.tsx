@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCardSkeleton } from "@/components/stat-card-skeleton";
+import { ChartSkeleton } from "@/components/chart-skeleton";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import LineChart6, {
@@ -11,17 +14,6 @@ import LineChart6, {
 import type { ChartConfig } from "@/components/ui/chart";
 import { DateRange } from "react-day-picker";
 import { endOfDay, format, startOfDay, startOfMonth } from "date-fns";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { Map } from "lucide-react";
-import ClientPropertiesMap from "./client-properties-map";
-import {
-	TourElement,
-	HomeTour,
-	HOME_TOUR_CONTENT,
-	HomeTourContext,
-} from "@/components/tours";
-
-type ViewMode = "chart" | "map";
 
 type ChartInput = Array<{
 	date: string;
@@ -165,7 +157,6 @@ export default function HomeStatsReal() {
 		defaultRange
 	);
 	const [activeMetric, setActiveMetric] = useState<string>("clients");
-	const [viewMode, setViewMode] = useState<ViewMode>("chart");
 
 	const isLoading = homeStats === undefined;
 
@@ -290,6 +281,17 @@ export default function HomeStatsReal() {
 			tasksChartData,
 		]
 	);
+
+	// Sparklines use the same full-range data as the main chart
+	const sparklineData = dataByMetric;
+
+	const isAnyMetricLoading =
+		isClientsLoading ||
+		isProjectsLoading ||
+		isQuotesLoading ||
+		isInvoicesLoading ||
+		isRevenueLoading ||
+		isTasksLoading;
 
 	const chartConfig: ChartConfig = useMemo(
 		() => ({
@@ -449,37 +451,34 @@ export default function HomeStatsReal() {
 		[selectedRange]
 	);
 
-	const handleToggleView = useCallback(() => {
-		setViewMode((prev) => (prev === "chart" ? "map" : "chart"));
-	}, []);
-
-	const mapToggleButton = (
-		<TourElement<HomeTour>
-			TourContext={HomeTourContext}
-			stepId={HomeTour.MAP_TOGGLE}
-			title={HOME_TOUR_CONTENT[HomeTour.MAP_TOGGLE].title}
-			description={HOME_TOUR_CONTENT[HomeTour.MAP_TOGGLE].description}
-			tooltipPosition={HOME_TOUR_CONTENT[HomeTour.MAP_TOGGLE].tooltipPosition}
-		>
-			<StyledButton
-				intent="primary"
-				size="md"
-				onClick={handleToggleView}
-				icon={<Map className="h-4 w-4" />}
-				showArrow={false}
-				title="View properties on map"
-				className="rounded-full h-11 w-11 p-0 justify-center"
-			/>
-		</TourElement>
-	);
-
 	return (
 		<div className="mb-8 space-y-4">
-			{viewMode === "chart" ? (
+			{isAnyMetricLoading && !homeStats ? (
+				<div className="space-y-4">
+					{/* Skeleton header matching LineChart6 header */}
+					<div className="space-y-3 pb-4">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+							<div className="space-y-1">
+								<Skeleton className="h-3 w-16" />
+								<Skeleton className="h-5 w-40" />
+							</div>
+							<Skeleton className="h-9 w-56" />
+						</div>
+						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+							{Array.from({ length: 6 }).map((_, i) => (
+								<StatCardSkeleton key={i} />
+							))}
+						</div>
+					</div>
+					<ChartSkeleton />
+					<hr className="border-border/60" />
+				</div>
+			) : (
 				<LineChart6
 					metrics={metrics}
 					chartConfig={chartConfig}
 					dataByMetric={dataByMetric}
+					sparklineData={sparklineData}
 					selectedMetric={activeMetric}
 					onMetricChange={setActiveMetric}
 					title="Business Overview"
@@ -487,10 +486,7 @@ export default function HomeStatsReal() {
 					height={360}
 					dateRange={selectedRange}
 					onDateRangeChange={handleDateChange}
-					floatingAction={mapToggleButton}
 				/>
-			) : (
-				<ClientPropertiesMap onToggleView={handleToggleView} />
 			)}
 		</div>
 	);
