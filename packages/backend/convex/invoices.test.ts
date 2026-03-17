@@ -247,6 +247,82 @@ describe("Invoices", () => {
 		});
 	});
 
+	describe("getOverdue", () => {
+		it("should return invoices with status sent and dueDate in the past", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				await createTestInvoice(ctx, orgId, clientId, {
+					status: "sent",
+					dueDate: Date.now() - 7 * 24 * 60 * 60 * 1000, // 7 days ago
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(1);
+			expect(invoices[0].status).toBe("sent");
+		});
+
+		it("should return invoices with status overdue and dueDate in the past", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				await createTestInvoice(ctx, orgId, clientId, {
+					status: "overdue",
+					dueDate: Date.now() - 7 * 24 * 60 * 60 * 1000,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(1);
+			expect(invoices[0].status).toBe("overdue");
+		});
+
+		it("should exclude invoices with status paid, draft, or cancelled", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const pastDue = Date.now() - 7 * 24 * 60 * 60 * 1000;
+				for (const status of ["paid", "draft", "cancelled"] as const) {
+					await createTestInvoice(ctx, orgId, clientId, {
+						status,
+						dueDate: pastDue,
+					});
+				}
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(0);
+		});
+
+		it("should exclude invoices with dueDate in the future regardless of status", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const futureDue = Date.now() + 7 * 24 * 60 * 60 * 1000;
+				await createTestInvoice(ctx, orgId, clientId, {
+					status: "sent",
+					dueDate: futureDue,
+				});
+				await createTestInvoice(ctx, orgId, clientId, {
+					status: "overdue",
+					dueDate: futureDue,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoices = await asUser.query(api.invoices.getOverdue, {});
+			expect(invoices).toHaveLength(0);
+		});
+	});
+
 	describe("organization isolation", () => {
 		it("should not return invoices from other organizations", async () => {
 			const { clerkUserId1, clerkOrgId1, clerkOrgId2 } = await t.run(

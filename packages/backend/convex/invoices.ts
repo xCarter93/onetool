@@ -720,8 +720,10 @@ export const getOverdue = query({
 			)
 			.collect();
 
-		// Only return sent invoices that are overdue
-		return invoices.filter((invoice) => invoice.status === "sent");
+		// Return invoices with sent or overdue status that are past due
+		return invoices.filter(
+			(invoice) => invoice.status === "sent" || invoice.status === "overdue"
+		);
 	},
 });
 
