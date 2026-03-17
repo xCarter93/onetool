@@ -259,7 +259,7 @@ export default function Page() {
 											Client Locations
 										</h3>
 									</div>
-									<div className="rounded-lg border border-border overflow-hidden flex-1">
+									<div className="rounded-lg border border-border overflow-hidden flex-1 min-h-[300px]">
 										<ClientPropertiesMap />
 									</div>
 								</div>
