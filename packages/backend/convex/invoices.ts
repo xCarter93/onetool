@@ -702,13 +702,15 @@ export const getStats = query({
 });
 
 /**
- * Get overdue invoices
+ * Get overdue or soon-due invoices for the Needs Attention widget.
+ * Returns invoices enriched with the earliest unpaid payment due date
+ * so the frontend can display accurate urgency labels.
  */
 export const getOverdue = query({
 	args: {},
-	handler: async (ctx): Promise<InvoiceDocument[]> => {
+	handler: async (ctx) => {
 		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!orgId) return [];
 
 		const now = Date.now();
 		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
@@ -740,16 +742,32 @@ export const getOverdue = query({
 			paymentsByInvoice.set(p.invoiceId, list);
 		}
 
-		// Filter to invoices that have unpaid payments due within the next 7 days (or past due)
-		return allInvoices.filter((invoice) => {
+		// Filter to invoices that need attention and enrich with earliest payment due date
+		const results: (InvoiceDocument & { earliestPaymentDueDate?: number })[] = [];
+		for (const invoice of allInvoices) {
 			const payments = paymentsByInvoice.get(invoice._id) ?? [];
-			return payments.some(
+			if (payments.length === 0) {
+				// No payment records — include if invoice itself is past due
+				if (invoice.dueDate <= now) {
+					results.push(invoice);
+				}
+				continue;
+			}
+
+			const unpaidPayments = payments.filter(
 				(p) =>
 					p.status !== "paid" &&
 					p.status !== "cancelled" &&
 					p.dueDate <= sevenDaysFromNow
 			);
-		});
+
+			if (unpaidPayments.length > 0) {
+				const earliestDueDate = Math.min(...unpaidPayments.map((p) => p.dueDate));
+				results.push({ ...invoice, earliestPaymentDueDate: earliestDueDate });
+			}
+		}
+
+		return results;
 	},
 });
 

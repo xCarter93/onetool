@@ -872,7 +872,7 @@ export const getStats = query({
 });
 
 /**
- * Get quotes awaiting client signature (sent more than 3 days ago)
+ * Get sent quotes expiring or already expired within the next 7 days
  */
 export const getAwaitingSigning = query({
 	args: {},

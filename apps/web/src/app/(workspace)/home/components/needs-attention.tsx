@@ -157,13 +157,14 @@ function TaskRow({
 }
 
 interface InvoiceRowProps {
-	invoice: Doc<"invoices">;
+	invoice: Doc<"invoices"> & { earliestPaymentDueDate?: number };
 	clientName: string;
 	isLast: boolean;
 }
 
 function InvoiceRow({ invoice, clientName, isLast }: InvoiceRowProps) {
-	const daysUntilDue = getDaysUntil(invoice.dueDate);
+	const effectiveDueDate = invoice.earliestPaymentDueDate ?? invoice.dueDate;
+	const daysUntilDue = getDaysUntil(effectiveDueDate);
 	const isOverdue = daysUntilDue < 0;
 	const daysOverdue = Math.abs(daysUntilDue);
 
