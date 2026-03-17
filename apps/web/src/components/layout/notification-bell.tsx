@@ -17,7 +17,6 @@ import {
 	truncateText,
 	stripAuthorIdFromMessage,
 } from "@/lib/notification-utils";
-import { motion } from "motion/react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 export function NotificationBell() {
@@ -59,11 +58,8 @@ export function NotificationBell() {
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<motion.button
-					whileHover={{ scale: 1.05 }}
-					whileTap={{ scale: 0.95 }}
-					transition={{ type: "spring", stiffness: 400, damping: 17 }}
-					className="relative group bg-card/50 hover:bg-card/80 dark:bg-card/20 dark:hover:bg-card/40 border border-border/40 dark:border-border/20 hover:border-border/60 dark:hover:border-border/40 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all duration-200 ring-0 hover:ring-2 hover:ring-primary/20 dark:hover:ring-primary/30"
+				<button
+					className="relative group rounded-xl p-2.5 transition-all duration-200 hover:ring-2 hover:ring-primary/30"
 				>
 					<Bell className="h-5 w-5 text-gray-700 dark:text-gray-300" />
 					{unreadCount > 0 && (
@@ -71,7 +67,7 @@ export function NotificationBell() {
 							{unreadCount > 9 ? "9+" : unreadCount}
 						</span>
 					)}
-				</motion.button>
+				</button>
 			</PopoverTrigger>
 			<PopoverContent
 				align="end"
