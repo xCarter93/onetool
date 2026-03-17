@@ -5,7 +5,12 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
 import { SettingsPopover } from "@/components/layout/settings-popover";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import {
+	SidebarInset,
+	SidebarProvider,
+	SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Search, Plus } from "lucide-react";
 import {
 	TourContextProvider,
 	HomeTour,
@@ -36,7 +41,7 @@ function ConvexCorner({
 	className?: string;
 }) {
 	const s = size;
-	const k = 0.3;
+	const k = 0.45;
 
 	const d =
 		corner === "bottom-right"
@@ -94,6 +99,42 @@ function NotchedItem({
 	);
 }
 
+/**
+ * Floating pill-shaped header for mobile viewports.
+ * Two pill groups: left (sidebar toggle, search, plus) and right (notifications, settings).
+ * Only visible below the md breakpoint.
+ */
+function MobileFloatingHeader() {
+	return (
+		<div className="fixed top-2 left-3 right-3 z-40 flex justify-between pointer-events-none md:hidden">
+			{/* Left pill — sidebar toggle, search, plus */}
+			<div className="pointer-events-auto flex items-center gap-1 bg-sidebar/80 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm">
+				<SidebarTrigger className="h-7 w-7 text-muted-foreground" />
+				<button
+					type="button"
+					className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+					aria-label="Search"
+				>
+					<Search className="h-4 w-4" />
+				</button>
+				<button
+					type="button"
+					className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+					aria-label="Add new"
+				>
+					<Plus className="h-4 w-4" />
+				</button>
+			</div>
+
+			{/* Right pill — notifications, settings */}
+			<div className="pointer-events-auto flex items-center gap-1 bg-sidebar/80 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm">
+				<NotificationBell />
+				<SettingsPopover />
+			</div>
+		</div>
+	);
+}
+
 export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 	return (
 		<TourContextProvider<HomeTour>
@@ -105,8 +146,11 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 				<SidebarInset className="min-w-0">
 					{/* Thin navbar with notched items */}
 					<header className="sticky top-0 z-30">
-						{/* Thin navbar rail — notched items hang below */}
-						<div className="relative flex items-start justify-between bg-sidebar pt-2 h-5">
+						{/* Mobile floating pill header */}
+						<MobileFloatingHeader />
+
+						{/* Thin navbar rail — notched items hang below (desktop only) */}
+						<div className="relative hidden md:flex items-start justify-between bg-sidebar pt-2 h-5">
 							{/* Sidebar to header transition curve */}
 							<ConvexCorner
 								corner="bottom-left"
