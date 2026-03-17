@@ -267,7 +267,7 @@ export default function Page() {
 											Client Locations
 										</h3>
 									</div>
-									<div className="relative rounded-lg border border-border overflow-hidden flex-1 min-h-[300px]">
+									<div className="flex-1 min-h-[300px] [&>.tour-element-wrapper]:h-full">
 										<TourElement<HomeTour>
 											TourContext={HomeTourContext}
 											stepId={HomeTour.CLIENT_MAP}
@@ -275,7 +275,9 @@ export default function Page() {
 											description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
 											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
 										>
-											<ClientPropertiesMap />
+											<div className="relative rounded-lg border border-border overflow-hidden h-full">
+												<ClientPropertiesMap />
+											</div>
 										</TourElement>
 									</div>
 								</div>
