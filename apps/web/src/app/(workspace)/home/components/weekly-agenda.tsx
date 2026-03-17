@@ -11,7 +11,7 @@ import {
 	startOfDay,
 	isToday,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
 	getWeekDays,
 	getViewDateRange,
