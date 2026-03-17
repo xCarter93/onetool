@@ -249,7 +249,7 @@ export default function LineChart6({
 
 				<div
 					ref={gridRef}
-					className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+					className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 items-stretch"
 				>
 					{metrics.map((metric) => {
 						const prev = metric.previousValue ?? 0;
@@ -292,7 +292,7 @@ export default function LineChart6({
 								type="button"
 								onClick={() => handleMetricChange(metric.key)}
 								className={cn(
-									"flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card/60 p-4 text-left transition-all duration-150 hover:border-primary/60 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+									"flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card/60 p-4 text-left transition-all duration-150 hover:border-primary/60 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 h-full",
 									isActive && "bg-primary/5 shadow-sm"
 								)}
 								style={isActive ? { borderColor: uniformColor } : undefined}
@@ -308,8 +308,8 @@ export default function LineChart6({
 											: `${Math.abs(computedChange).toFixed(1)}%`}
 									</StyledBadge>
 								</div>
-								<div className="flex w-full flex-col gap-1">
-									<span className="text-2xl font-semibold leading-none text-foreground">
+								<div className="flex w-full flex-col gap-1 flex-1">
+									<span className="text-2xl font-semibold leading-none text-foreground tabular-nums">
 										{metric.isLoading ? (
 											"..."
 										) : (
@@ -329,7 +329,7 @@ export default function LineChart6({
 								</div>
 								{sparklineData?.[metric.key] &&
 									sparklineData[metric.key].length > 0 && (
-										<div className="mt-1 w-full">
+										<div className="mt-auto w-full">
 											<StatCardSparkline
 												data={sparklineData[metric.key]}
 												dataKey={metric.key}
