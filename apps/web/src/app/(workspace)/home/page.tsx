@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import ActivityFeed from "@/app/(workspace)/home/components/activity-feed";
 import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
-import HomeTaskList from "@/app/(workspace)/home/components/home-task-list";
+import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
 import OnboardingBanner from "@/app/(workspace)/home/components/onboarding-banner";
 import { CalendarContainer } from "@/app/(workspace)/home/components/calendar/calendar-container";
 import { WeeklyAgenda } from "@/app/(workspace)/home/components/weekly-agenda";
@@ -306,13 +306,13 @@ export default function Page() {
 											HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition
 										}
 									>
-										<HomeTaskList />
+										<NeedsAttention />
 									</TourElement>
 								</div>
 							</div>
 
 							{/* Activity Sidebar - single instance, CSS responsive */}
-							<div className="lg:w-96 shrink-0 mt-6 lg:mt-0">
+							<div className="lg:w-[450px] shrink-0 mt-6 lg:mt-0">
 								<div className="sticky top-24">
 									<TourElement<HomeTour>
 										TourContext={HomeTourContext}
