@@ -242,7 +242,7 @@ export default function Page() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
 						>
-							<div className="flex flex-col lg:flex-row lg:gap-8">
+							<div className="flex flex-col lg:flex-row lg:items-stretch lg:gap-8">
 								{/* Weekly Calendar - 65% */}
 								<div className="lg:basis-[65%] flex-1 min-w-0">
 									<WeeklyAgenda
@@ -254,10 +254,12 @@ export default function Page() {
 
 								{/* Map - 35% */}
 								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0 flex flex-col">
-									<h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-3">
-										Client Locations
-									</h3>
-									<div className="rounded-lg border border-border overflow-hidden flex-1 min-h-[360px]">
+									<div className="flex items-center justify-between mb-3 min-h-[2.75rem]">
+										<h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+											Client Locations
+										</h3>
+									</div>
+									<div className="rounded-lg border border-border overflow-hidden flex-1">
 										<ClientPropertiesMap />
 									</div>
 								</div>
