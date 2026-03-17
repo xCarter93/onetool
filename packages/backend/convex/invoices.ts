@@ -704,7 +704,6 @@ export const getStats = query({
 /**
  * Get overdue invoices
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const getOverdue = query({
 	args: {},
 	handler: async (ctx): Promise<InvoiceDocument[]> => {
@@ -727,27 +726,30 @@ export const getOverdue = query({
 
 		const allInvoices = [...invoices, ...overdueInvoices];
 
-		// Filter to invoices that have unpaid payments due within the next 7 days (or past due)
-		const results: InvoiceDocument[] = [];
-		for (const invoice of allInvoices) {
-			const payments = await ctx.db
-				.query("payments")
-				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
-				.collect();
+		// Fetch all payments for this org in a single query to avoid N+1
+		const allPayments = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
 
-			const hasUpcomingUnpaid = payments.some(
+		// Group payments by invoiceId
+		const paymentsByInvoice = new Map<string, typeof allPayments>();
+		for (const p of allPayments) {
+			const list = paymentsByInvoice.get(p.invoiceId) ?? [];
+			list.push(p);
+			paymentsByInvoice.set(p.invoiceId, list);
+		}
+
+		// Filter to invoices that have unpaid payments due within the next 7 days (or past due)
+		return allInvoices.filter((invoice) => {
+			const payments = paymentsByInvoice.get(invoice._id) ?? [];
+			return payments.some(
 				(p) =>
 					p.status !== "paid" &&
 					p.status !== "cancelled" &&
 					p.dueDate <= sevenDaysFromNow
 			);
-
-			if (hasUpcomingUnpaid) {
-				results.push(invoice);
-			}
-		}
-
-		return results;
+		});
 	},
 });
 

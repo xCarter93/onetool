@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { AreaChart, Area } from "recharts";
 
 interface StatCardSparklineProps {
@@ -22,7 +22,8 @@ export function StatCardSparkline({
 }: StatCardSparklineProps) {
 	const strokeColor = isActive ? color : "var(--muted-foreground)";
 	const strokeOpacity = isActive ? 1 : 0.2;
-	const gradientId = `sparkline-gradient-${dataKey}`;
+	const uid = useId();
+	const gradientId = `sparkline-gradient-${uid}-${dataKey}`;
 
 	const isFlatLine = useMemo(() => {
 		if (!data.length) return false;
