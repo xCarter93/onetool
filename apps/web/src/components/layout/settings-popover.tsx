@@ -17,7 +17,7 @@ export function SettingsPopover() {
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<button
-					className="flex items-center justify-center p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+					className="flex items-center justify-center p-2 rounded-lg text-muted-foreground hover:text-foreground transition-all duration-200 hover:ring-2 hover:ring-primary/30"
 					aria-label="Settings"
 				>
 					<Settings className="h-4.5 w-4.5" />

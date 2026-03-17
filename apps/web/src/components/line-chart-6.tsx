@@ -1,8 +1,14 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { StyledBadge } from "@/components/ui/styled/styled-badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
 	ChartConfig,
 	ChartContainer,
@@ -13,6 +19,8 @@ import { DateRange } from "react-day-picker";
 import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
 import { Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
+import { AnimatedNumber } from "./animated-number";
+import { StatCardSparkline } from "./stat-card-sparkline";
 
 const parseLocalDate = (dateString: string) =>
 	new Date(`${dateString}T00:00:00`);
@@ -61,6 +69,8 @@ interface MetricChartProps {
 	onDateRangeChange?: (range?: DateRange) => void;
 	/** Optional floating action button rendered in bottom-right of card */
 	floatingAction?: React.ReactNode;
+	/** Last 7 data points per metric for sparkline rendering */
+	sparklineData?: MetricDataMap;
 }
 
 const CustomTooltip = ({ active, payload, metrics }: TooltipProps) => {
@@ -70,7 +80,7 @@ const CustomTooltip = ({ active, payload, metrics }: TooltipProps) => {
 
 		if (metric) {
 			return (
-				<div className="min-w-[140px] rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sm shadow-black/5 opacity-100">
+				<div className="min-w-[140px] rounded-lg border bg-popover p-3 shadow-sm shadow-black/5 opacity-100">
 					<div className="flex items-center gap-2 text-sm">
 						<div
 							className="size-1.5 rounded-full"
@@ -101,16 +111,36 @@ export default function LineChart6({
 	dateRange,
 	onDateRangeChange,
 	floatingAction,
+	sparklineData,
 }: MetricChartProps) {
 	const firstMetricKey = metrics[0]?.key ?? "";
 	const [internalMetric, setInternalMetric] = useState<string>(
 		selectedMetric ?? firstMetricKey
 	);
 
-	const projectsBaseColor =
-		chartConfig.projects?.color ??
-		chartConfig["projects"]?.color ??
-		"var(--chart-2)";
+	// Track whether the initial animation has completed
+	const hasAnimated = useRef(false);
+	useEffect(() => {
+		hasAnimated.current = true;
+	}, []);
+
+	// Measure sparkline width from first stat card button
+	const gridRef = useRef<HTMLDivElement>(null);
+	const [sparklineWidth, setSparklineWidth] = useState(0);
+	useLayoutEffect(() => {
+		const grid = gridRef.current;
+		if (!grid) return;
+		const measure = () => {
+			const firstButton = grid.querySelector("button");
+			if (firstButton) {
+				setSparklineWidth(firstButton.clientWidth - 32); // subtract p-4 padding (16px each side)
+			}
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(grid);
+		return () => observer.disconnect();
+	}, []);
 
 	useEffect(() => {
 		if (selectedMetric && selectedMetric !== internalMetric) {
@@ -125,7 +155,8 @@ export default function LineChart6({
 
 	const activeMetricKey = selectedMetric ?? internalMetric;
 
-	const getMetricColor = () => projectsBaseColor;
+	// Uniform chart color for all metrics
+	const uniformColor = "var(--chart-1)";
 
 	const activeMetric = useMemo(
 		() => metrics.find((metric) => metric.key === activeMetricKey),
@@ -136,7 +167,7 @@ export default function LineChart6({
 		() => dataByMetric[activeMetricKey] ?? [],
 		[dataByMetric, activeMetricKey]
 	);
-	const activeColor = getMetricColor();
+	const activeColor = uniformColor;
 
 	const { isFlatLine, flatValue } = useMemo(() => {
 		if (!chartData.length) return { isFlatLine: false, flatValue: undefined };
@@ -195,13 +226,8 @@ export default function LineChart6({
 	};
 
 	return (
-		<Card
-			className={cn(
-				"relative w-full border border-border/60 bg-card/70 shadow-sm ring-1 ring-border/40 backdrop-blur-sm",
-				className
-			)}
-		>
-			<CardHeader className="space-y-3 pb-4">
+		<div className={cn("relative w-full", className)}>
+			<div className="space-y-3 pb-4">
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
 					<div className="space-y-1">
 						<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -221,7 +247,10 @@ export default function LineChart6({
 					</div>
 				</div>
 
-				<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+				<div
+					ref={gridRef}
+					className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 items-stretch"
+				>
 					{metrics.map((metric) => {
 						const prev = metric.previousValue ?? 0;
 						const seriesChange = getSeriesChangePercent(metric.key);
@@ -256,10 +285,6 @@ export default function LineChart6({
 									: ArrowRight;
 
 						const isActive = metric.key === activeMetricKey;
-						const metricColor = getMetricColor();
-						const formattedValue = metric.isLoading
-							? "..."
-							: metric.format(metric.value ?? 0);
 
 						return (
 							<button
@@ -267,10 +292,10 @@ export default function LineChart6({
 								type="button"
 								onClick={() => handleMetricChange(metric.key)}
 								className={cn(
-									"flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card/60 p-4 text-left transition-all duration-150 hover:border-primary/60 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+									"flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card/60 p-4 text-left transition-all duration-150 hover:border-primary/60 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 h-full",
 									isActive && "bg-primary/5 shadow-sm"
 								)}
-								style={isActive ? { borderColor: metricColor } : undefined}
+								style={isActive ? { borderColor: uniformColor } : undefined}
 							>
 								<div className="flex w-full items-center justify-between gap-3">
 									<span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -283,9 +308,18 @@ export default function LineChart6({
 											: `${Math.abs(computedChange).toFixed(1)}%`}
 									</StyledBadge>
 								</div>
-								<div className="flex w-full flex-col gap-1">
-									<span className="text-2xl font-bold leading-none text-foreground">
-										{formattedValue}
+								<div className="flex w-full flex-col gap-1 flex-1">
+									<span className="text-2xl font-semibold leading-none text-foreground tabular-nums">
+										{metric.isLoading ? (
+											"..."
+										) : (
+											<AnimatedNumber
+												value={metric.value ?? 0}
+												format={metric.format}
+												duration={hasAnimated.current ? 400 : 600}
+												delay={hasAnimated.current ? 0 : 300}
+											/>
+										)}
 									</span>
 									{metric.subtitle ? (
 										<span className="text-xs text-muted-foreground">
@@ -293,13 +327,26 @@ export default function LineChart6({
 										</span>
 									) : null}
 								</div>
+								{sparklineData?.[metric.key] &&
+									sparklineData[metric.key].length > 0 && (
+										<div className="mt-auto w-full">
+											<StatCardSparkline
+												data={sparklineData[metric.key]}
+												dataKey={metric.key}
+												color={uniformColor}
+												isActive={isActive}
+												width={sparklineWidth}
+												height={28}
+											/>
+										</div>
+									)}
 							</button>
 						);
 					})}
 				</div>
-			</CardHeader>
+			</div>
 
-			<CardContent className="pt-0">
+			<div className="pt-0">
 				<ChartContainer
 					config={chartConfig}
 					className="w-full overflow-visible aspect-auto [&_.recharts-curve.recharts-tooltip-cursor]:stroke-initial"
@@ -373,7 +420,7 @@ export default function LineChart6({
 
 						<ChartTooltip
 							content={<CustomTooltip metrics={metrics} />}
-							cursor={{ strokeDasharray: "3 3", stroke: "#9ca3af" }}
+							cursor={{ strokeDasharray: "3 3", stroke: "var(--muted-foreground)" }}
 						/>
 
 						<rect
@@ -411,12 +458,14 @@ export default function LineChart6({
 						/>
 					</LineChart>
 				</ChartContainer>
-			</CardContent>
+			</div>
 
 			{/* Floating Action Button */}
 			{floatingAction && (
 				<div className="absolute bottom-4 left-4 z-10">{floatingAction}</div>
 			)}
-		</Card>
+
+			<hr className="border-border/60" />
+		</div>
 	);
 }

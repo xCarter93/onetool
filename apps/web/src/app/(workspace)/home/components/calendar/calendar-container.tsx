@@ -176,14 +176,14 @@ export function CalendarContainer() {
 				<div className="flex items-center justify-between">
 					{/* Title and Navigation */}
 					<div className="flex items-center gap-4">
-						<h1 className="text-2xl font-bold text-foreground">{getTitle()}</h1>
+						<h1 className="text-2xl font-semibold text-foreground">{getTitle()}</h1>
 						<ButtonGroup>
 							<button
 								onClick={handlePrevious}
 								aria-label="Previous"
 								className={cn(
 									navButtonClass,
-									"text-gray-600 hover:text-gray-700 bg-white hover:bg-gray-50 ring-gray-200 hover:ring-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:bg-gray-900 dark:hover:bg-gray-800 dark:ring-gray-700 dark:hover:ring-gray-600"
+									"text-muted-foreground hover:text-foreground bg-card hover:bg-muted ring-border hover:ring-border"
 								)}
 							>
 								<ChevronLeft className="w-4 h-4" />
@@ -192,7 +192,7 @@ export function CalendarContainer() {
 								onClick={handleToday}
 								className={cn(
 									navButtonClass,
-									"text-gray-600 hover:text-gray-700 bg-white hover:bg-gray-50 ring-gray-200 hover:ring-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:bg-gray-900 dark:hover:bg-gray-800 dark:ring-gray-700 dark:hover:ring-gray-600"
+									"text-muted-foreground hover:text-foreground bg-card hover:bg-muted ring-border hover:ring-border"
 								)}
 							>
 								Today
@@ -202,7 +202,7 @@ export function CalendarContainer() {
 								aria-label="Next"
 								className={cn(
 									navButtonClass,
-									"text-gray-600 hover:text-gray-700 bg-white hover:bg-gray-50 ring-gray-200 hover:ring-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:bg-gray-900 dark:hover:bg-gray-800 dark:ring-gray-700 dark:hover:ring-gray-600"
+									"text-muted-foreground hover:text-foreground bg-card hover:bg-muted ring-border hover:ring-border"
 								)}
 							>
 								<ChevronRight className="w-4 h-4" />
@@ -218,7 +218,7 @@ export function CalendarContainer() {
 								navButtonClass,
 								view === "month"
 									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
 							)}
 						>
 							<CalendarRange className="w-4 h-4" />
@@ -230,7 +230,7 @@ export function CalendarContainer() {
 								navButtonClass,
 								view === "week"
 									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
 							)}
 						>
 							<CalendarDays className="w-4 h-4" />
@@ -242,7 +242,7 @@ export function CalendarContainer() {
 								navButtonClass,
 								view === "day"
 									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
+									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
 							)}
 						>
 							<Calendar className="w-4 h-4" />
