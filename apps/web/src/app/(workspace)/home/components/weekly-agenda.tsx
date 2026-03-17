@@ -189,7 +189,7 @@ export function WeeklyAgenda({ onEventClick }: WeeklyAgendaProps) {
 			</div>
 
 			{/* Content */}
-			<div className="border border-border rounded-lg p-4 flex-1">
+			<div className="border border-border rounded-lg p-4 flex-1 min-h-[360px]">
 				{/* Day columns header */}
 				<div className="grid grid-cols-7 gap-0 mb-3">
 					{weekDays.map((day) => {
