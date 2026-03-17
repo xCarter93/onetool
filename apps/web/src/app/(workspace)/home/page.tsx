@@ -267,7 +267,7 @@ export default function Page() {
 											Client Locations
 										</h3>
 									</div>
-									<div className="flex-1 min-h-[300px] [&>.tour-element-wrapper]:h-full">
+									<div className="h-[300px] lg:flex-1 lg:h-auto lg:min-h-[300px] [&>.tour-element-wrapper]:h-full">
 										<TourElement<HomeTour>
 											TourContext={HomeTourContext}
 											stepId={HomeTour.CLIENT_MAP}
