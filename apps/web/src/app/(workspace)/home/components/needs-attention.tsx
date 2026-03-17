@@ -7,7 +7,6 @@ import { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TaskSheet } from "@/components/shared/task-sheet";
 import {
 	Collapsible,
 	CollapsibleTrigger,
@@ -15,7 +14,6 @@ import {
 } from "@/components/ui/collapsible";
 import {
 	ChevronRight,
-	Plus,
 	Circle,
 	CheckCircle2,
 	AlertTriangle,
@@ -406,30 +404,13 @@ export function NeedsAttention() {
 	if (totalCount === 0) {
 		return (
 			<div className="space-y-4">
-				<div className="flex items-center justify-between">
-					<div>
-						<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-							Needs Attention
-						</p>
-						<p className="text-sm font-medium mt-1">
-							Needs Attention (0)
-						</p>
-					</div>
-					<TaskSheet
-						mode="create"
-						trigger={
-							<div className="group inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-all duration-200">
-								<Plus className="h-4 w-4" />
-								Add Task
-								<span
-									aria-hidden="true"
-									className="group-hover:translate-x-1 transition-transform duration-200"
-								>
-									&rarr;
-								</span>
-							</div>
-						}
-					/>
+				<div>
+					<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+						Needs Attention
+					</p>
+					<p className="text-sm font-medium mt-1">
+						Needs Attention (0)
+					</p>
 				</div>
 				<div
 					role="status"
@@ -453,42 +434,23 @@ export function NeedsAttention() {
 	return (
 		<div className="space-y-4">
 			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<div>
-						<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-							Needs Attention
-						</p>
-						<div className="flex items-center gap-2 mt-1">
-							<p className="text-sm font-medium">
-								Needs Attention ({totalCount})
-							</p>
-							{totalOverdueForBadge > 0 && (
-								<Badge
-									className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-									aria-label={`${totalOverdueForBadge} overdue items`}
-								>
-									{totalOverdueForBadge} overdue
-								</Badge>
-							)}
-						</div>
-					</div>
+			<div>
+				<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+					Needs Attention
+				</p>
+				<div className="flex items-center gap-2 mt-1">
+					<p className="text-sm font-medium">
+						Needs Attention ({totalCount})
+					</p>
+					{totalOverdueForBadge > 0 && (
+						<Badge
+							className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+							aria-label={`${totalOverdueForBadge} overdue items`}
+						>
+							{totalOverdueForBadge} overdue
+						</Badge>
+					)}
 				</div>
-				<TaskSheet
-					mode="create"
-					trigger={
-						<div className="group inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-all duration-200">
-							<Plus className="h-4 w-4" />
-							Add Task
-							<span
-								aria-hidden="true"
-								className="group-hover:translate-x-1 transition-transform duration-200"
-							>
-								&rarr;
-							</span>
-						</div>
-					}
-				/>
 			</div>
 
 			{/* Sections */}

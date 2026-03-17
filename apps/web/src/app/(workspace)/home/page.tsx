@@ -284,50 +284,51 @@ export default function Page() {
 							</div>
 						</motion.div>
 
-						{/* Animation Group 2: Main + Sidebar - 100ms delay */}
+						{/* Animation Group 2: Needs Attention + Activity Feed - 100ms delay */}
 						<motion.div
-							className="flex flex-col lg:flex-row lg:gap-8 mt-6"
+							className="border-t border-border pt-6 mt-6"
 							initial={{ opacity: 0, y: 10 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.3, ease: "easeOut", delay: 0.1 }}
 						>
-							{/* Main Content Area */}
-							<div className="flex-1 min-w-0">
-								{/* Tasks Section - divider, not card */}
-								<div className="border-t border-border pt-6">
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.TASKS}
-										title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
-										description={
-											HOME_TOUR_CONTENT[HomeTour.TASKS].description
-										}
-										tooltipPosition={
-											HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition
-										}
-									>
-										<NeedsAttention />
-									</TourElement>
+							<div className="flex flex-col lg:flex-row lg:items-stretch lg:gap-8">
+								{/* Needs Attention - 65% */}
+								<div className="lg:basis-[65%] flex-1 min-w-0">
+									<div className="rounded-lg border border-border p-4">
+										<TourElement<HomeTour>
+											TourContext={HomeTourContext}
+											stepId={HomeTour.TASKS}
+											title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
+											description={
+												HOME_TOUR_CONTENT[HomeTour.TASKS].description
+											}
+											tooltipPosition={
+												HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition
+											}
+										>
+											<NeedsAttention />
+										</TourElement>
+									</div>
 								</div>
-							</div>
 
-							{/* Activity Sidebar - single instance, CSS responsive */}
-							<div className="lg:w-[450px] shrink-0 mt-6 lg:mt-0">
-								<div className="sticky top-24">
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.ACTIVITY_FEED}
-										title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
-										description={
-											HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description
-										}
-										tooltipPosition={
-											HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED]
-												.tooltipPosition
-										}
-									>
-										<ActivityFeed />
-									</TourElement>
+								{/* Activity Feed - 35% */}
+								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0 flex flex-col">
+									<div className="rounded-lg border border-border p-4 flex-1">
+										<TourElement<HomeTour>
+											TourContext={HomeTourContext}
+											stepId={HomeTour.ACTIVITY_FEED}
+											title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
+											description={
+												HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description
+											}
+											tooltipPosition={
+												HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED]
+													.tooltipPosition
+											}
+										>
+											<ActivityFeed />
+										</TourElement>
+									</div>
 								</div>
 							</div>
 						</motion.div>

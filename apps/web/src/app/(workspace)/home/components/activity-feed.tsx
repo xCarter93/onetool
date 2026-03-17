@@ -71,7 +71,7 @@ export default function ActivityFeed({
 	};
 
 	return (
-		<div className="border-t border-border pt-6">
+		<div>
 			<div className="space-y-3">
 					{/* Compact Activity Feed Header */}
 					<div className="flex items-start justify-between mb-8">
