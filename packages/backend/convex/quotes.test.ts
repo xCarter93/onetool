@@ -377,19 +377,20 @@ describe("Quotes", () => {
 	});
 
 	describe("getAwaitingSigning", () => {
-		const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+		const DAY_MS = 24 * 60 * 60 * 1000;
 
-		it("should return quotes with status sent where sentAt is more than 3 days ago", async () => {
+		it("should return sent quotes with validUntil within 7 days", async () => {
 			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
 				const clientId = await createTestClient(ctx, orgId);
-				// Quote sent 4 days ago
+				// Quote valid until 3 days from now
 				await ctx.db.insert("quotes", {
 					orgId,
 					clientId,
-					title: "Old Sent Quote",
+					title: "Expiring Soon Quote",
 					status: "sent",
-					sentAt: Date.now() - 4 * 24 * 60 * 60 * 1000,
+					sentAt: Date.now() - 4 * DAY_MS,
+					validUntil: Date.now() + 3 * DAY_MS,
 					subtotal: 1000,
 					total: 1000,
 				});
@@ -399,20 +400,45 @@ describe("Quotes", () => {
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
 			expect(quotes).toHaveLength(1);
-			expect(quotes[0].title).toBe("Old Sent Quote");
+			expect(quotes[0].title).toBe("Expiring Soon Quote");
 		});
 
-		it("should exclude quotes with status sent where sentAt is less than 3 days ago", async () => {
+		it("should return sent quotes with validUntil already passed", async () => {
 			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
 				const clientId = await createTestClient(ctx, orgId);
-				// Quote sent 1 day ago
+				// Quote expired 2 days ago
 				await ctx.db.insert("quotes", {
 					orgId,
 					clientId,
-					title: "Recent Sent Quote",
+					title: "Expired Quote",
 					status: "sent",
-					sentAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
+					sentAt: Date.now() - 10 * DAY_MS,
+					validUntil: Date.now() - 2 * DAY_MS,
+					subtotal: 1000,
+					total: 1000,
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const quotes = await asUser.query(api.quotes.getAwaitingSigning, {});
+			expect(quotes).toHaveLength(1);
+			expect(quotes[0].title).toBe("Expired Quote");
+		});
+
+		it("should exclude sent quotes with validUntil more than 7 days away", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				// Quote valid until 14 days from now
+				await ctx.db.insert("quotes", {
+					orgId,
+					clientId,
+					title: "Far Future Quote",
+					status: "sent",
+					sentAt: Date.now() - 1 * DAY_MS,
+					validUntil: Date.now() + 14 * DAY_MS,
 					subtotal: 1000,
 					total: 1000,
 				});
@@ -424,15 +450,14 @@ describe("Quotes", () => {
 			expect(quotes).toHaveLength(0);
 		});
 
-		it("should exclude quotes with status sent but no sentAt field", async () => {
+		it("should exclude sent quotes with no validUntil field", async () => {
 			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
 				const clientId = await createTestClient(ctx, orgId);
-				// Quote with sent status but no sentAt
 				await ctx.db.insert("quotes", {
 					orgId,
 					clientId,
-					title: "No SentAt Quote",
+					title: "No ValidUntil Quote",
 					status: "sent",
 					subtotal: 1000,
 					total: 1000,
@@ -449,14 +474,13 @@ describe("Quotes", () => {
 			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
 				const clientId = await createTestClient(ctx, orgId);
-				// Create quotes with various non-sent statuses, all old enough
 				for (const status of ["draft", "approved", "declined", "expired"] as const) {
 					await ctx.db.insert("quotes", {
 						orgId,
 						clientId,
 						title: `${status} Quote`,
 						status,
-						sentAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
+						validUntil: Date.now() + 3 * DAY_MS,
 						subtotal: 1000,
 						total: 1000,
 					});
@@ -476,12 +500,10 @@ describe("Quotes", () => {
 
 		it("should not return quotes from other organizations", async () => {
 			const { clerkUserId1, clerkOrgId1 } = await t.run(async (ctx) => {
-				// Org 1 - no quotes
 				const { orgId: orgId1, clerkUserId: clerkUserId1, clerkOrgId: clerkOrgId1 } =
 					await createTestOrg(ctx, { clerkUserId: "user_1", clerkOrgId: "org_1" });
 				const clientId1 = await createTestClient(ctx, orgId1);
 
-				// Org 2 - has an awaiting signing quote
 				const { orgId: orgId2 } = await createTestOrg(ctx, {
 					clerkUserId: "user_2",
 					clerkOrgId: "org_2",
@@ -492,7 +514,7 @@ describe("Quotes", () => {
 					clientId: clientId2,
 					title: "Other Org Quote",
 					status: "sent",
-					sentAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
+					validUntil: Date.now() + 3 * DAY_MS,
 					subtotal: 1000,
 					total: 1000,
 				});

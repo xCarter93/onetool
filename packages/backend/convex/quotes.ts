@@ -880,15 +880,19 @@ export const getAwaitingSigning = query({
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult();
 
-		const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+		const now = Date.now();
+		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
 
+		// Get all sent quotes (non-completed, non-approved, non-declined, non-expired)
 		const quotes = await ctx.db
 			.query("quotes")
 			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "sent"))
 			.collect();
 
+		// Return quotes whose validUntil date is within the next 7 days (or already past)
 		return quotes.filter(
-			(quote) => quote.sentAt !== undefined && quote.sentAt < threeDaysAgo
+			(quote) =>
+				quote.validUntil !== undefined && quote.validUntil <= sevenDaysFromNow
 		);
 	},
 });

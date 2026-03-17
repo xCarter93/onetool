@@ -712,18 +712,42 @@ export const getOverdue = query({
 		if (!orgId) return emptyListResult();
 
 		const now = Date.now();
+		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
 
+		// Get invoices that are sent or overdue
 		const invoices = await ctx.db
 			.query("invoices")
-			.withIndex("by_due_date", (q) =>
-				q.eq("orgId", orgId).lt("dueDate", now)
-			)
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "sent"))
 			.collect();
 
-		// Return invoices with sent or overdue status that are past due
-		return invoices.filter(
-			(invoice) => invoice.status === "sent" || invoice.status === "overdue"
-		);
+		const overdueInvoices = await ctx.db
+			.query("invoices")
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "overdue"))
+			.collect();
+
+		const allInvoices = [...invoices, ...overdueInvoices];
+
+		// Filter to invoices that have unpaid payments due within the next 7 days (or past due)
+		const results: InvoiceDocument[] = [];
+		for (const invoice of allInvoices) {
+			const payments = await ctx.db
+				.query("payments")
+				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+				.collect();
+
+			const hasUpcomingUnpaid = payments.some(
+				(p) =>
+					p.status !== "paid" &&
+					p.status !== "cancelled" &&
+					p.dueDate <= sevenDaysFromNow
+			);
+
+			if (hasUpcomingUnpaid) {
+				results.push(invoice);
+			}
+		}
+
+		return results;
 	},
 });
 

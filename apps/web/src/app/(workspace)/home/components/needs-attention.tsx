@@ -16,9 +16,7 @@ import {
 	ChevronRight,
 	Circle,
 	CheckCircle2,
-	AlertTriangle,
-	Calendar,
-	CalendarDays,
+	ClipboardList,
 	FileText,
 	FileSignature,
 } from "lucide-react";
@@ -39,11 +37,21 @@ function getDaysLate(dateTimestamp: number): number {
 	return Math.floor((todayUTC - dateTimestamp) / (24 * 60 * 60 * 1000));
 }
 
-function formatCurrency(cents: number): string {
-	return (cents / 100).toLocaleString("en-US", {
+function getDaysUntil(dateTimestamp: number): number {
+	const today = new Date();
+	const todayUTC = Date.UTC(
+		today.getFullYear(),
+		today.getMonth(),
+		today.getDate(),
+	);
+	return Math.floor((dateTimestamp - todayUTC) / (24 * 60 * 60 * 1000));
+}
+
+function formatCurrency(amount: number): string {
+	return new Intl.NumberFormat("en-US", {
 		style: "currency",
 		currency: "USD",
-	});
+	}).format(amount);
 }
 
 function formatTime(time?: string): string | null {
@@ -59,23 +67,25 @@ function formatTime(time?: string): string | null {
 // Row components
 // ---------------------------------------------------------------------------
 
-interface AttentionTaskRowProps {
+interface TaskRowProps {
 	task: Task;
 	clientName: string;
-	isOverdue: boolean;
 	onStatusChange: (taskId: Id<"tasks">, newStatus: Task["status"]) => void;
 	isUpdating: boolean;
+	isLast: boolean;
 }
 
-function AttentionTaskRow({
+function TaskRow({
 	task,
 	clientName,
-	isOverdue,
 	onStatusChange,
 	isUpdating,
-}: AttentionTaskRowProps) {
+	isLast,
+}: TaskRowProps) {
 	const isCompleted = task.status === "completed";
-	const daysLate = isOverdue ? getDaysLate(task.date) : 0;
+	const daysLate = getDaysLate(task.date);
+	const isOverdue = daysLate > 0;
+	const daysUntil = getDaysUntil(task.date);
 
 	const handleToggle = () => {
 		if (isUpdating) return;
@@ -83,15 +93,17 @@ function AttentionTaskRow({
 		onStatusChange(task._id, newStatus);
 	};
 
-	const timeContext = isOverdue
+	const timeLabel = isOverdue
 		? `${daysLate} day${daysLate !== 1 ? "s" : ""} late`
-		: formatTime(task.startTime) ?? "";
+		: daysUntil === 0
+			? formatTime(task.startTime) ?? "Today"
+			: `In ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`;
 
 	return (
 		<div
 			className={cn(
-				"flex items-center gap-2 py-2 px-2 rounded-md transition-colors duration-150",
-				isOverdue && !isCompleted && "bg-red-50/30 dark:bg-red-900/10",
+				"flex items-start gap-3 py-3 px-3 hover:bg-muted/30 transition-colors duration-150",
+				!isLast && "border-b border-border",
 				isCompleted && "opacity-60",
 			)}
 		>
@@ -102,7 +114,7 @@ function AttentionTaskRow({
 				onClick={handleToggle}
 				disabled={isUpdating}
 				className={cn(
-					"shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+					"shrink-0 mt-0.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 					isUpdating && "opacity-50 cursor-not-allowed",
 				)}
 			>
@@ -113,97 +125,145 @@ function AttentionTaskRow({
 				)}
 			</button>
 
-			<span
-				className={cn(
-					"text-sm font-medium truncate flex-1",
-					isCompleted && "line-through text-muted-foreground",
-				)}
-			>
-				{task.title}
-			</span>
-
-			<span className="text-xs text-muted-foreground truncate max-w-[140px]">
-				{clientName}
-			</span>
-
-			<span
-				className={cn(
-					"text-xs text-right w-[100px] shrink-0",
-					isOverdue
-						? "text-red-600 font-medium dark:text-red-400"
-						: "text-muted-foreground",
-				)}
-			>
-				{timeContext}
-			</span>
+			<div className="flex-1 min-w-0">
+				{/* Line 1: Title + urgency */}
+				<div className="flex items-center justify-between gap-2">
+					<span
+						className={cn(
+							"text-sm font-medium truncate",
+							isCompleted && "line-through text-muted-foreground",
+						)}
+					>
+						{task.title}
+					</span>
+					<span
+						className={cn(
+							"text-xs shrink-0",
+							isOverdue
+								? "text-red-600 font-medium dark:text-red-400"
+								: "text-muted-foreground",
+						)}
+					>
+						{timeLabel}
+					</span>
+				</div>
+				{/* Line 2: Description (truncated) or client name */}
+				<p className="text-xs text-muted-foreground mt-0.5 truncate">
+					{task.description || clientName}
+				</p>
+			</div>
 		</div>
 	);
 }
 
-interface AttentionInvoiceRowProps {
+interface InvoiceRowProps {
 	invoice: Doc<"invoices">;
 	clientName: string;
+	isLast: boolean;
 }
 
-function AttentionInvoiceRow({ invoice, clientName }: AttentionInvoiceRowProps) {
-	const daysOverdue = getDaysLate(invoice.dueDate);
+function InvoiceRow({ invoice, clientName, isLast }: InvoiceRowProps) {
+	const daysUntilDue = getDaysUntil(invoice.dueDate);
+	const isOverdue = daysUntilDue < 0;
+	const daysOverdue = Math.abs(daysUntilDue);
+
+	const timeLabel = isOverdue
+		? `${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue`
+		: daysUntilDue === 0
+			? "Due today"
+			: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`;
 
 	return (
 		<Link
 			href={`/invoices/${invoice._id}`}
-			className="flex items-center gap-2 py-2 px-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors duration-150 bg-red-50/30 dark:bg-red-900/10"
+			className={cn(
+				"block py-3 px-3 hover:bg-muted/30 transition-colors duration-150",
+				!isLast && "border-b border-border",
+			)}
 		>
-			<FileText className="h-4 w-4 text-red-500 shrink-0" />
-
-			<span className="text-sm font-medium w-[80px] shrink-0">
-				{invoice.invoiceNumber}
-			</span>
-
-			<span className="text-xs text-muted-foreground truncate flex-1">
-				{clientName}
-			</span>
-
-			<span className="text-xs text-red-600 dark:text-red-400 text-right w-[100px] shrink-0">
-				{formatCurrency(invoice.total)}
-			</span>
-
-			<span className="text-xs text-muted-foreground text-right w-[90px] shrink-0">
-				{daysOverdue} day{daysOverdue !== 1 ? "s" : ""} overdue
-			</span>
+			{/* Line 1: Invoice number + client + amount */}
+			<div className="flex items-center justify-between gap-2">
+				<div className="flex items-center gap-2 min-w-0">
+					<span className="text-sm font-medium shrink-0">
+						{invoice.invoiceNumber}
+					</span>
+					<span className="text-sm text-muted-foreground truncate">
+						{clientName}
+					</span>
+				</div>
+				<span className="text-sm font-semibold shrink-0">
+					{formatCurrency(invoice.total)}
+				</span>
+			</div>
+			{/* Line 2: Due date context */}
+			<p
+				className={cn(
+					"text-xs mt-0.5",
+					isOverdue
+						? "text-red-600 dark:text-red-400"
+						: "text-amber-600 dark:text-amber-400",
+				)}
+			>
+				{timeLabel}
+			</p>
 		</Link>
 	);
 }
 
-interface AttentionQuoteRowProps {
+interface QuoteRowProps {
 	quote: Doc<"quotes">;
 	clientName: string;
+	isLast: boolean;
 }
 
-function AttentionQuoteRow({ quote, clientName }: AttentionQuoteRowProps) {
-	const daysSinceSent = quote.sentAt ? getDaysLate(quote.sentAt) : 0;
+function QuoteRow({ quote, clientName, isLast }: QuoteRowProps) {
+	const daysUntilExpiry = quote.validUntil
+		? getDaysUntil(quote.validUntil)
+		: null;
+	const isExpired = daysUntilExpiry !== null && daysUntilExpiry < 0;
+
+	const timeLabel =
+		daysUntilExpiry === null
+			? "Awaiting signature"
+			: isExpired
+				? `Expired ${Math.abs(daysUntilExpiry)} day${Math.abs(daysUntilExpiry) !== 1 ? "s" : ""} ago`
+				: daysUntilExpiry === 0
+					? "Expires today"
+					: `Expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? "s" : ""}`;
 
 	return (
 		<Link
 			href={`/quotes/${quote._id}`}
-			className="flex items-center gap-2 py-2 px-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors duration-150"
+			className={cn(
+				"block py-3 px-3 hover:bg-muted/30 transition-colors duration-150",
+				!isLast && "border-b border-border",
+			)}
 		>
-			<FileSignature className="h-4 w-4 text-amber-500 shrink-0" />
-
-			<span className="text-sm font-medium w-[80px] shrink-0">
-				{quote.quoteNumber ?? "Draft"}
-			</span>
-
-			<span className="text-xs text-muted-foreground truncate flex-1">
-				{clientName}
-			</span>
-
-			<span className="text-xs text-foreground text-right w-[100px] shrink-0">
-				{formatCurrency(quote.total)}
-			</span>
-
-			<span className="text-xs text-amber-600 dark:text-amber-400 text-right w-[90px] shrink-0">
-				Sent {daysSinceSent} day{daysSinceSent !== 1 ? "s" : ""} ago
-			</span>
+			{/* Line 1: Quote number + client + amount */}
+			<div className="flex items-center justify-between gap-2">
+				<div className="flex items-center gap-2 min-w-0">
+					<span className="text-sm font-medium shrink-0">
+						{quote.quoteNumber ?? "Draft"}
+					</span>
+					<span className="text-sm text-muted-foreground truncate">
+						{clientName}
+					</span>
+				</div>
+				<span className="text-sm font-semibold shrink-0">
+					{formatCurrency(quote.total)}
+				</span>
+			</div>
+			{/* Line 2: Expiry context */}
+			<p
+				className={cn(
+					"text-xs mt-0.5",
+					isExpired
+						? "text-red-600 dark:text-red-400"
+						: "text-amber-600 dark:text-amber-400",
+				)}
+			>
+				{timeLabel}
+			</p>
 		</Link>
 	);
 }
@@ -214,24 +274,24 @@ function AttentionQuoteRow({ quote, clientName }: AttentionQuoteRowProps) {
 
 interface AttentionSectionProps {
 	title: string;
-	count: number;
 	icon: React.ReactNode;
+	summary: string;
+	count: number;
 	defaultOpen: boolean;
 	viewMoreHref: string;
 	children: React.ReactNode;
 	totalItems: number;
-	subHeader?: React.ReactNode;
 }
 
 function AttentionSection({
 	title,
-	count,
 	icon,
+	summary,
+	count,
 	defaultOpen,
 	viewMoreHref,
 	children,
 	totalItems,
-	subHeader,
 }: AttentionSectionProps) {
 	const [open, setOpen] = useState(defaultOpen);
 	const overflow = totalItems - 5;
@@ -240,27 +300,32 @@ function AttentionSection({
 
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
-			<CollapsibleTrigger className="flex items-center gap-2 w-full py-1.5 group/trigger">
+			{/* Header band */}
+			<CollapsibleTrigger className="flex items-center w-full py-2.5 px-3 bg-muted/50 rounded-md hover:bg-muted/70 transition-colors duration-150">
 				<ChevronRight
 					className={cn(
-						"h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+						"h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform duration-200",
 						open && "rotate-90",
 					)}
 				/>
-				{icon}
+				<span className="ml-2 mr-2 shrink-0">{icon}</span>
 				<span className="text-[13px] font-medium">{title}</span>
-				<span className="text-xs text-muted-foreground">({count})</span>
+				<Badge variant="secondary" className="ml-2 text-[11px] px-1.5 py-0">
+					{count}
+				</Badge>
+				<span className="ml-auto text-xs text-muted-foreground">
+					{summary}
+				</span>
 			</CollapsibleTrigger>
 
-			{subHeader && <div className="pl-7 pb-1">{subHeader}</div>}
-
+			{/* Items */}
 			<CollapsibleContent className="overflow-hidden">
-				<div className="pl-2 space-y-0.5">
+				<div className="mt-1">
 					{children}
 					{overflow > 0 && (
 						<Link
 							href={viewMoreHref}
-							className="block text-xs text-primary hover:text-primary/80 font-medium py-1.5 pl-2"
+							className="block text-xs text-primary hover:text-primary/80 font-medium py-2 px-3"
 						>
 							View {overflow} more
 						</Link>
@@ -276,14 +341,12 @@ function AttentionSection({
 // ---------------------------------------------------------------------------
 
 export function NeedsAttention() {
-	// Data fetching -- 4 parallel queries + clients for name resolution
 	const overdueTasks = useQuery(api.tasks.getOverdue, {});
 	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
 	const awaitingQuotes = useQuery(api.quotes.getAwaitingSigning, {});
 	const clients = useQuery(api.clients.list, {});
 
-	// Task mutations
 	const [updatingTasks, setUpdatingTasks] = useState<Set<Id<"tasks">>>(
 		new Set(),
 	);
@@ -312,13 +375,14 @@ export function NeedsAttention() {
 		}
 	};
 
-	// Client name resolver
 	const getClientName = (clientId?: Id<"clients">): string => {
 		if (!clientId) return "No Client";
-		return clients?.find((c) => c._id === clientId)?.companyName ?? "Unknown Client";
+		return (
+			clients?.find((c) => c._id === clientId)?.companyName ??
+			"Unknown Client"
+		);
 	};
 
-	// Loading state
 	const isLoading =
 		overdueTasks === undefined ||
 		upcomingTasks === undefined ||
@@ -329,78 +393,104 @@ export function NeedsAttention() {
 		return (
 			<div className="space-y-4">
 				<Skeleton className="h-6 w-48" />
-				{[1, 2, 3, 4].map((i) => (
+				{[1, 2, 3].map((i) => (
 					<Skeleton
 						key={i}
-						className="h-10 w-full rounded-lg"
-						style={{ opacity: 1 - (i - 1) * 0.2 }}
+						className="h-10 w-full rounded-md"
+						style={{ opacity: 1 - (i - 1) * 0.25 }}
 					/>
 				))}
 			</div>
 		);
 	}
 
-	// Frontend date splitting for upcoming tasks
-	const today = new Date();
-	const todayUTC = Date.UTC(
-		today.getFullYear(),
-		today.getMonth(),
-		today.getDate(),
-	);
-	const tomorrowUTC = todayUTC + 86400000;
+	// Merge and sort all tasks by urgency (most overdue first, then today, then upcoming)
+	const allTasks = [
+		...(overdueTasks ?? []),
+		...(upcomingTasks ?? []),
+	].sort((a, b) => a.date - b.date);
 
-	const todayTasks = (upcomingTasks ?? []).filter(
-		(t) => t.date >= todayUTC && t.date < tomorrowUTC,
-	);
-	const thisWeekTasks = (upcomingTasks ?? []).filter(
-		(t) => t.date >= tomorrowUTC,
-	);
+	// Deduplicate tasks (overdue and upcoming may overlap)
+	const seenTaskIds = new Set<string>();
+	const dedupedTasks = allTasks.filter((t) => {
+		if (seenTaskIds.has(t._id)) return false;
+		seenTaskIds.add(t._id);
+		return true;
+	});
 
-	// Sort overdue by days late descending (most late first)
-	const sortedOverdueTasks = [...(overdueTasks ?? [])].sort(
-		(a, b) => a.date - b.date,
-	);
-	const sortedOverdueInvoices = [...(overdueInvoices ?? [])].sort(
+	// Sort invoices by due date (most urgent first)
+	const sortedInvoices = [...(overdueInvoices ?? [])].sort(
 		(a, b) => a.dueDate - b.dueDate,
 	);
 
-	// Sort today tasks by startTime
-	const sortedTodayTasks = [...todayTasks].sort((a, b) => {
-		if (!a.startTime && !b.startTime) return 0;
-		if (!a.startTime) return 1;
-		if (!b.startTime) return -1;
-		return a.startTime.localeCompare(b.startTime);
-	});
-
-	// Sort this week tasks by date
-	const sortedThisWeekTasks = [...thisWeekTasks].sort(
-		(a, b) => a.date - b.date,
+	// Sort quotes by validUntil (expiring soonest first)
+	const sortedQuotes = [...(awaitingQuotes ?? [])] as Doc<"quotes">[];
+	sortedQuotes.sort(
+		(a, b) => (a.validUntil ?? Infinity) - (b.validUntil ?? Infinity),
 	);
-
-	// Sort awaiting quotes by sentAt ascending (most days since sent first)
-	const sortedAwaitingQuotes = [...(awaitingQuotes ?? [])] as Doc<"quotes">[];
-	sortedAwaitingQuotes.sort((a, b) => {
-		return (a.sentAt ?? 0) - (b.sentAt ?? 0);
-	});
 
 	// Counts
-	const overdueTaskCount = sortedOverdueTasks.length;
-	const overdueInvoiceCount = sortedOverdueInvoices.length;
-	const overdueSectionCount = overdueTaskCount + overdueInvoiceCount;
-	const todayCount = sortedTodayTasks.length;
-	const thisWeekCount = sortedThisWeekTasks.length;
-	const awaitingCount = sortedAwaitingQuotes.length;
-	const totalCount =
-		overdueSectionCount + todayCount + thisWeekCount + awaitingCount;
-	const totalOverdueForBadge = overdueTaskCount + overdueInvoiceCount;
+	const taskCount = dedupedTasks.length;
+	const invoiceCount = sortedInvoices.length;
+	const quoteCount = sortedQuotes.length;
+	const totalCount = taskCount + invoiceCount + quoteCount;
 
-	// Invoice aggregate for overdue section sub-header
-	const overdueInvoiceTotal = sortedOverdueInvoices.reduce(
-		(sum, inv) => sum + inv.total,
-		0,
-	);
+	// Task summary
+	const overdueTaskCount = dedupedTasks.filter(
+		(t) => getDaysLate(t.date) > 0,
+	).length;
+	const todayTaskCount = dedupedTasks.filter((t) => {
+		const d = getDaysUntil(t.date);
+		return d === 0;
+	}).length;
+	const taskSummaryParts: string[] = [];
+	if (overdueTaskCount > 0) taskSummaryParts.push(`${overdueTaskCount} overdue`);
+	if (todayTaskCount > 0) taskSummaryParts.push(`${todayTaskCount} today`);
+	if (taskSummaryParts.length === 0 && taskCount > 0)
+		taskSummaryParts.push("this week");
+	const taskSummary = taskSummaryParts.join(", ");
 
-	// Empty state
+	// Invoice summary
+	const invoiceTotal = sortedInvoices.reduce((sum, inv) => sum + inv.total, 0);
+	const invoiceSummary =
+		invoiceCount > 0 ? `${formatCurrency(invoiceTotal)} outstanding` : "";
+
+	// Quote summary
+	const expiringQuoteCount = sortedQuotes.filter((q) => {
+		const d = q.validUntil ? getDaysUntil(q.validUntil) : null;
+		return d !== null && d >= 0 && d <= 3;
+	}).length;
+	const quoteSummary =
+		expiringQuoteCount > 0
+			? `${expiringQuoteCount} expiring soon`
+			: quoteCount > 0
+				? "awaiting response"
+				: "";
+
+	// Total overdue count for badge
+	const overdueInvoiceCount = sortedInvoices.filter(
+		(inv) => getDaysUntil(inv.dueDate) < 0,
+	).length;
+	const totalOverdue = overdueTaskCount + overdueInvoiceCount;
+
+	// Determine which sections have overdue items (for ordering)
+	const sectionsHaveOverdue = {
+		tasks: overdueTaskCount > 0,
+		invoices: overdueInvoiceCount > 0,
+		quotes: sortedQuotes.some(
+			(q) => q.validUntil !== undefined && getDaysUntil(q.validUntil) < 0,
+		),
+	};
+
+	// Build ordered sections: overdue sections first
+	type SectionKey = "tasks" | "invoices" | "quotes";
+	const sectionOrder: SectionKey[] = ["tasks", "invoices", "quotes"];
+	sectionOrder.sort((a, b) => {
+		const aOverdue = sectionsHaveOverdue[a] ? 0 : 1;
+		const bOverdue = sectionsHaveOverdue[b] ? 0 : 1;
+		return aOverdue - bOverdue;
+	});
+
 	if (totalCount === 0) {
 		return (
 			<div className="space-y-4">
@@ -431,6 +521,81 @@ export function NeedsAttention() {
 		);
 	}
 
+	const renderSection = (key: SectionKey) => {
+		switch (key) {
+			case "tasks":
+				return (
+					<AttentionSection
+						key="tasks"
+						title="Tasks"
+						icon={<ClipboardList className="h-4 w-4 text-muted-foreground" />}
+						summary={taskSummary}
+						count={taskCount}
+						defaultOpen={true}
+						viewMoreHref="/tasks"
+						totalItems={taskCount}
+					>
+						{dedupedTasks.slice(0, 5).map((task, i) => (
+							<TaskRow
+								key={task._id}
+								task={task}
+								clientName={getClientName(task.clientId)}
+								onStatusChange={handleStatusChange}
+								isUpdating={updatingTasks.has(task._id)}
+								isLast={i === Math.min(4, dedupedTasks.length - 1)}
+							/>
+						))}
+					</AttentionSection>
+				);
+			case "invoices":
+				return (
+					<AttentionSection
+						key="invoices"
+						title="Invoices"
+						icon={<FileText className="h-4 w-4 text-muted-foreground" />}
+						summary={invoiceSummary}
+						count={invoiceCount}
+						defaultOpen={true}
+						viewMoreHref="/invoices"
+						totalItems={invoiceCount}
+					>
+						{sortedInvoices.slice(0, 5).map((invoice, i) => (
+							<InvoiceRow
+								key={invoice._id}
+								invoice={invoice}
+								clientName={getClientName(invoice.clientId)}
+								isLast={i === Math.min(4, sortedInvoices.length - 1)}
+							/>
+						))}
+					</AttentionSection>
+				);
+			case "quotes":
+				return (
+					<AttentionSection
+						key="quotes"
+						title="Quotes"
+						icon={
+							<FileSignature className="h-4 w-4 text-muted-foreground" />
+						}
+						summary={quoteSummary}
+						count={quoteCount}
+						defaultOpen={true}
+						viewMoreHref="/quotes"
+						totalItems={quoteCount}
+					>
+						{sortedQuotes.slice(0, 5).map((quote, i) => (
+							<QuoteRow
+								key={quote._id}
+								quote={quote}
+								clientName={getClientName(quote.clientId)}
+								isLast={i === Math.min(4, sortedQuotes.length - 1)}
+							/>
+						))}
+					</AttentionSection>
+				);
+		}
+	};
+
 	return (
 		<div className="space-y-4">
 			{/* Header */}
@@ -442,123 +607,20 @@ export function NeedsAttention() {
 					<p className="text-sm font-medium">
 						Needs Attention ({totalCount})
 					</p>
-					{totalOverdueForBadge > 0 && (
+					{totalOverdue > 0 && (
 						<Badge
 							className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-							aria-label={`${totalOverdueForBadge} overdue items`}
+							aria-label={`${totalOverdue} overdue items`}
 						>
-							{totalOverdueForBadge} overdue
+							{totalOverdue} overdue
 						</Badge>
 					)}
 				</div>
 			</div>
 
-			{/* Sections */}
+			{/* Sections - ordered by urgency */}
 			<div className="space-y-3">
-				{/* Overdue section */}
-				<AttentionSection
-					title="Overdue"
-					count={overdueSectionCount}
-					icon={
-						<AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-					}
-					defaultOpen={true}
-					viewMoreHref="/tasks"
-					totalItems={overdueSectionCount}
-					subHeader={
-						overdueInvoiceCount > 0 ? (
-							<span className="text-xs text-muted-foreground">
-								{overdueInvoiceCount} overdue &mdash;{" "}
-								{formatCurrency(overdueInvoiceTotal)}{" "}
-								outstanding
-							</span>
-						) : undefined
-					}
-				>
-					{sortedOverdueTasks.slice(0, 5).map((task) => (
-						<AttentionTaskRow
-							key={task._id}
-							task={task}
-							clientName={getClientName(task.clientId)}
-							isOverdue={true}
-							onStatusChange={handleStatusChange}
-							isUpdating={updatingTasks.has(task._id)}
-						/>
-					))}
-					{sortedOverdueInvoices
-						.slice(0, Math.max(0, 5 - overdueTaskCount))
-						.map((invoice) => (
-							<AttentionInvoiceRow
-								key={invoice._id}
-								invoice={invoice}
-								clientName={getClientName(invoice.clientId)}
-							/>
-						))}
-				</AttentionSection>
-
-				{/* Today section */}
-				<AttentionSection
-					title="Today"
-					count={todayCount}
-					icon={<Calendar className="h-3.5 w-3.5 text-foreground" />}
-					defaultOpen={true}
-					viewMoreHref="/tasks"
-					totalItems={todayCount}
-				>
-					{sortedTodayTasks.slice(0, 5).map((task) => (
-						<AttentionTaskRow
-							key={task._id}
-							task={task}
-							clientName={getClientName(task.clientId)}
-							isOverdue={false}
-							onStatusChange={handleStatusChange}
-							isUpdating={updatingTasks.has(task._id)}
-						/>
-					))}
-				</AttentionSection>
-
-				{/* This Week section */}
-				<AttentionSection
-					title="This Week"
-					count={thisWeekCount}
-					icon={
-						<CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
-					}
-					defaultOpen={false}
-					viewMoreHref="/tasks"
-					totalItems={thisWeekCount}
-				>
-					{sortedThisWeekTasks.slice(0, 5).map((task) => (
-						<AttentionTaskRow
-							key={task._id}
-							task={task}
-							clientName={getClientName(task.clientId)}
-							isOverdue={false}
-							onStatusChange={handleStatusChange}
-							isUpdating={updatingTasks.has(task._id)}
-						/>
-					))}
-				</AttentionSection>
-
-				{/* Awaiting Signature section */}
-				<AttentionSection
-					title="Awaiting Signature"
-					count={awaitingCount}
-					icon={
-						<FileSignature className="h-3.5 w-3.5 text-amber-500" />
-					}
-					defaultOpen={false}
-					viewMoreHref="/quotes"
-					totalItems={awaitingCount}
-				>
-					{sortedAwaitingQuotes.slice(0, 5).map((quote) => (
-						<AttentionQuoteRow
-							key={quote._id}
-							quote={quote}
-							clientName={getClientName(quote.clientId)}
-						/>
-					))}
-				</AttentionSection>
+				{sectionOrder.map(renderSection)}
 			</div>
 		</div>
 	);
