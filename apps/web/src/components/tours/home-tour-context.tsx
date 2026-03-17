@@ -15,7 +15,6 @@ export const enum HomeTour {
 	// Dashboard steps
 	VIEW_TOGGLE = "view-toggle",
 	HOME_STATS = "home-stats",
-	MAP_TOGGLE = "map-toggle",
 	ONBOARDING_BANNER = "onboarding-banner",
 	TASKS = "tasks",
 	ACTIVITY_FEED = "activity-feed",
@@ -31,7 +30,6 @@ export const ORDERED_HOME_TOUR: HomeTour[] = [
 	HomeTour.USER_MENU,
 	HomeTour.VIEW_TOGGLE,
 	HomeTour.HOME_STATS,
-	HomeTour.MAP_TOGGLE,
 	HomeTour.ONBOARDING_BANNER,
 	HomeTour.TASKS,
 	HomeTour.ACTIVITY_FEED,
@@ -77,12 +75,6 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 		description:
 			"Track your key metrics including active clients, projects in progress, pending quotes, and revenue. These update in real-time as you work.",
 		tooltipPosition: "bottom",
-	},
-	[HomeTour.MAP_TOGGLE]: {
-		title: "View Properties on Map",
-		description:
-			"Click here to see all your client properties on an interactive map. Quickly visualize where your clients are located and navigate to their details.",
-		tooltipPosition: "right",
 	},
 	[HomeTour.ONBOARDING_BANNER]: {
 		title: "Setup Progress",

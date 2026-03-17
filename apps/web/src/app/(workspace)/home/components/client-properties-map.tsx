@@ -1,28 +1,20 @@
 "use client";
 
-import React, { useMemo, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	Map,
-	MapMarker,
-	MarkerContent,
-	MarkerPopup,
+	MapClusterLayer,
 	MapControls,
 	useMap,
 } from "@/components/ui/map";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { Card } from "@/components/ui/card";
-import { MapPin, BarChart3, ExternalLink } from "lucide-react";
+import { MapDetailSidebar } from "./map-detail-sidebar";
+import type { PropertyDetails } from "./map-detail-sidebar";
+import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Match the approximate height of the LineChart6 component (header ~220px + chart 360px + padding)
-// Must use explicit height (not min-height) for MapLibre GL to render properly
-const MAP_HEIGHT = "h-[580px]";
-
 type ClientPropertiesMapProps = {
-	onToggleView: () => void;
 	className?: string;
 };
 
@@ -79,11 +71,11 @@ function MapBoundsHandler({
 }
 
 export default function ClientPropertiesMap({
-	onToggleView,
 	className,
 }: ClientPropertiesMapProps) {
-	const router = useRouter();
 	const propertiesData = useQuery(api.clientProperties.listGeocodedWithClients);
+	const [selectedProperty, setSelectedProperty] =
+		useState<PropertyDetails | null>(null);
 
 	const isLoading = propertiesData === undefined;
 	const properties = propertiesData?.properties ?? [];
@@ -102,23 +94,35 @@ export default function ClientPropertiesMap({
 		return { lng: avgLng, lat: avgLat };
 	}, [properties]);
 
-	const handleViewClient = (clientId: string) => {
-		router.push(`/clients/${clientId}`);
-	};
-
-	const formatAddress = (property: (typeof properties)[0]) => {
-		if (property.formattedAddress) {
-			return property.formattedAddress;
-		}
-		return `${property.streetAddress}, ${property.city}, ${property.state} ${property.zipCode}`;
-	};
+	// Convert properties to GeoJSON FeatureCollection for clustering
+	const geojsonData = useMemo(
+		() => ({
+			type: "FeatureCollection" as const,
+			features: properties.map((p) => ({
+				type: "Feature" as const,
+				geometry: {
+					type: "Point" as const,
+					coordinates: [p.longitude, p.latitude] as [number, number],
+				},
+				properties: {
+					id: p._id,
+					clientId: p.clientId,
+					clientCompanyName: p.clientCompanyName,
+					address:
+						p.formattedAddress ||
+						`${p.streetAddress}, ${p.city}, ${p.state} ${p.zipCode}`,
+					propertyName: p.propertyName,
+				},
+			})),
+		}),
+		[properties]
+	);
 
 	if (isLoading) {
 		return (
-			<Card
+			<div
 				className={cn(
-					"relative w-full p-0 border border-border/60 bg-card/70 shadow-sm ring-1 ring-border/40 backdrop-blur-sm flex items-center justify-center",
-					MAP_HEIGHT,
+					"relative w-full p-0 rounded-lg border border-border overflow-hidden flex items-center justify-center h-full min-h-[360px]",
 					className
 				)}
 			>
@@ -127,15 +131,14 @@ export default function ClientPropertiesMap({
 					<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:150ms]" />
 					<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:300ms]" />
 				</div>
-			</Card>
+			</div>
 		);
 	}
 
 	return (
-		<Card
+		<div
 			className={cn(
-				"relative w-full p-0 border border-border/60 bg-card/70 shadow-sm ring-1 ring-border/40 backdrop-blur-sm overflow-hidden",
-				MAP_HEIGHT,
+				"relative w-full p-0 rounded-lg border border-border overflow-hidden h-full",
 				className
 			)}
 		>
@@ -147,44 +150,34 @@ export default function ClientPropertiesMap({
 				<MapBoundsHandler properties={properties} />
 				<MapControls position="bottom-right" showZoom />
 
-				{properties.map((property) => (
-					<MapMarker
-						key={property._id}
-						longitude={property.longitude}
-						latitude={property.latitude}
-					>
-						<MarkerContent>
-							<div className="relative h-6 w-6 rounded-full border-2 border-white bg-primary shadow-lg flex items-center justify-center">
-								<MapPin className="h-3 w-3 text-primary-foreground" />
-							</div>
-						</MarkerContent>
-						<MarkerPopup closeButton className="min-w-[240px] p-0">
-							<div className="p-4 space-y-4">
-								<div className="space-y-1.5">
-									<p className="text-sm font-medium text-foreground leading-snug">
-										{formatAddress(property)}
-									</p>
-									<p className="text-xs text-muted-foreground">
-										{property.clientCompanyName}
-									</p>
-								</div>
-								<StyledButton
-									size="sm"
-									intent="primary"
-									className="w-full"
-									onClick={() => handleViewClient(property.clientId)}
-									showArrow={false}
-								>
-									<span className="flex items-center gap-1.5">
-										View Client
-										<ExternalLink className="h-3 w-3" />
-									</span>
-								</StyledButton>
-							</div>
-						</MarkerPopup>
-					</MapMarker>
-				))}
+				<MapClusterLayer
+					data={geojsonData}
+					clusterMaxZoom={14}
+					clusterRadius={50}
+					clusterColors={[
+						"hsl(var(--primary) / 0.8)",
+						"hsl(var(--primary))",
+						"hsl(var(--primary))",
+					]}
+					clusterThresholds={[10, 50]}
+					pointColor="hsl(var(--primary))"
+					onPointClick={(feature) => {
+						setSelectedProperty({
+							id: feature.properties.id,
+							clientId: feature.properties.clientId,
+							clientCompanyName: feature.properties.clientCompanyName,
+							address: feature.properties.address,
+							propertyName: feature.properties.propertyName,
+						});
+					}}
+				/>
 			</Map>
+
+			{/* Detail Sidebar */}
+			<MapDetailSidebar
+				property={selectedProperty}
+				onClose={() => setSelectedProperty(null)}
+			/>
 
 			{/* Stats Overlay */}
 			<div className="absolute top-3 left-3 z-10">
@@ -198,33 +191,20 @@ export default function ClientPropertiesMap({
 				</div>
 			</div>
 
-			{/* Toggle Button */}
-			<div className="absolute bottom-4 left-4 z-10">
-				<StyledButton
-					intent="primary"
-					size="md"
-					onClick={onToggleView}
-					icon={<BarChart3 className="h-4 w-4" />}
-					showArrow={false}
-					title="Switch to chart view"
-					className="rounded-full h-11 w-11 p-0 justify-center"
-				/>
-			</div>
-
 			{/* Empty State */}
 			{properties.length === 0 && (
 				<div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
 					<div className="text-center space-y-2">
 						<MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
-						<p className="text-sm text-muted-foreground">
-							No geocoded properties yet
+						<p className="text-sm text-muted-foreground font-medium">
+							No properties mapped
 						</p>
 						<p className="text-xs text-muted-foreground/70">
-							Add addresses with location data to see them on the map
+							Add addresses to client properties to see them here.
 						</p>
 					</div>
 				</div>
 			)}
-		</Card>
+		</div>
 	);
 }

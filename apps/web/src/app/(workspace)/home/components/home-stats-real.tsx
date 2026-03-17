@@ -14,17 +14,6 @@ import LineChart6, {
 import type { ChartConfig } from "@/components/ui/chart";
 import { DateRange } from "react-day-picker";
 import { endOfDay, format, startOfDay, startOfMonth } from "date-fns";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { Map } from "lucide-react";
-import ClientPropertiesMap from "./client-properties-map";
-import {
-	TourElement,
-	HomeTour,
-	HOME_TOUR_CONTENT,
-	HomeTourContext,
-} from "@/components/tours";
-
-type ViewMode = "chart" | "map";
 
 type ChartInput = Array<{
 	date: string;
@@ -168,7 +157,6 @@ export default function HomeStatsReal() {
 		defaultRange
 	);
 	const [activeMetric, setActiveMetric] = useState<string>("clients");
-	const [viewMode, setViewMode] = useState<ViewMode>("chart");
 
 	const isLoading = homeStats === undefined;
 
@@ -463,30 +451,6 @@ export default function HomeStatsReal() {
 		[selectedRange]
 	);
 
-	const handleToggleView = useCallback(() => {
-		setViewMode((prev) => (prev === "chart" ? "map" : "chart"));
-	}, []);
-
-	const mapToggleButton = (
-		<TourElement<HomeTour>
-			TourContext={HomeTourContext}
-			stepId={HomeTour.MAP_TOGGLE}
-			title={HOME_TOUR_CONTENT[HomeTour.MAP_TOGGLE].title}
-			description={HOME_TOUR_CONTENT[HomeTour.MAP_TOGGLE].description}
-			tooltipPosition={HOME_TOUR_CONTENT[HomeTour.MAP_TOGGLE].tooltipPosition}
-		>
-			<StyledButton
-				intent="primary"
-				size="md"
-				onClick={handleToggleView}
-				icon={<Map className="h-4 w-4" />}
-				showArrow={false}
-				title="View properties on map"
-				className="rounded-full h-11 w-11 p-0 justify-center"
-			/>
-		</TourElement>
-	);
-
 	return (
 		<div className="mb-8 space-y-4">
 			{isAnyMetricLoading && !homeStats ? (
@@ -509,7 +473,7 @@ export default function HomeStatsReal() {
 					<ChartSkeleton />
 					<hr className="border-border/60" />
 				</div>
-			) : viewMode === "chart" ? (
+			) : (
 				<LineChart6
 					metrics={metrics}
 					chartConfig={chartConfig}
@@ -522,10 +486,7 @@ export default function HomeStatsReal() {
 					height={360}
 					dateRange={selectedRange}
 					onDateRangeChange={handleDateChange}
-					floatingAction={mapToggleButton}
 				/>
-			) : (
-				<ClientPropertiesMap onToggleView={handleToggleView} />
 			)}
 		</div>
 	);
