@@ -267,17 +267,17 @@ export default function Page() {
 											Client Locations
 										</h3>
 									</div>
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.CLIENT_MAP}
-										title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
-										description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
-									>
-										<div className="relative rounded-lg border border-border overflow-hidden flex-1 min-h-[300px]">
+									<div className="relative rounded-lg border border-border overflow-hidden flex-1 min-h-[300px]">
+										<TourElement<HomeTour>
+											TourContext={HomeTourContext}
+											stepId={HomeTour.CLIENT_MAP}
+											title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
+											description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
+											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
+										>
 											<ClientPropertiesMap />
-										</div>
-									</TourElement>
+										</TourElement>
+									</div>
 								</div>
 							</div>
 						</motion.div>
