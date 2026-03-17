@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -96,10 +96,12 @@ export default function OnboardingBanner() {
 	const { userId, orgId } = useAuth();
 	const storageKey = `onboarding-banner-dismissed-${userId ?? ""}-${orgId ?? ""}`;
 
-	const [isDismissed, setIsDismissed] = useState(() => {
-		if (typeof window === "undefined") return false;
-		return localStorage.getItem(storageKey) === "true";
-	});
+	const [isDismissed, setIsDismissed] = useState(false);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		setIsDismissed(localStorage.getItem(storageKey) === "true");
+	}, [storageKey]);
 
 	const handleDismiss = () => {
 		localStorage.setItem(storageKey, "true");

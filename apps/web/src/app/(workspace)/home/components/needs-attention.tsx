@@ -473,7 +473,7 @@ export function NeedsAttention() {
 
 	// Total overdue count for badge
 	const overdueInvoiceCount = sortedInvoices.filter(
-		(inv) => getDaysUntil(inv.dueDate) < 0,
+		(inv) => getDaysUntil(inv.earliestPaymentDueDate ?? inv.dueDate) < 0,
 	).length;
 	const totalOverdue = overdueTaskCount + overdueInvoiceCount;
 
