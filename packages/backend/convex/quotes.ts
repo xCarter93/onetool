@@ -878,7 +878,7 @@ export const getAwaitingSigning = query({
 	args: {},
 	handler: async (ctx) => {
 		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!orgId) return [];
 
 		const now = Date.now();
 		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;

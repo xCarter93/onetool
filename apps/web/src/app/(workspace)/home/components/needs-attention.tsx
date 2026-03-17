@@ -420,9 +420,11 @@ export function NeedsAttention() {
 		return true;
 	});
 
-	// Sort invoices by due date (most urgent first)
+	// Sort invoices by effective due date (most urgent first)
 	const sortedInvoices = [...(overdueInvoices ?? [])].sort(
-		(a, b) => a.dueDate - b.dueDate,
+		(a, b) =>
+			(a.earliestPaymentDueDate ?? a.dueDate) -
+			(b.earliestPaymentDueDate ?? b.dueDate),
 	);
 
 	// Sort quotes by validUntil (expiring soonest first)

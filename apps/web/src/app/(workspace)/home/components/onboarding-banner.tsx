@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
@@ -92,13 +93,16 @@ const journeySteps: JourneyStep[] = [
 ];
 
 export default function OnboardingBanner() {
+	const { userId, orgId } = useAuth();
+	const storageKey = `onboarding-banner-dismissed-${userId ?? ""}-${orgId ?? ""}`;
+
 	const [isDismissed, setIsDismissed] = useState(() => {
 		if (typeof window === "undefined") return false;
-		return localStorage.getItem("onboarding-banner-dismissed") === "true";
+		return localStorage.getItem(storageKey) === "true";
 	});
 
 	const handleDismiss = () => {
-		localStorage.setItem("onboarding-banner-dismissed", "true");
+		localStorage.setItem(storageKey, "true");
 		setIsDismissed(true);
 	};
 	const [isExpanded, setIsExpanded] = useState(false);
