@@ -122,7 +122,7 @@ export default function ClientPropertiesMap({
 		return (
 			<div
 				className={cn(
-					"relative w-full p-0 rounded-none overflow-hidden flex items-center justify-center h-full",
+					"absolute inset-0 rounded-none overflow-hidden flex items-center justify-center",
 					className
 				)}
 			>
@@ -138,7 +138,7 @@ export default function ClientPropertiesMap({
 	return (
 		<div
 			className={cn(
-				"relative w-full p-0 rounded-none overflow-hidden h-full",
+				"absolute inset-0 rounded-none overflow-hidden",
 				className
 			)}
 		>
