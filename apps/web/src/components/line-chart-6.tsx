@@ -80,7 +80,7 @@ const CustomTooltip = ({ active, payload, metrics }: TooltipProps) => {
 
 		if (metric) {
 			return (
-				<div className="min-w-[140px] rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sm shadow-black/5 opacity-100">
+				<div className="min-w-[140px] rounded-lg border bg-popover p-3 shadow-sm shadow-black/5 opacity-100">
 					<div className="flex items-center gap-2 text-sm">
 						<div
 							className="size-1.5 rounded-full"
@@ -309,7 +309,7 @@ export default function LineChart6({
 									</StyledBadge>
 								</div>
 								<div className="flex w-full flex-col gap-1">
-									<span className="text-2xl font-bold leading-none text-foreground">
+									<span className="text-2xl font-semibold leading-none text-foreground">
 										{metric.isLoading ? (
 											"..."
 										) : (
@@ -420,7 +420,7 @@ export default function LineChart6({
 
 						<ChartTooltip
 							content={<CustomTooltip metrics={metrics} />}
-							cursor={{ strokeDasharray: "3 3", stroke: "#9ca3af" }}
+							cursor={{ strokeDasharray: "3 3", stroke: "var(--muted-foreground)" }}
 						/>
 
 						<rect

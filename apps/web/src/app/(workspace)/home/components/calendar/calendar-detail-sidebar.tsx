@@ -161,7 +161,7 @@ export function CalendarDetailSidebar({
 								)}
 								<span className="capitalize">{event.type}</span>
 							</div>
-							<h2 className="text-2xl font-bold text-foreground">
+							<h2 className="text-2xl font-semibold text-foreground">
 								{event.title}
 							</h2>
 						</div>
@@ -178,7 +178,7 @@ export function CalendarDetailSidebar({
 									: event.status === "in-progress"
 										? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
 										: event.status === "planned"
-											? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+											? "bg-muted text-muted-foreground"
 											: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
 							}
 						`}
