@@ -16,6 +16,8 @@ export const enum HomeTour {
 	VIEW_TOGGLE = "view-toggle",
 	HOME_STATS = "home-stats",
 	ONBOARDING_BANNER = "onboarding-banner",
+	WEEKLY_CALENDAR = "weekly-calendar",
+	CLIENT_MAP = "client-map",
 	TASKS = "tasks",
 	ACTIVITY_FEED = "activity-feed",
 }
@@ -31,6 +33,8 @@ export const ORDERED_HOME_TOUR: HomeTour[] = [
 	HomeTour.VIEW_TOGGLE,
 	HomeTour.HOME_STATS,
 	HomeTour.ONBOARDING_BANNER,
+	HomeTour.WEEKLY_CALENDAR,
+	HomeTour.CLIENT_MAP,
 	HomeTour.TASKS,
 	HomeTour.ACTIVITY_FEED,
 ];
@@ -81,6 +85,18 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 		description:
 			"Track your onboarding progress here. Complete each step to get your workspace fully set up and ready for business.",
 		tooltipPosition: "bottom",
+	},
+	[HomeTour.WEEKLY_CALENDAR]: {
+		title: "Weekly Calendar",
+		description:
+			"See your upcoming week at a glance. Tasks and projects appear as bars spanning their scheduled dates. Use the arrows to navigate between weeks.",
+		tooltipPosition: "top",
+	},
+	[HomeTour.CLIENT_MAP]: {
+		title: "Client Locations",
+		description:
+			"View all your client properties on a map. Click any marker to see property details and quickly navigate to that client.",
+		tooltipPosition: "left",
 	},
 	[HomeTour.TASKS]: {
 		title: "Manage Your Tasks",

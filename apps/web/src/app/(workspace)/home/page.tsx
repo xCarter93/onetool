@@ -245,11 +245,19 @@ export default function Page() {
 							<div className="flex flex-col lg:flex-row lg:items-stretch lg:gap-8">
 								{/* Weekly Calendar - 65% */}
 								<div className="lg:basis-[65%] flex-1 min-w-0">
-									<WeeklyAgenda
-										onEventClick={() => {
-											handleViewChange("calendar");
-										}}
-									/>
+									<TourElement<HomeTour>
+										TourContext={HomeTourContext}
+										stepId={HomeTour.WEEKLY_CALENDAR}
+										title={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].title}
+										description={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].description}
+										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].tooltipPosition}
+									>
+										<WeeklyAgenda
+											onEventClick={() => {
+												handleViewChange("calendar");
+											}}
+										/>
+									</TourElement>
 								</div>
 
 								{/* Map - 35% */}
@@ -259,9 +267,17 @@ export default function Page() {
 											Client Locations
 										</h3>
 									</div>
-									<div className="relative rounded-lg border border-border overflow-hidden flex-1 min-h-[300px]">
-										<ClientPropertiesMap />
-									</div>
+									<TourElement<HomeTour>
+										TourContext={HomeTourContext}
+										stepId={HomeTour.CLIENT_MAP}
+										title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
+										description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
+										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
+									>
+										<div className="relative rounded-lg border border-border overflow-hidden flex-1 min-h-[300px]">
+											<ClientPropertiesMap />
+										</div>
+									</TourElement>
 								</div>
 							</div>
 						</motion.div>
