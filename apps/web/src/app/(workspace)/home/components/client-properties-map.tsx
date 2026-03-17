@@ -122,7 +122,7 @@ export default function ClientPropertiesMap({
 		return (
 			<div
 				className={cn(
-					"relative w-full p-0 rounded-lg border border-border overflow-hidden flex items-center justify-center h-full min-h-[360px]",
+					"relative w-full p-0 rounded-none overflow-hidden flex items-center justify-center h-full",
 					className
 				)}
 			>
@@ -138,7 +138,7 @@ export default function ClientPropertiesMap({
 	return (
 		<div
 			className={cn(
-				"relative w-full p-0 rounded-lg border border-border overflow-hidden h-full",
+				"relative w-full p-0 rounded-none overflow-hidden h-full",
 				className
 			)}
 		>
@@ -155,12 +155,12 @@ export default function ClientPropertiesMap({
 					clusterMaxZoom={14}
 					clusterRadius={50}
 					clusterColors={[
-						"hsl(var(--primary) / 0.8)",
-						"hsl(var(--primary))",
-						"hsl(var(--primary))",
+						"#38bdf8",
+						"#0ea5e9",
+						"#0284c7",
 					]}
 					clusterThresholds={[10, 50]}
-					pointColor="hsl(var(--primary))"
+					pointColor="#0ea5e9"
 					onPointClick={(feature) => {
 						setSelectedProperty({
 							id: feature.properties.id,

@@ -253,11 +253,11 @@ export default function Page() {
 								</div>
 
 								{/* Map - 35% */}
-								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0">
+								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0 flex flex-col">
 									<h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-3">
 										Client Locations
 									</h3>
-									<div className="rounded-lg border border-border overflow-hidden h-[360px] lg:h-full lg:min-h-[360px]">
+									<div className="rounded-lg border border-border overflow-hidden flex-1 min-h-[360px]">
 										<ClientPropertiesMap />
 									</div>
 								</div>
