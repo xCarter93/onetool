@@ -387,7 +387,8 @@ export function NeedsAttention() {
 		overdueTasks === undefined ||
 		upcomingTasks === undefined ||
 		overdueInvoices === undefined ||
-		awaitingQuotes === undefined;
+		awaitingQuotes === undefined ||
+		clients === undefined;
 
 	if (isLoading) {
 		return (
@@ -495,9 +496,6 @@ export function NeedsAttention() {
 		return (
 			<div className="space-y-4">
 				<div>
-					<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-						Needs Attention
-					</p>
 					<p className="text-sm font-semibold mt-1">
 						Needs Attention (0)
 					</p>
@@ -600,9 +598,6 @@ export function NeedsAttention() {
 		<div className="space-y-4">
 			{/* Header */}
 			<div>
-				<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-					Needs Attention
-				</p>
 				<div className="flex items-center gap-2 mt-1">
 					<p className="text-sm font-semibold">
 						Needs Attention ({totalCount})

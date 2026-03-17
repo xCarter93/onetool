@@ -6,7 +6,6 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	format,
 	addWeeks,
-	startOfWeek,
 	differenceInDays,
 	startOfDay,
 	isToday,
@@ -137,7 +136,7 @@ export function WeeklyAgenda({ onEventClick }: WeeklyAgendaProps) {
 	const getEventGridPosition = (event: CalendarEvent) => {
 		const eventStart = startOfDay(event.startDate);
 		const eventEnd = startOfDay(event.endDate ?? event.startDate);
-		const weekStartDay = startOfWeek(currentDate);
+		const weekStartDay = startOfDay(weekDays[0]);
 
 		const startCol = Math.max(0, differenceInDays(eventStart, weekStartDay));
 		const endCol = Math.min(

@@ -92,7 +92,15 @@ const journeySteps: JourneyStep[] = [
 ];
 
 export default function OnboardingBanner() {
-	const [isDismissed, setIsDismissed] = useState(false);
+	const [isDismissed, setIsDismissed] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return localStorage.getItem("onboarding-banner-dismissed") === "true";
+	});
+
+	const handleDismiss = () => {
+		localStorage.setItem("onboarding-banner-dismissed", "true");
+		setIsDismissed(true);
+	};
 	const [isExpanded, setIsExpanded] = useState(false);
 
 	const journeyProgress = useQuery(api.homeStats.getJourneyProgress);
@@ -129,7 +137,7 @@ export default function OnboardingBanner() {
 							/>
 						</CollapsibleTrigger>
 						<button
-							onClick={() => setIsDismissed(true)}
+							onClick={handleDismiss}
 							className="text-muted-foreground hover:text-foreground"
 							aria-label="Dismiss setup banner"
 						>
