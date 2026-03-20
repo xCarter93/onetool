@@ -167,23 +167,25 @@ export function BusinessInfoSection({
 				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
 					Owner Info
 				</h3>
-				<div>
-					<Label htmlFor="ownerName">Your Name</Label>
-					<StyledInput
-						id="ownerName"
-						placeholder="e.g., Jane Doe"
-						value={ownerName}
-						onChange={(e) => setOwnerName(e.target.value)}
-					/>
-				</div>
-				<div>
-					<Label htmlFor="ownerTitle">Your Title</Label>
-					<StyledInput
-						id="ownerTitle"
-						placeholder="e.g., Owner & Operator"
-						value={ownerTitle}
-						onChange={(e) => setOwnerTitle(e.target.value)}
-					/>
+				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+					<div>
+						<Label htmlFor="ownerName">Your Name</Label>
+						<StyledInput
+							id="ownerName"
+							placeholder="e.g., Jane Doe"
+							value={ownerName}
+							onChange={(e) => setOwnerName(e.target.value)}
+						/>
+					</div>
+					<div>
+						<Label htmlFor="ownerTitle">Your Title</Label>
+						<StyledInput
+							id="ownerTitle"
+							placeholder="e.g., Owner & Operator"
+							value={ownerTitle}
+							onChange={(e) => setOwnerTitle(e.target.value)}
+						/>
+					</div>
 				</div>
 			</div>
 
@@ -218,34 +220,36 @@ export function BusinessInfoSection({
 						<Label htmlFor="isInsured">Insured</Label>
 					</div>
 				</div>
-				<div>
-					<Label htmlFor="yearEstablished">Year Established</Label>
-					<StyledInput
-						id="yearEstablished"
-						type="number"
-						placeholder="e.g., 2015"
-						min={1800}
-						max={currentYear}
-						value={yearEstablished ?? ""}
-						onChange={(e) => {
-							const val = e.target.value;
-							if (!val) {
-								setYearEstablished(undefined);
-							} else {
-								const num = parseInt(val, 10);
-								if (!isNaN(num)) setYearEstablished(num);
-							}
-						}}
-					/>
-				</div>
-				<div>
-					<Label htmlFor="licenseNumber">License Number</Label>
-					<StyledInput
-						id="licenseNumber"
-						placeholder="e.g., ABC-123456"
-						value={licenseNumber}
-						onChange={(e) => setLicenseNumber(e.target.value)}
-					/>
+				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+					<div>
+						<Label htmlFor="yearEstablished">Year Established</Label>
+						<StyledInput
+							id="yearEstablished"
+							type="number"
+							placeholder="e.g., 2015"
+							min={1800}
+							max={currentYear}
+							value={yearEstablished ?? ""}
+							onChange={(e) => {
+								const val = e.target.value;
+								if (!val) {
+									setYearEstablished(undefined);
+								} else {
+									const num = parseInt(val, 10);
+									if (!isNaN(num)) setYearEstablished(num);
+								}
+							}}
+						/>
+					</div>
+					<div>
+						<Label htmlFor="licenseNumber">License Number</Label>
+						<StyledInput
+							id="licenseNumber"
+							placeholder="e.g., ABC-123456"
+							value={licenseNumber}
+							onChange={(e) => setLicenseNumber(e.target.value)}
+						/>
+					</div>
 				</div>
 				<div>
 					<Label>Additional Certifications</Label>
@@ -336,29 +340,35 @@ export function BusinessInfoSection({
 				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
 					Social Links
 				</h3>
-				{SOCIAL_PLATFORMS.map((platform) => (
-					<div key={platform.key} className="flex items-center gap-3">
-						<platform.icon className="size-5 text-muted-fg shrink-0" />
-						<div className="flex-1">
-							<StyledInput
-								placeholder={platform.placeholder}
-								value={socialLinks[platform.key] || ""}
-								onChange={(e) =>
-									setSocialLinks((prev) => ({
-										...prev,
-										[platform.key]: e.target.value,
-									}))
-								}
-							/>
-							{socialLinks[platform.key] &&
-								!isValidUrl(socialLinks[platform.key]!) && (
-									<p className="text-xs text-destructive mt-1">
-										Please enter a valid URL
-									</p>
-								)}
-						</div>
-					</div>
-				))}
+				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+					{SOCIAL_PLATFORMS.map((platform) => {
+						const value = socialLinks[platform.key] || "";
+						const invalid = !!value && !isValidUrl(value);
+						return (
+							<div key={platform.key} className="flex items-center gap-3">
+								<platform.icon className="size-5 text-muted-fg shrink-0" />
+								<div className="flex-1">
+									<StyledInput
+										placeholder={platform.placeholder}
+										value={value}
+										onChange={(e) =>
+											setSocialLinks((prev) => ({
+												...prev,
+												[platform.key]: e.target.value,
+											}))
+										}
+										className={invalid ? "ring-2 ring-destructive" : ""}
+									/>
+									{invalid && (
+										<p className="text-xs text-destructive mt-1">
+											Please enter a valid URL
+										</p>
+									)}
+								</div>
+							</div>
+						);
+					})}
+				</div>
 			</div>
 		</section>
 	);

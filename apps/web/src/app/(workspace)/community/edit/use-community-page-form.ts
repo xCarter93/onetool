@@ -77,6 +77,16 @@ const DEFAULT_SCHEDULE: DaySchedule[] = DAYS_OF_WEEK.map((day) => ({
 
 const EMPTY_SOCIAL_LINKS: SocialLinks = {};
 
+function isValidSocialUrl(url: string): boolean {
+	if (!url.trim()) return true;
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "https:" || parsed.protocol === "http:";
+	} catch {
+		return false;
+	}
+}
+
 interface Snapshot {
 	mainSettings: string;
 	businessInfo: string;
@@ -641,9 +651,14 @@ export function useCommunityPageForm() {
 		byAppointmentOnly ||
 		Object.values(socialLinks).some(Boolean);
 
+	const hasInvalidSocialUrls = Object.values(socialLinks).some(
+		(url) => !!url && !isValidSocialUrl(url),
+	);
+
 	// Actions
 	const handleSave = async () => {
 		if (!validateSlug(slug)) return;
+		if (hasInvalidSocialUrls) return;
 
 		setIsSaving(true);
 		try {
@@ -724,6 +739,7 @@ export function useCommunityPageForm() {
 
 	const handlePublish = async () => {
 		if (!validateSlug(slug)) return;
+		if (hasInvalidSocialUrls) return;
 
 		setIsPublishing(true);
 		try {
@@ -993,6 +1009,7 @@ export function useCommunityPageForm() {
 			isPublishing,
 			hasUnsavedChanges,
 			hasPublishableContent,
+			hasInvalidSocialUrls,
 			slugError,
 			isSlugAvailable,
 		},

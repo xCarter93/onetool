@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,21 @@ export default function CommunityEditContent() {
 	const router = useRouter();
 	const { mainSettings, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
 	const isPageLoaded = !isLoading && !isRedirecting;
+
+	// Sentinel-based sticky header detection
+	const sentinelRef = useRef<HTMLDivElement>(null);
+	const [isSticky, setIsSticky] = useState(false);
+
+	useEffect(() => {
+		const sentinel = sentinelRef.current;
+		if (!sentinel) return;
+		const observer = new IntersectionObserver(
+			([entry]) => { setIsSticky(!entry.isIntersecting); },
+			{ threshold: 0, rootMargin: "-72px 0px 0px 0px" },
+		);
+		observer.observe(sentinel);
+		return () => observer.disconnect();
+	}, []);
 
 	useEffect(() => {
 		if (!isPageLoaded) return;
@@ -54,8 +69,26 @@ export default function CommunityEditContent() {
 
 	return (
 		<div className="relative min-h-screen bg-bg">
+			{/* Sentinel for sticky detection */}
+			<div ref={sentinelRef} className="h-0 w-full" />
+
+			{/* Blur strip to cover gap between main app header and edit header */}
+			{isSticky && (
+				<div
+					className="sticky top-16 md:top-[72px] z-[25] h-[4px] bg-bg pointer-events-none"
+					aria-hidden="true"
+				/>
+			)}
+
 			{/* Sticky header bar */}
-			<div className="sticky top-16 md:top-[72px] z-20 bg-bg/90 backdrop-blur-md border-b border-border/60">
+			<div
+				className={cn(
+					"transition-all duration-200",
+					isSticky
+						? "sticky top-16 md:top-[72px] z-20 bg-bg/95 backdrop-blur-md shadow-md border-b border-border/60"
+						: "border-b border-border/60",
+				)}
+			>
 				<div className="mx-auto px-4 sm:px-6 lg:px-8 py-4">
 					<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 						<div className="flex items-center gap-4">
@@ -90,7 +123,7 @@ export default function CommunityEditContent() {
 							<StyledButton
 								intent={actions.hasUnsavedChanges ? "primary" : "secondary"}
 								onClick={actions.handleSave}
-								disabled={actions.isSaving || actions.isPublishing || !!actions.slugError || actions.isSlugAvailable === false || (!actions.hasUnsavedChanges && !mainSettings.isPublic)}
+								disabled={actions.isSaving || actions.isPublishing || !!actions.slugError || actions.isSlugAvailable === false || actions.hasInvalidSocialUrls || (!actions.hasUnsavedChanges && !mainSettings.isPublic)}
 							>
 								{actions.isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Save className="size-4 mr-2" />}
 								{mainSettings.isPublic ? "Save Changes" : "Save Draft"}
@@ -99,7 +132,7 @@ export default function CommunityEditContent() {
 								<StyledButton
 									intent="primary"
 									onClick={actions.handlePublish}
-									disabled={actions.isSaving || actions.isPublishing || !actions.hasPublishableContent || !!actions.slugError || actions.isSlugAvailable === false}
+									disabled={actions.isSaving || actions.isPublishing || !actions.hasPublishableContent || !!actions.slugError || actions.isSlugAvailable === false || actions.hasInvalidSocialUrls}
 								>
 									{actions.isPublishing ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Send className="size-4 mr-2" />}
 									Publish
