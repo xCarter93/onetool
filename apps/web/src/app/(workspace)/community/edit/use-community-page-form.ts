@@ -23,6 +23,7 @@ export const MAX_GALLERY_IMAGES = 5;
 export type PricingMode = "structured" | "richText";
 export type SectionId =
 	| "mainSettings"
+	| "businessInfo"
 	| "bio"
 	| "imageGallery"
 	| "services"
@@ -40,8 +41,45 @@ export interface GalleryItem {
 	url?: string | null;
 }
 
+export interface DaySchedule {
+	day: string;
+	open: string;
+	close: string;
+	isClosed: boolean;
+}
+
+export type SocialLinks = {
+	facebook?: string;
+	instagram?: string;
+	nextdoor?: string;
+	youtube?: string;
+	linkedin?: string;
+	yelp?: string;
+	google?: string;
+};
+
+const DAYS_OF_WEEK = [
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+	"Sunday",
+] as const;
+
+const DEFAULT_SCHEDULE: DaySchedule[] = DAYS_OF_WEEK.map((day) => ({
+	day,
+	open: "09:00",
+	close: "17:00",
+	isClosed: false,
+}));
+
+const EMPTY_SOCIAL_LINKS: SocialLinks = {};
+
 interface Snapshot {
 	mainSettings: string;
+	businessInfo: string;
 	bio: string;
 	imageGallery: string;
 	services: string;
@@ -50,6 +88,7 @@ interface Snapshot {
 
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "mainSettings", label: "Main Page Settings" },
+	{ id: "businessInfo", label: "Business Info" },
 	{ id: "bio", label: "Bio" },
 	{ id: "imageGallery", label: "Image Gallery" },
 	{ id: "services", label: "Services" },
@@ -69,6 +108,17 @@ function createSnapshot({
 	pricingContent,
 	pricingTiers,
 	galleryItems,
+	ownerName,
+	ownerTitle,
+	isLicensed,
+	isBonded,
+	isInsured,
+	yearEstablished,
+	licenseNumber,
+	certifications,
+	byAppointmentOnly,
+	businessSchedule,
+	socialLinks,
 }: {
 	pageTitle: string;
 	slug: string;
@@ -82,6 +132,17 @@ function createSnapshot({
 	pricingContent: JSONContent | undefined;
 	pricingTiers: PricingTier[];
 	galleryItems: Array<{ storageId: Id<"_storage">; sortOrder: number }>;
+	ownerName: string;
+	ownerTitle: string;
+	isLicensed: boolean;
+	isBonded: boolean;
+	isInsured: boolean;
+	yearEstablished: number | undefined;
+	licenseNumber: string;
+	certifications: string[];
+	byAppointmentOnly: boolean;
+	businessSchedule: DaySchedule[];
+	socialLinks: SocialLinks;
 }): Snapshot {
 	return {
 		mainSettings: JSON.stringify({
@@ -91,6 +152,19 @@ function createSnapshot({
 			isPublic,
 			bannerStorageId,
 			avatarStorageId,
+		}),
+		businessInfo: JSON.stringify({
+			ownerName,
+			ownerTitle,
+			isLicensed,
+			isBonded,
+			isInsured,
+			yearEstablished,
+			licenseNumber,
+			certifications,
+			byAppointmentOnly,
+			businessSchedule,
+			socialLinks,
 		}),
 		bio: JSON.stringify(bioContent ?? null),
 		imageGallery: JSON.stringify(
@@ -148,6 +222,23 @@ export function useCommunityPageForm() {
 	);
 	const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
+	// Business info state
+	const [ownerName, setOwnerName] = useState("");
+	const [ownerTitle, setOwnerTitle] = useState("");
+	const [isLicensed, setIsLicensed] = useState(false);
+	const [isBonded, setIsBonded] = useState(false);
+	const [isInsured, setIsInsured] = useState(false);
+	const [yearEstablished, setYearEstablished] = useState<number | undefined>(
+		undefined,
+	);
+	const [licenseNumber, setLicenseNumber] = useState("");
+	const [certifications, setCertifications] = useState<string[]>([]);
+	const [byAppointmentOnly, setByAppointmentOnly] = useState(false);
+	const [businessSchedule, setBusinessSchedule] =
+		useState<DaySchedule[]>(DEFAULT_SCHEDULE);
+	const [socialLinks, setSocialLinks] =
+		useState<SocialLinks>(EMPTY_SOCIAL_LINKS);
+
 	const [isSaving, setIsSaving] = useState(false);
 	const [isPublishing, setIsPublishing] = useState(false);
 	const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -164,6 +255,7 @@ export function useCommunityPageForm() {
 	const galleryInputRef = useRef<HTMLInputElement>(null);
 	const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
 		mainSettings: null,
+		businessInfo: null,
 		bio: null,
 		imageGallery: null,
 		services: null,
@@ -235,6 +327,39 @@ export function useCommunityPageForm() {
 				})),
 		);
 
+		// Business info sync
+		const ownerInfo = communityPage.draftOwnerInfo as
+			| { name?: string; title?: string }
+			| undefined;
+		setOwnerName(ownerInfo?.name || "");
+		setOwnerTitle(ownerInfo?.title || "");
+
+		const creds = communityPage.draftCredentials as
+			| {
+					isLicensed?: boolean;
+					isBonded?: boolean;
+					isInsured?: boolean;
+					yearEstablished?: number;
+					licenseNumber?: string;
+					certifications?: string[];
+			  }
+			| undefined;
+		setIsLicensed(creds?.isLicensed || false);
+		setIsBonded(creds?.isBonded || false);
+		setIsInsured(creds?.isInsured || false);
+		setYearEstablished(creds?.yearEstablished);
+		setLicenseNumber(creds?.licenseNumber || "");
+		setCertifications(creds?.certifications || []);
+
+		const hours = communityPage.draftBusinessHours as
+			| { byAppointmentOnly: boolean; schedule?: DaySchedule[] }
+			| undefined;
+		setByAppointmentOnly(hours?.byAppointmentOnly || false);
+		setBusinessSchedule(hours?.schedule || DEFAULT_SCHEDULE);
+
+		const links = communityPage.draftSocialLinks as SocialLinks | undefined;
+		setSocialLinks(links || EMPTY_SOCIAL_LINKS);
+
 		savedSnapshotRef.current = createSnapshot({
 			pageTitle: communityPage.pageTitle || "",
 			slug: communityPage.slug,
@@ -264,6 +389,17 @@ export function useCommunityPageForm() {
 					storageId: item.storageId,
 					sortOrder: item.sortOrder,
 				})),
+			ownerName: ownerInfo?.name || "",
+			ownerTitle: ownerInfo?.title || "",
+			isLicensed: creds?.isLicensed || false,
+			isBonded: creds?.isBonded || false,
+			isInsured: creds?.isInsured || false,
+			yearEstablished: creds?.yearEstablished,
+			licenseNumber: creds?.licenseNumber || "",
+			certifications: creds?.certifications || [],
+			byAppointmentOnly: hours?.byAppointmentOnly || false,
+			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
+			socialLinks: links || EMPTY_SOCIAL_LINKS,
 		});
 	}, [communityPage]);
 
@@ -422,6 +558,17 @@ export function useCommunityPageForm() {
 				pricingContent,
 				pricingTiers,
 				galleryItems,
+				ownerName,
+				ownerTitle,
+				isLicensed,
+				isBonded,
+				isInsured,
+				yearEstablished,
+				licenseNumber,
+				certifications,
+				byAppointmentOnly,
+				businessSchedule,
+				socialLinks,
 			}),
 		[
 			pageTitle,
@@ -436,6 +583,17 @@ export function useCommunityPageForm() {
 			pricingContent,
 			pricingTiers,
 			galleryItems,
+			ownerName,
+			ownerTitle,
+			isLicensed,
+			isBonded,
+			isInsured,
+			yearEstablished,
+			licenseNumber,
+			certifications,
+			byAppointmentOnly,
+			businessSchedule,
+			socialLinks,
 		],
 	);
 
@@ -444,6 +602,7 @@ export function useCommunityPageForm() {
 		if (!saved) {
 			return {
 				mainSettings: false,
+				businessInfo: false,
 				bio: false,
 				imageGallery: false,
 				services: false,
@@ -452,6 +611,7 @@ export function useCommunityPageForm() {
 		}
 		return {
 			mainSettings: saved.mainSettings !== currentSnapshot.mainSettings,
+			businessInfo: saved.businessInfo !== currentSnapshot.businessInfo,
 			bio: saved.bio !== currentSnapshot.bio,
 			imageGallery: saved.imageGallery !== currentSnapshot.imageGallery,
 			services: saved.services !== currentSnapshot.services,
@@ -469,7 +629,17 @@ export function useCommunityPageForm() {
 		!!servicesContent ||
 		!!pricingContent ||
 		pricingTiers.length > 0 ||
-		galleryItems.length > 0;
+		galleryItems.length > 0 ||
+		!!ownerName ||
+		!!ownerTitle ||
+		isLicensed ||
+		isBonded ||
+		isInsured ||
+		!!yearEstablished ||
+		!!licenseNumber ||
+		certifications.length > 0 ||
+		byAppointmentOnly ||
+		Object.values(socialLinks).some(Boolean);
 
 	// Actions
 	const handleSave = async () => {
@@ -498,6 +668,37 @@ export function useCommunityPageForm() {
 				})),
 				bannerStorageId: bannerStorageId || undefined,
 				avatarStorageId: avatarStorageId || undefined,
+				draftOwnerInfo:
+					ownerName || ownerTitle
+						? {
+								name: ownerName || undefined,
+								title: ownerTitle || undefined,
+							}
+						: undefined,
+				draftCredentials:
+					isLicensed ||
+					isBonded ||
+					isInsured ||
+					yearEstablished ||
+					licenseNumber ||
+					certifications.length > 0
+						? {
+								isLicensed: isLicensed || undefined,
+								isBonded: isBonded || undefined,
+								isInsured: isInsured || undefined,
+								yearEstablished: yearEstablished || undefined,
+								licenseNumber: licenseNumber || undefined,
+								certifications:
+									certifications.length > 0 ? certifications : undefined,
+							}
+						: undefined,
+				draftBusinessHours: {
+					byAppointmentOnly,
+					schedule: byAppointmentOnly ? undefined : businessSchedule,
+				},
+				draftSocialLinks: Object.values(socialLinks).some(Boolean)
+					? socialLinks
+					: undefined,
 			});
 
 			if (isPublic) {
@@ -547,6 +748,37 @@ export function useCommunityPageForm() {
 				})),
 				bannerStorageId: bannerStorageId || undefined,
 				avatarStorageId: avatarStorageId || undefined,
+				draftOwnerInfo:
+					ownerName || ownerTitle
+						? {
+								name: ownerName || undefined,
+								title: ownerTitle || undefined,
+							}
+						: undefined,
+				draftCredentials:
+					isLicensed ||
+					isBonded ||
+					isInsured ||
+					yearEstablished ||
+					licenseNumber ||
+					certifications.length > 0
+						? {
+								isLicensed: isLicensed || undefined,
+								isBonded: isBonded || undefined,
+								isInsured: isInsured || undefined,
+								yearEstablished: yearEstablished || undefined,
+								licenseNumber: licenseNumber || undefined,
+								certifications:
+									certifications.length > 0 ? certifications : undefined,
+							}
+						: undefined,
+				draftBusinessHours: {
+					byAppointmentOnly,
+					schedule: byAppointmentOnly ? undefined : businessSchedule,
+				},
+				draftSocialLinks: Object.values(socialLinks).some(Boolean)
+					? socialLinks
+					: undefined,
 			});
 
 			await publishMutation();
@@ -564,6 +796,17 @@ export function useCommunityPageForm() {
 				pricingContent,
 				pricingTiers,
 				galleryItems,
+				ownerName,
+				ownerTitle,
+				isLicensed,
+				isBonded,
+				isInsured,
+				yearEstablished,
+				licenseNumber,
+				certifications,
+				byAppointmentOnly,
+				businessSchedule,
+				socialLinks,
 			});
 			toast.success("Published!", "Your community page is now live and public");
 		} catch (error) {
@@ -593,6 +836,17 @@ export function useCommunityPageForm() {
 				pricingContent,
 				pricingTiers,
 				galleryItems,
+				ownerName,
+				ownerTitle,
+				isLicensed,
+				isBonded,
+				isInsured,
+				yearEstablished,
+				licenseNumber,
+				certifications,
+				byAppointmentOnly,
+				businessSchedule,
+				socialLinks,
 			});
 			toast.success("Page is now private", "Only you can see your page");
 		} catch {
@@ -682,6 +936,31 @@ export function useCommunityPageForm() {
 			organization,
 			bannerInputRef,
 			avatarInputRef,
+		},
+		// Business Info slice
+		businessInfo: {
+			ownerName,
+			setOwnerName,
+			ownerTitle,
+			setOwnerTitle,
+			isLicensed,
+			setIsLicensed,
+			isBonded,
+			setIsBonded,
+			isInsured,
+			setIsInsured,
+			yearEstablished,
+			setYearEstablished,
+			licenseNumber,
+			setLicenseNumber,
+			certifications,
+			setCertifications,
+			byAppointmentOnly,
+			setByAppointmentOnly,
+			businessSchedule,
+			setBusinessSchedule,
+			socialLinks,
+			setSocialLinks,
 		},
 		// Bio slice
 		bio: { bioContent, setBioContent },
