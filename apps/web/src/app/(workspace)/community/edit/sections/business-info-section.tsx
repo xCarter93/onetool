@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
 	Facebook,
 	Instagram,
@@ -124,6 +125,68 @@ function isValidUrl(url: string): boolean {
 		return false;
 	}
 }
+
+/**
+ * Individual social link input with debounced validation and
+ * its own render boundary (prevents re-rendering all 7 inputs on each keystroke).
+ */
+const SocialLinkInput = React.memo(function SocialLinkInput({
+	platformKey,
+	label,
+	placeholder,
+	icon: Icon,
+	value,
+	onChange,
+}: {
+	platformKey: string;
+	label: string;
+	placeholder: string;
+	icon: LucideIcon;
+	value: string;
+	onChange: (value: string) => void;
+}) {
+	const [showError, setShowError] = useState(false);
+
+	// Debounce: show validation error 500ms after user stops typing
+	useEffect(() => {
+		if (!value.trim()) {
+			setShowError(false);
+			return;
+		}
+		const timer = setTimeout(() => {
+			setShowError(!isValidUrl(value));
+		}, 500);
+		return () => clearTimeout(timer);
+	}, [value]);
+
+	const invalid = showError && !!value.trim() && !isValidUrl(value);
+
+	return (
+		<div className="flex items-center gap-3">
+			<Icon className="size-5 text-muted-foreground shrink-0" />
+			<div className="flex-1">
+				<div
+					className={
+						invalid
+							? "rounded-md ring-2 ring-red-500 ring-offset-0"
+							: ""
+					}
+				>
+					<StyledInput
+						placeholder={placeholder}
+						value={value}
+						onChange={(e) => onChange(e.target.value)}
+					/>
+				</div>
+				{invalid && (
+					<p className="text-xs text-red-600 dark:text-red-400 mt-1">
+						Please enter a valid URL (e.g. https://example.com)
+					</p>
+				)}
+			</div>
+		</div>
+	);
+});
 
 export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 	ownerName,
@@ -344,33 +407,22 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					Social Links
 				</h3>
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-					{SOCIAL_PLATFORMS.map((platform) => {
-						const value = socialLinks[platform.key] || "";
-						const invalid = !!value && !isValidUrl(value);
-						return (
-							<div key={platform.key} className="flex items-center gap-3">
-								<platform.icon className="size-5 text-muted-fg shrink-0" />
-								<div className="flex-1">
-									<StyledInput
-										placeholder={platform.placeholder}
-										value={value}
-										onChange={(e) =>
-											setSocialLinks((prev) => ({
-												...prev,
-												[platform.key]: e.target.value,
-											}))
-										}
-										style={invalid ? { borderColor: "var(--destructive)", boxShadow: "0 0 0 2px color-mix(in srgb, var(--destructive) 25%, transparent)" } : undefined}
-									/>
-									{invalid && (
-										<p className="text-xs mt-1" style={{ color: "var(--destructive)" }}>
-											Please enter a valid URL (e.g. https://example.com)
-										</p>
-									)}
-								</div>
-							</div>
-						);
-					})}
+					{SOCIAL_PLATFORMS.map((platform) => (
+						<SocialLinkInput
+							key={platform.key}
+							platformKey={platform.key}
+							label={platform.label}
+							placeholder={platform.placeholder}
+							icon={platform.icon}
+							value={socialLinks[platform.key] || ""}
+							onChange={(val) =>
+								setSocialLinks((prev) => ({
+									...prev,
+									[platform.key]: val,
+								}))
+							}
+						/>
+					))}
 				</div>
 			</div>
 		</section>
