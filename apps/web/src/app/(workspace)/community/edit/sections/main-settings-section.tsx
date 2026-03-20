@@ -56,7 +56,7 @@ interface MainSettingsSectionProps {
 	sectionRef: (el: HTMLElement | null) => void;
 }
 
-export function MainSettingsSection({
+export const MainSettingsSection = React.memo(function MainSettingsSection({
 	pageTitle,
 	setPageTitle,
 	slug,
@@ -336,4 +336,4 @@ export function MainSettingsSection({
 			)}
 		</section>
 	);
-}
+});

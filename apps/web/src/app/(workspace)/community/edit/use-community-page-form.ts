@@ -904,6 +904,11 @@ export function useCommunityPageForm() {
 		}
 	};
 
+	// Stable upload handlers (avoid recreating on every render)
+	const handleBannerUpload = useCallback((file: File) => uploadImage(file, "banner"), []);
+	const handleAvatarUpload = useCallback((file: File) => uploadImage(file, "avatar"), []);
+	const handleGalleryUpload = useCallback((file: File) => uploadImage(file, "gallery"), []);
+
 	const removeGalleryItem = (storageId: Id<"_storage">) => {
 		setGalleryItems((prev) =>
 			prev
@@ -941,8 +946,8 @@ export function useCommunityPageForm() {
 			avatarUrl,
 			isUploadingBanner,
 			isUploadingAvatar,
-			handleBannerUpload: (file: File) => uploadImage(file, "banner"),
-			handleAvatarUpload: (file: File) => uploadImage(file, "avatar"),
+			handleBannerUpload,
+			handleAvatarUpload,
 			handleDeleteBanner,
 			handleDeleteAvatar,
 			handleSlugChange,
@@ -989,7 +994,7 @@ export function useCommunityPageForm() {
 			galleryItems,
 			setGalleryItems,
 			isUploadingGallery,
-			handleGalleryUpload: (file: File) => uploadImage(file, "gallery"),
+			handleGalleryUpload,
 			removeGalleryItem,
 			moveGalleryItem,
 			galleryInputRef,

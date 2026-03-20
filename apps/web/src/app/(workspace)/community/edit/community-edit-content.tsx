@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { StyledBadge } from "@/components/ui/styled/styled-badge";
 import { cn } from "@/lib/utils";
-import { useCommunityPageForm, SECTION_LIST } from "./use-community-page-form";
+import { useCommunityPageForm, SECTION_LIST, type SectionId } from "./use-community-page-form";
 import { MainSettingsSection } from "./sections/main-settings-section";
 import { BioSection } from "./sections/bio-section";
 import { GallerySection } from "./sections/gallery-section";
@@ -19,6 +19,16 @@ export default function CommunityEditContent() {
 	const router = useRouter();
 	const { mainSettings, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
 	const isPageLoaded = !isLoading && !isRedirecting;
+
+	// Stable sectionRef setters — created once so they don't break React.memo
+	const sectionRefSetters = useMemo(() => {
+		const setters = {} as Record<SectionId, (el: HTMLElement | null) => void>;
+		for (const section of SECTION_LIST) {
+			setters[section.id] = (el: HTMLElement | null) => { sectionRefs.current[section.id] = el; };
+		}
+		return setters;
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	// Sentinel-based sticky header detection
 	const sentinelRef = useRef<HTMLDivElement>(null);
@@ -80,13 +90,13 @@ export default function CommunityEditContent() {
 				/>
 			)}
 
-			{/* Sticky header bar — always sticky, sentinel controls visual treatment */}
+			{/* Sticky header bar — always sticky, sentinel controls shadow/blur */}
 			<div
 				className={cn(
-					"sticky top-16 md:top-[72px] z-20 transition-all duration-200",
+					"sticky top-16 md:top-[72px] z-20 bg-bg transition-shadow duration-200",
 					isSticky
-						? "bg-bg/95 backdrop-blur-md shadow-md border-b border-border/60"
-						: "bg-bg border-b border-border/60",
+						? "shadow-md border-b border-border/60"
+						: "border-b border-border/60",
 				)}
 			>
 				<div className="mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -142,16 +152,16 @@ export default function CommunityEditContent() {
 					</div>
 				</div>
 			</div>
-			{/* Content area */}
-			<div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			{/* Content area — pt-6 gives breathing room below sticky header */}
+			<div className="mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-8">
 				<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
 					<div className="space-y-12 pb-[40vh]">
-						<MainSettingsSection {...mainSettings} sectionRef={(el) => { sectionRefs.current.mainSettings = el; }} />
-						<BusinessInfoSection {...businessInfo} sectionRef={(el) => { sectionRefs.current.businessInfo = el; }} />
-						<BioSection {...bio} sectionRef={(el) => { sectionRefs.current.bio = el; }} />
-						<GallerySection {...gallery} sectionRef={(el) => { sectionRefs.current.imageGallery = el; }} />
-						<ServicesSection {...services} sectionRef={(el) => { sectionRefs.current.services = el; }} />
-						<PricingSection {...pricing} sectionRef={(el) => { sectionRefs.current.pricing = el; }} />
+						<MainSettingsSection {...mainSettings} sectionRef={sectionRefSetters.mainSettings} />
+						<BusinessInfoSection {...businessInfo} sectionRef={sectionRefSetters.businessInfo} />
+						<BioSection {...bio} sectionRef={sectionRefSetters.bio} />
+						<GallerySection {...gallery} sectionRef={sectionRefSetters.imageGallery} />
+						<ServicesSection {...services} sectionRef={sectionRefSetters.services} />
+						<PricingSection {...pricing} sectionRef={sectionRefSetters.pricing} />
 					</div>
 					<aside className="hidden lg:block">
 						<div className="sticky top-40 rounded-xl border border-border/60 bg-bg p-3">

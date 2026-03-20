@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Image from "next/image";
 import {
 	Trash2,
@@ -25,7 +26,7 @@ interface GallerySectionProps {
 	sectionRef: (el: HTMLElement | null) => void;
 }
 
-export function GallerySection({
+export const GallerySection = React.memo(function GallerySection({
 	galleryItems,
 	isUploadingGallery,
 	handleGalleryUpload,
@@ -163,4 +164,4 @@ export function GallerySection({
 			)}
 		</section>
 	);
-}
+});

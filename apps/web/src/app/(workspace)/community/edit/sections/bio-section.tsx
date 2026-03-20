@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { JSONContent } from "@tiptap/react";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
 
@@ -9,7 +10,7 @@ interface BioSectionProps {
 	sectionRef: (el: HTMLElement | null) => void;
 }
 
-export function BioSection({
+export const BioSection = React.memo(function BioSection({
 	bioContent,
 	setBioContent,
 	sectionRef,
@@ -33,4 +34,4 @@ export function BioSection({
 			/>
 		</section>
 	);
-}
+});

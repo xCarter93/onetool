@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Trash2, Plus } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
@@ -24,7 +25,7 @@ interface PricingSectionProps {
 	sectionRef: (el: HTMLElement | null) => void;
 }
 
-export function PricingSection({
+export const PricingSection = React.memo(function PricingSection({
 	pricingMode,
 	setPricingMode,
 	pricingContent,
@@ -167,4 +168,4 @@ export function PricingSection({
 			)}
 		</section>
 	);
-}
+});

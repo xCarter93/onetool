@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { JSONContent } from "@tiptap/react";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
 
@@ -9,7 +10,7 @@ interface ServicesSectionProps {
 	sectionRef: (el: HTMLElement | null) => void;
 }
 
-export function ServicesSection({
+export const ServicesSection = React.memo(function ServicesSection({
 	servicesContent,
 	setServicesContent,
 	sectionRef,
@@ -33,4 +34,4 @@ export function ServicesSection({
 			/>
 		</section>
 	);
-}
+});

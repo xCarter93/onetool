@@ -351,13 +351,13 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 									<StyledInput
 										placeholder={platform.placeholder}
 										value={value}
+										aria-invalid={invalid || undefined}
 										onChange={(e) =>
 											setSocialLinks((prev) => ({
 												...prev,
 												[platform.key]: e.target.value,
 											}))
 										}
-										className={invalid ? "!ring-2 !ring-destructive border-destructive" : ""}
 									/>
 									{invalid && (
 										<p className="text-xs text-destructive mt-1">
