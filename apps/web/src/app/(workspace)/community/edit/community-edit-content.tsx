@@ -82,18 +82,11 @@ export default function CommunityEditContent() {
 			{/* Sentinel for sticky detection */}
 			<div ref={sentinelRef} className="h-0 w-full" />
 
-			{/* Blur strip to cover gap between main app header and edit header */}
-			{isSticky && (
-				<div
-					className="sticky top-16 md:top-[72px] z-[25] h-[4px] bg-background pointer-events-none"
-					aria-hidden="true"
-				/>
-			)}
-
-			{/* Sticky header bar — always sticky, sentinel controls shadow/blur */}
+			{/* Sticky header bar — sticks to top-0, sits behind main nav (z-20 < z-30).
+			    pt-12 pushes visible content below main nav's notched items on desktop. */}
 			<div
 				className={cn(
-					"sticky top-16 md:top-[72px] z-20 bg-background transition-shadow duration-200",
+					"sticky top-0 z-20 bg-background transition-shadow duration-200 pt-10 md:pt-12",
 					isSticky
 						? "shadow-md border-b border-border/60"
 						: "border-b border-border/60",

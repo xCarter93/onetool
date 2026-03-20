@@ -360,10 +360,10 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 												[platform.key]: e.target.value,
 											}))
 										}
-										className={invalid ? "border-red-500 ring-1 ring-red-500/30 focus:ring-red-500/30 focus:border-red-500" : ""}
+										style={invalid ? { borderColor: "var(--destructive)", boxShadow: "0 0 0 2px color-mix(in srgb, var(--destructive) 25%, transparent)" } : undefined}
 									/>
 									{invalid && (
-										<p className="text-xs text-red-600 dark:text-red-400 mt-1">
+										<p className="text-xs mt-1" style={{ color: "var(--destructive)" }}>
 											Please enter a valid URL (e.g. https://example.com)
 										</p>
 									)}
