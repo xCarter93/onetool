@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import type { LucideIcon } from "lucide-react";
 import {
 	Facebook,
@@ -113,53 +113,31 @@ const SOCIAL_PLATFORMS = [
 	},
 ] as const;
 
+/** Regex-based URL validation — avoids new URL() browser inconsistencies. */
+const URL_PATTERN = /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i;
+
 function isValidUrl(url: string): boolean {
 	const trimmed = url.trim();
 	if (!trimmed) return true;
-	// Auto-prepend https:// for bare domains like "www.test.com" or "facebook.com/page"
-	const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-	try {
-		const parsed = new URL(normalized);
-		return parsed.protocol === "https:" || parsed.protocol === "http:";
-	} catch {
-		return false;
-	}
+	return URL_PATTERN.test(trimmed);
 }
 
 /**
- * Individual social link input with debounced validation and
- * its own render boundary (prevents re-rendering all 7 inputs on each keystroke).
+ * Individual social link input — own render boundary so typing in one
+ * doesn't re-render the other 6. Validation computed directly in render.
  */
 const SocialLinkInput = React.memo(function SocialLinkInput({
-	platformKey,
-	label,
 	placeholder,
 	icon: Icon,
 	value,
 	onChange,
 }: {
-	platformKey: string;
-	label: string;
 	placeholder: string;
 	icon: LucideIcon;
 	value: string;
 	onChange: (value: string) => void;
 }) {
-	const [showError, setShowError] = useState(false);
-
-	// Debounce: show validation error 500ms after user stops typing
-	useEffect(() => {
-		if (!value.trim()) {
-			setShowError(false);
-			return;
-		}
-		const timer = setTimeout(() => {
-			setShowError(!isValidUrl(value));
-		}, 500);
-		return () => clearTimeout(timer);
-	}, [value]);
-
-	const invalid = showError && !!value.trim() && !isValidUrl(value);
+	const invalid = !!value.trim() && !isValidUrl(value);
 
 	return (
 		<div className="flex items-center gap-3">
@@ -169,7 +147,7 @@ const SocialLinkInput = React.memo(function SocialLinkInput({
 					className={
 						invalid
 							? "rounded-md ring-2 ring-red-500 ring-offset-0"
-							: ""
+							: undefined
 					}
 				>
 					<StyledInput
@@ -410,8 +388,6 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					{SOCIAL_PLATFORMS.map((platform) => (
 						<SocialLinkInput
 							key={platform.key}
-							platformKey={platform.key}
-							label={platform.label}
 							placeholder={platform.placeholder}
 							icon={platform.icon}
 							value={socialLinks[platform.key] || ""}

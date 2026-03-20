@@ -77,16 +77,12 @@ const DEFAULT_SCHEDULE: DaySchedule[] = DAYS_OF_WEEK.map((day) => ({
 
 const EMPTY_SOCIAL_LINKS: SocialLinks = {};
 
+const SOCIAL_URL_PATTERN = /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i;
+
 function isValidSocialUrl(url: string): boolean {
 	const trimmed = url.trim();
 	if (!trimmed) return true;
-	const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-	try {
-		const parsed = new URL(normalized);
-		return parsed.protocol === "https:" || parsed.protocol === "http:";
-	} catch {
-		return false;
-	}
+	return SOCIAL_URL_PATTERN.test(trimmed);
 }
 
 interface Snapshot {
