@@ -848,6 +848,92 @@ export default defineSchema({
 			)
 		),
 
+		// Business info (Phase 7)
+		draftOwnerInfo: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+				title: v.optional(v.string()),
+			})
+		),
+		publishedOwnerInfo: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+				title: v.optional(v.string()),
+			})
+		),
+		draftCredentials: v.optional(
+			v.object({
+				isLicensed: v.optional(v.boolean()),
+				isBonded: v.optional(v.boolean()),
+				isInsured: v.optional(v.boolean()),
+				yearEstablished: v.optional(v.number()),
+				licenseNumber: v.optional(v.string()),
+				certifications: v.optional(v.array(v.string())),
+			})
+		),
+		publishedCredentials: v.optional(
+			v.object({
+				isLicensed: v.optional(v.boolean()),
+				isBonded: v.optional(v.boolean()),
+				isInsured: v.optional(v.boolean()),
+				yearEstablished: v.optional(v.number()),
+				licenseNumber: v.optional(v.string()),
+				certifications: v.optional(v.array(v.string())),
+			})
+		),
+		draftBusinessHours: v.optional(
+			v.object({
+				byAppointmentOnly: v.boolean(),
+				schedule: v.optional(
+					v.array(
+						v.object({
+							day: v.string(),
+							open: v.string(),
+							close: v.string(),
+							isClosed: v.boolean(),
+						})
+					)
+				),
+			})
+		),
+		publishedBusinessHours: v.optional(
+			v.object({
+				byAppointmentOnly: v.boolean(),
+				schedule: v.optional(
+					v.array(
+						v.object({
+							day: v.string(),
+							open: v.string(),
+							close: v.string(),
+							isClosed: v.boolean(),
+						})
+					)
+				),
+			})
+		),
+		draftSocialLinks: v.optional(
+			v.object({
+				facebook: v.optional(v.string()),
+				instagram: v.optional(v.string()),
+				nextdoor: v.optional(v.string()),
+				youtube: v.optional(v.string()),
+				linkedin: v.optional(v.string()),
+				yelp: v.optional(v.string()),
+				google: v.optional(v.string()),
+			})
+		),
+		publishedSocialLinks: v.optional(
+			v.object({
+				facebook: v.optional(v.string()),
+				instagram: v.optional(v.string()),
+				nextdoor: v.optional(v.string()),
+				youtube: v.optional(v.string()),
+				linkedin: v.optional(v.string()),
+				yelp: v.optional(v.string()),
+				google: v.optional(v.string()),
+			})
+		),
+
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)
 		metaDescription: v.optional(v.string()), // SEO description

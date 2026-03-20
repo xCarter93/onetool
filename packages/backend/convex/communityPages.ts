@@ -67,6 +67,48 @@ export const upsert = mutation({
 		),
 		pageTitle: v.optional(v.string()),
 		metaDescription: v.optional(v.string()),
+		draftOwnerInfo: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+				title: v.optional(v.string()),
+			})
+		),
+		draftCredentials: v.optional(
+			v.object({
+				isLicensed: v.optional(v.boolean()),
+				isBonded: v.optional(v.boolean()),
+				isInsured: v.optional(v.boolean()),
+				yearEstablished: v.optional(v.number()),
+				licenseNumber: v.optional(v.string()),
+				certifications: v.optional(v.array(v.string())),
+			})
+		),
+		draftBusinessHours: v.optional(
+			v.object({
+				byAppointmentOnly: v.boolean(),
+				schedule: v.optional(
+					v.array(
+						v.object({
+							day: v.string(),
+							open: v.string(),
+							close: v.string(),
+							isClosed: v.boolean(),
+						})
+					)
+				),
+			})
+		),
+		draftSocialLinks: v.optional(
+			v.object({
+				facebook: v.optional(v.string()),
+				instagram: v.optional(v.string()),
+				nextdoor: v.optional(v.string()),
+				youtube: v.optional(v.string()),
+				linkedin: v.optional(v.string()),
+				yelp: v.optional(v.string()),
+				google: v.optional(v.string()),
+			})
+		),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await getCurrentUserOrThrow(ctx);
@@ -118,6 +160,14 @@ export const upsert = mutation({
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
 			if (args.metaDescription !== undefined)
 				updates.metaDescription = args.metaDescription;
+			if (args.draftOwnerInfo !== undefined)
+				updates.draftOwnerInfo = args.draftOwnerInfo;
+			if (args.draftCredentials !== undefined)
+				updates.draftCredentials = args.draftCredentials;
+			if (args.draftBusinessHours !== undefined)
+				updates.draftBusinessHours = args.draftBusinessHours;
+			if (args.draftSocialLinks !== undefined)
+				updates.draftSocialLinks = args.draftSocialLinks;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -144,6 +194,10 @@ export const upsert = mutation({
 				galleryItemsDraft: args.galleryItemsDraft,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
+				draftOwnerInfo: args.draftOwnerInfo,
+				draftCredentials: args.draftCredentials,
+				draftBusinessHours: args.draftBusinessHours,
+				draftSocialLinks: args.draftSocialLinks,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -164,6 +218,10 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftPricingTiers: "publishedPricingTiers",
 	pricingModeDraft: "pricingModePublished",
 	galleryItemsDraft: "galleryItemsPublished",
+	draftOwnerInfo: "publishedOwnerInfo",
+	draftCredentials: "publishedCredentials",
+	draftBusinessHours: "publishedBusinessHours",
+	draftSocialLinks: "publishedSocialLinks",
 };
 
 /**
@@ -189,7 +247,12 @@ export const publish = mutation({
 			!!page.draftPricingContent ||
 			(page.draftPricingTiers?.length ?? 0) > 0 ||
 			(page.galleryItemsDraft?.length ?? 0) > 0;
-		if (!hasLegacyContent && !hasSectionContent) {
+		const hasBusinessInfoContent =
+			!!page.draftOwnerInfo ||
+			!!page.draftCredentials ||
+			!!page.draftBusinessHours ||
+			!!page.draftSocialLinks;
+		if (!hasLegacyContent && !hasSectionContent && !hasBusinessInfoContent) {
 			throw new Error("No draft content to publish");
 		}
 
@@ -373,6 +436,10 @@ export const getBySlug = query({
 			pricingContent: page.publishedPricingContent,
 			pricingTiers: page.publishedPricingTiers ?? [],
 			galleryImages,
+			ownerInfo: page.publishedOwnerInfo,
+			credentials: page.publishedCredentials,
+			businessHours: page.publishedBusinessHours,
+			socialLinks: page.publishedSocialLinks,
 			bannerUrl,
 			avatarUrl,
 			organization: org

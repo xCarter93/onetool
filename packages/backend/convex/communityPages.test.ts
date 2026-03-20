@@ -123,6 +123,134 @@ describe("Community Pages", () => {
 		expect(page?.galleryItemsPublished).toEqual([]);
 	});
 
+	it("upsert stores draftOwnerInfo", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "owner-info-page",
+			isPublic: false,
+			draftOwnerInfo: { name: "Jane Doe", title: "Owner" },
+		});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page).toBeTruthy();
+		expect(page?.draftOwnerInfo).toEqual({ name: "Jane Doe", title: "Owner" });
+	});
+
+	it("upsert stores draftCredentials", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "credentials-page",
+			isPublic: false,
+			draftCredentials: {
+				isLicensed: true,
+				isBonded: false,
+				isInsured: true,
+				yearEstablished: 2015,
+				licenseNumber: "ABC-123",
+				certifications: ["EPA Certified", "NATE"],
+			},
+		});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page).toBeTruthy();
+		expect(page?.draftCredentials).toEqual({
+			isLicensed: true,
+			isBonded: false,
+			isInsured: true,
+			yearEstablished: 2015,
+			licenseNumber: "ABC-123",
+			certifications: ["EPA Certified", "NATE"],
+		});
+	});
+
+	it("upsert stores draftBusinessHours", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "hours-page",
+			isPublic: false,
+			draftBusinessHours: {
+				byAppointmentOnly: false,
+				schedule: [
+					{ day: "Monday", open: "09:00", close: "17:00", isClosed: false },
+				],
+			},
+		});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page).toBeTruthy();
+		expect(page?.draftBusinessHours).toEqual({
+			byAppointmentOnly: false,
+			schedule: [
+				{ day: "Monday", open: "09:00", close: "17:00", isClosed: false },
+			],
+		});
+	});
+
+	it("upsert stores draftSocialLinks", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "social-page",
+			isPublic: false,
+			draftSocialLinks: {
+				facebook: "https://facebook.com/test",
+				instagram: "https://instagram.com/test",
+			},
+		});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page).toBeTruthy();
+		expect(page?.draftSocialLinks).toEqual({
+			facebook: "https://facebook.com/test",
+			instagram: "https://instagram.com/test",
+		});
+	});
+
+	it("publish copies business info fields to published", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "publish-biz-info",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftOwnerInfo: { name: "Jane Doe", title: "Owner" },
+			draftCredentials: { isLicensed: true },
+			draftBusinessHours: { byAppointmentOnly: true },
+			draftSocialLinks: { facebook: "https://facebook.com/test" },
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page?.publishedOwnerInfo).toEqual({ name: "Jane Doe", title: "Owner" });
+		expect(page?.publishedCredentials).toEqual({ isLicensed: true });
+		expect(page?.publishedBusinessHours).toEqual({ byAppointmentOnly: true });
+		expect(page?.publishedSocialLinks).toEqual({ facebook: "https://facebook.com/test" });
+	});
+
+	it("page with only business info can publish", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "biz-info-only",
+			isPublic: true,
+			draftOwnerInfo: { name: "Jane Doe", title: "Owner" },
+		});
+
+		// Should not throw - business info alone is enough to publish
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page?.publishedOwnerInfo).toEqual({ name: "Jane Doe", title: "Owner" });
+		expect(page?.publishedAt).toBeTruthy();
+	});
+
 	it("validates gallery item cap at five images", () => {
 		const items = Array.from({ length: 6 }).map((_, index) => ({
 			storageId: (`storage_${index}` as unknown) as Id<"_storage">,
