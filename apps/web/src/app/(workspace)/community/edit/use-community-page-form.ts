@@ -634,25 +634,29 @@ export function useCommunityPageForm() {
 		[dirtyBySection],
 	);
 
-	const hasPublishableContent =
-		!!bioContent ||
-		!!servicesContent ||
-		!!pricingContent ||
-		pricingTiers.length > 0 ||
-		galleryItems.length > 0 ||
-		!!ownerName ||
-		!!ownerTitle ||
-		isLicensed ||
-		isBonded ||
-		isInsured ||
-		!!yearEstablished ||
-		!!licenseNumber ||
-		certifications.length > 0 ||
-		byAppointmentOnly ||
-		Object.values(socialLinks).some(Boolean);
+	const hasPublishableContent = useMemo(
+		() =>
+			!!bioContent ||
+			!!servicesContent ||
+			!!pricingContent ||
+			pricingTiers.length > 0 ||
+			galleryItems.length > 0 ||
+			!!ownerName ||
+			!!ownerTitle ||
+			isLicensed ||
+			isBonded ||
+			isInsured ||
+			!!yearEstablished ||
+			!!licenseNumber ||
+			certifications.length > 0 ||
+			byAppointmentOnly ||
+			Object.values(socialLinks).some(Boolean),
+		[bioContent, servicesContent, pricingContent, pricingTiers.length, galleryItems.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
+	);
 
-	const hasInvalidSocialUrls = Object.values(socialLinks).some(
-		(url) => !!url && !isValidSocialUrl(url),
+	const hasInvalidSocialUrls = useMemo(
+		() => Object.values(socialLinks).some((url) => !!url && !isValidSocialUrl(url)),
+		[socialLinks],
 	);
 
 	// Actions

@@ -122,7 +122,7 @@ function isValidUrl(url: string): boolean {
 	}
 }
 
-export function BusinessInfoSection({
+export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 	ownerName,
 	setOwnerName,
 	ownerTitle,
@@ -357,7 +357,7 @@ export function BusinessInfoSection({
 												[platform.key]: e.target.value,
 											}))
 										}
-										className={invalid ? "ring-2 ring-destructive" : ""}
+										className={invalid ? "!ring-2 !ring-destructive border-destructive" : ""}
 									/>
 									{invalid && (
 										<p className="text-xs text-destructive mt-1">
@@ -372,4 +372,4 @@ export function BusinessInfoSection({
 			</div>
 		</section>
 	);
-}
+});

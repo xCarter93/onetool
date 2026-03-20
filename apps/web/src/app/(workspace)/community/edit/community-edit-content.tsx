@@ -80,13 +80,13 @@ export default function CommunityEditContent() {
 				/>
 			)}
 
-			{/* Sticky header bar */}
+			{/* Sticky header bar — always sticky, sentinel controls visual treatment */}
 			<div
 				className={cn(
-					"transition-all duration-200",
+					"sticky top-16 md:top-[72px] z-20 transition-all duration-200",
 					isSticky
-						? "sticky top-16 md:top-[72px] z-20 bg-bg/95 backdrop-blur-md shadow-md border-b border-border/60"
-						: "border-b border-border/60",
+						? "bg-bg/95 backdrop-blur-md shadow-md border-b border-border/60"
+						: "bg-bg border-b border-border/60",
 				)}
 			>
 				<div className="mx-auto px-4 sm:px-6 lg:px-8 py-4">
