@@ -98,6 +98,31 @@ describe("Community Pages", () => {
 		expect(publicPage?.galleryImages).toEqual([]);
 	});
 
+	it("publish mutation copies all DRAFT_TO_PUBLISHED_MAP fields", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "publish-all-fields",
+			isPublic: true,
+			draftBioContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }] },
+			draftServicesContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Services" }] }] },
+			pricingModeDraft: "structured",
+			draftPricingContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Pricing" }] }] },
+			draftPricingTiers: [{ name: "Basic", price: "$50", description: "Basic plan" }],
+			galleryItemsDraft: [],
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page?.publishedBioContent).toBeTruthy();
+		expect(page?.publishedServicesContent).toBeTruthy();
+		expect(page?.pricingModePublished).toBe("structured");
+		expect(page?.publishedPricingContent).toBeTruthy();
+		expect(page?.publishedPricingTiers).toEqual([{ name: "Basic", price: "$50", description: "Basic plan" }]);
+		expect(page?.galleryItemsPublished).toEqual([]);
+	});
+
 	it("validates gallery item cap at five images", () => {
 		const items = Array.from({ length: 6 }).map((_, index) => ({
 			storageId: (`storage_${index}` as unknown) as Id<"_storage">,

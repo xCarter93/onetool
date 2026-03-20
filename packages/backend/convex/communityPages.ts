@@ -152,6 +152,21 @@ export const upsert = mutation({
 });
 
 /**
+ * Draft-to-published field mapping.
+ * When adding new draft fields, add the mapping here.
+ * The publish mutation will automatically include them.
+ */
+const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
+	draftContent: "publishedContent",
+	draftBioContent: "publishedBioContent",
+	draftServicesContent: "publishedServicesContent",
+	draftPricingContent: "publishedPricingContent",
+	draftPricingTiers: "publishedPricingTiers",
+	pricingModeDraft: "pricingModePublished",
+	galleryItemsDraft: "galleryItemsPublished",
+};
+
+/**
  * Publish draft content to live page
  */
 export const publish = mutation({
@@ -178,17 +193,16 @@ export const publish = mutation({
 			throw new Error("No draft content to publish");
 		}
 
-		await ctx.db.patch(page._id, {
-			publishedContent: page.draftContent,
-			publishedBioContent: page.draftBioContent,
-			publishedServicesContent: page.draftServicesContent,
-			pricingModePublished: page.pricingModeDraft,
-			publishedPricingContent: page.draftPricingContent,
-			publishedPricingTiers: page.draftPricingTiers,
-			galleryItemsPublished: page.galleryItemsDraft,
+		const updates: Record<string, unknown> = {
 			publishedAt: Date.now(),
 			updatedAt: Date.now(),
-		});
+		};
+
+		for (const [draftKey, publishedKey] of Object.entries(DRAFT_TO_PUBLISHED_MAP)) {
+			updates[publishedKey] = (page as Record<string, unknown>)[draftKey];
+		}
+
+		await ctx.db.patch(page._id, updates);
 	},
 });
 
