@@ -96,7 +96,7 @@ export const GallerySection = React.memo(function GallerySection({
 					{galleryItems.map((item, index) => (
 						<div
 							key={item.storageId}
-							className="group relative rounded-xl overflow-hidden border border-border/60 bg-bg"
+							className="group relative rounded-xl overflow-hidden border border-border/60 bg-background"
 						>
 							<div className="relative aspect-4/3 bg-muted/30">
 								{item.url ? (

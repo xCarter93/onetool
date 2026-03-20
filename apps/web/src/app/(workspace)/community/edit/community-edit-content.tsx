@@ -78,14 +78,14 @@ export default function CommunityEditContent() {
 	const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/communities/${mainSettings.slug}`;
 
 	return (
-		<div className="relative min-h-screen bg-bg">
+		<div className="relative min-h-screen bg-background">
 			{/* Sentinel for sticky detection */}
 			<div ref={sentinelRef} className="h-0 w-full" />
 
 			{/* Blur strip to cover gap between main app header and edit header */}
 			{isSticky && (
 				<div
-					className="sticky top-16 md:top-[72px] z-[25] h-[4px] bg-bg pointer-events-none"
+					className="sticky top-16 md:top-[72px] z-[25] h-[4px] bg-background pointer-events-none"
 					aria-hidden="true"
 				/>
 			)}
@@ -93,7 +93,7 @@ export default function CommunityEditContent() {
 			{/* Sticky header bar — always sticky, sentinel controls shadow/blur */}
 			<div
 				className={cn(
-					"sticky top-16 md:top-[72px] z-20 bg-bg transition-shadow duration-200",
+					"sticky top-16 md:top-[72px] z-20 bg-background transition-shadow duration-200",
 					isSticky
 						? "shadow-md border-b border-border/60"
 						: "border-b border-border/60",
@@ -164,7 +164,7 @@ export default function CommunityEditContent() {
 						<PricingSection {...pricing} sectionRef={sectionRefSetters.pricing} />
 					</div>
 					<aside className="hidden lg:block">
-						<div className="sticky top-40 rounded-xl border border-border/60 bg-bg p-3">
+						<div className="sticky top-40 rounded-xl border border-border/60 bg-background p-3">
 							<nav className="space-y-1">
 								{SECTION_LIST.map((section) => (
 									<button key={section.id} type="button"

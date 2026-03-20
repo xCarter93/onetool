@@ -113,9 +113,12 @@ const SOCIAL_PLATFORMS = [
 ] as const;
 
 function isValidUrl(url: string): boolean {
-	if (!url.trim()) return true;
+	const trimmed = url.trim();
+	if (!trimmed) return true;
+	// Auto-prepend https:// for bare domains like "www.test.com" or "facebook.com/page"
+	const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 	try {
-		const parsed = new URL(url);
+		const parsed = new URL(normalized);
 		return parsed.protocol === "https:" || parsed.protocol === "http:";
 	} catch {
 		return false;
@@ -351,17 +354,17 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 									<StyledInput
 										placeholder={platform.placeholder}
 										value={value}
-										aria-invalid={invalid || undefined}
 										onChange={(e) =>
 											setSocialLinks((prev) => ({
 												...prev,
 												[platform.key]: e.target.value,
 											}))
 										}
+										className={invalid ? "border-red-500 ring-1 ring-red-500/30 focus:ring-red-500/30 focus:border-red-500" : ""}
 									/>
 									{invalid && (
-										<p className="text-xs text-destructive mt-1">
-											Please enter a valid URL
+										<p className="text-xs text-red-600 dark:text-red-400 mt-1">
+											Please enter a valid URL (e.g. https://example.com)
 										</p>
 									)}
 								</div>

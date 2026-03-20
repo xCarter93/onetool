@@ -68,7 +68,7 @@ export const PricingSection = React.memo(function PricingSection({
 					{pricingTiers.map((tier, index) => (
 						<div
 							key={index}
-							className="rounded-xl border border-border/60 overflow-hidden bg-bg"
+							className="rounded-xl border border-border/60 overflow-hidden bg-background"
 						>
 							<div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b border-border/40">
 								<div className="flex items-center gap-3">

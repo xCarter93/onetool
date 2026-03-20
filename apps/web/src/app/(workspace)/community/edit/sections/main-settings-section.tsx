@@ -270,7 +270,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 								onChange={handleSlugChange}
 								placeholder="your-business-name"
 								className={cn(
-									"block w-full sm:w-48 rounded-r-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent",
+									"block w-full sm:w-48 rounded-r-md border border-border bg-background px-3 py-2 text-sm text-fg placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent",
 									slugError && "border-danger focus:ring-danger",
 									!slugError &&
 										isSlugAvailable === false &&
