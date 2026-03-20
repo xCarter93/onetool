@@ -13,10 +13,11 @@ import { BioSection } from "./sections/bio-section";
 import { GallerySection } from "./sections/gallery-section";
 import { ServicesSection } from "./sections/services-section";
 import { PricingSection } from "./sections/pricing-section";
+import { BusinessInfoSection } from "./sections/business-info-section";
 
 export default function CommunityEditContent() {
 	const router = useRouter();
-	const { mainSettings, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
+	const { mainSettings, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
 	const isPageLoaded = !isLoading && !isRedirecting;
 
 	useEffect(() => {
@@ -113,6 +114,7 @@ export default function CommunityEditContent() {
 				<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
 					<div className="space-y-12 pb-[40vh]">
 						<MainSettingsSection {...mainSettings} sectionRef={(el) => { sectionRefs.current.mainSettings = el; }} />
+						<BusinessInfoSection {...businessInfo} sectionRef={(el) => { sectionRefs.current.businessInfo = el; }} />
 						<BioSection {...bio} sectionRef={(el) => { sectionRefs.current.bio = el; }} />
 						<GallerySection {...gallery} sectionRef={(el) => { sectionRefs.current.imageGallery = el; }} />
 						<ServicesSection {...services} sectionRef={(el) => { sectionRefs.current.services = el; }} />
