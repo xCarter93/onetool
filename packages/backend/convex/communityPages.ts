@@ -109,6 +109,7 @@ export const upsert = mutation({
 				google: v.optional(v.string()),
 			})
 		),
+		draftTheme: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await getCurrentUserOrThrow(ctx);
@@ -168,6 +169,8 @@ export const upsert = mutation({
 				updates.draftBusinessHours = args.draftBusinessHours;
 			if (args.draftSocialLinks !== undefined)
 				updates.draftSocialLinks = args.draftSocialLinks;
+			if (args.draftTheme !== undefined)
+				updates.draftTheme = args.draftTheme;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -198,6 +201,7 @@ export const upsert = mutation({
 				draftCredentials: args.draftCredentials,
 				draftBusinessHours: args.draftBusinessHours,
 				draftSocialLinks: args.draftSocialLinks,
+				draftTheme: args.draftTheme,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -222,6 +226,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftCredentials: "publishedCredentials",
 	draftBusinessHours: "publishedBusinessHours",
 	draftSocialLinks: "publishedSocialLinks",
+	draftTheme: "publishedTheme",
 };
 
 /**

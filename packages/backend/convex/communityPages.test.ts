@@ -251,6 +251,43 @@ describe("Community Pages", () => {
 		expect(page?.publishedAt).toBeTruthy();
 	});
 
+	it("upsert stores draftTheme field", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "theme-test",
+			isPublic: false,
+			draftTheme: "bold-expressive",
+		});
+
+		const page = await asUser.query(api.communityPages.get, {});
+		expect(page).toBeTruthy();
+		expect(page?.draftTheme).toBe("bold-expressive");
+	});
+
+	it("publish copies draftTheme to publishedTheme", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "theme-publish-test",
+			isPublic: true,
+			draftTheme: "warm-approachable",
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const page = await t.run(async (ctx) => {
+			const pages = await ctx.db.query("communityPages").collect();
+			return pages.find((p) => p.slug === "theme-publish-test");
+		});
+		expect(page).toBeTruthy();
+		expect(page?.publishedTheme).toBe("warm-approachable");
+	});
+
 	it("validates gallery item cap at five images", () => {
 		const items = Array.from({ length: 6 }).map((_, index) => ({
 			storageId: (`storage_${index}` as unknown) as Id<"_storage">,
