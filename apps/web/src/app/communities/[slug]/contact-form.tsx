@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/styled/styled-card";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface ContactFormProps {
 	slug: string;
@@ -22,6 +23,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 		name: "",
 		email: "",
 		phone: "",
+		message: "",
 	});
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -41,6 +43,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 					name: formState.name,
 					email: formState.email,
 					phone: formState.phone || undefined,
+					message: formState.message || undefined,
 				}),
 			});
 
@@ -50,7 +53,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 			}
 
 			setSubmitSuccess(true);
-			setFormState({ name: "", email: "", phone: "" });
+			setFormState({ name: "", email: "", phone: "", message: "" });
 		} catch (err) {
 			setSubmitError(
 				err instanceof Error ? err.message : "Something went wrong"
@@ -64,11 +67,11 @@ export function ContactForm({ slug }: ContactFormProps) {
 		<StyledCard>
 			<StyledCardHeader className="space-y-2">
 				<StyledCardTitle className="text-xl sm:text-2xl">
-					Interested in our services?
+					Get a Free Quote
 				</StyledCardTitle>
 				<StyledCardDescription>
-					Leave your contact information and we&apos;ll get back to you
-					soon.
+					Tell us about your project and we&apos;ll get back to you
+					within one business day.
 				</StyledCardDescription>
 			</StyledCardHeader>
 
@@ -79,11 +82,11 @@ export function ContactForm({ slug }: ContactFormProps) {
 							<CheckCircle className="size-8 text-green-600 dark:text-green-400" />
 						</div>
 						<h3 className="text-xl font-semibold text-fg mb-2">
-							Thank you!
+							Message Sent!
 						</h3>
 						<p className="text-muted-fg text-sm">
-							We&apos;ve received your information and will be in touch
-							soon.
+							Thanks for reaching out. We&apos;ll get back to you
+							within one business day.
 						</p>
 					</div>
 				) : (
@@ -132,6 +135,24 @@ export function ContactForm({ slug }: ContactFormProps) {
 								placeholder="(555) 123-4567"
 							/>
 						</div>
+						<div className="space-y-2">
+							<Label htmlFor="message" className="text-sm font-medium">
+								How can we help?{" "}
+								<span className="text-muted-fg">(optional)</span>
+							</Label>
+							<Textarea
+								id="message"
+								value={formState.message}
+								onChange={(e) =>
+									setFormState((s) => ({
+										...s,
+										message: e.target.value,
+									}))
+								}
+								placeholder="Describe your project or ask a question..."
+								className="min-h-[100px] max-h-[200px] resize-y"
+							/>
+						</div>
 
 						{submitError && (
 							<div className="flex items-start gap-2 p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger">
@@ -149,7 +170,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 							isLoading={isSubmitting}
 							icon={!isSubmitting && <Send className="size-4" />}
 						>
-							{isSubmitting ? "Sending..." : "I'm Interested"}
+							{isSubmitting ? "Sending..." : "Request a Quote"}
 						</StyledButton>
 					</form>
 				)}

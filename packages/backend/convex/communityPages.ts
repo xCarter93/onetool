@@ -445,6 +445,7 @@ export const getBySlug = query({
 			credentials: page.publishedCredentials,
 			businessHours: page.publishedBusinessHours,
 			socialLinks: page.publishedSocialLinks,
+			theme: page.publishedTheme,
 			bannerUrl,
 			avatarUrl,
 			organization: org

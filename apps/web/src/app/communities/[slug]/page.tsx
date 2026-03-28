@@ -10,6 +10,17 @@ import { CommunityPageContent } from "@/components/tiptap/community-editor";
 import { GalleryCarousel } from "./gallery-carousel";
 import { ContactForm } from "./contact-form";
 import { cn } from "@/lib/utils";
+import {
+	ThemeWrapper,
+	THEME_CLASSES,
+	THEME_TYPOGRAPHY,
+	getTheme,
+} from "./components/theme-wrapper";
+import { TrustBar } from "./components/trust-bar";
+import { OwnerInfo } from "./components/owner-info";
+import { SocialLinks } from "./components/social-links";
+import { BusinessHoursCard } from "./components/business-hours-card";
+import { FloatingCTA } from "./components/floating-cta";
 
 interface PageProps {
 	params: Promise<{ slug: string }>;
@@ -101,7 +112,12 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 		!!data.pricingContent ||
 		galleryImages.length > 0;
 
+	const theme = getTheme(data.theme as string | undefined);
+	const themeClasses = THEME_CLASSES[theme];
+	const themeTypo = THEME_TYPOGRAPHY[theme];
+
 	return (
+		<ThemeWrapper theme={theme}>
 		<div className="min-h-screen bg-bg">
 			<script
 				type="application/ld+json"
@@ -119,7 +135,7 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 						className="object-cover"
 						priority
 					/>
-					<div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/60 to-transparent" />
+					<div className={cn("absolute inset-0 bg-gradient-to-t", themeClasses.heroOverlay)} />
 					<div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-transparent" />
 				</div>
 			)}
@@ -152,7 +168,8 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 						>
 							<h1
 								className={cn(
-									"text-3xl sm:text-4xl md:text-5xl font-bold mb-3",
+									themeTypo.display,
+									"mb-3",
 									data.bannerUrl
 										? "text-white drop-shadow-md"
 										: "text-fg"
@@ -160,6 +177,14 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 							>
 								{data.pageTitle}
 							</h1>
+							<OwnerInfo
+								ownerInfo={
+									data.ownerInfo as
+										| { name?: string; title?: string }
+										| undefined
+								}
+								bannerUrl={data.bannerUrl}
+							/>
 							{data.organization && (
 								<div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-5 gap-y-2 text-sm">
 									{data.organization.website && (
@@ -212,10 +237,41 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 									)}
 								</div>
 							)}
+							<SocialLinks
+								socialLinks={
+									data.socialLinks as
+										| {
+												facebook?: string;
+												instagram?: string;
+												nextdoor?: string;
+												youtube?: string;
+												linkedin?: string;
+												yelp?: string;
+												google?: string;
+										  }
+										| undefined
+								}
+								bannerUrl={data.bannerUrl}
+							/>
 						</div>
 					</div>
 				</div>
 			</div>
+
+			<TrustBar
+				credentials={
+					data.credentials as
+						| {
+								isLicensed?: boolean;
+								isBonded?: boolean;
+								isInsured?: boolean;
+								yearEstablished?: number;
+								certifications?: string[];
+						  }
+						| undefined
+				}
+				themeClasses={themeClasses.trustBar}
+			/>
 
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
 				<div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
@@ -224,7 +280,7 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 							<>
 								{data.bioContent && (
 									<section className="space-y-3">
-										<h2 className="text-2xl font-semibold text-fg">
+										<h2 className={cn(themeTypo.heading, themeClasses.sectionHeading)}>
 											Bio
 										</h2>
 										<div className="prose prose-slate dark:prose-invert max-w-none">
@@ -241,7 +297,7 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 
 								{data.servicesContent && (
 									<section className="space-y-3">
-										<h2 className="text-2xl font-semibold text-fg">
+										<h2 className={cn(themeTypo.heading, themeClasses.sectionHeading)}>
 											Services
 										</h2>
 										<div className="prose prose-slate dark:prose-invert max-w-none">
@@ -254,7 +310,7 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 
 								{(hasStructuredPricing || data.pricingContent) && (
 									<section className="space-y-4">
-										<h2 className="text-2xl font-semibold text-fg">
+										<h2 className={cn(themeTypo.heading, themeClasses.sectionHeading)}>
 											Pricing
 										</h2>
 										{hasStructuredPricing ? (
@@ -262,7 +318,7 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 												{data.pricingTiers?.map((tier, index) => (
 													<div
 														key={`${tier.name}-${index}`}
-														className="rounded-xl border border-border/60 bg-card/40 p-5 space-y-2"
+														className={cn("rounded-xl p-5 space-y-2", themeClasses.card)}
 													>
 														<h3 className="text-lg font-semibold text-fg">
 															{tier.name}
@@ -299,9 +355,25 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 						)}
 					</div>
 
-					<div className="lg:w-[380px] xl:w-[420px] flex-shrink-0">
+					<div className="lg:w-[380px] xl:w-[420px] flex-shrink-0" id="contact-form-section">
 						<div className="lg:sticky lg:top-6">
 							<ContactForm slug={slug} />
+							<BusinessHoursCard
+								businessHours={
+									data.businessHours as
+										| {
+												byAppointmentOnly: boolean;
+												schedule?: Array<{
+													day: string;
+													open: string;
+													close: string;
+													isClosed: boolean;
+												}>;
+										  }
+										| undefined
+								}
+								cardClasses={themeClasses.card}
+							/>
 						</div>
 					</div>
 				</div>
@@ -338,6 +410,9 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 					</div>
 				</div>
 			</footer>
+
+			<FloatingCTA contactFormId="contact-form-section" />
 		</div>
+		</ThemeWrapper>
 	);
 }
