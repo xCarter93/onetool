@@ -17,7 +17,6 @@ import type { JSONContent } from "@tiptap/react";
 
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { StyledBadge } from "@/components/ui/styled/styled-badge";
 import { StyledInput } from "@/components/ui/styled/styled-input";
 import { cn } from "@/lib/utils";
@@ -30,8 +29,6 @@ interface MainSettingsSectionProps {
 	setSlug: (value: string) => void;
 	metaDescription: string;
 	setMetaDescription: (value: string) => void;
-	isPublic: boolean;
-	setIsPublic: (value: boolean) => void;
 	bannerStorageId: Id<"_storage"> | null;
 	avatarStorageId: Id<"_storage"> | null;
 	bannerUrl: string | null;
@@ -48,7 +45,6 @@ interface MainSettingsSectionProps {
 	isSlugAvailable: boolean | undefined;
 	copied: boolean;
 	handleCopyUrl: () => void;
-	handleMakePrivate: () => void;
 	communityPage: unknown;
 	organization: { name?: string; logoUrl?: string } | null | undefined;
 	bannerInputRef: React.RefObject<HTMLInputElement | null>;
@@ -62,7 +58,6 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 	slug,
 	metaDescription,
 	setMetaDescription,
-	isPublic,
 	bannerStorageId,
 	avatarStorageId,
 	bannerUrl,
@@ -79,7 +74,6 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 	isSlugAvailable,
 	copied,
 	handleCopyUrl,
-	handleMakePrivate,
 	organization,
 	bannerInputRef,
 	avatarInputRef,
@@ -323,17 +317,6 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 				</div>
 			</div>
 
-			{isPublic && (
-				<div className="pt-2">
-					<StyledButton
-						intent="secondary"
-						size="sm"
-						onClick={handleMakePrivate}
-					>
-						Make Page Private
-					</StyledButton>
-				</div>
-			)}
 		</section>
 	);
 });

@@ -8,12 +8,15 @@ import {
 	Youtube,
 	Linkedin,
 	Globe,
+	ShieldCheck,
+	Handshake,
+	BadgeCheck,
+	Check,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { StyledInput } from "@/components/ui/styled/styled-input";
 import { StyledTagsInput } from "@/components/ui/styled/styled-tags-input";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Select,
 	SelectContent,
@@ -212,7 +215,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					Owner Info
 				</h3>
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-					<div>
+					<div className="space-y-1.5">
 						<Label htmlFor="ownerName">Your Name</Label>
 						<StyledInput
 							id="ownerName"
@@ -221,7 +224,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 							onChange={(e) => setOwnerName(e.target.value)}
 						/>
 					</div>
-					<div>
+					<div className="space-y-1.5">
 						<Label htmlFor="ownerTitle">Your Title</Label>
 						<StyledInput
 							id="ownerTitle"
@@ -238,34 +241,48 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
 					Credentials
 				</h3>
-				<div className="flex flex-wrap items-center gap-6">
-					<div className="flex items-center gap-2">
-						<Checkbox
-							id="isLicensed"
-							checked={isLicensed}
-							onCheckedChange={(v) => setIsLicensed(v === true)}
-						/>
-						<Label htmlFor="isLicensed">Licensed</Label>
-					</div>
-					<div className="flex items-center gap-2">
-						<Checkbox
-							id="isBonded"
-							checked={isBonded}
-							onCheckedChange={(v) => setIsBonded(v === true)}
-						/>
-						<Label htmlFor="isBonded">Bonded</Label>
-					</div>
-					<div className="flex items-center gap-2">
-						<Checkbox
-							id="isInsured"
-							checked={isInsured}
-							onCheckedChange={(v) => setIsInsured(v === true)}
-						/>
-						<Label htmlFor="isInsured">Insured</Label>
-					</div>
+				<div className="flex flex-wrap gap-4">
+					{([
+						{ label: "Licensed", icon: ShieldCheck, checked: isLicensed, toggle: setIsLicensed },
+						{ label: "Bonded", icon: Handshake, checked: isBonded, toggle: setIsBonded },
+						{ label: "Insured", icon: BadgeCheck, checked: isInsured, toggle: setIsInsured },
+					] as const).map((cred) => (
+						<button
+							key={cred.label}
+							type="button"
+							onClick={() => cred.toggle(!cred.checked)}
+							className={`group relative flex flex-col items-center justify-center w-28 sm:w-32 p-5 rounded-2xl border transition-all duration-300 ease-in-out transform hover:scale-105 hover:z-10 shadow-sm hover:shadow-md cursor-pointer select-none ${
+								cred.checked
+									? "bg-gradient-to-br from-primary/15 to-primary/25 border-primary/50 ring-2 ring-primary/30 shadow-primary/10"
+									: "bg-card/80 border-border/60 hover:border-primary/30 hover:bg-card/90"
+							}`}
+						>
+							{cred.checked && (
+								<div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center shadow-md ring-2 ring-background">
+									<Check className="w-3.5 h-3.5 text-primary-foreground" />
+								</div>
+							)}
+							<cred.icon
+								className={`w-8 h-8 mb-2 transition-all duration-300 ${
+									cred.checked
+										? "text-primary"
+										: "text-muted-fg group-hover:text-primary"
+								}`}
+							/>
+							<span
+								className={`text-sm font-semibold tracking-wide transition-colors duration-200 ${
+									cred.checked
+										? "text-primary"
+										: "text-fg group-hover:text-primary"
+								}`}
+							>
+								{cred.label}
+							</span>
+						</button>
+					))}
 				</div>
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-					<div>
+					<div className="space-y-1.5">
 						<Label htmlFor="yearEstablished">Year Established</Label>
 						<StyledInput
 							id="yearEstablished"
@@ -285,7 +302,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 							}}
 						/>
 					</div>
-					<div>
+					<div className="space-y-1.5">
 						<Label htmlFor="licenseNumber">License Number</Label>
 						<StyledInput
 							id="licenseNumber"
@@ -295,7 +312,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 						/>
 					</div>
 				</div>
-				<div>
+				<div className="space-y-1.5">
 					<Label>Additional Certifications</Label>
 					<StyledTagsInput
 						tags={certifications}

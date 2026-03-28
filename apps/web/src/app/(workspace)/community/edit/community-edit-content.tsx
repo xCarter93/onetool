@@ -88,7 +88,7 @@ export default function CommunityEditContent() {
 				className={cn(
 					"sticky top-0 z-20 bg-background transition-shadow duration-200 pt-10 md:pt-12",
 					isSticky
-						? "shadow-md border-b border-border/60"
+						? "shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)] border-b border-border/60"
 						: "border-b border-border/60",
 				)}
 			>
@@ -123,6 +123,26 @@ export default function CommunityEditContent() {
 							{actions.hasUnsavedChanges && (
 								<span className="text-sm font-medium text-amber-600 dark:text-amber-500 animate-pulse hidden sm:inline-block pr-2">Unsaved changes</span>
 							)}
+							{mainSettings.isPublic && (
+								<StyledButton
+									intent="warning"
+									size="sm"
+									onClick={mainSettings.handleMakePrivate}
+								>
+									<GlobeLock className="size-4 mr-2" />
+									Make Private
+								</StyledButton>
+							)}
+							{!mainSettings.isPublic && (
+								<StyledButton
+									intent="success"
+									onClick={actions.handlePublish}
+									disabled={actions.isSaving || actions.isPublishing || !actions.hasPublishableContent || !!actions.slugError || actions.isSlugAvailable === false || actions.hasInvalidSocialUrls}
+								>
+									{actions.isPublishing ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Send className="size-4 mr-2" />}
+									Publish
+								</StyledButton>
+							)}
 							<StyledButton
 								intent={actions.hasUnsavedChanges ? "primary" : "secondary"}
 								onClick={actions.handleSave}
@@ -131,16 +151,6 @@ export default function CommunityEditContent() {
 								{actions.isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Save className="size-4 mr-2" />}
 								{mainSettings.isPublic ? "Save Changes" : "Save Draft"}
 							</StyledButton>
-							{!mainSettings.isPublic && (
-								<StyledButton
-									intent="primary"
-									onClick={actions.handlePublish}
-									disabled={actions.isSaving || actions.isPublishing || !actions.hasPublishableContent || !!actions.slugError || actions.isSlugAvailable === false || actions.hasInvalidSocialUrls}
-								>
-									{actions.isPublishing ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Send className="size-4 mr-2" />}
-									Publish
-								</StyledButton>
-							)}
 						</div>
 					</div>
 				</div>
