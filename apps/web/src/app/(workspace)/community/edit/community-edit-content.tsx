@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink } from "lucide-react";
+import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { StyledBadge } from "@/components/ui/styled/styled-badge";
@@ -14,11 +14,14 @@ import { GallerySection } from "./sections/gallery-section";
 import { ServicesSection } from "./sections/services-section";
 import { PricingSection } from "./sections/pricing-section";
 import { BusinessInfoSection } from "./sections/business-info-section";
+import { DesignSection } from "./sections/design-section";
+import { PreviewModal } from "./preview-modal";
 
 export default function CommunityEditContent() {
 	const router = useRouter();
-	const { mainSettings, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
+	const { mainSettings, design, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
 	const isPageLoaded = !isLoading && !isRedirecting;
+	const [previewOpen, setPreviewOpen] = useState(false);
 
 	// Stable sectionRef setters — created once so they don't break React.memo
 	const sectionRefSetters = useMemo(() => {
@@ -120,6 +123,14 @@ export default function CommunityEditContent() {
 							</div>
 						</div>
 						<div className="flex items-center gap-3">
+							<StyledButton
+								intent="outline"
+								size="sm"
+								onClick={() => setPreviewOpen(true)}
+							>
+								<Eye className="size-4 mr-2" />
+								Preview Page
+							</StyledButton>
 							{actions.hasUnsavedChanges && (
 								<span className="text-sm font-medium text-amber-600 dark:text-amber-500 animate-pulse hidden sm:inline-block pr-2">Unsaved changes</span>
 							)}
@@ -160,6 +171,7 @@ export default function CommunityEditContent() {
 				<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
 					<div className="space-y-12 pb-[40vh]">
 						<MainSettingsSection {...mainSettings} sectionRef={sectionRefSetters.mainSettings} />
+						<DesignSection {...design} sectionRef={sectionRefSetters.design} />
 						<BusinessInfoSection {...businessInfo} sectionRef={sectionRefSetters.businessInfo} />
 						<BioSection {...bio} sectionRef={sectionRefSetters.bio} />
 						<GallerySection {...gallery} sectionRef={sectionRefSetters.imageGallery} />
@@ -186,6 +198,39 @@ export default function CommunityEditContent() {
 					</aside>
 				</div>
 			</div>
+
+			<PreviewModal
+				open={previewOpen}
+				onOpenChange={setPreviewOpen}
+				pageTitle={mainSettings.pageTitle}
+				bannerUrl={mainSettings.bannerUrl}
+				avatarUrl={mainSettings.avatarUrl}
+				organization={mainSettings.organization ? { name: mainSettings.organization.name, email: mainSettings.organization.email, phone: mainSettings.organization.phone, website: mainSettings.organization.website } : null}
+				bioContent={bio.bioContent}
+				servicesContent={services.servicesContent}
+				pricingMode={pricing.pricingMode}
+				pricingContent={pricing.pricingContent}
+				pricingTiers={pricing.pricingTiers}
+				galleryImages={gallery.galleryItems.filter(item => item.url).map(item => ({ url: item.url!, storageId: String(item.storageId), sortOrder: item.sortOrder }))}
+				theme={design.theme}
+				ownerInfo={businessInfo.ownerName || businessInfo.ownerTitle ? { name: businessInfo.ownerName || undefined, title: businessInfo.ownerTitle || undefined } : undefined}
+				credentials={
+					businessInfo.isLicensed || businessInfo.isBonded || businessInfo.isInsured || businessInfo.yearEstablished || businessInfo.certifications.length > 0
+						? {
+								isLicensed: businessInfo.isLicensed || undefined,
+								isBonded: businessInfo.isBonded || undefined,
+								isInsured: businessInfo.isInsured || undefined,
+								yearEstablished: businessInfo.yearEstablished,
+								certifications: businessInfo.certifications.length > 0 ? businessInfo.certifications : undefined,
+							}
+						: undefined
+				}
+				businessHours={{
+					byAppointmentOnly: businessInfo.byAppointmentOnly,
+					schedule: businessInfo.byAppointmentOnly ? undefined : businessInfo.businessSchedule,
+				}}
+				socialLinks={Object.values(businessInfo.socialLinks).some(Boolean) ? businessInfo.socialLinks : undefined}
+			/>
 		</div>
 	);
 }
