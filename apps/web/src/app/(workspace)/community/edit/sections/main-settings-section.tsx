@@ -26,7 +26,6 @@ interface MainSettingsSectionProps {
 	pageTitle: string;
 	setPageTitle: (value: string) => void;
 	slug: string;
-	setSlug: (value: string) => void;
 	metaDescription: string;
 	setMetaDescription: (value: string) => void;
 	bannerStorageId: Id<"_storage"> | null;
@@ -45,7 +44,6 @@ interface MainSettingsSectionProps {
 	isSlugAvailable: boolean | undefined;
 	copied: boolean;
 	handleCopyUrl: () => void;
-	communityPage: unknown;
 	organization: { name?: string; logoUrl?: string } | null | undefined;
 	bannerInputRef: React.RefObject<HTMLInputElement | null>;
 	avatarInputRef: React.RefObject<HTMLInputElement | null>;

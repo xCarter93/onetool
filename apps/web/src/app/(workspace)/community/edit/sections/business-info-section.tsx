@@ -25,6 +25,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import type { DaySchedule, SocialLinks } from "../use-community-page-form";
+import { isValidUrl } from "@/lib/validators";
 
 interface BusinessInfoSectionProps {
 	// Owner Info
@@ -116,14 +117,6 @@ const SOCIAL_PLATFORMS = [
 	},
 ] as const;
 
-/** Regex-based URL validation — avoids new URL() browser inconsistencies. */
-const URL_PATTERN = /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i;
-
-function isValidUrl(url: string): boolean {
-	const trimmed = url.trim();
-	if (!trimmed) return true;
-	return URL_PATTERN.test(trimmed);
-}
 
 /**
  * Individual social link input — own render boundary so typing in one

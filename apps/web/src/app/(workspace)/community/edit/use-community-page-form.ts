@@ -14,6 +14,7 @@ import type { JSONContent } from "@tiptap/react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { isValidUrl as isValidSocialUrl } from "@/lib/validators";
 
 const MAX_BANNER_SIZE = 5 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
@@ -77,14 +78,6 @@ const DEFAULT_SCHEDULE: DaySchedule[] = DAYS_OF_WEEK.map((day) => ({
 }));
 
 const EMPTY_SOCIAL_LINKS: SocialLinks = {};
-
-const SOCIAL_URL_PATTERN = /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i;
-
-function isValidSocialUrl(url: string): boolean {
-	const trimmed = url.trim();
-	if (!trimmed) return true;
-	return SOCIAL_URL_PATTERN.test(trimmed);
-}
 
 interface Snapshot {
 	mainSettings: string;
@@ -494,7 +487,7 @@ export function useCommunityPageForm() {
 	};
 
 	// Image upload
-	const uploadImage = async (
+	const uploadImage = useCallback(async (
 		file: File,
 		type: "banner" | "avatar" | "gallery",
 	) => {
@@ -560,7 +553,7 @@ export function useCommunityPageForm() {
 			if (type === "avatar") setIsUploadingAvatar(false);
 			if (type === "gallery") setIsUploadingGallery(false);
 		}
-	};
+	}, [galleryItems.length, generateUploadUrl]);
 
 	// Snapshot comparison
 	const currentSnapshot = useMemo(
@@ -922,10 +915,10 @@ export function useCommunityPageForm() {
 		}
 	};
 
-	// Stable upload handlers (avoid recreating on every render)
-	const handleBannerUpload = useCallback((file: File) => uploadImage(file, "banner"), []);
-	const handleAvatarUpload = useCallback((file: File) => uploadImage(file, "avatar"), []);
-	const handleGalleryUpload = useCallback((file: File) => uploadImage(file, "gallery"), []);
+	// Stable upload handlers
+	const handleBannerUpload = useCallback((file: File) => uploadImage(file, "banner"), [uploadImage]);
+	const handleAvatarUpload = useCallback((file: File) => uploadImage(file, "avatar"), [uploadImage]);
+	const handleGalleryUpload = useCallback((file: File) => uploadImage(file, "gallery"), [uploadImage]);
 
 	const removeGalleryItem = (storageId: Id<"_storage">) => {
 		setGalleryItems((prev) =>
