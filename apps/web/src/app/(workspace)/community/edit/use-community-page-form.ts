@@ -23,6 +23,7 @@ export const MAX_GALLERY_IMAGES = 5;
 export type PricingMode = "structured" | "richText";
 export type SectionId =
 	| "mainSettings"
+	| "design"
 	| "businessInfo"
 	| "bio"
 	| "imageGallery"
@@ -87,6 +88,7 @@ function isValidSocialUrl(url: string): boolean {
 
 interface Snapshot {
 	mainSettings: string;
+	design: string;
 	businessInfo: string;
 	bio: string;
 	imageGallery: string;
@@ -96,6 +98,7 @@ interface Snapshot {
 
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "mainSettings", label: "Main Page Settings" },
+	{ id: "design", label: "Design" },
 	{ id: "businessInfo", label: "Business Info" },
 	{ id: "bio", label: "Bio" },
 	{ id: "imageGallery", label: "Image Gallery" },
@@ -127,6 +130,7 @@ function createSnapshot({
 	byAppointmentOnly,
 	businessSchedule,
 	socialLinks,
+	theme,
 }: {
 	pageTitle: string;
 	slug: string;
@@ -151,6 +155,7 @@ function createSnapshot({
 	byAppointmentOnly: boolean;
 	businessSchedule: DaySchedule[];
 	socialLinks: SocialLinks;
+	theme: string;
 }): Snapshot {
 	return {
 		mainSettings: JSON.stringify({
@@ -161,6 +166,7 @@ function createSnapshot({
 			bannerStorageId,
 			avatarStorageId,
 		}),
+		design: JSON.stringify({ theme }),
 		businessInfo: JSON.stringify({
 			ownerName,
 			ownerTitle,
@@ -219,6 +225,7 @@ export function useCommunityPageForm() {
 		JSONContent | undefined
 	>();
 	const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
+	const [theme, setTheme] = useState("clean-professional");
 
 	const [bannerUrl, setBannerUrl] = useState<string | null>(null);
 	const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -263,6 +270,7 @@ export function useCommunityPageForm() {
 	const galleryInputRef = useRef<HTMLInputElement>(null);
 	const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
 		mainSettings: null,
+		design: null,
 		businessInfo: null,
 		bio: null,
 		imageGallery: null,
@@ -368,6 +376,9 @@ export function useCommunityPageForm() {
 		const links = communityPage.draftSocialLinks as SocialLinks | undefined;
 		setSocialLinks(links || EMPTY_SOCIAL_LINKS);
 
+		const serverTheme = (communityPage.draftTheme as string) || "clean-professional";
+		setTheme(serverTheme);
+
 		savedSnapshotRef.current = createSnapshot({
 			pageTitle: communityPage.pageTitle || "",
 			slug: communityPage.slug,
@@ -408,6 +419,7 @@ export function useCommunityPageForm() {
 			byAppointmentOnly: hours?.byAppointmentOnly || false,
 			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
+			theme: serverTheme,
 		});
 	}, [communityPage]);
 
@@ -577,6 +589,7 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
+				theme,
 			}),
 		[
 			pageTitle,
@@ -602,6 +615,7 @@ export function useCommunityPageForm() {
 			byAppointmentOnly,
 			businessSchedule,
 			socialLinks,
+			theme,
 		],
 	);
 
@@ -610,6 +624,7 @@ export function useCommunityPageForm() {
 		if (!saved) {
 			return {
 				mainSettings: false,
+				design: false,
 				businessInfo: false,
 				bio: false,
 				imageGallery: false,
@@ -619,6 +634,7 @@ export function useCommunityPageForm() {
 		}
 		return {
 			mainSettings: saved.mainSettings !== currentSnapshot.mainSettings,
+			design: saved.design !== currentSnapshot.design,
 			businessInfo: saved.businessInfo !== currentSnapshot.businessInfo,
 			bio: saved.bio !== currentSnapshot.bio,
 			imageGallery: saved.imageGallery !== currentSnapshot.imageGallery,
@@ -716,6 +732,7 @@ export function useCommunityPageForm() {
 				draftSocialLinks: Object.values(socialLinks).some(Boolean)
 					? socialLinks
 					: undefined,
+				draftTheme: theme,
 			});
 
 			if (isPublic) {
@@ -797,6 +814,7 @@ export function useCommunityPageForm() {
 				draftSocialLinks: Object.values(socialLinks).some(Boolean)
 					? socialLinks
 					: undefined,
+				draftTheme: theme,
 			});
 
 			await publishMutation();
@@ -825,6 +843,7 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
+				theme,
 			});
 			toast.success("Published!", "Your community page is now live and public");
 		} catch (error) {
@@ -865,6 +884,7 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
+				theme,
 			});
 			toast.success("Page is now private", "Only you can see your page");
 		} catch {
@@ -959,6 +979,11 @@ export function useCommunityPageForm() {
 			organization,
 			bannerInputRef,
 			avatarInputRef,
+		},
+		// Design slice
+		design: {
+			theme,
+			setTheme,
 		},
 		// Business Info slice
 		businessInfo: {
