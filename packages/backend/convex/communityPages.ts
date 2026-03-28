@@ -536,54 +536,52 @@ export const submitInterest = mutation({
 			throw new Error("Community page not found");
 		}
 
-		// Check for duplicate email to prevent spam
 		const normalizedEmail = args.email.toLowerCase().trim();
-		const existingContact = await ctx.db
-			.query("clientContacts")
-			.withIndex("by_org", (q) => q.eq("orgId", page.orgId))
-			.filter((q) => q.eq(q.field("email"), normalizedEmail))
-			.first();
 
-		if (existingContact) {
-			// Return success without creating duplicate (prevents enumeration)
-			return { success: true, clientId: existingContact.clientId };
+		// Build task description with all form data
+		const descParts: string[] = [];
+		descParts.push(`Name: ${sanitizedName}`);
+		descParts.push(`Email: ${normalizedEmail}`);
+		if (args.phone) {
+			descParts.push(`Phone: ${args.phone.trim()}`);
 		}
-
-		// Build notes with message if provided
-		const notesParts: string[] = [];
-		notesParts.push(`Lead from community page: ${args.slug}`);
 		if (args.message) {
 			const sanitizedMessage = args.message.trim().substring(0, 2000);
 			if (sanitizedMessage) {
-				notesParts.push(`Message: ${sanitizedMessage}`);
+				descParts.push(`\nMessage:\n${sanitizedMessage}`);
 			}
 		}
+		descParts.push(`\nSource: Community page (${args.slug})`);
 
-		// Create client as lead
-		const clientId = await ctx.db.insert("clients", {
+		// Find org admin for task assignment
+		const adminMembership = await ctx.db
+			.query("organizationMemberships")
+			.withIndex("by_org", (q) => q.eq("orgId", page.orgId))
+			.filter((q) => q.eq(q.field("role"), "admin"))
+			.first();
+
+		const assigneeUserId = adminMembership?.userId;
+
+		// Calculate next business day (skip Saturday=6, Sunday=0)
+		const now = new Date();
+		const nextDay = new Date(now);
+		nextDay.setDate(nextDay.getDate() + 1);
+		while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+			nextDay.setDate(nextDay.getDate() + 1);
+		}
+		nextDay.setHours(9, 0, 0, 0);
+
+		await ctx.db.insert("tasks", {
 			orgId: page.orgId,
-			companyName: sanitizedName,
-			status: "lead",
-			leadSource: "community-page",
-			notes: notesParts.join("\n\n"),
+			title: `Follow up: ${sanitizedName}`,
+			description: descParts.join("\n"),
+			date: nextDay.getTime(),
+			status: "pending",
+			type: "internal",
+			assigneeUserId: assigneeUserId || undefined,
 		});
 
-		// Create primary contact
-		const nameParts = sanitizedName.split(/\s+/);
-		const firstName = nameParts[0] || sanitizedName;
-		const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-
-		await ctx.db.insert("clientContacts", {
-			clientId,
-			orgId: page.orgId,
-			firstName,
-			lastName,
-			email: normalizedEmail,
-			phone: args.phone?.trim(),
-			isPrimary: true,
-		});
-
-		return { success: true, clientId };
+		return { success: true };
 	},
 });
 

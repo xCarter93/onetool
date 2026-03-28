@@ -288,6 +288,130 @@ describe("Community Pages", () => {
 		expect(page?.publishedTheme).toBe("warm-approachable");
 	});
 
+	it("submitInterest creates follow-up task instead of client", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "lead-task-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "lead-task-test",
+			name: "John Smith",
+			email: "john@example.com",
+			phone: "555-1234",
+			message: "I need lawn care services",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		expect(tasks).toHaveLength(1);
+		expect(tasks[0].title).toBe("Follow up: John Smith");
+		expect(tasks[0].description).toContain("john@example.com");
+		expect(tasks[0].description).toContain("555-1234");
+		expect(tasks[0].description).toContain("I need lawn care services");
+		expect(tasks[0].status).toBe("pending");
+		expect(tasks[0].type).toBe("internal");
+	});
+
+	it("submitInterest assigns task to org admin", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		const ids = await t.run(async (ctx) => createTestOrg(ctx));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "admin-assign-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "admin-assign-test",
+			name: "Jane Doe",
+			email: "jane@example.com",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const task = tasks.find((t) => t.title === "Follow up: Jane Doe");
+		expect(task).toBeTruthy();
+		expect(task?.assigneeUserId).toBeTruthy();
+	});
+
+	it("submitInterest task due date is a weekday", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "weekday-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "weekday-test",
+			name: "Bob Wilson",
+			email: "bob@example.com",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const task = tasks.find((t) => t.title === "Follow up: Bob Wilson");
+		expect(task).toBeTruthy();
+		const dayOfWeek = new Date(task!.date).getDay();
+		expect(dayOfWeek).toBeGreaterThanOrEqual(1);
+		expect(dayOfWeek).toBeLessThanOrEqual(5);
+	});
+
+	it("submitInterest duplicate email creates another task", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "dup-email-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "dup-email-test",
+			name: "Alice Brown",
+			email: "alice@example.com",
+		});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "dup-email-test",
+			name: "Alice Brown",
+			email: "alice@example.com",
+			message: "Following up again",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const aliceTasks = tasks.filter((t) => t.title === "Follow up: Alice Brown");
+		expect(aliceTasks).toHaveLength(2);
+	});
+
 	it("validates gallery item cap at five images", () => {
 		const items = Array.from({ length: 6 }).map((_, index) => ({
 			storageId: (`storage_${index}` as unknown) as Id<"_storage">,
