@@ -122,7 +122,9 @@ export default async function PublicCommunityPage({ params }: PageProps) {
 			<script
 				type="application/ld+json"
 				dangerouslySetInnerHTML={{
-					__html: JSON.stringify(buildLocalBusinessJsonLd(data)),
+					__html: JSON.stringify(buildLocalBusinessJsonLd(data))
+						.replace(/</g, "\\u003c")
+						.replace(/>/g, "\\u003e"),
 				}}
 			/>
 
