@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } fr
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, Loader2, Lock, Undo2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, Undo2, AlertTriangle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ import { FIELD_OPTIONS } from "../components/workflow-node";
 import { NodeEditorSidebar, type SelectedNode } from "../components/node-editor-sidebar";
 import { AutomationFlow } from "../components/flow/automation-flow";
 import { automationToReactFlow, TRIGGER_NODE_ID, TRIGGER_PLACEHOLDER_ID, isTerminalId } from "../lib/flow-adapter";
+import { collectSubtree, collectLoopBody, findParent } from "../lib/graph-utils";
 
 // Helper to generate unique IDs
 function generateId(): string {
@@ -144,11 +145,14 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 }
 
 // Undo state type for node deletion
-interface DeletedNodeState {
-	node: WorkflowNode;
-	parentId: string | null;
-	branch: "next" | "else" | null;
-	childNodeId: string | undefined;
+interface DeletedState {
+	deletedNodes: WorkflowNode[];       // All removed nodes (for subtree restoration)
+	parentId: string | null;            // Parent of the deleted root node
+	branch: "next" | "else" | null;     // Which branch of parent pointed to deleted root
+	reconnectedChildId?: string;        // For loop deletion: the "After Last" child that was reconnected to parent
+	previousParentPointer?: string;     // What parent originally pointed to (the deleted root's ID)
+	toastMessage: string;               // Context-specific toast body text
+	nodeTypeLabel: string;              // Context-specific toast heading (e.g., "Condition deleted")
 }
 
 function AutomationEditorContent() {
@@ -183,8 +187,11 @@ function AutomationEditorContent() {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
 	// Undo state for node deletion
-	const [deletedNodeState, setDeletedNodeState] = useState<DeletedNodeState | null>(null);
+	const [deletedNodeState, setDeletedNodeState] = useState<DeletedState | null>(null);
 	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	// Root deletion confirmation modal
+	const [showClearConfirm, setShowClearConfirm] = useState(false);
 
 	// Derived React Flow state from adapter
 	const { nodes: rfNodes, edges: rfEdges } = useMemo(() => {
@@ -256,14 +263,30 @@ function AutomationEditorContent() {
 	}, []);
 
 	const handleNodeChangeFromSidebar = useCallback((nodeId: string, updates: Partial<WorkflowNode>) => {
+		// Clear undo state -- intervening edit invalidates restoration
+		if (deletedNodeState) {
+			setDeletedNodeState(null);
+			if (undoTimeoutRef.current) {
+				clearTimeout(undoTimeoutRef.current);
+				undoTimeoutRef.current = null;
+			}
+		}
 		setNodes((prev) =>
 			prev.map((n) => (n.id === nodeId ? { ...n, ...updates } : n))
 		);
-	}, []);
+	}, [deletedNodeState]);
 
 	const handleTriggerChangeFromSidebar = useCallback((newTrigger: TriggerConfig) => {
+		// Clear undo state -- intervening edit invalidates restoration
+		if (deletedNodeState) {
+			setDeletedNodeState(null);
+			if (undoTimeoutRef.current) {
+				clearTimeout(undoTimeoutRef.current);
+				undoTimeoutRef.current = null;
+			}
+		}
 		setTrigger(newTrigger);
-	}, []);
+	}, [deletedNodeState]);
 
 	// Node click handler for React Flow
 	const handleNodeClick = useCallback((nodeId: string) => {
@@ -283,6 +306,14 @@ function AutomationEditorContent() {
 
 	// Insert node via edge plus-button
 	const handleInsertNode = useCallback((edgeId: string, nodeType: string) => {
+		// Clear undo state -- intervening edit invalidates restoration
+		if (deletedNodeState) {
+			setDeletedNodeState(null);
+			if (undoTimeoutRef.current) {
+				clearTimeout(undoTimeoutRef.current);
+				undoTimeoutRef.current = null;
+			}
+		}
 		if (!trigger) return;
 
 		// Find the clicked edge by ID from the current React Flow edges
@@ -389,109 +420,189 @@ function AutomationEditorContent() {
 		setTimeout(() => {
 			handleOpenSidebar({ type: sidebarType, id: newId } as SelectedNode);
 		}, 0);
-	}, [trigger, rfEdges, handleOpenSidebar]);
+	}, [trigger, rfEdges, handleOpenSidebar, deletedNodeState]);
 
-	// Delete node with undo support
-	const handleDeleteNode = useCallback((nodeId: string) => {
-		const nodeToDelete = nodes.find((n) => n.id === nodeId);
-		if (!nodeToDelete) return;
-
-		// Find parent node (the one whose nextNodeId or elseNodeId points to this node)
-		let parentId: string | null = null;
-		let branch: "next" | "else" | null = null;
-
-		for (const n of nodes) {
-			if (n.nextNodeId === nodeId) {
-				parentId = n.id;
-				branch = "next";
-				break;
-			}
-			if (n.elseNodeId === nodeId) {
-				parentId = n.id;
-				branch = "else";
-				break;
-			}
-		}
-
-		// If no parent found among nodes, it might be the root node (connected to trigger)
-		// In that case, parentId stays null and we just remove the node
-
-		// Save state for undo
-		const undoState: DeletedNodeState = {
-			node: { ...nodeToDelete },
-			parentId,
-			branch,
-			childNodeId: nodeToDelete.nextNodeId,
-		};
-
-		// Reconnect: parent points to deleted node's next child
-		setNodes((prev) => {
-			const updated = prev
-				.filter((n) => n.id !== nodeId)
-				.map((n) => {
-					if (n.id === parentId) {
-						if (branch === "else") {
-							return { ...n, elseNodeId: nodeToDelete.nextNodeId };
-						} else if (branch === "next") {
-							return { ...n, nextNodeId: nodeToDelete.nextNodeId };
-						}
-					}
-					return n;
-				});
-			return updated;
-		});
-
-		// Close sidebar
-		setIsSidebarOpen(false);
-		setSelectedNode(null);
-
-		// Save undo state
-		setDeletedNodeState(undoState);
-
-		// Show toast
-		toast.info("Node removed", "Click Undo to restore the deleted node");
-
-		// Clear undo state after 5 seconds
+	// Show undo toast with auto-dismiss timer
+	const showUndoToast = useCallback(() => {
+		// The floating undo button serves as the toast (reads from deletedNodeState)
 		if (undoTimeoutRef.current) {
 			clearTimeout(undoTimeoutRef.current);
 		}
 		undoTimeoutRef.current = setTimeout(() => {
 			setDeletedNodeState(null);
 		}, 5000);
-	}, [nodes, toast]);
+	}, []);
 
-	// Undo delete
-	const handleUndoDelete = useCallback(() => {
-		if (!deletedNodeState) return;
+	// Delete node with undo support -- handles four scenarios
+	const handleDeleteNode = useCallback((nodeId: string) => {
+		const nodeToDelete = nodes.find((n) => n.id === nodeId);
+		if (!nodeToDelete) return;
 
-		const { node, parentId, branch, childNodeId } = deletedNodeState;
+		// Use findParent from graph-utils
+		const { parentId, branch } = findParent(nodeId, nodes);
+
+		// Determine if this is the root node (no parent among workflow nodes)
+		const isRootNode = parentId === null;
+
+		// Close sidebar
+		setIsSidebarOpen(false);
+		setSelectedNode(null);
+
+		// ---- SCENARIO 1: ROOT NODE DELETION ----
+		// Show confirmation modal. Actual deletion happens in handleConfirmClear.
+		if (isRootNode) {
+			setShowClearConfirm(true);
+			return;
+		}
+
+		// ---- SCENARIO 2: CONDITION NODE DELETION ----
+		// Delete entire subtree (both yes and no branches)
+		if (nodeToDelete.type === "condition") {
+			const subtreeIds = collectSubtree(nodeId, nodes);
+			const deletedNodes = nodes.filter((n) => subtreeIds.has(n.id));
+
+			setNodes((prev) => {
+				// Remove all subtree nodes
+				const remaining = prev.filter((n) => !subtreeIds.has(n.id));
+				// Reconnect parent: point to nothing (condition had no passthrough)
+				return remaining.map((n) => {
+					if (n.id === parentId) {
+						if (branch === "else") {
+							return { ...n, elseNodeId: undefined };
+						} else {
+							return { ...n, nextNodeId: undefined };
+						}
+					}
+					return n;
+				});
+			});
+
+			setDeletedNodeState({
+				deletedNodes,
+				parentId,
+				branch,
+				previousParentPointer: nodeId,
+				toastMessage: "This step and its branches have been removed.",
+				nodeTypeLabel: "Condition deleted",
+			});
+
+			showUndoToast();
+			return;
+		}
+
+		// ---- SCENARIO 3: LOOP NODE DELETION ----
+		// Delete loop + "For Each" body nodes. KEEP "After Last" children -- reconnect to parent.
+		if (nodeToDelete.type === "loop") {
+			const bodyIds = collectLoopBody(nodeId, nodes);
+			const deletedNodes = nodes.filter((n) => bodyIds.has(n.id));
+			const afterLastChildId = nodeToDelete.elseNodeId; // The "After Last" child to reconnect
+
+			setNodes((prev) => {
+				// Remove loop + body nodes
+				const remaining = prev.filter((n) => !bodyIds.has(n.id));
+				// Reconnect parent to the "After Last" child (if any)
+				return remaining.map((n) => {
+					if (n.id === parentId) {
+						if (branch === "else") {
+							return { ...n, elseNodeId: afterLastChildId };
+						} else {
+							return { ...n, nextNodeId: afterLastChildId };
+						}
+					}
+					return n;
+				});
+			});
+
+			setDeletedNodeState({
+				deletedNodes,
+				parentId,
+				branch,
+				reconnectedChildId: afterLastChildId,
+				previousParentPointer: nodeId,
+				toastMessage: "This loop and its body steps have been removed.",
+				nodeTypeLabel: "Loop deleted",
+			});
+
+			showUndoToast();
+			return;
+		}
+
+		// ---- SCENARIO 4: SIMPLE NODE DELETION (action, fetch_records) ----
+		// Current behavior: reconnect parent to deleted node's nextNodeId child
+		const childNodeId = nodeToDelete.nextNodeId;
 
 		setNodes((prev) => {
-			// Re-insert the node
-			const restoredNode = { ...node, nextNodeId: childNodeId };
-			const updated = [...prev, restoredNode];
-
-			// Reconnect parent to point to restored node
-			return updated.map((n) => {
+			const remaining = prev.filter((n) => n.id !== nodeId);
+			return remaining.map((n) => {
 				if (n.id === parentId) {
 					if (branch === "else") {
-						return { ...n, elseNodeId: node.id };
-					} else if (branch === "next") {
-						return { ...n, nextNodeId: node.id };
+						return { ...n, elseNodeId: childNodeId };
+					} else {
+						return { ...n, nextNodeId: childNodeId };
 					}
 				}
 				return n;
 			});
 		});
 
-		// Clear undo state
+		const typeLabel = nodeToDelete.type === "fetch_records" ? "Fetch" :
+			nodeToDelete.type.charAt(0).toUpperCase() + nodeToDelete.type.slice(1);
+
+		setDeletedNodeState({
+			deletedNodes: [nodeToDelete],
+			parentId,
+			branch,
+			previousParentPointer: nodeId,
+			toastMessage: "This step has been removed.",
+			nodeTypeLabel: `${typeLabel} deleted`,
+		});
+
+		showUndoToast();
+	}, [nodes, showUndoToast]);
+
+	// Handle root deletion confirmation
+	const handleConfirmClear = useCallback(() => {
+		// Clear ALL workflow nodes. Trigger remains.
+		setNodes([]);
+		setShowClearConfirm(false);
+		// No undo for root deletion per CONTEXT.md decision
+		setDeletedNodeState(null);
+	}, []);
+
+	// Undo delete -- restores full subtrees
+	const handleUndoDelete = useCallback(() => {
+		if (!deletedNodeState) return;
+
+		const { deletedNodes, parentId, branch, previousParentPointer } = deletedNodeState;
+
+		setNodes((prev) => {
+			// Re-insert all deleted nodes
+			let updated = [...prev, ...deletedNodes];
+
+			// Reconnect parent to point back to the deleted root
+			if (parentId && previousParentPointer) {
+				updated = updated.map((n) => {
+					if (n.id === parentId) {
+						if (branch === "else") {
+							return { ...n, elseNodeId: previousParentPointer };
+						} else {
+							return { ...n, nextNodeId: previousParentPointer };
+						}
+					}
+					return n;
+				});
+			}
+
+			return updated;
+		});
+
 		setDeletedNodeState(null);
 		if (undoTimeoutRef.current) {
 			clearTimeout(undoTimeoutRef.current);
 			undoTimeoutRef.current = null;
 		}
 
-		toast.success("Node restored", "The deleted node has been restored");
+		toast.success("Restored", "The deleted nodes have been restored");
 	}, [deletedNodeState, toast]);
 
 	// Save handler
@@ -671,14 +782,46 @@ function AutomationEditorContent() {
 						<div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
 							<button
 								onClick={handleUndoDelete}
-								className="flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground text-background shadow-lg hover:opacity-90 transition-opacity text-sm font-medium"
+								className="flex items-center gap-3 px-4 py-3 rounded-lg bg-foreground text-background shadow-lg hover:opacity-90 transition-opacity"
 							>
-								<Undo2 className="h-4 w-4" />
-								Undo
+								<div className="flex flex-col items-start">
+									<span className="text-sm font-semibold">{deletedNodeState.nodeTypeLabel}</span>
+									<span className="text-xs opacity-80">{deletedNodeState.toastMessage}</span>
+								</div>
+								<span className="text-sm font-semibold underline ml-2">Undo</span>
 							</button>
 						</div>
 					)}
 				</div>
+
+				{/* Root deletion confirmation modal */}
+				{showClearConfirm && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+						<div className="bg-background rounded-xl border border-border shadow-xl max-w-md w-full mx-4 p-6">
+							<div className="flex items-start gap-4">
+								<div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+									<AlertTriangle className="h-5 w-5 text-destructive" />
+								</div>
+								<div>
+									<h3 className="text-lg font-semibold text-foreground">
+										Clear workflow?
+									</h3>
+									<p className="text-sm text-muted-foreground mt-1">
+										This will remove all steps from your workflow. Only the trigger will remain. This cannot be undone.
+									</p>
+								</div>
+							</div>
+							<div className="flex justify-end gap-3 mt-6">
+								<Button intent="outline" onPress={() => setShowClearConfirm(false)}>
+									Keep Workflow
+								</Button>
+								<Button intent="destructive" onPress={handleConfirmClear}>
+									Clear All Steps
+								</Button>
+							</div>
+						</div>
+					</div>
+				)}
 
 				{/* Sidebar */}
 				<div
