@@ -15,7 +15,7 @@ const MARGIN_Y = 20;
 const TERMINAL_OFFSET_Y = 60;
 
 /**
- * Handle offset percentages for branching nodes.
+ * Handle offset percentages for branching nodes (relative to center).
  * Condition: yes at 35%, no at 65%
  * Loop: each at 25%, after at 75%
  */
@@ -25,6 +25,12 @@ const HANDLE_OFFSETS: Record<string, number> = {
 	each: -0.25,  // 25% = center - 25%
 	after: 0.25,  // 75% = center + 25%
 };
+
+/**
+ * Minimum horizontal spread for terminal stubs (when both branches are empty).
+ * This ensures Yes/No or ForEach/AfterLast stubs spread out visually.
+ */
+const TERMINAL_SPREAD_MIN = 100;
 
 /**
  * Compute top-to-bottom dagre layout for React Flow nodes and edges.
@@ -85,7 +91,9 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 		return { ...node, position };
 	});
 
-	// Position terminal stubs below their parent source handles
+	// Position terminal stubs below their parent source handles.
+	// For branching nodes where both children are terminals, spread them out
+	// so the layout looks like it will with real nodes.
 	const layoutedTerminals = terminalNodes.map((terminal): Node => {
 		const suffix = terminal.id.replace("__terminal__", "");
 
@@ -106,10 +114,15 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 			return { ...terminal, position: { x: 0, y: 0 } };
 		}
 
-		const parentWidth = parentPos.width || NODE_WIDTH;
+		// For branch terminals, spread out at least TERMINAL_SPREAD_MIN from center
 		let x = parentPos.x;
 		if (handleId && handleId in HANDLE_OFFSETS) {
-			x = parentPos.x + parentWidth * HANDLE_OFFSETS[handleId];
+			const offset = HANDLE_OFFSETS[handleId];
+			const parentWidth = parentPos.width || NODE_WIDTH;
+			const handleX = parentPos.x + parentWidth * offset;
+			// Ensure minimum spread from parent center
+			const spread = Math.max(Math.abs(handleX - parentPos.x), TERMINAL_SPREAD_MIN);
+			x = parentPos.x + (offset < 0 ? -spread : spread);
 		}
 
 		return {
@@ -122,6 +135,46 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 	});
 
 	return [...layoutedReal, ...layoutedTerminals];
+}
+
+/**
+ * Align loop "For Each" body nodes in a straight vertical line under the loop node.
+ * Dagre treats these as regular nodes and may scatter them horizontally.
+ * This post-processes to force a clean vertical chain.
+ */
+export function alignLoopBodyNodes(
+	layoutedNodes: Node[],
+	workflowNodes: WorkflowNode[]
+): Node[] {
+	const nodeMap = new Map<string, Node>();
+	for (const n of layoutedNodes) nodeMap.set(n.id, n);
+
+	for (const wfNode of workflowNodes) {
+		if (wfNode.type !== "loop" || !wfNode.nextNodeId) continue;
+
+		const loopLayouted = nodeMap.get(wfNode.id);
+		if (!loopLayouted) continue;
+
+		// The "each" handle is at 25% of the loop node width.
+		// Center body nodes under this handle.
+		const eachHandleX = loopLayouted.position.x + LOOP_NODE_WIDTH * 0.25;
+		const bodyCenterX = eachHandleX - NODE_WIDTH / 2;
+
+		// Walk the body chain and align each node
+		let current: string | undefined = wfNode.nextNodeId;
+		const visited = new Set<string>();
+		while (current && !visited.has(current)) {
+			visited.add(current);
+			const node = nodeMap.get(current);
+			if (node) {
+				node.position = { ...node.position, x: bodyCenterX };
+			}
+			const wf = workflowNodes.find((n) => n.id === current);
+			current = wf?.nextNodeId;
+		}
+	}
+
+	return layoutedNodes;
 }
 
 export interface LoopBodyBounds {

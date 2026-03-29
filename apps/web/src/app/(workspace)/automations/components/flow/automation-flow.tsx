@@ -18,6 +18,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
 	computeDagreLayout,
+	alignLoopBodyNodes,
 	computeLoopBodyBounds,
 	adjustAfterLastPositions,
 	NODE_WIDTH,
@@ -168,6 +169,7 @@ function AutomationFlowInner({
 		const workflowNodes = initialNodes
 			.filter((n) => n.data?._dbNode)
 			.map((n) => n.data._dbNode as WorkflowNode);
+		ln = alignLoopBodyNodes(ln, workflowNodes);
 		const bodies = computeLoopBodyBounds(ln, workflowNodes);
 		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
 
@@ -189,6 +191,7 @@ function AutomationFlowInner({
 		const workflowNodes = initialNodes
 			.filter((n) => n.data?._dbNode)
 			.map((n) => n.data._dbNode as WorkflowNode);
+		ln = alignLoopBodyNodes(ln, workflowNodes);
 		const bodies = computeLoopBodyBounds(ln, workflowNodes);
 		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
 

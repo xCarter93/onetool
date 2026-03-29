@@ -52,10 +52,10 @@ export const LoopNodeRF = memo(({ selected }: NodeProps) => {
 				</div>
 			</div>
 
-			{/* Loop-back target handle (right side) for iteration edge */}
+			{/* Loop-back target handle (left side) for iteration edge */}
 			<Handle
 				type="target"
-				position={Position.Right}
+				position={Position.Left}
 				id="loopReturn"
 				className="bg-orange-400! w-2! h-2! border-0!"
 			/>
