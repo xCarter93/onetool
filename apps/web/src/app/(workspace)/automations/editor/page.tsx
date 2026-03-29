@@ -18,7 +18,7 @@ import type { WorkflowNode } from "../components/workflow-node";
 import { FIELD_OPTIONS } from "../components/workflow-node";
 import { NodeEditorSidebar, type SelectedNode } from "../components/node-editor-sidebar";
 import { AutomationFlow } from "../components/flow/automation-flow";
-import { automationToReactFlow, TRIGGER_NODE_ID } from "../lib/flow-adapter";
+import { automationToReactFlow, TRIGGER_NODE_ID, ADD_STEP_NODE_ID } from "../lib/flow-adapter";
 
 // Helper to generate unique IDs
 function generateId(): string {
@@ -27,12 +27,42 @@ function generateId(): string {
 
 // Normalize trigger for save -- ensure type field is present for v1.2 schema
 function normalizeTriggerForSave(trigger: TriggerConfig) {
-	return {
-		type: "status_changed" as const,
-		objectType: trigger.objectType,
-		fromStatus: trigger.fromStatus,
-		toStatus: trigger.toStatus,
-	};
+	const triggerType = trigger.type || "status_changed";
+
+	switch (triggerType) {
+		case "record_created":
+			return {
+				type: "record_created" as const,
+				objectType: trigger.objectType,
+			};
+		case "record_updated":
+			return {
+				type: "record_updated" as const,
+				objectType: trigger.objectType,
+				...(trigger.field ? { field: trigger.field } : {}),
+			};
+		case "email_received":
+			return {
+				type: "email_received" as const,
+				objectType: "client" as const,
+			};
+		case "scheduled":
+			return {
+				type: "scheduled" as const,
+				schedule: trigger.schedule || {
+					frequency: "daily" as const,
+					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+				},
+			};
+		case "status_changed":
+		default:
+			return {
+				type: "status_changed" as const,
+				objectType: trigger.objectType,
+				fromStatus: trigger.fromStatus,
+				toStatus: trigger.toStatus!,
+			};
+	}
 }
 
 // Premium feature gate component
@@ -168,12 +198,20 @@ function AutomationEditorContent() {
 			setDescription(existingAutomation.description || "");
 
 			// Handle the various trigger format variants from Convex
-			const t = existingAutomation.trigger;
-			if ("objectType" in t && t.objectType) {
+			const t = existingAutomation.trigger as Record<string, unknown>;
+			if ("schedule" in t && t.type === "scheduled") {
 				setTrigger({
-					objectType: t.objectType,
-					fromStatus: "fromStatus" in t ? t.fromStatus : undefined,
-					toStatus: "toStatus" in t ? (t.toStatus as string) : "",
+					type: "scheduled",
+					objectType: "client",
+					schedule: t.schedule as TriggerConfig["schedule"],
+				});
+			} else if ("objectType" in t && t.objectType) {
+				setTrigger({
+					type: (t.type as TriggerConfig["type"]) || "status_changed",
+					objectType: t.objectType as TriggerConfig["objectType"],
+					fromStatus: t.fromStatus as string | undefined,
+					toStatus: t.toStatus as string | undefined,
+					field: t.field as string | undefined,
 				});
 			}
 
@@ -197,6 +235,7 @@ function AutomationEditorContent() {
 		// If opening trigger sidebar and trigger is null, initialize with defaults
 		if (node.type === "trigger" && !trigger) {
 			setTrigger({
+				type: "status_changed",
 				objectType: "quote",
 				toStatus: "approved",
 			});
@@ -313,8 +352,8 @@ function AutomationEditorContent() {
 			};
 		}
 
-		// Set new node's nextNodeId to point to the old target
-		if (targetId && targetId !== TRIGGER_NODE_ID) {
+		// Set new node's nextNodeId to point to the old target (skip placeholder)
+		if (targetId && targetId !== TRIGGER_NODE_ID && targetId !== ADD_STEP_NODE_ID) {
 			newNode.nextNodeId = targetId;
 		}
 
@@ -469,7 +508,8 @@ function AutomationEditorContent() {
 			return;
 		}
 
-		if (!trigger.toStatus) {
+		const triggerType = trigger.type || "status_changed";
+		if (triggerType === "status_changed" && !trigger.toStatus) {
 			toast.error("Validation Error", "Please select a trigger status");
 			return;
 		}

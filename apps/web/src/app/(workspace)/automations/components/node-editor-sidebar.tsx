@@ -12,7 +12,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { STATUS_OPTIONS, OBJECT_TYPES, type TriggerConfig } from "./trigger-node";
+import {
+	STATUS_OPTIONS,
+	OBJECT_TYPES,
+	TRIGGER_TYPE_OPTIONS,
+	type TriggerConfig,
+	type TriggerType,
+} from "./trigger-node";
 import { FIELD_OPTIONS, TARGET_OPTIONS, type WorkflowNode } from "./workflow-node";
 
 export type SelectedNode =
@@ -195,82 +201,206 @@ function TriggerEditor({
 }) {
 	// Initialize with default if null
 	const currentTrigger = trigger || {
+		type: "status_changed" as TriggerType,
 		objectType: "quote" as const,
 		toStatus: "approved",
 	};
+	const triggerType = currentTrigger.type || "status_changed";
 	const statusOptions = STATUS_OPTIONS[currentTrigger.objectType] || [];
 
+	const handleTriggerTypeChange = (value: string) => {
+		const newType = value as TriggerType;
+		if (newType === "email_received") {
+			onChange({ type: newType, objectType: "client" });
+		} else if (newType === "scheduled") {
+			onChange({
+				type: newType,
+				objectType: currentTrigger.objectType,
+				schedule: { frequency: "daily", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+			});
+		} else if (newType === "record_created" || newType === "record_updated") {
+			onChange({ type: newType, objectType: currentTrigger.objectType });
+		} else {
+			const newStatusOptions = STATUS_OPTIONS[currentTrigger.objectType] || [];
+			onChange({
+				type: newType,
+				objectType: currentTrigger.objectType,
+				toStatus: newStatusOptions[0]?.value || "",
+			});
+		}
+	};
+
 	const handleObjectTypeChange = (value: string) => {
-		const newType = value as TriggerConfig["objectType"];
-		const newStatusOptions = STATUS_OPTIONS[newType] || [];
+		const newObjType = value as TriggerConfig["objectType"];
+		const newStatusOptions = STATUS_OPTIONS[newObjType] || [];
 		onChange({
-			objectType: newType,
+			...currentTrigger,
+			objectType: newObjType,
 			fromStatus: undefined,
-			toStatus: newStatusOptions[0]?.value || "",
+			toStatus: triggerType === "status_changed" ? (newStatusOptions[0]?.value || "") : undefined,
 		});
 	};
 
 	return (
 		<div className="space-y-6">
+			{/* Trigger type selector */}
 			<div className="space-y-2">
-				<Label className="text-sm font-medium">When this object</Label>
-				<Select value={currentTrigger.objectType} onValueChange={handleObjectTypeChange}>
+				<Label className="text-sm font-medium">Trigger event</Label>
+				<Select value={triggerType} onValueChange={handleTriggerTypeChange}>
 					<SelectTrigger>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						{OBJECT_TYPES.map((type) => (
-							<SelectItem key={type.value} value={type.value}>
-								{type.label}
+						{TRIGGER_TYPE_OPTIONS.map((t) => (
+							<SelectItem key={t.value} value={t.value}>
+								{t.label}
 							</SelectItem>
 						))}
 					</SelectContent>
 				</Select>
 			</div>
 
-			<div className="space-y-2">
-				<Label className="text-sm font-medium">Changes from</Label>
-				<Select
-					value={currentTrigger.fromStatus || "any"}
-					onValueChange={(value) =>
-						onChange({
-							...currentTrigger,
-							fromStatus: value === "any" ? undefined : value,
-						})
-					}
-				>
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="any">Any status</SelectItem>
-						{statusOptions.map((status) => (
-							<SelectItem key={status.value} value={status.value}>
-								{status.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
+			{/* Object type — shown for all except scheduled */}
+			{triggerType !== "scheduled" && (
+				<div className="space-y-2">
+					<Label className="text-sm font-medium">
+						{triggerType === "email_received" ? "From" : "Object type"}
+					</Label>
+					<Select
+						value={currentTrigger.objectType}
+						onValueChange={handleObjectTypeChange}
+						disabled={triggerType === "email_received"}
+					>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{triggerType === "email_received" ? (
+								<SelectItem value="client">Client</SelectItem>
+							) : (
+								OBJECT_TYPES.map((type) => (
+									<SelectItem key={type.value} value={type.value}>
+										{type.label}
+									</SelectItem>
+								))
+							)}
+						</SelectContent>
+					</Select>
+				</div>
+			)}
 
-			<div className="space-y-2">
-				<Label className="text-sm font-medium">To</Label>
-				<Select
-					value={currentTrigger.toStatus}
-					onValueChange={(value) => onChange({ ...currentTrigger, toStatus: value })}
-				>
-					<SelectTrigger>
-						<SelectValue placeholder="Select status" />
-					</SelectTrigger>
-					<SelectContent>
-						{statusOptions.map((status) => (
-							<SelectItem key={status.value} value={status.value}>
-								{status.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
+			{/* Status change-specific fields */}
+			{triggerType === "status_changed" && (
+				<>
+					<div className="space-y-2">
+						<Label className="text-sm font-medium">Changes from</Label>
+						<Select
+							value={currentTrigger.fromStatus || "any"}
+							onValueChange={(value) =>
+								onChange({
+									...currentTrigger,
+									fromStatus: value === "any" ? undefined : value,
+								})
+							}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="any">Any status</SelectItem>
+								{statusOptions.map((status) => (
+									<SelectItem key={status.value} value={status.value}>
+										{status.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+
+					<div className="space-y-2">
+						<Label className="text-sm font-medium">To</Label>
+						<Select
+							value={currentTrigger.toStatus || ""}
+							onValueChange={(value) => onChange({ ...currentTrigger, toStatus: value })}
+						>
+							<SelectTrigger>
+								<SelectValue placeholder="Select status" />
+							</SelectTrigger>
+							<SelectContent>
+								{statusOptions.map((status) => (
+									<SelectItem key={status.value} value={status.value}>
+										{status.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+				</>
+			)}
+
+			{/* Record updated — optional field filter */}
+			{triggerType === "record_updated" && (
+				<div className="space-y-2">
+					<Label className="text-sm font-medium">Field (optional)</Label>
+					<Input
+						value={currentTrigger.field || ""}
+						onChange={(e) =>
+							onChange({ ...currentTrigger, field: e.target.value || undefined })
+						}
+						placeholder="Any field"
+					/>
+					<p className="text-xs text-muted-foreground">
+						Leave blank to trigger on any field change
+					</p>
+				</div>
+			)}
+
+			{/* Scheduled — frequency picker */}
+			{triggerType === "scheduled" && (
+				<>
+					<div className="space-y-2">
+						<Label className="text-sm font-medium">Frequency</Label>
+						<Select
+							value={currentTrigger.schedule?.frequency || "daily"}
+							onValueChange={(value) =>
+								onChange({
+									...currentTrigger,
+									schedule: {
+										...currentTrigger.schedule!,
+										frequency: value as "daily" | "weekly" | "monthly",
+									},
+								})
+							}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="daily">Daily</SelectItem>
+								<SelectItem value="weekly">Weekly</SelectItem>
+								<SelectItem value="monthly">Monthly</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+
+					<div className="space-y-2">
+						<Label className="text-sm font-medium">Time</Label>
+						<Input
+							type="time"
+							value={currentTrigger.schedule?.time || "09:00"}
+							onChange={(e) =>
+								onChange({
+									...currentTrigger,
+									schedule: {
+										...currentTrigger.schedule!,
+										time: e.target.value,
+									},
+								})
+							}
+						/>
+					</div>
+				</>
+			)}
 
 			<div className="pt-4 text-xs text-muted-foreground">
 				Changes are saved automatically

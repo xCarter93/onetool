@@ -3,6 +3,7 @@ import type { WorkflowNode } from "../components/workflow-node";
 import type { TriggerConfig } from "../components/trigger-node";
 
 export const TRIGGER_NODE_ID = "__trigger__";
+export const ADD_STEP_NODE_ID = "__add_step__";
 
 /** React Flow node type names (must match nodeTypes object keys) */
 export const RF_NODE_TYPES = {
@@ -11,6 +12,7 @@ export const RF_NODE_TYPES = {
 	action: "actionNode",
 	fetch_records: "fetchNode",
 	loop: "loopNode",
+	addStep: "addStepNode",
 } as const;
 
 /** React Flow edge type names (must match edgeTypes object keys) */
@@ -48,13 +50,27 @@ export function automationToReactFlow(
 	}
 	const rootNode = nodes.find((n) => !referencedIds.has(n.id));
 
-	// 3. Connect trigger to root
+	// 3. Connect trigger to root, or show "add step" placeholder if no nodes
 	if (trigger && rootNode) {
 		rfEdges.push({
 			id: `e-trigger-${rootNode.id}`,
 			source: TRIGGER_NODE_ID,
 			target: rootNode.id,
 			type: RF_EDGE_TYPES.plusButton,
+		});
+	} else if (trigger && nodes.length === 0) {
+		rfNodes.push({
+			id: ADD_STEP_NODE_ID,
+			type: RF_NODE_TYPES.addStep,
+			data: {},
+			position: { x: 0, y: 0 },
+		});
+		rfEdges.push({
+			id: `e-trigger-${ADD_STEP_NODE_ID}`,
+			source: TRIGGER_NODE_ID,
+			target: ADD_STEP_NODE_ID,
+			type: RF_EDGE_TYPES.plusButton,
+			data: { isTerminal: true },
 		});
 	}
 
