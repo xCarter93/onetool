@@ -285,81 +285,25 @@ function AutomationEditorContent() {
 	const handleInsertNode = useCallback((edgeId: string, nodeType: string) => {
 		if (!trigger) return;
 
-		// Parse edge ID to determine source, target, and branch type.
-		// Edge ID patterns:
-		//   "e-trigger-{targetId}"
-		//   "e-{sourceId}-{targetId}"
-		//   "e-{sourceId}-yes-{terminalId}"  (terminal stub from condition yes handle)
-		//   "e-{sourceId}-no-{terminalId}"   (terminal stub from condition no handle)
-		//   "e-{sourceId}-else-{targetId}"    (condition else branch to real node)
-		const parts = edgeId.split("-");
+		// Find the clicked edge by ID from the current React Flow edges
+		const edge = rfEdges.find(e => e.id === edgeId);
+		if (!edge) return;
 
-		let sourceId: string | null = null;
-		let targetId: string | null = null;
-		let branchType: "next" | "yes" | "no" | null = null;
+		const sourceId = edge.source;
+		const targetId = edge.target;
+		const branchType = (edge.data?.branchType as string) || "next";
+		const isTerminalTarget = isTerminalId(targetId);
 
-		if (parts[1] === "trigger") {
-			sourceId = TRIGGER_NODE_ID;
-			targetId = parts.slice(2).join("-");
-		} else if (parts.includes("else")) {
-			const elseIndex = parts.indexOf("else");
-			sourceId = parts.slice(1, elseIndex).join("-");
-			targetId = parts.slice(elseIndex + 1).join("-");
-			branchType = "no";
-		} else if (parts.includes("each")) {
-			const eachIndex = parts.indexOf("each");
-			sourceId = parts.slice(1, eachIndex).join("-");
-			targetId = parts.slice(eachIndex + 1).join("-");
-			branchType = "yes"; // "each" maps to nextNodeId
-		} else if (parts.includes("after")) {
-			const afterIndex = parts.indexOf("after");
-			sourceId = parts.slice(1, afterIndex).join("-");
-			targetId = parts.slice(afterIndex + 1).join("-");
-			branchType = "no"; // "after" maps to elseNodeId
-		} else if (parts.includes("yes")) {
-			const yesIndex = parts.indexOf("yes");
-			sourceId = parts.slice(1, yesIndex).join("-");
-			targetId = parts.slice(yesIndex + 1).join("-");
-			branchType = "yes";
-		} else if (parts.includes("no")) {
-			const noIndex = parts.indexOf("no");
-			sourceId = parts.slice(1, noIndex).join("-");
-			targetId = parts.slice(noIndex + 1).join("-");
-			branchType = "no";
-		} else {
-			// e-{sourceId}-{targetId} — need to find the split
-			const allNodeIds = new Set(nodes.map((n) => n.id));
-			const withoutPrefix = edgeId.slice(2); // Remove "e-"
-
-			for (const nid of allNodeIds) {
-				if (withoutPrefix.startsWith(nid + "-")) {
-					sourceId = nid;
-					targetId = withoutPrefix.slice(nid.length + 1);
-					break;
-				}
-			}
-
-			if (!sourceId) {
-				sourceId = parts[1];
-				targetId = parts.slice(2).join("-");
-			}
-		}
-
-		// If target is a terminal stub, treat as no target (we're adding to a leaf)
+		// Determine if the target is a real workflow node (not terminal, not trigger)
 		const realTargetId =
-			targetId && !isTerminalId(targetId) && targetId !== TRIGGER_NODE_ID
+			!isTerminalTarget && targetId !== TRIGGER_NODE_ID && targetId !== TRIGGER_PLACEHOLDER_ID
 				? targetId
 				: undefined;
 
-		// Determine which branch to use for the source node
-		if (!branchType && sourceId !== TRIGGER_NODE_ID && sourceId !== TRIGGER_PLACEHOLDER_ID) {
-			const sourceNode = nodes.find((n) => n.id === sourceId);
-			if (sourceNode?.type === "condition" || sourceNode?.type === "loop") {
-				branchType = "yes";
-			}
-		}
+		// Determine which pointer on the source node to update
+		const isElseBranch = branchType === "no" || branchType === "after";
 
-		// Create new node
+		// Create new node with defaults
 		const newId = generateId();
 		let newNode: WorkflowNode;
 
@@ -399,8 +343,22 @@ function AutomationEditorContent() {
 			}
 		}
 
-		// Point new node to the old target (if any)
-		if (realTargetId) {
+		// Routing rules per CONTEXT.md decisions:
+		// - Inserting condition on linear path: downstream goes to Yes (nextNodeId), No starts empty
+		// - Inserting loop on linear path: downstream goes to After Last (elseNodeId), For Each starts empty
+		// - Inserting simple node: downstream becomes its nextNodeId (standard behavior)
+		if (nodeType === "condition" && realTargetId) {
+			// Downstream node attaches to Yes branch (nextNodeId)
+			// No branch starts empty (will get terminal stub from adapter)
+			newNode.nextNodeId = realTargetId;
+			// elseNodeId intentionally undefined (empty No branch)
+		} else if (nodeType === "loop" && realTargetId) {
+			// Downstream node attaches to After Last branch (elseNodeId)
+			// For Each body starts empty (will get terminal stub from adapter)
+			newNode.elseNodeId = realTargetId;
+			// nextNodeId intentionally undefined (empty loop body)
+		} else if (realTargetId) {
+			// Simple node: downstream becomes nextNodeId
 			newNode.nextNodeId = realTargetId;
 		}
 
@@ -409,16 +367,15 @@ function AutomationEditorContent() {
 
 			// Update parent pointer to point to new node
 			return updated.map((node) => {
-				if (sourceId === TRIGGER_NODE_ID) {
-					// New node becomes root by being unreferenced — no update needed
+				if (sourceId === TRIGGER_NODE_ID || sourceId === TRIGGER_PLACEHOLDER_ID) {
+					// New node becomes root by being unreferenced -- no update needed
+					// (The adapter finds root as the node not referenced by any other node)
 					return node;
 				}
 
 				if (node.id === sourceId) {
-					if (branchType === "no") {
+					if (isElseBranch) {
 						return { ...node, elseNodeId: newId };
-					} else if (branchType === "yes") {
-						return { ...node, nextNodeId: newId };
 					} else {
 						return { ...node, nextNodeId: newId };
 					}
@@ -432,7 +389,7 @@ function AutomationEditorContent() {
 		setTimeout(() => {
 			handleOpenSidebar({ type: sidebarType, id: newId } as SelectedNode);
 		}, 0);
-	}, [trigger, nodes, handleOpenSidebar]);
+	}, [trigger, rfEdges, handleOpenSidebar]);
 
 	// Delete node with undo support
 	const handleDeleteNode = useCallback((nodeId: string) => {
