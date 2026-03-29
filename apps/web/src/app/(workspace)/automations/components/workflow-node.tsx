@@ -5,7 +5,7 @@ import { GitBranch, Play, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STATUS_OPTIONS } from "./trigger-node";
 
-export type NodeType = "condition" | "action";
+export type NodeType = "condition" | "action" | "fetch_records" | "loop";
 
 export type WorkflowNode = {
 	id: string;

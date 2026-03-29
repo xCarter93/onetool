@@ -3,7 +3,7 @@ import type { WorkflowNode } from "../components/workflow-node";
 import type { TriggerConfig } from "../components/trigger-node";
 
 export const TRIGGER_NODE_ID = "__trigger__";
-export const ADD_STEP_NODE_ID = "__add_step__";
+export const TERMINAL_PREFIX = "__terminal__";
 
 /** React Flow node type names (must match nodeTypes object keys) */
 export const RF_NODE_TYPES = {
@@ -12,7 +12,7 @@ export const RF_NODE_TYPES = {
 	action: "actionNode",
 	fetch_records: "fetchNode",
 	loop: "loopNode",
-	addStep: "addStepNode",
+	terminal: "terminalNode",
 } as const;
 
 /** React Flow edge type names (must match edgeTypes object keys) */
@@ -21,9 +21,46 @@ export const RF_EDGE_TYPES = {
 	branchLabel: "branchLabelEdge",
 } as const;
 
+/** Check if a node ID is a terminal stub (not a real workflow node) */
+export function isTerminalId(id: string): boolean {
+	return id.startsWith(TERMINAL_PREFIX);
+}
+
+/** Create a terminal stub node + edge for a leaf output */
+function addTerminalStub(
+	rfNodes: Node[],
+	rfEdges: Edge[],
+	sourceId: string,
+	sourceHandle?: string,
+	edgeData?: Record<string, unknown>
+) {
+	const handleSuffix = sourceHandle ? `-${sourceHandle}` : "";
+	const terminalId = `${TERMINAL_PREFIX}${sourceId}${handleSuffix}`;
+
+	rfNodes.push({
+		id: terminalId,
+		type: RF_NODE_TYPES.terminal,
+		data: {},
+		position: { x: 0, y: 0 },
+	});
+
+	rfEdges.push({
+		id: `e-${sourceId}${handleSuffix}-${terminalId}`,
+		source: sourceId,
+		target: terminalId,
+		sourceHandle: sourceHandle || undefined,
+		type: RF_EDGE_TYPES.plusButton,
+		data: { isTerminal: true, ...edgeData },
+	});
+}
+
 /**
  * Convert database automation (trigger + flat nodes array) to React Flow nodes and edges.
  * Positions are all {x:0, y:0} -- call computeDagreLayout() after this to position them.
+ *
+ * Every leaf output (no child) gets a terminal stub: an invisible node connected by a
+ * straight edge with an always-visible "+" button. This ensures the user can always add
+ * new nodes at any open end of the workflow.
  */
 export function automationToReactFlow(
 	trigger: TriggerConfig | null,
@@ -50,7 +87,7 @@ export function automationToReactFlow(
 	}
 	const rootNode = nodes.find((n) => !referencedIds.has(n.id));
 
-	// 3. Connect trigger to root, or show "add step" placeholder if no nodes
+	// 3. Connect trigger to root, or add terminal stub if no nodes
 	if (trigger && rootNode) {
 		rfEdges.push({
 			id: `e-trigger-${rootNode.id}`,
@@ -59,19 +96,7 @@ export function automationToReactFlow(
 			type: RF_EDGE_TYPES.plusButton,
 		});
 	} else if (trigger && nodes.length === 0) {
-		rfNodes.push({
-			id: ADD_STEP_NODE_ID,
-			type: RF_NODE_TYPES.addStep,
-			data: {},
-			position: { x: 0, y: 0 },
-		});
-		rfEdges.push({
-			id: `e-trigger-${ADD_STEP_NODE_ID}`,
-			source: TRIGGER_NODE_ID,
-			target: ADD_STEP_NODE_ID,
-			type: RF_EDGE_TYPES.plusButton,
-			data: { isTerminal: true },
-		});
+		addTerminalStub(rfNodes, rfEdges, TRIGGER_NODE_ID);
 	}
 
 	// 4. Convert each workflow node to React Flow node + edges
@@ -93,30 +118,55 @@ export function automationToReactFlow(
 			position: { x: 0, y: 0 },
 		});
 
-		// Create edges from pointers
-		if (node.nextNodeId) {
-			const isCondition = node.type === "condition";
-			rfEdges.push({
-				id: `e-${node.id}-${node.nextNodeId}`,
-				source: node.id,
-				target: node.nextNodeId,
-				sourceHandle: isCondition ? "yes" : undefined,
-				type: isCondition
-					? RF_EDGE_TYPES.branchLabel
-					: RF_EDGE_TYPES.plusButton,
-				data: isCondition ? { label: "Yes", variant: "yes" } : undefined,
-			});
-		}
+		if (node.type === "condition") {
+			// Condition: yes branch
+			if (node.nextNodeId) {
+				rfEdges.push({
+					id: `e-${node.id}-${node.nextNodeId}`,
+					source: node.id,
+					target: node.nextNodeId,
+					sourceHandle: "yes",
+					type: RF_EDGE_TYPES.branchLabel,
+					data: { label: "Yes", variant: "yes" },
+				});
+			} else {
+				// Empty yes branch — terminal stub
+				addTerminalStub(rfNodes, rfEdges, node.id, "yes", {
+					label: "Yes",
+					variant: "yes",
+				});
+			}
 
-		if (node.elseNodeId) {
-			rfEdges.push({
-				id: `e-${node.id}-else-${node.elseNodeId}`,
-				source: node.id,
-				target: node.elseNodeId,
-				sourceHandle: "no",
-				type: RF_EDGE_TYPES.branchLabel,
-				data: { label: "No", variant: "no" },
-			});
+			// Condition: no branch
+			if (node.elseNodeId) {
+				rfEdges.push({
+					id: `e-${node.id}-else-${node.elseNodeId}`,
+					source: node.id,
+					target: node.elseNodeId,
+					sourceHandle: "no",
+					type: RF_EDGE_TYPES.branchLabel,
+					data: { label: "No", variant: "no" },
+				});
+			} else {
+				// Empty no branch — terminal stub
+				addTerminalStub(rfNodes, rfEdges, node.id, "no", {
+					label: "No",
+					variant: "no",
+				});
+			}
+		} else {
+			// Non-condition nodes: single output
+			if (node.nextNodeId) {
+				rfEdges.push({
+					id: `e-${node.id}-${node.nextNodeId}`,
+					source: node.id,
+					target: node.nextNodeId,
+					type: RF_EDGE_TYPES.plusButton,
+				});
+			} else {
+				// Leaf node — terminal stub
+				addTerminalStub(rfNodes, rfEdges, node.id);
+			}
 		}
 	}
 
@@ -126,6 +176,7 @@ export function automationToReactFlow(
 /**
  * Convert React Flow nodes and edges back to database format (trigger + flat nodes array).
  * This is the inverse of automationToReactFlow -- must be round-trip faithful.
+ * Terminal stub nodes are filtered out.
  */
 export function reactFlowToFlatArray(
 	rfNodes: Node[],
@@ -139,12 +190,10 @@ export function reactFlowToFlatArray(
 
 	for (const rfNode of rfNodes) {
 		if (rfNode.id === TRIGGER_NODE_ID) continue;
+		if (isTerminalId(rfNode.id)) continue;
 
 		const dbNode = rfNode.data?._dbNode as WorkflowNode | undefined;
-		if (!dbNode) {
-			// Fallback: skip nodes without _dbNode (shouldn't happen in normal flow)
-			continue;
-		}
+		if (!dbNode) continue;
 
 		// Reconstruct pointers from edges (edges are source of truth for connections)
 		const outEdges = rfEdges.filter((e) => e.source === rfNode.id);
@@ -152,10 +201,12 @@ export function reactFlowToFlatArray(
 		let elseNodeId: string | undefined;
 
 		for (const edge of outEdges) {
+			// Skip edges pointing to terminal stubs
+			if (isTerminalId(edge.target)) continue;
+
 			if (edge.data?.variant === "no" || edge.sourceHandle === "no") {
 				elseNodeId = edge.target;
 			} else {
-				// Default edge or "yes" variant
 				nextNodeId = edge.target;
 			}
 		}

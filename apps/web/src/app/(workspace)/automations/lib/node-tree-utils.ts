@@ -6,7 +6,7 @@ import type { WorkflowNode } from "../components/workflow-node";
  */
 export type GraphNode = {
 	id: string;
-	type: "condition" | "action";
+	type: "condition" | "action" | "fetch_records" | "loop";
 	config: WorkflowNode["condition"] | WorkflowNode["action"];
 	// For sequential flow and condition true branch
 	next?: GraphNode;

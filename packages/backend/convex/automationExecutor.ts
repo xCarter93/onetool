@@ -61,20 +61,26 @@ export const findMatchingAutomations = internalQuery({
 
 		// Filter to those matching this trigger
 		return automations.filter((automation) => {
-			const trigger = automation.trigger;
+			const trigger = automation.trigger as Record<string, unknown>;
 
 			// Must match object type
-			if (trigger.objectType !== args.objectType) {
+			if ("objectType" in trigger && trigger.objectType !== args.objectType) {
+				return false;
+			}
+
+			// Only status_changed and legacy triggers match status change events
+			const triggerType = ("type" in trigger ? trigger.type : "status_changed") as string;
+			if (triggerType !== "status_changed") {
 				return false;
 			}
 
 			// Must match target status
-			if (trigger.toStatus !== args.toStatus) {
+			if ("toStatus" in trigger && trigger.toStatus !== args.toStatus) {
 				return false;
 			}
 
 			// If fromStatus is specified, must match
-			if (trigger.fromStatus && trigger.fromStatus !== args.fromStatus) {
+			if ("fromStatus" in trigger && trigger.fromStatus && trigger.fromStatus !== args.fromStatus) {
 				return false;
 			}
 

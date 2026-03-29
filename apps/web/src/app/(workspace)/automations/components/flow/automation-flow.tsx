@@ -19,7 +19,7 @@ import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
 import { FetchNodeRF } from "./fetch-node-rf";
 import { LoopNodeRF } from "./loop-node-rf";
-import { AddStepNodeRF } from "./add-step-node-rf";
+import { TerminalNodeRF } from "./add-step-node-rf";
 import { PlusButtonEdge } from "./plus-button-edge";
 import { BranchLabelEdge } from "./branch-label-edge";
 
@@ -30,7 +30,7 @@ const nodeTypes = {
 	actionNode: ActionNodeRF,
 	fetchNode: FetchNodeRF,
 	loopNode: LoopNodeRF,
-	addStepNode: AddStepNodeRF,
+	terminalNode: TerminalNodeRF,
 };
 
 const edgeTypes = {

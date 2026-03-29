@@ -3,10 +3,10 @@
 import {
 	BaseEdge,
 	EdgeLabelRenderer,
-	getSmoothStepPath,
+	getStraightPath,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus, GitBranch, Play } from "lucide-react";
+import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	DropdownMenu,
@@ -21,19 +21,14 @@ export function BranchLabelEdge({
 	sourceY,
 	targetX,
 	targetY,
-	sourcePosition,
-	targetPosition,
 	data,
 	style,
 }: EdgeProps) {
-	const [edgePath, labelX, labelY] = getSmoothStepPath({
+	const [edgePath, labelX, labelY] = getStraightPath({
 		sourceX,
 		sourceY,
-		sourcePosition,
 		targetX,
 		targetY,
-		targetPosition,
-		borderRadius: 8,
 	});
 
 	const isYes = data?.variant === "yes";
@@ -44,11 +39,14 @@ export function BranchLabelEdge({
 		? "var(--color-emerald-500, #10b981)"
 		: "var(--color-rose-400, #fb7185)";
 
-	// Position label at 25% path length (near source) -- approximate using source coords
+	// Position label at 25% path length (near source)
 	const labelPosX = sourceX + (targetX - sourceX) * 0.25;
 	const labelPosY = sourceY + (targetY - sourceY) * 0.25;
 
 	const isTerminal = data?.isTerminal === true;
+	const onInsertNode = data?.onInsertNode as
+		| ((edgeId: string, nodeType: string) => void)
+		| undefined;
 
 	return (
 		<>
@@ -89,8 +87,9 @@ export function BranchLabelEdge({
 							<button
 								className={cn(
 									"w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-muted flex items-center justify-center transition-opacity duration-150",
-									!isTerminal &&
-										"opacity-0 hover:opacity-100 focus:opacity-100"
+									isTerminal
+										? "opacity-100"
+										: "opacity-0 hover:opacity-100 focus:opacity-100"
 								)}
 								aria-label="Insert node"
 							>
@@ -98,35 +97,21 @@ export function BranchLabelEdge({
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="center" sideOffset={8}>
-							<DropdownMenuItem
-								onClick={() =>
-									(
-										data?.onInsertNode as
-											| ((
-													edgeId: string,
-													nodeType: string
-											  ) => void)
-											| undefined
-									)?.(id, "condition")
-								}
-							>
+							<DropdownMenuItem onClick={() => onInsertNode?.(id, "condition")}>
 								<GitBranch className="h-4 w-4 mr-2" />
 								Add Condition
 							</DropdownMenuItem>
-							<DropdownMenuItem
-								onClick={() =>
-									(
-										data?.onInsertNode as
-											| ((
-													edgeId: string,
-													nodeType: string
-											  ) => void)
-											| undefined
-									)?.(id, "action")
-								}
-							>
+							<DropdownMenuItem onClick={() => onInsertNode?.(id, "action")}>
 								<Play className="h-4 w-4 mr-2" />
 								Add Action
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => onInsertNode?.(id, "fetch_records")}>
+								<Search className="h-4 w-4 mr-2" />
+								Add Fetch Records
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => onInsertNode?.(id, "loop")}>
+								<Repeat className="h-4 w-4 mr-2" />
+								Add Loop
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>

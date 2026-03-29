@@ -332,17 +332,28 @@ function AutomationsContent() {
 												</TableCell>
 												<TableCell>
 													<div className="flex items-center gap-2">
-														<Badge
-															variant={getObjectTypeBadgeVariant(
-																automation.trigger.objectType
-															)}
-														>
-															{formatObjectType(automation.trigger.objectType)}
-														</Badge>
-														<ArrowRight className="h-3 w-3 text-muted-foreground" />
-														<span className="text-sm text-muted-foreground">
-															{automation.trigger.toStatus}
-														</span>
+														{"objectType" in automation.trigger && automation.trigger.objectType && (
+															<Badge
+																variant={getObjectTypeBadgeVariant(
+																	automation.trigger.objectType as string
+																)}
+															>
+																{formatObjectType(automation.trigger.objectType as string)}
+															</Badge>
+														)}
+														{"toStatus" in automation.trigger && automation.trigger.toStatus && (
+															<>
+																<ArrowRight className="h-3 w-3 text-muted-foreground" />
+																<span className="text-sm text-muted-foreground">
+																	{automation.trigger.toStatus}
+																</span>
+															</>
+														)}
+														{"type" in automation.trigger && automation.trigger.type !== "status_changed" && (
+															<span className="text-sm text-muted-foreground capitalize">
+																{(automation.trigger.type as string).replace(/_/g, " ")}
+															</span>
+														)}
 													</div>
 												</TableCell>
 												<TableCell>
