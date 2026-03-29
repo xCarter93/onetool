@@ -1,9 +1,10 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { GitBranch } from "lucide-react";
+import { AlertTriangle, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FIELD_OPTIONS } from "../../components/workflow-node";
 
 function getSummary(data: Record<string, unknown>): string {
 	const condition = data.condition as
@@ -29,13 +30,27 @@ function getSummary(data: Record<string, unknown>): string {
 
 export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 	const summary = getSummary(data);
+	const condition = data?.condition as
+		| { field?: string; operator?: string; value?: unknown }
+		| undefined;
+	const triggerObjectType = data?.triggerObjectType as string | null;
+
+	const isFieldInvalid = useMemo(() => {
+		if (!condition?.field || !triggerObjectType) return false;
+		const validFields = FIELD_OPTIONS[triggerObjectType] || [];
+		return validFields.length > 0 && !validFields.some((f) => f.value === condition.field);
+	}, [condition?.field, triggerObjectType]);
 
 	return (
 		<div
 			className={cn(
 				"px-4 py-3 rounded-xl border-2 min-w-[260px]",
-				"bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800",
-				selected && "ring-2 ring-purple-400 dark:ring-purple-500"
+				"bg-purple-50 dark:bg-purple-950/40",
+				isFieldInvalid
+					? "border-yellow-400 dark:border-yellow-600"
+					: "border-purple-200 dark:border-purple-800",
+				selected && !isFieldInvalid && "ring-2 ring-purple-400 dark:ring-purple-500",
+				selected && isFieldInvalid && "ring-2 ring-yellow-400 dark:ring-yellow-500"
 			)}
 			aria-label={`Condition: ${summary}`}
 		>
@@ -56,6 +71,16 @@ export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 						{summary}
 					</div>
 				</div>
+				{isFieldInvalid && (
+					<div className="relative group ml-auto">
+						<AlertTriangle className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400" />
+						<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10">
+							<div className="bg-yellow-50 dark:bg-yellow-950/60 border border-yellow-200 dark:border-yellow-800 rounded-md px-2 py-1 text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap">
+								This condition may reference fields from the previous trigger type. Please review.
+							</div>
+						</div>
+					</div>
+				)}
 			</div>
 			<Handle
 				type="source"

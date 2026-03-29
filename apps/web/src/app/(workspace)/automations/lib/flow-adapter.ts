@@ -129,6 +129,7 @@ export function automationToReactFlow(
 				condition: node.condition,
 				action: node.action,
 				_dbNode: { ...node },
+				triggerObjectType: trigger?.objectType || null,
 			},
 			position: { x: 0, y: 0 },
 		});
