@@ -1,37 +1,38 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, Suspense } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import { ArrowLeft, Save, Loader2, Lock, Zap } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, Zap, Undo2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
-import { WorkflowCanvas } from "../components/workflow-canvas";
-import { TriggerNode, STATUS_OPTIONS, type TriggerConfig } from "../components/trigger-node";
-import { WorkflowNodeComponent, type WorkflowNode, FIELD_OPTIONS } from "../components/workflow-node";
-import { AddStepButton } from "../components/add-step-button";
-import { NodeEditorSidebar } from "../components/node-editor-sidebar";
-import { BranchingNodeRenderer } from "../components/branching-node-renderer";
-import { validateFlatArray, buildNodeTree, flattenNodeTree } from "../lib/node-tree-utils";
+import type { TriggerConfig } from "../components/trigger-node";
+import { STATUS_OPTIONS } from "../components/trigger-node";
+import type { WorkflowNode } from "../components/workflow-node";
+import { FIELD_OPTIONS } from "../components/workflow-node";
+import { NodeEditorSidebar, type SelectedNode } from "../components/node-editor-sidebar";
+import { AutomationFlow } from "../components/flow/automation-flow";
+import { automationToReactFlow, TRIGGER_NODE_ID } from "../lib/flow-adapter";
 
 // Helper to generate unique IDs
 function generateId(): string {
 	return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Normalize trigger for save -- ensure type field is present for v1.2 schema
+function normalizeTriggerForSave(trigger: TriggerConfig) {
+	return {
+		type: "status_changed" as const,
+		objectType: trigger.objectType,
+		fromStatus: trigger.fromStatus,
+		toStatus: trigger.toStatus,
+	};
 }
 
 // Premium feature gate component
@@ -54,13 +55,11 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 						<p className="text-muted-foreground text-sm">Loading...</p>
 					</div>
 				</div>
-				<Card>
-					<CardContent className="py-12">
-						<div className="flex items-center justify-center">
-							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-						</div>
-					</CardContent>
-				</Card>
+				<div className="py-12">
+					<div className="flex items-center justify-center">
+						<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+					</div>
+				</div>
 			</div>
 		);
 	}
@@ -81,9 +80,9 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 						</p>
 					</div>
 				</div>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
+				<div className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40 rounded-2xl">
 					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardContent className="relative z-10 py-16">
+					<div className="relative z-10 py-16">
 						<div className="flex flex-col items-center justify-center text-center max-w-md mx-auto">
 							<div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
 								<Lock className="h-10 w-10 text-primary" />
@@ -105,13 +104,21 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 								</StyledButton>
 							)}
 						</div>
-					</CardContent>
-				</Card>
+					</div>
+				</div>
 			</div>
 		);
 	}
 
 	return <>{children}</>;
+}
+
+// Undo state type for node deletion
+interface DeletedNodeState {
+	node: WorkflowNode;
+	parentId: string | null;
+	branch: "next" | "else" | null;
+	childNodeId: string | undefined;
 }
 
 function AutomationEditorContent() {
@@ -137,38 +144,55 @@ function AutomationEditorContent() {
 	const [description, setDescription] = useState("");
 	const [trigger, setTrigger] = useState<TriggerConfig | null>(null);
 	const [nodes, setNodes] = useState<WorkflowNode[]>([]);
+	const [isActive, setIsActive] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [hasInitialized, setHasInitialized] = useState(false);
 
 	// Sidebar state
-	type SelectedNode =
-		| { type: "trigger" }
-		| { type: "condition"; id: string }
-		| { type: "action"; id: string };
 	const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-	// Convert flat nodes array to tree structure for rendering
-	const nodeTree = React.useMemo(() => {
-		return buildNodeTree(nodes);
-	}, [nodes]);
+	// Undo state for node deletion
+	const [deletedNodeState, setDeletedNodeState] = useState<DeletedNodeState | null>(null);
+	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	// Derived React Flow state from adapter
+	const { nodes: rfNodes, edges: rfEdges } = useMemo(() => {
+		return automationToReactFlow(trigger, nodes);
+	}, [trigger, nodes]);
 
 	// Initialize form with existing data
 	useEffect(() => {
 		if (existingAutomation && !hasInitialized) {
 			setName(existingAutomation.name);
 			setDescription(existingAutomation.description || "");
-			setTrigger({
-				objectType: existingAutomation.trigger.objectType,
-				fromStatus: existingAutomation.trigger.fromStatus,
-				toStatus: existingAutomation.trigger.toStatus,
-			});
+
+			// Handle the various trigger format variants from Convex
+			const t = existingAutomation.trigger;
+			if ("objectType" in t && t.objectType) {
+				setTrigger({
+					objectType: t.objectType,
+					fromStatus: "fromStatus" in t ? t.fromStatus : undefined,
+					toStatus: "toStatus" in t ? (t.toStatus as string) : "",
+				});
+			}
+
 			setNodes(existingAutomation.nodes as WorkflowNode[]);
+			setIsActive(existingAutomation.isActive ?? false);
 			setHasInitialized(true);
 		}
 	}, [existingAutomation, hasInitialized]);
 
-	// Sidebar handlers (defined first so they can be used by other handlers)
+	// Cleanup undo timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (undoTimeoutRef.current) {
+				clearTimeout(undoTimeoutRef.current);
+			}
+		};
+	}, []);
+
+	// Sidebar handlers
 	const handleOpenSidebar = useCallback((node: SelectedNode) => {
 		// If opening trigger sidebar and trigger is null, initialize with defaults
 		if (node.type === "trigger" && !trigger) {
@@ -184,7 +208,12 @@ function AutomationEditorContent() {
 	const handleCloseSidebar = useCallback(() => {
 		setIsSidebarOpen(false);
 		// Don't clear selectedNode immediately to allow for smooth transition
-		setTimeout(() => setSelectedNode(null), 300);
+		setTimeout(() => setSelectedNode(null), 200);
+	}, []);
+
+	const handlePaneClick = useCallback(() => {
+		setIsSidebarOpen(false);
+		setTimeout(() => setSelectedNode(null), 200);
 	}, []);
 
 	const handleNodeChangeFromSidebar = useCallback((nodeId: string, updates: Partial<WorkflowNode>) => {
@@ -197,196 +226,237 @@ function AutomationEditorContent() {
 		setTrigger(newTrigger);
 	}, []);
 
-	// Add node to a specific branch - used by sidebar
-	const handleAddTrueBranch = useCallback((parentNodeId: string) => {
+	// Node click handler for React Flow
+	const handleNodeClick = useCallback((nodeId: string) => {
+		if (nodeId === TRIGGER_NODE_ID) {
+			handleOpenSidebar({ type: "trigger" });
+		} else {
+			const node = nodes.find((n) => n.id === nodeId);
+			if (node) {
+				const nodeType = node.type as SelectedNode["type"];
+				handleOpenSidebar({ type: nodeType, id: nodeId } as SelectedNode);
+			}
+		}
+	}, [nodes, handleOpenSidebar]);
+
+	// Insert node via edge plus-button
+	const handleInsertNode = useCallback((edgeId: string, nodeType: "condition" | "action") => {
 		if (!trigger) return;
 
-		// For now, default to action. Could add node type selector later.
-		const newNode: WorkflowNode = {
-			id: generateId(),
-			type: "action",
-			action: {
-				targetType: "self",
-				actionType: "update_status",
-				newStatus: (STATUS_OPTIONS[trigger.objectType] || [])[0]?.value || "",
-			},
-		};
+		// Parse edge ID to determine source and target
+		// Edge ID patterns: "e-trigger-{nodeId}", "e-{sourceId}-{targetId}", "e-{sourceId}-else-{targetId}"
+		const parts = edgeId.split("-");
 
-		setNodes((prev) => {
-			// Add the new node to the array
-			const updated = [...prev, newNode];
+		let sourceId: string | null = null;
+		let targetId: string | null = null;
+		let isElseBranch = false;
 
-			// Update the parent node to link to the new node in true branch
-			return updated.map(node => {
-				if (node.id === parentNodeId) {
-					return { ...node, nextNodeId: newNode.id };
+		if (parts[1] === "trigger") {
+			// e-trigger-{targetId}
+			sourceId = TRIGGER_NODE_ID;
+			targetId = parts.slice(2).join("-");
+		} else if (parts.includes("else")) {
+			// e-{sourceId}-else-{targetId}
+			const elseIndex = parts.indexOf("else");
+			sourceId = parts.slice(1, elseIndex).join("-");
+			targetId = parts.slice(elseIndex + 1).join("-");
+			isElseBranch = true;
+		} else {
+			// e-{sourceId}-{targetId}
+			// Node IDs contain underscores, so we need to find the split point
+			// IDs follow pattern node_{timestamp}_{random}
+			// We'll use a different approach: find which node IDs match
+			const allNodeIds = new Set(nodes.map((n) => n.id));
+			const withoutPrefix = edgeId.slice(2); // Remove "e-"
+
+			// Try to find a matching source node ID
+			for (const nid of allNodeIds) {
+				if (withoutPrefix.startsWith(nid + "-")) {
+					sourceId = nid;
+					targetId = withoutPrefix.slice(nid.length + 1);
+					break;
 				}
-				return node;
-			});
-		});
+			}
 
-		// Auto-open sidebar to configure the new node
-		setTimeout(() => {
-			handleOpenSidebar({ type: "action", id: newNode.id });
-		}, 0);
-	}, [trigger, handleOpenSidebar]);
+			// Fallback: if no match found in nodes, it might be trigger
+			if (!sourceId) {
+				sourceId = parts[1];
+				targetId = parts.slice(2).join("-");
+			}
+		}
 
-	const handleAddFalseBranch = useCallback((parentNodeId: string) => {
-		if (!trigger) return;
+		// Create new node
+		const newId = generateId();
+		let newNode: WorkflowNode;
 
-		// For now, default to action. Could add node type selector later.
-		const newNode: WorkflowNode = {
-			id: generateId(),
-			type: "action",
-			action: {
-				targetType: "self",
-				actionType: "update_status",
-				newStatus: (STATUS_OPTIONS[trigger.objectType] || [])[0]?.value || "",
-			},
-		};
+		if (nodeType === "condition") {
+			const fieldOptions = FIELD_OPTIONS[trigger.objectType] || [];
+			newNode = {
+				id: newId,
+				type: "condition",
+				condition: {
+					field: fieldOptions[0]?.value || "status",
+					operator: "equals",
+					value: "",
+				},
+			};
+		} else {
+			const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
+			newNode = {
+				id: newId,
+				type: "action",
+				action: {
+					targetType: "self",
+					actionType: "update_status",
+					newStatus: statusOptions[0]?.value || "",
+				},
+			};
+		}
+
+		// Set new node's nextNodeId to point to the old target
+		if (targetId && targetId !== TRIGGER_NODE_ID) {
+			newNode.nextNodeId = targetId;
+		}
 
 		setNodes((prev) => {
-			// Add the new node to the array
 			const updated = [...prev, newNode];
 
-			// Update the parent node to link to the new node in false branch
-			return updated.map(node => {
-				if (node.id === parentNodeId) {
-					return { ...node, elseNodeId: newNode.id };
+			// Update parent pointer to point to new node
+			return updated.map((node) => {
+				if (sourceId === TRIGGER_NODE_ID) {
+					// The trigger doesn't live in nodes array, but the root node
+					// was previously the first unreferenced node. The trigger->root edge
+					// is derived from rootNode detection. We need to update nothing for trigger source
+					// because the root is determined by which node isn't referenced.
+					// However, if there was a previous root that is now targetId,
+					// we need to make the new node the new root by ensuring no one references it,
+					// and point the new node to the old root.
+					// Since the new node already has nextNodeId = targetId, and
+					// no existing node references newNode.id, it becomes the new root. Good.
+					return node;
 				}
-				return node;
-			});
-		});
 
-		// Auto-open sidebar to configure the new node
-		setTimeout(() => {
-			handleOpenSidebar({ type: "action", id: newNode.id });
-		}, 0);
-	}, [trigger, handleOpenSidebar]);
-
-	// Add node to a specific branch
-	const handleAddNodeToBranch = useCallback((parentNodeId: string, branch: "true" | "false" | "next", nodeType: "condition" | "action") => {
-		if (!trigger) return;
-
-		const newNode: WorkflowNode = nodeType === "condition"
-			? {
-					id: generateId(),
-					type: "condition",
-					condition: {
-						field: (FIELD_OPTIONS[trigger.objectType] || [])[0]?.value || "status",
-						operator: "equals",
-						value: "",
-					},
-			  }
-			: {
-					id: generateId(),
-					type: "action",
-					action: {
-						targetType: "self",
-						actionType: "update_status",
-						newStatus: (STATUS_OPTIONS[trigger.objectType] || [])[0]?.value || "",
-					},
-			  };
-
-		setNodes((prev) => {
-			// Add the new node to the array
-			const updated = [...prev, newNode];
-
-			// Update the parent node to link to the new node
-			return updated.map(node => {
-				if (node.id === parentNodeId) {
-					if (branch === "true" || branch === "next") {
-						return { ...node, nextNodeId: newNode.id };
-					} else if (branch === "false") {
-						return { ...node, elseNodeId: newNode.id };
+				if (node.id === sourceId) {
+					if (isElseBranch) {
+						return { ...node, elseNodeId: newId };
+					} else {
+						return { ...node, nextNodeId: newId };
 					}
 				}
 				return node;
 			});
 		});
 
-		// Auto-open sidebar to configure the new node
+		// Auto-open sidebar for the new node
 		setTimeout(() => {
-			handleOpenSidebar({ type: nodeType, id: newNode.id });
+			handleOpenSidebar({ type: nodeType, id: newId } as SelectedNode);
 		}, 0);
-	}, [trigger, handleOpenSidebar]);
+	}, [trigger, nodes, handleOpenSidebar]);
 
-	// Legacy handlers for the bottom add button (adds to end of linear flow)
-	const handleAddCondition = useCallback(() => {
-		if (!trigger) return;
-		const fieldOptions = FIELD_OPTIONS[trigger.objectType] || [];
-		const newNode: WorkflowNode = {
-			id: generateId(),
-			type: "condition",
-			condition: {
-				field: fieldOptions[0]?.value || "status",
-				operator: "equals",
-				value: "",
-			},
-		};
-		setNodes((prev) => [...prev, newNode]);
-		// Auto-open sidebar to configure the new node
-		setTimeout(() => {
-			handleOpenSidebar({ type: "condition", id: newNode.id });
-		}, 0);
-	}, [trigger, handleOpenSidebar]);
+	// Delete node with undo support
+	const handleDeleteNode = useCallback((nodeId: string) => {
+		const nodeToDelete = nodes.find((n) => n.id === nodeId);
+		if (!nodeToDelete) return;
 
-	const handleAddAction = useCallback(() => {
-		if (!trigger) return;
-		const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
-		const newNode: WorkflowNode = {
-			id: generateId(),
-			type: "action",
-			action: {
-				targetType: "self",
-				actionType: "update_status",
-				newStatus: statusOptions[0]?.value || "",
-			},
-		};
-		setNodes((prev) => [...prev, newNode]);
-		// Auto-open sidebar to configure the new node
-		setTimeout(() => {
-			handleOpenSidebar({ type: "action", id: newNode.id });
-		}, 0);
-	}, [trigger, handleOpenSidebar]);
+		// Find parent node (the one whose nextNodeId or elseNodeId points to this node)
+		let parentId: string | null = null;
+		let branch: "next" | "else" | null = null;
 
-	const handleUpdateNode = useCallback((index: number, node: WorkflowNode) => {
-		setNodes((prev) => prev.map((n, i) => (i === index ? node : n)));
-	}, []);
-
-	const handleDeleteNode = useCallback((index: number) => {
-		setNodes((prev) => prev.filter((_, i) => i !== index));
-	}, []);
-
-	// Delete node by ID (removes node and entire subtree)
-	const handleDeleteNodeById = useCallback((nodeId: string) => {
-		setNodes((prev) => {
-			// Find all node IDs in the subtree starting from nodeId
-			const nodesToDelete = new Set<string>();
-			const nodeMap = new Map(prev.map((n) => [n.id, n]));
-
-			function collectSubtree(id: string) {
-				if (nodesToDelete.has(id)) return;
-				nodesToDelete.add(id);
-
-				const node = nodeMap.get(id);
-				if (!node) return;
-
-				if (node.nextNodeId) {
-					collectSubtree(node.nextNodeId);
-				}
-				if (node.elseNodeId) {
-					collectSubtree(node.elseNodeId);
-				}
+		for (const n of nodes) {
+			if (n.nextNodeId === nodeId) {
+				parentId = n.id;
+				branch = "next";
+				break;
 			}
+			if (n.elseNodeId === nodeId) {
+				parentId = n.id;
+				branch = "else";
+				break;
+			}
+		}
 
-			collectSubtree(nodeId);
+		// If no parent found among nodes, it might be the root node (connected to trigger)
+		// In that case, parentId stays null and we just remove the node
 
-			// Remove all nodes in the subtree
-			return prev.filter((n) => !nodesToDelete.has(n.id));
+		// Save state for undo
+		const undoState: DeletedNodeState = {
+			node: { ...nodeToDelete },
+			parentId,
+			branch,
+			childNodeId: nodeToDelete.nextNodeId,
+		};
+
+		// Reconnect: parent points to deleted node's next child
+		setNodes((prev) => {
+			const updated = prev
+				.filter((n) => n.id !== nodeId)
+				.map((n) => {
+					if (n.id === parentId) {
+						if (branch === "else") {
+							return { ...n, elseNodeId: nodeToDelete.nextNodeId };
+						} else if (branch === "next") {
+							return { ...n, nextNodeId: nodeToDelete.nextNodeId };
+						}
+					}
+					return n;
+				});
+			return updated;
 		});
-	}, []);
 
+		// Close sidebar
+		setIsSidebarOpen(false);
+		setSelectedNode(null);
+
+		// Save undo state
+		setDeletedNodeState(undoState);
+
+		// Show toast
+		toast.info("Node removed", "Click Undo to restore the deleted node");
+
+		// Clear undo state after 5 seconds
+		if (undoTimeoutRef.current) {
+			clearTimeout(undoTimeoutRef.current);
+		}
+		undoTimeoutRef.current = setTimeout(() => {
+			setDeletedNodeState(null);
+		}, 5000);
+	}, [nodes, toast]);
+
+	// Undo delete
+	const handleUndoDelete = useCallback(() => {
+		if (!deletedNodeState) return;
+
+		const { node, parentId, branch, childNodeId } = deletedNodeState;
+
+		setNodes((prev) => {
+			// Re-insert the node
+			const restoredNode = { ...node, nextNodeId: childNodeId };
+			const updated = [...prev, restoredNode];
+
+			// Reconnect parent to point to restored node
+			return updated.map((n) => {
+				if (n.id === parentId) {
+					if (branch === "else") {
+						return { ...n, elseNodeId: node.id };
+					} else if (branch === "next") {
+						return { ...n, nextNodeId: node.id };
+					}
+				}
+				return n;
+			});
+		});
+
+		// Clear undo state
+		setDeletedNodeState(null);
+		if (undoTimeoutRef.current) {
+			clearTimeout(undoTimeoutRef.current);
+			undoTimeoutRef.current = null;
+		}
+
+		toast.success("Node restored", "The deleted node has been restored");
+	}, [deletedNodeState, toast]);
+
+	// Save handler
 	const handleSave = async () => {
 		// Validation
 		if (!name.trim()) {
@@ -421,49 +491,35 @@ function AutomationEditorContent() {
 			}
 		}
 
-		// Nodes already have nextNodeId and elseNodeId set from handleAddNodeToBranch
-		// Don't override the existing structure
-		const linkedNodes = nodes;
-
-		// Validate the linked structure
-		const validation = validateFlatArray(linkedNodes);
-		if (!validation.isValid) {
-			toast.error(
-				"Validation Error",
-				validation.error || "Invalid workflow structure"
-			);
-			return;
-		}
-
 		setIsSaving(true);
 
 		try {
+			const normalizedTrigger = normalizeTriggerForSave(trigger);
+
 			if (isEditing && automationId) {
 				await updateAutomation({
 					id: automationId as Id<"workflowAutomations">,
 					name: name.trim(),
 					description: description.trim() || undefined,
-					trigger,
-					nodes: linkedNodes,
+					trigger: normalizedTrigger,
+					nodes,
+					isActive,
 				});
-				toast.success("Automation Updated", `"${name}" has been saved`);
+				toast.success("Automation Saved", "Your changes have been saved");
 			} else {
 				await createAutomation({
 					name: name.trim(),
 					description: description.trim() || undefined,
-					trigger,
-					nodes: linkedNodes,
-					isActive: false,
+					trigger: normalizedTrigger,
+					nodes,
+					isActive,
 				});
-				toast.success(
-					"Automation Created",
-					`"${name}" has been created. Enable it from the automations list.`
-				);
+				toast.success("Automation Saved", "Your changes have been saved");
 			}
 			router.push("/automations");
 		} catch (error) {
 			console.error("Failed to save automation:", error);
-			toast.error("Error", "Failed to save automation. Please try again.");
+			toast.error("Save Failed", "Could not save automation. Please try again.");
 		} finally {
 			setIsSaving(false);
 		}
@@ -484,13 +540,11 @@ function AutomationEditorContent() {
 						<p className="text-muted-foreground text-sm">Loading...</p>
 					</div>
 				</div>
-				<Card>
-					<CardContent className="py-12">
-						<div className="flex items-center justify-center">
-							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-						</div>
-					</CardContent>
-				</Card>
+				<div className="py-12">
+					<div className="flex items-center justify-center">
+						<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+					</div>
+				</div>
 			</div>
 		);
 	}
@@ -512,158 +566,119 @@ function AutomationEditorContent() {
 						</p>
 					</div>
 				</div>
-				<Card>
-					<CardContent className="py-12 text-center">
-						<p className="text-muted-foreground mb-4">
-							This automation may have been deleted or you don&apos;t have access to it.
-						</p>
-						<StyledButton intent="primary" onClick={() => router.push("/automations")}>
-							Back to Automations
-						</StyledButton>
-					</CardContent>
-				</Card>
+				<div className="py-12 text-center">
+					<p className="text-muted-foreground mb-4">
+						This automation may have been deleted or you don&apos;t have access to it.
+					</p>
+					<StyledButton intent="primary" onClick={() => router.push("/automations")}>
+						Back to Automations
+					</StyledButton>
+				</div>
 			</div>
 		);
 	}
 
 	return (
 		<div className="flex flex-col h-screen">
-			{/* Top bar - fixed height */}
-			<div className="p-6 space-y-4 border-b">
-				{/* Header */}
-				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-4">
-						<Button intent="outline" size="sq-md" onPress={() => router.back()}>
-							<ArrowLeft className="h-4 w-4" />
-						</Button>
-						<div>
-							<h1 className="text-2xl font-bold text-foreground">
-								{isEditing ? "Edit Automation" : "Create Automation"}
-							</h1>
-							<p className="text-muted-foreground text-sm">
-								{isEditing
-									? "Modify your workflow automation"
-									: "Build a new workflow automation"}
-							</p>
-						</div>
-					</div>
-					<StyledButton
-						intent="primary"
-						onClick={handleSave}
-						disabled={isSaving}
-						icon={
-							isSaving ? (
-								<Loader2 className="h-4 w-4 animate-spin" />
-							) : (
-								<Save className="h-4 w-4" />
-							)
-						}
-					>
-						{isSaving ? "Saving..." : "Save Automation"}
-					</StyledButton>
-				</div>
-
-				{/* Basic Info - Inline */}
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div className="space-y-2">
-						<Label htmlFor="name" className="text-sm font-medium">
-							Name *
-						</Label>
-						<Input
-							id="name"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="e.g., Auto-complete project on quote approval"
-							className="bg-background"
+			{/* Top Bar */}
+			<div className="h-16 px-6 border-b border-border bg-background flex items-center gap-4 shrink-0">
+				<Button intent="outline" size="sq-md" onPress={() => router.push("/automations")} aria-label="Back to Automations">
+					<ArrowLeft className="h-4 w-4" />
+				</Button>
+				<input
+					value={name}
+					onChange={(e) => setName(e.target.value)}
+					placeholder="Automation name"
+					className="text-lg font-semibold bg-transparent border-none focus:ring-0 focus:outline-none w-64"
+				/>
+				<input
+					value={description}
+					onChange={(e) => setDescription(e.target.value)}
+					placeholder="Add a description..."
+					className="text-sm text-muted-foreground bg-transparent border-none focus:ring-0 focus:outline-none flex-1"
+				/>
+				<div className="flex items-center gap-3 ml-auto">
+					{/* Active toggle */}
+					<label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+						<input
+							type="checkbox"
+							checked={isActive}
+							onChange={(e) => setIsActive(e.target.checked)}
+							className="rounded"
 						/>
-					</div>
-					<div className="space-y-2">
-						<Label htmlFor="description" className="text-sm font-medium">
-							Description
-						</Label>
-						<Input
-							id="description"
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Optional: what does this automation do?"
-							className="bg-background"
-						/>
-					</div>
+						Active
+					</label>
+					<Button intent="primary" onPress={handleSave} isDisabled={isSaving}>
+						{isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+						Save Automation
+					</Button>
 				</div>
 			</div>
 
-			{/* Canvas + Sidebar - fills remaining height */}
-			<div className="flex-1 flex overflow-hidden">
-				{/* Canvas - flexible width */}
-				<div className="flex-1 overflow-auto">
-					<WorkflowCanvas>
-						{!trigger && !isEditing ? (
-							/* Empty state for new automations */
-							<button
-								onClick={() => handleOpenSidebar({ type: "trigger" })}
-								className="group flex flex-col items-center justify-center gap-4 p-12 rounded-2xl border-2 border-dashed border-border hover:border-primary/50 transition-colors cursor-pointer bg-muted/20 hover:bg-muted/40"
-							>
-								<div className="flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg group-hover:scale-110 transition-transform">
-									<Zap className="h-8 w-8 text-white" />
+			{/* Canvas + Sidebar */}
+			<div className="flex flex-1 overflow-hidden">
+				{/* Canvas area */}
+				<div className="flex-1 relative">
+					{!trigger ? (
+						/* Empty state */
+						<div className="flex items-center justify-center h-full">
+							<div className="text-center max-w-md">
+								<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40">
+									<Zap className="h-8 w-8 text-amber-500" />
 								</div>
-								<div className="text-center">
-									<h3 className="text-lg font-semibold text-foreground mb-1">
-										Set a trigger to get started
-									</h3>
-									<p className="text-sm text-muted-foreground">
-										Click here to configure when this automation should run
-									</p>
-								</div>
-							</button>
-						) : trigger ? (
-							<>
-								{/* Trigger Node */}
-								<TriggerNode
-									trigger={trigger}
-									onClick={() => handleOpenSidebar({ type: "trigger" })}
-								/>
+								<h3 className="text-lg font-semibold mb-2">Set a trigger to get started</h3>
+								<p className="text-sm text-muted-foreground mb-6">
+									Choose what starts this automation -- like a status change on a client, project, or invoice.
+								</p>
+								<Button intent="primary" onPress={() => handleOpenSidebar({ type: "trigger" })}>
+									Choose Trigger
+								</Button>
+							</div>
+						</div>
+					) : (
+						/* React Flow canvas */
+						<AutomationFlow
+							initialNodes={rfNodes}
+							initialEdges={rfEdges}
+							onNodeClick={handleNodeClick}
+							onInsertNode={handleInsertNode}
+							onPaneClick={handlePaneClick}
+						/>
+					)}
 
-								{/* Workflow Nodes - Branching Tree View */}
-								{nodeTree ? (
-									<>
-										{/* Connector from trigger to first node */}
-										<div className="w-[2.5px] h-8 bg-border" />
-										<BranchingNodeRenderer
-											node={nodeTree}
-											onNodeClick={(nodeId, nodeType) =>
-												handleOpenSidebar({ type: nodeType, id: nodeId })
-											}
-											onNodeDelete={handleDeleteNodeById}
-											onAddNode={(parentId, branch) => handleAddNodeToBranch(parentId, branch, "action")}
-										/>
-									</>
-								) : (
-									/* Add Step Button when no nodes */
-									<>
-										<div className="w-[2.5px] h-8 bg-border" />
-										<AddStepButton
-											onAddCondition={handleAddCondition}
-											onAddAction={handleAddAction}
-										/>
-									</>
-								)}
-							</>
-						) : null}
-					</WorkflowCanvas>
+					{/* Undo floating button */}
+					{deletedNodeState && (
+						<div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
+							<button
+								onClick={handleUndoDelete}
+								className="flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground text-background shadow-lg hover:opacity-90 transition-opacity text-sm font-medium"
+							>
+								<Undo2 className="h-4 w-4" />
+								Undo
+							</button>
+						</div>
+					)}
 				</div>
 
-				{/* Sidebar - slides in/out */}
-				<NodeEditorSidebar
-					isOpen={isSidebarOpen}
-					selectedNode={selectedNode}
-					trigger={trigger}
-					nodes={nodes}
-					onClose={handleCloseSidebar}
-					onTriggerChange={handleTriggerChangeFromSidebar}
-					onNodeChange={handleNodeChangeFromSidebar}
-					onAddTrueBranch={handleAddTrueBranch}
-					onAddFalseBranch={handleAddFalseBranch}
-				/>
+				{/* Sidebar */}
+				<div
+					className={cn(
+						"w-[360px] border-l border-border bg-sidebar overflow-y-auto shrink-0 transition-transform duration-200 ease-out",
+						isSidebarOpen ? "translate-x-0" : "translate-x-full"
+					)}
+					style={{ marginRight: isSidebarOpen ? 0 : -360 }}
+				>
+					<NodeEditorSidebar
+						isOpen={isSidebarOpen}
+						selectedNode={selectedNode}
+						trigger={trigger}
+						nodes={nodes}
+						onClose={handleCloseSidebar}
+						onTriggerChange={handleTriggerChangeFromSidebar}
+						onNodeChange={handleNodeChangeFromSidebar}
+						onDeleteNode={handleDeleteNode}
+					/>
+				</div>
 			</div>
 		</div>
 	);
@@ -681,13 +696,11 @@ function AutomationEditorWithSuspense() {
 							<div className="h-4 w-32 bg-muted rounded animate-pulse" />
 						</div>
 					</div>
-					<Card>
-						<CardContent className="py-12">
-							<div className="flex items-center justify-center">
-								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-							</div>
-						</CardContent>
-					</Card>
+					<div className="py-12">
+						<div className="flex items-center justify-center">
+							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+						</div>
+					</div>
 				</div>
 			}
 		>
