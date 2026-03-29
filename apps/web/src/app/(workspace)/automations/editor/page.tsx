@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } fr
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, Loader2, Lock, Zap, Undo2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, Undo2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ import type { WorkflowNode } from "../components/workflow-node";
 import { FIELD_OPTIONS } from "../components/workflow-node";
 import { NodeEditorSidebar, type SelectedNode } from "../components/node-editor-sidebar";
 import { AutomationFlow } from "../components/flow/automation-flow";
-import { automationToReactFlow, TRIGGER_NODE_ID, isTerminalId } from "../lib/flow-adapter";
+import { automationToReactFlow, TRIGGER_NODE_ID, TRIGGER_PLACEHOLDER_ID, isTerminalId } from "../lib/flow-adapter";
 
 // Helper to generate unique IDs
 function generateId(): string {
@@ -270,7 +270,7 @@ function AutomationEditorContent() {
 		// Ignore clicks on terminal stubs
 		if (isTerminalId(nodeId)) return;
 
-		if (nodeId === TRIGGER_NODE_ID) {
+		if (nodeId === TRIGGER_NODE_ID || nodeId === TRIGGER_PLACEHOLDER_ID) {
 			handleOpenSidebar({ type: "trigger" });
 		} else {
 			const node = nodes.find((n) => n.id === nodeId);
@@ -306,6 +306,16 @@ function AutomationEditorContent() {
 			sourceId = parts.slice(1, elseIndex).join("-");
 			targetId = parts.slice(elseIndex + 1).join("-");
 			branchType = "no";
+		} else if (parts.includes("each")) {
+			const eachIndex = parts.indexOf("each");
+			sourceId = parts.slice(1, eachIndex).join("-");
+			targetId = parts.slice(eachIndex + 1).join("-");
+			branchType = "yes"; // "each" maps to nextNodeId
+		} else if (parts.includes("after")) {
+			const afterIndex = parts.indexOf("after");
+			sourceId = parts.slice(1, afterIndex).join("-");
+			targetId = parts.slice(afterIndex + 1).join("-");
+			branchType = "no"; // "after" maps to elseNodeId
 		} else if (parts.includes("yes")) {
 			const yesIndex = parts.indexOf("yes");
 			sourceId = parts.slice(1, yesIndex).join("-");
@@ -342,10 +352,9 @@ function AutomationEditorContent() {
 				: undefined;
 
 		// Determine which branch to use for the source node
-		if (!branchType && sourceId !== TRIGGER_NODE_ID) {
+		if (!branchType && sourceId !== TRIGGER_NODE_ID && sourceId !== TRIGGER_PLACEHOLDER_ID) {
 			const sourceNode = nodes.find((n) => n.id === sourceId);
-			if (sourceNode?.type === "condition") {
-				// If we got here without a branch marker, default to "yes"
+			if (sourceNode?.type === "condition" || sourceNode?.type === "loop") {
 				branchType = "yes";
 			}
 		}
@@ -692,32 +701,13 @@ function AutomationEditorContent() {
 			<div className="flex flex-1 overflow-hidden">
 				{/* Canvas area */}
 				<div className="flex-1 relative">
-					{!trigger ? (
-						/* Empty state */
-						<div className="flex items-center justify-center h-full">
-							<div className="text-center max-w-md">
-								<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40">
-									<Zap className="h-8 w-8 text-amber-500" />
-								</div>
-								<h3 className="text-lg font-semibold mb-2">Set a trigger to get started</h3>
-								<p className="text-sm text-muted-foreground mb-6">
-									Choose what starts this automation -- like a status change on a client, project, or invoice.
-								</p>
-								<Button intent="primary" onPress={() => handleOpenSidebar({ type: "trigger" })}>
-									Choose Trigger
-								</Button>
-							</div>
-						</div>
-					) : (
-						/* React Flow canvas */
-						<AutomationFlow
+					<AutomationFlow
 							initialNodes={rfNodes}
 							initialEdges={rfEdges}
 							onNodeClick={handleNodeClick}
 							onInsertNode={handleInsertNode}
 							onPaneClick={handlePaneClick}
 						/>
-					)}
 
 					{/* Undo floating button */}
 					{deletedNodeState && (

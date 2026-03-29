@@ -3,11 +3,13 @@ import type { WorkflowNode } from "../components/workflow-node";
 import type { TriggerConfig } from "../components/trigger-node";
 
 export const TRIGGER_NODE_ID = "__trigger__";
+export const TRIGGER_PLACEHOLDER_ID = "__trigger_placeholder__";
 export const TERMINAL_PREFIX = "__terminal__";
 
 /** React Flow node type names (must match nodeTypes object keys) */
 export const RF_NODE_TYPES = {
 	trigger: "triggerNode",
+	triggerPlaceholder: "triggerPlaceholderNode",
 	condition: "conditionNode",
 	action: "actionNode",
 	fetch_records: "fetchNode",
@@ -32,6 +34,7 @@ function addTerminalStub(
 	rfEdges: Edge[],
 	sourceId: string,
 	sourceHandle?: string,
+	edgeType?: string,
 	edgeData?: Record<string, unknown>
 ) {
 	const handleSuffix = sourceHandle ? `-${sourceHandle}` : "";
@@ -49,18 +52,16 @@ function addTerminalStub(
 		source: sourceId,
 		target: terminalId,
 		sourceHandle: sourceHandle || undefined,
-		type: RF_EDGE_TYPES.plusButton,
+		type: edgeType || RF_EDGE_TYPES.plusButton,
 		data: { isTerminal: true, ...edgeData },
 	});
 }
 
 /**
  * Convert database automation (trigger + flat nodes array) to React Flow nodes and edges.
- * Positions are all {x:0, y:0} -- call computeDagreLayout() after this to position them.
  *
- * Every leaf output (no child) gets a terminal stub: an invisible node connected by a
- * straight edge with an always-visible "+" button. This ensures the user can always add
- * new nodes at any open end of the workflow.
+ * Every leaf output gets a terminal stub with an always-visible "+" button.
+ * When no trigger is set, shows a dashed placeholder trigger node instead.
  */
 export function automationToReactFlow(
 	trigger: TriggerConfig | null,
@@ -69,7 +70,7 @@ export function automationToReactFlow(
 	const rfNodes: Node[] = [];
 	const rfEdges: Edge[] = [];
 
-	// 1. Create trigger node
+	// 1. Create trigger node or placeholder
 	if (trigger) {
 		rfNodes.push({
 			id: TRIGGER_NODE_ID,
@@ -77,6 +78,17 @@ export function automationToReactFlow(
 			data: { trigger, nodeType: "trigger" },
 			position: { x: 0, y: 0 },
 		});
+	} else {
+		// No trigger — show dashed placeholder
+		rfNodes.push({
+			id: TRIGGER_PLACEHOLDER_ID,
+			type: RF_NODE_TYPES.triggerPlaceholder,
+			data: {},
+			position: { x: 0, y: 0 },
+		});
+		// Placeholder gets a terminal stub below it
+		addTerminalStub(rfNodes, rfEdges, TRIGGER_PLACEHOLDER_ID);
+		return { nodes: rfNodes, edges: rfEdges };
 	}
 
 	// 2. Find root node (not referenced by any other node's nextNodeId or elseNodeId)
@@ -88,14 +100,14 @@ export function automationToReactFlow(
 	const rootNode = nodes.find((n) => !referencedIds.has(n.id));
 
 	// 3. Connect trigger to root, or add terminal stub if no nodes
-	if (trigger && rootNode) {
+	if (rootNode) {
 		rfEdges.push({
 			id: `e-trigger-${rootNode.id}`,
 			source: TRIGGER_NODE_ID,
 			target: rootNode.id,
 			type: RF_EDGE_TYPES.plusButton,
 		});
-	} else if (trigger && nodes.length === 0) {
+	} else {
 		addTerminalStub(rfNodes, rfEdges, TRIGGER_NODE_ID);
 	}
 
@@ -112,14 +124,13 @@ export function automationToReactFlow(
 				nodeType: node.type,
 				condition: node.condition,
 				action: node.action,
-				// Preserve full node for round-trip (fetchConfig, loopConfig, etc.)
 				_dbNode: { ...node },
 			},
 			position: { x: 0, y: 0 },
 		});
 
 		if (node.type === "condition") {
-			// Condition: yes branch
+			// Condition: yes branch (nextNodeId)
 			if (node.nextNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-${node.nextNodeId}`,
@@ -130,14 +141,13 @@ export function automationToReactFlow(
 					data: { label: "Yes", variant: "yes" },
 				});
 			} else {
-				// Empty yes branch — terminal stub
-				addTerminalStub(rfNodes, rfEdges, node.id, "yes", {
+				addTerminalStub(rfNodes, rfEdges, node.id, "yes", RF_EDGE_TYPES.branchLabel, {
 					label: "Yes",
 					variant: "yes",
 				});
 			}
 
-			// Condition: no branch
+			// Condition: no branch (elseNodeId)
 			if (node.elseNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-else-${node.elseNodeId}`,
@@ -148,14 +158,47 @@ export function automationToReactFlow(
 					data: { label: "No", variant: "no" },
 				});
 			} else {
-				// Empty no branch — terminal stub
-				addTerminalStub(rfNodes, rfEdges, node.id, "no", {
+				addTerminalStub(rfNodes, rfEdges, node.id, "no", RF_EDGE_TYPES.branchLabel, {
 					label: "No",
 					variant: "no",
 				});
 			}
+		} else if (node.type === "loop") {
+			// Loop: "each" branch (nextNodeId = loop body)
+			if (node.nextNodeId) {
+				rfEdges.push({
+					id: `e-${node.id}-${node.nextNodeId}`,
+					source: node.id,
+					target: node.nextNodeId,
+					sourceHandle: "each",
+					type: RF_EDGE_TYPES.branchLabel,
+					data: { label: "For Each", variant: "yes" },
+				});
+			} else {
+				addTerminalStub(rfNodes, rfEdges, node.id, "each", RF_EDGE_TYPES.branchLabel, {
+					label: "For Each",
+					variant: "yes",
+				});
+			}
+
+			// Loop: "after" branch (elseNodeId = after last iteration)
+			if (node.elseNodeId) {
+				rfEdges.push({
+					id: `e-${node.id}-else-${node.elseNodeId}`,
+					source: node.id,
+					target: node.elseNodeId,
+					sourceHandle: "after",
+					type: RF_EDGE_TYPES.branchLabel,
+					data: { label: "After Last", variant: "no" },
+				});
+			} else {
+				addTerminalStub(rfNodes, rfEdges, node.id, "after", RF_EDGE_TYPES.branchLabel, {
+					label: "After Last",
+					variant: "no",
+				});
+			}
 		} else {
-			// Non-condition nodes: single output
+			// Non-branching nodes: single output
 			if (node.nextNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-${node.nextNodeId}`,
@@ -164,7 +207,6 @@ export function automationToReactFlow(
 					type: RF_EDGE_TYPES.plusButton,
 				});
 			} else {
-				// Leaf node — terminal stub
 				addTerminalStub(rfNodes, rfEdges, node.id);
 			}
 		}
@@ -174,15 +216,13 @@ export function automationToReactFlow(
 }
 
 /**
- * Convert React Flow nodes and edges back to database format (trigger + flat nodes array).
- * This is the inverse of automationToReactFlow -- must be round-trip faithful.
- * Terminal stub nodes are filtered out.
+ * Convert React Flow nodes and edges back to database format.
+ * Terminal stub nodes and placeholder nodes are filtered out.
  */
 export function reactFlowToFlatArray(
 	rfNodes: Node[],
 	rfEdges: Edge[]
 ): { trigger: TriggerConfig | null; nodes: WorkflowNode[] } {
-	// Extract trigger
 	const triggerRfNode = rfNodes.find((n) => n.id === TRIGGER_NODE_ID);
 	const trigger = (triggerRfNode?.data?.trigger as TriggerConfig) ?? null;
 
@@ -190,32 +230,32 @@ export function reactFlowToFlatArray(
 
 	for (const rfNode of rfNodes) {
 		if (rfNode.id === TRIGGER_NODE_ID) continue;
+		if (rfNode.id === TRIGGER_PLACEHOLDER_ID) continue;
 		if (isTerminalId(rfNode.id)) continue;
 
 		const dbNode = rfNode.data?._dbNode as WorkflowNode | undefined;
 		if (!dbNode) continue;
 
-		// Reconstruct pointers from edges (edges are source of truth for connections)
 		const outEdges = rfEdges.filter((e) => e.source === rfNode.id);
 		let nextNodeId: string | undefined;
 		let elseNodeId: string | undefined;
 
 		for (const edge of outEdges) {
-			// Skip edges pointing to terminal stubs
 			if (isTerminalId(edge.target)) continue;
 
-			if (edge.data?.variant === "no" || edge.sourceHandle === "no") {
+			// "no" / "after" handles map to elseNodeId
+			if (
+				edge.data?.variant === "no" ||
+				edge.sourceHandle === "no" ||
+				edge.sourceHandle === "after"
+			) {
 				elseNodeId = edge.target;
 			} else {
 				nextNodeId = edge.target;
 			}
 		}
 
-		workflowNodes.push({
-			...dbNode,
-			nextNodeId,
-			elseNodeId,
-		});
+		workflowNodes.push({ ...dbNode, nextNodeId, elseNodeId });
 	}
 
 	return { trigger, nodes: workflowNodes };

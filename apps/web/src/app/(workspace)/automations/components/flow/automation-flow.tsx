@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
 	ReactFlow,
 	Background,
@@ -8,6 +8,8 @@ import {
 	Controls,
 	useNodesState,
 	useEdgesState,
+	useReactFlow,
+	ReactFlowProvider,
 	type Node,
 	type Edge,
 	type NodeMouseHandler,
@@ -20,6 +22,7 @@ import { ActionNodeRF } from "./action-node-rf";
 import { FetchNodeRF } from "./fetch-node-rf";
 import { LoopNodeRF } from "./loop-node-rf";
 import { TerminalNodeRF } from "./add-step-node-rf";
+import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
 import { PlusButtonEdge } from "./plus-button-edge";
 import { BranchLabelEdge } from "./branch-label-edge";
 
@@ -31,6 +34,7 @@ const nodeTypes = {
 	fetchNode: FetchNodeRF,
 	loopNode: LoopNodeRF,
 	terminalNode: TerminalNodeRF,
+	triggerPlaceholderNode: TriggerPlaceholderNodeRF,
 };
 
 const edgeTypes = {
@@ -42,22 +46,54 @@ interface AutomationFlowProps {
 	initialNodes: Node[];
 	initialEdges: Edge[];
 	onNodeClick?: (nodeId: string) => void;
-	onInsertNode?: (edgeId: string, nodeType: "condition" | "action") => void;
+	onInsertNode?: (edgeId: string, nodeType: string) => void;
 	onPaneClick?: () => void;
 }
 
-export function AutomationFlow({
+/**
+ * After dagre layout, fix condition branch edge handles so they don't cross.
+ * Assigns left handle to left child, right handle to right child.
+ */
+function fixBranchHandles(layoutedNodes: Node[], edges: Edge[]): Edge[] {
+	const nodePositions = new Map<string, { x: number }>();
+	for (const node of layoutedNodes) {
+		nodePositions.set(node.id, { x: node.position.x });
+	}
+
+	return edges.map((edge) => {
+		// Only fix branch edges (they have variant data)
+		if (edge.data?.variant !== "yes" && edge.data?.variant !== "no") {
+			return edge;
+		}
+
+		const targetPos = nodePositions.get(edge.target);
+		const sourcePos = nodePositions.get(edge.source);
+		if (!targetPos || !sourcePos) return edge;
+
+		// Assign handle based on which side the target is on
+		const isLeftChild = targetPos.x < sourcePos.x;
+		return {
+			...edge,
+			sourceHandle: isLeftChild ? "yes" : "no",
+		};
+	});
+}
+
+function AutomationFlowInner({
 	initialNodes,
 	initialEdges,
 	onNodeClick,
 	onInsertNode,
 	onPaneClick,
 }: AutomationFlowProps) {
-	// Compute layout
+	const { fitView } = useReactFlow();
+	const prevCountRef = useRef(initialNodes.length);
+
+	// Compute layout, fix branch handles, inject callbacks
 	const { layoutedNodes, layoutedEdges } = useMemo(() => {
 		const ln = computeDagreLayout(initialNodes, initialEdges);
-		// Inject onInsertNode callback into edge data
-		const le = initialEdges.map((edge) => ({
+		const fixedEdges = fixBranchHandles(ln, initialEdges);
+		const le = fixedEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
 		}));
@@ -67,16 +103,25 @@ export function AutomationFlow({
 	const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
 
-	// Sync when initialNodes/initialEdges change
+	// Sync when initialNodes/initialEdges change (e.g. after node deletion/insertion)
 	useEffect(() => {
 		const ln = computeDagreLayout(initialNodes, initialEdges);
-		const le = initialEdges.map((edge) => ({
+		const fixedEdges = fixBranchHandles(ln, initialEdges);
+		const le = fixedEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
 		}));
 		setNodes(ln);
 		setEdges(le);
-	}, [initialNodes, initialEdges, onInsertNode, setNodes, setEdges]);
+
+		// Re-fit view when node count changes (addition or deletion)
+		if (initialNodes.length !== prevCountRef.current) {
+			prevCountRef.current = initialNodes.length;
+			requestAnimationFrame(() => {
+				fitView({ padding: 0.2, duration: 200 });
+			});
+		}
+	}, [initialNodes, initialEdges, onInsertNode, setNodes, setEdges, fitView]);
 
 	const handleNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {
@@ -86,39 +131,47 @@ export function AutomationFlow({
 	);
 
 	return (
-		<div className="w-full h-full">
-			<ReactFlow
-				nodes={nodes}
-				edges={edges}
-				onNodesChange={onNodesChange}
-				onEdgesChange={onEdgesChange}
-				onNodeClick={handleNodeClick}
-				onPaneClick={onPaneClick}
-				nodeTypes={nodeTypes}
-				edgeTypes={edgeTypes}
-				fitView
-				fitViewOptions={{ padding: 0.2, duration: 300 }}
-				nodesDraggable={false}
-				nodesConnectable={false}
-				elementsSelectable={true}
-				panOnDrag={true}
-				zoomOnScroll={true}
-				minZoom={0.3}
-				maxZoom={2}
-				proOptions={{ hideAttribution: true }}
-			>
-				<Background
-					variant={BackgroundVariant.Dots}
-					gap={20}
-					size={1}
-					className="!text-muted-foreground/15 dark:!text-muted-foreground/10"
-				/>
-				<Controls
-					showInteractive={false}
-					position="bottom-left"
-					className="!bg-background/80 !backdrop-blur-sm !border-border !shadow-sm"
-				/>
-			</ReactFlow>
-		</div>
+		<ReactFlow
+			nodes={nodes}
+			edges={edges}
+			onNodesChange={onNodesChange}
+			onEdgesChange={onEdgesChange}
+			onNodeClick={handleNodeClick}
+			onPaneClick={onPaneClick}
+			nodeTypes={nodeTypes}
+			edgeTypes={edgeTypes}
+			fitView
+			fitViewOptions={{ padding: 0.2, duration: 300 }}
+			nodesDraggable={false}
+			nodesConnectable={false}
+			elementsSelectable={true}
+			panOnDrag={true}
+			zoomOnScroll={true}
+			minZoom={0.3}
+			maxZoom={2}
+			proOptions={{ hideAttribution: true }}
+		>
+			<Background
+				variant={BackgroundVariant.Dots}
+				gap={20}
+				size={1}
+				className="!text-muted-foreground/15 dark:!text-muted-foreground/10"
+			/>
+			<Controls
+				showInteractive={false}
+				position="bottom-left"
+				className="!bg-background/80 !backdrop-blur-sm !border-border !shadow-sm"
+			/>
+		</ReactFlow>
+	);
+}
+
+export function AutomationFlow(props: AutomationFlowProps) {
+	return (
+		<ReactFlowProvider>
+			<div className="w-full h-full">
+				<AutomationFlowInner {...props} />
+			</div>
+		</ReactFlowProvider>
 	);
 }

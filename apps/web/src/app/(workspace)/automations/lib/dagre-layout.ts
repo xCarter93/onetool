@@ -3,6 +3,7 @@ import type { Node, Edge } from "@xyflow/react";
 
 export const NODE_WIDTH = 280;
 export const NODE_HEIGHT = 72;
+const LOOP_NODE_HEIGHT = 100; // Loop nodes are taller (header + branch labels row)
 const NODE_SEP = 50;
 const RANK_SEP = 80;
 const MARGIN_X = 20;
@@ -12,27 +13,35 @@ const MARGIN_Y = 20;
 const TERMINAL_OFFSET_Y = 60;
 
 /**
+ * Handle offset percentages for branching nodes.
+ * Condition: yes at 35%, no at 65%
+ * Loop: each at 25%, after at 75%
+ */
+const HANDLE_OFFSETS: Record<string, number> = {
+	yes: -0.15,   // 35% = center - 15%
+	no: 0.15,     // 65% = center + 15%
+	each: -0.25,  // 25% = center - 25%
+	after: 0.25,  // 75% = center + 25%
+};
+
+/**
  * Compute top-to-bottom dagre layout for React Flow nodes and edges.
  *
- * Terminal stub nodes are NOT included in the dagre graph. Instead, they are
- * manually positioned directly below their parent's source handle after layout.
- * This avoids dagre merging overlapping stubs and creating crossed edges.
+ * Terminal stub nodes are NOT included in dagre — they're positioned
+ * manually below their parent's source handle to avoid crossing.
  */
 export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 	if (nodes.length === 0) return [];
 
-	// Separate real nodes from terminal stubs
 	const realNodes = nodes.filter((n) => n.type !== "terminalNode");
 	const terminalNodes = nodes.filter((n) => n.type === "terminalNode");
 
-	// Only include edges between real nodes in dagre
 	const realNodeIds = new Set(realNodes.map((n) => n.id));
 	const realEdges = edges.filter(
 		(e) => realNodeIds.has(e.source) && realNodeIds.has(e.target)
 	);
 
 	if (realNodes.length === 0) {
-		// No real nodes — just position terminals at origin
 		return terminalNodes.map((node): Node => ({
 			...node,
 			position: { x: 0, y: TERMINAL_OFFSET_Y },
@@ -49,7 +58,8 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 	});
 
 	realNodes.forEach((node) => {
-		g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+		const h = node.type === "loopNode" ? LOOP_NODE_HEIGHT : NODE_HEIGHT;
+		g.setNode(node.id, { width: NODE_WIDTH, height: h });
 	});
 
 	realEdges.forEach((edge) => {
@@ -58,35 +68,33 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 
 	dagre.layout(g);
 
-	// Build a map of source node positions for terminal placement
-	const nodePositions = new Map<string, { x: number; y: number }>();
+	const nodePositions = new Map<string, { x: number; y: number; height: number }>();
 
 	const layoutedReal = realNodes.map((node): Node => {
 		const pos = g.node(node.id);
+		const h = node.type === "loopNode" ? LOOP_NODE_HEIGHT : NODE_HEIGHT;
 		const position = {
 			x: pos.x - NODE_WIDTH / 2,
-			y: pos.y - NODE_HEIGHT / 2,
+			y: pos.y - h / 2,
 		};
-		nodePositions.set(node.id, { x: pos.x, y: pos.y });
+		nodePositions.set(node.id, { x: pos.x, y: pos.y, height: h });
 		return { ...node, position };
 	});
 
 	// Position terminal stubs below their parent source handles
 	const layoutedTerminals = terminalNodes.map((terminal): Node => {
-		// Terminal IDs: "__terminal__{sourceId}" or "__terminal__{sourceId}-{handle}"
 		const suffix = terminal.id.replace("__terminal__", "");
-		let sourceId: string;
+
+		// Parse handle suffix from terminal ID
+		let sourceId = suffix;
 		let handleId: string | null = null;
 
-		// Check for handle suffixes (-yes, -no)
-		if (suffix.endsWith("-yes")) {
-			sourceId = suffix.slice(0, -4);
-			handleId = "yes";
-		} else if (suffix.endsWith("-no")) {
-			sourceId = suffix.slice(0, -3);
-			handleId = "no";
-		} else {
-			sourceId = suffix;
+		for (const handle of ["yes", "no", "each", "after"]) {
+			if (suffix.endsWith(`-${handle}`)) {
+				sourceId = suffix.slice(0, -(handle.length + 1));
+				handleId = handle;
+				break;
+			}
 		}
 
 		const parentPos = nodePositions.get(sourceId);
@@ -94,21 +102,16 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 			return { ...terminal, position: { x: 0, y: 0 } };
 		}
 
-		// Position directly below the source handle
 		let x = parentPos.x;
-		if (handleId === "yes") {
-			// Yes handle is at 35% of node width
-			x = parentPos.x - NODE_WIDTH * 0.15;
-		} else if (handleId === "no") {
-			// No handle is at 65% of node width
-			x = parentPos.x + NODE_WIDTH * 0.15;
+		if (handleId && handleId in HANDLE_OFFSETS) {
+			x = parentPos.x + NODE_WIDTH * HANDLE_OFFSETS[handleId];
 		}
 
 		return {
 			...terminal,
 			position: {
-				x: x - 2, // center the 4px terminal
-				y: parentPos.y + NODE_HEIGHT / 2 + TERMINAL_OFFSET_Y,
+				x: x - 2,
+				y: parentPos.y + parentPos.height / 2 + TERMINAL_OFFSET_Y,
 			},
 		};
 	});
