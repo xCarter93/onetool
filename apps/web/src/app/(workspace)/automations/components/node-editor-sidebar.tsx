@@ -1,9 +1,8 @@
 "use client";
 
-import React from "react";
-import { X, Zap, GitBranch, Play } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import React, { useEffect, useRef } from "react";
+import { X, Zap, GitBranch, Play, Trash2, Search, Repeat } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,10 +15,12 @@ import {
 import { STATUS_OPTIONS, OBJECT_TYPES, type TriggerConfig } from "./trigger-node";
 import { FIELD_OPTIONS, TARGET_OPTIONS, type WorkflowNode } from "./workflow-node";
 
-type SelectedNode =
+export type SelectedNode =
 	| { type: "trigger" }
 	| { type: "condition"; id: string }
-	| { type: "action"; id: string };
+	| { type: "action"; id: string }
+	| { type: "fetch_records"; id: string }
+	| { type: "loop"; id: string };
 
 interface NodeEditorSidebarProps {
 	isOpen: boolean;
@@ -29,8 +30,7 @@ interface NodeEditorSidebarProps {
 	onClose: () => void;
 	onTriggerChange: (trigger: TriggerConfig) => void;
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
-	onAddTrueBranch?: (nodeId: string) => void;
-	onAddFalseBranch?: (nodeId: string) => void;
+	onDeleteNode?: (nodeId: string) => void;
 }
 
 export function NodeEditorSidebar({
@@ -41,84 +41,146 @@ export function NodeEditorSidebar({
 	onClose,
 	onTriggerChange,
 	onNodeChange,
-	onAddTrueBranch,
-	onAddFalseBranch,
+	onDeleteNode,
 }: NodeEditorSidebarProps) {
+	const contentRef = useRef<HTMLDivElement>(null);
+
+	// Focus first input when sidebar opens
+	useEffect(() => {
+		if (isOpen && contentRef.current) {
+			const timer = setTimeout(() => {
+				const firstInput = contentRef.current?.querySelector<HTMLElement>(
+					"input, select, button[role='combobox']"
+				);
+				firstInput?.focus();
+			}, 250); // Wait for slide-in transition
+			return () => clearTimeout(timer);
+		}
+	}, [isOpen, selectedNode]);
+
+	// Escape key closes sidebar
+	useEffect(() => {
+		if (!isOpen) return;
+
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				e.preventDefault();
+				onClose();
+			}
+		};
+
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [isOpen, onClose]);
+
 	if (!isOpen || !selectedNode) {
 		return null;
 	}
 
 	return (
-		<div
-			className={cn(
-				"h-full border-l bg-background transition-all duration-300 overflow-hidden",
-				isOpen ? "w-[400px]" : "w-0"
-			)}
-		>
-			<div className="flex flex-col h-full">
-				{/* Header */}
-				<div className="flex items-center justify-between p-4 border-b">
-					<div className="flex items-center gap-2">
-						{selectedNode.type === "trigger" && (
-							<>
-								<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-									<Zap className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-								</div>
-								<span className="font-semibold text-sm">Edit Trigger</span>
-							</>
-						)}
-						{selectedNode.type === "condition" && (
-							<>
-								<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-									<GitBranch className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-								</div>
-								<span className="font-semibold text-sm">Edit Condition</span>
-							</>
-						)}
-						{selectedNode.type === "action" && (
-							<>
-								<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/50">
-									<Play className="h-4 w-4 text-green-600 dark:text-green-400" />
-								</div>
-								<span className="font-semibold text-sm">Edit Action</span>
-							</>
-						)}
-					</div>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						onClick={onClose}
-						icon={<X className="h-4 w-4" />}
-						showArrow={false}
-						aria-label="Close sidebar"
-						className="p-1"
-					/>
-				</div>
-
-				{/* Content */}
-				<div className="flex-1 overflow-auto p-4">
+		<div className="w-full h-full flex flex-col">
+			{/* Header */}
+			<div className="flex items-center justify-between p-6 border-b border-border">
+				<div className="flex items-center gap-3">
 					{selectedNode.type === "trigger" && (
-						<TriggerEditor trigger={trigger} onChange={onTriggerChange} />
+						<>
+							<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+								<Zap className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+							</div>
+							<span className="text-lg font-semibold">Configure Trigger</span>
+						</>
 					)}
 					{selectedNode.type === "condition" && (
-						<ConditionEditor
-							node={nodes.find((n) => n.id === selectedNode.id)}
-							triggerObjectType={trigger?.objectType || "quote"}
-							onChange={(updates) => onNodeChange(selectedNode.id, updates)}
-							allNodes={nodes}
-							onAddTrueBranch={() => onAddTrueBranch?.(selectedNode.id)}
-							onAddFalseBranch={() => onAddFalseBranch?.(selectedNode.id)}
-						/>
+						<>
+							<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/50">
+								<GitBranch className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+							</div>
+							<span className="text-lg font-semibold">Configure Condition</span>
+						</>
 					)}
 					{selectedNode.type === "action" && (
-						<ActionEditor
-							node={nodes.find((n) => n.id === selectedNode.id)}
-							triggerObjectType={trigger?.objectType || "quote"}
-							onChange={(updates) => onNodeChange(selectedNode.id, updates)}
-						/>
+						<>
+							<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/50">
+								<Play className="h-4 w-4 text-green-600 dark:text-green-400" />
+							</div>
+							<span className="text-lg font-semibold">Configure Action</span>
+						</>
+					)}
+					{selectedNode.type === "fetch_records" && (
+						<>
+							<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+								<Search className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+							</div>
+							<span className="text-lg font-semibold">Configure Fetch</span>
+						</>
+					)}
+					{selectedNode.type === "loop" && (
+						<>
+							<div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/50">
+								<Repeat className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+							</div>
+							<span className="text-lg font-semibold">Configure Loop</span>
+						</>
 					)}
 				</div>
+				<button
+					onClick={onClose}
+					className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors"
+					aria-label="Close sidebar"
+				>
+					<X className="h-4 w-4" />
+				</button>
 			</div>
+
+			{/* Content */}
+			<div ref={contentRef} className="flex-1 overflow-auto p-6">
+				{selectedNode.type === "trigger" && (
+					<TriggerEditor trigger={trigger} onChange={onTriggerChange} />
+				)}
+				{selectedNode.type === "condition" && (
+					<ConditionEditor
+						node={nodes.find((n) => n.id === selectedNode.id)}
+						triggerObjectType={trigger?.objectType || "quote"}
+						onChange={(updates) => onNodeChange(selectedNode.id, updates)}
+						allNodes={nodes}
+					/>
+				)}
+				{selectedNode.type === "action" && (
+					<ActionEditor
+						node={nodes.find((n) => n.id === selectedNode.id)}
+						triggerObjectType={trigger?.objectType || "quote"}
+						onChange={(updates) => onNodeChange(selectedNode.id, updates)}
+					/>
+				)}
+				{selectedNode.type === "fetch_records" && (
+					<div className="text-sm text-muted-foreground">
+						Configuration for this node type will be available in a future update.
+					</div>
+				)}
+				{selectedNode.type === "loop" && (
+					<div className="text-sm text-muted-foreground">
+						Configuration for this node type will be available in a future update.
+					</div>
+				)}
+			</div>
+
+			{/* Delete Node button -- only for non-trigger nodes */}
+			{selectedNode && selectedNode.type !== "trigger" && onDeleteNode && (
+				<div className="p-6 border-t border-border">
+					<Button
+						intent="destructive"
+						className="w-full"
+						onPress={() => {
+							if ("id" in selectedNode) {
+								onDeleteNode(selectedNode.id);
+							}
+						}}
+					>
+						<Trash2 className="h-4 w-4 mr-2" />
+						Delete Node
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 }
@@ -149,7 +211,7 @@ function TriggerEditor({
 	};
 
 	return (
-		<div className="space-y-4">
+		<div className="space-y-6">
 			<div className="space-y-2">
 				<Label className="text-sm font-medium">When this object</Label>
 				<Select value={currentTrigger.objectType} onValueChange={handleObjectTypeChange}>
@@ -222,15 +284,11 @@ function ConditionEditor({
 	node,
 	triggerObjectType,
 	onChange,
-	onAddTrueBranch,
-	onAddFalseBranch,
 	allNodes,
 }: {
 	node?: WorkflowNode;
 	triggerObjectType: string;
 	onChange: (updates: Partial<WorkflowNode>) => void;
-	onAddTrueBranch?: () => void;
-	onAddFalseBranch?: () => void;
 	allNodes?: WorkflowNode[];
 }) {
 	if (!node || node.type !== "condition") return null;
@@ -249,7 +307,7 @@ function ConditionEditor({
 		{ value: "exists", label: "exists" },
 	];
 
-	// Find nodes that are linked as true/false branches
+	// Find nodes that are linked as true/false branches (for display only)
 	const trueNode = allNodes?.find((n) => n.id === node.nextNodeId);
 	const falseNode = allNodes?.find((n) => n.id === node.elseNodeId);
 
@@ -322,87 +380,38 @@ function ConditionEditor({
 				)}
 			</div>
 
-			{/* Branch Configuration */}
-			<div className="border-t pt-4 space-y-4">
-				<div className="text-sm font-semibold text-foreground">Next step</div>
+			{/* Branch Info (read-only display -- insertion handled by edge plus buttons) */}
+			<div className="border-t border-border pt-6 space-y-4">
+				<div className="text-sm font-semibold text-foreground">Branches</div>
 
-				{/* Is true branch */}
-				<div className="space-y-2">
-					<Label className="text-xs font-medium text-muted-foreground uppercase">
-						Is true
-					</Label>
-					{trueNode ? (
-						<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
-							<div className="flex items-center gap-2">
-								{trueNode.type === "condition" ? (
-									<GitBranch className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-								) : (
-									<Play className="h-4 w-4 text-green-600 dark:text-green-400" />
-								)}
-								<span className="text-sm font-medium">
-									{trueNode.type === "condition" ? "Condition" : "Action"}
-								</span>
-							</div>
-							<StyledButton
-								intent="plain"
-								size="sm"
-								onClick={() => onChange({ nextNodeId: undefined })}
-								icon={<X className="h-3.5 w-3.5" />}
-								showArrow={false}
-								className="p-1"
-							/>
-						</div>
-					) : (
-						<button
-							onClick={onAddTrueBranch}
-							className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50 text-muted-foreground hover:text-foreground transition-colors text-sm"
-						>
-							<span>+ Add block</span>
-						</button>
-					)}
+				<div className="space-y-3">
+					<div className="flex items-center gap-2 text-sm">
+						<div className="w-2 h-2 rounded-full bg-emerald-500" />
+						<span className="text-muted-foreground">Yes:</span>
+						<span className="font-medium">
+							{trueNode
+								? trueNode.type === "condition"
+									? "Condition"
+									: "Action"
+								: "End"}
+						</span>
+					</div>
+					<div className="flex items-center gap-2 text-sm">
+						<div className="w-2 h-2 rounded-full bg-rose-400" />
+						<span className="text-muted-foreground">No:</span>
+						<span className="font-medium">
+							{falseNode
+								? falseNode.type === "condition"
+									? "Condition"
+									: "Action"
+								: "End"}
+						</span>
+					</div>
 				</div>
 
-				{/* Is false branch */}
-				<div className="space-y-2">
-					<Label className="text-xs font-medium text-muted-foreground uppercase">
-						Is false
-					</Label>
-					{falseNode ? (
-						<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
-							<div className="flex items-center gap-2">
-								{falseNode.type === "condition" ? (
-									<GitBranch className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-								) : (
-									<Play className="h-4 w-4 text-green-600 dark:text-green-400" />
-								)}
-								<span className="text-sm font-medium">
-									{falseNode.type === "condition" ? "Condition" : "Action"}
-								</span>
-							</div>
-							<StyledButton
-								intent="plain"
-								size="sm"
-								onClick={() => onChange({ elseNodeId: undefined })}
-								icon={<X className="h-3.5 w-3.5" />}
-								showArrow={false}
-								className="p-1"
-							/>
-						</div>
-					) : (
-						<button
-							onClick={onAddFalseBranch}
-							className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50 text-muted-foreground hover:text-foreground transition-colors text-sm"
-						>
-							<span>+ Add block</span>
-						</button>
-					)}
-				</div>
-			</div>
-
-			<div className="border-t pt-4">
-				<div className="text-xs text-muted-foreground">
-					Changes are saved automatically. Configure true/false branches by clicking the "+ Add block" buttons above.
-				</div>
+				<p className="text-xs text-muted-foreground">
+					Use the + buttons on the canvas edges to add nodes to branches.
+				</p>
 			</div>
 		</div>
 	);
@@ -434,7 +443,7 @@ function ActionEditor({
 	const statusOptions = STATUS_OPTIONS[targetObjectType] || [];
 
 	return (
-		<div className="space-y-4">
+		<div className="space-y-6">
 			<div className="space-y-2">
 				<Label className="text-sm font-medium">Update</Label>
 				<Select
