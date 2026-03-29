@@ -25,6 +25,7 @@ import { TerminalNodeRF } from "./add-step-node-rf";
 import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
 import { PlusButtonEdge } from "./plus-button-edge";
 import { BranchLabelEdge } from "./branch-label-edge";
+import { LoopBackEdge } from "./loop-back-edge";
 
 // CRITICAL: Define outside component to avoid React Flow re-render warnings
 const nodeTypes = {
@@ -40,6 +41,7 @@ const nodeTypes = {
 const edgeTypes = {
 	straightEdge: PlusButtonEdge,
 	branchLabelEdge: BranchLabelEdge,
+	loopBackEdge: LoopBackEdge,
 };
 
 interface AutomationFlowProps {
@@ -61,8 +63,9 @@ function fixBranchHandles(layoutedNodes: Node[], edges: Edge[]): Edge[] {
 	}
 
 	return edges.map((edge) => {
-		// Only fix branch edges (they have variant data)
-		if (edge.data?.variant !== "yes" && edge.data?.variant !== "no") {
+		// Only fix branch edges (conditions and loops have variant data)
+		const branchType = edge.data?.branchType as string | undefined;
+		if (!branchType || branchType === "next" || branchType === "loop_back") {
 			return edge;
 		}
 

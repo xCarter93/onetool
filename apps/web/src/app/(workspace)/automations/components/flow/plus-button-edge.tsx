@@ -50,7 +50,7 @@ export function PlusButtonEdge({
 
 	return (
 		<>
-			<BaseEdge path={edgePath} style={{ ...style, strokeWidth: 2 }} />
+			<BaseEdge path={edgePath} style={{ ...style, strokeWidth: 2, stroke: "var(--color-border)" }} />
 			<EdgeLabelRenderer>
 				<div
 					className="nodrag nopan pointer-events-auto"

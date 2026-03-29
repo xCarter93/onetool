@@ -3,7 +3,8 @@
 import {
 	BaseEdge,
 	EdgeLabelRenderer,
-	getStraightPath,
+	getSmoothStepPath,
+	Position,
 	type EdgeProps,
 } from "@xyflow/react";
 import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
@@ -24,8 +25,8 @@ export function BranchLabelEdge({
 	data,
 	style,
 }: EdgeProps) {
-	const isYes = data?.variant === "yes";
-	const label = (data?.label as string) || (isYes ? "Yes" : "No");
+	const variant = (data?.variant as string) || "yes";
+	const label = (data?.label as string) || (variant === "yes" ? "Yes" : "No");
 	const isTerminal = data?.isTerminal === true;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string) => void)
@@ -36,21 +37,31 @@ export function BranchLabelEdge({
 		? sourceY + (targetY - sourceY) * 0.5
 		: targetY;
 
-	const [edgePath] = getStraightPath({
+	const [edgePath, labelX, labelY] = getSmoothStepPath({
 		sourceX,
 		sourceY,
+		sourcePosition: Position.Bottom,
 		targetX,
 		targetY: effectiveTargetY,
+		targetPosition: Position.Top,
+		borderRadius: 8,
 	});
 
-	// Stroke color based on variant
-	const strokeColor = isYes
-		? "var(--color-emerald-500, #10b981)"
-		: "var(--color-rose-400, #fb7185)";
+	// Pill color classes per UI-SPEC branch label table
+	const pillClasses: Record<string, string> = {
+		yes: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
+		no: "bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400",
+	};
 
-	// Label at 25% of path
-	const labelPosX = sourceX + (targetX - sourceX) * 0.25;
-	const labelPosY = sourceY + (effectiveTargetY - sourceY) * 0.25;
+	// Override for loop branch labels
+	let pillClass: string;
+	if (label === "For Each") {
+		pillClass = "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400";
+	} else if (label === "After Last") {
+		pillClass = "bg-muted text-muted-foreground";
+	} else {
+		pillClass = pillClasses[variant] || pillClasses.yes;
+	}
 
 	// "+" at end for terminal, at midpoint for connected edges
 	const plusX = isTerminal ? targetX : (sourceX + targetX) / 2;
@@ -62,23 +73,21 @@ export function BranchLabelEdge({
 		<>
 			<BaseEdge
 				path={edgePath}
-				style={{ ...style, strokeWidth: 2, stroke: strokeColor }}
+				style={{ ...style, strokeWidth: 2, stroke: "var(--color-border)" }}
 			/>
 			<EdgeLabelRenderer>
-				{/* Branch label near source */}
+				{/* Branch label positioned by getSmoothStepPath */}
 				<div
 					className="nodrag nopan pointer-events-none"
 					style={{
 						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${labelPosX}px, ${labelPosY}px)`,
+						transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
 					}}
 				>
 					<span
 						className={cn(
 							"text-xs font-semibold px-2 py-0.5 rounded-full",
-							isYes
-								? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
-								: "bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400"
+							pillClass
 						)}
 					>
 						{label}
