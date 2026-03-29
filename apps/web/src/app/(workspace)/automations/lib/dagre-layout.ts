@@ -1,5 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
+import type { WorkflowNode } from "../components/workflow-node";
 
 export const NODE_WIDTH = 280;
 export const NODE_HEIGHT = 72;
@@ -117,4 +118,101 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 	});
 
 	return [...layoutedReal, ...layoutedTerminals];
+}
+
+export interface LoopBodyBounds {
+	loopNodeId: string;
+	bounds: { x: number; y: number; width: number; height: number };
+}
+
+export function computeLoopBodyBounds(
+	layoutedNodes: Node[],
+	workflowNodes: WorkflowNode[]
+): LoopBodyBounds[] {
+	const results: LoopBodyBounds[] = [];
+
+	for (const wfNode of workflowNodes) {
+		if (wfNode.type !== "loop" || !wfNode.nextNodeId) continue;
+
+		// Collect body node IDs (follow nextNodeId chain only)
+		const bodyIds = new Set<string>();
+		bodyIds.add(wfNode.id); // Include loop node itself
+		let current: string | undefined = wfNode.nextNodeId;
+		const visited = new Set<string>();
+		while (current && !visited.has(current)) {
+			visited.add(current);
+			bodyIds.add(current);
+			const next = workflowNodes.find((n) => n.id === current);
+			current = next?.nextNodeId;
+		}
+
+		// Compute bounding box from layouted node positions
+		const bodyLayouted = layoutedNodes.filter((n) => bodyIds.has(n.id));
+		if (bodyLayouted.length === 0) continue;
+
+		let minX = Infinity,
+			minY = Infinity,
+			maxX = -Infinity,
+			maxY = -Infinity;
+		for (const n of bodyLayouted) {
+			const w = NODE_WIDTH;
+			const h = n.type === "loopNode" ? LOOP_NODE_HEIGHT : NODE_HEIGHT;
+			minX = Math.min(minX, n.position.x);
+			minY = Math.min(minY, n.position.y);
+			maxX = Math.max(maxX, n.position.x + w);
+			maxY = Math.max(maxY, n.position.y + h);
+		}
+
+		results.push({
+			loopNodeId: wfNode.id,
+			bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+		});
+	}
+
+	return results;
+}
+
+export function adjustAfterLastPositions(
+	layoutedNodes: Node[],
+	loopBodies: LoopBodyBounds[],
+	workflowNodes: WorkflowNode[]
+): Node[] {
+	if (loopBodies.length === 0) return layoutedNodes;
+
+	const adjusted = [...layoutedNodes];
+	for (const lb of loopBodies) {
+		const loopWf = workflowNodes.find((n) => n.id === lb.loopNodeId);
+		if (!loopWf?.elseNodeId) continue;
+
+		// Find all nodes in the "After Last" subtree
+		const afterIds = new Set<string>();
+		const stack = [loopWf.elseNodeId];
+		while (stack.length > 0) {
+			const id = stack.pop()!;
+			if (afterIds.has(id)) continue;
+			afterIds.add(id);
+			const n = workflowNodes.find((w) => w.id === id);
+			if (n?.nextNodeId) stack.push(n.nextNodeId);
+			if (n?.elseNodeId) stack.push(n.elseNodeId);
+		}
+
+		const bodyRight = lb.bounds.x + lb.bounds.width + 16;
+		const bodyBottom = lb.bounds.y + lb.bounds.height + 16;
+
+		for (let i = 0; i < adjusted.length; i++) {
+			if (!afterIds.has(adjusted[i].id)) continue;
+			const node = adjusted[i];
+			if (node.position.x < bodyRight + NODE_WIDTH / 2) {
+				adjusted[i] = {
+					...node,
+					position: {
+						x: bodyRight + 20,
+						y: Math.max(node.position.y, bodyBottom),
+					},
+				};
+			}
+		}
+	}
+
+	return adjusted;
 }

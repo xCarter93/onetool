@@ -1,4 +1,4 @@
-import type { Node, Edge } from "@xyflow/react";
+import { MarkerType, type Node, type Edge } from "@xyflow/react";
 import type { WorkflowNode } from "../components/workflow-node";
 import type { TriggerConfig } from "../components/trigger-node";
 
@@ -203,6 +203,37 @@ export function automationToReactFlow(
 					label: "After Last",
 					variant: "no",
 					branchType: "after" as const,
+				});
+			}
+
+			// Loop-back edge: from last body node back to loop header
+			if (node.nextNodeId) {
+				let lastBodyId = node.nextNodeId;
+				const visited = new Set<string>();
+				while (true) {
+					visited.add(lastBodyId);
+					const bodyNode = nodes.find((n) => n.id === lastBodyId);
+					if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) break;
+					lastBodyId = bodyNode.nextNodeId;
+				}
+
+				rfEdges.push({
+					id: `e-loopback-${node.id}`,
+					source: lastBodyId,
+					target: node.id,
+					sourceHandle: undefined,
+					targetHandle: "loopReturn",
+					type: RF_EDGE_TYPES.loopBack,
+					data: {
+						branchType: "loop_back" as const,
+						isTerminal: false,
+					},
+					markerEnd: {
+						type: MarkerType.ArrowClosed,
+						width: 16,
+						height: 16,
+						color: "var(--color-border)",
+					},
 				});
 			}
 		} else {

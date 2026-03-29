@@ -13,9 +13,17 @@ import {
 	type Node,
 	type Edge,
 	type NodeMouseHandler,
+	useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { computeDagreLayout } from "../../lib/dagre-layout";
+import {
+	computeDagreLayout,
+	computeLoopBodyBounds,
+	adjustAfterLastPositions,
+	type LoopBodyBounds,
+} from "../../lib/dagre-layout";
+import type { WorkflowNode } from "../workflow-node";
+import { LoopScopeOverlay } from "./loop-scope-overlay";
 import { TriggerNodeRF } from "./trigger-node-rf";
 import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
@@ -82,6 +90,36 @@ function fixBranchHandles(layoutedNodes: Node[], edges: Edge[]): Edge[] {
 	});
 }
 
+function LoopOverlays({ loopBodies }: { loopBodies: LoopBodyBounds[] }) {
+	const viewport = useStore((s) => ({
+		x: s.transform[0],
+		y: s.transform[1],
+		zoom: s.transform[2],
+	}));
+	if (loopBodies.length === 0) return null;
+	return (
+		<svg
+			style={{
+				position: "absolute",
+				top: 0,
+				left: 0,
+				width: "100%",
+				height: "100%",
+				pointerEvents: "none",
+				zIndex: 0,
+			}}
+		>
+			<g
+				transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}
+			>
+				{loopBodies.map((lb) => (
+					<LoopScopeOverlay key={lb.loopNodeId} bounds={lb.bounds} />
+				))}
+			</g>
+		</svg>
+	);
+}
+
 function AutomationFlowInner({
 	initialNodes,
 	initialEdges,
@@ -93,14 +131,21 @@ function AutomationFlowInner({
 	const prevCountRef = useRef(initialNodes.length);
 
 	// Compute layout, fix branch handles, inject callbacks
-	const { layoutedNodes, layoutedEdges } = useMemo(() => {
-		const ln = computeDagreLayout(initialNodes, initialEdges);
+	const { layoutedNodes, layoutedEdges, loopBodies } = useMemo(() => {
+		let ln = computeDagreLayout(initialNodes, initialEdges);
+
+		const workflowNodes = initialNodes
+			.filter((n) => n.data?._dbNode)
+			.map((n) => n.data._dbNode as WorkflowNode);
+		const bodies = computeLoopBodyBounds(ln, workflowNodes);
+		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
+
 		const fixedEdges = fixBranchHandles(ln, initialEdges);
 		const le = fixedEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
 		}));
-		return { layoutedNodes: ln, layoutedEdges: le };
+		return { layoutedNodes: ln, layoutedEdges: le, loopBodies: bodies };
 	}, [initialNodes, initialEdges, onInsertNode]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
@@ -108,7 +153,14 @@ function AutomationFlowInner({
 
 	// Sync when initialNodes/initialEdges change (e.g. after node deletion/insertion)
 	useEffect(() => {
-		const ln = computeDagreLayout(initialNodes, initialEdges);
+		let ln = computeDagreLayout(initialNodes, initialEdges);
+
+		const workflowNodes = initialNodes
+			.filter((n) => n.data?._dbNode)
+			.map((n) => n.data._dbNode as WorkflowNode);
+		const bodies = computeLoopBodyBounds(ln, workflowNodes);
+		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
+
 		const fixedEdges = fixBranchHandles(ln, initialEdges);
 		const le = fixedEdges.map((edge) => ({
 			...edge,
@@ -154,6 +206,7 @@ function AutomationFlowInner({
 			maxZoom={2}
 			proOptions={{ hideAttribution: true }}
 		>
+			<LoopOverlays loopBodies={loopBodies} />
 			<Background
 				variant={BackgroundVariant.Dots}
 				gap={20}
