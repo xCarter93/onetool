@@ -46,7 +46,10 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 
 	const realNodeIds = new Set(realNodes.map((n) => n.id));
 	const realEdges = edges.filter(
-		(e) => realNodeIds.has(e.source) && realNodeIds.has(e.target)
+		(e) =>
+			realNodeIds.has(e.source) &&
+			realNodeIds.has(e.target) &&
+			e.data?.branchType !== "loop_back" // Exclude loop-back edges — dagre is for DAGs only
 	);
 
 	if (realNodes.length === 0) {
