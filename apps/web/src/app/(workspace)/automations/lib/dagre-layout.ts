@@ -3,6 +3,7 @@ import type { Node, Edge } from "@xyflow/react";
 import type { WorkflowNode } from "../components/workflow-node";
 
 export const NODE_WIDTH = 280;
+export const LOOP_NODE_WIDTH = 300; // Loop nodes are wider (min-w-[300px] in loop-node-rf.tsx)
 export const NODE_HEIGHT = 72;
 const LOOP_NODE_HEIGHT = 100; // Loop nodes are taller (header + branch labels row)
 const NODE_SEP = 50;
@@ -59,8 +60,9 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 	});
 
 	realNodes.forEach((node) => {
+		const w = node.type === "loopNode" ? LOOP_NODE_WIDTH : NODE_WIDTH;
 		const h = node.type === "loopNode" ? LOOP_NODE_HEIGHT : NODE_HEIGHT;
-		g.setNode(node.id, { width: NODE_WIDTH, height: h });
+		g.setNode(node.id, { width: w, height: h });
 	});
 
 	realEdges.forEach((edge) => {
@@ -69,16 +71,17 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 
 	dagre.layout(g);
 
-	const nodePositions = new Map<string, { x: number; y: number; height: number }>();
+	const nodePositions = new Map<string, { x: number; y: number; height: number; width: number }>();
 
 	const layoutedReal = realNodes.map((node): Node => {
 		const pos = g.node(node.id);
+		const w = node.type === "loopNode" ? LOOP_NODE_WIDTH : NODE_WIDTH;
 		const h = node.type === "loopNode" ? LOOP_NODE_HEIGHT : NODE_HEIGHT;
 		const position = {
-			x: pos.x - NODE_WIDTH / 2,
+			x: pos.x - w / 2,
 			y: pos.y - h / 2,
 		};
-		nodePositions.set(node.id, { x: pos.x, y: pos.y, height: h });
+		nodePositions.set(node.id, { x: pos.x, y: pos.y, height: h, width: w });
 		return { ...node, position };
 	});
 
@@ -103,9 +106,10 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 			return { ...terminal, position: { x: 0, y: 0 } };
 		}
 
+		const parentWidth = parentPos.width || NODE_WIDTH;
 		let x = parentPos.x;
 		if (handleId && handleId in HANDLE_OFFSETS) {
-			x = parentPos.x + NODE_WIDTH * HANDLE_OFFSETS[handleId];
+			x = parentPos.x + parentWidth * HANDLE_OFFSETS[handleId];
 		}
 
 		return {
@@ -155,7 +159,7 @@ export function computeLoopBodyBounds(
 			maxX = -Infinity,
 			maxY = -Infinity;
 		for (const n of bodyLayouted) {
-			const w = NODE_WIDTH;
+			const w = n.type === "loopNode" ? LOOP_NODE_WIDTH : NODE_WIDTH;
 			const h = n.type === "loopNode" ? LOOP_NODE_HEIGHT : NODE_HEIGHT;
 			minX = Math.min(minX, n.position.x);
 			minY = Math.min(minY, n.position.y);

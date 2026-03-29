@@ -20,6 +20,8 @@ import {
 	computeDagreLayout,
 	computeLoopBodyBounds,
 	adjustAfterLastPositions,
+	NODE_WIDTH,
+	LOOP_NODE_WIDTH,
 	type LoopBodyBounds,
 } from "../../lib/dagre-layout";
 import type { WorkflowNode } from "../workflow-node";
@@ -61,13 +63,27 @@ interface AutomationFlowProps {
 }
 
 /**
- * After dagre layout, fix condition branch edge handles so they don't cross.
+ * After dagre layout, fix branch edge handles so they don't cross.
  * Assigns left handle to left child, right handle to right child.
+ *
+ * Condition nodes have handles: "yes" (left, 35%) and "no" (right, 65%)
+ * Loop nodes have handles: "each" (left, 25%) and "after" (right, 75%)
  */
 function fixBranchHandles(layoutedNodes: Node[], edges: Edge[]): Edge[] {
-	const nodePositions = new Map<string, { x: number }>();
+	// Use center X for comparison (position.x is left edge, so add half-width)
+	const nodeCenters = new Map<string, { cx: number }>();
 	for (const node of layoutedNodes) {
-		nodePositions.set(node.id, { x: node.position.x });
+		// Terminal nodes are tiny (1px) so their position IS effectively their center
+		const width = node.type === "terminalNode" ? 1
+			: node.type === "loopNode" ? LOOP_NODE_WIDTH
+			: NODE_WIDTH;
+		nodeCenters.set(node.id, { cx: node.position.x + width / 2 });
+	}
+
+	// Build a lookup of source node types so we can assign correct handle IDs
+	const nodeTypeMap = new Map<string, string>();
+	for (const node of layoutedNodes) {
+		nodeTypeMap.set(node.id, node.type || "");
 	}
 
 	return edges.map((edge) => {
@@ -77,15 +93,26 @@ function fixBranchHandles(layoutedNodes: Node[], edges: Edge[]): Edge[] {
 			return edge;
 		}
 
-		const targetPos = nodePositions.get(edge.target);
-		const sourcePos = nodePositions.get(edge.source);
-		if (!targetPos || !sourcePos) return edge;
+		const targetCenter = nodeCenters.get(edge.target);
+		const sourceCenter = nodeCenters.get(edge.source);
+		if (!targetCenter || !sourceCenter) return edge;
 
-		// Assign handle based on which side the target is on
-		const isLeftChild = targetPos.x < sourcePos.x;
+		const sourceType = nodeTypeMap.get(edge.source);
+		const isLeftChild = targetCenter.cx < sourceCenter.cx;
+
+		// Determine correct handle IDs based on source node type
+		let handleId: string;
+		if (sourceType === "loopNode") {
+			// Loop: left = "each", right = "after"
+			handleId = isLeftChild ? "each" : "after";
+		} else {
+			// Condition: left = "yes", right = "no"
+			handleId = isLeftChild ? "yes" : "no";
+		}
+
 		return {
 			...edge,
-			sourceHandle: isLeftChild ? "yes" : "no",
+			sourceHandle: handleId,
 		};
 	});
 }

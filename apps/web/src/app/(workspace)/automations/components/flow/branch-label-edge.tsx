@@ -37,7 +37,7 @@ export function BranchLabelEdge({
 		? sourceY + (targetY - sourceY) * 0.5
 		: targetY;
 
-	const [edgePath, labelX, labelY] = getSmoothStepPath({
+	const [edgePath] = getSmoothStepPath({
 		sourceX,
 		sourceY,
 		sourcePosition: Position.Bottom,
@@ -46,6 +46,11 @@ export function BranchLabelEdge({
 		targetPosition: Position.Top,
 		borderRadius: 8,
 	});
+
+	// Position label near the source handle (just below it) to prevent
+	// overlap when two branches originate from the same parent node
+	const labelX = sourceX;
+	const labelY = sourceY + 18;
 
 	// Pill color classes per UI-SPEC branch label table
 	const pillClasses: Record<string, string> = {
