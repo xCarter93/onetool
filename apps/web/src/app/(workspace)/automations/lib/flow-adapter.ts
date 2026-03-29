@@ -19,8 +19,9 @@ export const RF_NODE_TYPES = {
 
 /** React Flow edge type names (must match edgeTypes object keys) */
 export const RF_EDGE_TYPES = {
-	plusButton: "plusButtonEdge",
+	straight: "straightEdge",
 	branchLabel: "branchLabelEdge",
+	loopBack: "loopBackEdge",
 } as const;
 
 /** Check if a node ID is a terminal stub (not a real workflow node) */
@@ -52,7 +53,7 @@ function addTerminalStub(
 		source: sourceId,
 		target: terminalId,
 		sourceHandle: sourceHandle || undefined,
-		type: edgeType || RF_EDGE_TYPES.plusButton,
+		type: edgeType || RF_EDGE_TYPES.straight,
 		data: { isTerminal: true, ...edgeData },
 	});
 }
@@ -102,13 +103,16 @@ export function automationToReactFlow(
 	// 3. Connect trigger to root, or add terminal stub if no nodes
 	if (rootNode) {
 		rfEdges.push({
-			id: `e-trigger-${rootNode.id}`,
+			id: `e-trigger-default-${rootNode.id}`,
 			source: TRIGGER_NODE_ID,
 			target: rootNode.id,
-			type: RF_EDGE_TYPES.plusButton,
+			type: RF_EDGE_TYPES.straight,
+			data: { branchType: "next" as const },
 		});
 	} else {
-		addTerminalStub(rfNodes, rfEdges, TRIGGER_NODE_ID);
+		addTerminalStub(rfNodes, rfEdges, TRIGGER_NODE_ID, undefined, RF_EDGE_TYPES.straight, {
+			branchType: "next" as const,
+		});
 	}
 
 	// 4. Convert each workflow node to React Flow node + edges
@@ -133,81 +137,88 @@ export function automationToReactFlow(
 			// Condition: yes branch (nextNodeId)
 			if (node.nextNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-${node.nextNodeId}`,
+					id: `e-${node.id}-yes-${node.nextNodeId}`,
 					source: node.id,
 					target: node.nextNodeId,
 					sourceHandle: "yes",
 					type: RF_EDGE_TYPES.branchLabel,
-					data: { label: "Yes", variant: "yes" },
+					data: { label: "Yes", variant: "yes", branchType: "yes" as const },
 				});
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, "yes", RF_EDGE_TYPES.branchLabel, {
 					label: "Yes",
 					variant: "yes",
+					branchType: "yes" as const,
 				});
 			}
 
 			// Condition: no branch (elseNodeId)
 			if (node.elseNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-else-${node.elseNodeId}`,
+					id: `e-${node.id}-no-${node.elseNodeId}`,
 					source: node.id,
 					target: node.elseNodeId,
 					sourceHandle: "no",
 					type: RF_EDGE_TYPES.branchLabel,
-					data: { label: "No", variant: "no" },
+					data: { label: "No", variant: "no", branchType: "no" as const },
 				});
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, "no", RF_EDGE_TYPES.branchLabel, {
 					label: "No",
 					variant: "no",
+					branchType: "no" as const,
 				});
 			}
 		} else if (node.type === "loop") {
 			// Loop: "each" branch (nextNodeId = loop body)
 			if (node.nextNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-${node.nextNodeId}`,
+					id: `e-${node.id}-each-${node.nextNodeId}`,
 					source: node.id,
 					target: node.nextNodeId,
 					sourceHandle: "each",
 					type: RF_EDGE_TYPES.branchLabel,
-					data: { label: "For Each", variant: "yes" },
+					data: { label: "For Each", variant: "yes", branchType: "each" as const },
 				});
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, "each", RF_EDGE_TYPES.branchLabel, {
 					label: "For Each",
 					variant: "yes",
+					branchType: "each" as const,
 				});
 			}
 
 			// Loop: "after" branch (elseNodeId = after last iteration)
 			if (node.elseNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-else-${node.elseNodeId}`,
+					id: `e-${node.id}-after-${node.elseNodeId}`,
 					source: node.id,
 					target: node.elseNodeId,
 					sourceHandle: "after",
 					type: RF_EDGE_TYPES.branchLabel,
-					data: { label: "After Last", variant: "no" },
+					data: { label: "After Last", variant: "no", branchType: "after" as const },
 				});
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, "after", RF_EDGE_TYPES.branchLabel, {
 					label: "After Last",
 					variant: "no",
+					branchType: "after" as const,
 				});
 			}
 		} else {
 			// Non-branching nodes: single output
 			if (node.nextNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-${node.nextNodeId}`,
+					id: `e-${node.id}-default-${node.nextNodeId}`,
 					source: node.id,
 					target: node.nextNodeId,
-					type: RF_EDGE_TYPES.plusButton,
+					type: RF_EDGE_TYPES.straight,
+					data: { branchType: "next" as const },
 				});
 			} else {
-				addTerminalStub(rfNodes, rfEdges, node.id);
+				addTerminalStub(rfNodes, rfEdges, node.id, undefined, RF_EDGE_TYPES.straight, {
+					branchType: "next" as const,
+				});
 			}
 		}
 	}
@@ -243,8 +254,11 @@ export function reactFlowToFlatArray(
 		for (const edge of outEdges) {
 			if (isTerminalId(edge.target)) continue;
 
-			// "no" / "after" handles map to elseNodeId
+			// Use branchType as primary check, fall back to variant/sourceHandle
+			const branchType = edge.data?.branchType as string | undefined;
 			if (
+				branchType === "no" ||
+				branchType === "after" ||
 				edge.data?.variant === "no" ||
 				edge.sourceHandle === "no" ||
 				edge.sourceHandle === "after"

@@ -3,8 +3,10 @@ import {
 	automationToReactFlow,
 	reactFlowToFlatArray,
 	TRIGGER_NODE_ID,
+	TRIGGER_PLACEHOLDER_ID,
 	RF_NODE_TYPES,
 	RF_EDGE_TYPES,
+	isTerminalId,
 } from "./flow-adapter";
 import type { WorkflowNode } from "../components/workflow-node";
 import type { TriggerConfig } from "../components/trigger-node";
@@ -18,16 +20,20 @@ const makeTrigger = (
 });
 
 describe("flow-adapter", () => {
-	it("converts empty automation to empty React Flow state", () => {
+	it("converts null trigger with no nodes to placeholder with terminal stub", () => {
 		const result = automationToReactFlow(null, []);
-		expect(result.nodes).toHaveLength(0);
-		expect(result.edges).toHaveLength(0);
+		// Placeholder node + terminal stub
+		expect(result.nodes).toHaveLength(2);
+		expect(result.nodes[0].id).toBe(TRIGGER_PLACEHOLDER_ID);
+		expect(isTerminalId(result.nodes[1].id)).toBe(true);
+		expect(result.edges).toHaveLength(1);
 	});
 
 	it("creates trigger RF node from TriggerConfig", () => {
 		const trigger = makeTrigger();
 		const result = automationToReactFlow(trigger, []);
-		expect(result.nodes).toHaveLength(1);
+		// Trigger + terminal stub
+		expect(result.nodes).toHaveLength(2);
 		expect(result.nodes[0].id).toBe(TRIGGER_NODE_ID);
 		expect(result.nodes[0].type).toBe("triggerNode");
 		expect(result.nodes[0].data.trigger).toEqual(trigger);
@@ -48,12 +54,12 @@ describe("flow-adapter", () => {
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
-		// 2 RF nodes: trigger + action
-		expect(result.nodes).toHaveLength(2);
-		// 1 edge: trigger -> action
-		expect(result.edges).toHaveLength(1);
-		expect(result.edges[0].source).toBe(TRIGGER_NODE_ID);
-		expect(result.edges[0].target).toBe("a1");
+		// 3 RF nodes: trigger + action + terminal stub for action
+		expect(result.nodes).toHaveLength(3);
+		// 2 edges: trigger -> action, action -> terminal
+		expect(result.edges).toHaveLength(2);
+		const triggerEdge = result.edges.find((e) => e.source === TRIGGER_NODE_ID);
+		expect(triggerEdge!.target).toBe("a1");
 	});
 
 	it("converts linear chain to sequential RF edges", () => {
@@ -81,18 +87,18 @@ describe("flow-adapter", () => {
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
-		// 3 nodes: trigger + a1 + a2
-		expect(result.nodes).toHaveLength(3);
-		// 3 edges: trigger->a1, a1->a2
+		// 4 nodes: trigger + a1 + a2 + terminal stub for a2
+		expect(result.nodes).toHaveLength(4);
+
 		const triggerEdge = result.edges.find((e) => e.source === TRIGGER_NODE_ID);
 		expect(triggerEdge).toBeDefined();
 		expect(triggerEdge!.target).toBe("a1");
-		expect(triggerEdge!.type).toBe(RF_EDGE_TYPES.plusButton);
+		expect(triggerEdge!.type).toBe(RF_EDGE_TYPES.straight);
 
 		const chainEdge = result.edges.find((e) => e.source === "a1");
 		expect(chainEdge).toBeDefined();
 		expect(chainEdge!.target).toBe("a2");
-		expect(chainEdge!.type).toBe(RF_EDGE_TYPES.plusButton);
+		expect(chainEdge!.type).toBe(RF_EDGE_TYPES.straight);
 	});
 
 	it("converts condition node to branching RF edges", () => {
@@ -305,5 +311,194 @@ describe("flow-adapter", () => {
 		const triggerNode = result.nodes.find((n) => n.id === TRIGGER_NODE_ID);
 		expect(triggerNode).toBeDefined();
 		expect(triggerNode!.type).toBe("triggerNode");
+	});
+
+	// --- branchType metadata tests ---
+
+	it("all condition edges have branchType metadata", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "c1",
+				type: "condition",
+				condition: { field: "status", operator: "equals", value: "active" },
+				nextNodeId: "a1",
+				elseNodeId: "a2",
+			},
+			{
+				id: "a1",
+				type: "action",
+				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+			},
+			{
+				id: "a2",
+				type: "action",
+				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const yesEdge = result.edges.find((e) => e.source === "c1" && e.target === "a1");
+		const noEdge = result.edges.find((e) => e.source === "c1" && e.target === "a2");
+
+		expect(yesEdge!.data?.branchType).toBe("yes");
+		expect(noEdge!.data?.branchType).toBe("no");
+	});
+
+	it("all loop edges have branchType metadata", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "loop1",
+				type: "loop",
+				nextNodeId: "b1",
+				elseNodeId: "a1",
+			},
+			{
+				id: "b1",
+				type: "action",
+				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+			},
+			{
+				id: "a1",
+				type: "action",
+				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const eachEdge = result.edges.find((e) => e.source === "loop1" && e.target === "b1");
+		const afterEdge = result.edges.find((e) => e.source === "loop1" && e.target === "a1");
+
+		expect(eachEdge!.data?.branchType).toBe("each");
+		expect(afterEdge!.data?.branchType).toBe("after");
+	});
+
+	it("linear edges have branchType next", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "a1",
+				type: "action",
+				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+				nextNodeId: "a2",
+			},
+			{
+				id: "a2",
+				type: "action",
+				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const chainEdge = result.edges.find((e) => e.source === "a1" && e.target === "a2");
+		expect(chainEdge!.data?.branchType).toBe("next");
+		expect(chainEdge!.type).toBe(RF_EDGE_TYPES.straight);
+	});
+
+	it("trigger-to-root edge has branchType next", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "a1",
+				type: "action",
+				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const triggerEdge = result.edges.find((e) => e.source === TRIGGER_NODE_ID && e.target === "a1");
+		expect(triggerEdge!.data?.branchType).toBe("next");
+		expect(triggerEdge!.type).toBe(RF_EDGE_TYPES.straight);
+	});
+
+	it("terminal stub edges inherit branchType", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "c1",
+				type: "condition",
+				condition: { field: "status", operator: "equals", value: "active" },
+				// No nextNodeId or elseNodeId - both are terminal stubs
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const terminalEdges = result.edges.filter((e) => e.data?.isTerminal === true && e.source === "c1");
+		expect(terminalEdges).toHaveLength(2);
+
+		const yesTerminal = terminalEdges.find((e) => e.sourceHandle === "yes");
+		const noTerminal = terminalEdges.find((e) => e.sourceHandle === "no");
+
+		expect(yesTerminal!.data?.branchType).toBe("yes");
+		expect(noTerminal!.data?.branchType).toBe("no");
+	});
+
+	it("edge IDs include sourceHandle for condition branches", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "c1",
+				type: "condition",
+				condition: { field: "status", operator: "equals", value: "active" },
+				nextNodeId: "a1",
+				elseNodeId: "a2",
+			},
+			{
+				id: "a1",
+				type: "action",
+				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+			},
+			{
+				id: "a2",
+				type: "action",
+				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const yesEdge = result.edges.find((e) => e.source === "c1" && e.target === "a1");
+		const noEdge = result.edges.find((e) => e.source === "c1" && e.target === "a2");
+
+		expect(yesEdge!.id).toContain("-yes-");
+		expect(noEdge!.id).toContain("-no-");
+	});
+
+	it("round-trips loop node with branches without data loss", () => {
+		const trigger = makeTrigger();
+		const originalNodes: WorkflowNode[] = [
+			{
+				id: "loop1",
+				type: "loop",
+				nextNodeId: "b1",
+				elseNodeId: "a1",
+			},
+			{
+				id: "b1",
+				type: "action",
+				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+			},
+			{
+				id: "a1",
+				type: "action",
+				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+			},
+		];
+
+		const rf = automationToReactFlow(trigger, originalNodes);
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+
+		expect(result.nodes).toHaveLength(3);
+		const loop = result.nodes.find((n) => n.id === "loop1");
+		expect(loop!.nextNodeId).toBe("b1");
+		expect(loop!.elseNodeId).toBe("a1");
+	});
+
+	it("RF_EDGE_TYPES has straight, branchLabel, and loopBack", () => {
+		expect(RF_EDGE_TYPES.straight).toBe("straightEdge");
+		expect(RF_EDGE_TYPES.branchLabel).toBe("branchLabelEdge");
+		expect(RF_EDGE_TYPES.loopBack).toBe("loopBackEdge");
+		// plusButton should not exist
+		expect((RF_EDGE_TYPES as Record<string, string>).plusButton).toBeUndefined();
 	});
 });

@@ -38,7 +38,7 @@ const nodeTypes = {
 };
 
 const edgeTypes = {
-	plusButtonEdge: PlusButtonEdge,
+	straightEdge: PlusButtonEdge,
 	branchLabelEdge: BranchLabelEdge,
 };
 
