@@ -24,29 +24,39 @@ export function BranchLabelEdge({
 	data,
 	style,
 }: EdgeProps) {
-	const [edgePath, labelX, labelY] = getStraightPath({
+	const isYes = data?.variant === "yes";
+	const label = (data?.label as string) || (isYes ? "Yes" : "No");
+	const isTerminal = data?.isTerminal === true;
+	const onInsertNode = data?.onInsertNode as
+		| ((edgeId: string, nodeType: string) => void)
+		| undefined;
+
+	// For terminal edges, shorten the path so it ends at the "+" position
+	const effectiveTargetY = isTerminal
+		? sourceY + (targetY - sourceY) * 0.5
+		: targetY;
+
+	const [edgePath] = getStraightPath({
 		sourceX,
 		sourceY,
 		targetX,
-		targetY,
+		targetY: effectiveTargetY,
 	});
-
-	const isYes = data?.variant === "yes";
-	const label = (data?.label as string) || (isYes ? "Yes" : "No");
 
 	// Stroke color based on variant
 	const strokeColor = isYes
 		? "var(--color-emerald-500, #10b981)"
 		: "var(--color-rose-400, #fb7185)";
 
-	// Position label at 25% path length (near source)
+	// Label at 25% of path
 	const labelPosX = sourceX + (targetX - sourceX) * 0.25;
-	const labelPosY = sourceY + (targetY - sourceY) * 0.25;
+	const labelPosY = sourceY + (effectiveTargetY - sourceY) * 0.25;
 
-	const isTerminal = data?.isTerminal === true;
-	const onInsertNode = data?.onInsertNode as
-		| ((edgeId: string, nodeType: string) => void)
-		| undefined;
+	// "+" at end for terminal, at midpoint for connected edges
+	const plusX = isTerminal ? targetX : (sourceX + targetX) / 2;
+	const plusY = isTerminal
+		? effectiveTargetY
+		: (sourceY + targetY) / 2;
 
 	return (
 		<>
@@ -55,7 +65,7 @@ export function BranchLabelEdge({
 				style={{ ...style, strokeWidth: 2, stroke: strokeColor }}
 			/>
 			<EdgeLabelRenderer>
-				{/* Branch label at 25% path */}
+				{/* Branch label near source */}
 				<div
 					className="nodrag nopan pointer-events-none"
 					style={{
@@ -74,12 +84,12 @@ export function BranchLabelEdge({
 						{label}
 					</span>
 				</div>
-				{/* Plus button at midpoint */}
+				{/* Plus button */}
 				<div
 					className="nodrag nopan pointer-events-auto"
 					style={{
 						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+						transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
 					}}
 				>
 					<DropdownMenu>
