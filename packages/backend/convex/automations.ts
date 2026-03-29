@@ -25,7 +25,13 @@ const conditionOperatorValidator = v.union(
 	v.literal("equals"),
 	v.literal("not_equals"),
 	v.literal("contains"),
-	v.literal("exists")
+	v.literal("exists"),
+	v.literal("greater_than"),
+	v.literal("less_than"),
+	v.literal("is_true"),
+	v.literal("is_false"),
+	v.literal("before"),
+	v.literal("after")
 );
 
 const actionTargetTypeValidator = v.union(
@@ -36,9 +42,21 @@ const actionTargetTypeValidator = v.union(
 	v.literal("invoice")
 );
 
+const actionTypeValidator = v.union(
+	v.literal("update_status"),
+	v.literal("update_field"),
+	v.literal("send_notification"),
+	v.literal("create_record")
+);
+
 const nodeValidator = v.object({
 	id: v.string(),
-	type: v.union(v.literal("condition"), v.literal("action")),
+	type: v.union(
+		v.literal("condition"),
+		v.literal("action"),
+		v.literal("fetch_records"),
+		v.literal("loop")
+	),
 	condition: v.optional(
 		v.object({
 			field: v.string(),
@@ -49,13 +67,96 @@ const nodeValidator = v.object({
 	action: v.optional(
 		v.object({
 			targetType: actionTargetTypeValidator,
-			actionType: v.literal("update_status"),
+			actionType: actionTypeValidator,
 			newStatus: v.string(),
+			// update_field action fields
+			field: v.optional(v.string()),
+			value: v.optional(v.any()),
+			// send_notification action fields
+			notificationRecipient: v.optional(v.string()),
+			notificationMessage: v.optional(v.string()),
+			// create_record action fields
+			createRecordType: v.optional(
+				v.union(v.literal("task"), v.literal("project"))
+			),
+			createRecordFields: v.optional(v.any()),
+		})
+	),
+	// Fetch records config
+	fetchConfig: v.optional(
+		v.object({
+			entityType: triggerObjectTypeValidator,
+			filters: v.optional(
+				v.array(
+					v.object({
+						field: v.string(),
+						operator: v.string(),
+						value: v.any(),
+					})
+				)
+			),
+			limit: v.optional(v.number()),
+		})
+	),
+	// Loop config
+	loopConfig: v.optional(
+		v.object({
+			sourceNodeId: v.string(),
+			batchSize: v.optional(v.number()),
 		})
 	),
 	nextNodeId: v.optional(v.string()),
 	elseNodeId: v.optional(v.string()),
 });
+
+// Trigger validator - supports both legacy and v1.2 formats (matches schema.ts)
+const triggerValidator = v.union(
+	// Legacy format (no type field)
+	v.object({
+		objectType: triggerObjectTypeValidator,
+		fromStatus: v.optional(v.string()),
+		toStatus: v.string(),
+	}),
+	// v1.2 status_changed
+	v.object({
+		type: v.literal("status_changed"),
+		objectType: triggerObjectTypeValidator,
+		fromStatus: v.optional(v.string()),
+		toStatus: v.string(),
+	}),
+	// v1.2 record_created
+	v.object({
+		type: v.literal("record_created"),
+		objectType: triggerObjectTypeValidator,
+	}),
+	// v1.2 record_updated
+	v.object({
+		type: v.literal("record_updated"),
+		objectType: triggerObjectTypeValidator,
+		field: v.optional(v.string()),
+	}),
+	// v1.2 email_received
+	v.object({
+		type: v.literal("email_received"),
+		objectType: v.literal("client"),
+	}),
+	// v1.2 scheduled
+	v.object({
+		type: v.literal("scheduled"),
+		schedule: v.object({
+			frequency: v.union(
+				v.literal("daily"),
+				v.literal("weekly"),
+				v.literal("monthly")
+			),
+			timezone: v.string(),
+			time: v.optional(v.string()),
+			dayOfWeek: v.optional(v.number()),
+			dayOfMonth: v.optional(v.number()),
+		}),
+		objectType: v.optional(triggerObjectTypeValidator),
+	})
+);
 
 // Automation-specific helper functions
 
@@ -188,11 +289,7 @@ export const create = mutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
-		trigger: v.object({
-			objectType: triggerObjectTypeValidator,
-			fromStatus: v.optional(v.string()),
-			toStatus: v.string(),
-		}),
+		trigger: triggerValidator,
 		nodes: v.array(nodeValidator),
 		isActive: v.optional(v.boolean()),
 	},
@@ -202,8 +299,13 @@ export const create = mutation({
 			throw new Error("Automation name is required");
 		}
 
-		if (!args.trigger.toStatus.trim()) {
-			throw new Error("Trigger status is required");
+		// Validate toStatus for trigger types that require it (legacy and status_changed)
+		const trigger = args.trigger as Record<string, unknown>;
+		if ("toStatus" in trigger) {
+			const toStatus = trigger.toStatus as string;
+			if (!toStatus.trim()) {
+				throw new Error("Trigger status is required");
+			}
 		}
 
 		// Validate nodes array
@@ -234,11 +336,7 @@ export const create = mutation({
 			name: args.name.trim(),
 			description: args.description?.trim(),
 			isActive: args.isActive ?? false,
-			trigger: {
-				objectType: args.trigger.objectType,
-				fromStatus: args.trigger.fromStatus?.trim(),
-				toStatus: args.trigger.toStatus.trim(),
-			},
+			trigger: args.trigger,
 			nodes: args.nodes,
 		});
 
@@ -255,13 +353,7 @@ export const update = mutation({
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
 		isActive: v.optional(v.boolean()),
-		trigger: v.optional(
-			v.object({
-				objectType: triggerObjectTypeValidator,
-				fromStatus: v.optional(v.string()),
-				toStatus: v.string(),
-			})
-		),
+		trigger: v.optional(triggerValidator),
 		nodes: v.optional(v.array(nodeValidator)),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
@@ -272,8 +364,15 @@ export const update = mutation({
 			throw new Error("Automation name cannot be empty");
 		}
 
-		if (updates.trigger?.toStatus !== undefined && !updates.trigger.toStatus.trim()) {
-			throw new Error("Trigger status cannot be empty");
+		// Validate toStatus for trigger types that have it
+		if (updates.trigger !== undefined) {
+			const trigger = updates.trigger as Record<string, unknown>;
+			if ("toStatus" in trigger) {
+				const toStatus = trigger.toStatus as string;
+				if (!toStatus.trim()) {
+					throw new Error("Trigger status cannot be empty");
+				}
+			}
 		}
 
 		if (updates.nodes !== undefined) {
@@ -316,11 +415,7 @@ export const update = mutation({
 			filteredUpdates.isActive = updates.isActive;
 		}
 		if (updates.trigger !== undefined) {
-			filteredUpdates.trigger = {
-				objectType: updates.trigger.objectType,
-				fromStatus: updates.trigger.fromStatus?.trim(),
-				toStatus: updates.trigger.toStatus.trim(),
-			};
+			filteredUpdates.trigger = updates.trigger;
 		}
 		if (updates.nodes !== undefined) {
 			filteredUpdates.nodes = updates.nodes;

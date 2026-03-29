@@ -83,6 +83,39 @@ const rateLimiterModules =
 		? rateLimiterModulesRoot
 		: rateLimiterModulesRelative;
 
+// Schema for migrations component (from @convex-dev/migrations)
+const migrationsSchema = defineSchema({
+	migrations: defineTable({
+		name: v.string(),
+		cursor: v.union(v.string(), v.null()),
+		isDone: v.boolean(),
+		workerId: v.optional(v.id("_scheduled_functions")),
+		error: v.optional(v.string()),
+		processed: v.number(),
+		latestStart: v.number(),
+		latestEnd: v.optional(v.number()),
+	})
+		.index("name", ["name"])
+		.index("isDone", ["isDone"]),
+});
+
+// Migrations component modules
+// @ts-expect-error - import.meta.glob is provided by Vitest
+const migrationsModulesRoot = import.meta.glob(
+	"/node_modules/@convex-dev/migrations/dist/esm/component/**/*.js"
+) as Record<string, () => Promise<unknown>>;
+
+// Fallback: try relative path from packages/backend
+// @ts-expect-error - import.meta.glob is provided by Vitest
+const migrationsModulesRelative = import.meta.glob(
+	"../../node_modules/@convex-dev/migrations/dist/esm/component/**/*.js"
+) as Record<string, () => Promise<unknown>>;
+
+const migrationsModules =
+	Object.keys(migrationsModulesRoot).length > 0
+		? migrationsModulesRoot
+		: migrationsModulesRelative;
+
 /**
  * Creates a test instance with all components registered
  * Use this instead of calling convexTest directly to ensure components are available
@@ -110,6 +143,15 @@ export function setupConvexTest() {
 	} else {
 		console.warn(
 			"Warning: Aggregate modules not found. Tests requiring aggregates may fail."
+		);
+	}
+
+	// Register migrations component if available
+	if (Object.keys(migrationsModules).length > 0) {
+		t.registerComponent("migrations", migrationsSchema, migrationsModules);
+	} else {
+		console.warn(
+			"Warning: Migrations modules not found. Tests requiring migrations may fail."
 		);
 	}
 
