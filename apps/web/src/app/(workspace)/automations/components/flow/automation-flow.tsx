@@ -63,58 +63,62 @@ interface AutomationFlowProps {
 }
 
 /**
- * After dagre layout, fix branch edge handles so they don't cross.
- * Assigns left handle to left child, right handle to right child.
+ * Dagre doesn't know about handle positions, so it may place the "yes" child
+ * to the right and "no" child to the left. Rather than reassigning handles
+ * (which would mismatch edge labels), we swap child POSITIONS so dagre's
+ * layout matches the adapter's handle assignments.
  *
- * Condition nodes have handles: "yes" (left, 35%) and "no" (right, 65%)
- * Loop nodes have handles: "each" (left, 25%) and "after" (right, 75%)
+ * Condition: "yes" handle at left (35%), "no" at right (65%)
+ * Loop: "each" handle at left (25%), "after" at right (75%)
  */
-function fixBranchHandles(layoutedNodes: Node[], edges: Edge[]): Edge[] {
-	// Use center X for comparison (position.x is left edge, so add half-width)
-	const nodeCenters = new Map<string, { cx: number }>();
+function fixBranchPositions(layoutedNodes: Node[], edges: Edge[]): Node[] {
+	const nodeMap = new Map<string, Node>();
 	for (const node of layoutedNodes) {
-		// Terminal nodes are tiny (1px) so their position IS effectively their center
-		const width = node.type === "terminalNode" ? 1
-			: node.type === "loopNode" ? LOOP_NODE_WIDTH
-			: NODE_WIDTH;
-		nodeCenters.set(node.id, { cx: node.position.x + width / 2 });
+		nodeMap.set(node.id, node);
 	}
 
-	// Build a lookup of source node types so we can assign correct handle IDs
-	const nodeTypeMap = new Map<string, string>();
-	for (const node of layoutedNodes) {
-		nodeTypeMap.set(node.id, node.type || "");
+	// For each branching node, ensure the "yes"/"each" child is on the left
+	// and "no"/"after" child is on the right
+	const branchingNodeIds = new Set<string>();
+	for (const edge of edges) {
+		const bt = edge.data?.branchType as string | undefined;
+		if (bt === "yes" || bt === "no" || bt === "each" || bt === "after") {
+			branchingNodeIds.add(edge.source);
+		}
 	}
 
-	return edges.map((edge) => {
-		// Only fix branch edges (conditions and loops have variant data)
-		const branchType = edge.data?.branchType as string | undefined;
-		if (!branchType || branchType === "next" || branchType === "loop_back") {
-			return edge;
+	for (const sourceId of branchingNodeIds) {
+		const sourceNode = nodeMap.get(sourceId);
+		if (!sourceNode) continue;
+
+		// Find the left-handle child and right-handle child
+		let leftChildId: string | undefined;
+		let rightChildId: string | undefined;
+		for (const edge of edges) {
+			if (edge.source !== sourceId) continue;
+			const bt = edge.data?.branchType as string;
+			if (bt === "yes" || bt === "each") leftChildId = edge.target;
+			if (bt === "no" || bt === "after") rightChildId = edge.target;
 		}
 
-		const targetCenter = nodeCenters.get(edge.target);
-		const sourceCenter = nodeCenters.get(edge.source);
-		if (!targetCenter || !sourceCenter) return edge;
+		const leftChild = leftChildId ? nodeMap.get(leftChildId) : undefined;
+		const rightChild = rightChildId ? nodeMap.get(rightChildId) : undefined;
 
-		const sourceType = nodeTypeMap.get(edge.source);
-		const isLeftChild = targetCenter.cx < sourceCenter.cx;
+		if (leftChild && rightChild) {
+			// If dagre placed them in the wrong order (left child is actually right), swap X positions
+			const leftCx = leftChild.position.x + (leftChild.type === "terminalNode" ? 0.5 : (leftChild.type === "loopNode" ? LOOP_NODE_WIDTH / 2 : NODE_WIDTH / 2));
+			const rightCx = rightChild.position.x + (rightChild.type === "terminalNode" ? 0.5 : (rightChild.type === "loopNode" ? LOOP_NODE_WIDTH / 2 : NODE_WIDTH / 2));
 
-		// Determine correct handle IDs based on source node type
-		let handleId: string;
-		if (sourceType === "loopNode") {
-			// Loop: left = "each", right = "after"
-			handleId = isLeftChild ? "each" : "after";
-		} else {
-			// Condition: left = "yes", right = "no"
-			handleId = isLeftChild ? "yes" : "no";
+			if (leftCx > rightCx) {
+				// Swap positions
+				const tempX = leftChild.position.x;
+				leftChild.position = { ...leftChild.position, x: rightChild.position.x };
+				rightChild.position = { ...rightChild.position, x: tempX };
+			}
 		}
+	}
 
-		return {
-			...edge,
-			sourceHandle: handleId,
-		};
-	});
+	return layoutedNodes;
 }
 
 function LoopOverlays({ loopBodies }: { loopBodies: LoopBodyBounds[] }) {
@@ -167,8 +171,8 @@ function AutomationFlowInner({
 		const bodies = computeLoopBodyBounds(ln, workflowNodes);
 		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
 
-		const fixedEdges = fixBranchHandles(ln, initialEdges);
-		const le = fixedEdges.map((edge) => ({
+		ln = fixBranchPositions(ln, initialEdges);
+		const le = initialEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
 		}));
@@ -188,8 +192,8 @@ function AutomationFlowInner({
 		const bodies = computeLoopBodyBounds(ln, workflowNodes);
 		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
 
-		const fixedEdges = fixBranchHandles(ln, initialEdges);
-		const le = fixedEdges.map((edge) => ({
+		ln = fixBranchPositions(ln, initialEdges);
+		const le = initialEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
 		}));

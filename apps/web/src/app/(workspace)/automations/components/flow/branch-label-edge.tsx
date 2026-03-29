@@ -37,7 +37,7 @@ export function BranchLabelEdge({
 		? sourceY + (targetY - sourceY) * 0.5
 		: targetY;
 
-	const [edgePath] = getSmoothStepPath({
+	const [edgePath, labelX, labelY] = getSmoothStepPath({
 		sourceX,
 		sourceY,
 		sourcePosition: Position.Bottom,
@@ -47,10 +47,11 @@ export function BranchLabelEdge({
 		borderRadius: 8,
 	});
 
-	// Position label near the source handle (just below it) to prevent
-	// overlap when two branches originate from the same parent node
-	const labelX = sourceX;
-	const labelY = sourceY + 18;
+	// For loop branches, the loop node footer already shows "For Each" / "After Last"
+	// so we skip the edge label to avoid duplication
+	const branchType = data?.branchType as string | undefined;
+	const isLoopBranch = branchType === "each" || branchType === "after";
+	const showLabel = !isLoopBranch;
 
 	// Pill color classes per UI-SPEC branch label table
 	const pillClasses: Record<string, string> = {
@@ -81,23 +82,25 @@ export function BranchLabelEdge({
 				style={{ ...style, strokeWidth: 2, stroke: "var(--color-border)" }}
 			/>
 			<EdgeLabelRenderer>
-				{/* Branch label positioned by getSmoothStepPath */}
-				<div
-					className="nodrag nopan pointer-events-none"
-					style={{
-						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-					}}
-				>
-					<span
-						className={cn(
-							"text-xs font-semibold px-2 py-0.5 rounded-full",
-							pillClass
-						)}
+				{/* Branch label positioned by getSmoothStepPath — hidden for loop branches */}
+				{showLabel && (
+					<div
+						className="nodrag nopan pointer-events-none"
+						style={{
+							position: "absolute",
+							transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+						}}
 					>
-						{label}
-					</span>
-				</div>
+						<span
+							className={cn(
+								"text-xs font-semibold px-2 py-0.5 rounded-full",
+								pillClass
+							)}
+						>
+							{label}
+						</span>
+					</div>
+				)}
 				{/* Plus button */}
 				<div
 					className="nodrag nopan pointer-events-auto"
