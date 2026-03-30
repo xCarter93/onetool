@@ -76,20 +76,24 @@ export function PlusButtonEdge({
 					style={{
 						position: "absolute",
 						transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
+						zIndex: 10,
 					}}
 				>
-					<DropdownMenu>
+					<DropdownMenu modal={false}>
 						<DropdownMenuTrigger asChild>
 							<button
 								className={cn(
-									"w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-muted flex items-center justify-center transition-opacity duration-150",
+									"w-9 h-9 rounded-full bg-transparent flex items-center justify-center cursor-pointer",
+									"touch-manipulation",
 									isTerminal
 										? "opacity-100"
 										: "opacity-0 hover:opacity-100 focus:opacity-100"
 								)}
 								aria-label="Insert node"
 							>
-								<Plus className="h-3 w-3 text-muted-foreground" />
+								<span className="w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-muted flex items-center justify-center transition-colors">
+									<Plus className="h-3 w-3 text-muted-foreground" />
+								</span>
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="center" sideOffset={8}>

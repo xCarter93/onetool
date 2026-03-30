@@ -494,10 +494,11 @@ describe("flow-adapter", () => {
 		expect(loop!.elseNodeId).toBe("a1");
 	});
 
-	it("RF_EDGE_TYPES has straight, branchLabel, and loopBack", () => {
+	it("RF_EDGE_TYPES has straight, branchLabel, loopBack, and afterLast", () => {
 		expect(RF_EDGE_TYPES.straight).toBe("straightEdge");
 		expect(RF_EDGE_TYPES.branchLabel).toBe("branchLabelEdge");
 		expect(RF_EDGE_TYPES.loopBack).toBe("loopBackEdge");
+		expect(RF_EDGE_TYPES.afterLast).toBe("afterLastEdge");
 		// plusButton should not exist
 		expect((RF_EDGE_TYPES as Record<string, string>).plusButton).toBeUndefined();
 	});

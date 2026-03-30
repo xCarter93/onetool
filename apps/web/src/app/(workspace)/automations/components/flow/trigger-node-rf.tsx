@@ -7,18 +7,43 @@ import { cn } from "@/lib/utils";
 
 function getSummary(data: Record<string, unknown>): string {
 	const trigger = data.trigger as
-		| { objectType?: string; toStatus?: string; fromStatus?: string }
+		| {
+				type?: string;
+				objectType?: string;
+				toStatus?: string;
+				fromStatus?: string;
+				field?: string;
+				schedule?: { frequency?: string };
+		  }
 		| undefined;
 	if (!trigger) return "Configure trigger...";
-	const parts: string[] = [];
-	if (trigger.objectType)
-		parts.push(
-			trigger.objectType.charAt(0).toUpperCase() + trigger.objectType.slice(1)
-		);
-	if (trigger.fromStatus && trigger.toStatus)
-		parts.push(`${trigger.fromStatus} \u2192 ${trigger.toStatus}`);
-	else if (trigger.toStatus) parts.push(`\u2192 ${trigger.toStatus}`);
-	return parts.join(" ") || "Configure trigger...";
+
+	const objectLabel = trigger.objectType
+		? trigger.objectType.charAt(0).toUpperCase() + trigger.objectType.slice(1)
+		: "";
+	const triggerType = trigger.type || "status_changed";
+
+	switch (triggerType) {
+		case "status_changed": {
+			if (trigger.fromStatus && trigger.toStatus)
+				return `${objectLabel} ${trigger.fromStatus} \u2192 ${trigger.toStatus}`;
+			if (trigger.toStatus)
+				return `${objectLabel} \u2192 ${trigger.toStatus}`;
+			return objectLabel || "Configure trigger...";
+		}
+		case "record_created":
+			return `${objectLabel} created`;
+		case "record_updated":
+			return trigger.field
+				? `${objectLabel}.${trigger.field} changes`
+				: `${objectLabel} updated`;
+		case "email_received":
+			return "Email received";
+		case "scheduled":
+			return `Runs ${trigger.schedule?.frequency || "daily"}`;
+		default:
+			return objectLabel || "Configure trigger...";
+	}
 }
 
 export const TriggerNodeRF = memo(({ data, selected }: NodeProps) => {

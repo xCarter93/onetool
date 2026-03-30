@@ -37,6 +37,7 @@ interface NodeEditorSidebarProps {
 	onTriggerChange: (trigger: TriggerConfig) => void;
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
+	onDeleteTrigger?: () => void;
 }
 
 export function NodeEditorSidebar({
@@ -48,6 +49,7 @@ export function NodeEditorSidebar({
 	onTriggerChange,
 	onNodeChange,
 	onDeleteNode,
+	onDeleteTrigger,
 }: NodeEditorSidebarProps) {
 	const contentRef = useRef<HTMLDivElement>(null);
 
@@ -170,7 +172,19 @@ export function NodeEditorSidebar({
 				)}
 			</div>
 
-			{/* Delete Node button -- only for non-trigger nodes */}
+			{/* Delete actions */}
+			{selectedNode?.type === "trigger" && onDeleteTrigger && (
+				<div className="p-6 border-t border-border">
+					<Button
+						intent="destructive"
+						className="w-full"
+						onPress={onDeleteTrigger}
+					>
+						<Trash2 className="h-4 w-4 mr-2" />
+						Delete Trigger
+					</Button>
+				</div>
+			)}
 			{selectedNode && selectedNode.type !== "trigger" && onDeleteNode && (
 				<div className="p-6 border-t border-border">
 					<Button

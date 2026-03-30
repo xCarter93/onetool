@@ -13,7 +13,6 @@ import {
 	type Node,
 	type Edge,
 	type NodeMouseHandler,
-	useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -21,12 +20,12 @@ import {
 	alignLoopBodyNodes,
 	computeLoopBodyBounds,
 	adjustAfterLastPositions,
+	CONDITION_BRANCH_SPREAD,
+	LOOP_EACH_HANDLE_RATIO,
 	NODE_WIDTH,
 	LOOP_NODE_WIDTH,
-	type LoopBodyBounds,
 } from "../../lib/dagre-layout";
 import type { WorkflowNode } from "../workflow-node";
-import { LoopScopeOverlay } from "./loop-scope-overlay";
 import { TriggerNodeRF } from "./trigger-node-rf";
 import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
@@ -37,6 +36,7 @@ import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
 import { PlusButtonEdge } from "./plus-button-edge";
 import { BranchLabelEdge } from "./branch-label-edge";
 import { LoopBackEdge } from "./loop-back-edge";
+import { AfterLastEdge } from "./after-last-edge";
 
 // CRITICAL: Define outside component to avoid React Flow re-render warnings
 const nodeTypes = {
@@ -53,6 +53,7 @@ const edgeTypes = {
 	straightEdge: PlusButtonEdge,
 	branchLabelEdge: BranchLabelEdge,
 	loopBackEdge: LoopBackEdge,
+	afterLastEdge: AfterLastEdge,
 };
 
 interface AutomationFlowProps {
@@ -70,20 +71,45 @@ interface AutomationFlowProps {
  * layout matches the adapter's handle assignments.
  *
  * Condition: "yes" handle at left (35%), "no" at right (65%)
- * Loop: "each" handle at left (25%), "after" at right (75%)
+ * Loop: "each" handle at center, "after" handle at right
  */
 function fixBranchPositions(layoutedNodes: Node[], edges: Edge[]): Node[] {
+	const getNodeWidth = (node: Node): number => {
+		if (node.type === "terminalNode") return 1;
+		if (node.type === "loopNode") return LOOP_NODE_WIDTH;
+		return NODE_WIDTH;
+	};
+
+	const getNodeCenterX = (node: Node): number => {
+		return node.position.x + getNodeWidth(node) / 2;
+	};
+
+	const getDesiredBranchCenterX = (
+		sourceNode: Node,
+		branchType: "yes" | "no" | "each"
+	): number => {
+		const sourceCenterX = getNodeCenterX(sourceNode);
+		if (branchType === "yes") return sourceCenterX - CONDITION_BRANCH_SPREAD;
+		if (branchType === "no") return sourceCenterX + CONDITION_BRANCH_SPREAD;
+
+		if (sourceNode.type === "loopNode" && branchType === "each") {
+			return sourceNode.position.x + LOOP_NODE_WIDTH * LOOP_EACH_HANDLE_RATIO;
+		}
+
+		return sourceCenterX;
+	};
+
 	const nodeMap = new Map<string, Node>();
 	for (const node of layoutedNodes) {
 		nodeMap.set(node.id, node);
 	}
 
-	// For each branching node, ensure the "yes"/"each" child is on the left
-	// and "no"/"after" child is on the right
+	// For each branching node, ensure the children align to deterministic branch columns.
+	// "after" is excluded — its edge routes from the loop's right side via AfterLastEdge.
 	const branchingNodeIds = new Set<string>();
 	for (const edge of edges) {
 		const bt = edge.data?.branchType as string | undefined;
-		if (bt === "yes" || bt === "no" || bt === "each" || bt === "after") {
+		if (bt === "yes" || bt === "no" || bt === "each") {
 			branchingNodeIds.add(edge.source);
 		}
 	}
@@ -99,7 +125,7 @@ function fixBranchPositions(layoutedNodes: Node[], edges: Edge[]): Node[] {
 			if (edge.source !== sourceId) continue;
 			const bt = edge.data?.branchType as string;
 			if (bt === "yes" || bt === "each") leftChildId = edge.target;
-			if (bt === "no" || bt === "after") rightChildId = edge.target;
+			if (bt === "no") rightChildId = edge.target;
 		}
 
 		const leftChild = leftChildId ? nodeMap.get(leftChildId) : undefined;
@@ -107,14 +133,42 @@ function fixBranchPositions(layoutedNodes: Node[], edges: Edge[]): Node[] {
 
 		if (leftChild && rightChild) {
 			// If dagre placed them in the wrong order (left child is actually right), swap X positions
-			const leftCx = leftChild.position.x + (leftChild.type === "terminalNode" ? 0.5 : (leftChild.type === "loopNode" ? LOOP_NODE_WIDTH / 2 : NODE_WIDTH / 2));
-			const rightCx = rightChild.position.x + (rightChild.type === "terminalNode" ? 0.5 : (rightChild.type === "loopNode" ? LOOP_NODE_WIDTH / 2 : NODE_WIDTH / 2));
+			const leftCx = getNodeCenterX(leftChild);
+			const rightCx = getNodeCenterX(rightChild);
 
 			if (leftCx > rightCx) {
-				// Swap positions
 				const tempX = leftChild.position.x;
 				leftChild.position = { ...leftChild.position, x: rightChild.position.x };
 				rightChild.position = { ...rightChild.position, x: tempX };
+			}
+		}
+
+		if (leftChild) {
+			const preserveLoopTerminalLeft =
+				sourceNode.type === "loopNode" && leftChild.type === "terminalNode";
+			if (!preserveLoopTerminalLeft) {
+				const desiredLeftCenter = getDesiredBranchCenterX(
+					sourceNode,
+					sourceNode.type === "loopNode" ? "each" : "yes"
+				);
+				const leftCenter = getNodeCenterX(leftChild);
+				if (leftCenter !== desiredLeftCenter) {
+					leftChild.position = {
+						...leftChild.position,
+						x: desiredLeftCenter - getNodeWidth(leftChild) / 2,
+					};
+				}
+			}
+		}
+
+		if (rightChild) {
+			const desiredRightCenter = getDesiredBranchCenterX(sourceNode, "no");
+			const rightCenter = getNodeCenterX(rightChild);
+			if (rightCenter !== desiredRightCenter) {
+				rightChild.position = {
+					...rightChild.position,
+					x: desiredRightCenter - getNodeWidth(rightChild) / 2,
+				};
 			}
 		}
 	}
@@ -122,34 +176,70 @@ function fixBranchPositions(layoutedNodes: Node[], edges: Edge[]): Node[] {
 	return layoutedNodes;
 }
 
-function LoopOverlays({ loopBodies }: { loopBodies: LoopBodyBounds[] }) {
-	const viewport = useStore((s) => ({
-		x: s.transform[0],
-		y: s.transform[1],
-		zoom: s.transform[2],
-	}));
-	if (loopBodies.length === 0) return null;
-	return (
-		<svg
-			style={{
-				position: "absolute",
-				top: 0,
-				left: 0,
-				width: "100%",
-				height: "100%",
-				pointerEvents: "none",
-				zIndex: 0,
-			}}
-		>
-			<g
-				transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}
-			>
-				{loopBodies.map((lb) => (
-					<LoopScopeOverlay key={lb.loopNodeId} bounds={lb.bounds} />
-				))}
-			</g>
-		</svg>
-	);
+function alignLoopNodesToIncomingFlow(layoutedNodes: Node[], edges: Edge[]): Node[] {
+	const nodeMap = new Map<string, Node>();
+	for (const node of layoutedNodes) {
+		nodeMap.set(node.id, node);
+	}
+
+	const getNodeWidth = (node: Node): number => {
+		if (node.type === "terminalNode") return 1;
+		if (node.type === "loopNode") return LOOP_NODE_WIDTH;
+		return NODE_WIDTH;
+	};
+
+	const getNodeCenterX = (node: Node): number => {
+		return node.position.x + getNodeWidth(node) / 2;
+	};
+
+	const getDesiredIncomingCenterX = (edge: Edge): number | null => {
+		const sourceNode = nodeMap.get(edge.source);
+		if (!sourceNode) return null;
+
+		const branchType = edge.data?.branchType as string | undefined;
+		const sourceCenterX = getNodeCenterX(sourceNode);
+
+		if (branchType === "yes") return sourceCenterX - CONDITION_BRANCH_SPREAD;
+		if (branchType === "no") return sourceCenterX + CONDITION_BRANCH_SPREAD;
+		if (branchType === "each" && sourceNode.type === "loopNode") {
+			return sourceNode.position.x + LOOP_NODE_WIDTH * LOOP_EACH_HANDLE_RATIO;
+		}
+
+		return sourceCenterX;
+	};
+
+	for (const edge of edges) {
+		if (edge.data?.branchType === "loop_back") continue;
+		const targetNode = nodeMap.get(edge.target);
+		if (!targetNode || targetNode.type !== "loopNode") continue;
+
+		const desiredCenterX = getDesiredIncomingCenterX(edge);
+		if (desiredCenterX === null) continue;
+		const currentCenterX = getNodeCenterX(targetNode);
+		const deltaX = desiredCenterX - currentCenterX;
+		if (deltaX === 0) continue;
+
+		targetNode.position = {
+			...targetNode.position,
+			x: desiredCenterX - LOOP_NODE_WIDTH / 2,
+		};
+
+		// Keep empty loop terminal stubs anchored to the loop when we shift the loop
+		// to match incoming flow. Otherwise both branch stubs can appear to drift right.
+		for (const outEdge of edges) {
+			if (outEdge.source !== targetNode.id) continue;
+			const bt = outEdge.data?.branchType as string | undefined;
+			if (bt !== "each" && bt !== "after") continue;
+			const branchTarget = nodeMap.get(outEdge.target);
+			if (!branchTarget || branchTarget.type !== "terminalNode") continue;
+			branchTarget.position = {
+				...branchTarget.position,
+				x: branchTarget.position.x + deltaX,
+			};
+		}
+	}
+
+	return layoutedNodes;
 }
 
 function AutomationFlowInner({
@@ -163,22 +253,23 @@ function AutomationFlowInner({
 	const prevCountRef = useRef(initialNodes.length);
 
 	// Compute layout, fix branch handles, inject callbacks
-	const { layoutedNodes, layoutedEdges, loopBodies } = useMemo(() => {
+	const { layoutedNodes, layoutedEdges } = useMemo(() => {
 		let ln = computeDagreLayout(initialNodes, initialEdges);
+		ln = fixBranchPositions(ln, initialEdges);
 
 		const workflowNodes = initialNodes
 			.filter((n) => n.data?._dbNode)
 			.map((n) => n.data._dbNode as WorkflowNode);
+		ln = alignLoopNodesToIncomingFlow(ln, initialEdges);
 		ln = alignLoopBodyNodes(ln, workflowNodes);
-		const bodies = computeLoopBodyBounds(ln, workflowNodes);
-		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
+		const bodiesForRouting = computeLoopBodyBounds(ln, workflowNodes);
+		ln = adjustAfterLastPositions(ln, bodiesForRouting, workflowNodes);
 
-		ln = fixBranchPositions(ln, initialEdges);
 		const le = initialEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
 		}));
-		return { layoutedNodes: ln, layoutedEdges: le, loopBodies: bodies };
+		return { layoutedNodes: ln, layoutedEdges: le };
 	}, [initialNodes, initialEdges, onInsertNode]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
@@ -187,15 +278,16 @@ function AutomationFlowInner({
 	// Sync when initialNodes/initialEdges change (e.g. after node deletion/insertion)
 	useEffect(() => {
 		let ln = computeDagreLayout(initialNodes, initialEdges);
+		ln = fixBranchPositions(ln, initialEdges);
 
 		const workflowNodes = initialNodes
 			.filter((n) => n.data?._dbNode)
 			.map((n) => n.data._dbNode as WorkflowNode);
+		ln = alignLoopNodesToIncomingFlow(ln, initialEdges);
 		ln = alignLoopBodyNodes(ln, workflowNodes);
-		const bodies = computeLoopBodyBounds(ln, workflowNodes);
-		ln = adjustAfterLastPositions(ln, bodies, workflowNodes);
+		const bodiesForRouting = computeLoopBodyBounds(ln, workflowNodes);
+		ln = adjustAfterLastPositions(ln, bodiesForRouting, workflowNodes);
 
-		ln = fixBranchPositions(ln, initialEdges);
 		const le = initialEdges.map((edge) => ({
 			...edge,
 			data: { ...edge.data, onInsertNode },
@@ -236,11 +328,11 @@ function AutomationFlowInner({
 			elementsSelectable={true}
 			panOnDrag={true}
 			zoomOnScroll={true}
+			deleteKeyCode={null}
 			minZoom={0.3}
 			maxZoom={2}
 			proOptions={{ hideAttribution: true }}
 		>
-			<LoopOverlays loopBodies={loopBodies} />
 			<Background
 				variant={BackgroundVariant.Dots}
 				gap={20}

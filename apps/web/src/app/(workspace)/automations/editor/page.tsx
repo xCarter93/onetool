@@ -26,6 +26,13 @@ function generateId(): string {
 	return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+	if (!(target instanceof HTMLElement)) return false;
+	if (target.isContentEditable) return true;
+	const tag = target.tagName.toLowerCase();
+	return tag === "input" || tag === "textarea" || tag === "select";
+}
+
 // Normalize trigger for save -- ensure type field is present for v1.2 schema
 function normalizeTriggerForSave(trigger: TriggerConfig) {
 	const triggerType = trigger.type || "status_changed";
@@ -560,6 +567,21 @@ function AutomationEditorContent() {
 		showUndoToast();
 	}, [nodes, showUndoToast]);
 
+	// Delete trigger and reset workflow to placeholder state
+	const handleDeleteTrigger = useCallback(() => {
+		setTrigger(null);
+		setNodes([]);
+		setIsSidebarOpen(false);
+		setSelectedNode(null);
+		setShowClearConfirm(false);
+		setDeletedNodeState(null);
+		if (undoTimeoutRef.current) {
+			clearTimeout(undoTimeoutRef.current);
+			undoTimeoutRef.current = null;
+		}
+		toast.success("Trigger removed", "Set a new trigger to continue building this automation.");
+	}, [toast]);
+
 	// Handle root deletion confirmation
 	const handleConfirmClear = useCallback(() => {
 		// Clear ALL workflow nodes. Trigger remains.
@@ -568,6 +590,30 @@ function AutomationEditorContent() {
 		// No undo for root deletion per CONTEXT.md decision
 		setDeletedNodeState(null);
 	}, []);
+
+	// Route keyboard deletion through app-owned handlers.
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if ((event.key !== "Delete" && event.key !== "Backspace") || isTypingTarget(event.target)) {
+				return;
+			}
+			if (!selectedNode) return;
+
+			if (selectedNode.type === "trigger") {
+				event.preventDefault();
+				handleDeleteTrigger();
+				return;
+			}
+
+			if ("id" in selectedNode) {
+				event.preventDefault();
+				handleDeleteNode(selectedNode.id);
+			}
+		};
+
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [selectedNode, handleDeleteNode, handleDeleteTrigger]);
 
 	// Undo delete -- restores full subtrees
 	const handleUndoDelete = useCallback(() => {
@@ -840,6 +886,7 @@ function AutomationEditorContent() {
 						onTriggerChange={handleTriggerChangeFromSidebar}
 						onNodeChange={handleNodeChangeFromSidebar}
 						onDeleteNode={handleDeleteNode}
+						onDeleteTrigger={handleDeleteTrigger}
 					/>
 				</div>
 			</div>

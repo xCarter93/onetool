@@ -1,11 +1,15 @@
 import dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
 import type { WorkflowNode } from "../components/workflow-node";
+import { collectLoopBody, collectSubtree } from "./graph-utils";
 
 export const NODE_WIDTH = 280;
 export const LOOP_NODE_WIDTH = 300; // Loop nodes are wider (min-w-[300px] in loop-node-rf.tsx)
 export const NODE_HEIGHT = 72;
-const LOOP_NODE_HEIGHT = 100; // Loop nodes are taller (header + branch labels row)
+export const CONDITION_BRANCH_SPREAD = 180;
+export const LOOP_EACH_HANDLE_RATIO = 0.5;
+export const LOOP_AFTER_HANDLE_RATIO = 0.8;
+const LOOP_NODE_HEIGHT = 72; // Loop node card height (branch labels render on edges)
 const NODE_SEP = 50;
 const RANK_SEP = 80;
 const MARGIN_X = 20;
@@ -17,20 +21,20 @@ const TERMINAL_OFFSET_Y = 60;
 /**
  * Handle offset percentages for branching nodes (relative to center).
  * Condition: yes at 35%, no at 65%
- * Loop: each at 25%, after at 75%
+ * Loop: "each" at center bottom, "after" exits from the right side (no offset needed)
  */
 const HANDLE_OFFSETS: Record<string, number> = {
 	yes: -0.15,   // 35% = center - 15%
 	no: 0.15,     // 65% = center + 15%
-	each: -0.25,  // 25% = center - 25%
-	after: 0.25,  // 75% = center + 25%
+	each: LOOP_EACH_HANDLE_RATIO - 0.5,
+	after: 0,     // "After Last" terminal centered below loop (edge routes from right side)
 };
 
 /**
  * Minimum horizontal spread for terminal stubs (when both branches are empty).
  * This ensures Yes/No or ForEach/AfterLast stubs spread out visually.
  */
-const TERMINAL_SPREAD_MIN = 100;
+const TERMINAL_SPREAD_MIN = CONDITION_BRANCH_SPREAD;
 
 /**
  * Compute top-to-bottom dagre layout for React Flow nodes and edges.
@@ -49,7 +53,8 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 		(e) =>
 			realNodeIds.has(e.source) &&
 			realNodeIds.has(e.target) &&
-			e.data?.branchType !== "loop_back" // Exclude loop-back edges — dagre is for DAGs only
+			e.data?.branchType !== "loop_back" && // Exclude loop-back edges — dagre is for DAGs only
+			e.data?.branchType !== "after" // Exclude "After Last" — routed via AfterLastEdge from right side
 	);
 
 	if (realNodes.length === 0) {
@@ -117,15 +122,21 @@ export function computeDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 			return { ...terminal, position: { x: 0, y: 0 } };
 		}
 
-		// For branch terminals, spread out at least TERMINAL_SPREAD_MIN from center
+		// Condition terminals stay fanned out to match connected branch placement.
+		// Loop terminals stay directly under their respective handles so both loop
+		// paths read as vertical continuations.
 		let x = parentPos.x;
 		if (handleId && handleId in HANDLE_OFFSETS) {
 			const offset = HANDLE_OFFSETS[handleId];
 			const parentWidth = parentPos.width || NODE_WIDTH;
 			const handleX = parentPos.x + parentWidth * offset;
-			// Ensure minimum spread from parent center
-			const spread = Math.max(Math.abs(handleX - parentPos.x), TERMINAL_SPREAD_MIN);
-			x = parentPos.x + (offset < 0 ? -spread : spread);
+			if (handleId === "each" || handleId === "after") {
+				// Both loop terminals go straight down under their respective handles.
+				x = handleX;
+			} else {
+				const spread = Math.max(Math.abs(handleX - parentPos.x), TERMINAL_SPREAD_MIN);
+				x = parentPos.x + (offset < 0 ? -spread : spread);
+			}
 		}
 
 		return {
@@ -158,22 +169,35 @@ export function alignLoopBodyNodes(
 		const loopLayouted = nodeMap.get(wfNode.id);
 		if (!loopLayouted) continue;
 
-		// The "each" handle is at 25% of the loop node width.
+		// The "each" handle is centered for a hierarchy-first loop body column.
 		// Center body nodes under this handle.
-		const eachHandleX = loopLayouted.position.x + LOOP_NODE_WIDTH * 0.25;
+		const eachHandleX =
+			loopLayouted.position.x + LOOP_NODE_WIDTH * LOOP_EACH_HANDLE_RATIO;
 		const bodyCenterX = eachHandleX - NODE_WIDTH / 2;
 
-		// Walk the body chain and align each node
-		let current: string | undefined = wfNode.nextNodeId;
-		const visited = new Set<string>();
-		while (current && !visited.has(current)) {
-			visited.add(current);
-			const node = nodeMap.get(current);
-			if (node) {
-				node.position = { ...node.position, x: bodyCenterX };
+		const bodyIds = getLoopBodyIdsForLayout(wfNode, workflowNodes);
+		for (const bodyId of bodyIds) {
+			if (bodyId === wfNode.id) continue;
+			const node = nodeMap.get(bodyId);
+			if (!node) continue;
+
+			const newCenterX = bodyCenterX + NODE_WIDTH / 2;
+			node.position = { ...node.position, x: bodyCenterX };
+
+			// Re-align terminal stubs for this node (condition yes/no, etc.)
+			for (const ln of layoutedNodes) {
+				if (ln.type !== "terminalNode") continue;
+				if (!ln.id.startsWith(`__terminal__${bodyId}`)) continue;
+				const suffix = ln.id.slice(`__terminal__${bodyId}`.length);
+				let termX = newCenterX;
+				if (suffix === "-yes") termX = newCenterX - CONDITION_BRANCH_SPREAD;
+				else if (suffix === "-no") termX = newCenterX + CONDITION_BRANCH_SPREAD;
+				ln.position = {
+					...ln.position,
+					x: termX - 2,
+					y: node.position.y + NODE_HEIGHT + TERMINAL_OFFSET_Y,
+				};
 			}
-			const wf = workflowNodes.find((n) => n.id === current);
-			current = wf?.nextNodeId;
 		}
 	}
 
@@ -194,17 +218,8 @@ export function computeLoopBodyBounds(
 	for (const wfNode of workflowNodes) {
 		if (wfNode.type !== "loop" || !wfNode.nextNodeId) continue;
 
-		// Collect body node IDs (follow nextNodeId chain only)
-		const bodyIds = new Set<string>();
-		bodyIds.add(wfNode.id); // Include loop node itself
-		let current: string | undefined = wfNode.nextNodeId;
-		const visited = new Set<string>();
-		while (current && !visited.has(current)) {
-			visited.add(current);
-			bodyIds.add(current);
-			const next = workflowNodes.find((n) => n.id === current);
-			current = next?.nextNodeId;
-		}
+		// Collect loop node + all body descendants (excluding After Last subtree)
+		const bodyIds = getLoopBodyIdsForLayout(wfNode, workflowNodes);
 
 		// Compute bounding box from layouted node positions
 		const bodyLayouted = layoutedNodes.filter((n) => bodyIds.has(n.id));
@@ -232,45 +247,147 @@ export function computeLoopBodyBounds(
 	return results;
 }
 
+function getLoopBodyIdsForLayout(
+	loopNode: WorkflowNode,
+	workflowNodes: WorkflowNode[]
+): Set<string> {
+	const bodyIds = collectLoopBody(loopNode.id, workflowNodes);
+
+	// Protect layout/overlay bounds from absorbing the loop's After Last subtree.
+	// This can happen when body branches reconnect to nodes also reachable from elseNodeId.
+	if (loopNode.elseNodeId) {
+		const afterIds = collectSubtree(loopNode.elseNodeId, workflowNodes);
+		for (const id of afterIds) {
+			if (id !== loopNode.id) {
+				bodyIds.delete(id);
+			}
+		}
+	}
+
+	bodyIds.add(loopNode.id);
+	return bodyIds;
+}
+
+/**
+ * Position all "After Last" nodes and terminal stubs below the loop body.
+ * The AfterLastEdge routes from the loop's right side, curves down past the
+ * body, and connects to these centered targets. This function handles:
+ * - Loops WITH bodies: position after nodes below the body bounds
+ * - Loops WITHOUT bodies: position after nodes below the each-terminal area
+ * - After terminal stubs: also repositioned (they aren't in workflowNodes)
+ */
 export function adjustAfterLastPositions(
 	layoutedNodes: Node[],
 	loopBodies: LoopBodyBounds[],
 	workflowNodes: WorkflowNode[]
 ): Node[] {
-	if (loopBodies.length === 0) return layoutedNodes;
-
 	const adjusted = [...layoutedNodes];
-	for (const lb of loopBodies) {
-		const loopWf = workflowNodes.find((n) => n.id === lb.loopNodeId);
-		if (!loopWf?.elseNodeId) continue;
+	const indexById = new Map<string, number>();
+	for (let i = 0; i < adjusted.length; i++) indexById.set(adjusted[i].id, i);
 
-		// Find all nodes in the "After Last" subtree
-		const afterIds = new Set<string>();
-		const stack = [loopWf.elseNodeId];
-		while (stack.length > 0) {
-			const id = stack.pop()!;
-			if (afterIds.has(id)) continue;
-			afterIds.add(id);
-			const n = workflowNodes.find((w) => w.id === id);
-			if (n?.nextNodeId) stack.push(n.nextNodeId);
-			if (n?.elseNodeId) stack.push(n.elseNodeId);
+	for (const wfNode of workflowNodes) {
+		if (wfNode.type !== "loop") continue;
+
+		const loopIdx = indexById.get(wfNode.id);
+		if (loopIdx === undefined) continue;
+		const loopNode = adjusted[loopIdx];
+
+		// Compute bottom of the "For Each" area
+		const lb = loopBodies.find((b) => b.loopNodeId === wfNode.id);
+		let bodyBottom: number;
+		if (lb) {
+			// Body exists: place after nodes below the body + gap
+			bodyBottom = lb.bounds.y + lb.bounds.height + RANK_SEP;
+		} else {
+			// No body: place below loop + each terminal area
+			bodyBottom = loopNode.position.y + LOOP_NODE_HEIGHT + TERMINAL_OFFSET_Y + RANK_SEP;
 		}
 
-		const bodyRight = lb.bounds.x + lb.bounds.width + 16;
-		const bodyBottom = lb.bounds.y + lb.bounds.height + 16;
+		// Center "After Last" under the loop
+		const afterCenterX = loopNode.position.x + LOOP_NODE_WIDTH / 2;
 
-		for (let i = 0; i < adjusted.length; i++) {
-			if (!afterIds.has(adjusted[i].id)) continue;
-			const node = adjusted[i];
-			if (node.position.x < bodyRight + NODE_WIDTH / 2) {
-				adjusted[i] = {
-					...node,
+		// Move connected "after" nodes and their terminal stubs
+		if (wfNode.elseNodeId) {
+			const afterIds = new Set<string>();
+			const stack = [wfNode.elseNodeId];
+			while (stack.length > 0) {
+				const id = stack.pop()!;
+				if (afterIds.has(id)) continue;
+				afterIds.add(id);
+				const n = workflowNodes.find((w) => w.id === id);
+				if (n?.nextNodeId) stack.push(n.nextNodeId);
+				if (n?.elseNodeId) stack.push(n.elseNodeId);
+			}
+
+			// Stack "after" subtree nodes vertically below bodyBottom
+			let nextY = bodyBottom;
+			const sortedAfterIds = [...afterIds];
+			// Sort by current Y so the ordering is preserved
+			sortedAfterIds.sort((a, b) => {
+				const ai = indexById.get(a);
+				const bi = indexById.get(b);
+				if (ai === undefined || bi === undefined) return 0;
+				return adjusted[ai].position.y - adjusted[bi].position.y;
+			});
+
+			for (const id of sortedAfterIds) {
+				const idx = indexById.get(id);
+				if (idx === undefined) continue;
+				adjusted[idx] = {
+					...adjusted[idx],
 					position: {
-						x: bodyRight + 20,
-						y: Math.max(node.position.y, bodyBottom),
+						x: afterCenterX - NODE_WIDTH / 2,
+						y: nextY,
 					},
 				};
+				nextY += NODE_HEIGHT + RANK_SEP;
 			}
+
+			// Reposition terminal stubs belonging to "after" subtree nodes.
+			// Respects condition branch spreading so Yes/No stubs fan out correctly.
+			for (const id of afterIds) {
+				const parentIdx = indexById.get(id);
+				if (parentIdx === undefined) continue;
+				const parentNode = adjusted[parentIdx];
+				const parentCenterX = parentNode.position.x + NODE_WIDTH / 2;
+				const parentBottomY = parentNode.position.y + NODE_HEIGHT;
+
+				for (let i = 0; i < adjusted.length; i++) {
+					const node = adjusted[i];
+					if (node.type !== "terminalNode") continue;
+					if (!node.id.startsWith(`__terminal__${id}`)) continue;
+
+					// Determine handle suffix to apply correct X offset
+					let termX = parentCenterX;
+					const suffix = node.id.slice(`__terminal__${id}`.length);
+					if (suffix === "-yes") {
+						termX = parentCenterX - CONDITION_BRANCH_SPREAD;
+					} else if (suffix === "-no") {
+						termX = parentCenterX + CONDITION_BRANCH_SPREAD;
+					}
+
+					adjusted[i] = {
+						...node,
+						position: {
+							x: termX - 2,
+							y: parentBottomY + TERMINAL_OFFSET_Y,
+						},
+					};
+				}
+			}
+		}
+
+		// Move "after" terminal stub (not in workflowNodes — match by ID convention)
+		const afterTerminalId = `__terminal__${wfNode.id}-after`;
+		const termIdx = indexById.get(afterTerminalId);
+		if (termIdx !== undefined) {
+			adjusted[termIdx] = {
+				...adjusted[termIdx],
+				position: {
+					x: afterCenterX - 2,
+					y: bodyBottom,
+				},
+			};
 		}
 	}
 

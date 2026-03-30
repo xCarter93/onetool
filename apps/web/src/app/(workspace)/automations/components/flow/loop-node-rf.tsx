@@ -4,6 +4,7 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LOOP_EACH_HANDLE_RATIO } from "../../lib/dagre-layout";
 
 export const LoopNodeRF = memo(({ selected }: NodeProps) => {
 	const summary = "Loop over records";
@@ -38,20 +39,6 @@ export const LoopNodeRF = memo(({ selected }: NodeProps) => {
 				</div>
 			</div>
 
-			{/* Branch labels */}
-			<div className="flex border-t border-orange-200 dark:border-orange-800 divide-x divide-orange-200 dark:divide-orange-800">
-				<div className="flex-1 py-1.5 text-center">
-					<span className="text-xs font-semibold text-orange-500 dark:text-orange-400">
-						For Each
-					</span>
-				</div>
-				<div className="flex-1 py-1.5 text-center">
-					<span className="text-xs font-semibold text-muted-foreground">
-						After Last
-					</span>
-				</div>
-			</div>
-
 			{/* Loop-back target handle (left side) for iteration edge */}
 			<Handle
 				type="target"
@@ -60,20 +47,20 @@ export const LoopNodeRF = memo(({ selected }: NodeProps) => {
 				className="bg-orange-400! w-2! h-2! border-0!"
 			/>
 
-			{/* Dual source handles: "each" (left) and "after" (right) */}
+			{/* "For Each" source handle (bottom center) */}
 			<Handle
 				type="source"
 				position={Position.Bottom}
 				id="each"
-				className="bg-orange-400! w-2! h-2! border-0!"
-				style={{ left: "25%" }}
+				className="bg-orange-400! w-2.5! h-2.5! border-0!"
+				style={{ left: `${LOOP_EACH_HANDLE_RATIO * 100}%` }}
 			/>
+			{/* "After Last" source handle (right side) */}
 			<Handle
 				type="source"
-				position={Position.Bottom}
+				position={Position.Right}
 				id="after"
-				className="bg-muted-foreground! w-2! h-2! border-0!"
-				style={{ left: "75%" }}
+				className="bg-muted-foreground! w-2.5! h-2.5! border-0!"
 			/>
 		</div>
 	);

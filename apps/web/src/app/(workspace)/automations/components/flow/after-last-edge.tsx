@@ -3,9 +3,6 @@
 import {
 	BaseEdge,
 	EdgeLabelRenderer,
-	getStraightPath,
-	getSmoothStepPath,
-	Position,
 	type EdgeProps,
 } from "@xyflow/react";
 import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
@@ -17,7 +14,13 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function BranchLabelEdge({
+/**
+ * Custom edge for the "After Last" branch of loop nodes.
+ * Routes from the loop's right-side handle: right → curve down → straight
+ * down alongside the loop body → curve left → to target below.
+ * Mirrors LoopBackEdge's left-side routing but on the right going downward.
+ */
+export function AfterLastEdge({
 	id,
 	sourceX,
 	sourceY,
@@ -26,61 +29,35 @@ export function BranchLabelEdge({
 	data,
 	style,
 }: EdgeProps) {
-	const variant = (data?.variant as string) || "yes";
-	const label = (data?.label as string) || (variant === "yes" ? "Yes" : "No");
 	const isTerminal = data?.isTerminal === true;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
-	const branchType = data?.branchType as string | undefined;
 
-	let edgePath = "";
-	let labelX = 0;
-	let labelY = 0;
-	let plusX = 0;
-	let plusY = 0;
+	const offsetX = 50;
+	const rightX = sourceX + offsetX;
+	const cr = 16;
 
-	if (isTerminal && branchType === "after") {
-		// Keep empty "After Last" path visually vertical under the right handle.
-		[edgePath] = getStraightPath({
-			sourceX,
-			sourceY,
-			targetX: sourceX,
-			targetY,
-		});
-		labelX = sourceX;
-		labelY = sourceY + (targetY - sourceY) * 0.5;
-		plusX = sourceX;
-		plusY = targetY;
-	} else {
-		[edgePath, labelX, labelY] = getSmoothStepPath({
-			sourceX,
-			sourceY,
-			sourcePosition: Position.Bottom,
-			targetX,
-			targetY,
-			targetPosition: Position.Top,
-			borderRadius: 8,
-		});
-		plusX = isTerminal ? targetX : labelX;
-		plusY = isTerminal ? targetY : labelY;
-	}
+	// Ensure the edge goes down far enough even for empty loops
+	const effectiveTargetY = Math.max(targetY, sourceY + cr * 4);
 
-	// Pill color classes per UI-SPEC branch label table
-	const pillClasses: Record<string, string> = {
-		yes: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
-		no: "bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400",
-	};
+	// Path: right from loop → curve down → straight down → curve left → to target
+	const edgePath = [
+		`M ${sourceX} ${sourceY}`,
+		`L ${rightX - cr} ${sourceY}`,
+		`Q ${rightX} ${sourceY} ${rightX} ${sourceY + cr}`,
+		`L ${rightX} ${effectiveTargetY - cr}`,
+		`Q ${rightX} ${effectiveTargetY} ${rightX - cr} ${effectiveTargetY}`,
+		`L ${targetX} ${effectiveTargetY}`,
+	].join(" ");
 
-	// Override for loop branch labels
-	let pillClass: string;
-	if (label === "For Each") {
-		pillClass = "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400";
-	} else if (label === "After Last") {
-		pillClass = "bg-muted text-muted-foreground";
-	} else {
-		pillClass = pillClasses[variant] || pillClasses.yes;
-	}
+	// Label at the top-right of the descent
+	const labelX = rightX;
+	const labelY = sourceY + cr * 2;
+
+	// Plus button at the end of the path (where it meets the target)
+	const plusX = targetX;
+	const plusY = effectiveTargetY;
 
 	return (
 		<>
@@ -96,16 +73,10 @@ export function BranchLabelEdge({
 						transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
 					}}
 				>
-					<span
-						className={cn(
-							"text-xs font-semibold px-2 py-0.5 rounded-full",
-							pillClass
-						)}
-					>
-						{label}
+					<span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+						After Last
 					</span>
 				</div>
-				{/* Plus button */}
 				<div
 					className="nodrag nopan pointer-events-auto"
 					style={{

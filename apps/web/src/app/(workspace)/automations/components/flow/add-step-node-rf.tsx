@@ -16,6 +16,11 @@ export const TerminalNodeRF = memo((_props: NodeProps) => {
 				position={Position.Top}
 				className="bg-transparent! w-0! h-0! border-0!"
 			/>
+			<Handle
+				type="source"
+				position={Position.Bottom}
+				className="bg-transparent! w-0! h-0! border-0!"
+			/>
 		</div>
 	);
 });

@@ -105,6 +105,50 @@ describe("graph-utils", () => {
 			const result = collectLoopBody("loop1", nodes);
 			expect(result).toEqual(new Set(["loop1"]));
 		});
+
+		it("includes branch descendants inside loop body and excludes After Last subtree", () => {
+			const nodes: WorkflowNode[] = [
+				{
+					id: "loop1",
+					type: "loop",
+					nextNodeId: "c1",
+					elseNodeId: "after1",
+				},
+				{
+					id: "c1",
+					type: "condition",
+					condition: { field: "status", operator: "equals", value: "active" },
+					nextNodeId: "bodyNext",
+					elseNodeId: "bodyElse",
+				},
+				{
+					id: "bodyNext",
+					type: "action",
+					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+				},
+				{
+					id: "bodyElse",
+					type: "action",
+					action: { targetType: "self", actionType: "update_status", newStatus: "draft" },
+				},
+				{
+					id: "after1",
+					type: "action",
+					action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+					nextNodeId: "after2",
+				},
+				{
+					id: "after2",
+					type: "action",
+					action: { targetType: "client", actionType: "update_status", newStatus: "active" },
+				},
+			];
+
+			const result = collectLoopBody("loop1", nodes);
+			expect(result).toEqual(new Set(["loop1", "c1", "bodyNext", "bodyElse"]));
+			expect(result.has("after1")).toBe(false);
+			expect(result.has("after2")).toBe(false);
+		});
 	});
 
 	describe("findParent", () => {

@@ -22,6 +22,7 @@ export const RF_EDGE_TYPES = {
 	straight: "straightEdge",
 	branchLabel: "branchLabelEdge",
 	loopBack: "loopBackEdge",
+	afterLast: "afterLastEdge",
 } as const;
 
 /** Check if a node ID is a terminal stub (not a real workflow node) */
@@ -190,37 +191,46 @@ export function automationToReactFlow(
 			}
 
 			// Loop: "after" branch (elseNodeId = after last iteration)
+			// Uses afterLastEdge which routes from the loop's right side, curves down.
 			if (node.elseNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-after-${node.elseNodeId}`,
 					source: node.id,
 					target: node.elseNodeId,
 					sourceHandle: "after",
-					type: RF_EDGE_TYPES.branchLabel,
+					type: RF_EDGE_TYPES.afterLast,
 					data: { label: "After Last", variant: "no", branchType: "after" as const },
 				});
 			} else {
-				addTerminalStub(rfNodes, rfEdges, node.id, "after", RF_EDGE_TYPES.branchLabel, {
+				addTerminalStub(rfNodes, rfEdges, node.id, "after", RF_EDGE_TYPES.afterLast, {
 					label: "After Last",
 					variant: "no",
 					branchType: "after" as const,
 				});
 			}
 
-			// Loop-back edge: from last body node back to loop header
-			if (node.nextNodeId) {
-				let lastBodyId = node.nextNodeId;
-				const visited = new Set<string>();
-				while (true) {
-					visited.add(lastBodyId);
-					const bodyNode = nodes.find((n) => n.id === lastBodyId);
-					if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) break;
-					lastBodyId = bodyNode.nextNodeId;
+			// Loop-back edge: from last body node (or empty terminal) back to loop header.
+			// Always present — visually defines the loop's left-side return path.
+			{
+				let loopBackSourceId: string;
+				if (node.nextNodeId) {
+					// Walk the body chain to find the last node
+					loopBackSourceId = node.nextNodeId;
+					const visited = new Set<string>();
+					while (true) {
+						visited.add(loopBackSourceId);
+						const bodyNode = nodes.find((n) => n.id === loopBackSourceId);
+						if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) break;
+						loopBackSourceId = bodyNode.nextNodeId;
+					}
+				} else {
+					// Empty body — loop-back from the "each" terminal stub
+					loopBackSourceId = `${TERMINAL_PREFIX}${node.id}-each`;
 				}
 
 				rfEdges.push({
 					id: `e-loopback-${node.id}`,
-					source: lastBodyId,
+					source: loopBackSourceId,
 					target: node.id,
 					sourceHandle: undefined,
 					targetHandle: "loopReturn",
@@ -285,6 +295,7 @@ export function reactFlowToFlatArray(
 
 		for (const edge of outEdges) {
 			if (isTerminalId(edge.target)) continue;
+			if (edge.data?.branchType === "loop_back") continue;
 
 			// Use branchType as primary check, fall back to variant/sourceHandle
 			const branchType = edge.data?.branchType as string | undefined;
