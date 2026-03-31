@@ -6,6 +6,11 @@ import type { TriggerConfig } from "../trigger-node";
 import type { WorkflowNode } from "../../lib/node-types";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
+import { TriggerConfigPanel } from "./panels/trigger-config";
+import { ConditionConfigPanel } from "./panels/condition-config";
+import { ActionConfigPanel } from "./panels/action-config";
+import { FetchConfigPanel } from "./panels/fetch-config";
+import { LoopConfigPanel } from "./panels/loop-config";
 
 // ---------------------------------------------------------------------------
 // SidebarMode discriminated union
@@ -39,7 +44,13 @@ export interface ConfigPanelProps {
 // CONFIG_PANELS registry -- panels registered in Task 2
 // ---------------------------------------------------------------------------
 
-const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {};
+const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
+	trigger: TriggerConfigPanel,
+	condition: ConditionConfigPanel,
+	action: ActionConfigPanel,
+	fetch_records: FetchConfigPanel,
+	loop: LoopConfigPanel,
+};
 
 // ---------------------------------------------------------------------------
 // Title lookup
@@ -161,6 +172,27 @@ export function AutomationSidebar({
 				);
 
 			case "node-config": {
+				if (mode.nodeType === "end") {
+					return (
+						<div className="space-y-6">
+							<div className="text-sm text-muted-foreground">
+								This step ends the automation flow.
+							</div>
+							{onDeleteNode && "nodeId" in mode && (
+								<div className="pt-6 border-t border-border">
+									<button
+										type="button"
+										className="w-full rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:opacity-90"
+										onClick={() => onDeleteNode(mode.nodeId)}
+									>
+										Delete Node
+									</button>
+								</div>
+							)}
+						</div>
+					);
+				}
+
 				const Panel = CONFIG_PANELS[mode.nodeType];
 				if (!Panel) {
 					return (
