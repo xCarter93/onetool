@@ -4,25 +4,33 @@ import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { AlertTriangle, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FIELD_OPTIONS } from "../../components/workflow-node";
+import { FIELD_OPTIONS } from "../../lib/node-types";
 
 function getSummary(data: Record<string, unknown>): string {
-	const condition = data.condition as
+	// Read from new config shape with fallback to legacy condition
+	const config = (data as Record<string, unknown>).config || (data as Record<string, unknown>).condition;
+	const condition = config as
 		| { field?: string; operator?: string; value?: unknown }
 		| undefined;
-	if (!condition || !condition.field) return "Configure condition...";
+	if (!condition || !condition.field) return "Set a condition";
 
 	const operatorLabels: Record<string, string> = {
 		equals: "equals",
 		not_equals: "does not equal",
 		contains: "contains",
 		exists: "exists",
+		greater_than: "is greater than",
+		less_than: "is less than",
+		is_true: "is true",
+		is_false: "is false",
+		before: "is before",
+		after: "is after",
 	};
 	const opLabel = condition.operator
 		? (operatorLabels[condition.operator] ?? condition.operator)
 		: "equals";
 
-	if (condition.operator === "exists") {
+	if (condition.operator === "exists" || condition.operator === "is_true" || condition.operator === "is_false") {
 		return `${condition.field} ${opLabel}`;
 	}
 	return `${condition.field} ${opLabel} "${condition.value ?? "..."}"`;
@@ -30,7 +38,8 @@ function getSummary(data: Record<string, unknown>): string {
 
 export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 	const summary = getSummary(data);
-	const condition = data?.condition as
+	const config = (data as Record<string, unknown>)?.config || (data as Record<string, unknown>)?.condition;
+	const condition = config as
 		| { field?: string; operator?: string; value?: unknown }
 		| undefined;
 	const triggerObjectType = data?.triggerObjectType as string | null;
@@ -85,16 +94,8 @@ export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 			<Handle
 				type="source"
 				position={Position.Bottom}
-				id="yes"
-				className="!bg-emerald-500 !w-2 !h-2 !border-0"
-				style={{ left: "35%" }}
-			/>
-			<Handle
-				type="source"
-				position={Position.Bottom}
-				id="no"
-				className="!bg-rose-400 !w-2 !h-2 !border-0"
-				style={{ left: "65%" }}
+				id="center"
+				className="!w-2 !h-2 !bg-purple-400"
 			/>
 		</div>
 	);

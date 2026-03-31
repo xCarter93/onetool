@@ -6,12 +6,14 @@ import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function getSummary(data: Record<string, unknown>): string {
-	const action = data.action as
+	// Read from new config shape with fallback to legacy action
+	const config = (data as Record<string, unknown>).config || (data as Record<string, unknown>).action;
+	const action = config as
 		| { targetType?: string; actionType?: string; newStatus?: string }
 		| undefined;
 	if (!action || !action.actionType) return "Configure action...";
 
-	if (action.actionType === "update_status" && action.newStatus) {
+	if ((action.actionType === "update_field" || action.actionType === "update_status") && action.newStatus) {
 		const target = action.targetType ?? "self";
 		return `Update ${target} \u2192 ${action.newStatus}`;
 	}
@@ -42,7 +44,7 @@ export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="text-xs font-semibold uppercase text-green-600 dark:text-green-400">
-						Action
+						Update Record
 					</div>
 					<div className="text-sm font-semibold text-foreground truncate">
 						{summary}
