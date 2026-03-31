@@ -8,13 +8,7 @@ import {
 	Position,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function PlusButtonEdge({
@@ -79,42 +73,21 @@ export function PlusButtonEdge({
 						zIndex: 10,
 					}}
 				>
-					<DropdownMenu modal={false}>
-						<DropdownMenuTrigger asChild>
-							<button
-								className={cn(
-									"w-9 h-9 rounded-full bg-transparent flex items-center justify-center cursor-pointer",
-									"touch-manipulation",
-									isTerminal
-										? "opacity-100"
-										: "opacity-0 hover:opacity-100 focus:opacity-100"
-								)}
-								aria-label="Insert node"
-							>
-								<span className="w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-muted flex items-center justify-center transition-colors">
-									<Plus className="h-3 w-3 text-muted-foreground" />
-								</span>
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="center" sideOffset={8}>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "condition")}>
-								<GitBranch className="h-4 w-4 mr-2" />
-								Add Condition
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "action")}>
-								<Play className="h-4 w-4 mr-2" />
-								Add Action
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "fetch_records")}>
-								<Search className="h-4 w-4 mr-2" />
-								Add Fetch Records
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "loop")}>
-								<Repeat className="h-4 w-4 mr-2" />
-								Add Loop
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							onInsertNode?.(id, "placeholder");
+						}}
+						className={cn(
+							"w-7 h-7 rounded-full bg-background border-2 border-muted-foreground/30 hover:border-primary hover:bg-primary/10 flex items-center justify-center transition-colors shadow-sm cursor-pointer",
+							isTerminal
+								? "opacity-100"
+								: "opacity-0 hover:opacity-100 focus:opacity-100"
+						)}
+						aria-label="Add step"
+					>
+						<Plus className="h-3.5 w-3.5 text-muted-foreground" />
+					</button>
 				</div>
 			</EdgeLabelRenderer>
 		</>

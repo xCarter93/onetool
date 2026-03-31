@@ -4,7 +4,8 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LOOP_EACH_HANDLE_RATIO } from "../../lib/dagre-layout";
+/** "For Each" handle at center bottom of the loop node */
+const LOOP_EACH_HANDLE_RATIO = 0.5;
 
 export const LoopNodeRF = memo(({ selected }: NodeProps) => {
 	const summary = "Loop over records";

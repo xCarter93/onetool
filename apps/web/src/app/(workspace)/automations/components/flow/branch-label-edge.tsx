@@ -8,14 +8,8 @@ import {
 	Position,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 export function BranchLabelEdge({
 	id,
@@ -26,33 +20,49 @@ export function BranchLabelEdge({
 	data,
 	style,
 }: EdgeProps) {
-	const variant = (data?.variant as string) || "yes";
-	const label = (data?.label as string) || (variant === "yes" ? "Yes" : "No");
+	const branchType = (data?.branchType as string) || (data?.variant as string) || "yes";
+	const label =
+		(data?.label as string) ||
+		(branchType === "yes" ? "Yes" : branchType === "no" ? "No" : branchType === "each" ? "For Each" : "");
 	const isTerminal = data?.isTerminal === true;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
-	const branchType = data?.branchType as string | undefined;
 
 	let edgePath = "";
 	let labelX = 0;
 	let labelY = 0;
-	let plusX = 0;
-	let plusY = 0;
 
-	if (isTerminal && branchType === "after") {
-		// Keep empty "After Last" path visually vertical under the right handle.
-		[edgePath] = getStraightPath({
+	if (branchType === "yes" || branchType === "each") {
+		// Yes and For Each: straight vertical line
+		[edgePath, labelX, labelY] = getStraightPath({
+			sourceX,
+			sourceY,
+			targetX,
+			targetY: isTerminal ? sourceY + (targetY - sourceY) * 0.5 : targetY,
+		});
+	} else if (branchType === "no") {
+		// No: smoothstep right-then-down routing from center handle
+		[edgePath, labelX, labelY] = getSmoothStepPath({
+			sourceX,
+			sourceY,
+			sourcePosition: Position.Bottom,
+			targetX,
+			targetY: isTerminal ? sourceY + (targetY - sourceY) * 0.5 : targetY,
+			targetPosition: Position.Top,
+			borderRadius: 12,
+			offset: 25,
+		});
+	} else if (branchType === "after") {
+		// After Last: straight vertical from right side
+		[edgePath, labelX, labelY] = getStraightPath({
 			sourceX,
 			sourceY,
 			targetX: sourceX,
-			targetY,
+			targetY: isTerminal ? sourceY + (targetY - sourceY) * 0.5 : targetY,
 		});
-		labelX = sourceX;
-		labelY = sourceY + (targetY - sourceY) * 0.5;
-		plusX = sourceX;
-		plusY = targetY;
 	} else {
+		// Fallback: smoothstep
 		[edgePath, labelX, labelY] = getSmoothStepPath({
 			sourceX,
 			sourceY,
@@ -62,25 +72,22 @@ export function BranchLabelEdge({
 			targetPosition: Position.Top,
 			borderRadius: 8,
 		});
-		plusX = isTerminal ? targetX : labelX;
-		plusY = isTerminal ? targetY : labelY;
 	}
 
-	// Pill color classes per UI-SPEC branch label table
+	// Pill color classes per branch type
 	const pillClasses: Record<string, string> = {
 		yes: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
 		no: "bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400",
+		each: "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400",
+		after: "bg-muted text-muted-foreground",
 	};
+	const pillClass = pillClasses[branchType] || pillClasses.yes;
 
-	// Override for loop branch labels
-	let pillClass: string;
-	if (label === "For Each") {
-		pillClass = "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400";
-	} else if (label === "After Last") {
-		pillClass = "bg-muted text-muted-foreground";
-	} else {
-		pillClass = pillClasses[variant] || pillClasses.yes;
-	}
+	// Plus button position: at the end of a terminal edge, or at the label midpoint
+	const plusX = isTerminal ? targetX : labelX;
+	const plusY = isTerminal
+		? sourceY + (targetY - sourceY) * 0.5
+		: labelY;
 
 	return (
 		<>
@@ -114,42 +121,21 @@ export function BranchLabelEdge({
 						zIndex: 10,
 					}}
 				>
-					<DropdownMenu modal={false}>
-						<DropdownMenuTrigger asChild>
-							<button
-								className={cn(
-									"w-9 h-9 rounded-full bg-transparent flex items-center justify-center cursor-pointer",
-									"touch-manipulation",
-									isTerminal
-										? "opacity-100"
-										: "opacity-0 hover:opacity-100 focus:opacity-100"
-								)}
-								aria-label="Insert node"
-							>
-								<span className="w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-muted flex items-center justify-center transition-colors">
-									<Plus className="h-3 w-3 text-muted-foreground" />
-								</span>
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="center" sideOffset={8}>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "condition")}>
-								<GitBranch className="h-4 w-4 mr-2" />
-								Add Condition
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "action")}>
-								<Play className="h-4 w-4 mr-2" />
-								Add Action
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "fetch_records")}>
-								<Search className="h-4 w-4 mr-2" />
-								Add Fetch Records
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "loop")}>
-								<Repeat className="h-4 w-4 mr-2" />
-								Add Loop
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							onInsertNode?.(id, "placeholder");
+						}}
+						className={cn(
+							"w-7 h-7 rounded-full bg-background border-2 border-muted-foreground/30 hover:border-primary hover:bg-primary/10 flex items-center justify-center transition-colors shadow-sm cursor-pointer",
+							isTerminal
+								? "opacity-100"
+								: "opacity-0 hover:opacity-100 focus:opacity-100"
+						)}
+						aria-label="Add step"
+					>
+						<Plus className="h-3.5 w-3.5 text-muted-foreground" />
+					</button>
 				</div>
 			</EdgeLabelRenderer>
 		</>
