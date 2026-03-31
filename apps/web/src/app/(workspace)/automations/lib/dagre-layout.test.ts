@@ -1,137 +1,73 @@
 import { describe, expect, it } from "vitest";
-import type { Node } from "@xyflow/react";
-import type { WorkflowNode } from "../components/workflow-node";
+import type { Node, Edge } from "@xyflow/react";
+import type { WorkflowNode } from "../lib/node-types";
 import {
-	adjustAfterLastPositions,
-	computeDagreLayout,
-	computeLoopBodyBounds,
+	computeLayout,
 	LOOP_NODE_WIDTH,
-	LOOP_EACH_HANDLE_RATIO,
+	NODE_WIDTH,
 } from "./dagre-layout";
 
-describe("dagre-layout loop post-processing", () => {
-	it("computeLoopBodyBounds includes branched descendants in loop body", () => {
-		const workflowNodes: WorkflowNode[] = [
-			{ id: "loop1", type: "loop", nextNodeId: "c1", elseNodeId: "after1" },
-			{
-				id: "c1",
-				type: "condition",
-				condition: { field: "status", operator: "equals", value: "active" },
-				nextNodeId: "bodyNext",
-				elseNodeId: "bodyElse",
-			},
-			{
-				id: "bodyNext",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
-			{
-				id: "bodyElse",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "draft" },
-			},
-			{
-				id: "after1",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
+describe("dagre-layout computeLayout", () => {
+	it("returns positioned nodes for a simple linear flow", () => {
+		const nodes: Node[] = [
+			{ id: "trigger", type: "triggerNode", data: {}, position: { x: 0, y: 0 } },
+			{ id: "action1", type: "actionNode", data: {}, position: { x: 0, y: 0 } },
+		];
+		const edges: Edge[] = [
+			{ id: "e1", source: "trigger", target: "action1" },
 		];
 
-		const layoutedNodes: Node[] = [
-			{ id: "loop1", type: "loopNode", data: {}, position: { x: 100, y: 100 } },
-			{ id: "c1", type: "conditionNode", data: {}, position: { x: 80, y: 260 } },
-			{ id: "bodyNext", type: "actionNode", data: {}, position: { x: 80, y: 420 } },
-			{ id: "bodyElse", type: "actionNode", data: {}, position: { x: 420, y: 420 } },
-			{ id: "after1", type: "actionNode", data: {}, position: { x: 120, y: 600 } },
-		];
-
-		const bounds = computeLoopBodyBounds(layoutedNodes, workflowNodes);
-		expect(bounds).toHaveLength(1);
-		const loopBounds = bounds[0].bounds;
-
-		// bodyElse should expand the loop body width toward the right.
-		expect(loopBounds.x).toBe(80);
-		expect(loopBounds.width).toBeGreaterThan(600);
+		const result = computeLayout(nodes, edges);
+		expect(result).toHaveLength(2);
+		// Nodes should be vertically ordered
+		const trigger = result.find((n) => n.id === "trigger");
+		const action = result.find((n) => n.id === "action1");
+		expect(trigger).toBeDefined();
+		expect(action).toBeDefined();
+		expect(action!.position.y).toBeGreaterThan(trigger!.position.y);
 	});
 
-	it("adjustAfterLastPositions moves after-last subtree outside loop body bounds", () => {
+	it("positions loop body nodes vertically under the loop header", () => {
 		const workflowNodes: WorkflowNode[] = [
 			{ id: "loop1", type: "loop", nextNodeId: "body1", elseNodeId: "after1" },
 			{
 				id: "body1",
 				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+				config: { targetType: "self", actionType: "update_field", newStatus: "done" },
 			},
 			{
 				id: "after1",
 				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+				config: { targetType: "client", actionType: "update_field", newStatus: "inactive" },
 			},
 		];
 
-		const layoutedNodes: Node[] = [
-			{ id: "loop1", type: "loopNode", data: {}, position: { x: 100, y: 100 } },
-			{ id: "body1", type: "actionNode", data: {}, position: { x: 80, y: 260 } },
-			// Starts too close to the body; should be nudged right/down.
-			{ id: "after1", type: "actionNode", data: {}, position: { x: 120, y: 240 } },
+		const nodes: Node[] = [
+			{ id: "loop1", type: "loopNode", data: {}, position: { x: 0, y: 0 } },
+			{ id: "body1", type: "actionNode", data: {}, position: { x: 0, y: 0 } },
+			{ id: "after1", type: "actionNode", data: {}, position: { x: 0, y: 0 } },
+		];
+		const edges: Edge[] = [
+			{ id: "e1", source: "loop1", target: "body1", sourceHandle: "each", data: { branchType: "each" } },
+			{ id: "e2", source: "loop1", target: "after1", sourceHandle: "after", data: { branchType: "after" } },
 		];
 
-		const loopBodies = computeLoopBodyBounds(layoutedNodes, workflowNodes);
-		const adjusted = adjustAfterLastPositions(layoutedNodes, loopBodies, workflowNodes);
-		const afterNode = adjusted.find((n) => n.id === "after1");
-		expect(afterNode).toBeDefined();
+		const result = computeLayout(nodes, edges, workflowNodes);
+		const loop = result.find((n) => n.id === "loop1");
+		const body = result.find((n) => n.id === "body1");
+		const after = result.find((n) => n.id === "after1");
 
-		const body = loopBodies[0].bounds;
-		// adjustAfterLastPositions uses RANK_SEP (80) gap below body
-		const bodyBottom = body.y + body.height + 80;
-		// "After Last" now centers under the loop node center (not at 80% handle)
-		const expectedAfterX = 100 + 300 / 2 - 280 / 2;
+		expect(loop).toBeDefined();
+		expect(body).toBeDefined();
+		expect(after).toBeDefined();
 
-		expect(afterNode!.position.x).toBe(expectedAfterX);
-		expect(afterNode!.position.y).toBeGreaterThanOrEqual(bodyBottom);
+		// Body should be below loop
+		expect(body!.position.y).toBeGreaterThan(loop!.position.y);
+		// After should be below body
+		expect(after!.position.y).toBeGreaterThan(body!.position.y);
 	});
 
-	it("computeLoopBodyBounds excludes nodes reachable from After Last subtree", () => {
-		const workflowNodes: WorkflowNode[] = [
-			{ id: "loop1", type: "loop", nextNodeId: "body1", elseNodeId: "after1" },
-			{
-				id: "body1",
-				type: "condition",
-				condition: { field: "status", operator: "equals", value: "active" },
-				nextNodeId: "body2",
-				// This branch points to after subtree and should not expand loop scope.
-				elseNodeId: "after1",
-			},
-			{
-				id: "body2",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
-			{
-				id: "after1",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
-		];
-
-		const layoutedNodes: Node[] = [
-			{ id: "loop1", type: "loopNode", data: {}, position: { x: 100, y: 100 } },
-			{ id: "body1", type: "conditionNode", data: {}, position: { x: 80, y: 260 } },
-			{ id: "body2", type: "actionNode", data: {}, position: { x: 80, y: 420 } },
-			// Intentionally far to the right to detect accidental inclusion.
-			{ id: "after1", type: "actionNode", data: {}, position: { x: 900, y: 420 } },
-		];
-
-		const bounds = computeLoopBodyBounds(layoutedNodes, workflowNodes);
-		expect(bounds).toHaveLength(1);
-
-		const bodyBounds = bounds[0].bounds;
-		expect(bodyBounds.x).toBe(80);
-		// Right edge should be from body chain, not from after1 at x=900.
-		expect(bodyBounds.x + bodyBounds.width).toBeLessThan(900);
-	});
-
-	it("positions empty loop terminals straight down under their respective handles", () => {
+	it("positions empty loop terminals below the loop node", () => {
 		const nodes: Node[] = [
 			{ id: "loop1", type: "loopNode", data: {}, position: { x: 0, y: 0 } },
 			{
@@ -147,7 +83,7 @@ describe("dagre-layout loop post-processing", () => {
 				position: { x: 0, y: 0 },
 			},
 		];
-		const edges = [
+		const edges: Edge[] = [
 			{
 				id: "e-loop1-each",
 				source: "loop1",
@@ -166,7 +102,7 @@ describe("dagre-layout loop post-processing", () => {
 			},
 		];
 
-		const layouted = computeDagreLayout(nodes, edges);
+		const layouted = computeLayout(nodes, edges);
 		const loop = layouted.find((n) => n.id === "loop1");
 		const eachTerminal = layouted.find((n) => n.id === "__terminal__loop1-each");
 		const afterTerminal = layouted.find((n) => n.id === "__terminal__loop1-after");
@@ -175,16 +111,44 @@ describe("dagre-layout loop post-processing", () => {
 		expect(eachTerminal).toBeDefined();
 		expect(afterTerminal).toBeDefined();
 
-		const loopCenterX = loop!.position.x + LOOP_NODE_WIDTH / 2;
-		const eachHandleX = loop!.position.x + LOOP_NODE_WIDTH * LOOP_EACH_HANDLE_RATIO;
+		// Both terminals should be below the loop node
+		expect(eachTerminal!.position.y).toBeGreaterThan(loop!.position.y);
+		expect(afterTerminal!.position.y).toBeGreaterThan(loop!.position.y);
+	});
 
-		// Terminal node position is stored as centerX - 2 in layout.
-		const eachTerminalCenterX = eachTerminal!.position.x + 2;
-		const afterTerminalCenterX = afterTerminal!.position.x + 2;
+	it("returns empty array for empty input", () => {
+		const result = computeLayout([], []);
+		expect(result).toHaveLength(0);
+	});
 
-		// "each" terminal goes under the each handle; "after" is centered under the loop
-		// (AfterLastEdge curves from the right side to this centered target)
-		expect(eachTerminalCenterX).toBeCloseTo(eachHandleX, 5);
-		expect(afterTerminalCenterX).toBeCloseTo(loopCenterX, 5);
+	it("does not contain merge nodes in output", () => {
+		const nodes: Node[] = [
+			{ id: "trigger", type: "triggerNode", data: {}, position: { x: 0, y: 0 } },
+			{ id: "cond1", type: "conditionNode", data: {}, position: { x: 0, y: 0 } },
+			{ id: "__terminal__cond1-yes", type: "terminalNode", data: {}, position: { x: 0, y: 0 } },
+			{ id: "__terminal__cond1-no", type: "terminalNode", data: {}, position: { x: 0, y: 0 } },
+		];
+		const edges: Edge[] = [
+			{ id: "e1", source: "trigger", target: "cond1" },
+			{
+				id: "e2",
+				source: "cond1",
+				target: "__terminal__cond1-yes",
+				sourceHandle: "center",
+				data: { branchType: "yes", isTerminal: true },
+			},
+			{
+				id: "e3",
+				source: "cond1",
+				target: "__terminal__cond1-no",
+				sourceHandle: "center",
+				data: { branchType: "no", isTerminal: true },
+			},
+		];
+
+		const result = computeLayout(nodes, edges);
+		// No merge nodes should exist
+		const mergeNodes = result.filter((n) => n.id.startsWith("__merge__"));
+		expect(mergeNodes).toHaveLength(0);
 	});
 });

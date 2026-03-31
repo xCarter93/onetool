@@ -1,4 +1,4 @@
-import type { WorkflowNode } from "../components/workflow-node";
+import type { WorkflowNode } from "../lib/node-types";
 
 /**
  * Collect all node IDs in the subtree rooted at startNodeId.
