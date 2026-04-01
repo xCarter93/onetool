@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
 	ReactFlow,
 	Background,
@@ -15,8 +15,6 @@ import {
 	type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { computeLayout } from "../../lib/dagre-layout";
-import type { WorkflowNode } from "../../lib/node-types";
 import { TriggerNodeRF } from "./trigger-node-rf";
 import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
@@ -52,65 +50,34 @@ const edgeTypes = {
 };
 
 interface AutomationFlowProps {
-	initialNodes: Node[];
-	initialEdges: Edge[];
+	nodes: Node[];
+	edges: Edge[];
 	onNodeClick?: (nodeId: string) => void;
-	onInsertNode?: (edgeId: string, nodeType: string) => void;
 	onPaneClick?: () => void;
 }
 
 function AutomationFlowInner({
-	initialNodes,
-	initialEdges,
+	nodes: incomingNodes,
+	edges: incomingEdges,
 	onNodeClick,
-	onInsertNode,
 	onPaneClick,
 }: AutomationFlowProps) {
 	const { fitView } = useReactFlow();
-	const prevCountRef = useRef(initialNodes.length);
+	const prevCountRef = useRef(incomingNodes.length);
+	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
+	const [edges, setEdges, onEdgesChange] = useEdgesState(incomingEdges);
 
-	// Extract workflow nodes for layout passes (loop body alignment, after-last positioning)
-	const extractWorkflowNodes = useCallback((nodes: Node[]): WorkflowNode[] => {
-		return nodes
-			.filter((n) => n.data?._dbNode)
-			.map((n) => n.data._dbNode as WorkflowNode);
-	}, []);
-
-	// Compute layout via unified 3-pass pipeline, inject callbacks
-	const { layoutedNodes, layoutedEdges } = useMemo(() => {
-		const workflowNodes = extractWorkflowNodes(initialNodes);
-		const ln = computeLayout(initialNodes, initialEdges, workflowNodes);
-
-		const le = initialEdges.map((edge) => ({
-			...edge,
-			data: { ...edge.data, onInsertNode },
-		}));
-		return { layoutedNodes: ln, layoutedEdges: le };
-	}, [initialNodes, initialEdges, onInsertNode, extractWorkflowNodes]);
-
-	const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
-	const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
-
-	// Sync when initialNodes/initialEdges change (e.g. after node deletion/insertion)
 	useEffect(() => {
-		const workflowNodes = extractWorkflowNodes(initialNodes);
-		const ln = computeLayout(initialNodes, initialEdges, workflowNodes);
+		setNodes(incomingNodes);
+		setEdges(incomingEdges);
 
-		const le = initialEdges.map((edge) => ({
-			...edge,
-			data: { ...edge.data, onInsertNode },
-		}));
-		setNodes(ln);
-		setEdges(le);
-
-		// Re-fit view when node count changes (addition or deletion)
-		if (initialNodes.length !== prevCountRef.current) {
-			prevCountRef.current = initialNodes.length;
+		if (incomingNodes.length !== prevCountRef.current) {
+			prevCountRef.current = incomingNodes.length;
 			requestAnimationFrame(() => {
 				fitView({ padding: 0.2, duration: 200 });
 			});
 		}
-	}, [initialNodes, initialEdges, onInsertNode, setNodes, setEdges, fitView, extractWorkflowNodes]);
+	}, [fitView, incomingEdges, incomingNodes, setEdges, setNodes]);
 
 	const handleNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {
@@ -145,12 +112,12 @@ function AutomationFlowInner({
 				variant={BackgroundVariant.Dots}
 				gap={20}
 				size={1}
-				className="!text-muted-foreground/15 dark:!text-muted-foreground/10"
+				className="text-muted-foreground/15! dark:text-muted-foreground/10!"
 			/>
 			<Controls
 				showInteractive={false}
 				position="bottom-left"
-				className="!bg-background/80 !backdrop-blur-sm !border-border !shadow-sm"
+				className="bg-background/80! backdrop-blur-sm! border-border! shadow-sm!"
 			/>
 		</ReactFlow>
 	);
