@@ -494,6 +494,29 @@ describe("flow-adapter", () => {
 		expect(loop!.elseNodeId).toBe("a1");
 	});
 
+	it("routes loop-back from a condition's yes terminal when the loop body ends at a condition", () => {
+		const trigger = makeTrigger();
+		const nodes: WorkflowNode[] = [
+			{
+				id: "loop1",
+				type: "loop",
+				nextNodeId: "cond1",
+			},
+			{
+				id: "cond1",
+				type: "condition",
+				condition: { field: "status", operator: "equals", value: "active" },
+			},
+		];
+
+		const result = automationToReactFlow(trigger, nodes);
+		const loopBackEdge = result.edges.find((e) => e.data?.branchType === "loop_back");
+
+		expect(loopBackEdge).toBeDefined();
+		expect(loopBackEdge!.source).toBe("__terminal__cond1-yes");
+		expect(loopBackEdge!.target).toBe("loop1");
+	});
+
 	it("RF_EDGE_TYPES has straight, branchLabel, loopBack, and afterLast", () => {
 		expect(RF_EDGE_TYPES.straight).toBe("straightEdge");
 		expect(RF_EDGE_TYPES.branchLabel).toBe("branchLabelEdge");

@@ -4,12 +4,11 @@ import {
 	BaseEdge,
 	EdgeLabelRenderer,
 	getStraightPath,
-	getSmoothStepPath,
-	Position,
 	type EdgeProps,
 } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getNoBranchGeometry } from "./edge-geometry";
 
 export function BranchLabelEdge({
 	id,
@@ -32,6 +31,7 @@ export function BranchLabelEdge({
 	let edgePath = "";
 	let labelX = 0;
 	let labelY = 0;
+	let noBranchEndY = targetY;
 
 	if (branchType === "yes" || branchType === "each") {
 		// Yes and For Each: straight vertical line
@@ -39,20 +39,14 @@ export function BranchLabelEdge({
 			sourceX,
 			sourceY,
 			targetX,
-			targetY: isTerminal ? sourceY + (targetY - sourceY) * 0.5 : targetY,
+			targetY,
 		});
 	} else if (branchType === "no") {
-		// No: smoothstep right-then-down routing from center handle
-		[edgePath, labelX, labelY] = getSmoothStepPath({
-			sourceX,
-			sourceY,
-			sourcePosition: Position.Bottom,
-			targetX,
-			targetY: isTerminal ? sourceY + (targetY - sourceY) * 0.5 : targetY,
-			targetPosition: Position.Top,
-			borderRadius: 12,
-			offset: 25,
-		});
+		const geometry = getNoBranchGeometry(sourceX, sourceY, targetX, targetY);
+		noBranchEndY = geometry.effectiveTargetY;
+		edgePath = geometry.edgePath;
+		labelX = geometry.labelX;
+		labelY = geometry.labelY;
 	} else if (branchType === "after") {
 		// After Last: straight vertical from right side
 		[edgePath, labelX, labelY] = getStraightPath({
@@ -62,15 +56,12 @@ export function BranchLabelEdge({
 			targetY: isTerminal ? sourceY + (targetY - sourceY) * 0.5 : targetY,
 		});
 	} else {
-		// Fallback: smoothstep
-		[edgePath, labelX, labelY] = getSmoothStepPath({
+		// Fallback: straight
+		[edgePath, labelX, labelY] = getStraightPath({
 			sourceX,
 			sourceY,
-			sourcePosition: Position.Bottom,
 			targetX,
 			targetY,
-			targetPosition: Position.Top,
-			borderRadius: 8,
 		});
 	}
 
@@ -83,11 +74,9 @@ export function BranchLabelEdge({
 	};
 	const pillClass = pillClasses[branchType] || pillClasses.yes;
 
-	// Plus button position: at the end of a terminal edge, or at the label midpoint
-	const plusX = isTerminal ? targetX : labelX;
-	const plusY = isTerminal
-		? sourceY + (targetY - sourceY) * 0.5
-		: labelY;
+	// Plus button position: at the edge endpoint for terminals, midpoint for connected
+	const plusX = branchType === "no" ? targetX : isTerminal ? targetX : labelX;
+	const plusY = branchType === "no" ? noBranchEndY : isTerminal ? targetY : labelY;
 
 	return (
 		<>

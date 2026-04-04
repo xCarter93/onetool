@@ -32,6 +32,7 @@ import {
 	getValidationToastMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
+import { computeAfterLastRouteRightX } from "../components/flow/edge-geometry";
 
 type DeletedState = {
 	deletedNodes: WorkflowNode[];
@@ -689,7 +690,28 @@ export function useAutomationEditor(automationId: string | null) {
 		return computeLayout(rawFlow.nodes, rawFlow.edges, nodes);
 	}, [nodes, rawFlow.edges, rawFlow.nodes]);
 
-	const layoutedEdges = useMemo(() => rawFlow.edges, [rawFlow.edges]);
+	const layoutedEdges = useMemo(
+		() =>
+			rawFlow.edges.map((edge) => {
+				if (edge.data?.branchType !== "after") return edge;
+
+				const routeRightX = computeAfterLastRouteRightX(
+					edge.source,
+					layoutedNodes,
+					nodes
+				);
+				if (routeRightX === undefined) return edge;
+
+				return {
+					...edge,
+					data: {
+						...edge.data,
+						routeRightX,
+					},
+				};
+			}),
+		[layoutedNodes, nodes, rawFlow.edges]
+	);
 
 	const hasPlaceholders = useMemo(
 		() =>

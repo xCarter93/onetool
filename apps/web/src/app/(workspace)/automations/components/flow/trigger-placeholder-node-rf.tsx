@@ -20,7 +20,7 @@ export const TriggerPlaceholderNodeRF = memo((_props: NodeProps) => {
 						Trigger
 					</div>
 					<div className="text-sm font-medium text-muted-foreground">
-						Click to set a trigger
+						Set a trigger in the sidebar
 					</div>
 				</div>
 			</div>

@@ -94,8 +94,14 @@ export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 			<Handle
 				type="source"
 				position={Position.Bottom}
-				id="center"
-				className="!w-2 !h-2 !bg-purple-400"
+				id="yes"
+				className="!w-2 !h-2 !bg-emerald-400"
+			/>
+			<Handle
+				type="source"
+				position={Position.Right}
+				id="no"
+				className="!w-2 !h-2 !bg-rose-400"
 			/>
 		</div>
 	);

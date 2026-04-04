@@ -1150,7 +1150,8 @@ export default defineSchema({
 					v.literal("condition"),
 					v.literal("action"),
 					v.literal("fetch_records"),
-					v.literal("loop")
+					v.literal("loop"),
+					v.literal("end")
 				),
 				// Condition node fields
 				condition: v.optional(

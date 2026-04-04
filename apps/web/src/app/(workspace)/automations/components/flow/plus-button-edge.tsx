@@ -4,8 +4,6 @@ import {
 	BaseEdge,
 	EdgeLabelRenderer,
 	getStraightPath,
-	getSmoothStepPath,
-	Position,
 	type EdgeProps,
 } from "@xyflow/react";
 import { Plus } from "lucide-react";
@@ -31,35 +29,20 @@ export function PlusButtonEdge({
 		? sourceY + (targetY - sourceY) * 0.5
 		: targetY;
 
-	// Terminal edges: straight vertical line. Connected edges: smoothstep so
-	// non-aligned nodes get clean right-angle routing instead of diagonal lines.
+	// All plus-button edges use straight paths. Dagre layout aligns nodes
+	// vertically, so smoothstep routing is unnecessary and creates unwanted curves.
 	let edgePath: string;
-	let plusX: number;
-	let plusY: number;
+	let labelX: number;
+	let labelY: number;
 
-	if (isTerminal) {
-		[edgePath] = getStraightPath({
-			sourceX,
-			sourceY,
-			targetX: sourceX, // Keep terminal edges perfectly vertical
-			targetY: effectiveTargetY,
-		});
-		plusX = sourceX;
-		plusY = effectiveTargetY;
-	} else {
-		let labelX: number, labelY: number;
-		[edgePath, labelX, labelY] = getSmoothStepPath({
-			sourceX,
-			sourceY,
-			sourcePosition: Position.Bottom,
-			targetX,
-			targetY,
-			targetPosition: Position.Top,
-			borderRadius: 8,
-		});
-		plusX = labelX;
-		plusY = labelY;
-	}
+	[edgePath, labelX, labelY] = getStraightPath({
+		sourceX,
+		sourceY,
+		targetX: isTerminal ? sourceX : targetX,
+		targetY: isTerminal ? effectiveTargetY : targetY,
+	});
+	const plusX = isTerminal ? sourceX : labelX;
+	const plusY = isTerminal ? effectiveTargetY : labelY;
 
 	return (
 		<>

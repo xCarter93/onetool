@@ -10,7 +10,7 @@ export const PlaceholderNodeRF = memo(({ selected }: NodeProps<PlaceholderRFNode
 	return (
 		<div
 			className={cn(
-				"px-4 py-3 rounded-xl border-2 border-dashed min-w-[200px]",
+				"px-4 py-3 rounded-xl border-2 border-dashed min-w-[260px]",
 				"border-muted-foreground/40 dark:border-muted-foreground/30",
 				"bg-muted/30 dark:bg-muted/10",
 				selected && "ring-2 ring-muted-foreground/50"

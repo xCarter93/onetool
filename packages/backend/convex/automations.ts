@@ -55,7 +55,8 @@ const nodeValidator = v.object({
 		v.literal("condition"),
 		v.literal("action"),
 		v.literal("fetch_records"),
-		v.literal("loop")
+		v.literal("loop"),
+		v.literal("end")
 	),
 	condition: v.optional(
 		v.object({
