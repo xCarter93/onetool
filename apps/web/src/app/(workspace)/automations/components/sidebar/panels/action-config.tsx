@@ -1,7 +1,7 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import React from "react";
+import { Trash2, Play } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
 	Select,
@@ -16,6 +16,7 @@ import {
 } from "../../../lib/node-types";
 import { STATUS_OPTIONS } from "../../trigger-node";
 import type { ConfigPanelProps } from "../automation-sidebar";
+import { ConfigPanelHeader } from "./config-panel-header";
 
 export function ActionConfigPanel({
 	nodeId,
@@ -74,12 +75,20 @@ export function ActionConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<div className="flex-1 space-y-6">
-				<div className="space-y-2">
+			<ConfigPanelHeader
+				icon={Play}
+				iconBgColor="bg-green-50 dark:bg-green-950/40"
+				iconFgColor="text-green-600 dark:text-green-400"
+				categoryBadge="Actions"
+				nodeTypeName="Update Record"
+			/>
+
+			<div className="flex-1">
+				<div className="border-b border-border py-4">
 					<Label className="text-sm font-medium">
 						{isStatusUpdateAction ? "Update record" : "Action"}
 					</Label>
-					<div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+					<div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm mt-2">
 						{isStatusUpdateAction
 							? "Update Record"
 							: currentAction.actionType === "send_notification"
@@ -90,7 +99,7 @@ export function ActionConfigPanel({
 
 				{isStatusUpdateAction ? (
 					<>
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">Target</Label>
 							<Select
 								value={currentAction.targetType}
@@ -106,7 +115,7 @@ export function ActionConfigPanel({
 									});
 								}}
 							>
-								<SelectTrigger>
+								<SelectTrigger className="mt-2">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -119,7 +128,7 @@ export function ActionConfigPanel({
 							</Select>
 						</div>
 
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">Set status to</Label>
 							<Select
 								value={currentAction.newStatus || ""}
@@ -130,7 +139,7 @@ export function ActionConfigPanel({
 									})
 								}
 							>
-								<SelectTrigger>
+								<SelectTrigger className="mt-2">
 									<SelectValue placeholder="Select status" />
 								</SelectTrigger>
 								<SelectContent>
@@ -144,23 +153,27 @@ export function ActionConfigPanel({
 						</div>
 					</>
 				) : (
-					<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-						Detailed configuration for this action type is coming in a future
-						update.
+					<div className="border-b border-border py-4">
+						<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+							Detailed configuration for this action type is coming in a future
+							update.
+						</div>
 					</div>
 				)}
 			</div>
 
+			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-6 border-t border-border mt-6">
-					<Button
-						intent="destructive"
-						className="w-full"
-						onPress={() => onDeleteNode(nodeId)}
+				<div className="pt-4 border-t border-border mt-2">
+					<button
+						type="button"
+						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
+						onClick={() => onDeleteNode(nodeId)}
+						aria-label="Delete step"
 					>
-						<Trash2 className="h-4 w-4 mr-2" />
-						Delete Node
-					</Button>
+						<Trash2 className="h-4 w-4" />
+						<span className="text-sm font-medium">Delete Node</span>
+					</button>
 				</div>
 			)}
 		</div>

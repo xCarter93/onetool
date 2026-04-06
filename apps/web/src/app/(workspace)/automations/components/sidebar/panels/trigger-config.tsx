@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Trash2, Zap } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +19,7 @@ import {
 	type TriggerType,
 } from "../../trigger-node";
 import type { ConfigPanelProps } from "../automation-sidebar";
+import { ConfigPanelHeader } from "./config-panel-header";
 
 export function TriggerConfigPanel({
 	trigger,
@@ -83,15 +83,23 @@ export function TriggerConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<div className="flex-1 space-y-6">
+			<ConfigPanelHeader
+				icon={Zap}
+				iconBgColor="bg-amber-50 dark:bg-amber-950/40"
+				iconFgColor="text-amber-600 dark:text-amber-400"
+				categoryBadge="Triggers"
+				nodeTypeName="Trigger"
+			/>
+
+			<div className="flex-1">
 				{/* Trigger type selector */}
-				<div className="space-y-2">
+				<div className="border-b border-border py-4">
 					<Label className="text-sm font-medium">Trigger event</Label>
 					<Select
 						value={triggerType}
 						onValueChange={handleTriggerTypeChange}
 					>
-						<SelectTrigger>
+						<SelectTrigger className="mt-2">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
@@ -106,7 +114,7 @@ export function TriggerConfigPanel({
 
 				{/* Object type -- shown for all except scheduled */}
 				{triggerType !== "scheduled" && (
-					<div className="space-y-2">
+					<div className="border-b border-border py-4">
 						<Label className="text-sm font-medium">
 							{triggerType === "email_received"
 								? "From"
@@ -117,7 +125,7 @@ export function TriggerConfigPanel({
 							onValueChange={handleObjectTypeChange}
 							disabled={triggerType === "email_received"}
 						>
-							<SelectTrigger>
+							<SelectTrigger className="mt-2">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -143,7 +151,7 @@ export function TriggerConfigPanel({
 				{/* Status change-specific fields */}
 				{triggerType === "status_changed" && (
 					<>
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">
 								Changes from
 							</Label>
@@ -159,7 +167,7 @@ export function TriggerConfigPanel({
 									})
 								}
 							>
-								<SelectTrigger>
+								<SelectTrigger className="mt-2">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -178,7 +186,7 @@ export function TriggerConfigPanel({
 							</Select>
 						</div>
 
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">To</Label>
 							<Select
 								value={currentTrigger.toStatus || ""}
@@ -189,7 +197,7 @@ export function TriggerConfigPanel({
 									})
 								}
 							>
-								<SelectTrigger>
+								<SelectTrigger className="mt-2">
 									<SelectValue placeholder="Select status" />
 								</SelectTrigger>
 								<SelectContent>
@@ -209,11 +217,12 @@ export function TriggerConfigPanel({
 
 				{/* Record updated -- optional field filter */}
 				{triggerType === "record_updated" && (
-					<div className="space-y-2">
+					<div className="border-b border-border py-4">
 						<Label className="text-sm font-medium">
 							Field (optional)
 						</Label>
 						<Input
+							className="mt-2"
 							value={currentTrigger.field || ""}
 							onChange={(e) =>
 								onTriggerChange({
@@ -223,7 +232,7 @@ export function TriggerConfigPanel({
 							}
 							placeholder="Any field"
 						/>
-						<p className="text-xs text-muted-foreground">
+						<p className="text-xs text-muted-foreground mt-1">
 							Leave blank to trigger on any field change
 						</p>
 					</div>
@@ -232,7 +241,7 @@ export function TriggerConfigPanel({
 				{/* Scheduled -- frequency picker */}
 				{triggerType === "scheduled" && (
 					<>
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">
 								Frequency
 							</Label>
@@ -254,7 +263,7 @@ export function TriggerConfigPanel({
 									})
 								}
 							>
-								<SelectTrigger>
+								<SelectTrigger className="mt-2">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -269,9 +278,10 @@ export function TriggerConfigPanel({
 							</Select>
 						</div>
 
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">Time</Label>
 							<Input
+								className="mt-2"
 								type="time"
 								value={
 									currentTrigger.schedule?.time || "09:00"
@@ -288,9 +298,10 @@ export function TriggerConfigPanel({
 							/>
 						</div>
 
-						<div className="space-y-2">
+						<div className="border-b border-border py-4">
 							<Label className="text-sm font-medium">Timezone</Label>
 							<Input
+								className="mt-2"
 								value={
 									currentTrigger.schedule?.timezone ||
 									Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -310,22 +321,23 @@ export function TriggerConfigPanel({
 					</>
 				)}
 
-				<div className="pt-4 text-xs text-muted-foreground">
+				<div className="py-4 text-xs text-muted-foreground">
 					Changes are saved automatically
 				</div>
 			</div>
 
 			{/* Delete trigger */}
 			{onDeleteTrigger && (
-				<div className="pt-6 border-t border-border mt-6">
-					<Button
-						intent="destructive"
-						className="w-full"
-						onPress={onDeleteTrigger}
+				<div className="pt-4 border-t border-border mt-2">
+					<button
+						type="button"
+						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
+						onClick={onDeleteTrigger}
+						aria-label="Delete step"
 					>
-						<Trash2 className="h-4 w-4 mr-2" />
-						Delete Trigger
-					</Button>
+						<Trash2 className="h-4 w-4" />
+						<span className="text-sm font-medium">Delete Trigger</span>
+					</button>
 				</div>
 			)}
 		</div>

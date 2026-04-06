@@ -1,7 +1,7 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import React from "react";
+import { Trash2, Repeat } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
 	Select,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import type { FetchConfig } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
+import { ConfigPanelHeader } from "./config-panel-header";
 
 const ENTITY_TYPES = [
 	{ value: "client", label: "Client" },
@@ -44,8 +45,16 @@ export function LoopConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<div className="flex-1 space-y-6">
-				<div className="space-y-2">
+			<ConfigPanelHeader
+				icon={Repeat}
+				iconBgColor="bg-orange-50 dark:bg-orange-950/40"
+				iconFgColor="text-orange-600 dark:text-orange-400"
+				categoryBadge="Utilities"
+				nodeTypeName="Loop"
+			/>
+
+			<div className="flex-1">
+				<div className="border-b border-border py-4">
 					<Label className="text-sm font-medium">Loop source</Label>
 					<Select
 						value={currentConfig.entityType}
@@ -58,7 +67,7 @@ export function LoopConfigPanel({
 							})
 						}
 					>
-						<SelectTrigger>
+						<SelectTrigger className="mt-2">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
@@ -71,21 +80,25 @@ export function LoopConfigPanel({
 					</Select>
 				</div>
 
-				<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-					Loop configuration coming in a future update.
+				<div className="py-4">
+					<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+						Loop configuration coming in a future update.
+					</div>
 				</div>
 			</div>
 
+			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-6 border-t border-border mt-6">
-					<Button
-						intent="destructive"
-						className="w-full"
-						onPress={() => onDeleteNode(nodeId)}
+				<div className="pt-4 border-t border-border mt-2">
+					<button
+						type="button"
+						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
+						onClick={() => onDeleteNode(nodeId)}
+						aria-label="Delete step"
 					>
-						<Trash2 className="h-4 w-4 mr-2" />
-						Delete Node
-					</Button>
+						<Trash2 className="h-4 w-4" />
+						<span className="text-sm font-medium">Delete Node</span>
+					</button>
 				</div>
 			)}
 		</div>

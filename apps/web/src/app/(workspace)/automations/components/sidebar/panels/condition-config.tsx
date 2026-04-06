@@ -1,18 +1,15 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import React from "react";
+import { Trash2, GitBranch, ChevronDown } from "lucide-react";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { FIELD_OPTIONS, type ConditionConfig } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
+import { ConfigPanelHeader } from "./config-panel-header";
 
 const OPERATOR_OPTIONS = [
 	{ value: "equals", label: "equals" },
@@ -26,6 +23,8 @@ const OPERATOR_OPTIONS = [
 	{ value: "before", label: "is before" },
 	{ value: "after", label: "is after" },
 ] as const;
+
+const NO_VALUE_OPERATORS = ["exists", "is_true", "is_false"];
 
 export function ConditionConfigPanel({
 	nodeId,
@@ -54,10 +53,14 @@ export function ConditionConfigPanel({
 			value: "",
 		};
 
-	const shouldHideValue =
-		currentCondition.operator === "exists" ||
-		currentCondition.operator === "is_true" ||
-		currentCondition.operator === "is_false";
+	const needsValue = !NO_VALUE_OPERATORS.includes(currentCondition.operator);
+
+	const selectedFieldLabel =
+		fieldOptions.find((f) => f.value === currentCondition.field)?.label ||
+		currentCondition.field;
+	const selectedOperatorLabel =
+		OPERATOR_OPTIONS.find((o) => o.value === currentCondition.operator)
+			?.label || currentCondition.operator;
 
 	const updateCondition = (updates: Partial<ConditionConfig>) => {
 		onNodeChange(nodeId, {
@@ -70,76 +73,110 @@ export function ConditionConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<div className="flex-1 space-y-6">
-				<div className="space-y-2">
-					<Label className="text-sm font-medium">If field</Label>
-					<Select
-						value={currentCondition.field}
-						onValueChange={(value) => updateCondition({ field: value })}
-					>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{fieldOptions.map((field) => (
-								<SelectItem key={field.value} value={field.value}>
-									{field.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+			<ConfigPanelHeader
+				icon={GitBranch}
+				iconBgColor="bg-purple-50 dark:bg-purple-950/40"
+				iconFgColor="text-purple-600 dark:text-purple-400"
+				categoryBadge="Conditions"
+				nodeTypeName="Condition"
+			/>
 
-				<div className="space-y-2">
-					<Label className="text-sm font-medium">Operator</Label>
-					<Select
-						value={currentCondition.operator}
-						onValueChange={(value) =>
-							updateCondition({
-								operator: value as ConditionConfig["operator"],
-								value: ["exists", "is_true", "is_false"].includes(value)
-									? ""
-									: currentCondition.value,
-							})
-						}
-					>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{OPERATOR_OPTIONS.map((operator) => (
-								<SelectItem key={operator.value} value={operator.value}>
-									{operator.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-
-				{!shouldHideValue && (
-					<div className="space-y-2">
-						<Label className="text-sm font-medium">Value</Label>
-						<Input
-							value={String(currentCondition.value ?? "")}
-							onChange={(event) =>
-								updateCondition({ value: event.target.value })
-							}
-							placeholder="Enter value"
-						/>
+			<div className="flex-1">
+				{/* Inline pill/tag condition builder */}
+				<div className="border-b border-border py-4">
+					<div className="text-xs font-medium text-muted-foreground mb-2">
+						When
 					</div>
-				)}
+					<div className="flex flex-wrap items-center gap-2">
+						{/* Field pill */}
+						<Popover>
+							<PopoverTrigger asChild>
+								<button
+									type="button"
+									className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 text-xs font-semibold border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-950/60 transition-colors nodrag"
+								>
+									{selectedFieldLabel || "Field"}
+									<ChevronDown className="h-3 w-3" />
+								</button>
+							</PopoverTrigger>
+							<PopoverContent className="w-48 p-1" align="start">
+								{fieldOptions.map((opt) => (
+									<button
+										key={opt.value}
+										type="button"
+										onClick={() =>
+											updateCondition({ field: opt.value })
+										}
+										className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-accent"
+									>
+										{opt.label}
+									</button>
+								))}
+							</PopoverContent>
+						</Popover>
+
+						{/* Operator pill */}
+						<Popover>
+							<PopoverTrigger asChild>
+								<button
+									type="button"
+									className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-semibold border border-border hover:bg-accent transition-colors nodrag"
+								>
+									{selectedOperatorLabel || "operator"}
+									<ChevronDown className="h-3 w-3" />
+								</button>
+							</PopoverTrigger>
+							<PopoverContent className="w-40 p-1" align="start">
+								{OPERATOR_OPTIONS.map((opt) => (
+									<button
+										key={opt.value}
+										type="button"
+										onClick={() =>
+											updateCondition({
+												operator:
+													opt.value as ConditionConfig["operator"],
+												value: NO_VALUE_OPERATORS.includes(
+													opt.value
+												)
+													? ""
+													: currentCondition.value,
+											})
+										}
+										className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-accent"
+									>
+										{opt.label}
+									</button>
+								))}
+							</PopoverContent>
+						</Popover>
+
+						{/* Value input (hidden for exists/is_true/is_false) */}
+						{needsValue && (
+							<input
+								className="px-2.5 py-1 rounded-full bg-muted text-xs border border-border w-24 focus:outline-none focus:ring-1 focus:ring-primary nodrag"
+								value={String(currentCondition.value ?? "")}
+								onChange={(e) =>
+									updateCondition({ value: e.target.value })
+								}
+								placeholder="value"
+							/>
+						)}
+					</div>
+				</div>
 			</div>
 
+			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-6 border-t border-border mt-6">
-					<Button
-						intent="destructive"
-						className="w-full"
-						onPress={() => onDeleteNode(nodeId)}
+				<div className="pt-4 border-t border-border mt-2">
+					<button
+						type="button"
+						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
+						onClick={() => onDeleteNode(nodeId)}
+						aria-label="Delete step"
 					>
-						<Trash2 className="h-4 w-4 mr-2" />
-						Delete Node
-					</Button>
+						<Trash2 className="h-4 w-4" />
+						<span className="text-sm font-medium">Delete Node</span>
+					</button>
 				</div>
 			)}
 		</div>
