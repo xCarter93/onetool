@@ -34,8 +34,8 @@ export function LoopBackEdge({
 			markerEnd={markerEnd}
 			style={{
 				...style,
-				strokeWidth: 2,
-				stroke: "var(--color-border)",
+				strokeWidth: 1.5,
+				stroke: "hsl(var(--color-orange-300))",
 				strokeDasharray: "6 3",
 			}}
 		/>
