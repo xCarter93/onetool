@@ -37,6 +37,8 @@ export interface NodeBase {
 	id: string;
 	nextNodeId?: string;
 	elseNodeId?: string;
+	/** Persisted UI position from manual drag */
+	position?: { x: number; y: number };
 	/**
 	 * @deprecated Legacy field -- use `config` on ConditionNode instead.
 	 * Kept for backward compatibility during migration (Plans 02-05).

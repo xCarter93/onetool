@@ -194,13 +194,13 @@ type DevToolsToggleProps = {
 const DevToolsToggle = ({ tools, position }: DevToolsToggleProps) => {
   return (
     <Panel position={position} className="bg-card rounded border p-1 shadow-xs">
-      <ToggleGroup type="multiple">
+      <ToggleGroup selectionMode="multiple">
         {tools.map(({ active, setActive, label, value }) => (
           <ToggleGroupItem
             key={value}
-            value={value}
-            onClick={() => setActive((prev) => !prev)}
-            aria-pressed={active}
+            id={value}
+            isSelected={active}
+            onPress={() => setActive((prev) => !prev)}
             className="bg-card text-card-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors duration-300"
           >
             {label}

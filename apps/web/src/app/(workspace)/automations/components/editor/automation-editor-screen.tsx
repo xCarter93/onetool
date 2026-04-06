@@ -162,6 +162,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						edges={flowEdges}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
+						onNodeDragStop={editor.handleNodeDragStop}
 					/>
 					{editor.undoBanner && (
 						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />

@@ -1,6 +1,7 @@
 import { MarkerType, type Node, type Edge } from "@xyflow/react";
 import type { WorkflowNode } from "../lib/node-types";
 import type { TriggerConfig } from "../components/trigger-node";
+import { computeAllPositions } from "./initial-placement";
 
 export const TRIGGER_NODE_ID = "__trigger__";
 export const TRIGGER_PLACEHOLDER_ID = "__trigger_placeholder__";
@@ -304,6 +305,25 @@ export function automationToReactFlow(
 		}
 	}
 
+	// Apply positions: use persisted position if available, otherwise compute
+	const triggerId = trigger ? TRIGGER_NODE_ID : TRIGGER_PLACEHOLDER_ID;
+	const computedPositions = computeAllPositions(rfNodes, rfEdges, triggerId);
+
+	for (const rfNode of rfNodes) {
+		// Check if the source DB node had a persisted position
+		const dbNode = rfNode.data?._dbNode as
+			| (WorkflowNode & { position?: { x: number; y: number } })
+			| undefined;
+		if (dbNode?.position) {
+			rfNode.position = { x: dbNode.position.x, y: dbNode.position.y };
+		} else {
+			const computed = computedPositions.get(rfNode.id);
+			if (computed) {
+				rfNode.position = computed;
+			}
+		}
+	}
+
 	return { nodes: rfNodes, edges: rfEdges };
 }
 
@@ -357,6 +377,8 @@ export function reactFlowToFlatArray(
 		const nodeData = rfNode.data as Record<string, unknown> | undefined;
 		const config = nodeData?.config || dbNode.condition || dbNode.action;
 
+		const pos = { x: rfNode.position.x, y: rfNode.position.y };
+
 		if (dbNode.type === "condition") {
 			workflowNodes.push({
 				id: dbNode.id,
@@ -370,6 +392,7 @@ export function reactFlowToFlatArray(
 					},
 				nextNodeId,
 				elseNodeId,
+				position: pos,
 			} as WorkflowNode);
 			continue;
 		}
@@ -387,6 +410,7 @@ export function reactFlowToFlatArray(
 					},
 				nextNodeId,
 				elseNodeId,
+				position: pos,
 			} as WorkflowNode);
 			continue;
 		}
@@ -397,6 +421,7 @@ export function reactFlowToFlatArray(
 				type: "fetch_records",
 				nextNodeId,
 				elseNodeId,
+				position: pos,
 				...(config ? { fetchConfig: config } : {}),
 			} as WorkflowNode);
 			continue;
@@ -408,6 +433,7 @@ export function reactFlowToFlatArray(
 				type: "loop",
 				nextNodeId,
 				elseNodeId,
+				position: pos,
 				...((dbNode as WorkflowNode & { loopConfig?: unknown }).loopConfig
 					? {
 							loopConfig: (dbNode as WorkflowNode & { loopConfig?: unknown })
@@ -423,6 +449,7 @@ export function reactFlowToFlatArray(
 			type: "end",
 			nextNodeId,
 			elseNodeId,
+			position: pos,
 		} as WorkflowNode);
 	}
 

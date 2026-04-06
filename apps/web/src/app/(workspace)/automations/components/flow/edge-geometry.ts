@@ -1,6 +1,8 @@
 import type { Node } from "@xyflow/react";
-import { LOOP_NODE_WIDTH, NODE_WIDTH } from "../../lib/dagre-layout";
 import type { WorkflowNode } from "../../lib/node-types";
+
+const NODE_WIDTH = 260;
+const LOOP_NODE_WIDTH = 300;
 import { collectLoopBody, collectSubtree } from "../../lib/graph-utils";
 
 const AFTER_LAST_MIN_OFFSET_X = 56;

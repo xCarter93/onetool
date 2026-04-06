@@ -5,7 +5,6 @@ import {
 	ReactFlow,
 	Background,
 	BackgroundVariant,
-	Controls,
 	useNodesState,
 	useEdgesState,
 	useReactFlow,
@@ -14,6 +13,7 @@ import {
 	type Edge,
 	type NodeMouseHandler,
 } from "@xyflow/react";
+import { ZoomSlider } from "@/components/zoom-slider";
 import "@xyflow/react/dist/style.css";
 import { TriggerNodeRF } from "./trigger-node-rf";
 import { ConditionNodeRF } from "./condition-node-rf";
@@ -54,6 +54,7 @@ interface AutomationFlowProps {
 	edges: Edge[];
 	onNodeClick?: (nodeId: string) => void;
 	onPaneClick?: () => void;
+	onNodeDragStop?: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 function AutomationFlowInner({
@@ -61,6 +62,7 @@ function AutomationFlowInner({
 	edges: incomingEdges,
 	onNodeClick,
 	onPaneClick,
+	onNodeDragStop,
 }: AutomationFlowProps) {
 	const { fitView } = useReactFlow();
 	const prevCountRef = useRef(incomingNodes.length);
@@ -86,6 +88,13 @@ function AutomationFlowInner({
 		[onNodeClick]
 	);
 
+	const handleNodeDragStop: NodeMouseHandler = useCallback(
+		(_event, node) => {
+			onNodeDragStop?.(node.id, node.position);
+		},
+		[onNodeDragStop]
+	);
+
 	return (
 		<ReactFlow
 			nodes={nodes}
@@ -93,12 +102,13 @@ function AutomationFlowInner({
 			onNodesChange={onNodesChange}
 			onEdgesChange={onEdgesChange}
 			onNodeClick={handleNodeClick}
+			onNodeDragStop={handleNodeDragStop}
 			onPaneClick={onPaneClick}
 			nodeTypes={nodeTypes}
 			edgeTypes={edgeTypes}
 			fitView
 			fitViewOptions={{ padding: 0.2, duration: 300 }}
-			nodesDraggable={false}
+			nodesDraggable={true}
 			nodesConnectable={false}
 			elementsSelectable={true}
 			panOnDrag={true}
@@ -114,11 +124,7 @@ function AutomationFlowInner({
 				size={1}
 				className="text-muted-foreground/15! dark:text-muted-foreground/10!"
 			/>
-			<Controls
-				showInteractive={false}
-				position="bottom-left"
-				className="bg-background/80! backdrop-blur-sm! border-border! shadow-sm!"
-			/>
+			<ZoomSlider position="bottom-left" orientation="vertical" />
 		</ReactFlow>
 	);
 }

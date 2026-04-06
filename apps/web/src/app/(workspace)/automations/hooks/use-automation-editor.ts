@@ -26,13 +26,11 @@ import {
 	isTerminalId,
 	reactFlowToFlatArray,
 } from "../lib/flow-adapter";
-import { computeLayout } from "../lib/dagre-layout";
 import { collectLoopBody, collectSubtree, findParent } from "../lib/graph-utils";
 import {
 	getValidationToastMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
-import { computeAfterLastRouteRightX } from "../components/flow/edge-geometry";
 
 type DeletedState = {
 	deletedNodes: WorkflowNode[];
@@ -676,6 +674,18 @@ export function useAutomationEditor(automationId: string | null) {
 		toast.success("Restored", "The deleted nodes have been restored");
 	}, [clearUndoState, deletedNodeState, toast]);
 
+	const handleNodeDragStop = useCallback(
+		(nodeId: string, position: { x: number; y: number }) => {
+			// Update internal workflow nodes with new drag position for persistence
+			setNodes((prev) =>
+				prev.map((n) =>
+					n.id === nodeId ? ({ ...n, position } as WorkflowNode) : n
+				)
+			);
+		},
+		[]
+	);
+
 	const handlePaneClick = useCallback(() => {
 		clearUndoState();
 		setNodes((prev) =>
@@ -686,32 +696,9 @@ export function useAutomationEditor(automationId: string | null) {
 		);
 	}, [clearUndoState]);
 
-	const layoutedNodes = useMemo(() => {
-		return computeLayout(rawFlow.nodes, rawFlow.edges, nodes);
-	}, [nodes, rawFlow.edges, rawFlow.nodes]);
-
-	const layoutedEdges = useMemo(
-		() =>
-			rawFlow.edges.map((edge) => {
-				if (edge.data?.branchType !== "after") return edge;
-
-				const routeRightX = computeAfterLastRouteRightX(
-					edge.source,
-					layoutedNodes,
-					nodes
-				);
-				if (routeRightX === undefined) return edge;
-
-				return {
-					...edge,
-					data: {
-						...edge.data,
-						routeRightX,
-					},
-				};
-			}),
-		[layoutedNodes, nodes, rawFlow.edges]
-	);
+	// Positions are now computed inside automationToReactFlow (initial-placement.ts)
+	const layoutedNodes = rawFlow.nodes;
+	const layoutedEdges = rawFlow.edges;
 
 	const hasPlaceholders = useMemo(
 		() =>
@@ -812,6 +799,7 @@ export function useAutomationEditor(automationId: string | null) {
 		handleTriggerTypeSelect,
 		handleDeleteNode,
 		handleDeleteTrigger,
+		handleNodeDragStop,
 		handleUndo,
 		handleSave,
 		handlePaneClick,
