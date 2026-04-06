@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Trash2, Play } from "lucide-react";
+import { NextStepTree } from "../next-step-tree";
 import { Label } from "@/components/ui/label";
 import {
 	Select,
@@ -24,6 +25,9 @@ export function ActionConfigPanel({
 	nodes,
 	onNodeChange,
 	onDeleteNode,
+	onNavigateToNode,
+	rfNodes,
+	rfEdges,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -161,6 +165,18 @@ export function ActionConfigPanel({
 					</div>
 				)}
 			</div>
+
+			{/* Next steps tree */}
+			{nodeId && rfNodes && rfEdges && onNavigateToNode && (
+				<div className="border-t border-border pt-4 mt-2">
+					<NextStepTree
+						currentNodeId={nodeId}
+						nodes={rfNodes}
+						edges={rfEdges}
+						onNavigateToNode={onNavigateToNode}
+					/>
+				</div>
+			)}
 
 			{/* Delete button */}
 			{onDeleteNode && (

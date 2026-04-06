@@ -2,6 +2,8 @@
 
 import React from "react";
 import { Trash2, Zap } from "lucide-react";
+import { NextStepTree } from "../next-step-tree";
+import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,6 +27,9 @@ export function TriggerConfigPanel({
 	trigger,
 	onTriggerChange,
 	onDeleteTrigger,
+	onNavigateToNode,
+	rfNodes,
+	rfEdges,
 }: ConfigPanelProps) {
 	const currentTrigger = trigger || {
 		type: "status_changed" as TriggerType,
@@ -325,6 +330,18 @@ export function TriggerConfigPanel({
 					Changes are saved automatically
 				</div>
 			</div>
+
+			{/* Next steps tree */}
+			{rfNodes && rfEdges && onNavigateToNode && (
+				<div className="border-t border-border pt-4 mt-2">
+					<NextStepTree
+						currentNodeId={TRIGGER_NODE_ID}
+						nodes={rfNodes}
+						edges={rfEdges}
+						onNavigateToNode={onNavigateToNode}
+					/>
+				</div>
+			)}
 
 			{/* Delete trigger */}
 			{onDeleteTrigger && (

@@ -38,6 +38,9 @@ export interface ConfigPanelProps {
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
 	onDeleteTrigger?: () => void;
+	onNavigateToNode?: (nodeId: string) => void;
+	rfNodes?: import("@xyflow/react").Node[];
+	rfEdges?: import("@xyflow/react").Edge[];
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +97,9 @@ interface AutomationSidebarProps {
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
 	onDeleteTrigger?: () => void;
+	onNavigateToNode?: (nodeId: string) => void;
+	rfNodes?: import("@xyflow/react").Node[];
+	rfEdges?: import("@xyflow/react").Edge[];
 }
 
 export function AutomationSidebar({
@@ -108,6 +114,9 @@ export function AutomationSidebar({
 	onNodeChange,
 	onDeleteNode,
 	onDeleteTrigger,
+	onNavigateToNode,
+	rfNodes,
+	rfEdges,
 }: AutomationSidebarProps) {
 	const contentRef = useRef<HTMLDivElement>(null);
 
@@ -153,6 +162,9 @@ export function AutomationSidebar({
 		onNodeChange,
 		onDeleteNode,
 		onDeleteTrigger,
+		onNavigateToNode,
+		rfNodes,
+		rfEdges,
 	};
 
 	function renderContent() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AutomationFlow } from "../flow/automation-flow";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
@@ -27,6 +27,15 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const router = useRouter();
 	const editor = useAutomationEditor(automationId);
 	const sidebar = useSidebarState(editor.hasPlaceholders);
+	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
+
+	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
+		navigateFnRef.current = fn;
+	}, []);
+
+	const handleNavigateToNode = useCallback((nodeId: string) => {
+		navigateFnRef.current?.(nodeId);
+	}, []);
 
 	// Auto-open trigger picker for new/empty automations
 	useEffect(() => {
@@ -163,6 +172,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
 						onNodeDragStop={editor.handleNodeDragStop}
+						onNavigateReady={handleNavigateReady}
 					/>
 					{editor.undoBanner && (
 						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
@@ -184,6 +194,9 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onNodeChange={editor.handleNodeChange}
 						onDeleteNode={handleDeleteNode}
 						onDeleteTrigger={handleDeleteTrigger}
+						onNavigateToNode={handleNavigateToNode}
+						rfNodes={editor.layoutedNodes}
+						rfEdges={editor.layoutedEdges}
 					/>
 				</div>
 			</div>

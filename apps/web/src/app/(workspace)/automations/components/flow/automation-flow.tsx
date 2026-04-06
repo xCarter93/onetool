@@ -55,6 +55,8 @@ interface AutomationFlowProps {
 	onNodeClick?: (nodeId: string) => void;
 	onPaneClick?: () => void;
 	onNodeDragStop?: (nodeId: string, position: { x: number; y: number }) => void;
+	/** Callback ref that receives a navigate function once React Flow is ready */
+	onNavigateReady?: (navigateFn: (nodeId: string) => void) => void;
 }
 
 function AutomationFlowInner({
@@ -63,8 +65,9 @@ function AutomationFlowInner({
 	onNodeClick,
 	onPaneClick,
 	onNodeDragStop,
+	onNavigateReady,
 }: AutomationFlowProps) {
-	const { fitView } = useReactFlow();
+	const { fitView, setCenter } = useReactFlow();
 	const prevCountRef = useRef(incomingNodes.length);
 	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(incomingEdges);
@@ -80,6 +83,26 @@ function AutomationFlowInner({
 			});
 		}
 	}, [fitView, incomingEdges, incomingNodes, setEdges, setNodes]);
+
+	// Expose a navigate-to-node function to the parent via callback ref
+	const navigateToNode = useCallback(
+		(nodeId: string) => {
+			const targetNode = nodes.find((n) => n.id === nodeId);
+			if (!targetNode) return;
+			// Center on the node (offset by half the 280px node width and ~30px height)
+			setCenter(
+				targetNode.position.x + 140,
+				targetNode.position.y + 30,
+				{ zoom: 1, duration: 300 }
+			);
+			onNodeClick?.(nodeId);
+		},
+		[nodes, setCenter, onNodeClick]
+	);
+
+	useEffect(() => {
+		onNavigateReady?.(navigateToNode);
+	}, [navigateToNode, onNavigateReady]);
 
 	const handleNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {

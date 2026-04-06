@@ -50,6 +50,7 @@ function addTerminalStub(
 		type: RF_NODE_TYPES.terminal,
 		data: {},
 		position: { x: 0, y: 0 },
+		draggable: false,
 	});
 
 	rfEdges.push({
