@@ -1234,6 +1234,13 @@ export default defineSchema({
 				// Flow control
 				nextNodeId: v.optional(v.string()),
 				elseNodeId: v.optional(v.string()),
+				// UI position (persisted for manual drag positioning)
+				position: v.optional(
+					v.object({
+						x: v.number(),
+						y: v.number(),
+					})
+				),
 			})
 		),
 
