@@ -216,21 +216,23 @@ export function AutomationSidebar({
 	}
 
 	return (
-		<div className="w-full h-full flex flex-col">
-			{/* Header */}
-			<div className="flex items-center justify-between p-6 border-b border-border">
-				<span className="text-lg font-semibold">{title}</span>
-				<button
-					onClick={onClose}
-					className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors"
-					aria-label="Close sidebar"
-				>
-					<X className="h-4 w-4" />
-				</button>
-			</div>
+		<div className="w-[380px] h-full flex flex-col bg-background border-l border-border">
+			{/* Header -- only shown for node-config modes; pickers have their own headers */}
+			{mode.mode === "node-config" && (
+				<div className="flex items-center justify-between px-6 py-5 border-b border-border">
+					<span className="text-lg font-semibold">{title}</span>
+					<button
+						onClick={onClose}
+						className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+						aria-label="Close sidebar"
+					>
+						<X className="h-4 w-4" />
+					</button>
+				</div>
+			)}
 
 			{/* Content */}
-			<div ref={contentRef} className="flex-1 overflow-auto p-6">
+			<div ref={contentRef} className="flex-1 overflow-auto px-6 py-5 motion-safe:transition-opacity motion-safe:duration-150">
 				{renderContent()}
 			</div>
 		</div>

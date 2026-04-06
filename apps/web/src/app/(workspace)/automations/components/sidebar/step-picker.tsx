@@ -3,22 +3,21 @@
 import React, { useState } from "react";
 import {
 	GitBranch,
-	Repeat,
 	Play,
-	Bell,
-	PlusCircle,
+	Database,
+	Repeat,
+	CircleStop,
 	Search,
-	Square,
+	X,
 	type LucideIcon,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type StepGroupItem = {
 	type: string;
 	label: string;
 	icon: LucideIcon;
-	colorBg: string;
-	colorText: string;
+	color: string;
 };
 
 type StepGroup = {
@@ -34,53 +33,35 @@ const STEP_GROUPS: StepGroup[] = [
 				type: "condition",
 				label: "Condition",
 				icon: GitBranch,
-				colorBg: "bg-purple-50 dark:bg-purple-950/40",
-				colorText: "text-purple-600 dark:text-purple-400",
-			},
-			{
-				type: "loop",
-				label: "Loop",
-				icon: Repeat,
-				colorBg: "bg-orange-50 dark:bg-orange-950/40",
-				colorText: "text-orange-600 dark:text-orange-400",
+				color: "bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400",
 			},
 		],
 	},
 	{
-		label: "Actions",
+		label: "Records",
 		items: [
 			{
 				type: "action",
 				label: "Update Record",
 				icon: Play,
-				colorBg: "bg-green-50 dark:bg-green-950/40",
-				colorText: "text-green-600 dark:text-green-400",
+				color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
 			},
 			{
-				type: "send_notification",
-				label: "Send Notification",
-				icon: Bell,
-				colorBg: "bg-green-50 dark:bg-green-950/40",
-				colorText: "text-green-600 dark:text-green-400",
-			},
-			{
-				type: "create_record",
-				label: "Create Record",
-				icon: PlusCircle,
-				colorBg: "bg-green-50 dark:bg-green-950/40",
-				colorText: "text-green-600 dark:text-green-400",
+				type: "fetch_records",
+				label: "Fetch Records",
+				icon: Database,
+				color: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
 			},
 		],
 	},
 	{
-		label: "Data",
+		label: "Utilities",
 		items: [
 			{
-				type: "fetch_records",
-				label: "Fetch Records",
-				icon: Search,
-				colorBg: "bg-blue-50 dark:bg-blue-950/40",
-				colorText: "text-blue-600 dark:text-blue-400",
+				type: "loop",
+				label: "Loop",
+				icon: Repeat,
+				color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
 			},
 		],
 	},
@@ -90,9 +71,8 @@ const STEP_GROUPS: StepGroup[] = [
 			{
 				type: "end",
 				label: "End",
-				icon: Square,
-				colorBg: "bg-red-50 dark:bg-red-950/40",
-				colorText: "text-red-600 dark:text-red-400",
+				icon: CircleStop,
+				color: "bg-muted text-muted-foreground",
 			},
 		],
 	},
@@ -100,9 +80,10 @@ const STEP_GROUPS: StepGroup[] = [
 
 interface StepPickerProps {
 	onSelect: (stepType: string) => void;
+	onClose?: () => void;
 }
 
-export function StepPicker({ onSelect }: StepPickerProps) {
+export function StepPicker({ onSelect, onClose }: StepPickerProps) {
 	const [search, setSearch] = useState("");
 	const lowerSearch = search.toLowerCase();
 
@@ -115,37 +96,68 @@ export function StepPicker({ onSelect }: StepPickerProps) {
 
 	return (
 		<div className="space-y-4">
-			<Input
-				placeholder="Search..."
-				value={search}
-				onChange={(e) => setSearch(e.target.value)}
-				className="w-full"
-			/>
+			{/* Header */}
+			<div className="relative">
+				<h2 className="text-base font-semibold">Add a step</h2>
+				<p className="text-sm text-muted-foreground mt-0.5">
+					Choose what happens next
+				</p>
+				{onClose && (
+					<button
+						type="button"
+						onClick={onClose}
+						className="absolute top-0 right-0 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+						aria-label="Close sidebar"
+					>
+						<X className="h-4 w-4" />
+					</button>
+				)}
+			</div>
 
+			{/* Search */}
+			<div className="relative mt-4">
+				<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+				<input
+					type="text"
+					placeholder="Search steps..."
+					value={search}
+					onChange={(e) => setSearch(e.target.value)}
+					className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+				/>
+			</div>
+
+			{/* Grouped list */}
 			<div className="space-y-6">
 				{filteredGroups.map((group) => (
-					<div key={group.label} className="space-y-1">
-						<div className="text-xs font-semibold uppercase text-muted-foreground px-4 mb-2">
+					<div key={group.label}>
+						<div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">
 							{group.label}
 						</div>
-						{group.items.map((item) => {
-							const Icon = item.icon;
-							return (
-								<button
-									key={item.type}
-									type="button"
-									className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-accent transition-colors"
-									onClick={() => onSelect(item.type)}
-								>
-									<div
-										className={`w-8 h-8 rounded-lg ${item.colorBg} flex items-center justify-center`}
+						<div className="space-y-0.5">
+							{group.items.map((item) => {
+								const Icon = item.icon;
+								return (
+									<button
+										key={item.type}
+										type="button"
+										onClick={() => onSelect(item.type)}
+										className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors text-left"
 									>
-										<Icon className={`h-4 w-4 ${item.colorText}`} />
-									</div>
-									<span className="text-sm font-medium">{item.label}</span>
-								</button>
-							);
-						})}
+										<div
+											className={cn(
+												"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+												item.color
+											)}
+										>
+											<Icon className="h-4 w-4" />
+										</div>
+										<span className="text-sm flex-1">
+											{item.label}
+										</span>
+									</button>
+								);
+							})}
+						</div>
 					</div>
 				))}
 
