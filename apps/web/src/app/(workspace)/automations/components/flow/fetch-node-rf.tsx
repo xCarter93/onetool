@@ -1,46 +1,72 @@
 "use client";
 
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Search } from "lucide-react";
+import { Position, type NodeProps } from "@xyflow/react";
+import { Database } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BaseNode, BaseNodeContent } from "@/components/base-node";
+import { BaseHandle } from "@/components/base-handle";
 
-export const FetchNodeRF = memo(({ selected }: NodeProps) => {
-	const summary = "Fetch records";
+function getSummary(data: Record<string, unknown>): {
+	title: string;
+	description: string;
+	isConfigured: boolean;
+} {
+	const config = data.config as
+		| {
+				entityType?: string;
+				filters?: Array<{ field: string; operator: string; value: unknown }>;
+				limit?: number;
+		  }
+		| undefined;
+	if (!config || !config.entityType)
+		return { title: "Fetch Records", description: "Configure data source...", isConfigured: false };
+
+	const entityLabel =
+		config.entityType.charAt(0).toUpperCase() + config.entityType.slice(1);
+	const filterCount = config.filters?.length ?? 0;
+	const description =
+		filterCount > 0
+			? `${entityLabel} with ${filterCount} filter${filterCount > 1 ? "s" : ""}`
+			: entityLabel;
+
+	return { title: `Fetch ${entityLabel}`, description, isConfigured: true };
+}
+
+export const FetchNodeRF = memo(({ data, selected }: NodeProps) => {
+	const { title, description, isConfigured } = getSummary(data);
 
 	return (
-		<div
+		<BaseNode
 			className={cn(
-				"px-4 py-3 rounded-xl border-2 min-w-[260px]",
-				"bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800",
-				selected && "ring-2 ring-blue-400 dark:ring-blue-500"
+				"w-[280px]",
+				isConfigured
+					? "border-border shadow-sm"
+					: "border-dashed border-muted-foreground/30",
+				"hover:border-primary/30 transition-colors",
+				selected && "ring-2 ring-primary/50",
 			)}
-			aria-label={`Fetch: ${summary}`}
+			aria-label={`Fetch: ${title} - ${description}`}
 		>
-			<Handle
-				type="target"
-				position={Position.Top}
-				className="!bg-border !w-2 !h-2 !border-0"
-			/>
-			<div className="flex items-center gap-3">
-				<div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
-					<Search className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-				</div>
-				<div className="min-w-0 flex-1">
-					<div className="text-xs font-semibold uppercase text-blue-600 dark:text-blue-400">
-						Fetch
+			<BaseHandle type="target" position={Position.Top} />
+			<BaseNodeContent className="p-3">
+				<div className="flex items-center gap-3">
+					<div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+						<Database className="h-4 w-4" />
 					</div>
-					<div className="text-sm font-semibold text-foreground truncate">
-						{summary}
+					<div className="min-w-0 flex-1">
+						<div className="text-sm font-semibold truncate">{title}</div>
+						<div className="text-xs text-muted-foreground truncate">
+							{description}
+						</div>
 					</div>
+					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+						Records
+					</span>
 				</div>
-			</div>
-			<Handle
-				type="source"
-				position={Position.Bottom}
-				className="!bg-blue-400 !w-2 !h-2 !border-0"
-			/>
-		</div>
+			</BaseNodeContent>
+			<BaseHandle type="source" position={Position.Bottom} />
+		</BaseNode>
 	);
 });
 FetchNodeRF.displayName = "FetchNodeRF";

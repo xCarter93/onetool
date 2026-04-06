@@ -1,11 +1,16 @@
 "use client";
 
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Position, type NodeProps } from "@xyflow/react";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BaseNode, BaseNodeContent } from "@/components/base-node";
+import { BaseHandle } from "@/components/base-handle";
 
-function getSummary(data: Record<string, unknown>): string {
+function getSummary(data: Record<string, unknown>): {
+	title: string;
+	description: string;
+} {
 	const trigger = data.trigger as
 		| {
 				type?: string;
@@ -16,7 +21,7 @@ function getSummary(data: Record<string, unknown>): string {
 				schedule?: { frequency?: string };
 		  }
 		| undefined;
-	if (!trigger) return "Configure trigger...";
+	if (!trigger) return { title: "Configure trigger", description: "Select a trigger type..." };
 
 	const objectLabel = trigger.objectType
 		? trigger.objectType.charAt(0).toUpperCase() + trigger.objectType.slice(1)
@@ -25,57 +30,63 @@ function getSummary(data: Record<string, unknown>): string {
 
 	switch (triggerType) {
 		case "status_changed": {
+			const title = "Status Changed";
 			if (trigger.fromStatus && trigger.toStatus)
-				return `${objectLabel} ${trigger.fromStatus} \u2192 ${trigger.toStatus}`;
+				return { title, description: `${objectLabel} ${trigger.fromStatus} \u2192 ${trigger.toStatus}` };
 			if (trigger.toStatus)
-				return `${objectLabel} \u2192 ${trigger.toStatus}`;
-			return objectLabel || "Configure trigger...";
+				return { title, description: `${objectLabel} \u2192 ${trigger.toStatus}` };
+			return { title, description: objectLabel || "Configure trigger..." };
 		}
 		case "record_created":
-			return `${objectLabel} created`;
+			return { title: "Record Created", description: `${objectLabel} created` };
 		case "record_updated":
-			return trigger.field
-				? `${objectLabel}.${trigger.field} changes`
-				: `${objectLabel} updated`;
+			return {
+				title: "Record Updated",
+				description: trigger.field
+					? `${objectLabel}.${trigger.field} changes`
+					: `${objectLabel} updated`,
+			};
 		case "email_received":
-			return "Email received";
+			return { title: "Email Received", description: "Incoming email triggers flow" };
 		case "scheduled":
-			return `Runs ${trigger.schedule?.frequency || "daily"}`;
+			return { title: "Scheduled", description: `Runs ${trigger.schedule?.frequency || "daily"}` };
 		default:
-			return objectLabel || "Configure trigger...";
+			return { title: triggerType, description: objectLabel || "Configure trigger..." };
 	}
 }
 
 export const TriggerNodeRF = memo(({ data, selected }: NodeProps) => {
-	const summary = getSummary(data);
+	const { title, description } = getSummary(data);
 
 	return (
-		<div
-			className={cn(
-				"px-4 py-3 rounded-xl border-2 min-w-[260px]",
-				"bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",
-				selected && "ring-2 ring-amber-400 dark:ring-amber-500"
-			)}
-			aria-label={`Trigger: ${summary}`}
-		>
-			<div className="flex items-center gap-3">
-				<div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-					<Zap className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-				</div>
-				<div className="min-w-0 flex-1">
-					<div className="text-xs font-semibold uppercase text-amber-600 dark:text-amber-400">
-						Trigger
+		<div className="relative mt-4">
+			<span className="absolute -top-2.5 left-3 bg-background px-2 text-[10px] font-semibold uppercase tracking-wider text-amber-600 z-10">
+				Trigger
+			</span>
+			<BaseNode
+				className={cn(
+					"w-[280px] border-amber-200 shadow-sm",
+					"hover:border-primary/30 transition-colors",
+					selected && "ring-2 ring-primary/50",
+				)}
+				aria-label={`Trigger: ${title} - ${description}`}
+			>
+				<BaseNodeContent className="p-3">
+					<div className="flex items-center gap-3">
+						<div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+							<Zap className="h-4 w-4" />
+						</div>
+						<div className="min-w-0 flex-1">
+							<div className="text-sm font-semibold truncate">{title}</div>
+							<div className="text-xs text-muted-foreground truncate">{description}</div>
+						</div>
+						<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+							Triggers
+						</span>
 					</div>
-					<div className="text-sm font-semibold text-foreground truncate">
-						{summary}
-					</div>
-				</div>
-			</div>
-			<Handle
-				type="source"
-				position={Position.Bottom}
-				className="!bg-amber-400 !w-2 !h-2 !border-0"
-			/>
+				</BaseNodeContent>
+				<BaseHandle type="source" position={Position.Bottom} />
+			</BaseNode>
 		</div>
 	);
 });
