@@ -35,7 +35,7 @@ export function LoopBackEdge({
 			style={{
 				...style,
 				strokeWidth: 1.5,
-				stroke: "hsl(var(--color-orange-300))",
+				stroke: "var(--color-orange-300)",
 				strokeDasharray: "6 3",
 			}}
 		/>

@@ -44,7 +44,7 @@ export function AfterLastEdge({
 		<>
 			<BaseEdge
 				path={geometry.edgePath}
-				style={{ ...style, strokeWidth: 1.5, stroke: "hsl(var(--muted-foreground) / 0.4)" }}
+				style={{ ...style, strokeWidth: 1.5, stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)" }}
 			/>
 			<EdgeLabelRenderer>
 				<div

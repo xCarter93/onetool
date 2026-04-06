@@ -11,7 +11,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const EDGE_STYLE = {
-	stroke: "hsl(var(--muted-foreground) / 0.4)",
+	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
 	strokeWidth: 1.5,
 };
 

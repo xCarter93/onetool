@@ -15,7 +15,7 @@ export function LoopScopeOverlay({ bounds }: LoopScopeOverlayProps) {
 				height={bounds.height + padding * 2}
 				rx={12}
 				ry={12}
-				fill="hsl(var(--color-orange-50) / 0.05)"
+				fill="color-mix(in oklch, var(--color-orange-50) 5%, transparent)"
 				stroke="var(--color-orange-200)"
 				strokeWidth={1.5}
 				strokeDasharray="8 4"
