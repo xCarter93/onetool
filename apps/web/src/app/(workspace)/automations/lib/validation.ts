@@ -31,6 +31,18 @@ export function validateWorkflowForSave(
 		});
 	}
 
+	// Check for empty workflow (no real steps)
+	const hasWorkflowNodes = rfNodes.some((node) => {
+		const nt = (node.data as Record<string, unknown>)?.nodeType;
+		return nt !== undefined && nt !== "trigger" && nt !== "terminal";
+	});
+	if (!hasWorkflowNodes) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Add at least one step before saving",
+		});
+	}
+
 	// Check for placeholder nodes
 	const hasPlaceholders = rfNodes.some(
 		(node) => (node.data as Record<string, unknown>)?.nodeType === "placeholder"

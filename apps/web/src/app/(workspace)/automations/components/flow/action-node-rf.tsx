@@ -44,7 +44,9 @@ function getSummary(data: Record<string, unknown>): {
 			action.actionType === "update_status") &&
 		action.newStatus
 	) {
-		description = `${target} \u2192 ${action.newStatus}`;
+		description = action.field
+			? `${target}: ${action.field} \u2192 ${action.newStatus}`
+			: `${target} \u2192 ${action.newStatus}`;
 	} else if (action.actionType === "send_notification") {
 		description = action.notificationRecipient
 			? `Notify ${action.notificationRecipient}`
