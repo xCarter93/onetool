@@ -15,6 +15,12 @@ const EDGE_STYLE = {
 	strokeWidth: 1.5,
 };
 
+const LOOP_EDGE_STYLE = {
+	stroke: "var(--color-orange-300)",
+	strokeWidth: 1.5,
+	strokeDasharray: "6 3",
+};
+
 /** Map raw branch labels to user-friendly text */
 function displayLabel(label: string | undefined, branchType: string): string {
 	if (label === "Yes" || (!label && branchType === "yes")) return "Is true";
@@ -39,27 +45,31 @@ export function BranchLabelEdge(props: EdgeProps) {
 	const rawLabel = data?.label as string | undefined;
 	const label = displayLabel(rawLabel, branchType);
 	const isTerminal = data?.isTerminal === true;
+	const isLoopBranch = branchType === "each";
+	const edgeStyle = isLoopBranch ? LOOP_EDGE_STYLE : EDGE_STYLE;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
 
 	// Only terminal edges need custom rendering (shortened path + always-visible "+" button)
 	if (isTerminal) {
-		// For all terminal branch types, draw a straight path toward the target
+		// Fixed-length stub below source (ignore target position to prevent flip on drag)
+		const TERMINAL_LENGTH = 50;
+		const fixedTargetY = sourceY + TERMINAL_LENGTH;
 		const [edgePath, labelX, labelY] = getStraightPath({
 			sourceX,
 			sourceY,
-			targetX,
-			targetY,
+			targetX: sourceX,
+			targetY: fixedTargetY,
 		});
-		const plusX = targetX;
-		const plusY = targetY;
+		const plusX = sourceX;
+		const plusY = fixedTargetY;
 
 		return (
 			<>
 				<BaseEdge
 					path={edgePath}
-					style={{ ...style, ...EDGE_STYLE }}
+					style={{ ...style, ...edgeStyle }}
 				/>
 				<EdgeLabelRenderer>
 					{label && (
@@ -106,7 +116,7 @@ export function BranchLabelEdge(props: EdgeProps) {
 	return (
 		<RFButtonEdge
 			{...props}
-			style={{ ...style, ...EDGE_STYLE }}
+			style={{ ...style, ...edgeStyle }}
 		>
 			<div className="flex flex-col items-center gap-1">
 				{label && (

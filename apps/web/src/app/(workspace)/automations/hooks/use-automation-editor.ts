@@ -384,54 +384,74 @@ export function useAutomationEditor(automationId: string | null) {
 			const newId = generateId();
 			const downstreamId = nodeType === "end" ? undefined : realTargetId;
 
-			let newNode: WorkflowNode;
+			let newNodes: WorkflowNode[];
 			switch (nodeType) {
-				case "condition":
-					newNode = buildConditionNode(newId, trigger, downstreamId);
+				case "condition": {
+					const yesPlaceholderId = generateId();
+					const noPlaceholderId = generateId();
+					const condNode = buildConditionNode(newId, trigger);
+					condNode.nextNodeId = yesPlaceholderId;
+					condNode.elseNodeId = noPlaceholderId;
+					newNodes = [
+						condNode,
+						{ id: yesPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
+						{ id: noPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
+					];
 					break;
+				}
 				case "fetch_records":
-					newNode = buildFetchNode(newId, trigger, downstreamId);
+					newNodes = [buildFetchNode(newId, trigger, downstreamId)];
 					break;
-				case "loop":
-					newNode = buildLoopNode(newId, trigger, downstreamId);
+				case "loop": {
+					const eachPlaceholderId = generateId();
+					const afterPlaceholderId = generateId();
+					const loopNode = buildLoopNode(newId, trigger);
+					loopNode.nextNodeId = eachPlaceholderId;
+					loopNode.elseNodeId = afterPlaceholderId;
+					newNodes = [
+						loopNode,
+						{ id: eachPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
+						{ id: afterPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
+					];
 					break;
+				}
 				case "end":
-					newNode = {
+					newNodes = [{
 						id: newId,
 						type: "end",
-					};
+					}];
 					break;
 				case "placeholder":
-					newNode = {
+					newNodes = [{
 						id: newId,
 						type: "placeholder",
 						nextNodeId: downstreamId,
-					} as unknown as WorkflowNode;
+					} as unknown as WorkflowNode];
 					break;
 				case "send_notification":
-					newNode = buildActionNode(
+					newNodes = [buildActionNode(
 						newId,
 						trigger,
 						"send_notification",
 						downstreamId
-					);
+					)];
 					break;
 				case "create_record":
-					newNode = buildActionNode(
+					newNodes = [buildActionNode(
 						newId,
 						trigger,
 						"create_record",
 						downstreamId
-					);
+					)];
 					break;
 				case "action":
 				default:
-					newNode = buildActionNode(newId, trigger, "update_field", downstreamId);
+					newNodes = [buildActionNode(newId, trigger, "update_field", downstreamId)];
 					break;
 			}
 
 			setNodes((prev) => {
-				const updated = [...prev, newNode];
+				const updated = [...prev, ...newNodes];
 				return updated.map((node) => {
 					if (sourceId === TRIGGER_NODE_ID || sourceId === TRIGGER_PLACEHOLDER_ID) {
 						return node;
@@ -456,8 +476,9 @@ export function useAutomationEditor(automationId: string | null) {
 			clearUndoState();
 			if (!trigger) return;
 
-			setNodes((prev) =>
-				prev.map((node) => {
+			setNodes((prev) => {
+				const extraNodes: WorkflowNode[] = [];
+				const mapped = prev.map((node) => {
 					const editorNode = node as unknown as {
 						type: string;
 						id: string;
@@ -469,14 +490,34 @@ export function useAutomationEditor(automationId: string | null) {
 
 					const downstreamId = editorNode.nextNodeId;
 					switch (stepType) {
-						case "condition":
-							return buildConditionNode(nodeId, trigger, downstreamId);
+						case "condition": {
+							const yesPlaceholderId = generateId();
+							const noPlaceholderId = generateId();
+							const condNode = buildConditionNode(nodeId, trigger);
+							condNode.nextNodeId = yesPlaceholderId;
+							condNode.elseNodeId = noPlaceholderId;
+							extraNodes.push(
+								{ id: yesPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
+								{ id: noPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
+							);
+							return condNode;
+						}
+						case "loop": {
+							const eachPlaceholderId = generateId();
+							const afterPlaceholderId = generateId();
+							const loopNode = buildLoopNode(nodeId, trigger);
+							loopNode.nextNodeId = eachPlaceholderId;
+							loopNode.elseNodeId = afterPlaceholderId;
+							extraNodes.push(
+								{ id: eachPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
+								{ id: afterPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
+							);
+							return loopNode;
+						}
 						case "fetch_records":
 							return buildFetchNode(nodeId, trigger, downstreamId);
-						case "loop":
-							return buildLoopNode(nodeId, trigger, downstreamId);
 						case "end":
-							return { id: nodeId, type: "end" };
+							return { id: nodeId, type: "end" } as WorkflowNode;
 						case "send_notification":
 							return buildActionNode(
 								nodeId,
@@ -495,8 +536,9 @@ export function useAutomationEditor(automationId: string | null) {
 						default:
 							return buildActionNode(nodeId, trigger, "update_field", downstreamId);
 					}
-				})
-			);
+				});
+				return [...mapped, ...extraNodes];
+			});
 		},
 		[clearUndoState, trigger]
 	);
@@ -688,12 +730,21 @@ export function useAutomationEditor(automationId: string | null) {
 
 	const handlePaneClick = useCallback(() => {
 		clearUndoState();
-		setNodes((prev) =>
-			prev.filter(
+		setNodes((prev) => {
+			// Find placeholder IDs that are branch children of condition/loop nodes
+			const branchPlaceholderIds = new Set<string>();
+			for (const node of prev) {
+				if (node.type === "condition" || node.type === "loop") {
+					if (node.nextNodeId) branchPlaceholderIds.add(node.nextNodeId);
+					if (node.elseNodeId) branchPlaceholderIds.add(node.elseNodeId);
+				}
+			}
+			return prev.filter(
 				(node) =>
-					(node as unknown as { type: string }).type !== "placeholder"
-			)
-		);
+					(node as unknown as { type: string }).type !== "placeholder" ||
+					branchPlaceholderIds.has(node.id)
+			);
+		});
 	}, [clearUndoState]);
 
 	// Positions are now computed inside automationToReactFlow (initial-placement.ts)

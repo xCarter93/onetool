@@ -30,17 +30,18 @@ export function PlusButtonEdge(props: EdgeProps) {
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
 
-	// Terminal edges need custom geometry (shortened path), can't use ButtonEdge
+	// Terminal edges: fixed-length stub below source (ignore target position to prevent flip on drag)
 	if (isTerminal) {
-		const effectiveTargetY = sourceY + (targetY - sourceY) * 0.5;
+		const TERMINAL_LENGTH = 50;
+		const fixedTargetY = sourceY + TERMINAL_LENGTH;
 		const [edgePath] = getStraightPath({
 			sourceX,
 			sourceY,
 			targetX: sourceX,
-			targetY: effectiveTargetY,
+			targetY: fixedTargetY,
 		});
 		const plusX = sourceX;
-		const plusY = effectiveTargetY;
+		const plusY = fixedTargetY;
 
 		return (
 			<>

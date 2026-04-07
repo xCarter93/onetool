@@ -14,15 +14,18 @@ export function LoopBackEdge({
 	// Route to the LEFT side of the loop (min X minus offset)
 	const leftX = Math.min(sourceX, targetX) - offsetX;
 	const cornerRadius = 16;
+	// Extend below source to clear the terminal "+" stub button (50px below source)
+	const extendBelow = 70;
+	const bottomY = sourceY + extendBelow;
 
-	// Path: from source (bottom of last body node), go down slightly,
+	// Path: from source (bottom of last body node), go down past terminal stub,
 	// curve LEFT, go up along left side, curve right to target (loop header left side)
 	const edgePath = [
 		`M ${sourceX} ${sourceY}`,
-		`L ${sourceX} ${sourceY + cornerRadius}`,
-		`Q ${sourceX} ${sourceY + cornerRadius * 2} ${sourceX - cornerRadius} ${sourceY + cornerRadius * 2}`,
-		`L ${leftX + cornerRadius} ${sourceY + cornerRadius * 2}`,
-		`Q ${leftX} ${sourceY + cornerRadius * 2} ${leftX} ${sourceY + cornerRadius}`,
+		`L ${sourceX} ${bottomY - cornerRadius}`,
+		`Q ${sourceX} ${bottomY} ${sourceX - cornerRadius} ${bottomY}`,
+		`L ${leftX + cornerRadius} ${bottomY}`,
+		`Q ${leftX} ${bottomY} ${leftX} ${bottomY - cornerRadius}`,
 		`L ${leftX} ${targetY + cornerRadius}`,
 		`Q ${leftX} ${targetY} ${leftX + cornerRadius} ${targetY}`,
 		`L ${targetX} ${targetY}`,

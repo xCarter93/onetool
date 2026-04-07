@@ -11,6 +11,7 @@
  */
 
 const Y_GAP = 150;
+const AFTER_LAST_GAP = 40; // Smaller gap after loop body — terminal stubs already add Y_GAP of spacing
 const X_OFFSET = 350;
 
 export interface PlacementContext {
@@ -44,10 +45,19 @@ export function computeInitialPosition(
 
   switch (branchType) {
     case "no":
-    case "after":
-      // Condition "Is false" or loop "After Last": offset right then down
+      // Condition "Is false": offset right then down
       pos = { x: parentPos.x + X_OFFSET, y: parentPos.y + Y_GAP };
       break;
+    case "after": {
+      // Loop "After Last": position below the entire for-each body
+      // BFS processes "each" branch first, so all body nodes are already placed
+      let maxY = parentPos.y;
+      for (const p of ctx.positions.values()) {
+        if (p.y > maxY) maxY = p.y;
+      }
+      pos = { x: parentPos.x, y: maxY + AFTER_LAST_GAP };
+      break;
+    }
     case "yes":
     case "next":
     case "each":
@@ -64,7 +74,9 @@ export function computeInitialPosition(
 
 /**
  * Compute positions for all nodes in the flow by walking the edge graph.
- * Used when loading an automation that has no persisted positions.
+ * Uses DFS to ensure each subtree branch is fully placed (including terminal
+ * stubs) before sibling branches. Critical for loop nodes: the "each" body
+ * must be fully placed so the "after" branch's maxY scan includes all body nodes.
  */
 export function computeAllPositions(
   nodes: Array<{ id: string }>,
@@ -72,37 +84,42 @@ export function computeAllPositions(
   triggerId: string
 ): Map<string, { x: number; y: number }> {
   const ctx = createPlacementContext();
+  const visited = new Set<string>();
 
-  // BFS from trigger
-  const queue: string[] = [triggerId];
-  computeInitialPosition(triggerId, null, null, ctx);
+  function placeSubtree(
+    nodeId: string,
+    parentId: string | null,
+    branchType: "next" | "yes" | "no" | "each" | "after" | "loop_back" | null
+  ) {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
 
-  const visited = new Set<string>([triggerId]);
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    // Find children (nodes whose parent is currentId)
-    for (const edge of edges) {
-      if (
-        edge.source === currentId &&
-        !visited.has(edge.target) &&
-        edge.data?.branchType !== "loop_back"
-      ) {
-        visited.add(edge.target);
-        computeInitialPosition(
-          edge.target,
-          currentId,
-          (edge.data?.branchType as
-            | "next"
-            | "yes"
-            | "no"
-            | "each"
-            | "after") ?? "next",
-          ctx
-        );
-        queue.push(edge.target);
-      }
+    computeInitialPosition(nodeId, parentId, branchType, ctx);
+
+    // Find child edges (exclude loop_back)
+    const childEdges = edges.filter(
+      (e) =>
+        e.source === nodeId &&
+        !visited.has(e.target) &&
+        e.data?.branchType !== "loop_back"
+    );
+
+    // Place non-"after" children first so loop body is fully placed before "after last"
+    const primaryEdges = childEdges.filter((e) => e.data?.branchType !== "after");
+    const afterEdges = childEdges.filter((e) => e.data?.branchType === "after");
+
+    for (const edge of primaryEdges) {
+      placeSubtree(
+        edge.target,
+        nodeId,
+        (edge.data?.branchType as "next" | "yes" | "no" | "each") ?? "next"
+      );
+    }
+    for (const edge of afterEdges) {
+      placeSubtree(edge.target, nodeId, "after");
     }
   }
 
+  placeSubtree(triggerId, null, null);
   return ctx.positions;
 }
