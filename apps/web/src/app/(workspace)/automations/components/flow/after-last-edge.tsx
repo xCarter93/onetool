@@ -5,7 +5,7 @@ import {
 	EdgeLabelRenderer,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
+import { Plus, GitBranch, Play, Search, Repeat, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	DropdownMenu,
@@ -13,6 +13,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getAfterLastGeometry } from "./edge-geometry";
 
 /**
  * Custom edge for the "After Last" branch of loop nodes.
@@ -34,43 +35,23 @@ export function AfterLastEdge({
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
 
-	const offsetX = 50;
-	const rightX = sourceX + offsetX;
-	const cr = 16;
-
-	// Ensure the edge goes down far enough even for empty loops
-	const effectiveTargetY = Math.max(targetY, sourceY + cr * 4);
-
-	// Path: right from loop → curve down → straight down → curve left → to target
-	const edgePath = [
-		`M ${sourceX} ${sourceY}`,
-		`L ${rightX - cr} ${sourceY}`,
-		`Q ${rightX} ${sourceY} ${rightX} ${sourceY + cr}`,
-		`L ${rightX} ${effectiveTargetY - cr}`,
-		`Q ${rightX} ${effectiveTargetY} ${rightX - cr} ${effectiveTargetY}`,
-		`L ${targetX} ${effectiveTargetY}`,
-	].join(" ");
-
-	// Label at the top-right of the descent
-	const labelX = rightX;
-	const labelY = sourceY + cr * 2;
-
-	// Plus button at the end of the path (where it meets the target)
-	const plusX = targetX;
-	const plusY = effectiveTargetY;
+	const geometry = getAfterLastGeometry(sourceX, sourceY, targetX, targetY, {
+		routeRightX:
+			typeof data?.routeRightX === "number" ? (data.routeRightX as number) : undefined,
+	});
 
 	return (
 		<>
 			<BaseEdge
-				path={edgePath}
-				style={{ ...style, strokeWidth: 2, stroke: "var(--color-border)" }}
+				path={geometry.edgePath}
+				style={{ ...style, strokeWidth: 1.5, stroke: "var(--color-orange-300)", strokeDasharray: "6 3" }}
 			/>
 			<EdgeLabelRenderer>
 				<div
 					className="nodrag nopan pointer-events-none"
 					style={{
 						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+						transform: `translate(-50%, -50%) translate(${geometry.labelX}px, ${geometry.labelY}px)`,
 					}}
 				>
 					<span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
@@ -81,7 +62,7 @@ export function AfterLastEdge({
 					className="nodrag nopan pointer-events-auto"
 					style={{
 						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
+						transform: `translate(-50%, -50%) translate(${geometry.plusX}px, ${geometry.plusY}px)`,
 						zIndex: 10,
 					}}
 				>
@@ -118,6 +99,10 @@ export function AfterLastEdge({
 							<DropdownMenuItem onClick={() => onInsertNode?.(id, "loop")}>
 								<Repeat className="h-4 w-4 mr-2" />
 								Add Loop
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => onInsertNode?.(id, "end")}>
+								<Square className="h-4 w-4 mr-2" />
+								End Automation
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>

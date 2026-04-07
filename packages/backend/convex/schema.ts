@@ -1150,7 +1150,8 @@ export default defineSchema({
 					v.literal("condition"),
 					v.literal("action"),
 					v.literal("fetch_records"),
-					v.literal("loop")
+					v.literal("loop"),
+					v.literal("end")
 				),
 				// Condition node fields
 				condition: v.optional(
@@ -1233,6 +1234,13 @@ export default defineSchema({
 				// Flow control
 				nextNodeId: v.optional(v.string()),
 				elseNodeId: v.optional(v.string()),
+				// UI position (persisted for manual drag positioning)
+				position: v.optional(
+					v.object({
+						x: v.number(),
+						y: v.number(),
+					})
+				),
 			})
 		),
 

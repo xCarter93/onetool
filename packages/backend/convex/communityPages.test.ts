@@ -324,8 +324,6 @@ describe("Community Pages", () => {
 	it("submitInterest assigns task to org admin", async () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-		const ids = await t.run(async (ctx) => createTestOrg(ctx));
-
 		await asUser.mutation(api.communityPages.upsert, {
 			slug: "admin-assign-test",
 			isPublic: true,

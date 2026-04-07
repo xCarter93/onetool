@@ -1,6 +1,7 @@
 import { MarkerType, type Node, type Edge } from "@xyflow/react";
-import type { WorkflowNode } from "../components/workflow-node";
+import type { WorkflowNode } from "../lib/node-types";
 import type { TriggerConfig } from "../components/trigger-node";
+import { computeAllPositions } from "./initial-placement";
 
 export const TRIGGER_NODE_ID = "__trigger__";
 export const TRIGGER_PLACEHOLDER_ID = "__trigger_placeholder__";
@@ -14,6 +15,8 @@ export const RF_NODE_TYPES = {
 	action: "actionNode",
 	fetch_records: "fetchNode",
 	loop: "loopNode",
+	end: "endNode",
+	placeholder: "placeholderNode",
 	terminal: "terminalNode",
 } as const;
 
@@ -47,16 +50,41 @@ function addTerminalStub(
 		type: RF_NODE_TYPES.terminal,
 		data: {},
 		position: { x: 0, y: 0 },
+		draggable: false,
 	});
 
 	rfEdges.push({
 		id: `e-${sourceId}${handleSuffix}-${terminalId}`,
 		source: sourceId,
 		target: terminalId,
-		sourceHandle: sourceHandle || undefined,
+		sourceHandle: sourceHandle ?? undefined,
 		type: edgeType || RF_EDGE_TYPES.straight,
 		data: { isTerminal: true, ...edgeData },
 	});
+}
+
+function resolveLoopBackSourceId(
+	startNodeId: string | undefined,
+	nodes: WorkflowNode[]
+): string {
+	if (!startNodeId) {
+		return "";
+	}
+
+	let loopBackSourceId = startNodeId;
+	const visited = new Set<string>();
+
+	while (true) {
+		visited.add(loopBackSourceId);
+		const bodyNode = nodes.find((n) => n.id === loopBackSourceId);
+		if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) {
+			if (bodyNode?.type === "condition") {
+				return `${TERMINAL_PREFIX}${bodyNode.id}-yes`;
+			}
+			return loopBackSourceId;
+		}
+		loopBackSourceId = bodyNode.nextNodeId;
+	}
 }
 
 /**
@@ -64,6 +92,9 @@ function addTerminalStub(
  *
  * Every leaf output gets a terminal stub with an always-visible "+" button.
  * When no trigger is set, shows a dashed placeholder trigger node instead.
+ *
+ * Condition nodes emit edges from separate yes/no handles.
+ * No merge points are generated -- branches stay independent.
  */
 export function automationToReactFlow(
 	trigger: TriggerConfig | null,
@@ -81,15 +112,13 @@ export function automationToReactFlow(
 			position: { x: 0, y: 0 },
 		});
 	} else {
-		// No trigger — show dashed placeholder
+		// No trigger — show dashed placeholder (no terminal stub, placeholder IS the interaction)
 		rfNodes.push({
 			id: TRIGGER_PLACEHOLDER_ID,
 			type: RF_NODE_TYPES.triggerPlaceholder,
 			data: {},
 			position: { x: 0, y: 0 },
 		});
-		// Placeholder gets a terminal stub below it
-		addTerminalStub(rfNodes, rfEdges, TRIGGER_PLACEHOLDER_ID);
 		return { nodes: rfNodes, edges: rfEdges };
 	}
 
@@ -122,11 +151,31 @@ export function automationToReactFlow(
 			RF_NODE_TYPES[node.type as keyof typeof RF_NODE_TYPES] ||
 			RF_NODE_TYPES.action;
 
+		// Build node data -- support both old flat format and new config format
+		// NodeBase has legacy .condition and .action fields for backward compat
+		const legacyNode = node as WorkflowNode & {
+			config?: unknown;
+			fetchConfig?: unknown;
+			loopConfig?: unknown;
+		};
+		const conditionConfig =
+			node.type === "condition" ? legacyNode.config || node.condition : undefined;
+		const actionConfig =
+			node.type === "action" ? legacyNode.config || node.action : undefined;
+		const fetchConfig =
+			node.type === "fetch_records"
+				? legacyNode.config || legacyNode.fetchConfig
+				: node.type === "loop"
+					? legacyNode.config || legacyNode.loopConfig
+					: undefined;
+
 		rfNodes.push({
 			id: node.id,
 			type: rfNodeType,
 			data: {
 				nodeType: node.type,
+				config: conditionConfig || actionConfig || fetchConfig || undefined,
+				// Backward compat: keep legacy fields for components that still read them
 				condition: node.condition,
 				action: node.action,
 				_dbNode: { ...node },
@@ -135,8 +184,10 @@ export function automationToReactFlow(
 			position: { x: 0, y: 0 },
 		});
 
-		if (node.type === "condition") {
-			// Condition: yes branch (nextNodeId)
+		if (node.type === "end") {
+			// End nodes produce no outgoing edges — flow stops here
+		} else if (node.type === "condition") {
+			// Condition: Yes branch (nextNodeId) -- from center handle
 			if (node.nextNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-yes-${node.nextNodeId}`,
@@ -154,7 +205,7 @@ export function automationToReactFlow(
 				});
 			}
 
-			// Condition: no branch (elseNodeId)
+			// Condition: No branch (elseNodeId) -- from center handle
 			if (node.elseNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-no-${node.elseNodeId}`,
@@ -171,6 +222,8 @@ export function automationToReactFlow(
 					branchType: "no" as const,
 				});
 			}
+
+			// No merge point -- branches stay independent
 		} else if (node.type === "loop") {
 			// Loop: "each" branch (nextNodeId = loop body)
 			if (node.nextNodeId) {
@@ -191,7 +244,6 @@ export function automationToReactFlow(
 			}
 
 			// Loop: "after" branch (elseNodeId = after last iteration)
-			// Uses afterLastEdge which routes from the loop's right side, curves down.
 			if (node.elseNodeId) {
 				rfEdges.push({
 					id: `e-${node.id}-after-${node.elseNodeId}`,
@@ -209,24 +261,11 @@ export function automationToReactFlow(
 				});
 			}
 
-			// Loop-back edge: from last body node (or empty terminal) back to loop header.
-			// Always present — visually defines the loop's left-side return path.
+			// Loop-back edge: from last body node (or empty terminal) back to loop header
 			{
-				let loopBackSourceId: string;
-				if (node.nextNodeId) {
-					// Walk the body chain to find the last node
-					loopBackSourceId = node.nextNodeId;
-					const visited = new Set<string>();
-					while (true) {
-						visited.add(loopBackSourceId);
-						const bodyNode = nodes.find((n) => n.id === loopBackSourceId);
-						if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) break;
-						loopBackSourceId = bodyNode.nextNodeId;
-					}
-				} else {
-					// Empty body — loop-back from the "each" terminal stub
-					loopBackSourceId = `${TERMINAL_PREFIX}${node.id}-each`;
-				}
+				const loopBackSourceId = node.nextNodeId
+					? resolveLoopBackSourceId(node.nextNodeId, nodes)
+					: `${TERMINAL_PREFIX}${node.id}-each`;
 
 				rfEdges.push({
 					id: `e-loopback-${node.id}`,
@@ -265,12 +304,31 @@ export function automationToReactFlow(
 		}
 	}
 
+	// Apply positions: use persisted position if available, otherwise compute
+	const triggerId = trigger ? TRIGGER_NODE_ID : TRIGGER_PLACEHOLDER_ID;
+	const computedPositions = computeAllPositions(rfNodes, rfEdges, triggerId);
+
+	for (const rfNode of rfNodes) {
+		// Check if the source DB node had a persisted position
+		const dbNode = rfNode.data?._dbNode as
+			| (WorkflowNode & { position?: { x: number; y: number } })
+			| undefined;
+		if (dbNode?.position) {
+			rfNode.position = { x: dbNode.position.x, y: dbNode.position.y };
+		} else {
+			const computed = computedPositions.get(rfNode.id);
+			if (computed) {
+				rfNode.position = computed;
+			}
+		}
+	}
+
 	return { nodes: rfNodes, edges: rfEdges };
 }
 
 /**
  * Convert React Flow nodes and edges back to database format.
- * Terminal stub nodes and placeholder nodes are filtered out.
+ * Terminal stub nodes, placeholder nodes, and trigger nodes are filtered out.
  */
 export function reactFlowToFlatArray(
 	rfNodes: Node[],
@@ -285,6 +343,8 @@ export function reactFlowToFlatArray(
 		if (rfNode.id === TRIGGER_NODE_ID) continue;
 		if (rfNode.id === TRIGGER_PLACEHOLDER_ID) continue;
 		if (isTerminalId(rfNode.id)) continue;
+		// Filter out placeholder nodes -- they are frontend-only transient state
+		if (rfNode.data?.nodeType === "placeholder") continue;
 
 		const dbNode = rfNode.data?._dbNode as WorkflowNode | undefined;
 		if (!dbNode) continue;
@@ -312,7 +372,84 @@ export function reactFlowToFlatArray(
 			}
 		}
 
-		workflowNodes.push({ ...dbNode, nextNodeId, elseNodeId });
+		// Build the output node -- support both old flat format and new config format
+		const nodeData = rfNode.data as Record<string, unknown> | undefined;
+		const config = nodeData?.config || dbNode.condition || dbNode.action;
+
+		const pos = { x: rfNode.position.x, y: rfNode.position.y };
+
+		if (dbNode.type === "condition") {
+			workflowNodes.push({
+				id: dbNode.id,
+				type: "condition",
+				condition:
+					(config as WorkflowNode["condition"]) ||
+					dbNode.condition || {
+						field: "status",
+						operator: "equals",
+						value: "",
+					},
+				nextNodeId,
+				elseNodeId,
+				position: pos,
+			} as WorkflowNode);
+			continue;
+		}
+
+		if (dbNode.type === "action") {
+			workflowNodes.push({
+				id: dbNode.id,
+				type: "action",
+				action:
+					(config as WorkflowNode["action"]) ||
+					dbNode.action || {
+						targetType: "self",
+						actionType: "update_field",
+						newStatus: "",
+					},
+				nextNodeId,
+				elseNodeId,
+				position: pos,
+			} as WorkflowNode);
+			continue;
+		}
+
+		if (dbNode.type === "fetch_records") {
+			workflowNodes.push({
+				id: dbNode.id,
+				type: "fetch_records",
+				nextNodeId,
+				elseNodeId,
+				position: pos,
+				...(config ? { fetchConfig: config } : {}),
+			} as WorkflowNode);
+			continue;
+		}
+
+		if (dbNode.type === "loop") {
+			workflowNodes.push({
+				id: dbNode.id,
+				type: "loop",
+				nextNodeId,
+				elseNodeId,
+				position: pos,
+				...((dbNode as WorkflowNode & { loopConfig?: unknown }).loopConfig
+					? {
+							loopConfig: (dbNode as WorkflowNode & { loopConfig?: unknown })
+								.loopConfig,
+						}
+					: {}),
+			} as WorkflowNode);
+			continue;
+		}
+
+		workflowNodes.push({
+			id: dbNode.id,
+			type: "end",
+			nextNodeId,
+			elseNodeId,
+			position: pos,
+		} as WorkflowNode);
 	}
 
 	return { trigger, nodes: workflowNodes };

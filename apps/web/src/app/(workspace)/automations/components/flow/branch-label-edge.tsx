@@ -4,154 +4,140 @@ import {
 	BaseEdge,
 	EdgeLabelRenderer,
 	getStraightPath,
-	getSmoothStepPath,
-	Position,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus, GitBranch, Play, Search, Repeat } from "lucide-react";
+import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
-export function BranchLabelEdge({
-	id,
-	sourceX,
-	sourceY,
-	targetX,
-	targetY,
-	data,
-	style,
-}: EdgeProps) {
-	const variant = (data?.variant as string) || "yes";
-	const label = (data?.label as string) || (variant === "yes" ? "Yes" : "No");
+const EDGE_STYLE = {
+	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
+	strokeWidth: 1.5,
+};
+
+const LOOP_EDGE_STYLE = {
+	stroke: "var(--color-orange-300)",
+	strokeWidth: 1.5,
+	strokeDasharray: "6 3",
+};
+
+/** Map raw branch labels to user-friendly text */
+function displayLabel(label: string | undefined, branchType: string): string {
+	if (label === "Yes" || (!label && branchType === "yes")) return "Is true";
+	if (label === "No" || (!label && branchType === "no")) return "Is false";
+	if (label === "For Each" || (!label && branchType === "each")) return "For Each";
+	if (label === "After Last" || (!label && branchType === "after")) return "After Last";
+	return label || "";
+}
+
+export function BranchLabelEdge(props: EdgeProps) {
+	const {
+		id,
+		sourceX,
+		sourceY,
+		targetX,
+		targetY,
+		data,
+		style,
+	} = props;
+	const branchType =
+		(data?.branchType as string) || (data?.variant as string) || "yes";
+	const rawLabel = data?.label as string | undefined;
+	const label = displayLabel(rawLabel, branchType);
 	const isTerminal = data?.isTerminal === true;
+	const isLoopBranch = branchType === "each";
+	const edgeStyle = isLoopBranch ? LOOP_EDGE_STYLE : EDGE_STYLE;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
-	const branchType = data?.branchType as string | undefined;
 
-	let edgePath = "";
-	let labelX = 0;
-	let labelY = 0;
-	let plusX = 0;
-	let plusY = 0;
-
-	if (isTerminal && branchType === "after") {
-		// Keep empty "After Last" path visually vertical under the right handle.
-		[edgePath] = getStraightPath({
+	// Only terminal edges need custom rendering (shortened path + always-visible "+" button)
+	if (isTerminal) {
+		// Fixed-length stub below source (ignore target position to prevent flip on drag)
+		const TERMINAL_LENGTH = 50;
+		const fixedTargetY = sourceY + TERMINAL_LENGTH;
+		const [edgePath, labelX, labelY] = getStraightPath({
 			sourceX,
 			sourceY,
 			targetX: sourceX,
-			targetY,
+			targetY: fixedTargetY,
 		});
-		labelX = sourceX;
-		labelY = sourceY + (targetY - sourceY) * 0.5;
-		plusX = sourceX;
-		plusY = targetY;
-	} else {
-		[edgePath, labelX, labelY] = getSmoothStepPath({
-			sourceX,
-			sourceY,
-			sourcePosition: Position.Bottom,
-			targetX,
-			targetY,
-			targetPosition: Position.Top,
-			borderRadius: 8,
-		});
-		plusX = isTerminal ? targetX : labelX;
-		plusY = isTerminal ? targetY : labelY;
-	}
+		const plusX = sourceX;
+		const plusY = fixedTargetY;
 
-	// Pill color classes per UI-SPEC branch label table
-	const pillClasses: Record<string, string> = {
-		yes: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
-		no: "bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400",
-	};
-
-	// Override for loop branch labels
-	let pillClass: string;
-	if (label === "For Each") {
-		pillClass = "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400";
-	} else if (label === "After Last") {
-		pillClass = "bg-muted text-muted-foreground";
-	} else {
-		pillClass = pillClasses[variant] || pillClasses.yes;
-	}
-
-	return (
-		<>
-			<BaseEdge
-				path={edgePath}
-				style={{ ...style, strokeWidth: 2, stroke: "var(--color-border)" }}
-			/>
-			<EdgeLabelRenderer>
-				<div
-					className="nodrag nopan pointer-events-none"
-					style={{
-						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-					}}
-				>
-					<span
-						className={cn(
-							"text-xs font-semibold px-2 py-0.5 rounded-full",
-							pillClass
-						)}
+		return (
+			<>
+				<BaseEdge
+					path={edgePath}
+					style={{ ...style, ...edgeStyle }}
+				/>
+				<EdgeLabelRenderer>
+					{label && (
+						<div
+							className="nodrag nopan pointer-events-none absolute"
+							style={{
+								transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+							}}
+						>
+							<span className="text-xs text-muted-foreground bg-background px-1.5 py-0.5 rounded select-none">
+								{label}
+							</span>
+						</div>
+					)}
+					<div
+						className="nodrag nopan pointer-events-auto absolute"
+						style={{
+							transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
+							zIndex: 10,
+						}}
 					>
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								onInsertNode?.(id, "placeholder");
+							}}
+							className={cn(
+								"nodrag nopan w-7 h-7 rounded-full bg-background border border-border hover:border-primary flex items-center justify-center shadow-sm transition-colors cursor-pointer",
+								isTerminal
+									? "opacity-100"
+									: "opacity-0 hover:opacity-100 focus:opacity-100",
+							)}
+							aria-label="Add step"
+						>
+							<Plus className="h-3.5 w-3.5 text-muted-foreground" />
+						</button>
+					</div>
+				</EdgeLabelRenderer>
+			</>
+		);
+	}
+
+	// Simple yes/each branches: use RF UI ButtonEdge
+	return (
+		<RFButtonEdge
+			{...props}
+			style={{ ...style, ...edgeStyle }}
+		>
+			<div className="flex flex-col items-center gap-1">
+				{label && (
+					<span className="text-xs text-muted-foreground bg-background px-1.5 py-0.5 rounded select-none pointer-events-none">
 						{label}
 					</span>
-				</div>
-				{/* Plus button */}
-				<div
-					className="nodrag nopan pointer-events-auto"
-					style={{
-						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
-						zIndex: 10,
+				)}
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						onInsertNode?.(id, "placeholder");
 					}}
+					className={cn(
+						"nodrag nopan w-7 h-7 rounded-full bg-background border border-border hover:border-primary flex items-center justify-center shadow-sm transition-colors cursor-pointer",
+						"opacity-0 hover:opacity-100 focus:opacity-100",
+					)}
+					aria-label="Add step"
 				>
-					<DropdownMenu modal={false}>
-						<DropdownMenuTrigger asChild>
-							<button
-								className={cn(
-									"w-9 h-9 rounded-full bg-transparent flex items-center justify-center cursor-pointer",
-									"touch-manipulation",
-									isTerminal
-										? "opacity-100"
-										: "opacity-0 hover:opacity-100 focus:opacity-100"
-								)}
-								aria-label="Insert node"
-							>
-								<span className="w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-muted flex items-center justify-center transition-colors">
-									<Plus className="h-3 w-3 text-muted-foreground" />
-								</span>
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="center" sideOffset={8}>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "condition")}>
-								<GitBranch className="h-4 w-4 mr-2" />
-								Add Condition
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "action")}>
-								<Play className="h-4 w-4 mr-2" />
-								Add Action
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "fetch_records")}>
-								<Search className="h-4 w-4 mr-2" />
-								Add Fetch Records
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "loop")}>
-								<Repeat className="h-4 w-4 mr-2" />
-								Add Loop
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-			</EdgeLabelRenderer>
-		</>
+					<Plus className="h-3.5 w-3.5 text-muted-foreground" />
+				</button>
+			</div>
+		</RFButtonEdge>
 	);
 }
