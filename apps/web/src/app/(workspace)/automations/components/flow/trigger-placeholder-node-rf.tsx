@@ -1,11 +1,10 @@
 "use client";
 
 import { memo } from "react";
-import { Position, type NodeProps } from "@xyflow/react";
+import { type NodeProps } from "@xyflow/react";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
-import { BaseHandle } from "@/components/base-handle";
 
 export const TriggerPlaceholderNodeRF = memo(({ selected }: NodeProps) => {
 	return (
@@ -31,7 +30,6 @@ export const TriggerPlaceholderNodeRF = memo(({ selected }: NodeProps) => {
 						</span>
 					</div>
 				</BaseNodeContent>
-				<BaseHandle type="source" position={Position.Bottom} />
 			</BaseNode>
 		</div>
 	);

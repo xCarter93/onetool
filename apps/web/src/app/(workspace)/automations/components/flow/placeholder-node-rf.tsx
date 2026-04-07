@@ -30,6 +30,7 @@ export const PlaceholderNodeRF = memo(
 						</span>
 					</div>
 				</BaseNodeContent>
+				<BaseHandle type="source" position={Position.Bottom} className="opacity-0!" />
 			</BaseNode>
 		);
 	},

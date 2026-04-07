@@ -10,8 +10,8 @@
  * - Terminal stubs: same rules, placed below their source
  */
 
-const Y_GAP = 100;
-const X_OFFSET = 320;
+const Y_GAP = 150;
+const X_OFFSET = 350;
 
 export interface PlacementContext {
   /** Map of node ID -> current position (for nodes already placed) */

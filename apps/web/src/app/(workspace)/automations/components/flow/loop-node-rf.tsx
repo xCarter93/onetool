@@ -63,8 +63,8 @@ export const LoopNodeRF = memo(({ data, selected }: NodeProps) => {
 			<BaseHandle type="target" position={Position.Left} id="loopReturn" />
 			{/* "For Each" source handle (bottom) */}
 			<BaseHandle type="source" position={Position.Bottom} id="each" />
-			{/* "After Last" source handle (bottom) */}
-			<BaseHandle type="source" position={Position.Bottom} id="after" />
+			{/* "After Last" source handle (right side) */}
+			<BaseHandle type="source" position={Position.Right} id="after" />
 		</BaseNode>
 	);
 });

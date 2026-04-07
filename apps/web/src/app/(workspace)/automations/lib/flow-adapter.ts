@@ -112,15 +112,13 @@ export function automationToReactFlow(
 			position: { x: 0, y: 0 },
 		});
 	} else {
-		// No trigger — show dashed placeholder
+		// No trigger — show dashed placeholder (no terminal stub, placeholder IS the interaction)
 		rfNodes.push({
 			id: TRIGGER_PLACEHOLDER_ID,
 			type: RF_NODE_TYPES.triggerPlaceholder,
 			data: {},
 			position: { x: 0, y: 0 },
 		});
-		// Placeholder gets a terminal stub below it
-		addTerminalStub(rfNodes, rfEdges, TRIGGER_PLACEHOLDER_ID);
 		return { nodes: rfNodes, edges: rfEdges };
 	}
 

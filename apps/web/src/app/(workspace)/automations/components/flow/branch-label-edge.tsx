@@ -9,7 +9,6 @@ import {
 import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getNoBranchGeometry } from "./edge-geometry";
 
 const EDGE_STYLE = {
 	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
@@ -44,60 +43,17 @@ export function BranchLabelEdge(props: EdgeProps) {
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
 
-	// Complex geometry branches need custom rendering
-	const needsCustomGeometry = branchType === "no" || branchType === "after" || isTerminal;
-
-	if (needsCustomGeometry) {
-		let edgePath = "";
-		let labelX = 0;
-		let labelY = 0;
-		let plusX = 0;
-		let plusY = 0;
-
-		if (branchType === "yes" || branchType === "each") {
-			[edgePath, labelX, labelY] = getStraightPath({
-				sourceX,
-				sourceY,
-				targetX,
-				targetY,
-			});
-			plusX = isTerminal ? targetX : labelX;
-			plusY = isTerminal ? targetY : labelY;
-		} else if (branchType === "no") {
-			const geometry = getNoBranchGeometry(
-				sourceX,
-				sourceY,
-				targetX,
-				targetY,
-			);
-			edgePath = geometry.edgePath;
-			labelX = geometry.labelX;
-			labelY = geometry.labelY;
-			plusX = targetX;
-			plusY = geometry.effectiveTargetY;
-		} else if (branchType === "after") {
-			[edgePath, labelX, labelY] = getStraightPath({
-				sourceX,
-				sourceY,
-				targetX: sourceX,
-				targetY: isTerminal
-					? sourceY + (targetY - sourceY) * 0.5
-					: targetY,
-			});
-			plusX = isTerminal ? sourceX : labelX;
-			plusY = isTerminal
-				? sourceY + (targetY - sourceY) * 0.5
-				: labelY;
-		} else {
-			[edgePath, labelX, labelY] = getStraightPath({
-				sourceX,
-				sourceY,
-				targetX,
-				targetY,
-			});
-			plusX = labelX;
-			plusY = labelY;
-		}
+	// Only terminal edges need custom rendering (shortened path + always-visible "+" button)
+	if (isTerminal) {
+		// For all terminal branch types, draw a straight path toward the target
+		const [edgePath, labelX, labelY] = getStraightPath({
+			sourceX,
+			sourceY,
+			targetX,
+			targetY,
+		});
+		const plusX = targetX;
+		const plusY = targetY;
 
 		return (
 			<>
