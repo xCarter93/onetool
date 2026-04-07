@@ -20,13 +20,12 @@ const makeTrigger = (
 });
 
 describe("flow-adapter", () => {
-	it("converts null trigger with no nodes to placeholder with terminal stub", () => {
+	it("converts null trigger with no nodes to placeholder only", () => {
 		const result = automationToReactFlow(null, []);
-		// Placeholder node + terminal stub
-		expect(result.nodes).toHaveLength(2);
+		// Placeholder node only — no terminal stub, placeholder IS the interaction point
+		expect(result.nodes).toHaveLength(1);
 		expect(result.nodes[0].id).toBe(TRIGGER_PLACEHOLDER_ID);
-		expect(isTerminalId(result.nodes[1].id)).toBe(true);
-		expect(result.edges).toHaveLength(1);
+		expect(result.edges).toHaveLength(0);
 	});
 
 	it("creates trigger RF node from TriggerConfig", () => {
