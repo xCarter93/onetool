@@ -26,7 +26,7 @@ function toSidebarType(t: string): NodeConfigType {
 export function AutomationEditorScreen({ automationId }: { automationId: string | null }) {
 	const router = useRouter();
 	const editor = useAutomationEditor(automationId);
-	const sidebar = useSidebarState(editor.hasPlaceholders);
+	const sidebar = useSidebarState();
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
 
 	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
@@ -110,10 +110,16 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	);
 
 	const selectedNode = useMemo(() => {
-		if (sidebar.mode?.mode !== "node-config") return null;
-		return sidebar.mode.nodeType === "trigger"
-			? { type: "trigger" }
-			: { type: sidebar.mode.nodeType, id: sidebar.mode.nodeId };
+		if (sidebar.mode?.mode === "node-config") {
+			return sidebar.mode.nodeType === "trigger"
+				? { type: "trigger" }
+				: { type: sidebar.mode.nodeType, id: sidebar.mode.nodeId };
+		}
+		// Include placeholders so Backspace can delete them
+		if (sidebar.mode?.mode === "step-picker") {
+			return { type: "placeholder", id: sidebar.mode.placeholderNodeId };
+		}
+		return null;
 	}, [sidebar.mode]);
 
 	useKeyboardShortcuts({
@@ -173,6 +179,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onPaneClick={handlePaneClick}
 						onNodeDragStop={editor.handleNodeDragStop}
 						onNavigateReady={handleNavigateReady}
+						onDeleteNode={handleDeleteNode}
 					/>
 					{editor.undoBanner && (
 						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
