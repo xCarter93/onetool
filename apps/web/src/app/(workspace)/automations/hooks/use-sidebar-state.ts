@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { SidebarMode } from "../components/sidebar/automation-sidebar";
 
 type ConfigurableNodeType = Exclude<
@@ -8,7 +8,7 @@ type ConfigurableNodeType = Exclude<
 	"trigger"
 >;
 
-export function useSidebarState(hasPlaceholders: boolean) {
+export function useSidebarState() {
 	const [isOpen, setIsOpen] = useState(false);
 	const [mode, setMode] = useState<SidebarMode | null>(null);
 
@@ -59,12 +59,6 @@ export function useSidebarState(hasPlaceholders: boolean) {
 		},
 		[]
 	);
-
-	useEffect(() => {
-		if (!hasPlaceholders && mode?.mode === "step-picker") {
-			closeSidebar();
-		}
-	}, [closeSidebar, hasPlaceholders, mode]);
 
 	return {
 		isOpen,

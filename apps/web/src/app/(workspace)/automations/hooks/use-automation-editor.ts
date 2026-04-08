@@ -730,34 +730,11 @@ export function useAutomationEditor(automationId: string | null) {
 
 	const handlePaneClick = useCallback(() => {
 		clearUndoState();
-		setNodes((prev) => {
-			// Find placeholder IDs that are branch children of condition/loop nodes
-			const branchPlaceholderIds = new Set<string>();
-			for (const node of prev) {
-				if (node.type === "condition" || node.type === "loop") {
-					if (node.nextNodeId) branchPlaceholderIds.add(node.nextNodeId);
-					if (node.elseNodeId) branchPlaceholderIds.add(node.elseNodeId);
-				}
-			}
-			return prev.filter(
-				(node) =>
-					(node as unknown as { type: string }).type !== "placeholder" ||
-					branchPlaceholderIds.has(node.id)
-			);
-		});
 	}, [clearUndoState]);
 
 	// Positions are now computed inside automationToReactFlow (initial-placement.ts)
 	const layoutedNodes = rawFlow.nodes;
 	const layoutedEdges = rawFlow.edges;
-
-	const hasPlaceholders = useMemo(
-		() =>
-			layoutedNodes.some(
-				(node) => (node.data as Record<string, unknown> | undefined)?.nodeType === "placeholder"
-			),
-		[layoutedNodes]
-	);
 
 	const handleSave = useCallback(async () => {
 		const validation = validateWorkflowForSave(trigger, layoutedNodes);
@@ -857,7 +834,6 @@ export function useAutomationEditor(automationId: string | null) {
 		handleConfirmClear,
 		handleCancelClear,
 		showClearConfirm,
-		hasPlaceholders,
 		canUndo: !!deletedNodeState,
 		undoBanner: deletedNodeState
 			? {

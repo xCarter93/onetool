@@ -1,6 +1,6 @@
 /**
  * Hybrid positioning: compute initial node positions for new/unpositioned nodes.
- * Replaces the 730-line dagre-layout.ts with simple parent-relative placement.
+ * Uses simple parent-relative placement (BFS-based).
  *
  * Rules:
  * - Trigger: top center (0, 0)
@@ -77,11 +77,16 @@ export function computeInitialPosition(
  * Uses DFS to ensure each subtree branch is fully placed (including terminal
  * stubs) before sibling branches. Critical for loop nodes: the "each" body
  * must be fully placed so the "after" branch's maxY scan includes all body nodes.
+ *
+ * persistedPositions: map of node ID -> saved position from drag/DB.
+ * When a node has a persisted position, we use it instead of computing,
+ * so child nodes are placed relative to the actual (dragged) parent position.
  */
 export function computeAllPositions(
-  nodes: Array<{ id: string }>,
+  _nodes: Array<{ id: string }>,
   edges: Array<{ source: string; target: string; data?: { branchType?: string } }>,
-  triggerId: string
+  triggerId: string,
+  persistedPositions?: Map<string, { x: number; y: number }>
 ): Map<string, { x: number; y: number }> {
   const ctx = createPlacementContext();
   const visited = new Set<string>();
@@ -94,7 +99,14 @@ export function computeAllPositions(
     if (visited.has(nodeId)) return;
     visited.add(nodeId);
 
-    computeInitialPosition(nodeId, parentId, branchType, ctx);
+    // Use persisted (dragged) position if available, so children are placed
+    // relative to the actual parent position rather than the computed one
+    const persisted = persistedPositions?.get(nodeId);
+    if (persisted) {
+      ctx.positions.set(nodeId, persisted);
+    } else {
+      computeInitialPosition(nodeId, parentId, branchType, ctx);
+    }
 
     // Find child edges (exclude loop_back)
     const childEdges = edges.filter(

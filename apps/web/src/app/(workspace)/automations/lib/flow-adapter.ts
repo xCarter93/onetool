@@ -304,22 +304,25 @@ export function automationToReactFlow(
 		}
 	}
 
-	// Apply positions: use persisted position if available, otherwise compute
-	const triggerId = trigger ? TRIGGER_NODE_ID : TRIGGER_PLACEHOLDER_ID;
-	const computedPositions = computeAllPositions(rfNodes, rfEdges, triggerId);
-
+	// Collect persisted positions (from drag or DB) so computeAllPositions
+	// places children relative to actual parent positions, not computed ones
+	const persistedPositions = new Map<string, { x: number; y: number }>();
 	for (const rfNode of rfNodes) {
-		// Check if the source DB node had a persisted position
 		const dbNode = rfNode.data?._dbNode as
 			| (WorkflowNode & { position?: { x: number; y: number } })
 			| undefined;
 		if (dbNode?.position) {
-			rfNode.position = { x: dbNode.position.x, y: dbNode.position.y };
-		} else {
-			const computed = computedPositions.get(rfNode.id);
-			if (computed) {
-				rfNode.position = computed;
-			}
+			persistedPositions.set(rfNode.id, dbNode.position);
+		}
+	}
+
+	const triggerId = trigger ? TRIGGER_NODE_ID : TRIGGER_PLACEHOLDER_ID;
+	const computedPositions = computeAllPositions(rfNodes, rfEdges, triggerId, persistedPositions);
+
+	for (const rfNode of rfNodes) {
+		const pos = computedPositions.get(rfNode.id);
+		if (pos) {
+			rfNode.position = pos;
 		}
 	}
 
