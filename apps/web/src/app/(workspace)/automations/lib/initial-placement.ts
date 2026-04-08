@@ -1,6 +1,6 @@
 /**
  * Hybrid positioning: compute initial node positions for new/unpositioned nodes.
- * Replaces the 730-line dagre-layout.ts with simple parent-relative placement.
+ * Uses simple parent-relative placement (BFS-based).
  *
  * Rules:
  * - Trigger: top center (0, 0)
