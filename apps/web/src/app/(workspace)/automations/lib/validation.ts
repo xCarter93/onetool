@@ -29,6 +29,14 @@ export function validateWorkflowForSave(
 			type: "no_trigger",
 			message: "No trigger configured",
 		});
+	} else if (
+		(trigger.type === "status_changed" || !trigger.type) &&
+		!trigger.toStatus?.trim()
+	) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Trigger status is required",
+		});
 	}
 
 	// Check for empty workflow (no real steps)

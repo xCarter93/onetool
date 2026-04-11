@@ -256,7 +256,8 @@ export const publish = mutation({
 			!!page.draftOwnerInfo ||
 			!!page.draftCredentials ||
 			!!page.draftBusinessHours ||
-			!!page.draftSocialLinks;
+			!!page.draftSocialLinks ||
+			!!page.draftTheme;
 		if (!hasLegacyContent && !hasSectionContent && !hasBusinessInfoContent) {
 			throw new Error("No draft content to publish");
 		}
@@ -510,6 +511,13 @@ export const submitInterest = mutation({
 		// Rate limit per slug (org's community page)
 		await rateLimiter.limit(ctx, "communityInterest", {
 			key: args.slug,
+			throws: true,
+		});
+
+		// Rate limit per email to prevent the same address flooding the task queue
+		const normalizedEmailForLimit = args.email.toLowerCase().trim();
+		await rateLimiter.limit(ctx, "communityInterestPerEmail", {
+			key: normalizedEmailForLimit,
 			throws: true,
 		});
 
