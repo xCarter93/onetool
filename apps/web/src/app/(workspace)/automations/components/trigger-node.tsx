@@ -49,10 +49,32 @@ const STATUS_OPTIONS: Record<string, { value: string; label: string }[]> = {
 	],
 };
 
+export type TriggerType =
+	| "status_changed"
+	| "record_created"
+	| "record_updated"
+	| "email_received"
+	| "scheduled";
+
+export const TRIGGER_TYPE_OPTIONS = [
+	{ value: "status_changed", label: "Status Changes" },
+	{ value: "record_created", label: "Record Created" },
+	{ value: "record_updated", label: "Record Updated" },
+	{ value: "email_received", label: "Email Received" },
+	{ value: "scheduled", label: "On a Schedule" },
+] as const;
+
 export type TriggerConfig = {
+	type?: TriggerType;
 	objectType: "client" | "project" | "quote" | "invoice" | "task";
 	fromStatus?: string;
-	toStatus: string;
+	toStatus?: string;
+	field?: string;
+	schedule?: {
+		frequency: "daily" | "weekly" | "monthly";
+		timezone: string;
+		time?: string;
+	};
 };
 
 interface TriggerNodeProps {
@@ -60,14 +82,41 @@ interface TriggerNodeProps {
 	onClick?: () => void;
 }
 
-export function TriggerNode({ trigger, onClick }: TriggerNodeProps) {
-	const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
+function getTriggerSummary(trigger: TriggerConfig): string {
 	const objectLabel =
 		OBJECT_TYPES.find((t) => t.value === trigger.objectType)?.label ||
 		trigger.objectType;
-	const toStatusLabel =
-		statusOptions.find((s) => s.value === trigger.toStatus)?.label ||
-		trigger.toStatus;
+	const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
+
+	const triggerType = trigger.type || "status_changed";
+
+	switch (triggerType) {
+		case "status_changed": {
+			const toStatusLabel =
+				statusOptions.find((s) => s.value === trigger.toStatus)?.label ||
+				trigger.toStatus ||
+				"any";
+			return `When ${objectLabel} → ${toStatusLabel}`;
+		}
+		case "record_created":
+			return `When ${objectLabel} is created`;
+		case "record_updated":
+			return trigger.field
+				? `When ${objectLabel}.${trigger.field} changes`
+				: `When ${objectLabel} is updated`;
+		case "email_received":
+			return "When email is received";
+		case "scheduled": {
+			const freq = trigger.schedule?.frequency || "daily";
+			return `Runs ${freq}`;
+		}
+		default:
+			return `When ${objectLabel} changes`;
+	}
+}
+
+export function TriggerNode({ trigger, onClick }: TriggerNodeProps) {
+	const summary = getTriggerSummary(trigger);
 
 	return (
 		<div className="flex flex-col items-center">
@@ -95,7 +144,7 @@ export function TriggerNode({ trigger, onClick }: TriggerNodeProps) {
 						Trigger
 					</div>
 					<div className="text-sm font-semibold text-foreground">
-						When {objectLabel} → {toStatusLabel}
+						{summary}
 					</div>
 				</div>
 

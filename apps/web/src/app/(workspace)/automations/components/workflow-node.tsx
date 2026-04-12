@@ -5,84 +5,22 @@ import { GitBranch, Play, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STATUS_OPTIONS } from "./trigger-node";
 
-export type NodeType = "condition" | "action";
+// Compatibility shim: re-export types and constants from the canonical node-types module.
+// Existing imports from "../components/workflow-node" continue to work during migration.
+export {
+	type WorkflowNode,
+	type NodeType,
+	FIELD_OPTIONS,
+	TARGET_OPTIONS,
+} from "../lib/node-types";
 
-export type WorkflowNode = {
-	id: string;
-	type: NodeType;
-	condition?: {
-		field: string;
-		operator: "equals" | "not_equals" | "contains" | "exists";
-		value: unknown;
-	};
-	action?: {
-		targetType: "self" | "project" | "client" | "quote" | "invoice";
-		actionType: "update_status";
-		newStatus: string;
-	};
-	nextNodeId?: string;
-	elseNodeId?: string;
-};
-
-// Field options for conditions
-const FIELD_OPTIONS: Record<
-	string,
-	{ value: string; label: string }[]
-> = {
-	client: [
-		{ value: "status", label: "Status" },
-		{ value: "priorityLevel", label: "Priority Level" },
-		{ value: "clientType", label: "Client Type" },
-		{ value: "clientSize", label: "Client Size" },
-		{ value: "category", label: "Category" },
-		{ value: "industry", label: "Industry" },
-	],
-	project: [
-		{ value: "status", label: "Status" },
-		{ value: "projectType", label: "Project Type" },
-		{ value: "title", label: "Title" },
-	],
-	quote: [
-		{ value: "status", label: "Status" },
-		{ value: "title", label: "Title" },
-	],
-	invoice: [
-		{ value: "status", label: "Status" },
-		{ value: "invoiceNumber", label: "Invoice Number" },
-	],
-	task: [
-		{ value: "status", label: "Status" },
-		{ value: "priority", label: "Priority" },
-		{ value: "type", label: "Type" },
-	],
-};
-
-// Target options for actions
-const TARGET_OPTIONS: Record<
-	string,
-	{ value: string; label: string; type: string }[]
-> = {
-	client: [{ value: "self", label: "This Client", type: "client" }],
-	project: [
-		{ value: "self", label: "This Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-	quote: [
-		{ value: "self", label: "This Quote", type: "quote" },
-		{ value: "project", label: "Related Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-	invoice: [
-		{ value: "self", label: "This Invoice", type: "invoice" },
-		{ value: "project", label: "Related Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-	task: [
-		{ value: "self", label: "This Task", type: "task" },
-		{ value: "project", label: "Related Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-};
+import {
+	type WorkflowNode,
+	FIELD_OPTIONS,
+	TARGET_OPTIONS,
+	isConditionNode,
+	isActionNode,
+} from "../lib/node-types";
 
 interface WorkflowNodeProps {
 	node: WorkflowNode;
@@ -105,11 +43,19 @@ export function WorkflowNodeComponent({
 
 	// Get display labels
 	const getNodeSummary = () => {
-		if (isCondition && node.condition) {
+		// Support both new config shape and legacy condition/action fields
+		const conditionData = isConditionNode(node)
+			? node.config || node.condition
+			: undefined;
+		const actionData = isActionNode(node)
+			? node.config || node.action
+			: undefined;
+
+		if (isConditionNode(node) && conditionData) {
 			const fieldOptions = FIELD_OPTIONS[triggerObjectType] || [];
 			const fieldLabel =
-				fieldOptions.find((f) => f.value === node.condition?.field)?.label ||
-				node.condition.field;
+				fieldOptions.find((f) => f.value === conditionData.field)?.label ||
+				conditionData.field;
 
 			// Operator labels
 			const operatorLabels: Record<string, string> = {
@@ -118,26 +64,26 @@ export function WorkflowNodeComponent({
 				contains: "contains",
 				exists: "exists",
 			};
-			const opLabel = operatorLabels[node.condition.operator] || node.condition.operator;
+			const opLabel = operatorLabels[conditionData.operator] || conditionData.operator;
 
-			if (node.condition.operator === "exists") {
+			if (conditionData.operator === "exists") {
 				return `If ${fieldLabel} ${opLabel}`;
 			}
-			return `If ${fieldLabel} ${opLabel} "${node.condition.value || "..."}"`;
+			return `If ${fieldLabel} ${opLabel} "${conditionData.value || "..."}"`;
 		}
 
-		if (!isCondition && node.action) {
+		if (isActionNode(node) && actionData) {
 			const targetOptions = TARGET_OPTIONS[triggerObjectType] || [];
 			const targetLabel =
-				targetOptions.find((t) => t.value === node.action?.targetType)?.label ||
-				node.action.targetType;
+				targetOptions.find((t) => t.value === actionData.targetType)?.label ||
+				actionData.targetType;
 			const targetType =
-				targetOptions.find((t) => t.value === node.action?.targetType)?.type ||
+				targetOptions.find((t) => t.value === actionData.targetType)?.type ||
 				triggerObjectType;
 			const statusOptions = STATUS_OPTIONS[targetType] || [];
 			const statusLabel =
-				statusOptions.find((s) => s.value === node.action?.newStatus)?.label ||
-				node.action.newStatus;
+				statusOptions.find((s) => s.value === actionData.newStatus)?.label ||
+				actionData.newStatus;
 
 			return `Set ${targetLabel} → ${statusLabel}`;
 		}
@@ -235,6 +181,3 @@ export function WorkflowNodeComponent({
 		</div>
 	);
 }
-
-export { FIELD_OPTIONS, TARGET_OPTIONS };
-

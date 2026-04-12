@@ -192,6 +192,262 @@ describe("Automations", () => {
 		});
 	});
 
+	describe("v1.2 schema expansion", () => {
+		it("should create automation with v1.2 status_changed trigger format", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				return await createTestOrg(ctx);
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Status changed v1.2",
+				isActive: true,
+				trigger: {
+					type: "status_changed",
+					objectType: "quote",
+					toStatus: "sent",
+				},
+				nodes: [
+					{
+						id: "node-1",
+						type: "action",
+						action: {
+							targetType: "project",
+							actionType: "update_status",
+							newStatus: "in-progress",
+						},
+					},
+				],
+			});
+
+			expect(automationId).toBeDefined();
+
+			const automation = await asUser.query(api.automations.get, { id: automationId });
+			expect(automation?.trigger).toHaveProperty("type", "status_changed");
+		});
+
+		it("should still accept legacy trigger format without type field", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				return await createTestOrg(ctx);
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Legacy format",
+				isActive: true,
+				trigger: {
+					objectType: "client",
+					toStatus: "active",
+				},
+				nodes: [
+					{
+						id: "node-1",
+						type: "action",
+						action: {
+							targetType: "self",
+							actionType: "update_status",
+							newStatus: "active",
+						},
+					},
+				],
+			});
+
+			expect(automationId).toBeDefined();
+		});
+
+		it("should create automation with fetch_records node", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				return await createTestOrg(ctx);
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Fetch records test",
+				isActive: true,
+				trigger: {
+					type: "status_changed",
+					objectType: "invoice",
+					toStatus: "overdue",
+				},
+				nodes: [
+					{
+						id: "fetch-1",
+						type: "fetch_records",
+						fetchConfig: {
+							entityType: "invoice",
+							filters: [{ field: "status", operator: "equals", value: "overdue" }],
+							limit: 100,
+						},
+						nextNodeId: "action-1",
+					},
+					{
+						id: "action-1",
+						type: "action",
+						action: {
+							targetType: "self",
+							actionType: "update_status",
+							newStatus: "cancelled",
+						},
+					},
+				],
+			});
+
+			expect(automationId).toBeDefined();
+		});
+
+		it("should create automation with loop node", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				return await createTestOrg(ctx);
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Loop test",
+				isActive: true,
+				trigger: {
+					type: "status_changed",
+					objectType: "project",
+					toStatus: "completed",
+				},
+				nodes: [
+					{
+						id: "loop-1",
+						type: "loop",
+						loopConfig: {
+							sourceNodeId: "fetch-1",
+							batchSize: 25,
+						},
+						nextNodeId: "action-1",
+					},
+					{
+						id: "action-1",
+						type: "action",
+						action: {
+							targetType: "self",
+							actionType: "update_status",
+							newStatus: "archived",
+						},
+					},
+				],
+			});
+
+			expect(automationId).toBeDefined();
+		});
+
+		it("should create automation with expanded condition operators", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				return await createTestOrg(ctx);
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			// Test greater_than operator
+			const automationId1 = await asUser.mutation(api.automations.create, {
+				name: "Greater than condition",
+				isActive: true,
+				trigger: {
+					type: "status_changed",
+					objectType: "invoice",
+					toStatus: "sent",
+				},
+				nodes: [
+					{
+						id: "cond-1",
+						type: "condition",
+						condition: {
+							field: "total",
+							operator: "greater_than",
+							value: 10000,
+						},
+						nextNodeId: "action-1",
+					},
+					{
+						id: "action-1",
+						type: "action",
+						action: {
+							targetType: "self",
+							actionType: "update_status",
+							newStatus: "paid",
+						},
+					},
+				],
+			});
+
+			expect(automationId1).toBeDefined();
+
+			// Test before operator
+			const automationId2 = await asUser.mutation(api.automations.create, {
+				name: "Before condition",
+				isActive: true,
+				trigger: {
+					type: "status_changed",
+					objectType: "task",
+					toStatus: "completed",
+				},
+				nodes: [
+					{
+						id: "cond-1",
+						type: "condition",
+						condition: {
+							field: "dueDate",
+							operator: "before",
+							value: "2026-01-01",
+						},
+						nextNodeId: "action-1",
+					},
+					{
+						id: "action-1",
+						type: "action",
+						action: {
+							targetType: "self",
+							actionType: "update_status",
+							newStatus: "archived",
+						},
+					},
+				],
+			});
+
+			expect(automationId2).toBeDefined();
+		});
+
+		it("should create automation with update_field action", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				return await createTestOrg(ctx);
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Update field test",
+				isActive: true,
+				trigger: {
+					type: "status_changed",
+					objectType: "client",
+					toStatus: "active",
+				},
+				nodes: [
+					{
+						id: "action-1",
+						type: "action",
+						action: {
+							targetType: "self",
+							actionType: "update_field",
+							newStatus: "",
+							field: "notes",
+							value: "Activated via automation",
+						},
+					},
+				],
+			});
+
+			expect(automationId).toBeDefined();
+		});
+	});
+
 	describe("remove", () => {
 		it("should delete automation", async () => {
 			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {

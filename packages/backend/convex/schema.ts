@@ -848,6 +848,96 @@ export default defineSchema({
 			)
 		),
 
+		// Business info (Phase 7)
+		draftOwnerInfo: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+				title: v.optional(v.string()),
+			})
+		),
+		publishedOwnerInfo: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+				title: v.optional(v.string()),
+			})
+		),
+		draftCredentials: v.optional(
+			v.object({
+				isLicensed: v.optional(v.boolean()),
+				isBonded: v.optional(v.boolean()),
+				isInsured: v.optional(v.boolean()),
+				yearEstablished: v.optional(v.number()),
+				licenseNumber: v.optional(v.string()),
+				certifications: v.optional(v.array(v.string())),
+			})
+		),
+		publishedCredentials: v.optional(
+			v.object({
+				isLicensed: v.optional(v.boolean()),
+				isBonded: v.optional(v.boolean()),
+				isInsured: v.optional(v.boolean()),
+				yearEstablished: v.optional(v.number()),
+				licenseNumber: v.optional(v.string()),
+				certifications: v.optional(v.array(v.string())),
+			})
+		),
+		draftBusinessHours: v.optional(
+			v.object({
+				byAppointmentOnly: v.boolean(),
+				schedule: v.optional(
+					v.array(
+						v.object({
+							day: v.string(),
+							open: v.string(),
+							close: v.string(),
+							isClosed: v.boolean(),
+						})
+					)
+				),
+			})
+		),
+		publishedBusinessHours: v.optional(
+			v.object({
+				byAppointmentOnly: v.boolean(),
+				schedule: v.optional(
+					v.array(
+						v.object({
+							day: v.string(),
+							open: v.string(),
+							close: v.string(),
+							isClosed: v.boolean(),
+						})
+					)
+				),
+			})
+		),
+		draftSocialLinks: v.optional(
+			v.object({
+				facebook: v.optional(v.string()),
+				instagram: v.optional(v.string()),
+				nextdoor: v.optional(v.string()),
+				youtube: v.optional(v.string()),
+				linkedin: v.optional(v.string()),
+				yelp: v.optional(v.string()),
+				google: v.optional(v.string()),
+			})
+		),
+		publishedSocialLinks: v.optional(
+			v.object({
+				facebook: v.optional(v.string()),
+				instagram: v.optional(v.string()),
+				nextdoor: v.optional(v.string()),
+				youtube: v.optional(v.string()),
+				linkedin: v.optional(v.string()),
+				yelp: v.optional(v.string()),
+				google: v.optional(v.string()),
+			})
+		),
+
+		// Theme (Phase 8)
+		draftTheme: v.optional(v.string()),
+		publishedTheme: v.optional(v.string()),
+
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)
 		metaDescription: v.optional(v.string()), // SEO description
@@ -971,33 +1061,113 @@ export default defineSchema({
 		description: v.optional(v.string()),
 		isActive: v.boolean(),
 
-		// Trigger definition
-		trigger: v.object({
-			objectType: v.union(
-				v.literal("client"),
-				v.literal("project"),
-				v.literal("quote"),
-				v.literal("invoice"),
-				v.literal("task")
-			),
-			fromStatus: v.optional(v.string()), // Optional: specific "from" status
-			toStatus: v.string(), // Required: target status
-		}),
+		// Trigger definition - supports both legacy and v1.2 formats
+		trigger: v.union(
+			// Legacy format (no type field) - for backward compatibility
+			v.object({
+				objectType: v.union(
+					v.literal("client"),
+					v.literal("project"),
+					v.literal("quote"),
+					v.literal("invoice"),
+					v.literal("task")
+				),
+				fromStatus: v.optional(v.string()),
+				toStatus: v.string(),
+			}),
+			// v1.2 status_changed trigger
+			v.object({
+				type: v.literal("status_changed"),
+				objectType: v.union(
+					v.literal("client"),
+					v.literal("project"),
+					v.literal("quote"),
+					v.literal("invoice"),
+					v.literal("task")
+				),
+				fromStatus: v.optional(v.string()),
+				toStatus: v.string(),
+			}),
+			// v1.2 record_created trigger
+			v.object({
+				type: v.literal("record_created"),
+				objectType: v.union(
+					v.literal("client"),
+					v.literal("project"),
+					v.literal("quote"),
+					v.literal("invoice"),
+					v.literal("task")
+				),
+			}),
+			// v1.2 record_updated trigger
+			v.object({
+				type: v.literal("record_updated"),
+				objectType: v.union(
+					v.literal("client"),
+					v.literal("project"),
+					v.literal("quote"),
+					v.literal("invoice"),
+					v.literal("task")
+				),
+				field: v.optional(v.string()),
+			}),
+			// v1.2 email_received trigger
+			v.object({
+				type: v.literal("email_received"),
+				objectType: v.literal("client"),
+			}),
+			// v1.2 scheduled trigger
+			v.object({
+				type: v.literal("scheduled"),
+				schedule: v.object({
+					frequency: v.union(
+						v.literal("daily"),
+						v.literal("weekly"),
+						v.literal("monthly")
+					),
+					timezone: v.string(),
+					time: v.optional(v.string()),
+					dayOfWeek: v.optional(v.number()),
+					dayOfMonth: v.optional(v.number()),
+				}),
+				objectType: v.optional(
+					v.union(
+						v.literal("client"),
+						v.literal("project"),
+						v.literal("quote"),
+						v.literal("invoice"),
+						v.literal("task")
+					)
+				),
+			})
+		),
 
 		// Workflow nodes (linear with conditional branches)
 		nodes: v.array(
 			v.object({
 				id: v.string(),
-				type: v.union(v.literal("condition"), v.literal("action")),
+				type: v.union(
+					v.literal("condition"),
+					v.literal("action"),
+					v.literal("fetch_records"),
+					v.literal("loop"),
+					v.literal("end")
+				),
 				// Condition node fields
 				condition: v.optional(
 					v.object({
-						field: v.string(), // e.g., "priorityLevel", "projectType"
+						field: v.string(),
 						operator: v.union(
 							v.literal("equals"),
 							v.literal("not_equals"),
 							v.literal("contains"),
-							v.literal("exists")
+							v.literal("exists"),
+							v.literal("greater_than"),
+							v.literal("less_than"),
+							v.literal("is_true"),
+							v.literal("is_false"),
+							v.literal("before"),
+							v.literal("after")
 						),
 						value: v.any(),
 					})
@@ -1012,13 +1182,65 @@ export default defineSchema({
 							v.literal("quote"),
 							v.literal("invoice")
 						),
-						actionType: v.literal("update_status"),
+						actionType: v.union(
+							v.literal("update_status"),
+							v.literal("update_field"),
+							v.literal("send_notification"),
+							v.literal("create_record")
+						),
 						newStatus: v.string(),
+						// update_field action fields
+						field: v.optional(v.string()),
+						value: v.optional(v.any()),
+						// send_notification action fields
+						notificationRecipient: v.optional(v.string()),
+						notificationMessage: v.optional(v.string()),
+						// create_record action fields
+						createRecordType: v.optional(
+							v.union(v.literal("task"), v.literal("project"))
+						),
+						createRecordFields: v.optional(v.any()),
+					})
+				),
+				// Fetch records config
+				fetchConfig: v.optional(
+					v.object({
+						entityType: v.union(
+							v.literal("client"),
+							v.literal("project"),
+							v.literal("quote"),
+							v.literal("invoice"),
+							v.literal("task")
+						),
+						filters: v.optional(
+							v.array(
+								v.object({
+									field: v.string(),
+									operator: v.string(),
+									value: v.any(),
+								})
+							)
+						),
+						limit: v.optional(v.number()),
+					})
+				),
+				// Loop config
+				loopConfig: v.optional(
+					v.object({
+						sourceNodeId: v.string(),
+						batchSize: v.optional(v.number()),
 					})
 				),
 				// Flow control
 				nextNodeId: v.optional(v.string()),
-				elseNodeId: v.optional(v.string()), // For condition nodes
+				elseNodeId: v.optional(v.string()),
+				// UI position (persisted for manual drag positioning)
+				position: v.optional(
+					v.object({
+						x: v.number(),
+						y: v.number(),
+					})
+				),
 			})
 		),
 
@@ -1036,7 +1258,7 @@ export default defineSchema({
 	workflowExecutions: defineTable({
 		orgId: v.id("organizations"),
 		automationId: v.id("workflowAutomations"),
-		triggeredBy: v.string(), // ID of the object that triggered it
+		triggeredBy: v.string(),
 		triggeredAt: v.number(),
 		status: v.union(
 			v.literal("running"),
@@ -1054,6 +1276,10 @@ export default defineSchema({
 					v.literal("failed")
 				),
 				error: v.optional(v.string()),
+				// v1.2 per-node timing fields
+				startedAt: v.optional(v.number()),
+				completedAt: v.optional(v.number()),
+				recordsProcessed: v.optional(v.number()),
 			})
 		),
 		error: v.optional(v.string()),

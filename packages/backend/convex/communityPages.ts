@@ -67,6 +67,49 @@ export const upsert = mutation({
 		),
 		pageTitle: v.optional(v.string()),
 		metaDescription: v.optional(v.string()),
+		draftOwnerInfo: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+				title: v.optional(v.string()),
+			})
+		),
+		draftCredentials: v.optional(
+			v.object({
+				isLicensed: v.optional(v.boolean()),
+				isBonded: v.optional(v.boolean()),
+				isInsured: v.optional(v.boolean()),
+				yearEstablished: v.optional(v.number()),
+				licenseNumber: v.optional(v.string()),
+				certifications: v.optional(v.array(v.string())),
+			})
+		),
+		draftBusinessHours: v.optional(
+			v.object({
+				byAppointmentOnly: v.boolean(),
+				schedule: v.optional(
+					v.array(
+						v.object({
+							day: v.string(),
+							open: v.string(),
+							close: v.string(),
+							isClosed: v.boolean(),
+						})
+					)
+				),
+			})
+		),
+		draftSocialLinks: v.optional(
+			v.object({
+				facebook: v.optional(v.string()),
+				instagram: v.optional(v.string()),
+				nextdoor: v.optional(v.string()),
+				youtube: v.optional(v.string()),
+				linkedin: v.optional(v.string()),
+				yelp: v.optional(v.string()),
+				google: v.optional(v.string()),
+			})
+		),
+		draftTheme: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await getCurrentUserOrThrow(ctx);
@@ -118,6 +161,16 @@ export const upsert = mutation({
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
 			if (args.metaDescription !== undefined)
 				updates.metaDescription = args.metaDescription;
+			if (args.draftOwnerInfo !== undefined)
+				updates.draftOwnerInfo = args.draftOwnerInfo;
+			if (args.draftCredentials !== undefined)
+				updates.draftCredentials = args.draftCredentials;
+			if (args.draftBusinessHours !== undefined)
+				updates.draftBusinessHours = args.draftBusinessHours;
+			if (args.draftSocialLinks !== undefined)
+				updates.draftSocialLinks = args.draftSocialLinks;
+			if (args.draftTheme !== undefined)
+				updates.draftTheme = args.draftTheme;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -144,12 +197,37 @@ export const upsert = mutation({
 				galleryItemsDraft: args.galleryItemsDraft,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
+				draftOwnerInfo: args.draftOwnerInfo,
+				draftCredentials: args.draftCredentials,
+				draftBusinessHours: args.draftBusinessHours,
+				draftSocialLinks: args.draftSocialLinks,
+				draftTheme: args.draftTheme,
 				createdAt: now,
 				updatedAt: now,
 			});
 		}
 	},
 });
+
+/**
+ * Draft-to-published field mapping.
+ * When adding new draft fields, add the mapping here.
+ * The publish mutation will automatically include them.
+ */
+const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
+	draftContent: "publishedContent",
+	draftBioContent: "publishedBioContent",
+	draftServicesContent: "publishedServicesContent",
+	draftPricingContent: "publishedPricingContent",
+	draftPricingTiers: "publishedPricingTiers",
+	pricingModeDraft: "pricingModePublished",
+	galleryItemsDraft: "galleryItemsPublished",
+	draftOwnerInfo: "publishedOwnerInfo",
+	draftCredentials: "publishedCredentials",
+	draftBusinessHours: "publishedBusinessHours",
+	draftSocialLinks: "publishedSocialLinks",
+	draftTheme: "publishedTheme",
+};
 
 /**
  * Publish draft content to live page
@@ -174,21 +252,26 @@ export const publish = mutation({
 			!!page.draftPricingContent ||
 			(page.draftPricingTiers?.length ?? 0) > 0 ||
 			(page.galleryItemsDraft?.length ?? 0) > 0;
-		if (!hasLegacyContent && !hasSectionContent) {
+		const hasBusinessInfoContent =
+			!!page.draftOwnerInfo ||
+			!!page.draftCredentials ||
+			!!page.draftBusinessHours ||
+			!!page.draftSocialLinks ||
+			!!page.draftTheme;
+		if (!hasLegacyContent && !hasSectionContent && !hasBusinessInfoContent) {
 			throw new Error("No draft content to publish");
 		}
 
-		await ctx.db.patch(page._id, {
-			publishedContent: page.draftContent,
-			publishedBioContent: page.draftBioContent,
-			publishedServicesContent: page.draftServicesContent,
-			pricingModePublished: page.pricingModeDraft,
-			publishedPricingContent: page.draftPricingContent,
-			publishedPricingTiers: page.draftPricingTiers,
-			galleryItemsPublished: page.galleryItemsDraft,
+		const updates: Record<string, unknown> = {
 			publishedAt: Date.now(),
 			updatedAt: Date.now(),
-		});
+		};
+
+		for (const [draftKey, publishedKey] of Object.entries(DRAFT_TO_PUBLISHED_MAP)) {
+			updates[publishedKey] = (page as Record<string, unknown>)[draftKey];
+		}
+
+		await ctx.db.patch(page._id, updates);
 	},
 });
 
@@ -359,6 +442,11 @@ export const getBySlug = query({
 			pricingContent: page.publishedPricingContent,
 			pricingTiers: page.publishedPricingTiers ?? [],
 			galleryImages,
+			ownerInfo: page.publishedOwnerInfo,
+			credentials: page.publishedCredentials,
+			businessHours: page.publishedBusinessHours,
+			socialLinks: page.publishedSocialLinks,
+			theme: page.publishedTheme,
 			bannerUrl,
 			avatarUrl,
 			organization: org
@@ -426,6 +514,13 @@ export const submitInterest = mutation({
 			throws: true,
 		});
 
+		// Rate limit per email to prevent the same address flooding the task queue
+		const normalizedEmailForLimit = args.email.toLowerCase().trim();
+		await rateLimiter.limit(ctx, "communityInterestPerEmail", {
+			key: normalizedEmailForLimit,
+			throws: true,
+		});
+
 		// Input validation
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		if (!emailRegex.test(args.email)) {
@@ -450,54 +545,52 @@ export const submitInterest = mutation({
 			throw new Error("Community page not found");
 		}
 
-		// Check for duplicate email to prevent spam
 		const normalizedEmail = args.email.toLowerCase().trim();
-		const existingContact = await ctx.db
-			.query("clientContacts")
-			.withIndex("by_org", (q) => q.eq("orgId", page.orgId))
-			.filter((q) => q.eq(q.field("email"), normalizedEmail))
-			.first();
 
-		if (existingContact) {
-			// Return success without creating duplicate (prevents enumeration)
-			return { success: true, clientId: existingContact.clientId };
+		// Build task description with all form data
+		const descParts: string[] = [];
+		descParts.push(`Name: ${sanitizedName}`);
+		descParts.push(`Email: ${normalizedEmail}`);
+		if (args.phone) {
+			descParts.push(`Phone: ${args.phone.trim()}`);
 		}
-
-		// Build notes with message if provided
-		const notesParts: string[] = [];
-		notesParts.push(`Lead from community page: ${args.slug}`);
 		if (args.message) {
 			const sanitizedMessage = args.message.trim().substring(0, 2000);
 			if (sanitizedMessage) {
-				notesParts.push(`Message: ${sanitizedMessage}`);
+				descParts.push(`\nMessage:\n${sanitizedMessage}`);
 			}
 		}
+		descParts.push(`\nSource: Community page (${args.slug})`);
 
-		// Create client as lead
-		const clientId = await ctx.db.insert("clients", {
+		// Find org admin for task assignment
+		const adminMembership = await ctx.db
+			.query("organizationMemberships")
+			.withIndex("by_org", (q) => q.eq("orgId", page.orgId))
+			.filter((q) => q.eq(q.field("role"), "admin"))
+			.first();
+
+		const assigneeUserId = adminMembership?.userId;
+
+		// Calculate next business day (skip Saturday=6, Sunday=0)
+		const now = new Date();
+		const nextDay = new Date(now);
+		nextDay.setDate(nextDay.getDate() + 1);
+		while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+			nextDay.setDate(nextDay.getDate() + 1);
+		}
+		nextDay.setHours(9, 0, 0, 0);
+
+		await ctx.db.insert("tasks", {
 			orgId: page.orgId,
-			companyName: sanitizedName,
-			status: "lead",
-			leadSource: "community-page",
-			notes: notesParts.join("\n\n"),
+			title: `Follow up: ${sanitizedName}`,
+			description: descParts.join("\n"),
+			date: nextDay.getTime(),
+			status: "pending",
+			type: "internal",
+			assigneeUserId: assigneeUserId || undefined,
 		});
 
-		// Create primary contact
-		const nameParts = sanitizedName.split(/\s+/);
-		const firstName = nameParts[0] || sanitizedName;
-		const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-
-		await ctx.db.insert("clientContacts", {
-			clientId,
-			orgId: page.orgId,
-			firstName,
-			lastName,
-			email: normalizedEmail,
-			phone: args.phone?.trim(),
-			isPrimary: true,
-		});
-
-		return { success: true, clientId };
+		return { success: true };
 	},
 });
 
