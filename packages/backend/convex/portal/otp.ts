@@ -10,9 +10,9 @@
 //  - Lookup keyed by [clientPortalId, email] (Review fix #7)
 //  - Structured ConvexError for every failure path (Review fix #6)
 //  - verifyOtp action is the only path to mint a session (Review fix #5)
-import { mutation, action, internalMutation } from "../_generated/server";
+import { action, internalMutation } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { rateLimiter } from "../rateLimits";
 
@@ -237,9 +237,16 @@ export const _deleteOtpRow = internalMutation({
 });
 
 /**
- * Public mutation that performs the OTP check itself. The session is NOT
- * created here — that is the responsibility of the `verifyOtp` action below
- * (Review fix #5).
+ * [Review fix Greptile-P1] Truly INTERNAL mutation. Previously exported as
+ * `mutation` (public), which let any Convex client call
+ * `api.portal.otp.verifyOtpCode` directly — bypassing the per-row
+ * `MAX_ATTEMPTS` cap (the increment lives in the `verifyOtp` action) and
+ * enabling OTP-burn DoS against legitimate users. The ONLY caller is now
+ * the `verifyOtp` action below, which sequences increment → optional
+ * delete → throw to enforce the cap.
+ *
+ * Performs the OTP check itself. The session is NOT created here — that is
+ * the responsibility of the `verifyOtp` action below (Review fix #5).
  *
  * [Review fix CR-02] On a WRONG-CODE result this mutation does NOT throw and
  * does NOT increment attempts itself; it returns `{ ok: false, ... }` so the
@@ -260,7 +267,7 @@ export const _deleteOtpRow = internalMutation({
  * `data.code` so the Next.js route handler maps to UI strings without
  * regex-parsing messages (Review fix #6).
  */
-export const verifyOtpCode = mutation({
+export const verifyOtpCode = internalMutation({
 	args: {
 		clientPortalId: v.string(),
 		email: v.string(),
@@ -386,8 +393,8 @@ export const verifyOtp = action({
 		expiresAt: number;
 	}> => {
 		const verifyResult: Awaited<
-			ReturnType<typeof ctx.runMutation<typeof api.portal.otp.verifyOtpCode>>
-		> = await ctx.runMutation(api.portal.otp.verifyOtpCode, {
+			ReturnType<typeof ctx.runMutation<typeof internal.portal.otp.verifyOtpCode>>
+		> = await ctx.runMutation(internal.portal.otp.verifyOtpCode, {
 			clientPortalId: args.clientPortalId,
 			email: args.email,
 			code: args.code,

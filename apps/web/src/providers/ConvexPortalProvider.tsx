@@ -61,7 +61,11 @@ export default function ConvexPortalProvider({
 		// setAuth's callback is re-invoked by Convex when the token is near expiry — perfect for our
 		// 5-minute access tokens. Each refresh hits /api/portal/token, which re-validates the cookie JWT
 		// server-side (and re-checks the underlying portalSessions row via getPortalSessionOrThrow on the next query).
-		c.setAuth(async () => (await fetchPortalToken()) ?? "");
+		// [Review fix Greptile-P2] Return null (not "") when unauthenticated so
+		// Convex's customJwt provider treats the client as anonymous instead of
+		// attempting auth with an empty bearer token (which produces noisy
+		// auth-rejection errors and pointless refresh churn).
+		c.setAuth(async () => (await fetchPortalToken()) ?? null);
 		return c;
 	}, []);
 

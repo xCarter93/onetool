@@ -685,12 +685,11 @@ http.route({
  * Effect: the per-IP rate-limit bucket (`portalOtpSendPerIp`, 30/hr) keys
  * on a hash derived in a context the attacker cannot influence.
  */
-const PORTAL_CORS_HEADERS = {
-	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Methods": "POST, OPTIONS",
-	"Access-Control-Allow-Headers": "Content-Type, x-portal-secret",
-	Vary: "Origin",
-};
+// [Review fix Greptile-P2] No CORS headers: this endpoint is server-to-server
+// only (Next.js portal → Convex), invoked via server-side fetch where CORS is
+// irrelevant. No browser should ever reach it; omitting Access-Control-Allow-*
+// causes browsers that try to be blocked by default — which is what we want.
+// The OPTIONS preflight route was removed for the same reason.
 
 function constantTimeEqual(a: string, b: string): boolean {
 	if (a.length !== b.length) return false;
@@ -712,7 +711,7 @@ http.route({
 				JSON.stringify({ error: "Portal misconfigured" }),
 				{
 					status: 500,
-					headers: { "Content-Type": "application/json", ...PORTAL_CORS_HEADERS },
+					headers: { "Content-Type": "application/json" },
 				},
 			);
 		}
@@ -720,7 +719,7 @@ http.route({
 		if (!constantTimeEqual(presented, expected)) {
 			return new Response(JSON.stringify({ error: "Unauthorized" }), {
 				status: 401,
-				headers: { "Content-Type": "application/json", ...PORTAL_CORS_HEADERS },
+				headers: { "Content-Type": "application/json" },
 			});
 		}
 
@@ -736,7 +735,7 @@ http.route({
 				JSON.stringify({ error: "Invalid JSON body" }),
 				{
 					status: 400,
-					headers: { "Content-Type": "application/json", ...PORTAL_CORS_HEADERS },
+					headers: { "Content-Type": "application/json" },
 				},
 			);
 		}
@@ -750,7 +749,7 @@ http.route({
 				JSON.stringify({ error: "Enter a valid email address." }),
 				{
 					status: 400,
-					headers: { "Content-Type": "application/json", ...PORTAL_CORS_HEADERS },
+					headers: { "Content-Type": "application/json" },
 				},
 			);
 		}
@@ -763,7 +762,7 @@ http.route({
 			});
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
-				headers: { "Content-Type": "application/json", ...PORTAL_CORS_HEADERS },
+				headers: { "Content-Type": "application/json" },
 			});
 		} catch (err) {
 			if (err instanceof ConvexError) {
@@ -779,7 +778,6 @@ http.route({
 							status: 429,
 							headers: {
 								"Content-Type": "application/json",
-								...PORTAL_CORS_HEADERS,
 							},
 						},
 					);
@@ -788,17 +786,9 @@ http.route({
 			// Pitfall #1 — uniform success on any other failure path.
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
-				headers: { "Content-Type": "application/json", ...PORTAL_CORS_HEADERS },
+				headers: { "Content-Type": "application/json" },
 			});
 		}
-	}),
-});
-
-http.route({
-	path: "/portal/otp/request",
-	method: "OPTIONS",
-	handler: httpAction(async () => {
-		return new Response(null, { status: 204, headers: PORTAL_CORS_HEADERS });
 	}),
 });
 

@@ -247,7 +247,7 @@ describe("portal otp", () => {
 			attempts: 2,
 		});
 
-		const result = await t.mutation(api.portal.otp.verifyOtpCode, {
+		const result = await t.mutation(internal.portal.otp.verifyOtpCode, {
 			clientPortalId: seed.clientPortalId,
 			email: "user@example.com",
 			code: "999999",
@@ -347,7 +347,7 @@ describe("portal otp attempts", () => {
 		});
 
 		try {
-			await t.mutation(api.portal.otp.verifyOtpCode, {
+			await t.mutation(internal.portal.otp.verifyOtpCode, {
 				clientPortalId: seed.clientPortalId,
 				email: "user@example.com",
 				code,
@@ -423,7 +423,7 @@ describe("portal otp expired", () => {
 		});
 
 		try {
-			await t.mutation(api.portal.otp.verifyOtpCode, {
+			await t.mutation(internal.portal.otp.verifyOtpCode, {
 				clientPortalId: seed.clientPortalId,
 				email: "user@example.com",
 				code,
