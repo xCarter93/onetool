@@ -15,12 +15,20 @@ describe("portal auth provider", () => {
 		expect(src).toContain('applicationID: "convex"');
 		expect(src).toContain('applicationID: "convex-portal"');
 
-		// The portal provider domain must read from the server-only env var.
+		// The portal provider issuer must read from the server-only env var.
 		expect(src).toContain("process.env.PORTAL_JWT_ISSUER");
 
 		// [Review fix #9] Explicit JWKS URL — Convex cannot infer non-default
-		// discovery paths from `domain` alone.
+		// discovery paths from `issuer` alone.
 		expect(src).toContain("/.well-known/portal-jwks.json");
 		expect(src).toMatch(/jwks:\s*`/);
+
+		// [Review fix CR-05] Portal provider must declare type:"customJwt"
+		// (with `issuer` + `algorithm`) so Convex surfaces our custom RS256
+		// claims on UserIdentity. The default OIDC-shaped entry would strip
+		// custom claims and break getPortalSessionOrThrow.
+		expect(src).toContain('type: "customJwt"');
+		expect(src).toMatch(/issuer:\s*process\.env\.PORTAL_JWT_ISSUER/);
+		expect(src).toContain('algorithm: "RS256"');
 	});
 });
