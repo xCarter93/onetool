@@ -46,12 +46,14 @@ function clearCookieHeader(path: string): string {
 }
 
 export async function clearSessionCookieOnRequest(): Promise<void> {
-	// next/headers cookies() in route handlers serializes via the response Set-Cookie
-	// store; calling .set twice with the same name still overwrites, so use .delete
-	// to emit a "delete" hint and rely on clearSessionCookieOnResponse for legacy
-	// path coverage where possible.
-	const jar = await cookies();
-	jar.delete(PORTAL_COOKIE);
+	// next/headers cookies() Set-Cookie store dedupes by name, so we cannot emit
+	// two clears (for "/" + legacy "/portal") via this API. Routes that need to
+	// clear BOTH paths (e.g. logout) should use clearSessionCookieOnResponse.
+	(await cookies()).set(PORTAL_COOKIE, "", {
+		...cookieAttrs(),
+		maxAge: 0,
+		expires: new Date(0),
+	});
 }
 
 export function clearSessionCookieOnResponse(response: NextResponse): void {

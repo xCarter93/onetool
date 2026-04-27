@@ -32,7 +32,15 @@ vi.mock("@/lib/portal/cookie", async () => {
 		setSessionCookieOnRequest: async (jwt: string) => {
 			lastSetCookie.value = jwt;
 		},
+		// Routes now write cookies onto the response object — capture the jwt
+		// the same way so existing assertions on lastSetCookie still work.
+		setSessionCookieOnResponse: (jwt: string, _response: unknown) => {
+			lastSetCookie.value = jwt;
+		},
 		clearSessionCookieOnRequest: async () => {
+			cleared = true;
+		},
+		clearSessionCookieOnResponse: (_response: unknown) => {
 			cleared = true;
 		},
 	};
