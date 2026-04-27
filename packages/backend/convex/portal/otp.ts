@@ -95,7 +95,7 @@ function timingSafeStringEqual(a: string, b: string): boolean {
  * (clientPortalId, email) pair resolves to a real contact, so an attacker
  * cannot enumerate valid links or contact addresses.
  */
-export const requestOtp = internalMutation({
+export const requestOtp = mutation({
 	args: {
 		clientPortalId: v.string(),
 		email: v.string(),

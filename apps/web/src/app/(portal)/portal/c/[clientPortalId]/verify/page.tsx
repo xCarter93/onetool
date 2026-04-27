@@ -153,7 +153,6 @@ export default async function VerifyPage({
 				{/* Mobile co-brand header */}
 				<div className="mb-8 flex items-center gap-3 md:hidden">
 					{branding.logoUrl ? (
-						{/* [Review fix WR-10] Image optimizer enforces size/content-type. */}
 						<Image
 							src={branding.logoUrl}
 							alt={`${branding.name} logo`}

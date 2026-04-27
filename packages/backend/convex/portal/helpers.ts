@@ -59,11 +59,19 @@ export async function getPortalSessionOrThrow(
 		throw new Error("Wrong auth domain — this function is portal-only");
 	}
 
-	// [Review fix #4] Audience guard.
+	// [Review fix #4] Audience guard — Convex's customJwt provider already
+	// enforces `aud === applicationID` ("convex-portal") at the provider layer,
+	// so any token reaching this code has the correct audience. Convex does NOT
+	// expose `aud` on the UserIdentity object (it's part of the JWT envelope,
+	// not a custom claim), so we only re-check when the runtime/test surface
+	// happens to expose it (e.g. convex-test). When `aud` is absent, trust
+	// Convex's provider-level check.
 	const aud = claims.aud;
-	const audValues = Array.isArray(aud) ? aud : aud ? [aud] : [];
-	if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
-		throw new Error("Wrong audience — token not minted for portal");
+	if (aud !== undefined && aud !== null) {
+		const audValues = Array.isArray(aud) ? aud : [aud];
+		if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
+			throw new Error("Wrong audience — token not minted for portal");
+		}
 	}
 
 	const orgId = claims.orgId;

@@ -4,7 +4,7 @@ import { fetchMutation } from "convex/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	readSessionCookie,
-	setSessionCookieOnRequest,
+	setSessionCookieOnResponse,
 	COOKIE_TTL_SECONDS,
 } from "@/lib/portal/cookie";
 import { signSessionJwt, verifySessionJwt } from "@/lib/portal/jwt";
@@ -59,11 +59,19 @@ export async function POST() {
 
 	// Update the EXISTING portalSessions row's expiresAt — keyed by the SAME jti.
 	// touchSession is a PUBLIC capability-gated mutation per Plan 02 Blocker 3 Option A.
-	await fetchMutation(api.portal.sessions.touchSession, {
-		tokenJti: existingJti, // PRESERVE jti — same row, just push expiresAt out
-		newExpiresAt: expiresAt,
-	});
+	// Forward the cookie JWT as the Convex bearer token so getPortalSessionOrThrow
+	// can verify identity inside touchSession (the existing cookie is still valid;
+	// the new one is only set on the response after this call succeeds).
+	await fetchMutation(
+		api.portal.sessions.touchSession,
+		{
+			tokenJti: existingJti, // PRESERVE jti — same row, just push expiresAt out
+			newExpiresAt: expiresAt,
+		},
+		{ token },
+	);
 
-	await setSessionCookieOnRequest(newToken);
-	return NextResponse.json({ ok: true, jti });
+	const response = NextResponse.json({ ok: true, jti });
+	setSessionCookieOnResponse(newToken, response);
+	return response;
 }

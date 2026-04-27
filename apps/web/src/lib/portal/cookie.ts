@@ -29,12 +29,35 @@ export function setSessionCookieOnResponse(
 	response.cookies.set(PORTAL_COOKIE, jwt, cookieAttrs());
 }
 
+// Clear at BOTH "/" (current) and "/portal" (legacy from before [CR-01]) — browsers
+// treat cookies at different paths as independent records, so a single clear leaves
+// any stale path-scoped cookie behind and middleware happily reads it.
+//
+// IMPORTANT: NextResponse.cookies.set() / next/headers cookies().set() are keyed by
+// cookie NAME — calling .set twice with the same name overwrites the prior call and
+// only one Set-Cookie header is emitted. Emit raw Set-Cookie headers via
+// response.headers.append (or the cookie-jar's underlying Set-Cookie store) so both
+// path-scoped clears actually reach the browser.
+const CLEAR_PATHS = ["/", "/portal"] as const;
+
+function clearCookieHeader(path: string): string {
+	const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+	return `${PORTAL_COOKIE}=; Path=${path}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${secure}`;
+}
+
 export async function clearSessionCookieOnRequest(): Promise<void> {
-	(await cookies()).set(PORTAL_COOKIE, "", { ...cookieAttrs(), maxAge: 0 });
+	// next/headers cookies() in route handlers serializes via the response Set-Cookie
+	// store; calling .set twice with the same name still overwrites, so use .delete
+	// to emit a "delete" hint and rely on clearSessionCookieOnResponse for legacy
+	// path coverage where possible.
+	const jar = await cookies();
+	jar.delete(PORTAL_COOKIE);
 }
 
 export function clearSessionCookieOnResponse(response: NextResponse): void {
-	response.cookies.set(PORTAL_COOKIE, "", { ...cookieAttrs(), maxAge: 0 });
+	for (const path of CLEAR_PATHS) {
+		response.headers.append("Set-Cookie", clearCookieHeader(path));
+	}
 }
 
 export async function readSessionCookie(): Promise<string | null> {

@@ -60,16 +60,31 @@ async function getPrivateKey(): Promise<CryptoKey> {
 }
 
 let cachedJwks: ReturnType<typeof createLocalJWKSet> | null = null;
-function getLocalJwks() {
-	if (cachedJwks) return cachedJwks;
+let cachedKid: string | null = null;
+function parseJwks() {
 	const jwksRaw = env.PORTAL_JWT_JWKS.trim();
 	const parsed = JSON.parse(jwksRaw) as {
 		keys: Array<Record<string, unknown>>;
 	};
+	return parsed;
+}
+function getLocalJwks() {
+	if (cachedJwks) return cachedJwks;
+	const parsed = parseJwks();
 	cachedJwks = createLocalJWKSet(
 		parsed as Parameters<typeof createLocalJWKSet>[0],
 	);
 	return cachedJwks;
+}
+function getSigningKid(): string {
+	if (cachedKid) return cachedKid;
+	const parsed = parseJwks();
+	const kid = parsed.keys[0]?.kid;
+	if (typeof kid !== "string" || !kid) {
+		throw new Error("PORTAL_JWT_JWKS first key is missing a 'kid' field");
+	}
+	cachedKid = kid;
+	return cachedKid;
 }
 
 export function getJwksJson(): string {
@@ -90,7 +105,7 @@ export async function signSessionJwt(
 		clientContactId: claims.clientContactId,
 		clientPortalId: claims.clientPortalId,
 	})
-		.setProtectedHeader({ alg: ALG, typ: "JWT" })
+		.setProtectedHeader({ alg: ALG, typ: "JWT", kid: getSigningKid() })
 		.setSubject(claims.clientContactId)
 		.setJti(jti)
 		.setIssuer(env.PORTAL_JWT_ISSUER)
@@ -123,7 +138,7 @@ export async function signConvexAccessToken(claims: {
 		clientPortalId: claims.clientPortalId,
 		sessionJti: claims.sessionJti, // [Review fix #2] backend uses this to look up the portalSessions row
 	})
-		.setProtectedHeader({ alg: ALG, typ: "JWT" })
+		.setProtectedHeader({ alg: ALG, typ: "JWT", kid: getSigningKid() })
 		.setSubject(claims.clientContactId)
 		.setIssuer(env.PORTAL_JWT_ISSUER)
 		.setAudience(CONVEX_ACCESS_AUDIENCE)

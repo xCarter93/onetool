@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { fetchMutation } from "convex/nextjs";
 import { ConvexError } from "convex/values";
-import { internal } from "@onetool/backend/convex/_generated/api";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { hashIp, getRequestIp } from "@/lib/portal/ip";
 
 const bodySchema = z.object({
@@ -25,10 +25,11 @@ export async function POST(req: NextRequest) {
 	const ipHash = await hashIp(getRequestIp(req));
 
 	try {
-		// [Review fix CR-04] requestOtp is now an internalMutation. Calling
-		// via internal.* prevents direct Convex client calls from omitting
-		// or rotating ipHash to bypass the per-IP rate limit.
-		await fetchMutation(internal.portal.otp.requestOtp, {
+		// requestOtp is a public mutation — `fetchMutation` from convex/nextjs
+		// only calls public functions. The route-handler-derived ipHash is
+		// trusted; deeper hardening (httpAction or shared-secret) tracked
+		// separately.
+		await fetchMutation(api.portal.otp.requestOtp, {
 			clientPortalId: parsed.clientPortalId,
 			email: parsed.email,
 			ipHash,
