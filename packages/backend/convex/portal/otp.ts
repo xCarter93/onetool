@@ -77,11 +77,20 @@ function timingSafeStringEqual(a: string, b: string): boolean {
 }
 
 /**
- * Public mutation. Per Pitfall #1 the response is uniform regardless of
- * whether the (clientPortalId, email) pair resolves to a real contact, so an
- * attacker cannot enumerate valid links or contact addresses.
+ * [Review fix CR-04] INTERNAL mutation. Previously this was a public
+ * mutation that accepted `ipHash` as an arg, which any caller could omit or
+ * rotate to bypass the per-IP rate limit (`portalOtpSendPerIp`, 30/hour).
+ * The defense documented in rateLimits.ts ("defends against email-list
+ * flooding") was structurally bypassable. Now the only caller is the
+ * Next.js route at `/api/portal/otp/request`, which derives `ipHash`
+ * server-side from the request and invokes via `fetchMutation(internal.*)`.
+ * Direct Convex client calls cannot reach this function.
+ *
+ * Per Pitfall #1 the response is uniform regardless of whether the
+ * (clientPortalId, email) pair resolves to a real contact, so an attacker
+ * cannot enumerate valid links or contact addresses.
  */
-export const requestOtp = mutation({
+export const requestOtp = internalMutation({
 	args: {
 		clientPortalId: v.string(),
 		email: v.string(),

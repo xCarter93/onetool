@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { convexTest } from "convex-test";
 import { setupConvexTest } from "../test.setup";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 
 // convex-test serializes ConvexError.data into a JSON string and rehydrates
@@ -123,7 +123,7 @@ describe("portal otp", () => {
 
 	it("requestOtp creates a row and schedules an email", async () => {
 		const seed = await seedClientPortal(t);
-		await t.mutation(api.portal.otp.requestOtp, {
+		await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: seed.clientPortalId,
 			email: "user@example.com",
 		});
@@ -143,7 +143,7 @@ describe("portal otp", () => {
 
 	it("requestOtp returns ok for unknown email (no enumeration)", async () => {
 		const seed = await seedClientPortal(t);
-		const result = await t.mutation(api.portal.otp.requestOtp, {
+		const result = await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: seed.clientPortalId,
 			email: "nobody@example.com",
 		});
@@ -155,7 +155,7 @@ describe("portal otp", () => {
 	});
 
 	it("requestOtp returns ok for unknown clientPortalId (no enumeration)", async () => {
-		const result = await t.mutation(api.portal.otp.requestOtp, {
+		const result = await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: "no-such-portal",
 			email: "user@example.com",
 		});
@@ -302,11 +302,11 @@ describe("portal otp", () => {
 			return { orgId, clientA, contactA, clientB, contactB };
 		});
 
-		await t.mutation(api.portal.otp.requestOtp, {
+		await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: "aaa",
 			email: sharedEmail,
 		});
-		await t.mutation(api.portal.otp.requestOtp, {
+		await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: "bbb",
 			email: sharedEmail,
 		});
