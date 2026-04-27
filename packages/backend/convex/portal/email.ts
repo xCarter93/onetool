@@ -50,11 +50,25 @@ export const sendPortalOtpEmail = internalAction({
 			})
 		);
 
-		// In test runs the Resend component isn't registered (see
-		// test.setup.ts), so calling resend.sendEmail would attempt writes
-		// against a non-existent component table. Skip the dispatch when
-		// the canonical test signal RESEND_API_KEY === "test-key" is set.
+		// [Review fix WR-05] In test runs the Resend component isn't
+		// registered (see test.setup.ts), so calling resend.sendEmail would
+		// attempt writes against a non-existent component table. Skip the
+		// dispatch when the canonical test signal RESEND_API_KEY ===
+		// "test-key" is set, BUT only when we're actually running under a
+		// known test runner. This guards against a developer accidentally
+		// pasting RESEND_API_KEY=test-key into a staging .env and silently
+		// disabling all portal OTP delivery (logs would just show
+		// {ok:true, skipped:"test"}, easy to miss in incident review).
+		const isTestEnv =
+			process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 		if (process.env.RESEND_API_KEY === "test-key") {
+			if (!isTestEnv) {
+				throw new Error(
+					"RESEND_API_KEY is set to 'test-key' outside a test runner — " +
+						"refusing to silently drop portal OTP emails. Set a real key " +
+						"or unset RESEND_API_KEY in this environment."
+				);
+			}
 			return { ok: true, skipped: "test" as const };
 		}
 
