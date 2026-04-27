@@ -77,6 +77,22 @@ function timingSafeStringEqual(a: string, b: string): boolean {
 }
 
 /**
+ * DEV ONLY — resets portal OTP rate limits for an email so you can keep
+ * testing without waiting for the cooldown. Remove before shipping.
+ */
+export const _devResetRateLimit = mutation({
+	args: { email: v.string() },
+	handler: async (ctx, { email }) => {
+		const normalizedEmail = email.trim().toLowerCase();
+		await rateLimiter.reset(ctx, "portalOtpSend", { key: normalizedEmail });
+		await rateLimiter.reset(ctx, "portalOtpVerify", {
+			key: `${normalizedEmail}:*`,
+		});
+		return { ok: true };
+	},
+});
+
+/**
  * Public mutation. Per Pitfall #1 the response is uniform regardless of
  * whether the (clientPortalId, email) pair resolves to a real contact, so an
  * attacker cannot enumerate valid links or contact addresses.
@@ -90,18 +106,25 @@ export const requestOtp = mutation({
 	handler: async (ctx, { clientPortalId, email, ipHash }) => {
 		const normalizedEmail = email.trim().toLowerCase();
 
-		// Rate-limit FIRST. Both throw on exceedance so timing cannot be used
-		// as a side channel about whether the lookup would have succeeded.
+		// Rate-limit FIRST. Use throws:false and re-throw with our OTP_RATE_LIMITED
+		// taxonomy so the route handler's ConvexError code-check works (the
+		// rate-limiter component throws {kind:"RateLimited"}, not {code:...}).
 		if (ipHash) {
-			await rateLimiter.limit(ctx, "portalOtpSendPerIp", {
+			const rlIp = await rateLimiter.limit(ctx, "portalOtpSendPerIp", {
 				key: ipHash,
-				throws: true,
+				throws: false,
 			});
+			if (!rlIp.ok) {
+				throw otpError("OTP_RATE_LIMITED", null, RATE_LIMITED_MESSAGE);
+			}
 		}
-		await rateLimiter.limit(ctx, "portalOtpSend", {
+		const rlEmail = await rateLimiter.limit(ctx, "portalOtpSend", {
 			key: normalizedEmail,
-			throws: true,
+			throws: false,
 		});
+		if (!rlEmail.ok) {
+			throw otpError("OTP_RATE_LIMITED", null, RATE_LIMITED_MESSAGE);
+		}
 
 		const client = await ctx.db
 			.query("clients")

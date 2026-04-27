@@ -25,19 +25,36 @@ export type PortalJwtClaims = {
 	jti?: string;
 };
 
+// The generator script outputs JSON.stringify(pkcs8) so newlines stay encoded
+// when pasted into .env.local. But @next/env expands `\n` → actual newline
+// inside double-quoted values, breaking the JSON encoding before we read it.
+// Be defensive: try JSON.parse first; on failure, treat as raw PEM (already
+// expanded by dotenv).
+function decodeMaybeJson(raw: string): string {
+	const trimmed = raw.trim();
+	if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+		try {
+			return JSON.parse(trimmed) as string;
+		} catch {
+			/* fall through */
+		}
+	}
+	return raw;
+}
+
 let cachedPrivateKey: CryptoKey | null = null;
 async function getPrivateKey(): Promise<CryptoKey> {
 	if (cachedPrivateKey) return cachedPrivateKey;
-	// env.ts stores the PKCS8 PEM as a JSON-stringified value to preserve newlines
-	const raw = JSON.parse(env.PORTAL_JWT_PRIVATE_KEY) as string;
-	cachedPrivateKey = (await importPKCS8(raw, ALG)) as CryptoKey;
+	const pem = decodeMaybeJson(env.PORTAL_JWT_PRIVATE_KEY);
+	cachedPrivateKey = (await importPKCS8(pem, ALG)) as CryptoKey;
 	return cachedPrivateKey;
 }
 
 let cachedJwks: ReturnType<typeof createLocalJWKSet> | null = null;
 function getLocalJwks() {
 	if (cachedJwks) return cachedJwks;
-	const parsed = JSON.parse(env.PORTAL_JWT_JWKS) as {
+	const jwksRaw = env.PORTAL_JWT_JWKS.trim();
+	const parsed = JSON.parse(jwksRaw) as {
 		keys: Array<Record<string, unknown>>;
 	};
 	cachedJwks = createLocalJWKSet(

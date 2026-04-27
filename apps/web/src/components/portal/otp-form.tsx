@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { z } from "zod";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, ShieldCheck, Mail } from "lucide-react";
 import {
 	InputOTP,
 	InputOTPGroup,
 	InputOTPSlot,
 } from "@/components/ui/input-otp";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -35,15 +34,16 @@ export default function OtpForm({
 	const [code, setCode] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	// Server-authoritative attempts counter — populated from /api/portal/otp/verify response body.
 	const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(
 		null,
 	);
 	const [resendCooldown, setResendCooldown] = useState(0);
 	const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+	// Guards against double-submit: InputOTP onComplete and the button
+	// click can both fire verifyCode before React commits loading=true.
+	const verifyInFlight = useRef(false);
 	const toast = useToast();
 
-	// Resend cooldown timer
 	useEffect(() => {
 		if (resendCooldown <= 0) {
 			if (cooldownTimer.current) {
@@ -87,7 +87,6 @@ export default function OtpForm({
 				setError(`Too many requests. Try again in ${minutes} minutes.`);
 				return false;
 			}
-			// Uniform-success per Pitfall 1: advance to step 2 even on non-200 to avoid enumeration.
 			toast.success("Code sent");
 			setStep("code");
 			setCode("");
@@ -113,6 +112,8 @@ export default function OtpForm({
 	}
 
 	async function verifyCode(submittedCode: string) {
+		if (verifyInFlight.current) return;
+		verifyInFlight.current = true;
 		setLoading(true);
 		setError(null);
 		try {
@@ -134,7 +135,6 @@ export default function OtpForm({
 				remainingAttempts?: number;
 			};
 			if (res.ok && data.ok && data.redirectTo) {
-				// Full nav so middleware re-checks the new cookie and Convex picks up auth.
 				window.location.assign(data.redirectTo);
 				return;
 			}
@@ -155,12 +155,12 @@ export default function OtpForm({
 				}
 				return;
 			}
-			// Uniform-error contract — single generic string for all failure modes per Plan 03/05.
 			setError(data.error ?? "That code didn't match. Please try again.");
 		} catch {
 			setError("Something went wrong. Please try again.");
 		} finally {
 			setLoading(false);
+			verifyInFlight.current = false;
 		}
 	}
 
@@ -183,20 +183,25 @@ export default function OtpForm({
 		return (
 			<form
 				onSubmit={handleEmailSubmit}
-				className="flex flex-col gap-5 max-w-[460px] w-full"
+				className="flex w-full max-w-[420px] flex-col gap-6"
 				noValidate
 			>
 				<div>
-					<h1 className="text-[24px] font-semibold leading-tight">
+					<h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em]">
 						Sign in to {businessName}
 					</h1>
-					<p className="text-sm text-muted-foreground mt-2">
+					<p className="mt-2 text-sm text-muted-foreground">
 						Enter your email and we&apos;ll send you a 6-digit code.
 					</p>
 				</div>
 
-				<div className="flex flex-col gap-2">
-					<Label htmlFor="portal-otp-email">Email address</Label>
+				<div className="flex flex-col gap-1.5">
+					<Label
+						htmlFor="portal-otp-email"
+						className="text-xs font-medium text-foreground"
+					>
+						Email address
+					</Label>
 					<Input
 						id="portal-otp-email"
 						type="email"
@@ -206,6 +211,7 @@ export default function OtpForm({
 						onChange={(e) => setEmail(e.target.value)}
 						required
 						disabled={loading}
+						className="h-11"
 					/>
 				</div>
 
@@ -213,25 +219,24 @@ export default function OtpForm({
 					<p
 						role="alert"
 						aria-live="assertive"
-						className="text-sm text-danger"
+						className="-mt-2 text-sm text-danger"
 					>
 						{error}
 					</p>
 				) : null}
 
-				<Button
+				<button
 					type="submit"
-					className="text-sm font-semibold"
-					isDisabled={loading}
-					isPending={loading}
+					disabled={loading}
+					className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{loading ? "Sending..." : "Send code"}
 					{!loading ? (
-						<ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
+						<ArrowRight className="h-4 w-4" aria-hidden="true" />
 					) : null}
-				</Button>
+				</button>
 
-				<div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+				<div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
 					<ShieldCheck
 						className="h-3.5 w-3.5 text-emerald-600"
 						aria-hidden="true"
@@ -242,15 +247,19 @@ export default function OtpForm({
 		);
 	}
 
-	// Step 2: code entry
 	return (
-		<div className="flex flex-col gap-5 max-w-[460px] w-full">
+		<div className="flex w-full max-w-[420px] flex-col gap-6">
 			<div>
-				<h1 className="text-[24px] font-semibold leading-tight">
+				<h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em]">
 					Enter your code
 				</h1>
-				<p className="text-sm text-muted-foreground mt-2">
-					We sent a 6-digit code to {email}. The code expires in 10 minutes.
+				<p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground">
+					<Mail className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+					<span>
+						We sent a 6-digit code to{" "}
+						<span className="font-medium text-foreground">{email}</span>. The
+						code expires in 10 minutes.
+					</span>
 				</p>
 			</div>
 
@@ -270,13 +279,14 @@ export default function OtpForm({
 					aria-label="Verification code"
 					containerClassName="tabular-nums"
 				>
-					<InputOTPGroup>
-						<InputOTPSlot index={0} className="h-[52px] w-[44px] text-lg" />
-						<InputOTPSlot index={1} className="h-[52px] w-[44px] text-lg" />
-						<InputOTPSlot index={2} className="h-[52px] w-[44px] text-lg" />
-						<InputOTPSlot index={3} className="h-[52px] w-[44px] text-lg" />
-						<InputOTPSlot index={4} className="h-[52px] w-[44px] text-lg" />
-						<InputOTPSlot index={5} className="h-[52px] w-[44px] text-lg" />
+					<InputOTPGroup className="gap-2">
+						{[0, 1, 2, 3, 4, 5].map((i) => (
+							<InputOTPSlot
+								key={i}
+								index={i}
+								className="h-12 w-11 rounded-lg border-input text-base font-semibold"
+							/>
+						))}
 					</InputOTPGroup>
 				</InputOTP>
 			</div>
@@ -285,38 +295,35 @@ export default function OtpForm({
 				<p
 					role="alert"
 					aria-live="assertive"
-					className="text-sm text-danger"
+					className="-mt-2 text-sm text-danger"
 				>
 					{error}
 				</p>
 			) : null}
 
-			{attemptsRemaining === 0 ? (
-				<Button
-					type="button"
-					className="text-sm font-semibold"
-					onPress={handleResend}
-					isDisabled={loading}
-					isPending={loading}
-				>
-					Send code
-				</Button>
-			) : (
-				<Button
-					type="button"
-					className="text-sm font-semibold"
-					onPress={() => verifyCode(code)}
-					isDisabled={cellsDisabled || code.length !== 6}
-					isPending={loading}
-				>
-					{loading ? "Verifying..." : "Verify and continue"}
-				</Button>
-			)}
+			<button
+				type="button"
+				onClick={() =>
+					attemptsRemaining === 0 ? handleResend() : verifyCode(code)
+				}
+				disabled={
+					attemptsRemaining === 0
+						? loading
+						: cellsDisabled || code.length !== 6
+				}
+				className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+			>
+				{attemptsRemaining === 0
+					? "Send a new code"
+					: loading
+						? "Verifying..."
+						: "Verify and continue"}
+			</button>
 
-			<div className="flex flex-col gap-2 items-start">
+			<div className="flex flex-col items-start gap-1.5">
 				<button
 					type="button"
-					className="text-sm text-primary underline-offset-4 hover:underline disabled:opacity-50"
+					className="text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
 					onClick={handleResend}
 					disabled={resendCooldown > 0 || loading}
 				>
@@ -334,7 +341,7 @@ export default function OtpForm({
 				</button>
 			</div>
 
-			<div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+			<div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
 				<ShieldCheck
 					className="h-3.5 w-3.5 text-emerald-600"
 					aria-hidden="true"
