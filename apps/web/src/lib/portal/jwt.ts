@@ -35,8 +35,17 @@ function decodeMaybeJson(raw: string): string {
 	if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
 		try {
 			return JSON.parse(trimmed) as string;
-		} catch {
-			/* fall through */
+		} catch (err) {
+			// [Review fix WR-07] Don't silently fall through to raw PEM —
+			// importPKCS8 would throw a cryptic "Invalid PEM" with no hint
+			// that JSON parsing was the actual problem. Surface the JSON
+			// error so the operator can fix the env var encoding instead of
+			// chasing a misleading downstream error.
+			throw new Error(
+				"PORTAL_JWT_PRIVATE_KEY appears JSON-encoded (starts/ends with \") " +
+					"but failed to parse: " +
+					(err as Error).message
+			);
 		}
 	}
 	return raw;
