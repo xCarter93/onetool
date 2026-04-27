@@ -13,6 +13,7 @@
 import { mutation, action } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { api, internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { rateLimiter } from "../rateLimits";
 
 const OTP_LENGTH = 6;
@@ -260,14 +261,28 @@ export const verifyOtp = action({
 		userAgent: v.optional(v.string()),
 		ipHash: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const session = await ctx.runMutation(api.portal.otp.verifyOtpCode, {
+	handler: async (ctx, args): Promise<{
+		clientContactId: Id<"clientContacts">;
+		clientId: Id<"clients">;
+		orgId: Id<"organizations">;
+		clientPortalId: string;
+		tokenJti: string;
+		sessionId: Id<"portalSessions">;
+		expiresAt: number;
+	}> => {
+		const session: {
+			clientContactId: Id<"clientContacts">;
+			clientId: Id<"clients">;
+			orgId: Id<"organizations">;
+			clientPortalId: string;
+		} = await ctx.runMutation(api.portal.otp.verifyOtpCode, {
 			clientPortalId: args.clientPortalId,
 			email: args.email,
 			code: args.code,
 		});
 
-		const sessionResult = await ctx.runMutation(internal.portal.sessions.createSession, {
+		const sessionResult: { sessionId: Id<"portalSessions">; expiresAt: number } =
+			await ctx.runMutation(internal.portal.sessions.createSession, {
 				orgId: session.orgId,
 				clientId: session.clientId,
 				clientContactId: session.clientContactId,
@@ -275,8 +290,7 @@ export const verifyOtp = action({
 				tokenJti: args.tokenJti,
 				userAgent: args.userAgent,
 				ipHash: args.ipHash,
-			}
-		);
+			});
 
 		return {
 			clientContactId: session.clientContactId,
