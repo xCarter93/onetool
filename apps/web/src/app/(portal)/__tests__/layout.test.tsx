@@ -1,12 +1,31 @@
-// Plan 13-01 Wave 0 stub: failing baseline for PORTAL-02 branded shell DOM
-// snapshot. Implementation lands in Plan 13-06 (portal UI shell).
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { BrandHeader } from "@/components/portal/brand-header";
+import { PoweredByOneTool } from "@/components/portal/powered-by-onetool";
 
 describe("portal layout", () => {
 	it("renders business logo, business name, and 'Powered by OneTool' footer from getPortalBranding result", () => {
-		expect.fail(
-			"PORTAL-02: not implemented — implemented by Wave 5 Plan 13-06 (portal UI shell DOM)",
+		const branding = {
+			clientPortalId: "abc",
+			logoUrl: "https://example.com/logo.png",
+			logoInvertInDarkMode: false,
+			name: "Acme Co",
+		};
+
+		render(
+			<div>
+				<BrandHeader
+					logoUrl={branding.logoUrl}
+					businessName={branding.name}
+					logoInvertInDarkMode={branding.logoInvertInDarkMode}
+				/>
+				<PoweredByOneTool />
+			</div>,
 		);
+
+		expect(screen.getByAltText("Acme Co logo")).toBeTruthy();
+		expect(screen.getByText("Acme Co")).toBeTruthy();
+		expect(screen.getByLabelText("Powered by OneTool")).toBeTruthy();
 	});
 });
