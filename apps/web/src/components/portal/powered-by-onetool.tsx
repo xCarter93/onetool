@@ -4,17 +4,17 @@ import { ShieldCheck } from "lucide-react";
 export function PoweredByOneTool({ className = "" }: { className?: string }) {
 	return (
 		<div
-			className={`flex items-center gap-2 text-xs text-muted-foreground ${className}`}
+			className={`flex items-center gap-2.5 text-[13px] text-muted-foreground ${className}`}
 			aria-label="Powered by OneTool"
 		>
 			<Image
 				src="/OneTool.png"
 				alt=""
-				width={14}
-				height={14}
+				width={80}
+				height={80}
 				aria-hidden="true"
 			/>
-			<span>Powered by OneTool</span>
+			<span className="font-medium">Powered by OneTool</span>
 		</div>
 	);
 }
