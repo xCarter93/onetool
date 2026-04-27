@@ -59,17 +59,18 @@ export function PortalShell({
 
 			{/* Desktop sidebar (>=768px) */}
 			<aside
-				className="hidden md:flex md:w-[248px] md:flex-col bg-sidebar border-r border-border"
+				className="hidden md:flex md:w-[260px] md:flex-col bg-sidebar border-r border-border"
 				aria-label="Portal navigation"
 			>
-				<div className="p-4">
+				<div className="px-5 pt-6 pb-5">
 					<BrandHeader
 						logoUrl={logoUrl}
 						businessName={businessName}
 						logoInvertInDarkMode={logoInvertInDarkMode}
+						showEyebrow
 					/>
 				</div>
-				<nav className="flex-1 px-2 py-2 flex flex-col gap-1">
+				<nav className="flex-1 px-3 py-1 flex flex-col gap-1">
 					{NAV_ITEMS.map(({ key, label, icon: Icon, segment }) => {
 						const href = `/portal/c/${clientPortalId}/${segment}`;
 						const active = pathname?.startsWith(href);
@@ -77,34 +78,35 @@ export function PortalShell({
 							<Link
 								key={key}
 								href={href}
-								// Tailwind v4 opacity modifier (bg-primary/10) is parser-safe vs
-								// arbitrary color-mix utilities which had inconsistent support.
-								className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${
+								className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
 									active
-										? "bg-primary/10 text-primary font-semibold border-l-[3px] border-primary"
-										: "text-muted-foreground font-normal hover:bg-muted hover:text-foreground"
+										? "bg-primary/10 text-primary font-semibold"
+										: "text-muted-foreground font-medium hover:bg-muted hover:text-foreground"
 								}`}
 								aria-current={active ? "page" : undefined}
 							>
-								<Icon className="h-4 w-4" aria-hidden="true" />
+								<Icon
+									className={`h-[18px] w-[18px] ${active ? "" : "opacity-80"}`}
+									aria-hidden="true"
+								/>
 								{label}
 							</Link>
 						);
 					})}
 				</nav>
-				<div className="p-2">
+				<div className="px-3 pb-3">
 					<button
 						type="button"
 						onClick={handleSignOut}
 						disabled={pending}
-						className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+						className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
 					>
-						<LogOut className="h-4 w-4" aria-hidden="true" />
+						<LogOut className="h-[18px] w-[18px] opacity-80" aria-hidden="true" />
 						Sign out
 					</button>
 				</div>
-				<div className="p-4 border-t border-border">
-					<PoweredByOneTool />
+				<div className="px-5 py-4 border-t border-border">
+					<PoweredByOneTool size="compact" />
 				</div>
 			</aside>
 

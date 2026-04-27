@@ -1,7 +1,14 @@
 import Image from "next/image";
 import { ShieldCheck } from "lucide-react";
 
-export function PoweredByOneTool({ className = "" }: { className?: string }) {
+export function PoweredByOneTool({
+	className = "",
+	size = "default",
+}: {
+	className?: string;
+	size?: "default" | "compact";
+}) {
+	const dim = size === "compact" ? 48 : 80;
 	return (
 		<div
 			className={`flex items-center gap-2.5 text-[13px] text-muted-foreground ${className}`}
@@ -10,8 +17,8 @@ export function PoweredByOneTool({ className = "" }: { className?: string }) {
 			<Image
 				src="/OneTool.png"
 				alt=""
-				width={80}
-				height={80}
+				width={dim}
+				height={dim}
 				aria-hidden="true"
 			/>
 			<span className="font-medium">Powered by OneTool</span>

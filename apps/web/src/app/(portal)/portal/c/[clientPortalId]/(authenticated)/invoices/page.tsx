@@ -1,22 +1,79 @@
-import { ReceiptText } from "lucide-react";
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { notFound } from "next/navigation";
+import { Check, Mail } from "lucide-react";
 
-export default function InvoicesPlaceholderPage() {
+export default async function InvoicesPlaceholderPage({
+	params,
+}: {
+	params: Promise<{ clientPortalId: string }>;
+}) {
+	const { clientPortalId } = await params;
+	const branding = await fetchQuery(api.portal.branding.getPortalBranding, {
+		clientPortalId,
+	});
+	if (!branding) {
+		notFound();
+		return null;
+	}
+
+	const features: Array<[string, string]> = [
+		[
+			"See what's due at a glance",
+			"Outstanding balances, due dates, and payment history in one place.",
+		],
+		[
+			"Pay online in seconds",
+			"Card or bank transfer — no checks in the mail, no service calls.",
+		],
+		[
+			"Keep your records",
+			"Download a PDF copy of any invoice or receipt whenever you need it.",
+		],
+	];
+
 	return (
-		<div className="flex min-h-[60vh] items-center justify-center">
-			<div className="max-w-md w-full text-center flex flex-col items-center gap-4">
-				<div className="rounded-full bg-muted p-4">
-					<ReceiptText
-						className="h-8 w-8 text-muted-foreground"
-						aria-hidden="true"
-					/>
-				</div>
-				<h1 className="text-xl font-semibold">
-					Invoices coming soon — Phase 15
-				</h1>
-				<p className="text-sm text-muted-foreground">
-					You&apos;ll be able to view, download, and pay invoices from this
-					portal once Phase 15 ships. Your provider will continue to send
-					invoices via email until then.
+		<div className="max-w-2xl">
+			<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+				Coming soon
+			</p>
+			<h1 className="mt-3 text-[36px] font-semibold leading-[1.1] tracking-[-0.02em]">
+				Invoices
+			</h1>
+			<p className="mt-4 text-[15px] leading-relaxed text-muted-foreground">
+				{branding.name} will start sending invoices here so you can review and
+				pay them without picking up the phone or printing a check.
+			</p>
+
+			<ul className="mt-10 flex flex-col gap-5">
+				{features.map(([title, desc]) => (
+					<li key={title} className="flex items-start gap-3">
+						<span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
+							<Check
+								className="h-3 w-3 text-primary"
+								aria-hidden="true"
+								strokeWidth={3}
+							/>
+						</span>
+						<div>
+							<p className="text-[14.5px] font-medium text-foreground">
+								{title}
+							</p>
+							<p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+								{desc}
+							</p>
+						</div>
+					</li>
+				))}
+			</ul>
+
+			<div className="mt-12 flex items-start gap-3 rounded-xl bg-muted/50 px-5 py-4">
+				<Mail
+					className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<p className="text-sm leading-relaxed text-muted-foreground">
+					Until then, {branding.name} will continue to send invoices via email.
 				</p>
 			</div>
 		</div>
