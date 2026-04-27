@@ -6,8 +6,14 @@ import {
 	createLocalJWKSet,
 	type JWTPayload,
 } from "jose";
-import { randomUUID } from "crypto";
 import { env } from "@/env";
+
+// Use Web Crypto's randomUUID — available globally in both Node 19+ and the
+// Edge runtime (where Next.js middleware executes). Importing from Node's
+// "crypto" module triggers "Node.js module loaded in Edge Runtime" build errors.
+function randomUUID(): string {
+	return crypto.randomUUID();
+}
 
 const ALG = "RS256" as const;
 const AUDIENCE = "convex-portal" as const;
