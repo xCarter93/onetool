@@ -18,7 +18,12 @@ export default defineConfig({
 		environment: "edge-runtime",
 		server: { deps: { inline: ["convex-test"] } },
 		// Web app tests should be in src/ - backend tests are in packages/backend
-		include: ["src/**/*.test.ts", "src/**/*.spec.ts"],
+		include: [
+			"src/**/*.test.ts",
+			"src/**/*.test.tsx",
+			"src/**/*.spec.ts",
+			"src/**/*.spec.tsx",
+		],
 		exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**"],
 		passWithNoTests: true,
 		coverage: {
