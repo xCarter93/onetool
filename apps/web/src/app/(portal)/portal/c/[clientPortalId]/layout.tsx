@@ -14,7 +14,10 @@ export default async function ClientPortalLayout({
 	const branding = await fetchQuery(api.portal.branding.getPortalBranding, {
 		clientPortalId,
 	});
-	if (!branding) notFound(); // generic 404, no enumeration leak
+	if (!branding) {
+		notFound(); // generic 404, no enumeration leak
+		return null; // unreachable — appease TS narrowing
+	}
 
 	return (
 		<div data-portal-branding data-business-name={branding.name}>

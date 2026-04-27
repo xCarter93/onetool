@@ -3,6 +3,7 @@ import { Outfit } from "next/font/google";
 import "@/app/globals.css";
 import ConvexPortalProvider from "@/providers/ConvexPortalProvider";
 import { ThemeProvider } from "@/providers/ThemeProvider";
+import { ToastProvider } from "@/hooks/use-toast";
 
 const outfit = Outfit({
 	subsets: ["latin"],
@@ -24,7 +25,9 @@ export default function PortalRootLayout({
 		<html lang="en" suppressHydrationWarning className={outfit.variable}>
 			<body className="antialiased">
 				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-					<ConvexPortalProvider>{children}</ConvexPortalProvider>
+					<ToastProvider position="top-right" maxToasts={5}>
+						<ConvexPortalProvider>{children}</ConvexPortalProvider>
+					</ToastProvider>
 				</ThemeProvider>
 			</body>
 		</html>
