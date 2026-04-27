@@ -56,6 +56,18 @@ describe("portal jwks smoke", () => {
 	it("Convex accepts a portal-issued JWT via auth.config.ts second provider", async () => {
 		const url = process.env.NEXT_PUBLIC_CONVEX_URL;
 		if (!url) {
+			// [Review fix WR-06] In CI, treat missing NEXT_PUBLIC_CONVEX_URL as
+			// a configuration failure rather than a silent skip. CI must point
+			// at a preview deployment so the dual-provider auth.config.ts is
+			// actually exercised — otherwise auth misconfiguration ships green.
+			// Local dev still skips so individual contributors don't need a
+			// preview deployment to run unit tests.
+			if (process.env.CI === "true" && !process.env.SKIP_PORTAL_SMOKE) {
+				throw new Error(
+					"NEXT_PUBLIC_CONVEX_URL must be set in CI for the portal JWKS " +
+						"smoke test (set SKIP_PORTAL_SMOKE=1 to bypass intentionally)."
+				);
+			}
 			console.warn(
 				"NEXT_PUBLIC_CONVEX_URL not set — skipping JWKS smoke test",
 			);
