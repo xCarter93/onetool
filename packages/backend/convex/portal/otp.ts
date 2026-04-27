@@ -10,7 +10,7 @@
 //  - Lookup keyed by [clientPortalId, email] (Review fix #7)
 //  - Structured ConvexError for every failure path (Review fix #6)
 //  - verifyOtp action is the only path to mint a session (Review fix #5)
-import { mutation, action } from "../_generated/server";
+import { mutation, action, internalMutation } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -174,9 +174,64 @@ export const requestOtp = mutation({
 });
 
 /**
+ * [Review fix CR-02] Internal mutation that increments the per-row attempts
+ * counter and commits the patch in its own transaction so the increment
+ * survives the eventual OTP_INVALID throw. Mutations roll back ALL writes on
+ * throw, so the previous single-mutation design caused the attempts cap (5)
+ * to be effectively unbounded — every wrong-code call rolled back its own
+ * increment. By committing this patch from a SEPARATE mutation invoked by
+ * the verifyOtp action BEFORE the action throws, the cap is now real.
+ */
+export const _incrementOtpAttempts = internalMutation({
+	args: {
+		otpId: v.id("portalOtpCodes"),
+	},
+	handler: async (ctx, { otpId }) => {
+		const row = await ctx.db.get(otpId);
+		if (!row) return { attempts: 0, exhausted: true };
+		const newAttempts = row.attempts + 1;
+		await ctx.db.patch(otpId, { attempts: newAttempts });
+		return {
+			attempts: newAttempts,
+			exhausted: newAttempts >= MAX_ATTEMPTS,
+		};
+	},
+});
+
+/**
+ * [Review fix CR-02] Internal mutation that deletes a fully-exhausted OTP row.
+ * Called by the verifyOtp action AFTER the attempts increment lands and the
+ * cap has been crossed. Kept separate so the action can sequence
+ * "commit-attempts → delete-when-exhausted → throw" without rollback.
+ */
+export const _deleteOtpRow = internalMutation({
+	args: { otpId: v.id("portalOtpCodes") },
+	handler: async (ctx, { otpId }) => {
+		const row = await ctx.db.get(otpId);
+		if (row) await ctx.db.delete(otpId);
+		return null;
+	},
+});
+
+/**
  * Public mutation that performs the OTP check itself. The session is NOT
  * created here — that is the responsibility of the `verifyOtp` action below
  * (Review fix #5).
+ *
+ * [Review fix CR-02] On a WRONG-CODE result this mutation does NOT throw and
+ * does NOT increment attempts itself; it returns `{ ok: false, ... }` so the
+ * action layer can call _incrementOtpAttempts in a separate, committing
+ * transaction and then surface the ConvexError. Every other failure path
+ * (rate-limit, expired, exhausted, cross-portal, missing row) is fine to
+ * throw because there is no per-row counter to preserve in those cases (the
+ * row is either absent or being deleted in the same throw). Successful
+ * verification still deletes the row in this mutation so the single-use
+ * guarantee is preserved.
+ *
+ * [Review fix WR-02] At verify time we re-fetch the clientContacts row by
+ * `clientContactId` and confirm its email STILL matches the OTP row's email.
+ * If the contact has been deleted or its email rotated, we reject as a
+ * generic OTP_INVALID — never leaking that the contact changed.
  *
  * Every failure throws a structured ConvexError with a stable error code in
  * `data.code` so the Next.js route handler maps to UI strings without
@@ -188,7 +243,20 @@ export const verifyOtpCode = mutation({
 		email: v.string(),
 		code: v.string(),
 	},
-	handler: async (ctx, { clientPortalId, email, code }) => {
+	handler: async (ctx, { clientPortalId, email, code }): Promise<
+		| {
+				ok: true;
+				clientContactId: Id<"clientContacts">;
+				clientId: Id<"clients">;
+				orgId: Id<"organizations">;
+				clientPortalId: string;
+		  }
+		| {
+				ok: false;
+				code: "OTP_INVALID";
+				otpId: Id<"portalOtpCodes">;
+		  }
+	> => {
 		const normalizedEmail = email.trim().toLowerCase();
 
 		// Rate-limit BEFORE looking at the OTP row so the attempt counter
@@ -230,12 +298,23 @@ export const verifyOtpCode = mutation({
 			throw otpError("OTP_CROSS_PORTAL", null);
 		}
 
+		// [Review fix WR-02] Re-validate the contact at verify time. If the
+		// underlying contact has been deleted or its email no longer matches
+		// what we issued the OTP against, refuse — uniformly as OTP_INVALID
+		// so the response cannot be used as a contact-mutation oracle.
+		const contact = await ctx.db.get(otpRow.clientContactId);
+		if (!contact || contact.email?.trim().toLowerCase() !== normalizedEmail) {
+			await ctx.db.delete(otpRow._id);
+			throw otpError("OTP_INVALID", null);
+		}
+
 		const submittedHash = await hashOtp(code, otpRow.salt);
 		if (!timingSafeStringEqual(submittedHash, otpRow.codeHash)) {
-			const newAttempts = otpRow.attempts + 1;
-			await ctx.db.patch(otpRow._id, { attempts: newAttempts });
-			const remainingAttempts = Math.max(0, MAX_ATTEMPTS - newAttempts);
-			throw otpError("OTP_INVALID", remainingAttempts);
+			// [Review fix CR-02] DO NOT throw here. Return a non-throwing
+			// failure so the action layer can commit an attempts increment
+			// in a separate mutation. Throwing in this same mutation would
+			// roll back any pending writes, defeating the per-row cap.
+			return { ok: false, code: "OTP_INVALID", otpId: otpRow._id };
 		}
 
 		// Single-use: delete BEFORE returning so concurrent retries cannot
@@ -243,6 +322,7 @@ export const verifyOtpCode = mutation({
 		await ctx.db.delete(otpRow._id);
 
 		return {
+			ok: true,
 			clientContactId: otpRow.clientContactId,
 			clientId: otpRow.clientId,
 			orgId: otpRow.orgId,
@@ -277,16 +357,35 @@ export const verifyOtp = action({
 		sessionId: Id<"portalSessions">;
 		expiresAt: number;
 	}> => {
-		const session: {
-			clientContactId: Id<"clientContacts">;
-			clientId: Id<"clients">;
-			orgId: Id<"organizations">;
-			clientPortalId: string;
-		} = await ctx.runMutation(api.portal.otp.verifyOtpCode, {
+		const verifyResult: Awaited<
+			ReturnType<typeof ctx.runMutation<typeof api.portal.otp.verifyOtpCode>>
+		> = await ctx.runMutation(api.portal.otp.verifyOtpCode, {
 			clientPortalId: args.clientPortalId,
 			email: args.email,
 			code: args.code,
 		});
+
+		// [Review fix CR-02] On wrong-code, verifyOtpCode returns a
+		// non-throwing failure so the attempts increment can land in a
+		// SEPARATE committing mutation (Convex rolls back all writes on
+		// throw). Sequence: increment attempts → if exhausted, delete row →
+		// then throw the appropriate ConvexError.
+		if (!verifyResult.ok) {
+			const incResult: { attempts: number; exhausted: boolean } =
+				await ctx.runMutation(internal.portal.otp._incrementOtpAttempts, {
+					otpId: verifyResult.otpId,
+				});
+			if (incResult.exhausted) {
+				await ctx.runMutation(internal.portal.otp._deleteOtpRow, {
+					otpId: verifyResult.otpId,
+				});
+				throw otpError("OTP_EXHAUSTED", 0, EXHAUSTED_MESSAGE);
+			}
+			const remainingAttempts = Math.max(0, MAX_ATTEMPTS - incResult.attempts);
+			throw otpError("OTP_INVALID", remainingAttempts);
+		}
+
+		const session = verifyResult;
 
 		const sessionResult: { sessionId: Id<"portalSessions">; expiresAt: number } =
 			await ctx.runMutation(internal.portal.sessions.createSession, {

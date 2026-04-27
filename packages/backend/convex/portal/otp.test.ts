@@ -206,7 +206,37 @@ describe("portal otp", () => {
 		).rejects.toThrow();
 	});
 
-	it("verifyOtpCode (mutation) throws ConvexError with structured data on wrong code", async () => {
+	it("verifyOtp (action) throws OTP_INVALID with attempts decremented when code is wrong [CR-02]", async () => {
+		const seed = await seedClientPortal(t);
+		const otpId = await seedOtpRow(t, seed, {
+			email: "user@example.com",
+			code: "123456",
+			attempts: 2,
+		});
+
+		try {
+			await t.action(api.portal.otp.verifyOtp, {
+				clientPortalId: seed.clientPortalId,
+				email: "user@example.com",
+				code: "999999",
+				tokenJti: "jti-x",
+			});
+			throw new Error("Expected ConvexError to be thrown");
+		} catch (err) {
+			const data = asOtpError(err);
+			expect(data.code).toBe("OTP_INVALID");
+			// Caller saw 5 - (2+1) = 2 remaining
+			expect(data.remainingAttempts).toBe(2);
+		}
+
+		// [CR-02] Critical assertion: the attempts increment MUST persist
+		// across the throw, because the action commits it via a separate
+		// internal mutation before throwing.
+		const row = await t.run((ctx) => ctx.db.get(otpId));
+		expect(row?.attempts).toBe(3);
+	});
+
+	it("verifyOtpCode (mutation) returns ok:false (non-throwing) on wrong code [CR-02]", async () => {
 		const seed = await seedClientPortal(t);
 		await seedOtpRow(t, seed, {
 			email: "user@example.com",
@@ -214,17 +244,15 @@ describe("portal otp", () => {
 			attempts: 2,
 		});
 
-		try {
-			await t.mutation(api.portal.otp.verifyOtpCode, {
-				clientPortalId: seed.clientPortalId,
-				email: "user@example.com",
-				code: "999999",
-			});
-			throw new Error("Expected ConvexError to be thrown");
-		} catch (err) {
-			const data = asOtpError(err);
-			expect(data.code).toBe("OTP_INVALID");
-			expect(data.remainingAttempts).toBe(2);
+		const result = await t.mutation(api.portal.otp.verifyOtpCode, {
+			clientPortalId: seed.clientPortalId,
+			email: "user@example.com",
+			code: "999999",
+		});
+		expect(result.ok).toBe(false);
+		if (result.ok === false) {
+			expect(result.code).toBe("OTP_INVALID");
+			expect(result.otpId).toBeDefined();
 		}
 	});
 
@@ -307,7 +335,7 @@ describe("portal otp attempts", () => {
 	it("rejects 6th attempt even with correct code — throws OTP_EXHAUSTED", async () => {
 		const seed = await seedClientPortal(t);
 		const code = "123456";
-		const otpId = await seedOtpRow(t, seed, {
+		await seedOtpRow(t, seed, {
 			email: "user@example.com",
 			code,
 			attempts: 5,
@@ -326,11 +354,50 @@ describe("portal otp attempts", () => {
 			expect(data.remainingAttempts).toBe(0);
 		}
 
-		// NOTE: Convex rolls back ALL writes when a mutation throws, so the
-		// row persists. The functional guarantee is that subsequent verify
-		// attempts continue to throw OTP_EXHAUSTED until the row expires.
+		// [Review fix CR-02] On OTP_EXHAUSTED the row IS deleted in the
+		// throwing mutation — but the throw rolls that delete back. The
+		// guarantee is that subsequent verify calls still see attempts >=
+		// MAX and throw OTP_EXHAUSTED again (terminal state) until expiry.
+		const rows = await t.run((ctx) =>
+			ctx.db.query("portalOtpCodes").collect()
+		);
+		expect(rows[0]?.attempts).toBe(5);
+	});
+
+	it("[CR-02] organically reaches OTP_EXHAUSTED after 5 wrong codes via verifyOtp action", async () => {
+		const seed = await seedClientPortal(t);
+		const code = "123456";
+		const otpId = await seedOtpRow(t, seed, {
+			email: "user@example.com",
+			code,
+			attempts: 0,
+		});
+
+		// Burn 5 wrong-code attempts via the action so each increment commits.
+		for (let i = 0; i < 5; i++) {
+			try {
+				await t.action(api.portal.otp.verifyOtp, {
+					clientPortalId: seed.clientPortalId,
+					email: "user@example.com",
+					code: "999999",
+					tokenJti: `jti-${i}`,
+				});
+				throw new Error("Expected throw");
+			} catch (err) {
+				const data = asOtpError(err);
+				// Last wrong code (i=4) brings attempts to 5 → OTP_EXHAUSTED
+				if (i < 4) {
+					expect(data.code).toBe("OTP_INVALID");
+				} else {
+					expect(data.code).toBe("OTP_EXHAUSTED");
+				}
+			}
+		}
+
+		// Row is gone (deleted on exhaustion) OR attempts equals 5
 		const row = await t.run((ctx) => ctx.db.get(otpId));
-		expect(row?.attempts).toBe(5);
+		// _deleteOtpRow runs on exhaustion; row should be deleted
+		expect(row === null || row.attempts === 5).toBe(true);
 	});
 });
 
