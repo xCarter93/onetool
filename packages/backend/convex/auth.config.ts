@@ -1,3 +1,16 @@
+// [Review fix IN-01] Fail loudly at module load if PORTAL_JWT_ISSUER is unset
+// on the Convex deployment. Previously an unset value silently registered
+// `domain: undefined`, which would later cause Convex to fail JWKS discovery
+// at runtime with no clear startup signal. The Clerk issuer is similarly
+// required, but throwing here lets us surface the misconfiguration during
+// `convex deploy` rather than on the first authenticated portal request.
+if (!process.env.PORTAL_JWT_ISSUER) {
+	throw new Error(
+		"PORTAL_JWT_ISSUER is unset on this Convex deployment — the portal " +
+			"auth provider cannot be registered. Set it in the Convex dashboard."
+	);
+}
+
 const authConfig = {
 	providers: [
 		{
