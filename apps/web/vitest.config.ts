@@ -5,6 +5,13 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "src"),
+			// Map the server-only marker module to its empty implementation so
+			// modules that begin with `import "server-only"` can be imported
+			// inside the vitest edge-runtime environment without throwing.
+			"server-only": path.resolve(
+				__dirname,
+				"../../node_modules/server-only/empty.js",
+			),
 		},
 	},
 	test: {

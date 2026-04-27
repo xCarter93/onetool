@@ -1,0 +1,118 @@
+import "server-only";
+import {
+	SignJWT,
+	importPKCS8,
+	jwtVerify,
+	createLocalJWKSet,
+	type JWTPayload,
+} from "jose";
+import { randomUUID } from "crypto";
+import { env } from "@/env";
+
+const ALG = "RS256" as const;
+const AUDIENCE = "convex-portal" as const;
+
+export type PortalJwtClaims = {
+	clientContactId: string;
+	orgId: string;
+	clientPortalId: string;
+	jti?: string;
+};
+
+let cachedPrivateKey: CryptoKey | null = null;
+async function getPrivateKey(): Promise<CryptoKey> {
+	if (cachedPrivateKey) return cachedPrivateKey;
+	// env.ts stores the PKCS8 PEM as a JSON-stringified value to preserve newlines
+	const raw = JSON.parse(env.PORTAL_JWT_PRIVATE_KEY) as string;
+	cachedPrivateKey = (await importPKCS8(raw, ALG)) as CryptoKey;
+	return cachedPrivateKey;
+}
+
+let cachedJwks: ReturnType<typeof createLocalJWKSet> | null = null;
+function getLocalJwks() {
+	if (cachedJwks) return cachedJwks;
+	const parsed = JSON.parse(env.PORTAL_JWT_JWKS) as {
+		keys: Array<Record<string, unknown>>;
+	};
+	cachedJwks = createLocalJWKSet(
+		parsed as Parameters<typeof createLocalJWKSet>[0],
+	);
+	return cachedJwks;
+}
+
+export function getJwksJson(): string {
+	// Return raw JSON string for the public JWKS endpoint
+	return env.PORTAL_JWT_JWKS;
+}
+
+export async function signSessionJwt(
+	claims: PortalJwtClaims,
+	ttlSeconds: number,
+): Promise<{ token: string; jti: string; expiresAt: number }> {
+	const jti = claims.jti ?? randomUUID();
+	const now = Math.floor(Date.now() / 1000);
+	const exp = now + ttlSeconds;
+
+	const token = await new SignJWT({
+		orgId: claims.orgId,
+		clientContactId: claims.clientContactId,
+		clientPortalId: claims.clientPortalId,
+	})
+		.setProtectedHeader({ alg: ALG, typ: "JWT" })
+		.setSubject(claims.clientContactId)
+		.setJti(jti)
+		.setIssuer(env.PORTAL_JWT_ISSUER)
+		.setAudience(AUDIENCE)
+		.setIssuedAt(now)
+		.setExpirationTime(exp)
+		.sign(await getPrivateKey());
+
+	return { token, jti, expiresAt: exp * 1000 };
+}
+
+// [Review fix #4] Short-lived Convex access token. The cookie JWT (long-lived, 24h, aud="convex-portal") is httpOnly
+// and must NOT be returned to JavaScript. ConvexPortalProvider calls /api/portal/token, which mints THIS short-lived
+// token (5min TTL, distinct aud "convex-portal-access") for the realtime WS. XSS exfiltration of this token grants only
+// 5 minutes of access; the cookie remains httpOnly so persistence cannot be hijacked.
+const CONVEX_ACCESS_AUDIENCE = "convex-portal-access" as const;
+const CONVEX_ACCESS_TTL_SECONDS = 300; // 5 minutes — Review fix #4
+
+export async function signConvexAccessToken(claims: {
+	clientContactId: string;
+	orgId: string;
+	clientPortalId: string;
+	sessionJti: string; // pin to the originating cookie's jti — getPortalSessionOrThrow re-validates this against portalSessions
+}): Promise<{ token: string; expiresAt: number }> {
+	const now = Math.floor(Date.now() / 1000);
+	const exp = now + CONVEX_ACCESS_TTL_SECONDS;
+	const token = await new SignJWT({
+		orgId: claims.orgId,
+		clientContactId: claims.clientContactId,
+		clientPortalId: claims.clientPortalId,
+		sessionJti: claims.sessionJti, // [Review fix #2] backend uses this to look up the portalSessions row
+	})
+		.setProtectedHeader({ alg: ALG, typ: "JWT" })
+		.setSubject(claims.clientContactId)
+		.setIssuer(env.PORTAL_JWT_ISSUER)
+		.setAudience(CONVEX_ACCESS_AUDIENCE)
+		.setIssuedAt(now)
+		.setExpirationTime(exp)
+		.sign(await getPrivateKey());
+	return { token, expiresAt: exp * 1000 };
+}
+
+export async function verifySessionJwt(token: string): Promise<{
+	payload: JWTPayload & PortalJwtClaims;
+	remainingSeconds: number;
+}> {
+	const { payload } = await jwtVerify(token, getLocalJwks(), {
+		issuer: env.PORTAL_JWT_ISSUER,
+		audience: AUDIENCE,
+	});
+	const now = Math.floor(Date.now() / 1000);
+	const remainingSeconds = (payload.exp ?? 0) - now;
+	return {
+		payload: payload as JWTPayload & PortalJwtClaims,
+		remainingSeconds,
+	};
+}
