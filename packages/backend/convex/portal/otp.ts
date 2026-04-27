@@ -34,16 +34,21 @@ type OtpErrorCode =
 function otpError(
 	code: OtpErrorCode,
 	remainingAttempts: number | null,
-	message?: string
+	message?: string,
+	// [Review fix WR-11] Optional retryAfter (seconds) so 429 responses can
+	// surface the actual rate-limit window to the UI.
+	retryAfterSeconds?: number
 ): ConvexError<{
 	code: OtpErrorCode;
 	remainingAttempts: number | null;
 	message: string;
+	retryAfter?: number;
 }> {
 	return new ConvexError({
 		code,
 		remainingAttempts,
 		message: message ?? GENERIC_OTP_MESSAGE,
+		retryAfter: retryAfterSeconds,
 	});
 }
 
@@ -108,7 +113,14 @@ export const requestOtp = internalMutation({
 				throws: false,
 			});
 			if (!rlIp.ok) {
-				throw otpError("OTP_RATE_LIMITED", null, RATE_LIMITED_MESSAGE);
+				// [Review fix WR-11] Surface retryAfter (ms → seconds) so the UI
+				// can format the actual wait time instead of guessing.
+				throw otpError(
+					"OTP_RATE_LIMITED",
+					null,
+					RATE_LIMITED_MESSAGE,
+					Math.ceil(rlIp.retryAfter / 1000)
+				);
 			}
 		}
 		const rlEmail = await rateLimiter.limit(ctx, "portalOtpSend", {
@@ -116,7 +128,12 @@ export const requestOtp = internalMutation({
 			throws: false,
 		});
 		if (!rlEmail.ok) {
-			throw otpError("OTP_RATE_LIMITED", null, RATE_LIMITED_MESSAGE);
+			throw otpError(
+				"OTP_RATE_LIMITED",
+				null,
+				RATE_LIMITED_MESSAGE,
+				Math.ceil(rlEmail.retryAfter / 1000)
+			);
 		}
 
 		const client = await ctx.db
@@ -275,7 +292,12 @@ export const verifyOtpCode = mutation({
 			throws: false,
 		});
 		if (!rl.ok) {
-			throw otpError("OTP_RATE_LIMITED", null, RATE_LIMITED_MESSAGE);
+			throw otpError(
+				"OTP_RATE_LIMITED",
+				null,
+				RATE_LIMITED_MESSAGE,
+				Math.ceil(rl.retryAfter / 1000)
+			);
 		}
 
 		// [Review fix #7] Lookup by [clientPortalId, email] — never by

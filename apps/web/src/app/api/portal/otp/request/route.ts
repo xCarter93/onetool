@@ -37,12 +37,15 @@ export async function POST(req: NextRequest) {
 	} catch (err) {
 		// [Review fix #6] Read structured ConvexError data — NEVER regex-parse .message
 		if (err instanceof ConvexError) {
-			const data = err.data as { code?: string };
+			const data = err.data as { code?: string; retryAfter?: number };
 			if (data.code === "OTP_RATE_LIMITED") {
+				// [Review fix WR-11] Forward retryAfter (seconds) so the UI
+				// formats the actual wait time instead of hardcoding 5 min.
 				return NextResponse.json(
 					{
 						error: "Too many requests. Try again in a few minutes.",
 						code: data.code,
+						retryAfter: data.retryAfter,
 					},
 					{ status: 429 },
 				);

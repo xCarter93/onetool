@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
 				code?: string;
 				remainingAttempts?: number | null;
 				message?: string;
+				retryAfter?: number;
 			};
 			if (data.code === "OTP_EXHAUSTED") {
 				return NextResponse.json(
@@ -95,6 +96,8 @@ export async function POST(req: NextRequest) {
 						error: "Too many attempts. Please try again in a few minutes.",
 						code: "OTP_RATE_LIMITED",
 						remainingAttempts: null,
+						// [Review fix WR-11] Forward retryAfter to the UI.
+						retryAfter: data.retryAfter,
 					},
 					{ status: 429 },
 				);
