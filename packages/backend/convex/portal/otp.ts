@@ -77,22 +77,6 @@ function timingSafeStringEqual(a: string, b: string): boolean {
 }
 
 /**
- * DEV ONLY — resets portal OTP rate limits for an email so you can keep
- * testing without waiting for the cooldown. Remove before shipping.
- */
-export const _devResetRateLimit = mutation({
-	args: { email: v.string() },
-	handler: async (ctx, { email }) => {
-		const normalizedEmail = email.trim().toLowerCase();
-		await rateLimiter.reset(ctx, "portalOtpSend", { key: normalizedEmail });
-		await rateLimiter.reset(ctx, "portalOtpVerify", {
-			key: `${normalizedEmail}:*`,
-		});
-		return { ok: true };
-	},
-});
-
-/**
  * Public mutation. Per Pitfall #1 the response is uniform regardless of
  * whether the (clientPortalId, email) pair resolves to a real contact, so an
  * attacker cannot enumerate valid links or contact addresses.
