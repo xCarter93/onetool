@@ -123,9 +123,10 @@ describe("portal otp", () => {
 
 	it("requestOtp creates a row and schedules an email", async () => {
 		const seed = await seedClientPortal(t);
-		await t.mutation(api.portal.otp.requestOtp, {
+		await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: seed.clientPortalId,
 			email: "user@example.com",
+			ipHash: "test-ip-hash-1",
 		});
 
 		const rows = await t.run(async (ctx) =>
@@ -143,9 +144,10 @@ describe("portal otp", () => {
 
 	it("requestOtp returns ok for unknown email (no enumeration)", async () => {
 		const seed = await seedClientPortal(t);
-		const result = await t.mutation(api.portal.otp.requestOtp, {
+		const result = await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: seed.clientPortalId,
 			email: "nobody@example.com",
+			ipHash: "test-ip-hash-2",
 		});
 		expect(result).toEqual({ ok: true });
 		const rows = await t.run(async (ctx) =>
@@ -155,9 +157,10 @@ describe("portal otp", () => {
 	});
 
 	it("requestOtp returns ok for unknown clientPortalId (no enumeration)", async () => {
-		const result = await t.mutation(api.portal.otp.requestOtp, {
+		const result = await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: "no-such-portal",
 			email: "user@example.com",
+			ipHash: "test-ip-hash-3",
 		});
 		expect(result).toEqual({ ok: true });
 	});
@@ -302,13 +305,15 @@ describe("portal otp", () => {
 			return { orgId, clientA, contactA, clientB, contactB };
 		});
 
-		await t.mutation(api.portal.otp.requestOtp, {
+		await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: "aaa",
 			email: sharedEmail,
+			ipHash: "test-ip-hash-aaa",
 		});
-		await t.mutation(api.portal.otp.requestOtp, {
+		await t.mutation(internal.portal.otp.requestOtp, {
 			clientPortalId: "bbb",
 			email: sharedEmail,
+			ipHash: "test-ip-hash-bbb",
 		});
 
 		const rows = await t.run(async (ctx) =>

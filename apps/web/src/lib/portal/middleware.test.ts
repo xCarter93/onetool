@@ -103,9 +103,11 @@ describe("portal middleware refresh", () => {
 		expect(setCookie).toBeTruthy();
 		const payload = decodeJwt(setCookie!.value!);
 		expect(payload.jti).toBe("preserved-jti-XYZ");
-		expect(response.headers.get("x-portal-touch-jti")).toBe(
-			"preserved-jti-XYZ",
-		);
+		// [Review fix Greptile-P2] x-portal-touch-* headers were removed —
+		// they leaked the jti to the browser and had no consumer. Assert
+		// they're NOT present.
+		expect(response.headers.get("x-portal-touch-jti")).toBeNull();
+		expect(response.headers.get("x-portal-touch-expires")).toBeNull();
 	});
 
 	it("redirects to /portal/c/{id}/verify when no cookie present", async () => {

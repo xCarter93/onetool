@@ -1,15 +1,40 @@
 import "server-only";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { fetchMutation } from "convex/nextjs";
-import { ConvexError } from "convex/values";
-import { api } from "@onetool/backend/convex/_generated/api";
+import { env } from "@/env";
 import { hashIp, getRequestIp } from "@/lib/portal/ip";
 
 const bodySchema = z.object({
 	clientPortalId: z.string().min(1),
 	email: z.string().email(),
 });
+
+/**
+ * [Review fix Greptile-P1] This route is a thin proxy to the Convex
+ * httpAction at `/portal/otp/request`. The trust split is:
+ *
+ *  - The Next.js server (this file) reads the client IP using `getRequestIp`,
+ *    which only honours CDN-set headers (CF-Connecting-IP, X-Vercel-Forwarded-
+ *    For, etc.) — values the client cannot forge when the deployment sits
+ *    behind a CDN that REPLACES X-Forwarded-For. It hashes that IP locally.
+ *
+ *  - The Convex httpAction does NOT re-derive the IP from headers; it would
+ *    be reachable directly from the public internet with arbitrary forwarding
+ *    headers. Instead it gates entry on the `x-portal-secret` header,
+ *    accepts the precomputed `ipHash`, and runs `internal.portal.otp.requestOtp`.
+ *
+ * The previous implementation called `fetchMutation(api.portal.otp.requestOtp, ...)`
+ * with a client-supplied `ipHash`; that path is structurally closed because
+ * `requestOtp` is now `internalMutation` and unreachable from public Convex
+ * clients.
+ */
+
+function convexHttpUrl(): string {
+	// Convex serves httpActions from `<deployment>.convex.site`, while
+	// queries/mutations live at `<deployment>.convex.cloud`.
+	const cloudUrl = env.NEXT_PUBLIC_CONVEX_URL;
+	return cloudUrl.replace(/\.convex\.cloud(\/?$)/, ".convex.site$1");
+}
 
 export async function POST(req: NextRequest) {
 	let parsed;
@@ -24,35 +49,26 @@ export async function POST(req: NextRequest) {
 
 	const ipHash = await hashIp(getRequestIp(req));
 
-	try {
-		// requestOtp is a public mutation — `fetchMutation` from convex/nextjs
-		// only calls public functions. The route-handler-derived ipHash is
-		// trusted; deeper hardening (httpAction or shared-secret) tracked
-		// separately.
-		await fetchMutation(api.portal.otp.requestOtp, {
+	const upstream = await fetch(`${convexHttpUrl()}/portal/otp/request`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"x-portal-secret": env.PORTAL_OTP_REQUEST_SECRET,
+		},
+		body: JSON.stringify({
 			clientPortalId: parsed.clientPortalId,
 			email: parsed.email,
 			ipHash,
-		});
-		return NextResponse.json({ ok: true });
-	} catch (err) {
-		// [Review fix #6] Read structured ConvexError data — NEVER regex-parse .message
-		if (err instanceof ConvexError) {
-			const data = err.data as { code?: string; retryAfter?: number };
-			if (data.code === "OTP_RATE_LIMITED") {
-				// [Review fix WR-11] Forward retryAfter (seconds) so the UI
-				// formats the actual wait time instead of hardcoding 5 min.
-				return NextResponse.json(
-					{
-						error: "Too many requests. Try again in a few minutes.",
-						code: data.code,
-						retryAfter: data.retryAfter,
-					},
-					{ status: 429 },
-				);
-			}
-		}
-		// Uniform success on any other error — never leak whether the email is on file (Pitfall 1)
-		return NextResponse.json({ ok: true });
-	}
+		}),
+		// Convex httpActions are not edge-cached; ensure no Next.js caching either.
+		cache: "no-store",
+	});
+
+	// Pass through the JSON body and status verbatim; the httpAction already
+	// applies Pitfall #1 uniformity and structured 429 shape.
+	const text = await upstream.text();
+	return new NextResponse(text, {
+		status: upstream.status,
+		headers: { "Content-Type": "application/json" },
+	});
 }

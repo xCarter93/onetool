@@ -22,6 +22,13 @@ export const env = createEnv({
 		PORTAL_JWT_PRIVATE_KEY: z.string().min(1),
 		PORTAL_JWT_JWKS: z.string().min(1),
 		PORTAL_JWT_ISSUER: z.string().url(),
+		// [Review fix Greptile-P1] Shared secret guarding Convex httpActions
+		// that this Next.js server proxies to. The Next route derives the
+		// trusted client IP from CDN headers, hashes it, and forwards both
+		// the hash and this secret. Without it, the Convex httpAction would
+		// be directly callable from the public internet with rotated/spoofed
+		// forwarding headers, defeating per-IP rate limits.
+		PORTAL_OTP_REQUEST_SECRET: z.string().min(16),
 	},
 	client: {
 		NEXT_PUBLIC_CONVEX_URL: z.string().min(1),

@@ -30,17 +30,29 @@ const authConfig = {
 			// /.well-known/portal-jwks.json (NOT the OIDC default
 			// /.well-known/jwks.json) to avoid colliding with workspace OIDC.
 			//
-			// [Review fix #4] applicationID "convex-portal" matches the long-lived
-			// cookie JWT's `aud` claim AND the short-lived
-			// `convex-portal-access` token (since both are signed by the same
-			// issuer and use the same JWKS). The audience discrimination happens
-			// in getPortalSessionOrThrow, not in Convex's provider-resolution
-			// layer.
+			// [Review fix Greptile-P1] Convex's customJwt provider enforces
+			// `aud === applicationID` at the provider layer BEFORE our code
+			// runs. The cookie JWT and the short-lived realtime access token
+			// use DIFFERENT audiences ("convex-portal" vs
+			// "convex-portal-access"), so we must register one provider entry
+			// per audience. Both share the same issuer + JWKS + algorithm.
+			// Fine-grained discrimination still happens in
+			// `getPortalSessionOrThrow`.
 			type: "customJwt",
 			issuer: process.env.PORTAL_JWT_ISSUER,
 			jwks: `${process.env.PORTAL_JWT_ISSUER}/.well-known/portal-jwks.json`,
 			algorithm: "RS256",
 			applicationID: "convex-portal",
+		},
+		{
+			// Short-lived realtime access token minted by /api/portal/token.
+			// Same key material as the cookie provider above; only the
+			// audience differs.
+			type: "customJwt",
+			issuer: process.env.PORTAL_JWT_ISSUER,
+			jwks: `${process.env.PORTAL_JWT_ISSUER}/.well-known/portal-jwks.json`,
+			algorithm: "RS256",
+			applicationID: "convex-portal-access",
 		},
 	],
 };

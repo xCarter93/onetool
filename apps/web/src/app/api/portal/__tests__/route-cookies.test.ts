@@ -13,6 +13,7 @@ vi.mock("@/env", () => ({
 			PORTAL_JWT_PRIVATE_KEY: pkcs8Pem,
 			PORTAL_JWT_JWKS: jwksJson,
 			PORTAL_JWT_ISSUER: ISSUER,
+			PORTAL_OTP_REQUEST_SECRET: "test-shared-secret-0123456789abcdef",
 			NEXT_PUBLIC_CONVEX_URL: "https://test.convex.cloud",
 		};
 	},

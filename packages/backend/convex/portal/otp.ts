@@ -82,24 +82,23 @@ function timingSafeStringEqual(a: string, b: string): boolean {
 }
 
 /**
- * [Review fix CR-04] INTERNAL mutation. Previously this was a public
- * mutation that accepted `ipHash` as an arg, which any caller could omit or
- * rotate to bypass the per-IP rate limit (`portalOtpSendPerIp`, 30/hour).
- * The defense documented in rateLimits.ts ("defends against email-list
- * flooding") was structurally bypassable. Now the only caller is the
- * Next.js route at `/api/portal/otp/request`, which derives `ipHash`
- * server-side from the request and invokes via `fetchMutation(internal.*)`.
- * Direct Convex client calls cannot reach this function.
+ * [Review fix Greptile-P1] Truly INTERNAL mutation. Previously exported as
+ * `mutation` with `ipHash: v.optional(...)`, which let any Convex client
+ * omit `ipHash` (or rotate it) to bypass the `portalOtpSendPerIp` cap.
+ * Now the ONLY caller is the `/portal/otp/request` httpAction in
+ * `http.ts`, which derives `ipHash` from request headers server-side and
+ * passes it as a required argument. Direct `api.*` callers cannot reach
+ * this function.
  *
  * Per Pitfall #1 the response is uniform regardless of whether the
  * (clientPortalId, email) pair resolves to a real contact, so an attacker
  * cannot enumerate valid links or contact addresses.
  */
-export const requestOtp = mutation({
+export const requestOtp = internalMutation({
 	args: {
 		clientPortalId: v.string(),
 		email: v.string(),
-		ipHash: v.optional(v.string()),
+		ipHash: v.string(),
 	},
 	handler: async (ctx, { clientPortalId, email, ipHash }) => {
 		const normalizedEmail = email.trim().toLowerCase();
@@ -107,21 +106,19 @@ export const requestOtp = mutation({
 		// Rate-limit FIRST. Use throws:false and re-throw with our OTP_RATE_LIMITED
 		// taxonomy so the route handler's ConvexError code-check works (the
 		// rate-limiter component throws {kind:"RateLimited"}, not {code:...}).
-		if (ipHash) {
-			const rlIp = await rateLimiter.limit(ctx, "portalOtpSendPerIp", {
-				key: ipHash,
-				throws: false,
-			});
-			if (!rlIp.ok) {
-				// [Review fix WR-11] Surface retryAfter (ms → seconds) so the UI
-				// can format the actual wait time instead of guessing.
-				throw otpError(
-					"OTP_RATE_LIMITED",
-					null,
-					RATE_LIMITED_MESSAGE,
-					Math.ceil(rlIp.retryAfter / 1000)
-				);
-			}
+		const rlIp = await rateLimiter.limit(ctx, "portalOtpSendPerIp", {
+			key: ipHash,
+			throws: false,
+		});
+		if (!rlIp.ok) {
+			// [Review fix WR-11] Surface retryAfter (ms → seconds) so the UI
+			// can format the actual wait time instead of guessing.
+			throw otpError(
+				"OTP_RATE_LIMITED",
+				null,
+				RATE_LIMITED_MESSAGE,
+				Math.ceil(rlIp.retryAfter / 1000)
+			);
 		}
 		const rlEmail = await rateLimiter.limit(ctx, "portalOtpSend", {
 			key: normalizedEmail,
