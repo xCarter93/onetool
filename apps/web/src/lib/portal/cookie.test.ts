@@ -21,7 +21,7 @@ describe("portal cookie", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("sets httpOnly=true, secure in prod, sameSite=lax, path=/portal, maxAge=86400", async () => {
+	it("sets httpOnly=true, secure in prod, sameSite=lax, path=/, maxAge=86400", async () => {
 		// Default test env: NODE_ENV !== production -> secure=false
 		const { setSessionCookieOnRequest, PORTAL_COOKIE } = await import(
 			"./cookie"
@@ -32,7 +32,7 @@ describe("portal cookie", () => {
 			httpOnly: true,
 			secure: false,
 			sameSite: "lax",
-			path: "/portal",
+			path: "/",
 			maxAge: 60 * 60 * 24,
 		});
 
@@ -44,12 +44,12 @@ describe("portal cookie", () => {
 			httpOnly: true,
 			secure: true,
 			sameSite: "lax",
-			path: "/portal",
+			path: "/",
 			maxAge: 60 * 60 * 24,
 		});
 	});
 
-	it("clear deletes by setting maxAge=0 on /portal path", async () => {
+	it("clear deletes by setting maxAge=0 on / path", async () => {
 		const { clearSessionCookieOnRequest, PORTAL_COOKIE } = await import(
 			"./cookie"
 		);
@@ -59,7 +59,7 @@ describe("portal cookie", () => {
 			"",
 			expect.objectContaining({
 				maxAge: 0,
-				path: "/portal",
+				path: "/",
 				httpOnly: true,
 				sameSite: "lax",
 			}),
@@ -93,7 +93,7 @@ describe("portal cookie", () => {
 			expect.objectContaining({
 				httpOnly: true,
 				sameSite: "lax",
-				path: "/portal",
+				path: "/",
 				maxAge: 60 * 60 * 24,
 			}),
 		);

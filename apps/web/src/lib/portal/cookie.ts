@@ -9,7 +9,12 @@ const cookieAttrs = () => ({
 	httpOnly: true as const,
 	secure: process.env.NODE_ENV === "production",
 	sameSite: "lax" as const,
-	path: "/portal",
+	// [Review fix CR-01] path="/" so the cookie is sent to BOTH /portal/* pages
+	// and /api/portal/* route handlers (token, refresh, logout, otp/verify).
+	// A path-scoped cookie at "/portal" was never sent on /api/portal/* — every
+	// authenticated API call 401'd. The cookie name `portal_session` is unique
+	// enough that path scoping is not needed for collision avoidance.
+	path: "/",
 	maxAge: COOKIE_TTL_SECONDS,
 });
 
