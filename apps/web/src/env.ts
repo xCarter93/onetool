@@ -17,6 +17,11 @@ export const env = createEnv({
 		RESEND_WEBHOOK_SECRET: z.string().min(1),
 		STRIPE_APPLICATION_FEE_CENTS: z.string().optional().default("100"),
 		MAPBOX_API_KEY: z.string().min(1),
+		// Portal session JWT (PORTAL-03, PORTAL-05). Server-only — never exposed
+		// to the client bundle. Generate via `pnpm tsx scripts/generate-portal-jwt-keys.ts`.
+		PORTAL_JWT_PRIVATE_KEY: z.string().min(1),
+		PORTAL_JWT_JWKS: z.string().min(1),
+		PORTAL_JWT_ISSUER: z.string().url(),
 	},
 	client: {
 		NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
