@@ -82,6 +82,64 @@ describe("portal migrations backfill", () => {
 		expect(result.alreadySet).toBe(1);
 	});
 
+	it("[CR-06] cursor-paginates beyond a single batch — every row backfilled", async () => {
+		const N = 50; // > batchSize=20 below
+		const clientIds: Id<"clients">[] = [];
+		await t.run(async (ctx) => {
+			const userId = await ctx.db.insert("users", {
+				name: "Owner",
+				email: "owner@example.com",
+				image: "https://example.com/u.png",
+				externalId: "user_owner_pages",
+			});
+			const orgId = await ctx.db.insert("organizations", {
+				clerkOrganizationId: "org_pages",
+				name: "PageCorp",
+				ownerUserId: userId,
+			});
+			for (let i = 0; i < N; i++) {
+				const id = await ctx.db.insert("clients", {
+					orgId,
+					companyName: `Client ${i}`,
+					status: "active",
+				});
+				clientIds.push(id);
+			}
+		});
+
+		// Drive the cursor until isDone.
+		let cursor: string | null = null;
+		let totalAssigned = 0;
+		let safety = 100;
+		while (safety-- > 0) {
+			const result: {
+				assigned: number;
+				alreadySet: number;
+				examined: number;
+				isDone: boolean;
+				cursor: string;
+			} = await t.mutation(
+				internal.portal.migrations.backfillPortalAccessIds,
+				{ batchSize: 20, cursor }
+			);
+			totalAssigned += result.assigned;
+			if (result.isDone) break;
+			cursor = result.cursor;
+		}
+
+		expect(totalAssigned).toBe(N);
+
+		// Every row got a unique id.
+		const rows = await t.run((ctx) =>
+			Promise.all(clientIds.map((id) => ctx.db.get(id)))
+		);
+		const ids = rows.map((r) => r?.portalAccessId);
+		expect(ids.every((id) => typeof id === "string" && id.length > 0)).toBe(
+			true
+		);
+		expect(new Set(ids).size).toBe(N);
+	});
+
 	it("dry-run mode does not patch", async () => {
 		await t.run(async (ctx) => {
 			const userId = await ctx.db.insert("users", {
