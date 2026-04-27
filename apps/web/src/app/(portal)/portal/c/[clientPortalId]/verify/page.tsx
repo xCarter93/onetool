@@ -74,13 +74,13 @@ export default async function VerifyPage({
 										"0 12px 40px -8px oklch(0.62 0.20 232 / 0.55), 0 0 0 1px oklch(1 0 0 / 0.08)",
 								}}
 							>
+								{/* [Review fix WR-10] Image optimizer enforces size/content-type. */}
 								<Image
 									src={branding.logoUrl}
 									alt={`${branding.name} logo`}
 									width={52}
 									height={52}
 									className="rounded-lg object-contain"
-									unoptimized
 								/>
 							</div>
 						) : (
@@ -153,13 +153,13 @@ export default async function VerifyPage({
 				{/* Mobile co-brand header */}
 				<div className="mb-8 flex items-center gap-3 md:hidden">
 					{branding.logoUrl ? (
+						{/* [Review fix WR-10] Image optimizer enforces size/content-type. */}
 						<Image
 							src={branding.logoUrl}
 							alt={`${branding.name} logo`}
 							width={44}
 							height={44}
 							className="rounded-lg"
-							unoptimized
 						/>
 					) : (
 						<div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-lg font-bold text-primary">

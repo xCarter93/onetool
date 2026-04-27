@@ -15,13 +15,18 @@ export function BrandHeader({
 	return (
 		<div className="flex items-center gap-3">
 			{logoUrl ? (
+				// [Review fix WR-10] Drop `unoptimized` so the logo is fetched
+				// + resized by the Next.js image optimizer, which enforces a
+				// max source size and content-type via remotePatterns config.
+				// An org-supplied logoUrl that 302s to a 50MB image or
+				// tracking pixel can no longer be loaded directly by every
+				// portal visitor.
 				<Image
 					src={logoUrl}
 					alt={`${businessName} logo`}
 					width={44}
 					height={44}
 					className={`rounded-lg ${logoInvertInDarkMode ? "dark:invert" : ""}`}
-					unoptimized
 				/>
 			) : (
 				<div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-base font-bold text-primary">
