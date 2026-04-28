@@ -107,12 +107,23 @@ export function isSameOrigin(
 	host: string | null,
 ): boolean {
 	if (!host) return false;
-	const candidate =
-		originHeader && originHeader.length > 0 ? originHeader : refererHeader;
-	if (!candidate) return false; // both Origin and Referer missing → reject
+	// REVIEWS-mandated (WR-06): when an Origin header is present in any form,
+	// validate IT — do not silently fall through to Referer. Treat the
+	// opaque-origin sentinels ("" and the literal "null") as a reject signal
+	// rather than degrading the policy for state-changing routes. Only fall
+	// back to Referer when Origin is entirely absent (null/undefined).
+	if (originHeader !== null && originHeader !== undefined) {
+		if (originHeader === "" || originHeader === "null") return false;
+		try {
+			return new URL(originHeader).host === host;
+		} catch {
+			return false; // malformed Origin → reject
+		}
+	}
+	if (!refererHeader) return false; // both Origin and Referer missing → reject
 	try {
-		return new URL(candidate).host === host;
+		return new URL(refererHeader).host === host;
 	} catch {
-		return false; // malformed Origin/Referer URL → reject
+		return false; // malformed Referer URL → reject
 	}
 }
