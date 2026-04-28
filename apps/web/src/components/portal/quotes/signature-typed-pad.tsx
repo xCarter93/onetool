@@ -80,6 +80,14 @@ export function SignatureTypedPad({
 		}, DEBOUNCE_MS);
 	};
 
+	// REVIEWS-mandated (WR-03): show a "Preparing signature…" hint while the
+	// debounce is pending or the async settle is in flight, so a fast typer
+	// who clicks Approve mid-debounce sees feedback that the click was
+	// intentionally dropped (Approve is also gated on isUsable).
+	const isPending =
+		typed.trim().length >= 2 &&
+		!(value.mode === "typed" && value.isUsable && value.rawData.typedName === typed.trim());
+
 	return (
 		<div className="space-y-3">
 			<div>
@@ -99,6 +107,14 @@ export function SignatureTypedPad({
 					spellCheck={false}
 					aria-label="Typed signature"
 				/>
+				{isPending && (
+					<p
+						className="mt-1 text-[11px] text-muted-foreground"
+						aria-live="polite"
+					>
+						Preparing signature…
+					</p>
+				)}
 			</div>
 			<div
 				aria-label="Typed signature preview"
