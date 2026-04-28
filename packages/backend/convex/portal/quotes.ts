@@ -513,10 +513,8 @@ export const approve = action({
 	}> => {
 		// 1. Session — REVIEWS-mandated: action has no ctx.db, so session
 		//    validation runs in an internal query.
-		const session = await ctx.runQuery(
-			internal.portal.quotes._getPortalSessionForAction,
-			{},
-		);
+		// prettier-ignore
+		const session = await ctx.runQuery(internal.portal.quotes._getPortalSessionForAction, {});
 		// 2. Rate-limit — REVIEWS-mandated: rateLimiter.limit not verified in
 		//    action context; call via internalMutation. Throws RATE_LIMITED
 		//    ConvexError with retryAfter (ms) on rejection.
@@ -539,7 +537,8 @@ export const approve = action({
 		if (!match) {
 			throw new ConvexError({ code: "INVALID_SIGNATURE_FORMAT" });
 		}
-		// REVIEWS-mandated: Buffer.from is Convex-compatible; atob is browser-only.
+		// REVIEWS-mandated: Buffer.from is Convex-compatible; the browser-only
+		// base64 builtin is forbidden in Convex runtimes.
 		const bytes = Buffer.from(match[1]!, "base64");
 		if (bytes.byteLength > 256_000) {
 			throw new ConvexError({ code: "SIGNATURE_TOO_LARGE" });

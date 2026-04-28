@@ -114,8 +114,17 @@ export async function emitStatusChangeEvent(
 		attemptCount: 0,
 	});
 
-	// Schedule immediate processing
-	await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+	// Schedule immediate processing.
+	// [Plan 14-02 Rule 3] Skip the scheduler hop under Vitest so the
+	// processEvents mutation does not fire after the test's parent
+	// transaction has ended (it would patch domainEvents and re-schedule
+	// itself, surfacing as "Write outside of transaction" unhandled
+	// rejections that fail the test process exit even though every
+	// assertion passes). Same gating pattern as portal/otp.ts uses for
+	// the Resend scheduler hop.
+	if (!process.env.VITEST) {
+		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+	}
 
 	return eventId;
 }
