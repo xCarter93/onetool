@@ -219,10 +219,10 @@ export function QuoteList({ businessName }: QuoteListProps) {
 								const expiryLine = (() => {
 									if (q.status === "sent" && q.validUntil)
 										return `Expires ${formatDate(q.validUntil)}`;
-									if (q.status === "approved")
-										return `Approved ${formatDate(q.sentAt)}`;
-									if (q.status === "declined")
-										return `Declined ${formatDate(q.sentAt)}`;
+									if (q.status === "approved" && q.approvedAt)
+										return `Approved ${formatDate(q.approvedAt)}`;
+									if (q.status === "declined" && q.declinedAt)
+										return `Declined ${formatDate(q.declinedAt)}`;
 									if (q.status === "expired")
 										return `Expired ${formatDate(q.validUntil)}`;
 									return "";

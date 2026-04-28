@@ -72,6 +72,11 @@ export const list = query({
 				validUntil: q.validUntil,
 				total: q.total,
 				latestDocumentId: q.latestDocumentId,
+				// REVIEWS-mandated (CR-03): include decision timestamps so the
+				// portal list can show "Approved on {approvedAt}" / "Declined on
+				// {declinedAt}" instead of mislabeling sentAt as the decision date.
+				approvedAt: q.approvedAt,
+				declinedAt: q.declinedAt,
 			}));
 	},
 });
