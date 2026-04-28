@@ -64,6 +64,7 @@ import type * as portal_email from "../portal/email.js";
 import type * as portal_helpers from "../portal/helpers.js";
 import type * as portal_migrations from "../portal/migrations.js";
 import type * as portal_otp from "../portal/otp.js";
+import type * as portal_quotes from "../portal/quotes.js";
 import type * as portal_sessions from "../portal/sessions.js";
 import type * as projectDocuments from "../projectDocuments.js";
 import type * as projects from "../projects.js";
@@ -147,6 +148,7 @@ declare const fullApi: ApiFromModules<{
   "portal/helpers": typeof portal_helpers;
   "portal/migrations": typeof portal_migrations;
   "portal/otp": typeof portal_otp;
+  "portal/quotes": typeof portal_quotes;
   "portal/sessions": typeof portal_sessions;
   projectDocuments: typeof projectDocuments;
   projects: typeof projects;
