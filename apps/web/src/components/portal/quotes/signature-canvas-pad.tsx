@@ -61,6 +61,7 @@ function getDpr(): number {
 }
 
 export function SignatureCanvasPad({
+	value,
 	onChange,
 	disabled = false,
 }: SignatureCanvasPadProps) {
@@ -78,6 +79,16 @@ export function SignatureCanvasPad({
 		const dpr = getDpr();
 		ctx.scale(dpr, dpr);
 	}, []);
+
+	// REVIEWS-mandated (WR-05): when the parent resets value to a non-usable
+	// payload (e.g., handleStaleReset on 409, or a force-remount via key),
+	// also clear the underlying canvas so prior strokes do not visually
+	// linger and bleed into pad.toData() on the next stroke.
+	useEffect(() => {
+		if (!value.isUsable && value.dataUrl === null) {
+			padRef.current?.clear();
+		}
+	}, [value.isUsable, value.dataUrl]);
 
 	const handleEnd = useCallback(() => {
 		// REVIEWS-mandated: short-circuit when disabled.
