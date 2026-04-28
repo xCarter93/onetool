@@ -217,6 +217,10 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 
 				{isDesktop ? (
 					<ApprovalRail
+						// REVIEWS-mandated (CR-04): force-remount on documentId change
+						// so all useState (signaturePayload, terms, intent) resets to
+						// non-usable when the underlying document version drifts.
+						key={latestDocument?._id ?? "no-doc"}
 						quote={{
 							_id: quote._id,
 							quoteNumber: quote.quoteNumber,
@@ -234,9 +238,12 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						clientName={clientName}
 						clientEmail={clientEmail}
 						initialReceipt={effectiveInitialReceipt}
+						documentDrifted={!!documentDrifted}
 					/>
 				) : (
 					<ApprovalBottomSheet
+						// REVIEWS-mandated (CR-04): see ApprovalRail above.
+						key={latestDocument?._id ?? "no-doc"}
 						quote={{
 							_id: quote._id,
 							quoteNumber: quote.quoteNumber,
@@ -254,6 +261,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						clientName={clientName}
 						clientEmail={clientEmail}
 						initialReceipt={effectiveInitialReceipt}
+						documentDrifted={!!documentDrifted}
 					/>
 				)}
 			</div>

@@ -56,6 +56,14 @@ export interface ApprovalRailProps {
 	clientEmail: string;
 	initialReceipt?: ApprovalReceiptType;
 	/**
+	 * REVIEWS-mandated (CR-04): when the parent island detects a mid-session
+	 * document drift, this flag blocks Approve until the user reloads /
+	 * acknowledges via the banner. Defense-in-depth alongside the `key`-based
+	 * force-remount (which clears form state) — ensures a cached signature
+	 * cannot be submitted against a document the user never saw.
+	 */
+	documentDrifted?: boolean;
+	/**
 	 * Test seam (dev/test only). When provided, seeds the rail's
 	 * `signaturePayload` from this value on first render and SKIPS rendering
 	 * <SignatureCard /> so RTL tests can drive form gating without simulating
@@ -92,6 +100,7 @@ export function ApprovalRail({
 	clientName,
 	clientEmail,
 	initialReceipt,
+	documentDrifted = false,
 	_testInitialSignature,
 }: ApprovalRailProps) {
 	const [signaturePayload, setSignaturePayload] = useState<SignaturePayload>(
@@ -134,8 +143,18 @@ export function ApprovalRail({
 		if (signaturePayload.mode === "typed" && !intentAffirmed) return false;
 		if (submitting) return false;
 		if (isCooldownActive) return false;
+		// REVIEWS-mandated (CR-04): block submission while document drift
+		// is unacknowledged — user must explicitly re-pin via the banner.
+		if (documentDrifted) return false;
 		return true;
-	}, [signaturePayload, termsAccepted, intentAffirmed, submitting, isCooldownActive]);
+	}, [
+		signaturePayload,
+		termsAccepted,
+		intentAffirmed,
+		submitting,
+		isCooldownActive,
+		documentDrifted,
+	]);
 
 	const days = daysRemaining(quote.validUntil);
 	const expiresLine =

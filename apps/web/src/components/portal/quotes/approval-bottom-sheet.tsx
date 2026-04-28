@@ -40,6 +40,11 @@ export interface ApprovalBottomSheetProps {
 	clientName: string;
 	clientEmail: string;
 	initialReceipt?: ApprovalReceiptType;
+	/**
+	 * REVIEWS-mandated (CR-04): see ApprovalRail. Blocks submission while a
+	 * mid-session document drift is unacknowledged.
+	 */
+	documentDrifted?: boolean;
 }
 
 const NON_USABLE: SignaturePayload = {
@@ -63,6 +68,7 @@ export function ApprovalBottomSheet({
 	clientName,
 	clientEmail,
 	initialReceipt,
+	documentDrifted = false,
 }: ApprovalBottomSheetProps) {
 	const [expanded, setExpanded] = useState(false);
 	const [signaturePayload, setSignaturePayload] =
@@ -101,8 +107,18 @@ export function ApprovalBottomSheet({
 		if (signaturePayload.mode === "typed" && !intentAffirmed) return false;
 		if (submitting) return false;
 		if (isCooldownActive) return false;
+		// REVIEWS-mandated (CR-04): block submission while document drift
+		// is unacknowledged — user must explicitly re-pin via the banner.
+		if (documentDrifted) return false;
 		return true;
-	}, [signaturePayload, termsAccepted, intentAffirmed, submitting, isCooldownActive]);
+	}, [
+		signaturePayload,
+		termsAccepted,
+		intentAffirmed,
+		submitting,
+		isCooldownActive,
+		documentDrifted,
+	]);
 
 	const handleApprove = async () => {
 		if (!signaturePayload.isUsable) return;
