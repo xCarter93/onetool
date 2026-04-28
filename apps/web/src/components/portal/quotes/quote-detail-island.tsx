@@ -1,0 +1,247 @@
+"use client";
+
+/**
+ * QuoteDetailIsland — top-level client island that owns the reactive
+ * useQuery(api.portal.quotes.get) subscription and renders the desktop rail
+ * or mobile bottom sheet based on viewport. Wires REVIEWS-mandated
+ * `initialReceipt={data.latestApproval ?? undefined}` so previously-approved
+ * quotes render the receipt panel on first render.
+ */
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { useQuery } from "convex/react";
+
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+
+import { useMediaQuery } from "@/hooks/use-media-query";
+
+import { QuotePaper } from "./quote-paper";
+import { ApprovalRail } from "./approval-rail";
+import { ApprovalBottomSheet } from "./approval-bottom-sheet";
+import { StaleVersionBanner } from "./stale-version-banner";
+
+export interface QuoteDetailIslandProps {
+	quoteId: Id<"quotes">;
+}
+
+function formatDate(ts?: number): string {
+	if (!ts) return "—";
+	return new Date(ts).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+}
+
+function pillClassFor(status: string): string {
+	switch (status) {
+		case "approved":
+			return "bg-emerald-50 text-emerald-700 border-emerald-200";
+		case "declined":
+			return "bg-muted text-muted-foreground border-border";
+		case "expired":
+			return "bg-muted/70 text-muted-foreground border-border opacity-90";
+		case "sent":
+		default:
+			return "bg-sky-50 text-sky-700 border-sky-200";
+	}
+}
+
+function pillLabelFor(status: string): string {
+	switch (status) {
+		case "approved":
+			return "Accepted";
+		case "declined":
+			return "Declined";
+		case "expired":
+			return "Expired";
+		case "sent":
+		default:
+			return "Awaiting decision";
+	}
+}
+
+export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
+	const params = useParams<{ clientPortalId: string }>();
+	const clientPortalId = params?.clientPortalId ?? "";
+
+	const data = useQuery(api.portal.quotes.get, { quoteId });
+	const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+	// Reactive stale detection: pin the documentId we mounted on; if the
+	// reactive query updates with a different latestDocument._id, surface
+	// the stale banner immediately.
+	const [pinnedDocumentId, setPinnedDocumentId] = useState<string | null>(
+		null,
+	);
+	useEffect(() => {
+		if (data?.latestDocument?._id && pinnedDocumentId === null) {
+			setPinnedDocumentId(data.latestDocument._id);
+		}
+	}, [data?.latestDocument?._id, pinnedDocumentId]);
+
+	// Loading
+	if (data === undefined) {
+		return (
+			<div className="max-w-5xl">
+				<div className="h-8 w-32 bg-muted rounded animate-pulse" />
+				<div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+					<div className="rounded-2xl border border-border bg-card p-9">
+						<div className="h-8 w-1/2 bg-muted rounded animate-pulse" />
+						<div className="mt-4 space-y-2">
+							{Array.from({ length: 4 }).map((_, i) => (
+								<div
+									key={i}
+									className="h-6 w-full bg-muted rounded animate-pulse"
+								/>
+							))}
+						</div>
+					</div>
+					<div className="rounded-2xl border border-border bg-card p-6">
+						<div className="h-12 w-32 bg-muted rounded animate-pulse" />
+						<div className="mt-4 h-40 w-full bg-muted rounded animate-pulse" />
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Missing
+	if (data === null) {
+		return (
+			<div className="max-w-2xl py-12 text-center">
+				<h1 className="text-[24px] font-semibold">Quote not found</h1>
+				<p className="mt-2 text-muted-foreground">
+					This quote may have been removed or you no longer have access.
+				</p>
+				<Link
+					href={`/portal/c/${clientPortalId}/quotes`}
+					className="mt-4 inline-flex items-center gap-1.5 text-primary hover:underline"
+				>
+					<ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+					Back to quotes
+				</Link>
+			</div>
+		);
+	}
+
+	const {
+		quote,
+		lineItems,
+		latestDocument,
+		businessName,
+		clientName,
+		clientEmail,
+		latestApproval,
+	} = data;
+
+	const documentDrifted =
+		pinnedDocumentId !== null &&
+		latestDocument?._id &&
+		pinnedDocumentId !== latestDocument._id;
+
+	return (
+		<div className="max-w-5xl">
+			{/* Sticky header */}
+			<header className="flex items-center justify-between gap-4 pb-6 border-b border-border">
+				<div className="flex items-center gap-3">
+					<Link
+						href={`/portal/c/${clientPortalId}/quotes`}
+						className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+					>
+						<ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+						Back
+					</Link>
+					<div className="h-5 w-px bg-border" />
+					<div>
+						<div className="flex items-center gap-2">
+							<h2 className="text-[16px] font-semibold">
+								Quote {quote.quoteNumber} · {quote.title}
+							</h2>
+							<span
+								className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${pillClassFor(quote.status)}`}
+							>
+								<span className="h-1.5 w-1.5 rounded-full bg-current" />
+								{pillLabelFor(quote.status)}
+							</span>
+						</div>
+						<p className="text-[12px] text-muted-foreground mt-0.5">
+							Sent {formatDate(quote.sentAt)}
+							{quote.validUntil
+								? ` · Expires ${formatDate(quote.validUntil)}`
+								: ""}
+						</p>
+					</div>
+				</div>
+			</header>
+
+			{documentDrifted && (
+				<div className="mt-4">
+					<StaleVersionBanner
+						onReload={() => {
+							// The Convex reactive subscription has already updated. Re-pin
+							// to the new id so the banner clears.
+							setPinnedDocumentId(latestDocument?._id ?? null);
+						}}
+					/>
+				</div>
+			)}
+
+			<div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 pb-24 lg:pb-6">
+				<div>
+					<QuotePaper
+						quote={quote}
+						lineItems={lineItems}
+						businessName={businessName}
+					/>
+				</div>
+
+				{isDesktop ? (
+					<ApprovalRail
+						quote={{
+							_id: quote._id,
+							quoteNumber: quote.quoteNumber,
+							title: quote.title,
+							status: quote.status,
+							total: quote.total,
+							validUntil: quote.validUntil,
+						}}
+						latestDocument={
+							latestDocument
+								? { _id: latestDocument._id, version: latestDocument.version }
+								: null
+						}
+						businessName={businessName}
+						clientName={clientName}
+						clientEmail={clientEmail}
+						initialReceipt={latestApproval ?? undefined}
+					/>
+				) : (
+					<ApprovalBottomSheet
+						quote={{
+							_id: quote._id,
+							quoteNumber: quote.quoteNumber,
+							title: quote.title,
+							status: quote.status,
+							total: quote.total,
+							validUntil: quote.validUntil,
+						}}
+						latestDocument={
+							latestDocument
+								? { _id: latestDocument._id, version: latestDocument.version }
+								: null
+						}
+						businessName={businessName}
+						clientName={clientName}
+						clientEmail={clientEmail}
+						initialReceipt={latestApproval ?? undefined}
+					/>
+				)}
+			</div>
+		</div>
+	);
+}
