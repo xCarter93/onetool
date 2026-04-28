@@ -204,12 +204,22 @@ export const create = mutation({
 			throw new Error("Invalid phone format");
 		}
 
+		// [Review fix WR-03] Normalize email at write time. Portal OTP lookup
+		// uses an exact equality filter (q.eq("email", normalizedEmail)) on
+		// the trim-lowercased input, so a contact saved as "User@Example.COM"
+		// would silently never receive codes. Normalize once on write so the
+		// stored value matches the lookup key.
+		const normalized = {
+			...args,
+			email: args.email ? args.email.trim().toLowerCase() : args.email,
+		};
+
 		// Handle primary contact uniqueness
-		if (args.isPrimary) {
-			await handlePrimaryContact(ctx, args.clientId);
+		if (normalized.isPrimary) {
+			await handlePrimaryContact(ctx, normalized.clientId);
 		}
 
-		const contactId = await createContactWithOrg(ctx, args);
+		const contactId = await createContactWithOrg(ctx, normalized);
 
 		// Log activity on the client
 		const client = await ctx.db.get(args.clientId);
@@ -246,6 +256,12 @@ export const update = mutation({
 		// Validate phone format if provided
 		if (updates.phone && !ValidationPatterns.isValidPhone(updates.phone)) {
 			throw new Error("Invalid phone format");
+		}
+
+		// [Review fix WR-03] Normalize email at write time so the stored
+		// value matches the portal OTP lookup key (trim + lowercase).
+		if (updates.email) {
+			updates.email = updates.email.trim().toLowerCase();
 		}
 
 		// Filter and validate updates
@@ -420,6 +436,10 @@ export const bulkCreate = mutation({
 
 			const contactId = await ctx.db.insert("clientContacts", {
 				...contactData,
+				// [Review fix WR-03] Normalize email at write time.
+				email: contactData.email
+					? contactData.email.trim().toLowerCase()
+					: contactData.email,
 				clientId: args.clientId,
 				orgId: userOrgId,
 			});

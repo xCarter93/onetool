@@ -1,5 +1,21 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { portalMiddleware } from "@/lib/portal/middleware";
+
+// [Review fix #13] Portal routes must NEVER enter clerkMiddleware. Path-dispatch
+// before Clerk's request-context machinery runs proves architectural isolation.
+//
+// [Review fix Greptile-P1] Anchor the matchers so `(.*)` only follows a `/`
+// segment boundary. The previous `/portal(.*)` form matched `/portal-anything`
+// (e.g. a hypothetical `/portal-settings` workspace route), silently bypassing
+// Clerk and redirecting unauthenticated callers to the OTP verify page instead
+// of sign-in. No such routes exist today, but the pattern is a latent footgun.
+const isPortalRoute = createRouteMatcher([
+	"/portal",
+	"/portal/(.*)",
+	"/api/portal/(.*)",
+	"/.well-known/portal-jwks.json",
+]);
 
 const isPublicRoute = createRouteMatcher([
 	"/sign-in(.*)",
@@ -18,7 +34,7 @@ const isPublicRoute = createRouteMatcher([
 	"/api/communities(.*)", // Public community API routes
 ]);
 
-export default clerkMiddleware(async (auth, request) => {
+const clerkHandler = clerkMiddleware(async (auth, request) => {
 	const { userId, redirectToSignIn, orgRole, sessionClaims, orgId } =
 		await auth();
 
@@ -76,6 +92,18 @@ export default clerkMiddleware(async (auth, request) => {
 		}
 	}
 });
+
+// [Review fix #13] PATH DISPATCH BEFORE CLERK. Portal routes do NOT enter
+// clerkMiddleware at all. This guarantees Clerk's request-context construction
+// never runs for portal routes — proving architectural isolation rather than
+// relying on an in-callback early return.
+export default async function middleware(request: NextRequest) {
+	if (isPortalRoute(request)) {
+		return portalMiddleware(request);
+	}
+	// For all other paths, hand off to the Clerk-wrapped handler (preserves all current behavior)
+	return clerkHandler(request, { waitUntil: () => {} } as never);
+}
 
 export const config = {
 	matcher: [

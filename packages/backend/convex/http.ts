@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { ConvexError } from "convex/values";
 import {
 	verifySvixWebhook,
 	verifyBoldSignWebhook,
@@ -660,6 +661,133 @@ http.route({
 		} catch (error) {
 			console.error("Error processing Resend webhook:", error);
 			return webhookError(500, "Internal Server Error");
+		}
+	}),
+});
+
+/**
+ * [Review fix Greptile-P1] Portal OTP request endpoint.
+ *
+ * Trust model — server-to-server only:
+ *  - This httpAction is publicly reachable at <deployment>.convex.site, but
+ *    is gated by a shared `x-portal-secret` header (constant-time compared
+ *    against PORTAL_OTP_REQUEST_SECRET on the deployment). Without the
+ *    secret, all calls 401 and never reach the rate-limiter or DB.
+ *  - Only the Next.js portal server holds the secret. It derives `ipHash`
+ *    from CDN-trusted headers it can verify (CF-Connecting-IP,
+ *    X-Vercel-Forwarded-For, …) — Convex deliberately does NOT re-derive IP
+ *    here, because forwarding headers reaching Convex's HTTP edge cannot
+ *    be trusted.
+ *  - `internal.portal.otp.requestOtp` is unreachable from public Convex
+ *    clients (it is `internalMutation`), so this httpAction is the only
+ *    way to invoke it.
+ *
+ * Effect: the per-IP rate-limit bucket (`portalOtpSendPerIp`, 30/hr) keys
+ * on a hash derived in a context the attacker cannot influence.
+ */
+// [Review fix Greptile-P2] No CORS headers: this endpoint is server-to-server
+// only (Next.js portal → Convex), invoked via server-side fetch where CORS is
+// irrelevant. No browser should ever reach it; omitting Access-Control-Allow-*
+// causes browsers that try to be blocked by default — which is what we want.
+// The OPTIONS preflight route was removed for the same reason.
+
+function constantTimeEqual(a: string, b: string): boolean {
+	if (a.length !== b.length) return false;
+	let diff = 0;
+	for (let i = 0; i < a.length; i++) {
+		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	}
+	return diff === 0;
+}
+
+http.route({
+	path: "/portal/otp/request",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const expected = process.env.PORTAL_OTP_REQUEST_SECRET;
+		if (!expected) {
+			// Misconfiguration: fail closed.
+			return new Response(
+				JSON.stringify({ error: "Portal misconfigured" }),
+				{
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		}
+		const presented = request.headers.get("x-portal-secret") ?? "";
+		if (!constantTimeEqual(presented, expected)) {
+			return new Response(JSON.stringify({ error: "Unauthorized" }), {
+				status: 401,
+				headers: { "Content-Type": "application/json" },
+			});
+		}
+
+		let body: {
+			clientPortalId?: unknown;
+			email?: unknown;
+			ipHash?: unknown;
+		};
+		try {
+			body = (await request.json()) as typeof body;
+		} catch {
+			return new Response(
+				JSON.stringify({ error: "Invalid JSON body" }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		}
+
+		const clientPortalId =
+			typeof body.clientPortalId === "string" ? body.clientPortalId : "";
+		const email = typeof body.email === "string" ? body.email : "";
+		const ipHash = typeof body.ipHash === "string" ? body.ipHash : "";
+		if (!clientPortalId || !email || !email.includes("@") || !ipHash) {
+			return new Response(
+				JSON.stringify({ error: "Enter a valid email address." }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		}
+
+		try {
+			await ctx.runMutation(internal.portal.otp.requestOtp, {
+				clientPortalId,
+				email,
+				ipHash,
+			});
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
+		} catch (err) {
+			if (err instanceof ConvexError) {
+				const data = err.data as { code?: string; retryAfter?: number };
+				if (data.code === "OTP_RATE_LIMITED") {
+					return new Response(
+						JSON.stringify({
+							error: "Too many requests. Try again in a few minutes.",
+							code: data.code,
+							retryAfter: data.retryAfter,
+						}),
+						{
+							status: 429,
+							headers: {
+								"Content-Type": "application/json",
+							},
+						},
+					);
+				}
+			}
+			// Pitfall #1 — uniform success on any other failure path.
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
 		}
 	}),
 });

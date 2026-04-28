@@ -26,6 +26,12 @@
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
+	--color-danger: var(--danger);
+	--color-danger-foreground: var(--danger-fg);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-fg);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-fg);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
