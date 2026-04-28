@@ -144,6 +144,21 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 		latestDocument?._id &&
 		pinnedDocumentId !== latestDocument._id;
 
+	// REVIEWS-mandated (CR-02): the latest audit row in `quoteApprovals` is
+	// append-only — a re-sent quote (status returned to "sent" after a prior
+	// decline / revoke) still has a stale audit row. Only treat it as the
+	// current receipt when its documentVersion matches the live document AND
+	// the quote's current status matches the action.
+	const isReceiptCurrent =
+		!!latestApproval &&
+		!!latestDocument &&
+		latestApproval.documentVersion === latestDocument.version &&
+		((latestApproval.action === "approved" && quote.status === "approved") ||
+			(latestApproval.action === "declined" && quote.status === "declined"));
+	const effectiveInitialReceipt = isReceiptCurrent
+		? latestApproval ?? undefined
+		: undefined;
+
 	return (
 		<div className="max-w-5xl">
 			{/* Sticky header */}
@@ -218,7 +233,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						businessName={businessName}
 						clientName={clientName}
 						clientEmail={clientEmail}
-						initialReceipt={latestApproval ?? undefined}
+						initialReceipt={effectiveInitialReceipt}
 					/>
 				) : (
 					<ApprovalBottomSheet
@@ -238,7 +253,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						businessName={businessName}
 						clientName={clientName}
 						clientEmail={clientEmail}
-						initialReceipt={latestApproval ?? undefined}
+						initialReceipt={effectiveInitialReceipt}
 					/>
 				)}
 			</div>
