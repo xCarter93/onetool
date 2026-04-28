@@ -370,6 +370,50 @@ export default defineSchema({
 		.index("by_project", ["projectId"])
 		.index("by_status", ["orgId", "status"]),
 
+	// Quote Approvals — APPEND-ONLY audit trail for portal quote approve/decline
+	// (Phase 14, QUOTE-04 + QUOTE-05). Never patch existing rows; re-approval
+	// cycles append a new row. termsAcceptedAt is OPTIONAL — only set on
+	// approval rows, omitted on decline rows (decline does not require terms
+	// acceptance per CONTEXT §"Decline with reason" and REVIEWS feedback).
+	quoteApprovals: defineTable({
+		quoteId: v.id("quotes"),
+		orgId: v.id("organizations"),
+		clientContactId: v.id("clientContacts"),
+		action: v.union(v.literal("approved"), v.literal("declined")),
+		declineReason: v.optional(v.string()),
+		signatureStorageId: v.optional(v.id("_storage")),
+		signatureMode: v.optional(
+			v.union(v.literal("typed"), v.literal("drawn"))
+		),
+		signatureRawData: v.optional(v.string()),
+		ipAddress: v.string(),
+		userAgent: v.string(),
+		documentId: v.id("documents"),
+		documentVersion: v.number(),
+		lineItemsSnapshot: v.array(
+			v.object({
+				description: v.string(),
+				quantity: v.number(),
+				unit: v.string(),
+				rate: v.number(),
+				amount: v.number(),
+				sortOrder: v.number(),
+			})
+		),
+		subtotalSnapshot: v.number(),
+		taxSnapshot: v.number(),
+		totalSnapshot: v.number(),
+		termsSnapshot: v.optional(v.string()),
+		// termsAcceptedAt is OPTIONAL: only meaningful on approval rows.
+		// Decline rows omit this field — decline does not require terms acceptance
+		// (per CONTEXT §"Decline with reason" and REVIEWS feedback on Plan 14-01).
+		termsAcceptedAt: v.optional(v.number()),
+		createdAt: v.number(),
+	})
+		.index("by_quote", ["quoteId", "createdAt"])
+		.index("by_org", ["orgId", "createdAt"])
+		.index("by_clientContact", ["clientContactId", "createdAt"]),
+
 	// Quote Line Items
 	quoteLineItems: defineTable({
 		quoteId: v.id("quotes"),
