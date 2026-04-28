@@ -67,6 +67,11 @@ export const getActiveSessionByJti = query({
  * the DB row), then we assert `session.tokenJti === args.tokenJti` before
  * patching. A leaked jti from a network log alone is insufficient — the
  * attacker would also need the cookie/JWT.
+ *
+ * [Review fix Greptile-P1] `newExpiresAt` is capped server-side at
+ * `Date.now() + SESSION_TTL_MS`. Without the cap an authenticated portal user
+ * could call this directly from the Convex client and pass an arbitrary
+ * future timestamp to make their session immortal, defeating the 24h TTL.
  */
 export const touchSession = mutation({
 	args: { tokenJti: v.string(), newExpiresAt: v.number() },
@@ -80,9 +85,13 @@ export const touchSession = mutation({
 			.withIndex("by_jti", (q) => q.eq("tokenJti", tokenJti))
 			.unique();
 		if (!row) return null;
+		const cappedExpiresAt = Math.min(
+			newExpiresAt,
+			Date.now() + SESSION_TTL_MS,
+		);
 		await ctx.db.patch(row._id, {
 			lastActivityAt: Date.now(),
-			expiresAt: newExpiresAt,
+			expiresAt: cappedExpiresAt,
 		});
 		return row._id;
 	},

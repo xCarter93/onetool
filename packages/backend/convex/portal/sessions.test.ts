@@ -235,7 +235,8 @@ describe("portal sessions", () => {
 		const before = Date.now();
 
 		const asSelf = t.withIdentity(portalIdentity(seed, jti));
-		const newExpiresAt = before + 7 * 24 * 60 * 60 * 1000;
+		// Use a value within the 24h SESSION_TTL_MS cap so it lands verbatim.
+		const newExpiresAt = before + 12 * 60 * 60 * 1000;
 		const patchedId = await asSelf.mutation(
 			api.portal.sessions.touchSession,
 			{ tokenJti: jti, newExpiresAt }
@@ -245,6 +246,28 @@ describe("portal sessions", () => {
 		const row = await t.run((ctx) => ctx.db.get(sessionId));
 		expect(row?.expiresAt).toBe(newExpiresAt);
 		expect(row?.lastActivityAt).toBeGreaterThanOrEqual(before);
+	});
+
+	it("touchSession caps newExpiresAt at SESSION_TTL_MS [Greptile-P1]", async () => {
+		const seed = await seedClientPortal(t);
+		const jti = "session-cap";
+		const sessionId = await seedSession(t, seed, jti);
+
+		const asSelf = t.withIdentity(portalIdentity(seed, jti));
+		// Attacker-supplied 100-year future expiry must be clamped to now+24h.
+		const HUNDRED_YEARS_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+		const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+		const before = Date.now();
+		await asSelf.mutation(api.portal.sessions.touchSession, {
+			tokenJti: jti,
+			newExpiresAt: before + HUNDRED_YEARS_MS,
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(sessionId));
+		// Allow a small slack for handler-side Date.now() drift.
+		const ceiling = Date.now() + SESSION_TTL_MS;
+		expect(row?.expiresAt).toBeLessThanOrEqual(ceiling);
+		expect(row?.expiresAt).toBeGreaterThanOrEqual(before + SESSION_TTL_MS - 1000);
 	});
 
 	it("revokeSessionByJti rejects when caller jti != target jti", async () => {
