@@ -33,6 +33,9 @@ export function DeclineModal({
 	const [reason, setReason] = useState("");
 	const [activeChip, setActiveChip] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	// REVIEWS-mandated (WR-04): inline error surface so a future onConfirm
+	// that throws does not leave the dialog open with no feedback.
+	const [submitError, setSubmitError] = useState<string | null>(null);
 	const dialogRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -40,6 +43,7 @@ export function DeclineModal({
 			setReason("");
 			setActiveChip(null);
 			setSubmitting(false);
+			setSubmitError(null);
 			return;
 		}
 		const onKey = (e: KeyboardEvent) => {
@@ -65,10 +69,19 @@ export function DeclineModal({
 	const handleConfirm = async () => {
 		if (submitting) return;
 		setSubmitting(true);
+		setSubmitError(null);
 		try {
 			const trimmed = reason.trim();
 			await onConfirm(trimmed.length > 0 ? trimmed : undefined);
 			onOpenChange(false);
+		} catch (err) {
+			// REVIEWS-mandated (WR-04): surface the error inline rather than
+			// closing the dialog blindly. Today useQuoteDecision swallows errors
+			// and never throws, but documenting + handling makes the contract
+			// explicit for future callers.
+			setSubmitError(
+				err instanceof Error ? err.message : "Failed to decline. Try again.",
+			);
 		} finally {
 			setSubmitting(false);
 		}
@@ -147,6 +160,15 @@ export function DeclineModal({
 						className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary/30"
 					/>
 				</div>
+
+				{submitError && (
+					<p
+						role="alert"
+						className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700"
+					>
+						{submitError}
+					</p>
+				)}
 
 				<div className="mt-6 flex items-center justify-end gap-2">
 					<button
