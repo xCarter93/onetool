@@ -249,13 +249,24 @@ export const _preflightApproval = internalQuery({
 	handler: async (ctx, args) => {
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
+		// REVIEWS-mandated (WR-01): defense-in-depth org scoping. The session
+		// is already validated upstream, but every read here must also verify
+		// quote.orgId === session.orgId in case clientContacts/quotes were ever
+		// migrated across orgs.
+		if (quote.orgId !== args.orgId) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
 
 		const client = await ctx.db.get(quote.clientId);
 		if (!client || client.orgId !== args.orgId) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
 		const contact = await ctx.db.get(args.clientContactId);
-		if (!contact || contact.clientId !== quote.clientId) {
+		if (
+			!contact ||
+			contact.clientId !== quote.clientId ||
+			contact.orgId !== args.orgId
+		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
 		if (quote.latestDocumentId !== args.expectedDocumentId) {
@@ -362,6 +373,7 @@ export const _commitApproval = internalMutation({
 		quoteId: v.id("quotes"),
 		expectedDocumentId: v.id("documents"),
 		clientContactId: v.id("clientContacts"),
+		orgId: v.id("organizations"),
 		action: v.union(v.literal("approved"), v.literal("declined")),
 		declineReason: v.optional(v.string()),
 		signatureStorageId: v.optional(v.id("_storage")),
@@ -391,6 +403,19 @@ export const _commitApproval = internalMutation({
 	handler: async (ctx, args) => {
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
+		// REVIEWS-mandated (WR-01): defense-in-depth org scoping in the
+		// commit redo-check, alongside the OCC re-validation below.
+		if (quote.orgId !== args.orgId) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
+		const contactRedo = await ctx.db.get(args.clientContactId);
+		if (
+			!contactRedo ||
+			contactRedo.orgId !== args.orgId ||
+			contactRedo.clientId !== quote.clientId
+		) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
 		// Defense-in-depth: re-validate OCC + status inside the transaction
 		// so a racing republish between preflight and commit cannot land a
 		// stale approval / orphan blob.
@@ -562,6 +587,7 @@ export const approve = action({
 					quoteId: args.quoteId,
 					expectedDocumentId: args.expectedDocumentId,
 					clientContactId: session.clientContactId,
+					orgId: session.orgId,
 					action: "approved" as const,
 					signatureStorageId,
 					signatureMode: args.signatureMode,
@@ -641,12 +667,20 @@ export const decline = mutation({
 		// 3. Inline preflight (FORBIDDEN/NOT_FOUND/QUOTE_VERSION_STALE/QUOTE_NOT_PENDING).
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
+		// REVIEWS-mandated (WR-01): defense-in-depth org scoping.
+		if (quote.orgId !== session.orgId) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
 		const client = await ctx.db.get(quote.clientId);
 		if (!client || client.orgId !== session.orgId) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
 		const contact = await ctx.db.get(session.clientContactId);
-		if (!contact || contact.clientId !== quote.clientId) {
+		if (
+			!contact ||
+			contact.clientId !== quote.clientId ||
+			contact.orgId !== session.orgId
+		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
 		if (quote.latestDocumentId !== args.expectedDocumentId) {
