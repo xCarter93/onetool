@@ -4,9 +4,16 @@ import { portalMiddleware } from "@/lib/portal/middleware";
 
 // [Review fix #13] Portal routes must NEVER enter clerkMiddleware. Path-dispatch
 // before Clerk's request-context machinery runs proves architectural isolation.
+//
+// [Review fix Greptile-P1] Anchor the matchers so `(.*)` only follows a `/`
+// segment boundary. The previous `/portal(.*)` form matched `/portal-anything`
+// (e.g. a hypothetical `/portal-settings` workspace route), silently bypassing
+// Clerk and redirecting unauthenticated callers to the OTP verify page instead
+// of sign-in. No such routes exist today, but the pattern is a latent footgun.
 const isPortalRoute = createRouteMatcher([
-	"/portal(.*)",
-	"/api/portal(.*)",
+	"/portal",
+	"/portal/(.*)",
+	"/api/portal/(.*)",
 	"/.well-known/portal-jwks.json",
 ]);
 

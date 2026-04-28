@@ -135,8 +135,15 @@ describe("portal middleware isolation", () => {
 		const src = readFileSync(middlewarePath, "utf8");
 		expect(src).toContain("if (isPortalRoute(request))");
 		expect(src).toContain("return portalMiddleware(request)");
-		expect(src).toContain('"/portal(.*)"');
-		expect(src).toContain('"/api/portal(.*)"');
+		// [Review fix Greptile-P1] Matchers must be slash-anchored so future
+		// `/portal-*` routes fall through to Clerk instead of silently entering
+		// portal auth. Assert the stricter patterns AND the absence of the old
+		// broad `/portal(.*)` form.
+		expect(src).toContain('"/portal"');
+		expect(src).toContain('"/portal/(.*)"');
+		expect(src).toContain('"/api/portal/(.*)"');
+		expect(src).not.toMatch(/"\/portal\(\.\*\)"/);
+		expect(src).not.toMatch(/"\/api\/portal\(\.\*\)"/);
 	});
 
 	it("portal dispatch happens BEFORE clerkMiddleware is invoked [Review fix #13]", () => {
