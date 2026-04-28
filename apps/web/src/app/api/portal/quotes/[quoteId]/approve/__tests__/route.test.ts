@@ -4,7 +4,7 @@ import { ConvexError } from "convex/values";
 // Hoisted mocks --------------------------------------------------------------
 const cookieHolder: { value: string | null } = { value: "test-cookie-jwt" };
 const fetchActionMock = vi.fn();
-const getRequestIpMock = vi.fn(() => "203.0.113.5");
+const getRequestIpMock = vi.fn((_req?: unknown) => "203.0.113.5");
 
 vi.mock("@/lib/portal/cookie", () => ({
 	readSessionCookie: async () => cookieHolder.value,
