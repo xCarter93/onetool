@@ -652,7 +652,10 @@ export const decline = mutation({
 		// 1. Session
 		const session = await getPortalSessionOrThrow(ctx);
 
-		// 2. Rate-limit BEFORE any DB read so abuse is short-circuited early.
+		// 2. Rate-limit after session validation but before quote/document
+		//    reads. (Session lookup itself necessarily reads portalSessions —
+		//    rate-limiting strictly before any DB read would require keying on
+		//    a non-session identifier such as IP.)
 		const rl = await rateLimiter.limit(ctx, "portalQuoteDecline", {
 			key: session.tokenJti,
 			throws: false,
