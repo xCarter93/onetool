@@ -46,12 +46,12 @@ describe("portal helpers jti-validation", () => {
 		const path = resolve(__dirname, "./helpers.ts");
 		const src = readFileSync(path, "utf-8");
 		expect(src).toContain('withIndex("by_jti"');
-		// Generic error messages — no enumeration leak.
-		const sessionExpiredMatches = (
-			src.match(/Session revoked or expired/g) ?? []
+		// Unauthenticated ConvexErrors — no enumeration leak, mappable to 401.
+		const unauthenticatedMatches = (
+			src.match(/code: "UNAUTHENTICATED"/g) ?? []
 		).length;
-		expect(sessionExpiredMatches).toBeGreaterThanOrEqual(2);
-		expect(src).toContain("Session integrity check failed");
+		// At minimum: missing identity, expired session row, integrity mismatch.
+		expect(unauthenticatedMatches).toBeGreaterThanOrEqual(3);
 	});
 
 	it("getPortalSessionOrThrow accepts both convex-portal and convex-portal-access audiences (Review fix #4)", () => {
