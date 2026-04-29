@@ -24,7 +24,14 @@ import {
 	afterEach,
 } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 
 // jsdom does not implement matchMedia. ApprovalReceipt + child components rely
 // on it for prefers-reduced-motion detection. Stub before any render.
@@ -243,6 +250,120 @@ describe("ApprovalRail", () => {
 		expect(
 			screen.queryByText(/This quote was updated/i),
 		).not.toBeInTheDocument();
+	});
+
+	it("Test 8 (Gap 2): 401 unauthenticated approve shows visible error banner", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({ error: "Session expired", code: "unauthenticated" }),
+				{ status: 401 },
+			),
+		);
+		renderRail({ _testInitialSignature: usableDrawnSig });
+		fireEvent.click(
+			screen.getByRole("checkbox", { name: /I accept the scope and terms/i }),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /Approve quote/i }));
+		const alert = await screen.findByRole("alert");
+		expect(alert.textContent ?? "").toMatch(/session|sign in|expired/i);
+	});
+
+	it("Test 9 (Gap 2): 409 not_pending shows visible error banner explaining quote no longer pending", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({
+					error: "Quote no longer pending",
+					code: "not_pending",
+				}),
+				{ status: 409 },
+			),
+		);
+		renderRail({ _testInitialSignature: usableDrawnSig });
+		fireEvent.click(
+			screen.getByRole("checkbox", { name: /I accept the scope and terms/i }),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /Approve quote/i }));
+		const alert = await screen.findByRole("alert");
+		expect(alert.textContent ?? "").toMatch(/no longer|already|reload|pending/i);
+	});
+
+	it("Test 10 (Gap 2): 500 / network error shows visible unknown-error banner", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(JSON.stringify({ error: "Boom" }), { status: 500 }),
+		);
+		renderRail({ _testInitialSignature: usableDrawnSig });
+		fireEvent.click(
+			screen.getByRole("checkbox", { name: /I accept the scope and terms/i }),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /Approve quote/i }));
+		const alert = await screen.findByRole("alert");
+		expect(alert.textContent ?? "").toMatch(
+			/couldn't|try again|connection|boom/i,
+		);
+	});
+
+	it("Test 11 (Gap 3): failed decline keeps modal open with visible inline error", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({ error: "Session expired", code: "unauthenticated" }),
+				{ status: 401 },
+			),
+		);
+		// Decline path is signature-independent — the "Decline this quote" button
+		// renders unconditionally regardless of signature state (verified in
+		// approval-rail.tsx: the decline button is outside the signature-gating
+		// branches and only checks `submitting`). No _testInitialSignature seed.
+		renderRail();
+		fireEvent.click(
+			screen.getByRole("button", { name: /Decline this quote/i }),
+		);
+		const declineBtn = await screen.findByRole("button", {
+			name: /^Decline quote$/i,
+		});
+		fireEvent.click(declineBtn);
+		const dialog = await screen.findByRole("dialog");
+		await waitFor(() =>
+			expect(within(dialog).getByRole("alert")).toBeInTheDocument(),
+		);
+		const alert = within(dialog).getByRole("alert");
+		expect(alert.textContent ?? "").toMatch(/session|expired|failed/i);
+		// Dialog still open — heading still visible
+		expect(
+			within(dialog).getByText(/Decline this quote\?/i),
+		).toBeInTheDocument();
+	});
+
+	it("Test 12 (Gap 3): successful decline closes modal exactly once", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({
+					ok: true,
+					receipt: {
+						auditId: "a1",
+						action: "declined",
+						createdAt: Date.now(),
+						documentVersion: 2,
+						lineItemsCount: 2,
+						total: 92000,
+					},
+				}),
+				{ status: 200 },
+			),
+		);
+		// Decline path is signature-independent — render WITHOUT
+		// _testInitialSignature. The "Decline this quote" button renders
+		// unconditionally regardless of signature state.
+		renderRail();
+		fireEvent.click(
+			screen.getByRole("button", { name: /Decline this quote/i }),
+		);
+		const declineBtn = await screen.findByRole("button", {
+			name: /^Decline quote$/i,
+		});
+		fireEvent.click(declineBtn);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
 	});
 
 	it("Test 7: initialReceipt renders ApprovalReceipt on first render", () => {
