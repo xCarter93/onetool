@@ -22,6 +22,7 @@ import { DeclineModal, type DeclineModalConfirmResult } from "./decline-modal";
 import { StaleVersionBanner } from "./stale-version-banner";
 import { RateLimitBanner } from "./rate-limit-banner";
 import { ApprovalErrorBanner } from "./approval-error-banner";
+import { ResolvedStatusPanel } from "./resolved-status-panel";
 import {
 	useQuoteDecision,
 	type ApprovalReceipt as ApprovalReceiptType,
@@ -41,6 +42,16 @@ export interface ApprovalBottomSheetProps {
 	clientName: string;
 	clientEmail: string;
 	initialReceipt?: ApprovalReceiptType;
+	/**
+	 * Plan 14-10 Gap 6 mirror — see ApprovalRail. When set, the docked CTA
+	 * collapses to a passive resolved-status strip and the expanded sheet (if
+	 * reached) renders ResolvedStatusPanel rather than the form.
+	 */
+	resolvedFallback?: {
+		action: "approved" | "declined";
+		resolvedAt: number;
+		total: number;
+	};
 	/**
 	 * REVIEWS-mandated (CR-04): see ApprovalRail. Blocks submission while a
 	 * mid-session document drift is unacknowledged.
@@ -69,6 +80,7 @@ export function ApprovalBottomSheet({
 	clientName,
 	clientEmail,
 	initialReceipt,
+	resolvedFallback,
 	documentDrifted = false,
 }: ApprovalBottomSheetProps) {
 	const [expanded, setExpanded] = useState(false);
@@ -161,6 +173,27 @@ export function ApprovalBottomSheet({
 					receipt={effectiveReceipt}
 					clientName={clientName}
 					clientEmail={clientEmail}
+				/>
+			</div>
+		);
+	}
+
+	// Plan 14-10 Gap 6: resolved-but-no-receipt fallback. Renders the
+	// ResolvedStatusPanel inline in the docked region; no expand interaction
+	// because there is nothing to approve. Sticky page header still shows the
+	// status pill so this surface is intentionally minimal.
+	if (resolvedFallback) {
+		return (
+			<div
+				data-sheet-docked
+				className="fixed inset-x-0 bottom-0 z-40 bg-card border-t border-border p-4"
+				style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+			>
+				<ResolvedStatusPanel
+					action={resolvedFallback.action}
+					resolvedAt={resolvedFallback.resolvedAt}
+					total={resolvedFallback.total}
+					clientName={clientName}
 				/>
 			</div>
 		);

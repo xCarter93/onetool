@@ -30,6 +30,7 @@ import { DeclineModal, type DeclineModalConfirmResult } from "./decline-modal";
 import { StaleVersionBanner } from "./stale-version-banner";
 import { RateLimitBanner } from "./rate-limit-banner";
 import { ApprovalErrorBanner } from "./approval-error-banner";
+import { ResolvedStatusPanel } from "./resolved-status-panel";
 import {
 	useQuoteDecision,
 	type ApprovalReceipt as ApprovalReceiptType,
@@ -56,6 +57,19 @@ export interface ApprovalRailProps {
 	clientName: string;
 	clientEmail: string;
 	initialReceipt?: ApprovalReceiptType;
+	/**
+	 * Plan 14-10 Gap 6: when the quote is already resolved (status approved or
+	 * declined) AND no current portal audit row exists, the parent passes this
+	 * to surface ResolvedStatusPanel rather than the form. Branch sits ABOVE
+	 * the visible-error banner block (resolved state wins over transient
+	 * errors — a quote that's already resolved should never show a form-error
+	 * from a stale submission).
+	 */
+	resolvedFallback?: {
+		action: "approved" | "declined";
+		resolvedAt: number;
+		total: number;
+	};
 	/**
 	 * REVIEWS-mandated (CR-04): when the parent island detects a mid-session
 	 * document drift, this flag blocks Approve until the user reloads /
@@ -101,6 +115,7 @@ export function ApprovalRail({
 	clientName,
 	clientEmail,
 	initialReceipt,
+	resolvedFallback,
 	documentDrifted = false,
 	_testInitialSignature,
 }: ApprovalRailProps) {
@@ -221,6 +236,13 @@ export function ApprovalRail({
 						receipt={effectiveReceipt}
 						clientName={clientName}
 						clientEmail={clientEmail}
+					/>
+				) : resolvedFallback ? (
+					<ResolvedStatusPanel
+						action={resolvedFallback.action}
+						resolvedAt={resolvedFallback.resolvedAt}
+						total={resolvedFallback.total}
+						clientName={clientName}
 					/>
 				) : error?.code === "stale" ? (
 					<StaleVersionBanner onReload={handleStaleReset} />

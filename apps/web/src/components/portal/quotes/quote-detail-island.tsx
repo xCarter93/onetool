@@ -165,6 +165,28 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 		? latestApproval ?? undefined
 		: undefined;
 
+	// Plan 14-10 Gap 6 fallback: when the quote is already resolved
+	// (status approved or declined) AND no current portal audit row exists
+	// (effectiveInitialReceipt is null — either latestApproval was null OR
+	// CR-02 marked it stale via documentVersion mismatch), surface a non-form
+	// panel. This catches quotes resolved via paths that don't write to
+	// quoteApprovals (workspace `quotes.update` to status='approved', BoldSign
+	// webhook) AND quotes whose audit row is stale relative to the latest
+	// document version. The CR-02 receipt path above still wins when a current
+	// matching audit row exists.
+	const resolvedFallback =
+		!effectiveInitialReceipt &&
+		(quote.status === "approved" || quote.status === "declined")
+			? {
+					action: quote.status as "approved" | "declined",
+					resolvedAt:
+						(quote.status === "approved"
+							? quote.approvedAt
+							: quote.declinedAt) ?? Date.now(),
+					total: quote.total,
+				}
+			: undefined;
+
 	return (
 		<div className="max-w-5xl">
 			{/* Sticky header */}
@@ -244,6 +266,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						clientName={clientName}
 						clientEmail={clientEmail}
 						initialReceipt={effectiveInitialReceipt}
+						resolvedFallback={resolvedFallback}
 						documentDrifted={!!documentDrifted}
 					/>
 				) : (
@@ -267,6 +290,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						clientName={clientName}
 						clientEmail={clientEmail}
 						initialReceipt={effectiveInitialReceipt}
+						resolvedFallback={resolvedFallback}
 						documentDrifted={!!documentDrifted}
 					/>
 				)}
