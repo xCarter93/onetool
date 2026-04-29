@@ -18,9 +18,10 @@ import {
 	type SignaturePayload,
 } from "./signature-card";
 import { ApprovalReceipt } from "./approval-receipt";
-import { DeclineModal } from "./decline-modal";
+import { DeclineModal, type DeclineModalConfirmResult } from "./decline-modal";
 import { StaleVersionBanner } from "./stale-version-banner";
 import { RateLimitBanner } from "./rate-limit-banner";
+import { ApprovalErrorBanner } from "./approval-error-banner";
 import {
 	useQuoteDecision,
 	type ApprovalReceipt as ApprovalReceiptType,
@@ -128,8 +129,24 @@ export function ApprovalBottomSheet({
 		});
 	};
 
-	const handleDecline = async (reason?: string) => {
-		await submitDecline(reason);
+	const handleDecline = async (
+		reason?: string,
+	): Promise<DeclineModalConfirmResult> => {
+		const result = await submitDecline(reason);
+		if (result.ok) return { ok: true };
+		// Stale and rate_limited are surfaced at the sheet layer (banners) —
+		// let the modal close so the louder UI is visible. Other codes
+		// (unauthenticated / not_pending / unknown) keep the modal open.
+		if (
+			result.error.code === "stale" ||
+			result.error.code === "rate_limited"
+		) {
+			return { ok: true };
+		}
+		return {
+			ok: false,
+			error: { code: result.error.code, message: result.error.message },
+		};
 	};
 
 	// Receipt panel mode — show inline above docked strip
@@ -226,6 +243,17 @@ export function ApprovalBottomSheet({
 											onDismiss={dismissError}
 										/>
 									)}
+
+									{/* Plan 14-07 / UAT Gap 2: visible banner for previously-silent codes */}
+									{error &&
+										(error.code === "unauthenticated" ||
+											error.code === "not_pending" ||
+											error.code === "unknown") && (
+											<ApprovalErrorBanner
+												code={error.code}
+												message={error.message}
+											/>
+										)}
 
 									<div>
 										<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-2">

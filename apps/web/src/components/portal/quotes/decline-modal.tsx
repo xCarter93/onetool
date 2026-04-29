@@ -17,10 +17,19 @@ const REASON_CHIPS = [
 	"Scope doesn't match what I need",
 ] as const;
 
+export type DeclineModalConfirmResult =
+	| { ok: true }
+	| { ok: false; error: { code: string; message: string } };
+
 export interface DeclineModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onConfirm: (reason?: string) => Promise<void>;
+	/**
+	 * Returns a discriminant — the modal closes ONLY when `result.ok === true`.
+	 * On `ok: false`, the modal stays open and surfaces `error.message` inline
+	 * via `submitError`. Plan 14-07 / UAT Gap 3.
+	 */
+	onConfirm: (reason?: string) => Promise<DeclineModalConfirmResult>;
 	businessName: string;
 }
 
@@ -72,13 +81,18 @@ export function DeclineModal({
 		setSubmitError(null);
 		try {
 			const trimmed = reason.trim();
-			await onConfirm(trimmed.length > 0 ? trimmed : undefined);
-			onOpenChange(false);
+			const result = await onConfirm(trimmed.length > 0 ? trimmed : undefined);
+			if (result.ok) {
+				onOpenChange(false);
+			} else {
+				// Plan 14-07 / UAT Gap 3: keep the dialog open and surface the
+				// failure inline so the user can retry or read the error.
+				setSubmitError(
+					result.error.message ?? "Failed to decline. Try again.",
+				);
+			}
 		} catch (err) {
-			// REVIEWS-mandated (WR-04): surface the error inline rather than
-			// closing the dialog blindly. Today useQuoteDecision swallows errors
-			// and never throws, but documenting + handling makes the contract
-			// explicit for future callers.
+			// Defensive: a future caller might still throw; never silently close.
 			setSubmitError(
 				err instanceof Error ? err.message : "Failed to decline. Try again.",
 			);
