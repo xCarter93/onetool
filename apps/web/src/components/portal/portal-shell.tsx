@@ -35,6 +35,14 @@ export function PortalShell({
 	const router = useRouter();
 	const [pending, startTransition] = useTransition();
 
+	// Gap 4 (Plan 14-08): suppress MobileTabBar on /portal/c/{id}/quotes/{quoteId}
+	// because the docked ApprovalBottomSheet (z-40) owns the bottom edge there.
+	// The sticky header on the detail page provides a "Back" link, so primary
+	// navigation is still reachable. List/invoices routes keep the tab bar.
+	const isQuoteDetail = !!pathname?.match(
+		/^\/portal\/c\/[^/]+\/quotes\/[^/]+\/?$/,
+	);
+
 	function handleSignOut() {
 		startTransition(async () => {
 			try {
@@ -126,12 +134,14 @@ export function PortalShell({
 				{children}
 			</main>
 
-			{/* Mobile tab bar (<768px) */}
-			<MobileTabBar
-				clientPortalId={clientPortalId}
-				onSignOut={handleSignOut}
-				signOutPending={pending}
-			/>
+			{/* Mobile tab bar (<768px) — suppressed on quote-detail route (Gap 4) */}
+			{!isQuoteDetail && (
+				<MobileTabBar
+					clientPortalId={clientPortalId}
+					onSignOut={handleSignOut}
+					signOutPending={pending}
+				/>
+			)}
 		</div>
 	);
 }

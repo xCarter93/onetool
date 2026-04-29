@@ -70,7 +70,13 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	const clientPortalId = params?.clientPortalId ?? "";
 
 	const data = useQuery(api.portal.quotes.get, { quoteId });
-	const isDesktop = useMediaQuery("(min-width: 1024px)");
+	// Plan 14-08 Gap 4: aligned to PortalShell's md (768px) boundary so the
+	// rail/sheet split matches the desktop-sidebar/mobile-chrome split — no
+	// 256px no-mans-land between PortalShell mobile chrome and the detail-page
+	// mobile chrome. At ≥768px PortalShell shows the sidebar AND the rail; at
+	// <768px PortalShell hides the tab bar (route-suppressed) and the docked
+	// ApprovalBottomSheet owns the bottom edge.
+	const isDesktop = useMediaQuery("(min-width: 768px)");
 
 	// Reactive stale detection: pin the documentId we mounted on; if the
 	// reactive query updates with a different latestDocument._id, surface
@@ -89,7 +95,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 		return (
 			<div className="max-w-5xl">
 				<div className="h-8 w-32 bg-muted rounded animate-pulse" />
-				<div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+				<div className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6">
 					<div className="rounded-2xl border border-border bg-card p-9">
 						<div className="h-8 w-1/2 bg-muted rounded animate-pulse" />
 						<div className="mt-4 space-y-2">
@@ -206,7 +212,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 				</div>
 			)}
 
-			<div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 pb-24 lg:pb-6">
+			<div className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6 pb-24 md:pb-6">
 				<div>
 					<QuotePaper
 						quote={quote}

@@ -136,7 +136,8 @@ export function ApprovalBottomSheet({
 	if (effectiveReceipt) {
 		return (
 			<div
-				className="fixed inset-x-0 bottom-0 z-30 bg-card border-t border-border p-4"
+				data-sheet-docked
+				className="fixed inset-x-0 bottom-0 z-40 bg-card border-t border-border p-4"
 				style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
 			>
 				<ApprovalReceipt
@@ -150,9 +151,10 @@ export function ApprovalBottomSheet({
 
 	return (
 		<>
-			{/* Docked strip (always visible) */}
+			{/* Docked strip (always visible) — z-40 + data-sheet-docked (Gap 4) */}
 			<div
-				className="fixed inset-x-0 bottom-0 z-30 bg-card border-t border-border"
+				data-sheet-docked
+				className="fixed inset-x-0 bottom-0 z-40 bg-card border-t border-border"
 				style={{
 					minHeight: "72px",
 					paddingBottom: "env(safe-area-inset-bottom)",
@@ -185,7 +187,7 @@ export function ApprovalBottomSheet({
 					role="dialog"
 					aria-modal="true"
 					aria-label="Approve quote"
-					className="fixed inset-0 z-40 bg-black/40 flex items-end"
+					className="fixed inset-0 z-50 bg-black/40 flex items-end"
 					onClick={(e) => {
 						if (e.target === e.currentTarget && !submitting) {
 							setExpanded(false);
