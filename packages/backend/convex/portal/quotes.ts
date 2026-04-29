@@ -33,6 +33,7 @@ import { getPortalSessionOrThrow } from "./helpers";
 import { rateLimiter } from "../rateLimits";
 import { emitStatusChangeEvent } from "../eventBus";
 import { ActivityHelpers } from "../lib/activities";
+import { calculateQuoteTotals } from "../lib/quoteTotals";
 
 // ---------------------------------------------------------------------------
 // Public queries
@@ -60,24 +61,39 @@ export const list = query({
 			.withIndex("by_client", (q) => q.eq("clientId", contact.clientId))
 			.collect();
 
-		return quotes
+		// Plan 14-09 / Gap 5: recompute total per row from current line items.
+		// Stored quote.total is not maintained on every line-item edit, so
+		// returning it raw would surface stale zeros to the portal list page.
+		// Defense-in-depth alongside the recompute in `get` below.
+		const visible = quotes
 			.filter((q) => q.orgId === session.orgId && q.status !== "draft")
-			.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0))
-			.map((q) => ({
-				_id: q._id,
-				quoteNumber: q.quoteNumber,
-				title: q.title,
-				status: q.status,
-				sentAt: q.sentAt,
-				validUntil: q.validUntil,
-				total: q.total,
-				latestDocumentId: q.latestDocumentId,
-				// REVIEWS-mandated (CR-03): include decision timestamps so the
-				// portal list can show "Approved on {approvedAt}" / "Declined on
-				// {declinedAt}" instead of mislabeling sentAt as the decision date.
-				approvedAt: q.approvedAt,
-				declinedAt: q.declinedAt,
-			}));
+			.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
+		return await Promise.all(
+			visible.map(async (q) => {
+				const totals = await calculateQuoteTotals(ctx, q._id, {
+					discountEnabled: q.discountEnabled,
+					discountAmount: q.discountAmount,
+					discountType: q.discountType,
+					taxEnabled: q.taxEnabled,
+					taxRate: q.taxRate,
+				});
+				return {
+					_id: q._id,
+					quoteNumber: q.quoteNumber,
+					title: q.title,
+					status: q.status,
+					sentAt: q.sentAt,
+					validUntil: q.validUntil,
+					total: totals.total,
+					latestDocumentId: q.latestDocumentId,
+					// REVIEWS-mandated (CR-03): include decision timestamps so the
+					// portal list can show "Approved on {approvedAt}" / "Declined on
+					// {declinedAt}" instead of mislabeling sentAt as the decision date.
+					approvedAt: q.approvedAt,
+					declinedAt: q.declinedAt,
+				};
+			}),
+		);
 	},
 });
 
@@ -85,6 +101,11 @@ export const list = query({
  * QUOTE-02: get a single quote with receipt-shaped extended fields needed by
  * the Plan 14-05 portal UI: businessName, clientName, clientEmail, and the
  * latestApproval projection (with resolved signatureUrl).
+ *
+ * Plan 14-09 / Gap 5: recompute subtotal/taxAmount/total from line items
+ * because stored quote.subtotal/quote.total are NOT maintained on every
+ * line-item edit. Mirrors workspace quotes.ts:get behavior. The shared
+ * helper lives in lib/quoteTotals.ts.
  */
 export const get = query({
 	args: { quoteId: v.id("quotes") },
@@ -176,8 +197,24 @@ export const get = query({
 			};
 		}
 
+		// Plan 14-09 / Gap 5: recompute totals from current line items and
+		// spread over the returned quote so the portal detail page never
+		// shows stale stored zeros.
+		const calculatedTotals = await calculateQuoteTotals(ctx, quoteId, {
+			discountEnabled: quote.discountEnabled,
+			discountAmount: quote.discountAmount,
+			discountType: quote.discountType,
+			taxEnabled: quote.taxEnabled,
+			taxRate: quote.taxRate,
+		});
+
 		return {
-			quote,
+			quote: {
+				...quote,
+				subtotal: calculatedTotals.subtotal,
+				taxAmount: calculatedTotals.taxAmount,
+				total: calculatedTotals.total,
+			},
 			lineItems,
 			latestDocument,
 			businessName,

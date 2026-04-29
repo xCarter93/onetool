@@ -5,6 +5,7 @@ import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
 import { BusinessUtils } from "./lib/shared";
+import { calculateQuoteTotals } from "./lib/quoteTotals";
 import {
 	getEntityWithOrgValidation,
 	getEntityOrThrow,
@@ -74,55 +75,6 @@ async function validateProjectAccess(
 		"Project",
 		existingOrgId
 	);
-}
-
-/**
- * Calculate quote totals based on line items
- */
-async function calculateQuoteTotals(
-	ctx: QueryCtx | MutationCtx,
-	quoteId: Id<"quotes">,
-	options?: {
-		discountEnabled?: boolean;
-		discountAmount?: number;
-		discountType?: "percentage" | "fixed";
-		taxEnabled?: boolean;
-		taxRate?: number;
-	}
-): Promise<{ subtotal: number; taxAmount: number; total: number }> {
-	// Get all line items for the quote
-	const lineItems = await ctx.db
-		.query("quoteLineItems")
-		.withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
-		.collect();
-
-	// Calculate subtotal
-	const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
-
-	// Apply discount if enabled
-	let discountedSubtotal = subtotal;
-	if (options?.discountEnabled && options.discountAmount) {
-		discountedSubtotal = BusinessUtils.applyDiscount(
-			subtotal,
-			options.discountAmount,
-			options.discountType === "percentage"
-		);
-	}
-
-	// Calculate tax
-	let taxAmount = 0;
-	if (options?.taxEnabled && options.taxRate) {
-		taxAmount = BusinessUtils.calculateTax(discountedSubtotal, options.taxRate);
-	}
-
-	// Calculate total
-	const total = discountedSubtotal + taxAmount;
-
-	return {
-		subtotal,
-		taxAmount,
-		total,
-	};
 }
 
 /**

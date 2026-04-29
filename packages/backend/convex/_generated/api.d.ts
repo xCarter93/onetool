@@ -43,6 +43,7 @@ import type * as lib_memberships from "../lib/memberships.js";
 import type * as lib_organization from "../lib/organization.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_queries from "../lib/queries.js";
+import type * as lib_quoteTotals from "../lib/quoteTotals.js";
 import type * as lib_shared from "../lib/shared.js";
 import type * as lib_storage from "../lib/storage.js";
 import type * as lib_stripe from "../lib/stripe.js";
@@ -127,6 +128,7 @@ declare const fullApi: ApiFromModules<{
   "lib/organization": typeof lib_organization;
   "lib/permissions": typeof lib_permissions;
   "lib/queries": typeof lib_queries;
+  "lib/quoteTotals": typeof lib_quoteTotals;
   "lib/shared": typeof lib_shared;
   "lib/storage": typeof lib_storage;
   "lib/stripe": typeof lib_stripe;
