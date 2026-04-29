@@ -14,6 +14,13 @@
  *    events: none and visually dims; clear button is disabled.
  *  - touchAction: none on the canvas to keep signature_pad's touch listeners
  *    from fighting page scroll inside its own bounds (Pitfall 4 boundary).
+ *  - WR-05 reset effect (Gap 1 fix): guarded by hasMountedRef so it does NOT
+ *    fire on initial mount; calls clearAndRescale() so subsequent legitimate
+ *    resets re-apply ctx.scale(dpr,dpr) instead of leaving the canvas at 1×
+ *    transform. signature_pad.clear() internally calls
+ *    ctx.setTransform(1,0,0,1,0,0) and would otherwise wipe the DPR scale,
+ *    making strokes paint into the top-left 1/dpr region of the backing
+ *    store and rendering them invisible after CSS downscale.
  */
 
 import { Trash2 } from "lucide-react";
@@ -66,6 +73,23 @@ export function SignatureCanvasPad({
 	disabled = false,
 }: SignatureCanvasPadProps) {
 	const padRef = useRef<SignatureCanvas | null>(null);
+	const hasMountedRef = useRef(false);
+
+	// Shared helper used by both the WR-05 reset effect and handleClear.
+	// signature_pad.clear() internally invokes ctx.setTransform(1,0,0,1,0,0),
+	// wiping the DPR scale applied at mount. Every clear MUST be followed by
+	// a fresh ctx.scale(dpr,dpr) or strokes paint at 1× on a dpr× backing
+	// store and become invisible after CSS downscale (UAT Gap 1).
+	const clearAndRescale = useCallback(() => {
+		const pad = padRef.current;
+		if (!pad) return;
+		pad.clear();
+		const canvas = pad.getCanvas();
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+		const dpr = getDpr();
+		ctx.scale(dpr, dpr);
+	}, []);
 
 	// Manually apply ctx.scale(dpr, dpr) once on mount because the wrapper's
 	// internal _resizeCanvas only calls scale when canvasProps width/height
@@ -84,11 +108,21 @@ export function SignatureCanvasPad({
 	// payload (e.g., handleStaleReset on 409, or a force-remount via key),
 	// also clear the underlying canvas so prior strokes do not visually
 	// linger and bleed into pad.toData() on the next stroke.
+	//
+	// Gap 1 fix: guard against firing on the initial mount. The mount-time
+	// scale effect already applied ctx.scale(dpr,dpr); calling pad.clear()
+	// here would wipe it. Subsequent transitions (parent reset after a real
+	// submit / stale 409 / explicit non-usable rewrite) DO need to clear and
+	// rescale via the shared helper.
 	useEffect(() => {
-		if (!value.isUsable && value.dataUrl === null) {
-			padRef.current?.clear();
+		if (!hasMountedRef.current) {
+			hasMountedRef.current = true;
+			return;
 		}
-	}, [value.isUsable, value.dataUrl]);
+		if (!value.isUsable && value.dataUrl === null) {
+			clearAndRescale();
+		}
+	}, [value.isUsable, value.dataUrl, clearAndRescale]);
 
 	const handleEnd = useCallback(() => {
 		// REVIEWS-mandated: short-circuit when disabled.
@@ -141,9 +175,9 @@ export function SignatureCanvasPad({
 	const handleClear = useCallback(() => {
 		// REVIEWS-mandated: short-circuit when disabled.
 		if (disabled) return;
-		padRef.current?.clear();
+		clearAndRescale();
 		onChange({ mode: "drawn", dataUrl: null, rawData: null, isUsable: false });
-	}, [disabled, onChange]);
+	}, [disabled, onChange, clearAndRescale]);
 
 	const dpr = getDpr();
 
