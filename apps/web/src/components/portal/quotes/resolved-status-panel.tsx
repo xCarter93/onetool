@@ -27,8 +27,8 @@ function formatDate(ms: number): string {
 	});
 }
 
-function formatMoney(cents: number): string {
-	return (cents / 100).toLocaleString("en-US", {
+function formatMoney(amount: number): string {
+	return amount.toLocaleString("en-US", {
 		style: "currency",
 		currency: "USD",
 	});

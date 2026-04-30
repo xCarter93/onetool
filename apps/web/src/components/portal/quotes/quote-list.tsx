@@ -25,9 +25,8 @@ const FILTERS: Array<{ value: Filter; label: string }> = [
 	{ value: "expired", label: "Expired" },
 ];
 
-function formatMoney(cents: number): string {
-	const dollars = cents / 100;
-	return dollars.toLocaleString("en-US", {
+function formatMoney(amount: number): string {
+	return amount.toLocaleString("en-US", {
 		style: "currency",
 		currency: "USD",
 	});
