@@ -166,7 +166,11 @@ describe("portal.quotes.decline", () => {
 		expect(result.action).toBe("declined");
 		expect(result.documentVersion).toBe(2);
 		expect(result.lineItemsCount).toBe(2);
-		expect(result.total).toBe(110);
+		// Plan 14-14 / Finding 6: response total now reflects line-item-derived
+		// recompute (60 + 40 = 100). The seed's stored quote.total=110 would
+		// only apply if taxEnabled were true with taxRate=10; this seed sets
+		// taxAmount=10 directly without taxEnabled, so recompute yields 100.
+		expect(result.total).toBe(100);
 
 		await t.run(async (ctx) => {
 			const audits = await ctx.db.query("quoteApprovals").collect();
@@ -316,7 +320,12 @@ describe("portal.quotes.decline", () => {
 			action: "declined",
 			documentVersion: 2,
 			lineItemsCount: 2,
-			total: 110,
+			// Plan 14-14 / Finding 6: response.total is line-item-derived
+			// (60 + 40 = 100). The seed sets stored quote.total=110 with
+			// taxAmount=10 but does NOT set taxEnabled=true, so the recompute
+			// drops the unconfigured tax — which IS the divergence the fix
+			// pins (audit captures what the client actually saw).
+			total: 100,
 		});
 		expect(typeof r.auditId).toBe("string");
 		expect(typeof r.createdAt).toBe("number");

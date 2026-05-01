@@ -861,6 +861,21 @@ export const decline = mutation({
 				? args.declineReason.trim().slice(0, 2000)
 				: undefined;
 
+		// Plan 14-14 / CodeRabbit Finding 6: snapshot must reflect what the
+		// client saw at decision time. Plan 14-09 recomputes totals from line
+		// items in `get()`/`list()` because stored `quote.subtotal/total` can
+		// be stale. Copying the stored values into the audit row would
+		// introduce divergence between "displayed total" and "audited total".
+		// Recompute via the shared helper so the audit captures line-item
+		// truth — same source of truth the portal display uses.
+		const recomputedTotals = await calculateQuoteTotals(ctx, args.quoteId, {
+			discountEnabled: quote.discountEnabled,
+			discountAmount: quote.discountAmount,
+			discountType: quote.discountType,
+			taxEnabled: quote.taxEnabled,
+			taxRate: quote.taxRate,
+		});
+
 		const now = Date.now();
 		const auditId = await ctx.db.insert("quoteApprovals", {
 			quoteId: args.quoteId,
@@ -875,9 +890,9 @@ export const decline = mutation({
 			documentId: args.expectedDocumentId,
 			documentVersion: document.version,
 			lineItemsSnapshot,
-			subtotalSnapshot: quote.subtotal,
-			taxSnapshot: quote.taxAmount ?? 0,
-			totalSnapshot: quote.total,
+			subtotalSnapshot: recomputedTotals.subtotal,
+			taxSnapshot: recomputedTotals.taxAmount,
+			totalSnapshot: recomputedTotals.total,
 			termsSnapshot: quote.terms,
 			createdAt: now,
 		});
@@ -921,7 +936,10 @@ export const decline = mutation({
 			createdAt: now,
 			documentVersion: document.version,
 			lineItemsCount: lineItemsSnapshot.length,
-			total: quote.total,
+			// Plan 14-14 / CodeRabbit Finding 6: align with the snapshot we just
+			// wrote so the response total matches the audit row, not the stored
+			// (potentially stale) quote.total.
+			total: recomputedTotals.total,
 		};
 	},
 });
