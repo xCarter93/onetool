@@ -531,6 +531,148 @@ describe("portal.quotes.approve", () => {
 		});
 	});
 
+	it("Case 4 (Plan 14-13 / Gap B): approves a quote whose document exists in the documents table even when quote.latestDocumentId is null", async () => {
+		const s = await seedAll(t);
+		const jti = "approve-fallback-jti";
+		await seedSession(t, s, jti);
+
+		const { quoteId, documentId } = await t.run(async (ctx) => {
+			const qId = await ctx.db.insert("quotes", {
+				orgId: s.orgId,
+				clientId: s.clientId,
+				quoteNumber: "Q-FB-APV-1",
+				title: "Fallback Approve Quote",
+				status: "sent",
+				subtotal: 100,
+				taxAmount: 0,
+				total: 100,
+				sentAt: Date.now(),
+				terms: "n30",
+				// INTENTIONALLY no latestDocumentId — mirrors the user-reported state.
+			});
+			const storageId = await ctx.storage.store(
+				new Blob(["pdf"], { type: "application/pdf" }),
+			);
+			const dId = await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: qId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 2,
+			});
+			await ctx.db.insert("quoteLineItems", {
+				quoteId: qId,
+				orgId: s.orgId,
+				description: "Item",
+				quantity: 1,
+				unit: "each",
+				rate: 100,
+				amount: 100,
+				sortOrder: 0,
+			});
+			return { quoteId: qId, documentId: dId };
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const result = await asPortal.action(api.portal.quotes.approve, {
+			quoteId,
+			expectedDocumentId: documentId,
+			signatureBase64: VALID_PNG_B64,
+			signatureMode: "typed",
+			signatureRawData: JSON.stringify({ typedName: "Fallback Client", font: "Caveat" }),
+			ipAddress: "1.2.3.4",
+			userAgent: "test-ua",
+			termsAccepted: true,
+		});
+		expect(result.action).toBe("approved");
+		expect(result.documentVersion).toBe(2);
+	});
+
+	it("Case 4b RED-precision: throws QUOTE_VERSION_STALE (not FORBIDDEN) when approving a quote with unset latestDocumentId on current code (Plan 14-13 / Gap B)", async () => {
+		// W-N4 mitigation: seedAll(t) seeds s.clientContactId; seedSession writes
+		// it into the portalSession. Therefore _commitApproval's FORBIDDEN check
+		// PASSES and the throw must originate at the QUOTE_VERSION_STALE check
+		// (which Task 2's fix relaxes). This test pins the failure mode pre-fix
+		// so a wrong-reason RED (FORBIDDEN/UNAUTHENTICATED) cannot satisfy it.
+		const s = await seedAll(t);
+		const jti = "approve-fallback-precision-jti";
+		await seedSession(t, s, jti);
+
+		const { quoteId, documentId } = await t.run(async (ctx) => {
+			const qId = await ctx.db.insert("quotes", {
+				orgId: s.orgId,
+				clientId: s.clientId,
+				quoteNumber: "Q-FB-APV-2",
+				title: "Fallback Approve Quote 2",
+				status: "sent",
+				subtotal: 100,
+				taxAmount: 0,
+				total: 100,
+				sentAt: Date.now(),
+				terms: "n30",
+				// INTENTIONALLY no latestDocumentId — same bug surface as Case 4.
+			});
+			const storageId = await ctx.storage.store(
+				new Blob(["pdf"], { type: "application/pdf" }),
+			);
+			const dId = await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: qId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			await ctx.db.insert("quoteLineItems", {
+				quoteId: qId,
+				orgId: s.orgId,
+				description: "Item",
+				quantity: 1,
+				unit: "each",
+				rate: 100,
+				amount: 100,
+				sortOrder: 0,
+			});
+			return { quoteId: qId, documentId: dId };
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+
+		let thrownCode: string | undefined;
+		try {
+			await asPortal.action(api.portal.quotes.approve, {
+				quoteId,
+				expectedDocumentId: documentId,
+				signatureBase64: VALID_PNG_B64,
+				signatureMode: "typed",
+				signatureRawData: JSON.stringify({ typedName: "Precision Client", font: "Caveat" }),
+				ipAddress: "1.2.3.4",
+				userAgent: "test-ua",
+				termsAccepted: true,
+			});
+		} catch (err) {
+			// convex-test double-encodes ConvexError data across the
+			// action -> internalMutation boundary. Try string-decode (single +
+			// double), and accept already-deserialized object form as a fallback.
+			const e = err as { name?: string; data?: unknown };
+			let data: { code?: string } = {};
+			const raw = e.data;
+			if (typeof raw === "string") {
+				let parsed: unknown = raw;
+				try { parsed = JSON.parse(parsed as string); } catch { /* noop */ }
+				if (typeof parsed === "string") {
+					try { parsed = JSON.parse(parsed); } catch { /* noop */ }
+				}
+				data = parsed as typeof data;
+			} else if (raw && typeof raw === "object") {
+				data = raw as typeof data;
+			}
+			thrownCode = data.code;
+		}
+		expect(thrownCode).toBe("QUOTE_VERSION_STALE");
+	});
+
 	it("returns ApprovalReceipt shape with signatureUrl resolved server-side", async () => {
 		const s = await seedAll(t);
 		const jti = "approve-jti-8";

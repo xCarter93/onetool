@@ -282,3 +282,152 @@ describe("portal.quotes.get", () => {
 		).rejects.toThrow();
 	});
 });
+
+describe("portal.quotes.get — documents-table fallback (Plan 14-13 / Gap B)", () => {
+	let t: ReturnType<typeof convexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	it("Case 1 (RED): returns latestDocument from documents table when quote.latestDocumentId is null", async () => {
+		const s = await seed(t);
+		const jti = "doc-fallback-jti-1";
+		await seedSession(t, s, jti);
+
+		const { quoteId, documentId } = await t.run(async (ctx) => {
+			const qId = await ctx.db.insert("quotes", {
+				orgId: s.orgId,
+				clientId: s.clientId,
+				quoteNumber: "Q-FB-1",
+				title: "Fallback Quote",
+				status: "sent",
+				subtotal: 100,
+				total: 100,
+				sentAt: Date.now(),
+				terms: "n30",
+				// INTENTIONALLY no latestDocumentId — this is the bug surface.
+			});
+			const storageId = await ctx.storage.store(
+				new Blob(["pdf"], { type: "application/pdf" }),
+			);
+			const dId = await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: qId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			return { quoteId: qId, documentId: dId };
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const result = await asPortal.query(api.portal.quotes.get, { quoteId });
+		expect(result.latestDocument).not.toBeNull();
+		expect(result.latestDocument?._id).toBe(documentId);
+		expect(result.latestDocument?.version).toBe(1);
+	});
+
+	it("Case 2 (guard): prefers quote.latestDocumentId when both are set, ignoring higher-version unpinned doc", async () => {
+		const s = await seed(t);
+		const jti = "doc-fallback-jti-2";
+		await seedSession(t, s, jti);
+
+		const { quoteId, pinnedDocId } = await t.run(async (ctx) => {
+			const qId = await ctx.db.insert("quotes", {
+				orgId: s.orgId,
+				clientId: s.clientId,
+				quoteNumber: "Q-FB-2",
+				title: "Pinned Beats Unpinned",
+				status: "sent",
+				subtotal: 100,
+				total: 100,
+				sentAt: Date.now(),
+				terms: "n30",
+			});
+			const storage1 = await ctx.storage.store(
+				new Blob(["pdf-v1"], { type: "application/pdf" }),
+			);
+			const pinned = await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: qId,
+				storageId: storage1,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			// Higher-version unpinned doc — should NOT win because pinned is set.
+			const storage2 = await ctx.storage.store(
+				new Blob(["pdf-v2"], { type: "application/pdf" }),
+			);
+			await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: qId,
+				storageId: storage2,
+				generatedAt: Date.now(),
+				version: 2,
+			});
+			await ctx.db.patch(qId, { latestDocumentId: pinned });
+			return { quoteId: qId, pinnedDocId: pinned };
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const result = await asPortal.query(api.portal.quotes.get, { quoteId });
+		expect(result.latestDocument).not.toBeNull();
+		expect(result.latestDocument?._id).toBe(pinnedDocId);
+		expect(result.latestDocument?.version).toBe(1);
+	});
+
+	it("Case 3 (guard): does NOT surface a same-quoteId documents row from a different org", async () => {
+		const s = await seed(t);
+		const jti = "doc-fallback-jti-3";
+		await seedSession(t, s, jti);
+
+		const { quoteId } = await t.run(async (ctx) => {
+			const qId = await ctx.db.insert("quotes", {
+				orgId: s.orgId,
+				clientId: s.clientId,
+				quoteNumber: "Q-FB-3",
+				title: "Cross-Org Guard",
+				status: "sent",
+				subtotal: 100,
+				total: 100,
+				sentAt: Date.now(),
+				terms: "n30",
+				// INTENTIONALLY no latestDocumentId.
+			});
+			// Insert a documents row attributed to a different org but pointing
+			// at this quote's id (synthetic anomaly to defend against a future
+			// cross-org migration).
+			const otherUserId = await ctx.db.insert("users", {
+				name: "Other Owner",
+				email: `otherowner_${Math.random()}@example.com`,
+				image: "https://example.com/u.png",
+				externalId: `user_${Math.random()}`,
+			});
+			const otherOrgId = await ctx.db.insert("organizations", {
+				clerkOrganizationId: `org_${Math.random()}`,
+				name: "Other Co",
+				ownerUserId: otherUserId,
+			});
+			const storageId = await ctx.storage.store(
+				new Blob(["pdf"], { type: "application/pdf" }),
+			);
+			await ctx.db.insert("documents", {
+				orgId: otherOrgId,
+				documentType: "quote",
+				documentId: qId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			return { quoteId: qId };
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const result = await asPortal.query(api.portal.quotes.get, { quoteId });
+		expect(result.latestDocument).toBeNull();
+	});
+});
