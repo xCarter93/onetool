@@ -21,6 +21,13 @@
  *    ctx.setTransform(1,0,0,1,0,0) and would otherwise wipe the DPR scale,
  *    making strokes paint into the top-left 1/dpr region of the backing
  *    store and rendering them invisible after CSS downscale.
+ *  - Plan 14-12 / Gap A re-UAT fix (candidate (c) — canvas mounts with zero
+ *    CSS rect inside Radix TabsContent until layout settles): a
+ *    ResizeObserver re-applies ctx.scale(dpr,dpr) on the first zero->non-zero
+ *    rect transition so strokes paint inside the visible CSS region. If
+ *    real-device UAT after this fix does not close UAT Gap A, candidate (e)
+ *    (signature_pad pointer-coord math vs dpr-scaled backing store) is the
+ *    residual hypothesis — see 14-12-PLAN.md.
  */
 
 import { Trash2 } from "lucide-react";
@@ -94,6 +101,18 @@ export function SignatureCanvasPad({
 	// Manually apply ctx.scale(dpr, dpr) once on mount because the wrapper's
 	// internal _resizeCanvas only calls scale when canvasProps width/height
 	// are unset — we set them to backing-store px to control the bitmap.
+	//
+	// Plan 14-12 / Gap A (candidate (c)): when the canvas mounts inside a
+	// Radix TabsContent that was just revealed (Type->Draw click), the first
+	// paint may happen before layout settles, so getBoundingClientRect()
+	// returns 0x0 and signature_pad's pointer-coord math locks in a
+	// zero-rect frame of reference. The mount-time ctx.scale STILL runs
+	// (so existing tests that probe scale call counts still pass), but
+	// strokes paint outside the visible CSS region. The ResizeObserver
+	// below fires once layout produces a real rect; on the first
+	// zero->non-zero transition we re-apply ctx.scale(dpr,dpr) so the
+	// transform survives any pad-internal setTransform reset that may
+	// have happened during the intervening ticks.
 	useEffect(() => {
 		const pad = padRef.current;
 		if (!pad) return;
@@ -101,7 +120,46 @@ export function SignatureCanvasPad({
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
 		const dpr = getDpr();
-		ctx.scale(dpr, dpr);
+
+		const applyScale = () => {
+			// Reset transform first to avoid compounding scales on
+			// re-application (a previous ctx.scale(dpr,dpr) plus another
+			// would yield dpr^2 on the same backing store).
+			ctx.setTransform(1, 0, 0, 1, 0, 0);
+			ctx.scale(dpr, dpr);
+		};
+
+		// Initial mount: apply scale immediately. If rect is non-zero, this
+		// is sufficient. If rect is zero (mounted inside a freshly-revealed
+		// Radix TabsContent), the ResizeObserver below will re-apply once
+		// layout produces a real rect.
+		applyScale();
+
+		let lastRectIsZero =
+			canvas.getBoundingClientRect().width === 0 ||
+			canvas.getBoundingClientRect().height === 0;
+
+		// Guard against environments without ResizeObserver (older jsdom,
+		// SSR-evaluation hazards).
+		if (typeof ResizeObserver === "undefined") {
+			return;
+		}
+		const ro = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				const w = entry.contentRect.width;
+				const h = entry.contentRect.height;
+				// Re-apply scale ONLY on the zero->non-zero transition.
+				// Subsequent resizes do not change CSS_WIDTH/CSS_HEIGHT
+				// (style is fixed) so the scale need not be re-applied
+				// for them.
+				if (lastRectIsZero && w > 0 && h > 0) {
+					applyScale();
+					lastRectIsZero = false;
+				}
+			}
+		});
+		ro.observe(canvas);
+		return () => ro.disconnect();
 	}, []);
 
 	// REVIEWS-mandated (WR-05): when the parent resets value to a non-usable

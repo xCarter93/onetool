@@ -24,6 +24,12 @@ beforeEach(() => {
 		() =>
 			({
 				scale: vi.fn(),
+				// Plan 14-12: SignatureCanvasPad mount effect now calls
+				// ctx.setTransform(1,0,0,1,0,0) before ctx.scale(dpr,dpr) to
+				// avoid compounding scales when the ResizeObserver re-fires.
+				// Stub it explicitly so this suite still loads the production
+				// component without ctx.setTransform throwing.
+				setTransform: vi.fn(),
 				fillRect: vi.fn(),
 				clearRect: vi.fn(),
 				fillText: vi.fn(),

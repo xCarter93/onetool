@@ -135,8 +135,8 @@ describe("SignatureCanvasPad — DPR-scale preservation (UAT Gap 1)", () => {
 		// (a second ctx.scale(2,2) follows the reset). Both implementations
 		// satisfy the contract: the LAST transform-affecting event must leave
 		// the canvas at dpr scale.
-		// Failing case (current bug): mount scale(2,2) -> setTransform(1,0,0,1,0,0)
-		// from pad.clear() -> nothing. lastEventIsRescale returns false.
+		// Failing case (original 14-06 bug): mount scale(2,2) ->
+		// setTransform(1,0,0,1,0,0) from pad.clear() -> nothing.
 		const setTransformResets = ctxSetTransform.mock.calls.filter(
 			(args) =>
 				args[0] === 1 &&
@@ -146,16 +146,18 @@ describe("SignatureCanvasPad — DPR-scale preservation (UAT Gap 1)", () => {
 				args[4] === 0 &&
 				args[5] === 0,
 		);
-		// If a reset happened, a rescale to (2,2) must follow it (count of
-		// dpr-scale calls > count of resets).
-		expect(dprScaleCalls.length).toBeGreaterThan(setTransformResets.length - 1);
-		// Specifically: dpr scale count must be >= reset count + 1 OR there
-		// were no resets at all.
-		if (setTransformResets.length > 0) {
-			expect(dprScaleCalls.length).toBeGreaterThanOrEqual(
-				setTransformResets.length + 1,
-			);
-		}
+		// Plan 14-12 update: the mount effect now legitimately issues
+		// setTransform(1,0,0,1,0,0) BEFORE ctx.scale(dpr,dpr) so that a
+		// later ResizeObserver re-application does not compound scales
+		// into dpr^2. The 14-06 invariant still holds in spirit ("every
+		// reset is followed by a rescale") but the arithmetic relaxes
+		// from `dprScale >= resets + 1` to `dprScale >= resets` (1:1).
+		// The earlier `+1` margin came from the assumption that the
+		// initial mount issued a scale WITHOUT a preceding reset; under
+		// 14-12 that assumption no longer holds.
+		expect(dprScaleCalls.length).toBeGreaterThanOrEqual(
+			setTransformResets.length,
+		);
 	});
 
 	it("Test B: clicking Clear re-applies ctx.scale(dpr, dpr) after pad.clear()", () => {
