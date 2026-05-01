@@ -69,7 +69,7 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 								Qty
 							</th>
 							<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
-								Unit
+								Rate
 							</th>
 							<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
 								Total

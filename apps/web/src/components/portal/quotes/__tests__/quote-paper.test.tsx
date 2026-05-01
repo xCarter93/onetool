@@ -80,3 +80,42 @@ describe("QuotePaper monetary rendering (Gap 8)", () => {
 		expect(screen.queryByText("$0.50")).not.toBeInTheDocument();
 	});
 });
+
+describe("rate column header (Finding 1)", () => {
+	const baseQuote = {
+		quoteNumber: "Q-001",
+		title: "Test",
+		subtotal: 125,
+		taxAmount: 0,
+		total: 125,
+		terms: undefined,
+	} as const;
+
+	it("renders 'Rate' as the unit-price column header (not 'Unit')", () => {
+		render(
+			<QuotePaper
+				quote={baseQuote}
+				lineItems={[
+					{ description: "Item A", quantity: 1, rate: 125, amount: 125, sortOrder: 0 },
+				]}
+				businessName="Acme"
+			/>,
+		);
+		expect(screen.getByRole("columnheader", { name: /^rate$/i })).toBeInTheDocument();
+		expect(screen.queryByRole("columnheader", { name: /^unit$/i })).not.toBeInTheDocument();
+	});
+
+	it("renders the rate cell value alongside the Rate column", () => {
+		render(
+			<QuotePaper
+				quote={baseQuote}
+				lineItems={[
+					{ description: "Item A", quantity: 1, rate: 125, amount: 125, sortOrder: 0 },
+				]}
+				businessName="Acme"
+			/>,
+		);
+		// $125.00 appears in: rate cell, amount cell, subtotal, total — multiple matches expected.
+		expect(screen.getAllByText("$125.00").length).toBeGreaterThan(0);
+	});
+});
