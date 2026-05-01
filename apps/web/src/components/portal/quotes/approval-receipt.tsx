@@ -124,8 +124,8 @@ export function ApprovalReceipt({
 			>
 				View approval receipt
 				<ChevronDown
-					className={`h-3.5 w-3.5 transition-transform ${
-						reduceMotion ? "" : ""
+					className={`h-3.5 w-3.5 ${
+						reduceMotion ? "" : "transition-transform"
 					} ${expanded ? "rotate-180" : ""}`}
 					style={
 						reduceMotion ? { transition: "none" } : undefined
