@@ -18,6 +18,19 @@
 //     `_commitApproval` (internalMutation — atomic; emit-event last)
 // - On _commitApproval failure, the action calls ctx.storage.delete to clean
 //   up the orphan signature blob before re-throwing.
+//
+// Plan 14-13 / UAT Gap B fix: portal.quotes.get falls back to the most-recent
+// documents-table row (org-scoped) when `quote.latestDocumentId` is unset;
+// _preflightApproval and _commitApproval accept any same-org same-quote
+// document in that fallback case AND _commitApproval pins `latestDocumentId`
+// to the accepted document so subsequent reads use the strict path. Workspace
+// documents.create does not patch `quote.latestDocumentId` — only
+// boldsign.updateQuoteLatestDocument does — so quotes generated through any
+// non-BoldSign path previously stranded the portal with "document is not
+// ready" on every approve attempt. Strict OCC still wins on a racing
+// republish: if a workspace mutation patches latestDocumentId to a different
+// doc between preflight and commit, the redo-check falls through to strict
+// equality and throws QUOTE_VERSION_STALE.
 import {
 	action,
 	internalMutation,
@@ -144,6 +157,16 @@ export const get = query({
 			storageId: Id<"_storage">;
 			signedStorageId?: Id<"_storage">;
 		} | null = null;
+
+		// Plan 14-13 / Gap B: prefer the pinned latestDocumentId, but fall back
+		// to the most-recent documents-table row when the quote has no pinned id
+		// OR the pinned id points at a deleted/orphan doc. Workspace
+		// `documents.create` inserts a row WITHOUT patching
+		// `quote.latestDocumentId` — only the BoldSign send-for-signature flow
+		// patches that field. Without this fallback, a quote whose PDF was
+		// generated through any non-BoldSign path would surface to the portal
+		// with `latestDocument: null`, and the client would emit "Quote
+		// document is not ready. Please reload." on every approve attempt.
 		if (quote.latestDocumentId) {
 			const doc = await ctx.db.get(quote.latestDocumentId);
 			if (doc) {
@@ -152,6 +175,27 @@ export const get = query({
 					version: doc.version,
 					storageId: doc.storageId,
 					signedStorageId: doc.signedStorageId,
+				};
+			}
+		}
+		if (latestDocument === null) {
+			const fallbackDoc = await ctx.db
+				.query("documents")
+				.withIndex("by_document_version", (q) =>
+					q.eq("documentType", "quote").eq("documentId", quoteId),
+				)
+				.order("desc")
+				.first();
+			// Defense in depth (REVIEWS-mandated multi-tenant rule): documents
+			// are org-scoped at insert; we still verify here in case of a
+			// future cross-org migration anomaly. Same-org constraint matches
+			// the existing get-handler invariant.
+			if (fallbackDoc && fallbackDoc.orgId === session.orgId) {
+				latestDocument = {
+					_id: fallbackDoc._id,
+					version: fallbackDoc.version,
+					storageId: fallbackDoc.storageId,
+					signedStorageId: fallbackDoc.signedStorageId,
 				};
 			}
 		}
@@ -306,7 +350,34 @@ export const _preflightApproval = internalQuery({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		if (quote.latestDocumentId !== args.expectedDocumentId) {
+		// Plan 14-13 / Gap B: when `quote.latestDocumentId` is unset (workspace
+		// generated the PDF via documents.create without invoking the BoldSign
+		// pinning flow), allow `expectedDocumentId` to refer to ANY same-org
+		// documents row whose `documentId === quoteId`. Mismatch only counts as
+		// STALE when the quote DOES have a pinned id and it differs from what
+		// the portal sent — that is the "racing republish" race condition the
+		// original check defends against. The fallback resolution mirrors
+		// get()'s fallback.
+		//
+		// We use `== null` (loose equality) so the relaxed branch fires for
+		// both `undefined` (Convex's default for omitted optional fields) AND
+		// explicit `null` (defensive — manual ctx.db.patch could land null in
+		// legacy data or migrations). Strict `=== undefined` would miss the
+		// null case.
+		if (quote.latestDocumentId == null) {
+			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
+			if (
+				!fallbackDoc ||
+				fallbackDoc.orgId !== args.orgId ||
+				fallbackDoc.documentType !== "quote" ||
+				fallbackDoc.documentId !== args.quoteId
+			) {
+				throw new ConvexError({
+					code: "QUOTE_VERSION_STALE",
+					latestDocumentId: quote.latestDocumentId,
+				});
+			}
+		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
 			throw new ConvexError({
 				code: "QUOTE_VERSION_STALE",
 				latestDocumentId: quote.latestDocumentId,
@@ -456,7 +527,40 @@ export const _commitApproval = internalMutation({
 		// Defense-in-depth: re-validate OCC + status inside the transaction
 		// so a racing republish between preflight and commit cannot land a
 		// stale approval / orphan blob.
-		if (quote.latestDocumentId !== args.expectedDocumentId) {
+		//
+		// Plan 14-13 / Gap B: mirror the _preflightApproval relaxation. When
+		// `quote.latestDocumentId` is unset (workspace generated the PDF via
+		// documents.create without invoking the BoldSign pinning flow), allow
+		// `expectedDocumentId` to refer to ANY same-org documents row whose
+		// `documentId === quoteId`. Strict OCC still wins on a racing
+		// republish: if a workspace mutation patches `latestDocumentId` to a
+		// different doc between preflight and commit, the redo-check sees
+		// `latestDocumentId == null` is false and falls through to the strict
+		// equality branch which throws QUOTE_VERSION_STALE. We use `== null`
+		// (loose equality) so the relaxed branch fires for both `undefined`
+		// (Convex's default for omitted optional fields) AND explicit `null`
+		// (defensive — see Change B comment).
+		if (quote.latestDocumentId == null) {
+			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
+			if (
+				!fallbackDoc ||
+				fallbackDoc.orgId !== args.orgId ||
+				fallbackDoc.documentType !== "quote" ||
+				fallbackDoc.documentId !== args.quoteId
+			) {
+				throw new ConvexError({
+					code: "QUOTE_VERSION_STALE",
+					latestDocumentId: quote.latestDocumentId,
+				});
+			}
+			// Self-healing: pin the accepted fallback document as the
+			// canonical latestDocumentId now so subsequent reads and approvals
+			// take the strict path (no fallback). This patch lands inside the
+			// same atomic transaction as the audit-row insert below.
+			await ctx.db.patch(args.quoteId, {
+				latestDocumentId: args.expectedDocumentId,
+			});
+		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
 			throw new ConvexError({
 				code: "QUOTE_VERSION_STALE",
 				latestDocumentId: quote.latestDocumentId,

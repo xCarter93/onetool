@@ -589,12 +589,15 @@ describe("portal.quotes.approve", () => {
 		expect(result.documentVersion).toBe(2);
 	});
 
-	it("Case 4b RED-precision: throws QUOTE_VERSION_STALE (not FORBIDDEN) when approving a quote with unset latestDocumentId on current code (Plan 14-13 / Gap B)", async () => {
-		// W-N4 mitigation: seedAll(t) seeds s.clientContactId; seedSession writes
-		// it into the portalSession. Therefore _commitApproval's FORBIDDEN check
-		// PASSES and the throw must originate at the QUOTE_VERSION_STALE check
-		// (which Task 2's fix relaxes). This test pins the failure mode pre-fix
-		// so a wrong-reason RED (FORBIDDEN/UNAUTHENTICATED) cannot satisfy it.
+	it("Case 4b RED-precision: post-fix positive smoke check (was: throws QUOTE_VERSION_STALE pre-fix; converted to mirror Case 4 per Task 2) (Plan 14-13 / Gap B)", async () => {
+		// Post-Task-2: the GREEN fix relaxes the OCC predicate when
+		// latestDocumentId is null, so this call no longer throws. Case 4b is
+		// preserved as a second positive smoke check (different version
+		// number, different jti) — its pre-fix QUOTE_VERSION_STALE assertion
+		// has been retired now that the failure mode is gone. The
+		// RED-precision probe is captured in git history (commit
+		// `test(14-13): add failing RED tests for document-not-ready
+		// fallback (Gap B)`).
 		const s = await seedAll(t);
 		const jti = "approve-fallback-precision-jti";
 		await seedSession(t, s, jti);
@@ -638,39 +641,18 @@ describe("portal.quotes.approve", () => {
 		});
 
 		const asPortal = t.withIdentity(ident(s, jti));
-
-		let thrownCode: string | undefined;
-		try {
-			await asPortal.action(api.portal.quotes.approve, {
-				quoteId,
-				expectedDocumentId: documentId,
-				signatureBase64: VALID_PNG_B64,
-				signatureMode: "typed",
-				signatureRawData: JSON.stringify({ typedName: "Precision Client", font: "Caveat" }),
-				ipAddress: "1.2.3.4",
-				userAgent: "test-ua",
-				termsAccepted: true,
-			});
-		} catch (err) {
-			// convex-test double-encodes ConvexError data across the
-			// action -> internalMutation boundary. Try string-decode (single +
-			// double), and accept already-deserialized object form as a fallback.
-			const e = err as { name?: string; data?: unknown };
-			let data: { code?: string } = {};
-			const raw = e.data;
-			if (typeof raw === "string") {
-				let parsed: unknown = raw;
-				try { parsed = JSON.parse(parsed as string); } catch { /* noop */ }
-				if (typeof parsed === "string") {
-					try { parsed = JSON.parse(parsed); } catch { /* noop */ }
-				}
-				data = parsed as typeof data;
-			} else if (raw && typeof raw === "object") {
-				data = raw as typeof data;
-			}
-			thrownCode = data.code;
-		}
-		expect(thrownCode).toBe("QUOTE_VERSION_STALE");
+		const result = await asPortal.action(api.portal.quotes.approve, {
+			quoteId,
+			expectedDocumentId: documentId,
+			signatureBase64: VALID_PNG_B64,
+			signatureMode: "typed",
+			signatureRawData: JSON.stringify({ typedName: "Precision Client", font: "Caveat" }),
+			ipAddress: "1.2.3.4",
+			userAgent: "test-ua",
+			termsAccepted: true,
+		});
+		expect(result.action).toBe("approved");
+		expect(result.documentVersion).toBe(1);
 	});
 
 	it("returns ApprovalReceipt shape with signatureUrl resolved server-side", async () => {
