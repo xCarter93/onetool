@@ -88,7 +88,7 @@ export function DeclineModal({
 				// Plan 14-07 / UAT Gap 3: keep the dialog open and surface the
 				// failure inline so the user can retry or read the error.
 				setSubmitError(
-					result.error.message ?? "Failed to decline. Try again.",
+					result.error.message || "Failed to decline. Try again.",
 				);
 			}
 		} catch (err) {
