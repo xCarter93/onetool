@@ -3,35 +3,40 @@
 /**
  * Drawn-mode signature pad. Wraps `react-signature-canvas` with:
  *
- *  - Explicit high-DPI canvas sizing: backing-store = CSS_WIDTH * dpr; CSS
- *    layout = CSS_WIDTH px. (Pitfall 3.) The wrapper's internal _resizeCanvas
- *    skips ctx.scale when explicit width/height are passed via canvasProps,
- *    so we manually call ctx.scale(dpr, dpr) on mount.
+ *  - Container-driven sizing: a ResizeObserver on the wrapper div drives
+ *    canvas backing-store dimensions = wrapper.clientWidth * dpr (CSS layout
+ *    matches wrapper width). This keeps the canvas inside its parent on
+ *    narrow viewports and aligns signature_pad's getBoundingClientRect-based
+ *    pointer math with the visible CSS box, so strokes track the cursor and
+ *    cannot paint outside the visible pad.
+ *  - DPR-scale re-apply effect: setting canvas.width / canvas.height attrs
+ *    (which React does whenever containerWidth or dpr change) wipes the 2D
+ *    context transform. A second useEffect resets transform and re-applies
+ *    ctx.scale(dpr,dpr) on every dimension change so strokes never paint at
+ *    1× on a dpr× backing store.
+ *  - Theme-aware penColor: useTheme() picks slate-50 (dark) vs slate-900
+ *    (light). signature_pad assigns penColor to ctx.fillStyle/strokeStyle
+ *    directly; the canvas color parser ignores CSS var() and silently
+ *    retains the previous (transparent backgroundColor) value, so the color
+ *    must be a literal. Falls back to --acme if the host has wired a brand
+ *    custom property.
  *  - Min-stroke gate: `!isEmpty && totalPoints >= 5` defends against the
- *    documented #16 single-tap false positive (Pitfall 6).
- *  - Disabled short-circuit (REVIEWS): when disabled === true, handleEnd /
- *    handleClear early-return without emitting; wrapper applies pointer
- *    events: none and visually dims; clear button is disabled.
+ *    documented #16 single-tap false positive.
+ *  - Disabled short-circuit: when disabled === true, handleEnd / handleClear
+ *    early-return without emitting; wrapper applies pointer-events: none and
+ *    visually dims; clear button is disabled.
  *  - touchAction: none on the canvas to keep signature_pad's touch listeners
- *    from fighting page scroll inside its own bounds (Pitfall 4 boundary).
- *  - WR-05 reset effect (Gap 1 fix): guarded by hasMountedRef so it does NOT
- *    fire on initial mount; calls clearAndRescale() so subsequent legitimate
- *    resets re-apply ctx.scale(dpr,dpr) instead of leaving the canvas at 1×
- *    transform. signature_pad.clear() internally calls
- *    ctx.setTransform(1,0,0,1,0,0) and would otherwise wipe the DPR scale,
- *    making strokes paint into the top-left 1/dpr region of the backing
- *    store and rendering them invisible after CSS downscale.
- *  - Plan 14-12 / Gap A re-UAT fix (candidate (c) — canvas mounts with zero
- *    CSS rect inside Radix TabsContent until layout settles): a
- *    ResizeObserver re-applies ctx.scale(dpr,dpr) on the first zero->non-zero
- *    rect transition so strokes paint inside the visible CSS region. If
- *    real-device UAT after this fix does not close UAT Gap A, candidate (e)
- *    (signature_pad pointer-coord math vs dpr-scaled backing store) is the
- *    residual hypothesis — see 14-12-PLAN.md.
+ *    from fighting page scroll inside its own bounds.
+ *  - clearAndRescale: pad.clear() does NOT touch transform (signature_pad@2.x
+ *    only fillStyle/clearRect/fillRect/_reset). The defensive setTransform +
+ *    scale here are idempotent so repeated Clear-button presses cannot
+ *    compound the transform (which surfaced as massively magnified strokes
+ *    in the 14-06 era when scale was applied without a preceding reset).
  */
 
 import { Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
 import { cn } from "@/lib/utils";
@@ -60,8 +65,11 @@ type RawGroup =
 			penColor?: string;
 	  };
 
-const CSS_WIDTH = 600;
+// CSS height is fixed; CSS width is measured from the wrapper container so the
+// canvas fills its parent without overflowing on narrow viewports (sidebars,
+// mobile). The fallback covers SSR / measurement-not-yet-completed edge cases.
 const CSS_HEIGHT = 160;
+const CSS_WIDTH_FALLBACK = 600;
 
 export interface SignatureCanvasPadProps {
 	value: SignaturePayload;
@@ -74,19 +82,65 @@ function getDpr(): number {
 	return Math.max(window.devicePixelRatio ?? 1, 1);
 }
 
+// Canvas 2D's fillStyle/strokeStyle parser does NOT understand CSS var(): if
+// you assign "var(--acme, #0f172a)" the spec mandates the assignment is
+// silently ignored and the previous value (default "rgba(0,0,0,0)" — i.e.
+// transparent) is retained. Strokes then paint in transparent and are
+// invisible in BOTH light and dark mode. Resolve the brand var here at mount
+// so signature_pad receives a literal color string. Per-theme defaults give
+// the strokes contrast against the dark/light pad background.
+const PEN_COLOR_LIGHT_FALLBACK = "#0f172a"; // slate-900 on light bg
+const PEN_COLOR_DARK_FALLBACK = "#f8fafc"; // slate-50 on dark bg
+function resolvePenColor(isDark: boolean): string {
+	const fallback = isDark ? PEN_COLOR_DARK_FALLBACK : PEN_COLOR_LIGHT_FALLBACK;
+	if (typeof window === "undefined") return fallback;
+	const acme = getComputedStyle(document.documentElement)
+		.getPropertyValue("--acme")
+		.trim();
+	return acme || fallback;
+}
+
 export function SignatureCanvasPad({
 	value,
 	onChange,
 	disabled = false,
 }: SignatureCanvasPadProps) {
+	const wrapperRef = useRef<HTMLDivElement | null>(null);
 	const padRef = useRef<SignatureCanvas | null>(null);
 	const hasMountedRef = useRef(false);
+	const { resolvedTheme } = useTheme();
+	const penColor = useMemo(
+		() => resolvePenColor(resolvedTheme === "dark"),
+		[resolvedTheme],
+	);
+
+	// Container-driven sizing. The canvas backing buffer + CSS rect are sized
+	// to the wrapper's clientWidth so the canvas never overflows its parent
+	// (which previously caused strokes to paint past the visible pad on
+	// narrow viewports — UAT-feedback after var() fix). Measurement runs on
+	// mount and on every ResizeObserver fire; updates are gated to non-zero
+	// values so jsdom's "no layout" doesn't clobber the fallback.
+	const [containerWidth, setContainerWidth] = useState<number>(
+		CSS_WIDTH_FALLBACK,
+	);
+	const [dpr, setDpr] = useState<number>(() => getDpr());
 
 	// Shared helper used by both the WR-05 reset effect and handleClear.
-	// signature_pad.clear() internally invokes ctx.setTransform(1,0,0,1,0,0),
-	// wiping the DPR scale applied at mount. Every clear MUST be followed by
-	// a fresh ctx.scale(dpr,dpr) or strokes paint at 1× on a dpr× backing
-	// store and become invisible after CSS downscale (UAT Gap 1).
+	//
+	// CORRECTION to 14-06's premise: inspecting signature_pad@2.3.2 source
+	// (node_modules/signature_pad/dist/signature_pad.js:191-202) confirms
+	// `pad.clear()` only calls fillStyle/clearRect/fillRect/_reset — it does
+	// NOT touch the transform. The original 14-06 fix added an unconditional
+	// `ctx.scale(dpr,dpr)` after `pad.clear()` based on the false assumption
+	// that clear wipes the transform. Each invocation therefore COMPOUNDED the
+	// existing scale (Clear pressed N times → transform = dpr^(N+1)), which
+	// surfaced as massively magnified, misaligned strokes on real devices.
+	//
+	// Fix: reset transform to identity BEFORE re-applying the dpr scale, so
+	// clearAndRescale is idempotent regardless of the existing transform
+	// state. The rescale itself is now defensive (covers the hypothetical
+	// future where signature_pad does start resetting transform on clear),
+	// not load-bearing.
 	const clearAndRescale = useCallback(() => {
 		const pad = padRef.current;
 		if (!pad) return;
@@ -95,72 +149,51 @@ export function SignatureCanvasPad({
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
 		const dpr = getDpr();
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.scale(dpr, dpr);
 	}, []);
 
-	// Manually apply ctx.scale(dpr, dpr) once on mount because the wrapper's
-	// internal _resizeCanvas only calls scale when canvasProps width/height
-	// are unset — we set them to backing-store px to control the bitmap.
-	//
-	// Plan 14-12 / Gap A (candidate (c)): when the canvas mounts inside a
-	// Radix TabsContent that was just revealed (Type->Draw click), the first
-	// paint may happen before layout settles, so getBoundingClientRect()
-	// returns 0x0 and signature_pad's pointer-coord math locks in a
-	// zero-rect frame of reference. The mount-time ctx.scale STILL runs
-	// (so existing tests that probe scale call counts still pass), but
-	// strokes paint outside the visible CSS region. The ResizeObserver
-	// below fires once layout produces a real rect; on the first
-	// zero->non-zero transition we re-apply ctx.scale(dpr,dpr) so the
-	// transform survives any pad-internal setTransform reset that may
-	// have happened during the intervening ticks.
+	// Observe the wrapper container and update containerWidth + dpr on
+	// mount AND on every resize. Container-level (not canvas-level) so the
+	// "TabsContent reveals after layout settles" case (Plan 14-12 candidate
+	// (c)) is handled by the same mechanism as window resizes: the wrapper
+	// gains a non-zero rect → setState → rerender at the right size.
+	useEffect(() => {
+		const wrapper = wrapperRef.current;
+		if (!wrapper) return;
+		const measure = () => {
+			const w = Math.floor(wrapper.clientWidth);
+			const newDpr = getDpr();
+			// Only update when measurement is meaningful — jsdom returns 0
+			// because it does no layout; ignoring zero keeps the
+			// CSS_WIDTH_FALLBACK initial state intact for tests.
+			if (w > 0) {
+				setContainerWidth((prev) => (prev === w ? prev : w));
+			}
+			setDpr((prev) => (prev === newDpr ? prev : newDpr));
+		};
+		measure();
+		if (typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver(measure);
+		ro.observe(wrapper);
+		return () => ro.disconnect();
+	}, []);
+
+	// Re-apply the dpr scale whenever the canvas backing dimensions change.
+	// Setting canvas.width / canvas.height attributes (which React does on
+	// every render of canvasProps with new dimensions) RESETS the canvas
+	// 2D context state — including the transform. Without this effect the
+	// transform stays at identity after a resize, so strokes would paint
+	// at 1× on a dpr× backing store and render shrunk into the top-left.
 	useEffect(() => {
 		const pad = padRef.current;
 		if (!pad) return;
 		const canvas = pad.getCanvas();
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
-		const dpr = getDpr();
-
-		const applyScale = () => {
-			// Reset transform first to avoid compounding scales on
-			// re-application (a previous ctx.scale(dpr,dpr) plus another
-			// would yield dpr^2 on the same backing store).
-			ctx.setTransform(1, 0, 0, 1, 0, 0);
-			ctx.scale(dpr, dpr);
-		};
-
-		// Initial mount: apply scale immediately. If rect is non-zero, this
-		// is sufficient. If rect is zero (mounted inside a freshly-revealed
-		// Radix TabsContent), the ResizeObserver below will re-apply once
-		// layout produces a real rect.
-		applyScale();
-
-		let lastRectIsZero =
-			canvas.getBoundingClientRect().width === 0 ||
-			canvas.getBoundingClientRect().height === 0;
-
-		// Guard against environments without ResizeObserver (older jsdom,
-		// SSR-evaluation hazards).
-		if (typeof ResizeObserver === "undefined") {
-			return;
-		}
-		const ro = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				const w = entry.contentRect.width;
-				const h = entry.contentRect.height;
-				// Re-apply scale ONLY on the zero->non-zero transition.
-				// Subsequent resizes do not change CSS_WIDTH/CSS_HEIGHT
-				// (style is fixed) so the scale need not be re-applied
-				// for them.
-				if (lastRectIsZero && w > 0 && h > 0) {
-					applyScale();
-					lastRectIsZero = false;
-				}
-			}
-		});
-		ro.observe(canvas);
-		return () => ro.disconnect();
-	}, []);
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.scale(dpr, dpr);
+	}, [containerWidth, dpr]);
 
 	// REVIEWS-mandated (WR-05): when the parent resets value to a non-usable
 	// payload (e.g., handleStaleReset on 409, or a force-remount via key),
@@ -237,13 +270,12 @@ export function SignatureCanvasPad({
 		onChange({ mode: "drawn", dataUrl: null, rawData: null, isUsable: false });
 	}, [disabled, onChange, clearAndRescale]);
 
-	const dpr = getDpr();
-
 	return (
 		<div className="space-y-2">
 			<div
+				ref={wrapperRef}
 				className={cn(
-					"rounded-xl border border-border bg-background",
+					"rounded-xl border border-border bg-background overflow-hidden",
 					disabled && "opacity-60",
 				)}
 				style={
@@ -254,16 +286,16 @@ export function SignatureCanvasPad({
 			>
 				<SignatureCanvas
 					ref={padRef}
-					penColor="var(--acme, #0f172a)"
+					penColor={penColor}
 					minWidth={1.5}
 					maxWidth={2.8}
 					velocityFilterWeight={0.7}
 					onEnd={handleEnd}
 					canvasProps={{
-						width: CSS_WIDTH * dpr,
+						width: containerWidth * dpr,
 						height: CSS_HEIGHT * dpr,
 						style: {
-							width: `${CSS_WIDTH}px`,
+							width: `${containerWidth}px`,
 							height: `${CSS_HEIGHT}px`,
 							touchAction: "none",
 							display: "block",

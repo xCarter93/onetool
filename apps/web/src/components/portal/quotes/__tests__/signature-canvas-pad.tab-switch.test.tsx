@@ -29,7 +29,7 @@
 //   does not close UAT Gap A, a follow-up plan opens to investigate (e).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, fireEvent, screen, cleanup } from "@testing-library/react";
+import { act, render, fireEvent, screen, cleanup } from "@testing-library/react";
 import { useState } from "react";
 import * as React from "react";
 import { SignatureCard } from "../signature-card";
@@ -281,64 +281,56 @@ describe("Plan 14-12 / Gap A — tab-switch ResizeObserver re-scale", () => {
 		expect(canvas.height).toBe(160 * 2);
 	});
 
-	it("Case 3 (RED): re-applies ctx.scale on first zero->non-zero rect transition", async () => {
+	it("Case 3: wrapper-level resize triggers state update and re-applies ctx.scale", async () => {
+		// Post-refactor contract: the production component observes the
+		// WRAPPER div (not the canvas) and re-measures its clientWidth on
+		// every resize. When the measurement changes, React re-renders with
+		// new canvasProps width/height — which resets the canvas 2D context
+		// state — and the dimension-keyed useEffect re-applies setTransform
+		// + scale(dpr,dpr). This test pins that contract by mocking
+		// HTMLElement.clientWidth so we can simulate a wrapper resize and
+		// observe the resulting scale call.
 		const { getRecorded } = installCanvasStub();
-		// Force getBoundingClientRect to return 0x0 for the canvas at mount.
-		const origGBCR = HTMLCanvasElement.prototype.getBoundingClientRect;
-		HTMLCanvasElement.prototype.getBoundingClientRect = function () {
-			return {
-				x: 0,
-				y: 0,
-				width: 0,
-				height: 0,
-				top: 0,
-				right: 0,
-				bottom: 0,
-				left: 0,
-				toJSON: () => ({}),
-			} as DOMRect;
-		};
+		let mockClientWidth = 600;
+		const origClientWidth = Object.getOwnPropertyDescriptor(
+			HTMLElement.prototype,
+			"clientWidth",
+		);
+		Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+			configurable: true,
+			get() {
+				return mockClientWidth;
+			},
+		});
 		try {
 			render(<Harness />);
 			clickDrawTab();
 			await screen.findByRole("img", { name: /Draw your signature/i });
 
 			const beforeCount = getRecorded().scaleCalls.length;
-			expect(beforeCount).toBeGreaterThanOrEqual(1); // baseline: mount applied scale once
+			expect(beforeCount).toBeGreaterThanOrEqual(1); // baseline: mount applied scale
 
-			// Simulate layout settling: rect is now non-zero, ResizeObserver fires.
+			// Simulate layout change (e.g., container narrows from 600 → 400).
 			expect(resizeObserverCallbacks.length).toBeGreaterThanOrEqual(1);
-			const cb = resizeObserverCallbacks[0];
-			// Restore real GBCR so the production code's check sees non-zero.
-			HTMLCanvasElement.prototype.getBoundingClientRect = origGBCR;
-			cb(
-				[
-					{
-						contentRect: {
-							width: 600,
-							height: 160,
-							top: 0,
-							left: 0,
-							bottom: 160,
-							right: 600,
-							x: 0,
-							y: 0,
-							toJSON: () => ({}),
-						} as DOMRectReadOnly,
-						target: {} as Element,
-						borderBoxSize: [],
-						contentBoxSize: [],
-						devicePixelContentBoxSize: [],
-					} as ResizeObserverEntry,
-				],
-				{} as ResizeObserver,
-			);
+			const cb = resizeObserverCallbacks[resizeObserverCallbacks.length - 1];
+			act(() => {
+				mockClientWidth = 400;
+				cb([], {} as ResizeObserver);
+			});
 
 			const afterCount = getRecorded().scaleCalls.length;
-			// RED on current code: no ResizeObserver wired in production.
 			expect(afterCount).toBeGreaterThan(beforeCount);
 		} finally {
-			HTMLCanvasElement.prototype.getBoundingClientRect = origGBCR;
+			if (origClientWidth) {
+				Object.defineProperty(
+					HTMLElement.prototype,
+					"clientWidth",
+					origClientWidth,
+				);
+			} else {
+				delete (HTMLElement.prototype as { clientWidth?: unknown })
+					.clientWidth;
+			}
 		}
 	});
 });
