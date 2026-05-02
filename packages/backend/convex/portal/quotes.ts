@@ -406,12 +406,25 @@ export const _preflightApproval = internalQuery({
 				sortOrder: li.sortOrder,
 			}));
 
+		// Plan 14-14 / CodeRabbit Finding 6 parity: stored quote.subtotal/
+		// taxAmount/total are NOT maintained on every line-item edit (see Plan
+		// 14-09), so they can diverge from what get()/list() displayed to the
+		// portal client. The decline path recomputes via calculateQuoteTotals
+		// before snapshotting; mirror that here so the approve audit row
+		// records the same numbers the client actually saw at decision time.
+		const recomputedTotals = await calculateQuoteTotals(ctx, args.quoteId, {
+			discountEnabled: quote.discountEnabled,
+			discountAmount: quote.discountAmount,
+			discountType: quote.discountType,
+			taxEnabled: quote.taxEnabled,
+			taxRate: quote.taxRate,
+		});
 		return {
 			documentVersion: document.version,
 			lineItemsSnapshot,
-			subtotal: quote.subtotal,
-			taxAmount: quote.taxAmount ?? 0,
-			total: quote.total,
+			subtotal: recomputedTotals.subtotal,
+			taxAmount: recomputedTotals.taxAmount,
+			total: recomputedTotals.total,
 			terms: quote.terms,
 			clientCompanyName: client.companyName ?? "Unknown",
 		};

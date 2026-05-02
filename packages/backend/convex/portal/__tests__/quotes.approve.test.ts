@@ -132,6 +132,11 @@ async function seedQuoteWithDoc(
 			subtotal: 100,
 			taxAmount: 10,
 			total: 110,
+			// _preflightApproval now recomputes via calculateQuoteTotals (Greptile
+			// PR #188 P1 fix). Set tax flags so recompute produces (100, 10, 110)
+			// — matches stored stale values and keeps assertions stable.
+			taxEnabled: true,
+			taxRate: 10,
 			sentAt: Date.now(),
 			terms: "net 30",
 		});
