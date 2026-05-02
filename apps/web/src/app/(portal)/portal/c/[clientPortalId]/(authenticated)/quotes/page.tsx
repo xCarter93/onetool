@@ -2,6 +2,7 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { notFound } from "next/navigation";
 
+import { PortalContainer } from "@/components/portal/portal-container";
 import { QuoteList } from "@/components/portal/quotes/quote-list";
 
 export default async function QuotesPage({
@@ -18,5 +19,9 @@ export default async function QuotesPage({
 		return null;
 	}
 
-	return <QuoteList businessName={branding.name} />;
+	return (
+		<PortalContainer width="list">
+			<QuoteList businessName={branding.name} />
+		</PortalContainer>
+	);
 }

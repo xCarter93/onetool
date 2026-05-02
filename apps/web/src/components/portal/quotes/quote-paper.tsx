@@ -43,7 +43,7 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 	const total = quote.total ?? 0;
 
 	return (
-		<div className="rounded-2xl border border-border bg-card shadow-xs p-9 max-w-[720px]">
+		<div className="mx-auto max-w-[760px] rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">
 			<div className="flex items-start justify-between gap-6">
 				<div>
 					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">

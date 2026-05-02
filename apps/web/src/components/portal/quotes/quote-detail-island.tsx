@@ -40,14 +40,14 @@ function formatDate(ts?: number): string {
 function pillClassFor(status: string): string {
 	switch (status) {
 		case "approved":
-			return "bg-emerald-50 text-emerald-700 border-emerald-200";
+			return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900";
 		case "declined":
 			return "bg-muted text-muted-foreground border-border";
 		case "expired":
 			return "bg-muted/70 text-muted-foreground border-border opacity-90";
 		case "sent":
 		default:
-			return "bg-sky-50 text-sky-700 border-sky-200";
+			return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900";
 	}
 }
 
@@ -93,23 +93,27 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	// Loading
 	if (data === undefined) {
 		return (
-			<div className="max-w-5xl">
-				<div className="h-8 w-32 bg-muted rounded animate-pulse" />
-				<div className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6">
-					<div className="rounded-2xl border border-border bg-card p-9">
-						<div className="h-8 w-1/2 bg-muted rounded animate-pulse" />
-						<div className="mt-4 space-y-2">
-							{Array.from({ length: 4 }).map((_, i) => (
-								<div
-									key={i}
-									className="h-6 w-full bg-muted rounded animate-pulse"
-								/>
-							))}
+			<div className="-mx-6 md:-mx-9 -my-6 flex flex-col">
+				<div className="sticky top-0 z-20 flex h-[68px] items-center border-b border-border bg-background px-6">
+					<div className="h-5 w-32 animate-pulse rounded bg-muted" />
+				</div>
+				<div className="grid grid-cols-1 gap-0 md:grid-cols-[minmax(0,1fr)_480px]">
+					<div className="px-6 py-8 md:px-9">
+						<div className="mx-auto max-w-[760px] rounded-2xl border border-border bg-card p-9">
+							<div className="h-8 w-1/2 animate-pulse rounded bg-muted" />
+							<div className="mt-6 space-y-2">
+								{Array.from({ length: 4 }).map((_, i) => (
+									<div
+										key={i}
+										className="h-6 w-full animate-pulse rounded bg-muted"
+									/>
+								))}
+							</div>
 						</div>
 					</div>
-					<div className="rounded-2xl border border-border bg-card p-6">
-						<div className="h-12 w-32 bg-muted rounded animate-pulse" />
-						<div className="mt-4 h-40 w-full bg-muted rounded animate-pulse" />
+					<div className="border-l border-border bg-card p-6 md:min-h-[calc(100vh-68px)]">
+						<div className="h-12 w-32 animate-pulse rounded bg-muted" />
+						<div className="mt-4 h-40 w-full animate-pulse rounded bg-muted" />
 					</div>
 				</div>
 			</div>
@@ -119,7 +123,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	// Missing
 	if (data === null) {
 		return (
-			<div className="max-w-2xl py-12 text-center">
+			<div className="mx-auto max-w-2xl py-12 text-center">
 				<h1 className="text-[24px] font-semibold">Quote not found</h1>
 				<p className="mt-2 text-muted-foreground">
 					This quote may have been removed or you no longer have access.
@@ -188,21 +192,24 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 			: undefined;
 
 	return (
-		<div className="max-w-5xl">
-			{/* Sticky header */}
-			<header className="flex items-center justify-between gap-4 pb-6 border-b border-border">
-				<div className="flex items-center gap-3">
+		// Negative margins to escape the PortalShell <main> px/py padding so the
+		// sticky header bar and right-rail aside can run edge-to-edge of the main
+		// area on desktop, matching the HiFi 2-col workspace pattern.
+		<div className="-mx-6 md:-mx-9 -my-6 flex flex-col">
+			{/* Sticky top header bar */}
+			<header className="sticky top-0 z-20 flex h-[68px] items-center justify-between gap-4 border-b border-border bg-background px-6 md:px-9">
+				<div className="flex min-w-0 items-center gap-3">
 					<Link
 						href={`/portal/c/${clientPortalId}/quotes`}
-						className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+						className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
 					>
 						<ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
 						Back
 					</Link>
-					<div className="h-5 w-px bg-border" />
-					<div>
+					<div className="hidden h-5 w-px bg-border md:block" />
+					<div className="hidden min-w-0 md:block">
 						<div className="flex items-center gap-2">
-							<h2 className="text-[16px] font-semibold">
+							<h2 className="truncate text-[16px] font-semibold">
 								Quote {quote.quoteNumber} · {quote.title}
 							</h2>
 							<span
@@ -212,7 +219,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 								{pillLabelFor(quote.status)}
 							</span>
 						</div>
-						<p className="text-[12px] text-muted-foreground mt-0.5">
+						<p className="mt-0.5 text-[12px] text-muted-foreground">
 							Sent {formatDate(quote.sentAt)}
 							{quote.validUntil
 								? ` · Expires ${formatDate(quote.validUntil)}`
@@ -222,20 +229,40 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 				</div>
 			</header>
 
+			{/* Mobile-only title block (the desktop title sits in the sticky bar) */}
+			<div className="border-b border-border bg-background px-6 py-4 md:hidden">
+				<div className="flex flex-wrap items-center gap-2">
+					<h2 className="text-[16px] font-semibold">
+						Quote {quote.quoteNumber} · {quote.title}
+					</h2>
+					<span
+						className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${pillClassFor(quote.status)}`}
+					>
+						<span className="h-1.5 w-1.5 rounded-full bg-current" />
+						{pillLabelFor(quote.status)}
+					</span>
+				</div>
+				<p className="mt-1 text-[12px] text-muted-foreground">
+					Sent {formatDate(quote.sentAt)}
+					{quote.validUntil
+						? ` · Expires ${formatDate(quote.validUntil)}`
+						: ""}
+				</p>
+			</div>
+
 			{documentDrifted && (
-				<div className="mt-4">
+				<div className="border-b border-border bg-background px-6 py-4 md:px-9">
 					<StaleVersionBanner
 						onReload={() => {
-							// The Convex reactive subscription has already updated. Re-pin
-							// to the new id so the banner clears.
 							setPinnedDocumentId(latestDocument?._id ?? null);
 						}}
 					/>
 				</div>
 			)}
 
-			<div className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6 pb-24 md:pb-6">
-				<div>
+			{/* Body grid: paper left, signing rail right */}
+			<div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_480px]">
+				<div className="px-6 py-8 pb-24 md:px-9 md:pb-10">
 					<QuotePaper
 						quote={quote}
 						lineItems={lineItems}

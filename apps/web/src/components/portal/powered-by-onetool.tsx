@@ -8,7 +8,7 @@ export function PoweredByOneTool({
 	className?: string;
 	size?: "default" | "compact";
 }) {
-	const dim = size === "compact" ? 48 : 80;
+	const dim = size === "compact" ? 64 : 112;
 	return (
 		<div
 			className={`flex items-center gap-2.5 text-[13px] text-muted-foreground ${className}`}
@@ -19,6 +19,7 @@ export function PoweredByOneTool({
 				alt=""
 				width={dim}
 				height={dim}
+				className="dark:brightness-0 dark:invert"
 				aria-hidden="true"
 			/>
 			<span className="font-medium">Powered by OneTool</span>
