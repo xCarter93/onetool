@@ -135,7 +135,7 @@ describe("portal sessions", () => {
 				tokenJti: jti,
 				newExpiresAt: Date.now() + 1000,
 			})
-		).rejects.toThrow(/Wrong auth domain/);
+		).rejects.toThrow(/UNAUTHENTICATED/);
 	});
 
 	it("throws when audience is not in {convex-portal, convex-portal-access}", async () => {
@@ -151,7 +151,7 @@ describe("portal sessions", () => {
 				tokenJti: jti,
 				newExpiresAt: Date.now() + 1000,
 			})
-		).rejects.toThrow(/Wrong audience/);
+		).rejects.toThrow(/UNAUTHENTICATED/);
 	});
 
 	it("throws when no portalSessions row exists for the JWT's jti", async () => {
@@ -165,7 +165,7 @@ describe("portal sessions", () => {
 				tokenJti: "non-existent-jti",
 				newExpiresAt: Date.now() + 1000,
 			})
-		).rejects.toThrow(/Session revoked or expired/);
+		).rejects.toThrow(/UNAUTHENTICATED/);
 	});
 
 	it("throws when the portalSessions row is expired even if JWT is otherwise valid", async () => {
@@ -179,7 +179,7 @@ describe("portal sessions", () => {
 				tokenJti: jti,
 				newExpiresAt: Date.now() + 1000,
 			})
-		).rejects.toThrow(/Session revoked or expired/);
+		).rejects.toThrow(/UNAUTHENTICATED/);
 	});
 
 	it("throws when JWT claims do not match the portalSessions row (orgId mismatch)", async () => {
@@ -203,7 +203,7 @@ describe("portal sessions", () => {
 				tokenJti: jti,
 				newExpiresAt: Date.now() + 1000,
 			})
-		).rejects.toThrow(/integrity check failed/);
+		).rejects.toThrow(/UNAUTHENTICATED/);
 	});
 
 	it("touchSession rejects when caller jti != target jti", async () => {

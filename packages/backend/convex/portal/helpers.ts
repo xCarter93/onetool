@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
@@ -50,13 +51,13 @@ export async function getPortalSessionOrThrow(
 	ctx: QueryCtx | MutationCtx
 ): Promise<PortalSession> {
 	const identity = await ctx.auth.getUserIdentity();
-	if (!identity) throw new Error("Portal not authenticated");
+	if (!identity) throw new ConvexError({ code: "UNAUTHENTICATED" });
 
 	const claims = identity as unknown as IdentityWithPortalClaims;
 
 	const expectedIssuer = process.env.PORTAL_JWT_ISSUER;
 	if (!expectedIssuer || claims.issuer !== expectedIssuer) {
-		throw new Error("Wrong auth domain — this function is portal-only");
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
 	// [Review fix #4] Audience guard — Convex's customJwt provider already
@@ -70,7 +71,7 @@ export async function getPortalSessionOrThrow(
 	if (aud !== undefined && aud !== null) {
 		const audValues = Array.isArray(aud) ? aud : [aud];
 		if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
-			throw new Error("Wrong audience — token not minted for portal");
+			throw new ConvexError({ code: "UNAUTHENTICATED" });
 		}
 	}
 
@@ -83,7 +84,7 @@ export async function getPortalSessionOrThrow(
 	const tokenJti = claims.sessionJti ?? claims.jti;
 
 	if (!orgId || !clientContactId || !clientPortalId || !tokenJti) {
-		throw new Error("Malformed portal session");
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
 	// [Review fix #2] DB-side revocation check. Look up the portalSessions row
@@ -94,10 +95,10 @@ export async function getPortalSessionOrThrow(
 		.withIndex("by_jti", (q) => q.eq("tokenJti", tokenJti))
 		.unique();
 	if (!row) {
-		throw new Error("Session revoked or expired");
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 	if (row.expiresAt < Date.now()) {
-		throw new Error("Session revoked or expired");
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 	if (
 		row.orgId !== (orgId as Id<"organizations">) ||
@@ -106,7 +107,7 @@ export async function getPortalSessionOrThrow(
 	) {
 		// Mismatched JWT claims vs DB row — possible token forgery or
 		// cross-portal jti collision.
-		throw new Error("Session integrity check failed");
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
 	return {

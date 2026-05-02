@@ -32,4 +32,18 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: HOUR,
 		capacity: 30,
 	},
+
+	// Phase 14: limit per-session approval/decline submits.
+	portalQuoteApprove: {
+		kind: "token bucket",
+		rate: 5,
+		period: 10 * MINUTE,
+		capacity: 5,
+	},
+	portalQuoteDecline: {
+		kind: "token bucket",
+		rate: 5,
+		period: 10 * MINUTE,
+		capacity: 5,
+	},
 });

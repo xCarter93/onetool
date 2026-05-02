@@ -1,0 +1,11 @@
+/*
+ * Portal-only typography assets (Caveat for typed-signature canvas rendering).
+ *
+ * Imported from apps/web/src/app/layout.tsx (root layout) per Next.js 16
+ * global-CSS rules: global stylesheets must live at the root layout or be
+ * converted to CSS Modules. The Caveat font is ~30KB woff2 and only renders
+ * for portal users when the typed-signature canvas runs, so root-load is
+ * acceptable. See Plan 14-03 Task 1.
+ */
+@import "@fontsource/caveat/400.css";
+@import "@fontsource/caveat/600.css";

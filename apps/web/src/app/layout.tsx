@@ -3,6 +3,9 @@ import { Outfit } from "next/font/google";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { ToastProvider } from "@/hooks/use-toast";
 import "./globals.css";
+// Portal-only font assets (Caveat for typed-signature canvas rendering).
+// Next.js 16 requires global CSS imports at the root layout. See Plan 14-03.
+import "@/styles/portal-fonts.css";
 
 const outfit = Outfit({
 	variable: "--font-outfit",
