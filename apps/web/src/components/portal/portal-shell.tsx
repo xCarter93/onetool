@@ -7,6 +7,10 @@ import { FileText, ReceiptText, LogOut } from "lucide-react";
 import { BrandHeader } from "./brand-header";
 import { PoweredByOneTool } from "./powered-by-onetool";
 import { MobileTabBar } from "./mobile-tab-bar";
+import {
+	PortalThemeSwitcher,
+	PortalThemeIconButton,
+} from "./portal-theme-switcher";
 
 const NAV_ITEMS = [
 	{ key: "quotes", label: "Quotes", icon: FileText, segment: "quotes" },
@@ -67,10 +71,13 @@ export function PortalShell({
 
 			{/* Desktop sidebar (>=768px) */}
 			<aside
-				className="hidden md:flex md:w-[260px] md:flex-col bg-sidebar border-r border-border"
+				className="hidden md:flex md:w-[280px] md:flex-col bg-sidebar border-r border-border"
 				aria-label="Portal navigation"
 			>
-				<div className="px-5 pt-6 pb-5">
+				<div className="px-3 pt-4 pb-3 border-b border-border">
+					<PortalThemeSwitcher />
+				</div>
+				<div className="px-5 pt-5 pb-5">
 					<BrandHeader
 						logoUrl={logoUrl}
 						businessName={businessName}
@@ -86,13 +93,19 @@ export function PortalShell({
 							<Link
 								key={key}
 								href={href}
-								className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+								className={`relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
 									active
 										? "bg-primary/10 text-primary font-semibold"
 										: "text-muted-foreground font-medium hover:bg-muted hover:text-foreground"
 								}`}
 								aria-current={active ? "page" : undefined}
 							>
+								{active && (
+									<span
+										aria-hidden="true"
+										className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-primary"
+									/>
+								)}
 								<Icon
 									className={`h-[18px] w-[18px] ${active ? "" : "opacity-80"}`}
 									aria-hidden="true"
@@ -102,7 +115,7 @@ export function PortalShell({
 						);
 					})}
 				</nav>
-				<div className="px-3 pb-3">
+				<div className="px-3 pb-3 pt-2">
 					<button
 						type="button"
 						onClick={handleSignOut}
@@ -119,12 +132,13 @@ export function PortalShell({
 			</aside>
 
 			{/* Mobile brand header (<768px) */}
-			<header className="md:hidden sticky top-0 z-30 bg-card border-b border-border h-14 px-4 flex items-center">
+			<header className="md:hidden sticky top-0 z-30 bg-card border-b border-border h-14 px-4 flex items-center justify-between">
 				<BrandHeader
 					logoUrl={logoUrl}
 					businessName={businessName}
 					logoInvertInDarkMode={logoInvertInDarkMode}
 				/>
+				<PortalThemeIconButton />
 			</header>
 
 			<main

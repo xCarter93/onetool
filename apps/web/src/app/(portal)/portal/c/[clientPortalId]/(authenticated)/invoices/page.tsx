@@ -3,6 +3,9 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { notFound } from "next/navigation";
 import { Check, Mail } from "lucide-react";
 
+import { PortalContainer } from "@/components/portal/portal-container";
+import { PortalContactPanel } from "@/components/portal/portal-contact-panel";
+
 export default async function InvoicesPlaceholderPage({
 	params,
 }: {
@@ -16,6 +19,7 @@ export default async function InvoicesPlaceholderPage({
 		notFound();
 		return null;
 	}
+	void clientPortalId;
 
 	const features: Array<[string, string]> = [
 		[
@@ -33,49 +37,75 @@ export default async function InvoicesPlaceholderPage({
 	];
 
 	return (
-		<div className="max-w-2xl">
-			<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-				Coming soon
-			</p>
-			<h1 className="mt-3 text-[36px] font-semibold leading-[1.1] tracking-[-0.02em]">
-				Invoices
-			</h1>
-			<p className="mt-4 text-[15px] leading-relaxed text-muted-foreground">
-				{branding.name} will start sending invoices here so you can review and
-				pay them without picking up the phone or printing a check.
-			</p>
+		<PortalContainer width="prose">
+			<div className="grid grid-cols-1 gap-12 md:grid-cols-[minmax(0,1fr)_320px] md:gap-14">
+				{/* Prose column */}
+				<div className="max-w-xl">
+					<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+						Coming soon
+					</p>
+					<h1 className="mt-3 text-[40px] font-semibold leading-[1.05] tracking-[-0.02em]">
+						Invoices
+					</h1>
+					<p className="mt-5 text-[15px] leading-relaxed text-muted-foreground">
+						{branding.name} will start sending invoices here so you can review
+						and pay them without picking up the phone or printing a check.
+					</p>
 
-			<ul className="mt-10 flex flex-col gap-5">
-				{features.map(([title, desc]) => (
-					<li key={title} className="flex items-start gap-3">
-						<span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
-							<Check
-								className="h-3 w-3 text-primary"
+					<ul className="mt-10 flex flex-col gap-6">
+						{features.map(([title, desc]) => (
+							<li key={title} className="flex items-start gap-3">
+								<span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary/10">
+									<Check
+										className="h-3 w-3 text-primary"
+										aria-hidden="true"
+										strokeWidth={3}
+									/>
+								</span>
+								<div>
+									<p className="text-[14.5px] font-medium text-foreground">
+										{title}
+									</p>
+									<p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+										{desc}
+									</p>
+								</div>
+							</li>
+						))}
+					</ul>
+				</div>
+
+				{/* Right rail */}
+				<div className="flex flex-col gap-10 md:gap-12">
+					<section
+						aria-label="What stays the same"
+						className="flex flex-col gap-3"
+					>
+						<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+							While you wait
+						</p>
+						<div className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground">
+							<Mail
+								className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
 								aria-hidden="true"
-								strokeWidth={3}
 							/>
-						</span>
-						<div>
-							<p className="text-[14.5px] font-medium text-foreground">
-								{title}
-							</p>
-							<p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-								{desc}
+							<p>
+								Until invoices land here,{" "}
+								<span className="font-medium text-foreground">
+									{branding.name}
+								</span>{" "}
+								will continue to send them via email — exactly as they do today.
 							</p>
 						</div>
-					</li>
-				))}
-			</ul>
+					</section>
 
-			<div className="mt-12 flex items-start gap-3 rounded-xl bg-muted/50 px-5 py-4">
-				<Mail
-					className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-					aria-hidden="true"
-				/>
-				<p className="text-sm leading-relaxed text-muted-foreground">
-					Until then, {branding.name} will continue to send invoices via email.
-				</p>
+					<PortalContactPanel
+						logoUrl={branding.logoUrl}
+						businessName={branding.name}
+						logoInvertInDarkMode={branding.logoInvertInDarkMode}
+					/>
+				</div>
 			</div>
-		</div>
+		</PortalContainer>
 	);
 }

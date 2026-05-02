@@ -18,7 +18,7 @@
  * a usable payload so RTL tests don't have to drive the canvas.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 
 import {
@@ -211,20 +211,20 @@ export function ApprovalRail({
 
 	return (
 		<aside
-			className="w-full lg:w-[380px] lg:sticky lg:top-6 self-start"
+			className="w-full self-start border-l-0 border-t border-border bg-card md:border-l md:border-t-0 md:sticky md:top-[68px] md:h-[calc(100vh-68px)] md:overflow-y-auto"
 			aria-label="Quote approval"
 		>
-			<div className="rounded-2xl border border-border bg-card p-6 flex flex-col gap-5">
-				{/* Quote total */}
-				<div>
-					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+			<div className="flex flex-col gap-8 p-6 md:gap-9 md:p-7">
+				{/* Quote total — flat top section */}
+				<div className="border-b border-border pb-6">
+					<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
 						Quote total
 					</p>
-					<p className="mt-1 text-[36px] font-semibold tracking-[-0.025em] leading-[1] tabular-nums">
+					<p className="mt-2 text-[36px] font-semibold tracking-[-0.025em] leading-[1] tabular-nums">
 						{formatMoney(quote.total)}
 					</p>
 					{expiresLine && (
-						<p className="mt-1 text-[13px] text-muted-foreground">
+						<p className="mt-2 text-[13px] text-muted-foreground">
 							{expiresLine}
 						</p>
 					)}
@@ -266,17 +266,22 @@ export function ApprovalRail({
 								/>
 							)}
 
-						{/* Signature card (skipped under test seam) */}
+						{/* Signing surface — single glass-card exception per redesign spec */}
 						{_testInitialSignature ? null : (
-							<div>
-								<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-2">
-									Sign to accept
-								</p>
-								<SignatureCard
-									value={signaturePayload}
-									onChange={setSignaturePayload}
-									disabled={submitting || isCooldownActive}
-								/>
+							<div className="group relative overflow-hidden rounded-2xl bg-primary/5 ring-1 ring-primary/20 backdrop-blur-md dark:bg-primary/10 dark:ring-primary/30">
+								<div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/[0.02] dark:to-transparent" />
+								<div className="relative z-10 p-5">
+									<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+										Sign to accept
+									</p>
+									<div className="mt-3">
+										<SignatureCard
+											value={signaturePayload}
+											onChange={setSignaturePayload}
+											disabled={submitting || isCooldownActive}
+										/>
+									</div>
+								</div>
 							</div>
 						)}
 
@@ -293,7 +298,7 @@ export function ApprovalRail({
 						</label>
 
 						{signaturePayload.mode === "typed" && (
-							<label className="flex items-start gap-2 text-[12px] cursor-pointer text-muted-foreground">
+							<label className="flex items-start gap-2 text-[12px] cursor-pointer text-muted-foreground leading-relaxed">
 								<input
 									type="checkbox"
 									aria-label="By typing my name and clicking Approve, I am signing this quote electronically. I agree that my electronic signature is the legal equivalent of my manual signature on this quote."
@@ -310,30 +315,32 @@ export function ApprovalRail({
 							</label>
 						)}
 
-						<button
-							type="button"
-							onClick={handleApprove}
-							disabled={!canApprove}
-							aria-busy={submitting}
-							aria-label="Approve quote"
-							className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-3 text-[14px] font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-						>
-							{submitting ? (
-								<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-							) : (
-								<Check className="h-3.5 w-3.5" aria-hidden="true" />
-							)}
-							{submitting ? "Approving…" : "Approve quote"}
-						</button>
+						<div className="mt-1 flex flex-col gap-2">
+							<button
+								type="button"
+								onClick={handleApprove}
+								disabled={!canApprove}
+								aria-busy={submitting}
+								aria-label="Approve quote"
+								className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								{submitting ? (
+									<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+								) : (
+									<Check className="h-3.5 w-3.5" aria-hidden="true" />
+								)}
+								{submitting ? "Approving…" : "Approve quote"}
+							</button>
 
-						<button
-							type="button"
-							onClick={() => setDeclineOpen(true)}
-							disabled={submitting}
-							className="w-full text-[13px] text-muted-foreground hover:text-foreground py-1"
-						>
-							Decline this quote
-						</button>
+							<button
+								type="button"
+								onClick={() => setDeclineOpen(true)}
+								disabled={submitting}
+								className="w-full py-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+							>
+								Decline this quote
+							</button>
+						</div>
 					</>
 				)}
 

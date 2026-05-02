@@ -23,8 +23,9 @@ export default async function SignedOutPage({
 					<Image
 						src="/OneTool.png"
 						alt=""
-						width={20}
-						height={20}
+						width={32}
+						height={32}
+						className="dark:brightness-0 dark:invert"
 						aria-hidden="true"
 					/>
 					<span className="text-sm font-semibold">OneTool</span>

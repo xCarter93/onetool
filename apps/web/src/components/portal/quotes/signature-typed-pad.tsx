@@ -89,8 +89,8 @@ export function SignatureTypedPad({
 		!(value.mode === "typed" && value.isUsable && value.rawData.typedName === typed.trim());
 
 	return (
-		<div className="space-y-3">
-			<div>
+		<div className="space-y-4">
+			<div className="space-y-2">
 				<Label htmlFor="typed-signature-input" className="text-xs">
 					Type your full legal name as your electronic signature
 				</Label>
