@@ -46,6 +46,7 @@ import { getPortalSessionOrThrow } from "./helpers";
 import { rateLimiter } from "../rateLimits";
 import { emitStatusChangeEvent } from "../eventBus";
 import { ActivityHelpers } from "../lib/activities";
+import { AggregateHelpers } from "../lib/aggregates";
 import { calculateQuoteTotals } from "../lib/quoteTotals";
 
 // ---------------------------------------------------------------------------
@@ -617,7 +618,8 @@ export const _commitApproval = internalMutation({
 		//    workspace `quotes.update` does this; we mirror it here.
 		const updatedQuote = await ctx.db.get(args.quoteId);
 		if (updatedQuote) {
-			const { AggregateHelpers } = await import("../lib/aggregates");
+			// Static import at the top of file — Convex's V8 isolate disallows
+			// dynamic import() at runtime.
 			await AggregateHelpers.updateQuote(
 				ctx,
 				quote as Doc<"quotes">,
@@ -708,14 +710,21 @@ export const approve = action({
 		if (!match) {
 			throw new ConvexError({ code: "INVALID_SIGNATURE_FORMAT" });
 		}
-		// REVIEWS-mandated: Buffer.from is Convex-compatible; the browser-only
-		// base64 builtin is forbidden in Convex runtimes.
-		const bytes = Buffer.from(match[1]!, "base64");
+		// CORRECTION to prior comment: Convex's default V8 isolate runtime does
+		// NOT expose Node's `Buffer` (only "use node" actions do). This file
+		// must stay isolate-runtime because it also exports queries +
+		// mutations. Use the web-standard `atob` + `Uint8Array` to decode the
+		// base64 payload — both are available in the Convex isolate.
+		const binary = atob(match[1]!);
+		const bytes = new Uint8Array(binary.length);
+		for (let i = 0; i < binary.length; i++) {
+			bytes[i] = binary.charCodeAt(i);
+		}
 		if (bytes.byteLength > 256_000) {
 			throw new ConvexError({ code: "SIGNATURE_TOO_LARGE" });
 		}
 		// 5. Store signature blob (only after all preflight checks succeed).
-		const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+		const blob = new Blob([bytes], { type: "image/png" });
 		const signatureStorageId: Id<"_storage"> = await ctx.storage.store(blob);
 
 		// 6. Atomic commit. If it throws (e.g., racing republish bumped the
@@ -906,7 +915,8 @@ export const decline = mutation({
 		// when status/approvedAt/total changed; status changed here).
 		const updatedQuote = await ctx.db.get(args.quoteId);
 		if (updatedQuote) {
-			const { AggregateHelpers } = await import("../lib/aggregates");
+			// Static import at the top of file — Convex's V8 isolate disallows
+			// dynamic import() at runtime.
 			await AggregateHelpers.updateQuote(
 				ctx,
 				quote as Doc<"quotes">,

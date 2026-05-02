@@ -104,6 +104,17 @@ export async function signSessionJwt(
 		orgId: claims.orgId,
 		clientContactId: claims.clientContactId,
 		clientPortalId: claims.clientPortalId,
+		// Convex's customJwt provider surfaces ONLY custom payload claims on
+		// UserIdentity — standard JWT envelope claims like `jti` (set via
+		// .setJti below) are NOT exposed. Without this duplicate as a custom
+		// claim, getPortalSessionOrThrow's `claims.sessionJti ?? claims.jti`
+		// resolves to undefined for cookie JWTs, breaking every action /
+		// mutation that authenticates with the cookie token (approve, decline,
+		// etc.). The access token already mints `sessionJti` for the same
+		// reason; cookie JWTs must do likewise. The standard envelope `jti` is
+		// also retained below for any downstream tooling (logs, replay
+		// detection) that inspects the raw JWT.
+		sessionJti: jti,
 	})
 		.setProtectedHeader({ alg: ALG, typ: "JWT", kid: getSigningKid() })
 		.setSubject(claims.clientContactId)
