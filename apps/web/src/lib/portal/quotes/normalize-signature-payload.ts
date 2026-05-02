@@ -12,7 +12,12 @@ export const approveBodySchema = z.object({
 	signatureBase64: z
 		.string()
 		.regex(/^data:image\/png;base64,/, "PNG required")
-		.max(350_000),
+		// Backend strips the 22-char `data:image/png;base64,` prefix and rejects
+		// decoded payloads > 256_000 bytes. Tightest schema cap that still
+		// accepts every payload the backend accepts: 22 + ceil(256_000/3)*4 =
+		// 341_358. Anything longer is guaranteed to fail SIGNATURE_TOO_LARGE,
+		// so reject at the route boundary instead of round-tripping to Convex.
+		.max(341_358),
 	signatureRawData: z.string().max(200_000),
 	termsAccepted: z.literal(true),
 	intentAffirmed: z.boolean().optional(),

@@ -836,7 +836,26 @@ export const decline = mutation({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		if (quote.latestDocumentId !== args.expectedDocumentId) {
+		// Plan 14-13 / Gap B parity: mirror the approve-path relaxation so
+		// quotes generated via non-BoldSign paths (where `latestDocumentId` is
+		// unset) can be declined as well as approved. Without this, a portal
+		// client sees the same quote as approvable but undeclinable. Strict
+		// mismatch only counts as STALE when the quote has a pinned id that
+		// differs from what the portal sent (the racing-republish defense).
+		if (quote.latestDocumentId == null) {
+			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
+			if (
+				!fallbackDoc ||
+				fallbackDoc.orgId !== session.orgId ||
+				fallbackDoc.documentType !== "quote" ||
+				fallbackDoc.documentId !== args.quoteId
+			) {
+				throw new ConvexError({
+					code: "QUOTE_VERSION_STALE",
+					latestDocumentId: quote.latestDocumentId,
+				});
+			}
+		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
 			throw new ConvexError({
 				code: "QUOTE_VERSION_STALE",
 				latestDocumentId: quote.latestDocumentId,
