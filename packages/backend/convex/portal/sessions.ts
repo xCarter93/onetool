@@ -4,14 +4,6 @@ import { getPortalSessionOrThrow } from "./helpers";
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
-/**
- * [Review fix #5] internalMutation — only callable from Convex internal
- * references. Plan 03's verifyOtp action invokes this via
- * `ctx.runMutation(internal.portal.sessions.createSession, ...)` after
- * validating OTP correctness. The Next.js route handler never invokes
- * createSession directly; instead it invokes verifyOtp (an action), which
- * atomically validates the code AND creates the session.
- */
 export const createSession = internalMutation({
 	args: {
 		orgId: v.id("organizations"),
@@ -40,11 +32,7 @@ export const createSession = internalMutation({
 	},
 });
 
-/**
- * Public-friendly query — used by getPortalSessionOrThrow and (when needed)
- * by other code paths. Read-only and bounded to a single jti, so exposing it
- * publicly does not enable enumeration.
- */
+/** Read-only session lookup by jti. */
 export const getActiveSessionByJti = query({
 	args: { tokenJti: v.string() },
 	handler: async (ctx, { tokenJti }) => {
@@ -58,21 +46,7 @@ export const getActiveSessionByJti = query({
 	},
 });
 
-/**
- * [Blocker 3 Option A] PUBLIC mutation — invoked by the Next.js refresh route
- * handler via `fetchMutation(api.portal.sessions.touchSession, ...)`.
- * `fetchMutation` cannot invoke an `internalMutation`, so this MUST be public.
- * Capability is enforced inside the handler: the caller's JWT identity is
- * validated by `getPortalSessionOrThrow` (which checks issuer, audience, and
- * the DB row), then we assert `session.tokenJti === args.tokenJti` before
- * patching. A leaked jti from a network log alone is insufficient — the
- * attacker would also need the cookie/JWT.
- *
- * [Review fix Greptile-P1] `newExpiresAt` is capped server-side at
- * `Date.now() + SESSION_TTL_MS`. Without the cap an authenticated portal user
- * could call this directly from the Convex client and pass an arbitrary
- * future timestamp to make their session immortal, defeating the 24h TTL.
- */
+/** Capability-gated refresh for the current portal session row. */
 export const touchSession = mutation({
 	args: { tokenJti: v.string(), newExpiresAt: v.number() },
 	handler: async (ctx, { tokenJti, newExpiresAt }) => {
@@ -97,13 +71,7 @@ export const touchSession = mutation({
 	},
 });
 
-/**
- * [Review fix #5] PUBLIC mutation — capability-gated. The caller MUST possess
- * the cookie JWT whose jti matches the target. Convex evaluates ctx.auth
- * before the handler runs, then `getPortalSessionOrThrow` validates
- * issuer/audience/DB-row, and the assert below enforces jti-equality.
- * A leaked jti is insufficient: state changes require possessing the cookie.
- */
+/** Capability-gated revocation for the current portal session row. */
 export const revokeSessionByJti = mutation({
 	args: { tokenJti: v.string() },
 	handler: async (ctx, { tokenJti }) => {

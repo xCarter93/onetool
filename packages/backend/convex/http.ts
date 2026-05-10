@@ -665,31 +665,8 @@ http.route({
 	}),
 });
 
-/**
- * [Review fix Greptile-P1] Portal OTP request endpoint.
- *
- * Trust model — server-to-server only:
- *  - This httpAction is publicly reachable at <deployment>.convex.site, but
- *    is gated by a shared `x-portal-secret` header (constant-time compared
- *    against PORTAL_OTP_REQUEST_SECRET on the deployment). Without the
- *    secret, all calls 401 and never reach the rate-limiter or DB.
- *  - Only the Next.js portal server holds the secret. It derives `ipHash`
- *    from CDN-trusted headers it can verify (CF-Connecting-IP,
- *    X-Vercel-Forwarded-For, …) — Convex deliberately does NOT re-derive IP
- *    here, because forwarding headers reaching Convex's HTTP edge cannot
- *    be trusted.
- *  - `internal.portal.otp.requestOtp` is unreachable from public Convex
- *    clients (it is `internalMutation`), so this httpAction is the only
- *    way to invoke it.
- *
- * Effect: the per-IP rate-limit bucket (`portalOtpSendPerIp`, 30/hr) keys
- * on a hash derived in a context the attacker cannot influence.
- */
-// [Review fix Greptile-P2] No CORS headers: this endpoint is server-to-server
-// only (Next.js portal → Convex), invoked via server-side fetch where CORS is
-// irrelevant. No browser should ever reach it; omitting Access-Control-Allow-*
-// causes browsers that try to be blocked by default — which is what we want.
-// The OPTIONS preflight route was removed for the same reason.
+// Server-to-server OTP request endpoint. Next.js derives the IP hash and gates
+// access with the shared portal secret before this invokes the internal mutation.
 
 function constantTimeEqual(a: string, b: string): boolean {
 	if (a.length !== b.length) return false;
@@ -783,7 +760,6 @@ http.route({
 					);
 				}
 			}
-			// Pitfall #1 — uniform success on any other failure path.
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
 				headers: { "Content-Type": "application/json" },

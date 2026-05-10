@@ -15,12 +15,11 @@ export async function POST(
 	req: NextRequest,
 	{ params }: { params: Promise<{ quoteId: string }> },
 ) {
-	const host = req.headers.get("host");
 	if (
 		!isSameOrigin(
 			req.headers.get("origin"),
 			req.headers.get("referer"),
-			host,
+			new URL(req.url).origin,
 		)
 	) {
 		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -53,8 +52,6 @@ export async function POST(
 	}
 
 	try {
-		// SINGLE action call — Plan 14-02 collapsed upload+approve into one
-		// transactional flow with orphan-blob cleanup on failure.
 		const receipt = await fetchAction(
 			api.portal.quotes.approve,
 			{

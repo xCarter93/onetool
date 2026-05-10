@@ -1,5 +1,5 @@
 import "server-only";
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { fetchMutation } from "convex/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
@@ -7,18 +7,26 @@ import {
 	clearSessionCookieOnResponse,
 } from "@/lib/portal/cookie";
 import { verifySessionJwt } from "@/lib/portal/jwt";
+import { isSameOrigin } from "@/lib/portal/quotes/map-convex-error";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+	if (
+		!isSameOrigin(
+			req.headers.get("origin"),
+			req.headers.get("referer"),
+			new URL(req.url).origin,
+		)
+	) {
+		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+	}
+
 	const token = await readSessionCookie();
 
-	// Always clear the cookie even if token is malformed
 	if (token) {
 		try {
 			const { payload } = await verifySessionJwt(token);
 			const jti = payload.jti as string | undefined;
 			if (jti) {
-				// Forward the cookie JWT so Convex auth identifies the caller and
-				// getPortalSessionOrThrow inside revokeSessionByJti succeeds.
 				await fetchMutation(
 					api.portal.sessions.revokeSessionByJti,
 					{ tokenJti: jti },

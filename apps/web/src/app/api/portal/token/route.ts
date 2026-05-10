@@ -1,12 +1,12 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { readSessionCookie } from "@/lib/portal/cookie";
 import { verifySessionJwt, signConvexAccessToken } from "@/lib/portal/jwt";
 
-// GET — called by ConvexPortalProvider's setAuth callback. Mints a SHORT-LIVED access token
-// (5min TTL, aud="convex-portal-access") that is distinct from the cookie JWT. The cookie
-// (aud="convex-portal", 24h TTL) is NEVER returned to JS — its existence is the proof that
-// we are entitled to mint access tokens on the user's behalf. See Review fix #4 + Blocker 2.
+// Called by ConvexPortalProvider. Mints a short-lived browser token while the
+// long-lived portal session stays in the httpOnly cookie.
 export async function GET() {
 	const cookieToken = await readSessionCookie();
 	if (!cookieToken)
@@ -14,13 +14,11 @@ export async function GET() {
 
 	let payload;
 	try {
-		payload = (await verifySessionJwt(cookieToken)).payload; // confirms cookie is signed + not expired
+		payload = (await verifySessionJwt(cookieToken)).payload;
 	} catch {
 		return NextResponse.json({ error: "expired" }, { status: 401 });
 	}
 
-	// Extract the cookie's jti — backend's getPortalSessionOrThrow uses sessionJti to look up the
-	// portalSessions row and re-validate (revocation, expiry, claims-match). See 13-02 Review fix #2.
 	const sessionJti = payload.jti as string | undefined;
 	if (
 		!sessionJti ||
@@ -31,7 +29,18 @@ export async function GET() {
 		return NextResponse.json({ error: "expired" }, { status: 401 });
 	}
 
-	// Mint the short-lived access token. Carries sessionJti so the backend can re-check the row.
+	const session = await fetchQuery(api.portal.sessions.getActiveSessionByJti, {
+		tokenJti: sessionJti,
+	});
+	if (
+		!session ||
+		session.clientContactId !== payload.clientContactId ||
+		session.orgId !== payload.orgId ||
+		session.clientPortalId !== payload.clientPortalId
+	) {
+		return NextResponse.json({ error: "expired" }, { status: 401 });
+	}
+
 	const { token: accessToken, expiresAt } = await signConvexAccessToken({
 		clientContactId: payload.clientContactId as string,
 		orgId: payload.orgId as string,
@@ -39,6 +48,5 @@ export async function GET() {
 		sessionJti,
 	});
 
-	// [Review fix #4 / Blocker 2] Return the freshly-minted access token — NEVER the cookie JWT.
 	return NextResponse.json({ token: accessToken, expiresAt });
 }

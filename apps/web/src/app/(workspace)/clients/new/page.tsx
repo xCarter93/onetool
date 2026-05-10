@@ -59,6 +59,9 @@ export default function NewClientPage() {
 							.filter(Boolean)
 					: undefined,
 				notes: formData.notes?.trim() ? formData.notes.trim() : undefined,
+
+				// Generate portal access UUID client-side to keep the Convex mutation deterministic
+				portalAccessId: crypto.randomUUID(),
 			};
 
 			const clientId = await createClient(clientData);

@@ -14,9 +14,6 @@ export type PortalSession = {
 	tokenJti: string;
 };
 
-// [Review fix #4] Audience guard set — accept BOTH the long-lived cookie JWT
-// audience and the short-lived realtime token audience. Both are RS256-signed
-// by the same private key and discriminated only by claim, not by signing key.
 const ACCEPTED_AUDIENCES = new Set([
 	"convex-portal",
 	"convex-portal-access",
@@ -33,19 +30,8 @@ type IdentityWithPortalClaims = {
 };
 
 /**
- * Portal-only authentication boundary — mirrors `lib/auth.ts.getCurrentUserOrThrow`
- * for the second auth provider. Validates the JWT identity through four
- * independent gates before returning a typed session payload:
- *
- * 1. Issuer must equal `process.env.PORTAL_JWT_ISSUER` — Clerk JWTs are rejected.
- * 2. Audience must be one of {convex-portal, convex-portal-access} (Review fix #4).
- * 3. Required custom claims (orgId, clientContactId, clientPortalId, jti)
- *    must be present.
- * 4. The corresponding `portalSessions` row must exist, must not be expired,
- *    and its claims must match the JWT's claims (Review fix #2 — JWT signature
- *    is NOT the source of truth for revocation; the DB row is).
- *
- * Throws generic messages on failure to avoid enumeration leaks.
+ * Portal-only auth boundary. JWT claims must match an active portalSessions row;
+ * the signed token alone is not the source of truth for revocation.
  */
 export async function getPortalSessionOrThrow(
 	ctx: QueryCtx | MutationCtx
@@ -60,13 +46,6 @@ export async function getPortalSessionOrThrow(
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
-	// [Review fix #4] Audience guard — Convex's customJwt provider already
-	// enforces `aud === applicationID` ("convex-portal") at the provider layer,
-	// so any token reaching this code has the correct audience. Convex does NOT
-	// expose `aud` on the UserIdentity object (it's part of the JWT envelope,
-	// not a custom claim), so we only re-check when the runtime/test surface
-	// happens to expose it (e.g. convex-test). When `aud` is absent, trust
-	// Convex's provider-level check.
 	const aud = claims.aud;
 	if (aud !== undefined && aud !== null) {
 		const audValues = Array.isArray(aud) ? aud : [aud];
@@ -78,18 +57,12 @@ export async function getPortalSessionOrThrow(
 	const orgId = claims.orgId;
 	const clientContactId = claims.clientContactId;
 	const clientPortalId = claims.clientPortalId;
-	// For short-lived realtime tokens, the cookie's jti is carried in
-	// `sessionJti` (per signConvexAccessToken). For the long-lived cookie JWT,
-	// the jti is the standard `jti` claim. Prefer sessionJti when present.
 	const tokenJti = claims.sessionJti ?? claims.jti;
 
 	if (!orgId || !clientContactId || !clientPortalId || !tokenJti) {
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
-	// [Review fix #2] DB-side revocation check. Look up the portalSessions row
-	// by jti and verify (a) it exists, (b) it is NOT expired, (c) its claims
-	// match the JWT claims (defense against jti reuse / cross-portal collision).
 	const row = await ctx.db
 		.query("portalSessions")
 		.withIndex("by_jti", (q) => q.eq("tokenJti", tokenJti))
@@ -105,8 +78,6 @@ export async function getPortalSessionOrThrow(
 		row.clientContactId !== (clientContactId as Id<"clientContacts">) ||
 		row.clientPortalId !== clientPortalId
 	) {
-		// Mismatched JWT claims vs DB row — possible token forgery or
-		// cross-portal jti collision.
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 

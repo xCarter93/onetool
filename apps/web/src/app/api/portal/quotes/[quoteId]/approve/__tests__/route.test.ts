@@ -192,6 +192,15 @@ describe("POST /api/portal/quotes/[quoteId]/approve", () => {
 		expect(res.status).toBe(403);
 	});
 
+	it("rejects request when Origin uses a different scheme for the same host", async () => {
+		const { POST } = await import("../route");
+		const res = await POST(
+			makeReq({ body: validBody(), origin: "http://example.com" }),
+			{ params },
+		);
+		expect(res.status).toBe(403);
+	});
+
 	it("accepts request when Origin is missing but Referer matches host (returns 200)", async () => {
 		fetchActionMock.mockResolvedValue({
 			auditId: "a",
