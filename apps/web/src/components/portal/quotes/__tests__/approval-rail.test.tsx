@@ -53,7 +53,8 @@ if (!window.matchMedia) {
 
 vi.mock("next/navigation", () => ({
 	useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
-	useParams: () => ({ clientPortalId: "abc" }),
+	useParams: () => ({ clientPortalId: "abcd1234" }),
+	usePathname: () => "/portal/c/abcd1234/quotes/q1",
 }));
 // next/dynamic is not actually used by ApprovalRail (signature card is skipped
 // under the test seam) but mock anyway so any transitive import is safe.
@@ -382,5 +383,39 @@ describe("ApprovalRail", () => {
 		expect(
 			screen.queryByRole("button", { name: /Approve quote/i }),
 		).not.toBeInTheDocument();
+	});
+
+	it("renders Re-verify link when middleware 401 envelope arrives [Plan 14.1-01 — CONTEXT test 5 / UAT #3 redo]", async () => {
+		// REVIEWS-mandated: drive the test from the REAL fetch envelope, not a hook-injection seam.
+		// This proves middleware → use-quote-decision → ApprovalErrorBanner → Re-verify link end-to-end.
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({
+					code: "unauthenticated",
+					message: "Portal session missing or expired",
+					retryAfterSeconds: 0,
+				}),
+				{ status: 401 },
+			),
+		);
+		renderRail({ _testInitialSignature: usableDrawnSig });
+		fireEvent.click(
+			screen.getByRole("checkbox", { name: /I accept the scope and terms/i }),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /Approve quote/i }));
+		const link = await screen.findByRole("link", {
+			name: /Re-verify your email/i,
+		});
+		expect(link).toHaveAttribute(
+			"href",
+			"/portal/c/abcd1234/verify?next=%2Fportal%2Fc%2Fabcd1234%2Fquotes%2Fq1",
+		);
+		// Banner visible alongside the link, with the middleware-supplied copy.
+		// The message is also mirrored in the SR-only aria-live region; use
+		// getAllByText to accept either occurrence.
+		expect(screen.getByText(/Your session expired/i)).toBeInTheDocument();
+		expect(
+			screen.getAllByText(/Portal session missing or expired/i).length,
+		).toBeGreaterThanOrEqual(1);
 	});
 });

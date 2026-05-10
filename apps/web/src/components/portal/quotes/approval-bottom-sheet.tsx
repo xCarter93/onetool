@@ -12,6 +12,8 @@
 
 import { useMemo, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
+import Link from "next/link";
+import { useParams, usePathname } from "next/navigation";
 
 import {
 	SignatureCard,
@@ -100,6 +102,11 @@ export function ApprovalBottomSheet({
 		cooldownUntil,
 		cooldownSecondsRemaining,
 	} = useQuoteDecision(quote._id, latestDocument?._id);
+
+	// Plan 14.1-01: surface a Re-verify link in the unauthenticated banner branch.
+	const params = useParams<{ clientPortalId: string }>();
+	const pathname = usePathname() ?? "";
+	const clientPortalId = params?.clientPortalId ?? "";
 
 	const effectiveReceipt: ApprovalReceiptType | undefined =
 		receipt ?? initialReceipt;
@@ -277,15 +284,27 @@ export function ApprovalBottomSheet({
 										/>
 									)}
 
-									{/* Plan 14-07 / UAT Gap 2: visible banner for previously-silent codes */}
+									{/* Plan 14-07 / UAT Gap 2: visible banner for previously-silent codes.
+									    Plan 14.1-01: render an inline Re-verify link below the banner for the
+									    unauthenticated branch — no full-page kick. */}
 									{error &&
 										(error.code === "unauthenticated" ||
 											error.code === "not_pending" ||
 											error.code === "unknown") && (
-											<ApprovalErrorBanner
-												code={error.code}
-												message={error.message}
-											/>
+											<div className="flex flex-col gap-2">
+												<ApprovalErrorBanner
+													code={error.code}
+													message={error.message}
+												/>
+												{error.code === "unauthenticated" && clientPortalId && (
+													<Link
+														href={`/portal/c/${clientPortalId}/verify?next=${encodeURIComponent(pathname)}`}
+														className="inline-flex w-fit items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+													>
+														Re-verify your email
+													</Link>
+												)}
+											</div>
 										)}
 
 									<div>
