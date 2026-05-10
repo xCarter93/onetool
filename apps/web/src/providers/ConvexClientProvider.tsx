@@ -13,12 +13,6 @@ export default function ConvexClientProvider({
 }: {
 	children: ReactNode;
 }) {
-	// Render children directly. Previously this wrapped them in <Authenticated>{children}</Authenticated>
-	// and <Unauthenticated>{children}</Unauthenticated>. Neither branch matches during the brief
-	// AuthLoading transition that fires when Clerk's setActive() rotates the session (e.g., right
-	// after createOrganization), so the workspace subtree was unmounting and resetting all client
-	// state — visually indistinguishable from a page reload. Both branches rendered the same
-	// children, so the swap served no purpose.
 	return (
 		<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
 			{children}

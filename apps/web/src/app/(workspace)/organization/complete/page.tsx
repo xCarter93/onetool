@@ -1266,13 +1266,7 @@ export default function CompleteOrganizationMetadata() {
 		}
 	};
 
-	// Show loading state while webhook is processing organization creation.
-	// Scoped to step 1 only — once the user has advanced into the wizard, let them
-	// keep filling out business info while the webhook syncs in the background.
-	// This prevents the post-create transition from flashing a full-page spinner
-	// (which felt like a page reload) when stepping from 1 → 2.
-	// completeMetadata at step 5 still needs a real Convex org; that path waits on
-	// `organization` separately if needed.
+	// Step-1 only: avoids flashing a full-page spinner when advancing 1 → 2 while the webhook syncs.
 	if (
 		currentStep === 1 &&
 		clerkOrganization &&
