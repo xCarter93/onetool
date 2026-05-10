@@ -20,6 +20,9 @@ const PORTAL_API_OTP_REQUEST_RE = /^\/api\/portal\/otp\/request$/;
 const PORTAL_API_OTP_VERIFY_RE = /^\/api\/portal\/otp\/verify$/;
 const PORTAL_JWKS_RE = /^\/\.well-known\/portal-jwks\.json$/;
 
+// Source of truth for /api/portal/* paths that bypass the JSON 401. Any new
+// public portal API path MUST be added here AND covered by a test in
+// middleware.test.ts (Plan 14.1-01).
 export function isPublicPortalPath(pathname: string): boolean {
 	return (
 		PORTAL_VERIFY_RE.test(pathname) ||
@@ -29,6 +32,23 @@ export function isPublicPortalPath(pathname: string): boolean {
 		PORTAL_API_OTP_VERIFY_RE.test(pathname) ||
 		PORTAL_JWKS_RE.test(pathname)
 	);
+}
+
+// Plan 14.1-01: API requests under /api/portal/* (excluding isPublicPortalPath
+// members) receive a structured JSON envelope instead of an HTML redirect, so
+// fetch consumers can show an inline re-verify banner without following a 307.
+// Page routes (/portal/c/{id}/...) keep the existing redirectToVerify behavior.
+const UNAUTHENTICATED_API_ENVELOPE = {
+	code: "unauthenticated",
+	message: "Portal session missing or expired",
+	retryAfterSeconds: null,
+} as const;
+
+function rejectFromMissingOrInvalidSession(req: NextRequest): NextResponse {
+	if (req.nextUrl.pathname.startsWith("/api/portal/")) {
+		return NextResponse.json(UNAUTHENTICATED_API_ENVELOPE, { status: 401 });
+	}
+	return redirectToVerify(req);
 }
 
 function redirectToVerify(req: NextRequest): NextResponse {
@@ -51,7 +71,7 @@ export async function portalMiddleware(
 	if (isPublicPortalPath(pathname)) return NextResponse.next();
 
 	const token = req.cookies.get(PORTAL_COOKIE)?.value;
-	if (!token) return redirectToVerify(req);
+	if (!token) return rejectFromMissingOrInvalidSession(req);
 
 	let payload: Awaited<ReturnType<typeof verifySessionJwt>>["payload"];
 	let remainingSeconds = 0;
@@ -60,7 +80,7 @@ export async function portalMiddleware(
 		payload = verified.payload;
 		remainingSeconds = verified.remainingSeconds;
 	} catch {
-		return redirectToVerify(req);
+		return rejectFromMissingOrInvalidSession(req);
 	}
 
 	const response = NextResponse.next();
@@ -70,7 +90,7 @@ export async function portalMiddleware(
 		// DB-backed session row. /api/portal/refresh separately extends that row.
 		const existingJti = payload.jti as string | undefined;
 		if (!existingJti) {
-			return redirectToVerify(req);
+			return rejectFromMissingOrInvalidSession(req);
 		}
 		const claims: PortalJwtClaims = {
 			clientContactId: payload.clientContactId,
