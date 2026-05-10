@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import { getEntityOrThrow } from "./lib/crud";
 
 /**
@@ -12,13 +13,24 @@ import { getEntityOrThrow } from "./lib/crud";
 
 /**
  * List user's favorite clients with client details
- * Returns favorites ordered by createdAt DESC (most recent first), limited to 20
+ * Returns favorites ordered by createdAt DESC (most recent first), limited to 20.
+ *
+ * Returns an empty array for an authenticated user who has not yet created or
+ * joined an organization (e.g. mid-signup on /organization/complete). The
+ * workspace sidebar mounts on that pre-org route and would otherwise log a
+ * failed query on every new signup. Unauthenticated callers are blocked by
+ * Clerk middleware upstream and are not a supported state here.
  */
 export const list = query({
 	args: {},
 	handler: async (ctx) => {
+		// Mid-signup users have a Clerk identity but no activeOrgId claim yet.
+		// Mirrors the pattern used by tasks.getStats, homeStats.getJourneyProgress,
+		// and other layout-level queries that mount before org creation completes.
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return [];
+
 		const user = await getCurrentUserOrThrow(ctx);
-		const orgId = await getCurrentUserOrgId(ctx);
 
 		// Get all favorites for this user in this org
 		const favorites = await ctx.db

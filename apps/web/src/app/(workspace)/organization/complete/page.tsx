@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import { useUser, useOrganization, CreateOrganization } from "@clerk/nextjs";
+import { useUser, useOrganization, useOrganizationList } from "@clerk/nextjs";
 import { PricingTable } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useMutation, useQuery } from "convex/react";
@@ -71,6 +71,28 @@ export default function CompleteOrganizationMetadata() {
 	// Track the initial org ID when in "creating new" mode to detect when a new org is created
 	const initialOrgIdRef = React.useRef<string | null>(null);
 	const hasInitializedRef = React.useRef(false);
+
+	// Step 1: custom create-org form state (replaces Clerk's <CreateOrganization>)
+	const {
+		isLoaded: orgListLoaded,
+		createOrganization,
+		setActive,
+	} = useOrganizationList();
+	const [orgName, setOrgName] = useState("");
+	const [logoFile, setLogoFile] = useState<File | null>(null);
+	const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+	const [createSubmitting, setCreateSubmitting] = useState(false);
+	const [createNameError, setCreateNameError] = useState<string | null>(null);
+	const [createLogoError, setCreateLogoError] = useState<string | null>(null);
+
+	// Holds the org created on a prior attempt so retries (after setLogo/setActive
+	// fail) reuse it instead of creating a duplicate. Invalidated when the name
+	// changes, since a new name means a new org.
+	const createdOrgRef = React.useRef<{
+		org: Awaited<ReturnType<NonNullable<typeof createOrganization>>>;
+		name: string;
+	} | null>(null);
+
 	const [formData, setFormData] = useState<FormData>({
 		email: user?.primaryEmailAddress?.emailAddress || "",
 		website: "",
@@ -379,6 +401,75 @@ export default function CompleteOrganizationMetadata() {
 		}
 	};
 
+	// Revoke any object URL created for the logo preview to avoid blob retention.
+	useEffect(() => {
+		return () => {
+			if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+		};
+	}, [logoPreviewUrl]);
+
+	const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+		setCreateLogoError(null);
+		const file = e.target.files?.[0] ?? null;
+		if (!file) return;
+		if (file.size > 10 * 1024 * 1024) {
+			setCreateLogoError("Logo must be 10 MB or smaller");
+			// Reset so re-selecting the same file refires onChange
+			e.target.value = "";
+			return;
+		}
+		// Old URL is revoked by the useEffect cleanup when logoPreviewUrl changes.
+		setLogoFile(file);
+		setLogoPreviewUrl(URL.createObjectURL(file));
+	};
+
+	const handleCreateOrganization: React.FormEventHandler<
+		HTMLFormElement
+	> = async (e) => {
+		e.preventDefault();
+		setCreateNameError(null);
+
+		const trimmedName = orgName.trim();
+		if (!trimmedName) {
+			setCreateNameError("Organization name is required");
+			return;
+		}
+		// Guard: hook still initializing
+		if (!orgListLoaded || !createOrganization) return;
+
+		setCreateSubmitting(true);
+		try {
+			// 1. Create org — or reuse one from a prior failed attempt with the same
+			// name to avoid orphaning + duplicating on retry.
+			const cached = createdOrgRef.current;
+			const newOrg =
+				cached && cached.name === trimmedName
+					? cached.org
+					: await createOrganization({ name: trimmedName });
+			createdOrgRef.current = { org: newOrg, name: trimmedName };
+
+			// 2. Upload logo BEFORE setActive so step 2's preview tiles see imageUrl on first render
+			if (logoFile) {
+				await newOrg.setLogo({ file: logoFile });
+			}
+
+			// 3. Mark as active session org
+			await setActive({ organization: newOrg.id });
+
+			// 4. Advance wizard in-place — no router.push, no router.refresh, no reload
+			createdOrgRef.current = null;
+			setCurrentStep(2);
+		} catch (err) {
+			const message =
+				(err as { errors?: Array<{ message: string }> })?.errors?.[0]
+					?.message ??
+				(err instanceof Error ? err.message : "Failed to create organization");
+			toast.warning("Couldn't create organization", message);
+		} finally {
+			setCreateSubmitting(false);
+		}
+	};
+
 	const renderStep1 = () => (
 		<div className="space-y-8 flex flex-col items-center">
 			<div className="w-full max-w-2xl text-center">
@@ -393,165 +484,109 @@ export default function CompleteOrganizationMetadata() {
 				</p>
 			</div>
 
-			{/* Clerk Create Organization Component */}
 			<div className="mt-6 w-full max-w-2xl">
-				<CreateOrganization
-					appearance={{
-						elements: {
-							rootBox: {
-								width: "100%",
-								margin: "0 auto",
-							},
-							card: {
-								backgroundColor: "transparent",
-								border: "none",
-								boxShadow: "none",
-								padding: "0",
-								width: "100%",
-							},
-							cardBox: {
-								padding: "0",
-								width: "100%",
-							},
-							headerTitle: {
-								display: "none", // Hide default header since we have our own
-							},
-							headerSubtitle: {
-								display: "none", // Hide default subtitle
-							},
-							form: {
-								gap: "1.5rem",
-								width: "100%",
-							},
-							formFieldRow: {
-								width: "100%",
-							},
-							formContainer: {
-								width: "100%",
-								height: "100%",
-								display: "flex",
-								justifyContent: "center",
-								padding: "5px",
-							},
+				{!orgListLoaded ? (
+					<div className="flex items-center justify-center py-12">
+						<div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+					</div>
+				) : (
+					<form
+						onSubmit={handleCreateOrganization}
+						className="space-y-6"
+						noValidate
+					>
+						<div>
+							<label
+								htmlFor="org-name"
+								className="block text-sm font-semibold text-foreground mb-3 tracking-wide"
+							>
+								Organization Name
+							</label>
+							<Input
+								id="org-name"
+								value={orgName}
+								onChange={(e) => {
+									setOrgName(e.target.value);
+									if (createNameError) setCreateNameError(null);
+								}}
+								disabled={createSubmitting}
+								placeholder="Acme Cleaning Co."
+								autoComplete="organization"
+								aria-invalid={createNameError ? true : undefined}
+								aria-describedby={
+									createNameError ? "org-name-error" : undefined
+								}
+								className="w-full border-border dark:border-border bg-background dark:bg-background focus:bg-background dark:focus:bg-background transition-colors shadow-sm ring-1 ring-border/10"
+							/>
+							{createNameError && (
+								<p
+									id="org-name-error"
+									className="mt-2 text-sm text-destructive"
+								>
+									{createNameError}
+								</p>
+							)}
+						</div>
 
-							// Form styling
-							formButtonPrimary: {
-								backgroundColor: "rgb(0, 166, 244)",
-								color: "white",
-								borderRadius: "var(--radius-md)",
-								padding: "0.625rem 3rem",
-								fontSize: "1rem",
-								fontWeight: "500",
-								transition: "all 0.2s",
-								border: "none",
-								"&:hover": {
-									opacity: "0.9",
-									transform: "translateY(-1px)",
-								},
-								"&:focus": {
-									outline: "2px solid rgb(0, 166, 244)",
-									outlineOffset: "2px",
-								},
-								width: "100%",
-							},
-							formFieldInput: {
-								backgroundColor: isDark
-									? "oklch(0.32 0.013 285.805)"
-									: "oklch(0.871 0.006 286.286)",
-								color: isDark
-									? "oklch(0.985 0 0)"
-									: "oklch(0.141 0.005 285.823)",
-								border: `1px solid ${
-									isDark
-										? "oklch(0.27 0.013 285.805)"
-										: "oklch(0.911 0.006 286.286)"
-								}`,
-								borderRadius: "var(--radius-md)",
-								padding: "0.625rem 1rem",
-								width: "100%",
-							},
-							formFieldLabel: {
-								color: isDark
-									? "oklch(0.985 0 0)"
-									: "oklch(0.141 0.005 285.823)",
-								fontSize: "0.875rem",
-								fontWeight: "500",
-								marginBottom: "0.5rem",
-							},
+						<div>
+							<label
+								htmlFor="org-logo"
+								className="block text-sm font-semibold text-foreground mb-3 tracking-wide"
+							>
+								Organization Logo{" "}
+								<span className="text-muted-foreground font-normal">
+									(optional)
+								</span>
+							</label>
+							<div className="flex items-center gap-4">
+								{logoPreviewUrl ? (
+									<Image
+										src={logoPreviewUrl}
+										alt="Logo preview"
+										width={64}
+										height={64}
+										className="h-16 w-16 rounded-lg border border-border object-contain bg-white"
+										unoptimized
+									/>
+								) : (
+									<div className="h-16 w-16 rounded-lg border border-dashed border-border flex items-center justify-center bg-muted/20">
+										<Upload className="h-5 w-5 text-muted-foreground" />
+									</div>
+								)}
+								<input
+									id="org-logo"
+									type="file"
+									accept="image/*"
+									onChange={handleLogoSelect}
+									disabled={createSubmitting}
+									className="text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20 file:cursor-pointer"
+								/>
+							</div>
+							{createLogoError && (
+								<p className="mt-2 text-sm text-destructive">
+									{createLogoError}
+								</p>
+							)}
+							<p className="mt-2 text-xs text-muted-foreground">
+								PNG, JPG, or SVG up to 10 MB.
+							</p>
+						</div>
 
-							// Footer styling
-							footer: "mt-8 pt-6 border-t border-border dark:border-border",
-							footerActionText:
-								"text-xs text-muted-foreground dark:text-muted-foreground",
-							footerActionLink:
-								"text-primary hover:text-primary/80 dark:text-primary dark:hover:text-primary/80 font-medium text-xs",
-
-							// Error and success styling
-							formFieldSuccessText:
-								"text-green-600 dark:text-green-400 text-sm",
-							formFieldErrorText: "text-red-600 dark:text-red-400 text-sm",
-							formFieldWarningText:
-								"text-yellow-600 dark:text-yellow-400 text-sm",
-
-							// Loading states
-							formFieldInputPlaceholder:
-								"text-muted-foreground dark:text-muted-foreground",
-							spinner: "text-primary dark:text-primary",
-
-							// Modal/popover styling (if any)
-							modalContent:
-								"bg-card dark:bg-card border-border dark:border-border shadow-xl dark:shadow-xl",
-							modalCloseButton:
-								"text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground",
-
-							// Additional dark mode elements
-							identityPreview:
-								"bg-background dark:bg-card border-border dark:border-border",
-							identityPreviewText: "text-foreground dark:text-foreground",
-							identityPreviewEditButton:
-								"text-primary hover:text-primary/80 dark:text-primary dark:hover:text-primary/80",
-						},
-						variables: {
-							// Color system that works in both light and dark mode
-							colorPrimary: "rgb(0, 166, 244)",
-							colorDanger: "hsl(var(--destructive))",
-							colorSuccess: "hsl(var(--green-600))",
-							colorWarning: "hsl(var(--yellow-600))",
-							colorNeutral: "hsl(var(--muted-foreground))",
-
-							// Background colors
-							colorBackground: "transparent",
-							colorInputBackground: "hsl(var(--background))",
-
-							// Text colors
-							colorText: "hsl(var(--foreground))",
-							colorTextSecondary: "hsl(var(--muted-foreground))",
-							colorInputText: "hsl(var(--foreground))",
-							colorTextOnPrimaryBackground: "hsl(var(--primary-foreground))",
-
-							// Typography
-							fontFamily: "inherit",
-							fontFamilyButtons: "inherit",
-							fontSize: "0.875rem",
-							fontWeight: {
-								normal: "400",
-								medium: "500",
-								semibold: "600",
-								bold: "700",
-							},
-
-							// Spacing and shapes
-							borderRadius: "0.5rem",
-							spacingUnit: "1rem",
-						},
-					}}
-					afterCreateOrganizationUrl="/organization/complete"
-					skipInvitationScreen={true}
-					hideSlug={true}
-				/>
+						<div className="pt-2">
+							<StyledButton
+								intent="primary"
+								type="submit"
+								isLoading={createSubmitting}
+								disabled={createSubmitting || !orgListLoaded}
+								showArrow={false}
+							>
+								Create Organization
+							</StyledButton>
+						</div>
+					</form>
+				)}
 			</div>
 
-			{/* Help Text */}
 			<div className="mt-6 text-center">
 				<p className="text-xs text-muted-foreground">
 					After creating your organization, you&apos;ll continue to the next
@@ -1250,12 +1285,9 @@ export default function CompleteOrganizationMetadata() {
 		}
 	};
 
-	// Show loading state while webhook is processing organization creation
-	// Show loading if:
-	// 1. User has created a Clerk org AND
-	// 2. Either needsCompletion or organization data hasn't loaded yet (undefined) OR
-	// 3. Organization doesn't exist in Convex yet (null) - waiting for webhook
+	// Step-1 only: avoids flashing a full-page spinner when advancing 1 → 2 while the webhook syncs.
 	if (
+		currentStep === 1 &&
 		clerkOrganization &&
 		(needsCompletion === undefined ||
 			organization === undefined ||
