@@ -34,14 +34,14 @@ describe("Calendar", () => {
 			expect(result).toEqual({ projects: [], tasks: [] });
 		});
 
-		it("should throw error when user is not authenticated", async () => {
+		it("should return empty result when user is not authenticated", async () => {
 			const now = Date.now();
-			await expect(
-				t.query(api.calendar.getCalendarEvents, {
-					startDate: now,
-					endDate: now + 7 * 24 * 60 * 60 * 1000,
-				})
-			).rejects.toThrowError("User not authenticated");
+			const result = await t.query(api.calendar.getCalendarEvents, {
+				startDate: now,
+				endDate: now + 7 * 24 * 60 * 60 * 1000,
+			});
+
+			expect(result).toEqual({ projects: [], tasks: [] });
 		});
 
 		it("should return tasks within the date range", async () => {

@@ -102,10 +102,9 @@ describe("Users", () => {
 			expect(users).toEqual([]);
 		});
 
-		it("should throw error for unauthenticated user", async () => {
-			await expect(t.query(api.users.listByOrg, {})).rejects.toThrowError(
-				"User not authenticated"
-			);
+		it("should return empty list for unauthenticated user", async () => {
+			const users = await t.query(api.users.listByOrg, {});
+			expect(users).toEqual([]);
 		});
 	});
 
