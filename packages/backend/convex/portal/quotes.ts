@@ -207,6 +207,88 @@ export const get = query({
 	},
 });
 
+/**
+ * Plan 14.1-03 (QUOTE-04 client-side): on-demand signed URL for the quote
+ * PDF, scoped to a portal session. Mirrors the chain validation and Phase
+ * 14-13 documents-table fallback used by `get`. Always reads
+ * `latestDocument.storageId` — never `signedStorageId` (BoldSign artifact;
+ * different audit trail).
+ *
+ * Pinned-document strict validation (REVIEWS HIGH 2026-05-10): the pinned
+ * `quote.latestDocumentId` branch validates orgId, documentType, AND
+ * documentId before minting a URL. Any mismatch falls through to the
+ * fallback branch (which already filters orgId). Prevents a corrupted
+ * latestDocumentId pointer from leaking a foreign blob URL.
+ *
+ * Returns `{ url }` on success or `null` when no document exists.
+ */
+export const getDownloadUrl = query({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		const session = await getPortalSessionOrThrow(ctx);
+
+		const quote = await ctx.db.get(quoteId);
+		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
+
+		const contact = await ctx.db.get(session.clientContactId);
+		if (!contact || contact.orgId !== session.orgId) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
+		if (
+			contact.clientId !== quote.clientId ||
+			quote.orgId !== session.orgId
+		) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
+		if (quote.status === "draft") {
+			throw new ConvexError({ code: "NOT_FOUND" });
+		}
+
+		// Phase 14-13 documents-table fallback with strict pinned-doc validation.
+		let latestDocument: { storageId: Id<"_storage"> } | null = null;
+
+		if (quote.latestDocumentId) {
+			const pinnedDoc = await ctx.db.get(quote.latestDocumentId);
+			// REVIEWS HIGH 2026-05-10: all three checks must pass.
+			// Mismatch falls through to documents-table fallback.
+			if (
+				pinnedDoc &&
+				pinnedDoc.orgId === session.orgId &&
+				pinnedDoc.documentType === "quote" &&
+				pinnedDoc.documentId === quoteId
+			) {
+				latestDocument = { storageId: pinnedDoc.storageId };
+			}
+		}
+
+		if (latestDocument === null) {
+			// Iterate desc to pick the highest-version SAME-ORG row. A bare
+			// `.first()` would surface a higher-version cross-org row (which the
+			// orgId check would then reject, returning null) — defeating the
+			// fallback's purpose when a pinned cross-org doc is also present
+			// (REVIEWS HIGH E1 case).
+			const candidates = await ctx.db
+				.query("documents")
+				.withIndex("by_document_version", (q) =>
+					q.eq("documentType", "quote").eq("documentId", quoteId),
+				)
+				.order("desc")
+				.collect();
+			const fallbackDoc = candidates.find(
+				(d) => d.orgId === session.orgId,
+			);
+			if (fallbackDoc) {
+				latestDocument = { storageId: fallbackDoc.storageId };
+			}
+		}
+
+		if (!latestDocument) return null;
+
+		const url = await ctx.storage.getUrl(latestDocument.storageId);
+		return url ? { url } : null;
+	},
+});
+
 // ---------------------------------------------------------------------------
 // Internal helpers used by approve action + decline mutation
 // ---------------------------------------------------------------------------
