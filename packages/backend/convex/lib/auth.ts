@@ -77,6 +77,12 @@ export async function getCurrentUserOrgId(
 	const requireOrg = options.require !== false;
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) {
+		// require:false callers (~30 sites) already handle null by returning
+		// empty data; throwing here surfaces during Clerk setActive() token
+		// rotation when Convex briefly sees no identity.
+		if (!requireOrg) {
+			return null;
+		}
 		throw new Error("User not authenticated");
 	}
 
