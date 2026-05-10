@@ -1,36 +1,8 @@
-// Plan 14-02: Portal-facing quote backend.
+// Portal-facing quote backend.
 //
-// Exports:
-// - list (query): authenticated portal session lists their own client's quotes
-// - get (query): single quote with receipt-shaped fields for Plan 14-05 UI
-// - approve (action): preflight → format-validate → storage.store → commit;
-//   orphan-blob cleanup on commit failure (REVIEWS finding #3)
-// - decline (mutation): mirror of approve commit, no signature, no termsAcceptedAt
-//
-// REVIEWS-mandated structure:
-// - approve is an ACTION because it needs ctx.storage.store. Action context has
-//   no ctx.db, so:
-//   * Session validation runs in `_getPortalSessionForAction` (internalQuery)
-//   * Rate limit consumption runs in `_rateLimitPreflight` (internalMutation —
-//     rateLimiter.limit not verified in action context)
-//   * OCC + scope preflight runs in `_preflightApproval` (internalQuery)
-//   * Audit row insert + status patch + activity + event runs in
-//     `_commitApproval` (internalMutation — atomic; emit-event last)
-// - On _commitApproval failure, the action calls ctx.storage.delete to clean
-//   up the orphan signature blob before re-throwing.
-//
-// Plan 14-13 / UAT Gap B fix: portal.quotes.get falls back to the most-recent
-// documents-table row (org-scoped) when `quote.latestDocumentId` is unset;
-// _preflightApproval and _commitApproval accept any same-org same-quote
-// document in that fallback case AND _commitApproval pins `latestDocumentId`
-// to the accepted document so subsequent reads use the strict path. Workspace
-// documents.create does not patch `quote.latestDocumentId` — only
-// boldsign.updateQuoteLatestDocument does — so quotes generated through any
-// non-BoldSign path previously stranded the portal with "document is not
-// ready" on every approve attempt. Strict OCC still wins on a racing
-// republish: if a workspace mutation patches latestDocumentId to a different
-// doc between preflight and commit, the redo-check falls through to strict
-// equality and throws QUOTE_VERSION_STALE.
+// Approve is an action because it stores the signature blob; DB validation and
+// commit work are delegated to internal queries/mutations so scope checks,
+// status changes, audit rows, and event emission stay transactional.
 import {
 	action,
 	internalMutation,
@@ -63,9 +35,6 @@ export const list = query({
 	handler: async (ctx) => {
 		const session = await getPortalSessionOrThrow(ctx);
 		const contact = await ctx.db.get(session.clientContactId);
-		// Defense-in-depth: even though the session JWT is signed and re-checked
-		// against portalSessions, re-verify the contact still belongs to the
-		// same org.
 		if (!contact || contact.orgId !== session.orgId) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
@@ -75,10 +44,6 @@ export const list = query({
 			.withIndex("by_client", (q) => q.eq("clientId", contact.clientId))
 			.collect();
 
-		// Plan 14-09 / Gap 5: recompute total per row from current line items.
-		// Stored quote.total is not maintained on every line-item edit, so
-		// returning it raw would surface stale zeros to the portal list page.
-		// Defense-in-depth alongside the recompute in `get` below.
 		const visible = quotes
 			.filter((q) => q.orgId === session.orgId && q.status !== "draft")
 			.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
@@ -100,9 +65,6 @@ export const list = query({
 					validUntil: q.validUntil,
 					total: totals.total,
 					latestDocumentId: q.latestDocumentId,
-					// REVIEWS-mandated (CR-03): include decision timestamps so the
-					// portal list can show "Approved on {approvedAt}" / "Declined on
-					// {declinedAt}" instead of mislabeling sentAt as the decision date.
 					approvedAt: q.approvedAt,
 					declinedAt: q.declinedAt,
 				};
@@ -112,14 +74,7 @@ export const list = query({
 });
 
 /**
- * QUOTE-02: get a single quote with receipt-shaped extended fields needed by
- * the Plan 14-05 portal UI: businessName, clientName, clientEmail, and the
- * latestApproval projection (with resolved signatureUrl).
- *
- * Plan 14-09 / Gap 5: recompute subtotal/taxAmount/total from line items
- * because stored quote.subtotal/quote.total are NOT maintained on every
- * line-item edit. Mirrors workspace quotes.ts:get behavior. The shared
- * helper lives in lib/quoteTotals.ts.
+ * Get a single quote with the fields needed by the portal detail and receipt UI.
  */
 export const get = query({
 	args: { quoteId: v.id("quotes") },
@@ -159,15 +114,8 @@ export const get = query({
 			signedStorageId?: Id<"_storage">;
 		} | null = null;
 
-		// Plan 14-13 / Gap B: prefer the pinned latestDocumentId, but fall back
-		// to the most-recent documents-table row when the quote has no pinned id
-		// OR the pinned id points at a deleted/orphan doc. Workspace
-		// `documents.create` inserts a row WITHOUT patching
-		// `quote.latestDocumentId` — only the BoldSign send-for-signature flow
-		// patches that field. Without this fallback, a quote whose PDF was
-		// generated through any non-BoldSign path would surface to the portal
-		// with `latestDocument: null`, and the client would emit "Quote
-		// document is not ready. Please reload." on every approve attempt.
+		// Prefer the pinned latest document, but fall back to the latest same-org
+		// quote document so non-BoldSign generated PDFs still work.
 		if (quote.latestDocumentId) {
 			const doc = await ctx.db.get(quote.latestDocumentId);
 			if (doc) {
@@ -187,10 +135,6 @@ export const get = query({
 				)
 				.order("desc")
 				.first();
-			// Defense in depth (REVIEWS-mandated multi-tenant rule): documents
-			// are org-scoped at insert; we still verify here in case of a
-			// future cross-org migration anomaly. Same-org constraint matches
-			// the existing get-handler invariant.
 			if (fallbackDoc && fallbackDoc.orgId === session.orgId) {
 				latestDocument = {
 					_id: fallbackDoc._id,
@@ -201,16 +145,12 @@ export const get = query({
 			}
 		}
 
-		// REVIEWS-mandated extended fields for Plan 14-05 UI ----------------
 		const org = await ctx.db.get(quote.orgId);
 		const businessName = org?.name ?? "";
 		const client = await ctx.db.get(quote.clientId);
 		const clientName = client?.companyName ?? "Client";
 		const clientEmail = contact.email ?? "";
 
-		// latestApproval — most recent quoteApprovals row for this quote.
-		// REVIEWS-mandated: also resolve signatureUrl so 14-05 UI does not need
-		// a second round-trip to render the signature thumbnail.
 		const latestAuditRow = await ctx.db
 			.query("quoteApprovals")
 			.withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
@@ -242,9 +182,6 @@ export const get = query({
 			};
 		}
 
-		// Plan 14-09 / Gap 5: recompute totals from current line items and
-		// spread over the returned quote so the portal detail page never
-		// shows stale stored zeros.
 		const calculatedTotals = await calculateQuoteTotals(ctx, quoteId, {
 			discountEnabled: quote.discountEnabled,
 			discountAmount: quote.discountAmount,
@@ -274,10 +211,6 @@ export const get = query({
 // Internal helpers used by approve action + decline mutation
 // ---------------------------------------------------------------------------
 
-/**
- * REVIEWS-mandated: actions have no ctx.db, so portal session validation must
- * run inside an internal query. The action calls this via ctx.runQuery.
- */
 export const _getPortalSessionForAction = internalQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -285,13 +218,7 @@ export const _getPortalSessionForAction = internalQuery({
 	},
 });
 
-/**
- * REVIEWS-mandated: rateLimiter.limit() is not verified to work in action ctx.
- * Run rate-limit consumption inside an internal mutation called via
- * ctx.runMutation. On rejection, surface a normalized RATE_LIMITED ConvexError
- * with retryAfter (ms) so Plan 14-04 can compute retryAfterSeconds for the
- * 429 response.
- */
+/** Rate-limit helper for approve action, which cannot run DB work directly. */
 export const _rateLimitPreflight = internalMutation({
 	args: {
 		jti: v.string(),
@@ -301,8 +228,6 @@ export const _rateLimitPreflight = internalMutation({
 		),
 	},
 	handler: async (ctx, { jti, bucket }) => {
-		// Use throws:false so we can normalize the error shape regardless of
-		// what the rate-limiter component throws internally.
 		const result = await rateLimiter.limit(ctx, bucket, {
 			key: jti,
 			throws: false,
@@ -331,10 +256,6 @@ export const _preflightApproval = internalQuery({
 	handler: async (ctx, args) => {
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
-		// REVIEWS-mandated (WR-01): defense-in-depth org scoping. The session
-		// is already validated upstream, but every read here must also verify
-		// quote.orgId === session.orgId in case clientContacts/quotes were ever
-		// migrated across orgs.
 		if (quote.orgId !== args.orgId) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
@@ -351,20 +272,8 @@ export const _preflightApproval = internalQuery({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		// Plan 14-13 / Gap B: when `quote.latestDocumentId` is unset (workspace
-		// generated the PDF via documents.create without invoking the BoldSign
-		// pinning flow), allow `expectedDocumentId` to refer to ANY same-org
-		// documents row whose `documentId === quoteId`. Mismatch only counts as
-		// STALE when the quote DOES have a pinned id and it differs from what
-		// the portal sent — that is the "racing republish" race condition the
-		// original check defends against. The fallback resolution mirrors
-		// get()'s fallback.
-		//
-		// We use `== null` (loose equality) so the relaxed branch fires for
-		// both `undefined` (Convex's default for omitted optional fields) AND
-		// explicit `null` (defensive — manual ctx.db.patch could land null in
-		// legacy data or migrations). Strict `=== undefined` would miss the
-		// null case.
+		// If no document is pinned yet, accept any same-org quote document and
+		// let the commit step pin it atomically.
 		if (quote.latestDocumentId == null) {
 			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
 			if (
@@ -406,12 +315,6 @@ export const _preflightApproval = internalQuery({
 				sortOrder: li.sortOrder,
 			}));
 
-		// Plan 14-14 / CodeRabbit Finding 6 parity: stored quote.subtotal/
-		// taxAmount/total are NOT maintained on every line-item edit (see Plan
-		// 14-09), so they can diverge from what get()/list() displayed to the
-		// portal client. The decline path recomputes via calculateQuoteTotals
-		// before snapshotting; mirror that here so the approve audit row
-		// records the same numbers the client actually saw at decision time.
 		const recomputedTotals = await calculateQuoteTotals(ctx, args.quoteId, {
 			discountEnabled: quote.discountEnabled,
 			discountAmount: quote.discountAmount,
@@ -431,19 +334,7 @@ export const _preflightApproval = internalQuery({
 	},
 });
 
-/**
- * Portal-aware activity logger. ActivityHelpers.quoteApproved/Declined depend
- * on `getCurrentUserOrThrow` (Clerk identity → users row), which has no match
- * for a portal-session identity. We invoke ActivityHelpers first (so the
- * helper symbol is part of the file per acceptance grep), and fall back to a
- * direct `activities` insert keyed on the org owner if it throws.
- *
- * [Rule 1 - Bug] Calling ActivityHelpers.quoteApproved directly under a
- * portal identity would throw "User not authenticated" because the portal
- * JWT subject is the clientContactId, not a users.externalId — breaking the
- * approve flow. Fallback path keeps audit traceability while preserving the
- * `ActivityHelpers.quoteApproved` symbol the plan and tests assert against.
- */
+/** Portal-aware activity logger with a direct insert fallback. */
 async function logQuoteActivity(
 	ctx: MutationCtx,
 	quote: Doc<"quotes">,
@@ -479,17 +370,7 @@ async function logQuoteActivity(
 	});
 }
 
-/**
- * Atomic commit of an approve OR decline. Re-runs OCC + status preflight
- * inside the mutation transaction (defense-in-depth against a racing
- * republish between preflight and commit).
- *
- * Write-order constraint inside the handler (REVIEWS-mandated reword):
- *   db.insert(audit) → db.patch(quote) → activity → emitStatusChangeEvent
- * Convex commits all writes atomically on handler return — "post-commit"
- * does not exist in a single mutation; ordering here is a within-transaction
- * write-order, not a pre/post-commit hook.
- */
+/** Atomic commit for approve or decline. Re-checks OCC and scope in-transaction. */
 export const _commitApproval = internalMutation({
 	args: {
 		quoteId: v.id("quotes"),
@@ -525,8 +406,6 @@ export const _commitApproval = internalMutation({
 	handler: async (ctx, args) => {
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
-		// REVIEWS-mandated (WR-01): defense-in-depth org scoping in the
-		// commit redo-check, alongside the OCC re-validation below.
 		if (quote.orgId !== args.orgId) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
@@ -538,22 +417,6 @@ export const _commitApproval = internalMutation({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		// Defense-in-depth: re-validate OCC + status inside the transaction
-		// so a racing republish between preflight and commit cannot land a
-		// stale approval / orphan blob.
-		//
-		// Plan 14-13 / Gap B: mirror the _preflightApproval relaxation. When
-		// `quote.latestDocumentId` is unset (workspace generated the PDF via
-		// documents.create without invoking the BoldSign pinning flow), allow
-		// `expectedDocumentId` to refer to ANY same-org documents row whose
-		// `documentId === quoteId`. Strict OCC still wins on a racing
-		// republish: if a workspace mutation patches `latestDocumentId` to a
-		// different doc between preflight and commit, the redo-check sees
-		// `latestDocumentId == null` is false and falls through to the strict
-		// equality branch which throws QUOTE_VERSION_STALE. We use `== null`
-		// (loose equality) so the relaxed branch fires for both `undefined`
-		// (Convex's default for omitted optional fields) AND explicit `null`
-		// (defensive — see Change B comment).
 		if (quote.latestDocumentId == null) {
 			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
 			if (
@@ -567,10 +430,6 @@ export const _commitApproval = internalMutation({
 					latestDocumentId: quote.latestDocumentId,
 				});
 			}
-			// Self-healing: pin the accepted fallback document as the
-			// canonical latestDocumentId now so subsequent reads and approvals
-			// take the strict path (no fallback). This patch lands inside the
-			// same atomic transaction as the audit-row insert below.
 			await ctx.db.patch(args.quoteId, {
 				latestDocumentId: args.expectedDocumentId,
 			});
@@ -609,7 +468,6 @@ export const _commitApproval = internalMutation({
 			taxSnapshot: args.taxAmount,
 			totalSnapshot: args.total,
 			termsSnapshot: args.terms,
-			// REVIEWS-mandated: termsAcceptedAt is OMITTED on decline rows.
 			termsAcceptedAt: args.action === "approved" ? now : undefined,
 			createdAt: now,
 		});
@@ -623,16 +481,8 @@ export const _commitApproval = internalMutation({
 		const oldStatus = quote.status;
 		await ctx.db.patch(args.quoteId, patch);
 
-		// 3. AGGREGATE-VERIFIED: AggregateHelpers.updateQuote keys on
-		//    (oldQuote, newQuote) and only replaces when status/approvedAt/total
-		//    changed. Because we just patched status (and approvedAt OR
-		//    declinedAt), the aggregate must be updated in lock-step or its
-		//    btree will diverge from reality (Phase 14 RESEARCH §A2). The
-		//    workspace `quotes.update` does this; we mirror it here.
 		const updatedQuote = await ctx.db.get(args.quoteId);
 		if (updatedQuote) {
-			// Static import at the top of file — Convex's V8 isolate disallows
-			// dynamic import() at runtime.
 			await AggregateHelpers.updateQuote(
 				ctx,
 				quote as Doc<"quotes">,
@@ -697,18 +547,11 @@ export const approve = action({
 		signatureStorageId: Id<"_storage">;
 		signatureUrl: string | null;
 	}> => {
-		// 1. Session — REVIEWS-mandated: action has no ctx.db, so session
-		//    validation runs in an internal query.
-		// prettier-ignore
 		const session = await ctx.runQuery(internal.portal.quotes._getPortalSessionForAction, {});
-		// 2. Rate-limit — REVIEWS-mandated: rateLimiter.limit not verified in
-		//    action context; call via internalMutation. Throws RATE_LIMITED
-		//    ConvexError with retryAfter (ms) on rejection.
 		await ctx.runMutation(internal.portal.quotes._rateLimitPreflight, {
 			jti: session.tokenJti,
 			bucket: "portalQuoteApprove",
 		});
-		// 3. Preflight — scope + OCC + status BEFORE any storage write.
 		const preflight = await ctx.runQuery(
 			internal.portal.quotes._preflightApproval,
 			{
@@ -718,16 +561,10 @@ export const approve = action({
 				orgId: session.orgId,
 			},
 		);
-		// 4. Validate signature payload format BEFORE storage.store.
 		const match = args.signatureBase64.match(/^data:image\/png;base64,(.+)$/);
 		if (!match) {
 			throw new ConvexError({ code: "INVALID_SIGNATURE_FORMAT" });
 		}
-		// CORRECTION to prior comment: Convex's default V8 isolate runtime does
-		// NOT expose Node's `Buffer` (only "use node" actions do). This file
-		// must stay isolate-runtime because it also exports queries +
-		// mutations. Use the web-standard `atob` + `Uint8Array` to decode the
-		// base64 payload — both are available in the Convex isolate.
 		const binary = atob(match[1]!);
 		const bytes = new Uint8Array(binary.length);
 		for (let i = 0; i < binary.length; i++) {
@@ -736,13 +573,9 @@ export const approve = action({
 		if (bytes.byteLength > 256_000) {
 			throw new ConvexError({ code: "SIGNATURE_TOO_LARGE" });
 		}
-		// 5. Store signature blob (only after all preflight checks succeed).
 		const blob = new Blob([bytes], { type: "image/png" });
 		const signatureStorageId: Id<"_storage"> = await ctx.storage.store(blob);
 
-		// 6. Atomic commit. If it throws (e.g., racing republish bumped the
-		//    document between preflight and commit), clean up the orphan blob
-		//    BEFORE re-throwing — REVIEWS finding #3.
 		try {
 			const { auditId, createdAt } = await ctx.runMutation(
 				internal.portal.quotes._commitApproval,
@@ -766,8 +599,6 @@ export const approve = action({
 					clientCompanyName: preflight.clientCompanyName,
 				},
 			);
-			// REVIEWS-mandated: resolve signatureUrl here so Plan 14-05 UI does
-			// not need an extra round-trip to render the thumbnail.
 			const signatureUrl = await ctx.storage.getUrl(signatureStorageId);
 			return {
 				auditId,
@@ -789,8 +620,7 @@ export const approve = action({
 });
 
 // ---------------------------------------------------------------------------
-// Public decline mutation (no signature → no orphan-blob risk → can be a
-// plain mutation)
+// Public decline mutation (no signature blob, so no action wrapper needed).
 // ---------------------------------------------------------------------------
 
 export const decline = mutation({
@@ -812,13 +642,8 @@ export const decline = mutation({
 		lineItemsCount: number;
 		total: number;
 	}> => {
-		// 1. Session
 		const session = await getPortalSessionOrThrow(ctx);
 
-		// 2. Rate-limit after session validation but before quote/document
-		//    reads. (Session lookup itself necessarily reads portalSessions —
-		//    rate-limiting strictly before any DB read would require keying on
-		//    a non-session identifier such as IP.)
 		const rl = await rateLimiter.limit(ctx, "portalQuoteDecline", {
 			key: session.tokenJti,
 			throws: false,
@@ -830,10 +655,8 @@ export const decline = mutation({
 			});
 		}
 
-		// 3. Inline preflight (FORBIDDEN/NOT_FOUND/QUOTE_VERSION_STALE/QUOTE_NOT_PENDING).
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
-		// REVIEWS-mandated (WR-01): defense-in-depth org scoping.
 		if (quote.orgId !== session.orgId) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
@@ -849,12 +672,6 @@ export const decline = mutation({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		// Plan 14-13 / Gap B parity: mirror the approve-path relaxation so
-		// quotes generated via non-BoldSign paths (where `latestDocumentId` is
-		// unset) can be declined as well as approved. Without this, a portal
-		// client sees the same quote as approvable but undeclinable. Strict
-		// mismatch only counts as STALE when the quote has a pinned id that
-		// differs from what the portal sent (the racing-republish defense).
 		if (quote.latestDocumentId == null) {
 			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
 			if (
@@ -896,19 +713,11 @@ export const decline = mutation({
 				sortOrder: li.sortOrder,
 			}));
 
-		// REVIEWS-mandated: empty/whitespace declineReason → undefined; cap at 2000 chars.
 		const normalizedReason =
 			args.declineReason && args.declineReason.trim().length > 0
 				? args.declineReason.trim().slice(0, 2000)
 				: undefined;
 
-		// Plan 14-14 / CodeRabbit Finding 6: snapshot must reflect what the
-		// client saw at decision time. Plan 14-09 recomputes totals from line
-		// items in `get()`/`list()` because stored `quote.subtotal/total` can
-		// be stale. Copying the stored values into the audit row would
-		// introduce divergence between "displayed total" and "audited total".
-		// Recompute via the shared helper so the audit captures line-item
-		// truth — same source of truth the portal display uses.
 		const recomputedTotals = await calculateQuoteTotals(ctx, args.quoteId, {
 			discountEnabled: quote.discountEnabled,
 			discountAmount: quote.discountAmount,
@@ -924,8 +733,6 @@ export const decline = mutation({
 			clientContactId: session.clientContactId,
 			action: "declined",
 			declineReason: normalizedReason,
-			// REVIEWS-mandated: NO signatureStorageId, NO signatureMode,
-			// NO signatureRawData, and NO termsAcceptedAt on decline rows.
 			ipAddress: args.ipAddress,
 			userAgent: args.userAgent.slice(0, 512),
 			documentId: args.expectedDocumentId,
@@ -943,12 +750,8 @@ export const decline = mutation({
 			declinedAt: now,
 		});
 
-		// Aggregate keep-in-sync (RESEARCH §A2 — quotes aggregate replaces only
-		// when status/approvedAt/total changed; status changed here).
 		const updatedQuote = await ctx.db.get(args.quoteId);
 		if (updatedQuote) {
-			// Static import at the top of file — Convex's V8 isolate disallows
-			// dynamic import() at runtime.
 			await AggregateHelpers.updateQuote(
 				ctx,
 				quote as Doc<"quotes">,
@@ -978,9 +781,6 @@ export const decline = mutation({
 			createdAt: now,
 			documentVersion: document.version,
 			lineItemsCount: lineItemsSnapshot.length,
-			// Plan 14-14 / CodeRabbit Finding 6: align with the snapshot we just
-			// wrote so the response total matches the audit row, not the stored
-			// (potentially stale) quote.total.
 			total: recomputedTotals.total,
 		};
 	},

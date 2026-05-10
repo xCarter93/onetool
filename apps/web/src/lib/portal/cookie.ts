@@ -9,11 +9,7 @@ const cookieAttrs = () => ({
 	httpOnly: true as const,
 	secure: process.env.NODE_ENV === "production",
 	sameSite: "lax" as const,
-	// [Review fix CR-01] path="/" so the cookie is sent to BOTH /portal/* pages
-	// and /api/portal/* route handlers (token, refresh, logout, otp/verify).
-	// A path-scoped cookie at "/portal" was never sent on /api/portal/* — every
-	// authenticated API call 401'd. The cookie name `portal_session` is unique
-	// enough that path scoping is not needed for collision avoidance.
+	// Must be sent to both /portal/* pages and /api/portal/* route handlers.
 	path: "/",
 	maxAge: COOKIE_TTL_SECONDS,
 });
@@ -29,15 +25,8 @@ export function setSessionCookieOnResponse(
 	response.cookies.set(PORTAL_COOKIE, jwt, cookieAttrs());
 }
 
-// Clear at BOTH "/" (current) and "/portal" (legacy from before [CR-01]) — browsers
-// treat cookies at different paths as independent records, so a single clear leaves
-// any stale path-scoped cookie behind and middleware happily reads it.
-//
-// IMPORTANT: NextResponse.cookies.set() / next/headers cookies().set() are keyed by
-// cookie NAME — calling .set twice with the same name overwrites the prior call and
-// only one Set-Cookie header is emitted. Emit raw Set-Cookie headers via
-// response.headers.append (or the cookie-jar's underlying Set-Cookie store) so both
-// path-scoped clears actually reach the browser.
+// Clear both the current "/" cookie and the legacy "/portal" cookie. Next's
+// cookie helper dedupes by name, so raw headers are required for both paths.
 const CLEAR_PATHS = ["/", "/portal"] as const;
 
 function clearCookieHeader(path: string): string {
@@ -46,9 +35,6 @@ function clearCookieHeader(path: string): string {
 }
 
 export async function clearSessionCookieOnRequest(): Promise<void> {
-	// next/headers cookies() Set-Cookie store dedupes by name, so we cannot emit
-	// two clears (for "/" + legacy "/portal") via this API. Routes that need to
-	// clear BOTH paths (e.g. logout) should use clearSessionCookieOnResponse.
 	(await cookies()).set(PORTAL_COOKIE, "", {
 		...cookieAttrs(),
 		maxAge: 0,

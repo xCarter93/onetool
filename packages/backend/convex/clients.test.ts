@@ -42,6 +42,7 @@ describe("Clients", () => {
 			});
 
 			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Test Company",
 				status: "active",
 				leadSource: "website",
@@ -57,6 +58,9 @@ describe("Clients", () => {
 				leadSource: "website",
 				orgId,
 			});
+			expect(client?.portalAccessId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+			);
 		});
 
 		it("should create client with minimal required fields", async () => {
@@ -87,6 +91,7 @@ describe("Clients", () => {
 			});
 
 			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Minimal Client",
 				status: "lead",
 			});
@@ -98,6 +103,9 @@ describe("Clients", () => {
 				companyName: "Minimal Client",
 				status: "lead",
 			});
+			expect(client?.portalAccessId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+			);
 		});
 	});
 
@@ -132,14 +140,17 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Client 1",
 						status: "active",
 					},
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Client 2",
 						status: "lead",
 					},
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Client 3",
 						status: "lead",
 					},
@@ -151,6 +162,12 @@ describe("Clients", () => {
 
 			const clients = await asUser.query(api.clients.list, {});
 			expect(clients).toHaveLength(3);
+			expect(clients.every((client) => Boolean(client.portalAccessId))).toBe(
+				true,
+			);
+			expect(new Set(clients.map((client) => client.portalAccessId)).size).toBe(
+				3,
+			);
 		});
 
 		it("should handle validation errors in bulk create", async () => {
@@ -183,10 +200,12 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Valid Client",
 						status: "active",
 					},
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "", // Invalid: empty name
 						status: "lead",
 					},
@@ -265,16 +284,19 @@ describe("Clients", () => {
 
 			// Create clients with different statuses
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Active Client",
 				status: "active",
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Lead Client",
 				status: "lead",
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Inactive Client",
 				status: "inactive",
 			});
@@ -324,11 +346,13 @@ describe("Clients", () => {
 			});
 
 			const activeClientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Active Client",
 				status: "active",
 			});
 
 			const archivedClientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "To Archive",
 				status: "active",
 			});
@@ -606,24 +630,28 @@ describe("Clients", () => {
 
 			// Create clients with different statuses and categories
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Active Client 1",
 				status: "active",
 				leadSource: "website",
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Active Client 2",
 				status: "active",
 				leadSource: "referral",
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Lead Client",
 				status: "lead",
 				leadSource: "website",
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Inactive Client",
 				status: "inactive",
 				leadSource: "word-of-mouth",
@@ -703,6 +731,7 @@ describe("Clients", () => {
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Acme Corp",
 				status: "active",
 				leadSource: "website",
@@ -710,6 +739,7 @@ describe("Clients", () => {
 			});
 
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Beta Inc",
 				status: "lead",
 			});
@@ -784,6 +814,7 @@ describe("Clients", () => {
 			});
 
 			await asUser1.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "My Client",
 				status: "active",
 			});
@@ -830,6 +861,7 @@ describe("Clients", () => {
 
 			// Also create an active client via API
 			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
 				companyName: "Active Client",
 				status: "active",
 			});
@@ -873,6 +905,7 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Acme Corp",
 						status: "active",
 						contacts: [
@@ -940,6 +973,7 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Beta Inc",
 						status: "lead",
 						properties: [
@@ -1005,6 +1039,7 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Gamma LLC",
 						status: "active",
 						contacts: [
@@ -1054,6 +1089,7 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Delta Corp",
 						status: "active",
 						properties: [
@@ -1105,12 +1141,14 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "No Subs 1",
 						status: "active",
 						contacts: [],
 						properties: [],
 					},
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "No Subs 2",
 						status: "lead",
 						// contacts and properties omitted entirely
@@ -1152,6 +1190,7 @@ describe("Clients", () => {
 			const results = await asUser.mutation(api.clients.bulkCreate, {
 				clients: [
 					{
+						portalAccessId: crypto.randomUUID(),
 						companyName: "Community Client",
 						status: "active",
 						leadSource: "community-page",

@@ -265,6 +265,10 @@ export const create = mutation({
 		// Metadata
 		tags: v.optional(v.array(v.string())),
 		notes: v.optional(v.string()),
+
+		// Caller-supplied portal access UUID — generated client-side to keep this
+		// mutation deterministic (Convex retries mutations on conflict).
+		portalAccessId: v.string(),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
 		// Type assertion needed because schema still has deprecated fields
@@ -324,6 +328,9 @@ export const bulkCreate = mutation({
 				// Metadata
 				tags: v.optional(v.array(v.string())),
 				notes: v.optional(v.string()),
+
+				// Caller-supplied portal access UUID — see clients.create for rationale.
+				portalAccessId: v.string(),
 
 				// Optional nested sub-records for CSV import
 				contacts: v.optional(

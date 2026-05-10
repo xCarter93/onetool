@@ -1,12 +1,5 @@
 "use client";
 
-/**
- * RateLimitBanner — REVIEWS-mandated 429 handling for the approval rail and
- * mobile bottom sheet. Renders when the API route returns
- * `{ code: "rate_limited", retryAfterSeconds }`. Approve CTA is disabled
- * by the caller while cooldown is active; this banner provides the reason.
- */
-
 import { Clock } from "lucide-react";
 
 export interface RateLimitBannerProps {
@@ -36,7 +29,7 @@ export function RateLimitBanner({
 						Slow down a moment.
 					</p>
 					<p className="mt-1 text-[13px] text-muted-foreground">
-						You've sent a lot of requests in a short time. Please wait a few
+						You have sent a lot of requests in a short time. Please wait a few
 						seconds and try again.
 					</p>
 					{showCountdown && (

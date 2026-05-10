@@ -11,9 +11,8 @@ import {
 	setSessionCookieOnResponse,
 } from "./cookie";
 
-// [Review fix #14] Use strict regex matchers, NOT path-suffix endsWith heuristics.
-// Public-within-portal paths are exact: /portal/c/{uuid}/verify and /portal/c/{uuid}/signed-out.
-// The clientPortalId segment matches Convex's UUID-like portalAccessId (lowercase alphanum + dash, 8+ chars).
+// Public portal paths are exact; authenticated portal paths must have a valid
+// portal session cookie.
 const PORTAL_VERIFY_RE = /^\/portal\/c\/[a-z0-9-]{8,}\/verify$/;
 const PORTAL_SIGNED_OUT_RE = /^\/portal\/c\/[a-z0-9-]{8,}\/signed-out$/;
 const PORTAL_EXPIRED_RE = /^\/portal\/expired$/;
@@ -67,27 +66,17 @@ export async function portalMiddleware(
 	const response = NextResponse.next();
 
 	if (remainingSeconds < COOKIE_REFRESH_THRESHOLD_SECONDS) {
-		// [Review fix #3, strategy A] Sliding refresh PRESERVES the original jti.
-		// Only iat/exp change here. We do NOT mint a new jti — that would orphan
-		// the cookie's jti from the DB row and break revocation. Strategy A
-		// chosen over rotation for simplicity: one jti per device session.
-		//
-		// IMPORTANT: this middleware ONLY re-signs the cookie. It does NOT
-		// update `portalSessions.expiresAt`. That row is touched independently
-		// by `ConvexPortalProvider.pingRefresh` (calls /api/portal/refresh on
-		// mount + every 20h). The cookie's sliding refresh and the DB row's
-		// expiry refresh are separate timers — both must elapse before the
-		// session truly expires.
+		// Preserve jti so the refreshed cookie remains attached to the existing
+		// DB-backed session row. /api/portal/refresh separately extends that row.
 		const existingJti = payload.jti as string | undefined;
 		if (!existingJti) {
-			// Defensive: a JWT without jti should never validate. If it does, force re-verify.
 			return redirectToVerify(req);
 		}
 		const claims: PortalJwtClaims = {
 			clientContactId: payload.clientContactId,
 			orgId: payload.orgId,
 			clientPortalId: payload.clientPortalId,
-			jti: existingJti, // [Review fix #3] preserve jti — signSessionJwt accepts claims.jti and reuses it
+			jti: existingJti,
 		};
 		const { token: newToken } = await signSessionJwt(
 			claims,
@@ -95,14 +84,6 @@ export async function portalMiddleware(
 		);
 		setSessionCookieOnResponse(newToken, response);
 
-		// [Review fix Greptile-P2] We previously set x-portal-touch-jti /
-		// x-portal-touch-expires response headers here so a downstream route
-		// could call touchSession server-side. No such consumer exists —
-		// portalSessions.expiresAt is refreshed by ConvexPortalProvider's
-		// pingRefresh on its own timer, independently of the cookie's sliding
-		// refresh. Emitting the headers leaked the session jti to the browser
-		// for zero benefit. The cookie re-sign on its own is the passive
-		// refresh; DB-row touch is the client provider's responsibility.
 	}
 
 	return response;

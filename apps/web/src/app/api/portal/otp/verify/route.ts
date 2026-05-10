@@ -11,7 +11,6 @@ import {
 } from "@/lib/portal/cookie";
 import { hashIp, getRequestIp } from "@/lib/portal/ip";
 
-// Edge-safe randomUUID (Web Crypto, available in both Node 19+ and Edge runtime)
 function randomUUID(): string {
 	return crypto.randomUUID();
 }
@@ -29,7 +28,6 @@ function safeRedirect(
 ): string {
 	const fallback = `/portal/c/${clientPortalId}`;
 	if (!next) return fallback;
-	// Open-redirect guard: only allow same-portal paths
 	if (
 		next.startsWith(`/portal/c/${clientPortalId}/`) ||
 		next === `/portal/c/${clientPortalId}`
@@ -54,15 +52,12 @@ export async function POST(req: NextRequest) {
 		);
 	}
 
-	// [Review fix #5] Generate jti UP-FRONT. The action returns the same jti so the JWT and the
-	// portalSessions row stay tightly coupled. createSession is internalMutation — this is the only path.
 	const jti = randomUUID();
 	const ipHash = await hashIp(getRequestIp(req));
 	const userAgent = (req.headers.get("user-agent") ?? "").slice(0, 256);
 
 	let session;
 	try {
-		// [Review fix #5] verifyOtp is an action (Plan 03) that atomically validates code + creates session row.
 		session = await fetchAction(api.portal.otp.verifyOtp, {
 			clientPortalId: parsed.clientPortalId,
 			email: parsed.email,
@@ -72,7 +67,6 @@ export async function POST(req: NextRequest) {
 			ipHash,
 		});
 	} catch (err) {
-		// [Review fix #6] Read structured ConvexError data — NEVER regex-parse .message
 		if (err instanceof ConvexError) {
 			const data = err.data as {
 				code?: string;
@@ -96,7 +90,6 @@ export async function POST(req: NextRequest) {
 						error: "Too many attempts. Please try again in a few minutes.",
 						code: "OTP_RATE_LIMITED",
 						remainingAttempts: null,
-						// [Review fix WR-11] Forward retryAfter to the UI.
 						retryAfter: data.retryAfter,
 					},
 					{ status: 429 },
@@ -107,7 +100,6 @@ export async function POST(req: NextRequest) {
 				data.code === "OTP_EXPIRED" ||
 				data.code === "OTP_CROSS_PORTAL"
 			) {
-				// Uniform user-facing copy regardless of internal taxonomy (Pitfall 1)
 				return NextResponse.json(
 					{
 						error: "That code didn't match. Please try again.",
@@ -128,13 +120,12 @@ export async function POST(req: NextRequest) {
 		);
 	}
 
-	// The action created the portalSessions row keyed by jti. Now sign the cookie JWT with the SAME jti.
 	const { token } = await signSessionJwt(
 		{
 			clientContactId: session.clientContactId,
 			orgId: session.orgId,
 			clientPortalId: session.clientPortalId,
-			jti, // pin
+			jti,
 		},
 		COOKIE_TTL_SECONDS,
 	);

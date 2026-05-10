@@ -50,6 +50,10 @@ vi.mock("@/lib/portal/cookie", async () => {
 // Hoisted convex/nextjs mock — capture mutation/action invocations.
 let lastTouchedJti: string | null = null;
 let lastTouchedExpiresAt: number | null = null;
+let revokedJti: string | null = null;
+let activeSessionHolder: { value: Record<string, unknown> | null } = {
+	value: null,
+};
 
 vi.mock("convex/nextjs", () => ({
 	fetchMutation: async (
@@ -58,11 +62,19 @@ vi.mock("convex/nextjs", () => ({
 	) => {
 		if (args.tokenJti) lastTouchedJti = args.tokenJti;
 		if (args.newExpiresAt) lastTouchedExpiresAt = args.newExpiresAt;
+		if (args.tokenJti && !args.newExpiresAt) revokedJti = args.tokenJti;
 		return null;
 	},
 	fetchAction: async () => null,
-	fetchQuery: async () => null,
+	fetchQuery: async () => activeSessionHolder.value,
 }));
+
+function makePortalPost(path: string, headers: Record<string, string> = {}) {
+	return new Request(`https://example.com${path}`, {
+		method: "POST",
+		headers,
+	}) as unknown as import("next/server").NextRequest;
+}
 
 describe("portal route cookies + jti consistency", () => {
 	beforeAll(async () => {
@@ -91,7 +103,12 @@ describe("portal route cookies + jti consistency", () => {
 		lastTouchedExpiresAt = null;
 
 		const { POST } = await import("@/app/api/portal/refresh/route");
-		const res = await POST();
+		const res = await POST(
+			makePortalPost("/api/portal/refresh", {
+				origin: "https://example.com",
+				host: "example.com",
+			}),
+		);
 		expect(res.status).toBe(200);
 
 		expect(lastSetCookie.value).not.toBeNull();
@@ -103,6 +120,40 @@ describe("portal route cookies + jti consistency", () => {
 		expect(lastTouchedExpiresAt).toBeGreaterThan(0);
 	});
 
+	it("/api/portal/refresh rejects POSTs without Origin or Referer", async () => {
+		const { signSessionJwt } = await import("@/lib/portal/jwt");
+		const cookie = await signSessionJwt(
+			{ clientContactId: "ct-1", orgId: "org-1", clientPortalId: "abc12345" },
+			60 * 60 * 24,
+		);
+		cookieValueHolder.value = cookie.token;
+		lastSetCookie.value = null;
+
+		const { POST } = await import("@/app/api/portal/refresh/route");
+		const res = await POST(makePortalPost("/api/portal/refresh"));
+
+		expect(res.status).toBe(403);
+		expect(lastSetCookie.value).toBeNull();
+	});
+
+	it("/api/portal/logout rejects POSTs without Origin or Referer and does not revoke", async () => {
+		const { signSessionJwt } = await import("@/lib/portal/jwt");
+		const cookie = await signSessionJwt(
+			{ clientContactId: "ct-1", orgId: "org-1", clientPortalId: "abc12345" },
+			60 * 60 * 24,
+		);
+		cookieValueHolder.value = cookie.token;
+		revokedJti = null;
+		cleared = false;
+
+		const { POST } = await import("@/app/api/portal/logout/route");
+		const res = await POST(makePortalPost("/api/portal/logout"));
+
+		expect(res.status).toBe(403);
+		expect(revokedJti).toBeNull();
+		expect(cleared).toBe(false);
+	});
+
 	it("[Review fix #4] /api/portal/token returns a SHORT-LIVED token with aud=convex-portal-access, NOT the cookie JWT", async () => {
 		const { signSessionJwt } = await import("@/lib/portal/jwt");
 		const cookie = await signSessionJwt(
@@ -111,6 +162,13 @@ describe("portal route cookies + jti consistency", () => {
 		);
 
 		cookieValueHolder.value = cookie.token;
+		activeSessionHolder.value = {
+			tokenJti: cookie.jti,
+			clientContactId: "ct-1",
+			orgId: "org-1",
+			clientPortalId: "abc12345",
+			expiresAt: Date.now() + 60_000,
+		};
 
 		const { GET } = await import("@/app/api/portal/token/route");
 		const res = await GET();
@@ -130,5 +188,21 @@ describe("portal route cookies + jti consistency", () => {
 
 		// [Review fix #4] sessionJti claim must equal the cookie's jti
 		expect((payload as Record<string, unknown>).sessionJti).toBe(cookie.jti);
+	});
+
+	it("/api/portal/token refuses to mint an access token when the session row is revoked", async () => {
+		const { signSessionJwt } = await import("@/lib/portal/jwt");
+		const cookie = await signSessionJwt(
+			{ clientContactId: "ct-1", orgId: "org-1", clientPortalId: "abc12345" },
+			60 * 60 * 24,
+		);
+
+		cookieValueHolder.value = cookie.token;
+		activeSessionHolder.value = null;
+
+		const { GET } = await import("@/app/api/portal/token/route");
+		const res = await GET();
+
+		expect(res.status).toBe(401);
 	});
 });
