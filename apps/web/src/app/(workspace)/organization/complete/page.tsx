@@ -85,6 +85,14 @@ export default function CompleteOrganizationMetadata() {
 	const [createNameError, setCreateNameError] = useState<string | null>(null);
 	const [createLogoError, setCreateLogoError] = useState<string | null>(null);
 
+	// Holds the org created on a prior attempt so retries (after setLogo/setActive
+	// fail) reuse it instead of creating a duplicate. Invalidated when the name
+	// changes, since a new name means a new org.
+	const createdOrgRef = React.useRef<{
+		org: Awaited<ReturnType<NonNullable<typeof createOrganization>>>;
+		name: string;
+	} | null>(null);
+
 	const [formData, setFormData] = useState<FormData>({
 		email: user?.primaryEmailAddress?.emailAddress || "",
 		website: "",
@@ -431,8 +439,14 @@ export default function CompleteOrganizationMetadata() {
 
 		setCreateSubmitting(true);
 		try {
-			// 1. Create org (slug omitted = preserves prior hideSlug behavior)
-			const newOrg = await createOrganization({ name: trimmedName });
+			// 1. Create org — or reuse one from a prior failed attempt with the same
+			// name to avoid orphaning + duplicating on retry.
+			const cached = createdOrgRef.current;
+			const newOrg =
+				cached && cached.name === trimmedName
+					? cached.org
+					: await createOrganization({ name: trimmedName });
+			createdOrgRef.current = { org: newOrg, name: trimmedName };
 
 			// 2. Upload logo BEFORE setActive so step 2's preview tiles see imageUrl on first render
 			if (logoFile) {
@@ -443,6 +457,7 @@ export default function CompleteOrganizationMetadata() {
 			await setActive({ organization: newOrg.id });
 
 			// 4. Advance wizard in-place — no router.push, no router.refresh, no reload
+			createdOrgRef.current = null;
 			setCurrentStep(2);
 		} catch (err) {
 			const message =
