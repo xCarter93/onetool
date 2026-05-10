@@ -78,6 +78,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	// <768px PortalShell hides the tab bar (route-suppressed) and the docked
 	// ApprovalBottomSheet owns the bottom edge.
 	const isDesktop = useMediaQuery("(min-width: 768px)");
+	const toast = useToast();
 
 	// Reactive stale detection: pin the documentId we mounted on; if the
 	// reactive query updates with a different latestDocument._id, surface
@@ -149,8 +150,6 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 		clientEmail,
 		latestApproval,
 	} = data;
-
-	const toast = useToast();
 
 	async function handleDownloadPdf() {
 		try {
