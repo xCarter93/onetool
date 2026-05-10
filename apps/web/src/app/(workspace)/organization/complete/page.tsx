@@ -410,7 +410,7 @@ export default function CompleteOrganizationMetadata() {
 			e.target.value = "";
 			return;
 		}
-		if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+		// Old URL is revoked by the useEffect cleanup when logoPreviewUrl changes.
 		setLogoFile(file);
 		setLogoPreviewUrl(URL.createObjectURL(file));
 	};
@@ -514,7 +514,10 @@ export default function CompleteOrganizationMetadata() {
 						</div>
 
 						<div>
-							<label className="block text-sm font-semibold text-foreground mb-3 tracking-wide">
+							<label
+								htmlFor="org-logo"
+								className="block text-sm font-semibold text-foreground mb-3 tracking-wide"
+							>
 								Organization Logo{" "}
 								<span className="text-muted-foreground font-normal">
 									(optional)
@@ -536,6 +539,7 @@ export default function CompleteOrganizationMetadata() {
 									</div>
 								)}
 								<input
+									id="org-logo"
 									type="file"
 									accept="image/*"
 									onChange={handleLogoSelect}
