@@ -29,7 +29,7 @@ export function useFeatureAccess(): FeatureAccess {
 	const { has, isLoaded, orgId } = useAuth();
 	const { user, isLoaded: isUserLoaded } = useUser();
 	const { organization, isLoaded: isOrgLoaded } = useOrganization();
-	const usage = useQuery(api.usage.getCurrentUsage);
+	const usage = useQuery(api.usage.getCurrentUsage, isLoaded ? {} : "skip");
 
 	// Check if user has an organization - use orgId instead of role check
 	// This works for all roles (admin, member, owner, etc.)

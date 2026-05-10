@@ -1,11 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { AddressAutofill } from "@mapbox/search-js-react";
+import dynamic from "next/dynamic";
+import type { AddressAutofill as AddressAutofillType } from "@mapbox/search-js-react";
 import { useTheme } from "next-themes";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { env } from "@/env";
+
+// @mapbox/search-js-react touches `document` at module init, so it can't be statically imported in an RSC graph.
+const AddressAutofill = dynamic<
+	React.ComponentProps<typeof AddressAutofillType>
+>(() => import("@mapbox/search-js-react").then((m) => m.AddressAutofill), {
+	ssr: false,
+});
 
 /**
  * Structured address data returned from Mapbox Address Autofill.

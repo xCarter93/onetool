@@ -107,6 +107,17 @@ describe("Auth Helpers", () => {
 			).rejects.toThrowError("No active organization found in user session");
 		});
 
+		it("should return null when require: false and no identity", async () => {
+			const result = await t.run(async (ctx) => {
+				(ctx.auth as any).getUserIdentity = async () => null;
+
+				const { getCurrentUserOrgId } = await import("../lib/auth");
+				return await getCurrentUserOrgId(ctx, { require: false });
+			});
+
+			expect(result).toBeNull();
+		});
+
 		it("should return null when require: false and no org", async () => {
 			await t.run(async (ctx) => {
 				const userId = await ctx.db.insert("users", {

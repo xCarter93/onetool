@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import {
 	Authenticated,
+	AuthLoading,
 	ConvexReactClient,
 	Unauthenticated,
 } from "convex/react";
@@ -17,9 +18,13 @@ export default function ConvexClientProvider({
 }: {
 	children: ReactNode;
 }) {
+	// AuthLoading branch keeps the subtree mounted while Clerk rotates tokens
+	// (e.g., during setActive); without it, neither Authenticated nor Unauthenticated
+	// matched and the workspace tree unmounted mid-flow.
 	return (
 		<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
 			<Authenticated>{children}</Authenticated>
+			<AuthLoading>{children}</AuthLoading>
 			<Unauthenticated>{children}</Unauthenticated>
 		</ConvexProviderWithClerk>
 	);

@@ -1,7 +1,7 @@
 # OneTool
 
 <div align="center">
-  <img src="./public/OneTool.png" alt="OneTool Logo" width="200" height="200" />
+  <img src="./apps/web/public/OneTool.png" alt="OneTool Logo" width="200" height="200" />
 </div>
 
 ## Overview
