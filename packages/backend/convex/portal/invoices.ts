@@ -6,10 +6,15 @@
 // Plan 03 adds the V8-runtime helper queries (_getPortalSessionForAction /
 // _rateLimitPreflight / _getPaymentTargetInternal) and the Stripe-importing
 // action createPaymentIntent in portal/invoicesActions.ts.
-import { query } from "../_generated/server";
+import {
+	query,
+	internalQuery,
+	internalMutation,
+} from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getPortalSessionOrThrow } from "./helpers";
+import { rateLimiter } from "../rateLimits";
 
 // ---------------------------------------------------------------------------
 // Public DTO types (browser-safe)
@@ -485,5 +490,114 @@ export const getDownloadUrl = query({
 
 		const url = await ctx.storage.getUrl(match.storageId);
 		return url ? { url } : null;
+	},
+});
+
+// ---------------------------------------------------------------------------
+// V8-runtime helpers used by createPaymentIntent action (portal/invoicesActions).
+// ---------------------------------------------------------------------------
+
+export const _getPortalSessionForAction = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		return await getPortalSessionOrThrow(ctx);
+	},
+});
+
+export const _rateLimitPreflight = internalMutation({
+	args: { sessionJti: v.string() },
+	handler: async (ctx, { sessionJti }) => {
+		const result = await rateLimiter.limit(ctx, "portalInvoicePay", {
+			key: sessionJti,
+			throws: false,
+		});
+		if (!result.ok) {
+			throw new ConvexError({
+				code: "RATE_LIMITED",
+				retryAfter: result.retryAfter ?? 10_000,
+			});
+		}
+	},
+});
+
+/**
+ * Resolve + scope-check the active payment row for createPaymentIntent.
+ * Throws explicit ConvexError codes so the action layer / route can map them.
+ */
+export const _getPaymentTargetInternal = internalQuery({
+	args: {
+		invoiceId: v.id("invoices"),
+		sessionClientContactId: v.id("clientContacts"),
+		sessionOrgId: v.id("organizations"),
+	},
+	handler: async (ctx, args) => {
+		const invoice = await ctx.db.get(args.invoiceId);
+		if (!invoice) throw new ConvexError({ code: "NOT_FOUND" });
+		if (invoice.orgId !== args.sessionOrgId) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
+		const contact = await ctx.db.get(args.sessionClientContactId);
+		if (
+			!contact ||
+			contact.orgId !== args.sessionOrgId ||
+			contact.clientId !== invoice.clientId
+		) {
+			throw new ConvexError({ code: "FORBIDDEN" });
+		}
+		if (invoice.status === "draft" || invoice.status === "cancelled") {
+			throw new ConvexError({ code: "NOT_FOUND" });
+		}
+
+		const allPayments = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", invoice._id))
+			.collect();
+
+		// Decision A: legacy (zero payments rows) is server-side backstop only.
+		if (allPayments.length === 0) {
+			throw new ConvexError({ code: "LEGACY_INVOICE_NOT_PAYABLE" });
+		}
+
+		const active = allPayments
+			.slice()
+			.sort((a, b) => a.sortOrder - b.sortOrder)
+			.find(
+				(p) =>
+					p.status !== "paid" &&
+					p.status !== "cancelled" &&
+					p.status !== "refunded",
+			);
+		if (!active) throw new ConvexError({ code: "NO_ACTIVE_PAYMENT" });
+
+		const org = await ctx.db.get(invoice.orgId);
+		if (!org) throw new ConvexError({ code: "NOT_FOUND" });
+
+		return {
+			invoice: {
+				_id: invoice._id,
+				orgId: invoice.orgId,
+				clientId: invoice.clientId,
+				publicToken: invoice.publicToken,
+			},
+			payment: {
+				_id: active._id,
+				publicToken: active.publicToken,
+				paymentAmount: active.paymentAmount,
+				checkoutAttemptCounter: active.checkoutAttemptCounter,
+				pendingPaymentIntentId: active.pendingPaymentIntentId,
+				pendingPaymentIntentClientSecret:
+					active.pendingPaymentIntentClientSecret,
+				pendingPaymentIntentExpiresAt: active.pendingPaymentIntentExpiresAt,
+			},
+			contact: {
+				_id: contact._id,
+				email: contact.email,
+			},
+			org: {
+				_id: org._id,
+				stripeConnectAccountId: org.stripeConnectAccountId,
+				stripeChargesEnabled: org.stripeChargesEnabled,
+			},
+		};
 	},
 });
