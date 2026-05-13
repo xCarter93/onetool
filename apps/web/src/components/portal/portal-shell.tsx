@@ -78,6 +78,7 @@ export function PortalShell({
 
 			{/* Desktop sidebar (>=768px) */}
 			<aside
+				data-portal-sidebar
 				className="hidden md:flex md:w-[280px] md:flex-col bg-sidebar border-r border-border"
 				aria-label="Portal navigation"
 			>

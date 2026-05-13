@@ -30,6 +30,7 @@ export function MobileTabBar({
 	];
 	return (
 		<nav
+			data-mobile-tab-bar
 			aria-label="Portal navigation"
 			className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border flex items-stretch h-14 pb-[env(safe-area-inset-bottom)]"
 		>

@@ -57,33 +57,37 @@ export function PaymentRail({
 	// Render-time branches (all hooks have already run above).
 	if (!stripeChargesEnabled) {
 		return (
-			<PaymentErrorBanner
-				error={{
-					code: "payments_not_enabled",
-					message: "",
-					retryAfterSeconds: null,
-				}}
-				businessName={businessName}
-			/>
+			<div data-payment-rail>
+				<PaymentErrorBanner
+					error={{
+						code: "payments_not_enabled",
+						message: "",
+						retryAfterSeconds: null,
+					}}
+					businessName={businessName}
+				/>
+			</div>
 		);
 	}
 	if (activePayment?.isLegacy) {
 		return (
-			<PaymentErrorBanner
-				error={{
-					code: "legacy_invoice",
-					message: "",
-					retryAfterSeconds: null,
-				}}
-				businessName={businessName}
-			/>
+			<div data-payment-rail>
+				<PaymentErrorBanner
+					error={{
+						code: "legacy_invoice",
+						message: "",
+						retryAfterSeconds: null,
+					}}
+					businessName={businessName}
+				/>
+			</div>
 		);
 	}
 
 	if (!paymentSurfaceOpen) {
 		const amountFmt = formatMoney(activePayment.paymentAmount);
 		return (
-			<div className="sticky top-4 flex flex-col gap-4 p-4">
+			<div data-payment-rail className="sticky top-4 flex flex-col gap-4 p-4">
 				<button
 					type="button"
 					onClick={() => setPaymentSurfaceOpen(true)}
@@ -101,7 +105,10 @@ export function PaymentRail({
 
 	if (pi.status === "loading" || pi.status === "idle") {
 		return (
-			<div className="sticky top-4 p-4 text-[13px] text-muted-foreground">
+			<div
+				data-payment-rail
+				className="sticky top-4 p-4 text-[13px] text-muted-foreground"
+			>
 				Loading payment surface…
 			</div>
 		);
@@ -109,7 +116,7 @@ export function PaymentRail({
 
 	if (pi.status === "error" || !stripePromise || !pi.clientSecret) {
 		return (
-			<div className="sticky top-4 p-4">
+			<div data-payment-rail className="sticky top-4 p-4">
 				<PaymentErrorBanner
 					error={
 						pi.error ?? {
@@ -126,7 +133,10 @@ export function PaymentRail({
 	}
 
 	return (
-		<div className="sticky top-4 flex flex-col gap-4 p-4">
+		<div
+			data-payment-rail
+			className="sticky top-4 flex flex-col gap-4 p-4"
+		>
 			<Elements
 				stripe={stripePromise}
 				options={{ clientSecret: pi.clientSecret, appearance }}
