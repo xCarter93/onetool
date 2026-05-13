@@ -83,11 +83,13 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
-			// Fresh attempts get a new idempotency key.
-			const attemptId = await convex.mutation(
-				api.payments.incrementCheckoutAttemptCounterInternal,
-				{ publicToken: paymentData.payment.publicToken }
-			);
+			// Compute the next attempt id without committing it. Counter only
+			// advances if Stripe actually mints a session — otherwise a
+			// transient failure here would burn a key the customer never used,
+			// and Stripe's idempotency cache would block the same key from
+			// retrying that failure cleanly.
+			const attemptId =
+				(paymentData.payment.checkoutAttemptCounter ?? 0) + 1;
 
 			const stripe = getStripeClient();
 
@@ -145,7 +147,8 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
-			// Persist the pending session so a within-window retry reuses the URL.
+			// Persist the pending session so a within-window retry reuses the URL,
+			// and commit the attempt counter so the next mint gets a fresh key.
 			if (session.id && session.expires_at) {
 				await convex.mutation(
 					api.payments.persistPendingCheckoutSessionInternal,
@@ -155,6 +158,10 @@ export async function POST(request: NextRequest) {
 						pendingCheckoutSessionUrl: session.url,
 						pendingCheckoutSessionExpiresAt: session.expires_at * 1000,
 					}
+				);
+				await convex.mutation(
+					api.payments.incrementCheckoutAttemptCounterInternal,
+					{ publicToken: paymentData.payment.publicToken }
 				);
 			}
 

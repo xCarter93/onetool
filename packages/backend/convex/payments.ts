@@ -304,6 +304,9 @@ export const getByPublicToken = query({
 				pendingCheckoutSessionUrl: payment.pendingCheckoutSessionUrl,
 				pendingCheckoutSessionExpiresAt:
 					payment.pendingCheckoutSessionExpiresAt,
+				// The route uses (counter + 1) for Stripe's idempotency key so
+				// failed attempts don't burn future keys.
+				checkoutAttemptCounter: payment.checkoutAttemptCounter ?? 0,
 			},
 			invoice: {
 				_id: invoice._id,
