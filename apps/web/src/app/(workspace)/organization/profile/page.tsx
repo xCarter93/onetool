@@ -23,6 +23,7 @@ import {
 	RefreshCcw,
 	ExternalLink,
 	Globe,
+	ChevronDown,
 } from "lucide-react";
 import {
 	ConnectPayouts,
@@ -269,6 +270,7 @@ export default function OrganizationProfilePage() {
 	const [savingBusiness, setSavingBusiness] = React.useState(false);
 	const [onboardingLoading, setOnboardingLoading] = React.useState(false);
 	const [statusLoading, setStatusLoading] = React.useState(false);
+	const [payoutsOpen, setPayoutsOpen] = React.useState(false);
 	const [stripeStatus, setStripeStatus] =
 		React.useState<StripeAccountStatus | null>(null);
 	const lastOrganizationId = React.useRef<string | null>(null);
@@ -1223,7 +1225,72 @@ export default function OrganizationProfilePage() {
 											</div>
 										</section>
 
-										{/* Main 2-column grid: requirements + fees + docs on left, money-flow + payouts on right */}
+										{/* Payouts (Stripe Connect embedded component) — full-width collapsible */}
+										{onboardingComplete && isOwner && (
+											<section className="border-t border-border/40">
+												<h3 id="payouts-accordion-header" className="sr-only">
+													Payouts
+												</h3>
+												<button
+													type="button"
+													onClick={() => setPayoutsOpen((v) => !v)}
+													aria-expanded={payoutsOpen}
+													aria-controls="payouts-accordion-panel"
+													className="group flex w-full items-center justify-between gap-4 py-5 text-left transition-colors hover:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+												>
+													<div className="min-w-0 space-y-1">
+														<p className="text-lg font-semibold text-foreground">
+															Payouts
+														</p>
+														<p className="text-sm text-muted-foreground">
+															Payout schedule, history, and instant or manual
+															payouts.
+														</p>
+													</div>
+													<ChevronDown
+														className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${
+															payoutsOpen ? "rotate-180" : ""
+														}`}
+														aria-hidden="true"
+													/>
+												</button>
+												<div
+													id="payouts-accordion-panel"
+													role="region"
+													aria-labelledby="payouts-accordion-header"
+													hidden={!payoutsOpen}
+													className="pb-6"
+												>
+													{payoutsOpen && (
+														<StripeConnectProvider
+															accountId={organization.stripeConnectAccountId}
+														>
+															{(connectInstance) => {
+																if (!connectInstance) {
+																	return (
+																		<div className="flex items-center justify-center py-8">
+																			<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+																			<span className="ml-2 text-sm text-muted-foreground">
+																				Loading payouts...
+																			</span>
+																		</div>
+																	);
+																}
+																return (
+																	<ConnectComponentsProvider
+																		connectInstance={connectInstance}
+																	>
+																		<ConnectPayouts />
+																	</ConnectComponentsProvider>
+																);
+															}}
+														</StripeConnectProvider>
+													)}
+												</div>
+											</section>
+										)}
+
+										{/* Main 2-column grid: requirements + fees + docs on left, money-flow on right */}
 										<div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-8 border-t border-border/40 pt-8">
 											{/* Left column */}
 											<div className="space-y-8">
@@ -1273,45 +1340,6 @@ export default function OrganizationProfilePage() {
 													</div>
 													<MoneyFlowDiagram />
 												</section>
-
-												{/* Payouts (Stripe Connect embedded component) */}
-												{onboardingComplete && isOwner && (
-													<section className="space-y-4">
-														<div>
-															<h3 className="text-lg font-semibold text-foreground">
-																Payouts
-															</h3>
-															<p className="text-sm text-muted-foreground">
-																Manage your payout schedule, view payout
-																history, and perform instant or manual
-																payouts.
-															</p>
-														</div>
-														<StripeConnectProvider
-															accountId={organization.stripeConnectAccountId}
-														>
-															{(connectInstance) => {
-																if (!connectInstance) {
-																	return (
-																		<div className="flex items-center justify-center py-8">
-																			<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-																			<span className="ml-2 text-sm text-muted-foreground">
-																				Loading payouts...
-																			</span>
-																		</div>
-																	);
-																}
-																return (
-																	<ConnectComponentsProvider
-																		connectInstance={connectInstance}
-																	>
-																		<ConnectPayouts />
-																	</ConnectComponentsProvider>
-																);
-															}}
-														</StripeConnectProvider>
-													</section>
-												)}
 											</div>
 										</div>
 									</>
