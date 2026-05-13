@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe";
 
 export interface ConnectContext {
 	userId: Id<"users">;
@@ -64,4 +66,93 @@ export function deriveConnectFieldsFromOrg(
 		throw new Error("ORG_HAS_NO_EMAIL");
 	}
 	return { country: "US", currency: "usd", email };
+}
+
+/**
+ * Plan 14.2.1-03 (CONTEXT.md "Accounts v2 Migration Strategy") - clean
+ * cutover to /v2/core/accounts. Mirrors the v1 controller-properties
+ * configuration into the v2 defaults.responsibilities + configuration
+ * blocks (Pitfall 1 value-flip on fees_collector; Pitfall 2 applied:true
+ * on each configuration). Idempotency key bumped to acct-create-v2-${orgId}
+ * to avoid the 24h cache collision with v1 keys (Pitfall 5). Include list
+ * widened to include configuration.recipient + requirements so the create
+ * response carries enough state for deriveConnectStatusFromV2Account to
+ * return real values immediately (REVIEWS.md MEDIUM).
+ */
+export async function createConnectAccount(
+	ctx: ConnectContext,
+	currentUserEmail: string | null
+): Promise<Stripe.V2.Core.Account> {
+	const { country, email } = deriveConnectFieldsFromOrg(ctx, currentUserEmail);
+	const stripe = getStripeClient();
+	return stripe.v2.core.accounts.create(
+		{
+			contact_email: email,
+			dashboard: "none",
+			include: [
+				"configuration.merchant",
+				"configuration.recipient",
+				"identity",
+				"requirements",
+			],
+			defaults: {
+				currency: "usd",
+				responsibilities: {
+					// Pitfall 1 value-flip: v1 fees.payer="account" -> v2 fees_collector="stripe"
+					fees_collector: "stripe",
+					// v1 losses.payments="stripe" -> v2 losses_collector="stripe" (value unchanged)
+					losses_collector: "stripe",
+				},
+			},
+			identity: { country },
+			configuration: {
+				merchant: {
+					applied: true,
+					capabilities: {
+						card_payments: { requested: true },
+					},
+				},
+				recipient: {
+					applied: true,
+					capabilities: {
+						// v1 capabilities.transfers -> v2 configuration.recipient.capabilities.stripe_balance.stripe_transfers
+						stripe_balance: {
+							stripe_transfers: { requested: true },
+						},
+					},
+				},
+			},
+		},
+		{ idempotencyKey: `acct-create-v2-${ctx.orgId}` }
+	);
+}
+
+/**
+ * Plan 14.2.1-03 (Pitfall 6) - v2 Account responses do NOT carry top-level
+ * charges_enabled / payouts_enabled / details_submitted booleans. Derive
+ * them from the capability statuses + requirements entries.
+ *
+ * payoutsEnabled reads from configuration.recipient.capabilities.stripe_balance.stripe_transfers.status
+ * (the v2 path for the v1 "transfers" capability) per REVIEWS.md.
+ */
+export function deriveConnectStatusFromV2Account(
+	account: Stripe.V2.Core.Account
+): {
+	chargesEnabled: boolean;
+	payoutsEnabled: boolean;
+	detailsSubmitted: boolean;
+	requirements: Stripe.V2.Core.Account.Requirements | null;
+} {
+	const merchantCaps = account.configuration?.merchant?.capabilities;
+	const recipientCaps = account.configuration?.recipient?.capabilities;
+	return {
+		chargesEnabled: merchantCaps?.card_payments?.status === "active",
+		payoutsEnabled:
+			recipientCaps?.stripe_balance?.stripe_transfers?.status === "active",
+		detailsSubmitted:
+			(account.requirements?.entries?.filter(
+				(e) => e.awaiting_action_from === "user"
+			).length ?? 0) === 0,
+		requirements: account.requirements ?? null,
+	};
 }

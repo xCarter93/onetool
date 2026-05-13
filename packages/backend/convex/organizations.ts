@@ -841,3 +841,30 @@ export const updateExternalAccountFingerprintInternal = internalMutation({
 		return null;
 	},
 });
+
+// Plan 14.2.1-03 (REVIEWS.md HIGH — pre-cutover cleanup primitive). Nulls
+// every Stripe-Connect state field on the org row. Called by the operator
+// BEFORE deploying 14.2.1 for every test org whose Stripe-side test account
+// they're about to delete in the Dashboard. Without this, the v1 acct ID
+// remains in Convex, the retrieve branch of /api/stripe-connect/account
+// 404s on the deleted Stripe account, and onboarding is stranded.
+// Also called defensively from the route's 404 fallback as belt-and-suspenders.
+export const clearStripeConnectStateInternal = internalMutation({
+	args: { orgId: v.id("organizations") },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.orgId, {
+			stripeConnectAccountId: undefined,
+			stripeChargesEnabled: undefined,
+			stripePayoutsEnabled: undefined,
+			stripeDetailsSubmitted: undefined,
+			stripeRequirementsCurrentlyDue: undefined,
+			stripeRequirementsDisabledReason: undefined,
+			stripeStatusUpdatedAt: undefined,
+			stripeExternalAccountLast4: undefined,
+			stripeExternalAccountBankName: undefined,
+			stripeExternalAccountUpdatedAt: undefined,
+		});
+		return null;
+	},
+});
