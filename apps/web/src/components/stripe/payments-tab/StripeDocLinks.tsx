@@ -4,15 +4,15 @@ import React from "react";
 import { ExternalLink } from "lucide-react";
 
 const LINKS: { href: string; label: string }[] = [
-	{ href: "https://docs.stripe.com/connect.md", label: "Stripe Connect overview" },
-	{ href: "https://docs.stripe.com/connect/charges.md", label: "How Connect charges work" },
+	{ href: "https://docs.stripe.com/connect", label: "Stripe Connect overview" },
+	{ href: "https://docs.stripe.com/connect/charges", label: "How Connect charges work" },
 	{
-		href: "https://docs.stripe.com/connect/account-capabilities.md",
+		href: "https://docs.stripe.com/connect/account-capabilities",
 		label: "Account capabilities",
 	},
 	{ href: "https://stripe.com/pricing", label: "Stripe pricing (live rates)" },
-	{ href: "https://docs.stripe.com/payouts.md", label: "Payouts guide" },
-	{ href: "https://docs.stripe.com/disputes.md", label: "Disputes" },
+	{ href: "https://docs.stripe.com/payouts", label: "Payouts guide" },
+	{ href: "https://docs.stripe.com/disputes", label: "Disputes" },
 ];
 
 export function StripeDocLinks() {

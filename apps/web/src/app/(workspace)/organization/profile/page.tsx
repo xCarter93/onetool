@@ -1227,7 +1227,7 @@ export default function OrganizationProfilePage() {
 
 										{/* Payouts (Stripe Connect embedded component) — full-width collapsible */}
 										{onboardingComplete && isOwner && (
-											<section className="border-t border-border/40">
+											<section className="border-t border-border/40 pt-6">
 												<h3 id="payouts-accordion-header" className="sr-only">
 													Payouts
 												</h3>
@@ -1236,10 +1236,12 @@ export default function OrganizationProfilePage() {
 													onClick={() => setPayoutsOpen((v) => !v)}
 													aria-expanded={payoutsOpen}
 													aria-controls="payouts-accordion-panel"
-													className="group flex w-full items-center justify-between gap-4 py-5 text-left transition-colors hover:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+													className={`group flex w-full items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-5 py-4 text-left shadow-xs transition-all hover:border-foreground/20 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+														payoutsOpen ? "rounded-b-none border-b-transparent" : ""
+													}`}
 												>
 													<div className="min-w-0 space-y-1">
-														<p className="text-lg font-semibold text-foreground">
+														<p className="text-base font-semibold text-foreground">
 															Payouts
 														</p>
 														<p className="text-sm text-muted-foreground">
@@ -1247,19 +1249,24 @@ export default function OrganizationProfilePage() {
 															payouts.
 														</p>
 													</div>
-													<ChevronDown
-														className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${
-															payoutsOpen ? "rotate-180" : ""
-														}`}
-														aria-hidden="true"
-													/>
+													<div className="flex shrink-0 items-center gap-2 text-sm font-medium text-muted-foreground group-hover:text-foreground">
+														<span className="hidden sm:inline">
+															{payoutsOpen ? "Hide" : "Show"}
+														</span>
+														<ChevronDown
+															className={`h-4 w-4 transition-transform duration-200 ${
+																payoutsOpen ? "rotate-180" : ""
+															}`}
+															aria-hidden="true"
+														/>
+													</div>
 												</button>
 												<div
 													id="payouts-accordion-panel"
 													role="region"
 													aria-labelledby="payouts-accordion-header"
 													hidden={!payoutsOpen}
-													className="pb-6"
+													className="rounded-b-lg border border-t-0 border-border bg-background px-5 pb-5 pt-2"
 												>
 													{payoutsOpen && (
 														<StripeConnectProvider
