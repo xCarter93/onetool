@@ -947,13 +947,25 @@ describe("Organizations", () => {
 	});
 
 	describe("setStripeConnectAccountId (public, REMOVED in Plan 14.2-02)", () => {
-		it("public mutation is no longer exported on api.organizations", () => {
-			// Asserts the OLD public mutation surface is gone. The pivot replacement
-			// is api.organizations.setStripeConnectAccountIdInternal.
-			expect(
-				(api.organizations as Record<string, unknown>)
-					.setStripeConnectAccountId
-			).toBeUndefined();
+		it("public mutation is no longer callable — convex-test rejects the path", async () => {
+			// Source-of-truth proof lives in the file itself; the grep gate in
+			// Plan 14.2-02 acceptance ensures `^export const setStripeConnectAccountId =`
+			// returns zero matches. At runtime we verify convex-test refuses to
+			// route to the missing export (api.organizations is a Proxy whose
+			// property-access cannot reliably be asserted with toBeUndefined()
+			// because pretty-format reentry hits the Proxy traps).
+			const asUser = t.withIdentity({
+				subject: "user_check",
+				activeOrgId: "org_check",
+			});
+			await expect(
+				// @ts-expect-error — deliberately invoking a removed export
+				asUser.mutation(api.organizations.setStripeConnectAccountId, {
+					accountId: "acct_anything",
+				})
+			).rejects.toThrowError(
+				/setStripeConnectAccountId|no such export|not.*function/i
+			);
 		});
 	});
 

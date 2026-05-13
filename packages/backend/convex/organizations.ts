@@ -435,31 +435,103 @@ export const regenerateReceivingAddress = mutation({
 });
 
 /**
- * Persist the Stripe Connect account ID for the current organization.
- * Only the organization owner can set this value.
+ * Plan 14.2-02 — Connect cross-tenant lockdown.
+ *
+ * Returns the locked-down ConnectContext for the current caller. Used by
+ * `apps/web/src/lib/stripeConnect.ts#getOrgConnectAccountForCaller()` to
+ * derive every Stripe Connect identifier server-side — no client-supplied
+ * accountId, country, email, or currency is ever read.
+ *
+ * Pivot note (Plan 14.2-02 Preflight / FINDINGS V-1): declared as a PUBLIC
+ * `query` rather than `internalQuery` because Next.js `convex/nextjs`
+ * helpers only call public function references. Auth is performed inside
+ * the handler — clerkUserId and orgId are derived from the Clerk session,
+ * never from client args. Safety properties are equivalent to an internal
+ * query because no client input influences the lookup.
+ *
+ * Throws:
+ *   - "User not authenticated" / "No active organization" — surfaces as
+ *     ORG_NOT_FOUND in `getOrgConnectAccountForCaller` (which maps to 401).
+ *   - "NOT_ORG_OWNER" — caller is a member but not the org owner (M-5).
  */
-export const setStripeConnectAccountId = mutation({
-	args: {
-		accountId: v.string(),
+export const getOrgForCallerInternal = query({
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUserOrThrow(ctx);
+		// Member-aware lookup (mirrors lib/auth.ts) — surfaces NOT_ORG_OWNER
+		// rather than ORG_NOT_FOUND for non-owner members per FINDINGS M-5.
+		const userOrgId = await getCurrentUserOrgId(ctx);
+		const organization = await ctx.db.get(userOrgId);
+		if (!organization) {
+			throw new Error("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("NOT_ORG_OWNER");
+		}
+		return {
+			userId: user._id,
+			orgId: organization._id,
+			stripeConnectAccountId: organization.stripeConnectAccountId ?? null,
+			organization: {
+				_id: organization._id,
+				name: organization.name,
+				email: organization.email,
+				addressCountry: organization.addressCountry,
+				stripeConnectAccountId: organization.stripeConnectAccountId,
+				ownerUserId: organization.ownerUserId,
+			},
+		};
 	},
+});
+
+/**
+ * Plan 14.2-02 — replaces the prior PUBLIC `setStripeConnectAccountId` (now
+ * deleted). The handler derives `orgId` from the Clerk session (NOT from
+ * args) and enforces owner-only access plus the FINDINGS M-2 duplicate-
+ * account guard before patching.
+ *
+ * Pivot note (Plan 14.2-02 Preflight / FINDINGS V-1): declared as a PUBLIC
+ * `mutation` rather than `internalMutation` because Next.js calls public
+ * function references via `convex/nextjs`. The `Internal` suffix preserves
+ * the Plan 02 export-name contract; the security properties match an
+ * internal mutation because the client cannot influence which org gets
+ * patched.
+ *
+ * Throws:
+ *   - "NOT_ORG_OWNER" when caller is not the org owner.
+ *   - "DUPLICATE_CONNECT_ACCOUNT" when accountId already maps to another
+ *     org (FINDINGS M-2 — prevents webhook mis-routing).
+ */
+export const setStripeConnectAccountIdInternal = mutation({
+	args: { accountId: v.string() },
 	handler: async (ctx, args) => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
-
 		const organization = await ctx.db.get(userOrgId);
 		if (!organization) {
-			throw new Error("Organization not found");
+			throw new Error("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("NOT_ORG_OWNER");
 		}
 
-		if (organization.ownerUserId !== user._id) {
-			throw new Error("Only organization owner can manage payments onboarding");
+		// FINDINGS M-2 — duplicate-account guard.
+		const existing = await ctx.db
+			.query("organizations")
+			.withIndex("by_stripe_connect_account_id", (q) =>
+				q.eq("stripeConnectAccountId", args.accountId)
+			)
+			.first();
+		if (existing && existing._id !== userOrgId) {
+			throw new Error(
+				`DUPLICATE_CONNECT_ACCOUNT: account ${args.accountId} already mapped to org ${existing._id}`
+			);
 		}
 
 		await ctx.db.patch(userOrgId, {
 			stripeConnectAccountId: args.accountId,
 		});
-
-		return args.accountId;
+		return null;
 	},
 });
 
