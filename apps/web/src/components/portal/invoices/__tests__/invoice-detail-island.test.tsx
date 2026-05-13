@@ -50,6 +50,18 @@ vi.mock("@stripe/react-stripe-js", () => ({
 vi.mock("convex/react", () => ({
 	useQuery: () => undefined,
 }));
+vi.mock("framer-motion", () => ({
+	useReducedMotion: () => false,
+}));
+vi.mock("@/hooks/use-toast", () => ({
+	useToast: () => ({
+		error: vi.fn(),
+		success: vi.fn(),
+		warning: vi.fn(),
+		info: vi.fn(),
+		loading: vi.fn(),
+	}),
+}));
 vi.mock("@onetool/backend/convex/_generated/api", () => ({
 	api: { portal: { invoices: { get: "noop" } } },
 }));

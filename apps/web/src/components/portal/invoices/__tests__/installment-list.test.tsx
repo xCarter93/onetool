@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { cleanup, render, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+vi.mock("framer-motion", () => ({
+	useReducedMotion: () => false,
+}));
+
+afterEach(() => {
+	cleanup();
+});
 
 import {
 	InstallmentList,
@@ -63,7 +71,7 @@ describe("InstallmentList", () => {
 		expect(rows[1]!.className).toMatch(/border-l-\[3px\]/);
 	});
 
-	it("paid installment rows show 'Paid · {date}' pill with card brand + last4 when cached", () => {
+	it("paid installment rows show 'Paid · {date}' pill and an expandable PaymentReceipt revealing card brand + last4", () => {
 		const paidAt = new Date("2026-03-15T12:00:00Z").getTime();
 		const installments: InstallmentRow[] = [
 			row({
@@ -75,13 +83,16 @@ describe("InstallmentList", () => {
 				cardLast4: "4242",
 			}),
 		];
-		const { container } = render(
+		const { container, getByRole } = render(
 			<InstallmentList installments={installments} activeIndex={null} />,
 		);
-		const text = container.textContent ?? "";
-		expect(text).toMatch(/Paid · /);
-		expect(text).toContain("visa");
-		expect(text).toContain("4242");
+		// Pill stays inline; card details live in the expandable receipt.
+		expect(container.textContent ?? "").toMatch(/Paid · /);
+		const toggle = getByRole("button", { name: /view receipt/i });
+		fireEvent.click(toggle);
+		const expandedText = container.textContent ?? "";
+		expect(expandedText).toMatch(/VISA/);
+		expect(expandedText).toContain("4242");
 	});
 
 	it("legacy invoices do not render installment rows — the legacy notice replaces the installment list entirely (empty installments renders an empty state, not rows)", () => {

@@ -12,6 +12,7 @@ import {
 	type InstallmentRow,
 } from "./installment-list";
 import { LegacyInvoiceNotice } from "./legacy-invoice-notice";
+import { PaidStatusPanel } from "./paid-status-panel";
 import { PaymentBottomSheet } from "./payment-bottom-sheet";
 import { PaymentRail } from "./payment-rail";
 
@@ -65,7 +66,6 @@ export interface InvoiceDetailIslandProps {
 export function InvoiceDetailIsland({
 	data: ssrData,
 	clientPortalId,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	hasPdf,
 }: InvoiceDetailIslandProps) {
 	// All hooks run UNCONDITIONALLY at the top, before any branch returns.
@@ -104,12 +104,14 @@ export function InvoiceDetailIsland({
 		}
 		if (allPaid) {
 			return (
-				<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
-					<h3 className="text-[15px] font-semibold">Paid in full</h3>
-					<p className="mt-1 text-[13px]">
-						Thanks — every installment on this invoice has been paid.
-					</p>
-				</div>
+				<PaidStatusPanel
+					data={{
+						invoice: { _id: data.invoice._id },
+						businessName: data.businessName,
+						payments: data.payments,
+					}}
+					hasPdf={hasPdf}
+				/>
 			);
 		}
 		const active = data.activePaymentPublic;

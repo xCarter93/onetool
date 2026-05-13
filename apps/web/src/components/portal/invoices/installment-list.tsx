@@ -2,6 +2,8 @@
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
+import { PaymentReceipt } from "./payment-receipt";
+
 export interface InstallmentRow {
 	_id: string;
 	paymentAmount: number;
@@ -93,13 +95,6 @@ export function InstallmentList({
 								<p className="mt-1 text-[14px] font-medium text-foreground">
 									{row.description ?? `Installment ${idx + 1}`}
 								</p>
-								{row.status === "paid" &&
-								(row.cardBrand || row.cardLast4) ? (
-									<p className="mt-1 text-[12px] text-muted-foreground">
-										{row.cardBrand ? `${row.cardBrand} ` : ""}
-										{row.cardLast4 ? `•••• ${row.cardLast4}` : ""}
-									</p>
-								) : null}
 							</div>
 							<div className="flex flex-col items-end gap-1.5">
 								<span className="text-[18px] font-semibold tabular-nums">
@@ -113,6 +108,21 @@ export function InstallmentList({
 								</span>
 							</div>
 						</div>
+						{row.status === "paid" ? (
+							<div className="mt-3">
+								<PaymentReceipt
+									payment={{
+										_id: row._id,
+										description: row.description,
+										paymentAmount: row.paymentAmount,
+										paidAt: row.paidAt,
+										cardBrand: row.cardBrand,
+										cardLast4: row.cardLast4,
+										receiptUrl: row.receiptUrl,
+									}}
+								/>
+							</div>
+						) : null}
 					</li>
 				);
 			})}
