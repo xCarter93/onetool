@@ -65,6 +65,7 @@ import type * as payments from "../payments.js";
 import type * as portal_branding from "../portal/branding.js";
 import type * as portal_email from "../portal/email.js";
 import type * as portal_helpers from "../portal/helpers.js";
+import type * as portal_invoices from "../portal/invoices.js";
 import type * as portal_migrations from "../portal/migrations.js";
 import type * as portal_otp from "../portal/otp.js";
 import type * as portal_quotes from "../portal/quotes.js";
@@ -154,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   "portal/branding": typeof portal_branding;
   "portal/email": typeof portal_email;
   "portal/helpers": typeof portal_helpers;
+  "portal/invoices": typeof portal_invoices;
   "portal/migrations": typeof portal_migrations;
   "portal/otp": typeof portal_otp;
   "portal/quotes": typeof portal_quotes;
