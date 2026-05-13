@@ -336,7 +336,7 @@ describe("deriveConnectStatusFromV2Account", () => {
 			chargesEnabled: true,
 			payoutsEnabled: true,
 			detailsSubmitted: true,
-			requirements: { entries: [] },
+			requirements: { currently_due: [], entries: [] },
 		});
 	});
 
@@ -378,5 +378,21 @@ describe("deriveConnectStatusFromV2Account", () => {
 		expect(deriveConnectStatusFromV2Account(account).detailsSubmitted).toBe(
 			false
 		);
+	});
+
+	it("maps user-action entries to currently_due so the UI surfaces blockers", () => {
+		const account = {
+			configuration: { merchant: {}, recipient: {} },
+			requirements: {
+				entries: [
+					{ awaiting_action_from: "user", description: "identity.document" },
+					{ awaiting_action_from: "stripe", description: "tos.acceptance" },
+					{ awaiting_action_from: "user", description: "external_account" },
+				],
+			},
+		} as unknown as Stripe.V2.Core.Account;
+		expect(
+			deriveConnectStatusFromV2Account(account).requirements?.currently_due
+		).toEqual(["identity.document", "external_account"]);
 	});
 });

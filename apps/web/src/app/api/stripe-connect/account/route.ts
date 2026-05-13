@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { fetchMutation, fetchQuery } from "convex/nextjs";
+import Stripe from "stripe";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getStripeClient } from "@/lib/stripe";
 import {
@@ -44,10 +45,10 @@ export async function POST() {
 			});
 		} catch (retrieveErr) {
 			// If Stripe no longer has the stored account, clear local state and
-			// recreate it in the same request.
+			// recreate it in the same request. Use instanceof so bundler name
+			// mangling can't silently turn this into a false negative.
 			const isStripeError =
-				retrieveErr instanceof Error &&
-				retrieveErr.constructor.name === "StripeInvalidRequestError";
+				retrieveErr instanceof Stripe.errors.StripeInvalidRequestError;
 			const statusCode = (retrieveErr as { statusCode?: number })?.statusCode;
 			const code = (retrieveErr as { code?: string })?.code;
 			if (isStripeError && (statusCode === 404 || code === "account_invalid")) {

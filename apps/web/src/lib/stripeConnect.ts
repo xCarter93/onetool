@@ -122,6 +122,11 @@ export async function createConnectAccount(
 
 /**
  * Derive UI status booleans from Accounts v2 capability and requirement fields.
+ *
+ * `requirements` is normalised to a v1-shaped `{ currently_due }` list so the
+ * UI and the webhook-cached `account.updated` payload (which is still v1)
+ * share one rendering path. The v2 entries[] live under `entries` if a caller
+ * needs the richer structure (errors, impact, deadlines).
  */
 export function deriveConnectStatusFromV2Account(
 	account: Stripe.V2.Core.Account
@@ -129,22 +134,29 @@ export function deriveConnectStatusFromV2Account(
 	chargesEnabled: boolean;
 	payoutsEnabled: boolean;
 	detailsSubmitted: boolean;
-	requirements: NonNullable<Stripe.V2.Core.Account["requirements"]> | null;
+	requirements: {
+		currently_due: string[];
+		entries: NonNullable<Stripe.V2.Core.Account["requirements"]>["entries"];
+	} | null;
 } {
 	const merchantCaps = account.configuration?.merchant?.capabilities;
 	const recipientCaps = account.configuration?.recipient?.capabilities;
+	const entries = account.requirements?.entries;
+	const currentlyDue = Array.isArray(entries)
+		? entries
+				.filter((e) => e.awaiting_action_from === "user")
+				.map((e) => e.description)
+		: [];
 	return {
 		chargesEnabled: merchantCaps?.card_payments?.status === "active",
 		payoutsEnabled:
 			recipientCaps?.stripe_balance?.stripe_transfers?.status === "active",
 		// Treat missing requirements as "not yet submitted" — a freshly created
 		// v2 account can return requirements:null before Stripe analyses it.
-		detailsSubmitted:
-			Array.isArray(account.requirements?.entries) &&
-			account.requirements.entries.filter(
-				(e) => e.awaiting_action_from === "user"
-			).length === 0,
-		requirements: account.requirements ?? null,
+		detailsSubmitted: Array.isArray(entries) && currentlyDue.length === 0,
+		requirements: account.requirements
+			? { currently_due: currentlyDue, entries: entries ?? [] }
+			: null,
 	};
 }
 
