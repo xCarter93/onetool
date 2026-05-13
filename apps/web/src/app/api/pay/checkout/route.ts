@@ -138,8 +138,15 @@ export async function POST(request: NextRequest) {
 				}
 			);
 
+			if (!session.url) {
+				return NextResponse.json(
+					{ error: "Stripe did not return a checkout URL. Please try again." },
+					{ status: 502 }
+				);
+			}
+
 			// Persist the pending session so a within-window retry reuses the URL.
-			if (session.id && session.url && session.expires_at) {
+			if (session.id && session.expires_at) {
 				await convex.mutation(
 					api.payments.persistPendingCheckoutSessionInternal,
 					{
@@ -234,6 +241,13 @@ export async function POST(request: NextRequest) {
 				stripeAccount: accountId,
 			}
 		);
+
+		if (!session.url) {
+			return NextResponse.json(
+				{ error: "Stripe did not return a checkout URL. Please try again." },
+				{ status: 502 }
+			);
+		}
 
 		return NextResponse.json({ url: session.url });
 	} catch (error) {

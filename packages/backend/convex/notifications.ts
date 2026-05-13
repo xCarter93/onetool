@@ -837,7 +837,7 @@ export const createWebhookNotificationInternal = internalMutation({
 		};
 		const title = TITLE_BY_TYPE[args.type];
 
-			// Only payment lifecycle notifications reference an invoice/payment entity.
+		// Only payment lifecycle notifications reference an invoice/payment entity.
 		const isInvoiceEntity =
 			args.type === "payment_failed" ||
 			args.type === "dispute_created" ||
@@ -849,8 +849,8 @@ export const createWebhookNotificationInternal = internalMutation({
 			notificationType: args.type,
 			title,
 			message: args.message,
-			...(isInvoiceEntity
-				? { entityType: "invoice" as const, entityId: args.paymentId ?? "" }
+			...(isInvoiceEntity && args.paymentId
+				? { entityType: "invoice" as const, entityId: args.paymentId }
 				: {}),
 			isRead: false,
 			sentVia: "in_app",
