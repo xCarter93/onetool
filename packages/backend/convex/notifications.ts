@@ -122,6 +122,11 @@ interface NotificationStats {
 		payment_failed: number;
 		dispute_created: number;
 		charge_refunded: number;
+		// Plan 14.2.1-01 - Connect lifecycle additions.
+		payout_paid: number;
+		payout_failed: number;
+		capability_degraded: number;
+		bank_account_changed: number;
 	};
 	today: number;
 	pending: number; // scheduled but not sent yet
@@ -144,6 +149,10 @@ function createEmptyNotificationStats(): NotificationStats {
 			payment_failed: 0,
 			dispute_created: 0,
 			charge_refunded: 0,
+			payout_paid: 0,
+			payout_failed: 0,
+			capability_degraded: 0,
+			bank_account_changed: 0,
 		},
 		today: 0,
 		pending: 0,
@@ -804,7 +813,12 @@ export const createWebhookNotificationInternal = internalMutation({
 		type: v.union(
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
-			v.literal("charge_refunded")
+			v.literal("charge_refunded"),
+			// Plan 14.2.1-01 (CONTEXT.md "Notification Routing") - Connect lifecycle additions.
+			v.literal("payout_paid"),
+			v.literal("payout_failed"),
+			v.literal("capability_degraded"),
+			v.literal("bank_account_changed")
 		),
 		paymentId: v.optional(v.id("payments")),
 		priority: v.union(v.literal("normal"), v.literal("high")),
@@ -820,12 +834,23 @@ export const createWebhookNotificationInternal = internalMutation({
 			return null;
 		}
 
-		const title =
-			args.type === "payment_failed"
-				? "Payment failed"
-				: args.type === "dispute_created"
-					? "Dispute filed"
-					: "Refund issued";
+		const TITLE_BY_TYPE: Record<typeof args.type, string> = {
+			payment_failed: "Payment failed",
+			dispute_created: "Dispute filed",
+			charge_refunded: "Refund issued",
+			payout_paid: "Payout sent",
+			payout_failed: "Payout failed",
+			capability_degraded: "Stripe capability disabled",
+			bank_account_changed: "Bank account updated",
+		};
+		const title = TITLE_BY_TYPE[args.type];
+
+		// Existing webhook kinds reference an invoice/payment entity; the new
+		// Connect lifecycle kinds (payout_*, capability_*, bank_account_*) do not.
+		const isInvoiceEntity =
+			args.type === "payment_failed" ||
+			args.type === "dispute_created" ||
+			args.type === "charge_refunded";
 
 		await ctx.db.insert("notifications", {
 			orgId: args.orgId,
@@ -833,8 +858,9 @@ export const createWebhookNotificationInternal = internalMutation({
 			notificationType: args.type,
 			title,
 			message: args.message,
-			entityType: "invoice",
-			entityId: args.paymentId ?? "",
+			...(isInvoiceEntity
+				? { entityType: "invoice" as const, entityId: args.paymentId ?? "" }
+				: {}),
 			isRead: false,
 			sentVia: "in_app",
 			sentAt: Date.now(),
