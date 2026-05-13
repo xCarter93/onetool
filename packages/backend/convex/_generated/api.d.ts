@@ -42,6 +42,7 @@ import type * as lib_crud from "../lib/crud.js";
 import type * as lib_lineItems from "../lib/lineItems.js";
 import type * as lib_memberships from "../lib/memberships.js";
 import type * as lib_organization from "../lib/organization.js";
+import type * as lib_payments from "../lib/payments.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
@@ -132,6 +133,7 @@ declare const fullApi: ApiFromModules<{
   "lib/lineItems": typeof lib_lineItems;
   "lib/memberships": typeof lib_memberships;
   "lib/organization": typeof lib_organization;
+  "lib/payments": typeof lib_payments;
   "lib/permissions": typeof lib_permissions;
   "lib/queries": typeof lib_queries;
   "lib/quoteTotals": typeof lib_quoteTotals;

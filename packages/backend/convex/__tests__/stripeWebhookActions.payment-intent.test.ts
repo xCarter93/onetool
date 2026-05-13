@@ -1,24 +1,210 @@
-// Implements: payment_intent.succeeded webhook case. Filled by Plan 15-03.
-// SCAFFOLDING ONLY — not behavioral coverage. Plans 02-05 fill these in with real bodies.
-import { describe, it } from "vitest";
+// Plan 15-03 — payment_intent.succeeded gauntlet + handleEvent integration.
+// Task 1 lands four gauntlet bodies that hit the mutation directly; Task 2
+// lands the remaining two bodies (cardBrand extraction + idempotent dedupe)
+// once handleEvent's new case + DI seam are wired.
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { convexTest } from "convex-test";
+import { internal } from "../_generated/api";
+import { setupConvexTest } from "../test.setup";
+import { createTestOrg } from "../test.helpers";
+import type { Id } from "../_generated/dataModel";
+
+async function seedConnectedOrg(
+	t: ReturnType<typeof convexTest>,
+	accountId = "acct_test_pi_webhook",
+) {
+	return await t.run(async (ctx) => {
+		const { orgId, userId } = await createTestOrg(ctx, {
+			clerkOrgId: `org_pi_${Math.random().toString(36).slice(2)}`,
+		});
+		await ctx.db.patch(orgId, {
+			stripeConnectAccountId: accountId,
+			stripeChargesEnabled: true,
+		});
+		return { orgId, userId };
+	});
+}
+
+type SeedPaymentArgs = {
+	orgId: Id<"organizations">;
+	publicToken: string;
+	paymentAmount: number;
+	pendingPaymentIntentId?: string;
+	pendingPaymentIntentClientSecret?: string;
+	pendingPaymentIntentExpiresAt?: number;
+};
+
+async function seedPayment(
+	t: ReturnType<typeof convexTest>,
+	args: SeedPaymentArgs,
+) {
+	return await t.run(async (ctx) => {
+		const clientId = await ctx.db.insert("clients", {
+			orgId: args.orgId,
+			companyName: "PI Webhook Test Client",
+			status: "lead",
+		});
+		const invoiceId = await ctx.db.insert("invoices", {
+			orgId: args.orgId,
+			clientId,
+			invoiceNumber: "INV-PI-001",
+			status: "sent",
+			subtotal: args.paymentAmount,
+			total: args.paymentAmount,
+			issuedDate: Date.now(),
+			dueDate: Date.now() + 86400000,
+			publicToken: `tok_inv_${Math.random().toString(36).slice(2)}`,
+		});
+		const paymentId = await ctx.db.insert("payments", {
+			orgId: args.orgId,
+			invoiceId,
+			paymentAmount: args.paymentAmount,
+			dueDate: Date.now() + 86400000,
+			sortOrder: 0,
+			status: "pending",
+			publicToken: args.publicToken,
+			pendingPaymentIntentId: args.pendingPaymentIntentId,
+			pendingPaymentIntentClientSecret: args.pendingPaymentIntentClientSecret,
+			pendingPaymentIntentExpiresAt: args.pendingPaymentIntentExpiresAt,
+		});
+		return { clientId, invoiceId, paymentId };
+	});
+}
 
 describe("stripeWebhookActions: payment_intent.succeeded", () => {
+	let t: ReturnType<typeof convexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	// -------------------------------------------------------------------------
+	// Gauntlet — direct calls to markPaidFromPaymentIntentWebhookInternal.
+	// Task 1 owns these four; the remaining two (handleEvent layer) are below.
+	// -------------------------------------------------------------------------
+
+	it("payment_intent.succeeded: three-assertion gauntlet — publicToken match, amount_received === Math.round(paymentAmount * 100), paymentIntentId non-null", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_gauntlet_happy",
+			paymentAmount: 100,
+		});
+
+		await t.mutation(
+			internal.payments.markPaidFromPaymentIntentWebhookInternal,
+			{
+				orgId,
+				paymentIntentId: "pi_gauntlet_happy",
+				amountReceived: 10000,
+				metadata: { publicToken: "tok_gauntlet_happy" },
+			},
+		);
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.paidAt).toBeGreaterThan(0);
+		expect(payment?.stripePaymentIntentId).toBe("pi_gauntlet_happy");
+	});
+
+	it("payment_intent.succeeded: amount-tamper resistance — pi.amount_received !== Math.round(payment.paymentAmount * 100) throws and does NOT mark paid", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_tamper_1",
+			paymentAmount: 100,
+		});
+
+		await expect(
+			t.mutation(
+				internal.payments.markPaidFromPaymentIntentWebhookInternal,
+				{
+					orgId,
+					paymentIntentId: "pi_tamper_1",
+					amountReceived: 9999, // expected 10000 cents
+					metadata: { publicToken: "tok_tamper_1" },
+				},
+			),
+		).rejects.toThrow();
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("pending");
+		expect(payment?.paidAt).toBeUndefined();
+	});
+
+	it("payment_intent.succeeded: publicToken-replay resistance — metadata.publicToken mismatch throws and does NOT mark paid", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_replay_actual",
+			paymentAmount: 50,
+		});
+
+		await expect(
+			t.mutation(
+				internal.payments.markPaidFromPaymentIntentWebhookInternal,
+				{
+					orgId,
+					paymentIntentId: "pi_replay_1",
+					amountReceived: 5000,
+					metadata: { publicToken: "tok_replay_DOES_NOT_EXIST" },
+				},
+			),
+		).rejects.toThrow();
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("pending");
+	});
+
+	it("payment_intent.succeeded: clears pendingPaymentIntent* fields on the payment row on success (single canonical writer via applyMarkPaidCascade helper — no nested ctx.runMutation)", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_clear_1",
+			paymentAmount: 75,
+			pendingPaymentIntentId: "pi_clear_pending_1",
+			pendingPaymentIntentClientSecret: "pi_clear_pending_1_secret_xyz",
+			pendingPaymentIntentExpiresAt: expiresAt,
+		});
+
+		await t.mutation(
+			internal.payments.markPaidFromPaymentIntentWebhookInternal,
+			{
+				orgId,
+				paymentIntentId: "pi_clear_succeed_1",
+				amountReceived: 7500,
+				metadata: { publicToken: "tok_clear_1" },
+				cardBrand: "visa",
+				cardLast4: "4242",
+				stripeReceiptUrl: "https://stripe.com/receipt/clear-xyz",
+			},
+		);
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.paidAt).toBeGreaterThan(0);
+		expect(payment?.pendingPaymentIntentId).toBeUndefined();
+		expect(payment?.pendingPaymentIntentClientSecret).toBeUndefined();
+		expect(payment?.pendingPaymentIntentExpiresAt).toBeUndefined();
+		expect(payment?.cardBrand).toBe("visa");
+		expect(payment?.cardLast4).toBe("4242");
+		expect(payment?.stripeReceiptUrl).toBe(
+			"https://stripe.com/receipt/clear-xyz",
+		);
+	});
+
+	// -------------------------------------------------------------------------
+	// handleEvent integration — Task 2 fills these after wiring the new case.
+	// -------------------------------------------------------------------------
+
 	it.todo(
 		"payment_intent.succeeded: extracts cardBrand, cardLast4, stripeReceiptUrl from latest_charge and persists onto the payment row",
 	);
 	it.todo(
-		"payment_intent.succeeded: three-assertion gauntlet — publicToken match, amount_received === Math.round(paymentAmount * 100), paymentIntentId non-null",
-	);
-	it.todo(
-		"payment_intent.succeeded: amount-tamper resistance — pi.amount_received !== Math.round(payment.paymentAmount * 100) throws and does NOT mark paid",
-	);
-	it.todo(
-		"payment_intent.succeeded: publicToken-replay resistance — metadata.publicToken mismatch throws and does NOT mark paid",
-	);
-	it.todo(
 		"payment_intent.succeeded: dedupes idempotently — re-firing the same event_id yields { duplicate: true } and does not double-write",
 	);
-	it.todo(
-		"payment_intent.succeeded: clears pendingPaymentIntent* fields on the payment row on success (single canonical writer via applyMarkPaidCascade helper — no nested ctx.runMutation)",
-	);
 });
+
+// Keep vi import live so Task 2 can layer SDK-mock tests without re-touching imports.
+void vi;
