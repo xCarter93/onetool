@@ -5,6 +5,7 @@ import {
 	internalQuery,
 } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import {
 	getCurrentUserOrThrow,
 	getCurrentUser,
@@ -742,5 +743,101 @@ export const listAllWithConnectAccountInternal = internalQuery({
 				email: o.email,
 				stripeConnectAccountId: o.stripeConnectAccountId,
 			}));
+	},
+});
+
+// Plan 14.2.1-02 (CONTEXT.md "capability.updated") — re-cache Connect
+// capability flags on the org row, emit notification ONLY on active → not-active
+// degradation. Requirement-field updates (currently_due, disabled_reason) also
+// gated to the degradation branch so account.updated stays canonical.
+// Workflow-automation parity via the event bus is DEFERRED (Option A from
+// REVIEWS.md) — would require domainEvents.payload.entityType union extension
+// + downstream consumer updates beyond this phase's scope.
+export const updateStripeCapabilityInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		capabilityId: v.string(),
+		status: v.union(
+			v.literal("active"),
+			v.literal("inactive"),
+			v.literal("pending"),
+			v.literal("unrequested")
+		),
+		requirementsCurrentlyDue: v.array(v.string()),
+		requirementsDisabledReason: v.optional(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) return null;
+
+		// RESEARCH Pitfall 3 — v1 capability id for the payouts side is
+		// "transfers" even on v2-created accounts. Match the v1 name; log + skip
+		// anything else.
+		const isCharges = args.capabilityId === "card_payments";
+		const isPayouts = args.capabilityId === "transfers";
+		if (!isCharges && !isPayouts) {
+			console.log(
+				`capability.updated: unhandled capability ${args.capabilityId}`
+			);
+			return null;
+		}
+
+		const fieldName = isCharges
+			? ("stripeChargesEnabled" as const)
+			: ("stripePayoutsEnabled" as const);
+		const priorValue = org[fieldName];
+		const newValue = args.status === "active";
+		const isDegradation = priorValue === true && newValue === false;
+
+		// Always patch the boolean cache + status timestamp. Only patch
+		// requirement fields on degradation to avoid clobbering the fuller
+		// account.updated snapshot when capability events interleave.
+		const patch: Record<string, unknown> = {
+			[fieldName]: newValue,
+			stripeStatusUpdatedAt: Date.now(),
+		};
+		if (isDegradation) {
+			patch.stripeRequirementsCurrentlyDue = args.requirementsCurrentlyDue;
+			patch.stripeRequirementsDisabledReason = args.requirementsDisabledReason;
+		}
+		await ctx.db.patch(args.orgId, patch);
+
+		// Degradation gate: emit notification ONLY when transitioning
+		// active → not-active. No event-bus emit (Option A deferral).
+		if (isDegradation) {
+			const label = isCharges ? "charges" : "payouts";
+			await ctx.runMutation(
+				internal.notifications.createWebhookNotificationInternal,
+				{
+					orgId: args.orgId,
+					type: "capability_degraded",
+					priority: "high",
+					message: `Stripe ${label} have been disabled: ${args.requirementsDisabledReason ?? "reason unknown"}. Update onboarding to restore.`,
+				}
+			);
+		}
+		return null;
+	},
+});
+
+// Plan 14.2.1-02 (CONTEXT.md "account.external_account.*") — persist
+// bank-account fingerprint (last4 + bankName) on org row. Idempotent
+// overwrite — same call shape for both created and updated events.
+export const updateExternalAccountFingerprintInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		last4: v.string(),
+		bankName: v.union(v.string(), v.null()),
+		updatedAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.orgId, {
+			stripeExternalAccountLast4: args.last4,
+			stripeExternalAccountBankName: args.bankName ?? undefined,
+			stripeExternalAccountUpdatedAt: args.updatedAt,
+		});
+		return null;
 	},
 });
