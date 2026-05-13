@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as __tests___fixtures_stripeEvents from "../__tests__/fixtures/stripeEvents.js";
 import type * as activities from "../activities.js";
 import type * as aggregates from "../aggregates.js";
 import type * as automationExecutor from "../automationExecutor.js";
@@ -81,6 +82,7 @@ import type * as serviceStatus from "../serviceStatus.js";
 import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
 import type * as stripePaymentActions from "../stripePaymentActions.js";
+import type * as stripeWebhookEvents from "../stripeWebhookEvents.js";
 import type * as tasks from "../tasks.js";
 import type * as usage from "../usage.js";
 import type * as userTour from "../userTour.js";
@@ -93,6 +95,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "__tests__/fixtures/stripeEvents": typeof __tests___fixtures_stripeEvents;
   activities: typeof activities;
   aggregates: typeof aggregates;
   automationExecutor: typeof automationExecutor;
@@ -166,6 +169,7 @@ declare const fullApi: ApiFromModules<{
   serviceStatusActions: typeof serviceStatusActions;
   skus: typeof skus;
   stripePaymentActions: typeof stripePaymentActions;
+  stripeWebhookEvents: typeof stripeWebhookEvents;
   tasks: typeof tasks;
   usage: typeof usage;
   userTour: typeof userTour;
