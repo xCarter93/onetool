@@ -968,12 +968,14 @@ export const markRefundedFromWebhookInternal = internalMutation({
 			refundedAt: args.refundedAt,
 		});
 
-		// Emit status-change event so existing workflows fire.
+		// Emit status-change event so existing workflows fire. The entityId
+		// must point at the invoice (not the payment row) because downstream
+		// automation handlers resolve it as Id<"invoices">.
 		await emitStatusChangeEvent(
 			ctx,
 			payment.orgId,
 			"invoice",
-			payment._id,
+			payment.invoiceId,
 			oldStatus,
 			"refunded",
 			"stripeWebhookActions.charge.refunded"
@@ -1017,7 +1019,7 @@ export const flagDisputedFromWebhookInternal = internalMutation({
 			ctx,
 			payment.orgId,
 			"invoice",
-			payment._id,
+			payment.invoiceId,
 			payment.status,
 			payment.status,
 			"stripeWebhookActions.charge.dispute.created"

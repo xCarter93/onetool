@@ -837,11 +837,19 @@ export const createWebhookNotificationInternal = internalMutation({
 		};
 		const title = TITLE_BY_TYPE[args.type];
 
-		// Only payment lifecycle notifications reference an invoice/payment entity.
+		// Only payment lifecycle notifications reference an invoice entity.
+		// entityId must be the invoice doc ID — the payments table ID would
+		// resolve to null when the UI follows entityType+entityId for navigation.
+		// The dedicated `paymentId` field below still preserves the payment ref.
 		const isInvoiceEntity =
 			args.type === "payment_failed" ||
 			args.type === "dispute_created" ||
 			args.type === "charge_refunded";
+		let invoiceEntityId: Id<"invoices"> | undefined;
+		if (isInvoiceEntity && args.paymentId) {
+			const payment = await ctx.db.get(args.paymentId);
+			invoiceEntityId = payment?.invoiceId;
+		}
 
 		await ctx.db.insert("notifications", {
 			orgId: args.orgId,
@@ -849,8 +857,8 @@ export const createWebhookNotificationInternal = internalMutation({
 			notificationType: args.type,
 			title,
 			message: args.message,
-			...(isInvoiceEntity && args.paymentId
-				? { entityType: "invoice" as const, entityId: args.paymentId }
+			...(invoiceEntityId
+				? { entityType: "invoice" as const, entityId: invoiceEntityId }
 				: {}),
 			isRead: false,
 			sentVia: "in_app",
