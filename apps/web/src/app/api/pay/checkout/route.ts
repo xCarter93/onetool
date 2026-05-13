@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
 import { getStripeClient } from "@/lib/stripe";
+import { env } from "@/env";
+
+// Plan 14.2-05 (FINDINGS W-4) — buffer before pending-session expiry within
+// which we still consider the cached URL reusable. 60s avoids minting a fresh
+// session that races a near-expiry redirect.
+const REUSE_BUFFER_MS = 60_000;
 
 export async function POST(request: NextRequest) {
 	try {
@@ -55,6 +61,22 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
+			// Plan 14.2-05 (FINDINGS W-4) — pending-session reuse short-circuit.
+			// Within the 24h Stripe Checkout session window (minus a 60s safety
+			// buffer), return the cached URL so a within-attempt retry does NOT
+			// mint a new attemptId / idempotency key / Stripe session.
+			const now = Date.now();
+			const reusableUrl = paymentData.payment.pendingCheckoutSessionUrl;
+			const reusableExpiresAt =
+				paymentData.payment.pendingCheckoutSessionExpiresAt;
+			if (
+				reusableUrl &&
+				reusableExpiresAt &&
+				now < reusableExpiresAt - REUSE_BUFFER_MS
+			) {
+				return NextResponse.json({ url: reusableUrl });
+			}
+
 			const amountInCents = Math.max(
 				0,
 				Math.round((paymentData.payment.paymentAmount ?? 0) * 100)
@@ -65,6 +87,14 @@ export async function POST(request: NextRequest) {
 					{ status: 400 }
 				);
 			}
+
+			// Expired or missing — increment the attempt counter ONCE so we mint
+			// a fresh idempotency key for this attempt. The increment is GUARDED
+			// by the reusable-pending-session check above (W-4 invariant).
+			const attemptId = await convex.mutation(
+				api.payments.incrementCheckoutAttemptCounterInternal,
+				{ publicToken: paymentData.payment.publicToken }
+			);
 
 			const stripe = getStripeClient();
 
@@ -94,9 +124,7 @@ export async function POST(request: NextRequest) {
 						},
 					],
 					payment_intent_data: {
-						application_fee_amount: parseInt(
-							process.env.STRIPE_APPLICATION_FEE_CENTS || "100"
-						),
+						application_fee_amount: env.STRIPE_APPLICATION_FEE_CENTS,
 						metadata: {
 							publicToken: paymentData.payment.publicToken,
 							paymentId: paymentData.payment._id,
@@ -113,8 +141,22 @@ export async function POST(request: NextRequest) {
 				},
 				{
 					stripeAccount: accountId,
+					idempotencyKey: `pay-${paymentData.payment.publicToken}-${attemptId}`,
 				}
 			);
+
+			// Persist the pending session so a within-window retry reuses the URL.
+			if (session.id && session.url && session.expires_at) {
+				await convex.mutation(
+					api.payments.persistPendingCheckoutSessionInternal,
+					{
+						publicToken: paymentData.payment.publicToken,
+						pendingCheckoutSessionId: session.id,
+						pendingCheckoutSessionUrl: session.url,
+						pendingCheckoutSessionExpiresAt: session.expires_at * 1000,
+					}
+				);
+			}
 
 			return NextResponse.json({ url: session.url });
 		}
@@ -182,9 +224,7 @@ export async function POST(request: NextRequest) {
 					},
 				],
 				payment_intent_data: {
-					application_fee_amount: parseInt(
-						process.env.STRIPE_APPLICATION_FEE_CENTS || "100"
-					),
+					application_fee_amount: env.STRIPE_APPLICATION_FEE_CENTS,
 					metadata: {
 						publicToken: invoiceData.invoice.publicToken,
 						invoiceNumber: invoiceData.invoice.invoiceNumber ?? "",

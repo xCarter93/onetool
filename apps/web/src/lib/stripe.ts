@@ -1,12 +1,18 @@
 import Stripe from "stripe";
 
-const API_VERSION = "2025-11-17.clover" as const;
+const API_VERSION = "2026-04-22.dahlia" as const;
+
+// CODE-OWNER: Do NOT set `payment_method_types` on Checkout Session creation.
+// The Stripe Dashboard's Payment Method Configuration on the connected
+// account is the source of truth. Setting this field overrides it and
+// silently disables payment methods the merchant has enabled (Apple Pay,
+// Klarna, Cash App, etc). See stripe-best-practices skill rule.
 
 /**
  * Shared Stripe client factory.
  * - Validates the secret key is present.
  * - Pins the requested API version.
- * - Throws a helpful error when configuration is missing.
+ * - Enables built-in retry on transient network/5xx errors.
  */
 export function getStripeClient() {
 	const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -20,16 +26,6 @@ export function getStripeClient() {
 	// Instantiate per-call to avoid accidental reuse with stale config in dev.
 	return new Stripe(secretKey, {
 		apiVersion: API_VERSION,
+		maxNetworkRetries: 2,
 	});
-}
-
-/**
- * Convenience helper for places where we only need to assert configuration.
- */
-export function assertStripeEnv() {
-	if (!process.env.STRIPE_SECRET_KEY) {
-		throw new Error(
-			"Stripe is not configured: set STRIPE_SECRET_KEY before using Connect."
-		);
-	}
 }

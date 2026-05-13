@@ -15,7 +15,7 @@ export const env = createEnv({
 		CLERK_ISSUER_DOMAIN: z.string().min(1),
 		RESEND_API_KEY: z.string().min(1),
 		RESEND_WEBHOOK_SECRET: z.string().min(1),
-		STRIPE_APPLICATION_FEE_CENTS: z.string().optional().default("100"),
+		STRIPE_APPLICATION_FEE_CENTS: z.coerce.number().int().nonnegative().default(100),
 		// Plan 14.2-03 — Stripe Connect webhook signing secret. REQUIRED in every
 		// environment (FINDINGS M-7 keeps env.ts strict; Plan 14.2-05 runbook
 		// owns the pre-deploy checklist confirming this is set in production,

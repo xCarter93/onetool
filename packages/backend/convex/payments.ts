@@ -299,6 +299,12 @@ export const getByPublicToken = query({
 				description: payment.description,
 				sortOrder: payment.sortOrder,
 				paidAt: payment.paidAt,
+				// Plan 14.2-05 (FINDINGS W-4) — pending session fields for
+				// checkout-route reuse-within-window short-circuit.
+				pendingCheckoutSessionId: payment.pendingCheckoutSessionId,
+				pendingCheckoutSessionUrl: payment.pendingCheckoutSessionUrl,
+				pendingCheckoutSessionExpiresAt:
+					payment.pendingCheckoutSessionExpiresAt,
 			},
 			invoice: {
 				_id: invoice._id,
@@ -761,6 +767,82 @@ export const markAsOverdue = mutation({
 		});
 
 		return args.id;
+	},
+});
+
+// ============================================================================
+// Checkout session lifecycle (Plan 14.2-05 — FINDINGS W-4)
+// ============================================================================
+
+/**
+ * Plan 14.2-05 (FINDINGS W-4) — increment the checkout attempt counter for a
+ * payment row, returning the new value.
+ *
+ * Auth model (V-1 pivot per Plan 14.2-02 SUMMARY): public `mutation` callable
+ * from the unauthenticated `/api/pay/checkout` route. The trust boundary is
+ * the `publicToken` itself — only a caller who already holds the token can
+ * mint a new attempt. Handler:
+ *   1. Looks up payment by publicToken (uniqueness via by_public_token index).
+ *   2. Throws if no payment row matches (cannot blindly increment a missing row).
+ *   3. Increments `checkoutAttemptCounter` and returns the new value.
+ *
+ * The route GUARDS the call with a pending-session reuse check, so this fires
+ * only when a fresh idempotency key is genuinely needed.
+ */
+export const incrementCheckoutAttemptCounterInternal = mutation({
+	args: { publicToken: v.string() },
+	returns: v.number(),
+	handler: async (ctx, args): Promise<number> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) =>
+				q.eq("publicToken", args.publicToken)
+			)
+			.unique();
+		if (!payment) {
+			throw new Error("Payment not found");
+		}
+		const next = (payment.checkoutAttemptCounter ?? 0) + 1;
+		await ctx.db.patch(payment._id, { checkoutAttemptCounter: next });
+		return next;
+	},
+});
+
+/**
+ * Plan 14.2-05 (FINDINGS W-4) — persist a freshly-created Stripe Checkout
+ * Session so a within-window retry of `/api/pay/checkout` can reuse the
+ * cached URL without re-calling Stripe.
+ *
+ * Auth model: same as `incrementCheckoutAttemptCounterInternal` — public
+ * mutation guarded by knowledge of the `publicToken`.
+ *
+ * The webhook-side `markPaidFromWebhookInternal` clears these three fields
+ * once `checkout.session.completed` arrives matching `pendingCheckoutSessionId`.
+ */
+export const persistPendingCheckoutSessionInternal = mutation({
+	args: {
+		publicToken: v.string(),
+		pendingCheckoutSessionId: v.string(),
+		pendingCheckoutSessionUrl: v.string(),
+		pendingCheckoutSessionExpiresAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) =>
+				q.eq("publicToken", args.publicToken)
+			)
+			.unique();
+		if (!payment) {
+			throw new Error("Payment not found");
+		}
+		await ctx.db.patch(payment._id, {
+			pendingCheckoutSessionId: args.pendingCheckoutSessionId,
+			pendingCheckoutSessionUrl: args.pendingCheckoutSessionUrl,
+			pendingCheckoutSessionExpiresAt: args.pendingCheckoutSessionExpiresAt,
+		});
+		return null;
 	},
 });
 

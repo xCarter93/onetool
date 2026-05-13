@@ -46,6 +46,7 @@
     "boldsign": "^2.0.1",
     "convex": "^1.30.0",
     "resend": "^6.5.2",
+    "stripe": "22.1.1",
     "svix": "^1.76.1"
   },
   "devDependencies": {
