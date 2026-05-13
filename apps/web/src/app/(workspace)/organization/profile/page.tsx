@@ -45,6 +45,12 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { StripeConnectProvider } from "@/components/stripe/StripeConnectProvider";
+import {
+	LinkedBankAccountRow,
+	MoneyFlowDiagram,
+	FeeDisclosureTable,
+	StripeDocLinks,
+} from "@/components/stripe/payments-tab";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
@@ -217,6 +223,34 @@ function OnboardingButton({
 	);
 }
 
+// Inline status pill — dot + label/value. Screen readers get the full "label: value" phrasing,
+// so the color dot is purely decorative (WCAG: don't rely on color alone).
+function StatusPill({
+	label,
+	value,
+	trueText = "Yes",
+	falseText = "No",
+}: {
+	label: string;
+	value: boolean;
+	trueText?: string;
+	falseText?: string;
+}) {
+	const dotClass = value
+		? "bg-emerald-500 dark:bg-emerald-400"
+		: "bg-amber-500 dark:bg-amber-400";
+	const valueText = value ? trueText : falseText;
+	return (
+		<span className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 dark:bg-muted/20 px-2.5 py-0.5 text-xs font-medium text-foreground">
+			<span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+			<span className="text-muted-foreground">{label}</span>
+			<span aria-hidden="true">·</span>
+			<span>{valueText}</span>
+			<span className="sr-only">{`${label}: ${valueText}`}</span>
+		</span>
+	);
+}
+
 export default function OrganizationProfilePage() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
@@ -243,12 +277,6 @@ export default function OrganizationProfilePage() {
 		stripeStatus?.chargesEnabled &&
 		stripeStatus?.payoutsEnabled
 	);
-
-	const statusTone = React.useCallback((flag?: boolean) => {
-		return flag
-			? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-100"
-			: "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-800/70 dark:bg-rose-950/40 dark:text-rose-100";
-	}, []);
 
 	// Get active tab from search params
 	const tabParam = searchParams.get("tab");
@@ -1080,50 +1108,53 @@ export default function OrganizationProfilePage() {
 						</TabsContent>
 
 						<TabsContent value="payments">
-							<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-6">
-								<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-									<div className="space-y-2">
-										<div className="flex items-center gap-3">
-											<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-											<h2 className="text-2xl font-semibold text-foreground tracking-tight">
-												Payments (Stripe Connect)
-											</h2>
+							<div className="space-y-10">
+								{/* Header */}
+								<section className="space-y-4">
+									<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+										<div className="space-y-2">
+											<div className="flex items-center gap-3">
+												<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
+												<h2 className="text-2xl font-semibold text-foreground tracking-tight">
+													Payments (Stripe Connect)
+												</h2>
+											</div>
+											<p className="text-muted-foreground ml-5 leading-relaxed max-w-2xl">
+												Onboard to Stripe to accept payments on behalf of your
+												organization. Status is fetched live from Stripe each
+												time you refresh this tab.
+											</p>
 										</div>
-										<p className="text-muted-foreground ml-5 leading-relaxed">
-											Onboard to Stripe to accept payments on behalf of your
-											organization. Status is fetched live from Stripe each time
-											you refresh this tab.
-										</p>
-									</div>
 
-									{organization?.stripeConnectAccountId && (
-										<div className="flex flex-wrap gap-3 justify-end">
-											<Button
-												intent="outline"
-												onClick={refreshStripeAccountStatus}
-												isDisabled={statusLoading}
-											>
-												{statusLoading ? (
-													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-												) : (
-													<RefreshCcw className="mr-2 h-4 w-4" />
-												)}
-												Refresh status
-											</Button>
-											<OnboardingButton
-												onboardingLoading={onboardingLoading}
-												onboardingComplete={onboardingComplete}
-												onClick={handleStartStripeOnboarding}
-												variant="styled"
-												size="md"
-												intent="secondary"
-											/>
-										</div>
-									)}
-								</div>
+										{organization?.stripeConnectAccountId && (
+											<div className="flex flex-wrap gap-3 justify-end">
+												<Button
+													intent="outline"
+													onClick={refreshStripeAccountStatus}
+													isDisabled={statusLoading}
+												>
+													{statusLoading ? (
+														<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+													) : (
+														<RefreshCcw className="mr-2 h-4 w-4" />
+													)}
+													Refresh status
+												</Button>
+												<OnboardingButton
+													onboardingLoading={onboardingLoading}
+													onboardingComplete={onboardingComplete}
+													onClick={handleStartStripeOnboarding}
+													variant="styled"
+													size="md"
+													intent="secondary"
+												/>
+											</div>
+										)}
+									</div>
+								</section>
 
 								{!organization?.stripeConnectAccountId ? (
-									<div className="rounded-xl border border-border/60 dark:border-border/50 bg-muted/20 dark:bg-muted/10 p-6 space-y-4">
+									<section className="border-t border-border/40 pt-10 space-y-4 max-w-2xl">
 										<p className="text-sm text-foreground leading-relaxed">
 											Start by creating a connected account. You&apos;ll be
 											redirected to Stripe&apos;s hosted onboarding to provide
@@ -1146,89 +1177,67 @@ export default function OrganizationProfilePage() {
 											Note: The account ID will be stored on this organization
 											so future visits reuse the same Stripe account.
 										</p>
-									</div>
+									</section>
 								) : (
-									<div className="space-y-4">
-										<div className="rounded-xl border border-border/60 dark:border-border/40 p-5 bg-background/60 dark:bg-card/70">
-											<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-												<div className="space-y-1">
-													<p className="text-xs uppercase tracking-wide text-muted-foreground">
-														Connected Account
-													</p>
-													<p className="font-mono text-sm text-foreground break-all">
-														{organization.stripeConnectAccountId}
-													</p>
-												</div>
-											</div>
-
-											<div className="grid gap-3 sm:grid-cols-3 mt-4">
-												<div
-													className={`rounded-lg border p-3 ${statusTone(
-														stripeStatus?.detailsSubmitted
-													)}`}
-												>
-													<p className="text-xs text-muted-foreground uppercase tracking-wide">
-														Details submitted
-													</p>
-													<p className="text-sm font-semibold text-foreground">
-														{stripeStatus?.detailsSubmitted ? "Yes" : "Pending"}
-													</p>
-												</div>
-												<div
-													className={`rounded-lg border p-3 ${statusTone(
-														stripeStatus?.chargesEnabled
-													)}`}
-												>
-													<p className="text-xs text-muted-foreground uppercase tracking-wide">
-														Charges enabled
-													</p>
-													<p className="text-sm font-semibold text-foreground">
-														{stripeStatus?.chargesEnabled ? "Yes" : "No"}
-													</p>
-												</div>
-												<div
-													className={`rounded-lg border p-3 ${statusTone(
-														stripeStatus?.payoutsEnabled
-													)}`}
-												>
-													<p className="text-xs text-muted-foreground uppercase tracking-wide">
-														Payouts enabled
-													</p>
-													<p className="text-sm font-semibold text-foreground">
-														{stripeStatus?.payoutsEnabled ? "Yes" : "No"}
-													</p>
-												</div>
-											</div>
-
-											<div className="mt-4 space-y-2">
-												<p className="text-sm font-medium text-foreground">
-													Requirements
+									<>
+										{/* Account identity + status pills */}
+										<section className="border-t border-border/40 pt-10 space-y-4">
+											<div className="space-y-1">
+												<p className="text-xs uppercase tracking-wide text-muted-foreground">
+													Connected Account
 												</p>
-												{stripeStatus?.requirements?.currently_due?.length ? (
-													<ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-														{stripeStatus.requirements.currently_due.map(
-															(item) => (
-																<li key={item}>{item}</li>
-															)
-														)}
-													</ul>
-												) : (
-													<p className="text-sm text-muted-foreground">
-														No outstanding requirements reported.
-													</p>
-												)}
-												<p className="text-xs text-muted-foreground flex items-center gap-2">
-													<AlertTriangle className="h-4 w-4" />
-													Status is always fetched directly from Stripe; reload
-													if you make changes in the dashboard.
+												<p className="font-mono text-sm text-foreground break-all">
+													{organization.stripeConnectAccountId}
 												</p>
 											</div>
-										</div>
 
-										{/* Stripe Connect Payouts Component */}
+											<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+												<StatusPill
+													label="Details submitted"
+													value={Boolean(stripeStatus?.detailsSubmitted)}
+													trueText="Yes"
+													falseText="Pending"
+												/>
+												<StatusPill
+													label="Charges enabled"
+													value={Boolean(stripeStatus?.chargesEnabled)}
+												/>
+												<StatusPill
+													label="Payouts enabled"
+													value={Boolean(stripeStatus?.payoutsEnabled)}
+												/>
+											</div>
+										</section>
+
+										{/* Requirements */}
+										<section className="border-t border-border/40 pt-10 space-y-2">
+											<h3 className="text-lg font-semibold text-foreground">
+												Requirements
+											</h3>
+											{stripeStatus?.requirements?.currently_due?.length ? (
+												<ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+													{stripeStatus.requirements.currently_due.map(
+														(item) => (
+															<li key={item}>{item}</li>
+														)
+													)}
+												</ul>
+											) : (
+												<p className="text-sm text-muted-foreground">
+													No outstanding requirements reported.
+												</p>
+											)}
+											<p className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
+												<AlertTriangle className="h-4 w-4" />
+												Status is always fetched directly from Stripe; reload
+												if you make changes in the dashboard.
+											</p>
+										</section>
+
+										{/* Payouts */}
 										{onboardingComplete && isOwner && (
-											<div className="rounded-xl border border-border/60 dark:border-border/40 p-5 bg-background/60 dark:bg-card/70">
-												<div className="mb-4">
+											<section className="border-t border-border/40 pt-10 space-y-4">
+												<div>
 													<h3 className="text-lg font-semibold text-foreground">
 														Payouts
 													</h3>
@@ -1236,6 +1245,17 @@ export default function OrganizationProfilePage() {
 														Manage your payout schedule, view payout history,
 														and perform instant or manual payouts.
 													</p>
+												</div>
+												<div className="mb-4">
+													<LinkedBankAccountRow
+														bankName={
+															organization.stripeExternalAccountBankName
+														}
+														last4={organization.stripeExternalAccountLast4}
+														updatedAt={
+															organization.stripeExternalAccountUpdatedAt
+														}
+													/>
 												</div>
 												<StripeConnectProvider
 													accountId={organization.stripeConnectAccountId}
@@ -1260,31 +1280,59 @@ export default function OrganizationProfilePage() {
 														);
 													}}
 												</StripeConnectProvider>
-											</div>
+											</section>
 										)}
+									</>
+								)}
 
-										<div className="flex flex-wrap gap-3">
-											<Button
-												intent="outline"
-												onClick={refreshStripeAccountStatus}
-												isDisabled={statusLoading}
-											>
-												{statusLoading ? (
-													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-												) : (
-													<RefreshCcw className="mr-2 h-4 w-4" />
-												)}
-												Refresh status
-											</Button>
-											<OnboardingButton
-												onboardingLoading={onboardingLoading}
-												onboardingComplete={onboardingComplete}
-												onClick={handleStartStripeOnboarding}
-												variant="styled"
-												size="md"
-												intent="secondary"
-											/>
-										</div>
+								{/* How payments work — always rendered */}
+								<section className="border-t border-border/40 pt-10 space-y-4">
+									<div>
+										<h3 className="text-lg font-semibold text-foreground">
+											How payments work
+										</h3>
+										<p className="text-sm text-muted-foreground max-w-2xl">
+											When a customer pays a OneTool invoice, here&apos;s
+											exactly where the money goes and when it lands in your
+											bank.
+										</p>
+									</div>
+									<MoneyFlowDiagram />
+								</section>
+
+								{/* Fees — always rendered */}
+								<section className="border-t border-border/40 pt-10">
+									<FeeDisclosureTable />
+								</section>
+
+								{/* Learn more — always rendered */}
+								<section className="border-t border-border/40 pt-10">
+									<StripeDocLinks />
+								</section>
+
+								{/* Bottom action row preserved for onboarded users */}
+								{organization?.stripeConnectAccountId && (
+									<div className="flex flex-wrap gap-3">
+										<Button
+											intent="outline"
+											onClick={refreshStripeAccountStatus}
+											isDisabled={statusLoading}
+										>
+											{statusLoading ? (
+												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+											) : (
+												<RefreshCcw className="mr-2 h-4 w-4" />
+											)}
+											Refresh status
+										</Button>
+										<OnboardingButton
+											onboardingLoading={onboardingLoading}
+											onboardingComplete={onboardingComplete}
+											onClick={handleStartStripeOnboarding}
+											variant="styled"
+											size="md"
+											intent="secondary"
+										/>
 									</div>
 								)}
 							</div>
