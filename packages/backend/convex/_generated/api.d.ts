@@ -56,6 +56,7 @@ import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresse
 import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
 import type * as migrations_migrateAutomationTriggers from "../migrations/migrateAutomationTriggers.js";
 import type * as migrations_populateAggregates from "../migrations/populateAggregates.js";
+import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
 import type * as notifications from "../notifications.js";
 import type * as organizationDocuments from "../organizationDocuments.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
   "migrations/migrateAutomationTriggers": typeof migrations_migrateAutomationTriggers;
   "migrations/populateAggregates": typeof migrations_populateAggregates;
+  "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;
   notifications: typeof notifications;
   organizationDocuments: typeof organizationDocuments;

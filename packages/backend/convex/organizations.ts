@@ -714,3 +714,33 @@ export const deleteOrganization = mutation({
 		return { success: true };
 	},
 });
+
+/**
+ * Plan 14.2-05 — list every organization with a non-null
+ * `stripeConnectAccountId`. Used by the read-only revalidation migration
+ * (`migrations/revalidateStripeConnectAccounts:run`) so the operator can
+ * cross-check org-side state against Stripe-side state after Wave 3 deploys.
+ * Full table scan is acceptable for a one-time manual run.
+ */
+export const listAllWithConnectAccountInternal = internalQuery({
+	args: {},
+	returns: v.array(
+		v.object({
+			_id: v.id("organizations"),
+			name: v.string(),
+			email: v.optional(v.string()),
+			stripeConnectAccountId: v.optional(v.string()),
+		})
+	),
+	handler: async (ctx) => {
+		const all = await ctx.db.query("organizations").collect();
+		return all
+			.filter((o) => o.stripeConnectAccountId)
+			.map((o) => ({
+				_id: o._id,
+				name: o.name,
+				email: o.email,
+				stripeConnectAccountId: o.stripeConnectAccountId,
+			}));
+	},
+});
