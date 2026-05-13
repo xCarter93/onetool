@@ -5,7 +5,7 @@
 // transient failure does not burn the next idempotency key.
 import Stripe from "stripe";
 import { action } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 
 const REUSE_BUFFER_MS = 60_000;
@@ -17,10 +17,21 @@ export function __setStripeFactoryForTests(factory: (() => Stripe) | null) {
 }
 function buildStripeClient(): Stripe {
 	if (stripeFactoryOverride) return stripeFactoryOverride();
-	return new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-		apiVersion: "2026-04-22.dahlia" as Stripe.LatestApiVersion,
-	});
+	// SDK 22.x type union for `apiVersion` does not list 2026-04-22.dahlia yet.
+	const config: { apiVersion: string } = {
+		apiVersion: "2026-04-22.dahlia",
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return new Stripe(process.env.STRIPE_SECRET_KEY ?? "", config as any);
 }
+
+type CreatePaymentIntentResult = {
+	clientSecret: string;
+	publishableKey: string;
+	stripeAccountId: string;
+	paymentId: import("../_generated/dataModel").Id<"payments">;
+	amount: number;
+};
 
 export const createPaymentIntent = action({
 	args: { invoiceId: v.id("invoices") },
@@ -31,7 +42,7 @@ export const createPaymentIntent = action({
 		paymentId: v.id("payments"),
 		amount: v.number(),
 	}),
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<CreatePaymentIntentResult> => {
 		const session = await ctx.runQuery(
 			internal.portal.invoices._getPortalSessionForAction,
 			{},
@@ -76,9 +87,11 @@ export const createPaymentIntent = action({
 			now < cachedExp - REUSE_BUFFER_MS
 		) {
 			try {
-				const cachedPi = await stripe.paymentIntents.retrieve(cachedId, {
-					stripeAccount: stripeAccountId,
-				});
+				const cachedPi = await stripe.paymentIntents.retrieve(
+					cachedId,
+					undefined,
+					{ stripeAccount: stripeAccountId },
+				);
 				if (cachedPi.status === "requires_payment_method") {
 					return {
 						clientSecret: cachedSecret,
@@ -139,7 +152,7 @@ export const createPaymentIntent = action({
 		);
 		// Counter only advances after a successful Stripe mint.
 		await ctx.runMutation(
-			internal.payments.incrementCheckoutAttemptCounterInternal,
+			api.payments.incrementCheckoutAttemptCounterInternal,
 			{ publicToken: resolved.payment.publicToken },
 		);
 

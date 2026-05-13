@@ -705,9 +705,11 @@ describe("portal.invoices", () => {
 			);
 
 			expect(result.clientSecret).toBe("cached_secret_xyz");
-			expect(retrieve).toHaveBeenCalledWith("pi_reuse_cached", {
-				stripeAccount: "acct_reuse_1",
-			});
+			expect(retrieve).toHaveBeenCalledWith(
+				"pi_reuse_cached",
+				undefined,
+				{ stripeAccount: "acct_reuse_1" },
+			);
 			expect(create).not.toHaveBeenCalled();
 		});
 

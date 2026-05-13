@@ -256,9 +256,11 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 		expect(result.orgFound).toBe(true);
 
 		expect(chargesRetrieve).toHaveBeenCalledTimes(1);
-		expect(chargesRetrieve).toHaveBeenCalledWith("ch_extract_1", {
-			stripeAccount: accountId,
-		});
+		expect(chargesRetrieve).toHaveBeenCalledWith(
+			"ch_extract_1",
+			undefined,
+			{ stripeAccount: accountId },
+		);
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(payment?.status).toBe("paid");

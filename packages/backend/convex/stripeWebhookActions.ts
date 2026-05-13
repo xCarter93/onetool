@@ -7,9 +7,11 @@ import { internal } from "./_generated/api";
 type StripeClient = InstanceType<typeof StripeImport>;
 // Test seam: tests pass a mock via runHandleEvent; production resolves at call-time.
 function defaultStripeClientFactory(): StripeClient {
-	return new StripeImport(process.env.STRIPE_SECRET_KEY ?? "", {
-		apiVersion: "2026-04-22.dahlia" as Stripe.LatestApiVersion,
-	});
+	const config: { apiVersion: string } = {
+		apiVersion: "2026-04-22.dahlia",
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return new StripeImport(process.env.STRIPE_SECRET_KEY ?? "", config as any);
 }
 
 // Test-override seam (REVIEWS ISSUE-7): tests assign a mock here before
@@ -150,9 +152,11 @@ export const handleEvent = internalAction({
 					let stripeReceiptUrl: string | undefined;
 					if (chargeId && org?.stripeConnectAccountId) {
 						const stripe = getStripeClient();
-						const charge = await stripe.charges.retrieve(chargeId, {
-							stripeAccount: org.stripeConnectAccountId,
-						});
+						const charge = await stripe.charges.retrieve(
+							chargeId,
+							undefined,
+							{ stripeAccount: org.stripeConnectAccountId },
+						);
 						cardBrand =
 							charge.payment_method_details?.card?.brand ?? undefined;
 						cardLast4 =
