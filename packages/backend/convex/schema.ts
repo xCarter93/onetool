@@ -95,6 +95,11 @@ export default defineSchema({
 		stripeRequirementsCurrentlyDue: v.optional(v.array(v.string())),
 		stripeRequirementsDisabledReason: v.optional(v.string()),
 		stripeStatusUpdatedAt: v.optional(v.number()),
+		// Plan 14.2.1-01 (CONTEXT.md schema additions) - external bank-account
+		// fingerprint persisted on account.external_account.created/.updated webhooks.
+		stripeExternalAccountLast4: v.optional(v.string()),
+		stripeExternalAccountBankName: v.optional(v.string()),
+		stripeExternalAccountUpdatedAt: v.optional(v.number()),
 		plan: v.optional(
 			v.union(v.literal("trial"), v.literal("pro"), v.literal("cancelled"))
 		), // Deprecated: Use Clerk billing fields instead
@@ -672,7 +677,12 @@ export default defineSchema({
 			// Plan 14.2-03 (FINDINGS W-3) — Stripe webhook lifecycle notifications.
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
-			v.literal("charge_refunded")
+			v.literal("charge_refunded"),
+			// Plan 14.2.1-01 - Stripe Connect lifecycle additions (payouts, capability, bank-account).
+			v.literal("payout_paid"),
+			v.literal("payout_failed"),
+			v.literal("capability_degraded"),
+			v.literal("bank_account_changed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
