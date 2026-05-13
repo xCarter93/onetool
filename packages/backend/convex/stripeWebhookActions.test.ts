@@ -112,7 +112,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 					payment_intent: "pi_idemp_1",
 					amount_total: 5000,
 					metadata: { publicToken: "tok_idemp_1" },
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 
@@ -153,7 +153,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 					payouts_enabled: true,
 					details_submitted: true,
 					requirements: { currently_due: [], disabled_reason: null },
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 
@@ -185,7 +185,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 				object: {
 					id: "ch_refund_1",
 					payment_intent: "pi_refund_1",
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 
@@ -217,7 +217,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 					payment_intent: "pi_happy_1",
 					amount_total: 10000,
 					metadata: { publicToken: "tok_happy_1" },
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 
@@ -256,7 +256,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 					// MISMATCH — payment is $100 (10000 cents); 9999 will throw.
 					amount_total: 9999,
 					metadata: { publicToken: "tok_retry_1" },
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 
@@ -267,13 +267,11 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 			)
 		).rejects.toThrow();
 
-		const rowsAfterFail = await t.run((ctx) =>
-			ctx.db
-				.query("stripeWebhookEvents")
-				.withIndex("by_stripe_event_id", (q) =>
-					q.eq("stripeEventId", "evt_w1_retry")
-				)
-				.collect()
+		const allRowsAfterFail = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		const rowsAfterFail = allRowsAfterFail.filter(
+			(r) => r.stripeEventId === "evt_w1_retry"
 		);
 		expect(rowsAfterFail).toHaveLength(1);
 		expect(rowsAfterFail[0].status).toBe("failed");
@@ -292,7 +290,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 					payment_intent: "pi_w1_retry",
 					amount_total: 10000,
 					metadata: { publicToken: "tok_retry_1" },
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 
@@ -302,13 +300,11 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		);
 		expect(replayRes.duplicate).toBe(false);
 
-		const rowsAfterReplay = await t.run((ctx) =>
-			ctx.db
-				.query("stripeWebhookEvents")
-				.withIndex("by_stripe_event_id", (q) =>
-					q.eq("stripeEventId", "evt_w1_retry")
-				)
-				.collect()
+		const allRowsAfterReplay = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		const rowsAfterReplay = allRowsAfterReplay.filter(
+			(r) => r.stripeEventId === "evt_w1_retry"
 		);
 		expect(rowsAfterReplay[0].status).toBe("processed");
 		expect(rowsAfterReplay[0].attemptCount).toBe(2);
@@ -370,7 +366,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 					payment_intent: "pi_w4_1",
 					amount_total: 7500,
 					metadata: { publicToken: "tok_w4_1" },
-				} as unknown as Stripe.Event.Data["object"],
+				} as never,
 			},
 		});
 		await t.action(

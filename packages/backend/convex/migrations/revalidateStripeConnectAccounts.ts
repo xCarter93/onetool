@@ -4,6 +4,21 @@ import Stripe from "stripe";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+
+interface ConnectOrgRow {
+	_id: Id<"organizations">;
+	name: string;
+	email?: string;
+	stripeConnectAccountId?: string;
+}
+
+interface RevalidateResult {
+	total: number;
+	ok: number;
+	mismatched: number;
+	notFound: number;
+}
 
 /**
  * Plan 14.2-05 — read-only Stripe Connect account revalidation.
@@ -22,14 +37,14 @@ export const run = internalAction({
 		mismatched: v.number(),
 		notFound: v.number(),
 	}),
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<RevalidateResult> => {
 		const apiKey = process.env.STRIPE_SECRET_KEY;
 		if (!apiKey) {
 			throw new Error("STRIPE_SECRET_KEY not configured");
 		}
 		const stripe = new Stripe(apiKey, { apiVersion: "2026-04-22.dahlia" });
 
-		const orgs = await ctx.runQuery(
+		const orgs: ConnectOrgRow[] = await ctx.runQuery(
 			internal.organizations.listAllWithConnectAccountInternal,
 			{}
 		);
