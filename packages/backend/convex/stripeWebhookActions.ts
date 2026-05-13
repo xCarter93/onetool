@@ -50,8 +50,17 @@ export const handleEvent = internalAction({
 			// FINDINGS L-3: account.updated may arrive with event.account === null
 			// for some Stripe Connect topologies. Fall back to data.object.id
 			// (the Stripe.Account's own id) before doing the org lookup.
+			// Plan 14.2.1-02 extension: capability.updated can also arrive with
+			// event.account === null; data.object.account carries the connected
+			// account id in that case.
 			let resolvedAccount: string | null = args.account;
 			if (
+				!resolvedAccount &&
+				args.eventType === "capability.updated" &&
+				typeof args.data?.object?.account === "string"
+			) {
+				resolvedAccount = args.data.object.account;
+			} else if (
 				!resolvedAccount &&
 				args.eventType === "account.updated" &&
 				typeof args.data?.object?.id === "string"
@@ -182,6 +191,88 @@ export const handleEvent = internalAction({
 								account.requirements?.currently_due ?? [],
 							requirementsDisabledReason:
 								account.requirements?.disabled_reason ?? undefined,
+						}
+					);
+					break;
+				}
+				// Plan 14.2.1-02 (CONTEXT.md "Event Coverage") — five new event types.
+				case "payout.paid": {
+					const payout = args.data.object as Stripe.Payout;
+					const dollars = (payout.amount / 100).toFixed(2);
+					const arrival = new Date(payout.arrival_date * 1000)
+						.toISOString()
+						.slice(0, 10);
+					await ctx.runMutation(
+						internal.notifications.createWebhookNotificationInternal,
+						{
+							orgId: org!._id,
+							type: "payout_paid",
+							priority: "normal",
+							message: `Payout of $${dollars} ${payout.currency.toUpperCase()} arrives ${arrival}.`,
+						}
+					);
+					break;
+				}
+				case "payout.failed": {
+					const payout = args.data.object as Stripe.Payout;
+					const dollars = (payout.amount / 100).toFixed(2);
+					const reason = payout.failure_code
+						? `${payout.failure_code}: ${payout.failure_message ?? "no message"}`
+						: "Unknown reason";
+					await ctx.runMutation(
+						internal.notifications.createWebhookNotificationInternal,
+						{
+							orgId: org!._id,
+							type: "payout_failed",
+							priority: "high",
+							message: `Payout of $${dollars} ${payout.currency.toUpperCase()} failed. ${reason}`,
+						}
+					);
+					break;
+				}
+				case "capability.updated": {
+					const capability = args.data.object as Stripe.Capability;
+					await ctx.runMutation(
+						internal.organizations.updateStripeCapabilityInternal,
+						{
+							orgId: org!._id,
+							capabilityId: capability.id,
+							status: capability.status,
+							requirementsCurrentlyDue:
+								capability.requirements?.currently_due ?? [],
+							requirementsDisabledReason:
+								capability.requirements?.disabled_reason ?? undefined,
+						}
+					);
+					break;
+				}
+				case "account.external_account.created":
+				case "account.external_account.updated": {
+					// RESEARCH Pitfall 4 — data.object can be BankAccount OR Card. Discriminate.
+					const obj = args.data.object as Stripe.BankAccount | Stripe.Card;
+					if (obj.object !== "bank_account") {
+						console.log(
+							`Stripe webhook: ignoring external_account event for non-bank object (${obj.object}) on ${args.eventId}`
+						);
+						break;
+					}
+					const bank = obj as Stripe.BankAccount;
+					await ctx.runMutation(
+						internal.organizations.updateExternalAccountFingerprintInternal,
+						{
+							orgId: org!._id,
+							last4: bank.last4,
+							bankName: bank.bank_name ?? null,
+							updatedAt: Date.now(),
+						}
+					);
+					await ctx.runMutation(
+						internal.notifications.createWebhookNotificationInternal,
+						{
+							orgId: org!._id,
+							type: "bank_account_changed",
+							priority: "normal",
+							message: `Payout bank account updated: ${bank.bank_name ?? "Bank"} ****${bank.last4} (${bank.currency.toUpperCase()}).`,
 						}
 					);
 					break;
