@@ -8,6 +8,7 @@ import {
 } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { generatePublicToken } from "./lib/shared";
 import {
@@ -18,6 +19,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Payment operations - individual payment installments for invoices
@@ -601,13 +603,27 @@ export const createDefaultPayment = mutation({
 
 /**
  * Mark payment as paid by public token (internal only - called after Stripe verification)
- * Auto-updates invoice status when all payments are paid
+ * Auto-updates invoice status when all payments are paid.
+ *
+ * Plan 14.2-03 (FINDINGS M-1): canonical paid-marking cascade. The webhook
+ * path (`markPaidFromWebhookInternal`) delegates here so the aggregate
+ * + invoice-cascade + status-change-event chain has a single owner.
+ * - `stripeSessionId` is OPTIONAL because Stripe `checkout.session.completed`
+ *   webhook payloads carry the session id while raw PaymentIntent retries
+ *   may not. `paymentIntentId` is REQUIRED for any caller — Plan 14.2 audit
+ *   #14 forbids defaulting to `""`.
+ * - `source` is recorded on the emitted status-change event so workflow
+ *   automations can distinguish confirm-vs-webhook origins if needed.
  */
 export const markPaidByPublicTokenInternal = internalMutation({
 	args: {
 		publicToken: v.string(),
-		stripeSessionId: v.string(),
-		stripePaymentIntentId: v.string(),
+		stripeSessionId: v.optional(v.string()),
+		stripePaymentIntentId: v.optional(v.string()),
+		// Plan 14.2-03 — provenance hint, defaults to "confirm" for the original caller.
+		source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
+		// Plan 14.2-03 — alias accepted from webhook callers ("paymentIntentId").
+		paymentIntentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
 		// Find payment by public token
@@ -627,12 +643,21 @@ export const markPaidByPublicTokenInternal = internalMutation({
 			return payment._id;
 		}
 
-		// Update payment to paid
+		const resolvedPaymentIntentId =
+			args.stripePaymentIntentId ?? args.paymentIntentId;
+		if (!resolvedPaymentIntentId) {
+			// Plan 14.2 audit #14 — no `?? ""` defaulting for the PI id.
+			throw new Error(
+				"markPaidByPublicTokenInternal: stripePaymentIntentId is required"
+			);
+		}
+
+		// Update payment to paid.
 		await ctx.db.patch(payment._id, {
 			status: "paid",
 			paidAt: Date.now(),
-			stripeSessionId: args.stripeSessionId,
-			stripePaymentIntentId: args.stripePaymentIntentId,
+			stripeSessionId: args.stripeSessionId ?? payment.stripeSessionId,
+			stripePaymentIntentId: resolvedPaymentIntentId,
 		});
 
 		// Update invoice status if all payments are complete
@@ -736,6 +761,259 @@ export const markAsOverdue = mutation({
 		});
 
 		return args.id;
+	},
+});
+
+// ============================================================================
+// Webhook-driven internal helpers (Plan 14.2-03)
+// ============================================================================
+
+/**
+ * Plan 14.2-03 (FINDINGS W-3) — lookup a payment by stripePaymentIntentId so
+ * the `payment_intent.payment_failed` switch case can feed `payment._id` into
+ * `createWebhookNotificationInternal`. Org-scoped by_org index + filter
+ * mirrors the lookup pattern inside the refunded/disputed mutations below.
+ */
+export const getByPaymentIntentIdInternal = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+	},
+	returns: v.union(v.null(), v.object({ _id: v.id("payments") })),
+	handler: async (ctx, args) => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		return payment ? { _id: payment._id } : null;
+	},
+});
+
+/**
+ * Plan 14.2-03 (FINDINGS M-1) — thin shell that delegates to the canonical
+ * `markPaidByPublicTokenInternal` cascade after validating org + amount +
+ * payment_intent. The webhook is the authoritative paid signal — Stripe's
+ * `checkout.session.completed` arrives even when the buyer closes the tab
+ * before the success-URL `/api/pay/confirm` round-trip fires.
+ *
+ * Throws on:
+ *   - Org mismatch (defense-in-depth against forged events bypassing
+ *     signature verification — T-14.2-14).
+ *   - Amount mismatch (T-14.2-15).
+ *   - Missing payment_intent (audit #14 / T-14.2-16).
+ *
+ * Returns null when the payment row cannot be located (e.g., metadata stripped
+ * by a misbehaving connected account) — no-op rather than throwing so Stripe
+ * doesn't retry indefinitely on a genuinely unknown payment.
+ */
+export const markPaidFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		sessionId: v.string(),
+		amountTotal: v.number(),
+		metadata: v.any(),
+		paymentIntentId: v.union(v.string(), v.null()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const publicToken =
+			typeof args.metadata?.publicToken === "string"
+				? args.metadata.publicToken
+				: undefined;
+		const invoiceIdStr =
+			typeof args.metadata?.invoiceId === "string"
+				? args.metadata.invoiceId
+				: undefined;
+
+		let payment: Doc<"payments"> | null = null;
+		if (publicToken) {
+			payment = await ctx.db
+				.query("payments")
+				.withIndex("by_public_token", (q) =>
+					q.eq("publicToken", publicToken)
+				)
+				.unique();
+		} else if (invoiceIdStr) {
+			payment = await ctx.db
+				.query("payments")
+				.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+				.filter((q) => q.eq(q.field("invoiceId"), invoiceIdStr))
+				.first();
+		}
+
+		if (!payment) {
+			console.warn(
+				`markPaidFromWebhookInternal: no payment found for session ${args.sessionId}`
+			);
+			return null;
+		}
+
+		// Org-scoping guard (T-14.2-14). The lookup is org-scoped for invoiceId,
+		// but the publicToken path is global — assert match here.
+		if (payment.orgId !== args.orgId) {
+			throw new Error("Org mismatch on webhook payment lookup");
+		}
+
+		// Race with /api/pay/confirm — already paid path is a no-op.
+		if (payment.status === "paid") {
+			return null;
+		}
+
+		// Amount-tampering guard (T-14.2-15). Stripe sends `amount_total` in
+		// cents; our payment row stores dollars.
+		const expectedCents = Math.round(payment.paymentAmount * 100);
+		if (args.amountTotal !== expectedCents) {
+			throw new Error(
+				`Webhook amount mismatch: expected ${expectedCents} cents, got ${args.amountTotal} cents`
+			);
+		}
+
+		// Audit #14 / T-14.2-16 — no `?? ""` defaulting.
+		if (!args.paymentIntentId) {
+			throw new Error(
+				`markPaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}`
+			);
+		}
+
+		// Clear pendingCheckoutSession* fields when the session matches
+		// (FINDINGS W-4 — Plan 05 owns the mint side; here we clear on paid).
+		if (
+			payment.pendingCheckoutSessionId &&
+			payment.pendingCheckoutSessionId === args.sessionId
+		) {
+			await ctx.db.patch(payment._id, {
+				pendingCheckoutSessionId: undefined,
+				pendingCheckoutSessionUrl: undefined,
+				pendingCheckoutSessionExpiresAt: undefined,
+			});
+		}
+
+		// FINDINGS M-1 — delegate the actual paid cascade (status patch,
+		// invoice rollup) to the canonical mutation. Do not duplicate that
+		// logic here.
+		await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
+			publicToken: payment.publicToken,
+			stripeSessionId: args.sessionId,
+			stripePaymentIntentId: args.paymentIntentId,
+			source: "webhook",
+		});
+		return null;
+	},
+});
+
+/**
+ * Plan 14.2-03 — refund cascade. Flip payment to "refunded" and emit a status
+ * change event so workflow automations and the M-1-equivalent revenue
+ * aggregates pick up the transition. Notification emission lives at the
+ * route-action level (handleEvent does not currently call this for refunds;
+ * see CONTEXT decisions — only payment_failed and dispute_created notify).
+ */
+export const markRefundedFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+		refundedAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		if (!payment) {
+			console.warn(
+				`markRefundedFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
+			);
+			return null;
+		}
+
+		const oldStatus = payment.status;
+		await ctx.db.patch(payment._id, {
+			status: "refunded",
+			refundedAt: args.refundedAt,
+		});
+
+		// Emit status-change event so existing workflows fire.
+		await emitStatusChangeEvent(
+			ctx,
+			payment.orgId,
+			"invoice",
+			payment._id,
+			oldStatus,
+			"refunded",
+			"stripeWebhookActions.charge.refunded"
+		);
+		return null;
+	},
+});
+
+/**
+ * Plan 14.2-03 (FINDINGS W-3) — dispute lifecycle. Sets disputed=true on the
+ * payment row, emits a status-change event for workflow automations, and
+ * emits a HIGH-priority notification whose body references Stripe's 7-day
+ * response window. Disputes left unanswered for 7 days default to lost —
+ * silent disputes are the prior surface we are closing here.
+ */
+export const flagDisputedFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+		disputeId: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		if (!payment) {
+			console.warn(
+				`flagDisputedFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
+			);
+			return null;
+		}
+
+		await ctx.db.patch(payment._id, {
+			disputed: true,
+			disputeId: args.disputeId,
+		});
+
+		// Workflow automations get notified; status itself doesn't change.
+		await emitStatusChangeEvent(
+			ctx,
+			payment.orgId,
+			"invoice",
+			payment._id,
+			payment.status,
+			payment.status,
+			"stripeWebhookActions.charge.dispute.created"
+		);
+
+		// FINDINGS W-3 — high-priority operator notification with the 7-day
+		// response window referenced in the message body.
+		await ctx.runMutation(
+			internal.notifications.createWebhookNotificationInternal,
+			{
+				orgId: args.orgId,
+				type: "dispute_created",
+				paymentId: payment._id,
+				priority: "high",
+				message:
+					`A dispute (${args.disputeId}) was filed on a payment. ` +
+					`You have 7 days from the dispute date to respond via the Stripe Dashboard ` +
+					`or the dispute defaults to lost. Review immediately.`,
+			}
+		);
+		return null;
 	},
 });
 

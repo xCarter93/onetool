@@ -668,7 +668,11 @@ export default defineSchema({
 			v.literal("team_assignment"),
 			v.literal("client_mention"),
 			v.literal("project_mention"),
-			v.literal("quote_mention")
+			v.literal("quote_mention"),
+			// Plan 14.2-03 (FINDINGS W-3) — Stripe webhook lifecycle notifications.
+			v.literal("payment_failed"),
+			v.literal("dispute_created"),
+			v.literal("charge_refunded")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -691,6 +695,11 @@ export default defineSchema({
 			v.union(v.literal("email"), v.literal("sms"), v.literal("in_app"))
 		),
 		hasAttachments: v.optional(v.boolean()), // Quick flag for whether this notification has attachments
+		// Plan 14.2-03 (FINDINGS W-3) — typed FK for Stripe webhook notifications
+		// (payment_failed / dispute_created / charge_refunded). Optional to keep
+		// existing notification types unaffected.
+		priority: v.optional(v.union(v.literal("normal"), v.literal("high"))),
+		paymentId: v.optional(v.id("payments")),
 	})
 		.index("by_user_read", ["userId", "isRead"])
 		.index("by_org", ["orgId"])

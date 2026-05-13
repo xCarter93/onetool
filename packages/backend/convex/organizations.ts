@@ -1,4 +1,9 @@
-import { query, mutation, internalMutation } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	internalQuery,
+} from "./_generated/server";
 import { v } from "convex/values";
 import {
 	getCurrentUserOrThrow,
@@ -608,6 +613,65 @@ export const removeMember = mutation({
 		await removeMembership(ctx, args.userId, orgId);
 
 		return args.userId;
+	},
+});
+
+/**
+ * Plan 14.2-03 — webhook-side org lookup by Stripe Connect account id.
+ *
+ * Resolves `event.account` (and the L-3 fallback `data.object.id`) to the
+ * org row that owns the connected account. Called from
+ * `stripeWebhookActions.handleEvent` after Stripe signature verification.
+ */
+export const getByStripeConnectAccountIdInternal = internalQuery({
+	args: { accountId: v.string() },
+	returns: v.union(
+		v.null(),
+		v.object({
+			_id: v.id("organizations"),
+			stripeConnectAccountId: v.optional(v.string()),
+		})
+	),
+	handler: async (ctx, args) => {
+		const org = await ctx.db
+			.query("organizations")
+			.withIndex("by_stripe_connect_account_id", (q) =>
+				q.eq("stripeConnectAccountId", args.accountId)
+			)
+			.first();
+		if (!org) return null;
+		return {
+			_id: org._id,
+			stripeConnectAccountId: org.stripeConnectAccountId,
+		};
+	},
+});
+
+/**
+ * Plan 14.2-03 — refresh the cached Connect onboarding status from an
+ * `account.updated` webhook. Pure write — auth happens at the route layer
+ * via Stripe signature verification before this mutation runs.
+ */
+export const updateStripeConnectStatusInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		chargesEnabled: v.boolean(),
+		payoutsEnabled: v.boolean(),
+		detailsSubmitted: v.boolean(),
+		requirementsCurrentlyDue: v.array(v.string()),
+		requirementsDisabledReason: v.optional(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.orgId, {
+			stripeChargesEnabled: args.chargesEnabled,
+			stripePayoutsEnabled: args.payoutsEnabled,
+			stripeDetailsSubmitted: args.detailsSubmitted,
+			stripeRequirementsCurrentlyDue: args.requirementsCurrentlyDue,
+			stripeRequirementsDisabledReason: args.requirementsDisabledReason,
+			stripeStatusUpdatedAt: Date.now(),
+		});
+		return null;
 	},
 });
 

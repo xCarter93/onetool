@@ -1,4 +1,10 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	QueryCtx,
+	MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -772,6 +778,63 @@ export const cleanupOldNotifications = mutation({
 		}
 
 		return { deletedCount: toDelete.length };
+	},
+});
+
+/**
+ * Plan 14.2-03 (FINDINGS W-3) — emit a notification for a Stripe Connect
+ * webhook lifecycle event (payment_failed / dispute_created / charge_refunded).
+ *
+ * Delivered to the org owner. Schema-defined `title` is derived
+ * deterministically from `type` so callers only pass the dynamic message body
+ * and priority. The dispute_created caller (flagDisputedFromWebhookInternal)
+ * is responsible for including the 7-day response window reference in the
+ * message.
+ */
+export const createWebhookNotificationInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		type: v.union(
+			v.literal("payment_failed"),
+			v.literal("dispute_created"),
+			v.literal("charge_refunded")
+		),
+		paymentId: v.optional(v.id("payments")),
+		priority: v.union(v.literal("normal"), v.literal("high")),
+		message: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) {
+			console.warn(
+				`createWebhookNotificationInternal: org ${args.orgId} not found`
+			);
+			return null;
+		}
+
+		const title =
+			args.type === "payment_failed"
+				? "Payment failed"
+				: args.type === "dispute_created"
+					? "Dispute filed"
+					: "Refund issued";
+
+		await ctx.db.insert("notifications", {
+			orgId: args.orgId,
+			userId: org.ownerUserId,
+			notificationType: args.type,
+			title,
+			message: args.message,
+			entityType: "invoice",
+			entityId: args.paymentId ?? "",
+			isRead: false,
+			sentVia: "in_app",
+			sentAt: Date.now(),
+			priority: args.priority,
+			paymentId: args.paymentId,
+		});
+		return null;
 	},
 });
 
