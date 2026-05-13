@@ -82,6 +82,7 @@ import type * as serviceStatus from "../serviceStatus.js";
 import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
 import type * as stripePaymentActions from "../stripePaymentActions.js";
+import type * as stripeWebhookActions from "../stripeWebhookActions.js";
 import type * as stripeWebhookEvents from "../stripeWebhookEvents.js";
 import type * as tasks from "../tasks.js";
 import type * as usage from "../usage.js";
@@ -169,6 +170,7 @@ declare const fullApi: ApiFromModules<{
   serviceStatusActions: typeof serviceStatusActions;
   skus: typeof skus;
   stripePaymentActions: typeof stripePaymentActions;
+  stripeWebhookActions: typeof stripeWebhookActions;
   stripeWebhookEvents: typeof stripeWebhookEvents;
   tasks: typeof tasks;
   usage: typeof usage;
