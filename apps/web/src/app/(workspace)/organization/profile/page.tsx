@@ -227,9 +227,10 @@ export default function OrganizationProfilePage() {
 	const organization = useQuery(api.organizations.get, {});
 	const currentUser = useQuery(api.users.current, {});
 	const updateOrganization = useMutation(api.organizations.update);
-	const setStripeConnectAccountId = useMutation(
-		api.organizations.setStripeConnectAccountId
-	);
+	// Plan 14.2-02 — public setStripeConnectAccountId mutation removed. The
+	// account-creation route now persists the accountId server-side via
+	// api.organizations.setStripeConnectAccountIdInternal (called from the
+	// route handler, not from the client).
 
 	const [businessForm, setBusinessForm] =
 		React.useState<BusinessFormState>(initialBusinessForm);
@@ -444,14 +445,14 @@ export default function OrganizationProfilePage() {
 		setOnboardingLoading(true);
 
 		try {
-			// 1) Create or retrieve the connected account.
+			// Plan 14.2-02 lockdown: no account-identifying fields are sent in
+			// the request body. The route derives everything from the Clerk
+			// session and persists the new account ID server-side via the
+			// lockdown mutation.
 			const accountResponse = await fetch("/api/stripe-connect/account", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					accountId: organization?.stripeConnectAccountId ?? undefined,
-					email: organization?.email ?? currentUser?.email,
-				}),
+				body: JSON.stringify({}),
 			});
 
 			const accountData = await accountResponse.json();
@@ -467,16 +468,13 @@ export default function OrganizationProfilePage() {
 				throw new Error("Stripe did not return an account ID.");
 			}
 
-			// Persist the account ID on the organization so future calls can reuse it.
-			if (organization?.stripeConnectAccountId !== accountId) {
-				await setStripeConnectAccountId({ accountId });
-			}
-
-			// 2) Generate an onboarding link and redirect the user.
+			// Generate an onboarding link and redirect the user. The route
+			// also derives the account ID from the Clerk session — request
+			// payload is empty.
 			const linkResponse = await fetch("/api/stripe-connect/account-link", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ accountId }),
+				body: JSON.stringify({}),
 			});
 
 			const linkData = await linkResponse.json();
@@ -491,16 +489,16 @@ export default function OrganizationProfilePage() {
 				throw new Error("Stripe did not return an onboarding URL.");
 			}
 
-			// Capture a quick snapshot of status so we have something to show in the UI.
-			if (accountData?.account) {
-				setStripeStatus({
-					accountId,
-					chargesEnabled: Boolean(accountData.account.charges_enabled),
-					payoutsEnabled: Boolean(accountData.account.payouts_enabled),
-					detailsSubmitted: Boolean(accountData.account.details_submitted),
-					requirements: accountData.account.requirements,
-				});
-			}
+			// Capture a snapshot of the (now reduced) response shape. The
+			// route no longer leaks the full Stripe.Account object — the
+			// booleans land on the top-level body (audit #9 / FINDINGS T-14.2-05).
+			setStripeStatus({
+				accountId,
+				chargesEnabled: Boolean(accountData.chargesEnabled),
+				payoutsEnabled: Boolean(accountData.payoutsEnabled),
+				detailsSubmitted: Boolean(accountData.detailsSubmitted),
+				requirements: accountData.requirements,
+			});
 
 			window.location.href = linkData.url;
 		} catch (error) {
@@ -513,14 +511,7 @@ export default function OrganizationProfilePage() {
 		} finally {
 			setOnboardingLoading(false);
 		}
-	}, [
-		currentUser?.email,
-		isOwner,
-		organization?.email,
-		organization?.stripeConnectAccountId,
-		setStripeConnectAccountId,
-		toast,
-	]);
+	}, [isOwner, toast]);
 
 	const refreshStripeAccountStatus = React.useCallback(async () => {
 		if (!organization?.stripeConnectAccountId) {
@@ -533,12 +524,12 @@ export default function OrganizationProfilePage() {
 
 		setStatusLoading(true);
 		try {
+			// Plan 14.2-02 lockdown: body is empty — the route derives the
+			// account ID from the Clerk session, never from the request body.
 			const statusResponse = await fetch("/api/stripe-connect/status", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					accountId: organization.stripeConnectAccountId,
-				}),
+				body: JSON.stringify({}),
 			});
 
 			const statusData = await statusResponse.json();
@@ -582,6 +573,29 @@ export default function OrganizationProfilePage() {
 		refreshStripeAccountStatus,
 		statusLoading,
 		stripeStatus,
+	]);
+
+	// Plan 14.2-02 audit #11 — `?refresh=1` recovery flow. Stripe redirects
+	// to /organization/profile?tab=payments&refresh=1 when an onboarding
+	// link expires; the user expects another link to be minted automatically.
+	const refreshTriggeredRef = React.useRef(false);
+	React.useEffect(() => {
+		if (refreshTriggeredRef.current) return;
+		if (
+			activeTab === "payments" &&
+			searchParams.get("refresh") === "1" &&
+			isOwner &&
+			!onboardingLoading
+		) {
+			refreshTriggeredRef.current = true;
+			void handleStartStripeOnboarding();
+		}
+	}, [
+		activeTab,
+		searchParams,
+		isOwner,
+		onboardingLoading,
+		handleStartStripeOnboarding,
 	]);
 
 	if (isLoading) {
