@@ -90,14 +90,21 @@ export function deriveConnectFieldsFromOrg(
 
 /**
  * Plan 14.2.1-03 (CONTEXT.md "Accounts v2 Migration Strategy") - clean
- * cutover to /v2/core/accounts. Mirrors the v1 controller-properties
- * configuration into the v2 defaults.responsibilities + configuration
- * blocks (Pitfall 1 value-flip on fees_collector; Pitfall 2 applied:true
- * on each configuration). Idempotency key bumped to acct-create-v2-${orgId}
- * to avoid the 24h cache collision with v1 keys (Pitfall 5). Include list
- * widened to include configuration.recipient + requirements so the create
- * response carries enough state for deriveConnectStatusFromV2Account to
- * return real values immediately (REVIEWS.md MEDIUM).
+ * cutover to /v2/core/accounts. Mirrors the v1 controller-properties into
+ * the v2 defaults.responsibilities + configuration blocks (Pitfall 1
+ * value-flip on fees_collector). Idempotency key bumped to
+ * acct-create-v2-${orgId} to avoid the 24h cache collision with v1 keys
+ * (Pitfall 5). Include list widened to configuration.recipient +
+ * requirements so the create response carries enough state for
+ * deriveConnectStatusFromV2Account to return real values immediately
+ * (REVIEWS.md MEDIUM).
+ *
+ * `applied: true` is intentionally omitted from configuration.{merchant,
+ * recipient}: Stripe's v2 REST API rejects it as Unknown on CREATE
+ * (the SDK's AccountCreateParams.Configuration types already omit the
+ * field — only AccountUpdateParams.Configuration carries it, where it
+ * toggles a configuration on/off without removing it). On CREATE, simply
+ * providing the configuration block activates it.
  */
 export async function createConnectAccount(
 	ctx: ConnectContext,
@@ -105,12 +112,6 @@ export async function createConnectAccount(
 ): Promise<Stripe.V2.Core.Account> {
 	const { country, email } = deriveConnectFieldsFromOrg(ctx, currentUserEmail);
 	const stripe = getStripeClient();
-	// Body cast: SDK 22.1.1 AccountCreateParams.Configuration.{Merchant,Recipient}
-	// omit the `applied?: boolean` field present on the corresponding
-	// AccountUpdateParams namespaces. Per the v2 REST contract (Pitfall 2),
-	// `applied: true` on create activates each configuration immediately so the
-	// merchant + recipient capabilities are requested in the same call. The cast
-	// preserves the Pitfall 2 invariant until the SDK type definitions catch up.
 	const body: Stripe.V2.Core.AccountCreateParams = {
 		contact_email: email,
 		dashboard: "none",
@@ -132,22 +133,18 @@ export async function createConnectAccount(
 		identity: { country },
 		configuration: {
 			merchant: {
-				applied: true,
 				capabilities: {
 					card_payments: { requested: true },
 				},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			} as any,
+			},
 			recipient: {
-				applied: true,
 				capabilities: {
 					// v1 capabilities.transfers -> v2 configuration.recipient.capabilities.stripe_balance.stripe_transfers
 					stripe_balance: {
 						stripe_transfers: { requested: true },
 					},
 				},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			} as any,
+			},
 		},
 	};
 	return stripe.v2.core.accounts.create(body, {

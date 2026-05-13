@@ -256,19 +256,19 @@ describe("T-14.2.1-08: createConnectAccount v2 request body shape", () => {
 		expect(body.dashboard).toBe("none");
 	});
 
-	it("sends configuration.merchant.applied=true with card_payments.requested=true (Pitfall 2)", async () => {
+	it("sends configuration.merchant with card_payments.requested=true and omits 'applied' (Stripe rejects applied on CREATE)", async () => {
 		await createConnectAccount(ctx, "owner@acme.test");
 		const [body] = v2CreateMock.mock.calls[0];
-		expect(body.configuration.merchant.applied).toBe(true);
+		expect(body.configuration.merchant).not.toHaveProperty("applied");
 		expect(
 			body.configuration.merchant.capabilities.card_payments.requested
 		).toBe(true);
 	});
 
-	it("sends configuration.recipient.applied=true with stripe_balance.stripe_transfers.requested=true (Pitfall 2)", async () => {
+	it("sends configuration.recipient with stripe_balance.stripe_transfers.requested=true and omits 'applied' (Stripe rejects applied on CREATE)", async () => {
 		await createConnectAccount(ctx, "owner@acme.test");
 		const [body] = v2CreateMock.mock.calls[0];
-		expect(body.configuration.recipient.applied).toBe(true);
+		expect(body.configuration.recipient).not.toHaveProperty("applied");
 		expect(
 			body.configuration.recipient.capabilities.stripe_balance.stripe_transfers
 				.requested
