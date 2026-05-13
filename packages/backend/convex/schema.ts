@@ -537,12 +537,20 @@ export default defineSchema({
 		disputed: v.optional(v.boolean()),
 		disputeId: v.optional(v.string()),
 		refundedAt: v.optional(v.number()),
-		// Increments per fresh Checkout Session mint for idempotency keys.
+		// Shared counter — advances for any flow that mints a new Stripe object (Checkout Session or PaymentIntent).
 		checkoutAttemptCounter: v.optional(v.number()),
 		// Active Checkout Session cache for retry reuse.
 		pendingCheckoutSessionId: v.optional(v.string()),
 		pendingCheckoutSessionUrl: v.optional(v.string()),
 		pendingCheckoutSessionExpiresAt: v.optional(v.number()),
+		// Active PaymentIntent cache for embedded Elements retry reuse.
+		pendingPaymentIntentId: v.optional(v.string()),
+		pendingPaymentIntentClientSecret: v.optional(v.string()),
+		pendingPaymentIntentExpiresAt: v.optional(v.number()),
+		// Receipt metadata cached from payment_intent.succeeded webhook (latest_charge).
+		cardLast4: v.optional(v.string()),
+		cardBrand: v.optional(v.string()),
+		stripeReceiptUrl: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_invoice", ["invoiceId"])
