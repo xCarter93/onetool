@@ -3,7 +3,14 @@ import { convexTest } from "convex-test";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg } from "./test.helpers";
-import { buildStripeEvent } from "./__tests__/fixtures/stripeEvents";
+import {
+	buildStripeEvent,
+	buildPayoutPaidEvent,
+	buildPayoutFailedEvent,
+	buildCapabilityUpdatedEvent,
+	buildExternalAccountCreatedEvent,
+	buildExternalAccountUpdatedEvent,
+} from "./__tests__/fixtures/stripeEvents";
 import type { Id } from "./_generated/dataModel";
 import type Stripe from "stripe";
 
@@ -377,5 +384,326 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(cleared?.pendingCheckoutSessionId).toBeUndefined();
 		expect(cleared?.pendingCheckoutSessionUrl).toBeUndefined();
 		expect(cleared?.pendingCheckoutSessionExpiresAt).toBeUndefined();
+	});
+
+	// Plan 14.2.1-02 Wave 2 — five new Connect lifecycle webhook events.
+
+	it("T-14.2.1-01: payout.paid emits payout_paid notification with dollars + arrival", async () => {
+		const accountId = "acct_test_payout_paid";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+
+		const event = buildPayoutPaidEvent({
+			accountId,
+			payoutId: "po_test_t01",
+			amount: 5000,
+			currency: "usd",
+			arrivalDate: 1778716800, // 2026-05-14 UTC
+		});
+
+		const result = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		expect(result).toEqual({ duplicate: false, orgFound: true });
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0].notificationType).toBe("payout_paid");
+		expect(notifications[0].priority).toBe("normal");
+		expect(notifications[0].message).toMatch(/\$50\.00 USD/);
+		expect(notifications[0].message).toMatch(/2026-05-14/);
+	});
+
+	it("T-14.2.1-02: payout.failed emits payout_failed high-priority notification with failure code/message", async () => {
+		const accountId = "acct_test_payout_failed";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+
+		const event = buildPayoutFailedEvent({
+			accountId,
+			payoutId: "po_test_t02",
+			amount: 2500,
+			currency: "usd",
+			failureCode: "insufficient_funds",
+			failureMessage: "Bank rejected",
+		});
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0].notificationType).toBe("payout_failed");
+		expect(notifications[0].priority).toBe("high");
+		expect(notifications[0].message).toMatch(/insufficient_funds: Bank rejected/);
+	});
+
+	it("T-14.2.1-03: capability.updated card_payments active->inactive patches charges-enabled cache + emits capability_degraded", async () => {
+		const accountId = "acct_test_t03";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, { stripeChargesEnabled: true })
+		);
+
+		const event = buildCapabilityUpdatedEvent({
+			accountId,
+			capabilityId: "card_payments",
+			status: "inactive",
+			currentlyDue: ["external_account"],
+			disabledReason: "requirements.past_due",
+		});
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeChargesEnabled).toBe(false);
+		expect(org?.stripeRequirementsDisabledReason).toBe("requirements.past_due");
+		expect(org?.stripeRequirementsCurrentlyDue).toEqual(["external_account"]);
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		const degraded = notifications.filter(
+			(n) => n.notificationType === "capability_degraded"
+		);
+		expect(degraded).toHaveLength(1);
+		expect(degraded[0].priority).toBe("high");
+		expect(degraded[0].message).toMatch(
+			/Stripe charges have been disabled.*requirements\.past_due/
+		);
+	});
+
+	it("T-14.2.1-04: capability.updated inactive->active does NOT emit capability_degraded (gate, no-clobber)", async () => {
+		const accountId = "acct_test_t04";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, {
+				stripeChargesEnabled: false,
+				stripeRequirementsCurrentlyDue: ["existing_value"],
+				stripeRequirementsDisabledReason: "existing_reason",
+			})
+		);
+
+		const event = buildCapabilityUpdatedEvent({
+			accountId,
+			capabilityId: "card_payments",
+			status: "active",
+			currentlyDue: [],
+			disabledReason: null,
+		});
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeChargesEnabled).toBe(true);
+		// No-clobber: requirement fields stay at their seeded values because
+		// account.updated owns the canonical fuller snapshot.
+		expect(org?.stripeRequirementsCurrentlyDue).toEqual(["existing_value"]);
+		expect(org?.stripeRequirementsDisabledReason).toBe("existing_reason");
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		const degraded = notifications.filter(
+			(n) => n.notificationType === "capability_degraded"
+		);
+		expect(degraded).toHaveLength(0);
+	});
+
+	it("T-14.2.1-05: account.external_account.created bank_account -> persists last4/bankName + emits bank_account_changed", async () => {
+		const accountId = "acct_test_t05";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+
+		const before = Date.now();
+		const event = buildExternalAccountCreatedEvent({
+			accountId,
+			object: "bank_account",
+			last4: "0002",
+			bankName: "STRIPE TEST BANK",
+			currency: "usd",
+		});
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeExternalAccountLast4).toBe("0002");
+		expect(org?.stripeExternalAccountBankName).toBe("STRIPE TEST BANK");
+		expect(org?.stripeExternalAccountUpdatedAt).toBeGreaterThanOrEqual(before);
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		const bankNotifs = notifications.filter(
+			(n) => n.notificationType === "bank_account_changed"
+		);
+		expect(bankNotifs).toHaveLength(1);
+		expect(bankNotifs[0].priority).toBe("normal");
+	});
+
+	it("T-14.2.1-06: account.external_account.updated overwrites prior last4/bankName (idempotent)", async () => {
+		const accountId = "acct_test_t06";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, {
+				stripeExternalAccountLast4: "0002",
+				stripeExternalAccountBankName: "OLD",
+				stripeExternalAccountUpdatedAt: 1700000000000,
+			})
+		);
+
+		const event = buildExternalAccountUpdatedEvent({
+			accountId,
+			last4: "9999",
+			bankName: "NEW",
+			currency: "usd",
+		});
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeExternalAccountLast4).toBe("9999");
+		expect(org?.stripeExternalAccountBankName).toBe("NEW");
+	});
+
+	it("T-14.2.1-07: account.external_account.created card -> no-op + log (discrimination negative)", async () => {
+		const accountId = "acct_test_t07";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, {
+				stripeExternalAccountLast4: "0002",
+				stripeExternalAccountBankName: "EXISTING BANK",
+			})
+		);
+
+		const event = buildExternalAccountCreatedEvent({
+			accountId,
+			object: "card",
+			last4: "4242",
+		});
+
+		const result = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		expect(result).toEqual({ duplicate: false, orgFound: true });
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		// Bank-account fields unchanged — card events must never touch them.
+		expect(org?.stripeExternalAccountLast4).toBe("0002");
+		expect(org?.stripeExternalAccountBankName).toBe("EXISTING BANK");
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		const bankNotifs = notifications.filter(
+			(n) => n.notificationType === "bank_account_changed"
+		);
+		expect(bankNotifs).toHaveLength(0);
+	});
+
+	it("T-14.2.1-09: capability.updated transfers active->inactive patches stripePayoutsEnabled=false + emits capability_degraded for payouts", async () => {
+		const accountId = "acct_test_t09";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, {
+				stripeChargesEnabled: true,
+				stripePayoutsEnabled: true,
+			})
+		);
+
+		const event = buildCapabilityUpdatedEvent({
+			accountId,
+			capabilityId: "transfers",
+			status: "inactive",
+			currentlyDue: ["external_account"],
+			disabledReason: "requirements.past_due",
+		});
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripePayoutsEnabled).toBe(false);
+		// Charges cache must NOT be flipped by a transfers-capability event.
+		expect(org?.stripeChargesEnabled).toBe(true);
+
+		const notifications = await t.run(async (ctx) =>
+			ctx.db
+				.query("notifications")
+				.filter((q) => q.eq(q.field("orgId"), orgId))
+				.collect()
+		);
+		const degraded = notifications.filter(
+			(n) => n.notificationType === "capability_degraded"
+		);
+		expect(degraded).toHaveLength(1);
+		expect(degraded[0].priority).toBe("high");
+		expect(degraded[0].message).toMatch(/Stripe payouts have been disabled/);
+		expect(degraded[0].message).not.toMatch(/charges/);
+	});
+
+	it("T-14.2.1-10: capability.updated with null event.account resolves org via data.object.account fallback (L-3 extension)", async () => {
+		const accountId = "acct_test_l3";
+		const { orgId } = await seedConnectedOrg(t, { accountId });
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, { stripeChargesEnabled: true })
+		);
+
+		const event = buildCapabilityUpdatedEvent({
+			accountId,
+			capabilityId: "card_payments",
+			status: "inactive",
+			currentlyDue: ["external_account"],
+			disabledReason: "requirements.past_due",
+			nullEventAccount: true,
+		});
+		// Sanity check on the fixture: event.account must be null for this test.
+		expect(event.account).toBeNull();
+
+		const result = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		expect(result).toEqual({ duplicate: false, orgFound: true });
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeChargesEnabled).toBe(false);
 	});
 });
