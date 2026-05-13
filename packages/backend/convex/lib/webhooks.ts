@@ -220,43 +220,38 @@ export async function verifyStripeWebhook(
 	}
 
 	const encoder = new TextEncoder();
-	let key: CryptoKey;
+	const signedPayload = `${timestamp}.${rawBody}`;
+
 	try {
-		key = await crypto.subtle.importKey(
+		const key = await crypto.subtle.importKey(
 			"raw",
 			encoder.encode(secret),
 			{ name: "HMAC", hash: "SHA-256" },
 			false,
 			["sign"]
 		);
+		const expectedBytes = await crypto.subtle.sign(
+			"HMAC",
+			key,
+			encoder.encode(signedPayload)
+		);
+		const expectedHex = bytesToHex(expectedBytes);
+
+		const matched = signatures.some((sig) =>
+			constantTimeEqualHex(sig, expectedHex)
+		);
+		if (!matched) {
+			return { valid: false, error: "Stripe webhook signature mismatch" };
+		}
+
+		const payload = JSON.parse(rawBody) as Record<string, unknown>;
+		return { valid: true, payload };
 	} catch (error) {
 		return {
 			valid: false,
-			error: error instanceof Error ? error.message : "Key import failed",
+			error: error instanceof Error ? error.message : "Verification failed",
 		};
 	}
-
-	const signedPayload = `${timestamp}.${rawBody}`;
-	const expectedBytes = await crypto.subtle.sign(
-		"HMAC",
-		key,
-		encoder.encode(signedPayload)
-	);
-	const expectedHex = bytesToHex(expectedBytes);
-
-	const matched = signatures.some((sig) => constantTimeEqualHex(sig, expectedHex));
-	if (!matched) {
-		return { valid: false, error: "Stripe webhook signature mismatch" };
-	}
-
-	let payload: Record<string, unknown>;
-	try {
-		payload = JSON.parse(rawBody);
-	} catch {
-		return { valid: false, error: "Invalid JSON body" };
-	}
-
-	return { valid: true, payload };
 }
 
 // ============================================================================
