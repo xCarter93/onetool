@@ -48,14 +48,22 @@ export async function POST(request: NextRequest) {
 		const refreshUrl = `${origin}/organization/profile?tab=payments&refresh=1`;
 
 		const stripe = getStripeClient();
-		const accountLink = await stripe.accountLinks.create(
+		// Plan 14.2.1-03: v2 cutover. use_case wrapping carries the v2 configurations
+		// list (merchant + recipient) so onboarding collects requirements for both
+		// configurations applied in createConnectAccount.
+		const accountLink = await stripe.v2.core.accountLinks.create(
 			{
 				account: ctx.stripeConnectAccountId,
-				type: "account_onboarding",
-				return_url: returnUrl,
-				refresh_url: refreshUrl,
+				use_case: {
+					type: "account_onboarding",
+					account_onboarding: {
+						configurations: ["merchant", "recipient"],
+						return_url: returnUrl,
+						refresh_url: refreshUrl,
+					},
+				},
 			},
-			// Fresh UUID per request — short-lived resource must NOT reuse keys.
+			// Fresh UUID per request — short-lived resource (~5min) must NOT reuse keys.
 			{ idempotencyKey: crypto.randomUUID() }
 		);
 

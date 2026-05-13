@@ -848,11 +848,43 @@ export const updateExternalAccountFingerprintInternal = internalMutation({
 // they're about to delete in the Dashboard. Without this, the v1 acct ID
 // remains in Convex, the retrieve branch of /api/stripe-connect/account
 // 404s on the deleted Stripe account, and onboarding is stranded.
-// Also called defensively from the route's 404 fallback as belt-and-suspenders.
-export const clearStripeConnectStateInternal = internalMutation({
+//
+// Pivot note (mirrors 14.2-02 V-1 / setStripeConnectAccountIdInternal): the
+// primitive is declared as a PUBLIC `mutation` so the 404-fallback in
+// `/api/stripe-connect/account/route.ts` can reach it via `fetchMutation`
+// (convex/nextjs cannot call `internal.*`). The handler derives orgId from
+// the Clerk session and enforces owner-only access — the `Internal` suffix
+// preserves the export-name contract from the plan; security properties
+// match an internal mutation because the client cannot influence which org
+// gets cleared. The orgId arg is RETAINED for the operator CLI path
+// (`npx convex run organizations:clearStripeConnectStateInternal
+// '{"orgId":"<id>"}'`) and is asserted to match the session-derived orgId
+// when a Clerk session is present.
+export const clearStripeConnectStateInternal = mutation({
 	args: { orgId: v.id("organizations") },
 	returns: v.null(),
 	handler: async (ctx, args) => {
+		// When called from the route (Clerk session present) the orgId arg
+		// MUST match the session-derived orgId — defense-in-depth against a
+		// future caller that drifts from the lockdown contract.
+		const identity = await ctx.auth.getUserIdentity();
+		if (identity) {
+			const user = await getCurrentUserOrThrow(ctx);
+			const userOrgId = await getCurrentUserOrgId(ctx);
+			if (userOrgId !== args.orgId) {
+				throw new Error("ORG_MISMATCH");
+			}
+			const organization = await ctx.db.get(userOrgId);
+			if (!organization) {
+				throw new Error("ORG_NOT_FOUND");
+			}
+			if (organization.ownerUserId !== user._id) {
+				throw new Error("NOT_ORG_OWNER");
+			}
+		}
+		// When called from the CLI (`npx convex run`) there is no Clerk
+		// identity — the admin key already proves operator privilege, so the
+		// orgId arg is honored directly.
 		await ctx.db.patch(args.orgId, {
 			stripeConnectAccountId: undefined,
 			stripeChargesEnabled: undefined,

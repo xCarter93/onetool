@@ -5,11 +5,14 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { getStripeClient } from "@/lib/stripe";
 import {
 	getOrgConnectAccountForCaller,
-	deriveConnectFieldsFromOrg,
+	createConnectAccount,
+	deriveConnectStatusFromV2Account,
+	type ConnectContext,
 } from "@/lib/stripeConnect";
 
 /**
- * Plan 14.2-02 (Connect cross-tenant lockdown).
+ * Plan 14.2-02 (Connect cross-tenant lockdown) + Plan 14.2.1-03 (Accounts v2
+ * migration).
  *
  * Create or retrieve a Stripe Connect account for the caller's organization.
  *
@@ -23,73 +26,85 @@ import {
  *     duplicate-account guard) BEFORE the response returns.
  *   - The response shape is reduced to non-PII fields only — no full
  *     Stripe.Account object leaks to the client.
+ *
+ * v2 cutover (Plan 14.2.1-03):
+ *   - createConnectAccount uses stripe.v2.core.accounts.create (CONTEXT.md
+ *     "Accounts v2 Migration Strategy").
+ *   - retrieve uses stripe.v2.core.accounts.retrieve with the widened
+ *     include list (configuration.merchant + configuration.recipient +
+ *     identity + requirements) so deriveConnectStatusFromV2Account returns
+ *     real values immediately (REVIEWS.md MEDIUM).
+ *   - On Stripe 404 (account deleted out-of-band), clear Convex state via
+ *     clearStripeConnectStateInternal and re-enter the create branch so the
+ *     caller gets a fresh v2 account on the same request (REVIEWS.md HIGH-1).
  */
 export async function POST() {
 	try {
 		const ctx = await getOrgConnectAccountForCaller();
-		const stripe = getStripeClient();
-
-		let accountId = ctx.stripeConnectAccountId;
+		const accountId = ctx.stripeConnectAccountId;
 		if (!accountId) {
-			// Fetch the caller's email from the Clerk-synced user row as a
-			// fallback for orgs that haven't set organization.email yet.
-			const currentUser = await fetchQuery(api.users.current, {});
-			const { country, email } = deriveConnectFieldsFromOrg(
-				ctx,
-				currentUser?.email ?? null
-			);
-
-			// Stable idempotency key — accounts are permanent so the same key
-			// returns the same account on retry within Stripe's 24h cache.
-			const account = await stripe.accounts.create(
-				{
-					country,
-					email,
-					controller: {
-						fees: { payer: "account" },
-						losses: { payments: "stripe" },
-						stripe_dashboard: { type: "none" },
-					},
-					capabilities: {
-						card_payments: { requested: true },
-						transfers: { requested: true },
-					},
-				},
-				{ idempotencyKey: `acct-create-${ctx.orgId}` }
-			);
-
-			accountId = account.id;
-
-			// Persist immediately via the lockdown mutation (M-2 dup guard
-			// fires here if Stripe handed back an accountId already mapped to
-			// a different org — extremely rare but possible during operator
-			// dashboard linking).
-			await fetchMutation(
-				api.organizations.setStripeConnectAccountIdInternal,
-				{ accountId }
-			);
-
-			return NextResponse.json({
-				accountId,
-				chargesEnabled: account.charges_enabled ?? false,
-				payoutsEnabled: account.payouts_enabled ?? false,
-				detailsSubmitted: account.details_submitted ?? false,
-				requirements: account.requirements ?? null,
-			});
+			return await createPersistAndReturn(ctx);
 		}
 
-		// Existing account — fetch fresh status and return the reduced shape.
-		const account = await stripe.accounts.retrieve(accountId);
-		return NextResponse.json({
-			accountId: account.id,
-			chargesEnabled: account.charges_enabled ?? false,
-			payoutsEnabled: account.payouts_enabled ?? false,
-			detailsSubmitted: account.details_submitted ?? false,
-			requirements: account.requirements ?? null,
-		});
+		const stripe = getStripeClient();
+		try {
+			const account = await stripe.v2.core.accounts.retrieve(accountId, {
+				include: [
+					"configuration.merchant",
+					"configuration.recipient",
+					"identity",
+					"requirements",
+				],
+			});
+			const derived = deriveConnectStatusFromV2Account(account);
+			return NextResponse.json({
+				accountId: account.id,
+				chargesEnabled: derived.chargesEnabled,
+				payoutsEnabled: derived.payoutsEnabled,
+				detailsSubmitted: derived.detailsSubmitted,
+				requirements: derived.requirements,
+			});
+		} catch (retrieveErr) {
+			// REVIEWS.md HIGH-1 (404 fallback): when the stored accountId no longer
+			// resolves on Stripe's side (operator pre-cutover cleanup, or runtime
+			// data loss), clear the Convex state and re-enter the create branch so
+			// the caller gets a fresh v2 account on the same request. Any non-404
+			// error re-throws to the outer catch / mapConnectError.
+			const isStripeError =
+				retrieveErr instanceof Error &&
+				retrieveErr.constructor.name === "StripeInvalidRequestError";
+			const statusCode = (retrieveErr as { statusCode?: number })?.statusCode;
+			const code = (retrieveErr as { code?: string })?.code;
+			if (isStripeError && (statusCode === 404 || code === "account_invalid")) {
+				await fetchMutation(
+					api.organizations.clearStripeConnectStateInternal,
+					{ orgId: ctx.orgId }
+				);
+				return await createPersistAndReturn(ctx);
+			}
+			throw retrieveErr;
+		}
 	} catch (err) {
 		return mapConnectError(err, "Failed to create or retrieve account");
 	}
+}
+
+async function createPersistAndReturn(
+	ctx: ConnectContext
+): Promise<NextResponse> {
+	const currentUser = await fetchQuery(api.users.current, {});
+	const account = await createConnectAccount(ctx, currentUser?.email ?? null);
+	await fetchMutation(api.organizations.setStripeConnectAccountIdInternal, {
+		accountId: account.id,
+	});
+	const derived = deriveConnectStatusFromV2Account(account);
+	return NextResponse.json({
+		accountId: account.id,
+		chargesEnabled: derived.chargesEnabled,
+		payoutsEnabled: derived.payoutsEnabled,
+		detailsSubmitted: derived.detailsSubmitted,
+		requirements: derived.requirements,
+	});
 }
 
 function mapConnectError(err: unknown, fallback: string): NextResponse {

@@ -85,46 +85,54 @@ export async function createConnectAccount(
 ): Promise<Stripe.V2.Core.Account> {
 	const { country, email } = deriveConnectFieldsFromOrg(ctx, currentUserEmail);
 	const stripe = getStripeClient();
-	return stripe.v2.core.accounts.create(
-		{
-			contact_email: email,
-			dashboard: "none",
-			include: [
-				"configuration.merchant",
-				"configuration.recipient",
-				"identity",
-				"requirements",
-			],
-			defaults: {
-				currency: "usd",
-				responsibilities: {
-					// Pitfall 1 value-flip: v1 fees.payer="account" -> v2 fees_collector="stripe"
-					fees_collector: "stripe",
-					// v1 losses.payments="stripe" -> v2 losses_collector="stripe" (value unchanged)
-					losses_collector: "stripe",
-				},
-			},
-			identity: { country },
-			configuration: {
-				merchant: {
-					applied: true,
-					capabilities: {
-						card_payments: { requested: true },
-					},
-				},
-				recipient: {
-					applied: true,
-					capabilities: {
-						// v1 capabilities.transfers -> v2 configuration.recipient.capabilities.stripe_balance.stripe_transfers
-						stripe_balance: {
-							stripe_transfers: { requested: true },
-						},
-					},
-				},
+	// Body cast: SDK 22.1.1 AccountCreateParams.Configuration.{Merchant,Recipient}
+	// omit the `applied?: boolean` field present on the corresponding
+	// AccountUpdateParams namespaces. Per the v2 REST contract (Pitfall 2),
+	// `applied: true` on create activates each configuration immediately so the
+	// merchant + recipient capabilities are requested in the same call. The cast
+	// preserves the Pitfall 2 invariant until the SDK type definitions catch up.
+	const body: Stripe.V2.Core.AccountCreateParams = {
+		contact_email: email,
+		dashboard: "none",
+		include: [
+			"configuration.merchant",
+			"configuration.recipient",
+			"identity",
+			"requirements",
+		],
+		defaults: {
+			currency: "usd",
+			responsibilities: {
+				// Pitfall 1 value-flip: v1 fees.payer="account" -> v2 fees_collector="stripe"
+				fees_collector: "stripe",
+				// v1 losses.payments="stripe" -> v2 losses_collector="stripe" (value unchanged)
+				losses_collector: "stripe",
 			},
 		},
-		{ idempotencyKey: `acct-create-v2-${ctx.orgId}` }
-	);
+		identity: { country },
+		configuration: {
+			merchant: {
+				applied: true,
+				capabilities: {
+					card_payments: { requested: true },
+				},
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any,
+			recipient: {
+				applied: true,
+				capabilities: {
+					// v1 capabilities.transfers -> v2 configuration.recipient.capabilities.stripe_balance.stripe_transfers
+					stripe_balance: {
+						stripe_transfers: { requested: true },
+					},
+				},
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any,
+		},
+	};
+	return stripe.v2.core.accounts.create(body, {
+		idempotencyKey: `acct-create-v2-${ctx.orgId}`,
+	});
 }
 
 /**
@@ -141,7 +149,7 @@ export function deriveConnectStatusFromV2Account(
 	chargesEnabled: boolean;
 	payoutsEnabled: boolean;
 	detailsSubmitted: boolean;
-	requirements: Stripe.V2.Core.Account.Requirements | null;
+	requirements: NonNullable<Stripe.V2.Core.Account["requirements"]> | null;
 } {
 	const merchantCaps = account.configuration?.merchant?.capabilities;
 	const recipientCaps = account.configuration?.recipient?.capabilities;
