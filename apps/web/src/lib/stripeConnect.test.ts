@@ -152,6 +152,30 @@ describe("deriveConnectFieldsFromOrg", () => {
 		expect(result.email).toBe("user@example.com");
 	});
 
+	it.each([
+		["US"],
+		["us"],
+		["USA"],
+		["United States"],
+		["  united states  "],
+		["U.S.A."],
+	])(
+		"accepts %s as the US country for addressCountry (UI + autocomplete write the human-readable name)",
+		(addressCountry) => {
+			const result = deriveConnectFieldsFromOrg(
+				buildCtx({
+					organization: {
+						...buildCtx().organization,
+						addressCountry,
+						email: "billing@example.com",
+					},
+				}),
+				null
+			);
+			expect(result.country).toBe("US");
+		}
+	);
+
 	it("throws 'OneTool Connect is currently US-only' for a non-US org (e.g. CA)", () => {
 		expect(() =>
 			deriveConnectFieldsFromOrg(

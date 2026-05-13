@@ -64,12 +64,19 @@ export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 	return { ...ctx, convexToken };
 }
 
+// The org-profile form + address autocomplete write `addressCountry` as a
+// human-readable name ("United States"), not the ISO-3166 alpha-2 code that
+// Stripe consumes. Until the schema is migrated to store ISO codes, normalize
+// at the boundary so US orgs onboard correctly regardless of which surface
+// wrote the field.
+const US_ALIASES = new Set(["US", "USA", "UNITED STATES", "U.S.", "U.S.A."]);
+
 export function deriveConnectFieldsFromOrg(
 	ctx: ConnectContext,
 	currentUserEmail: string | null
 ): { country: string; currency: string; email: string } {
-	const country = ctx.organization.addressCountry?.toUpperCase() ?? "";
-	if (country !== "US") {
+	const country = ctx.organization.addressCountry?.trim().toUpperCase() ?? "";
+	if (!US_ALIASES.has(country)) {
 		throw new Error(
 			"OneTool Connect is currently US-only - contact support for other countries."
 		);
