@@ -2,12 +2,15 @@
 // Task 1 lands four gauntlet bodies that hit the mutation directly; Task 2
 // lands the remaining two bodies (cardBrand extraction + idempotent dedupe)
 // once handleEvent's new case + DI seam are wired.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { convexTest } from "convex-test";
 import { internal } from "../_generated/api";
 import { setupConvexTest } from "../test.setup";
 import { createTestOrg } from "../test.helpers";
+import { buildStripeEvent } from "./fixtures/stripeEvents";
+import { __setStripeClientForTests } from "../stripeWebhookActions";
 import type { Id } from "../_generated/dataModel";
+import type Stripe from "stripe";
 
 async function seedConnectedOrg(
 	t: ReturnType<typeof convexTest>,
@@ -195,16 +198,128 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 	});
 
 	// -------------------------------------------------------------------------
-	// handleEvent integration — Task 2 fills these after wiring the new case.
+	// handleEvent integration — DI mock at the Stripe SDK layer (REVIEWS ISSUE-7).
 	// -------------------------------------------------------------------------
 
-	it.todo(
-		"payment_intent.succeeded: extracts cardBrand, cardLast4, stripeReceiptUrl from latest_charge and persists onto the payment row",
-	);
-	it.todo(
-		"payment_intent.succeeded: dedupes idempotently — re-firing the same event_id yields { duplicate: true } and does not double-write",
-	);
-});
+	afterEach(() => {
+		__setStripeClientForTests(null);
+	});
 
-// Keep vi import live so Task 2 can layer SDK-mock tests without re-touching imports.
-void vi;
+	function buildHandleEventArgs(event: Stripe.Event) {
+		return {
+			eventId: event.id,
+			eventType: event.type,
+			account: event.account ?? null,
+			created: event.created,
+			data: event.data,
+		};
+	}
+
+	it("payment_intent.succeeded: extracts cardBrand, cardLast4, stripeReceiptUrl from latest_charge and persists onto the payment row", async () => {
+		const accountId = "acct_test_pi_extract";
+		const { orgId } = await seedConnectedOrg(t, accountId);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_extract_1",
+			paymentAmount: 50,
+		});
+
+		const chargesRetrieve = vi.fn().mockResolvedValue({
+			payment_method_details: { card: { brand: "visa", last4: "4242" } },
+			receipt_url: "https://stripe.com/receipt/extract-1",
+		});
+		const stripeMock = {
+			charges: { retrieve: chargesRetrieve },
+			paymentIntents: { retrieve: vi.fn() },
+		} as unknown as Parameters<typeof __setStripeClientForTests>[0];
+		__setStripeClientForTests(stripeMock);
+
+		const event = buildStripeEvent({
+			id: "evt_pi_extract_1",
+			type: "payment_intent.succeeded",
+			account: accountId,
+			data: {
+				object: {
+					id: "pi_extract_1",
+					amount_received: 5000,
+					latest_charge: "ch_extract_1",
+					metadata: { publicToken: "tok_extract_1" },
+				} as never,
+			},
+		});
+
+		const result = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event),
+		);
+		expect(result.duplicate).toBe(false);
+		expect(result.orgFound).toBe(true);
+
+		expect(chargesRetrieve).toHaveBeenCalledTimes(1);
+		expect(chargesRetrieve).toHaveBeenCalledWith("ch_extract_1", {
+			stripeAccount: accountId,
+		});
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.cardBrand).toBe("visa");
+		expect(payment?.cardLast4).toBe("4242");
+		expect(payment?.stripeReceiptUrl).toBe(
+			"https://stripe.com/receipt/extract-1",
+		);
+	});
+
+	it("payment_intent.succeeded: dedupes idempotently — re-firing the same event_id yields { duplicate: true } and does not double-write", async () => {
+		const accountId = "acct_test_pi_dedupe";
+		const { orgId } = await seedConnectedOrg(t, accountId);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_dedupe_1",
+			paymentAmount: 25,
+		});
+
+		const chargesRetrieve = vi.fn().mockResolvedValue({
+			payment_method_details: { card: { brand: "mastercard", last4: "5555" } },
+			receipt_url: "https://stripe.com/receipt/dedupe-1",
+		});
+		__setStripeClientForTests({
+			charges: { retrieve: chargesRetrieve },
+			paymentIntents: { retrieve: vi.fn() },
+		} as unknown as Parameters<typeof __setStripeClientForTests>[0]);
+
+		const event = buildStripeEvent({
+			id: "evt_pi_dedupe_1",
+			type: "payment_intent.succeeded",
+			account: accountId,
+			data: {
+				object: {
+					id: "pi_dedupe_1",
+					amount_received: 2500,
+					latest_charge: "ch_dedupe_1",
+					metadata: { publicToken: "tok_dedupe_1" },
+				} as never,
+			},
+		});
+
+		const first = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event),
+		);
+		expect(first.duplicate).toBe(false);
+		const paymentAfterFirst = await t.run((ctx) => ctx.db.get(paymentId));
+		const paidAtFirst = paymentAfterFirst?.paidAt;
+		expect(paymentAfterFirst?.status).toBe("paid");
+
+		const second = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event),
+		);
+		expect(second.duplicate).toBe(true);
+
+		// charges.retrieve was NOT called again on the duplicate event.
+		expect(chargesRetrieve).toHaveBeenCalledTimes(1);
+
+		const paymentAfterSecond = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(paymentAfterSecond?.paidAt).toBe(paidAtFirst);
+	});
+});

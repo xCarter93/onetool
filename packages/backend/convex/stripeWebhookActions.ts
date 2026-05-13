@@ -1,7 +1,26 @@
+import StripeImport from "stripe";
 import type Stripe from "stripe";
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+
+type StripeClient = InstanceType<typeof StripeImport>;
+// Test seam: tests pass a mock via runHandleEvent; production resolves at call-time.
+function defaultStripeClientFactory(): StripeClient {
+	return new StripeImport(process.env.STRIPE_SECRET_KEY ?? "", {
+		apiVersion: "2026-04-22.dahlia" as Stripe.LatestApiVersion,
+	});
+}
+
+// Test-override seam (REVIEWS ISSUE-7): tests assign a mock here before
+// invoking handleEvent so charges.retrieve never hits the network.
+let stripeClientOverride: StripeClient | null = null;
+export function __setStripeClientForTests(client: StripeClient | null): void {
+	stripeClientOverride = client;
+}
+function getStripeClient(): StripeClient {
+	return stripeClientOverride ?? defaultStripeClientFactory();
+}
 
 /**
  * Dispatch verified Stripe Connect webhook events.
@@ -116,6 +135,40 @@ export const handleEvent = internalAction({
 							message:
 								`Payment failed for payment_intent ${pi.id}: ` +
 								(pi.last_payment_error?.message ?? "Unknown error"),
+						}
+					);
+					break;
+				}
+				case "payment_intent.succeeded": {
+					const pi = args.data.object as Stripe.PaymentIntent;
+					const chargeId =
+						typeof pi.latest_charge === "string"
+							? pi.latest_charge
+							: pi.latest_charge?.id;
+					let cardBrand: string | undefined;
+					let cardLast4: string | undefined;
+					let stripeReceiptUrl: string | undefined;
+					if (chargeId && org?.stripeConnectAccountId) {
+						const stripe = getStripeClient();
+						const charge = await stripe.charges.retrieve(chargeId, {
+							stripeAccount: org.stripeConnectAccountId,
+						});
+						cardBrand =
+							charge.payment_method_details?.card?.brand ?? undefined;
+						cardLast4 =
+							charge.payment_method_details?.card?.last4 ?? undefined;
+						stripeReceiptUrl = charge.receipt_url ?? undefined;
+					}
+					await ctx.runMutation(
+						internal.payments.markPaidFromPaymentIntentWebhookInternal,
+						{
+							orgId: org!._id,
+							paymentIntentId: pi.id,
+							amountReceived: pi.amount_received,
+							metadata: pi.metadata ?? {},
+							cardBrand,
+							cardLast4,
+							stripeReceiptUrl,
 						}
 					);
 					break;
