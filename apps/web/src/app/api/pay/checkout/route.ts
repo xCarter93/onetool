@@ -4,9 +4,7 @@ import { getConvexClient } from "@/lib/convexClient";
 import { getStripeClient } from "@/lib/stripe";
 import { env } from "@/env";
 
-// Plan 14.2-05 (FINDINGS W-4) — buffer before pending-session expiry within
-// which we still consider the cached URL reusable. 60s avoids minting a fresh
-// session that races a near-expiry redirect.
+// Avoid reusing a Checkout URL too close to expiration.
 const REUSE_BUFFER_MS = 60_000;
 
 export async function POST(request: NextRequest) {
@@ -61,10 +59,7 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
-			// Plan 14.2-05 (FINDINGS W-4) — pending-session reuse short-circuit.
-			// Within the 24h Stripe Checkout session window (minus a 60s safety
-			// buffer), return the cached URL so a within-attempt retry does NOT
-			// mint a new attemptId / idempotency key / Stripe session.
+			// Reuse an active Checkout Session instead of minting duplicate attempts.
 			const now = Date.now();
 			const reusableUrl = paymentData.payment.pendingCheckoutSessionUrl;
 			const reusableExpiresAt =
@@ -88,9 +83,7 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
-			// Expired or missing — increment the attempt counter ONCE so we mint
-			// a fresh idempotency key for this attempt. The increment is GUARDED
-			// by the reusable-pending-session check above (W-4 invariant).
+			// Fresh attempts get a new idempotency key.
 			const attemptId = await convex.mutation(
 				api.payments.incrementCheckoutAttemptCounterInternal,
 				{ publicToken: paymentData.payment.publicToken }

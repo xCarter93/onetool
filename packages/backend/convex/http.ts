@@ -667,19 +667,8 @@ http.route({
 });
 
 /**
- * Stripe Connect Webhook Handler
- *
- * Hosts the Stripe Connect webhook endpoint inside Convex (instead of Next.js)
- * so the same `internal.*` reachability rules apply as the Clerk/BoldSign/Resend
- * webhooks above. The Stripe signature header is the trust boundary — verified
- * via SubtleCrypto HMAC-SHA256 in `verifyStripeWebhook`.
- *
- * - bad signature / missing header → 400 (Stripe stops retrying)
- * - dispatch failure              → 500 (Stripe retries; W-1 lifecycle re-enters
- *                                          on replay)
- *
- * Configured Stripe Dashboard URL: `https://<deploy>.convex.site/stripe-webhook`.
- * Required env var: `STRIPE_CONNECT_WEBHOOK_SECRET` (set via `npx convex env set`).
+ * Stripe Connect webhook endpoint.
+ * Signature failures return 400; dispatch failures return 500 so Stripe retries.
  */
 http.route({
 	path: "/stripe-webhook",
@@ -731,9 +720,7 @@ http.route({
 			);
 		} catch (error) {
 			logWebhookError("Stripe", event.type, error, event.id);
-			// 500 — transient; Stripe retries; the W-1 status-field lifecycle
-			// ensures the next replay re-enters "processing" so the type-switch
-			// runs again.
+			// Return 500 so Stripe retries transient processing failures.
 			return webhookError(500, "Internal error processing webhook");
 		}
 	}),

@@ -21,13 +21,7 @@ interface RevalidateResult {
 }
 
 /**
- * Plan 14.2-05 — read-only Stripe Connect account revalidation.
- *
- * Operator runs this manually after Wave 3 deploys (see
- * apps/web/STRIPE-WEBHOOK-RUNBOOK.md). For every organization with a
- * non-null `stripeConnectAccountId`, retrieves the matching Stripe
- * account and compares email + existence. Logs mismatches and missing
- * accounts; NEVER auto-remediates. Returns counts for operator review.
+ * Read-only Connect account revalidation for operator review.
  */
 export const run = internalAction({
 	args: {},

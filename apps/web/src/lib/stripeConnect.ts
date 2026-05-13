@@ -18,19 +18,11 @@ export interface ConnectContext {
 		stripeConnectAccountId?: string;
 		ownerUserId: Id<"users">;
 	};
-	// fetchQuery/fetchMutation from convex/nextjs don't auto-forward the Clerk
-	// JWT; routes must pass it as `{ token }`. Carried here so the route can
-	// reuse the same token across follow-on Convex calls without re-entering
-	// Clerk's auth().
+	// convex/nextjs calls need the Clerk JWT passed explicitly as `{ token }`.
 	convexToken: string;
 }
 
-// REGRESSION GUARD: Every /api/stripe-connect/* route MUST funnel through
-// getOrgConnectAccountForCaller(). Plan 14.2-02 implements the body.
-// CI grep:
-//   grep -rn 'body\.\(accountId\|country\|email\|currency\)' \
-//     apps/web/src/app/api/stripe-connect/
-// Must return zero results.
+// All /api/stripe-connect/* routes derive account context here.
 export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 	const { userId, getToken } = await auth();
 	if (!userId) {
@@ -38,15 +30,10 @@ export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 	}
 	const convexToken = await getToken({ template: "convex" });
 	if (!convexToken) {
-		// Clerk session present but no Convex JWT — the "convex" JWT template is
-		// missing from Clerk Dashboard. Fail with a clearer signal than the
-		// downstream "User not authenticated" from getCurrentUserOrThrow.
+		// Clerk session exists, but the Convex JWT template is missing or unavailable.
 		throw new Error("UNAUTHORIZED");
 	}
 
-	// FINDINGS V-1 pivot: api.* (public) — handler derives clerkUserId from
-	// ctx.auth.getUserIdentity() and orgId from Clerk's activeOrgId claim, so
-	// no client-supplied value can influence which org is loaded.
 	const ctx = (await fetchQuery(
 		api.organizations.getOrgForCallerInternal,
 		{},
@@ -55,20 +42,14 @@ export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 	if (!ctx) {
 		throw new Error("ORG_NOT_FOUND");
 	}
-	// Defense-in-depth — the Convex query already asserts ownership but a
-	// future migration that loosens the query body would otherwise become
-	// a silent escalation vector.
+	// Keep ownership enforced even if the Convex query changes later.
 	if (ctx.organization.ownerUserId !== ctx.userId) {
 		throw new Error("NOT_ORG_OWNER");
 	}
 	return { ...ctx, convexToken };
 }
 
-// The org-profile form + address autocomplete write `addressCountry` as a
-// human-readable name ("United States"), not the ISO-3166 alpha-2 code that
-// Stripe consumes. Until the schema is migrated to store ISO codes, normalize
-// at the boundary so US orgs onboard correctly regardless of which surface
-// wrote the field.
+// Normalize the human-readable country stored by the org profile form.
 const US_ALIASES = new Set(["US", "USA", "UNITED STATES", "U.S.", "U.S.A."]);
 
 export function deriveConnectFieldsFromOrg(
@@ -89,22 +70,7 @@ export function deriveConnectFieldsFromOrg(
 }
 
 /**
- * Plan 14.2.1-03 (CONTEXT.md "Accounts v2 Migration Strategy") - clean
- * cutover to /v2/core/accounts. Mirrors the v1 controller-properties into
- * the v2 defaults.responsibilities + configuration blocks (Pitfall 1
- * value-flip on fees_collector). Idempotency key bumped to
- * acct-create-v2-${orgId} to avoid the 24h cache collision with v1 keys
- * (Pitfall 5). Include list widened to configuration.recipient +
- * requirements so the create response carries enough state for
- * deriveConnectStatusFromV2Account to return real values immediately
- * (REVIEWS.md MEDIUM).
- *
- * `applied: true` is intentionally omitted from configuration.{merchant,
- * recipient}: Stripe's v2 REST API rejects it as Unknown on CREATE
- * (the SDK's AccountCreateParams.Configuration types already omit the
- * field — only AccountUpdateParams.Configuration carries it, where it
- * toggles a configuration on/off without removing it). On CREATE, simply
- * providing the configuration block activates it.
+ * Create an Accounts v2 connected account with merchant and recipient capabilities.
  */
 export async function createConnectAccount(
 	ctx: ConnectContext,
@@ -124,9 +90,7 @@ export async function createConnectAccount(
 		defaults: {
 			currency: "usd",
 			responsibilities: {
-				// Pitfall 1 value-flip: v1 fees.payer="account" -> v2 fees_collector="stripe"
 				fees_collector: "stripe",
-				// v1 losses.payments="stripe" -> v2 losses_collector="stripe" (value unchanged)
 				losses_collector: "stripe",
 			},
 		},
@@ -139,7 +103,6 @@ export async function createConnectAccount(
 			},
 			recipient: {
 				capabilities: {
-					// v1 capabilities.transfers -> v2 configuration.recipient.capabilities.stripe_balance.stripe_transfers
 					stripe_balance: {
 						stripe_transfers: { requested: true },
 					},
@@ -153,12 +116,7 @@ export async function createConnectAccount(
 }
 
 /**
- * Plan 14.2.1-03 (Pitfall 6) - v2 Account responses do NOT carry top-level
- * charges_enabled / payouts_enabled / details_submitted booleans. Derive
- * them from the capability statuses + requirements entries.
- *
- * payoutsEnabled reads from configuration.recipient.capabilities.stripe_balance.stripe_transfers.status
- * (the v2 path for the v1 "transfers" capability) per REVIEWS.md.
+ * Derive UI status booleans from Accounts v2 capability and requirement fields.
  */
 export function deriveConnectStatusFromV2Account(
 	account: Stripe.V2.Core.Account

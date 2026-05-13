@@ -8,11 +8,6 @@ import { verifyStripeSession } from "./lib/stripe";
 /**
  * Verify payment with Stripe and mark as paid.
  * This action replaces the old public mutation by adding server-side Stripe verification.
- *
- * Phase 14.2-04 — three assertions reject forged or replayed sessions:
- *   1. metadata.publicToken must match the caller's publicToken (anti-replay)
- *   2. amountTotal must equal Math.round(paymentAmount * 100) (anti-tamper)
- *   3. paymentIntentId must be non-null (audit #14 — no empty-string defaulting)
  */
 export const verifyAndMarkPaid = action({
 	args: {
@@ -33,13 +28,13 @@ export const verifyAndMarkPaid = action({
 			orgId: payment.orgId,
 		});
 
-		// 3. Verify with Stripe API (four-field shape: paid, paymentIntentId, amountTotal, metadata)
+		// 3. Verify with Stripe API
 		const result = await verifyStripeSession(
 			args.stripeSessionId,
 			org?.stripeConnectAccountId ?? undefined
 		);
 
-		// 4. Assertion gauntlet (Phase 14.2-04)
+		// 4. Reject replayed or tampered sessions.
 		if (!result.paid) {
 			throw new Error("Payment not verified by Stripe");
 		}
@@ -58,7 +53,7 @@ export const verifyAndMarkPaid = action({
 			throw new Error("Session has no payment_intent — cannot mark paid");
 		}
 
-		// 5. Mark as paid via internal mutation (PI guaranteed non-null by the assert above)
+		// 5. Mark as paid via internal mutation.
 		return await ctx.runMutation(
 			internal.payments.markPaidByPublicTokenInternal,
 			{
@@ -73,10 +68,6 @@ export const verifyAndMarkPaid = action({
 /**
  * Verify invoice payment with Stripe and mark as paid (legacy flow).
  * This action replaces the old public mutation for direct invoice payments.
- *
- * Phase 14.2-04 — same three assertions as verifyAndMarkPaid, adapted to invoice.total.
- * FINDINGS L-4: the metadata-key choice (publicToken — matches the checkout route's
- * `metadata: { publicToken, invoiceId }`) is pinned by a happy-path test.
  */
 export const verifyAndMarkInvoicePaid = action({
 	args: {
@@ -103,7 +94,7 @@ export const verifyAndMarkInvoicePaid = action({
 			org?.stripeConnectAccountId ?? undefined
 		);
 
-		// 4. Assertion gauntlet (Phase 14.2-04)
+		// 4. Reject replayed or tampered sessions.
 		if (!result.paid) {
 			throw new Error("Payment not verified by Stripe");
 		}

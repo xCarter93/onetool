@@ -149,19 +149,9 @@ export async function verifyBoldSignWebhook(
 	}
 }
 
-// ============================================================================
-// Stripe Webhook Verification (HMAC-SHA256 via SubtleCrypto)
-// ============================================================================
+// Stripe Webhook Verification
 
-/**
- * Stripe-Signature header format:
- *   t=<unix_seconds>,v1=<hex_sig>[,v1=<hex_sig>...][,v0=<legacy_sig>]
- * Signed payload: `${timestamp}.${rawBody}`
- * Algorithm: HMAC-SHA256 (hex-encoded)
- *
- * Tolerance: reject events whose `t` is older than STRIPE_WEBHOOK_TOLERANCE_SEC
- * to defend against replay. Matches Stripe SDK's default of 5 minutes.
- */
+// Matches Stripe's default five-minute replay tolerance.
 const STRIPE_WEBHOOK_TOLERANCE_SEC = 300;
 
 function constantTimeEqualHex(a: string, b: string): boolean {
@@ -180,10 +170,7 @@ function bytesToHex(bytes: ArrayBuffer): string {
 }
 
 /**
- * Verify a Stripe webhook request using HMAC-SHA256 via SubtleCrypto.
- * Mirrors `Stripe.webhooks.constructEventAsync` semantics (timestamp +
- * v1-signature scheme + replay-window tolerance) without pulling the Stripe
- * SDK into Convex's default V8 runtime.
+ * Verify Stripe's timestamped v1 HMAC signature without loading the Stripe SDK.
  */
 export async function verifyStripeWebhook(
 	request: Request,

@@ -943,31 +943,107 @@ describe("Organizations", () => {
 					{ accountId: "acct_hacked" }
 				)
 			).rejects.toThrowError("NOT_ORG_OWNER");
-		});
-	});
-
-	describe("setStripeConnectAccountId (public, REMOVED in Plan 14.2-02)", () => {
-		it("public mutation is no longer callable — convex-test rejects the path", async () => {
-			// Source-of-truth proof lives in the file itself; the grep gate in
-			// Plan 14.2-02 acceptance ensures `^export const setStripeConnectAccountId =`
-			// returns zero matches. At runtime we verify convex-test refuses to
-			// route to the missing export (api.organizations is a Proxy whose
-			// property-access cannot reliably be asserted with toBeUndefined()
-			// because pretty-format reentry hits the Proxy traps).
-			const asUser = t.withIdentity({
-				subject: "user_check",
-				activeOrgId: "org_check",
 			});
-			await expect(
-				// @ts-expect-error — deliberately invoking a removed export
-				asUser.mutation(api.organizations.setStripeConnectAccountId, {
-					accountId: "acct_anything",
-				})
-			).rejects.toThrowError(
-				/setStripeConnectAccountId|no such export|not.*function/i
-			);
 		});
-	});
+
+		describe("clearStripeConnectStateInternal", () => {
+			it("rejects unauthenticated callers and leaves Connect state intact", async () => {
+				const { orgId } = await t.run(async (ctx) => {
+					const userId = await ctx.db.insert("users", {
+						name: "Owner",
+						email: "owner-clear@example.com",
+						image: "https://example.com/clear.jpg",
+						externalId: "user_clear_owner",
+					});
+					const orgId = await ctx.db.insert("organizations", {
+						clerkOrganizationId: "org_clear",
+						name: "Clear Org",
+						ownerUserId: userId,
+						stripeConnectAccountId: "acct_clear",
+						stripeChargesEnabled: true,
+					});
+					await ctx.db.insert("organizationMemberships", {
+						orgId,
+						userId,
+						role: "admin",
+					});
+					return { orgId };
+				});
+
+				await expect(
+					t.mutation(api.organizations.clearStripeConnectStateInternal, {
+						orgId,
+					})
+				).rejects.toThrowError("UNAUTHORIZED");
+
+				const org = await t.run((ctx) => ctx.db.get(orgId));
+				expect(org?.stripeConnectAccountId).toBe("acct_clear");
+				expect(org?.stripeChargesEnabled).toBe(true);
+			});
+
+			it("clears Connect state for the authenticated owner org", async () => {
+				const { orgId } = await t.run(async (ctx) => {
+					const userId = await ctx.db.insert("users", {
+						name: "Owner",
+						email: "owner-clear-ok@example.com",
+						image: "https://example.com/clear-ok.jpg",
+						externalId: "user_clear_ok",
+					});
+					const orgId = await ctx.db.insert("organizations", {
+						clerkOrganizationId: "org_clear_ok",
+						name: "Clear Ok Org",
+						ownerUserId: userId,
+						stripeConnectAccountId: "acct_clear_ok",
+						stripeChargesEnabled: true,
+						stripePayoutsEnabled: true,
+					});
+					await ctx.db.insert("organizationMemberships", {
+						orgId,
+						userId,
+						role: "admin",
+					});
+					return { orgId };
+				});
+
+				const asOwner = t.withIdentity({
+					subject: "user_clear_ok",
+					activeOrgId: "org_clear_ok",
+				});
+
+				await asOwner.mutation(
+					api.organizations.clearStripeConnectStateInternal,
+					{ orgId }
+				);
+
+				const org = await t.run((ctx) => ctx.db.get(orgId));
+				expect(org?.stripeConnectAccountId).toBeUndefined();
+				expect(org?.stripeChargesEnabled).toBeUndefined();
+				expect(org?.stripePayoutsEnabled).toBeUndefined();
+			});
+		});
+
+		describe("setStripeConnectAccountId (public, REMOVED in Plan 14.2-02)", () => {
+			it("public mutation is no longer callable — convex-test rejects the path", async () => {
+				// Source-of-truth proof lives in the file itself; the grep gate in
+				// Plan 14.2-02 acceptance ensures `^export const setStripeConnectAccountId =`
+				// returns zero matches. At runtime we verify convex-test refuses to
+				// route to the missing export (api.organizations is a Proxy whose
+				// property-access cannot reliably be asserted with toBeUndefined()
+				// because pretty-format reentry hits the Proxy traps).
+				const asUser = t.withIdentity({
+					subject: "user_check",
+					activeOrgId: "org_check",
+				});
+				await expect(
+					// @ts-expect-error — deliberately invoking a removed export
+					asUser.mutation(api.organizations.setStripeConnectAccountId, {
+						accountId: "acct_anything",
+					})
+				).rejects.toThrowError(
+					/setStripeConnectAccountId|no such export|not.*function/i
+				);
+			});
+		});
 
 	describe("deleteOrganization", () => {
 		it("should delete organization when owner provides correct confirmation", async () => {

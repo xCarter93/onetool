@@ -299,8 +299,7 @@ export const getByPublicToken = query({
 				description: payment.description,
 				sortOrder: payment.sortOrder,
 				paidAt: payment.paidAt,
-				// Plan 14.2-05 (FINDINGS W-4) — pending session fields for
-				// checkout-route reuse-within-window short-circuit.
+				// Pending Checkout Session fields support retry reuse.
 				pendingCheckoutSessionId: payment.pendingCheckoutSessionId,
 				pendingCheckoutSessionUrl: payment.pendingCheckoutSessionUrl,
 				pendingCheckoutSessionExpiresAt:
@@ -611,25 +610,17 @@ export const createDefaultPayment = mutation({
  * Mark payment as paid by public token (internal only - called after Stripe verification)
  * Auto-updates invoice status when all payments are paid.
  *
- * Plan 14.2-03 (FINDINGS M-1): canonical paid-marking cascade. The webhook
- * path (`markPaidFromWebhookInternal`) delegates here so the aggregate
- * + invoice-cascade + status-change-event chain has a single owner.
- * - `stripeSessionId` is OPTIONAL because Stripe `checkout.session.completed`
- *   webhook payloads carry the session id while raw PaymentIntent retries
- *   may not. `paymentIntentId` is REQUIRED for any caller — Plan 14.2 audit
- *   #14 forbids defaulting to `""`.
- * - `source` is recorded on the emitted status-change event so workflow
- *   automations can distinguish confirm-vs-webhook origins if needed.
+ * Webhook and success-page confirmation paths both delegate here so invoice
+ * status updates stay in one place.
  */
 export const markPaidByPublicTokenInternal = internalMutation({
 	args: {
 		publicToken: v.string(),
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
-		// Plan 14.2-03 — provenance hint, defaults to "confirm" for the original caller.
-		source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
-		// Plan 14.2-03 — alias accepted from webhook callers ("paymentIntentId").
-		paymentIntentId: v.optional(v.string()),
+			// Provenance hint for downstream workflow events.
+			source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
+			paymentIntentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
 		// Find payment by public token
@@ -652,8 +643,7 @@ export const markPaidByPublicTokenInternal = internalMutation({
 		const resolvedPaymentIntentId =
 			args.stripePaymentIntentId ?? args.paymentIntentId;
 		if (!resolvedPaymentIntentId) {
-			// Plan 14.2 audit #14 — no `?? ""` defaulting for the PI id.
-			throw new Error(
+				throw new Error(
 				"markPaidByPublicTokenInternal: stripePaymentIntentId is required"
 			);
 		}
@@ -771,23 +761,11 @@ export const markAsOverdue = mutation({
 });
 
 // ============================================================================
-// Checkout session lifecycle (Plan 14.2-05 — FINDINGS W-4)
+// Checkout session lifecycle
 // ============================================================================
 
 /**
- * Plan 14.2-05 (FINDINGS W-4) — increment the checkout attempt counter for a
- * payment row, returning the new value.
- *
- * Auth model (V-1 pivot per Plan 14.2-02 SUMMARY): public `mutation` callable
- * from the unauthenticated `/api/pay/checkout` route. The trust boundary is
- * the `publicToken` itself — only a caller who already holds the token can
- * mint a new attempt. Handler:
- *   1. Looks up payment by publicToken (uniqueness via by_public_token index).
- *   2. Throws if no payment row matches (cannot blindly increment a missing row).
- *   3. Increments `checkoutAttemptCounter` and returns the new value.
- *
- * The route GUARDS the call with a pending-session reuse check, so this fires
- * only when a fresh idempotency key is genuinely needed.
+ * Increment the checkout attempt counter used in Stripe idempotency keys.
  */
 export const incrementCheckoutAttemptCounterInternal = mutation({
 	args: { publicToken: v.string() },
@@ -809,15 +787,7 @@ export const incrementCheckoutAttemptCounterInternal = mutation({
 });
 
 /**
- * Plan 14.2-05 (FINDINGS W-4) — persist a freshly-created Stripe Checkout
- * Session so a within-window retry of `/api/pay/checkout` can reuse the
- * cached URL without re-calling Stripe.
- *
- * Auth model: same as `incrementCheckoutAttemptCounterInternal` — public
- * mutation guarded by knowledge of the `publicToken`.
- *
- * The webhook-side `markPaidFromWebhookInternal` clears these three fields
- * once `checkout.session.completed` arrives matching `pendingCheckoutSessionId`.
+ * Persist the active Checkout Session so retries can reuse its URL.
  */
 export const persistPendingCheckoutSessionInternal = mutation({
 	args: {
@@ -847,14 +817,11 @@ export const persistPendingCheckoutSessionInternal = mutation({
 });
 
 // ============================================================================
-// Webhook-driven internal helpers (Plan 14.2-03)
+// Webhook-driven internal helpers
 // ============================================================================
 
 /**
- * Plan 14.2-03 (FINDINGS W-3) — lookup a payment by stripePaymentIntentId so
- * the `payment_intent.payment_failed` switch case can feed `payment._id` into
- * `createWebhookNotificationInternal`. Org-scoped by_org index + filter
- * mirrors the lookup pattern inside the refunded/disputed mutations below.
+ * Lookup a payment by Stripe PaymentIntent within an org.
  */
 export const getByPaymentIntentIdInternal = internalQuery({
 	args: {
@@ -875,21 +842,8 @@ export const getByPaymentIntentIdInternal = internalQuery({
 });
 
 /**
- * Plan 14.2-03 (FINDINGS M-1) — thin shell that delegates to the canonical
- * `markPaidByPublicTokenInternal` cascade after validating org + amount +
- * payment_intent. The webhook is the authoritative paid signal — Stripe's
- * `checkout.session.completed` arrives even when the buyer closes the tab
- * before the success-URL `/api/pay/confirm` round-trip fires.
- *
- * Throws on:
- *   - Org mismatch (defense-in-depth against forged events bypassing
- *     signature verification — T-14.2-14).
- *   - Amount mismatch (T-14.2-15).
- *   - Missing payment_intent (audit #14 / T-14.2-16).
- *
- * Returns null when the payment row cannot be located (e.g., metadata stripped
- * by a misbehaving connected account) — no-op rather than throwing so Stripe
- * doesn't retry indefinitely on a genuinely unknown payment.
+ * Validate a completed Checkout Session and delegate to the paid cascade.
+ * Unknown payment metadata is treated as a terminal no-op to avoid endless retries.
  */
 export const markPaidFromWebhookInternal = internalMutation({
 	args: {
@@ -933,8 +887,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 			return null;
 		}
 
-		// Org-scoping guard (T-14.2-14). The lookup is org-scoped for invoiceId,
-		// but the publicToken path is global — assert match here.
+			// The publicToken lookup is global, so assert org scope here.
 		if (payment.orgId !== args.orgId) {
 			throw new Error("Org mismatch on webhook payment lookup");
 		}
@@ -944,8 +897,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 			return null;
 		}
 
-		// Amount-tampering guard (T-14.2-15). Stripe sends `amount_total` in
-		// cents; our payment row stores dollars.
+			// Stripe sends amount_total in cents; payment rows store dollars.
 		const expectedCents = Math.round(payment.paymentAmount * 100);
 		if (args.amountTotal !== expectedCents) {
 			throw new Error(
@@ -953,15 +905,13 @@ export const markPaidFromWebhookInternal = internalMutation({
 			);
 		}
 
-		// Audit #14 / T-14.2-16 — no `?? ""` defaulting.
-		if (!args.paymentIntentId) {
+			if (!args.paymentIntentId) {
 			throw new Error(
 				`markPaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}`
 			);
 		}
 
-		// Clear pendingCheckoutSession* fields when the session matches
-		// (FINDINGS W-4 — Plan 05 owns the mint side; here we clear on paid).
+			// Clear pending Checkout Session fields after successful payment.
 		if (
 			payment.pendingCheckoutSessionId &&
 			payment.pendingCheckoutSessionId === args.sessionId
@@ -973,10 +923,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 			});
 		}
 
-		// FINDINGS M-1 — delegate the actual paid cascade (status patch,
-		// invoice rollup) to the canonical mutation. Do not duplicate that
-		// logic here.
-		await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
+			await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
 			publicToken: payment.publicToken,
 			stripeSessionId: args.sessionId,
 			stripePaymentIntentId: args.paymentIntentId,
@@ -987,11 +934,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 });
 
 /**
- * Plan 14.2-03 — refund cascade. Flip payment to "refunded" and emit a status
- * change event so workflow automations and the M-1-equivalent revenue
- * aggregates pick up the transition. Notification emission lives at the
- * route-action level (handleEvent does not currently call this for refunds;
- * see CONTEXT decisions — only payment_failed and dispute_created notify).
+ * Mark a payment refunded from a Stripe webhook.
  */
 export const markRefundedFromWebhookInternal = internalMutation({
 	args: {
@@ -1036,11 +979,7 @@ export const markRefundedFromWebhookInternal = internalMutation({
 });
 
 /**
- * Plan 14.2-03 (FINDINGS W-3) — dispute lifecycle. Sets disputed=true on the
- * payment row, emits a status-change event for workflow automations, and
- * emits a HIGH-priority notification whose body references Stripe's 7-day
- * response window. Disputes left unanswered for 7 days default to lost —
- * silent disputes are the prior surface we are closing here.
+ * Mark a payment disputed and notify the org owner.
  */
 export const flagDisputedFromWebhookInternal = internalMutation({
 	args: {
@@ -1080,9 +1019,7 @@ export const flagDisputedFromWebhookInternal = internalMutation({
 			"stripeWebhookActions.charge.dispute.created"
 		);
 
-		// FINDINGS W-3 — high-priority operator notification with the 7-day
-		// response window referenced in the message body.
-		await ctx.runMutation(
+			await ctx.runMutation(
 			internal.notifications.createWebhookNotificationInternal,
 			{
 				orgId: args.orgId,

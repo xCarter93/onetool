@@ -95,8 +95,7 @@ export default defineSchema({
 		stripeRequirementsCurrentlyDue: v.optional(v.array(v.string())),
 		stripeRequirementsDisabledReason: v.optional(v.string()),
 		stripeStatusUpdatedAt: v.optional(v.number()),
-		// Plan 14.2.1-01 (CONTEXT.md schema additions) - external bank-account
-		// fingerprint persisted on account.external_account.created/.updated webhooks.
+		// External bank-account fingerprint from Stripe webhooks.
 		stripeExternalAccountLast4: v.optional(v.string()),
 		stripeExternalAccountBankName: v.optional(v.string()),
 		stripeExternalAccountUpdatedAt: v.optional(v.number()),
@@ -534,14 +533,13 @@ export default defineSchema({
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 
-		// Webhook-driven state (Phase 14.2 — Stripe Connect lifecycle).
+		// Webhook-driven Stripe lifecycle state.
 		disputed: v.optional(v.boolean()),
 		disputeId: v.optional(v.string()),
 		refundedAt: v.optional(v.number()),
-		// Increments per fresh checkout-session mint; used to derive stable idempotency keys.
+		// Increments per fresh Checkout Session mint for idempotency keys.
 		checkoutAttemptCounter: v.optional(v.number()),
-		// Pending session reuse (FINDINGS W-4): cache the active Checkout session so
-		// in-flight retries return the same Stripe URL until it expires.
+		// Active Checkout Session cache for retry reuse.
 		pendingCheckoutSessionId: v.optional(v.string()),
 		pendingCheckoutSessionUrl: v.optional(v.string()),
 		pendingCheckoutSessionExpiresAt: v.optional(v.number()),
@@ -674,11 +672,11 @@ export default defineSchema({
 			v.literal("client_mention"),
 			v.literal("project_mention"),
 			v.literal("quote_mention"),
-			// Plan 14.2-03 (FINDINGS W-3) — Stripe webhook lifecycle notifications.
+			// Stripe webhook lifecycle notifications.
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
 			v.literal("charge_refunded"),
-			// Plan 14.2.1-01 - Stripe Connect lifecycle additions (payouts, capability, bank-account).
+			// Stripe Connect lifecycle additions.
 			v.literal("payout_paid"),
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
@@ -705,9 +703,7 @@ export default defineSchema({
 			v.union(v.literal("email"), v.literal("sms"), v.literal("in_app"))
 		),
 		hasAttachments: v.optional(v.boolean()), // Quick flag for whether this notification has attachments
-		// Plan 14.2-03 (FINDINGS W-3) — typed FK for Stripe webhook notifications
-		// (payment_failed / dispute_created / charge_refunded). Optional to keep
-		// existing notification types unaffected.
+		// Optional Stripe webhook notification metadata.
 		priority: v.optional(v.union(v.literal("normal"), v.literal("high"))),
 		paymentId: v.optional(v.id("payments")),
 	})
@@ -1487,10 +1483,7 @@ export default defineSchema({
 		.index("by_jti", ["tokenJti"])
 		.index("by_expires", ["expiresAt"]),
 
-	// Stripe Connect webhook event ledger (FINDINGS W-1 — status-field lifecycle).
-	// Replaces the dedupe-before-process pattern: rows transition received →
-	// processing → processed | failed, so failed events stay retryable via
-	// Stripe's "Resend" button.
+	// Stripe Connect webhook event ledger.
 	stripeWebhookEvents: defineTable({
 		stripeEventId: v.string(),
 		eventType: v.string(),

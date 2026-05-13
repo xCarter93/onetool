@@ -32,20 +32,15 @@ values first.
 
 Phase 14.2.1 migrates `/api/stripe-connect/account` from the v1 `stripe.accounts.create` API to the v2 `stripe.v2.core.accounts.create` API as a CLEAN CUTOVER (no dual-mode). All existing connected accounts in this project are test data; they MUST be deleted before deploying 14.2.1 so the v2 create path is exercised on every re-onboarding.
 
-**Why a Convex-side cleanup is also required:** Stripe-side `accounts.delete` only removes the Stripe account. The corresponding `organizations.stripeConnectAccountId` + cached status fields + bank-account fingerprint fields remain in Convex. If you skip the Convex cleanup, `/api/stripe-connect/account` reaches the retrieve branch with a stale acct ID and Stripe returns 404. (The route now also handles this defensively — see Plan 14.2.1-03 Task 2 — but running the cleanup pre-deploy is the documented happy path.)
+**Convex-side state:** Stripe-side `accounts.delete` only removes the Stripe account. The corresponding cached Connect fields remain in Convex until the owner next opens onboarding; `/api/stripe-connect/account` handles the Stripe 404 by clearing the caller's org state and creating a fresh v2 account. The clear-state mutation is intentionally owner-session scoped and is not an unauthenticated operator cleanup command.
 
 **Steps:**
 
 1. Stripe Dashboard → Connected accounts list → for EACH `acct_*` row:
    1. Confirm it is a test account (top-right "Viewing test data" badge active)
    2. Click into the account → ⋯ menu → "Delete account" → confirm
-2. For EACH test org in Convex, null the Stripe-Connect state via the new cleanup mutation:
-   ```bash
-   cd packages/backend
-   npx convex run organizations:clearStripeConnectStateInternal '{"orgId":"<orgId>"}'
-   ```
-   Iterate over every test org (the mutation is idempotent — running it on an org that already has no Stripe state is a no-op).
-3. Verify the Connected accounts list in Stripe Dashboard is empty (or contains only production accounts you intentionally keep)
+2. Verify the Connected accounts list in Stripe Dashboard is empty (or contains only production accounts you intentionally keep)
+3. Have each test org owner restart onboarding from the workspace UI after deploy; the route clears stale Convex state on Stripe 404 and creates a fresh v2 account
 4. Subscribe the existing Dashboard webhook endpoint to the five new event types (see "Initial Setup" step 4 below — the existing endpoint receives all 10 events; no new endpoint needed)
 5. Proceed with the standard Pre-deploy Checklist below
 

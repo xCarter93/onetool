@@ -2,16 +2,8 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 
 /**
- * Atomically transition a webhook event into "processing".
- *
- * Returns { proceed: true, eventDocId } when the caller should run the
- * type-switch. Returns { proceed: false } only when status === "processed"
- * (a true duplicate already handled successfully).
- *
- * On status === "failed" / "received" / "processing" the row is transitioned
- * back to "processing", attemptCount is incremented, prior failure metadata
- * is cleared, and proceed is true. This makes failed/stuck events retryable
- * when Stripe replays them via the Dashboard "Resend" button (FINDINGS W-1).
+ * Start or retry webhook event processing.
+ * Already-processed events are treated as duplicates.
  */
 export const startProcessingEvent = internalMutation({
 	args: {
@@ -48,7 +40,7 @@ export const startProcessingEvent = internalMutation({
 			return { proceed: false };
 		}
 
-		// Retry path: failed / stuck-processing / received -> re-enter processing.
+		// Failed or stuck events can be retried by Stripe replay.
 		await ctx.db.patch(existing._id, {
 			status: "processing",
 			attemptCount: existing.attemptCount + 1,
@@ -72,9 +64,7 @@ export const markEventProcessed = internalMutation({
 });
 
 /**
- * Bookkeeping for a failed event. Caller has already failed; this MUST NOT
- * throw so the route can propagate the original error and 5xx, letting
- * Stripe retry on its standard schedule.
+ * Record failure metadata while preserving the original error path.
  */
 export const markEventFailed = internalMutation({
 	args: {

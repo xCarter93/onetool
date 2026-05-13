@@ -4,13 +4,8 @@ import { getStripeClient } from "@/lib/stripe";
 import { getOrgConnectAccountForCaller } from "@/lib/stripeConnect";
 
 /**
- * Plan 14.2-02 — create an Account Session for Stripe Connect embedded
- * components (payouts). The account ID is derived server-side from the
- * Clerk session; no client input controls the session subject.
- *
- * Idempotency: account sessions hand back a client secret that expires
- * within an hour. Stable keys would return the same expired secret on
- * retry, so each call uses a fresh UUID (RESEARCH Pattern 4).
+ * Create an Account Session for the caller's connected account.
+ * Each call uses a fresh key because returned client secrets expire quickly.
  */
 export async function POST() {
 	try {

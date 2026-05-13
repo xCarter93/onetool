@@ -441,31 +441,13 @@ export const regenerateReceivingAddress = mutation({
 });
 
 /**
- * Plan 14.2-02 — Connect cross-tenant lockdown.
- *
- * Returns the locked-down ConnectContext for the current caller. Used by
- * `apps/web/src/lib/stripeConnect.ts#getOrgConnectAccountForCaller()` to
- * derive every Stripe Connect identifier server-side — no client-supplied
- * accountId, country, email, or currency is ever read.
- *
- * Pivot note (Plan 14.2-02 Preflight / FINDINGS V-1): declared as a PUBLIC
- * `query` rather than `internalQuery` because Next.js `convex/nextjs`
- * helpers only call public function references. Auth is performed inside
- * the handler — clerkUserId and orgId are derived from the Clerk session,
- * never from client args. Safety properties are equivalent to an internal
- * query because no client input influences the lookup.
- *
- * Throws:
- *   - "User not authenticated" / "No active organization" — surfaces as
- *     ORG_NOT_FOUND in `getOrgConnectAccountForCaller` (which maps to 401).
- *   - "NOT_ORG_OWNER" — caller is a member but not the org owner (M-5).
+ * Return the caller's Connect context using only session-derived identity.
  */
 export const getOrgForCallerInternal = query({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUserOrThrow(ctx);
-		// Member-aware lookup (mirrors lib/auth.ts) — surfaces NOT_ORG_OWNER
-		// rather than ORG_NOT_FOUND for non-owner members per FINDINGS M-5.
+		// Member-aware lookup keeps non-owner errors distinct from missing orgs.
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const organization = await ctx.db.get(userOrgId);
 		if (!organization) {
@@ -491,22 +473,7 @@ export const getOrgForCallerInternal = query({
 });
 
 /**
- * Plan 14.2-02 — replaces the prior PUBLIC `setStripeConnectAccountId` (now
- * deleted). The handler derives `orgId` from the Clerk session (NOT from
- * args) and enforces owner-only access plus the FINDINGS M-2 duplicate-
- * account guard before patching.
- *
- * Pivot note (Plan 14.2-02 Preflight / FINDINGS V-1): declared as a PUBLIC
- * `mutation` rather than `internalMutation` because Next.js calls public
- * function references via `convex/nextjs`. The `Internal` suffix preserves
- * the Plan 02 export-name contract; the security properties match an
- * internal mutation because the client cannot influence which org gets
- * patched.
- *
- * Throws:
- *   - "NOT_ORG_OWNER" when caller is not the org owner.
- *   - "DUPLICATE_CONNECT_ACCOUNT" when accountId already maps to another
- *     org (FINDINGS M-2 — prevents webhook mis-routing).
+ * Persist a Connect account id on the caller's org with owner and duplicate guards.
  */
 export const setStripeConnectAccountIdInternal = mutation({
 	args: { accountId: v.string() },
@@ -521,7 +488,7 @@ export const setStripeConnectAccountIdInternal = mutation({
 			throw new Error("NOT_ORG_OWNER");
 		}
 
-		// FINDINGS M-2 — duplicate-account guard.
+		// Prevent one Stripe account from being mapped to multiple orgs.
 		const existing = await ctx.db
 			.query("organizations")
 			.withIndex("by_stripe_connect_account_id", (q) =>
@@ -618,11 +585,7 @@ export const removeMember = mutation({
 });
 
 /**
- * Plan 14.2-03 — webhook-side org lookup by Stripe Connect account id.
- *
- * Resolves `event.account` (and the L-3 fallback `data.object.id`) to the
- * org row that owns the connected account. Called from
- * `stripeWebhookActions.handleEvent` after Stripe signature verification.
+ * Resolve a Stripe Connect account id to the owning org.
  */
 export const getByStripeConnectAccountIdInternal = internalQuery({
 	args: { accountId: v.string() },
@@ -649,9 +612,7 @@ export const getByStripeConnectAccountIdInternal = internalQuery({
 });
 
 /**
- * Plan 14.2-03 — refresh the cached Connect onboarding status from an
- * `account.updated` webhook. Pure write — auth happens at the route layer
- * via Stripe signature verification before this mutation runs.
+ * Refresh cached Connect onboarding status from a verified webhook.
  */
 export const updateStripeConnectStatusInternal = internalMutation({
 	args: {
@@ -717,11 +678,7 @@ export const deleteOrganization = mutation({
 });
 
 /**
- * Plan 14.2-05 — list every organization with a non-null
- * `stripeConnectAccountId`. Used by the read-only revalidation migration
- * (`migrations/revalidateStripeConnectAccounts:run`) so the operator can
- * cross-check org-side state against Stripe-side state after Wave 3 deploys.
- * Full table scan is acceptable for a one-time manual run.
+ * List orgs with Connect accounts for the read-only revalidation migration.
  */
 export const listAllWithConnectAccountInternal = internalQuery({
 	args: {},
@@ -746,13 +703,7 @@ export const listAllWithConnectAccountInternal = internalQuery({
 	},
 });
 
-// Plan 14.2.1-02 (CONTEXT.md "capability.updated") — re-cache Connect
-// capability flags on the org row, emit notification ONLY on active → not-active
-// degradation. Requirement-field updates (currently_due, disabled_reason) also
-// gated to the degradation branch so account.updated stays canonical.
-// Workflow-automation parity via the event bus is DEFERRED (Option A from
-// REVIEWS.md) — would require domainEvents.payload.entityType union extension
-// + downstream consumer updates beyond this phase's scope.
+// Re-cache Connect capabilities and notify only on active -> inactive degradation.
 export const updateStripeCapabilityInternal = internalMutation({
 	args: {
 		orgId: v.id("organizations"),
@@ -771,9 +722,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 		const org = await ctx.db.get(args.orgId);
 		if (!org) return null;
 
-		// RESEARCH Pitfall 3 — v1 capability id for the payouts side is
-		// "transfers" even on v2-created accounts. Match the v1 name; log + skip
-		// anything else.
+		// Payout capability events still use the v1 "transfers" capability id.
 		const isCharges = args.capabilityId === "card_payments";
 		const isPayouts = args.capabilityId === "transfers";
 		if (!isCharges && !isPayouts) {
@@ -790,9 +739,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 		const newValue = args.status === "active";
 		const isDegradation = priorValue === true && newValue === false;
 
-		// Always patch the boolean cache + status timestamp. Only patch
-		// requirement fields on degradation to avoid clobbering the fuller
-		// account.updated snapshot when capability events interleave.
+		// Only patch requirement fields on degradation to avoid clobbering account.updated.
 		const patch: Record<string, unknown> = {
 			[fieldName]: newValue,
 			stripeStatusUpdatedAt: Date.now(),
@@ -803,8 +750,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 		}
 		await ctx.db.patch(args.orgId, patch);
 
-		// Degradation gate: emit notification ONLY when transitioning
-		// active → not-active. No event-bus emit (Option A deferral).
+		// Notify only on active -> not-active transitions.
 		if (isDegradation) {
 			const label = isCharges ? "charges" : "payouts";
 			await ctx.runMutation(
@@ -821,9 +767,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 	},
 });
 
-// Plan 14.2.1-02 (CONTEXT.md "account.external_account.*") — persist
-// bank-account fingerprint (last4 + bankName) on org row. Idempotent
-// overwrite — same call shape for both created and updated events.
+// Persist bank-account fingerprint from external_account webhooks.
 export const updateExternalAccountFingerprintInternal = internalMutation({
 	args: {
 		orgId: v.id("organizations"),
@@ -842,49 +786,27 @@ export const updateExternalAccountFingerprintInternal = internalMutation({
 	},
 });
 
-// Plan 14.2.1-03 (REVIEWS.md HIGH — pre-cutover cleanup primitive). Nulls
-// every Stripe-Connect state field on the org row. Called by the operator
-// BEFORE deploying 14.2.1 for every test org whose Stripe-side test account
-// they're about to delete in the Dashboard. Without this, the v1 acct ID
-// remains in Convex, the retrieve branch of /api/stripe-connect/account
-// 404s on the deleted Stripe account, and onboarding is stranded.
-//
-// Pivot note (mirrors 14.2-02 V-1 / setStripeConnectAccountIdInternal): the
-// primitive is declared as a PUBLIC `mutation` so the 404-fallback in
-// `/api/stripe-connect/account/route.ts` can reach it via `fetchMutation`
-// (convex/nextjs cannot call `internal.*`). The handler derives orgId from
-// the Clerk session and enforces owner-only access — the `Internal` suffix
-// preserves the export-name contract from the plan; security properties
-// match an internal mutation because the client cannot influence which org
-// gets cleared. The orgId arg is RETAINED for the operator CLI path
-// (`npx convex run organizations:clearStripeConnectStateInternal
-// '{"orgId":"<id>"}'`) and is asserted to match the session-derived orgId
-// when a Clerk session is present.
+// Clear all cached Connect state for the session-derived org.
 export const clearStripeConnectStateInternal = mutation({
 	args: { orgId: v.id("organizations") },
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		// When called from the route (Clerk session present) the orgId arg
-		// MUST match the session-derived orgId — defense-in-depth against a
-		// future caller that drifts from the lockdown contract.
 		const identity = await ctx.auth.getUserIdentity();
-		if (identity) {
-			const user = await getCurrentUserOrThrow(ctx);
-			const userOrgId = await getCurrentUserOrgId(ctx);
-			if (userOrgId !== args.orgId) {
-				throw new Error("ORG_MISMATCH");
-			}
-			const organization = await ctx.db.get(userOrgId);
-			if (!organization) {
-				throw new Error("ORG_NOT_FOUND");
-			}
-			if (organization.ownerUserId !== user._id) {
-				throw new Error("NOT_ORG_OWNER");
-			}
+		if (!identity) {
+			throw new Error("UNAUTHORIZED");
 		}
-		// When called from the CLI (`npx convex run`) there is no Clerk
-		// identity — the admin key already proves operator privilege, so the
-		// orgId arg is honored directly.
+		const user = await getCurrentUserOrThrow(ctx);
+		const userOrgId = await getCurrentUserOrgId(ctx);
+		if (userOrgId !== args.orgId) {
+			throw new Error("ORG_MISMATCH");
+		}
+		const organization = await ctx.db.get(userOrgId);
+		if (!organization) {
+			throw new Error("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("NOT_ORG_OWNER");
+		}
 		await ctx.db.patch(args.orgId, {
 			stripeConnectAccountId: undefined,
 			stripeChargesEnabled: undefined,

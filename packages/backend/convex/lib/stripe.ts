@@ -1,9 +1,6 @@
 /**
  * Stripe verification helpers for Convex actions.
  * Uses plain fetch (no Stripe SDK) to verify Checkout Sessions.
- *
- * Stripe-Version is pinned per FINDINGS / RESEARCH §Code Examples Example 6
- * so a Stripe-side rotation cannot silently shift response shapes.
  */
 
 const STRIPE_API_VERSION = "2026-04-22.dahlia";
@@ -25,7 +22,6 @@ interface StripeCheckoutSession {
 /**
  * Verify a Stripe Checkout Session via the Stripe API.
  * Uses the platform's STRIPE_SECRET_KEY and optionally a Connect account ID.
- * Returns the four-field shape the assertion gauntlet in stripePaymentActions consumes.
  */
 export async function verifyStripeSession(
 	sessionId: string,

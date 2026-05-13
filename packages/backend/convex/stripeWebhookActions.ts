@@ -4,19 +4,8 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 /**
- * Stripe Connect webhook event handler. Invoked by the `/stripe-webhook`
- * httpAction in `convex/http.ts` AFTER signature verification.
- *
- * Trust boundary: the httpAction in `http.ts` MUST verify the Stripe
- * signature (`verifyStripeWebhook` in `lib/webhooks.ts`) before dispatching.
- * Internal-only — not reachable from clients.
- *
- * Outer flow (FINDINGS W-1 status-field lifecycle):
- *   startProcessingEvent → type-switch → markEventProcessed | markEventFailed
- *
- * On thrown errors this re-throws so the httpAction returns 5xx and Stripe
- * retries on its standard schedule (FINDINGS W-2). markEventFailed itself
- * never throws — bookkeeping only.
+ * Dispatch verified Stripe Connect webhook events.
+ * Throws after failure bookkeeping so the HTTP route returns 5xx and Stripe retries.
  */
 export const handleEvent = internalAction({
 	args: {
@@ -31,10 +20,7 @@ export const handleEvent = internalAction({
 		orgFound: v.optional(v.boolean()),
 	}),
 	handler: async (ctx, args) => {
-		// FINDINGS W-1: status-field lifecycle. startProcessingEvent atomically
-		// transitions to "processing" (or short-circuits as duplicate when status
-		// is "processed"). Failed/stuck events transition back to processing
-		// and become retryable on Stripe replay.
+		// Atomically dedupe processed events and retry failed/stuck ones.
 		const { proceed, eventDocId } = await ctx.runMutation(
 			internal.stripeWebhookEvents.startProcessingEvent,
 			{
@@ -47,12 +33,7 @@ export const handleEvent = internalAction({
 		if (!proceed) return { duplicate: true };
 
 		try {
-			// FINDINGS L-3: account.updated may arrive with event.account === null
-			// for some Stripe Connect topologies. Fall back to data.object.id
-			// (the Stripe.Account's own id) before doing the org lookup.
-			// Plan 14.2.1-02 extension: capability.updated can also arrive with
-			// event.account === null; data.object.account carries the connected
-			// account id in that case.
+			// Some account/capability events carry the account id in the object body.
 			let resolvedAccount: string | null = args.account;
 			if (
 				!resolvedAccount &&
@@ -87,7 +68,6 @@ export const handleEvent = internalAction({
 				return { duplicate: false, orgFound: false };
 			}
 
-			// Type switch — five core events (CONTEXT.md "Webhook Event Coverage (Core 5)").
 			switch (args.eventType) {
 				case "checkout.session.completed": {
 					const session = args.data.object as Stripe.Checkout.Session;
@@ -108,12 +88,7 @@ export const handleEvent = internalAction({
 				}
 				case "payment_intent.payment_failed": {
 					const pi = args.data.object as Stripe.PaymentIntent;
-					// FINDINGS W-3: look up payment by pi.id and pass paymentId to the
-					// notification creator. Best-effort — if the PI failed before any
-					// successful confirm persisted stripePaymentIntentId on the
-					// payment row, the lookup returns null and we still emit the
-					// notification (the message body carries pi.id for triage).
-					// Payment row stays "pending" — buyer may retry checkout.
+					// Best-effort lookup; failed pre-confirm attempts may not have a payment row yet.
 					const payment = await ctx.runQuery(
 						internal.payments.getByPaymentIntentIdInternal,
 						{ orgId: org!._id, paymentIntentId: pi.id }
@@ -166,8 +141,6 @@ export const handleEvent = internalAction({
 						);
 						break;
 					}
-					// flagDisputedFromWebhookInternal emits the W-3 notification internally
-					// with the 7-day response window referenced in the message body.
 					await ctx.runMutation(
 						internal.payments.flagDisputedFromWebhookInternal,
 						{
@@ -195,7 +168,6 @@ export const handleEvent = internalAction({
 					);
 					break;
 				}
-				// Plan 14.2.1-02 (CONTEXT.md "Event Coverage") — five new event types.
 				case "payout.paid": {
 					const payout = args.data.object as Stripe.Payout;
 					const dollars = (payout.amount / 100).toFixed(2);
@@ -248,7 +220,6 @@ export const handleEvent = internalAction({
 				}
 				case "account.external_account.created":
 				case "account.external_account.updated": {
-					// RESEARCH Pitfall 4 — data.object can be BankAccount OR Card. Discriminate.
 					const obj = args.data.object as Stripe.BankAccount | Stripe.Card;
 					if (obj.object !== "bank_account") {
 						console.log(
@@ -283,14 +254,12 @@ export const handleEvent = internalAction({
 					);
 			}
 
-			// FINDINGS W-1: success path → mark processed.
 			await ctx.runMutation(internal.stripeWebhookEvents.markEventProcessed, {
 				eventDocId: eventDocId!,
 			});
 			return { duplicate: false, orgFound: true };
 		} catch (err) {
-			// FINDINGS W-1: failure → bookkeeping mutation (does NOT throw) +
-			// re-throw so the route returns 5xx and Stripe retries (W-2).
+			// Keep failure bookkeeping separate from Stripe's retry signal.
 			await ctx.runMutation(internal.stripeWebhookEvents.markEventFailed, {
 				eventDocId: eventDocId!,
 				failureReason: err instanceof Error ? err.message : "unknown",

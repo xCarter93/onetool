@@ -7,13 +7,8 @@ import {
 } from "@/lib/stripeConnect";
 
 /**
- * Plan 14.2-02 — return live Connect status for the caller's organization.
- * Response shape is reduced (audit #9): no full Stripe.Account leak — only
- * the booleans and the requirements object the workspace UI renders.
- *
- * Plan 14.2.1-03: v2 cutover — retrieve via stripe.v2.core.accounts.retrieve
- * with the widened include list, then derive booleans via
- * deriveConnectStatusFromV2Account (recipient-path payoutsEnabled).
+ * Return live Connect status for the caller's organization.
+ * Only UI-facing status fields are returned, not the full Stripe account.
  */
 export async function POST() {
 	try {

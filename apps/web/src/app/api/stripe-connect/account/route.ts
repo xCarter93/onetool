@@ -11,32 +11,9 @@ import {
 } from "@/lib/stripeConnect";
 
 /**
- * Plan 14.2-02 (Connect cross-tenant lockdown) + Plan 14.2.1-03 (Accounts v2
- * migration).
- *
- * Create or retrieve a Stripe Connect account for the caller's organization.
- *
- * Lockdown contract (audit #2):
- *   - The handler MUST NOT read any account-identifying field from the
- *     request body (see apps/web/src/lib/stripeConnect.ts for the CI grep
- *     gate that pins this invariant). Everything is derived from the
- *     Clerk session via getOrgConnectAccountForCaller().
- *   - On create, the account ID is persisted server-side via
- *     setStripeConnectAccountIdInternal (which carries the FINDINGS M-2
- *     duplicate-account guard) BEFORE the response returns.
- *   - The response shape is reduced to non-PII fields only — no full
- *     Stripe.Account object leaks to the client.
- *
- * v2 cutover (Plan 14.2.1-03):
- *   - createConnectAccount uses stripe.v2.core.accounts.create (CONTEXT.md
- *     "Accounts v2 Migration Strategy").
- *   - retrieve uses stripe.v2.core.accounts.retrieve with the widened
- *     include list (configuration.merchant + configuration.recipient +
- *     identity + requirements) so deriveConnectStatusFromV2Account returns
- *     real values immediately (REVIEWS.md MEDIUM).
- *   - On Stripe 404 (account deleted out-of-band), clear Convex state via
- *     clearStripeConnectStateInternal and re-enter the create branch so the
- *     caller gets a fresh v2 account on the same request (REVIEWS.md HIGH-1).
+ * Create or retrieve the caller's Stripe Connect account.
+ * Account identity comes from the Clerk session, and responses expose only the
+ * status fields rendered by the UI.
  */
 export async function POST() {
 	try {
@@ -65,11 +42,8 @@ export async function POST() {
 				requirements: derived.requirements,
 			});
 		} catch (retrieveErr) {
-			// REVIEWS.md HIGH-1 (404 fallback): when the stored accountId no longer
-			// resolves on Stripe's side (operator pre-cutover cleanup, or runtime
-			// data loss), clear the Convex state and re-enter the create branch so
-			// the caller gets a fresh v2 account on the same request. Any non-404
-			// error re-throws to the outer catch / mapConnectError.
+			// If Stripe no longer has the stored account, clear local state and
+			// recreate it in the same request.
 			const isStripeError =
 				retrieveErr instanceof Error &&
 				retrieveErr.constructor.name === "StripeInvalidRequestError";

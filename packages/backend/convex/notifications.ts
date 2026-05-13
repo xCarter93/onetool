@@ -118,11 +118,11 @@ interface NotificationStats {
 		client_mention: number;
 		project_mention: number;
 		quote_mention: number;
-		// Plan 14.2-03 (FINDINGS W-3) — Stripe webhook lifecycle types.
+		// Stripe webhook lifecycle types.
 		payment_failed: number;
 		dispute_created: number;
 		charge_refunded: number;
-		// Plan 14.2.1-01 - Connect lifecycle additions.
+		// Connect lifecycle additions.
 		payout_paid: number;
 		payout_failed: number;
 		capability_degraded: number;
@@ -798,14 +798,7 @@ export const cleanupOldNotifications = mutation({
 });
 
 /**
- * Plan 14.2-03 (FINDINGS W-3) — emit a notification for a Stripe Connect
- * webhook lifecycle event (payment_failed / dispute_created / charge_refunded).
- *
- * Delivered to the org owner. Schema-defined `title` is derived
- * deterministically from `type` so callers only pass the dynamic message body
- * and priority. The dispute_created caller (flagDisputedFromWebhookInternal)
- * is responsible for including the 7-day response window reference in the
- * message.
+ * Emit an org-owner notification for a Stripe webhook lifecycle event.
  */
 export const createWebhookNotificationInternal = internalMutation({
 	args: {
@@ -814,8 +807,7 @@ export const createWebhookNotificationInternal = internalMutation({
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
 			v.literal("charge_refunded"),
-			// Plan 14.2.1-01 (CONTEXT.md "Notification Routing") - Connect lifecycle additions.
-			v.literal("payout_paid"),
+				v.literal("payout_paid"),
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
 			v.literal("bank_account_changed")
@@ -845,8 +837,7 @@ export const createWebhookNotificationInternal = internalMutation({
 		};
 		const title = TITLE_BY_TYPE[args.type];
 
-		// Existing webhook kinds reference an invoice/payment entity; the new
-		// Connect lifecycle kinds (payout_*, capability_*, bank_account_*) do not.
+			// Only payment lifecycle notifications reference an invoice/payment entity.
 		const isInvoiceEntity =
 			args.type === "payment_failed" ||
 			args.type === "dispute_created" ||

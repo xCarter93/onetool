@@ -227,10 +227,7 @@ export default function OrganizationProfilePage() {
 	const organization = useQuery(api.organizations.get, {});
 	const currentUser = useQuery(api.users.current, {});
 	const updateOrganization = useMutation(api.organizations.update);
-	// Plan 14.2-02 — public setStripeConnectAccountId mutation removed. The
-	// account-creation route now persists the accountId server-side via
-	// api.organizations.setStripeConnectAccountIdInternal (called from the
-	// route handler, not from the client).
+	// Account IDs are persisted server-side by /api/stripe-connect/account.
 
 	const [businessForm, setBusinessForm] =
 		React.useState<BusinessFormState>(initialBusinessForm);
@@ -445,10 +442,7 @@ export default function OrganizationProfilePage() {
 		setOnboardingLoading(true);
 
 		try {
-			// Plan 14.2-02 lockdown: no account-identifying fields are sent in
-			// the request body. The route derives everything from the Clerk
-			// session and persists the new account ID server-side via the
-			// lockdown mutation.
+			// The route derives account identity from the Clerk session.
 			const accountResponse = await fetch("/api/stripe-connect/account", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -468,9 +462,7 @@ export default function OrganizationProfilePage() {
 				throw new Error("Stripe did not return an account ID.");
 			}
 
-			// Generate an onboarding link and redirect the user. The route
-			// also derives the account ID from the Clerk session — request
-			// payload is empty.
+			// Generate an onboarding link and redirect the user.
 			const linkResponse = await fetch("/api/stripe-connect/account-link", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -489,9 +481,7 @@ export default function OrganizationProfilePage() {
 				throw new Error("Stripe did not return an onboarding URL.");
 			}
 
-			// Capture a snapshot of the (now reduced) response shape. The
-			// route no longer leaks the full Stripe.Account object — the
-			// booleans land on the top-level body (audit #9 / FINDINGS T-14.2-05).
+			// Capture the reduced status response; no full Stripe account is returned.
 			setStripeStatus({
 				accountId,
 				chargesEnabled: Boolean(accountData.chargesEnabled),
@@ -524,8 +514,7 @@ export default function OrganizationProfilePage() {
 
 		setStatusLoading(true);
 		try {
-			// Plan 14.2-02 lockdown: body is empty — the route derives the
-			// account ID from the Clerk session, never from the request body.
+			// The route derives account identity from the Clerk session.
 			const statusResponse = await fetch("/api/stripe-connect/status", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -575,9 +564,7 @@ export default function OrganizationProfilePage() {
 		stripeStatus,
 	]);
 
-	// Plan 14.2-02 audit #11 — `?refresh=1` recovery flow. Stripe redirects
-	// to /organization/profile?tab=payments&refresh=1 when an onboarding
-	// link expires; the user expects another link to be minted automatically.
+	// Stripe sends users here with refresh=1 when an onboarding link expires.
 	const refreshTriggeredRef = React.useRef(false);
 	React.useEffect(() => {
 		if (refreshTriggeredRef.current) return;

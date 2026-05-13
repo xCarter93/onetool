@@ -2,11 +2,7 @@ import Stripe from "stripe";
 
 const API_VERSION = "2026-04-22.dahlia" as const;
 
-// CODE-OWNER: Do NOT set `payment_method_types` on Checkout Session creation.
-// The Stripe Dashboard's Payment Method Configuration on the connected
-// account is the source of truth. Setting this field overrides it and
-// silently disables payment methods the merchant has enabled (Apple Pay,
-// Klarna, Cash App, etc). See stripe-best-practices skill rule.
+// Do not set `payment_method_types`; Stripe Dashboard configuration controls methods.
 
 /**
  * Shared Stripe client factory.
