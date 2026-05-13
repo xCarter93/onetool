@@ -56,7 +56,11 @@ export async function POST() {
 					{ orgId: ctx.orgId },
 					{ token: ctx.convexToken }
 				);
-				return await createPersistAndReturn(ctx);
+				// Rotate the idempotency key so Stripe doesn't replay the cached
+				// (now-stale) account from the prior create within the 24h window.
+				return await createPersistAndReturn(ctx, {
+					idempotencyKeySuffix: crypto.randomUUID(),
+				});
 			}
 			throw retrieveErr;
 		}
@@ -66,14 +70,19 @@ export async function POST() {
 }
 
 async function createPersistAndReturn(
-	ctx: ConnectContext
+	ctx: ConnectContext,
+	options: { idempotencyKeySuffix?: string } = {}
 ): Promise<NextResponse> {
 	const currentUser = await fetchQuery(
 		api.users.current,
 		{},
 		{ token: ctx.convexToken }
 	);
-	const account = await createConnectAccount(ctx, currentUser?.email ?? null);
+	const account = await createConnectAccount(
+		ctx,
+		currentUser?.email ?? null,
+		options
+	);
 	await fetchMutation(
 		api.organizations.setStripeConnectAccountIdInternal,
 		{ accountId: account.id },

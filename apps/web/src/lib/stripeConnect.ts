@@ -75,7 +75,8 @@ export function deriveConnectFieldsFromOrg(
  */
 export async function createConnectAccount(
 	ctx: ConnectContext,
-	currentUserEmail: string | null
+	currentUserEmail: string | null,
+	options: { idempotencyKeySuffix?: string } = {}
 ): Promise<Stripe.V2.Core.Account> {
 	const { country, email } = deriveConnectFieldsFromOrg(ctx, currentUserEmail);
 	const stripe = getStripeClient();
@@ -111,9 +112,12 @@ export async function createConnectAccount(
 			},
 		},
 	};
-	return stripe.v2.core.accounts.create(body, {
-		idempotencyKey: `acct-create-v2-${ctx.orgId}`,
-	});
+	// Suffix rotates the key for the recovery path so Stripe doesn't replay a
+	// cached stale account from the prior (now-invalid) create call.
+	const idempotencyKey = options.idempotencyKeySuffix
+		? `acct-create-v2-${ctx.orgId}-${options.idempotencyKeySuffix}`
+		: `acct-create-v2-${ctx.orgId}`;
+	return stripe.v2.core.accounts.create(body, { idempotencyKey });
 }
 
 /**

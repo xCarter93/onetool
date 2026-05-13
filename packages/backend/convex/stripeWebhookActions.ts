@@ -68,6 +68,19 @@ export const handleEvent = internalAction({
 				return { duplicate: false, orgFound: false };
 			}
 
+			// Events without an account context (e.g. Stripe dashboard test pings) can't
+			// be dispatched to a tenant; mark processed to avoid infinite retry storms.
+			if (!resolvedAccount) {
+				console.warn(
+					`Stripe event ${args.eventId} (${args.eventType}) has no account context; skipping`
+				);
+				await ctx.runMutation(
+					internal.stripeWebhookEvents.markEventProcessed,
+					{ eventDocId: eventDocId! }
+				);
+				return { duplicate: false, orgFound: false };
+			}
+
 			switch (args.eventType) {
 				case "checkout.session.completed": {
 					const session = args.data.object as Stripe.Checkout.Session;
