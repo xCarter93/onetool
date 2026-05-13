@@ -1,32 +1,24 @@
-"use node";
 import type Stripe from "stripe";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 /**
- * Plan 14.2-03 — Stripe Connect webhook event handler.
+ * Stripe Connect webhook event handler. Invoked by the `/stripe-webhook`
+ * httpAction in `convex/http.ts` AFTER signature verification.
  *
- * Pivot note (FINDINGS V-1, ratified in Plan 14.2-02 SUMMARY): declared as a
- * PUBLIC `action` rather than `internalAction` because Next.js `convex/nextjs`
- * helpers (`fetchAction`) only route to public function references. The
- * authorization for this action is the Stripe webhook signature verification
- * that the route handler (`apps/web/src/app/api/stripe-webhook/route.ts`) MUST
- * perform via `stripe.webhooks.constructEventAsync` BEFORE invoking the action.
- *
- * That signature check is the trust boundary — a caller that has not
- * verified a Stripe-signed payload cannot fabricate a valid invocation
- * because the action only writes when downstream mutations succeed (and
- * those mutations enforce org-scoping via `args.orgId` checks).
+ * Trust boundary: the httpAction in `http.ts` MUST verify the Stripe
+ * signature (`verifyStripeWebhook` in `lib/webhooks.ts`) before dispatching.
+ * Internal-only — not reachable from clients.
  *
  * Outer flow (FINDINGS W-1 status-field lifecycle):
  *   startProcessingEvent → type-switch → markEventProcessed | markEventFailed
  *
- * On thrown errors the action RE-THROWS so the route returns 5xx and Stripe
+ * On thrown errors this re-throws so the httpAction returns 5xx and Stripe
  * retries on its standard schedule (FINDINGS W-2). markEventFailed itself
  * never throws — bookkeeping only.
  */
-export const handleEvent = action({
+export const handleEvent = internalAction({
 	args: {
 		eventId: v.string(),
 		eventType: v.string(),

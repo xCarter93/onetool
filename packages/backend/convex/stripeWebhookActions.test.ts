@@ -117,7 +117,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		const first = await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(event)
 		);
 		expect(first.duplicate).toBe(false);
@@ -128,7 +128,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		const paidAtFirst = paymentAfterFirst?.paidAt;
 
 		const second = await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(event)
 		);
 		expect(second.duplicate).toBe(true);
@@ -158,7 +158,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(event)
 		);
 
@@ -190,7 +190,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(event)
 		);
 
@@ -222,7 +222,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		const res = await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(event)
 		);
 		expect(res.duplicate).toBe(false);
@@ -262,7 +262,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 
 		await expect(
 			t.action(
-				api.stripeWebhookActions.handleEvent,
+				internal.stripeWebhookActions.handleEvent,
 				buildHandleEventArgs(failingEvent)
 			)
 		).rejects.toThrow();
@@ -295,7 +295,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		const replayRes = await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(replayEvent)
 		);
 		expect(replayRes.duplicate).toBe(false);
@@ -370,7 +370,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 			},
 		});
 		await t.action(
-			api.stripeWebhookActions.handleEvent,
+			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(completedEvent)
 		);
 		const cleared = await t.run((ctx) => ctx.db.get(paymentId));
@@ -379,6 +379,3 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(cleared?.pendingCheckoutSessionExpiresAt).toBeUndefined();
 	});
 });
-
-// Suppress unused-import warning for internal — referenced by reachability above.
-void internal;

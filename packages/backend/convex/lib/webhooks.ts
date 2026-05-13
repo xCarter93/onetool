@@ -150,6 +150,116 @@ export async function verifyBoldSignWebhook(
 }
 
 // ============================================================================
+// Stripe Webhook Verification (HMAC-SHA256 via SubtleCrypto)
+// ============================================================================
+
+/**
+ * Stripe-Signature header format:
+ *   t=<unix_seconds>,v1=<hex_sig>[,v1=<hex_sig>...][,v0=<legacy_sig>]
+ * Signed payload: `${timestamp}.${rawBody}`
+ * Algorithm: HMAC-SHA256 (hex-encoded)
+ *
+ * Tolerance: reject events whose `t` is older than STRIPE_WEBHOOK_TOLERANCE_SEC
+ * to defend against replay. Matches Stripe SDK's default of 5 minutes.
+ */
+const STRIPE_WEBHOOK_TOLERANCE_SEC = 300;
+
+function constantTimeEqualHex(a: string, b: string): boolean {
+	if (a.length !== b.length) return false;
+	let diff = 0;
+	for (let i = 0; i < a.length; i++) {
+		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	}
+	return diff === 0;
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+	return Array.from(new Uint8Array(bytes))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+}
+
+/**
+ * Verify a Stripe webhook request using HMAC-SHA256 via SubtleCrypto.
+ * Mirrors `Stripe.webhooks.constructEventAsync` semantics (timestamp +
+ * v1-signature scheme + replay-window tolerance) without pulling the Stripe
+ * SDK into Convex's default V8 runtime.
+ */
+export async function verifyStripeWebhook(
+	request: Request,
+	secret: string,
+	nowMs: number = Date.now()
+): Promise<WebhookVerificationResult<Record<string, unknown>>> {
+	const rawBody = await request.text();
+	const sigHeader = request.headers.get("stripe-signature");
+
+	if (!sigHeader) {
+		return { valid: false, error: "Missing stripe-signature header" };
+	}
+
+	let timestamp: string | null = null;
+	const signatures: string[] = [];
+	for (const part of sigHeader.split(",")) {
+		const [key, value] = part.trim().split("=");
+		if (!key || !value) continue;
+		if (key === "t") timestamp = value;
+		else if (key === "v1") signatures.push(value);
+	}
+
+	if (!timestamp || signatures.length === 0) {
+		return { valid: false, error: "Malformed stripe-signature header" };
+	}
+
+	const tsSeconds = Number(timestamp);
+	if (!Number.isFinite(tsSeconds)) {
+		return { valid: false, error: "Invalid stripe-signature timestamp" };
+	}
+	const ageSec = Math.abs(nowMs / 1000 - tsSeconds);
+	if (ageSec > STRIPE_WEBHOOK_TOLERANCE_SEC) {
+		return { valid: false, error: "Stripe webhook timestamp outside tolerance" };
+	}
+
+	const encoder = new TextEncoder();
+	let key: CryptoKey;
+	try {
+		key = await crypto.subtle.importKey(
+			"raw",
+			encoder.encode(secret),
+			{ name: "HMAC", hash: "SHA-256" },
+			false,
+			["sign"]
+		);
+	} catch (error) {
+		return {
+			valid: false,
+			error: error instanceof Error ? error.message : "Key import failed",
+		};
+	}
+
+	const signedPayload = `${timestamp}.${rawBody}`;
+	const expectedBytes = await crypto.subtle.sign(
+		"HMAC",
+		key,
+		encoder.encode(signedPayload)
+	);
+	const expectedHex = bytesToHex(expectedBytes);
+
+	const matched = signatures.some((sig) => constantTimeEqualHex(sig, expectedHex));
+	if (!matched) {
+		return { valid: false, error: "Stripe webhook signature mismatch" };
+	}
+
+	let payload: Record<string, unknown>;
+	try {
+		payload = JSON.parse(rawBody);
+	} catch {
+		return { valid: false, error: "Invalid JSON body" };
+	}
+
+	return { valid: true, payload };
+}
+
+// ============================================================================
 // Response Helpers
 // ============================================================================
 

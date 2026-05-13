@@ -5,6 +5,7 @@ import { ConvexError } from "convex/values";
 import {
 	verifySvixWebhook,
 	verifyBoldSignWebhook,
+	verifyStripeWebhook,
 	webhookSuccess,
 	webhookError,
 	webhookUnauthorized,
@@ -661,6 +662,79 @@ http.route({
 		} catch (error) {
 			console.error("Error processing Resend webhook:", error);
 			return webhookError(500, "Internal Server Error");
+		}
+	}),
+});
+
+/**
+ * Stripe Connect Webhook Handler
+ *
+ * Hosts the Stripe Connect webhook endpoint inside Convex (instead of Next.js)
+ * so the same `internal.*` reachability rules apply as the Clerk/BoldSign/Resend
+ * webhooks above. The Stripe signature header is the trust boundary — verified
+ * via SubtleCrypto HMAC-SHA256 in `verifyStripeWebhook`.
+ *
+ * - bad signature / missing header → 400 (Stripe stops retrying)
+ * - dispatch failure              → 500 (Stripe retries; W-1 lifecycle re-enters
+ *                                          on replay)
+ *
+ * Configured Stripe Dashboard URL: `https://<deploy>.convex.site/stripe-webhook`.
+ * Required env var: `STRIPE_CONNECT_WEBHOOK_SECRET` (set via `npx convex env set`).
+ */
+http.route({
+	path: "/stripe-webhook",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+		if (!secret) {
+			console.error("STRIPE_CONNECT_WEBHOOK_SECRET not configured");
+			return webhookError(500, "Webhook verification not configured");
+		}
+
+		const verification = await verifyStripeWebhook(request, secret);
+		if (!verification.valid || !verification.payload) {
+			console.error(
+				"Stripe webhook verification failed:",
+				verification.error
+			);
+			return webhookBadRequest(`Webhook Error: ${verification.error}`);
+		}
+
+		const event = verification.payload as {
+			id: string;
+			type: string;
+			account?: string | null;
+			created: number;
+			data: { object: Record<string, unknown> };
+		};
+
+		logWebhookReceived("Stripe", event.type, event.id);
+
+		try {
+			const result = await ctx.runAction(
+				internal.stripeWebhookActions.handleEvent,
+				{
+					eventId: event.id,
+					eventType: event.type,
+					account: event.account ?? null,
+					created: event.created,
+					data: event.data,
+				}
+			);
+			logWebhookSuccess("Stripe", event.type, event.id);
+			return new Response(
+				JSON.stringify({ received: true, ...result }),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		} catch (error) {
+			logWebhookError("Stripe", event.type, error, event.id);
+			// 500 — transient; Stripe retries; the W-1 status-field lifecycle
+			// ensures the next replay re-enters "processing" so the type-switch
+			// runs again.
+			return webhookError(500, "Internal error processing webhook");
 		}
 	}),
 });
