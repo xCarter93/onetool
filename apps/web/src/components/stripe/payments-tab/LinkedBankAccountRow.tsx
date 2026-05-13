@@ -1,19 +1,24 @@
 "use client";
 
 import React from "react";
-import { ExternalLink } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { formatRelativeTime } from "@/lib/notification-utils";
 
 interface LinkedBankAccountRowProps {
 	bankName?: string;
 	last4?: string;
 	updatedAt?: number;
+	// Opens the embedded Payouts accordion where ConnectPayouts exposes the
+	// external-account collector. The Express dashboard URL is inaccessible
+	// for accounts provisioned with dashboard: "none".
+	onChangeRequested?: () => void;
 }
 
 export function LinkedBankAccountRow({
 	bankName,
 	last4,
 	updatedAt,
+	onChangeRequested,
 }: LinkedBankAccountRowProps) {
 	if (!last4) {
 		return (
@@ -42,15 +47,16 @@ export function LinkedBankAccountRow({
 					Updated {formatRelativeTime(updatedAt)}
 				</span>
 			)}
-			<a
-				href="https://connect.stripe.com/app/express"
-				target="_blank"
-				rel="noopener noreferrer"
-				className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors ml-auto"
-			>
-				Change in Stripe
-				<ExternalLink className="h-3.5 w-3.5" />
-			</a>
+			{onChangeRequested && (
+				<button
+					type="button"
+					onClick={onChangeRequested}
+					className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors ml-auto"
+				>
+					Change in Payouts
+					<ChevronDown className="h-3.5 w-3.5" />
+				</button>
+			)}
 		</div>
 	);
 }

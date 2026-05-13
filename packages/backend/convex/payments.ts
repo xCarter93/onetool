@@ -905,17 +905,27 @@ export const markPaidFromWebhookInternal = internalMutation({
 		}
 
 		// Stripe sends amount_total in cents; payment rows store dollars.
+		// Mismatch and missing payment_intent are both deterministic for a
+		// given session: throwing would loop ~70 Stripe retries over days
+		// without changing the outcome. Treat as terminal — log loudly and
+		// return so the event is acked, leaving the payment un-marked-paid
+		// for manual investigation.
 		const expectedCents = Math.round(payment.paymentAmount * 100);
 		if (args.amountTotal !== expectedCents) {
-			throw new Error(
-				`Webhook amount mismatch: expected ${expectedCents} cents, got ${args.amountTotal} cents`
+			console.error(
+				`markPaidFromWebhookInternal: amount mismatch on session ${args.sessionId} — ` +
+					`expected ${expectedCents} cents, got ${args.amountTotal} cents. ` +
+					`Payment left in status=${payment.status}; investigate manually.`
 			);
+			return null;
 		}
 
 		if (!args.paymentIntentId) {
-			throw new Error(
-				`markPaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}`
+			console.error(
+				`markPaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}. ` +
+					`Payment left in status=${payment.status}; investigate manually.`
 			);
+			return null;
 		}
 
 		// Clear pending Checkout Session fields after successful payment.

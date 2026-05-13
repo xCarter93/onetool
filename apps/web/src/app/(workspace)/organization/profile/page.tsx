@@ -1222,6 +1222,22 @@ export default function OrganizationProfilePage() {
 														updatedAt={
 															organization.stripeExternalAccountUpdatedAt
 														}
+														onChangeRequested={
+															onboardingComplete && isOwner
+																? () => {
+																		setPayoutsOpen(true);
+																		// Wait for the accordion panel to mount before scrolling.
+																		requestAnimationFrame(() => {
+																			document
+																				.getElementById("payouts-accordion-panel")
+																				?.scrollIntoView({
+																					behavior: "smooth",
+																					block: "start",
+																				});
+																		});
+																	}
+																: undefined
+														}
 													/>
 												</div>
 											</div>

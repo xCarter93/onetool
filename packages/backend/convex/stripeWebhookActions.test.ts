@@ -243,7 +243,10 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(payment?.pendingCheckoutSessionId).toBeUndefined();
 	});
 
-	it("failed event becomes retryable on Stripe replay (FINDINGS W-1)", async () => {
+	it("amount mismatch is terminal: event marked processed, payment left unpaid", async () => {
+		// Stripe redelivers the same event payload on retry, so a deterministic
+		// amount discrepancy cannot self-heal. Throwing would burn ~70 retries.
+		// markPaidFromWebhookInternal must log and ack instead.
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
 			orgId,
@@ -251,7 +254,6 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 			paymentAmount: 100,
 		});
 
-		// First call: amount mismatch forces markPaidFromWebhookInternal to throw.
 		const failingEvent = buildStripeEvent({
 			id: "evt_w1_retry",
 			type: "checkout.session.completed",
@@ -260,64 +262,28 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 				object: {
 					id: "cs_w1_retry",
 					payment_intent: "pi_w1_retry",
-					// MISMATCH — payment is $100 (10000 cents); 9999 will throw.
+					// MISMATCH — payment is $100 (10000 cents); 9999 should not crash.
 					amount_total: 9999,
 					metadata: { publicToken: "tok_retry_1" },
 				} as never,
 			},
 		});
 
-		await expect(
-			t.action(
-				internal.stripeWebhookActions.handleEvent,
-				buildHandleEventArgs(failingEvent)
-			)
-		).rejects.toThrow();
-
-		const allRowsAfterFail = await t.run((ctx) =>
-			ctx.db.query("stripeWebhookEvents").collect()
-		);
-		const rowsAfterFail = allRowsAfterFail.filter(
-			(r) => r.stripeEventId === "evt_w1_retry"
-		);
-		expect(rowsAfterFail).toHaveLength(1);
-		expect(rowsAfterFail[0].status).toBe("failed");
-		expect(rowsAfterFail[0].attemptCount).toBe(1);
-
-		// Replay the SAME eventId with a CORRECTED amount. Must NOT short-circuit
-		// as duplicate (status is "failed", not "processed") — the type-switch
-		// runs again, succeeds, and the row transitions to processed @ attempt 2.
-		const replayEvent = buildStripeEvent({
-			id: "evt_w1_retry",
-			type: "checkout.session.completed",
-			account: "acct_test_webhook",
-			data: {
-				object: {
-					id: "cs_w1_retry",
-					payment_intent: "pi_w1_retry",
-					amount_total: 10000,
-					metadata: { publicToken: "tok_retry_1" },
-				} as never,
-			},
-		});
-
-		const replayRes = await t.action(
+		const res = await t.action(
 			internal.stripeWebhookActions.handleEvent,
-			buildHandleEventArgs(replayEvent)
+			buildHandleEventArgs(failingEvent)
 		);
-		expect(replayRes.duplicate).toBe(false);
+		expect(res).toEqual({ duplicate: false, orgFound: true });
 
-		const allRowsAfterReplay = await t.run((ctx) =>
+		const allRows = await t.run((ctx) =>
 			ctx.db.query("stripeWebhookEvents").collect()
 		);
-		const rowsAfterReplay = allRowsAfterReplay.filter(
-			(r) => r.stripeEventId === "evt_w1_retry"
-		);
-		expect(rowsAfterReplay[0].status).toBe("processed");
-		expect(rowsAfterReplay[0].attemptCount).toBe(2);
+		const row = allRows.find((r) => r.stripeEventId === "evt_w1_retry");
+		expect(row?.status).toBe("processed");
+		expect(row?.attemptCount).toBe(1);
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
-		expect(payment?.status).toBe("paid");
+		expect(payment?.status).toBe("pending");
 	});
 
 	it("W-4 pending-session lifecycle: increment + persist mutations match the route contract", async () => {
