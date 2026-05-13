@@ -21,11 +21,35 @@ that deployment:
 - [ ] `STRIPE_SECRET_KEY` is set in every Convex deployment (`npx convex env list ...`)
 - [ ] `STRIPE_APPLICATION_FEE_CENTS` is either set or you accept the default (100)
 - [ ] Stripe Dashboard endpoint URL points at `https://<deploy>.convex.site/stripe-webhook` for the matching deployment (production endpoint → prod deployment URL, etc.)
+- [ ] **Stripe Dashboard endpoint subscribed to all 10 events:** Core 5 (`checkout.session.completed`, `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`, `account.updated`) PLUS the 5 added in Plan 14.2.1: `payout.paid`, `payout.failed`, `capability.updated`, `account.external_account.created`, `account.external_account.updated`. Verify via Dashboard → Webhooks → endpoint detail → Events sent list.
 
 If any box is unchecked, do NOT enable the endpoint in Stripe — the deploy will
 return 500 to Stripe on every event and the events will pile up in Stripe's
 retry queue. Use the "Initial Setup" section below to populate the missing
 values first.
+
+## Pre-cutover cleanup (Plan 14.2.1 first-time deployment only)
+
+Phase 14.2.1 migrates `/api/stripe-connect/account` from the v1 `stripe.accounts.create` API to the v2 `stripe.v2.core.accounts.create` API as a CLEAN CUTOVER (no dual-mode). All existing connected accounts in this project are test data; they MUST be deleted before deploying 14.2.1 so the v2 create path is exercised on every re-onboarding.
+
+**Why a Convex-side cleanup is also required:** Stripe-side `accounts.delete` only removes the Stripe account. The corresponding `organizations.stripeConnectAccountId` + cached status fields + bank-account fingerprint fields remain in Convex. If you skip the Convex cleanup, `/api/stripe-connect/account` reaches the retrieve branch with a stale acct ID and Stripe returns 404. (The route now also handles this defensively — see Plan 14.2.1-03 Task 2 — but running the cleanup pre-deploy is the documented happy path.)
+
+**Steps:**
+
+1. Stripe Dashboard → Connected accounts list → for EACH `acct_*` row:
+   1. Confirm it is a test account (top-right "Viewing test data" badge active)
+   2. Click into the account → ⋯ menu → "Delete account" → confirm
+2. For EACH test org in Convex, null the Stripe-Connect state via the new cleanup mutation:
+   ```bash
+   cd packages/backend
+   npx convex run organizations:clearStripeConnectStateInternal '{"orgId":"<orgId>"}'
+   ```
+   Iterate over every test org (the mutation is idempotent — running it on an org that already has no Stripe state is a no-op).
+3. Verify the Connected accounts list in Stripe Dashboard is empty (or contains only production accounts you intentionally keep)
+4. Subscribe the existing Dashboard webhook endpoint to the five new event types (see "Initial Setup" step 4 below — the existing endpoint receives all 10 events; no new endpoint needed)
+5. Proceed with the standard Pre-deploy Checklist below
+
+**Why the v2 idempotency key was bumped:** Stripe's idempotency cache lives 24h and survives connected-account deletion. Without rotating the key (`acct-create-${orgId}` → `acct-create-v2-${orgId}`), the v2 `accounts.create` call would receive a cached v1 response for any orgId that hit Stripe in the prior 24h. The key bump in `apps/web/src/lib/stripeConnect.ts` (Plan 14.2.1-03 Pitfall 5) makes this safe. If you ever need to roll back to a fresh v2 namespace, bump again to `acct-create-v2b-${orgId}`.
 
 ## Initial Setup (one-time per environment)
 
@@ -44,12 +68,17 @@ values first.
    - Staging / preview: `https://<staging-deploy-id>.convex.site/stripe-webhook`
    - Dev: use `stripe listen --forward-to https://<dev-deploy-id>.convex.site/stripe-webhook`
      (or proxy through your local `convex dev`'s exposed HTTP origin)
-4. Subscribe to these events (Core 5 — Phase 14.2 scope):
+4. Subscribe to these events (Core 5 + 5 new — Phase 14.2 + 14.2.1 scope):
    - `checkout.session.completed`
    - `payment_intent.payment_failed`
    - `charge.refunded`
    - `charge.dispute.created`
    - `account.updated`
+   - `payout.paid` (Plan 14.2.1-02 — payout_paid notification, normal priority)
+   - `payout.failed` (Plan 14.2.1-02 — payout_failed notification, high priority)
+   - `capability.updated` (Plan 14.2.1-02 — re-cache stripeChargesEnabled / stripePayoutsEnabled, emit capability_degraded on active→inactive transition)
+   - `account.external_account.created` (Plan 14.2.1-02 — persist last4 + bankName fingerprint, emit bank_account_changed)
+   - `account.external_account.updated` (Plan 14.2.1-02 — same as created; idempotent overwrite)
 5. Copy the signing secret (`whsec_...`) shown in the Dashboard.
 6. Set the env var ON THE MATCHING CONVEX DEPLOYMENT:
    - Production:
@@ -137,6 +166,32 @@ replays). If you see real 5xx responses to Stripe in production:
    handleEvent code is hot-reloaded on the next `npx convex deploy`. Stripe
    will retry buffered events on its own; the W-1 retry semantics re-enter
    the type-switch on each replay until success.
+
+## Troubleshooting (Plan 14.2.1 event types)
+
+### `payout_failed` notifications firing repeatedly for the same account
+
+Stripe automatically retries failed payouts for up to 7 days. Each retry that fails emits a fresh `payout.failed` event, which produces a fresh `payout_failed` notification. If you see N notifications, this is N retries — not N distinct payouts. The follow-up `payout.paid` (if Stripe succeeds on retry) is normal; no UI distinguishes a fresh payout from a retry. Operator playbook: open Stripe Dashboard → connected account → Payouts tab to confirm whether it's a retry sequence or distinct payouts.
+
+### `capability_degraded` notification with "reason unknown"
+
+Stripe's `capability.requirements.disabled_reason` is OPTIONAL — it can be null when the platform itself cannot determine the disablement cause. The notification message reads "Stripe charges have been disabled: reason unknown. Update onboarding to restore." in that case. Operator playbook: have the org owner click Connect onboarding from the workspace UI; Stripe's hosted form will surface the underlying requirement to fix.
+
+### Two `bank_account_changed` notifications fire for the same bank update
+
+Expected, not a bug. Stripe's bank-verification flow emits BOTH `account.external_account.created` and `account.external_account.updated` for the same bank account when the owner adds + verifies it (the `.created` event fires on initial add, then `.updated` fires when verification completes). Both events route to the same `bank_account_changed` notification kind (CONTEXT.md decision). Two notifications per bank addition is the contractual behavior; operators should not chase this as duplicate-event sourcery.
+
+### `bank_account_changed` notification appearing for what looks like a card
+
+Cannot happen by design — `account.external_account.created` and `account.external_account.updated` are handled with a discriminator that early-returns on any object whose `object` field is not `"bank_account"` (Plan 14.2.1-02 Pitfall 4). If you DO see this notification with a 4-digit number that matches a card, search Convex logs for `Stripe webhook: ignoring external_account event for non-bank object` — it should be absent. File a bug if the discriminator path was somehow bypassed.
+
+### `capability.updated` fires but `stripeChargesEnabled` / `stripePayoutsEnabled` does not change
+
+The cache only updates for `capabilityId === "card_payments"` (charges) or `capabilityId === "transfers"` (payouts). Other capabilities (`card_issuing`, `treasury`, etc.) are logged + ignored (Plan 14.2.1-02 RESEARCH Pitfall 3). If you need to surface another capability, extend `updateStripeCapabilityInternal` in `packages/backend/convex/organizations.ts`.
+
+### v2 `accounts.create` returns an account whose retrieve returns 404
+
+Symptom: Stripe Dashboard shows the account under "v1 listings"; `stripe.v2.core.accounts.retrieve(id)` returns a 404. Cause: the idempotency key collided with a cached v1 response (Pitfall 5 — the Pre-cutover cleanup step was skipped or the 24h cache was still warm). Fix: the `/api/stripe-connect/account` route now clears Convex state and re-creates on 404 (Plan 14.2.1-03 Task 2 fallback); if that loop also fails, manually delete the offending account in the Dashboard, wait 24h OR rotate the key suffix one more time (e.g., `acct-create-v2b-${orgId}`).
 
 ## Forging Test Events (dev only)
 
