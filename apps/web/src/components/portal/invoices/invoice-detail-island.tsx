@@ -1,7 +1,10 @@
 "use client";
 
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { formatMoney } from "@/lib/portal/format";
 
 import { InvoicePaper } from "./invoice-paper";
 import {
@@ -9,6 +12,8 @@ import {
 	type InstallmentRow,
 } from "./installment-list";
 import { LegacyInvoiceNotice } from "./legacy-invoice-notice";
+import { PaymentBottomSheet } from "./payment-bottom-sheet";
+import { PaymentRail } from "./payment-rail";
 
 // Mirror of PortalInvoiceGetResponse from packages/backend/convex/portal/invoices.ts.
 // Kept local so the component does not import server-only Convex types.
@@ -51,22 +56,6 @@ export interface PortalInvoiceGetData {
 	clientEmail: string;
 }
 
-// Returns lowest-sortOrder index whose status indicates it is the next pay
-// target. Null when all paid.
-function firstUnpaidIndex(payments: InstallmentRow[]): number | null {
-	for (let i = 0; i < payments.length; i++) {
-		const p = payments[i]!;
-		if (
-			p.status !== "paid" &&
-			p.status !== "cancelled" &&
-			p.status !== "refunded"
-		) {
-			return i;
-		}
-	}
-	return null;
-}
-
 export interface InvoiceDetailIslandProps {
 	data: PortalInvoiceGetData;
 	clientPortalId: string;
@@ -74,14 +63,19 @@ export interface InvoiceDetailIslandProps {
 }
 
 export function InvoiceDetailIsland({
-	data,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	data: ssrData,
 	clientPortalId,
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	hasPdf,
 }: InvoiceDetailIslandProps) {
-	// Breakpoint mirrors PortalShell md (768px). Use the rail layout on desktop.
+	// All hooks run UNCONDITIONALLY at the top, before any branch returns.
 	const isDesktop = useMediaQuery("(min-width: 768px)");
+	// Subscribes so the post-pay webhook flip re-renders the rail/sheet path
+	// once payment_intent.succeeded patches the payments row.
+	const liveData = useQuery(api.portal.invoices.get, {
+		invoiceId: ssrData.invoice._id as Id<"invoices">,
+	}) as PortalInvoiceGetData | undefined;
+	const data: PortalInvoiceGetData = liveData ?? ssrData;
 
 	const activeIndex = data.isLegacy ? null : firstUnpaidIndex(data.payments);
 	const allPaid =
@@ -98,10 +92,9 @@ export function InvoiceDetailIsland({
 		/>
 	);
 
+	// Decision A: legacy invoices NEVER reach the rail/sheet — render notice only.
 	const rightRail = (() => {
 		if (data.isLegacy) {
-			// data.legacyPayUrl is guaranteed non-null on legacy invoices by the
-			// backend DTO contract (legacyPayUrl: string | null, never undefined).
 			return (
 				<LegacyInvoiceNotice
 					legacyPayUrl={data.legacyPayUrl ?? ""}
@@ -119,41 +112,79 @@ export function InvoiceDetailIsland({
 				</div>
 			);
 		}
+		const active = data.activePaymentPublic;
 		return (
 			<div className="flex flex-col gap-4">
 				<InstallmentList
 					installments={data.payments}
 					activeIndex={activeIndex}
 				/>
-				<div className="rounded-xl border border-dashed border-border bg-muted/20 p-5">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-						Pay
-					</p>
-					<p className="mt-2 text-[14px] font-semibold">
-						{formatMoney(
-							data.activePaymentPublic?.paymentAmount ??
-								data.paymentSummary.totalRemaining,
-						)}{" "}
-						due
-					</p>
-					<p className="mt-1 text-[13px] text-muted-foreground">
-						Payment surface loads in Plan 04 — embedded card + bank entry.
-					</p>
-				</div>
+				{active && isDesktop !== false ? (
+					<PaymentRail
+						invoiceId={data.invoice._id}
+						activePayment={{
+							_id: active._id,
+							paymentAmount: active.paymentAmount,
+							isLegacy: false,
+						}}
+						businessName={data.businessName}
+						stripeChargesEnabled={data.stripeChargesEnabled}
+						clientPortalId={clientPortalId}
+					/>
+				) : null}
 			</div>
 		);
 	})();
 
+	// Mobile-only: docked bottom-sheet hosts the payment surface for non-legacy,
+	// non-paid invoices with an active payment row.
+	const mobileSheet =
+		!data.isLegacy &&
+		!allPaid &&
+		data.activePaymentPublic &&
+		isDesktop === false ? (
+			<PaymentBottomSheet
+				invoiceId={data.invoice._id}
+				activePayment={{
+					_id: data.activePaymentPublic._id,
+					paymentAmount: data.activePaymentPublic.paymentAmount,
+					isLegacy: false,
+				}}
+				businessName={data.businessName}
+				stripeChargesEnabled={data.stripeChargesEnabled}
+				clientPortalId={clientPortalId}
+			/>
+		) : null;
+
 	return (
-		<div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_480px]">
-			<div className="px-6 py-8 pb-24 md:px-9 md:pb-10">{paper}</div>
-			{isDesktop !== false ? (
-				<aside className="border-l border-border bg-card px-6 py-8 md:min-h-[calc(100vh-68px)] md:px-7">
-					{rightRail}
-				</aside>
-			) : (
-				<div className="px-6 pb-10">{rightRail}</div>
-			)}
-		</div>
+		<>
+			<div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_480px]">
+				<div className="px-6 py-8 pb-24 md:px-9 md:pb-10">{paper}</div>
+				{isDesktop !== false ? (
+					<aside className="border-l border-border bg-card px-6 py-8 md:min-h-[calc(100vh-68px)] md:px-7">
+						{rightRail}
+					</aside>
+				) : (
+					<div className="px-6 pb-10">{rightRail}</div>
+				)}
+			</div>
+			{mobileSheet}
+		</>
 	);
+}
+
+// Helper kept below the component so the awk Rules-of-Hooks gate
+// (first `return` must follow first hook in the component) is unambiguous.
+function firstUnpaidIndex(payments: InstallmentRow[]): number | null {
+	for (let i = 0; i < payments.length; i++) {
+		const p = payments[i]!;
+		if (
+			p.status !== "paid" &&
+			p.status !== "cancelled" &&
+			p.status !== "refunded"
+		) {
+			return i;
+		}
+	}
+	return null;
 }
