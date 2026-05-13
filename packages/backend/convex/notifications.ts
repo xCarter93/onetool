@@ -807,7 +807,7 @@ export const createWebhookNotificationInternal = internalMutation({
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
 			v.literal("charge_refunded"),
-				v.literal("payout_paid"),
+			v.literal("payout_paid"),
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
 			v.literal("bank_account_changed")

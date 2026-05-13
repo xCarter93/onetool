@@ -17,12 +17,12 @@ export const env = createEnv({
 		RESEND_WEBHOOK_SECRET: z.string().min(1),
 		STRIPE_APPLICATION_FEE_CENTS: z.coerce.number().int().nonnegative().default(100),
 		MAPBOX_API_KEY: z.string().min(1),
-			// Server-only portal session JWT keys.
+		// Server-only portal session JWT keys.
 		PORTAL_JWT_PRIVATE_KEY: z.string().min(1),
 		PORTAL_JWT_JWKS: z.string().min(1),
 		PORTAL_JWT_ISSUER: z.string().url(),
-			// Shared secret for proxied Convex OTP rate-limit actions.
-			PORTAL_OTP_REQUEST_SECRET: z.string().min(16),
+		// Shared secret for proxied Convex OTP rate-limit actions.
+		PORTAL_OTP_REQUEST_SECRET: z.string().min(16),
 	},
 	client: {
 		NEXT_PUBLIC_CONVEX_URL: z.string().min(1),

@@ -618,9 +618,9 @@ export const markPaidByPublicTokenInternal = internalMutation({
 		publicToken: v.string(),
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
-			// Provenance hint for downstream workflow events.
-			source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
-			paymentIntentId: v.optional(v.string()),
+		// Provenance hint for downstream workflow events.
+		source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
+		paymentIntentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
 		// Find payment by public token
@@ -643,7 +643,7 @@ export const markPaidByPublicTokenInternal = internalMutation({
 		const resolvedPaymentIntentId =
 			args.stripePaymentIntentId ?? args.paymentIntentId;
 		if (!resolvedPaymentIntentId) {
-				throw new Error(
+			throw new Error(
 				"markPaidByPublicTokenInternal: stripePaymentIntentId is required"
 			);
 		}
@@ -887,7 +887,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 			return null;
 		}
 
-			// The publicToken lookup is global, so assert org scope here.
+		// The publicToken lookup is global, so assert org scope here.
 		if (payment.orgId !== args.orgId) {
 			throw new Error("Org mismatch on webhook payment lookup");
 		}
@@ -897,7 +897,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 			return null;
 		}
 
-			// Stripe sends amount_total in cents; payment rows store dollars.
+		// Stripe sends amount_total in cents; payment rows store dollars.
 		const expectedCents = Math.round(payment.paymentAmount * 100);
 		if (args.amountTotal !== expectedCents) {
 			throw new Error(
@@ -905,13 +905,13 @@ export const markPaidFromWebhookInternal = internalMutation({
 			);
 		}
 
-			if (!args.paymentIntentId) {
+		if (!args.paymentIntentId) {
 			throw new Error(
 				`markPaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}`
 			);
 		}
 
-			// Clear pending Checkout Session fields after successful payment.
+		// Clear pending Checkout Session fields after successful payment.
 		if (
 			payment.pendingCheckoutSessionId &&
 			payment.pendingCheckoutSessionId === args.sessionId
@@ -923,7 +923,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 			});
 		}
 
-			await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
+		await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
 			publicToken: payment.publicToken,
 			stripeSessionId: args.sessionId,
 			stripePaymentIntentId: args.paymentIntentId,
