@@ -348,15 +348,15 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
 		await t.mutation(api.payments.persistPendingCheckoutSessionInternal, {
 			publicToken: "tok_w4_1",
-			pendingCheckoutSessionId: "cs_w4_1",
-			pendingCheckoutSessionUrl: "https://checkout.stripe.com/cs_w4_1",
+			pendingCheckoutSessionId: "cs_test_w4abc1",
+			pendingCheckoutSessionUrl: "https://checkout.stripe.com/cs_test_w4abc1",
 			pendingCheckoutSessionExpiresAt: expiresAt,
 		});
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
-		expect(payment?.pendingCheckoutSessionId).toBe("cs_w4_1");
+		expect(payment?.pendingCheckoutSessionId).toBe("cs_test_w4abc1");
 		expect(payment?.pendingCheckoutSessionUrl).toBe(
-			"https://checkout.stripe.com/cs_w4_1"
+			"https://checkout.stripe.com/cs_test_w4abc1"
 		);
 		expect(payment?.pendingCheckoutSessionExpiresAt).toBe(expiresAt);
 		expect(payment?.checkoutAttemptCounter).toBe(2);
@@ -369,7 +369,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 			account: "acct_test_webhook",
 			data: {
 				object: {
-					id: "cs_w4_1",
+					id: "cs_test_w4abc1",
 					payment_intent: "pi_w4_1",
 					amount_total: 7500,
 					metadata: { publicToken: "tok_w4_1" },

@@ -620,7 +620,6 @@ export const markPaidByPublicTokenInternal = internalMutation({
 		stripePaymentIntentId: v.optional(v.string()),
 		// Provenance hint for downstream workflow events.
 		source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
-		paymentIntentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
 		// Find payment by public token
@@ -640,9 +639,7 @@ export const markPaidByPublicTokenInternal = internalMutation({
 			return payment._id;
 		}
 
-		const resolvedPaymentIntentId =
-			args.stripePaymentIntentId ?? args.paymentIntentId;
-		if (!resolvedPaymentIntentId) {
+		if (!args.stripePaymentIntentId) {
 			throw new Error(
 				"markPaidByPublicTokenInternal: stripePaymentIntentId is required"
 			);
@@ -653,7 +650,7 @@ export const markPaidByPublicTokenInternal = internalMutation({
 			status: "paid",
 			paidAt: Date.now(),
 			stripeSessionId: args.stripeSessionId ?? payment.stripeSessionId,
-			stripePaymentIntentId: resolvedPaymentIntentId,
+			stripePaymentIntentId: args.stripePaymentIntentId,
 		});
 
 		// Update invoice status if all payments are complete
@@ -788,7 +785,15 @@ export const incrementCheckoutAttemptCounterInternal = mutation({
 
 /**
  * Persist the active Checkout Session so retries can reuse its URL.
+ *
+ * This stays a `mutation` because the /api/pay/checkout route calls it via
+ * unauthenticated ConvexHttpClient (the customer hitting a pay link is not
+ * a platform user). The format guards below block the phishing vector: an
+ * authenticated platform user could otherwise call this with a publicToken
+ * leaked from a pay-link URL and overwrite the cached URL with anything.
  */
+const STRIPE_CHECKOUT_URL_PREFIX = "https://checkout.stripe.com/";
+const STRIPE_CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
 export const persistPendingCheckoutSessionInternal = mutation({
 	args: {
 		publicToken: v.string(),
@@ -798,6 +803,12 @@ export const persistPendingCheckoutSessionInternal = mutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
+		if (!args.pendingCheckoutSessionUrl.startsWith(STRIPE_CHECKOUT_URL_PREFIX)) {
+			throw new Error("Invalid checkout URL: must be a Stripe-hosted URL");
+		}
+		if (!STRIPE_CHECKOUT_SESSION_ID.test(args.pendingCheckoutSessionId)) {
+			throw new Error("Invalid checkout session ID format");
+		}
 		const payment = await ctx.db
 			.query("payments")
 			.withIndex("by_public_token", (q) =>
@@ -1012,7 +1023,7 @@ export const flagDisputedFromWebhookInternal = internalMutation({
 			"stripeWebhookActions.charge.dispute.created"
 		);
 
-			await ctx.runMutation(
+		await ctx.runMutation(
 			internal.notifications.createWebhookNotificationInternal,
 			{
 				orgId: args.orgId,
