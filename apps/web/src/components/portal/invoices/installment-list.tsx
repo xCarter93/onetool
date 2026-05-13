@@ -31,10 +31,7 @@ function pillFor(row: InstallmentRow, isUpcoming: boolean) {
 		};
 	}
 	const now = Date.now();
-	const isOverdue =
-		row.dueDate < now &&
-		row.status !== "paid" &&
-		row.status !== "cancelled";
+	const isOverdue = row.dueDate < now && row.status !== "cancelled";
 	if (isOverdue) {
 		return {
 			label: "Overdue",

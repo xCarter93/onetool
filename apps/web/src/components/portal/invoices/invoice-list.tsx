@@ -160,7 +160,7 @@ export function InvoiceList({
 						No invoices yet
 					</h2>
 					<p className="mt-2 text-sm text-muted-foreground">
-						When {businessName} sends you an invoice, you'll see it here.
+						When {businessName} sends you an invoice, you&rsquo;ll see it here.
 					</p>
 				</div>
 			) : isFilterEmpty ? (

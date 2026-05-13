@@ -42,9 +42,14 @@ export function PortalShell({
 	// because the docked ApprovalBottomSheet (z-40) owns the bottom edge there.
 	// The sticky header on the detail page provides a "Back" link, so primary
 	// navigation is still reachable. List/invoices routes keep the tab bar.
+	// Same rule applies to /portal/c/{id}/invoices/{invoiceId}.
 	const isQuoteDetail = !!pathname?.match(
 		/^\/portal\/c\/[^/]+\/quotes\/[^/]+\/?$/,
 	);
+	const isInvoiceDetail = !!pathname?.match(
+		/^\/portal\/c\/[^/]+\/invoices\/[^/]+\/?$/,
+	);
+	const suppressTabBar = isQuoteDetail || isInvoiceDetail;
 
 	function handleSignOut() {
 		startTransition(() => {
@@ -150,8 +155,8 @@ export function PortalShell({
 				{children}
 			</main>
 
-			{/* Mobile tab bar (<768px) — suppressed on quote-detail route (Gap 4) */}
-			{!isQuoteDetail && (
+			{/* Mobile tab bar (<768px) — suppressed on quote/invoice detail routes */}
+			{!suppressTabBar && (
 				<MobileTabBar
 					clientPortalId={clientPortalId}
 					onSignOut={handleSignOut}
