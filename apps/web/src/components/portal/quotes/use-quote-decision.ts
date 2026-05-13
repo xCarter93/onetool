@@ -153,7 +153,9 @@ export function useQuoteDecision(
 				if (res.status === 401) {
 					const errObj: DecisionError = {
 						code: "unauthenticated",
-						message: body.error ?? "Session expired",
+						// Plan 14.1-01: middleware envelope uses `message`; legacy `error` kept as fallback
+						// for any older callers (Convex mapConvexError still emits `error`).
+						message: body.message ?? body.error ?? "Session expired",
 					};
 					setError(errObj);
 					setState("idle");
@@ -263,7 +265,9 @@ export function useQuoteDecision(
 				if (res.status === 401) {
 					const errObj: DecisionError = {
 						code: "unauthenticated",
-						message: body.error ?? "Session expired",
+						// Plan 14.1-01: middleware envelope uses `message`; legacy `error` kept as fallback
+						// for any older callers (Convex mapConvexError still emits `error`).
+						message: body.message ?? body.error ?? "Session expired",
 					};
 					setError(errObj);
 					setState("idle");

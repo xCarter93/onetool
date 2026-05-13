@@ -1,12 +1,14 @@
 import Stripe from "stripe";
 
-const API_VERSION = "2025-11-17.clover" as const;
+const API_VERSION = "2026-04-22.dahlia" as const;
+
+// Do not set `payment_method_types`; Stripe Dashboard configuration controls methods.
 
 /**
  * Shared Stripe client factory.
  * - Validates the secret key is present.
  * - Pins the requested API version.
- * - Throws a helpful error when configuration is missing.
+ * - Enables built-in retry on transient network/5xx errors.
  */
 export function getStripeClient() {
 	const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -20,16 +22,6 @@ export function getStripeClient() {
 	// Instantiate per-call to avoid accidental reuse with stale config in dev.
 	return new Stripe(secretKey, {
 		apiVersion: API_VERSION,
+		maxNetworkRetries: 2,
 	});
-}
-
-/**
- * Convenience helper for places where we only need to assert configuration.
- */
-export function assertStripeEnv() {
-	if (!process.env.STRIPE_SECRET_KEY) {
-		throw new Error(
-			"Stripe is not configured: set STRIPE_SECRET_KEY before using Connect."
-		);
-	}
 }

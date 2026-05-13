@@ -8,6 +8,7 @@ import {
 } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { generatePublicToken } from "./lib/shared";
 import {
@@ -18,6 +19,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emitStatusChangeEvent } from "./eventBus";
 
 /**
  * Payment operations - individual payment installments for invoices
@@ -297,6 +299,14 @@ export const getByPublicToken = query({
 				description: payment.description,
 				sortOrder: payment.sortOrder,
 				paidAt: payment.paidAt,
+				// Pending Checkout Session fields support retry reuse.
+				pendingCheckoutSessionId: payment.pendingCheckoutSessionId,
+				pendingCheckoutSessionUrl: payment.pendingCheckoutSessionUrl,
+				pendingCheckoutSessionExpiresAt:
+					payment.pendingCheckoutSessionExpiresAt,
+				// The route uses (counter + 1) for Stripe's idempotency key so
+				// failed attempts don't burn future keys.
+				checkoutAttemptCounter: payment.checkoutAttemptCounter ?? 0,
 			},
 			invoice: {
 				_id: invoice._id,
@@ -601,13 +611,18 @@ export const createDefaultPayment = mutation({
 
 /**
  * Mark payment as paid by public token (internal only - called after Stripe verification)
- * Auto-updates invoice status when all payments are paid
+ * Auto-updates invoice status when all payments are paid.
+ *
+ * Webhook and success-page confirmation paths both delegate here so invoice
+ * status updates stay in one place.
  */
 export const markPaidByPublicTokenInternal = internalMutation({
 	args: {
 		publicToken: v.string(),
-		stripeSessionId: v.string(),
-		stripePaymentIntentId: v.string(),
+		stripeSessionId: v.optional(v.string()),
+		stripePaymentIntentId: v.optional(v.string()),
+		// Provenance hint for downstream workflow events.
+		source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
 		// Find payment by public token
@@ -627,11 +642,17 @@ export const markPaidByPublicTokenInternal = internalMutation({
 			return payment._id;
 		}
 
-		// Update payment to paid
+		if (!args.stripePaymentIntentId) {
+			throw new Error(
+				"markPaidByPublicTokenInternal: stripePaymentIntentId is required"
+			);
+		}
+
+		// Update payment to paid.
 		await ctx.db.patch(payment._id, {
 			status: "paid",
 			paidAt: Date.now(),
-			stripeSessionId: args.stripeSessionId,
+			stripeSessionId: args.stripeSessionId ?? payment.stripeSessionId,
 			stripePaymentIntentId: args.stripePaymentIntentId,
 		});
 
@@ -736,6 +757,301 @@ export const markAsOverdue = mutation({
 		});
 
 		return args.id;
+	},
+});
+
+// ============================================================================
+// Checkout session lifecycle
+// ============================================================================
+
+/**
+ * Increment the checkout attempt counter used in Stripe idempotency keys.
+ */
+export const incrementCheckoutAttemptCounterInternal = mutation({
+	args: { publicToken: v.string() },
+	returns: v.number(),
+	handler: async (ctx, args): Promise<number> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) =>
+				q.eq("publicToken", args.publicToken)
+			)
+			.unique();
+		if (!payment) {
+			throw new Error("Payment not found");
+		}
+		const next = (payment.checkoutAttemptCounter ?? 0) + 1;
+		await ctx.db.patch(payment._id, { checkoutAttemptCounter: next });
+		return next;
+	},
+});
+
+/**
+ * Persist the active Checkout Session so retries can reuse its URL.
+ *
+ * This stays a `mutation` because the /api/pay/checkout route calls it via
+ * unauthenticated ConvexHttpClient (the customer hitting a pay link is not
+ * a platform user). The format guards below block the phishing vector: an
+ * authenticated platform user could otherwise call this with a publicToken
+ * leaked from a pay-link URL and overwrite the cached URL with anything.
+ */
+const STRIPE_CHECKOUT_URL_PREFIX = "https://checkout.stripe.com/";
+const STRIPE_CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
+export const persistPendingCheckoutSessionInternal = mutation({
+	args: {
+		publicToken: v.string(),
+		pendingCheckoutSessionId: v.string(),
+		pendingCheckoutSessionUrl: v.string(),
+		pendingCheckoutSessionExpiresAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		if (!args.pendingCheckoutSessionUrl.startsWith(STRIPE_CHECKOUT_URL_PREFIX)) {
+			throw new Error("Invalid checkout URL: must be a Stripe-hosted URL");
+		}
+		if (!STRIPE_CHECKOUT_SESSION_ID.test(args.pendingCheckoutSessionId)) {
+			throw new Error("Invalid checkout session ID format");
+		}
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) =>
+				q.eq("publicToken", args.publicToken)
+			)
+			.unique();
+		if (!payment) {
+			throw new Error("Payment not found");
+		}
+		await ctx.db.patch(payment._id, {
+			pendingCheckoutSessionId: args.pendingCheckoutSessionId,
+			pendingCheckoutSessionUrl: args.pendingCheckoutSessionUrl,
+			pendingCheckoutSessionExpiresAt: args.pendingCheckoutSessionExpiresAt,
+		});
+		return null;
+	},
+});
+
+// ============================================================================
+// Webhook-driven internal helpers
+// ============================================================================
+
+/**
+ * Lookup a payment by Stripe PaymentIntent within an org.
+ */
+export const getByPaymentIntentIdInternal = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+	},
+	returns: v.union(v.null(), v.object({ _id: v.id("payments") })),
+	handler: async (ctx, args) => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		return payment ? { _id: payment._id } : null;
+	},
+});
+
+/**
+ * Validate a completed Checkout Session and delegate to the paid cascade.
+ * Unknown payment metadata is treated as a terminal no-op to avoid endless retries.
+ */
+export const markPaidFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		sessionId: v.string(),
+		amountTotal: v.number(),
+		metadata: v.any(),
+		paymentIntentId: v.union(v.string(), v.null()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const publicToken =
+			typeof args.metadata?.publicToken === "string"
+				? args.metadata.publicToken
+				: undefined;
+
+		// publicToken is required: it uniquely identifies the installment row.
+		// Falling back to invoiceId is unsafe because invoices can have multiple
+		// installments and `.first()` would pick an arbitrary one.
+		let payment: Doc<"payments"> | null = null;
+		if (publicToken) {
+			payment = await ctx.db
+				.query("payments")
+				.withIndex("by_public_token", (q) =>
+					q.eq("publicToken", publicToken)
+				)
+				.unique();
+		}
+
+		if (!payment) {
+			console.warn(
+				`markPaidFromWebhookInternal: no payment found for session ${args.sessionId}`
+			);
+			return null;
+		}
+
+		// The publicToken lookup is global, so assert org scope here.
+		if (payment.orgId !== args.orgId) {
+			throw new Error("Org mismatch on webhook payment lookup");
+		}
+
+		// Race with /api/pay/confirm — already paid path is a no-op.
+		if (payment.status === "paid") {
+			return null;
+		}
+
+		// Stripe sends amount_total in cents; payment rows store dollars.
+		// Mismatch and missing payment_intent are both deterministic for a
+		// given session: throwing would loop ~70 Stripe retries over days
+		// without changing the outcome. Treat as terminal — log loudly and
+		// return so the event is acked, leaving the payment un-marked-paid
+		// for manual investigation.
+		const expectedCents = Math.round(payment.paymentAmount * 100);
+		if (args.amountTotal !== expectedCents) {
+			console.error(
+				`markPaidFromWebhookInternal: amount mismatch on session ${args.sessionId} — ` +
+					`expected ${expectedCents} cents, got ${args.amountTotal} cents. ` +
+					`Payment left in status=${payment.status}; investigate manually.`
+			);
+			return null;
+		}
+
+		if (!args.paymentIntentId) {
+			console.error(
+				`markPaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}. ` +
+					`Payment left in status=${payment.status}; investigate manually.`
+			);
+			return null;
+		}
+
+		// Clear pending Checkout Session fields after successful payment.
+		if (
+			payment.pendingCheckoutSessionId &&
+			payment.pendingCheckoutSessionId === args.sessionId
+		) {
+			await ctx.db.patch(payment._id, {
+				pendingCheckoutSessionId: undefined,
+				pendingCheckoutSessionUrl: undefined,
+				pendingCheckoutSessionExpiresAt: undefined,
+			});
+		}
+
+		await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
+			publicToken: payment.publicToken,
+			stripeSessionId: args.sessionId,
+			stripePaymentIntentId: args.paymentIntentId,
+			source: "webhook",
+		});
+		return null;
+	},
+});
+
+/**
+ * Mark a payment refunded from a Stripe webhook.
+ */
+export const markRefundedFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+		refundedAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		if (!payment) {
+			console.warn(
+				`markRefundedFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
+			);
+			return null;
+		}
+
+		const oldStatus = payment.status;
+		await ctx.db.patch(payment._id, {
+			status: "refunded",
+			refundedAt: args.refundedAt,
+		});
+
+		// Emit status-change event so existing workflows fire. The entityId
+		// must point at the invoice (not the payment row) because downstream
+		// automation handlers resolve it as Id<"invoices">.
+		await emitStatusChangeEvent(
+			ctx,
+			payment.orgId,
+			"invoice",
+			payment.invoiceId,
+			oldStatus,
+			"refunded",
+			"stripeWebhookActions.charge.refunded"
+		);
+		return null;
+	},
+});
+
+/**
+ * Mark a payment disputed and notify the org owner.
+ */
+export const flagDisputedFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+		disputeId: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		if (!payment) {
+			console.warn(
+				`flagDisputedFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
+			);
+			return null;
+		}
+
+		await ctx.db.patch(payment._id, {
+			disputed: true,
+			disputeId: args.disputeId,
+		});
+
+		// Workflow automations get notified; status itself doesn't change.
+		await emitStatusChangeEvent(
+			ctx,
+			payment.orgId,
+			"invoice",
+			payment.invoiceId,
+			payment.status,
+			payment.status,
+			"stripeWebhookActions.charge.dispute.created"
+		);
+
+		await ctx.runMutation(
+			internal.notifications.createWebhookNotificationInternal,
+			{
+				orgId: args.orgId,
+				type: "dispute_created",
+				paymentId: payment._id,
+				priority: "high",
+				message:
+					`A dispute (${args.disputeId}) was filed on a payment. ` +
+					`You have 7 days from the dispute date to respond via the Stripe Dashboard ` +
+					`or the dispute defaults to lost. Review immediately.`,
+			}
+		);
+		return null;
 	},
 });
 

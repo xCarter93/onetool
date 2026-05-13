@@ -340,8 +340,8 @@ importers:
         specifier: ^6.5.2
         version: 6.6.0(@react-email/render@2.0.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
       stripe:
-        specifier: 20.0.0
-        version: 20.0.0(@types/node@20.19.27)
+        specifier: 22.1.1
+        version: 22.1.1(@types/node@20.19.27)
       svix:
         specifier: ^1.76.1
         version: 1.84.1
@@ -454,6 +454,9 @@ importers:
       resend:
         specifier: ^6.5.2
         version: 6.6.0(@react-email/render@2.0.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
+      stripe:
+        specifier: 22.1.1
+        version: 22.1.1(@types/node@22.19.3)
       svix:
         specifier: ^1.76.1
         version: 1.84.1
@@ -9702,11 +9705,11 @@ packages:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
 
-  stripe@20.0.0:
-    resolution: {integrity: sha512-EaZeWpbJOCcDytdjKSwdrL5BxzbDGNueiCfHjHXlPdBQvLqoxl6AAivC35SPzTmVXJb5duXQlXFGS45H0+e6Gg==}
-    engines: {node: '>=16'}
+  stripe@22.1.1:
+    resolution: {integrity: sha512-cmodIYP27tBkJ8G7DuGgWw0PFuemlFZbuF3Wwr1TrjFjUa3T7NIgCe6TVwX8BO2ynu+xtTuDGfHafNDCPt9lXA==}
+    engines: {node: '>=18'}
     peerDependencies:
-      '@types/node': '>=16'
+      '@types/node': '>=18'
     peerDependenciesMeta:
       '@types/node':
         optional: true
@@ -10169,6 +10172,7 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   validate-npm-package-name@5.0.1:
@@ -21886,11 +21890,13 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
-  stripe@20.0.0(@types/node@20.19.27):
-    dependencies:
-      qs: 6.14.1
+  stripe@22.1.1(@types/node@20.19.27):
     optionalDependencies:
       '@types/node': 20.19.27
+
+  stripe@22.1.1(@types/node@22.19.3):
+    optionalDependencies:
+      '@types/node': 22.19.3
 
   structured-headers@0.4.1: {}
 

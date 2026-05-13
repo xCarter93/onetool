@@ -1,4 +1,10 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	QueryCtx,
+	MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -112,6 +118,15 @@ interface NotificationStats {
 		client_mention: number;
 		project_mention: number;
 		quote_mention: number;
+		// Stripe webhook lifecycle types.
+		payment_failed: number;
+		dispute_created: number;
+		charge_refunded: number;
+		// Connect lifecycle additions.
+		payout_paid: number;
+		payout_failed: number;
+		capability_degraded: number;
+		bank_account_changed: number;
 	};
 	today: number;
 	pending: number; // scheduled but not sent yet
@@ -131,6 +146,13 @@ function createEmptyNotificationStats(): NotificationStats {
 			client_mention: 0,
 			project_mention: 0,
 			quote_mention: 0,
+			payment_failed: 0,
+			dispute_created: 0,
+			charge_refunded: 0,
+			payout_paid: 0,
+			payout_failed: 0,
+			capability_degraded: 0,
+			bank_account_changed: 0,
 		},
 		today: 0,
 		pending: 0,
@@ -772,6 +794,79 @@ export const cleanupOldNotifications = mutation({
 		}
 
 		return { deletedCount: toDelete.length };
+	},
+});
+
+/**
+ * Emit an org-owner notification for a Stripe webhook lifecycle event.
+ */
+export const createWebhookNotificationInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		type: v.union(
+			v.literal("payment_failed"),
+			v.literal("dispute_created"),
+			v.literal("charge_refunded"),
+			v.literal("payout_paid"),
+			v.literal("payout_failed"),
+			v.literal("capability_degraded"),
+			v.literal("bank_account_changed")
+		),
+		paymentId: v.optional(v.id("payments")),
+		priority: v.union(v.literal("normal"), v.literal("high")),
+		message: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) {
+			console.warn(
+				`createWebhookNotificationInternal: org ${args.orgId} not found`
+			);
+			return null;
+		}
+
+		const TITLE_BY_TYPE: Record<typeof args.type, string> = {
+			payment_failed: "Payment failed",
+			dispute_created: "Dispute filed",
+			charge_refunded: "Refund issued",
+			payout_paid: "Payout sent",
+			payout_failed: "Payout failed",
+			capability_degraded: "Stripe capability disabled",
+			bank_account_changed: "Bank account updated",
+		};
+		const title = TITLE_BY_TYPE[args.type];
+
+		// Only payment lifecycle notifications reference an invoice entity.
+		// entityId must be the invoice doc ID — the payments table ID would
+		// resolve to null when the UI follows entityType+entityId for navigation.
+		// The dedicated `paymentId` field below still preserves the payment ref.
+		const isInvoiceEntity =
+			args.type === "payment_failed" ||
+			args.type === "dispute_created" ||
+			args.type === "charge_refunded";
+		let invoiceEntityId: Id<"invoices"> | undefined;
+		if (isInvoiceEntity && args.paymentId) {
+			const payment = await ctx.db.get(args.paymentId);
+			invoiceEntityId = payment?.invoiceId;
+		}
+
+		await ctx.db.insert("notifications", {
+			orgId: args.orgId,
+			userId: org.ownerUserId,
+			notificationType: args.type,
+			title,
+			message: args.message,
+			...(invoiceEntityId
+				? { entityType: "invoice" as const, entityId: invoiceEntityId }
+				: {}),
+			isRead: false,
+			sentVia: "in_app",
+			sentAt: Date.now(),
+			priority: args.priority,
+			paymentId: args.paymentId,
+		});
+		return null;
 	},
 });
 

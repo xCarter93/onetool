@@ -177,3 +177,125 @@ describe("portal middleware isolation", () => {
 		expect(isPublicPortalPath("/portal/c/abcd1234/quotes")).toBe(false);
 	});
 });
+
+describe("portal middleware 401 envelope (Plan 14.1-01)", () => {
+	it("returns JSON 401 envelope for unauthenticated /api/portal/quotes/{id}/approve [Plan 14.1-01]", async () => {
+		const { portalMiddleware } = await import("./middleware");
+		const req = await buildRequest("/api/portal/quotes/q1/approve");
+		const response = await portalMiddleware(req);
+		expect(response.status).toBe(401);
+		expect(response.headers.get("content-type")).toMatch(/^application\/json/);
+		const body = await response.json();
+		expect(body).toEqual({
+			code: "unauthenticated",
+			message: "Portal session missing or expired",
+			retryAfterSeconds: null,
+		});
+	});
+
+	it("still 307-redirects unauthenticated /portal/c/{id}/quotes page route to verify [Plan 14.1-01 regression]", async () => {
+		const { portalMiddleware } = await import("./middleware");
+		const req = await buildRequest("/portal/c/abcd1234/quotes");
+		const response = await portalMiddleware(req);
+		expect(response.status).toBe(307);
+		const location = response.headers.get("location") ?? "";
+		expect(location).toContain("/portal/c/abcd1234/verify");
+		expect(location).toContain("next=%2Fportal%2Fc%2Fabcd1234%2Fquotes");
+	});
+
+	it("passes through public OTP request path with no 401 [Plan 14.1-01 sanity]", async () => {
+		const { portalMiddleware } = await import("./middleware");
+		const req = await buildRequest("/api/portal/otp/request");
+		const response = await portalMiddleware(req);
+		expect(response.status).not.toBe(401);
+		expect(response.headers.get("location")).toBeNull();
+	});
+
+	it("returns JSON 401 envelope for /api/portal/* with invalid/expired cookie [Plan 14.1-01]", async () => {
+		const { signSessionJwt } = await import("./jwt");
+		const { portalMiddleware } = await import("./middleware");
+		// Sign a token then mangle the signature segment so verifySessionJwt throws.
+		const { token } = await signSessionJwt(
+			{ clientContactId: "ct-1", orgId: "org-1", clientPortalId: "abcd1234" },
+			60 * 60,
+		);
+		const tampered = token.slice(0, -4) + "XXXX";
+		const req = await buildRequest("/api/portal/quotes/q1/approve", tampered);
+		const response = await portalMiddleware(req);
+		expect(response.status).toBe(401);
+		const body = await response.json();
+		expect(body).toEqual({
+			code: "unauthenticated",
+			message: "Portal session missing or expired",
+			retryAfterSeconds: null,
+		});
+	});
+
+	it("returns JSON 401 envelope for /api/portal/* when verified token is missing 'jti' claim [Plan 14.1-01]", async () => {
+		// Refresh-path missing-jti seam — monkey-patch verifySessionJwt to return
+		// a payload with jti undefined and remainingSeconds below the refresh
+		// threshold so the jti-missing branch fires deterministically.
+		vi.resetModules();
+		vi.doMock("./jwt", async (importOriginal) => {
+			const mod = await importOriginal<typeof import("./jwt")>();
+			return {
+				...mod,
+				verifySessionJwt: vi.fn(async () => ({
+					payload: {
+						clientContactId: "ct-1",
+						orgId: "org-1",
+						clientPortalId: "abcd1234",
+						exp: Math.floor(Date.now() / 1000) + 60,
+						iat: Math.floor(Date.now() / 1000),
+						// jti deliberately omitted
+					},
+					remainingSeconds: 60, // below COOKIE_REFRESH_THRESHOLD_SECONDS
+				})),
+			};
+		});
+		try {
+			const { portalMiddleware } = await import("./middleware");
+			const req = await buildRequest(
+				"/api/portal/quotes/q1/approve",
+				"any-token",
+			);
+			const response = await portalMiddleware(req);
+			expect(response.status).toBe(401);
+			const body = await response.json();
+			expect(body).toEqual({
+				code: "unauthenticated",
+				message: "Portal session missing or expired",
+				retryAfterSeconds: null,
+			});
+		} finally {
+			vi.doUnmock("./jwt");
+			vi.resetModules();
+		}
+	});
+
+	it("authenticated /api/portal/quotes/{id}/approve passes through (no 401) [Plan 14.1-01]", async () => {
+		const { signSessionJwt } = await import("./jwt");
+		const { portalMiddleware } = await import("./middleware");
+		const { token } = await signSessionJwt(
+			{ clientContactId: "ct-1", orgId: "org-1", clientPortalId: "abcd1234" },
+			60 * 60 * 24, // full 24h, no refresh
+		);
+		const req = await buildRequest("/api/portal/quotes/q1/approve", token);
+		const response = await portalMiddleware(req);
+		expect(response.status).not.toBe(401);
+		expect(response.headers.get("location")).toBeNull();
+		const ct = response.headers.get("content-type");
+		if (ct?.startsWith("application/json")) {
+			const body = await response.json().catch(() => ({}));
+			expect(body.code).not.toBe("unauthenticated");
+		}
+	});
+
+	it("public JWKS path passes through with no 401 [Plan 14.1-01 regression]", async () => {
+		const { portalMiddleware } = await import("./middleware");
+		const req = await buildRequest("/.well-known/portal-jwks.json");
+		const response = await portalMiddleware(req);
+		expect(response.status).not.toBe(401);
+		expect(response.headers.get("location")).toBeNull();
+	});
+});

@@ -37,6 +37,23 @@ vi.mock("next/link", () => ({
 // Force desktop branch (rail) so we exercise the rail render path.
 vi.mock("@/hooks/use-media-query", () => ({ useMediaQuery: () => true }));
 
+// Plan 14.1-03: QuoteDetailIsland now consumes useToast() for the Download
+// PDF failure path; stub it so the unrelated Gap 6 fallback tests don't trip
+// the ToastProvider context check.
+vi.mock("@/hooks/use-toast", () => ({
+	useToast: () => ({
+		error: vi.fn(),
+		success: vi.fn(),
+		warning: vi.fn(),
+		info: vi.fn(),
+		loading: vi.fn(),
+		addToast: vi.fn(),
+		removeToast: vi.fn(),
+		updateToast: vi.fn(),
+		toasts: [],
+	}),
+}));
+
 const useQueryMock = vi.fn();
 vi.mock("convex/react", () => ({
 	useQuery: (...args: any[]) => useQueryMock(...args),

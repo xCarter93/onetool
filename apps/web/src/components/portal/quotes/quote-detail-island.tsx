@@ -11,13 +11,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { useQuery } from "convex/react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useToast } from "@/hooks/use-toast";
 
 import { QuotePaper } from "./quote-paper";
 import { ApprovalRail } from "./approval-rail";
@@ -77,6 +78,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	// <768px PortalShell hides the tab bar (route-suppressed) and the docked
 	// ApprovalBottomSheet owns the bottom edge.
 	const isDesktop = useMediaQuery("(min-width: 768px)");
+	const toast = useToast();
 
 	// Reactive stale detection: pin the documentId we mounted on; if the
 	// reactive query updates with a different latestDocument._id, surface
@@ -148,6 +150,32 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 		clientEmail,
 		latestApproval,
 	} = data;
+
+	async function handleDownloadPdf() {
+		try {
+			const res = await fetch(`/api/portal/quotes/${quoteId}/pdf`);
+			if (!res.ok) {
+				toast.error("Couldn't open PDF. Please try again.");
+				return;
+			}
+			const body = (await res.json().catch(() => null)) as
+				| { url?: unknown }
+				| null;
+			if (
+				!body ||
+				typeof body.url !== "string" ||
+				body.url.length === 0
+			) {
+				toast.error("Couldn't open PDF. Please try again.");
+				return;
+			}
+			// Plan 14.1-03 user decision D-1: open in new tab to preserve
+			// portal context and match Phase 13's "no full-page kicks" posture.
+			window.open(body.url, "_blank", "noopener,noreferrer");
+		} catch {
+			toast.error("Couldn't open PDF. Please try again.");
+		}
+	}
 
 	const documentDrifted =
 		pinnedDocumentId !== null &&
@@ -227,6 +255,16 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 						</p>
 					</div>
 				</div>
+				{latestDocument && (
+					<button
+						type="button"
+						onClick={handleDownloadPdf}
+						className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[13px] font-medium hover:bg-accent"
+					>
+						<Download className="h-3.5 w-3.5" aria-hidden="true" />
+						Download PDF
+					</button>
+				)}
 			</header>
 
 			{/* Mobile-only title block (the desktop title sits in the sticky bar) */}

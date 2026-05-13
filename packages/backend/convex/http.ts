@@ -5,6 +5,7 @@ import { ConvexError } from "convex/values";
 import {
 	verifySvixWebhook,
 	verifyBoldSignWebhook,
+	verifyStripeWebhook,
 	webhookSuccess,
 	webhookError,
 	webhookUnauthorized,
@@ -661,6 +662,66 @@ http.route({
 		} catch (error) {
 			console.error("Error processing Resend webhook:", error);
 			return webhookError(500, "Internal Server Error");
+		}
+	}),
+});
+
+/**
+ * Stripe Connect webhook endpoint.
+ * Signature failures return 400; dispatch failures return 500 so Stripe retries.
+ */
+http.route({
+	path: "/stripe-webhook",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+		if (!secret) {
+			console.error("STRIPE_CONNECT_WEBHOOK_SECRET not configured");
+			return webhookError(500, "Webhook verification not configured");
+		}
+
+		const verification = await verifyStripeWebhook(request, secret);
+		if (!verification.valid || !verification.payload) {
+			console.error(
+				"Stripe webhook verification failed:",
+				verification.error
+			);
+			return webhookBadRequest(`Webhook Error: ${verification.error}`);
+		}
+
+		const event = verification.payload as {
+			id: string;
+			type: string;
+			account?: string | null;
+			created: number;
+			data: { object: Record<string, unknown> };
+		};
+
+		logWebhookReceived("Stripe", event.type, event.id);
+
+		try {
+			const result = await ctx.runAction(
+				internal.stripeWebhookActions.handleEvent,
+				{
+					eventId: event.id,
+					eventType: event.type,
+					account: event.account ?? null,
+					created: event.created,
+					data: event.data,
+				}
+			);
+			logWebhookSuccess("Stripe", event.type, event.id);
+			return new Response(
+				JSON.stringify({ received: true, ...result }),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		} catch (error) {
+			logWebhookError("Stripe", event.type, error, event.id);
+			// Return 500 so Stripe retries transient processing failures.
+			return webhookError(500, "Internal error processing webhook");
 		}
 	}),
 });

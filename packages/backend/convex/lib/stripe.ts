@@ -3,18 +3,24 @@
  * Uses plain fetch (no Stripe SDK) to verify Checkout Sessions.
  */
 
+const STRIPE_API_VERSION = "2026-04-22.dahlia";
+
 export interface StripeSessionVerification {
 	paid: boolean;
 	paymentIntentId: string | null;
+	amountTotal: number | null;
+	metadata: Record<string, string>;
 }
 
 interface StripeCheckoutSession {
 	payment_status: string;
 	payment_intent: string | { id: string } | null;
+	amount_total: number | null;
+	metadata: Record<string, string> | null;
 }
 
 /**
- * Verify a Stripe Checkout Session's payment status via the Stripe API.
+ * Verify a Stripe Checkout Session via the Stripe API.
  * Uses the platform's STRIPE_SECRET_KEY and optionally a Connect account ID.
  */
 export async function verifyStripeSession(
@@ -28,6 +34,7 @@ export async function verifyStripeSession(
 
 	const headers: Record<string, string> = {
 		Authorization: `Bearer ${apiKey}`,
+		"Stripe-Version": STRIPE_API_VERSION,
 	};
 	if (stripeAccountId) {
 		headers["Stripe-Account"] = stripeAccountId;
@@ -38,14 +45,12 @@ export async function verifyStripeSession(
 
 	if (!res.ok) {
 		const errorBody = await res.text().catch(() => "");
-		throw new Error(
-			`Stripe API error: ${res.status} ${errorBody}`
-		);
+		throw new Error(`Stripe API error: ${res.status} ${errorBody}`);
 	}
 
 	const session = (await res.json()) as StripeCheckoutSession;
 
-	// Extract payment intent ID (may be expanded object or string)
+	// Extract payment intent ID (may be expanded object or string).
 	let paymentIntentId: string | null = null;
 	if (typeof session.payment_intent === "object" && session.payment_intent?.id) {
 		paymentIntentId = session.payment_intent.id;
@@ -56,5 +61,7 @@ export async function verifyStripeSession(
 	return {
 		paid: session.payment_status === "paid",
 		paymentIntentId,
+		amountTotal: session.amount_total,
+		metadata: session.metadata ?? {},
 	};
 }

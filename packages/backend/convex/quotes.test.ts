@@ -599,3 +599,421 @@ describe("Quotes", () => {
 		});
 	});
 });
+
+// Plan 14.1-02 (QUOTE-04 workspace half) — getApprovalAudit query tests.
+// Six tests cover happy path + cross-org FORBIDDEN + empty + audit-pin
+// + per-row defense-in-depth (REVIEWS HIGH 2026-05-10) + empty-snapshot
+// normalization. ConvexError data is parsed via err.data shape (string or
+// object) per STATE.md note [13-03] — `instanceof ConvexError` is unreliable
+// across the convex-test module realm boundary.
+describe("quotes.getApprovalAudit (Plan 14.1-02)", () => {
+	let t: ReturnType<typeof convexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function seedOrgA() {
+		return await t.run(async (ctx) => {
+			const orgSetup = await createTestOrg(ctx, {
+				clerkUserId: "user_orgA",
+				clerkOrgId: "org_A",
+				userEmail: "admin-a@example.com",
+			});
+			const clientId = await createTestClient(ctx, orgSetup.orgId);
+			const contactId = await ctx.db.insert("clientContacts", {
+				orgId: orgSetup.orgId,
+				clientId,
+				firstName: "Client",
+				lastName: "A",
+				email: "client@example.com",
+				isPrimary: true,
+			});
+			const quoteId = await createTestQuote(ctx, orgSetup.orgId, clientId);
+			return { ...orgSetup, clientId, contactId, quoteId };
+		});
+	}
+
+	async function seedOrgB() {
+		return await t.run(async (ctx) => {
+			const orgSetup = await createTestOrg(ctx, {
+				clerkUserId: "user_orgB",
+				clerkOrgId: "org_B",
+				userEmail: "admin-b@example.com",
+			});
+			return orgSetup;
+		});
+	}
+
+	async function insertDocument(
+		orgId: Id<"organizations">,
+		quoteId: Id<"quotes">,
+		version: number,
+		storageBytes: string
+	): Promise<{ docId: Id<"documents">; storageId: Id<"_storage"> }> {
+		return await t.run(async (ctx) => {
+			const blob = new Blob([storageBytes], { type: "application/pdf" });
+			const storageId = await ctx.storage.store(blob);
+			const docId = await ctx.db.insert("documents", {
+				orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				generatedAt: Date.now(),
+				version,
+			});
+			return { docId, storageId };
+		});
+	}
+
+	async function insertSignatureBlob(): Promise<Id<"_storage">> {
+		return await t.run(async (ctx) => {
+			const blob = new Blob(["fake-png-bytes"], { type: "image/png" });
+			return await ctx.storage.store(blob);
+		});
+	}
+
+	it("Test A — returns rows for owner org with email join, newest first, with lineItemsSnapshot populated", async () => {
+		const seed = await seedOrgA();
+		const { docId: docAId } = await insertDocument(
+			seed.orgId,
+			seed.quoteId,
+			1,
+			"v1-pdf-bytes"
+		);
+		const sigStorageId = await insertSignatureBlob();
+
+		await t.run(async (ctx) => {
+			// row1: approved, drawn signature, line-items snapshot of 1 item.
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: seed.contactId,
+				action: "approved",
+				signatureStorageId: sigStorageId,
+				signatureMode: "drawn",
+				ipAddress: "1.2.3.4",
+				userAgent: "UA-1",
+				documentId: docAId,
+				documentVersion: 1,
+				lineItemsSnapshot: [
+					{
+						description: "Cleaning",
+						quantity: 1,
+						unit: "hr",
+						rate: 50,
+						amount: 50,
+						sortOrder: 0,
+					},
+				],
+				subtotalSnapshot: 50,
+				taxSnapshot: 0,
+				totalSnapshot: 50,
+				createdAt: 1000,
+			});
+			// row2: declined, no signature, snapshot of 1 item.
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: seed.contactId,
+				action: "declined",
+				declineReason: "too expensive",
+				ipAddress: "5.6.7.8",
+				userAgent: "UA-2",
+				documentId: docAId,
+				documentVersion: 2,
+				lineItemsSnapshot: [
+					{
+						description: "Item A",
+						quantity: 2,
+						unit: "each",
+						rate: 10,
+						amount: 20,
+						sortOrder: 0,
+					},
+				],
+				subtotalSnapshot: 20,
+				taxSnapshot: 0,
+				totalSnapshot: 20,
+				createdAt: 2000,
+			});
+		});
+
+		const asUser = t.withIdentity(
+			createTestIdentity(seed.clerkUserId, seed.clerkOrgId)
+		);
+		const result = await asUser.query(api.quotes.getApprovalAudit, {
+			quoteId: seed.quoteId,
+		});
+
+		expect(result).toHaveLength(2);
+		expect(result[0].createdAt).toBe(2000);
+		expect(result[1].createdAt).toBe(1000);
+		expect(result[0].contactEmail).toBe("client@example.com");
+		expect(result[0].action).toBe("declined");
+		expect(result[0].declineReason).toBe("too expensive");
+		expect(Array.isArray(result[0].lineItemsSnapshot)).toBe(true);
+		expect(result[0].lineItemsSnapshot![0].description).toBe("Item A");
+		expect(result[0].lineItemsSnapshot![0].amount).toBe(20);
+		expect(result[1].lineItemsSnapshot![0].description).toBe("Cleaning");
+		expect(result[1].action).toBe("approved");
+		expect(result[1].signatureUrl).toBeTruthy();
+		expect(result[1].signatureMode).toBe("drawn");
+	});
+
+	it("Test B — throws FORBIDDEN when caller's org does not own the quote", async () => {
+		const seed = await seedOrgA();
+		const orgB = await seedOrgB();
+
+		const asOrgB = t.withIdentity(
+			createTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
+		);
+
+		try {
+			await asOrgB.query(api.quotes.getApprovalAudit, {
+				quoteId: seed.quoteId,
+			});
+			throw new Error("expected throw");
+		} catch (err: unknown) {
+			const e = err as { data?: unknown };
+			const data =
+				typeof e.data === "string"
+					? JSON.parse(e.data as string)
+					: (e.data as { code?: string } | undefined);
+			expect(data?.code).toBe("FORBIDDEN");
+		}
+	});
+
+	it("Test C — returns [] for a quote with no audit rows", async () => {
+		const seed = await seedOrgA();
+		const asUser = t.withIdentity(
+			createTestIdentity(seed.clerkUserId, seed.clerkOrgId)
+		);
+		const result = await asUser.query(api.quotes.getApprovalAudit, {
+			quoteId: seed.quoteId,
+		});
+		expect(result).toEqual([]);
+	});
+
+	it("Test D — auditPinnedPdfUrl uses the row's documentId, not quote.latestDocumentId [audit-pin]", async () => {
+		const seed = await seedOrgA();
+		const { docId: docV1Id, storageId: storageV1 } = await insertDocument(
+			seed.orgId,
+			seed.quoteId,
+			1,
+			"v1-pdf-bytes"
+		);
+		const { docId: docV2Id } = await insertDocument(
+			seed.orgId,
+			seed.quoteId,
+			2,
+			"v2-pdf-bytes"
+		);
+
+		await t.run(async (ctx) => {
+			// Pin the quote to v2 but pin the audit row to v1 — the row's documentId wins.
+			await ctx.db.patch(seed.quoteId, { latestDocumentId: docV2Id });
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: seed.contactId,
+				action: "approved",
+				ipAddress: "1.2.3.4",
+				userAgent: "UA",
+				documentId: docV1Id,
+				documentVersion: 1,
+				lineItemsSnapshot: [
+					{
+						description: "Item",
+						quantity: 1,
+						unit: "ea",
+						rate: 1,
+						amount: 1,
+						sortOrder: 0,
+					},
+				],
+				subtotalSnapshot: 1,
+				taxSnapshot: 0,
+				totalSnapshot: 1,
+				createdAt: 5000,
+			});
+		});
+
+		const asUser = t.withIdentity(
+			createTestIdentity(seed.clerkUserId, seed.clerkOrgId)
+		);
+		const result = await asUser.query(api.quotes.getApprovalAudit, {
+			quoteId: seed.quoteId,
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0].documentId).toBe(docV1Id);
+		expect(result[0].auditPinnedPdfUrl).toBeTruthy();
+
+		// The URL should resolve from the v1 storage blob, not v2.
+		const expectedV1Url = await t.run(
+			async (ctx) => await ctx.storage.getUrl(storageV1)
+		);
+		expect(result[0].auditPinnedPdfUrl).toBe(expectedV1Url);
+	});
+
+	it("Test E [REVIEWS HIGH] — defense-in-depth drops rows with foreign row.orgId, contact.orgId, or document.orgId", async () => {
+		const seed = await seedOrgA();
+		const orgB = await seedOrgB();
+
+		// Seed a foreign contact (orgB) and a foreign document (orgB).
+		const { foreignContactId, clientBId } = await t.run(async (ctx) => {
+			const clientB = await createTestClient(ctx, orgB.orgId);
+			const fc = await ctx.db.insert("clientContacts", {
+				orgId: orgB.orgId,
+				clientId: clientB,
+				firstName: "Foreign",
+				lastName: "Contact",
+				email: "foreign@example.com",
+				isPrimary: false,
+			});
+			return { foreignContactId: fc, clientBId: clientB };
+		});
+		const { docId: docAId } = await insertDocument(
+			seed.orgId,
+			seed.quoteId,
+			1,
+			"v1-orgA"
+		);
+		const { docId: docBId } = await insertDocument(
+			orgB.orgId,
+			seed.quoteId,
+			1,
+			"v1-orgB"
+		);
+
+		const rowGoodId = await t.run(async (ctx) => {
+			const goodId = await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: seed.contactId,
+				action: "approved",
+				ipAddress: "1.1.1.1",
+				userAgent: "UA-good",
+				documentId: docAId,
+				documentVersion: 1,
+				lineItemsSnapshot: [
+					{
+						description: "ok",
+						quantity: 1,
+						unit: "ea",
+						rate: 1,
+						amount: 1,
+						sortOrder: 0,
+					},
+				],
+				subtotalSnapshot: 1,
+				taxSnapshot: 0,
+				totalSnapshot: 1,
+				createdAt: 4000,
+			});
+			// rowBadRow: row.orgId is foreign.
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: orgB.orgId,
+				clientContactId: seed.contactId,
+				action: "approved",
+				ipAddress: "2.2.2.2",
+				userAgent: "UA-bad-row",
+				documentId: docAId,
+				documentVersion: 1,
+				lineItemsSnapshot: [],
+				subtotalSnapshot: 0,
+				taxSnapshot: 0,
+				totalSnapshot: 0,
+				createdAt: 3000,
+			});
+			// rowBadContact: row.orgId=orgA but contact is foreign.
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: foreignContactId,
+				action: "approved",
+				ipAddress: "3.3.3.3",
+				userAgent: "UA-bad-contact",
+				documentId: docAId,
+				documentVersion: 1,
+				lineItemsSnapshot: [],
+				subtotalSnapshot: 0,
+				taxSnapshot: 0,
+				totalSnapshot: 0,
+				createdAt: 2000,
+			});
+			// rowBadDoc: row.orgId=orgA, contact ok, but document is foreign.
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: seed.contactId,
+				action: "approved",
+				ipAddress: "4.4.4.4",
+				userAgent: "UA-bad-doc",
+				documentId: docBId,
+				documentVersion: 1,
+				lineItemsSnapshot: [],
+				subtotalSnapshot: 0,
+				taxSnapshot: 0,
+				totalSnapshot: 0,
+				createdAt: 1500,
+			});
+			return goodId;
+		});
+		void clientBId;
+
+		const asUser = t.withIdentity(
+			createTestIdentity(seed.clerkUserId, seed.clerkOrgId)
+		);
+		const result = await asUser.query(api.quotes.getApprovalAudit, {
+			quoteId: seed.quoteId,
+		});
+
+		// rowBadRow: filtered (row.orgId mismatch)
+		// rowBadContact: filtered (contact.orgId mismatch)
+		// rowBadDoc: filtered (document.orgId mismatch — implementation choice: drop entirely)
+		expect(result).toHaveLength(1);
+		expect(result[0].auditId).toBe(rowGoodId);
+		expect(result[0].documentId).toBe(docAId);
+	});
+
+	it("Test F — lineItemsSnapshot is null for empty arrays (DTO normalization, per D-2)", async () => {
+		const seed = await seedOrgA();
+		const { docId: docAId } = await insertDocument(
+			seed.orgId,
+			seed.quoteId,
+			1,
+			"v1-pdf"
+		);
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert("quoteApprovals", {
+				quoteId: seed.quoteId,
+				orgId: seed.orgId,
+				clientContactId: seed.contactId,
+				action: "approved",
+				ipAddress: "1.2.3.4",
+				userAgent: "UA",
+				documentId: docAId,
+				documentVersion: 1,
+				lineItemsSnapshot: [],
+				subtotalSnapshot: 0,
+				taxSnapshot: 0,
+				totalSnapshot: 0,
+				createdAt: 9000,
+			});
+		});
+
+		const asUser = t.withIdentity(
+			createTestIdentity(seed.clerkUserId, seed.clerkOrgId)
+		);
+		const result = await asUser.query(api.quotes.getApprovalAudit, {
+			quoteId: seed.quoteId,
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0].lineItemsSnapshot).toBeNull();
+	});
+});

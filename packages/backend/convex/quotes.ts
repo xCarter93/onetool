@@ -1,5 +1,5 @@
 import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
@@ -875,5 +875,87 @@ export const getExpiringSoon = query({
 				quote.validUntil <= expirationThreshold &&
 				quote.validUntil > now
 		);
+	},
+});
+
+/**
+ * Plan 14.1-02 (QUOTE-04 workspace half): read the portal-quote audit trail.
+ * Org-scoped. Returns rows newest-first; mints fresh signed URLs per row for
+ * both the signature blob and the audit-pinned PDF document.
+ *
+ * Per-row defense-in-depth: row.orgId, contact.orgId, and document.orgId are
+ * all validated against the caller's orgId — corrupted cross-org rows are
+ * dropped, not leaked. Audit-pinned PDF resolves from row.documentId (NOT
+ * quote.latestDocumentId) so re-published quotes still surface the version
+ * the client actually approved.
+ */
+export const getApprovalAudit = query({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		const orgId = await getCurrentUserOrgId(ctx);
+
+		const quote = await ctx.db.get(quoteId);
+		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
+		if (quote.orgId !== orgId)
+			throw new ConvexError({ code: "FORBIDDEN" });
+
+		const rows = await ctx.db
+			.query("quoteApprovals")
+			.withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
+			.order("desc")
+			.collect();
+
+		const dtos = await Promise.all(
+			rows.map(async (row) => {
+				// Defense-in-depth check 1: row.orgId
+				if (row.orgId !== orgId) return null;
+
+				// Defense-in-depth check 2: contact.orgId
+				const contact = await ctx.db.get(row.clientContactId);
+				if (!contact || contact.orgId !== orgId) return null;
+
+				// Defense-in-depth check 3: auditPinnedDoc.orgId — drop rows
+				// whose pinned document is foreign (also covers missing doc).
+				const auditPinnedDoc = await ctx.db.get(row.documentId);
+				if (!auditPinnedDoc || auditPinnedDoc.orgId !== orgId)
+					return null;
+
+				const auditPinnedPdfUrl = await ctx.storage.getUrl(
+					auditPinnedDoc.storageId
+				);
+
+				const signatureUrl = row.signatureStorageId
+					? await ctx.storage.getUrl(row.signatureStorageId)
+					: null;
+
+				// Empty-snapshot normalization (Test F + user decision D-2):
+				// surface null so the UI placeholder branch fires cleanly.
+				const snapshot =
+					row.lineItemsSnapshot && row.lineItemsSnapshot.length > 0
+						? row.lineItemsSnapshot
+						: null;
+
+				return {
+					auditId: row._id,
+					action: row.action,
+					createdAt: row.createdAt,
+					documentVersion: row.documentVersion,
+					ipAddress: row.ipAddress,
+					userAgent: row.userAgent,
+					declineReason: row.declineReason ?? null,
+					signatureUrl,
+					signatureMode: row.signatureMode ?? null,
+					contactEmail: contact.email ?? "",
+					documentId: row.documentId,
+					auditPinnedPdfUrl,
+					lineItemsSnapshot: snapshot,
+					subtotalSnapshot: row.subtotalSnapshot,
+					taxSnapshot: row.taxSnapshot,
+					totalSnapshot: row.totalSnapshot,
+				};
+			})
+		);
+
+		return dtos.filter((d): d is NonNullable<typeof d> => d !== null);
 	},
 });

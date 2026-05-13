@@ -1,5 +1,11 @@
-import { query, mutation, internalMutation } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	internalQuery,
+} from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import {
 	getCurrentUserOrThrow,
 	getCurrentUser,
@@ -435,31 +441,70 @@ export const regenerateReceivingAddress = mutation({
 });
 
 /**
- * Persist the Stripe Connect account ID for the current organization.
- * Only the organization owner can set this value.
+ * Return the caller's Connect context using only session-derived identity.
  */
-export const setStripeConnectAccountId = mutation({
-	args: {
-		accountId: v.string(),
+export const getOrgForCallerInternal = query({
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUserOrThrow(ctx);
+		// Member-aware lookup keeps non-owner errors distinct from missing orgs.
+		const userOrgId = await getCurrentUserOrgId(ctx);
+		const organization = await ctx.db.get(userOrgId);
+		if (!organization) {
+			throw new Error("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("NOT_ORG_OWNER");
+		}
+		return {
+			userId: user._id,
+			orgId: organization._id,
+			stripeConnectAccountId: organization.stripeConnectAccountId ?? null,
+			organization: {
+				_id: organization._id,
+				name: organization.name,
+				email: organization.email,
+				addressCountry: organization.addressCountry,
+				stripeConnectAccountId: organization.stripeConnectAccountId,
+				ownerUserId: organization.ownerUserId,
+			},
+		};
 	},
+});
+
+/**
+ * Persist a Connect account id on the caller's org with owner and duplicate guards.
+ */
+export const setStripeConnectAccountIdInternal = mutation({
+	args: { accountId: v.string() },
 	handler: async (ctx, args) => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
-
 		const organization = await ctx.db.get(userOrgId);
 		if (!organization) {
-			throw new Error("Organization not found");
+			throw new Error("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("NOT_ORG_OWNER");
 		}
 
-		if (organization.ownerUserId !== user._id) {
-			throw new Error("Only organization owner can manage payments onboarding");
+		// Prevent one Stripe account from being mapped to multiple orgs.
+		const existing = await ctx.db
+			.query("organizations")
+			.withIndex("by_stripe_connect_account_id", (q) =>
+				q.eq("stripeConnectAccountId", args.accountId)
+			)
+			.first();
+		if (existing && existing._id !== userOrgId) {
+			throw new Error(
+				`DUPLICATE_CONNECT_ACCOUNT: account ${args.accountId} already mapped to org ${existing._id}`
+			);
 		}
 
 		await ctx.db.patch(userOrgId, {
 			stripeConnectAccountId: args.accountId,
 		});
-
-		return args.accountId;
+		return null;
 	},
 });
 
@@ -540,6 +585,59 @@ export const removeMember = mutation({
 });
 
 /**
+ * Resolve a Stripe Connect account id to the owning org.
+ */
+export const getByStripeConnectAccountIdInternal = internalQuery({
+	args: { accountId: v.string() },
+	returns: v.union(
+		v.null(),
+		v.object({
+			_id: v.id("organizations"),
+			stripeConnectAccountId: v.optional(v.string()),
+		})
+	),
+	handler: async (ctx, args) => {
+		const org = await ctx.db
+			.query("organizations")
+			.withIndex("by_stripe_connect_account_id", (q) =>
+				q.eq("stripeConnectAccountId", args.accountId)
+			)
+			.first();
+		if (!org) return null;
+		return {
+			_id: org._id,
+			stripeConnectAccountId: org.stripeConnectAccountId,
+		};
+	},
+});
+
+/**
+ * Refresh cached Connect onboarding status from a verified webhook.
+ */
+export const updateStripeConnectStatusInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		chargesEnabled: v.boolean(),
+		payoutsEnabled: v.boolean(),
+		detailsSubmitted: v.boolean(),
+		requirementsCurrentlyDue: v.array(v.string()),
+		requirementsDisabledReason: v.optional(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.orgId, {
+			stripeChargesEnabled: args.chargesEnabled,
+			stripePayoutsEnabled: args.payoutsEnabled,
+			stripeDetailsSubmitted: args.detailsSubmitted,
+			stripeRequirementsCurrentlyDue: args.requirementsCurrentlyDue,
+			stripeRequirementsDisabledReason: args.requirementsDisabledReason,
+			stripeStatusUpdatedAt: Date.now(),
+		});
+		return null;
+	},
+});
+
+/**
  * Delete organization (owner only) - careful operation!
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -576,5 +674,151 @@ export const deleteOrganization = mutation({
 		await ctx.db.delete(userOrgId);
 
 		return { success: true };
+	},
+});
+
+/**
+ * List orgs with Connect accounts for the read-only revalidation migration.
+ */
+export const listAllWithConnectAccountInternal = internalQuery({
+	args: {},
+	returns: v.array(
+		v.object({
+			_id: v.id("organizations"),
+			name: v.string(),
+			email: v.optional(v.string()),
+			stripeConnectAccountId: v.optional(v.string()),
+		})
+	),
+	handler: async (ctx) => {
+		const all = await ctx.db.query("organizations").collect();
+		return all
+			.filter((o) => o.stripeConnectAccountId)
+			.map((o) => ({
+				_id: o._id,
+				name: o.name,
+				email: o.email,
+				stripeConnectAccountId: o.stripeConnectAccountId,
+			}));
+	},
+});
+
+// Re-cache Connect capabilities and notify only on active -> inactive degradation.
+export const updateStripeCapabilityInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		capabilityId: v.string(),
+		status: v.union(
+			v.literal("active"),
+			v.literal("inactive"),
+			v.literal("pending"),
+			v.literal("unrequested")
+		),
+		requirementsCurrentlyDue: v.array(v.string()),
+		requirementsDisabledReason: v.optional(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) return null;
+
+		// Payout capability events still use the v1 "transfers" capability id.
+		const isCharges = args.capabilityId === "card_payments";
+		const isPayouts = args.capabilityId === "transfers";
+		if (!isCharges && !isPayouts) {
+			console.log(
+				`capability.updated: unhandled capability ${args.capabilityId}`
+			);
+			return null;
+		}
+
+		const fieldName = isCharges
+			? ("stripeChargesEnabled" as const)
+			: ("stripePayoutsEnabled" as const);
+		const priorValue = org[fieldName];
+		const newValue = args.status === "active";
+		const isDegradation = priorValue === true && newValue === false;
+
+		// Only patch requirement fields on degradation to avoid clobbering account.updated.
+		const patch: Record<string, unknown> = {
+			[fieldName]: newValue,
+			stripeStatusUpdatedAt: Date.now(),
+		};
+		if (isDegradation) {
+			patch.stripeRequirementsCurrentlyDue = args.requirementsCurrentlyDue;
+			patch.stripeRequirementsDisabledReason = args.requirementsDisabledReason;
+		}
+		await ctx.db.patch(args.orgId, patch);
+
+		// Notify only on active -> not-active transitions.
+		if (isDegradation) {
+			const label = isCharges ? "charges" : "payouts";
+			await ctx.runMutation(
+				internal.notifications.createWebhookNotificationInternal,
+				{
+					orgId: args.orgId,
+					type: "capability_degraded",
+					priority: "high",
+					message: `Stripe ${label} have been disabled: ${args.requirementsDisabledReason ?? "reason unknown"}. Update onboarding to restore.`,
+				}
+			);
+		}
+		return null;
+	},
+});
+
+// Persist bank-account fingerprint from external_account webhooks.
+export const updateExternalAccountFingerprintInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		last4: v.string(),
+		bankName: v.union(v.string(), v.null()),
+		updatedAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.orgId, {
+			stripeExternalAccountLast4: args.last4,
+			stripeExternalAccountBankName: args.bankName ?? undefined,
+			stripeExternalAccountUpdatedAt: args.updatedAt,
+		});
+		return null;
+	},
+});
+
+// Clear all cached Connect state for the session-derived org.
+export const clearStripeConnectStateInternal = mutation({
+	args: { orgId: v.id("organizations") },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) {
+			throw new Error("UNAUTHORIZED");
+		}
+		const user = await getCurrentUserOrThrow(ctx);
+		const userOrgId = await getCurrentUserOrgId(ctx);
+		if (userOrgId !== args.orgId) {
+			throw new Error("ORG_MISMATCH");
+		}
+		const organization = await ctx.db.get(userOrgId);
+		if (!organization) {
+			throw new Error("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("NOT_ORG_OWNER");
+		}
+		await ctx.db.patch(args.orgId, {
+			stripeConnectAccountId: undefined,
+			stripeChargesEnabled: undefined,
+			stripePayoutsEnabled: undefined,
+			stripeDetailsSubmitted: undefined,
+			stripeRequirementsCurrentlyDue: undefined,
+			stripeRequirementsDisabledReason: undefined,
+			stripeStatusUpdatedAt: undefined,
+			stripeExternalAccountLast4: undefined,
+			stripeExternalAccountBankName: undefined,
+			stripeExternalAccountUpdatedAt: undefined,
+		});
+		return null;
 	},
 });

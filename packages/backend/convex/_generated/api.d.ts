@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as __tests___fixtures_stripeEvents from "../__tests__/fixtures/stripeEvents.js";
 import type * as activities from "../activities.js";
 import type * as aggregates from "../aggregates.js";
 import type * as automationExecutor from "../automationExecutor.js";
@@ -55,6 +56,7 @@ import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresse
 import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
 import type * as migrations_migrateAutomationTriggers from "../migrations/migrateAutomationTriggers.js";
 import type * as migrations_populateAggregates from "../migrations/populateAggregates.js";
+import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
 import type * as notifications from "../notifications.js";
 import type * as organizationDocuments from "../organizationDocuments.js";
@@ -81,6 +83,8 @@ import type * as serviceStatus from "../serviceStatus.js";
 import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
 import type * as stripePaymentActions from "../stripePaymentActions.js";
+import type * as stripeWebhookActions from "../stripeWebhookActions.js";
+import type * as stripeWebhookEvents from "../stripeWebhookEvents.js";
 import type * as tasks from "../tasks.js";
 import type * as usage from "../usage.js";
 import type * as userTour from "../userTour.js";
@@ -93,6 +97,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "__tests__/fixtures/stripeEvents": typeof __tests___fixtures_stripeEvents;
   activities: typeof activities;
   aggregates: typeof aggregates;
   automationExecutor: typeof automationExecutor;
@@ -140,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
   "migrations/migrateAutomationTriggers": typeof migrations_migrateAutomationTriggers;
   "migrations/populateAggregates": typeof migrations_populateAggregates;
+  "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;
   notifications: typeof notifications;
   organizationDocuments: typeof organizationDocuments;
@@ -166,6 +172,8 @@ declare const fullApi: ApiFromModules<{
   serviceStatusActions: typeof serviceStatusActions;
   skus: typeof skus;
   stripePaymentActions: typeof stripePaymentActions;
+  stripeWebhookActions: typeof stripeWebhookActions;
+  stripeWebhookEvents: typeof stripeWebhookEvents;
   tasks: typeof tasks;
   usage: typeof usage;
   userTour: typeof userTour;

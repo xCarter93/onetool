@@ -88,6 +88,17 @@ export default defineSchema({
 
 		// Stripe Connect
 		stripeConnectAccountId: v.optional(v.string()),
+		// Cached Connect onboarding status (refreshed by account.updated webhook).
+		stripeChargesEnabled: v.optional(v.boolean()),
+		stripePayoutsEnabled: v.optional(v.boolean()),
+		stripeDetailsSubmitted: v.optional(v.boolean()),
+		stripeRequirementsCurrentlyDue: v.optional(v.array(v.string())),
+		stripeRequirementsDisabledReason: v.optional(v.string()),
+		stripeStatusUpdatedAt: v.optional(v.number()),
+		// External bank-account fingerprint from Stripe webhooks.
+		stripeExternalAccountLast4: v.optional(v.string()),
+		stripeExternalAccountBankName: v.optional(v.string()),
+		stripeExternalAccountUpdatedAt: v.optional(v.number()),
 		plan: v.optional(
 			v.union(v.literal("trial"), v.literal("pro"), v.literal("cancelled"))
 		), // Deprecated: Use Clerk billing fields instead
@@ -104,7 +115,8 @@ export default defineSchema({
 	})
 		.index("by_owner", ["ownerUserId"])
 		.index("by_clerk_org", ["clerkOrganizationId"])
-		.index("by_receiving_address", ["receivingAddress"]),
+		.index("by_receiving_address", ["receivingAddress"])
+		.index("by_stripe_connect_account_id", ["stripeConnectAccountId"]),
 
 	organizationMemberships: defineTable({
 		orgId: v.id("organizations"),
@@ -508,6 +520,7 @@ export default defineSchema({
 			v.literal("pending"),
 			v.literal("sent"),
 			v.literal("paid"),
+			v.literal("refunded"),
 			v.literal("overdue"),
 			v.literal("cancelled")
 		),
@@ -519,6 +532,17 @@ export default defineSchema({
 		// Stripe integration
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
+
+		// Webhook-driven Stripe lifecycle state.
+		disputed: v.optional(v.boolean()),
+		disputeId: v.optional(v.string()),
+		refundedAt: v.optional(v.number()),
+		// Increments per fresh Checkout Session mint for idempotency keys.
+		checkoutAttemptCounter: v.optional(v.number()),
+		// Active Checkout Session cache for retry reuse.
+		pendingCheckoutSessionId: v.optional(v.string()),
+		pendingCheckoutSessionUrl: v.optional(v.string()),
+		pendingCheckoutSessionExpiresAt: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_invoice", ["invoiceId"])
@@ -647,7 +671,16 @@ export default defineSchema({
 			v.literal("team_assignment"),
 			v.literal("client_mention"),
 			v.literal("project_mention"),
-			v.literal("quote_mention")
+			v.literal("quote_mention"),
+			// Stripe webhook lifecycle notifications.
+			v.literal("payment_failed"),
+			v.literal("dispute_created"),
+			v.literal("charge_refunded"),
+			// Stripe Connect lifecycle additions.
+			v.literal("payout_paid"),
+			v.literal("payout_failed"),
+			v.literal("capability_degraded"),
+			v.literal("bank_account_changed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -670,6 +703,9 @@ export default defineSchema({
 			v.union(v.literal("email"), v.literal("sms"), v.literal("in_app"))
 		),
 		hasAttachments: v.optional(v.boolean()), // Quick flag for whether this notification has attachments
+		// Optional Stripe webhook notification metadata.
+		priority: v.optional(v.union(v.literal("normal"), v.literal("high"))),
+		paymentId: v.optional(v.id("payments")),
 	})
 		.index("by_user_read", ["userId", "isRead"])
 		.index("by_org", ["orgId"])
@@ -1446,4 +1482,24 @@ export default defineSchema({
 		.index("by_contact", ["clientContactId"])
 		.index("by_jti", ["tokenJti"])
 		.index("by_expires", ["expiresAt"]),
+
+	// Stripe Connect webhook event ledger.
+	stripeWebhookEvents: defineTable({
+		stripeEventId: v.string(),
+		eventType: v.string(),
+		accountId: v.optional(v.string()),
+		status: v.union(
+			v.literal("received"),
+			v.literal("processing"),
+			v.literal("processed"),
+			v.literal("failed")
+		),
+		receivedAt: v.number(),
+		processedAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()),
+		failureReason: v.optional(v.string()),
+		attemptCount: v.number(),
+	})
+		.index("by_stripe_event_id", ["stripeEventId"])
+		.index("by_status", ["status"]),
 });

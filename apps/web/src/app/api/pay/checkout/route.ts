@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
 import { getStripeClient } from "@/lib/stripe";
+import { env } from "@/env";
+
+// Avoid reusing a Checkout URL too close to expiration.
+const REUSE_BUFFER_MS = 60_000;
 
 export async function POST(request: NextRequest) {
 	try {
@@ -55,6 +59,19 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
+			// Reuse an active Checkout Session instead of minting duplicate attempts.
+			const now = Date.now();
+			const reusableUrl = paymentData.payment.pendingCheckoutSessionUrl;
+			const reusableExpiresAt =
+				paymentData.payment.pendingCheckoutSessionExpiresAt;
+			if (
+				reusableUrl &&
+				reusableExpiresAt &&
+				now < reusableExpiresAt - REUSE_BUFFER_MS
+			) {
+				return NextResponse.json({ url: reusableUrl });
+			}
+
 			const amountInCents = Math.max(
 				0,
 				Math.round((paymentData.payment.paymentAmount ?? 0) * 100)
@@ -65,6 +82,14 @@ export async function POST(request: NextRequest) {
 					{ status: 400 }
 				);
 			}
+
+			// Compute the next attempt id without committing it. Counter only
+			// advances if Stripe actually mints a session — otherwise a
+			// transient failure here would burn a key the customer never used,
+			// and Stripe's idempotency cache would block the same key from
+			// retrying that failure cleanly.
+			const attemptId =
+				(paymentData.payment.checkoutAttemptCounter ?? 0) + 1;
 
 			const stripe = getStripeClient();
 
@@ -94,9 +119,7 @@ export async function POST(request: NextRequest) {
 						},
 					],
 					payment_intent_data: {
-						application_fee_amount: parseInt(
-							process.env.STRIPE_APPLICATION_FEE_CENTS || "100"
-						),
+						application_fee_amount: env.STRIPE_APPLICATION_FEE_CENTS,
 						metadata: {
 							publicToken: paymentData.payment.publicToken,
 							paymentId: paymentData.payment._id,
@@ -113,8 +136,34 @@ export async function POST(request: NextRequest) {
 				},
 				{
 					stripeAccount: accountId,
+					idempotencyKey: `pay-${paymentData.payment.publicToken}-${attemptId}`,
 				}
 			);
+
+			if (!session.url) {
+				return NextResponse.json(
+					{ error: "Stripe did not return a checkout URL. Please try again." },
+					{ status: 502 }
+				);
+			}
+
+			// Persist the pending session so a within-window retry reuses the URL,
+			// and commit the attempt counter so the next mint gets a fresh key.
+			if (session.id && session.expires_at) {
+				await convex.mutation(
+					api.payments.persistPendingCheckoutSessionInternal,
+					{
+						publicToken: paymentData.payment.publicToken,
+						pendingCheckoutSessionId: session.id,
+						pendingCheckoutSessionUrl: session.url,
+						pendingCheckoutSessionExpiresAt: session.expires_at * 1000,
+					}
+				);
+				await convex.mutation(
+					api.payments.incrementCheckoutAttemptCounterInternal,
+					{ publicToken: paymentData.payment.publicToken }
+				);
+			}
 
 			return NextResponse.json({ url: session.url });
 		}
@@ -182,9 +231,7 @@ export async function POST(request: NextRequest) {
 					},
 				],
 				payment_intent_data: {
-					application_fee_amount: parseInt(
-						process.env.STRIPE_APPLICATION_FEE_CENTS || "100"
-					),
+					application_fee_amount: env.STRIPE_APPLICATION_FEE_CENTS,
 					metadata: {
 						publicToken: invoiceData.invoice.publicToken,
 						invoiceNumber: invoiceData.invoice.invoiceNumber ?? "",
@@ -201,6 +248,13 @@ export async function POST(request: NextRequest) {
 				stripeAccount: accountId,
 			}
 		);
+
+		if (!session.url) {
+			return NextResponse.json(
+				{ error: "Stripe did not return a checkout URL. Please try again." },
+				{ status: 502 }
+			);
+		}
 
 		return NextResponse.json({ url: session.url });
 	} catch (error) {

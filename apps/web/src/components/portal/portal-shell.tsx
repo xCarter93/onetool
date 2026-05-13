@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTransition } from "react";
 import { FileText, ReceiptText, LogOut } from "lucide-react";
 import { BrandHeader } from "./brand-header";
@@ -36,7 +36,6 @@ export function PortalShell({
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
-	const router = useRouter();
 	const [pending, startTransition] = useTransition();
 
 	// Gap 4 (Plan 14-08): suppress MobileTabBar on /portal/c/{id}/quotes/{quoteId}
@@ -48,15 +47,18 @@ export function PortalShell({
 	);
 
 	function handleSignOut() {
-		startTransition(async () => {
-			try {
-				await fetch("/api/portal/logout", {
-					method: "POST",
-					credentials: "same-origin",
-				});
-			} finally {
-				router.push(`/portal/c/${clientPortalId}/signed-out`);
-			}
+		startTransition(() => {
+			// keepalive lets the revoke survive the hard navigation below.
+			// Hard-navigate (not router.push) so all portal useQuery subscribers
+			// tear down before the session row is revoked; a soft transition
+			// keeps the source page mounted long enough for an in-flight refetch
+			// to hit the revoked session and throw UNAUTHENTICATED.
+			void fetch("/api/portal/logout", {
+				method: "POST",
+				credentials: "same-origin",
+				keepalive: true,
+			}).catch(() => {});
+			window.location.assign(`/portal/c/${clientPortalId}/signed-out`);
 		});
 	}
 
