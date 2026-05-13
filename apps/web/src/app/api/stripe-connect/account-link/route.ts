@@ -51,6 +51,12 @@ export async function POST(request: NextRequest) {
 		// Plan 14.2.1-03: v2 cutover. use_case wrapping carries the v2 configurations
 		// list (merchant + recipient) so onboarding collects requirements for both
 		// configurations applied in createConnectAccount.
+		//
+		// collection_options.fields = "eventually_due": collect both currently_due
+		// AND eventually_due requirements in a single onboarding flow. Default is
+		// "currently_due", which makes Stripe segment onboarding into multiple
+		// rounds (basic info → return to platform → identity verification → return),
+		// confusing for users whose activation is gated on completing payouts setup.
 		const accountLink = await stripe.v2.core.accountLinks.create(
 			{
 				account: ctx.stripeConnectAccountId,
@@ -58,6 +64,7 @@ export async function POST(request: NextRequest) {
 					type: "account_onboarding",
 					account_onboarding: {
 						configurations: ["merchant", "recipient"],
+						collection_options: { fields: "eventually_due" },
 						return_url: returnUrl,
 						refresh_url: refreshUrl,
 					},
