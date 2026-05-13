@@ -859,11 +859,10 @@ export const markPaidFromWebhookInternal = internalMutation({
 			typeof args.metadata?.publicToken === "string"
 				? args.metadata.publicToken
 				: undefined;
-		const invoiceIdStr =
-			typeof args.metadata?.invoiceId === "string"
-				? args.metadata.invoiceId
-				: undefined;
 
+		// publicToken is required: it uniquely identifies the installment row.
+		// Falling back to invoiceId is unsafe because invoices can have multiple
+		// installments and `.first()` would pick an arbitrary one.
 		let payment: Doc<"payments"> | null = null;
 		if (publicToken) {
 			payment = await ctx.db
@@ -872,12 +871,6 @@ export const markPaidFromWebhookInternal = internalMutation({
 					q.eq("publicToken", publicToken)
 				)
 				.unique();
-		} else if (invoiceIdStr) {
-			payment = await ctx.db
-				.query("payments")
-				.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
-				.filter((q) => q.eq(q.field("invoiceId"), invoiceIdStr))
-				.first();
 		}
 
 		if (!payment) {

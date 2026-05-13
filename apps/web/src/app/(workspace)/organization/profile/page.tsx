@@ -242,12 +242,14 @@ function StatusPill({
 		: "bg-amber-500 dark:bg-amber-400";
 	const valueText = value ? trueText : falseText;
 	return (
-		<span className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 dark:bg-muted/20 px-2.5 py-0.5 text-xs font-medium text-foreground">
+		<span
+			className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 dark:bg-muted/20 px-2.5 py-0.5 text-xs font-medium text-foreground"
+			aria-label={`${label}: ${valueText}`}
+		>
 			<span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-			<span className="text-muted-foreground">{label}</span>
+			<span aria-hidden="true" className="text-muted-foreground">{label}</span>
 			<span aria-hidden="true">·</span>
-			<span>{valueText}</span>
-			<span className="sr-only">{`${label}: ${valueText}`}</span>
+			<span aria-hidden="true">{valueText}</span>
 		</span>
 	);
 }

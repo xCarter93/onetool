@@ -1,7 +1,10 @@
 import "server-only";
 import { type NextRequest, NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/stripe";
-import { getOrgConnectAccountForCaller } from "@/lib/stripeConnect";
+import {
+	getOrgConnectAccountForCaller,
+	mapConnectError,
+} from "@/lib/stripeConnect";
 
 /**
  * Create an onboarding link for the caller's connected account.
@@ -65,22 +68,6 @@ export async function POST(request: NextRequest) {
 			expires_at: accountLink.expires_at,
 		});
 	} catch (err) {
-		const message =
-			err instanceof Error ? err.message : "Failed to create onboarding link";
-		const status =
-			message === "UNAUTHORIZED"
-				? 401
-				: message === "ORG_NOT_FOUND"
-					? 401
-					: message === "NOT_ORG_OWNER"
-						? 403
-						: message.startsWith("OneTool Connect is currently US-only")
-							? 400
-							: message === "ORG_HAS_NO_EMAIL"
-								? 400
-								: message.startsWith("DUPLICATE_CONNECT_ACCOUNT")
-									? 409
-									: 500;
-		return NextResponse.json({ error: message }, { status });
+		return mapConnectError(err, "Failed to create onboarding link");
 	}
 }

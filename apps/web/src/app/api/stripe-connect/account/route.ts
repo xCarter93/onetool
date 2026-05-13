@@ -7,6 +7,7 @@ import {
 	getOrgConnectAccountForCaller,
 	createConnectAccount,
 	deriveConnectStatusFromV2Account,
+	mapConnectError,
 	type ConnectContext,
 } from "@/lib/stripeConnect";
 
@@ -88,21 +89,3 @@ async function createPersistAndReturn(
 	});
 }
 
-function mapConnectError(err: unknown, fallback: string): NextResponse {
-	const message = err instanceof Error ? err.message : fallback;
-	const status =
-		message === "UNAUTHORIZED"
-			? 401
-			: message === "ORG_NOT_FOUND"
-				? 401
-				: message === "NOT_ORG_OWNER"
-					? 403
-					: message.startsWith("OneTool Connect is currently US-only")
-						? 400
-						: message === "ORG_HAS_NO_EMAIL"
-							? 400
-							: message.startsWith("DUPLICATE_CONNECT_ACCOUNT")
-								? 409
-								: 500;
-	return NextResponse.json({ error: message }, { status });
-}

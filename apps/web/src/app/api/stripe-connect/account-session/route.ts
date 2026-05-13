@@ -1,7 +1,10 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/stripe";
-import { getOrgConnectAccountForCaller } from "@/lib/stripeConnect";
+import {
+	getOrgConnectAccountForCaller,
+	mapConnectError,
+} from "@/lib/stripeConnect";
 
 /**
  * Create an Account Session for the caller's connected account.
@@ -39,22 +42,6 @@ export async function POST() {
 		return NextResponse.json({ clientSecret: accountSession.client_secret });
 	} catch (err) {
 		console.error("Account session creation error:", err);
-		const message =
-			err instanceof Error ? err.message : "Failed to create account session";
-		const status =
-			message === "UNAUTHORIZED"
-				? 401
-				: message === "ORG_NOT_FOUND"
-					? 401
-					: message === "NOT_ORG_OWNER"
-						? 403
-						: message.startsWith("OneTool Connect is currently US-only")
-							? 400
-							: message === "ORG_HAS_NO_EMAIL"
-								? 400
-								: message.startsWith("DUPLICATE_CONNECT_ACCOUNT")
-									? 409
-									: 500;
-		return NextResponse.json({ error: message }, { status });
+		return mapConnectError(err, "Failed to create account session");
 	}
 }

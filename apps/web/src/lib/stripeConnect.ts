@@ -1,6 +1,7 @@
 import "server-only";
 import { auth } from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
+import { NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type Stripe from "stripe";
@@ -132,10 +133,37 @@ export function deriveConnectStatusFromV2Account(
 		chargesEnabled: merchantCaps?.card_payments?.status === "active",
 		payoutsEnabled:
 			recipientCaps?.stripe_balance?.stripe_transfers?.status === "active",
+		// Treat missing requirements as "not yet submitted" — a freshly created
+		// v2 account can return requirements:null before Stripe analyses it.
 		detailsSubmitted:
-			(account.requirements?.entries?.filter(
+			Array.isArray(account.requirements?.entries) &&
+			account.requirements.entries.filter(
 				(e) => e.awaiting_action_from === "user"
-			).length ?? 0) === 0,
+			).length === 0,
 		requirements: account.requirements ?? null,
 	};
+}
+
+// Map Connect helper error messages to HTTP responses. Shared across all
+// /api/stripe-connect/* routes so error codes stay in lockstep.
+export function mapConnectError(
+	err: unknown,
+	fallback: string
+): NextResponse {
+	const message = err instanceof Error ? err.message : fallback;
+	const status =
+		message === "UNAUTHORIZED"
+			? 401
+			: message === "ORG_NOT_FOUND"
+				? 401
+				: message === "NOT_ORG_OWNER"
+					? 403
+					: message.startsWith("OneTool Connect is currently US-only")
+						? 400
+						: message === "ORG_HAS_NO_EMAIL"
+							? 400
+							: message.startsWith("DUPLICATE_CONNECT_ACCOUNT")
+								? 409
+								: 500;
+	return NextResponse.json({ error: message }, { status });
 }

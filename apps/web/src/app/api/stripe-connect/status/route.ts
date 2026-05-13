@@ -4,6 +4,7 @@ import { getStripeClient } from "@/lib/stripe";
 import {
 	getOrgConnectAccountForCaller,
 	deriveConnectStatusFromV2Account,
+	mapConnectError,
 } from "@/lib/stripeConnect";
 
 /**
@@ -41,22 +42,6 @@ export async function POST() {
 			requirements: derived.requirements,
 		});
 	} catch (err) {
-		const message =
-			err instanceof Error ? err.message : "Failed to fetch account status";
-		const status =
-			message === "UNAUTHORIZED"
-				? 401
-				: message === "ORG_NOT_FOUND"
-					? 401
-					: message === "NOT_ORG_OWNER"
-						? 403
-						: message.startsWith("OneTool Connect is currently US-only")
-							? 400
-							: message === "ORG_HAS_NO_EMAIL"
-								? 400
-								: message.startsWith("DUPLICATE_CONNECT_ACCOUNT")
-									? 409
-									: 500;
-		return NextResponse.json({ error: message }, { status });
+		return mapConnectError(err, "Failed to fetch account status");
 	}
 }
