@@ -118,6 +118,10 @@ interface NotificationStats {
 		client_mention: number;
 		project_mention: number;
 		quote_mention: number;
+		// Plan 14.2-03 (FINDINGS W-3) — Stripe webhook lifecycle types.
+		payment_failed: number;
+		dispute_created: number;
+		charge_refunded: number;
 	};
 	today: number;
 	pending: number; // scheduled but not sent yet
@@ -137,6 +141,9 @@ function createEmptyNotificationStats(): NotificationStats {
 			client_mention: 0,
 			project_mention: 0,
 			quote_mention: 0,
+			payment_failed: 0,
+			dispute_created: 0,
+			charge_refunded: 0,
 		},
 		today: 0,
 		pending: 0,

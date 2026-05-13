@@ -96,7 +96,7 @@ describe("POST /api/stripe-webhook", () => {
 		const event = buildStripeEvent({
 			type: "checkout.session.completed",
 			account: "acct_test",
-			data: { object: { id: "cs_test_1" } },
+			data: { object: { id: "cs_test_1" } as never },
 		});
 		const { rawBody } = buildSignedWebhookRequest(event, TEST_SECRET);
 
@@ -111,7 +111,7 @@ describe("POST /api/stripe-webhook", () => {
 		const event = buildStripeEvent({
 			type: "checkout.session.completed",
 			account: "acct_test",
-			data: { object: { id: "cs_test_2" } },
+			data: { object: { id: "cs_test_2" } as never },
 		});
 		// Sign with a DIFFERENT secret than env.STRIPE_CONNECT_WEBHOOK_SECRET.
 		const { rawBody, signature } = buildSignedWebhookRequest(
@@ -135,7 +135,7 @@ describe("POST /api/stripe-webhook", () => {
 			id: "evt_happy_1",
 			type: "checkout.session.completed",
 			account: "acct_test",
-			data: { object: { id: "cs_test_3" } },
+			data: { object: { id: "cs_test_3" } as never },
 		});
 		const { rawBody, signature } = buildSignedWebhookRequest(
 			event,
@@ -164,7 +164,7 @@ describe("POST /api/stripe-webhook", () => {
 		const event = buildStripeEvent({
 			type: "payment_intent.payment_failed",
 			account: "acct_test",
-			data: { object: { id: "pi_test_4" } },
+			data: { object: { id: "pi_test_4" } as never },
 		});
 		const { rawBody, signature } = buildSignedWebhookRequest(
 			event,
@@ -183,7 +183,7 @@ describe("POST /api/stripe-webhook", () => {
 		const event = buildStripeEvent({
 			type: "checkout.session.completed",
 			account: "acct_test",
-			data: { object: { id: "cs_test_5" } },
+			data: { object: { id: "cs_test_5" } as never },
 		});
 		const { rawBody, signature } = buildSignedWebhookRequest(
 			event,
@@ -205,7 +205,7 @@ describe("POST /api/stripe-webhook", () => {
 		const event = buildStripeEvent({
 			type: "account.updated",
 			account: "acct_unknown",
-			data: { object: { id: "acct_unknown" } },
+			data: { object: { id: "acct_unknown" } as never },
 		});
 		const { rawBody, signature } = buildSignedWebhookRequest(
 			event,
