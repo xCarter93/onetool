@@ -48,7 +48,10 @@ export default async function InvoiceDetailPage({
 
 	return (
 		<div className="-mx-6 md:-mx-9 -my-6 flex flex-col">
-			<header className="sticky top-0 z-20 flex h-[68px] items-center justify-between gap-4 border-b border-border bg-background px-6 md:px-9">
+			<header
+				data-sticky-detail-header
+				className="sticky top-0 z-20 flex h-[68px] items-center justify-between gap-4 border-b border-border bg-background px-6 md:px-9"
+			>
 				<div className="flex min-w-0 items-center gap-3">
 					<Link
 						href={`/portal/c/${clientPortalId}/invoices`}
@@ -62,7 +65,7 @@ export default async function InvoiceDetailPage({
 						Invoice #{data.invoice.invoiceNumber}
 					</h2>
 				</div>
-				<HeaderActionsClient hasPdf={hasPdf} />
+				<HeaderActionsClient invoiceId={invoiceId} hasPdf={hasPdf} />
 			</header>
 
 			{/* Mobile-only title block */}
