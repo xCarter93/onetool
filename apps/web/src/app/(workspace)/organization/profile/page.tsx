@@ -1108,7 +1108,7 @@ export default function OrganizationProfilePage() {
 						</TabsContent>
 
 						<TabsContent value="payments">
-							<div className="space-y-10">
+							<div className="space-y-8">
 								{/* Header */}
 								<section className="space-y-4">
 									<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1154,7 +1154,7 @@ export default function OrganizationProfilePage() {
 								</section>
 
 								{!organization?.stripeConnectAccountId ? (
-									<section className="border-t border-border/40 pt-10 space-y-4 max-w-2xl">
+									<section className="border-t border-border/40 pt-8 space-y-4 max-w-2xl">
 										<p className="text-sm text-foreground leading-relaxed">
 											Start by creating a connected account. You&apos;ll be
 											redirected to Stripe&apos;s hosted onboarding to provide
@@ -1180,73 +1180,36 @@ export default function OrganizationProfilePage() {
 									</section>
 								) : (
 									<>
-										{/* Account identity + status pills */}
-										<section className="border-t border-border/40 pt-10 space-y-4">
-											<div className="space-y-1">
-												<p className="text-xs uppercase tracking-wide text-muted-foreground">
-													Connected Account
-												</p>
-												<p className="font-mono text-sm text-foreground break-all">
-													{organization.stripeConnectAccountId}
-												</p>
-											</div>
-
-											<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-												<StatusPill
-													label="Details submitted"
-													value={Boolean(stripeStatus?.detailsSubmitted)}
-													trueText="Yes"
-													falseText="Pending"
-												/>
-												<StatusPill
-													label="Charges enabled"
-													value={Boolean(stripeStatus?.chargesEnabled)}
-												/>
-												<StatusPill
-													label="Payouts enabled"
-													value={Boolean(stripeStatus?.payoutsEnabled)}
-												/>
-											</div>
-										</section>
-
-										{/* Requirements */}
-										<section className="border-t border-border/40 pt-10 space-y-2">
-											<h3 className="text-lg font-semibold text-foreground">
-												Requirements
-											</h3>
-											{stripeStatus?.requirements?.currently_due?.length ? (
-												<ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-													{stripeStatus.requirements.currently_due.map(
-														(item) => (
-															<li key={item}>{item}</li>
-														)
-													)}
-												</ul>
-											) : (
-												<p className="text-sm text-muted-foreground">
-													No outstanding requirements reported.
-												</p>
-											)}
-											<p className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
-												<AlertTriangle className="h-4 w-4" />
-												Status is always fetched directly from Stripe; reload
-												if you make changes in the dashboard.
-											</p>
-										</section>
-
-										{/* Payouts */}
-										{onboardingComplete && isOwner && (
-											<section className="border-t border-border/40 pt-10 space-y-4">
-												<div>
-													<h3 className="text-lg font-semibold text-foreground">
-														Payouts
-													</h3>
-													<p className="text-sm text-muted-foreground">
-														Manage your payout schedule, view payout history,
-														and perform instant or manual payouts.
+										{/* Account header strip: identity + status pills + bank row */}
+										<section className="border-t border-border/40 pt-8">
+											<div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+												<div className="space-y-1 min-w-0">
+													<p className="text-xs uppercase tracking-wide text-muted-foreground">
+														Connected Account
+													</p>
+													<p className="font-mono text-sm text-foreground break-all">
+														{organization.stripeConnectAccountId}
 													</p>
 												</div>
-												<div className="mb-4">
+
+												<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+													<StatusPill
+														label="Details submitted"
+														value={Boolean(stripeStatus?.detailsSubmitted)}
+														trueText="Yes"
+														falseText="Pending"
+													/>
+													<StatusPill
+														label="Charges enabled"
+														value={Boolean(stripeStatus?.chargesEnabled)}
+													/>
+													<StatusPill
+														label="Payouts enabled"
+														value={Boolean(stripeStatus?.payoutsEnabled)}
+													/>
+												</div>
+
+												<div className="lg:min-w-[280px] lg:max-w-[360px]">
 													<LinkedBankAccountRow
 														bankName={
 															organization.stripeExternalAccountBankName
@@ -1257,83 +1220,101 @@ export default function OrganizationProfilePage() {
 														}
 													/>
 												</div>
-												<StripeConnectProvider
-													accountId={organization.stripeConnectAccountId}
-												>
-													{(connectInstance) => {
-														if (!connectInstance) {
-															return (
-																<div className="flex items-center justify-center py-8">
-																	<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-																	<span className="ml-2 text-sm text-muted-foreground">
-																		Loading payouts...
-																	</span>
-																</div>
-															);
-														}
-														return (
-															<ConnectComponentsProvider
-																connectInstance={connectInstance}
-															>
-																<ConnectPayouts />
-															</ConnectComponentsProvider>
-														);
-													}}
-												</StripeConnectProvider>
-											</section>
-										)}
+											</div>
+										</section>
+
+										{/* Main 2-column grid: requirements + fees + docs on left, money-flow + payouts on right */}
+										<div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-8 border-t border-border/40 pt-8">
+											{/* Left column */}
+											<div className="space-y-8">
+												{/* Requirements */}
+												<section className="space-y-2">
+													<h3 className="text-lg font-semibold text-foreground">
+														Requirements
+													</h3>
+													{stripeStatus?.requirements?.currently_due?.length ? (
+														<ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+															{stripeStatus.requirements.currently_due.map(
+																(item) => (
+																	<li key={item}>{item}</li>
+																)
+															)}
+														</ul>
+													) : (
+														<p className="text-sm text-muted-foreground">
+															No outstanding requirements reported.
+														</p>
+													)}
+													<p className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
+														<AlertTriangle className="h-4 w-4" />
+														Status is always fetched directly from Stripe;
+														reload if you make changes in the dashboard.
+													</p>
+												</section>
+
+												<FeeDisclosureTable />
+
+												<StripeDocLinks />
+											</div>
+
+											{/* Right column */}
+											<div className="space-y-8">
+												{/* How payments work */}
+												<section className="space-y-4">
+													<div>
+														<h3 className="text-lg font-semibold text-foreground">
+															How payments work
+														</h3>
+														<p className="text-sm text-muted-foreground max-w-2xl">
+															When a customer pays a OneTool invoice,
+															here&apos;s exactly where the money goes and
+															when it lands in your bank.
+														</p>
+													</div>
+													<MoneyFlowDiagram />
+												</section>
+
+												{/* Payouts (Stripe Connect embedded component) */}
+												{onboardingComplete && isOwner && (
+													<section className="space-y-4">
+														<div>
+															<h3 className="text-lg font-semibold text-foreground">
+																Payouts
+															</h3>
+															<p className="text-sm text-muted-foreground">
+																Manage your payout schedule, view payout
+																history, and perform instant or manual
+																payouts.
+															</p>
+														</div>
+														<StripeConnectProvider
+															accountId={organization.stripeConnectAccountId}
+														>
+															{(connectInstance) => {
+																if (!connectInstance) {
+																	return (
+																		<div className="flex items-center justify-center py-8">
+																			<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+																			<span className="ml-2 text-sm text-muted-foreground">
+																				Loading payouts...
+																			</span>
+																		</div>
+																	);
+																}
+																return (
+																	<ConnectComponentsProvider
+																		connectInstance={connectInstance}
+																	>
+																		<ConnectPayouts />
+																	</ConnectComponentsProvider>
+																);
+															}}
+														</StripeConnectProvider>
+													</section>
+												)}
+											</div>
+										</div>
 									</>
-								)}
-
-								{/* How payments work — always rendered */}
-								<section className="border-t border-border/40 pt-10 space-y-4">
-									<div>
-										<h3 className="text-lg font-semibold text-foreground">
-											How payments work
-										</h3>
-										<p className="text-sm text-muted-foreground max-w-2xl">
-											When a customer pays a OneTool invoice, here&apos;s
-											exactly where the money goes and when it lands in your
-											bank.
-										</p>
-									</div>
-									<MoneyFlowDiagram />
-								</section>
-
-								{/* Fees — always rendered */}
-								<section className="border-t border-border/40 pt-10">
-									<FeeDisclosureTable />
-								</section>
-
-								{/* Learn more — always rendered */}
-								<section className="border-t border-border/40 pt-10">
-									<StripeDocLinks />
-								</section>
-
-								{/* Bottom action row preserved for onboarded users */}
-								{organization?.stripeConnectAccountId && (
-									<div className="flex flex-wrap gap-3">
-										<Button
-											intent="outline"
-											onClick={refreshStripeAccountStatus}
-											isDisabled={statusLoading}
-										>
-											{statusLoading ? (
-												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-											) : (
-												<RefreshCcw className="mr-2 h-4 w-4" />
-											)}
-											Refresh status
-										</Button>
-										<OnboardingButton
-											onboardingLoading={onboardingLoading}
-											onboardingComplete={onboardingComplete}
-											onClick={handleStartStripeOnboarding}
-											variant="styled"
-											size="md"
-											intent="secondary"
-										/>
-									</div>
 								)}
 							</div>
 						</TabsContent>
