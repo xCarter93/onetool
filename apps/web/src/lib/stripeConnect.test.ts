@@ -54,8 +54,23 @@ function buildCtx(overrides: Partial<ConnectContext> = {}): ConnectContext {
 			addressCountry: "US",
 			ownerUserId: userId,
 		},
+		convexToken: "jwt.token.value",
 		...overrides,
 	};
+}
+
+function mockClerkAuth({
+	userId,
+	token,
+}: {
+	userId: string | null;
+	token: string | null;
+}) {
+	// @ts-expect-error — partial Clerk Auth mock
+	mockedAuth.mockResolvedValue({
+		userId,
+		getToken: vi.fn().mockResolvedValue(token),
+	});
 }
 
 describe("getOrgConnectAccountForCaller", () => {
@@ -64,33 +79,43 @@ describe("getOrgConnectAccountForCaller", () => {
 	});
 
 	it("throws UNAUTHORIZED when Clerk auth() returns userId=null", async () => {
-		// @ts-expect-error — Clerk's auth() return shape is a Promise<Auth>, mock is partial
-		mockedAuth.mockResolvedValue({ userId: null });
+		mockClerkAuth({ userId: null, token: null });
 		await expect(getOrgConnectAccountForCaller()).rejects.toThrowError(
 			"UNAUTHORIZED"
 		);
 		expect(mockedFetchQuery).not.toHaveBeenCalled();
 	});
 
-	it("returns the ConnectContext when fetchQuery resolves", async () => {
-		// @ts-expect-error — partial Clerk Auth mock
-		mockedAuth.mockResolvedValue({ userId: "user_owner_clerk" });
-		const ctx = buildCtx({ stripeConnectAccountId: "acct_existing" });
-		mockedFetchQuery.mockResolvedValue(ctx);
+	it("throws UNAUTHORIZED when Clerk userId exists but the 'convex' JWT template is unconfigured", async () => {
+		mockClerkAuth({ userId: "user_owner_clerk", token: null });
+		await expect(getOrgConnectAccountForCaller()).rejects.toThrowError(
+			"UNAUTHORIZED"
+		);
+		expect(mockedFetchQuery).not.toHaveBeenCalled();
+	});
+
+	it("returns the ConnectContext when fetchQuery resolves, with the Clerk JWT forwarded as the token option", async () => {
+		mockClerkAuth({ userId: "user_owner_clerk", token: "jwt.token.value" });
+		const stored = buildCtx({ stripeConnectAccountId: "acct_existing" });
+		const { convexToken: _omit, ...storedNoToken } = stored;
+		mockedFetchQuery.mockResolvedValue(storedNoToken);
 
 		const result = await getOrgConnectAccountForCaller();
-		expect(result).toEqual(ctx);
+		expect(result).toEqual(stored);
 		expect(mockedFetchQuery).toHaveBeenCalledTimes(1);
-		// Verify the public api.* reference is passed (FINDINGS V-1 pivot).
-		// fetchQuery's first arg is a FunctionReference proxy — we can't compare
-		// equality, but we can assert no client-provided account-identifying
-		// field appears in the args object (regression-guard against future
-		// signature drift).
+		// Args (second positional) must remain `{}` (FINDINGS V-1 lockdown).
 		const callArgs = mockedFetchQuery.mock.calls[0]?.[1] as Record<
 			string,
 			unknown
 		>;
 		expect(callArgs).toEqual({});
+		// Options (third positional) must carry the Clerk Convex JWT so
+		// getCurrentUserOrThrow can resolve identity. Regression guard for the
+		// fix that closes the "User not authenticated" onboarding bug.
+		const callOpts = mockedFetchQuery.mock.calls[0]?.[2] as
+			| { token?: string }
+			| undefined;
+		expect(callOpts?.token).toBe("jwt.token.value");
 	});
 });
 
@@ -185,6 +210,7 @@ describe("T-14.2.1-08: createConnectAccount v2 request body shape", () => {
 			addressCountry: "US",
 			ownerUserId: "user_1" as ConnectContext["userId"],
 		},
+		convexToken: "jwt.token.value",
 	};
 
 	it("sends fees_collector='stripe' (Pitfall 1 value flip)", async () => {

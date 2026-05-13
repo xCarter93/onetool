@@ -18,6 +18,11 @@ export interface ConnectContext {
 		stripeConnectAccountId?: string;
 		ownerUserId: Id<"users">;
 	};
+	// fetchQuery/fetchMutation from convex/nextjs don't auto-forward the Clerk
+	// JWT; routes must pass it as `{ token }`. Carried here so the route can
+	// reuse the same token across follow-on Convex calls without re-entering
+	// Clerk's auth().
+	convexToken: string;
 }
 
 // REGRESSION GUARD: Every /api/stripe-connect/* route MUST funnel through
@@ -27,8 +32,15 @@ export interface ConnectContext {
 //     apps/web/src/app/api/stripe-connect/
 // Must return zero results.
 export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
-	const { userId } = await auth();
+	const { userId, getToken } = await auth();
 	if (!userId) {
+		throw new Error("UNAUTHORIZED");
+	}
+	const convexToken = await getToken({ template: "convex" });
+	if (!convexToken) {
+		// Clerk session present but no Convex JWT — the "convex" JWT template is
+		// missing from Clerk Dashboard. Fail with a clearer signal than the
+		// downstream "User not authenticated" from getCurrentUserOrThrow.
 		throw new Error("UNAUTHORIZED");
 	}
 
@@ -37,8 +49,9 @@ export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 	// no client-supplied value can influence which org is loaded.
 	const ctx = (await fetchQuery(
 		api.organizations.getOrgForCallerInternal,
-		{}
-	)) as ConnectContext | null;
+		{},
+		{ token: convexToken }
+	)) as Omit<ConnectContext, "convexToken"> | null;
 	if (!ctx) {
 		throw new Error("ORG_NOT_FOUND");
 	}
@@ -48,7 +61,7 @@ export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 	if (ctx.organization.ownerUserId !== ctx.userId) {
 		throw new Error("NOT_ORG_OWNER");
 	}
-	return ctx;
+	return { ...ctx, convexToken };
 }
 
 export function deriveConnectFieldsFromOrg(

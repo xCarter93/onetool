@@ -78,7 +78,8 @@ export async function POST() {
 			if (isStripeError && (statusCode === 404 || code === "account_invalid")) {
 				await fetchMutation(
 					api.organizations.clearStripeConnectStateInternal,
-					{ orgId: ctx.orgId }
+					{ orgId: ctx.orgId },
+					{ token: ctx.convexToken }
 				);
 				return await createPersistAndReturn(ctx);
 			}
@@ -92,11 +93,17 @@ export async function POST() {
 async function createPersistAndReturn(
 	ctx: ConnectContext
 ): Promise<NextResponse> {
-	const currentUser = await fetchQuery(api.users.current, {});
+	const currentUser = await fetchQuery(
+		api.users.current,
+		{},
+		{ token: ctx.convexToken }
+	);
 	const account = await createConnectAccount(ctx, currentUser?.email ?? null);
-	await fetchMutation(api.organizations.setStripeConnectAccountIdInternal, {
-		accountId: account.id,
-	});
+	await fetchMutation(
+		api.organizations.setStripeConnectAccountIdInternal,
+		{ accountId: account.id },
+		{ token: ctx.convexToken }
+	);
 	const derived = deriveConnectStatusFromV2Account(account);
 	return NextResponse.json({
 		accountId: account.id,
