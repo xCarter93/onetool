@@ -137,7 +137,9 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 		expect(payment?.paidAt).toBeUndefined();
 	});
 
-	it("payment_intent.succeeded: publicToken-replay resistance — metadata.publicToken mismatch throws and does NOT mark paid", async () => {
+	it("payment_intent.succeeded: publicToken-replay resistance — metadata.publicToken mismatch is terminal (logs + acks) and does NOT mark paid", async () => {
+		// Unknown publicToken is deterministic for a given event; throwing
+		// would burn ~70 Stripe retries. Log and ack instead.
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
 			orgId,
@@ -145,17 +147,16 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 			paymentAmount: 50,
 		});
 
-		await expect(
-			t.mutation(
-				internal.payments.markPaidFromPaymentIntentWebhookInternal,
-				{
-					orgId,
-					paymentIntentId: "pi_replay_1",
-					amountReceived: 5000,
-					metadata: { publicToken: "tok_replay_DOES_NOT_EXIST" },
-				},
-			),
-		).rejects.toThrow();
+		const res = await t.mutation(
+			internal.payments.markPaidFromPaymentIntentWebhookInternal,
+			{
+				orgId,
+				paymentIntentId: "pi_replay_1",
+				amountReceived: 5000,
+				metadata: { publicToken: "tok_replay_DOES_NOT_EXIST" },
+			},
+		);
+		expect(res).toBeNull();
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(payment?.status).toBe("pending");

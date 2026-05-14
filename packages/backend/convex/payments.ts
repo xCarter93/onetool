@@ -987,25 +987,47 @@ export const markPaidFromPaymentIntentWebhookInternal = internalMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
+		// Every guard below is deterministic for a given Stripe event — Stripe
+		// redelivers the same payload on retry, so throwing would burn ~70
+		// retries over days without changing the outcome. Match the Checkout
+		// Session handler: log loudly and ack the event so it stops retrying.
 		if (!args.paymentIntentId || args.paymentIntentId.length === 0) {
-			throw new ConvexError({ code: "WEBHOOK_PAYMENT_INTENT_MISSING" });
+			console.error(
+				"markPaidFromPaymentIntentInternal: missing paymentIntentId on webhook args; ack and skip."
+			);
+			return null;
 		}
 		const publicToken =
 			typeof args.metadata?.publicToken === "string"
 				? args.metadata.publicToken
 				: undefined;
 		if (!publicToken) {
-			throw new ConvexError({ code: "WEBHOOK_PUBLIC_TOKEN_MISSING" });
+			console.error(
+				`markPaidFromPaymentIntentInternal: PI ${args.paymentIntentId} has no metadata.publicToken — ` +
+					`likely a PaymentIntent created outside this app's flow. Ack and skip.`
+			);
+			return null;
 		}
 		const payment = await ctx.db
 			.query("payments")
 			.withIndex("by_public_token", (q) => q.eq("publicToken", publicToken))
 			.unique();
 		if (!payment) {
-			throw new ConvexError({ code: "WEBHOOK_PAYMENT_NOT_FOUND" });
+			console.error(
+				`markPaidFromPaymentIntentInternal: no payment row for publicToken=${publicToken} ` +
+					`(PI ${args.paymentIntentId}). Row may have been deleted; ack and skip.`
+			);
+			return null;
 		}
 		if (payment.orgId !== args.orgId) {
-			throw new ConvexError({ code: "WEBHOOK_ORG_MISMATCH" });
+			// Security signal: log at error level so it surfaces in alerting,
+			// but still ack so Stripe doesn't retry the same mismatch 70 times.
+			console.error(
+				`markPaidFromPaymentIntentInternal: ORG MISMATCH on PI ${args.paymentIntentId} — ` +
+					`payment.orgId=${payment.orgId} vs event.orgId=${args.orgId}. ` +
+					`Investigate immediately. Ack and skip.`
+			);
+			return null;
 		}
 		if (payment.status === "paid") {
 			return null;
