@@ -61,13 +61,34 @@ export function PaymentSurface({
 		if (!stripe || !elements || submitting) return;
 		setSubmitting(true);
 		setError(null);
-		await confirm();
-		setSubmitting(false);
+		try {
+			await confirm();
+		} catch (err) {
+			setError({
+				type: "api_error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Payment couldn't be processed.",
+			} as StripeError);
+		} finally {
+			setSubmitting(false);
+		}
 	};
 
 	const onExpressConfirm = async () => {
 		setError(null);
-		await confirm();
+		try {
+			await confirm();
+		} catch (err) {
+			setError({
+				type: "api_error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Payment couldn't be processed.",
+			} as StripeError);
+		}
 	};
 
 	const amountFmt = formatMoney(paymentAmount);
