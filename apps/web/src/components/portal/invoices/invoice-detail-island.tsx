@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
+import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { formatMoney } from "@/lib/portal/format";
 
 import { InvoicePaper } from "./invoice-paper";
 import {
@@ -13,8 +16,11 @@ import {
 } from "./installment-list";
 import { LegacyInvoiceNotice } from "./legacy-invoice-notice";
 import { PaidStatusPanel } from "./paid-status-panel";
+import { PaidSuccessOverlay } from "./paid-success-overlay";
 import { PaymentBottomSheet } from "./payment-bottom-sheet";
 import { PaymentRail } from "./payment-rail";
+
+const CELEBRATION_DURATION_MS = 1900;
 
 // Mirror of PortalInvoiceGetResponse from packages/backend/convex/portal/invoices.ts.
 // Kept local so the component does not import server-only Convex types.
@@ -81,6 +87,61 @@ export function InvoiceDetailIsland({
 	const allPaid =
 		!data.isLegacy && data.paymentSummary.totalRemaining === 0;
 
+	const [celebration, setCelebration] = useState<{
+		message: string;
+		subline?: string;
+	} | null>(null);
+	const prevActiveIdRef = useRef<string | null>(null);
+	const prevActiveAmountRef = useRef<number | null>(null);
+	const prevAllPaidRef = useRef<boolean>(false);
+	const initializedRef = useRef(false);
+
+	const activeId = data.activePaymentPublic?._id ?? null;
+	const activeAmount = data.activePaymentPublic?.paymentAmount ?? null;
+
+	useEffect(() => {
+		if (!initializedRef.current) {
+			initializedRef.current = true;
+			prevActiveIdRef.current = activeId;
+			prevActiveAmountRef.current = activeAmount;
+			prevAllPaidRef.current = allPaid;
+			return;
+		}
+
+		const prevId = prevActiveIdRef.current;
+		const prevAmount = prevActiveAmountRef.current;
+		const prevAllPaid = prevAllPaidRef.current;
+
+		const settledFinal = !prevAllPaid && allPaid;
+		const settledOne = prevId !== null && activeId !== null && activeId !== prevId;
+
+		if (settledFinal) {
+			setCelebration({
+				message: "Invoice paid in full",
+				subline: `Thank you for your business with ${data.businessName}.`,
+			});
+		} else if (settledOne) {
+			setCelebration({
+				message: "Payment received",
+				subline:
+					prevAmount != null ? `${formatMoney(prevAmount)} confirmed` : undefined,
+			});
+		}
+
+		prevActiveIdRef.current = activeId;
+		prevActiveAmountRef.current = activeAmount;
+		prevAllPaidRef.current = allPaid;
+	}, [activeId, activeAmount, allPaid, data.businessName]);
+
+	useEffect(() => {
+		if (!celebration) return;
+		const timer = setTimeout(
+			() => setCelebration(null),
+			CELEBRATION_DURATION_MS,
+		);
+		return () => clearTimeout(timer);
+	}, [celebration]);
+
 	const paper = (
 		<InvoicePaper
 			invoice={data.invoice}
@@ -93,7 +154,7 @@ export function InvoiceDetailIsland({
 	);
 
 	// Decision A: legacy invoices NEVER reach the rail/sheet — render notice only.
-	const rightRail = (() => {
+	const baseRail = (() => {
 		if (data.isLegacy) {
 			return (
 				<LegacyInvoiceNotice
@@ -123,6 +184,8 @@ export function InvoiceDetailIsland({
 				/>
 				{active && isDesktop !== false ? (
 					<PaymentRail
+						// Key on active._id so paymentSurfaceOpen resets between installments.
+						key={active._id}
 						invoiceId={data.invoice._id}
 						activePayment={{
 							_id: active._id,
@@ -138,6 +201,28 @@ export function InvoiceDetailIsland({
 		);
 	})();
 
+	const rightRail = (
+		<AnimatePresence mode="wait" initial={false}>
+			{celebration ? (
+				<PaidSuccessOverlay
+					key="paid-success-overlay"
+					message={celebration.message}
+					subline={celebration.subline}
+				/>
+			) : (
+				<motion.div
+					key="rail-content"
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
+				>
+					{baseRail}
+				</motion.div>
+			)}
+		</AnimatePresence>
+	);
+
 	// Mobile-only: docked bottom-sheet hosts the payment surface for non-legacy,
 	// non-paid invoices with an active payment row.
 	const mobileSheet =
@@ -146,6 +231,8 @@ export function InvoiceDetailIsland({
 		data.activePaymentPublic &&
 		isDesktop === false ? (
 			<PaymentBottomSheet
+				// Key on active._id so the sheet collapses between installments.
+				key={data.activePaymentPublic._id}
 				invoiceId={data.invoice._id}
 				activePayment={{
 					_id: data.activePaymentPublic._id,

@@ -9,6 +9,7 @@
 //  6. Legacy invoice (Decision A): notice only, no PaymentRail/Sheet, no PI mint
 //  7. Mobile bottom-sheet defers PI mint until the sheet opens
 
+import * as React from "react";
 import {
 	afterEach,
 	beforeEach,
@@ -50,9 +51,25 @@ vi.mock("@stripe/react-stripe-js", () => ({
 vi.mock("convex/react", () => ({
 	useQuery: () => undefined,
 }));
-vi.mock("framer-motion", () => ({
-	useReducedMotion: () => false,
-}));
+vi.mock("framer-motion", () => {
+	const passthrough = (tag: string) =>
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		({ children, ...rest }: any) =>
+			React.createElement(tag, rest, children);
+	const motion = new Proxy(
+		{},
+		{
+			get: (_t, prop: string) => passthrough(prop),
+		},
+	);
+	return {
+		useReducedMotion: () => false,
+		motion,
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		AnimatePresence: ({ children }: { children: any }) =>
+			React.createElement(React.Fragment, null, children),
+	};
+});
 vi.mock("@/hooks/use-toast", () => ({
 	useToast: () => ({
 		error: vi.fn(),
@@ -331,6 +348,151 @@ describe("InvoiceDetailIsland", () => {
 		).not.toBeInTheDocument();
 		// No PI mint fetch.
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("Test 8: paid-success overlay does NOT render on initial mount", async () => {
+		setMatchMedia(true);
+		const data = buildData();
+		render(
+			<InvoiceDetailIsland
+				data={data}
+				clientPortalId="cpid_1"
+				hasPdf={false}
+			/>,
+		);
+		expect(
+			document.querySelector("[data-paid-success-overlay]"),
+		).not.toBeInTheDocument();
+	});
+
+	it("Test 9: paid-success overlay appears when activePaymentPublic id flips (installment settled, more remain)", async () => {
+		setMatchMedia(true);
+		const initial = buildData({
+			payments: [
+				{
+					_id: "pmt_1",
+					paymentAmount: 95,
+					dueDate: Date.now(),
+					description: "Deposit",
+					sortOrder: 0,
+					status: "sent",
+					paidAt: null,
+					cardLast4: null,
+					cardBrand: null,
+					receiptUrl: null,
+				},
+				{
+					_id: "pmt_2",
+					paymentAmount: 95,
+					dueDate: Date.now() + 86400000,
+					description: "Balance",
+					sortOrder: 1,
+					status: "sent",
+					paidAt: null,
+					cardLast4: null,
+					cardBrand: null,
+					receiptUrl: null,
+				},
+			],
+			paymentSummary: {
+				totalPaid: 0,
+				totalRemaining: 190,
+				displayStatus: "awaiting",
+				isLegacy: false,
+				installmentCount: 2,
+			},
+			activePaymentPublic: {
+				_id: "pmt_1",
+				paymentAmount: 95,
+				dueDate: Date.now(),
+				description: "Deposit",
+				sortOrder: 0,
+				status: "sent",
+				paidAt: null,
+				cardLast4: null,
+				cardBrand: null,
+				receiptUrl: null,
+			},
+		});
+		const { rerender } = render(
+			<InvoiceDetailIsland
+				data={initial}
+				clientPortalId="cpid_1"
+				hasPdf={false}
+			/>,
+		);
+
+		// Webhook flips pmt_1 → paid; pmt_2 is now the active payment.
+		const settled: PortalInvoiceGetData = {
+			...initial,
+			payments: [
+				{ ...initial.payments[0]!, status: "paid", paidAt: Date.now() },
+				initial.payments[1]!,
+			],
+			paymentSummary: {
+				...initial.paymentSummary,
+				totalPaid: 95,
+				totalRemaining: 95,
+				displayStatus: "partial",
+			},
+			activePaymentPublic: initial.payments[1]!,
+		};
+		rerender(
+			<InvoiceDetailIsland
+				data={settled}
+				clientPortalId="cpid_1"
+				hasPdf={false}
+			/>,
+		);
+
+		const overlay = await waitFor(() => {
+			const el = document.querySelector("[data-paid-success-overlay]");
+			if (!el) throw new Error("overlay not yet rendered");
+			return el;
+		});
+		expect(overlay).toBeInTheDocument();
+		expect(overlay.textContent).toContain("Payment received");
+		expect(overlay.textContent).toContain("$95.00");
+	});
+
+	it("Test 10: paid-success overlay appears when allPaid flips true (final installment)", async () => {
+		setMatchMedia(true);
+		const initial = buildData();
+		const { rerender } = render(
+			<InvoiceDetailIsland
+				data={initial}
+				clientPortalId="cpid_1"
+				hasPdf={false}
+			/>,
+		);
+
+		const allPaid: PortalInvoiceGetData = {
+			...initial,
+			payments: [
+				{ ...initial.payments[0]!, status: "paid", paidAt: Date.now() },
+			],
+			paymentSummary: {
+				...initial.paymentSummary,
+				totalPaid: 190,
+				totalRemaining: 0,
+				displayStatus: "paid",
+			},
+			activePaymentPublic: null,
+		};
+		rerender(
+			<InvoiceDetailIsland
+				data={allPaid}
+				clientPortalId="cpid_1"
+				hasPdf={false}
+			/>,
+		);
+
+		const overlay = await waitFor(() => {
+			const el = document.querySelector("[data-paid-success-overlay]");
+			if (!el) throw new Error("overlay not yet rendered");
+			return el;
+		});
+		expect(overlay.textContent).toContain("Invoice paid in full");
 	});
 
 	it("Test 7: PaymentBottomSheet does NOT mint PI on mount — only after sheet opens", async () => {
