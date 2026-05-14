@@ -50,6 +50,8 @@
 		"@react-pdf/renderer": "^4.3.0",
 		"@stripe/connect-js": "^3.3.31",
 		"@stripe/react-connect-js": "^3.3.31",
+		"@stripe/react-stripe-js": "^6.3.0",
+		"@stripe/stripe-js": "^9.5.0",
 		"@t3-oss/env-nextjs": "^0.13.8",
 		"@tanstack/react-form": "^1.23.7",
 		"@tanstack/react-table": "^8.21.3",

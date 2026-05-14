@@ -70,6 +70,32 @@ export function mapConvexError(err: unknown): NextResponse {
 				{ error: "Invalid signature" },
 				{ status: 400 },
 			);
+		// Phase 15 — invoice payment-intent codes.
+		case "PAYMENTS_NOT_ENABLED":
+			return NextResponse.json(
+				{
+					error:
+						"Online payments aren't available for this invoice yet.",
+					code: "payments_not_enabled",
+				},
+				{ status: 422 },
+			);
+		case "LEGACY_INVOICE_NOT_PAYABLE":
+			return NextResponse.json(
+				{
+					error: "This invoice uses the legacy payment flow.",
+					code: "legacy_invoice",
+				},
+				{ status: 422 },
+			);
+		case "STRIPE_KEYS_MISSING":
+		case "STRIPE_CLIENT_SECRET_MISSING":
+		case "INVALID_AMOUNT":
+		case "NO_ACTIVE_PAYMENT":
+			return NextResponse.json(
+				{ error: "Payment is unavailable right now." },
+				{ status: 422 },
+			);
 		default:
 			return NextResponse.json(
 				{ error: "Something went wrong" },

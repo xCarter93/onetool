@@ -511,3 +511,38 @@
 		}
 	}
 }
+
+/* Portal invoice print stylesheet (Plan 15-05). */
+@media print {
+	[data-portal-sidebar],
+	[data-mobile-tab-bar],
+	[data-sticky-detail-header],
+	[data-payment-rail],
+	[data-sheet-docked],
+	iframe[src*="stripe"] {
+		display: none !important;
+	}
+
+	html,
+	body {
+		background: #fff !important;
+		color: #000 !important;
+	}
+
+	body {
+		font-size: 12pt;
+	}
+
+	[data-portal-paper-invoice] {
+		width: 100% !important;
+		max-width: none !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		border: none !important;
+		box-shadow: none !important;
+	}
+
+	[data-paper-total] {
+		font-size: 24pt;
+	}
+}

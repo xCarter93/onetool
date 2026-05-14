@@ -37,4 +37,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: 10 * MINUTE,
 		capacity: 5,
 	},
+
+	// Phase 15: limit per-session PaymentIntent mints.
+	portalInvoicePay: {
+		kind: "token bucket",
+		rate: 5,
+		period: 10 * MINUTE,
+		capacity: 5,
+	},
 });

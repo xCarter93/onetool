@@ -6,7 +6,7 @@ import {
 	QueryCtx,
 	MutationCtx,
 } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -20,6 +20,7 @@ import {
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
+import { applyMarkPaidCascade } from "./lib/payments";
 
 /**
  * Payment operations - individual payment installments for invoices
@@ -621,45 +622,32 @@ export const markPaidByPublicTokenInternal = internalMutation({
 		publicToken: v.string(),
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
-		// Provenance hint for downstream workflow events.
 		source: v.optional(v.union(v.literal("confirm"), v.literal("webhook"))),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
-		// Find payment by public token
 		const payment = await ctx.db
 			.query("payments")
 			.withIndex("by_public_token", (q) =>
 				q.eq("publicToken", args.publicToken)
 			)
 			.unique();
-
 		if (!payment) {
 			throw new Error("Payment not found");
 		}
-
-		// Check if already paid (idempotent)
 		if (payment.status === "paid") {
 			return payment._id;
 		}
-
 		if (!args.stripePaymentIntentId) {
 			throw new Error(
 				"markPaidByPublicTokenInternal: stripePaymentIntentId is required"
 			);
 		}
-
-		// Update payment to paid.
-		await ctx.db.patch(payment._id, {
-			status: "paid",
-			paidAt: Date.now(),
-			stripeSessionId: args.stripeSessionId ?? payment.stripeSessionId,
+		return await applyMarkPaidCascade(ctx, {
+			paymentId: payment._id,
 			stripePaymentIntentId: args.stripePaymentIntentId,
+			source: args.source ?? "confirm",
+			stripeSessionId: args.stripeSessionId,
 		});
-
-		// Update invoice status if all payments are complete
-		await updateInvoiceStatusIfFullyPaid(ctx, payment.invoiceId, payment._id);
-
-		return payment._id;
 	},
 });
 
@@ -945,6 +933,126 @@ export const markPaidFromWebhookInternal = internalMutation({
 			stripeSessionId: args.sessionId,
 			stripePaymentIntentId: args.paymentIntentId,
 			source: "webhook",
+		});
+		return null;
+	},
+});
+
+/**
+ * Persist the active PaymentIntent so portal retries can reuse its clientSecret.
+ */
+export const persistPendingPaymentIntentInternal = internalMutation({
+	args: {
+		publicToken: v.string(),
+		pendingPaymentIntentId: v.string(),
+		pendingPaymentIntentClientSecret: v.string(),
+		pendingPaymentIntentExpiresAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) =>
+				q.eq("publicToken", args.publicToken)
+			)
+			.unique();
+		if (!payment) {
+			throw new ConvexError({ code: "PAYMENT_NOT_FOUND" });
+		}
+		await ctx.db.patch(payment._id, {
+			pendingPaymentIntentId: args.pendingPaymentIntentId,
+			pendingPaymentIntentClientSecret: args.pendingPaymentIntentClientSecret,
+			pendingPaymentIntentExpiresAt: args.pendingPaymentIntentExpiresAt,
+		});
+		return null;
+	},
+});
+
+/**
+ * payment_intent.succeeded webhook → mark-paid cascade. Three-assertion gauntlet
+ * (publicToken match, amount_received vs paymentAmount cents, paymentIntentId
+ * non-empty) runs before the cascade. No ctx.runMutation here —
+ * applyMarkPaidCascade is the canonical writer and runs in this mutation's
+ * context.
+ */
+export const markPaidFromPaymentIntentWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		paymentIntentId: v.string(),
+		amountReceived: v.number(),
+		metadata: v.any(),
+		cardBrand: v.optional(v.string()),
+		cardLast4: v.optional(v.string()),
+		stripeReceiptUrl: v.optional(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		// Every guard below is deterministic for a given Stripe event — Stripe
+		// redelivers the same payload on retry, so throwing would burn ~70
+		// retries over days without changing the outcome. Match the Checkout
+		// Session handler: log loudly and ack the event so it stops retrying.
+		if (!args.paymentIntentId || args.paymentIntentId.length === 0) {
+			console.error(
+				"markPaidFromPaymentIntentInternal: missing paymentIntentId on webhook args; ack and skip."
+			);
+			return null;
+		}
+		const publicToken =
+			typeof args.metadata?.publicToken === "string"
+				? args.metadata.publicToken
+				: undefined;
+		if (!publicToken) {
+			console.error(
+				`markPaidFromPaymentIntentInternal: PI ${args.paymentIntentId} has no metadata.publicToken — ` +
+					`likely a PaymentIntent created outside this app's flow. Ack and skip.`
+			);
+			return null;
+		}
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_public_token", (q) => q.eq("publicToken", publicToken))
+			.unique();
+		if (!payment) {
+			console.error(
+				`markPaidFromPaymentIntentInternal: no payment row for publicToken=${publicToken} ` +
+					`(PI ${args.paymentIntentId}). Row may have been deleted; ack and skip.`
+			);
+			return null;
+		}
+		if (payment.orgId !== args.orgId) {
+			// Security signal: log at error level so it surfaces in alerting,
+			// but still ack so Stripe doesn't retry the same mismatch 70 times.
+			console.error(
+				`markPaidFromPaymentIntentInternal: ORG MISMATCH on PI ${args.paymentIntentId} — ` +
+					`payment.orgId=${payment.orgId} vs event.orgId=${args.orgId}. ` +
+					`Investigate immediately. Ack and skip.`
+			);
+			return null;
+		}
+		if (payment.status === "paid") {
+			return null;
+		}
+		const expectedCents = Math.round(payment.paymentAmount * 100);
+		if (args.amountReceived !== expectedCents) {
+			// Deterministic for a given PI: throwing would loop ~70 Stripe
+			// retries over days without changing the outcome. Match the
+			// Checkout Session handler — log loudly and ack the event.
+			console.error(
+				`markPaidFromPaymentIntentInternal: amount mismatch on PI ${args.paymentIntentId} — ` +
+					`expected ${expectedCents} cents, got ${args.amountReceived} cents. ` +
+					`Payment left in status=${payment.status}; investigate manually.`
+			);
+			return null;
+		}
+		await applyMarkPaidCascade(ctx, {
+			paymentId: payment._id,
+			stripePaymentIntentId: args.paymentIntentId,
+			source: "webhook-pi",
+			receiptMetadata: {
+				cardBrand: args.cardBrand,
+				cardLast4: args.cardLast4,
+				stripeReceiptUrl: args.stripeReceiptUrl,
+			},
 		});
 		return null;
 	},
