@@ -151,17 +151,30 @@ export const handleEvent = internalAction({
 					let cardLast4: string | undefined;
 					let stripeReceiptUrl: string | undefined;
 					if (chargeId && org?.stripeConnectAccountId) {
-						const stripe = getStripeClient();
-						const charge = await stripe.charges.retrieve(
-							chargeId,
-							undefined,
-							{ stripeAccount: org.stripeConnectAccountId },
-						);
-						cardBrand =
-							charge.payment_method_details?.card?.brand ?? undefined;
-						cardLast4 =
-							charge.payment_method_details?.card?.last4 ?? undefined;
-						stripeReceiptUrl = charge.receipt_url ?? undefined;
+						// Receipt metadata is decorative — never let a charges.retrieve
+						// failure (rate limit, network blip, stale connect account)
+						// block the markPaid mutation below. Log and proceed without it.
+						try {
+							const stripe = getStripeClient();
+							const charge = await stripe.charges.retrieve(
+								chargeId,
+								undefined,
+								{ stripeAccount: org.stripeConnectAccountId },
+							);
+							cardBrand =
+								charge.payment_method_details?.card?.brand ?? undefined;
+							cardLast4 =
+								charge.payment_method_details?.card?.last4 ?? undefined;
+							stripeReceiptUrl = charge.receipt_url ?? undefined;
+						} catch (err) {
+							console.error(
+								`payment_intent.succeeded: charges.retrieve failed for charge=${chargeId} ` +
+									`acct=${org.stripeConnectAccountId} pi=${pi.id}. ` +
+									`Marking paid without receipt metadata. Error: ${
+										err instanceof Error ? err.message : String(err)
+									}`,
+							);
+						}
 					}
 					await ctx.runMutation(
 						internal.payments.markPaidFromPaymentIntentWebhookInternal,

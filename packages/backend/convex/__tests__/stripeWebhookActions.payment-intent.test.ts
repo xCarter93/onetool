@@ -327,4 +327,55 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 		const paymentAfterSecond = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(paymentAfterSecond?.paidAt).toBe(paidAtFirst);
 	});
+
+	it("payment_intent.succeeded: charges.retrieve failure does NOT block markPaid — payment is paid with undefined receipt metadata", async () => {
+		// Receipt metadata is decorative; a Stripe API failure on the charge
+		// lookup must not prevent the payment row from being marked paid,
+		// otherwise the money is received but the payment is stuck pending.
+		const accountId = "acct_test_pi_charge_fail";
+		const { orgId } = await seedConnectedOrg(t, accountId);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_charge_fail_1",
+			paymentAmount: 80,
+		});
+
+		const chargesRetrieve = vi
+			.fn()
+			.mockRejectedValue(new Error("Stripe rate limit"));
+		__setStripeClientForTests({
+			charges: { retrieve: chargesRetrieve },
+			paymentIntents: { retrieve: vi.fn() },
+		} as unknown as Parameters<typeof __setStripeClientForTests>[0]);
+
+		const event = buildStripeEvent({
+			id: "evt_pi_charge_fail_1",
+			type: "payment_intent.succeeded",
+			account: accountId,
+			data: {
+				object: {
+					id: "pi_charge_fail_1",
+					amount_received: 8000,
+					latest_charge: "ch_charge_fail_1",
+					metadata: { publicToken: "tok_charge_fail_1" },
+				} as never,
+			},
+		});
+
+		const result = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event),
+		);
+		expect(result.duplicate).toBe(false);
+		expect(result.orgFound).toBe(true);
+		expect(chargesRetrieve).toHaveBeenCalledTimes(1);
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.paidAt).toBeGreaterThan(0);
+		expect(payment?.stripePaymentIntentId).toBe("pi_charge_fail_1");
+		expect(payment?.cardBrand).toBeUndefined();
+		expect(payment?.cardLast4).toBeUndefined();
+		expect(payment?.stripeReceiptUrl).toBeUndefined();
+	});
 });
