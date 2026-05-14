@@ -110,7 +110,10 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 		expect(payment?.stripePaymentIntentId).toBe("pi_gauntlet_happy");
 	});
 
-	it("payment_intent.succeeded: amount-tamper resistance — pi.amount_received !== Math.round(payment.paymentAmount * 100) throws and does NOT mark paid", async () => {
+	it("payment_intent.succeeded: amount-tamper resistance — pi.amount_received !== Math.round(payment.paymentAmount * 100) is terminal (logs + acks) and does NOT mark paid", async () => {
+		// Mismatch is deterministic for a given PI: throwing would burn ~70
+		// Stripe retries without changing the outcome. Match the Checkout
+		// Session path — log and return null so the event is acked.
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
 			orgId,
@@ -118,17 +121,16 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 			paymentAmount: 100,
 		});
 
-		await expect(
-			t.mutation(
-				internal.payments.markPaidFromPaymentIntentWebhookInternal,
-				{
-					orgId,
-					paymentIntentId: "pi_tamper_1",
-					amountReceived: 9999, // expected 10000 cents
-					metadata: { publicToken: "tok_tamper_1" },
-				},
-			),
-		).rejects.toThrow();
+		const res = await t.mutation(
+			internal.payments.markPaidFromPaymentIntentWebhookInternal,
+			{
+				orgId,
+				paymentIntentId: "pi_tamper_1",
+				amountReceived: 9999, // expected 10000 cents
+				metadata: { publicToken: "tok_tamper_1" },
+			},
+		);
+		expect(res).toBeNull();
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(payment?.status).toBe("pending");

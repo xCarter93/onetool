@@ -77,6 +77,8 @@ export function PaymentSurface({
 	};
 
 	const onExpressConfirm = async () => {
+		if (submitting) return;
+		setSubmitting(true);
 		setError(null);
 		try {
 			await confirm();
@@ -88,6 +90,8 @@ export function PaymentSurface({
 						? err.message
 						: "Payment couldn't be processed.",
 			} as StripeError);
+		} finally {
+			setSubmitting(false);
 		}
 	};
 

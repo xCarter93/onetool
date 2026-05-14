@@ -1012,7 +1012,15 @@ export const markPaidFromPaymentIntentWebhookInternal = internalMutation({
 		}
 		const expectedCents = Math.round(payment.paymentAmount * 100);
 		if (args.amountReceived !== expectedCents) {
-			throw new ConvexError({ code: "WEBHOOK_AMOUNT_TAMPER" });
+			// Deterministic for a given PI: throwing would loop ~70 Stripe
+			// retries over days without changing the outcome. Match the
+			// Checkout Session handler — log loudly and ack the event.
+			console.error(
+				`markPaidFromPaymentIntentInternal: amount mismatch on PI ${args.paymentIntentId} — ` +
+					`expected ${expectedCents} cents, got ${args.amountReceived} cents. ` +
+					`Payment left in status=${payment.status}; investigate manually.`
+			);
+			return null;
 		}
 		await applyMarkPaidCascade(ctx, {
 			paymentId: payment._id,
