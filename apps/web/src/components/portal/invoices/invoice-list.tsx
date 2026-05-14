@@ -180,7 +180,7 @@ export function InvoiceList({
 									className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ${
 										active
 											? "bg-primary text-primary-foreground border-primary"
-											: "bg-background text-muted-foreground border-border"
+											: "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
 									}`}
 								>
 									{f.label}

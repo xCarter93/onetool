@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import {
 	ArrowRight,
 	CircleAlert,
 	CircleCheck,
 	FileText,
 	Receipt,
-	Wallet,
 } from "lucide-react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -17,17 +17,7 @@ import { formatDate, formatMoney } from "@/lib/portal/format";
 import { PortalContactPanel } from "./portal-contact-panel";
 import type { PortalInvoiceListItem } from "./invoices/invoice-list";
 
-type Quote = {
-	_id: string;
-	quoteNumber?: string;
-	title?: string;
-	status: string;
-	sentAt?: number;
-	validUntil?: number;
-	approvedAt?: number;
-	declinedAt?: number;
-	total: number;
-};
+type Quote = FunctionReturnType<typeof api.portal.quotes.list>[number];
 
 function isOutstanding(inv: PortalInvoiceListItem): boolean {
 	return inv.paymentSummary.displayStatus !== "paid";
@@ -46,7 +36,7 @@ export function WelcomeContent({
 	logoInvertInDarkMode?: boolean;
 	invoices: PortalInvoiceListItem[];
 }) {
-	const quotes = (useQuery(api.portal.quotes.list, {}) ?? []) as Quote[];
+	const quotes = useQuery(api.portal.quotes.list, {}) ?? [];
 
 	const awaitingQuotes = quotes.filter((q) => q.status === "sent");
 	const outstandingInvoices = invoices.filter(isOutstanding);
@@ -75,6 +65,15 @@ export function WelcomeContent({
 		day: "numeric",
 	});
 	const activity = buildActivityFeed(quotes, invoices).slice(0, 6);
+
+	// "View all" routes to the list that matches the most-recent activity kind
+	// — so a portal user with only quote activity doesn't land on an empty
+	// invoices page.
+	const viewAllHref = (() => {
+		const first = activity[0];
+		if (first?.kind === "quote") return `${base}/quotes`;
+		return `${base}/invoices`;
+	})();
 
 	return (
 		<div className="-mx-6 -my-6 md:-mx-9 md:-my-6">
@@ -133,7 +132,7 @@ export function WelcomeContent({
 								</p>
 							</div>
 							<Link
-								href={`${base}/invoices`}
+								href={viewAllHref}
 								className="text-[13px] font-medium text-primary hover:text-primary/80"
 							>
 								View all →
@@ -256,33 +255,20 @@ function AttentionCard({
 	})();
 
 	return (
-		<div
-			className="rounded-2xl border p-5"
-			style={{
-				background:
-					"linear-gradient(135deg, oklch(0.99 0.02 84) 0%, oklch(0.97 0.04 84) 100%)",
-				borderColor: "oklch(0.85 0.13 84)",
-			}}
-		>
+		<div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40">
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-				<div
-					className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-					style={{ background: "oklch(0.45 0.13 70)" }}
-				>
-					<CircleAlert className="h-[22px] w-[22px] text-white" aria-hidden="true" />
+				<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 dark:bg-amber-600">
+					<CircleAlert
+						className="h-[22px] w-[22px] text-white"
+						aria-hidden="true"
+					/>
 				</div>
 				<div className="min-w-0 flex-1">
-					<div
-						className="text-[15px] font-semibold leading-snug"
-						style={{ color: "oklch(0.35 0.13 70)" }}
-					>
+					<div className="text-[15px] font-semibold leading-snug text-amber-900 dark:text-amber-100">
 						{headline}
 					</div>
 					{lines.length > 0 && (
-						<div
-							className="mt-1 text-[13px]"
-							style={{ color: "oklch(0.45 0.1 70)" }}
-						>
+						<div className="mt-1 text-[13px] text-amber-800 dark:text-amber-300">
 							{lines.join(" · ")}
 						</div>
 					)}
@@ -311,8 +297,11 @@ function AttentionCard({
 	);
 }
 
+type ActivityKind = "quote" | "invoice";
+
 type ActivityRow = {
 	key: string;
+	kind: ActivityKind;
 	ts: number;
 	title: string;
 	meta: string;
@@ -331,10 +320,10 @@ function buildActivityFeed(
 	const rows: ActivityRow[] = [];
 
 	for (const q of quotes) {
-		// Outbound event: quote sent
 		if (q.sentAt) {
 			rows.push({
 				key: `quote-sent-${q._id}`,
+				kind: "quote",
 				ts: q.sentAt,
 				title: `${q.quoteNumber ? `Quote ${q.quoteNumber}` : "Quote"} sent`,
 				meta: `${q.title ?? "Quote"} · ${formatMoney(q.total)}`,
@@ -361,6 +350,7 @@ function buildActivityFeed(
 		if (q.status === "approved" && q.approvedAt) {
 			rows.push({
 				key: `quote-accepted-${q._id}`,
+				kind: "quote",
 				ts: q.approvedAt,
 				title: `${q.quoteNumber ? `Quote ${q.quoteNumber}` : "Quote"} accepted`,
 				meta: q.title ?? "Quote accepted",
@@ -375,9 +365,14 @@ function buildActivityFeed(
 		}
 	}
 
+	// Single row per invoice — the pill conveys current status (Paid /
+	// Overdue / Partial / Awaiting). A separate paid-row would need a real
+	// paidAt timestamp; the list item only exposes dueDate, which would sort
+	// incorrectly if the client paid early or late.
 	for (const inv of invoices) {
 		rows.push({
 			key: `invoice-issued-${inv._id}`,
+			kind: "invoice",
 			ts: inv.issuedDate,
 			title: `Invoice ${inv.invoiceNumber} sent`,
 			meta: `${formatMoney(inv.total)}`,
@@ -402,24 +397,6 @@ function buildActivityFeed(
 							? "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900"
 							: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900",
 		});
-		if (
-			inv.paymentSummary.displayStatus === "paid" &&
-			inv.paymentSummary.totalPaid > 0
-		) {
-			rows.push({
-				key: `invoice-paid-${inv._id}`,
-				ts: inv.dueDate, // approximate — no paidAt on the list item
-				title: `Invoice ${inv.invoiceNumber} paid`,
-				meta: `${formatMoney(inv.paymentSummary.totalPaid)}`,
-				time: formatShortDate(inv.dueDate),
-				icon: Wallet,
-				tintBg: "bg-muted",
-				tintFg: "text-muted-foreground",
-				pillLabel: "Paid",
-				pillClass:
-					"bg-muted text-muted-foreground border-border",
-			});
-		}
 	}
 
 	return rows.sort((a, b) => b.ts - a.ts);
