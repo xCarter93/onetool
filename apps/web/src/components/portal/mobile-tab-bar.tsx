@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, ReceiptText, LogOut } from "lucide-react";
+import { FileText, Home, ReceiptText, LogOut } from "lucide-react";
 
 export function MobileTabBar({
 	clientPortalId,
@@ -14,18 +14,28 @@ export function MobileTabBar({
 	signOutPending: boolean;
 }) {
 	const pathname = usePathname();
+	const base = `/portal/c/${clientPortalId}`;
 	const tabs = [
+		{
+			key: "home",
+			label: "Home",
+			icon: Home,
+			href: base,
+			match: (p: string | null) => p === base || p === `${base}/`,
+		},
 		{
 			key: "quotes",
 			label: "Quotes",
 			icon: FileText,
-			href: `/portal/c/${clientPortalId}/quotes`,
+			href: `${base}/quotes`,
+			match: (p: string | null) => !!p?.startsWith(`${base}/quotes`),
 		},
 		{
 			key: "invoices",
 			label: "Invoices",
 			icon: ReceiptText,
-			href: `/portal/c/${clientPortalId}/invoices`,
+			href: `${base}/invoices`,
+			match: (p: string | null) => !!p?.startsWith(`${base}/invoices`),
 		},
 	];
 	return (
@@ -34,8 +44,8 @@ export function MobileTabBar({
 			aria-label="Portal navigation"
 			className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border flex items-stretch h-14 pb-[env(safe-area-inset-bottom)]"
 		>
-			{tabs.map(({ key, label, icon: Icon, href }) => {
-				const active = pathname?.startsWith(href);
+			{tabs.map(({ key, label, icon: Icon, href, match }) => {
+				const active = match(pathname);
 				return (
 					<Link
 						key={key}
