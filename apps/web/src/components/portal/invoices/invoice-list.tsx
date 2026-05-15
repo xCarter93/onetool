@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Download, Search } from "lucide-react";
+import { Download, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
@@ -106,173 +106,211 @@ export function InvoiceList({
 				<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
 					{businessName}
 				</p>
-				<h1 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.02em]">
+				<h1 className="text-[30px] font-semibold leading-[1.15] tracking-[-0.02em]">
 					Invoices
 				</h1>
 				<p className="text-sm text-muted-foreground">
-					Bills from {businessName} — review and pay outstanding amounts.
+					All your invoices — paid and outstanding.
 				</p>
 			</header>
 
-			<div className="mt-8 flex flex-wrap items-center gap-2 pb-4 border-b border-border">
-				<div className="relative flex-1 max-w-[280px]">
-					<Search
-						className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
-						aria-hidden="true"
-					/>
-					<input
-						type="search"
-						value={search}
-						onChange={(e) => setSearch(e.target.value)}
-						placeholder="Search invoices…"
-						aria-label="Search invoices"
-						className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2 text-[13px] transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30"
-					/>
+			<div className="mt-6 md:rounded-2xl md:border md:border-border md:bg-card md:overflow-hidden md:shadow-xs">
+				<div className="hidden md:flex flex-wrap items-center gap-2 border-b border-border p-3">
+					<div className="relative flex-1 max-w-[280px]">
+						<Search
+							className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
+							aria-hidden="true"
+						/>
+						<input
+							type="search"
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							placeholder="Search invoices…"
+							aria-label="Search invoices"
+							className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-[13px] transition-colors focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+						/>
+					</div>
+					<div className="flex flex-wrap gap-1.5">
+						{FILTERS.map((f) => {
+							const active = filterStatus === f.value;
+							return (
+								<button
+									key={f.value}
+									type="button"
+									onClick={() => setFilterStatus(f.value)}
+									aria-pressed={active}
+									className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+										active
+											? "bg-primary text-primary-foreground border-primary"
+											: "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+									}`}
+								>
+									{f.label}
+								</button>
+							);
+						})}
+					</div>
 				</div>
-				<div className="flex flex-wrap gap-1.5">
-					{FILTERS.map((f) => {
-						const active = filterStatus === f.value;
-						return (
-							<button
-								key={f.value}
-								type="button"
-								onClick={() => setFilterStatus(f.value)}
-								aria-pressed={active}
-								className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ${
-									active
-										? "bg-primary text-primary-foreground border-primary"
-										: "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
-								}`}
-							>
-								{f.label}
-							</button>
-						);
-					})}
-				</div>
-			</div>
 
-			{isEmpty ? (
-				<div className="px-6 py-20 text-center">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-						No invoices yet
-					</p>
-					<h2 className="mt-3 text-[18px] font-semibold text-foreground">
-						No invoices yet
-					</h2>
-					<p className="mt-2 text-sm text-muted-foreground">
-						When {businessName} sends you an invoice, you&rsquo;ll see it here.
-					</p>
+				{/* Mobile filter row */}
+				<div className="md:hidden flex flex-wrap items-center gap-2 mb-3">
+					<div className="relative flex-1 min-w-[160px]">
+						<Search
+							className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
+							aria-hidden="true"
+						/>
+						<input
+							type="search"
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							placeholder="Search invoices…"
+							aria-label="Search invoices"
+							className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2 text-[13px] focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+						/>
+					</div>
+					<div className="flex flex-wrap gap-1.5">
+						{FILTERS.map((f) => {
+							const active = filterStatus === f.value;
+							return (
+								<button
+									key={f.value}
+									type="button"
+									onClick={() => setFilterStatus(f.value)}
+									aria-pressed={active}
+									className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+										active
+											? "bg-primary text-primary-foreground border-primary"
+											: "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+									}`}
+								>
+									{f.label}
+								</button>
+							);
+						})}
+					</div>
 				</div>
-			) : isFilterEmpty ? (
-				<div className="px-6 py-20 text-center">
-					<h2 className="text-[18px] font-semibold text-foreground">
-						Nothing here right now
-					</h2>
-					<p className="mt-2 text-sm text-muted-foreground">
-						Try a different filter, or clear the search.
-					</p>
-				</div>
-			) : (
-				<>
-					{/* Desktop table (>=768px) */}
-					<table className="hidden md:table w-full">
-						<thead>
-							<tr className="border-b border-border">
-								<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-2">
-									Invoice #
-								</th>
-								<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-2">
-									Issued
-								</th>
-								<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-2">
-									For
-								</th>
-								<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-2">
-									Due
-								</th>
-								<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-2">
-									Status
-								</th>
-								<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-2">
-									Total
-								</th>
-								<th className="py-3 px-2 w-[160px]" />
-							</tr>
-						</thead>
-						<tbody>
-							{filtered.map((inv) => {
-								const href = `/portal/c/${clientPortalId}/invoices/${inv._id}`;
-								const isLegacy = inv.paymentSummary.isLegacy;
-								const displayStatus = inv.paymentSummary.displayStatus;
-								const showPayNow =
-									!isLegacy && displayStatus !== "paid";
-								return (
-									<tr
-										key={inv._id}
-										className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
-									>
-										<td className="py-4 px-2">
-											<Link
-												href={href}
-												className="font-semibold text-primary hover:underline"
-											>
-												{inv.invoiceNumber}
-											</Link>
-										</td>
-										<td className="py-4 px-2 text-[14px] text-muted-foreground">
-											{formatDate(inv.issuedDate)}
-										</td>
-										<td className="py-4 px-2 text-[14px] font-medium text-foreground">
-											{inv.clientName}
-										</td>
-										<td className="py-4 px-2 text-[14px] text-muted-foreground">
-											{formatDate(inv.dueDate)}
-										</td>
-										<td className="py-4 px-2">
-											<span
-												className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${pillClassFor(
-													displayStatus,
-												)}`}
-											>
-												<span className="h-1.5 w-1.5 rounded-full bg-current" />
-												{pillLabelFor(displayStatus)}
-											</span>
-										</td>
-										<td className="py-4 px-2 text-right font-semibold tabular-nums">
-											{formatMoney(inv.total)}
-										</td>
-										<td className="py-4 px-2 text-right">
-											{/* Action column: siblings of the Invoice # Link above.
-											    No nested anchors — Pay now + PDF render as separate
-											    Links / buttons. */}
-											<div className="inline-flex items-center gap-1.5">
-												{showPayNow && (
-													<Link
-														href={href}
-														className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
-													>
-														Pay now
-														<ArrowRight
-															className="h-3.5 w-3.5"
-															aria-hidden="true"
-														/>
-													</Link>
-												)}
-												{!showPayNow && (
-													<Link
-														href={href}
-														className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-													>
-														View
-													</Link>
-												)}
-											</div>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
+
+				{isEmpty ? (
+					<div className="px-6 py-20 text-center">
+						<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+							No invoices yet
+						</p>
+						<h2 className="mt-3 text-[18px] font-semibold text-foreground">
+							No invoices yet
+						</h2>
+						<p className="mt-2 text-sm text-muted-foreground">
+							When {businessName} sends you an invoice, you&rsquo;ll see it
+							here.
+						</p>
+					</div>
+				) : isFilterEmpty ? (
+					<div className="px-6 py-20 text-center">
+						<h2 className="text-[18px] font-semibold text-foreground">
+							Nothing here right now
+						</h2>
+						<p className="mt-2 text-sm text-muted-foreground">
+							Try a different filter, or clear the search.
+						</p>
+					</div>
+				) : (
+					<>
+						{/* Desktop table (>=768px) */}
+						<table className="hidden md:table w-full">
+							<thead>
+								<tr className="bg-muted/40">
+									<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-4 border-b border-border">
+										Invoice
+									</th>
+									<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-4 border-b border-border">
+										Issued
+									</th>
+									<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-4 border-b border-border">
+										For
+									</th>
+									<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-4 border-b border-border">
+										Due
+									</th>
+									<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-4 border-b border-border">
+										Status
+									</th>
+									<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-3 px-4 border-b border-border">
+										Total
+									</th>
+									<th className="py-3 px-4 w-[130px] border-b border-border" />
+								</tr>
+							</thead>
+							<tbody>
+								{filtered.map((inv, i) => {
+									const href = `/portal/c/${clientPortalId}/invoices/${inv._id}`;
+									const isLegacy = inv.paymentSummary.isLegacy;
+									const displayStatus = inv.paymentSummary.displayStatus;
+									const showPayNow = !isLegacy && displayStatus !== "paid";
+									const isLast = i === filtered.length - 1;
+									return (
+										<tr
+											key={inv._id}
+											className={`hover:bg-muted/50 transition-colors ${
+												isLast ? "" : "border-b border-border"
+											}`}
+										>
+											<td className="py-3.5 px-4">
+												<Link
+													href={href}
+													className="font-semibold text-primary tabular-nums hover:underline"
+												>
+													#{inv.invoiceNumber}
+												</Link>
+											</td>
+											<td className="py-3.5 px-4 text-[14px] text-foreground">
+												{formatDate(inv.issuedDate)}
+											</td>
+											<td className="py-3.5 px-4 text-[14px] font-medium text-foreground">
+												{inv.clientName}
+											</td>
+											<td className="py-3.5 px-4 text-[14px] text-muted-foreground">
+												{formatDate(inv.dueDate)}
+											</td>
+											<td className="py-3.5 px-4">
+												<span
+													className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium ${pillClassFor(
+														displayStatus,
+													)}`}
+												>
+													<span className="h-1.5 w-1.5 rounded-full bg-current" />
+													{pillLabelFor(displayStatus)}
+												</span>
+											</td>
+											<td className="py-3.5 px-4 text-right font-semibold tabular-nums">
+												{formatMoney(inv.total)}
+											</td>
+											<td className="py-3.5 px-4 text-right">
+												<div className="inline-flex items-center gap-1.5">
+													{showPayNow ? (
+														<Link
+															href={href}
+															className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
+														>
+															Pay now
+														</Link>
+													) : (
+														<Link
+															href={href}
+															className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+														>
+															<Download
+																className="h-3.5 w-3.5"
+																aria-hidden="true"
+															/>
+															PDF
+														</Link>
+													)}
+												</div>
+											</td>
+										</tr>
+									);
+								})}
+							</tbody>
+						</table>
 
 					{/* Mobile card stack (<768px) */}
 					<ul className="md:hidden flex flex-col gap-3 mt-2">
@@ -334,6 +372,7 @@ export function InvoiceList({
 					</ul>
 				</>
 			)}
+			</div>
 		</div>
 	);
 }

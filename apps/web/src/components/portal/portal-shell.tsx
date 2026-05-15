@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { FileText, ReceiptText, LogOut } from "lucide-react";
+import { FileText, Home, ReceiptText, LogOut } from "lucide-react";
 import { BrandHeader } from "./brand-header";
 import { PoweredByOneTool } from "./powered-by-onetool";
 import { MobileTabBar } from "./mobile-tab-bar";
@@ -13,6 +13,7 @@ import {
 } from "./portal-theme-switcher";
 
 const NAV_ITEMS = [
+	{ key: "home", label: "Home", icon: Home, segment: "" },
 	{ key: "quotes", label: "Quotes", icon: FileText, segment: "quotes" },
 	{
 		key: "invoices",
@@ -95,8 +96,11 @@ export function PortalShell({
 				</div>
 				<nav className="flex-1 px-3 py-1 flex flex-col gap-1">
 					{NAV_ITEMS.map(({ key, label, icon: Icon, segment }) => {
-						const href = `/portal/c/${clientPortalId}/${segment}`;
-						const active = pathname?.startsWith(href);
+						const base = `/portal/c/${clientPortalId}`;
+						const href = segment ? `${base}/${segment}` : base;
+						const active = segment
+							? pathname?.startsWith(href)
+							: pathname === base || pathname === `${base}/`;
 						return (
 							<Link
 								key={key}
