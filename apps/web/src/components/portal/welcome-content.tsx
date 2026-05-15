@@ -20,7 +20,7 @@ import type { PortalInvoiceListItem } from "./invoices/invoice-list";
 type Quote = FunctionReturnType<typeof api.portal.quotes.list>[number];
 
 function isOutstanding(inv: PortalInvoiceListItem): boolean {
-	return inv.paymentSummary.displayStatus !== "paid";
+	return !inv.paymentSummary.isLegacy && inv.paymentSummary.displayStatus !== "paid";
 }
 
 export function WelcomeContent({
