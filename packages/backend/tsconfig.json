@@ -3,10 +3,11 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
+    "jsx": "preserve",
     "noEmit": true
   },
-  "include": ["convex/**/*.ts"],
+  "include": ["convex/**/*.ts", "convex/**/*.tsx"],
   "exclude": ["node_modules"]
 }
 
