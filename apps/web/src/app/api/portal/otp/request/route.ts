@@ -15,9 +15,19 @@ function convexHttpUrl(): string {
 }
 
 export async function POST(req: NextRequest) {
+	let body: unknown;
+	try {
+		body = await req.json();
+	} catch {
+		return NextResponse.json(
+			{ error: "Invalid request body." },
+			{ status: 400 },
+		);
+	}
+
 	let parsed;
 	try {
-		parsed = bodySchema.parse(await req.json());
+		parsed = bodySchema.parse(body);
 	} catch {
 		return NextResponse.json(
 			{ error: "Enter a valid email address." },

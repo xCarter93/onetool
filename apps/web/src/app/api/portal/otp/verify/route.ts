@@ -38,14 +38,28 @@ function safeRedirect(
 }
 
 export async function POST(req: NextRequest) {
-	let parsed;
+	let body: unknown;
 	try {
-		parsed = bodySchema.parse(await req.json());
+		body = await req.json();
 	} catch {
 		return NextResponse.json(
 			{
-				error: "That code didn't match.",
-				code: "OTP_INVALID",
+				error: "Invalid request format.",
+				code: "INVALID_REQUEST",
+				remainingAttempts: null,
+			},
+			{ status: 400 },
+		);
+	}
+
+	let parsed;
+	try {
+		parsed = bodySchema.parse(body);
+	} catch {
+		return NextResponse.json(
+			{
+				error: "Invalid request format.",
+				code: "INVALID_REQUEST",
 				remainingAttempts: null,
 			},
 			{ status: 400 },

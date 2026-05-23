@@ -13,6 +13,8 @@ export function portalUrl(options: {
 	path?: string;
 }): string {
 	const origin = env.PORTAL_JWT_ISSUER; // shares the public origin with the JWKS issuer
-	const path = options.path ?? "";
+	const rawPath = options.path?.trim() ?? "";
+	const path =
+		rawPath === "" || rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
 	return `${origin}/portal/c/${options.clientPortalId}${path}`;
 }

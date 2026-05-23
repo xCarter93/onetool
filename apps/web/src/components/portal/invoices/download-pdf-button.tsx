@@ -35,8 +35,13 @@ export function DownloadPdfButton({
 				);
 				return;
 			}
-			const body = (await res.json()) as { url?: string };
-			if (!body.url) {
+			const body = (await res.json()) as unknown;
+			if (
+				!body ||
+				typeof body !== "object" ||
+				typeof (body as { url?: unknown }).url !== "string" ||
+				(body as { url: string }).url.length === 0
+			) {
 				showError(
 					"Couldn't download PDF",
 					"The download link was missing. Please try again.",
@@ -45,7 +50,11 @@ export function DownloadPdfButton({
 			}
 			// noopener,noreferrer prevents the new tab from accessing window.opener
 			// and strips Referer to the short-lived Convex storage URL.
-			window.open(body.url, "_blank", "noopener,noreferrer");
+			window.open(
+				(body as { url: string }).url,
+				"_blank",
+				"noopener,noreferrer",
+			);
 		} catch {
 			showError(
 				"Couldn't download PDF",

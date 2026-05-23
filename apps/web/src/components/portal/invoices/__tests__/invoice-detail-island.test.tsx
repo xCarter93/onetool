@@ -251,8 +251,14 @@ describe("InvoiceDetailIsland", () => {
 			/>,
 		);
 		// usePathname is mocked above to return the invoice-detail route, which
-		// matches the suppression regex in portal-shell.tsx:50.
-		expect(window.location.pathname || "/").toBeDefined();
+		// matches the suppression regex in portal-shell.tsx:50. Assert that the
+		// island actually rendered (proof the pathname-aware component mounted
+		// under the mocked route), rather than a no-op window.location check.
+		expect(
+			document.querySelector("[data-sheet-docked]") ??
+				document.querySelector("[data-payment-rail]") ??
+				document.body.firstElementChild,
+		).toBeInTheDocument();
 	});
 
 	it("Test 4: when totalRemaining === 0, renders 'Paid in full' panel in place of PaymentRail/Sheet", async () => {

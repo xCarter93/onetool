@@ -239,9 +239,7 @@ export function ApprovalAuditTab({
 	quoteId,
 	documentsWithSignatures,
 }: ApprovalAuditTabProps) {
-	const rows = useQuery(api.quotes.getApprovalAudit, { quoteId }) as
-		| AuditRow[]
-		| undefined;
+	const rows = useQuery(api.quotes.getApprovalAudit, { quoteId });
 
 	if (rows === undefined) {
 		return (

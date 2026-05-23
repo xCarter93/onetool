@@ -10,7 +10,7 @@
  * is expanded — prevents touch-scroll fight in docked state.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
@@ -120,6 +120,33 @@ export function ApprovalBottomSheet({
 
 	const isCooldownActive = Date.now() < cooldownUntil;
 	const submitting = state === "submitting";
+
+	// Sheet keyboard + focus management — manual since this is a custom dialog,
+	// not Radix Dialog. Escape closes (when safe); opening focuses the close
+	// button so screen readers land on the dismiss control; previous focus is
+	// restored on close.
+	const sheetRef = useRef<HTMLDivElement>(null);
+	const closeButtonRef = useRef<HTMLButtonElement>(null);
+	const previousFocusRef = useRef<HTMLElement | null>(null);
+
+	const canDismissSheet = !submitting && !isCooldownActive;
+
+	useEffect(() => {
+		if (!expanded) return;
+		previousFocusRef.current = document.activeElement as HTMLElement | null;
+		closeButtonRef.current?.focus();
+		const handleKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape" && canDismissSheet) {
+				e.preventDefault();
+				setExpanded(false);
+			}
+		};
+		document.addEventListener("keydown", handleKey);
+		return () => {
+			document.removeEventListener("keydown", handleKey);
+			previousFocusRef.current?.focus?.();
+		};
+	}, [expanded, canDismissSheet]);
 
 	const canApprove = useMemo(() => {
 		if (!signaturePayload.isUsable) return false;
@@ -241,12 +268,13 @@ export function ApprovalBottomSheet({
 			{/* Expanded sheet */}
 			{expanded && (
 				<div
+					ref={sheetRef}
 					role="dialog"
 					aria-modal="true"
 					aria-label="Approve quote"
 					className="fixed inset-0 z-50 bg-black/40 flex items-end"
 					onClick={(e) => {
-						if (e.target === e.currentTarget && !submitting) {
+						if (e.target === e.currentTarget && canDismissSheet) {
 							setExpanded(false);
 						}
 					}}
@@ -263,10 +291,12 @@ export function ApprovalBottomSheet({
 						<div className="flex items-center justify-between px-5 pt-2 pb-4">
 							<h2 className="text-[16px] font-semibold">Approve quote</h2>
 							<button
+								ref={closeButtonRef}
 								type="button"
 								aria-label="Close"
 								onClick={() => setExpanded(false)}
-								className="text-muted-foreground hover:text-foreground"
+								disabled={!canDismissSheet}
+								className="text-muted-foreground hover:text-foreground disabled:opacity-40"
 							>
 								<X className="h-4 w-4" aria-hidden="true" />
 							</button>

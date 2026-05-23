@@ -19,7 +19,7 @@ export function PoweredByOneTool({
 				alt=""
 				width={dim}
 				height={dim}
-				className="dark:brightness-0 dark:invert"
+				className="dark:invert"
 				aria-hidden="true"
 			/>
 			<span className="font-medium">Powered by OneTool</span>

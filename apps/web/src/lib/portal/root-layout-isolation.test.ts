@@ -11,7 +11,7 @@
  * The static checks run in every CI run. The build-output check is best-effort.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFileSync, existsSync, readdirSync, lstatSync } from "fs";
 import { resolve, join } from "path";
 
 const REPO = resolve(__dirname, "../../../../..");
@@ -24,7 +24,9 @@ function walk(dir: string): string[] {
 	const out: string[] = [];
 	for (const name of readdirSync(dir)) {
 		const full = join(dir, name);
-		if (statSync(full).isDirectory()) out.push(...walk(full));
+		const entry = lstatSync(full);
+		if (entry.isSymbolicLink()) continue;
+		if (entry.isDirectory()) out.push(...walk(full));
 		else out.push(full);
 	}
 	return out;
