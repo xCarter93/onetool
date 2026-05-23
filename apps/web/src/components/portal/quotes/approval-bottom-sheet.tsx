@@ -125,16 +125,25 @@ export function ApprovalBottomSheet({
 	// not Radix Dialog. Escape closes (when safe); opening focuses the close
 	// button so screen readers land on the dismiss control; previous focus is
 	// restored on close.
-	const sheetRef = useRef<HTMLDivElement>(null);
 	const closeButtonRef = useRef<HTMLButtonElement>(null);
 	const previousFocusRef = useRef<HTMLElement | null>(null);
 
 	const canDismissSheet = !submitting && !isCooldownActive;
 
+	// Focus save/restore keyed only on `expanded` — splitting from the keydown
+	// effect prevents focus from snapping back to the pre-sheet element when
+	// `canDismissSheet` flips mid-submission.
 	useEffect(() => {
 		if (!expanded) return;
 		previousFocusRef.current = document.activeElement as HTMLElement | null;
 		closeButtonRef.current?.focus();
+		return () => {
+			previousFocusRef.current?.focus?.();
+		};
+	}, [expanded]);
+
+	useEffect(() => {
+		if (!expanded) return;
 		const handleKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape" && canDismissSheet) {
 				e.preventDefault();
@@ -144,7 +153,6 @@ export function ApprovalBottomSheet({
 		document.addEventListener("keydown", handleKey);
 		return () => {
 			document.removeEventListener("keydown", handleKey);
-			previousFocusRef.current?.focus?.();
 		};
 	}, [expanded, canDismissSheet]);
 
@@ -268,7 +276,6 @@ export function ApprovalBottomSheet({
 			{/* Expanded sheet */}
 			{expanded && (
 				<div
-					ref={sheetRef}
 					role="dialog"
 					aria-modal="true"
 					aria-label="Approve quote"
