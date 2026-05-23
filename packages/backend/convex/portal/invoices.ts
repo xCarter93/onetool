@@ -497,6 +497,7 @@ export const getDownloadUrl = query({
 // V8-runtime helpers used by createPaymentIntent action (portal/invoicesActions).
 // ---------------------------------------------------------------------------
 
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _getPortalSessionForAction = internalQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -524,6 +525,7 @@ export const _rateLimitPreflight = internalMutation({
  * Resolve + scope-check the active payment row for createPaymentIntent.
  * Throws explicit ConvexError codes so the action layer / route can map them.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _getPaymentTargetInternal = internalQuery({
 	args: {
 		invoiceId: v.id("invoices"),

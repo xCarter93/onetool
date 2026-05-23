@@ -293,6 +293,7 @@ export const getDownloadUrl = query({
 // Internal helpers used by approve action + decline mutation
 // ---------------------------------------------------------------------------
 
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _getPortalSessionForAction = internalQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -328,6 +329,7 @@ export const _rateLimitPreflight = internalMutation({
  * Runs BEFORE storage.store so failure paths leave no orphan blob.
  * Returns the snapshot fields _commitApproval needs to insert the audit row.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _preflightApproval = internalQuery({
 	args: {
 		quoteId: v.id("quotes"),

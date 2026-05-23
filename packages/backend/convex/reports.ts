@@ -3,11 +3,10 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUser } from "./lib/auth";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	filterUndefined,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Report operations with CRUD helpers
@@ -65,7 +64,7 @@ const visualizationValidator = v.object({
 /**
  * List all reports for the current user's organization
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<"reports">[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -84,17 +83,25 @@ export const list = query({
 /**
  * Get a single report by ID
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("reports") },
 	handler: async (ctx, args): Promise<Doc<"reports"> | null> => {
-		return await getEntityWithOrgValidation(ctx, "reports", args.id, "Report");
+		if (!ctx.orgId) return null;
+		try {
+			return await ctx.orgEntity("reports", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in reports:")) {
+				return null;
+			}
+			throw error;
+		}
 	},
 });
 
 /**
  * Get reports created by the current user
  */
-export const getMyReports = query({
+export const getMyReports = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<"reports">[]> => {
 		const user = await getCurrentUser(ctx);
@@ -116,7 +123,7 @@ export const getMyReports = query({
 /**
  * Create a new report
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
@@ -156,7 +163,7 @@ export const create = mutation({
 /**
  * Update an existing report
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("reports"),
 		name: v.optional(v.string()),
@@ -166,7 +173,7 @@ export const update = mutation({
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {
-		const report = await getEntityOrThrow(ctx, "reports", args.id, "Report");
+		const report = await ctx.orgEntity("reports", args.id);
 
 		const { id: _, ...updateFields } = args;
 		const updates = filterUndefined({
@@ -182,10 +189,10 @@ export const update = mutation({
 /**
  * Delete a report
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("reports") },
 	handler: async (ctx, args): Promise<void> => {
-		const report = await getEntityOrThrow(ctx, "reports", args.id, "Report");
+		const report = await ctx.orgEntity("reports", args.id);
 		await ctx.db.delete(report._id);
 	},
 });
@@ -193,7 +200,7 @@ export const remove = mutation({
 /**
  * Duplicate an existing report
  */
-export const duplicate = mutation({
+export const duplicate = userMutation({
 	args: { id: v.id("reports") },
 	handler: async (ctx, args): Promise<Id<"reports">> => {
 		const user = await getCurrentUser(ctx);
@@ -201,7 +208,7 @@ export const duplicate = mutation({
 			throw new Error("Not authenticated");
 		}
 
-		const report = await getEntityOrThrow(ctx, "reports", args.id, "Report");
+		const report = await ctx.orgEntity("reports", args.id);
 		const now = Date.now();
 
 		const newReportId = await ctx.db.insert("reports", {

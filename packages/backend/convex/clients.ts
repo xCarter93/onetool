@@ -11,14 +11,13 @@ import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
 
 /**
  * Client operations
@@ -30,26 +29,6 @@ import { computeFieldChanges } from "./lib/changeTracking";
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a client by ID with organization validation (wrapper for shared utility)
- */
-async function getClientWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"clients">
-): Promise<Doc<"clients"> | null> {
-	return await getEntityWithOrgValidation(ctx, "clients", id, "Client");
-}
-
-/**
- * Get a client by ID, throwing if not found (wrapper for shared utility)
- */
-async function getClientOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"clients">
-): Promise<Doc<"clients">> {
-	return await getEntityOrThrow(ctx, "clients", id, "Client");
-}
 
 /**
  * List all clients for the current user's organization
@@ -93,14 +72,12 @@ async function listClientsForOrg(
  * Create a client with automatic orgId assignment
  */
 async function createClientWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<Doc<"clients">, "_id" | "_creationTime" | "orgId">
 ): Promise<Id<"clients">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	const clientData = {
 		...data,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	};
 
 	return await ctx.db.insert("clients", clientData);
@@ -110,12 +87,12 @@ async function createClientWithOrg(
  * Update a client with validation
  */
 async function updateClientWithValidation(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	id: Id<"clients">,
 	updates: Partial<Doc<"clients">>
 ): Promise<void> {
 	// Validate client exists and belongs to user's org
-	await getClientOrThrow(ctx, id);
+	await ctx.orgEntity("clients", id);
 
 	// Update the client
 	await ctx.db.patch(id, updates);
@@ -145,7 +122,7 @@ interface ClientStats {
 /**
  * Get all clients for the current user's organization
  */
-export const list = query({
+export const list = userQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -173,7 +150,7 @@ export const list = query({
  * Returns only {_id, companyName} to minimize data transfer.
  * Excludes archived clients to match the default list behavior.
  */
-export const listNamesForOrg = query({
+export const listNamesForOrg = userQuery({
 	args: {},
 	handler: async (ctx) => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -197,7 +174,7 @@ export const listNamesForOrg = query({
  * Get only archived clients for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const listArchived = query({
+export const listArchived = userQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -215,20 +192,24 @@ export const listArchived = query({
 /**
  * Get a specific client by ID
  */
-export const get = query({
+export const get = userQuery({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
-
-		return await getClientWithValidation(ctx, args.id);
+		try {
+			return await ctx.orgEntity("clients", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in clients:")) {
+				return null;
+			}
+			throw error;
+		}
 	},
 });
 
 /**
  * Create a new client
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		// Company Information
 		companyName: v.string(),
@@ -288,7 +269,7 @@ export const create = mutation({
 /**
  * Bulk create clients from CSV import
  */
-export const bulkCreate = mutation({
+export const bulkCreate = userMutation({
 	args: {
 		clients: v.array(
 			v.object({
@@ -505,7 +486,7 @@ export const bulkCreate = mutation({
 /**
  * Update a client with type-safe partial updates
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("clients"),
 		// All fields are optional for updates
@@ -546,7 +527,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get existing client to track status changes
-		const existingClient = await getClientOrThrow(ctx, id);
+		const existingClient = await ctx.orgEntity("clients", id);
 		const oldStatus = existingClient.status;
 
 		// Compute field-level changes before applying the update
@@ -584,11 +565,11 @@ export const update = mutation({
 /**
  * Archive a client (soft delete) - sets status to archived and archivedAt timestamp
  */
-export const archive = mutation({
+export const archive = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
 		// Validate client exists and belongs to user's org
-		await getClientOrThrow(ctx, args.id);
+		await ctx.orgEntity("clients", args.id);
 
 		// Archive the client by setting status to archived and adding archivedAt timestamp
 		await ctx.db.patch(args.id, {
@@ -609,11 +590,11 @@ export const archive = mutation({
 /**
  * Restore an archived client back to active status
  */
-export const restore = mutation({
+export const restore = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
 		// Validate client exists and belongs to user's org
-		const client = await getClientOrThrow(ctx, args.id);
+		const client = await ctx.orgEntity("clients", args.id);
 
 		if (client.status !== "archived") {
 			throw new Error("Only archived clients can be restored");
@@ -639,11 +620,11 @@ export const restore = mutation({
  * Helper function to permanently delete a client and all related data
  */
 async function permanentlyDeleteHandler(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	args: { id: Id<"clients"> }
 ): Promise<ClientId> {
 	// Validate client exists and belongs to user's org
-	const client = await getClientOrThrow(ctx, args.id);
+	const client = await ctx.orgEntity("clients", args.id);
 
 	if (client.status !== "archived") {
 		throw new Error("Only archived clients can be permanently deleted");
@@ -784,7 +765,7 @@ async function permanentlyDeleteSystemHandler(
  * This is an internal function that should only be called by the cron job
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const permanentlyDelete = mutation({
+export const permanentlyDelete = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
 		return await permanentlyDeleteHandler(ctx, args);
@@ -796,7 +777,7 @@ export const permanentlyDelete = mutation({
  * @deprecated Use archive() instead
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
 		// For backward compatibility, redirect to archive
@@ -820,7 +801,7 @@ export const remove = mutation({
  * Search clients with type-safe filtering
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = query({
+export const search = userQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -859,7 +840,7 @@ export const search = query({
 /**
  * Get client statistics for dashboard with proper typing
  */
-export const getStats = query({
+export const getStats = userQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientStats> => {
 		const clients = await listClientsForOrg(ctx, "by_org", true);
@@ -917,7 +898,7 @@ export const getStats = query({
  * Get clients with recent activity using proper types
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getRecentActivity = query({
+export const getRecentActivity = userQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<ClientDocument[]> => {
 		const limit = args.limit || 10;
@@ -967,7 +948,7 @@ type ClientWithProjectCount = {
 	} | null;
 };
 
-export const listWithProjectCounts = query({
+export const listWithProjectCounts = userQuery({
 	args: {
 		status: v.optional(
 			v.union(

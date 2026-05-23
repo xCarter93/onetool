@@ -5,16 +5,14 @@ import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
-import { isMember, getCurrentUserId } from "./lib/permissions";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
+import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
 
 /**
  * Task/Schedule operations
@@ -31,26 +29,6 @@ import { emitStatusChangeEvent } from "./eventBus";
 // Define specific types for task operations
 type TaskDocument = Doc<"tasks">;
 type TaskId = Id<"tasks">;
-
-/**
- * Get a task with org validation (wrapper for shared utility)
- */
-async function getTaskWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"tasks">
-): Promise<Doc<"tasks"> | null> {
-	return await getEntityWithOrgValidation(ctx, "tasks", id, "Task");
-}
-
-/**
- * Get a task, throwing if not found (wrapper for shared utility)
- */
-async function getTaskOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"tasks">
-): Promise<Doc<"tasks">> {
-	return await getEntityOrThrow(ctx, "tasks", id, "Task");
-}
 
 /**
  * Validate client access (wrapper for shared utility)
@@ -141,35 +119,33 @@ function generateRecurringTaskDates(
  * Create a task with automatic orgId assignment
  */
 async function createTaskWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<Doc<"tasks">, "_id" | "_creationTime" | "orgId"> & {
 		parentTaskId?: Id<"tasks">;
 	}
 ): Promise<Id<"tasks">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	// For external tasks (or untyped legacy tasks), validate client access
 	const taskType = data.type || "external"; // Default to external for backward compatibility
 	if (taskType === "external") {
 		if (!data.clientId) {
 			throw new Error("External tasks require a client");
 		}
-		await validateClientAccess(ctx, data.clientId);
+		await validateClientAccess(ctx, data.clientId, ctx.orgId);
 	}
 
 	// Validate project access if provided
 	if (data.projectId) {
-		await validateProjectAccess(ctx, data.projectId);
+		await validateProjectAccess(ctx, data.projectId, ctx.orgId);
 	}
 
 	// Validate assignee if provided
 	if (data.assigneeUserId) {
-		await validateUserAccess(ctx, data.assigneeUserId);
+		await validateUserAccess(ctx, data.assigneeUserId, ctx.orgId);
 	}
 
 	const taskData = {
 		...data,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	};
 
 	return await ctx.db.insert("tasks", taskData);
@@ -179,12 +155,12 @@ async function createTaskWithOrg(
  * Update a task with validation
  */
 async function updateTaskWithValidation(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	id: Id<"tasks">,
 	updates: Partial<Doc<"tasks">>
 ): Promise<void> {
 	// Validate task exists and belongs to user's org
-	const existingTask = await getTaskOrThrow(ctx, id);
+	const existingTask = await ctx.orgEntity("tasks", id);
 
 	// Determine task type (use updated type if provided, otherwise use existing)
 	const taskType =
@@ -200,18 +176,18 @@ async function updateTaskWithValidation(
 		}
 		// Validate new client if being updated
 		if (updates.clientId) {
-			await validateClientAccess(ctx, updates.clientId);
+			await validateClientAccess(ctx, updates.clientId, ctx.orgId);
 		}
 	}
 
 	// Validate new project if being updated
 	if (updates.projectId) {
-		await validateProjectAccess(ctx, updates.projectId);
+		await validateProjectAccess(ctx, updates.projectId, ctx.orgId);
 	}
 
 	// Validate new assignee if being updated
 	if (updates.assigneeUserId) {
-		await validateUserAccess(ctx, updates.assigneeUserId);
+		await validateUserAccess(ctx, updates.assigneeUserId, ctx.orgId);
 	}
 
 	// Update the task
@@ -256,7 +232,7 @@ function createEmptyTaskStats(): TaskStats {
 /**
  * Get all tasks for the current user's organization
  */
-export const list = query({
+export const list = userQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -276,9 +252,6 @@ export const list = query({
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned tasks
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		let tasks: TaskDocument[];
 
@@ -333,10 +306,7 @@ export const list = query({
 			tasks = tasks.filter((task) => task.projectId === args.projectId);
 		}
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			tasks = tasks.filter((task) => task.assigneeUserId === currentUserId);
-		}
+		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
 
 		// Sort by date
 		return tasks.sort((a, b) => a.date - b.date);
@@ -346,28 +316,22 @@ export const list = query({
 /**
  * Get a specific task by ID
  */
-export const get = query({
+export const get = userQuery({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
-
-		const task = await getTaskWithValidation(ctx, args.id);
-		if (!task) {
-			return null;
-		}
-
-		// Check if user is a member (non-admin) - members can only see their assigned tasks
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
-
-		// If user is a member, verify they're assigned to this task
-		if (isUserMember && currentUserId) {
-			if (task.assigneeUserId !== currentUserId) {
-				// Return null if member is not assigned (same as task not found)
+		let task: TaskDocument;
+		try {
+			task = await ctx.orgEntity("tasks", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in tasks:")) {
 				return null;
 			}
+			throw error;
 		}
+
+
+		const visibleTasks = await ctx.scopedToActor([task], (item) => item.assigneeUserId);
+		if (visibleTasks.length === 0) return null;
 
 		return task;
 	},
@@ -380,7 +344,7 @@ export const get = query({
 /**
  * Create a new task
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		clientId: v.optional(v.id("clients")),
 		projectId: v.optional(v.id("projects")),
@@ -505,7 +469,7 @@ export const create = mutation({
 /**
  * Update a task
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("tasks"),
 		clientId: v.optional(v.id("clients")),
@@ -564,7 +528,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current task for validation
-		const currentTask = await getTaskOrThrow(ctx, id);
+		const currentTask = await ctx.orgEntity("tasks", id);
 		const oldStatus = currentTask.status;
 
 		// Validate time logic with current or updated values
@@ -621,10 +585,10 @@ export const update = mutation({
 /**
  * Mark a task as completed
  */
-export const complete = mutation({
+export const complete = userMutation({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskId> => {
-		const task = await getTaskOrThrow(ctx, args.id);
+		const task = await ctx.orgEntity("tasks", args.id);
 
 		if (task.status === "completed") {
 			throw new Error("Task is already completed");
@@ -648,10 +612,10 @@ export const complete = mutation({
 /**
  * Delete a task
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskId> => {
-		await getTaskOrThrow(ctx, args.id); // Validate access
+		await ctx.orgEntity("tasks", args.id); // Validate access
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -661,7 +625,7 @@ export const remove = mutation({
  * Search tasks
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = query({
+export const search = userQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -717,25 +681,19 @@ export const search = query({
 /**
  * Get task statistics for dashboard
  */
-export const getStats = query({
+export const getStats = userQuery({
 	args: {},
 	handler: async (ctx): Promise<TaskStats> => {
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return createEmptyTaskStats();
 
-		// Check if user is a member (non-admin) - members can only see their assigned tasks
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		let tasks = await ctx.db
 			.query("tasks")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			tasks = tasks.filter((task) => task.assigneeUserId === currentUserId);
-		}
+		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
 
 		const stats: TaskStats = {
 			total: tasks.length,
@@ -804,15 +762,12 @@ export const getStats = query({
  * Get today's tasks
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getToday = query({
+export const getToday = userQuery({
 	args: { assigneeUserId: v.optional(v.id("users")) },
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned tasks
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		const today = DateUtils.startOfDay(Date.now());
 		const tomorrow = DateUtils.addDays(today, 1);
@@ -832,10 +787,7 @@ export const getToday = query({
 			);
 		}
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			tasks = tasks.filter((task) => task.assigneeUserId === currentUserId);
-		}
+		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
 
 		return tasks.sort((a, b) => {
 			// Sort by start time if available, otherwise by creation time
@@ -850,15 +802,12 @@ export const getToday = query({
 /**
  * Get overdue tasks
  */
-export const getOverdue = query({
+export const getOverdue = userQuery({
 	args: { assigneeUserId: v.optional(v.id("users")) },
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned tasks
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		const today = DateUtils.startOfDay(Date.now());
 
@@ -880,10 +829,7 @@ export const getOverdue = query({
 			);
 		}
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			tasks = tasks.filter((task) => task.assigneeUserId === currentUserId);
-		}
+		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
 
 		return tasks.sort((a, b) => b.date - a.date); // Most recent overdue first
 	},
@@ -892,7 +838,7 @@ export const getOverdue = query({
 /**
  * Get upcoming tasks (due within the next 7 days) for dashboard/home page
  */
-export const getUpcoming = query({
+export const getUpcoming = userQuery({
 	args: {
 		assigneeUserId: v.optional(v.id("users")),
 		daysAhead: v.optional(v.number()), // Default to 7 days if not specified
@@ -901,9 +847,6 @@ export const getUpcoming = query({
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned tasks
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		const today = DateUtils.startOfDay(Date.now());
 		const daysAhead = args.daysAhead || 7;
@@ -929,10 +872,7 @@ export const getUpcoming = query({
 			);
 		}
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			tasks = tasks.filter((task) => task.assigneeUserId === currentUserId);
-		}
+		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
 
 		// Sort by date, then by start time
 		return tasks.sort((a, b) => {
@@ -955,7 +895,7 @@ export const getUpcoming = query({
  * Get tasks assigned to a specific user
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getByUser = query({
+export const getByUser = userQuery({
 	args: {
 		userId: v.id("users"),
 		status: v.optional(

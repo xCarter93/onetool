@@ -361,6 +361,7 @@ export const geocodeOrganizations = internalAction({
 /**
  * Get client properties without geocoding data
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getUngecodedProperties = internalQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -383,6 +384,7 @@ export const getUngecodedProperties = internalQuery({
 /**
  * Get organizations without geocoding data that have an address
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getUngecodedOrganizations = internalQuery({
 	args: {},
 	handler: async (ctx) => {

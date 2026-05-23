@@ -2,6 +2,7 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * SKU operations with embedded CRUD helpers
@@ -84,7 +85,7 @@ type SKUId = Id<"skus">;
 /**
  * Get all active SKUs for the current user's organization
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<SKUDocument[]> => {
 		const userOrgId = await getCurrentUserOrgId(ctx);
@@ -104,7 +105,7 @@ export const list = query({
 /**
  * Get all SKUs (including inactive) for the current user's organization
  */
-export const listAll = query({
+export const listAll = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<SKUDocument[]> => {
 		const userOrgId = await getCurrentUserOrgId(ctx);
@@ -122,7 +123,7 @@ export const listAll = query({
 /**
  * Get a specific SKU by ID
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("skus") },
 	handler: async (ctx, args): Promise<SKUDocument | null> => {
 		return await getSKUWithOrgValidation(ctx, args.id);
@@ -132,7 +133,7 @@ export const get = query({
 /**
  * Create a new SKU
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		name: v.string(),
 		unit: v.string(),
@@ -177,7 +178,7 @@ export const create = mutation({
 /**
  * Update a SKU
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("skus"),
 		name: v.optional(v.string()),
@@ -241,7 +242,7 @@ export const update = mutation({
 /**
  * Delete a SKU (soft delete by setting isActive to false)
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("skus") },
 	handler: async (ctx, args): Promise<SKUId> => {
 		await getSKUOrThrow(ctx, args.id); // Validate access
@@ -258,7 +259,7 @@ export const remove = mutation({
 /**
  * Permanently delete a SKU (hard delete)
  */
-export const permanentlyDelete = mutation({
+export const permanentlyDelete = userMutation({
 	args: { id: v.id("skus") },
 	handler: async (ctx, args): Promise<SKUId> => {
 		await getSKUOrThrow(ctx, args.id); // Validate access

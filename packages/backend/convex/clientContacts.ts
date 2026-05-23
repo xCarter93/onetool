@@ -5,14 +5,13 @@ import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { ValidationPatterns } from "./lib/shared";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
 
 /**
  * Client Contact operations
@@ -24,31 +23,6 @@ import { computeFieldChanges } from "./lib/changeTracking";
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a client contact with org validation (wrapper for shared utility)
- */
-async function getContactWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"clientContacts">
-): Promise<Doc<"clientContacts"> | null> {
-	return await getEntityWithOrgValidation(
-		ctx,
-		"clientContacts",
-		id,
-		"Contact"
-	);
-}
-
-/**
- * Get a client contact, throwing if not found (wrapper for shared utility)
- */
-async function getContactOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"clientContacts">
-): Promise<Doc<"clientContacts">> {
-	return await getEntityOrThrow(ctx, "clientContacts", id, "Client contact");
-}
 
 /**
  * Validate client access (wrapper for shared utility)
@@ -86,17 +60,15 @@ async function handlePrimaryContact(
  * Create a client contact with automatic orgId assignment
  */
 async function createContactWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<Doc<"clientContacts">, "_id" | "_creationTime" | "orgId">
 ): Promise<Id<"clientContacts">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	// Validate client access
-	await validateClientAccess(ctx, data.clientId);
+	await validateClientAccess(ctx, data.clientId, ctx.orgId);
 
 	return await ctx.db.insert("clientContacts", {
 		...data,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	});
 }
 
@@ -111,7 +83,7 @@ type ClientContactId = Id<"clientContacts">;
 /**
  * Get all contacts for a specific client
  */
-export const listByClient = query({
+export const listByClient = userQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientContactDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -129,7 +101,7 @@ export const listByClient = query({
 /**
  * Get all contacts for the current user's organization
  */
-export const list = query({
+export const list = userQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientContactDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -145,23 +117,27 @@ export const list = query({
 /**
  * Get a specific client contact by ID
  */
-export const get = query({
+export const get = userQuery({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
-
-		return await getContactWithValidation(ctx, args.id);
+		try {
+			return await ctx.orgEntity("clientContacts", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in clientContacts:")) {
+				return null;
+			}
+			throw error;
+		}
 	},
 });
 
 /**
  * Get primary contact for a client
  */
-export const getPrimaryContact = query({
+export const getPrimaryContact = userQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientContactDocument | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -183,7 +159,7 @@ export const getPrimaryContact = query({
 /**
  * Create a new client contact
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		firstName: v.string(),
@@ -234,7 +210,7 @@ export const create = mutation({
 /**
  * Update a client contact
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("clientContacts"),
 		clientId: v.optional(v.id("clients")),
@@ -269,7 +245,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current contact and determine clientId
-		const currentContact = await getContactOrThrow(ctx, id);
+		const currentContact = await ctx.orgEntity("clientContacts", id);
 		const clientId = filteredUpdates.clientId || currentContact.clientId;
 
 		// Validate new clientId if changing
@@ -304,10 +280,10 @@ export const update = mutation({
 /**
  * Delete a client contact
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactId> => {
-		const contact = await getContactOrThrow(ctx, args.id);
+		const contact = await ctx.orgEntity("clientContacts", args.id);
 
 		// Delete the contact
 		await ctx.db.delete(args.id);
@@ -326,13 +302,13 @@ export const remove = mutation({
  * Search contacts across the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = query({
+export const search = userQuery({
 	args: {
 		query: v.string(),
 		clientId: v.optional(v.id("clients")),
 	},
 	handler: async (ctx, args): Promise<ClientContactDocument[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -369,7 +345,7 @@ export const search = query({
  * Bulk create contacts for a client.
  * Used by Phase 5 contact import flow.
  */
-export const bulkCreate = mutation({
+export const bulkCreate = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		contacts: v.array(
@@ -461,10 +437,10 @@ export const bulkCreate = mutation({
  * Set a contact as primary (and unset others)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const setPrimary = mutation({
+export const setPrimary = userMutation({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactId> => {
-		const contact = await getContactOrThrow(ctx, args.id);
+		const contact = await ctx.orgEntity("clientContacts", args.id);
 
 		// Unset any existing primary contact for this client
 		const existingPrimary = await ctx.db
