@@ -10,9 +10,13 @@ import {
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
-import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Task/Schedule operations
@@ -232,7 +236,7 @@ function createEmptyTaskStats(): TaskStats {
 /**
  * Get all tasks for the current user's organization
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -249,7 +253,7 @@ export const list = userQuery({
 		dateTo: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -316,9 +320,10 @@ export const list = userQuery({
 /**
  * Get a specific task by ID
  */
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskDocument | null> => {
+		if (!ctx.orgId) return null;
 		let task: TaskDocument;
 		try {
 			task = await ctx.orgEntity("tasks", args.id);
@@ -625,7 +630,7 @@ export const remove = userMutation({
  * Search tasks
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = userQuery({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -640,7 +645,7 @@ export const search = userQuery({
 		assigneeUserId: v.optional(v.id("users")),
 	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		let tasks = await ctx.db
@@ -681,10 +686,10 @@ export const search = userQuery({
 /**
  * Get task statistics for dashboard
  */
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<TaskStats> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return createEmptyTaskStats();
 
 
@@ -762,10 +767,10 @@ export const getStats = userQuery({
  * Get today's tasks
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getToday = userQuery({
+export const getToday = optionalUserQuery({
 	args: { assigneeUserId: v.optional(v.id("users")) },
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -802,10 +807,10 @@ export const getToday = userQuery({
 /**
  * Get overdue tasks
  */
-export const getOverdue = userQuery({
+export const getOverdue = optionalUserQuery({
 	args: { assigneeUserId: v.optional(v.id("users")) },
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -838,13 +843,13 @@ export const getOverdue = userQuery({
 /**
  * Get upcoming tasks (due within the next 7 days) for dashboard/home page
  */
-export const getUpcoming = userQuery({
+export const getUpcoming = optionalUserQuery({
 	args: {
 		assigneeUserId: v.optional(v.id("users")),
 		daysAhead: v.optional(v.number()), // Default to 7 days if not specified
 	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -895,7 +900,7 @@ export const getUpcoming = userQuery({
  * Get tasks assigned to a specific user
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getByUser = userQuery({
+export const getByUser = optionalUserQuery({
 	args: {
 		userId: v.id("users"),
 		status: v.optional(
@@ -909,7 +914,7 @@ export const getByUser = userQuery({
 		includeCompleted: v.optional(v.boolean()), // Whether to include completed tasks
 	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		// Validate the user exists and belongs to the same org

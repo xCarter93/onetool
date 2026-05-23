@@ -7,7 +7,7 @@ import {
 	StorageHelpers,
 	StorageConfig,
 } from "./lib/storage";
-import { userMutation, userQuery } from "./lib/factories";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Client Document operations
@@ -116,12 +116,12 @@ export const create = userMutation({
  * List all documents for a client, sorted newest first
  * Includes download URLs to avoid N+1 query problem
  */
-export const listByClient = userQuery({
+export const listByClient = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}

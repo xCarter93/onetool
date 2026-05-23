@@ -4,7 +4,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
 import { StorageHelpers, StorageConfig } from "./lib/storage";
-import { userMutation, userQuery } from "./lib/factories";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Project Document operations
@@ -113,12 +113,12 @@ export const create = userMutation({
  * List all documents for a project, sorted newest first
  * Includes download URLs to avoid N+1 query problem
  */
-export const listByProject = userQuery({
+export const listByProject = optionalUserQuery({
 	args: {
 		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}

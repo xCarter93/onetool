@@ -186,7 +186,7 @@ interface QuoteStats {
  * Get all quotes for the current user's organization with calculated totals
  * Optimized to avoid N+1 query problem by batching line item fetches
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -201,7 +201,7 @@ export const list = userQuery({
 		projectId: v.optional(v.id("projects")),
 	},
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		let quotes: QuoteDocument[];
@@ -294,10 +294,10 @@ export const list = userQuery({
 /**
  * Get a specific quote by ID with calculated totals from line items
  */
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return null;
 
 		let quote: QuoteDocument;
@@ -674,7 +674,7 @@ export const remove = userMutation({
 /**
  * Search quotes
  */
-export const search = userQuery({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -689,7 +689,7 @@ export const search = userQuery({
 		clientId: v.optional(v.id("clients")),
 	},
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		let quotes = await ctx.db
@@ -725,10 +725,10 @@ export const search = userQuery({
 /**
  * Get quote statistics for dashboard
  */
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<QuoteStats> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				total: 0,
@@ -818,7 +818,7 @@ export const getStats = userQuery({
 export const getAwaitingSigning = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return [];
 
 		const now = Date.now();
@@ -841,10 +841,10 @@ export const getAwaitingSigning = optionalUserQuery({
 /**
  * Get quotes expiring soon
  */
-export const getExpiringSoon = userQuery({
+export const getExpiringSoon = optionalUserQuery({
 	args: { days: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		const daysAhead = args.days || 7;

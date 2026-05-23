@@ -12,16 +12,19 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	formatRelativeTime,
 	truncateText,
 	stripAuthorIdFromMessage,
 } from "@/lib/notification-utils";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 export function NotificationBell() {
 	const router = useRouter();
 	const [open, setOpen] = useState(false);
+	const isOrgSwitching = useIsOrgSwitching();
 
 	// Fetch notifications
 	const notificationData = useQuery(api.notifications.listForCurrentUser, {
@@ -30,8 +33,11 @@ export function NotificationBell() {
 
 	const markAsRead = useMutation(api.notifications.markRead);
 
-	const notifications = notificationData?.notifications || [];
-	const unreadCount = notificationData?.unreadCount || 0;
+	// Treat the switch grace window as loading so the previous org's unread
+	// count and notification list don't flash.
+	const isLoading = isOrgSwitching || notificationData === undefined;
+	const notifications = isLoading ? [] : notificationData.notifications;
+	const unreadCount = isLoading ? 0 : notificationData.unreadCount;
 
 	// Handle notification click
 	const handleNotificationClick = async (
@@ -89,7 +95,22 @@ export function NotificationBell() {
 
 				{/* Notifications List */}
 				<ScrollArea className="h-[400px]">
-					{notifications.length === 0 ? (
+					{isLoading ? (
+						<div className="divide-y divide-gray-200 dark:divide-gray-800">
+							{Array.from({ length: 3 }).map((_, i) => (
+								<div key={`notification-skeleton-${i}`} className="px-4 py-3">
+									<div className="flex gap-3">
+										<Skeleton className="h-2 w-2 mt-1.5 rounded-full" />
+										<div className="flex-1 space-y-2">
+											<Skeleton className="h-3.5 w-40" />
+											<Skeleton className="h-3 w-full" />
+											<Skeleton className="h-3 w-20" />
+										</div>
+									</div>
+								</div>
+							))}
+						</div>
+					) : notifications.length === 0 ? (
 						<div className="flex flex-col items-center justify-center py-12 px-4 text-center">
 							<div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
 								<Bell className="h-6 w-6 text-gray-400" />

@@ -17,7 +17,11 @@ import {
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
-import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Client operations
@@ -122,7 +126,7 @@ interface ClientStats {
 /**
  * Get all clients for the current user's organization
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -135,6 +139,7 @@ export const list = userQuery({
 		includeArchived: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<ClientDocument[]> => {
+		if (!ctx.orgId) return emptyListResult();
 		const includeArchived = args.includeArchived || false;
 
 		if (args.status) {
@@ -150,10 +155,10 @@ export const list = userQuery({
  * Returns only {_id, companyName} to minimize data transfer.
  * Excludes archived clients to match the default list behavior.
  */
-export const listNamesForOrg = userQuery({
+export const listNamesForOrg = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return [];
 
 		const clients = await ctx.db
@@ -174,10 +179,10 @@ export const listNamesForOrg = userQuery({
  * Get only archived clients for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const listArchived = userQuery({
+export const listArchived = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -192,9 +197,10 @@ export const listArchived = userQuery({
 /**
  * Get a specific client by ID
  */
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientDocument | null> => {
+		if (!ctx.orgId) return null;
 		try {
 			return await ctx.orgEntity("clients", args.id);
 		} catch (error) {
@@ -801,7 +807,7 @@ export const remove = userMutation({
  * Search clients with type-safe filtering
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = userQuery({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -814,6 +820,7 @@ export const search = userQuery({
 		),
 	},
 	handler: async (ctx, args): Promise<ClientDocument[]> => {
+		if (!ctx.orgId) return emptyListResult();
 		let clients = await listClientsForOrg(ctx, "by_org");
 
 		// Type-safe filtering using proper type guards
@@ -840,9 +847,17 @@ export const search = userQuery({
 /**
  * Get client statistics for dashboard with proper typing
  */
-export const getStats = userQuery({
+const EMPTY_CLIENT_STATS: ClientStats = {
+	total: 0,
+	byStatus: { lead: 0, active: 0, inactive: 0, archived: 0 },
+	groupedByStatus: { prospective: 0, active: 0, inactive: 0 },
+	recentlyCreated: 0,
+};
+
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientStats> => {
+		if (!ctx.orgId) return EMPTY_CLIENT_STATS;
 		const clients = await listClientsForOrg(ctx, "by_org", true);
 
 		const stats: ClientStats = {
@@ -898,12 +913,12 @@ export const getStats = userQuery({
  * Get clients with recent activity using proper types
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getRecentActivity = userQuery({
+export const getRecentActivity = optionalUserQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<ClientDocument[]> => {
 		const limit = args.limit || 10;
 
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		// Get recent client-related activities
@@ -948,7 +963,7 @@ type ClientWithProjectCount = {
 	} | null;
 };
 
-export const listWithProjectCounts = userQuery({
+export const listWithProjectCounts = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -963,7 +978,7 @@ export const listWithProjectCounts = userQuery({
 	handler: async (ctx, args): Promise<ClientWithProjectCount[]> => {
 		const includeArchived = args.includeArchived || false;
 
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult<ClientWithProjectCount>();
 
 		// Get clients based on status filter

@@ -13,6 +13,7 @@ import { MapDetailSidebar } from "./map-detail-sidebar";
 import type { PropertyDetails } from "./map-detail-sidebar";
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 type ClientPropertiesMapProps = {
 	className?: string;
@@ -73,11 +74,12 @@ function MapBoundsHandler({
 export default function ClientPropertiesMap({
 	className,
 }: ClientPropertiesMapProps) {
+	const isOrgSwitching = useIsOrgSwitching();
 	const propertiesData = useQuery(api.clientProperties.listGeocodedWithClients);
 	const [selectedProperty, setSelectedProperty] =
 		useState<PropertyDetails | null>(null);
 
-	const isLoading = propertiesData === undefined;
+	const isLoading = isOrgSwitching || propertiesData === undefined;
 	const properties = propertiesData?.properties ?? [];
 	const totalCount = propertiesData?.totalCount ?? 0;
 	const geocodedCount = propertiesData?.geocodedCount ?? 0;

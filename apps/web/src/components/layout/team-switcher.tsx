@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { OrganizationSwitcher } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 
@@ -11,11 +12,63 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { markOrgSwitching } from "@/hooks/use-is-org-switching";
+
+// Detail routes whose [id] segment refers to an org-scoped entity that won't
+// exist in the new org — fall back to the list page on switch.
+const DETAIL_LIST_SCOPES = new Set([
+	"clients",
+	"projects",
+	"quotes",
+	"invoices",
+	"tasks",
+]);
+
+function resolvePostSwitchUrl(pathname: string | null): string {
+	if (!pathname) return "/projects";
+	const segments = pathname.split("/").filter(Boolean);
+	if (segments.length >= 2 && DETAIL_LIST_SCOPES.has(segments[0])) {
+		return `/${segments[0]}`;
+	}
+	return pathname;
+}
+
+// Clerk renders its org switcher popover as a portal at the document body —
+// outside this component's subtree — so we listen at the document level in
+// the capture phase to fire BEFORE Clerk's own handler runs setActive().
+function useMarkOrgSwitchingOnClerkClick(): void {
+	React.useEffect(() => {
+		const onClick = (event: MouseEvent) => {
+			const target = event.target;
+			if (!(target instanceof Element)) return;
+			const menuItem = target.closest('[role="menuitem"]');
+			if (!menuItem) return;
+			// Only org choices live in this group. "Manage" and "Create
+			// organization" sit outside it and must not trigger a fake switch.
+			if (
+				!menuItem.closest(
+					'[role="group"][aria-label="List of all organization memberships"]'
+				)
+			) {
+				return;
+			}
+			markOrgSwitching();
+		};
+		document.addEventListener("click", onClick, true);
+		return () => document.removeEventListener("click", onClick, true);
+	}, []);
+}
 
 export function TeamSwitcher() {
 	const organization = useQuery(api.organizations.get);
 	const { state } = useSidebar();
 	const isCollapsed = state === "collapsed";
+	const pathname = usePathname();
+	const afterSelectOrganizationUrl = React.useMemo(
+		() => resolvePostSwitchUrl(pathname),
+		[pathname],
+	);
+	useMarkOrgSwitchingOnClerkClick();
 	const shouldInvert = organization?.logoInvertInDarkMode ?? true;
 	const avatarImageClass = `w-8 h-8 rounded-lg object-cover ${
 		shouldInvert ? "dark:invert dark:brightness-0" : ""
@@ -130,7 +183,7 @@ export function TeamSwitcher() {
 						createOrganizationUrl="/organization/complete?creating=true"
 						organizationProfileUrl="/organization/profile"
 						afterCreateOrganizationUrl="/organization/complete"
-						afterSelectOrganizationUrl="/"
+						afterSelectOrganizationUrl={afterSelectOrganizationUrl}
 						hidePersonal={true}
 					/>
 				</div>

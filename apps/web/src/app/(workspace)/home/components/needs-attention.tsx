@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Task } from "@/types/task";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -342,6 +343,7 @@ function AttentionSection({
 // ---------------------------------------------------------------------------
 
 export function NeedsAttention() {
+	const isOrgSwitching = useIsOrgSwitching();
 	const overdueTasks = useQuery(api.tasks.getOverdue, {});
 	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
@@ -385,6 +387,7 @@ export function NeedsAttention() {
 	};
 
 	const isLoading =
+		isOrgSwitching ||
 		overdueTasks === undefined ||
 		upcomingTasks === undefined ||
 		overdueInvoices === undefined ||

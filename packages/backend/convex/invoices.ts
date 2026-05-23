@@ -15,10 +15,14 @@ import {
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
-import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Invoice operations
@@ -159,7 +163,7 @@ function createEmptyInvoiceStats(): InvoiceStats {
  * Get all invoices for the current user's organization
  * Totals are calculated dynamically from line items to ensure accuracy
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -174,7 +178,7 @@ export const list = userQuery({
 		projectId: v.optional(v.id("projects")),
 	},
 	handler: async (ctx, args): Promise<InvoiceDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		let invoices: InvoiceDocument[];
@@ -255,9 +259,10 @@ export const list = userQuery({
  * Get a specific invoice by ID with calculated totals from line items
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args): Promise<InvoiceDocument | null> => {
+		if (!ctx.orgId) return null;
 		let invoice: InvoiceDocument;
 		try {
 			invoice = await ctx.orgEntity("invoices", args.id);
@@ -623,10 +628,10 @@ export const remove = userMutation({
  * Get invoice statistics for dashboard
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<InvoiceStats> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return createEmptyInvoiceStats();
 
 		const invoices = await ctx.db
@@ -687,10 +692,10 @@ export const getStats = userQuery({
  * Returns invoices enriched with the earliest unpaid payment due date
  * so the frontend can display accurate urgency labels.
  */
-export const getOverdue = userQuery({
+export const getOverdue = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return [];
 
 		const now = Date.now();
@@ -913,9 +918,10 @@ export const createFromQuote = userMutation({
 /**
  * Get an invoice with all its payments and aggregated payment status
  */
-export const getWithPayments = userQuery({
+export const getWithPayments = optionalUserQuery({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args) => {
+		if (!ctx.orgId) return null;
 		let invoice: InvoiceDocument;
 		try {
 			invoice = await ctx.orgEntity("invoices", args.id);

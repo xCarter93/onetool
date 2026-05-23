@@ -41,6 +41,7 @@ import {
 	useCanPerformAction,
 } from "@/hooks/use-feature-access";
 import { useRoleAccess } from "@/hooks/use-role-access";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import {
 	TourElement,
@@ -199,8 +200,14 @@ function SidebarBrandHeader() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
+	const isOrgSwitching = useIsOrgSwitching();
 	const taskStats = useQuery(api.tasks.getStats, {});
-	const tasksBadgeCount = (taskStats?.todayTasks ?? 0) + (taskStats?.overdue ?? 0);
+	// Suppress the badge during the org-switch grace window so a stale count
+	// (or a transient "0") never flashes for the new org.
+	const tasksBadgeCount =
+		isOrgSwitching || taskStats === undefined
+			? 0
+			: (taskStats.todayTasks ?? 0) + (taskStats.overdue ?? 0);
 	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");

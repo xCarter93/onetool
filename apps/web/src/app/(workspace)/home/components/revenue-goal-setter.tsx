@@ -12,12 +12,14 @@ import {
 } from "@heroicons/react/24/outline";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 export default function RevenueGoalSetter() {
 	const [isEditing, setIsEditing] = useState(false);
 	const [tempValue, setTempValue] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 
+	const isOrgSwitching = useIsOrgSwitching();
 	// Get organization data and revenue goal progress
 	const organization = useQuery(api.organizations.get);
 	const revenueGoalProgress = useQuery(api.homeStats.getRevenueGoalProgress);
@@ -71,7 +73,11 @@ export default function RevenueGoalSetter() {
 	};
 
 	// Show loading state while data is being fetched
-	if (organization === undefined || revenueGoalProgress === undefined) {
+	if (
+		isOrgSwitching ||
+		organization === undefined ||
+		revenueGoalProgress === undefined
+	) {
 		return (
 			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
 				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />

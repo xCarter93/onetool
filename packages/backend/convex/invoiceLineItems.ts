@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { filterUndefined, requireUpdates } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import {
 	validateInvoiceAccess,
 	validateInvoiceLineItemFields,
@@ -11,7 +11,10 @@ import {
 	sortLineItems,
 	getNextLineItemSortOrder,
 } from "./lib/lineItems";
-import { userMutation, userQuery } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+} from "./lib/factories";
 
 /**
  * Invoice Line Item operations
@@ -52,10 +55,10 @@ type InvoiceLineItemId = Id<"invoiceLineItems">;
  * Get all line items for a specific invoice
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const listByInvoice = userQuery({
+export const listByInvoice = optionalUserQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args): Promise<InvoiceLineItemDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateInvoiceAccess(ctx, args.invoiceId, orgId);
@@ -73,10 +76,10 @@ export const listByInvoice = userQuery({
  * Get all line items for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<InvoiceLineItemDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -90,11 +93,10 @@ export const list = userQuery({
  * Get a specific invoice line item by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
+		if (!ctx.orgId) return null;
 
 		try {
 			return await ctx.orgEntity("invoiceLineItems", args.id);
@@ -324,10 +326,10 @@ export const duplicate = userMutation({
  * Get invoice line item statistics
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				totalItems: 0,

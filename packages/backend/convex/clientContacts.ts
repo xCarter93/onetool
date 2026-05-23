@@ -9,9 +9,13 @@ import {
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { computeFieldChanges } from "./lib/changeTracking";
-import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Client Contact operations
@@ -83,10 +87,10 @@ type ClientContactId = Id<"clientContacts">;
 /**
  * Get all contacts for a specific client
  */
-export const listByClient = userQuery({
+export const listByClient = optionalUserQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientContactDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateClientAccess(ctx, args.clientId, orgId);
@@ -101,10 +105,10 @@ export const listByClient = userQuery({
 /**
  * Get all contacts for the current user's organization
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientContactDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -117,9 +121,10 @@ export const list = userQuery({
 /**
  * Get a specific client contact by ID
  */
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactDocument | null> => {
+		if (!ctx.orgId) return null;
 		try {
 			return await ctx.orgEntity("clientContacts", args.id);
 		} catch (error) {
@@ -134,10 +139,10 @@ export const get = userQuery({
 /**
  * Get primary contact for a client
  */
-export const getPrimaryContact = userQuery({
+export const getPrimaryContact = optionalUserQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientContactDocument | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
@@ -302,13 +307,13 @@ export const remove = userMutation({
  * Search contacts across the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = userQuery({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		clientId: v.optional(v.id("clients")),
 	},
 	handler: async (ctx, args): Promise<ClientContactDocument[]> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}

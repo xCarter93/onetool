@@ -11,10 +11,14 @@ import {
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
-import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Project operations
@@ -147,7 +151,7 @@ function createEmptyProjectStats(): ProjectStats {
 /**
  * Get all projects for the current user's organization
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -160,7 +164,7 @@ export const list = userQuery({
 		clientId: v.optional(v.id("clients")),
 	},
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -195,9 +199,10 @@ export const list = userQuery({
 /**
  * Get a specific project by ID
  */
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("projects") },
 	handler: async (ctx, args: any): Promise<ProjectDocument | null> => {
+		if (!ctx.orgId) return null;
 		let project: ProjectDocument;
 		try {
 			project = await ctx.orgEntity("projects", args.id);
@@ -616,7 +621,7 @@ export const remove = userMutation({
  * Search projects with filtering
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = userQuery({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -633,7 +638,7 @@ export const search = userQuery({
 		clientId: v.optional(v.id("clients")),
 	},
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -682,10 +687,10 @@ export const search = userQuery({
 /**
  * Get project statistics for dashboard
  */
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ProjectStats> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return createEmptyProjectStats();
 		}
@@ -751,10 +756,10 @@ export const getStats = userQuery({
  * Get projects assigned to a specific user
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getByAssignee = userQuery({
+export const getByAssignee = optionalUserQuery({
 	args: { userId: v.id("users") },
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		// Validate user belongs to organization
@@ -782,10 +787,10 @@ export const getByAssignee = userQuery({
  * Get projects with upcoming deadlines
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getUpcomingDeadlines = userQuery({
+export const getUpcomingDeadlines = optionalUserQuery({
 	args: { days: v.optional(v.number()) },
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 
@@ -816,10 +821,10 @@ export const getUpcomingDeadlines = userQuery({
  * Get overdue projects
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getOverdue = userQuery({
+export const getOverdue = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		const projects = await ctx.db

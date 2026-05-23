@@ -15,13 +15,13 @@ import {
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { applyMarkPaidCascade } from "./lib/payments";
 import {
+	optionalUserQuery,
 	systemMutation,
 	userMutation,
-	userQuery,
 } from "./lib/factories";
 
 /**
@@ -207,10 +207,10 @@ async function updateInvoiceStatusIfFullyPaid(
 /**
  * Get all payments for a specific invoice
  */
-export const listByInvoice = userQuery({
+export const listByInvoice = optionalUserQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args): Promise<PaymentDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateInvoiceAccess(ctx, args.invoiceId, orgId);
@@ -228,9 +228,10 @@ export const listByInvoice = userQuery({
 /**
  * Get a specific payment by ID
  */
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentDocument | null> => {
+		if (!ctx.orgId) return null;
 		try {
 			return await ctx.orgEntity("payments", args.id);
 		} catch (error) {
@@ -323,10 +324,10 @@ export const getByPublicToken = query({
 /**
  * Get payment summary for an invoice
  */
-export const getInvoiceSummary = userQuery({
+export const getInvoiceSummary = optionalUserQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				totalPayments: 0,

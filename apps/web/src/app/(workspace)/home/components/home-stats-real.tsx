@@ -6,6 +6,7 @@ import { StatCardSkeleton } from "@/components/stat-card-skeleton";
 import { ChartSkeleton } from "@/components/chart-skeleton";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import LineChart6, {
 	type MetricDatum,
 	type MetricDataMap,
@@ -143,6 +144,7 @@ const getRangeTotals = (
 };
 
 export default function HomeStatsReal() {
+	const isOrgSwitching = useIsOrgSwitching();
 	const homeStats = useQuery(api.homeStats.getHomeStats);
 
 	const defaultRange: DateRange = useMemo(
@@ -158,7 +160,7 @@ export default function HomeStatsReal() {
 	);
 	const [activeMetric, setActiveMetric] = useState<string>("clients");
 
-	const isLoading = homeStats === undefined;
+	const isLoading = isOrgSwitching || homeStats === undefined;
 
 	const rangeArgs = useMemo(() => {
 		if (!selectedRange?.from && !selectedRange?.to) return {};

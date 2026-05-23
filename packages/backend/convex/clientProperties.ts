@@ -8,9 +8,13 @@ import {
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { computeFieldChanges } from "./lib/changeTracking";
-import { userMutation, userQuery, type UserMutationCtx } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Client Property operations
@@ -82,10 +86,10 @@ type ClientPropertyId = Id<"clientProperties">;
 /**
  * Get all properties for a specific client
  */
-export const listByClient = userQuery({
+export const listByClient = optionalUserQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateClientAccess(ctx, args.clientId, orgId);
@@ -100,10 +104,10 @@ export const listByClient = userQuery({
 /**
  * Get all properties for the current user's organization
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientPropertyDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -116,10 +120,10 @@ export const list = userQuery({
 /**
  * Get all geocoded properties for the organization with client info (for map display)
  */
-export const listGeocodedWithClients = userQuery({
+export const listGeocodedWithClients = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return { properties: [], totalCount: 0, geocodedCount: 0 };
 
 		const allProperties = await ctx.db
@@ -179,9 +183,10 @@ export const listGeocodedWithClients = userQuery({
  * Get a specific client property by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument | null> => {
+		if (!ctx.orgId) return null;
 		try {
 			return await ctx.orgEntity("clientProperties", args.id);
 		} catch (error) {
@@ -197,10 +202,10 @@ export const get = userQuery({
  * Get primary property for a client
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getPrimaryProperty = userQuery({
+export const getPrimaryProperty = optionalUserQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
@@ -387,7 +392,7 @@ export const remove = userMutation({
  * Search properties across the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = userQuery({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		clientId: v.optional(v.id("clients")),
@@ -403,7 +408,7 @@ export const search = userQuery({
 		),
 	},
 	handler: async (ctx, args): Promise<ClientPropertyDocument[]> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
@@ -566,10 +571,10 @@ export const bulkCreate = userMutation({
  * Get property statistics for the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				total: 0,

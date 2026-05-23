@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { filterUndefined, requireUpdates } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import {
 	validateQuoteLineItemFields,
 	calculateQuoteLineItemAmount,
@@ -14,7 +14,10 @@ import {
 	validateQuoteAccess,
 	validateBulkLineItems,
 } from "./lib/lineItems";
-import { userMutation, userQuery } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+} from "./lib/factories";
 
 /**
  * Quote Line Item operations
@@ -55,10 +58,10 @@ async function createLineItemWithOrg(
 /**
  * Get all line items for a specific quote
  */
-export const listByQuote = userQuery({
+export const listByQuote = optionalUserQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteLineItemDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateQuoteAccess(ctx, args.quoteId, orgId);
@@ -75,10 +78,10 @@ export const listByQuote = userQuery({
 /**
  * Get all line items for the current user's organization
  */
-export const list = userQuery({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<QuoteLineItemDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -92,10 +95,10 @@ export const list = userQuery({
  * Get a specific quote line item by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = userQuery({
+export const get = optionalUserQuery({
 	args: { id: v.id("quoteLineItems") },
 	handler: async (ctx, args): Promise<QuoteLineItemDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return null;
 
 		try {
@@ -122,10 +125,10 @@ export const get = userQuery({
  * Get quote line item statistics
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = userQuery({
+export const getStats = optionalUserQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				totalItems: 0,
