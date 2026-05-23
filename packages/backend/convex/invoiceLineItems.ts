@@ -1,4 +1,4 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -8,11 +8,10 @@ import {
 	validateInvoiceAccess,
 	validateInvoiceLineItemFields,
 	calculateInvoiceLineItemTotal,
-	getLineItemWithValidation,
-	getLineItemOrThrow,
 	sortLineItems,
 	getNextLineItemSortOrder,
 } from "./lib/lineItems";
+import { userMutation, userQuery } from "./lib/factories";
 
 /**
  * Invoice Line Item operations
@@ -22,40 +21,6 @@ import {
  * - lib/queries.ts for query helpers
  * - lib/lineItems.ts for line item validation and calculations
  */
-
-// ============================================================================
-// Local Helper Functions (entity-specific wrappers)
-// ============================================================================
-
-/**
- * Get an invoice line item with org validation (wrapper for shared utility)
- */
-async function getInvoiceLineItemWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"invoiceLineItems">
-): Promise<Doc<"invoiceLineItems"> | null> {
-	return await getLineItemWithValidation(
-		ctx,
-		"invoiceLineItems",
-		id,
-		"Invoice line item"
-	);
-}
-
-/**
- * Get an invoice line item, throwing if not found (wrapper for shared utility)
- */
-async function getInvoiceLineItemOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"invoiceLineItems">
-): Promise<Doc<"invoiceLineItems">> {
-	return await getLineItemOrThrow(
-		ctx,
-		"invoiceLineItems",
-		id,
-		"Invoice line item"
-	);
-}
 
 /**
  * Create an invoice line item with automatic orgId assignment
@@ -87,7 +52,7 @@ type InvoiceLineItemId = Id<"invoiceLineItems">;
  * Get all line items for a specific invoice
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const listByInvoice = query({
+export const listByInvoice = userQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args): Promise<InvoiceLineItemDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -108,7 +73,7 @@ export const listByInvoice = query({
  * Get all line items for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const list = query({
+export const list = userQuery({
 	args: {},
 	handler: async (ctx): Promise<InvoiceLineItemDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -125,13 +90,29 @@ export const list = query({
  * Get a specific invoice line item by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = query({
+export const get = userQuery({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemDocument | null> => {
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return null;
 
-		return await getInvoiceLineItemWithValidation(ctx, args.id);
+		try {
+			return await ctx.orgEntity("invoiceLineItems", args.id);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in invoiceLineItems")
+			) {
+				return null;
+			}
+			if (
+				error instanceof Error &&
+				error.message.includes("does not belong to your organization")
+			) {
+				throw new Error("Invoice line item does not belong to your organization");
+			}
+			throw error;
+		}
 	},
 });
 
@@ -143,7 +124,7 @@ export const get = query({
  * Create a new invoice line item
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		description: v.string(),
@@ -171,7 +152,7 @@ export const create = mutation({
  * Update an invoice line item
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("invoiceLineItems"),
 		invoiceId: v.optional(v.id("invoices")),
@@ -191,7 +172,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current line item to calculate new total if needed
-		const currentLineItem = await getInvoiceLineItemOrThrow(ctx, id);
+		const currentLineItem = await ctx.orgEntity("invoiceLineItems", id);
 
 		// Validate new invoiceId if changing
 		if (filteredUpdates.invoiceId) {
@@ -220,10 +201,10 @@ export const update = mutation({
  * Delete an invoice line item
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
-		await getInvoiceLineItemOrThrow(ctx, args.id);
+		await ctx.orgEntity("invoiceLineItems", args.id);
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -233,7 +214,7 @@ export const remove = mutation({
  * Bulk create invoice line items
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const bulkCreate = mutation({
+export const bulkCreate = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		lineItems: v.array(
@@ -282,7 +263,7 @@ export const bulkCreate = mutation({
  * Reorder invoice line items
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const reorder = mutation({
+export const reorder = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		lineItemIds: v.array(v.id("invoiceLineItems")),
@@ -292,7 +273,7 @@ export const reorder = mutation({
 
 		// Validate that all line items belong to the invoice
 		for (const lineItemId of args.lineItemIds) {
-			const lineItem = await getInvoiceLineItemOrThrow(ctx, lineItemId);
+			const lineItem = await ctx.orgEntity("invoiceLineItems", lineItemId);
 			if (lineItem.invoiceId !== args.invoiceId) {
 				throw new Error("All line items must belong to the specified invoice");
 			}
@@ -311,10 +292,10 @@ export const reorder = mutation({
  * Duplicate an invoice line item
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const duplicate = mutation({
+export const duplicate = userMutation({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
-		const originalItem = await getInvoiceLineItemOrThrow(ctx, args.id);
+		const originalItem = await ctx.orgEntity("invoiceLineItems", args.id);
 
 		// Get the highest sort order for the invoice to append the duplicate
 		const allItems = await ctx.db
@@ -343,7 +324,7 @@ export const duplicate = mutation({
  * Get invoice line item statistics
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = query({
+export const getStats = userQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args) => {
 		const orgId = await getOptionalOrgId(ctx);

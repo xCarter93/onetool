@@ -63,23 +63,12 @@ export async function getOrganizationByClerkId(
  * This uses the activeOrgId from the Clerk JWT token to ensure proper data isolation
  * when users are members of multiple organizations.
  */
-export async function getCurrentUserOrgId(
-	ctx: QueryCtx | MutationCtx
-): Promise<Id<"organizations">>;
-export async function getCurrentUserOrgId(
+async function resolveCurrentUserOrgId(
 	ctx: QueryCtx | MutationCtx,
-	options: { require: false }
-): Promise<Id<"organizations"> | null>;
-export async function getCurrentUserOrgId(
-	ctx: QueryCtx | MutationCtx,
-	options: { require?: boolean } = {}
+	requireOrg: boolean
 ): Promise<Id<"organizations"> | null> {
-	const requireOrg = options.require !== false;
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) {
-		// require:false callers (~30 sites) already handle null by returning
-		// empty data; throwing here surfaces during Clerk setActive() token
-		// rotation when Convex briefly sees no identity.
 		if (!requireOrg) {
 			return null;
 		}
@@ -111,22 +100,10 @@ export async function getCurrentUserOrgId(
 	return organization._id;
 }
 
-/**
- * Get the current user's organization ID, returning null if not found (new user-friendly version)
- */
-export async function getCurrentUserOrgIdOptional(ctx: QueryCtx | MutationCtx) {
-	return getCurrentUserOrgId(ctx, { require: false });
-}
-
-/**
- * Get the current user's organization ID, returning null if user is not authenticated or has no org
- */
-export async function getCurrentUserOrgIdSafe(ctx: QueryCtx | MutationCtx) {
-	try {
-		return await getCurrentUserOrgId(ctx, { require: false });
-	} catch {
-		return null;
-	}
+export async function getCurrentUserOrgId(
+	ctx: QueryCtx | MutationCtx
+): Promise<Id<"organizations">> {
+	return (await resolveCurrentUserOrgId(ctx, true))!;
 }
 
 /**
@@ -150,7 +127,7 @@ export async function validateOrgAccessOptional(
 	ctx: QueryCtx | MutationCtx,
 	orgId: string
 ) {
-	const userOrgId = await getCurrentUserOrgIdOptional(ctx);
+	const userOrgId = await resolveCurrentUserOrgId(ctx, false);
 	if (!userOrgId) {
 		return null;
 	}

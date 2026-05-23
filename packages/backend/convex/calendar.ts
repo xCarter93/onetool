@@ -2,18 +2,20 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Get all calendar events (projects and tasks) for a date range
  * Returns a normalized structure suitable for calendar rendering
  */
-export const getCalendarEvents = query({
+export const getCalendarEvents = optionalUserQuery({
 	args: {
 		startDate: v.number(), // Unix timestamp
 		endDate: v.number(), // Unix timestamp
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return { projects: [], tasks: [] };
 		}

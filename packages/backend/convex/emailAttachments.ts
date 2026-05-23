@@ -1,11 +1,13 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * List all attachments for an email message
  */
-export const listByEmail = query({
+export const listByEmail = optionalUserQuery({
 	args: {
 		emailMessageId: v.id("emailMessages"),
 	},
@@ -15,7 +17,7 @@ export const listByEmail = query({
 			return [];
 		}
 
-		const orgId = await getCurrentUserOrgId(ctx, { require: false });
+		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) {
 			return [];
 		}
@@ -38,7 +40,7 @@ export const listByEmail = query({
 /**
  * Get download URL for an attachment
  */
-export const getDownloadUrl = query({
+export const getDownloadUrl = optionalUserQuery({
 	args: {
 		attachmentId: v.id("emailAttachments"),
 	},
@@ -48,7 +50,7 @@ export const getDownloadUrl = query({
 			return null;
 		}
 
-		const orgId = await getCurrentUserOrgId(ctx, { require: false });
+		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) {
 			return null;
 		}
@@ -70,7 +72,7 @@ export const getDownloadUrl = query({
 /**
  * Mark an attachment as downloaded (for tracking purposes)
  */
-export const markAsDownloaded = mutation({
+export const markAsDownloaded = userMutation({
 	args: {
 		attachmentId: v.id("emailAttachments"),
 	},
@@ -80,7 +82,7 @@ export const markAsDownloaded = mutation({
 			return { success: false };
 		}
 
-		const orgId = await getCurrentUserOrgId(ctx, { require: false });
+		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) {
 			return { success: false };
 		}

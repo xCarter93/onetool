@@ -359,10 +359,7 @@ export function InvoiceList({
 												className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground"
 												aria-label={`Pay invoice ${inv.invoiceNumber}`}
 											>
-												<Download
-													className="h-3.5 w-3.5 -rotate-90"
-													aria-hidden="true"
-												/>
+												Pay
 											</Link>
 										) : null}
 									</div>

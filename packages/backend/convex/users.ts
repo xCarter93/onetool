@@ -7,14 +7,16 @@ import {
 	getOrganizationByClerkId,
 	userByExternalId,
 } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import { internal } from "./_generated/api";
 import {
 	ensureMembership,
 	listMembershipsByOrg,
 	removeMembership,
 } from "./lib/memberships";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
-export const current = query({
+export const current = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		return await getCurrentUser(ctx);
@@ -24,10 +26,10 @@ export const current = query({
 /**
  * List all users in the current user's organization
  */
-export const listByOrg = query({
+export const listByOrg = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -46,7 +48,7 @@ export const listByOrg = query({
 /**
  * Get a user by ID (authenticated, returns limited fields)
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("users") },
 	handler: async (ctx, args) => {
 		const currentUser = await getCurrentUser(ctx);
@@ -189,7 +191,7 @@ export const removeUserFromOrganization = internalMutation({
  * Ensure a user from Clerk exists in Convex
  * This is used when tagging users who may not have signed in yet
  */
-export const ensureUserExists = query({
+export const ensureUserExists = optionalUserQuery({
 	args: {
 		clerkUserId: v.string(),
 		name: v.string(),
@@ -214,7 +216,7 @@ export const ensureUserExists = query({
  * Sync a user from Clerk to Convex if they don't exist yet
  * This allows tagging users who haven't signed in yet
  */
-export const syncUserFromClerk = mutation({
+export const syncUserFromClerk = userMutation({
 	args: {
 		clerkUserId: v.string(),
 		name: v.string(),

@@ -9,6 +9,7 @@ import {
 	getWeekRange,
 	toChartData,
 } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Home dashboard statistics queries
@@ -117,7 +118,7 @@ const EMPTY_HOME_STATS: HomeStats = {
 /**
  * Get comprehensive home dashboard statistics
  */
-export const getHomeStats = query({
+export const getHomeStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<HomeStats> => {
 		const userOrgId = await getOptionalOrgId(ctx);
@@ -341,7 +342,7 @@ export const getHomeStats = query({
  * Get simple task count for pending tasks widget
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getPendingTasksCount = query({
+export const getPendingTasksCount = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<{ count: number; dueThisWeek: number }> => {
 		const userOrgId = await getOptionalOrgId(ctx);
@@ -376,7 +377,7 @@ export const getPendingTasksCount = query({
  * Get clients count with month-over-month comparison
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getClientsStats = query({
+export const getClientsStats = optionalUserQuery({
 	args: {},
 	handler: async (
 		ctx
@@ -430,7 +431,7 @@ export const getClientsStats = query({
 /**
  * Get revenue goal progress
  */
-export const getRevenueGoalProgress = query({
+export const getRevenueGoalProgress = optionalUserQuery({
 	args: {},
 	handler: async (
 		ctx
@@ -495,7 +496,7 @@ export const getRevenueGoalProgress = query({
 /**
  * Get clients created by date range for daily chart visualization
  */
-export const getClientsCreatedByDateRange = query({
+export const getClientsCreatedByDateRange = optionalUserQuery({
 	args: {
 		from: v.optional(v.number()),
 		to: v.optional(v.number()),
@@ -572,7 +573,7 @@ export const getClientsCreatedByDateRange = query({
  * Get projects completed by date range for daily chart visualization
  * Uses completedAt timestamp to show when projects were marked as completed
  */
-export const getProjectsCompletedByDateRange = query({
+export const getProjectsCompletedByDateRange = optionalUserQuery({
 	args: {
 		from: v.optional(v.number()),
 		to: v.optional(v.number()),
@@ -669,7 +670,7 @@ export const getProjectsCompletedByDateRange = query({
 /**
  * Get quotes approved by date range for daily chart visualization
  */
-export const getQuotesApprovedByDateRange = query({
+export const getQuotesApprovedByDateRange = optionalUserQuery({
 	args: {
 		from: v.optional(v.number()),
 		to: v.optional(v.number()),
@@ -748,7 +749,7 @@ export const getQuotesApprovedByDateRange = query({
 /**
  * Get invoices paid by date range for daily chart visualization
  */
-export const getInvoicesPaidByDateRange = query({
+export const getInvoicesPaidByDateRange = optionalUserQuery({
 	args: {
 		from: v.optional(v.number()),
 		to: v.optional(v.number()),
@@ -843,7 +844,7 @@ export const getInvoicesPaidByDateRange = query({
 /**
  * Get revenue received by date range for daily chart visualization
  */
-export const getRevenueByDateRange = query({
+export const getRevenueByDateRange = optionalUserQuery({
 	args: {
 		from: v.optional(v.number()),
 		to: v.optional(v.number()),
@@ -894,7 +895,7 @@ export const getRevenueByDateRange = query({
 /**
  * Get tasks created by date range for daily chart visualization
  */
-export const getTasksCreatedByDateRange = query({
+export const getTasksCreatedByDateRange = optionalUserQuery({
 	args: {
 		from: v.optional(v.number()),
 		to: v.optional(v.number()),
@@ -955,7 +956,7 @@ export interface JourneyProgress {
 	hasPayment: boolean;
 }
 
-export const getJourneyProgress = query({
+export const getJourneyProgress = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<JourneyProgress> => {
 		const userOrgId = await getOptionalOrgId(ctx);

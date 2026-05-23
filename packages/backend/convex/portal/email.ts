@@ -18,6 +18,7 @@ const EXPIRES_MINUTES = 10;
  * Internal helper query so the action can read org name without running a
  * full mutation context.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _lookupOrgName = internalQuery({
 	args: { orgId: v.id("organizations") },
 	handler: async (ctx, { orgId }) => {

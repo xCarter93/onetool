@@ -116,9 +116,17 @@ export const get = query({
 
 		// Prefer the pinned latest document, but fall back to the latest same-org
 		// quote document so non-BoldSign generated PDFs still work.
+		// Pinned-document strict validation (mirrors getDownloadUrl): the pinned
+		// pointer must be same-org, documentType="quote", and documentId===quoteId
+		// — otherwise a corrupted pointer could leak a foreign blob.
 		if (quote.latestDocumentId) {
 			const doc = await ctx.db.get(quote.latestDocumentId);
-			if (doc) {
+			if (
+				doc &&
+				doc.orgId === session.orgId &&
+				doc.documentType === "quote" &&
+				doc.documentId === quoteId
+			) {
 				latestDocument = {
 					_id: doc._id,
 					version: doc.version,
@@ -293,6 +301,7 @@ export const getDownloadUrl = query({
 // Internal helpers used by approve action + decline mutation
 // ---------------------------------------------------------------------------
 
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _getPortalSessionForAction = internalQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -328,6 +337,7 @@ export const _rateLimitPreflight = internalMutation({
  * Runs BEFORE storage.store so failure paths leave no orphan blob.
  * Returns the snapshot fields _commitApproval needs to insert the audit row.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const _preflightApproval = internalQuery({
 	args: {
 		quoteId: v.id("quotes"),
@@ -653,6 +663,12 @@ export const approve = action({
 			bytes[i] = binary.charCodeAt(i);
 		}
 		if (bytes.byteLength > 256_000) {
+			throw new ConvexError({ code: "SIGNATURE_TOO_LARGE" });
+		}
+		// Convex documents have a 1MB hard cap; reject oversized point-stream
+		// payloads up front rather than letting the commit mutation fail.
+		// 100KB is generous for typed-name strings and drawn-pad point arrays.
+		if (args.signatureRawData.length > 100_000) {
 			throw new ConvexError({ code: "SIGNATURE_TOO_LARGE" });
 		}
 		const blob = new Blob([bytes], { type: "image/png" });

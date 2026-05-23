@@ -11,7 +11,8 @@ export function BrandHeader({
 	logoInvertInDarkMode?: boolean;
 	showEyebrow?: boolean;
 }) {
-	const monogram = businessName.charAt(0).toUpperCase();
+	const trimmedName = businessName.trim();
+	const monogram = (trimmedName.charAt(0) || "?").toUpperCase();
 	return (
 		<div className="flex items-center gap-3">
 			{logoUrl ? (

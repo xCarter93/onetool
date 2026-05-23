@@ -9,11 +9,8 @@ import {
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { getCurrentUserOrgId } from "./lib/auth";
 import { generatePublicToken } from "./lib/shared";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
@@ -21,6 +18,11 @@ import {
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { applyMarkPaidCascade } from "./lib/payments";
+import {
+	systemMutation,
+	userMutation,
+	userQuery,
+} from "./lib/factories";
 
 /**
  * Payment operations - individual payment installments for invoices
@@ -38,26 +40,6 @@ type InvoiceId = Id<"invoices">;
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a payment with org validation (wrapper for shared utility)
- */
-async function getPaymentWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: PaymentId
-): Promise<PaymentDocument | null> {
-	return await getEntityWithOrgValidation(ctx, "payments", id, "Payment");
-}
-
-/**
- * Get a payment, throwing if not found (wrapper for shared utility)
- */
-async function getPaymentOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: PaymentId
-): Promise<PaymentDocument> {
-	return await getEntityOrThrow(ctx, "payments", id, "Payment");
-}
 
 /**
  * Validate invoice access (wrapper for shared utility)
@@ -225,7 +207,7 @@ async function updateInvoiceStatusIfFullyPaid(
 /**
  * Get all payments for a specific invoice
  */
-export const listByInvoice = query({
+export const listByInvoice = userQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args): Promise<PaymentDocument[]> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -246,13 +228,17 @@ export const listByInvoice = query({
 /**
  * Get a specific payment by ID
  */
-export const get = query({
+export const get = userQuery({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
-
-		return await getPaymentWithValidation(ctx, args.id);
+		try {
+			return await ctx.orgEntity("payments", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in payments:")) {
+				return null;
+			}
+			throw error;
+		}
 	},
 });
 
@@ -260,6 +246,8 @@ export const get = query({
  * Get payment by public token (for public payment page - no auth required)
  * Returns payment, invoice, and org information
  */
+// INTENTIONAL: raw public query — unauthenticated public payment-token access.
+// Caller has no Clerk identity; org is discovered from the payment row.
 export const getByPublicToken = query({
 	args: { publicToken: v.string() },
 	handler: async (ctx, args) => {
@@ -335,7 +323,7 @@ export const getByPublicToken = query({
 /**
  * Get payment summary for an invoice
  */
-export const getInvoiceSummary = query({
+export const getInvoiceSummary = userQuery({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args) => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -388,7 +376,7 @@ export const getInvoiceSummary = query({
 /**
  * Create a single payment
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		paymentAmount: v.number(),
@@ -397,17 +385,15 @@ export const create = mutation({
 		sortOrder: v.number(),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
-		const userOrgId = await getCurrentUserOrgId(ctx);
-
 		// Validate invoice access
-		await validateInvoiceAccess(ctx, args.invoiceId, userOrgId);
+		await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
 
 		// Validate payment amount and sort order
 		validatePaymentAmount(args.paymentAmount);
 		validateSortOrder(args.sortOrder);
 
 		const paymentId = await ctx.db.insert("payments", {
-			orgId: userOrgId,
+			orgId: ctx.orgId,
 			invoiceId: args.invoiceId,
 			paymentAmount: args.paymentAmount,
 			dueDate: args.dueDate,
@@ -424,7 +410,7 @@ export const create = mutation({
 /**
  * Update a payment (only if not paid)
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("payments"),
 		paymentAmount: v.optional(v.number()),
@@ -443,7 +429,7 @@ export const update = mutation({
 		const { id, ...updates } = args;
 
 		// Get payment and validate access
-		const payment = await getPaymentOrThrow(ctx, id);
+		const payment = await ctx.orgEntity("payments", id);
 
 		// Cannot update paid payments
 		if (payment.status === "paid") {
@@ -468,10 +454,10 @@ export const update = mutation({
 /**
  * Delete a payment (only if not paid)
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
-		const payment = await getPaymentOrThrow(ctx, args.id);
+		const payment = await ctx.orgEntity("payments", args.id);
 
 		// Cannot delete paid payments
 		if (payment.status === "paid") {
@@ -489,7 +475,7 @@ export const remove = mutation({
  * This replaces all unpaid payments with the new configuration
  * Paid payments are preserved and cannot be modified
  */
-export const configurePayments = mutation({
+export const configurePayments = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		payments: v.array(
@@ -503,10 +489,8 @@ export const configurePayments = mutation({
 		),
 	},
 	handler: async (ctx, args): Promise<PaymentId[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx);
-
 		// Validate invoice access
-		await validateInvoiceAccess(ctx, args.invoiceId, userOrgId);
+		await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
 
 		// Get existing payments
 		const existingPayments = await ctx.db
@@ -555,7 +539,7 @@ export const configurePayments = mutation({
 
 		for (const paymentData of args.payments) {
 			const paymentId = await ctx.db.insert("payments", {
-				orgId: userOrgId,
+				orgId: ctx.orgId,
 				invoiceId: args.invoiceId,
 				paymentAmount: paymentData.paymentAmount,
 				dueDate: paymentData.dueDate,
@@ -577,13 +561,11 @@ export const configurePayments = mutation({
  * Create a default single payment for the full invoice amount
  * Used when creating an invoice from a quote
  */
-export const createDefaultPayment = mutation({
+export const createDefaultPayment = userMutation({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args): Promise<PaymentId> => {
-		const userOrgId = await getCurrentUserOrgId(ctx);
-
 		// Validate invoice access
-		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, userOrgId);
+		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
 
 		// Check if payments already exist
 		const existingPayments = await ctx.db
@@ -596,7 +578,7 @@ export const createDefaultPayment = mutation({
 		}
 
 		const paymentId = await ctx.db.insert("payments", {
-			orgId: userOrgId,
+			orgId: ctx.orgId,
 			invoiceId: args.invoiceId,
 			paymentAmount: invoice.total,
 			dueDate: invoice.dueDate,
@@ -654,6 +636,7 @@ export const markPaidByPublicTokenInternal = internalMutation({
 /**
  * Internal query: get payment by public token (for use in actions)
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getByPublicTokenInternal = internalQuery({
 	args: { publicToken: v.string() },
 	handler: async (ctx, args) => {
@@ -669,6 +652,7 @@ export const getByPublicTokenInternal = internalQuery({
 /**
  * Internal query: get organization Stripe Connect account ID for a payment
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getOrgStripeAccount = internalQuery({
 	args: { orgId: v.id("organizations") },
 	handler: async (ctx, args) => {
@@ -683,7 +667,7 @@ export const getOrgStripeAccount = internalQuery({
 /**
  * Reorder payments
  */
-export const reorder = mutation({
+export const reorder = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		paymentIds: v.array(v.id("payments")),
@@ -693,7 +677,7 @@ export const reorder = mutation({
 
 		// Validate that all payments belong to the invoice
 		for (const paymentId of args.paymentIds) {
-			const payment = await getPaymentOrThrow(ctx, paymentId);
+			const payment = await ctx.orgEntity("payments", paymentId);
 			if (payment.invoiceId !== args.invoiceId) {
 				throw new Error("All payments must belong to the specified invoice");
 			}
@@ -711,10 +695,10 @@ export const reorder = mutation({
 /**
  * Send payment (mark as sent and optionally send notification)
  */
-export const markAsSent = mutation({
+export const markAsSent = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
-		const payment = await getPaymentOrThrow(ctx, args.id);
+		const payment = await ctx.orgEntity("payments", args.id);
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot send a paid payment");
@@ -731,10 +715,10 @@ export const markAsSent = mutation({
 /**
  * Mark payment as overdue
  */
-export const markAsOverdue = mutation({
+export const markAsOverdue = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
-		const payment = await getPaymentOrThrow(ctx, args.id);
+		const payment = await ctx.orgEntity("payments", args.id);
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot mark a paid payment as overdue");
@@ -755,6 +739,7 @@ export const markAsOverdue = mutation({
 /**
  * Increment the checkout attempt counter used in Stripe idempotency keys.
  */
+// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
 export const incrementCheckoutAttemptCounterInternal = mutation({
 	args: { publicToken: v.string() },
 	returns: v.number(),
@@ -785,6 +770,7 @@ export const incrementCheckoutAttemptCounterInternal = mutation({
  */
 const STRIPE_CHECKOUT_URL_PREFIX = "https://checkout.stripe.com/";
 const STRIPE_CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
+// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
 export const persistPendingCheckoutSessionInternal = mutation({
 	args: {
 		publicToken: v.string(),
@@ -825,6 +811,7 @@ export const persistPendingCheckoutSessionInternal = mutation({
 /**
  * Lookup a payment by Stripe PaymentIntent within an org.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getByPaymentIntentIdInternal = internalQuery({
 	args: {
 		orgId: v.id("organizations"),
@@ -847,9 +834,8 @@ export const getByPaymentIntentIdInternal = internalQuery({
  * Validate a completed Checkout Session and delegate to the paid cascade.
  * Unknown payment metadata is treated as a terminal no-op to avoid endless retries.
  */
-export const markPaidFromWebhookInternal = internalMutation({
+export const markPaidFromWebhookInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		sessionId: v.string(),
 		amountTotal: v.number(),
 		metadata: v.any(),
@@ -883,7 +869,7 @@ export const markPaidFromWebhookInternal = internalMutation({
 		}
 
 		// The publicToken lookup is global, so assert org scope here.
-		if (payment.orgId !== args.orgId) {
+		if (payment.orgId !== ctx.orgId) {
 			throw new Error("Org mismatch on webhook payment lookup");
 		}
 
@@ -975,9 +961,8 @@ export const persistPendingPaymentIntentInternal = internalMutation({
  * applyMarkPaidCascade is the canonical writer and runs in this mutation's
  * context.
  */
-export const markPaidFromPaymentIntentWebhookInternal = internalMutation({
+export const markPaidFromPaymentIntentWebhookInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		paymentIntentId: v.string(),
 		amountReceived: v.number(),
 		metadata: v.any(),
@@ -1019,12 +1004,12 @@ export const markPaidFromPaymentIntentWebhookInternal = internalMutation({
 			);
 			return null;
 		}
-		if (payment.orgId !== args.orgId) {
+		if (payment.orgId !== ctx.orgId) {
 			// Security signal: log at error level so it surfaces in alerting,
 			// but still ack so Stripe doesn't retry the same mismatch 70 times.
 			console.error(
 				`markPaidFromPaymentIntentInternal: ORG MISMATCH on PI ${args.paymentIntentId} — ` +
-					`payment.orgId=${payment.orgId} vs event.orgId=${args.orgId}. ` +
+					`payment.orgId=${payment.orgId} vs event.orgId=${ctx.orgId}. ` +
 					`Investigate immediately. Ack and skip.`
 			);
 			return null;
@@ -1061,9 +1046,8 @@ export const markPaidFromPaymentIntentWebhookInternal = internalMutation({
 /**
  * Mark a payment refunded from a Stripe webhook.
  */
-export const markRefundedFromWebhookInternal = internalMutation({
+export const markRefundedFromWebhookInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		paymentIntentId: v.string(),
 		refundedAt: v.number(),
 	},
@@ -1071,7 +1055,7 @@ export const markRefundedFromWebhookInternal = internalMutation({
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
 			.filter((q) =>
 				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
 			)
@@ -1108,9 +1092,8 @@ export const markRefundedFromWebhookInternal = internalMutation({
 /**
  * Mark a payment disputed and notify the org owner.
  */
-export const flagDisputedFromWebhookInternal = internalMutation({
+export const flagDisputedFromWebhookInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		paymentIntentId: v.string(),
 		disputeId: v.string(),
 	},
@@ -1118,7 +1101,7 @@ export const flagDisputedFromWebhookInternal = internalMutation({
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
 			.filter((q) =>
 				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
 			)
@@ -1149,7 +1132,7 @@ export const flagDisputedFromWebhookInternal = internalMutation({
 		await ctx.runMutation(
 			internal.notifications.createWebhookNotificationInternal,
 			{
-				orgId: args.orgId,
+				orgId: ctx.orgId,
 				type: "dispute_created",
 				paymentId: payment._id,
 				priority: "high",
@@ -1166,10 +1149,10 @@ export const flagDisputedFromWebhookInternal = internalMutation({
 /**
  * Cancel a payment
  */
-export const cancel = mutation({
+export const cancel = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
-		const payment = await getPaymentOrThrow(ctx, args.id);
+		const payment = await ctx.orgEntity("payments", args.id);
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot cancel a paid payment");

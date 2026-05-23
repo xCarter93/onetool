@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { PortalContainer } from "@/components/portal/portal-container";
 import { InvoiceList } from "@/components/portal/invoices/invoice-list";
 import { readSessionCookie } from "@/lib/portal/cookie";
+import { isPortalAuthError } from "@/lib/portal/errors";
 
 export default async function InvoicesPage({
 	params,
@@ -30,8 +31,11 @@ export default async function InvoicesPage({
 	> = [];
 	try {
 		invoices = await fetchQuery(api.portal.invoices.list, {}, { token });
-	} catch {
-		redirect(`/portal/c/${clientPortalId}/verify`);
+	} catch (err) {
+		if (isPortalAuthError(err)) {
+			redirect(`/portal/c/${clientPortalId}/verify`);
+		}
+		throw err;
 	}
 
 	return (

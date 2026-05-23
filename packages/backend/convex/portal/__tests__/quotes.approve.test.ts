@@ -2,16 +2,24 @@
 // QUOTE-03/04/05/06 happy path + audit shape + stale-no-orphan-blob +
 // status-precondition + cross-tenant + rate-limit + event-emission +
 // receipt return shape.
-import { describe, it, expect, beforeEach, beforeAll } from "vitest";
-import { convexTest } from "convex-test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupConvexTest } from "../../test.setup";
 import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 
 const PORTAL_ISSUER = "https://portal.example.com";
+const previousIssuer = process.env.PORTAL_JWT_ISSUER;
 
 beforeAll(() => {
 	process.env.PORTAL_JWT_ISSUER = PORTAL_ISSUER;
+});
+
+afterAll(() => {
+	if (previousIssuer === undefined) {
+		delete process.env.PORTAL_JWT_ISSUER;
+	} else {
+		process.env.PORTAL_JWT_ISSUER = previousIssuer;
+	}
 });
 
 // Minimal valid PNG (1x1 transparent), base64-encoded.
@@ -27,7 +35,7 @@ type Seed = {
 	clientPortalId: string;
 };
 
-async function seedAll(t: ReturnType<typeof convexTest>): Promise<Seed> {
+async function seedAll(t: ReturnType<typeof setupConvexTest>): Promise<Seed> {
 	return await t.run(async (ctx) => {
 		const userId = await ctx.db.insert("users", {
 			name: "Owner",
@@ -80,7 +88,7 @@ async function seedAll(t: ReturnType<typeof convexTest>): Promise<Seed> {
 }
 
 async function seedSession(
-	t: ReturnType<typeof convexTest>,
+	t: ReturnType<typeof setupConvexTest>,
 	s: Seed,
 	jti: string,
 	contactId?: Id<"clientContacts">,
@@ -118,7 +126,7 @@ function ident(
 }
 
 async function seedQuoteWithDoc(
-	t: ReturnType<typeof convexTest>,
+	t: ReturnType<typeof setupConvexTest>,
 	s: Seed,
 	clientId: Id<"clients">,
 	status: "draft" | "sent" | "approved" | "declined" | "expired" = "sent",
@@ -177,7 +185,7 @@ async function seedQuoteWithDoc(
 }
 
 describe("portal.quotes.approve", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();

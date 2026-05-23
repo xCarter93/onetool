@@ -3,10 +3,22 @@ import Stripe from "stripe";
 /**
  * Build a synthetic Stripe.Event with sensible defaults. Override any field
  * via `overrides`. Used by webhook handler tests and integration tests.
+ *
+ * The override type is intentionally loose: Stripe.Event is a discriminated
+ * union (one variant per `type`), so `Partial<Stripe.Event>` distributes badly
+ * and every concrete builder below ends up fighting the narrowed `data.object`
+ * shape (TS picks an arbitrary union member like `ReceivedDebit` to validate
+ * against). We accept a permissive shape here and cast at the boundary.
  */
-export function buildStripeEvent(
-	overrides: Partial<Stripe.Event> & { type: Stripe.Event["type"] }
-): Stripe.Event {
+type StripeEventOverrides = {
+	type: Stripe.Event["type"];
+	id?: string;
+	created?: number;
+	account?: string | null;
+	data?: { object: unknown; previous_attributes?: unknown };
+};
+
+export function buildStripeEvent(overrides: StripeEventOverrides): Stripe.Event {
 	const now = Math.floor(Date.now() / 1000);
 	return {
 		id: overrides.id ?? `evt_test_${Math.random().toString(36).slice(2, 10)}`,
@@ -16,8 +28,8 @@ export function buildStripeEvent(
 		livemode: false,
 		pending_webhooks: 0,
 		request: { id: null, idempotency_key: null },
-		account: overrides.account,
-		data: overrides.data ?? { object: {} as Stripe.Event.Data["object"] },
+		account: overrides.account ?? undefined,
+		data: overrides.data ?? { object: {} },
 		...overrides,
 	} as Stripe.Event;
 }

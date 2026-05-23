@@ -1,21 +1,11 @@
 import { fetchQuery } from "convex/nextjs";
-import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { notFound, redirect } from "next/navigation";
 
 import { PortalContainer } from "@/components/portal/portal-container";
 import { WelcomeContent } from "@/components/portal/welcome-content";
 import { readSessionCookie } from "@/lib/portal/cookie";
-
-// Portal helpers throw `new ConvexError({ code: "UNAUTHENTICATED" })` when
-// the session is missing/expired/revoked. Anything else (transient server
-// errors, rate limits, etc.) should bubble up to Next.js error.tsx instead
-// of bouncing the user to /verify, which would loop after re-auth.
-function isAuthError(err: unknown): boolean {
-	if (!(err instanceof ConvexError)) return false;
-	const data = (err as ConvexError<{ code?: string }>).data;
-	return data?.code === "UNAUTHENTICATED";
-}
+import { isPortalAuthError } from "@/lib/portal/errors";
 
 export default async function AuthenticatedPortalHome({
 	params,
@@ -42,7 +32,7 @@ export default async function AuthenticatedPortalHome({
 	try {
 		invoices = await fetchQuery(api.portal.invoices.list, {}, { token });
 	} catch (err) {
-		if (isAuthError(err)) {
+		if (isPortalAuthError(err)) {
 			redirect(`/portal/c/${clientPortalId}/verify`);
 		}
 		throw err;

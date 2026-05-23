@@ -6,6 +6,7 @@ import {
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
+import { systemMutation } from "./lib/factories";
 
 /**
  * Event Bus - Event-Driven Architecture for Convex
@@ -40,9 +41,8 @@ type EntityType = "client" | "project" | "quote" | "invoice" | "task";
  * Publish an event to the event bus
  * This is the main entry point for event producers
  */
-export const publishEvent = internalMutation({
+export const publishEvent = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		eventType: v.string(),
 		eventSource: v.string(),
 		payload: v.object({
@@ -65,7 +65,7 @@ export const publishEvent = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const eventId = await ctx.db.insert("domainEvents", {
-			orgId: args.orgId,
+			orgId: ctx.orgId,
 			eventType: args.eventType,
 			eventSource: args.eventSource,
 			payload: args.payload,
@@ -265,6 +265,7 @@ async function dispatchEvent(
 /**
  * Get events by correlation ID for debugging/tracing
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getEventsByCorrelation = internalQuery({
 	args: {
 		correlationId: v.string(),
@@ -368,6 +369,7 @@ export const cleanupOldEvents = internalMutation({
 /**
  * Get event processing statistics
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getEventStats = internalQuery({
 	args: {
 		orgId: v.optional(v.id("organizations")),
@@ -402,4 +404,3 @@ export const getEventStats = internalQuery({
 		};
 	},
 });
-

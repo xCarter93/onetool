@@ -2,8 +2,8 @@ import "server-only";
 import { type NextRequest, NextResponse } from "next/server";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { readSessionCookie } from "@/lib/portal/cookie";
+import { invoiceIdFromParam } from "@/lib/portal/invoices/ids";
 import { mapConvexError } from "@/lib/portal/quotes/map-convex-error";
 
 export async function GET(
@@ -25,7 +25,7 @@ export async function GET(
 	try {
 		const result = await fetchQuery(
 			api.portal.invoices.getDownloadUrl,
-			{ invoiceId: invoiceId as Id<"invoices"> },
+			{ invoiceId: invoiceIdFromParam(invoiceId) },
 			{ token },
 		);
 		if (!result) {

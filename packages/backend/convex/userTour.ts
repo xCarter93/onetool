@@ -1,10 +1,11 @@
 import { mutation, query } from "./_generated/server";
 import { getCurrentUser } from "./lib/auth";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Mark the product tour as completed for the current user
  */
-export const markTourComplete = mutation({
+export const markTourComplete = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);
@@ -20,7 +21,7 @@ export const markTourComplete = mutation({
 /**
  * Skip the tour without completing it (still marks as seen)
  */
-export const skipTour = mutation({
+export const skipTour = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);
@@ -36,7 +37,7 @@ export const skipTour = mutation({
 /**
  * Check if the current user has seen the tour
  */
-export const hasSeenTour = query({
+export const hasSeenTour = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);
@@ -51,7 +52,7 @@ export const hasSeenTour = query({
 /**
  * Reset tour status (for testing/development)
  */
-export const resetTourStatus = mutation({
+export const resetTourStatus = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);

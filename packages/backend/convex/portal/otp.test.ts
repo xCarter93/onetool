@@ -1,6 +1,5 @@
 // Plan 13-03: PORTAL-01 + PORTAL-04 OTP request/verify flow.
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
-import { convexTest } from "convex-test";
 import { setupConvexTest } from "../test.setup";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -38,7 +37,7 @@ type ClientSeed = {
 };
 
 async function seedClientPortal(
-	t: ReturnType<typeof convexTest>,
+	t: ReturnType<typeof setupConvexTest>,
 	overrides: Partial<{
 		portalId: string;
 		orgName: string;
@@ -86,7 +85,7 @@ async function hashOtp(otp: string, salt: string): Promise<string> {
 }
 
 async function seedOtpRow(
-	t: ReturnType<typeof convexTest>,
+	t: ReturnType<typeof setupConvexTest>,
 	seed: ClientSeed,
 	options: {
 		email: string;
@@ -115,7 +114,7 @@ async function seedOtpRow(
 }
 
 describe("portal otp", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -331,7 +330,7 @@ describe("portal otp", () => {
 });
 
 describe("portal otp attempts", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -407,7 +406,7 @@ describe("portal otp attempts", () => {
 });
 
 describe("portal otp expired", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();

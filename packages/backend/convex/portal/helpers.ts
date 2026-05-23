@@ -8,6 +8,7 @@ import type { Id } from "../_generated/dataModel";
  * claims, DB row).
  */
 export type PortalSession = {
+	_id: Id<"portalSessions">;
 	orgId: Id<"organizations">;
 	clientContactId: Id<"clientContacts">;
 	clientPortalId: string;
@@ -82,6 +83,7 @@ export async function getPortalSessionOrThrow(
 	}
 
 	return {
+		_id: row._id,
 		orgId: orgId as Id<"organizations">,
 		clientContactId: clientContactId as Id<"clientContacts">,
 		clientPortalId,

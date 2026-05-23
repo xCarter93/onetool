@@ -107,44 +107,6 @@ describe("Auth Helpers", () => {
 			).rejects.toThrowError("No active organization found in user session");
 		});
 
-		it("should return null when require: false and no identity", async () => {
-			const result = await t.run(async (ctx) => {
-				(ctx.auth as any).getUserIdentity = async () => null;
-
-				const { getCurrentUserOrgId } = await import("../lib/auth");
-				return await getCurrentUserOrgId(ctx, { require: false });
-			});
-
-			expect(result).toBeNull();
-		});
-
-		it("should return null when require: false and no org", async () => {
-			await t.run(async (ctx) => {
-				const userId = await ctx.db.insert("users", {
-					name: "Test User",
-					email: "test@example.com",
-					image: "https://example.com/image.jpg",
-					externalId: "user_123",
-				});
-			});
-
-			const result = await t.run(async (ctx) => {
-				// Mock authenticated context without org
-				const identity = {
-					subject: "user_123",
-					tokenIdentifier: "test_token",
-					issuer: "https://test.clerk.com",
-				};
-
-				(ctx.auth as any).getUserIdentity = async () => identity;
-
-				const { getCurrentUserOrgId } = await import("../lib/auth");
-				return await getCurrentUserOrgId(ctx, { require: false });
-			});
-
-			expect(result).toBeNull();
-		});
-
 		it("should handle alternative org ID fields (orgId, org_id)", async () => {
 			const { userId, orgId } = await t.run(async (ctx) => {
 				const userId = await ctx.db.insert("users", {

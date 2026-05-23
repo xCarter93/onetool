@@ -18,11 +18,12 @@ import {
 	removeMembership,
 	requireMembership,
 } from "./lib/memberships";
+import { optionalUserQuery, userMutation, systemMutation } from "./lib/factories";
 
 /**
  * Get the current user's organization
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);
@@ -43,7 +44,7 @@ export const get = query({
 /**
  * Check if the current user needs to complete organization metadata
  */
-export const needsMetadataCompletion = query({
+export const needsMetadataCompletion = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);
@@ -146,7 +147,7 @@ export const createFromClerk = internalMutation({
  * Complete organization metadata after Clerk creation
  * This replaces the original create function for the new flow
  */
-export const completeMetadata = mutation({
+export const completeMetadata = userMutation({
 	args: {
 		email: v.optional(v.string()),
 		website: v.optional(v.string()),
@@ -331,7 +332,7 @@ export const retryPendingOrganizationCreation = internalMutation({
 /**
  * Update the current user's organization
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
@@ -409,7 +410,7 @@ export const update = mutation({
  * Regenerate the receiving email address for the organization
  * Only organization owner can perform this action
  */
-export const regenerateReceivingAddress = mutation({
+export const regenerateReceivingAddress = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUserOrThrow(ctx);
@@ -443,7 +444,7 @@ export const regenerateReceivingAddress = mutation({
 /**
  * Return the caller's Connect context using only session-derived identity.
  */
-export const getOrgForCallerInternal = query({
+export const getOrgForCallerInternal = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUserOrThrow(ctx);
@@ -475,7 +476,7 @@ export const getOrgForCallerInternal = query({
 /**
  * Persist a Connect account id on the caller's org with owner and duplicate guards.
  */
-export const setStripeConnectAccountIdInternal = mutation({
+export const setStripeConnectAccountIdInternal = userMutation({
 	args: { accountId: v.string() },
 	handler: async (ctx, args) => {
 		const user = await getCurrentUserOrThrow(ctx);
@@ -517,7 +518,7 @@ export const setStripeConnectAccountIdInternal = mutation({
  * Get organization members (users in the organization)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getMembers = query({
+export const getMembers = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		const user = await getCurrentUser(ctx);
@@ -547,7 +548,7 @@ export const getMembers = query({
  * Remove user from organization (owner only)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const removeMember = mutation({
+export const removeMember = userMutation({
 	args: {
 		userId: v.id("users"),
 	},
@@ -587,6 +588,7 @@ export const removeMember = mutation({
 /**
  * Resolve a Stripe Connect account id to the owning org.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getByStripeConnectAccountIdInternal = internalQuery({
 	args: { accountId: v.string() },
 	returns: v.union(
@@ -614,9 +616,8 @@ export const getByStripeConnectAccountIdInternal = internalQuery({
 /**
  * Refresh cached Connect onboarding status from a verified webhook.
  */
-export const updateStripeConnectStatusInternal = internalMutation({
+export const updateStripeConnectStatusInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		chargesEnabled: v.boolean(),
 		payoutsEnabled: v.boolean(),
 		detailsSubmitted: v.boolean(),
@@ -625,7 +626,7 @@ export const updateStripeConnectStatusInternal = internalMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		await ctx.db.patch(args.orgId, {
+		await ctx.db.patch(ctx.orgId, {
 			stripeChargesEnabled: args.chargesEnabled,
 			stripePayoutsEnabled: args.payoutsEnabled,
 			stripeDetailsSubmitted: args.detailsSubmitted,
@@ -641,7 +642,7 @@ export const updateStripeConnectStatusInternal = internalMutation({
  * Delete organization (owner only) - careful operation!
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const deleteOrganization = mutation({
+export const deleteOrganization = userMutation({
 	args: {
 		confirmationText: v.string(), // Require typing organization name for confirmation
 	},
@@ -680,6 +681,7 @@ export const deleteOrganization = mutation({
 /**
  * List orgs with Connect accounts for the read-only revalidation migration.
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const listAllWithConnectAccountInternal = internalQuery({
 	args: {},
 	returns: v.array(
@@ -704,9 +706,8 @@ export const listAllWithConnectAccountInternal = internalQuery({
 });
 
 // Re-cache Connect capabilities and notify only on active -> inactive degradation.
-export const updateStripeCapabilityInternal = internalMutation({
+export const updateStripeCapabilityInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		capabilityId: v.string(),
 		status: v.union(
 			v.literal("active"),
@@ -719,7 +720,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const org = await ctx.db.get(args.orgId);
+		const org = await ctx.db.get(ctx.orgId);
 		if (!org) return null;
 
 		// Payout capability events still use the v1 "transfers" capability id.
@@ -748,7 +749,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 			patch.stripeRequirementsCurrentlyDue = args.requirementsCurrentlyDue;
 			patch.stripeRequirementsDisabledReason = args.requirementsDisabledReason;
 		}
-		await ctx.db.patch(args.orgId, patch);
+		await ctx.db.patch(ctx.orgId, patch);
 
 		// Notify only on active -> not-active transitions.
 		if (isDegradation) {
@@ -756,7 +757,7 @@ export const updateStripeCapabilityInternal = internalMutation({
 			await ctx.runMutation(
 				internal.notifications.createWebhookNotificationInternal,
 				{
-					orgId: args.orgId,
+					orgId: ctx.orgId,
 					type: "capability_degraded",
 					priority: "high",
 					message: `Stripe ${label} have been disabled: ${args.requirementsDisabledReason ?? "reason unknown"}. Update onboarding to restore.`,
@@ -768,16 +769,15 @@ export const updateStripeCapabilityInternal = internalMutation({
 });
 
 // Persist bank-account fingerprint from external_account webhooks.
-export const updateExternalAccountFingerprintInternal = internalMutation({
+export const updateExternalAccountFingerprintInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		last4: v.string(),
 		bankName: v.union(v.string(), v.null()),
 		updatedAt: v.number(),
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		await ctx.db.patch(args.orgId, {
+		await ctx.db.patch(ctx.orgId, {
 			stripeExternalAccountLast4: args.last4,
 			stripeExternalAccountBankName: args.bankName ?? undefined,
 			stripeExternalAccountUpdatedAt: args.updatedAt,
@@ -786,7 +786,7 @@ export const updateExternalAccountFingerprintInternal = internalMutation({
 	},
 });
 
-// Clear all cached Connect state for the session-derived org.
+// Stays raw — preserves explicit UNAUTHORIZED/ORG_MISMATCH route contract.
 export const clearStripeConnectStateInternal = mutation({
 	args: { orgId: v.id("organizations") },
 	returns: v.null(),

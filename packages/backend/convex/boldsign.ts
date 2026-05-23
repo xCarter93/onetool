@@ -12,7 +12,7 @@ import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
  * Get an entity by ID, throwing if not found.
  * Used by internal mutations that don't require org validation.
  */
-async function getEntityOrThrowInternal<T extends TableNames>(
+async function fetchEntityOrThrow<T extends TableNames>(
 	ctx: MutationCtx,
 	table: T,
 	id: Id<T>,
@@ -74,7 +74,7 @@ export const updateDocumentWithBoldSign = internalMutation({
 		viewUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await getEntityOrThrowInternal(ctx, "documents", args.documentId, "Document");
+		await fetchEntityOrThrow(ctx, "documents", args.documentId, "Document");
 
 		await ctx.db.patch(args.documentId, {
 			boldsignDocumentId: args.boldsignDocumentId,
@@ -99,7 +99,7 @@ export const updateQuoteLatestDocument = internalMutation({
 		documentId: v.id("documents"),
 	},
 	handler: async (ctx, args) => {
-		await getEntityOrThrowInternal(ctx, "quotes", args.quoteId, "Quote");
+		await fetchEntityOrThrow(ctx, "quotes", args.quoteId, "Quote");
 
 		await ctx.db.patch(args.quoteId, {
 			latestDocumentId: args.documentId,
@@ -294,7 +294,7 @@ export const updateDocumentWithSignedPdf = internalMutation({
 		signedStorageId: v.id("_storage"),
 	},
 	handler: async (ctx, args) => {
-		await getEntityOrThrowInternal(ctx, "documents", args.documentId, "Document");
+		await fetchEntityOrThrow(ctx, "documents", args.documentId, "Document");
 
 		await ctx.db.patch(args.documentId, {
 			signedStorageId: args.signedStorageId,

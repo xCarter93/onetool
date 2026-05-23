@@ -39,6 +39,7 @@ import type * as lib_aggregates from "../lib/aggregates.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_changeTracking from "../lib/changeTracking.js";
 import type * as lib_crud from "../lib/crud.js";
+import type * as lib_factories from "../lib/factories.js";
 import type * as lib_lineItems from "../lib/lineItems.js";
 import type * as lib_memberships from "../lib/memberships.js";
 import type * as lib_organization from "../lib/organization.js";
@@ -131,6 +132,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/changeTracking": typeof lib_changeTracking;
   "lib/crud": typeof lib_crud;
+  "lib/factories": typeof lib_factories;
   "lib/lineItems": typeof lib_lineItems;
   "lib/memberships": typeof lib_memberships;
   "lib/organization": typeof lib_organization;

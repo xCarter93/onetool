@@ -18,6 +18,7 @@ interface RevalidateResult {
 	ok: number;
 	mismatched: number;
 	notFound: number;
+	retrievalFailures: number;
 }
 
 /**
@@ -30,6 +31,7 @@ export const run = internalAction({
 		ok: v.number(),
 		mismatched: v.number(),
 		notFound: v.number(),
+		retrievalFailures: v.number(),
 	}),
 	handler: async (ctx): Promise<RevalidateResult> => {
 		const apiKey = process.env.STRIPE_SECRET_KEY;
@@ -46,6 +48,7 @@ export const run = internalAction({
 		let ok = 0;
 		let mismatched = 0;
 		let notFound = 0;
+		let retrievalFailures = 0;
 
 		for (const org of orgs) {
 			if (!org.stripeConnectAccountId) continue;
@@ -74,11 +77,17 @@ export const run = internalAction({
 					notFound++;
 				} else {
 					console.error(`[revalidate] Org ${org._id} retrieve error:`, err);
-					mismatched++;
+					retrievalFailures++;
 				}
 			}
 		}
 
-		return { total: orgs.length, ok, mismatched, notFound };
+		return {
+			total: orgs.length,
+			ok,
+			mismatched,
+			notFound,
+			retrievalFailures,
+		};
 	},
 });

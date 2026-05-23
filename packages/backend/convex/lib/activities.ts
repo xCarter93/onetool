@@ -1,6 +1,7 @@
 import { MutationCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
-import { getCurrentUserOrThrow, getCurrentUserOrgIdOptional } from "./auth";
+import { getCurrentUserOrThrow } from "./auth";
+import { getOptionalOrgId } from "./queries";
 import {
 	FieldChange,
 	buildChangeDescription,
@@ -33,7 +34,7 @@ export async function createActivity(
 	}
 ): Promise<Id<"activities"> | null> {
 	const user = await getCurrentUserOrThrow(ctx);
-	const orgId = await getCurrentUserOrgIdOptional(ctx);
+	const orgId = await getOptionalOrgId(ctx);
 
 	// Skip activity logging for users without organizations
 	if (!orgId) {

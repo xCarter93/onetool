@@ -54,20 +54,18 @@ export const touchSession = mutation({
 		if (session.tokenJti !== tokenJti) {
 			throw new Error("Cannot touch another session");
 		}
-		const row = await ctx.db
-			.query("portalSessions")
-			.withIndex("by_jti", (q) => q.eq("tokenJti", tokenJti))
-			.unique();
-		if (!row) return null;
+		// Use the session row returned by getPortalSessionOrThrow rather than
+		// re-querying by jti — the second lookup was a TOCTOU window for a
+		// revocation racing with the touch (and a redundant index read).
 		const cappedExpiresAt = Math.min(
 			newExpiresAt,
 			Date.now() + SESSION_TTL_MS,
 		);
-		await ctx.db.patch(row._id, {
+		await ctx.db.patch(session._id, {
 			lastActivityAt: Date.now(),
 			expiresAt: cappedExpiresAt,
 		});
-		return row._id;
+		return session._id;
 	},
 });
 
@@ -79,11 +77,7 @@ export const revokeSessionByJti = mutation({
 		if (session.tokenJti !== tokenJti) {
 			throw new Error("Cannot revoke another session");
 		}
-		const row = await ctx.db
-			.query("portalSessions")
-			.withIndex("by_jti", (q) => q.eq("tokenJti", tokenJti))
-			.unique();
-		if (row) await ctx.db.delete(row._id);
+		await ctx.db.delete(session._id);
 		return { ok: true };
 	},
 });

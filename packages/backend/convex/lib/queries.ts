@@ -7,7 +7,7 @@
 
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { getCurrentUserOrgId } from "./auth";
+import { getOrganizationByClerkId } from "./auth";
 import { DateUtils } from "./shared";
 
 // ============================================================================
@@ -100,19 +100,36 @@ export function getWeekRange(): DateRange {
  * Get the current user's org ID, returning null for unauthenticated users.
  * Useful for queries that should return empty results for unauthenticated users.
  *
- * Unlike getCurrentUserOrgId({ require: false }), this function also handles
- * the case where the user is not authenticated at all (returns null instead of throwing).
+ * This function handles unauthenticated users and missing active orgs by
+ * returning null instead of throwing.
  */
 export async function getOptionalOrgId(
 	ctx: QueryCtx | MutationCtx
 ): Promise<Id<"organizations"> | null> {
-	// Check if user is authenticated first
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) {
 		return null;
 	}
-	// User is authenticated, now get their org ID (may still be null if no active org)
-	return await getCurrentUserOrgId(ctx, { require: false });
+
+	const activeOrgId = extractActiveOrgId(identity);
+	if (!activeOrgId) {
+		return null;
+	}
+
+	const organization = await getOrganizationByClerkId(ctx, activeOrgId);
+	return organization?._id ?? null;
+}
+
+// Clerk's UserIdentity shape varies (activeOrgId in v6 JWTs, orgId/org_id in
+// older custom claims). Read defensively rather than casting blind.
+function extractActiveOrgId(identity: unknown): string | null {
+	if (typeof identity !== "object" || identity === null) return null;
+	const record = identity as Record<string, unknown>;
+	const candidates = [record.activeOrgId, record.orgId, record.org_id];
+	for (const value of candidates) {
+		if (typeof value === "string" && value.length > 0) return value;
+	}
+	return null;
 }
 
 /**

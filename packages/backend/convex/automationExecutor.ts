@@ -7,6 +7,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
+import { systemMutation } from "./lib/factories";
 
 /**
  * Automation Execution Engine
@@ -37,6 +38,7 @@ const OBJECT_STATUS_MAP = {
 /**
  * Find all active automations that match a trigger event
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const findMatchingAutomations = internalQuery({
 	args: {
 		orgId: v.id("organizations"),
@@ -105,10 +107,9 @@ const MAX_EXECUTIONS_PER_WINDOW = 100; // Max executions per org per minute
  * - Event sourcing support
  * - Recursion prevention for cascading automations
  */
-export const handleStatusChangeEvent = internalMutation({
+export const handleStatusChangeEvent = systemMutation({
 	args: {
 		eventId: v.id("domainEvents"),
-		orgId: v.id("organizations"),
 		entityType: v.union(
 			v.literal("client"),
 			v.literal("project"),
@@ -133,7 +134,7 @@ export const handleStatusChangeEvent = internalMutation({
 		// Check recursion depth limit
 		if (currentDepth >= MAX_RECURSION_DEPTH) {
 			console.warn(
-				`Automation recursion limit reached (depth: ${currentDepth}) for org ${args.orgId}. ` +
+				`Automation recursion limit reached (depth: ${currentDepth}) for org ${ctx.orgId}. ` +
 					`Chain: ${currentChain.join(" → ")}`
 			);
 			return { triggered: 0, recursionLimited: true };
@@ -143,7 +144,7 @@ export const handleStatusChangeEvent = internalMutation({
 		const automations = await ctx.runQuery(
 			internal.automationExecutor.findMatchingAutomations,
 			{
-				orgId: args.orgId,
+				orgId: ctx.orgId,
 				objectType: args.entityType,
 				fromStatus: args.fromStatus,
 				toStatus: args.toStatus,
@@ -159,13 +160,13 @@ export const handleStatusChangeEvent = internalMutation({
 		const recentExecutions = await ctx.db
 			.query("workflowExecutions")
 			.withIndex("by_org_triggeredAt", (q) =>
-				q.eq("orgId", args.orgId).gte("triggeredAt", oneMinuteAgo)
+				q.eq("orgId", ctx.orgId).gte("triggeredAt", oneMinuteAgo)
 			)
 			.collect();
 
 		if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
 			console.warn(
-				`Automation rate limit reached for org ${args.orgId}. ` +
+				`Automation rate limit reached for org ${ctx.orgId}. ` +
 					`${recentExecutions.length} executions in the last minute.`
 			);
 			return { triggered: 0, rateLimited: true };
@@ -182,7 +183,7 @@ export const handleStatusChangeEvent = internalMutation({
 				);
 				// Log as skipped
 				await ctx.db.insert("workflowExecutions", {
-					orgId: args.orgId,
+					orgId: ctx.orgId,
 					automationId: automation._id,
 					triggeredBy: args.entityId,
 					triggeredAt: Date.now(),
@@ -200,7 +201,7 @@ export const handleStatusChangeEvent = internalMutation({
 
 			// Create execution log entry with event correlation
 			const executionId = await ctx.db.insert("workflowExecutions", {
-				orgId: args.orgId,
+				orgId: ctx.orgId,
 				automationId: automation._id,
 				triggeredBy: args.entityId,
 				triggeredAt: Date.now(),
@@ -212,9 +213,9 @@ export const handleStatusChangeEvent = internalMutation({
 
 			// Publish automation.triggered event for monitoring
 			await ctx.db.insert("domainEvents", {
-				orgId: args.orgId,
+				orgId: ctx.orgId,
 				eventType: "automation.triggered",
-				eventSource: "automationExecutor.handleStatusChangeEvent",
+					eventSource: "automationExecutor.handleStatusChangeEvent",
 				payload: {
 					entityType: args.entityType,
 					entityId: args.entityId,
@@ -238,6 +239,7 @@ export const handleStatusChangeEvent = internalMutation({
 				0,
 				internal.automationExecutor.executeAutomation,
 				{
+					orgId: ctx.orgId,
 					executionId,
 					automationId: automation._id,
 					objectType: args.entityType,
@@ -257,7 +259,7 @@ export const handleStatusChangeEvent = internalMutation({
 /**
  * Execute a single automation workflow
  */
-export const executeAutomation = internalMutation({
+export const executeAutomation = systemMutation({
 	args: {
 		executionId: v.id("workflowExecutions"),
 		automationId: v.id("workflowAutomations"),
@@ -871,6 +873,7 @@ export const cleanupOldExecutions = internalMutation({
 /**
  * Get automation execution statistics for an organization
  */
+// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const getExecutionStats = internalQuery({
 	args: {
 		orgId: v.id("organizations"),

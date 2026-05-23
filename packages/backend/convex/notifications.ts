@@ -11,12 +11,16 @@ import { getCurrentUserOrgId } from "./lib/auth";
 import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import {
+	optionalUserQuery,
+	systemMutation,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Notification operations
@@ -28,31 +32,6 @@ import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a notification with org validation (wrapper for shared utility)
- */
-async function getNotificationWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"notifications">
-): Promise<Doc<"notifications"> | null> {
-	return await getEntityWithOrgValidation(
-		ctx,
-		"notifications",
-		id,
-		"Notification"
-	);
-}
-
-/**
- * Get a notification, throwing if not found (wrapper for shared utility)
- */
-async function getNotificationOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"notifications">
-): Promise<Doc<"notifications">> {
-	return await getEntityOrThrow(ctx, "notifications", id, "Notification");
-}
 
 /**
  * Validate user exists and belongs to user's org
@@ -76,20 +55,18 @@ async function validateUserAccess(
  * Create a notification with automatic orgId assignment
  */
 async function createNotificationWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<
 		Doc<"notifications">,
 		"_id" | "_creationTime" | "orgId" | "priority"
 	>
 ): Promise<Id<"notifications">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	// Validate user access
-	await validateUserAccess(ctx, data.userId);
+	await validateUserAccess(ctx, data.userId, ctx.orgId);
 
 	const notificationData = {
 		...data,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	};
 
 	// Type assertion needed because schema still has deprecated priority field
@@ -210,7 +187,7 @@ function calculateNotificationStats(
  * Get all notifications for a specific user
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const listByUser = query({
+export const listByUser = optionalUserQuery({
 	args: {
 		userId: v.id("users"),
 		isRead: v.optional(v.boolean()),
@@ -273,7 +250,7 @@ export const listByUser = query({
  * Get all notifications for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const list = query({
+export const list = optionalUserQuery({
 	args: {
 		notificationType: v.optional(
 			v.union(
@@ -321,13 +298,19 @@ export const list = query({
  * Get a specific notification by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("notifications") },
 	handler: async (ctx, args): Promise<NotificationDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
+		if (!ctx.orgId) return null;
 
-		return await getNotificationWithValidation(ctx, args.id);
+		try {
+			return await ctx.orgEntity("notifications", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in notifications:")) {
+				return null;
+			}
+			throw error;
+		}
 	},
 });
 
@@ -335,7 +318,7 @@ export const get = query({
  * Get notification statistics for a user
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStatsForUser = query({
+export const getStatsForUser = optionalUserQuery({
 	args: { userId: v.id("users") },
 	handler: async (ctx, args): Promise<NotificationStats> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -357,7 +340,7 @@ export const getStatsForUser = query({
  * Get notification statistics for the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<NotificationStats> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -376,7 +359,7 @@ export const getStats = query({
  * Get notifications due to be sent
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getDueNotifications = query({
+export const getDueNotifications = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<NotificationDocument[]> => {
 		const now = Date.now();
@@ -394,7 +377,7 @@ export const getDueNotifications = query({
 /**
  * List notifications for the current user in the current organization
  */
-export const listForCurrentUser = query({
+export const listForCurrentUser = optionalUserQuery({
 	args: {
 		isRead: v.optional(v.boolean()),
 		limit: v.optional(v.number()),
@@ -486,7 +469,7 @@ type NotificationWithAuthor = Doc<"notifications"> & {
 	} | null;
 };
 
-export const listByEntity = query({
+export const listByEntity = optionalUserQuery({
 	args: {
 		entityType: v.union(
 			v.literal("client"),
@@ -563,7 +546,7 @@ export const listByEntity = query({
  * Create a new notification
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		userId: v.id("users"),
 		notificationType: v.union(
@@ -620,7 +603,7 @@ export const create = mutation({
  * Update a notification
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("notifications"),
 		title: v.optional(v.string()),
@@ -652,7 +635,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Validate notification exists and belongs to user's org
-		await getNotificationOrThrow(ctx, id);
+		await ctx.orgEntity("notifications", id);
 
 		await ctx.db.patch(id, filteredUpdates);
 
@@ -664,10 +647,10 @@ export const update = mutation({
  * Mark a notification as read
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const markRead = mutation({
+export const markRead = userMutation({
 	args: { id: v.id("notifications") },
 	handler: async (ctx, args): Promise<NotificationId> => {
-		const notification = await getNotificationOrThrow(ctx, args.id);
+		const notification = await ctx.orgEntity("notifications", args.id);
 
 		if (notification.isRead) {
 			throw new Error("Notification is already read");
@@ -686,10 +669,10 @@ export const markRead = mutation({
  * Mark a notification as unread
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const markUnread = mutation({
+export const markUnread = userMutation({
 	args: { id: v.id("notifications") },
 	handler: async (ctx, args): Promise<NotificationId> => {
-		const notification = await getNotificationOrThrow(ctx, args.id);
+		const notification = await ctx.orgEntity("notifications", args.id);
 
 		if (!notification.isRead) {
 			throw new Error("Notification is already unread");
@@ -708,15 +691,23 @@ export const markUnread = mutation({
  * Mark multiple notifications as read
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const markMultipleRead = mutation({
+export const markMultipleRead = userMutation({
 	args: { ids: v.array(v.id("notifications")) },
 	handler: async (ctx, args): Promise<{ updated: number }> => {
 		const now = Date.now();
 		let updated = 0;
 
 		for (const id of args.ids) {
-			const notification = await getNotificationWithValidation(ctx, id);
-			if (notification && !notification.isRead) {
+			let notification: NotificationDocument;
+			try {
+				notification = await ctx.orgEntity("notifications", id);
+			} catch (error) {
+				if (error instanceof Error && error.message.startsWith("Entity not found in notifications:")) {
+					continue;
+				}
+				throw error;
+			}
+			if (!notification.isRead) {
 				await ctx.db.patch(id, {
 					isRead: true,
 					readAt: now,
@@ -733,13 +724,13 @@ export const markMultipleRead = mutation({
  * Mark a notification as sent
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const markSent = mutation({
+export const markSent = userMutation({
 	args: {
 		id: v.id("notifications"),
 		sentVia: v.union(v.literal("email"), v.literal("sms"), v.literal("in_app")),
 	},
 	handler: async (ctx, args): Promise<NotificationId> => {
-		await getNotificationOrThrow(ctx, args.id);
+		await ctx.orgEntity("notifications", args.id);
 
 		await ctx.db.patch(args.id, {
 			sentAt: Date.now(),
@@ -754,10 +745,10 @@ export const markSent = mutation({
  * Delete a notification
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("notifications") },
 	handler: async (ctx, args): Promise<NotificationId> => {
-		await getNotificationOrThrow(ctx, args.id); // Validate access
+		await ctx.orgEntity("notifications", args.id); // Validate access
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -767,7 +758,7 @@ export const remove = mutation({
  * Delete old read notifications (cleanup)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const cleanupOldNotifications = mutation({
+export const cleanupOldNotifications = userMutation({
 	args: { daysOld: v.number() },
 	handler: async (ctx, args): Promise<{ deletedCount: number }> => {
 		if (args.daysOld < 1) {
@@ -800,9 +791,8 @@ export const cleanupOldNotifications = mutation({
 /**
  * Emit an org-owner notification for a Stripe webhook lifecycle event.
  */
-export const createWebhookNotificationInternal = internalMutation({
+export const createWebhookNotificationInternal = systemMutation({
 	args: {
-		orgId: v.id("organizations"),
 		type: v.union(
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
@@ -818,10 +808,10 @@ export const createWebhookNotificationInternal = internalMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const org = await ctx.db.get(args.orgId);
+		const org = await ctx.db.get(ctx.orgId);
 		if (!org) {
 			console.warn(
-				`createWebhookNotificationInternal: org ${args.orgId} not found`
+				`createWebhookNotificationInternal: org ${ctx.orgId} not found`
 			);
 			return null;
 		}
@@ -852,7 +842,7 @@ export const createWebhookNotificationInternal = internalMutation({
 		}
 
 		await ctx.db.insert("notifications", {
-			orgId: args.orgId,
+			orgId: ctx.orgId,
 			userId: org.ownerUserId,
 			notificationType: args.type,
 			title,
@@ -873,7 +863,7 @@ export const createWebhookNotificationInternal = internalMutation({
 /**
  * Create a mention notification
  */
-export const createMention = mutation({
+export const createMention = userMutation({
 	args: {
 		taggedUserId: v.id("users"),
 		message: v.string(),
