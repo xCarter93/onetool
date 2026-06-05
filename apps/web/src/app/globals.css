@@ -510,6 +510,71 @@
 			display: none;
 		}
 	}
+
+	/* ========================================================================
+	   Header border-shape notches & sidebar connector (Chrome 147+)
+	   Each notch outline is a single shape() path, so the sidebar-colored
+	   background follows the geometry. The sides are ogee (S-curve) sweeps —
+	   a cubic with both control points horizontal — that stay tangent to the
+	   rail where they emerge, so the thin rail flows smoothly into the notch
+	   with no kink. Unsupported browsers drop border-shape and fall back to a
+	   plain rounded-b tab / no connector.
+
+	   Geometry: sweep 36 (x), depth 40 (y floor), half-sweep 18 (control x).
+	   The notch top sits ~12px above the rail's bottom edge (rail h-5 minus
+	   pt-2), so the outer edges drop straight to y=12 and the ogee is
+	   horizontal there — matching the rail's flat bottom for a seamless join.
+	   36px side padding reserves the sweep region for content.
+	   ======================================================================== */
+	.header-notch,
+	.header-notch--flush-right {
+		background-color: var(--sidebar);
+		/* Must cover the 40px notch depth so border-shape isn't clipped. */
+		min-height: 40px;
+	}
+
+	@supports (border-shape: shape(from 0 0, close)) {
+		/* Ogee sweep on both sides. Outer edges drop to y=12 (rail bottom)
+		   where the sweep is tangent-horizontal; sweep→floor is tangent too,
+		   so the whole bottom edge is smooth with no walls or corners. */
+		.header-notch {
+			border-shape: shape(
+				from 0 0,
+				hline to 100%,
+				vline to 12px,
+				curve to calc(100% - 36px) 40px with
+					calc(100% - 18px) 12px / calc(100% - 18px) 40px,
+				hline to 36px,
+				curve to 0 12px with 18px 40px / 18px 12px,
+				close
+			);
+		}
+
+		/* Ogee sweep on the left only; right edge runs flush to the rail end. */
+		.header-notch--flush-right {
+			border-shape: shape(
+				from 0 0,
+				hline to 100%,
+				vline to 26px,
+				arc to calc(100% - 14px) 40px of 14px 14px cw,
+				hline to 36px,
+				curve to 0 12px with 18px 40px / 18px 12px,
+				close
+			);
+		}
+
+		/* Concave scoop where the sidebar curves into the header rail. */
+		.header-connector {
+			background-color: var(--sidebar);
+			border-shape: shape(
+				from 24px 0,
+				hline to 0,
+				vline to 24px,
+				curve to 24px 0 with 0 10.75px / 10.75px 0,
+				close
+			);
+		}
+	}
 }
 
 /* Portal invoice print stylesheet (Plan 15-05). */
