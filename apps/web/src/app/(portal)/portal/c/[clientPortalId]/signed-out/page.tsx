@@ -37,13 +37,15 @@ export default async function SignedOutPage({
 					<div className="relative">
 						<div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
 							{branding?.logoUrl ? (
+								// [Review fix WR-10] Optimize like BrandHeader/verify so the
+								// optimizer enforces max source size + content-type on the
+								// org-supplied logo (Clerk-hosted, allowed via remotePatterns).
 								<Image
 									src={branding.logoUrl}
 									alt={`${businessName} logo`}
 									width={40}
 									height={40}
 									className="rounded-md"
-									unoptimized
 								/>
 							) : (
 								<span className="text-2xl font-bold text-primary">

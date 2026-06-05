@@ -87,6 +87,13 @@ export default function OtpForm({
 				setError(`Too many requests. Try again in ${minutes} minutes.`);
 				return false;
 			}
+			if (!res.ok) {
+				const data = (await res.json().catch(() => ({}))) as {
+					error?: string;
+				};
+				setError(data.error ?? "Couldn't send a code. Please try again.");
+				return false;
+			}
 			toast.success("Code sent");
 			setStep("code");
 			setCode("");
