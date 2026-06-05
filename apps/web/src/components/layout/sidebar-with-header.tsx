@@ -83,11 +83,16 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 						{/* Mobile floating pill header */}
 						<MobileFloatingHeader />
 
-						{/* Thin navbar rail — notched items hang below (desktop only) */}
-						<div className="relative hidden md:flex items-start justify-between bg-sidebar pt-2 h-5">
-							{/* Sidebar to header transition curve (concave scoop) */}
-							<div className="header-connector absolute left-0 top-[20px] z-10 h-6 w-6" />
+						{/* One solid header background: full-width strip with the
+						    sidebar→header scoop carved into its bottom-left. Sits
+						    behind the rail and bleeds 2px under the sidebar to hide
+						    the sidebar↔inset hairline (the scoop still lands flush
+						    at the content edge). Notches are siblings on top so
+						    they aren't clipped. */}
+						<div className="header-bg absolute -left-0.5 right-0 top-0 z-0 hidden md:block" />
 
+						{/* Thin navbar rail — notched items hang below (desktop only) */}
+						<div className="relative z-10 hidden md:flex items-start justify-between pt-2 h-5">
 							{/* Left spacer */}
 							<div className="flex-1" />
 

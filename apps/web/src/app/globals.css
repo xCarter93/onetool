@@ -533,6 +533,13 @@
 		min-height: 40px;
 	}
 
+	/* Header background strip. Without border-shape it's just a 20px bar (no
+	   scoop); with it, the box grows to 44px and the scoop is carved in. */
+	.header-bg {
+		background-color: var(--sidebar);
+		height: 20px;
+	}
+
 	@supports (border-shape: shape(from 0 0, close)) {
 		/* Ogee sweep on both sides. Outer edges drop to y=12 (rail bottom)
 		   where the sweep is tangent-horizontal; sweep→floor is tangent too,
@@ -563,14 +570,25 @@
 			);
 		}
 
-		/* Concave scoop where the sidebar curves into the header rail. */
-		.header-connector {
-			background-color: var(--sidebar);
+		/* One continuous header background: a 20px strip across the full width
+		   with a concave quarter-round scoop carved into the bottom-left, so
+		   the sidebar flows into the header as a single solid piece (no
+		   separate connector element, no seam). The element bleeds 2px left
+		   under the sidebar to cover the sidebar↔inset hairline, but the scoop
+		   lands its vertical tangent at x=2px — the real content edge — so the
+		   curve still joins flush (the 2px sliver below stays hidden behind the
+		   sidebar). The 44px box height gives the scoop room; the notches are
+		   siblings on top, so the shape doesn't clip them. */
+		.header-bg {
+			height: 44px;
 			border-shape: shape(
-				from 24px 0,
+				from 0 0,
+				hline to 100%,
+				vline to 20px,
+				hline to 26px,
+				curve to 2px 44px with 12.75px 20px / 2px 30.75px,
 				hline to 0,
-				vline to 24px,
-				curve to 24px 0 with 0 10.75px / 10.75px 0,
+				vline to 0,
 				close
 			);
 		}
