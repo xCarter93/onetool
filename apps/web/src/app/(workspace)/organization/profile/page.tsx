@@ -1157,33 +1157,48 @@ export default function OrganizationProfilePage() {
 									<>
 										{/* Consolidated connection-status strip */}
 										<section className="border-t border-border/40 pt-8">
-											<ConnectionStatusStrip
-												accountId={organization.stripeConnectAccountId}
-												detailsSubmitted={Boolean(
-													stripeStatus?.detailsSubmitted
-												)}
-												chargesEnabled={Boolean(stripeStatus?.chargesEnabled)}
-												payoutsEnabled={Boolean(stripeStatus?.payoutsEnabled)}
-												bankName={organization.stripeExternalAccountBankName}
-												last4={organization.stripeExternalAccountLast4}
-												updatedAt={organization.stripeExternalAccountUpdatedAt}
-												onChangeBank={
-													onboardingComplete && isOwner
-														? () => {
-																setPayoutsOpen(true);
-																// Wait for the accordion panel to mount before scrolling.
-																requestAnimationFrame(() => {
-																	document
-																		.getElementById("payouts-accordion-panel")
-																		?.scrollIntoView({
-																			behavior: "smooth",
-																			block: "start",
-																		});
-																});
-															}
-														: undefined
-												}
-											/>
+											{stripeStatus ? (
+												<ConnectionStatusStrip
+													accountId={organization.stripeConnectAccountId}
+													detailsSubmitted={Boolean(
+														stripeStatus.detailsSubmitted
+													)}
+													chargesEnabled={Boolean(stripeStatus.chargesEnabled)}
+													payoutsEnabled={Boolean(stripeStatus.payoutsEnabled)}
+													bankName={organization.stripeExternalAccountBankName}
+													last4={organization.stripeExternalAccountLast4}
+													updatedAt={organization.stripeExternalAccountUpdatedAt}
+													onChangeBank={
+														onboardingComplete && isOwner
+															? () => {
+																	setPayoutsOpen(true);
+																	// Wait for the accordion panel to mount before scrolling.
+																	requestAnimationFrame(() => {
+																		document
+																			.getElementById("payouts-accordion-panel")
+																			?.scrollIntoView({
+																				behavior: "smooth",
+																				block: "start",
+																			});
+																	});
+																}
+															: undefined
+													}
+												/>
+											) : statusLoading ? (
+												<div className="flex items-center gap-2 text-sm text-muted-foreground">
+													<Loader2 className="h-4 w-4 animate-spin" />
+													Loading Stripe status…
+												</div>
+											) : (
+												<p className="text-sm text-muted-foreground">
+													Couldn&apos;t load Stripe status. Use{" "}
+													<strong className="font-medium text-foreground">
+														Refresh status
+													</strong>{" "}
+													to retry.
+												</p>
+											)}
 										</section>
 
 										{/* Payouts (Stripe Connect embedded component) — blended, collapsible */}
@@ -1279,6 +1294,7 @@ export default function OrganizationProfilePage() {
 											<FeeDisclosureTable />
 											<div className="space-y-8">
 												<RequirementsSummary
+													loaded={Boolean(stripeStatus)}
 													currentlyDue={
 														stripeStatus?.requirements?.currently_due ?? []
 													}

@@ -57,6 +57,7 @@ export function FeeDisclosureTable() {
 				</div>
 			</div>
 
+			<div className="overflow-x-auto">
 			<table className="w-full text-sm">
 				<caption className="sr-only">Stripe Connect fee disclosure</caption>
 				<thead>
@@ -98,6 +99,7 @@ export function FeeDisclosureTable() {
 					))}
 				</tbody>
 			</table>
+			</div>
 
 			<div className="flex items-start gap-2 rounded-lg border border-border bg-warning/[0.06] px-3 py-2.5">
 				<Info

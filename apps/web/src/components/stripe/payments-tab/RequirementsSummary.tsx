@@ -1,14 +1,17 @@
 "use client";
 
 import React from "react";
-import { Check, ListChecks, AlertTriangle } from "lucide-react";
+import { Check, ListChecks, AlertTriangle, Loader2 } from "lucide-react";
 
 interface RequirementsSummaryProps {
 	currentlyDue?: string[];
+	// When false, status hasn't been fetched yet — don't claim "all set".
+	loaded?: boolean;
 }
 
 export function RequirementsSummary({
 	currentlyDue = [],
+	loaded = true,
 }: RequirementsSummaryProps) {
 	const hasItems = currentlyDue.length > 0;
 
@@ -21,7 +24,12 @@ export function RequirementsSummary({
 				<h3 className="text-lg font-semibold text-foreground">Requirements</h3>
 			</div>
 
-			{hasItems ? (
+			{!loaded ? (
+				<div className="flex items-center gap-2 text-sm text-muted-foreground">
+					<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+					Checking requirements…
+				</div>
+			) : hasItems ? (
 				<ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
 					{currentlyDue.map((item) => (
 						<li key={item}>{item}</li>

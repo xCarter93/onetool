@@ -56,11 +56,21 @@ export function ConnectionStatusStrip({
 		{ label: "Payouts enabled", enabled: payoutsEnabled },
 	];
 
+	// An account ID can exist while the account is restricted (compliance hold,
+	// re-verification). Reflect the real capability state, not just "connected".
+	const fullyActive = chargesEnabled && payoutsEnabled;
+
 	return (
 		<div className="flex flex-wrap items-stretch gap-y-5">
 			{/* Identity */}
 			<div className="flex min-w-[260px] flex-[1_1_280px] items-center gap-3 pr-5">
-				<span className="grid h-11 w-11 shrink-0 place-content-center rounded-xl border border-success/25 bg-success/10 text-success">
+				<span
+					className={`grid h-11 w-11 shrink-0 place-content-center rounded-xl border ${
+						fullyActive
+							? "border-success/25 bg-success/10 text-success"
+							: "border-warning/30 bg-warning/15 text-warning"
+					}`}
+				>
 					<ShieldCheck className="h-5 w-5" aria-hidden="true" />
 				</span>
 				<div className="min-w-0">
@@ -68,12 +78,20 @@ export function ConnectionStatusStrip({
 						<span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
 							Connected account
 						</span>
-						<span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
+						<span
+							className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold ${
+								fullyActive
+									? "border-success/30 bg-success/10 text-success"
+									: "border-warning/30 bg-warning/15 text-warning"
+							}`}
+						>
 							<span
 								aria-hidden="true"
-								className="h-1.5 w-1.5 rounded-full bg-success"
+								className={`h-1.5 w-1.5 rounded-full ${
+									fullyActive ? "bg-success" : "bg-warning"
+								}`}
 							/>
-							Active
+							{fullyActive ? "Active" : "Restricted"}
 						</span>
 					</div>
 					<p className="truncate font-mono text-[13px] text-foreground">
