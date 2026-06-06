@@ -24,6 +24,7 @@ export const updateStatuses = internalMutation({
 
 			if (existing) {
 				await ctx.db.patch(existing._id, {
+					provider: service.provider,
 					status: service.status as
 						| "operational"
 						| "degraded"
@@ -50,6 +51,16 @@ export const updateStatuses = internalMutation({
 						? new Date(service.updated).getTime()
 						: args.checkedAt,
 				});
+			}
+		}
+
+		// Remove rows no longer reported (e.g. the retired convex_database /
+		// convex_functions entries) so the UI doesn't show stale services.
+		const validNames = new Set(args.services.map((s) => s.name));
+		const all = await ctx.db.query("serviceStatus").collect();
+		for (const row of all) {
+			if (!validNames.has(row.serviceName)) {
+				await ctx.db.delete(row._id);
 			}
 		}
 	},

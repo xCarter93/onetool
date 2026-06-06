@@ -792,8 +792,8 @@ export default defineSchema({
 
 	// Service Status - monitoring for external service health
 	serviceStatus: defineTable({
-		serviceName: v.string(), // "convex_database", "convex_functions", "clerk_auth", "clerk_billing"
-		provider: v.string(), // "convex" or "clerk"
+		serviceName: v.string(), // "convex", "clerk_auth", "clerk_billing", "boldsign_esignature", "stripe"
+		provider: v.string(), // "convex", "clerk", "boldsign", or "stripe"
 		status: v.union(
 			v.literal("operational"),
 			v.literal("degraded"),
