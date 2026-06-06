@@ -40,7 +40,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
-import { Card, CardContent } from "@/components/ui/card";
 import SelectService from "@/components/shared/choice-set";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
@@ -86,6 +85,105 @@ const companySizeOptions = [
 
 const primaryActionButtonClasses =
 	"group inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/80 transition-all duration-200 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/15 ring-1 ring-primary/30 hover:ring-primary/40 shadow-sm hover:shadow-md backdrop-blur-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:text-primary disabled:hover:bg-primary/10 disabled:hover:ring-primary/30";
+
+// Calm primary button used inside the Clerk OrganizationProfile, mirroring
+// primaryActionButtonClasses so the embedded component matches the workspace.
+const clerkPrimaryButtonClasses =
+	"!bg-primary/10 hover:!bg-primary/15 !text-primary hover:!text-primary/80 ring-1 !ring-primary/30 hover:!ring-primary/40 font-medium py-2.5 px-6 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 border-0";
+
+// Hoisted so the large appearance object is not reallocated on every render.
+const orgProfileAppearance = {
+	elements: {
+		cardBox: "w-full",
+		rootBox: "w-full text-foreground",
+		card: "w-full !shadow-none !bg-transparent !border-none !p-0",
+		headerTitle:
+			"text-2xl font-semibold !text-foreground dark:!text-foreground mb-2 tracking-tight",
+		headerSubtitle:
+			"text-sm !text-muted-foreground dark:!text-muted-foreground mb-6 leading-relaxed",
+		navbar:
+			"border-b !border-border/40 dark:!border-border/40 !bg-transparent w-full",
+		navbarButton:
+			"px-4 py-2 !text-muted-foreground dark:!text-muted-foreground hover:!text-foreground dark:hover:!text-foreground hover:!bg-muted/40 dark:hover:!bg-muted/20 rounded-lg transition-all duration-200 font-medium",
+		navbarButtonActive:
+			"!bg-primary/10 dark:!bg-primary/20 !text-primary dark:!text-primary px-4 py-2 rounded-lg font-medium !shadow-none ring-1 !ring-primary/20",
+		navbarButtonText: "!text-foreground dark:!text-foreground text-lg",
+		tabButton: "text-lg",
+		profileSectionTitleText:
+			"text-lg font-semibold !text-foreground dark:!text-foreground mb-2 tracking-tight",
+		profileSectionDescriptionText:
+			"text-sm !text-muted-foreground dark:!text-muted-foreground mb-6 leading-relaxed",
+		profileSectionContent: "space-y-6 text-lg",
+		profileSectionContentItem: "flex items-center gap-3",
+		profileSectionContentItemLabel:
+			"text-sm font-semibold !text-foreground tracking-wide",
+		profileSectionContentItemValue:
+			"text-sm !text-muted-foreground dark:!text-muted-foreground",
+		profileSectionPrimaryButton: "text-lg",
+		profileSectionPrimaryButtonText: "text-lg",
+		paymentMethodRowType: "text-lg",
+		paymentMethodRowValue: "text-lg",
+		paymentMethodRowBadge: "text-lg",
+		profileSectionContentItemValueInput:
+			"w-full !bg-background/95 dark:!bg-card/60 border !border-border dark:!border-border/60 focus:!border-primary focus:!ring-2 focus:!ring-primary/20 rounded-lg px-3 py-2.5 !text-foreground dark:!text-foreground placeholder:!text-muted-foreground dark:!placeholder:text-muted-foreground transition-all duration-200 shadow-sm dark:!shadow-none",
+		profileSectionContentItemValueInputShowPasswordButton:
+			"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
+		pageScrollBox: "!bg-transparent",
+		page: "space-y-8 !bg-transparent",
+		form: "space-y-6",
+		formFieldLabel: "text-sm font-semibold !text-foreground tracking-wide",
+		formFieldInput:
+			"w-full !bg-background/95 dark:!bg-card/60 border !border-border dark:!border-border/60 focus:!border-primary focus:!ring-2 focus:!ring-primary/20 rounded-lg px-3 py-2.5 !text-foreground dark:!text-foreground placeholder:!text-muted-foreground dark:!placeholder:text-muted-foreground transition-all duration-200 shadow-sm dark:!shadow-none",
+		formFieldInputShowPasswordButton:
+			"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
+		formButtonPrimary: clerkPrimaryButtonClasses,
+		formButtonSecondary:
+			"!bg-muted/80 hover:!bg-muted/70 dark:!bg-muted/40 dark:hover:!bg-muted/30 !text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground font-medium py-2.5 px-6 rounded-lg border !border-border/60 dark:!border-border/40 transition-all duration-200",
+		table: "w-full border-collapse",
+		tableHead:
+			"border-b !border-border dark:!border-border !bg-muted/30 dark:!bg-muted/20",
+		tableHeadRow: "border-b !border-border dark:!border-border",
+		tableHeadCell:
+			"text-left p-4 font-semibold !text-foreground dark:!text-foreground text-lg",
+		tableBody: "divide-y !divide-border dark:!divide-border/60",
+		tableBodyCell: "text-lg",
+		tableRow: "hover:!bg-muted/30 dark:hover:!bg-muted/20 transition-colors",
+		tableCell: "p-4 text-sm !text-foreground dark:!text-foreground",
+		badge:
+			"inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
+		badgeSecondary:
+			"!bg-muted dark:!bg-muted/40 !text-muted-foreground dark:!text-muted-foreground",
+		badgePrimary: "!bg-primary !text-primary-foreground",
+		membersPageInviteButton: clerkPrimaryButtonClasses,
+		avatarBox:
+			"w-10 h-10 rounded-lg !bg-muted dark:!bg-muted/40 flex items-center justify-center",
+		avatarImage: "w-10 h-10 rounded-lg object-cover",
+		footer: "mt-8 pt-6 border-t !border-border/40 dark:!border-border/40",
+		footerActionText:
+			"text-xs !text-muted-foreground dark:!text-muted-foreground",
+		footerActionLink:
+			"!text-primary hover:!text-primary/80 dark:!text-primary dark:hover:!text-primary/80 font-medium text-xs",
+		spinner: "!text-primary dark:!text-primary",
+		modalContent:
+			"!bg-card dark:!bg-card border !border-border/60 dark:!border-border/40 shadow-xl rounded-xl",
+		modalCloseButton:
+			"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
+		selectOptionsContainer:
+			"!bg-background border !border-border/60 dark:!border-border/40 rounded-lg p-2",
+	},
+	variables: {
+		colorPrimary: "hsl(var(--primary))",
+		colorText: "hsl(var(--foreground))",
+		colorTextSecondary: "hsl(var(--muted-foreground))",
+		colorNeutral: "hsl(var(--muted-foreground))",
+		colorBackground: "transparent",
+		colorInputBackground: "hsl(var(--background))",
+		colorInputText: "hsl(var(--foreground))",
+		fontFamily: "inherit",
+		borderRadius: "0.75rem",
+		spacingUnit: "1rem",
+	},
+} as const;
 
 type BusinessFormState = {
 	email: string;
@@ -676,117 +774,17 @@ export default function OrganizationProfilePage() {
 
 					<div className="mt-8 space-y-8">
 						<TabsContent value="overview">
-							<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50">
+							<div className="space-y-8">
 								<OrganizationProfile
 									routing="hash"
-									appearance={{
-										elements: {
-											cardBox: "w-full",
-											rootBox: "w-full text-foreground",
-											card: "w-full !shadow-none !bg-transparent !border-none !p-0",
-											headerTitle:
-												"text-2xl font-bold !text-foreground dark:!text-foreground mb-2 tracking-tight",
-											headerSubtitle:
-												"text-sm !text-muted-foreground dark:!text-muted-foreground mb-6 leading-relaxed",
-											navbar:
-												"border-b !border-border/60 dark:!border-border/40 !bg-transparent w-full",
-											navbarButton:
-												"px-4 py-2 !text-muted-foreground dark:!text-muted-foreground hover:!text-foreground dark:hover:!text-foreground hover:!bg-muted/40 dark:hover:!bg-muted/20 rounded-lg transition-all duration-200 font-medium",
-											navbarButtonActive:
-												"!bg-primary/10 dark:!bg-primary/20 !text-primary dark:!text-primary px-4 py-2 rounded-lg font-medium !shadow-none ring-1 !ring-primary/20",
-											navbarButtonText:
-												"!text-foreground dark:!text-foreground text-lg",
-											tabButton: "text-lg",
-											profileSectionTitleText:
-												"text-lg font-bold !text-foreground dark:!text-foreground mb-2 tracking-tight",
-											profileSectionDescriptionText:
-												"text-sm !text-muted-foreground dark:!text-muted-foreground mb-6 leading-relaxed",
-											profileSectionContent: "space-y-6 text-lg",
-											profileSectionContentItem: "flex items-center gap-3",
-											profileSectionContentItemLabel:
-												"text-sm font-semibold !text-foreground tracking-wide",
-											profileSectionContentItemValue:
-												"text-sm !text-muted-foreground dark:!text-muted-foreground",
-											profileSectionPrimaryButton: "text-lg",
-											profileSectionPrimaryButtonText: "text-lg",
-											paymentMethodRowType: "text-lg",
-											paymentMethodRowValue: "text-lg",
-											paymentMethodRowBadge: "text-lg",
-											profileSectionContentItemValueInput:
-												"w-full !bg-background/95 dark:!bg-card/60 border !border-border dark:!border-border/60 focus:!border-primary focus:!ring-2 focus:!ring-primary/20 rounded-lg px-3 py-2.5 !text-foreground dark:!text-foreground placeholder:!text-muted-foreground dark:!placeholder:text-muted-foreground transition-all duration-200 shadow-sm dark:!shadow-none",
-											profileSectionContentItemValueInputShowPasswordButton:
-												"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
-											pageScrollBox: "!bg-transparent",
-											page: "space-y-8 !bg-transparent",
-											form: "space-y-6",
-											formFieldLabel:
-												"text-sm font-semibold !text-foreground tracking-wide",
-											formFieldInput:
-												"w-full !bg-background/95 dark:!bg-card/60 border !border-border dark:!border-border/60 focus:!border-primary focus:!ring-2 focus:!ring-primary/20 rounded-lg px-3 py-2.5 !text-foreground dark:!text-foreground placeholder:!text-muted-foreground dark:!placeholder:text-muted-foreground transition-all duration-200 shadow-sm dark:!shadow-none",
-											formFieldInputShowPasswordButton:
-												"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
-											formButtonPrimary:
-												"bg-linear-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary !text-primary-foreground font-medium py-2.5 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 border-0",
-											formButtonSecondary:
-												"!bg-muted/80 hover:!bg-muted/70 dark:!bg-muted/40 dark:hover:!bg-muted/30 !text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground font-medium py-2.5 px-6 rounded-lg border !border-border/60 dark:!border-border/40 transition-all duration-200",
-											table: "w-full border-collapse",
-											tableHead:
-												"border-b !border-border dark:!border-border !bg-muted/30 dark:!bg-muted/20",
-											tableHeadRow:
-												"border-b !border-border dark:!border-border",
-											tableHeadCell:
-												"text-left p-4 font-semibold !text-foreground dark:!text-foreground text-lg",
-											tableBody:
-												"divide-y !divide-border dark:!divide-border/60",
-											tableBodyCell: "text-lg",
-											tableRow:
-												"hover:!bg-muted/30 dark:hover:!bg-muted/20 transition-colors",
-											tableCell:
-												"p-4 text-sm !text-foreground dark:!text-foreground",
-											badge:
-												"inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
-											badgeSecondary:
-												"!bg-muted dark:!bg-muted/40 !text-muted-foreground dark:!text-muted-foreground",
-											badgePrimary: "!bg-primary !text-primary-foreground",
-											membersPageInviteButton:
-												"bg-linear-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary !text-primary-foreground font-medium py-2.5 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 border-0",
-											avatarBox:
-												"w-10 h-10 rounded-lg !bg-muted dark:!bg-muted/40 flex items-center justify-center",
-											avatarImage: "w-10 h-10 rounded-lg object-cover",
-											footer:
-												"mt-8 pt-6 border-t !border-border dark:!border-border/60",
-											footerActionText:
-												"text-xs !text-muted-foreground dark:!text-muted-foreground",
-											footerActionLink:
-												"!text-primary hover:!text-primary/80 dark:!text-primary dark:hover:!text-primary/80 font-medium text-xs",
-											spinner: "!text-primary dark:!text-primary",
-											modalContent:
-												"!bg-card dark:!bg-card border !border-border/60 dark:!border-border/40 shadow-xl dark:!shadow-xl rounded-xl",
-											modalCloseButton:
-												"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
-											selectOptionsContainer:
-												"!bg-background border !border-border/60 dark:!border-border/40 rounded-lg p-2",
-										},
-										variables: {
-											colorPrimary: "hsl(var(--primary))",
-											colorText: "hsl(var(--foreground))",
-											colorTextSecondary: "hsl(var(--muted-foreground))",
-											colorNeutral: "hsl(var(--muted-foreground))",
-											colorBackground: "transparent",
-											colorInputBackground: "hsl(var(--background))",
-											colorInputText: "hsl(var(--foreground))",
-											fontFamily: "inherit",
-											borderRadius: "0.75rem",
-											spacingUnit: "1rem",
-										},
-									}}
+									appearance={orgProfileAppearance}
 									afterLeaveOrganizationUrl="/organization/complete"
 								/>
 							</div>
 						</TabsContent>
 
 						<TabsContent value="business">
-							<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-8">
+							<div className="space-y-8">
 								{!isOwner && (
 									<div className="border border-border/60 dark:border-border/40 rounded-xl p-4 flex items-start gap-3 bg-muted/40 text-muted-foreground">
 										<AlertTriangle className="w-5 h-5 mt-0.5" />
@@ -799,14 +797,11 @@ export default function OrganizationProfilePage() {
 									</div>
 								)}
 
-								<div>
-									<div className="flex items-center gap-3 mb-3">
-										<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-										<h2 className="text-2xl font-semibold text-foreground tracking-tight">
-											Business Information
-										</h2>
-									</div>
-									<p className="text-muted-foreground ml-5 leading-relaxed">
+								<div className="space-y-2">
+									<h2 className="text-2xl font-semibold text-foreground tracking-tight">
+										Business Information
+									</h2>
+									<p className="text-muted-foreground leading-relaxed max-w-2xl">
 										Keep your public-facing business details up to date for
 										clients and documents.
 									</p>
@@ -1457,15 +1452,12 @@ function DocumentsTab() {
 	};
 
 	return (
-		<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-8">
-			<div>
-				<div className="flex items-center gap-3 mb-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-					<h2 className="text-2xl font-semibold text-foreground tracking-tight">
-						Organization Documents
-					</h2>
-				</div>
-				<p className="text-muted-foreground ml-5 leading-relaxed">
+		<div className="space-y-8">
+			<div className="space-y-2">
+				<h2 className="text-2xl font-semibold text-foreground tracking-tight">
+					Organization Documents
+				</h2>
+				<p className="text-muted-foreground leading-relaxed max-w-2xl">
 					Upload custom documents that can be appended to quotes and invoices.
 				</p>
 			</div>
@@ -1613,74 +1605,72 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
 	};
 
 	return (
-		<Card className="group bg-card dark:bg-card/80 backdrop-blur-sm border border-border dark:border-border/60 hover:border-primary/50 shadow-sm hover:shadow-md dark:shadow-black/20 ring-1 ring-border/20 dark:ring-border/30 transition-all duration-200">
-			<CardContent className="p-4">
-				<div className="flex items-start gap-3 mb-3">
-					<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 shrink-0 group-hover:bg-primary/15 dark:group-hover:bg-primary/25 transition-colors">
-						<FileText className="h-5 w-5 text-primary" />
-					</div>
-					<div className="flex-1 min-w-0">
-						<h3 className="font-semibold text-sm truncate text-foreground mb-1">
-							{document.name}
-						</h3>
-						<div className="flex items-center gap-2 text-xs text-muted-foreground">
-							<span>{new Date(document.uploadedAt).toLocaleDateString()}</span>
-							{document.fileSize && (
-								<>
-									<span>•</span>
-									<span>{formatFileSize(document.fileSize)}</span>
-								</>
-							)}
-						</div>
+		<div className="group rounded-xl border border-border bg-card p-4 shadow-xs transition-colors hover:border-primary/40">
+			<div className="flex items-start gap-3 mb-3">
+				<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 shrink-0 group-hover:bg-primary/15 dark:group-hover:bg-primary/25 transition-colors">
+					<FileText className="h-5 w-5 text-primary" />
+				</div>
+				<div className="flex-1 min-w-0">
+					<h3 className="font-semibold text-sm truncate text-foreground mb-1">
+						{document.name}
+					</h3>
+					<div className="flex items-center gap-2 text-xs text-muted-foreground">
+						<span>{new Date(document.uploadedAt).toLocaleDateString()}</span>
+						{document.fileSize && (
+							<>
+								<span>•</span>
+								<span>{formatFileSize(document.fileSize)}</span>
+							</>
+						)}
 					</div>
 				</div>
+			</div>
 
-				{document.description && (
-					<p className="text-xs text-muted-foreground mb-3 line-clamp-2">
-						{document.description}
-					</p>
-				)}
+			{document.description && (
+				<p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+					{document.description}
+				</p>
+			)}
 
-				<div className="flex gap-1.5 pt-2 border-t border-border/50">
-					{documentUrl && (
-						<>
-							<a
-								href={documentUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="flex-1"
+			<div className="flex gap-1.5 pt-2 border-t border-border/50">
+				{documentUrl && (
+					<>
+						<a
+							href={documentUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="flex-1"
+						>
+							<Button
+								intent="outline"
+								size="sm"
+								className="w-full h-8 text-xs hover:bg-primary/10 hover:text-primary hover:border-primary/50"
 							>
-								<Button
-									intent="outline"
-									size="sm"
-									className="w-full h-8 text-xs hover:bg-primary/10 hover:text-primary hover:border-primary/50"
-								>
-									<Eye className="h-3 w-3 mr-1.5" />
-									View
-								</Button>
-							</a>
-							<a href={documentUrl} download={`${document.name}.pdf`}>
-								<Button
-									intent="outline"
-									size="sm"
-									className="h-8 px-2 hover:bg-primary/10 hover:text-primary hover:border-primary/50"
-								>
-									<Download className="h-3 w-3" />
-								</Button>
-							</a>
-						</>
-					)}
-					<Button
-						intent="outline"
-						size="sm"
-						onClick={onDelete}
-						className="h-8 px-2 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-900"
-					>
-						<Trash2 className="h-3 w-3" />
-					</Button>
-				</div>
-			</CardContent>
-		</Card>
+								<Eye className="h-3 w-3 mr-1.5" />
+								View
+							</Button>
+						</a>
+						<a href={documentUrl} download={`${document.name}.pdf`}>
+							<Button
+								intent="outline"
+								size="sm"
+								className="h-8 px-2 hover:bg-primary/10 hover:text-primary hover:border-primary/50"
+							>
+								<Download className="h-3 w-3" />
+							</Button>
+						</a>
+					</>
+				)}
+				<Button
+					intent="outline"
+					size="sm"
+					onClick={onDelete}
+					className="h-8 px-2 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
+				>
+					<Trash2 className="h-3 w-3" />
+				</Button>
+			</div>
+		</div>
 	);
 }
 
@@ -1849,17 +1839,14 @@ function SKUsTab() {
 	};
 
 	return (
-		<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-2xl p-8 shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50 space-y-6">
+		<div className="space-y-8">
 			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<div className="flex items-center gap-3 mb-2">
-						<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-						<h2 className="text-2xl font-semibold text-foreground tracking-tight">
-							SKUs (Stock Keeping Units)
-						</h2>
-					</div>
-					<p className="text-muted-foreground ml-5 leading-relaxed">
+			<div className="flex items-start justify-between gap-4">
+				<div className="space-y-2">
+					<h2 className="text-2xl font-semibold text-foreground tracking-tight">
+						SKUs (Stock Keeping Units)
+					</h2>
+					<p className="text-muted-foreground leading-relaxed max-w-2xl">
 						Create reusable SKUs with predefined rates and costs to quickly add
 						line items to quotes.
 					</p>
@@ -1899,7 +1886,7 @@ function SKUsTab() {
 					/>
 				</div>
 			) : (
-				<div className="border border-border dark:border-border/60 rounded-xl overflow-hidden">
+				<div className="border border-border rounded-xl overflow-hidden">
 					<div className="overflow-x-auto">
 						<table className="w-full">
 							<thead className="bg-muted/50 border-b border-border">
@@ -1930,7 +1917,7 @@ function SKUsTab() {
 							<tbody className="divide-y divide-border dark:divide-border/60 bg-card">
 								{/* Editing Row */}
 								{isEditing && (
-									<tr className="bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-l-blue-500">
+									<tr className="bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary">
 										<td className="px-4 py-3">
 											<Input
 												value={skuForm.name}
@@ -1994,7 +1981,7 @@ function SKUsTab() {
 											<span className="text-xs text-muted-foreground">-</span>
 										</td>
 										<td className="px-4 py-3 text-center">
-											<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+											<span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
 												{editingSKU ? "Editing" : "New"}
 											</span>
 										</td>
@@ -2006,7 +1993,7 @@ function SKUsTab() {
 													onPress={handleSave}
 													isDisabled={isSaving}
 													aria-label={isSaving ? "Saving..." : "Save SKU"}
-													className="bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800"
+													className="bg-success/10 hover:bg-success/15 text-success border-success/25 hover:border-success/40"
 												>
 													<Check className="h-3 w-3" />
 												</Button>
@@ -2016,7 +2003,7 @@ function SKUsTab() {
 													onPress={closeForm}
 													isDisabled={isSaving}
 													aria-label="Cancel"
-													className="hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400"
+													className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
 												>
 													<X className="h-3 w-3" />
 												</Button>
@@ -2053,9 +2040,7 @@ function SKUsTab() {
 												{margin !== null ? (
 													<span
 														className={`font-medium ${
-															margin >= 0
-																? "text-green-600 dark:text-green-400"
-																: "text-red-600 dark:text-red-400"
+															margin >= 0 ? "text-success" : "text-destructive"
 														}`}
 													>
 														{margin.toFixed(1)}%
@@ -2066,11 +2051,11 @@ function SKUsTab() {
 											</td>
 											<td className="px-4 py-3 text-center">
 												{sku.isActive ? (
-													<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+													<span className="inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
 														Active
 													</span>
 												) : (
-													<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300">
+													<span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
 														Inactive
 													</span>
 												)}
@@ -2092,7 +2077,7 @@ function SKUsTab() {
 															size="sq-sm"
 															onPress={() => handleDelete(sku._id)}
 															aria-label="Delete SKU"
-															className="hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400"
+															className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
 														>
 															<Trash2 className="h-3 w-3" />
 														</Button>
