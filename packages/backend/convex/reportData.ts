@@ -12,6 +12,7 @@ import {
 	getPaginationMeta,
 	DateRange,
 } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Report Data Queries
@@ -273,17 +274,17 @@ function statusCountsToDataPoints(
 // ============================================================================
 
 // Client Reports
-export const queryClientsByStatus = query({
+export const queryClientsByStatus = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryClientsByStatus(ctx, args),
 });
 
-export const queryClientsByLeadSource = query({
+export const queryClientsByLeadSource = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryClientsByLeadSource(ctx, args),
 });
 
-export const queryClientsByCreationDate = query({
+export const queryClientsByCreationDate = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		granularity: v.optional(
@@ -294,17 +295,17 @@ export const queryClientsByCreationDate = query({
 });
 
 // Project Reports
-export const queryProjectsByStatus = query({
+export const queryProjectsByStatus = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryProjectsByStatus(ctx, args),
 });
 
-export const queryProjectsByType = query({
+export const queryProjectsByType = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryProjectsByType(ctx, args),
 });
 
-export const queryProjectsByCreationDate = query({
+export const queryProjectsByCreationDate = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		granularity: v.optional(
@@ -315,17 +316,17 @@ export const queryProjectsByCreationDate = query({
 });
 
 // Task Reports
-export const queryTasksByStatus = query({
+export const queryTasksByStatus = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryTasksByStatus(ctx, args),
 });
 
-export const queryTaskCompletionRate = query({
+export const queryTaskCompletionRate = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryTaskCompletionRate(ctx, args),
 });
 
-export const queryTasksByDate = query({
+export const queryTasksByDate = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		granularity: v.optional(
@@ -336,28 +337,28 @@ export const queryTasksByDate = query({
 });
 
 // Quote Reports
-export const queryQuotesByStatus = query({
+export const queryQuotesByStatus = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryQuotesByStatus(ctx, args),
 });
 
-export const queryQuoteConversionRate = query({
+export const queryQuoteConversionRate = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryQuoteConversionRate(ctx, args),
 });
 
 // Invoice Reports
-export const queryInvoicesByStatus = query({
+export const queryInvoicesByStatus = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryInvoicesByStatus(ctx, args),
 });
 
-export const queryRevenueByMonth = query({
+export const queryRevenueByMonth = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryRevenueByMonth(ctx, args),
 });
 
-export const queryRevenueByClient = query({
+export const queryRevenueByClient = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		limit: v.optional(v.number()),
@@ -367,12 +368,12 @@ export const queryRevenueByClient = query({
 });
 
 // Activity Reports
-export const queryActivitiesByType = query({
+export const queryActivitiesByType = optionalUserQuery({
 	args: { dateRange: dateRangeValidator },
 	handler: async (ctx, args) => _queryActivitiesByType(ctx, args),
 });
 
-export const queryActivitiesByDate = query({
+export const queryActivitiesByDate = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		granularity: v.optional(
@@ -1223,7 +1224,7 @@ async function runReportByConfig(
 /**
  * Execute a report based on saved configuration
  */
-export const executeReport = query({
+export const executeReport = optionalUserQuery({
 	args: {
 		entityType: v.union(
 			v.literal("clients"),
@@ -1250,7 +1251,7 @@ export const executeReport = query({
 // Paginated List Queries
 // ============================================================================
 
-export const queryClientsListPaginated = query({
+export const queryClientsListPaginated = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		...paginationValidator,
@@ -1299,7 +1300,7 @@ export const queryClientsListPaginated = query({
 	},
 });
 
-export const queryProjectsListPaginated = query({
+export const queryProjectsListPaginated = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		...paginationValidator,
@@ -1348,7 +1349,7 @@ export const queryProjectsListPaginated = query({
 	},
 });
 
-export const queryInvoicesListPaginated = query({
+export const queryInvoicesListPaginated = optionalUserQuery({
 	args: {
 		dateRange: dateRangeValidator,
 		...paginationValidator,

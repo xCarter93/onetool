@@ -15,8 +15,42 @@ export const env = createEnv({
 		CLERK_ISSUER_DOMAIN: z.string().min(1),
 		RESEND_API_KEY: z.string().min(1),
 		RESEND_WEBHOOK_SECRET: z.string().min(1),
-		STRIPE_APPLICATION_FEE_CENTS: z.string().optional().default("100"),
+		STRIPE_APPLICATION_FEE_CENTS: z.coerce.number().int().nonnegative().default(100),
 		MAPBOX_API_KEY: z.string().min(1),
+		// Server-only portal session JWT keys.
+		PORTAL_JWT_PRIVATE_KEY: z
+			.string()
+			.refine(
+				(s) =>
+					s.includes("-----BEGIN") &&
+					s.includes("PRIVATE KEY") &&
+					s.includes("-----END"),
+				{ message: "PORTAL_JWT_PRIVATE_KEY must be a PEM-encoded private key" }
+			),
+		PORTAL_JWT_JWKS: z.string().refine(
+			(s) => {
+				try {
+					const parsed = JSON.parse(s);
+					return (
+						parsed &&
+						Array.isArray(parsed.keys) &&
+						parsed.keys.length > 0 &&
+						parsed.keys.every(
+							(k: unknown) =>
+								typeof k === "object" &&
+								k !== null &&
+								typeof (k as { kty?: unknown }).kty === "string"
+						)
+					);
+				} catch {
+					return false;
+				}
+			},
+			{ message: "PORTAL_JWT_JWKS must be a JSON JWKS with a non-empty keys array" }
+		),
+		PORTAL_JWT_ISSUER: z.string().url(),
+		// Shared secret for proxied Convex OTP rate-limit actions.
+		PORTAL_OTP_REQUEST_SECRET: z.string().min(16),
 	},
 	client: {
 		NEXT_PUBLIC_CONVEX_URL: z.string().min(1),

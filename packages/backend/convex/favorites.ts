@@ -2,7 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
-import { getEntityOrThrow } from "./lib/crud";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * User Favorites - user-specific client favorites
@@ -21,7 +21,7 @@ import { getEntityOrThrow } from "./lib/crud";
  * failed query on every new signup. Unauthenticated callers are blocked by
  * Clerk middleware upstream and are not a supported state here.
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
 		// Mid-signup users have a Clerk identity but no activeOrgId claim yet.
@@ -70,7 +70,7 @@ export const list = query({
 /**
  * Check if a specific client is favorited by the current user
  */
-export const isFavorited = query({
+export const isFavorited = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
@@ -93,7 +93,7 @@ export const isFavorited = query({
  * If favorited, removes it. If not favorited, adds it.
  * Validates that the client belongs to the user's organization.
  */
-export const toggle = mutation({
+export const toggle = userMutation({
 	args: {
 		clientId: v.id("clients"),
 	},
@@ -102,7 +102,7 @@ export const toggle = mutation({
 		const orgId = await getCurrentUserOrgId(ctx);
 
 		// Validate client exists and belongs to user's org
-		const client = await getEntityOrThrow(ctx, "clients", args.clientId, "Client");
+		const client = await ctx.orgEntity("clients", args.clientId);
 		if (client.orgId !== orgId) {
 			throw new Error("Client not found");
 		}

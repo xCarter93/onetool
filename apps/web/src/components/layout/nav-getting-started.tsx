@@ -12,6 +12,7 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 interface JourneyProgress {
 	hasOrganization: boolean;
@@ -51,6 +52,7 @@ function getEncouragingMessage(percentage: number): string {
 }
 
 export function NavGettingStarted() {
+	const isOrgSwitching = useIsOrgSwitching();
 	const journeyProgress = useQuery(api.homeStats.getJourneyProgress);
 	const [isOpen, setIsOpen] = React.useState(false);
 	const { state } = useSidebar();
@@ -61,7 +63,7 @@ export function NavGettingStarted() {
 	}
 
 	// Loading state
-	if (!journeyProgress) {
+	if (isOrgSwitching || !journeyProgress) {
 		return <NavGettingStartedSkeleton />;
 	}
 

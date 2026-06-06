@@ -2,6 +2,8 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Organization Document operations
@@ -52,10 +54,10 @@ type OrganizationDocumentId = Id<"organizationDocuments">;
 /**
  * Get all organization documents
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<OrganizationDocument[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -73,10 +75,10 @@ export const list = query({
 /**
  * Get a specific document by ID
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("organizationDocuments") },
 	handler: async (ctx, args): Promise<OrganizationDocument | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -87,7 +89,7 @@ export const get = query({
 /**
  * Create a new organization document
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
@@ -115,7 +117,7 @@ export const create = mutation({
 /**
  * Update an organization document
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("organizationDocuments"),
 		name: v.optional(v.string()),
@@ -146,7 +148,7 @@ export const update = mutation({
 /**
  * Delete an organization document (also removes the file from storage)
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("organizationDocuments") },
 	handler: async (ctx, args): Promise<OrganizationDocumentId> => {
 		const document = await getDocumentOrThrow(ctx, args.id);
@@ -169,10 +171,10 @@ export const remove = mutation({
 /**
  * Get document URL from storage
  */
-export const getDocumentUrl = query({
+export const getDocumentUrl = optionalUserQuery({
 	args: { id: v.id("organizationDocuments") },
 	handler: async (ctx, args): Promise<string | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -190,13 +192,13 @@ export const getDocumentUrl = query({
 /**
  * Get multiple document URLs from storage (for PDF merging)
  */
-export const getDocumentUrls = query({
+export const getDocumentUrls = optionalUserQuery({
 	args: { ids: v.array(v.id("organizationDocuments")) },
 	handler: async (
 		ctx,
 		args
 	): Promise<Array<{ id: string; url: string | null }>> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -224,7 +226,7 @@ export const getDocumentUrls = query({
 /**
  * Generate a signed upload URL for Convex storage
  */
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		// Ensure user is authenticated
@@ -236,10 +238,10 @@ export const generateUploadUrl = mutation({
 /**
  * Get document statistics for the organization
  */
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return {
 				total: 0,

@@ -2,10 +2,12 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import {
 	StorageHelpers,
 	StorageConfig,
 } from "./lib/storage";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Client Document operations
@@ -50,7 +52,7 @@ async function getDocumentOrThrow(
 /**
  * Generate a signed upload URL for Convex storage
  */
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		await getCurrentUserOrThrow(ctx);
@@ -61,7 +63,7 @@ export const generateUploadUrl = mutation({
 /**
  * Create a new client document record
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		name: v.string(),
@@ -114,12 +116,12 @@ export const create = mutation({
  * List all documents for a client, sorted newest first
  * Includes download URLs to avoid N+1 query problem
  */
-export const listByClient = query({
+export const listByClient = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
@@ -155,7 +157,7 @@ export const listByClient = query({
 /**
  * Delete a client document (removes from storage and DB)
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("clientDocuments") },
 	handler: async (ctx, args): Promise<Id<"clientDocuments">> => {
 		const document = await getDocumentOrThrow(ctx, args.id);

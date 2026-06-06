@@ -1,42 +1,47 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import "server-only";
+import { NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/stripe";
+import {
+	getOrgConnectAccountForCaller,
+	deriveConnectStatusFromV2Account,
+	mapConnectError,
+} from "@/lib/stripeConnect";
 
 /**
- * Retrieve live status for a connected account.
- * Always fetch directly from Stripe (no cached status).
+ * Return live Connect status for the caller's organization.
+ * Only UI-facing status fields are returned, not the full Stripe account.
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
 	try {
-		const { userId } = await auth();
-		if (!userId) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		const body = (await request.json().catch(() => ({}))) as {
-			accountId?: string;
-		};
-
-		if (!body.accountId) {
+		const ctx = await getOrgConnectAccountForCaller();
+		if (!ctx.stripeConnectAccountId) {
 			return NextResponse.json(
-				{ error: "accountId is required to fetch status" },
+				{ error: "Stripe account not yet onboarded" },
 				{ status: 400 }
 			);
 		}
 
 		const stripe = getStripeClient();
-		const account = await stripe.accounts.retrieve(body.accountId);
-
+		const account = await stripe.v2.core.accounts.retrieve(
+			ctx.stripeConnectAccountId,
+			{
+				include: [
+					"configuration.merchant",
+					"configuration.recipient",
+					"identity",
+					"requirements",
+				],
+			}
+		);
+		const derived = deriveConnectStatusFromV2Account(account);
 		return NextResponse.json({
 			accountId: account.id,
-			chargesEnabled: account.charges_enabled,
-			payoutsEnabled: account.payouts_enabled,
-			detailsSubmitted: account.details_submitted,
-			requirements: account.requirements,
+			chargesEnabled: derived.chargesEnabled,
+			payoutsEnabled: derived.payoutsEnabled,
+			detailsSubmitted: derived.detailsSubmitted,
+			requirements: derived.requirements,
 		});
-	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Failed to fetch account status";
-		return NextResponse.json({ error: message }, { status: 500 });
+	} catch (err) {
+		return mapConnectError(err, "Failed to fetch account status");
 	}
 }

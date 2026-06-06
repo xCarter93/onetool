@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Resend } from "resend";
 import type { Id } from "./_generated/dataModel";
+import { systemMutation } from "./lib/factories";
 
 // Validate RESEND_API_KEY before initializing client
 if (!process.env.RESEND_API_KEY) {
@@ -375,10 +376,9 @@ export const downloadAttachmentAction = internalAction({
  * This is a MUTATION because it writes to the database.
  * The file is already stored in the action, so we just need to create the record.
  */
-export const createAttachmentRecord = internalMutation({
+export const createAttachmentRecord = systemMutation({
 	args: {
 		emailMessageId: v.id("emailMessages"),
-		orgId: v.id("organizations"),
 		attachmentId: v.string(),
 		filename: v.string(),
 		contentType: v.string(),
@@ -388,7 +388,7 @@ export const createAttachmentRecord = internalMutation({
 	handler: async (ctx, args) => {
 		// Create attachment record
 		await ctx.db.insert("emailAttachments", {
-			orgId: args.orgId,
+			orgId: ctx.orgId,
 			emailMessageId: args.emailMessageId,
 			attachmentId: args.attachmentId,
 			filename: args.filename,

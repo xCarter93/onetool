@@ -31,6 +31,8 @@ interface ClerkIdentityWithClaims {
  * Debug query to inspect JWT token structure
  * Useful for troubleshooting plan and metadata detection
  */
+// INTENTIONAL: raw public query. Out of scope for Phase 18 (see ADR-0001 §debugAuthToken).
+// Do NOT migrate to userQuery — its fate (delete vs gate) is a separate PR.
 export const debugAuthToken = query({
 	args: {},
 	handler: async (ctx) => {
@@ -75,121 +77,10 @@ export const debugAuthToken = query({
 });
 
 /**
- * Check if the current user has a specific feature
- */
-export async function hasFeature(
-	ctx: QueryCtx | MutationCtx,
-	feature: string
-): Promise<boolean> {
-	const identity = await ctx.auth.getUserIdentity();
-	if (!identity) {
-		return false;
-	}
-
-	const tokenData = identity as ClerkIdentityWithClaims;
-
-	// Check for premium feature access at the USER or ORGANIZATION level
-	// Backend checks public metadata since we can't use Clerk's has() method here
-	// Frontend uses has({ plan: 'onetool_business_plan' }) and publicMetadata
-	if (feature === "premium_feature_access") {
-		// Check user public metadata for has_premium_feature_access flag
-		const hasPremiumViaUserMetadata =
-			tokenData.publicMetadata?.has_premium_feature_access === true;
-
-		// Check organization public metadata for has_premium_feature_access flag
-		const hasPremiumViaOrgMetadata =
-			tokenData.orgPublicMetadata?.has_premium_feature_access === true;
-
-		// User has premium if EITHER user or org has the flag set
-		const hasPremiumAccess =
-			hasPremiumViaUserMetadata || hasPremiumViaOrgMetadata;
-
-		// Debug logging to help troubleshoot (remove after confirming it works)
-		console.log("Backend premium access check:", {
-			hasPremiumViaUserMetadata,
-			hasPremiumViaOrgMetadata,
-			hasPremiumAccess,
-			userPublicMetadataExists:
-				!!tokenData.publicMetadata || !!tokenData.public_metadata,
-			orgPublicMetadataExists:
-				!!tokenData.orgPublicMetadata || !!tokenData.org_public_metadata,
-			userPublicMetadataValue:
-				tokenData.publicMetadata || tokenData.public_metadata,
-			orgPublicMetadataValue:
-				tokenData.orgPublicMetadata || tokenData.org_public_metadata,
-		});
-
-		return hasPremiumAccess;
-	}
-
-	return false;
-}
-
-/**
- * Require that the user has a specific feature, throw if not
- */
-export async function requireFeature(
-	ctx: QueryCtx | MutationCtx,
-	feature: string
-): Promise<void> {
-	const hasAccess = await hasFeature(ctx, feature);
-	if (!hasAccess) {
-		throw new Error(
-			`Access denied: This feature requires ${feature}. Please upgrade your plan.`
-		);
-	}
-}
-
-/**
- * Check if user has premium access
- */
-export async function hasPremiumAccess(
-	ctx: QueryCtx | MutationCtx
-): Promise<boolean> {
-	return hasFeature(ctx, "premium_feature_access");
-}
-
-/**
- * Require premium access, throw if not available
- */
-export async function requirePremiumAccess(
-	ctx: QueryCtx | MutationCtx
-): Promise<void> {
-	await requireFeature(ctx, "premium_feature_access");
-}
-
-/**
- * Check feature access and return result
- */
-export async function checkFeatureAccess(
-	ctx: QueryCtx | MutationCtx,
-	feature: string
-): Promise<{ hasAccess: boolean; reason?: string }> {
-	const identity = await ctx.auth.getUserIdentity();
-	if (!identity) {
-		return {
-			hasAccess: false,
-			reason: "Not authenticated",
-		};
-	}
-
-	const hasAccess = await hasFeature(ctx, feature);
-	if (!hasAccess) {
-		return {
-			hasAccess: false,
-			reason: `Feature ${feature} not available on your current plan`,
-		};
-	}
-
-	return { hasAccess: true };
-}
-
-/**
  * Role-based permission utilities
  */
 
-import { getCurrentUser, getCurrentUserOrgId } from "./auth";
-import { getMembership } from "./memberships";
+import { getCurrentUser } from "./auth";
 import type { Id } from "../_generated/dataModel";
 
 // Extended identity type that includes organization role from Clerk JWT
@@ -221,20 +112,6 @@ export async function getCurrentUserRole(
 }
 
 /**
- * Check if the current user is an admin in their organization
- * Uses explicit role comparison to prevent substring matching attacks
- */
-export async function isAdmin(ctx: QueryCtx | MutationCtx): Promise<boolean> {
-	const role = await getCurrentUserRole(ctx);
-	if (!role) {
-		return false;
-	}
-
-	const normalized = role.toLowerCase().trim();
-	return normalized === "org:admin" || normalized === "admin" || normalized === "owner";
-}
-
-/**
  * Check if the current user is a member (non-admin) in their organization
  * Member is defined as a role that explicitly includes "member" and does not include "admin"
  * Secure-by-default: denies access if role is missing or lookup fails
@@ -253,18 +130,6 @@ export async function isMember(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 	// Only return true for explicit member roles
 	// Must include/equal "member" and must NOT include "admin"
 	return normalizedRole.includes("member") && !normalizedRole.includes("admin");
-}
-
-/**
- * Require that the current user is an admin, throw if not
- */
-export async function requireAdmin(ctx: QueryCtx | MutationCtx): Promise<void> {
-	const isAdminUser = await isAdmin(ctx);
-	if (!isAdminUser) {
-		throw new Error(
-			"Access denied: This action requires administrator privileges."
-		);
-	}
 }
 
 /**

@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
-import ConvexClientProvider from "@/providers/ConvexClientProvider";
-import { PostHogProvider } from "@/providers/PostHogProvider";
 import { ThemeProvider } from "@/providers/ThemeProvider";
-import { ClerkProviderWithTheme } from "@/providers/ClerkProviderWithTheme";
 import { ToastProvider } from "@/hooks/use-toast";
-import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
-import { DynamicTitle } from "@/components/shared/dynamic-title";
 import "./globals.css";
+// Portal-only font assets (Caveat for typed-signature canvas rendering).
+// Next.js 16 requires global CSS imports at the root layout. See Plan 14-03.
+import "@/styles/portal-fonts.css";
 
 const outfit = Outfit({
 	variable: "--font-outfit",
@@ -28,16 +26,9 @@ export default function RootLayout({
 		<html suppressHydrationWarning lang="en">
 			<body className={`${outfit.className} antialiased`}>
 				<ThemeProvider>
-					<ClerkProviderWithTheme>
-						<PostHogProvider>
-							<ConvexClientProvider>
-								<DynamicTitle />
-								<ToastProvider position="top-right" maxToasts={5}>
-									<ConfirmDialogProvider>{children}</ConfirmDialogProvider>
-								</ToastProvider>
-							</ConvexClientProvider>
-						</PostHogProvider>
-					</ClerkProviderWithTheme>
+					<ToastProvider position="top-right" maxToasts={5}>
+						{children}
+					</ToastProvider>
 				</ThemeProvider>
 			</body>
 		</html>

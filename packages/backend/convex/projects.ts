@@ -6,17 +6,19 @@ import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
 import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
-import { isMember, getCurrentUserId } from "./lib/permissions";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Project operations
@@ -28,26 +30,6 @@ import { computeFieldChanges } from "./lib/changeTracking";
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a project with org validation (wrapper for shared utility)
- */
-async function getProjectWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"projects">
-): Promise<Doc<"projects"> | null> {
-	return await getEntityWithOrgValidation(ctx, "projects", id, "Project");
-}
-
-/**
- * Get a project, throwing if not found (wrapper for shared utility)
- */
-async function getProjectOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"projects">
-): Promise<Doc<"projects">> {
-	return await getEntityOrThrow(ctx, "projects", id, "Project");
-}
 
 /**
  * Validate client access (wrapper for shared utility)
@@ -83,22 +65,20 @@ async function validateUserAccess(
  * Create a project with automatic orgId assignment
  */
 async function createProjectWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<Doc<"projects">, "_id" | "_creationTime" | "orgId">
 ): Promise<Id<"projects">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	// Validate client access
-	await validateClientAccess(ctx, data.clientId, userOrgId);
+	await validateClientAccess(ctx, data.clientId, ctx.orgId);
 
 	// Validate assigned users if provided
 	if (data.assignedUserIds && data.assignedUserIds.length > 0) {
-		await validateUserAccess(ctx, data.assignedUserIds, userOrgId);
+		await validateUserAccess(ctx, data.assignedUserIds, ctx.orgId);
 	}
 
 	const projectData = {
 		...data,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	};
 
 	return await ctx.db.insert("projects", projectData);
@@ -108,21 +88,21 @@ async function createProjectWithOrg(
  * Update a project with validation
  */
 async function updateProjectWithValidation(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	id: Id<"projects">,
 	updates: Partial<Doc<"projects">>
 ): Promise<void> {
 	// Validate project exists and belongs to user's org
-	await getProjectOrThrow(ctx, id);
+	await ctx.orgEntity("projects", id);
 
 	// Validate new client if being updated
 	if (updates.clientId) {
-		await validateClientAccess(ctx, updates.clientId);
+		await validateClientAccess(ctx, updates.clientId, ctx.orgId);
 	}
 
 	// Validate assigned users if being updated
 	if (updates.assignedUserIds && updates.assignedUserIds.length > 0) {
-		await validateUserAccess(ctx, updates.assignedUserIds);
+		await validateUserAccess(ctx, updates.assignedUserIds, ctx.orgId);
 	}
 
 	// Update the project
@@ -171,7 +151,7 @@ function createEmptyProjectStats(): ProjectStats {
 /**
  * Get all projects for the current user's organization
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -183,13 +163,10 @@ export const list = query({
 		),
 		clientId: v.optional(v.id("clients")),
 	},
-	handler: async (ctx: QueryCtx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned projects
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		let projects: ProjectDocument[];
 
@@ -213,14 +190,7 @@ export const list = query({
 				.collect();
 		}
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			projects = projects.filter(
-				(project) =>
-					project.assignedUserIds &&
-					project.assignedUserIds.includes(currentUserId)
-			);
-		}
+		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
 
 		return projects;
 	},
@@ -229,35 +199,26 @@ export const list = query({
 /**
  * Get a specific project by ID
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("projects") },
-	handler: async (
-		ctx: QueryCtx,
-		args: any
-	): Promise<ProjectDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
-
-		const project = await getProjectWithValidation(ctx, args.id);
-		if (!project) {
-			return null;
-		}
-
-		// Check if user is a member (non-admin) - members can only see their assigned projects
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
-
-		// If user is a member, verify they're assigned to this project
-		if (isUserMember && currentUserId) {
-			const isAssigned =
-				project.assignedUserIds &&
-				project.assignedUserIds.includes(currentUserId);
-
-			if (!isAssigned) {
-				// Return null if member is not assigned (same as project not found)
+	handler: async (ctx, args: any): Promise<ProjectDocument | null> => {
+		if (!ctx.orgId) return null;
+		let project: ProjectDocument;
+		try {
+			project = await ctx.orgEntity("projects", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in projects:")) {
 				return null;
 			}
+			throw error;
 		}
+
+
+		const visibleProjects = await ctx.scopedToActor(
+			[project],
+			(item) => item.assignedUserIds
+		);
+		if (visibleProjects.length === 0) return null;
 
 		return project;
 	},
@@ -266,7 +227,7 @@ export const get = query({
 /**
  * Create a new project
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		title: v.string(),
@@ -283,7 +244,7 @@ export const create = mutation({
 		endDate: v.optional(v.number()),
 		assignedUserIds: v.optional(v.array(v.id("users"))),
 	},
-	handler: async (ctx: MutationCtx, args: any): Promise<ProjectId> => {
+	handler: async (ctx, args: any): Promise<ProjectId> => {
 		// Validate title is not empty
 		if (!args.title.trim()) {
 			throw new Error("Project title is required");
@@ -310,7 +271,7 @@ export const create = mutation({
 /**
  * Bulk create projects from CSV import
  */
-export const bulkCreate = mutation({
+export const bulkCreate = userMutation({
 	args: {
 		projects: v.array(
 			v.object({
@@ -333,7 +294,7 @@ export const bulkCreate = mutation({
 		),
 	},
 	handler: async (
-		ctx: MutationCtx,
+		ctx: UserMutationCtx,
 		args: any
 	): Promise<Array<{ success: boolean; id?: ProjectId; error?: string }>> => {
 		const results: Array<{
@@ -342,7 +303,7 @@ export const bulkCreate = mutation({
 			error?: string;
 		}> = [];
 
-		const userOrgId = await getCurrentUserOrgId(ctx);
+		const userOrgId = ctx.orgId;
 
 		for (const projectData of args.projects) {
 			try {
@@ -437,7 +398,7 @@ export const bulkCreate = mutation({
 /**
  * Update a project
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("projects"),
 		clientId: v.optional(v.id("clients")),
@@ -459,7 +420,7 @@ export const update = mutation({
 		endDate: v.optional(v.number()),
 		assignedUserIds: v.optional(v.array(v.id("users"))),
 	},
-	handler: async (ctx: MutationCtx, args: any): Promise<ProjectId> => {
+	handler: async (ctx, args: any): Promise<ProjectId> => {
 		const { id, ...updates } = args;
 
 		// Validate title is not empty if being updated
@@ -472,7 +433,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current project for date validation
-		const currentProject = await getProjectOrThrow(ctx, id);
+		const currentProject = await ctx.orgEntity("projects", id);
 		const oldStatus = currentProject.status;
 		const startDate = filteredUpdates.startDate ?? currentProject.startDate;
 		const endDate = filteredUpdates.endDate ?? currentProject.endDate;
@@ -551,10 +512,10 @@ export const update = mutation({
 /**
  * Delete a project with cascading deletion of related entities
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("projects") },
-	handler: async (ctx: MutationCtx, args: any): Promise<ProjectId> => {
-		const project = await getProjectOrThrow(ctx, args.id); // Validate access
+	handler: async (ctx, args: any): Promise<ProjectId> => {
+		const project = await ctx.orgEntity("projects", args.id); // Validate access
 
 		// 1. Delete all tasks associated with this project
 		const tasks = await ctx.db
@@ -660,7 +621,7 @@ export const remove = mutation({
  * Search projects with filtering
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = query({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -676,27 +637,17 @@ export const search = query({
 		),
 		clientId: v.optional(v.id("clients")),
 	},
-	handler: async (ctx: QueryCtx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned projects
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		let projects = await ctx.db
 			.query("projects")
 			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
 			.collect();
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			projects = projects.filter(
-				(project: any) =>
-					project.assignedUserIds &&
-					project.assignedUserIds.includes(currentUserId)
-			);
-		}
+		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
 
 		// Filter by client if specified
 		if (args.clientId) {
@@ -736,31 +687,21 @@ export const search = query({
 /**
  * Get project statistics for dashboard
  */
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
-	handler: async (ctx: QueryCtx): Promise<ProjectStats> => {
-		const orgId = await getOptionalOrgId(ctx);
+	handler: async (ctx): Promise<ProjectStats> => {
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return createEmptyProjectStats();
 		}
 
-		// Check if user is a member (non-admin) - members can only see their assigned projects
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		let projects = await ctx.db
 			.query("projects")
 			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
 			.collect();
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			projects = projects.filter(
-				(project: any) =>
-					project.assignedUserIds &&
-					project.assignedUserIds.includes(currentUserId)
-			);
-		}
+		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
 
 		const stats: ProjectStats = {
 			total: projects.length,
@@ -815,18 +756,15 @@ export const getStats = query({
  * Get projects assigned to a specific user
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getByAssignee = query({
+export const getByAssignee = optionalUserQuery({
 	args: { userId: v.id("users") },
-	handler: async (ctx: QueryCtx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		// Validate user belongs to organization
 		await validateUserAccess(ctx, [args.userId], orgId);
 
-		// Check if user is a member (non-admin) - members can only see their assigned projects
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		const projects = await ctx.db
 			.query("projects")
@@ -839,14 +777,7 @@ export const getByAssignee = query({
 				project.assignedUserIds && project.assignedUserIds.includes(args.userId)
 		);
 
-		// If requesting user is a member, further filter to only their assigned projects
-		if (isUserMember && currentUserId) {
-			filteredProjects = filteredProjects.filter(
-				(project: any) =>
-					project.assignedUserIds &&
-					project.assignedUserIds.includes(currentUserId)
-			);
-		}
+		filteredProjects = await ctx.scopedToActor(filteredProjects, (project) => project.assignedUserIds);
 
 		return filteredProjects;
 	},
@@ -856,15 +787,12 @@ export const getByAssignee = query({
  * Get projects with upcoming deadlines
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getUpcomingDeadlines = query({
+export const getUpcomingDeadlines = optionalUserQuery({
 	args: { days: v.optional(v.number()) },
-	handler: async (ctx: QueryCtx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
-		// Check if user is a member (non-admin) - members can only see their assigned projects
-		const isUserMember = await isMember(ctx);
-		const currentUserId = await getCurrentUserId(ctx);
 
 		const daysAhead = args.days || 7;
 
@@ -873,14 +801,7 @@ export const getUpcomingDeadlines = query({
 			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
 			.collect();
 
-		// Filter by assignment if user is a member
-		if (isUserMember && currentUserId) {
-			projects = projects.filter(
-				(project: any) =>
-					project.assignedUserIds &&
-					project.assignedUserIds.includes(currentUserId)
-			);
-		}
+		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
 
 		const now = Date.now();
 		const deadline = DateUtils.addDays(now, daysAhead);
@@ -900,10 +821,10 @@ export const getUpcomingDeadlines = query({
  * Get overdue projects
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getOverdue = query({
+export const getOverdue = optionalUserQuery({
 	args: {},
-	handler: async (ctx: QueryCtx): Promise<ProjectDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+	handler: async (ctx): Promise<ProjectDocument[]> => {
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		const projects = await ctx.db

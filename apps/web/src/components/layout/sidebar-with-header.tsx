@@ -21,54 +21,13 @@ interface SidebarWithHeaderProps {
 	children: ReactNode;
 }
 
-const HEADER_CONNECTOR_SIZE = 24;
-const NOTCH_EAR_WIDTH = 20;
-const NOTCH_EAR_HEIGHT = 28;
-
 /**
- * Concave corner SVG. Supports non-square aspect ratios for
- * quarter-ellipse curves (taller = more gradual, t3.chat-inspired).
- *
- * corner="bottom-right" → concave cutout in bottom-right (left ear)
- * corner="bottom-left"  → concave cutout in bottom-left (right ear)
- */
-function ConvexCorner({
-	corner,
-	width = 12,
-	height,
-	className,
-}: {
-	corner: "bottom-left" | "bottom-right";
-	width?: number;
-	height?: number;
-	className?: string;
-}) {
-	const w = width;
-	const h = height ?? width;
-	const kw = w * 0.5523;
-	const kh = h * 0.5523;
-
-	const d =
-		corner === "bottom-right"
-			? `M 0,0 H ${w} V ${h} C ${w},${h - kh} ${kw},0 0,0 Z`
-			: `M ${w},0 H 0 V ${h} C 0,${h - kh} ${w - kw},0 ${w},0 Z`;
-
-	return (
-		<svg
-			width={w}
-			height={h}
-			viewBox={`0 0 ${w} ${h}`}
-			className={className}
-			aria-hidden="true"
-		>
-			<path d={d} style={{ fill: "var(--sidebar)" }} />
-		</svg>
-	);
-}
-
-/**
- * Wraps a child element in a notch shape that bulges downward from the navbar.
- * Uses tall quarter-ellipse ears for gradual, t3.chat-inspired concave transitions.
+ * A notch that bulges downward from the navbar. The whole outline — the ogee
+ * (S-curve) side sweeps and the floor — is a single `border-shape` path
+ * (see .header-notch in globals.css), so the sidebar-colored background
+ * follows the geometry. The 36px side padding reserves the sweep region so
+ * content sits on the flat floor; `border-shape`-unaware browsers fall back
+ * to a plain rounded-b tab.
  */
 function NotchedItem({
 	children,
@@ -80,28 +39,10 @@ function NotchedItem({
 	showRightEar?: boolean;
 }) {
 	return (
-		<div className="relative">
-			<div
-				className={`relative bg-sidebar rounded-b-xl px-2 pb-1 pt-0 flex items-center ${contentClassName ?? ""}`}
-			>
-				{children}
-			</div>
-			{/* Left ear — tall quarter-ellipse for gradual curve */}
-			<ConvexCorner
-				corner="bottom-right"
-				width={NOTCH_EAR_WIDTH}
-				height={NOTCH_EAR_HEIGHT}
-				className="absolute -left-[20px] top-3 z-10"
-			/>
-			{/* Right ear */}
-			{showRightEar && (
-				<ConvexCorner
-					corner="bottom-left"
-					width={NOTCH_EAR_WIDTH}
-					height={NOTCH_EAR_HEIGHT}
-					className="absolute -right-[20px] top-3 z-10"
-				/>
-			)}
+		<div
+			className={`${showRightEar ? "header-notch px-9" : "header-notch--flush-right pl-9 pr-4"} rounded-b-xl flex items-center ${contentClassName ?? ""}`}
+		>
+			{children}
 		</div>
 	);
 }
@@ -142,15 +83,16 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 						{/* Mobile floating pill header */}
 						<MobileFloatingHeader />
 
-						{/* Thin navbar rail — notched items hang below (desktop only) */}
-						<div className="relative hidden md:flex items-start justify-between bg-sidebar pt-2 h-5">
-							{/* Sidebar to header transition curve */}
-							<ConvexCorner
-								corner="bottom-left"
-								width={HEADER_CONNECTOR_SIZE}
-								className="absolute left-0 top-[20px] z-10"
-							/>
+						{/* One solid header background: full-width strip with the
+						    sidebar→header scoop carved into its bottom-left. Sits
+						    behind the rail and bleeds 2px under the sidebar to hide
+						    the sidebar↔inset hairline (the scoop still lands flush
+						    at the content edge). Notches are siblings on top so
+						    they aren't clipped. */}
+						<div className="header-bg absolute -left-0.5 right-0 top-0 z-0 hidden md:block" />
 
+						{/* Thin navbar rail — notched items hang below (desktop only) */}
+						<div className="relative z-10 hidden md:flex items-start justify-between pt-2 h-5">
 							{/* Left spacer */}
 							<div className="flex-1" />
 

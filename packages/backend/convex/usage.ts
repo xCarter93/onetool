@@ -1,6 +1,8 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getCurrentUserOrgId } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
+import { optionalUserQuery, systemMutation, userMutation } from "./lib/factories";
 
 /**
  * Usage tracking for plan limits
@@ -15,10 +17,10 @@ export interface UsageStats {
 /**
  * Get current usage statistics for the organization
  */
-export const getCurrentUsage = query({
+export const getCurrentUsage = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<UsageStats> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 
 		if (!userOrgId) {
 			return {
@@ -111,7 +113,7 @@ export const getCurrentUsage = query({
 /**
  * Check if a specific action is allowed based on limits
  */
-export const checkLimit = query({
+export const checkLimit = optionalUserQuery({
 	args: {
 		limitType: v.union(
 			v.literal("clients"),
@@ -121,7 +123,7 @@ export const checkLimit = query({
 		clientId: v.optional(v.id("clients")), // For project limit checks
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 
 		if (!userOrgId) {
 			return { allowed: false, reason: "No organization" };
@@ -186,12 +188,10 @@ export const checkLimit = query({
  * Increment e-signature count when a document is sent
  * Called from BoldSign webhook handler
  */
-export const incrementEsignatureCount = internalMutation({
-	args: {
-		orgId: v.id("organizations"),
-	},
+export const incrementEsignatureCount = systemMutation({
+	args: {},
 	handler: async (ctx, args) => {
-		const organization = await ctx.db.get(args.orgId);
+		const organization = await ctx.db.get(ctx.orgId);
 		if (!organization) {
 			console.error("Organization not found for e-signature increment");
 			return;
@@ -212,7 +212,7 @@ export const incrementEsignatureCount = internalMutation({
 		if (needsReset) {
 			// Reset counter for new month
 			const currentClientsCount = organization.usageTracking?.clientsCount || 0;
-			await ctx.db.patch(args.orgId, {
+			await ctx.db.patch(ctx.orgId, {
 				usageTracking: {
 					clientsCount: currentClientsCount,
 					esignaturesSentThisMonth: 1,
@@ -226,7 +226,7 @@ export const incrementEsignatureCount = internalMutation({
 			const currentClientsCount = organization.usageTracking?.clientsCount || 0;
 			const lastReset =
 				organization.usageTracking?.lastEsignatureReset || Date.now();
-			await ctx.db.patch(args.orgId, {
+			await ctx.db.patch(ctx.orgId, {
 				usageTracking: {
 					clientsCount: currentClientsCount,
 					esignaturesSentThisMonth: currentCount + 1,
@@ -241,7 +241,7 @@ export const incrementEsignatureCount = internalMutation({
  * Update client count in usage tracking
  * Called when clients are created or deleted
  */
-export const updateClientCount = mutation({
+export const updateClientCount = userMutation({
 	args: {
 		orgId: v.id("organizations"),
 		delta: v.number(), // +1 for create, -1 for delete

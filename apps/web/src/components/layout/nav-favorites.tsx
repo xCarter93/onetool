@@ -19,22 +19,30 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useQuery, useMutation } from "convex/react";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_FAVORITES = 3;
 
 export function NavFavorites() {
+	const isOrgSwitching = useIsOrgSwitching();
 	const favorites = useQuery(api.favorites.list);
 	const toggleFavorite = useMutation(api.favorites.toggle);
 	const [popoverOpen, setPopoverOpen] = React.useState(false);
 	const router = useRouter();
 
-	const visibleFavorites = favorites?.slice(0, MAX_VISIBLE_FAVORITES) ?? [];
-	const hasOverflow = (favorites?.length ?? 0) > MAX_VISIBLE_FAVORITES;
-	const isEmpty = !favorites || favorites.length === 0;
+	// Suppress data during the switch grace window so the previous org's
+	// favorites don't flash before the new org's list resolves.
+	const isLoading = isOrgSwitching || favorites === undefined;
+	const visibleFavorites = isLoading
+		? []
+		: favorites.slice(0, MAX_VISIBLE_FAVORITES);
+	const hasOverflow = !isLoading && favorites.length > MAX_VISIBLE_FAVORITES;
+	const isEmpty = !isLoading && favorites.length === 0;
 
 	const handleUnfavorite = async (clientId: Id<"clients">) => {
 		await toggleFavorite({ clientId });
@@ -44,7 +52,16 @@ export function NavFavorites() {
 		<SidebarGroup>
 			<SidebarGroupLabel>Favorites</SidebarGroupLabel>
 			<SidebarMenu>
-				{isEmpty ? (
+				{isLoading ? (
+					Array.from({ length: 2 }).map((_, i) => (
+						<SidebarMenuItem key={`favorite-skeleton-${i}`}>
+							<div className="flex items-center gap-2 px-2 py-1.5 group-data-[collapsible=icon]:hidden">
+								<Skeleton className="size-4 shrink-0 rounded-full" />
+								<Skeleton className="h-3.5 w-32" />
+							</div>
+						</SidebarMenuItem>
+					))
+				) : isEmpty ? (
 					<SidebarMenuItem>
 						<div className="px-2 py-1.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
 							No favorites yet

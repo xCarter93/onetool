@@ -2,6 +2,7 @@ import { query, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Activity operations for activity feed
@@ -60,7 +61,7 @@ async function enrichActivitiesWithUsers(
 /**
  * Get recent activities for the current organization with time filtering
  */
-export const getRecent = query({
+export const getRecent = optionalUserQuery({
 	args: {
 		limit: v.optional(v.number()), // Max activities to fetch
 	},
@@ -84,7 +85,7 @@ export const getRecent = query({
  * Get activities by type for the current organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getByType = query({
+export const getByType = optionalUserQuery({
 	args: {
 		activityType: v.union(
 			v.literal("client_created"),
@@ -128,7 +129,7 @@ export const getByType = query({
  * Get activities for a specific entity
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getByEntity = query({
+export const getByEntity = optionalUserQuery({
 	args: {
 		entityType: v.union(
 			v.literal("client"),
@@ -165,7 +166,7 @@ export const getByEntity = query({
  * Get activity count for the current organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getCount = query({
+export const getCount = optionalUserQuery({
 	args: {
 		dayRange: v.optional(v.number()),
 		activityType: v.optional(

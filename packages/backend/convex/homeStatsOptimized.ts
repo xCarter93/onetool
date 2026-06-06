@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { getCurrentUserOrgId } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import { DateUtils } from "./lib/shared";
 import {
 	clientCountsAggregate,
@@ -9,12 +10,13 @@ import {
 	invoiceCountsAggregate,
 } from "./aggregates";
 import type { HomeStats } from "./homeStats";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Optimized home dashboard statistics using aggregates
  * Provides O(log n) performance instead of O(n)
  */
-export const getHomeStats = query({
+export const getHomeStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<HomeStats> => {
 		const emptyStats: HomeStats = {
@@ -60,7 +62,7 @@ export const getHomeStats = query({
 			},
 		};
 
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return emptyStats;
 		}

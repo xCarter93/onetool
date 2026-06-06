@@ -1,64 +1,47 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import "server-only";
+import { NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/stripe";
+import {
+	getOrgConnectAccountForCaller,
+	mapConnectError,
+} from "@/lib/stripeConnect";
 
 /**
- * Create an Account Session for Stripe Connect embedded components.
- * This generates a client secret that allows the frontend to render
- * embedded components like Payouts for a connected account.
+ * Create an Account Session for the caller's connected account.
+ * Each call uses a fresh key because returned client secrets expire quickly.
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
 	try {
-		const { userId } = await auth();
-		if (!userId) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		const body = (await request.json().catch(() => ({}))) as {
-			accountId?: string;
-		};
-
-		if (!body.accountId) {
+		const ctx = await getOrgConnectAccountForCaller();
+		if (!ctx.stripeConnectAccountId) {
 			return NextResponse.json(
-				{ error: "accountId is required" },
+				{ error: "Stripe account not yet onboarded" },
 				{ status: 400 }
 			);
 		}
 
 		const stripe = getStripeClient();
-
-		// Create an account session with payouts component enabled
-		// and all payout features available
-		const accountSession = await stripe.accountSessions.create({
-			account: body.accountId,
-			components: {
-				payouts: {
-					enabled: true,
-					features: {
-						instant_payouts: true,
-						standard_payouts: true,
-						edit_payout_schedule: true,
-						external_account_collection: true,
+		const accountSession = await stripe.accountSessions.create(
+			{
+				account: ctx.stripeConnectAccountId,
+				components: {
+					payouts: {
+						enabled: true,
+						features: {
+							instant_payouts: true,
+							standard_payouts: true,
+							edit_payout_schedule: true,
+							external_account_collection: true,
+						},
 					},
 				},
 			},
-		});
-
-		return NextResponse.json({
-			clientSecret: accountSession.client_secret,
-		});
-	} catch (error) {
-		console.error("Account session creation error:", error);
-		const message =
-			error instanceof Error
-				? error.message
-				: "Failed to create account session";
-		return NextResponse.json(
-			{
-				error: message,
-				details: error instanceof Error ? error.stack : undefined,
-			},
-			{ status: 500 }
+			{ idempotencyKey: crypto.randomUUID() }
 		);
+
+		return NextResponse.json({ clientSecret: accountSession.client_secret });
+	} catch (err) {
+		console.error("Account session creation error:", err);
+		return mapConnectError(err, "Failed to create account session");
 	}
 }

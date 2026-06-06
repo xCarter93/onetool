@@ -55,7 +55,7 @@ export const updateStatuses = internalMutation({
 	},
 });
 
-// Public query to get all service statuses
+// INTENTIONAL: raw public query — global read-only service status data.
 export const getAll = query({
 	handler: async (ctx) => {
 		return await ctx.db.query("serviceStatus").collect();

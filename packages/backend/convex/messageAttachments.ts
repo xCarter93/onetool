@@ -2,8 +2,10 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUser } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import { StorageHelpers } from "./lib/storage";
 import { getMembership } from "./lib/memberships";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Message Attachments operations
@@ -52,7 +54,7 @@ async function getAttachmentOrThrow(
 /**
  * Generate an upload URL for file uploads
  */
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		// Ensure user is authenticated
@@ -68,7 +70,7 @@ export const generateUploadUrl = mutation({
 /**
  * Create a new message attachment record after file is uploaded
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		notificationId: v.id("notifications"),
 		entityType: v.union(
@@ -138,12 +140,12 @@ export const create = mutation({
 /**
  * Get attachments for a notification
  */
-export const listByNotification = query({
+export const listByNotification = optionalUserQuery({
 	args: {
 		notificationId: v.id("notifications"),
 	},
 	handler: async (ctx, args): Promise<MessageAttachment[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -170,7 +172,7 @@ export const listByNotification = query({
  * Get attachments for a notification with download URLs
  * Optimized to avoid N+1 query problem
  */
-export const listByNotificationWithUrls = query({
+export const listByNotificationWithUrls = optionalUserQuery({
 	args: {
 		notificationId: v.id("notifications"),
 	},
@@ -178,7 +180,7 @@ export const listByNotificationWithUrls = query({
 		ctx,
 		args
 	): Promise<(MessageAttachment & { downloadUrl: string | null })[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -221,7 +223,7 @@ export const listByNotificationWithUrls = query({
  * Get all attachments for a specific entity (client, project, or quote)
  * Includes download URLs to avoid N+1 query problem
  */
-export const listByEntity = query({
+export const listByEntity = optionalUserQuery({
 	args: {
 		entityType: v.union(
 			v.literal("client"),
@@ -234,7 +236,7 @@ export const listByEntity = query({
 		ctx,
 		args
 	): Promise<(MessageAttachment & { downloadUrl: string | null })[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -272,7 +274,7 @@ export const listByEntity = query({
 /**
  * Get a specific attachment with metadata and URL
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("messageAttachments") },
 	handler: async (
 		ctx,
@@ -285,7 +287,7 @@ export const get = query({
 		  })
 		| null
 	> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -311,10 +313,10 @@ export const get = query({
 /**
  * Get download URL for an attachment
  */
-export const getDownloadUrl = query({
+export const getDownloadUrl = optionalUserQuery({
 	args: { id: v.id("messageAttachments") },
 	handler: async (ctx, args): Promise<string | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -331,7 +333,7 @@ export const getDownloadUrl = query({
 /**
  * Delete an attachment
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("messageAttachments") },
 	handler: async (ctx, args): Promise<MessageAttachmentId> => {
 		const user = await getCurrentUser(ctx);
@@ -383,7 +385,7 @@ export const remove = mutation({
 /**
  * Get all attachments uploaded by a user (for stats/management)
  */
-export const listByUploader = query({
+export const listByUploader = optionalUserQuery({
 	args: {
 		userId: v.optional(v.id("users")),
 		limit: v.optional(v.number()),
@@ -394,7 +396,7 @@ export const listByUploader = query({
 			return [];
 		}
 
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -440,10 +442,10 @@ export const listByUploader = query({
 /**
  * Get attachment statistics for organization
  */
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return {
 				total: 0,
@@ -498,7 +500,7 @@ export const getStats = query({
 /**
  * Validate file before upload (called from client)
  */
-export const validateFile = query({
+export const validateFile = optionalUserQuery({
 	args: {
 		fileName: v.string(),
 		fileSize: v.number(),

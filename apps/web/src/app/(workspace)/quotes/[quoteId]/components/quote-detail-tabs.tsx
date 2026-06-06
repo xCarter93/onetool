@@ -11,6 +11,7 @@ import {
 import { OverviewTab } from "./tabs/overview-tab";
 import { SignaturesTab } from "./tabs/signatures-tab";
 import { ActivityTab } from "./tabs/activity-tab";
+import { ApprovalAuditTab } from "./tabs/approval-audit-tab";
 import { QuoteDetailSidebar } from "./quote-detail-sidebar";
 
 interface QuoteDetailTabsProps {
@@ -124,6 +125,9 @@ export function QuoteDetailTabs({
 						<StyledTabsTrigger value="signatures">
 							Signatures
 						</StyledTabsTrigger>
+						<StyledTabsTrigger value="approval-audit">
+							Approval Audit
+						</StyledTabsTrigger>
 						<StyledTabsTrigger value="activity">
 							Activity
 						</StyledTabsTrigger>
@@ -149,6 +153,16 @@ export function QuoteDetailTabs({
 							countersignerId={quote?.countersignerId}
 							signingOrder={quote?.signingOrder}
 							primaryContact={primaryContact}
+							documentsWithSignatures={documentsWithSignatures}
+						/>
+					</StyledTabsContent>
+
+					<StyledTabsContent
+						value="approval-audit"
+						className="mt-0 pt-5"
+					>
+						<ApprovalAuditTab
+							quoteId={quoteId}
 							documentsWithSignatures={documentsWithSignatures}
 						/>
 					</StyledTabsContent>

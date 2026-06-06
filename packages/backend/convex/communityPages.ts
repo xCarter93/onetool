@@ -5,7 +5,9 @@ import {
 	getCurrentUserOrThrow,
 	getCurrentUserOrgId,
 } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import { rateLimiter } from "./rateLimits";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 // Type definitions
 type CommunityPageDocument = Doc<"communityPages">;
@@ -19,10 +21,10 @@ type PricingMode = "structured" | "richText";
 /**
  * Get the community page for the current organization
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<CommunityPageDocument | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) return null;
 
 		return await ctx.db
@@ -35,7 +37,7 @@ export const get = query({
 /**
  * Create or update community page (upsert pattern)
  */
-export const upsert = mutation({
+export const upsert = userMutation({
 	args: {
 		slug: v.optional(v.string()),
 		isPublic: v.optional(v.boolean()),
@@ -232,7 +234,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 /**
  * Publish draft content to live page
  */
-export const publish = mutation({
+export const publish = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
 		await getCurrentUserOrThrow(ctx);
@@ -278,7 +280,7 @@ export const publish = mutation({
 /**
  * Generate upload URL for images
  */
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		await getCurrentUserOrThrow(ctx);
@@ -289,7 +291,7 @@ export const generateUploadUrl = mutation({
 /**
  * Get image URL from storage (authenticated)
  */
-export const getImageUrl = query({
+export const getImageUrl = optionalUserQuery({
 	args: { storageId: v.id("_storage") },
 	handler: async (ctx, args): Promise<string | null> => {
 		const user = await getCurrentUserOrThrow(ctx);
@@ -298,7 +300,7 @@ export const getImageUrl = query({
 	},
 });
 
-export const getImageUrls = query({
+export const getImageUrls = optionalUserQuery({
 	args: { storageIds: v.array(v.id("_storage")) },
 	handler: async (
 		ctx,
@@ -317,10 +319,10 @@ export const getImageUrls = query({
 /**
  * Check if slug is available
  */
-export const checkSlugAvailable = query({
+export const checkSlugAvailable = optionalUserQuery({
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<boolean> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 
 		const existing = await ctx.db
 			.query("communityPages")
@@ -335,7 +337,7 @@ export const checkSlugAvailable = query({
 /**
  * Delete the community page banner image
  */
-export const deleteBannerImage = mutation({
+export const deleteBannerImage = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
 		await getCurrentUserOrThrow(ctx);
@@ -362,7 +364,7 @@ export const deleteBannerImage = mutation({
 /**
  * Delete the community page avatar image
  */
-export const deleteAvatarImage = mutation({
+export const deleteAvatarImage = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
 		await getCurrentUserOrThrow(ctx);
@@ -393,6 +395,8 @@ export const deleteAvatarImage = mutation({
 /**
  * Get public page by slug (for public viewing)
  */
+// INTENTIONAL: raw public query — unauthenticated community-page slug access.
+// Caller has no Clerk identity; org is discovered from the published page row.
 export const getBySlug = query({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -464,6 +468,8 @@ export const getBySlug = query({
 /**
  * List all public pages (for showcase)
  */
+// INTENTIONAL: raw public query — unauthenticated public community-page index.
+// Caller has no Clerk identity; rows are filtered to published pages only.
 export const listPublic = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
@@ -499,6 +505,8 @@ export const listPublic = query({
  * Submit interest form (creates lead client) - UNAUTHENTICATED
  * This is called from public pages without user authentication
  */
+// INTENTIONAL: raw public mutation — unauthenticated lead capture from a public page.
+// Org is discovered from the published page row, not the actor.
 export const submitInterest = mutation({
 	args: {
 		slug: v.string(),

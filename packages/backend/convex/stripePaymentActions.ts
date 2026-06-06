@@ -33,17 +33,33 @@ export const verifyAndMarkPaid = action({
 			args.stripeSessionId,
 			org?.stripeConnectAccountId ?? undefined
 		);
+
+		// 4. Reject replayed or tampered sessions.
 		if (!result.paid) {
 			throw new Error("Payment not verified by Stripe");
 		}
+		if (result.metadata.publicToken !== args.publicToken) {
+			throw new Error(
+				`Session metadata.publicToken mismatch: expected ${args.publicToken}`
+			);
+		}
+		const expectedCents = Math.round(payment.paymentAmount * 100);
+		if (result.amountTotal !== expectedCents) {
+			throw new Error(
+				`Session amount mismatch: expected ${expectedCents} cents, got ${result.amountTotal}`
+			);
+		}
+		if (!result.paymentIntentId) {
+			throw new Error("Session has no payment_intent — cannot mark paid");
+		}
 
-		// 4. Mark as paid via internal mutation
+		// 5. Mark as paid via internal mutation.
 		return await ctx.runMutation(
 			internal.payments.markPaidByPublicTokenInternal,
 			{
 				publicToken: args.publicToken,
 				stripeSessionId: args.stripeSessionId,
-				stripePaymentIntentId: result.paymentIntentId ?? "",
+				stripePaymentIntentId: result.paymentIntentId,
 			}
 		);
 	},
@@ -77,17 +93,33 @@ export const verifyAndMarkInvoicePaid = action({
 			args.stripeSessionId,
 			org?.stripeConnectAccountId ?? undefined
 		);
+
+		// 4. Reject replayed or tampered sessions.
 		if (!result.paid) {
 			throw new Error("Payment not verified by Stripe");
 		}
+		if (result.metadata.publicToken !== args.publicToken) {
+			throw new Error(
+				`Session metadata.publicToken mismatch: expected ${args.publicToken}`
+			);
+		}
+		const expectedCents = Math.round(invoice.total * 100);
+		if (result.amountTotal !== expectedCents) {
+			throw new Error(
+				`Session amount mismatch: expected ${expectedCents} cents, got ${result.amountTotal}`
+			);
+		}
+		if (!result.paymentIntentId) {
+			throw new Error("Session has no payment_intent — cannot mark paid");
+		}
 
-		// 4. Mark as paid via internal mutation
+		// 5. Mark as paid via internal mutation
 		return await ctx.runMutation(
 			internal.invoices.markPaidByPublicTokenInternal,
 			{
 				publicToken: args.publicToken,
 				stripeSessionId: args.stripeSessionId,
-				stripePaymentIntentId: result.paymentIntentId ?? "",
+				stripePaymentIntentId: result.paymentIntentId,
 			}
 		);
 	},

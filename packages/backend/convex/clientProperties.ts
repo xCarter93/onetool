@@ -4,14 +4,17 @@ import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Client Property operations
@@ -23,31 +26,6 @@ import { computeFieldChanges } from "./lib/changeTracking";
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a client property with org validation (wrapper for shared utility)
- */
-async function getPropertyWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"clientProperties">
-): Promise<Doc<"clientProperties"> | null> {
-	return await getEntityWithOrgValidation(
-		ctx,
-		"clientProperties",
-		id,
-		"Property"
-	);
-}
-
-/**
- * Get a client property, throwing if not found (wrapper for shared utility)
- */
-async function getPropertyOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"clientProperties">
-): Promise<Doc<"clientProperties">> {
-	return await getEntityOrThrow(ctx, "clientProperties", id, "Client property");
-}
 
 /**
  * Validate client access (wrapper for shared utility)
@@ -85,17 +63,15 @@ async function handlePrimaryProperty(
  * Create a client property with automatic orgId assignment
  */
 async function createPropertyWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<Doc<"clientProperties">, "_id" | "_creationTime" | "orgId">
 ): Promise<Id<"clientProperties">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	// Validate client access
-	await validateClientAccess(ctx, data.clientId);
+	await validateClientAccess(ctx, data.clientId, ctx.orgId);
 
 	return await ctx.db.insert("clientProperties", {
 		...data,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	});
 }
 
@@ -110,10 +86,10 @@ type ClientPropertyId = Id<"clientProperties">;
 /**
  * Get all properties for a specific client
  */
-export const listByClient = query({
+export const listByClient = optionalUserQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateClientAccess(ctx, args.clientId, orgId);
@@ -128,10 +104,10 @@ export const listByClient = query({
 /**
  * Get all properties for the current user's organization
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientPropertyDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -144,10 +120,10 @@ export const list = query({
 /**
  * Get all geocoded properties for the organization with client info (for map display)
  */
-export const listGeocodedWithClients = query({
+export const listGeocodedWithClients = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return { properties: [], totalCount: 0, geocodedCount: 0 };
 
 		const allProperties = await ctx.db
@@ -207,13 +183,18 @@ export const listGeocodedWithClients = query({
  * Get a specific client property by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
-
-		return await getPropertyWithValidation(ctx, args.id);
+		if (!ctx.orgId) return null;
+		try {
+			return await ctx.orgEntity("clientProperties", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in clientProperties:")) {
+				return null;
+			}
+			throw error;
+		}
 	},
 });
 
@@ -221,10 +202,10 @@ export const get = query({
  * Get primary property for a client
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getPrimaryProperty = query({
+export const getPrimaryProperty = optionalUserQuery({
 	args: { clientId: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
@@ -246,7 +227,7 @@ export const getPrimaryProperty = query({
 /**
  * Create a new client property
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		propertyName: v.optional(v.string()),
@@ -306,7 +287,7 @@ export const create = mutation({
 /**
  * Update a client property
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("clientProperties"),
 		clientId: v.optional(v.id("clients")),
@@ -354,7 +335,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current property and determine clientId
-		const currentProperty = await getPropertyOrThrow(ctx, id);
+		const currentProperty = await ctx.orgEntity("clientProperties", id);
 		const clientId = filteredUpdates.clientId || currentProperty.clientId;
 
 		// Validate new clientId if changing
@@ -389,10 +370,10 @@ export const update = mutation({
 /**
  * Delete a client property
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
-		const property = await getPropertyOrThrow(ctx, args.id);
+		const property = await ctx.orgEntity("clientProperties", args.id);
 
 		// Delete the property
 		await ctx.db.delete(args.id);
@@ -411,7 +392,7 @@ export const remove = mutation({
  * Search properties across the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const search = query({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		clientId: v.optional(v.id("clients")),
@@ -427,7 +408,7 @@ export const search = query({
 		),
 	},
 	handler: async (ctx, args): Promise<ClientPropertyDocument[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
@@ -473,10 +454,10 @@ export const search = query({
  * Set a property as primary (and unset others)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const setPrimary = mutation({
+export const setPrimary = userMutation({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
-		const property = await getPropertyOrThrow(ctx, args.id);
+		const property = await ctx.orgEntity("clientProperties", args.id);
 
 		// Unset any existing primary property for this client
 		await handlePrimaryProperty(ctx, property.clientId, args.id);
@@ -498,7 +479,7 @@ export const setPrimary = mutation({
  * Bulk create properties for a client
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const bulkCreate = mutation({
+export const bulkCreate = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		properties: v.array(
@@ -590,10 +571,10 @@ export const bulkCreate = mutation({
  * Get property statistics for the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				total: 0,

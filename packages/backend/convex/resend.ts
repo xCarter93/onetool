@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { Resend } from "@convex-dev/resend";
 import { getCurrentUserOrThrow, getCurrentUserOrgId } from "./lib/auth";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 // Initialize Resend component
 export const resend = new Resend(components.resend, {
@@ -13,7 +14,7 @@ export const resend = new Resend(components.resend, {
 /**
  * Send an email to a client with organization branding
  */
-export const sendClientEmail = mutation({
+export const sendClientEmail = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		subject: v.string(),
@@ -149,7 +150,7 @@ export const sendClientEmail = mutation({
 /**
  * Reply to an email thread
  */
-export const replyToEmail = mutation({
+export const replyToEmail = userMutation({
 	args: {
 		emailMessageId: v.id("emailMessages"), // The message being replied to
 		messageBody: v.string(),

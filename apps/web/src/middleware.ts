@@ -1,11 +1,19 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse, type NextFetchEvent } from "next/server";
+import { portalMiddleware } from "@/lib/portal/middleware";
+
+// Portal routes use separate OTP/JWT auth and must not enter Clerk middleware.
+const isPortalRoute = createRouteMatcher([
+	"/portal",
+	"/portal/(.*)",
+	"/api/portal/(.*)",
+	"/.well-known/portal-jwks.json",
+]);
 
 const isPublicRoute = createRouteMatcher([
 	"/sign-in(.*)",
 	"/sign-up(.*)",
 	"/api/clerk-users-webhook(.*)",
-	"/api/stripe-webhook(.*)",
 	"/api/pay(.*)",
 	"/pay(.*)",
 	"/api/unsplash(.*)",
@@ -18,7 +26,7 @@ const isPublicRoute = createRouteMatcher([
 	"/api/communities(.*)", // Public community API routes
 ]);
 
-export default clerkMiddleware(async (auth, request) => {
+const clerkHandler = clerkMiddleware(async (auth, request) => {
 	const { userId, redirectToSignIn, orgRole, sessionClaims, orgId } =
 		await auth();
 
@@ -76,6 +84,16 @@ export default clerkMiddleware(async (auth, request) => {
 		}
 	}
 });
+
+export default async function middleware(
+	request: NextRequest,
+	event: NextFetchEvent,
+) {
+	if (isPortalRoute(request)) {
+		return portalMiddleware(request);
+	}
+	return clerkHandler(request, event);
+}
 
 export const config = {
 	matcher: [

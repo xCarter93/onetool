@@ -43,6 +43,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -243,6 +244,7 @@ export default function ProjectsPage() {
 	const deleteProject = useMutation(api.projects.remove);
 	const updateProjectStatus = useMutation(api.projects.update);
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
+	const isOrgSwitching = useIsOrgSwitching();
 
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
@@ -287,7 +289,8 @@ export default function ProjectsPage() {
 	}, [data]);
 
 	// Loading state
-	const isLoading = projects === undefined || clients === undefined;
+	const isLoading =
+		isOrgSwitching || projects === undefined || clients === undefined;
 
 	// Empty state
 	const isEmpty = !isLoading && data.length === 0;

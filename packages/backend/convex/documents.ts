@@ -2,7 +2,9 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
+import { getOptionalOrgId } from "./lib/queries";
 import { ActivityHelpers } from "./lib/activities";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * Document operations with embedded CRUD helpers
@@ -125,13 +127,13 @@ type DocumentId = Id<"documents">;
  * Get all documents for the current user's organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const list = query({
+export const list = optionalUserQuery({
 	args: {
 		documentType: v.optional(v.union(v.literal("quote"), v.literal("invoice"))),
 		documentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<DocumentDocument[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -174,10 +176,10 @@ export const list = query({
 /**
  * Get a specific document by ID
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("documents") },
 	handler: async (ctx, args): Promise<DocumentDocument | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -188,13 +190,13 @@ export const get = query({
 /**
  * Get the latest document for a quote or invoice
  */
-export const getLatest = query({
+export const getLatest = optionalUserQuery({
 	args: {
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
 	},
 	handler: async (ctx, args): Promise<DocumentDocument | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -235,13 +237,13 @@ export const getLatest = query({
 /**
  * Get all versions of a document for a quote or invoice
  */
-export const getAllVersions = query({
+export const getAllVersions = optionalUserQuery({
 	args: {
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
 	},
 	handler: async (ctx, args): Promise<DocumentDocument[]> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -278,7 +280,7 @@ export const getAllVersions = query({
 /**
  * Create a new document
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
@@ -336,7 +338,7 @@ export const create = mutation({
  * Update a document
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("documents"),
 		documentType: v.optional(v.union(v.literal("quote"), v.literal("invoice"))),
@@ -366,7 +368,7 @@ export const update = mutation({
  * Delete a document (also removes the file from storage)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("documents") },
 	handler: async (ctx, args): Promise<DocumentId> => {
 		const document = await getDocumentOrThrow(ctx, args.id);
@@ -390,10 +392,10 @@ export const remove = mutation({
  * Get document statistics for the organization
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return {
 				total: 0,
@@ -472,7 +474,7 @@ export const getStats = query({
  * Clean up old document versions (keep only the latest N versions)
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const cleanupOldVersions = mutation({
+export const cleanupOldVersions = userMutation({
 	args: {
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
@@ -535,10 +537,10 @@ export const cleanupOldVersions = mutation({
 /**
  * Get document URL from storage
  */
-export const getDocumentUrl = query({
+export const getDocumentUrl = optionalUserQuery({
 	args: { id: v.id("documents") },
 	handler: async (ctx, args): Promise<string | null> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -556,7 +558,7 @@ export const getDocumentUrl = query({
 /**
  * Generate a signed upload URL for Convex storage
  */
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		return await ctx.storage.generateUploadUrl();
@@ -566,10 +568,10 @@ export const generateUploadUrl = mutation({
 /**
  * Get BoldSign status for a document
  */
-export const getBoldsignStatus = query({
+export const getBoldsignStatus = optionalUserQuery({
 	args: { documentId: v.id("documents") },
 	handler: async (ctx, args) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return null;
 		}
@@ -581,7 +583,7 @@ export const getBoldsignStatus = query({
 /**
  * Get all documents with BoldSign signatures for a quote or invoice
  */
-export const getAllDocumentsWithSignatures = query({
+export const getAllDocumentsWithSignatures = optionalUserQuery({
 	args: {
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
@@ -597,7 +599,7 @@ export const getAllDocumentsWithSignatures = query({
 			boldsign: NonNullable<DocumentDocument["boldsign"]>;
 		}>
 	> => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}
@@ -645,12 +647,12 @@ export const getAllDocumentsWithSignatures = query({
  * Get signed documents for a project
  * Returns completed and signed quote documents that are linked to the project
  */
-export const listSignedByProject = query({
+export const listSignedByProject = optionalUserQuery({
 	args: {
 		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) {
 			return [];
 		}

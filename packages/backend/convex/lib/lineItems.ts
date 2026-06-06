@@ -267,53 +267,6 @@ export async function validateQuoteAccess(
 }
 
 // ============================================================================
-// Entity Access Helpers
-// ============================================================================
-
-/**
- * Get a line item with organization validation (generic)
- */
-export async function getLineItemWithValidation<
-	T extends "invoiceLineItems" | "quoteLineItems"
->(
-	ctx: QueryCtx | MutationCtx,
-	table: T,
-	id: Id<T>,
-	entityName: string
-): Promise<Doc<T> | null> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-	const lineItem = await ctx.db.get(id);
-
-	if (!lineItem) {
-		return null;
-	}
-
-	if ((lineItem as Doc<T> & { orgId: Id<"organizations"> }).orgId !== userOrgId) {
-		throw new Error(`${entityName} does not belong to your organization`);
-	}
-
-	return lineItem;
-}
-
-/**
- * Get a line item by ID, throwing if not found
- */
-export async function getLineItemOrThrow<
-	T extends "invoiceLineItems" | "quoteLineItems"
->(
-	ctx: QueryCtx | MutationCtx,
-	table: T,
-	id: Id<T>,
-	entityName: string
-): Promise<Doc<T>> {
-	const lineItem = await getLineItemWithValidation(ctx, table, id, entityName);
-	if (!lineItem) {
-		throw new Error(`${entityName} not found`);
-	}
-	return lineItem;
-}
-
-// ============================================================================
 // Bulk Operations
 // ============================================================================
 
@@ -352,7 +305,7 @@ export function validateBulkLineItems<T extends BaseLineItemData>(
 //   handler: async (ctx, args) => {
 //     await validateInvoiceAccess(ctx, args.invoiceId);
 //     for (let i = 0; i < args.itemIds.length; i++) {
-//       const item = await getLineItemOrThrow(ctx, "invoiceLineItems", args.itemIds[i], "Line item");
+//       const item = await ctx.orgEntity("invoiceLineItems", args.itemIds[i]);
 //       if (item.invoiceId !== args.invoiceId) throw new Error("Invalid item");
 //       await ctx.db.patch(args.itemIds[i], { sortOrder: i });
 //     }

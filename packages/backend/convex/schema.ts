@@ -88,6 +88,17 @@ export default defineSchema({
 
 		// Stripe Connect
 		stripeConnectAccountId: v.optional(v.string()),
+		// Cached Connect onboarding status (refreshed by account.updated webhook).
+		stripeChargesEnabled: v.optional(v.boolean()),
+		stripePayoutsEnabled: v.optional(v.boolean()),
+		stripeDetailsSubmitted: v.optional(v.boolean()),
+		stripeRequirementsCurrentlyDue: v.optional(v.array(v.string())),
+		stripeRequirementsDisabledReason: v.optional(v.string()),
+		stripeStatusUpdatedAt: v.optional(v.number()),
+		// External bank-account fingerprint from Stripe webhooks.
+		stripeExternalAccountLast4: v.optional(v.string()),
+		stripeExternalAccountBankName: v.optional(v.string()),
+		stripeExternalAccountUpdatedAt: v.optional(v.number()),
 		plan: v.optional(
 			v.union(v.literal("trial"), v.literal("pro"), v.literal("cancelled"))
 		), // Deprecated: Use Clerk billing fields instead
@@ -104,7 +115,8 @@ export default defineSchema({
 	})
 		.index("by_owner", ["ownerUserId"])
 		.index("by_clerk_org", ["clerkOrganizationId"])
-		.index("by_receiving_address", ["receivingAddress"]),
+		.index("by_receiving_address", ["receivingAddress"])
+		.index("by_stripe_connect_account_id", ["stripeConnectAccountId"]),
 
 	organizationMemberships: defineTable({
 		orgId: v.id("organizations"),
@@ -155,11 +167,18 @@ export default defineSchema({
 		tags: v.optional(v.array(v.string())),
 		notes: v.optional(v.string()),
 
+		// Portal access — UUID-shaped link token used to construct the public
+		// portal URL `https://app.example.com/portal/c/{portalAccessId}`. Plan
+		// 13-02 introduces this field as optional; backfill mutation populates
+		// existing rows. Generated on demand for newly created clients.
+		portalAccessId: v.optional(v.string()),
+
 		// Archive functionality
 		archivedAt: v.optional(v.number()), // Timestamp when client was archived
 	})
 		.index("by_org", ["orgId"])
-		.index("by_status", ["orgId", "status"]),
+		.index("by_status", ["orgId", "status"])
+		.index("by_portal_access_id", ["portalAccessId"]),
 
 	// Client Contacts - separate table for multiple contacts per client
 	clientContacts: defineTable({
@@ -363,6 +382,50 @@ export default defineSchema({
 		.index("by_project", ["projectId"])
 		.index("by_status", ["orgId", "status"]),
 
+	// Quote Approvals — APPEND-ONLY audit trail for portal quote approve/decline
+	// (Phase 14, QUOTE-04 + QUOTE-05). Never patch existing rows; re-approval
+	// cycles append a new row. termsAcceptedAt is OPTIONAL — only set on
+	// approval rows, omitted on decline rows (decline does not require terms
+	// acceptance per CONTEXT §"Decline with reason" and REVIEWS feedback).
+	quoteApprovals: defineTable({
+		quoteId: v.id("quotes"),
+		orgId: v.id("organizations"),
+		clientContactId: v.id("clientContacts"),
+		action: v.union(v.literal("approved"), v.literal("declined")),
+		declineReason: v.optional(v.string()),
+		signatureStorageId: v.optional(v.id("_storage")),
+		signatureMode: v.optional(
+			v.union(v.literal("typed"), v.literal("drawn"))
+		),
+		signatureRawData: v.optional(v.string()),
+		ipAddress: v.string(),
+		userAgent: v.string(),
+		documentId: v.id("documents"),
+		documentVersion: v.number(),
+		lineItemsSnapshot: v.array(
+			v.object({
+				description: v.string(),
+				quantity: v.number(),
+				unit: v.string(),
+				rate: v.number(),
+				amount: v.number(),
+				sortOrder: v.number(),
+			})
+		),
+		subtotalSnapshot: v.number(),
+		taxSnapshot: v.number(),
+		totalSnapshot: v.number(),
+		termsSnapshot: v.optional(v.string()),
+		// termsAcceptedAt is OPTIONAL: only meaningful on approval rows.
+		// Decline rows omit this field — decline does not require terms acceptance
+		// (per CONTEXT §"Decline with reason" and REVIEWS feedback on Plan 14-01).
+		termsAcceptedAt: v.optional(v.number()),
+		createdAt: v.number(),
+	})
+		.index("by_quote", ["quoteId", "createdAt"])
+		.index("by_org", ["orgId", "createdAt"])
+		.index("by_clientContact", ["clientContactId", "createdAt"]),
+
 	// Quote Line Items
 	quoteLineItems: defineTable({
 		quoteId: v.id("quotes"),
@@ -457,6 +520,7 @@ export default defineSchema({
 			v.literal("pending"),
 			v.literal("sent"),
 			v.literal("paid"),
+			v.literal("refunded"),
 			v.literal("overdue"),
 			v.literal("cancelled")
 		),
@@ -468,6 +532,25 @@ export default defineSchema({
 		// Stripe integration
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
+
+		// Webhook-driven Stripe lifecycle state.
+		disputed: v.optional(v.boolean()),
+		disputeId: v.optional(v.string()),
+		refundedAt: v.optional(v.number()),
+		// Shared counter — advances for any flow that mints a new Stripe object (Checkout Session or PaymentIntent).
+		checkoutAttemptCounter: v.optional(v.number()),
+		// Active Checkout Session cache for retry reuse.
+		pendingCheckoutSessionId: v.optional(v.string()),
+		pendingCheckoutSessionUrl: v.optional(v.string()),
+		pendingCheckoutSessionExpiresAt: v.optional(v.number()),
+		// Active PaymentIntent cache for embedded Elements retry reuse.
+		pendingPaymentIntentId: v.optional(v.string()),
+		pendingPaymentIntentClientSecret: v.optional(v.string()),
+		pendingPaymentIntentExpiresAt: v.optional(v.number()),
+		// Receipt metadata cached from payment_intent.succeeded webhook (latest_charge).
+		cardLast4: v.optional(v.string()),
+		cardBrand: v.optional(v.string()),
+		stripeReceiptUrl: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_invoice", ["invoiceId"])
@@ -596,7 +679,16 @@ export default defineSchema({
 			v.literal("team_assignment"),
 			v.literal("client_mention"),
 			v.literal("project_mention"),
-			v.literal("quote_mention")
+			v.literal("quote_mention"),
+			// Stripe webhook lifecycle notifications.
+			v.literal("payment_failed"),
+			v.literal("dispute_created"),
+			v.literal("charge_refunded"),
+			// Stripe Connect lifecycle additions.
+			v.literal("payout_paid"),
+			v.literal("payout_failed"),
+			v.literal("capability_degraded"),
+			v.literal("bank_account_changed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -619,6 +711,9 @@ export default defineSchema({
 			v.union(v.literal("email"), v.literal("sms"), v.literal("in_app"))
 		),
 		hasAttachments: v.optional(v.boolean()), // Quick flag for whether this notification has attachments
+		// Optional Stripe webhook notification metadata.
+		priority: v.optional(v.union(v.literal("normal"), v.literal("high"))),
+		paymentId: v.optional(v.id("payments")),
 	})
 		.index("by_user_read", ["userId", "isRead"])
 		.index("by_org", ["orgId"])
@@ -1345,4 +1440,74 @@ export default defineSchema({
 	})
 		.index("by_user_org", ["userId", "orgId"])
 		.index("by_user_client", ["userId", "clientId"]),
+
+	// Portal OTP codes — short-lived 6-digit codes for portal sign-in
+	// (PORTAL-01, PORTAL-04). One row per (clientPortalId, email) request.
+	portalOtpCodes: defineTable({
+		orgId: v.id("organizations"),
+		clientId: v.id("clients"),
+		clientContactId: v.id("clientContacts"),
+		// Mirror of clients.portalAccessId — narrows OTP lookup to a specific
+		// portal link [Review fix #7].
+		clientPortalId: v.string(),
+		// Normalized lowercase email.
+		email: v.string(),
+		// SHA-256(code || ":" || salt) hex.
+		codeHash: v.string(),
+		salt: v.string(),
+		attempts: v.number(),
+		// Date.now() + 10 * 60 * 1000.
+		expiresAt: v.number(),
+		createdAt: v.number(),
+	})
+		// [Review fix #7] PRIMARY lookup index: scoped by clientPortalId (UUID
+		// from email link) + email, so a contact email shared across multiple
+		// clients in the same org cannot cross-contaminate OTP rows.
+		.index("by_portal_and_email", ["clientPortalId", "email"])
+		// Kept for legacy diagnostic queries; NOT used by Plan 03 verifyOtp.
+		.index("by_email_and_org", ["email", "orgId"])
+		.index("by_contact", ["clientContactId"])
+		.index("by_expires", ["expiresAt"]),
+
+	// Portal sessions — one row per active device session (PORTAL-03,
+	// multi-device allowed; revocation by jti).
+	portalSessions: defineTable({
+		orgId: v.id("organizations"),
+		clientId: v.id("clients"),
+		clientContactId: v.id("clientContacts"),
+		// Mirror of clients.portalAccessId at issue time.
+		clientPortalId: v.string(),
+		// Unique JWT ID for revocation lookup.
+		tokenJti: v.string(),
+		createdAt: v.number(),
+		lastActivityAt: v.number(),
+		// createdAt + 24 * 60 * 60 * 1000 initially; sliding refresh updates.
+		expiresAt: v.number(),
+		userAgent: v.optional(v.string()),
+		// SHA-256 of the IP for audit without storing PII.
+		ipHash: v.optional(v.string()),
+	})
+		.index("by_contact", ["clientContactId"])
+		.index("by_jti", ["tokenJti"])
+		.index("by_expires", ["expiresAt"]),
+
+	// Stripe Connect webhook event ledger.
+	stripeWebhookEvents: defineTable({
+		stripeEventId: v.string(),
+		eventType: v.string(),
+		accountId: v.optional(v.string()),
+		status: v.union(
+			v.literal("received"),
+			v.literal("processing"),
+			v.literal("processed"),
+			v.literal("failed")
+		),
+		receivedAt: v.number(),
+		processedAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()),
+		failureReason: v.optional(v.string()),
+		attemptCount: v.number(),
+	})
+		.index("by_stripe_event_id", ["stripeEventId"])
+		.index("by_status", ["status"]),
 });

@@ -1,12 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import {
-	Authenticated,
-	AuthLoading,
-	ConvexReactClient,
-	Unauthenticated,
-} from "convex/react";
+import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useAuth } from "@clerk/nextjs";
 import { env } from "@/env";
@@ -18,14 +13,14 @@ export default function ConvexClientProvider({
 }: {
 	children: ReactNode;
 }) {
-	// AuthLoading branch keeps the subtree mounted while Clerk rotates tokens
-	// (e.g., during setActive); without it, neither Authenticated nor Unauthenticated
-	// matched and the workspace tree unmounted mid-flow.
+	// Render children unconditionally — gating on Authenticated/AuthLoading/
+	// Unauthenticated remounts the workspace subtree on every auth transition
+	// (e.g. setActive during org switch), causing two flashes. useQuery already
+	// returns undefined while auth is in flight, and middleware blocks
+	// unauthenticated access to workspace routes.
 	return (
 		<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-			<Authenticated>{children}</Authenticated>
-			<AuthLoading>{children}</AuthLoading>
-			<Unauthenticated>{children}</Unauthenticated>
+			{children}
 		</ConvexProviderWithClerk>
 	);
 }

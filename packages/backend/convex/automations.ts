@@ -2,6 +2,7 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { userMutation, userQuery } from "./lib/factories";
 
 /**
  * Workflow Automation operations with embedded CRUD helpers
@@ -239,7 +240,7 @@ async function updateAutomationWithValidation(
 /**
  * Get all automations for the current user's organization
  */
-export const list = query({
+export const list = userQuery({
 	args: {},
 	handler: async (ctx): Promise<AutomationDocument[]> => {
 		const userOrgId = await getCurrentUserOrgId(ctx);
@@ -257,7 +258,7 @@ export const list = query({
 /**
  * Get all active automations for the current user's organization
  */
-export const listActive = query({
+export const listActive = userQuery({
 	args: {},
 	handler: async (ctx): Promise<AutomationDocument[]> => {
 		const userOrgId = await getCurrentUserOrgId(ctx);
@@ -276,7 +277,7 @@ export const listActive = query({
 /**
  * Get a specific automation by ID
  */
-export const get = query({
+export const get = userQuery({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationDocument | null> => {
 		return await getAutomationWithOrgValidation(ctx, args.id);
@@ -286,7 +287,7 @@ export const get = query({
 /**
  * Create a new automation
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
@@ -348,7 +349,7 @@ export const create = mutation({
 /**
  * Update an automation
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("workflowAutomations"),
 		name: v.optional(v.string()),
@@ -438,7 +439,7 @@ export const update = mutation({
 /**
  * Toggle an automation's active status
  */
-export const toggleActive = mutation({
+export const toggleActive = userMutation({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationId> => {
 		const automation = await getAutomationOrThrow(ctx, args.id);
@@ -455,7 +456,7 @@ export const toggleActive = mutation({
 /**
  * Delete an automation (hard delete)
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationId> => {
 		await getAutomationOrThrow(ctx, args.id); // Validate access
@@ -478,7 +479,7 @@ export const remove = mutation({
 /**
  * Get execution logs for an automation
  */
-export const getExecutions = query({
+export const getExecutions = userQuery({
 	args: {
 		automationId: v.id("workflowAutomations"),
 		limit: v.optional(v.number()),

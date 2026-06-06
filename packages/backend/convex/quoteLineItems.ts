@@ -1,9 +1,9 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { filterUndefined, requireUpdates } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import {
 	validateQuoteLineItemFields,
 	calculateQuoteLineItemAmount,
@@ -12,10 +12,12 @@ import {
 	sortLineItems,
 	calculateLineItemStats,
 	validateQuoteAccess,
-	getLineItemWithValidation,
-	getLineItemOrThrow,
 	validateBulkLineItems,
 } from "./lib/lineItems";
+import {
+	optionalUserQuery,
+	userMutation,
+} from "./lib/factories";
 
 /**
  * Quote Line Item operations
@@ -30,40 +32,6 @@ import {
 
 type QuoteLineItemDocument = Doc<"quoteLineItems">;
 type QuoteLineItemId = Id<"quoteLineItems">;
-
-// ============================================================================
-// Local Helper Functions (entity-specific wrappers)
-// ============================================================================
-
-/**
- * Get a quote line item with org validation (wrapper for shared utility)
- */
-async function getQuoteLineItemWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"quoteLineItems">
-): Promise<Doc<"quoteLineItems"> | null> {
-	return await getLineItemWithValidation(
-		ctx,
-		"quoteLineItems",
-		id,
-		"Quote line item"
-	);
-}
-
-/**
- * Get a quote line item, throwing if not found (wrapper for shared utility)
- */
-async function getQuoteLineItemOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"quoteLineItems">
-): Promise<Doc<"quoteLineItems">> {
-	return await getLineItemOrThrow(
-		ctx,
-		"quoteLineItems",
-		id,
-		"Quote line item"
-	);
-}
 
 /**
  * Create a quote line item with automatic orgId assignment
@@ -90,10 +58,10 @@ async function createLineItemWithOrg(
 /**
  * Get all line items for a specific quote
  */
-export const listByQuote = query({
+export const listByQuote = optionalUserQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteLineItemDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		await validateQuoteAccess(ctx, args.quoteId, orgId);
@@ -110,10 +78,10 @@ export const listByQuote = query({
 /**
  * Get all line items for the current user's organization
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<QuoteLineItemDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		return await ctx.db
@@ -127,13 +95,29 @@ export const list = query({
  * Get a specific quote line item by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("quoteLineItems") },
 	handler: async (ctx, args): Promise<QuoteLineItemDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return null;
 
-		return await getQuoteLineItemWithValidation(ctx, args.id);
+		try {
+			return await ctx.orgEntity("quoteLineItems", args.id);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in quoteLineItems")
+			) {
+				return null;
+			}
+			if (
+				error instanceof Error &&
+				error.message.includes("does not belong to your organization")
+			) {
+				throw new Error("Quote line item does not belong to your organization");
+			}
+			throw error;
+		}
 	},
 });
 
@@ -141,10 +125,10 @@ export const get = query({
  * Get quote line item statistics
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				totalItems: 0,
@@ -182,7 +166,7 @@ export const getStats = query({
  * Create a new quote line item
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		quoteId: v.id("quotes"),
 		description: v.string(),
@@ -211,7 +195,7 @@ export const create = mutation({
 /**
  * Update a quote line item
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("quoteLineItems"),
 		quoteId: v.optional(v.id("quotes")),
@@ -233,7 +217,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current line item
-		const currentLineItem = await getQuoteLineItemOrThrow(ctx, id);
+		const currentLineItem = await ctx.orgEntity("quoteLineItems", id);
 
 		// Validate new quoteId if changing
 		if (filteredUpdates.quoteId) {
@@ -258,10 +242,10 @@ export const update = mutation({
 /**
  * Delete a quote line item
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("quoteLineItems") },
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
-		await getQuoteLineItemOrThrow(ctx, args.id);
+		await ctx.orgEntity("quoteLineItems", args.id);
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -270,7 +254,7 @@ export const remove = mutation({
 /**
  * Bulk create quote line items
  */
-export const bulkCreate = mutation({
+export const bulkCreate = userMutation({
 	args: {
 		quoteId: v.id("quotes"),
 		lineItems: v.array(
@@ -319,7 +303,7 @@ export const bulkCreate = mutation({
  * Reorder quote line items
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const reorder = mutation({
+export const reorder = userMutation({
 	args: {
 		quoteId: v.id("quotes"),
 		lineItemIds: v.array(v.id("quoteLineItems")),
@@ -329,7 +313,10 @@ export const reorder = mutation({
 
 		// Validate that all line items belong to the quote and update sort order
 		for (let i = 0; i < args.lineItemIds.length; i++) {
-			const lineItem = await getQuoteLineItemOrThrow(ctx, args.lineItemIds[i]);
+			const lineItem = await ctx.orgEntity(
+				"quoteLineItems",
+				args.lineItemIds[i]
+			);
 			if (lineItem.quoteId !== args.quoteId) {
 				throw new Error("All line items must belong to the specified quote");
 			}
@@ -342,10 +329,10 @@ export const reorder = mutation({
  * Duplicate a quote line item
  */
 // TODO: Candidate for deletion if confirmed unused.
-export const duplicate = mutation({
+export const duplicate = userMutation({
 	args: { id: v.id("quoteLineItems") },
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
-		const originalItem = await getQuoteLineItemOrThrow(ctx, args.id);
+		const originalItem = await ctx.orgEntity("quoteLineItems", args.id);
 
 		// Get all items for the quote to determine next sort order
 		const allItems = await ctx.db

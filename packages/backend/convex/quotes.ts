@@ -1,13 +1,12 @@
 import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
 import { BusinessUtils } from "./lib/shared";
+import { calculateQuoteTotals } from "./lib/quoteTotals";
 import {
-	getEntityWithOrgValidation,
-	getEntityOrThrow,
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
@@ -15,6 +14,12 @@ import {
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	optionalUserQuery,
+	userMutation,
+	userQuery,
+	type UserMutationCtx,
+} from "./lib/factories";
 
 /**
  * Quote operations
@@ -27,26 +32,6 @@ import { computeFieldChanges } from "./lib/changeTracking";
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
-
-/**
- * Get a quote with org validation (wrapper for shared utility)
- */
-async function getQuoteWithValidation(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"quotes">
-): Promise<Doc<"quotes"> | null> {
-	return await getEntityWithOrgValidation(ctx, "quotes", id, "Quote");
-}
-
-/**
- * Get a quote, throwing if not found (wrapper for shared utility)
- */
-async function getQuoteOrThrow(
-	ctx: QueryCtx | MutationCtx,
-	id: Id<"quotes">
-): Promise<Doc<"quotes">> {
-	return await getEntityOrThrow(ctx, "quotes", id, "Quote");
-}
 
 /**
  * Validate client access (wrapper for shared utility)
@@ -74,55 +59,6 @@ async function validateProjectAccess(
 		"Project",
 		existingOrgId
 	);
-}
-
-/**
- * Calculate quote totals based on line items
- */
-async function calculateQuoteTotals(
-	ctx: QueryCtx | MutationCtx,
-	quoteId: Id<"quotes">,
-	options?: {
-		discountEnabled?: boolean;
-		discountAmount?: number;
-		discountType?: "percentage" | "fixed";
-		taxEnabled?: boolean;
-		taxRate?: number;
-	}
-): Promise<{ subtotal: number; taxAmount: number; total: number }> {
-	// Get all line items for the quote
-	const lineItems = await ctx.db
-		.query("quoteLineItems")
-		.withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
-		.collect();
-
-	// Calculate subtotal
-	const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
-
-	// Apply discount if enabled
-	let discountedSubtotal = subtotal;
-	if (options?.discountEnabled && options.discountAmount) {
-		discountedSubtotal = BusinessUtils.applyDiscount(
-			subtotal,
-			options.discountAmount,
-			options.discountType === "percentage"
-		);
-	}
-
-	// Calculate tax
-	let taxAmount = 0;
-	if (options?.taxEnabled && options.taxRate) {
-		taxAmount = BusinessUtils.calculateTax(discountedSubtotal, options.taxRate);
-	}
-
-	// Calculate total
-	const total = discountedSubtotal + taxAmount;
-
-	return {
-		subtotal,
-		taxAmount,
-		total,
-	};
 }
 
 /**
@@ -177,27 +113,25 @@ async function generateNextQuoteNumber(
  * Create a quote with automatic orgId assignment
  */
 async function createQuoteWithOrg(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	data: Omit<Doc<"quotes">, "_id" | "_creationTime" | "orgId">
 ): Promise<Id<"quotes">> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-
 	// Validate client access
-	await validateClientAccess(ctx, data.clientId);
+	await validateClientAccess(ctx, data.clientId, ctx.orgId);
 
 	// Validate project access if provided
 	if (data.projectId) {
-		await validateProjectAccess(ctx, data.projectId);
+		await validateProjectAccess(ctx, data.projectId, ctx.orgId);
 	}
 
 	// Auto-generate quote number if not provided
 	const quoteNumber =
-		data.quoteNumber || (await generateNextQuoteNumber(ctx, userOrgId));
+		data.quoteNumber || (await generateNextQuoteNumber(ctx, ctx.orgId));
 
 	const quoteData = {
 		...data,
 		quoteNumber,
-		orgId: userOrgId,
+		orgId: ctx.orgId,
 	};
 
 	return await ctx.db.insert("quotes", quoteData);
@@ -207,21 +141,21 @@ async function createQuoteWithOrg(
  * Update a quote with validation
  */
 async function updateQuoteWithValidation(
-	ctx: MutationCtx,
+	ctx: UserMutationCtx,
 	id: Id<"quotes">,
 	updates: Partial<Doc<"quotes">>
 ): Promise<void> {
 	// Validate quote exists and belongs to user's org
-	await getQuoteOrThrow(ctx, id);
+	await ctx.orgEntity("quotes", id);
 
 	// Validate new client if being updated
 	if (updates.clientId) {
-		await validateClientAccess(ctx, updates.clientId);
+		await validateClientAccess(ctx, updates.clientId, ctx.orgId);
 	}
 
 	// Validate new project if being updated
 	if (updates.projectId) {
-		await validateProjectAccess(ctx, updates.projectId);
+		await validateProjectAccess(ctx, updates.projectId, ctx.orgId);
 	}
 
 	// Update the quote
@@ -252,7 +186,7 @@ interface QuoteStats {
  * Get all quotes for the current user's organization with calculated totals
  * Optimized to avoid N+1 query problem by batching line item fetches
  */
-export const list = query({
+export const list = optionalUserQuery({
 	args: {
 		status: v.optional(
 			v.union(
@@ -267,7 +201,7 @@ export const list = query({
 		projectId: v.optional(v.id("projects")),
 	},
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		let quotes: QuoteDocument[];
@@ -360,14 +294,21 @@ export const list = query({
 /**
  * Get a specific quote by ID with calculated totals from line items
  */
-export const get = query({
+export const get = optionalUserQuery({
 	args: { id: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteDocument | null> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return null;
 
-		const quote = await getQuoteWithValidation(ctx, args.id);
-		if (!quote) return null;
+		let quote: QuoteDocument;
+		try {
+			quote = await ctx.orgEntity("quotes", args.id);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Entity not found in quotes:")) {
+				return null;
+			}
+			throw error;
+		}
 
 		// Calculate totals from line items
 		const calculatedTotals = await calculateQuoteTotals(ctx, args.id, {
@@ -391,7 +332,7 @@ export const get = query({
 /**
  * Create a new quote
  */
-export const create = mutation({
+export const create = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		projectId: v.optional(v.id("projects")),
@@ -476,7 +417,7 @@ export const create = mutation({
 /**
  * Update a quote
  */
-export const update = mutation({
+export const update = userMutation({
 	args: {
 		id: v.id("quotes"),
 		clientId: v.optional(v.id("clients")),
@@ -573,7 +514,7 @@ export const update = mutation({
 		requireUpdates(filteredUpdates);
 
 		// Get current quote to check for status changes
-		const currentQuote = await getQuoteOrThrow(ctx, id);
+		const currentQuote = await ctx.orgEntity("quotes", id);
 		const oldStatus = currentQuote.status;
 
 		// Compute field-level changes before applying the update
@@ -669,10 +610,10 @@ export const update = mutation({
 /**
  * Recalculate quote totals based on line items
  */
-export const recalculateTotals = mutation({
+export const recalculateTotals = userMutation({
 	args: { id: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteId> => {
-		const quote = await getQuoteOrThrow(ctx, args.id);
+		const quote = await ctx.orgEntity("quotes", args.id);
 
 		const totals = await calculateQuoteTotals(ctx, args.id, {
 			discountEnabled: quote.discountEnabled,
@@ -695,7 +636,7 @@ export const recalculateTotals = mutation({
 /**
  * Delete a quote with relationship validation
  */
-export const remove = mutation({
+export const remove = userMutation({
 	args: { id: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteId> => {
 		// Check if quote has related invoices
@@ -722,7 +663,7 @@ export const remove = mutation({
 		}
 
 		// Get quote and remove from aggregates before deleting
-		const quote = await getQuoteOrThrow(ctx, args.id); // Validate access
+		const quote = await ctx.orgEntity("quotes", args.id); // Validate access
 		await AggregateHelpers.removeQuote(ctx, quote as QuoteDocument);
 		await ctx.db.delete(args.id);
 
@@ -733,7 +674,7 @@ export const remove = mutation({
 /**
  * Search quotes
  */
-export const search = query({
+export const search = optionalUserQuery({
 	args: {
 		query: v.string(),
 		status: v.optional(
@@ -748,7 +689,7 @@ export const search = query({
 		clientId: v.optional(v.id("clients")),
 	},
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		let quotes = await ctx.db
@@ -784,10 +725,10 @@ export const search = query({
 /**
  * Get quote statistics for dashboard
  */
-export const getStats = query({
+export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<QuoteStats> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return {
 				total: 0,
@@ -874,10 +815,10 @@ export const getStats = query({
 /**
  * Get sent quotes expiring or already expired within the next 7 days
  */
-export const getAwaitingSigning = query({
+export const getAwaitingSigning = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return [];
 
 		const now = Date.now();
@@ -900,10 +841,10 @@ export const getAwaitingSigning = query({
 /**
  * Get quotes expiring soon
  */
-export const getExpiringSoon = query({
+export const getExpiringSoon = optionalUserQuery({
 	args: { days: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 
 		const daysAhead = args.days || 7;
@@ -923,5 +864,87 @@ export const getExpiringSoon = query({
 				quote.validUntil <= expirationThreshold &&
 				quote.validUntil > now
 		);
+	},
+});
+
+/**
+ * Plan 14.1-02 (QUOTE-04 workspace half): read the portal-quote audit trail.
+ * Org-scoped. Returns rows newest-first; mints fresh signed URLs per row for
+ * both the signature blob and the audit-pinned PDF document.
+ *
+ * Per-row defense-in-depth: row.orgId, contact.orgId, and document.orgId are
+ * all validated against the caller's orgId — corrupted cross-org rows are
+ * dropped, not leaked. Audit-pinned PDF resolves from row.documentId (NOT
+ * quote.latestDocumentId) so re-published quotes still surface the version
+ * the client actually approved.
+ */
+export const getApprovalAudit = userQuery({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		const orgId = await getCurrentUserOrgId(ctx);
+
+		const quote = await ctx.db.get(quoteId);
+		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
+		if (quote.orgId !== orgId)
+			throw new ConvexError({ code: "FORBIDDEN" });
+
+		const rows = await ctx.db
+			.query("quoteApprovals")
+			.withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
+			.order("desc")
+			.collect();
+
+		const dtos = await Promise.all(
+			rows.map(async (row) => {
+				// Defense-in-depth check 1: row.orgId
+				if (row.orgId !== orgId) return null;
+
+				// Defense-in-depth check 2: contact.orgId
+				const contact = await ctx.db.get(row.clientContactId);
+				if (!contact || contact.orgId !== orgId) return null;
+
+				// Defense-in-depth check 3: auditPinnedDoc.orgId — drop rows
+				// whose pinned document is foreign (also covers missing doc).
+				const auditPinnedDoc = await ctx.db.get(row.documentId);
+				if (!auditPinnedDoc || auditPinnedDoc.orgId !== orgId)
+					return null;
+
+				const auditPinnedPdfUrl = await ctx.storage.getUrl(
+					auditPinnedDoc.storageId
+				);
+
+				const signatureUrl = row.signatureStorageId
+					? await ctx.storage.getUrl(row.signatureStorageId)
+					: null;
+
+				// Empty-snapshot normalization (Test F + user decision D-2):
+				// surface null so the UI placeholder branch fires cleanly.
+				const snapshot =
+					row.lineItemsSnapshot && row.lineItemsSnapshot.length > 0
+						? row.lineItemsSnapshot
+						: null;
+
+				return {
+					auditId: row._id,
+					action: row.action,
+					createdAt: row.createdAt,
+					documentVersion: row.documentVersion,
+					ipAddress: row.ipAddress,
+					userAgent: row.userAgent,
+					declineReason: row.declineReason ?? null,
+					signatureUrl,
+					signatureMode: row.signatureMode ?? null,
+					contactEmail: contact.email ?? "",
+					documentId: row.documentId,
+					auditPinnedPdfUrl,
+					lineItemsSnapshot: snapshot,
+					subtotalSnapshot: row.subtotalSnapshot,
+					taxSnapshot: row.taxSnapshot,
+					totalSnapshot: row.totalSnapshot,
+				};
+			})
+		);
+
+		return dtos.filter((d): d is NonNullable<typeof d> => d !== null);
 	},
 });

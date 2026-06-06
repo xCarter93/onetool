@@ -1,9 +1,11 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { ConvexError } from "convex/values";
 import {
 	verifySvixWebhook,
 	verifyBoldSignWebhook,
+	verifyStripeWebhook,
 	webhookSuccess,
 	webhookError,
 	webhookUnauthorized,
@@ -660,6 +662,169 @@ http.route({
 		} catch (error) {
 			console.error("Error processing Resend webhook:", error);
 			return webhookError(500, "Internal Server Error");
+		}
+	}),
+});
+
+/**
+ * Stripe Connect webhook endpoint.
+ * Signature failures return 400; dispatch failures return 500 so Stripe retries.
+ */
+http.route({
+	path: "/stripe-webhook",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+		if (!secret) {
+			console.error("STRIPE_CONNECT_WEBHOOK_SECRET not configured");
+			return webhookError(500, "Webhook verification not configured");
+		}
+
+		const verification = await verifyStripeWebhook(request, secret);
+		if (!verification.valid || !verification.payload) {
+			console.error(
+				"Stripe webhook verification failed:",
+				verification.error
+			);
+			return webhookBadRequest(`Webhook Error: ${verification.error}`);
+		}
+
+		const event = verification.payload as {
+			id: string;
+			type: string;
+			account?: string | null;
+			created: number;
+			data: { object: Record<string, unknown> };
+		};
+
+		logWebhookReceived("Stripe", event.type, event.id);
+
+		try {
+			const result = await ctx.runAction(
+				internal.stripeWebhookActions.handleEvent,
+				{
+					eventId: event.id,
+					eventType: event.type,
+					account: event.account ?? null,
+					created: event.created,
+					data: event.data,
+				}
+			);
+			logWebhookSuccess("Stripe", event.type, event.id);
+			return new Response(
+				JSON.stringify({ received: true, ...result }),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		} catch (error) {
+			logWebhookError("Stripe", event.type, error, event.id);
+			// Return 500 so Stripe retries transient processing failures.
+			return webhookError(500, "Internal error processing webhook");
+		}
+	}),
+});
+
+// Server-to-server OTP request endpoint. Next.js derives the IP hash and gates
+// access with the shared portal secret before this invokes the internal mutation.
+
+function constantTimeEqual(a: string, b: string): boolean {
+	if (a.length !== b.length) return false;
+	let diff = 0;
+	for (let i = 0; i < a.length; i++) {
+		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	}
+	return diff === 0;
+}
+
+http.route({
+	path: "/portal/otp/request",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const expected = process.env.PORTAL_OTP_REQUEST_SECRET;
+		if (!expected) {
+			// Misconfiguration: fail closed.
+			return new Response(
+				JSON.stringify({ error: "Portal misconfigured" }),
+				{
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		}
+		const presented = request.headers.get("x-portal-secret") ?? "";
+		if (!constantTimeEqual(presented, expected)) {
+			return new Response(JSON.stringify({ error: "Unauthorized" }), {
+				status: 401,
+				headers: { "Content-Type": "application/json" },
+			});
+		}
+
+		let body: {
+			clientPortalId?: unknown;
+			email?: unknown;
+			ipHash?: unknown;
+		};
+		try {
+			body = (await request.json()) as typeof body;
+		} catch {
+			return new Response(
+				JSON.stringify({ error: "Invalid JSON body" }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		}
+
+		const clientPortalId =
+			typeof body.clientPortalId === "string" ? body.clientPortalId : "";
+		const email = typeof body.email === "string" ? body.email : "";
+		const ipHash = typeof body.ipHash === "string" ? body.ipHash : "";
+		if (!clientPortalId || !email || !email.includes("@") || !ipHash) {
+			return new Response(
+				JSON.stringify({ error: "Enter a valid email address." }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		}
+
+		try {
+			await ctx.runMutation(internal.portal.otp.requestOtp, {
+				clientPortalId,
+				email,
+				ipHash,
+			});
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
+		} catch (err) {
+			if (err instanceof ConvexError) {
+				const data = err.data as { code?: string; retryAfter?: number };
+				if (data.code === "OTP_RATE_LIMITED") {
+					return new Response(
+						JSON.stringify({
+							error: "Too many requests. Try again in a few minutes.",
+							code: data.code,
+							retryAfter: data.retryAfter,
+						}),
+						{
+							status: 429,
+							headers: {
+								"Content-Type": "application/json",
+							},
+						},
+					);
+				}
+			}
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
 		}
 	}),
 });

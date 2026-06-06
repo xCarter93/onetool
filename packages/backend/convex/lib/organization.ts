@@ -6,6 +6,7 @@
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Id, Doc } from "../_generated/dataModel";
 import { getCurrentUserOrgId } from "./auth";
+import { getOptionalOrgId } from "./queries";
 
 /**
  * Organization context with commonly needed fields
@@ -26,7 +27,7 @@ export interface OrganizationContext {
 export async function getOrgTimezone(
 	ctx: QueryCtx | MutationCtx
 ): Promise<string | undefined> {
-	const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+	const userOrgId = await getOptionalOrgId(ctx);
 	if (!userOrgId) {
 		return undefined;
 	}
@@ -61,7 +62,7 @@ export async function getOrgTimezoneById(
 export async function getOrgContext(
 	ctx: QueryCtx | MutationCtx
 ): Promise<OrganizationContext | null> {
-	const userOrgId = await getCurrentUserOrgId(ctx, { require: false });
+	const userOrgId = await getOptionalOrgId(ctx);
 	if (!userOrgId) {
 		return null;
 	}

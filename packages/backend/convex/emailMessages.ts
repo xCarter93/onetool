@@ -2,11 +2,12 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
  * List emails sent to a specific client
  */
-export const listByClient = query({
+export const listByClient = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
@@ -28,7 +29,7 @@ export const listByClient = query({
 /**
  * Get a specific email by Resend email ID
  */
-export const getByResendId = query({
+export const getByResendId = optionalUserQuery({
 	args: {
 		resendEmailId: v.string(),
 	},
@@ -54,7 +55,7 @@ export const getByResendId = query({
 /**
  * Get recent email activities for the organization
  */
-export const getRecentEmails = query({
+export const getRecentEmails = optionalUserQuery({
 	args: {
 		limit: v.optional(v.number()),
 	},
@@ -73,7 +74,7 @@ export const getRecentEmails = query({
 /**
  * Count unread/unopened emails for a client
  */
-export const countUnopened = query({
+export const countUnopened = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
@@ -110,7 +111,7 @@ export const countUnopened = query({
 /**
  * Get email statistics for a client
  */
-export const getClientEmailStats = query({
+export const getClientEmailStats = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
@@ -148,7 +149,7 @@ export const getClientEmailStats = query({
  * Get a single email thread with all messages
  * Matches by threadId OR by subject (for when threadIds don't match due to batch ID issues)
  */
-export const getEmailThread = query({
+export const getEmailThread = optionalUserQuery({
 	args: {
 		threadId: v.string(),
 	},
@@ -243,7 +244,7 @@ export interface EmailThreadSummary {
 /**
  * List email threads for a client (grouped conversations)
  */
-export const listThreadsByClient = query({
+export const listThreadsByClient = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
@@ -305,7 +306,7 @@ export const listThreadsByClient = query({
 /**
  * Get an email with its attachments
  */
-export const getEmailWithAttachments = query({
+export const getEmailWithAttachments = optionalUserQuery({
 	args: {
 		emailMessageId: v.id("emailMessages"),
 	},

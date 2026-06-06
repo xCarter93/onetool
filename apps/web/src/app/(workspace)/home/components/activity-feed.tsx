@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaginationControls } from "@/components/ui/pagination";
 import { Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 type TimeFilter = "1d" | "3d" | "7d" | "2w";
 
@@ -29,6 +30,7 @@ export default function ActivityFeed({
 }: ActivityFeedProps) {
 	const [selectedFilter, setSelectedFilter] = useState<TimeFilter>("7d");
 	const [currentPage, setCurrentPage] = useState(1);
+	const isOrgSwitching = useIsOrgSwitching();
 
 	// Fetch all recent activities from Convex (no backend filtering)
 	const allActivities = useQuery(api.activities.getRecent, {
@@ -63,7 +65,7 @@ export default function ActivityFeed({
 		return filteredActivities.slice(startIndex, endIndex);
 	}, [filteredActivities, currentPage, itemsPerPage]);
 
-	const isLoading = allActivities === undefined;
+	const isLoading = isOrgSwitching || allActivities === undefined;
 
 	// Reset to page 1 when filter changes
 	const handleFilterChange = (newFilter: TimeFilter) => {
