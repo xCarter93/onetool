@@ -24,6 +24,7 @@ export const updateStatuses = internalMutation({
 
 			if (existing) {
 				await ctx.db.patch(existing._id, {
+					provider: service.provider,
 					status: service.status as
 						| "operational"
 						| "degraded"
