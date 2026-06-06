@@ -52,6 +52,16 @@ export const updateStatuses = internalMutation({
 				});
 			}
 		}
+
+		// Remove rows no longer reported (e.g. the retired convex_database /
+		// convex_functions entries) so the UI doesn't show stale services.
+		const validNames = new Set(args.services.map((s) => s.name));
+		const all = await ctx.db.query("serviceStatus").collect();
+		for (const row of all) {
+			if (!validNames.has(row.serviceName)) {
+				await ctx.db.delete(row._id);
+			}
+		}
 	},
 });
 
