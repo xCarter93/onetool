@@ -5,7 +5,10 @@ import { ExternalLink } from "lucide-react";
 
 const LINKS: { href: string; label: string }[] = [
 	{ href: "https://docs.stripe.com/connect", label: "Stripe Connect overview" },
-	{ href: "https://docs.stripe.com/connect/charges", label: "How Connect charges work" },
+	{
+		href: "https://docs.stripe.com/connect/charges",
+		label: "How Connect charges work",
+	},
 	{
 		href: "https://docs.stripe.com/connect/account-capabilities",
 		label: "Account capabilities",
@@ -17,19 +20,27 @@ const LINKS: { href: string; label: string }[] = [
 
 export function StripeDocLinks() {
 	return (
-		<section aria-label="Stripe documentation" className="space-y-3">
-			<h3 className="text-lg font-semibold text-foreground">Learn more</h3>
-			<ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+		<section aria-label="Stripe documentation" className="space-y-1">
+			<div className="pb-1">
+				<h3 className="text-lg font-semibold text-foreground">Learn more</h3>
+				<p className="text-[12.5px] text-muted-foreground">
+					Stripe documentation, opens in a new tab.
+				</p>
+			</div>
+			<ul>
 				{LINKS.map((link) => (
-					<li key={link.href} className="flex items-center gap-1.5">
-						<ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+					<li key={link.href}>
 						<a
 							href={link.href}
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-sm text-primary hover:text-primary/80 transition-colors"
+							className="group flex items-center justify-between gap-2.5 border-t border-border/60 py-2.5 text-[13.5px] font-medium text-foreground transition-colors hover:text-primary"
 						>
-							{link.label}
+							<span>{link.label}</span>
+							<ExternalLink
+								className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-primary"
+								aria-hidden="true"
+							/>
 						</a>
 					</li>
 				))}

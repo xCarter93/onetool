@@ -24,6 +24,7 @@ import {
 	ExternalLink,
 	Globe,
 	ChevronDown,
+	Wallet,
 } from "lucide-react";
 import {
 	ConnectPayouts,
@@ -47,8 +48,9 @@ import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { StripeConnectProvider } from "@/components/stripe/StripeConnectProvider";
 import {
-	LinkedBankAccountRow,
-	MoneyFlowDiagram,
+	ConnectionStatusStrip,
+	PaymentsFlow,
+	RequirementsSummary,
 	FeeDisclosureTable,
 	StripeDocLinks,
 } from "@/components/stripe/payments-tab";
@@ -226,34 +228,6 @@ function OnboardingButton({
 
 // Inline status pill — dot + label/value. Screen readers get the full "label: value" phrasing,
 // so the color dot is purely decorative (WCAG: don't rely on color alone).
-function StatusPill({
-	label,
-	value,
-	trueText = "Yes",
-	falseText = "No",
-}: {
-	label: string;
-	value: boolean;
-	trueText?: string;
-	falseText?: string;
-}) {
-	const dotClass = value
-		? "bg-emerald-500 dark:bg-emerald-400"
-		: "bg-amber-500 dark:bg-amber-400";
-	const valueText = value ? trueText : falseText;
-	return (
-		<span
-			className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 dark:bg-muted/20 px-2.5 py-0.5 text-xs font-medium text-foreground"
-			aria-label={`${label}: ${valueText}`}
-		>
-			<span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-			<span aria-hidden="true" className="text-muted-foreground">{label}</span>
-			<span aria-hidden="true">·</span>
-			<span aria-hidden="true">{valueText}</span>
-		</span>
-	);
-}
-
 export default function OrganizationProfilePage() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
@@ -1117,13 +1091,10 @@ export default function OrganizationProfilePage() {
 								<section className="space-y-4">
 									<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 										<div className="space-y-2">
-											<div className="flex items-center gap-3">
-												<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-												<h2 className="text-2xl font-semibold text-foreground tracking-tight">
-													Payments (Stripe Connect)
-												</h2>
-											</div>
-											<p className="text-muted-foreground ml-5 leading-relaxed max-w-2xl">
+											<h2 className="text-2xl font-semibold text-foreground tracking-tight">
+												Payments (Stripe Connect)
+											</h2>
+											<p className="text-muted-foreground leading-relaxed max-w-2xl">
 												Onboard to Stripe to accept payments on behalf of your
 												organization. Status is fetched live from Stripe each
 												time you refresh this tab.
@@ -1184,66 +1155,38 @@ export default function OrganizationProfilePage() {
 									</section>
 								) : (
 									<>
-										{/* Account header strip: identity + status pills + bank row */}
+										{/* Consolidated connection-status strip */}
 										<section className="border-t border-border/40 pt-8">
-											<div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-												<div className="space-y-1 min-w-0">
-													<p className="text-xs uppercase tracking-wide text-muted-foreground">
-														Connected Account
-													</p>
-													<p className="font-mono text-sm text-foreground break-all">
-														{organization.stripeConnectAccountId}
-													</p>
-												</div>
-
-												<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-													<StatusPill
-														label="Details submitted"
-														value={Boolean(stripeStatus?.detailsSubmitted)}
-														trueText="Yes"
-														falseText="Pending"
-													/>
-													<StatusPill
-														label="Charges enabled"
-														value={Boolean(stripeStatus?.chargesEnabled)}
-													/>
-													<StatusPill
-														label="Payouts enabled"
-														value={Boolean(stripeStatus?.payoutsEnabled)}
-													/>
-												</div>
-
-												<div className="lg:min-w-[280px] lg:max-w-[360px]">
-													<LinkedBankAccountRow
-														bankName={
-															organization.stripeExternalAccountBankName
-														}
-														last4={organization.stripeExternalAccountLast4}
-														updatedAt={
-															organization.stripeExternalAccountUpdatedAt
-														}
-														onChangeRequested={
-															onboardingComplete && isOwner
-																? () => {
-																		setPayoutsOpen(true);
-																		// Wait for the accordion panel to mount before scrolling.
-																		requestAnimationFrame(() => {
-																			document
-																				.getElementById("payouts-accordion-panel")
-																				?.scrollIntoView({
-																					behavior: "smooth",
-																					block: "start",
-																				});
+											<ConnectionStatusStrip
+												accountId={organization.stripeConnectAccountId}
+												detailsSubmitted={Boolean(
+													stripeStatus?.detailsSubmitted
+												)}
+												chargesEnabled={Boolean(stripeStatus?.chargesEnabled)}
+												payoutsEnabled={Boolean(stripeStatus?.payoutsEnabled)}
+												bankName={organization.stripeExternalAccountBankName}
+												last4={organization.stripeExternalAccountLast4}
+												updatedAt={organization.stripeExternalAccountUpdatedAt}
+												onChangeBank={
+													onboardingComplete && isOwner
+														? () => {
+																setPayoutsOpen(true);
+																// Wait for the accordion panel to mount before scrolling.
+																requestAnimationFrame(() => {
+																	document
+																		.getElementById("payouts-accordion-panel")
+																		?.scrollIntoView({
+																			behavior: "smooth",
+																			block: "start",
 																		});
-																	}
-																: undefined
-														}
-													/>
-												</div>
-											</div>
+																});
+															}
+														: undefined
+												}
+											/>
 										</section>
 
-										{/* Payouts (Stripe Connect embedded component) — full-width collapsible */}
+										{/* Payouts (Stripe Connect embedded component) — blended, collapsible */}
 										{onboardingComplete && isOwner && (
 											<section className="border-t border-border/40 pt-6">
 												<h3 id="payouts-accordion-header" className="sr-only">
@@ -1254,18 +1197,26 @@ export default function OrganizationProfilePage() {
 													onClick={() => setPayoutsOpen((v) => !v)}
 													aria-expanded={payoutsOpen}
 													aria-controls="payouts-accordion-panel"
-													className={`group flex w-full items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-5 py-4 text-left shadow-xs transition-all hover:border-foreground/20 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-														payoutsOpen ? "rounded-b-none border-b-transparent" : ""
-													}`}
+													className="group flex w-full items-center justify-between gap-4 rounded-lg text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 												>
-													<div className="min-w-0 space-y-1">
-														<p className="text-base font-semibold text-foreground">
-															Payouts
-														</p>
-														<p className="text-sm text-muted-foreground">
-															Payout schedule, history, and instant or manual
-															payouts.
-														</p>
+													<div className="flex min-w-0 items-center gap-3">
+														<span className="grid h-8 w-8 shrink-0 place-content-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+															<Wallet className="h-4 w-4" aria-hidden="true" />
+														</span>
+														<div className="min-w-0">
+															<div className="flex items-center gap-2">
+																<p className="text-base font-semibold text-foreground">
+																	Payouts
+																</p>
+																<span className="whitespace-nowrap rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+																	via Stripe
+																</span>
+															</div>
+															<p className="text-sm text-muted-foreground">
+																Payout schedule, history, and instant or manual
+																payouts.
+															</p>
+														</div>
 													</div>
 													<div className="flex shrink-0 items-center gap-2 text-sm font-medium text-muted-foreground group-hover:text-foreground">
 														<span className="hidden sm:inline">
@@ -1284,7 +1235,7 @@ export default function OrganizationProfilePage() {
 													role="region"
 													aria-labelledby="payouts-accordion-header"
 													hidden={!payoutsOpen}
-													className="rounded-b-lg border border-t-0 border-border bg-background px-5 pb-5 pt-2"
+													className="pt-4"
 												>
 													{payoutsOpen && (
 														<StripeConnectProvider
@@ -1315,56 +1266,24 @@ export default function OrganizationProfilePage() {
 											</section>
 										)}
 
-										{/* Main 2-column grid: requirements + fees + docs on left, money-flow on right */}
-										<div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-8 border-t border-border/40 pt-8">
-											{/* Left column */}
+										{/* Interactive money-flow — full width */}
+										<section className="border-t border-border/40 pt-8">
+											<PaymentsFlow
+												bankName={organization.stripeExternalAccountBankName}
+												last4={organization.stripeExternalAccountLast4}
+											/>
+										</section>
+
+										{/* Reference row: fees (wide) + requirements / learn-more rail */}
+										<div className="grid grid-cols-1 gap-x-10 gap-y-8 border-t border-border/40 pt-8 lg:grid-cols-[1.55fr_1fr] lg:items-start">
+											<FeeDisclosureTable />
 											<div className="space-y-8">
-												{/* Requirements */}
-												<section className="space-y-2">
-													<h3 className="text-lg font-semibold text-foreground">
-														Requirements
-													</h3>
-													{stripeStatus?.requirements?.currently_due?.length ? (
-														<ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-															{stripeStatus.requirements.currently_due.map(
-																(item) => (
-																	<li key={item}>{item}</li>
-																)
-															)}
-														</ul>
-													) : (
-														<p className="text-sm text-muted-foreground">
-															No outstanding requirements reported.
-														</p>
-													)}
-													<p className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
-														<AlertTriangle className="h-4 w-4" />
-														Status is always fetched directly from Stripe;
-														reload if you make changes in the dashboard.
-													</p>
-												</section>
-
-												<FeeDisclosureTable />
-
+												<RequirementsSummary
+													currentlyDue={
+														stripeStatus?.requirements?.currently_due ?? []
+													}
+												/>
 												<StripeDocLinks />
-											</div>
-
-											{/* Right column */}
-											<div className="space-y-8">
-												{/* How payments work */}
-												<section className="space-y-4">
-													<div>
-														<h3 className="text-lg font-semibold text-foreground">
-															How payments work
-														</h3>
-														<p className="text-sm text-muted-foreground max-w-2xl">
-															When a customer pays a OneTool invoice,
-															here&apos;s exactly where the money goes and
-															when it lands in your bank.
-														</p>
-													</div>
-													<MoneyFlowDiagram />
-												</section>
 											</div>
 										</div>
 									</>
