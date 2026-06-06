@@ -639,6 +639,57 @@ export const updateStripeConnectStatusInternal = systemMutation({
 });
 
 /**
+ * Self-heal cached Connect status + bank fingerprint from a live Stripe read.
+ *
+ * The cached fields gate the client portal (stripeChargesEnabled) and the
+ * Payments-tab bank row (stripeExternalAccountLast4), but they are only ever
+ * written by webhooks. Accounts onboarded before those handlers shipped never
+ * received the events, so the fields stay empty forever. The owner-authenticated
+ * /api/stripe-connect/status route now write-throughs here on every refresh.
+ */
+export const syncStripeConnectStatusFromLive = userMutation({
+	args: {
+		chargesEnabled: v.boolean(),
+		payoutsEnabled: v.boolean(),
+		detailsSubmitted: v.boolean(),
+		requirementsCurrentlyDue: v.array(v.string()),
+		bankLast4: v.optional(v.string()),
+		bankName: v.optional(v.union(v.string(), v.null())),
+		bankUpdatedAt: v.optional(v.number()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const organization = await ctx.db.get(ctx.orgId);
+		if (!organization) {
+			throw new Error("Organization not found");
+		}
+		// Owner-only: mirrors the route guard, defense in depth.
+		if (organization.ownerUserId !== ctx.user._id) {
+			throw new Error("Only the organization owner can sync Stripe status");
+		}
+
+		const patch: Record<string, unknown> = {
+			stripeChargesEnabled: args.chargesEnabled,
+			stripePayoutsEnabled: args.payoutsEnabled,
+			stripeDetailsSubmitted: args.detailsSubmitted,
+			stripeRequirementsCurrentlyDue: args.requirementsCurrentlyDue,
+			stripeStatusUpdatedAt: Date.now(),
+		};
+
+		// Only touch bank fields when Stripe returned an external account, so a
+		// transient external-account read miss never wipes a known bank.
+		if (args.bankLast4) {
+			patch.stripeExternalAccountLast4 = args.bankLast4;
+			patch.stripeExternalAccountBankName = args.bankName ?? undefined;
+			patch.stripeExternalAccountUpdatedAt = args.bankUpdatedAt ?? Date.now();
+		}
+
+		await ctx.db.patch(ctx.orgId, patch);
+		return null;
+	},
+});
+
+/**
  * Delete organization (owner only) - careful operation!
  */
 // TODO: Candidate for deletion if confirmed unused.
