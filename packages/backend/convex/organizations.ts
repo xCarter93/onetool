@@ -646,13 +646,18 @@ export const updateStripeConnectStatusInternal = systemMutation({
  * written by webhooks. Accounts onboarded before those handlers shipped never
  * received the events, so the fields stay empty forever. The owner-authenticated
  * /api/stripe-connect/status route now write-throughs here on every refresh.
+ *
+ * The stripeRequirements* fields are deliberately NOT written here. The webhook
+ * path (updateStripeConnectStatusInternal) writes them as v1 machine codes; the
+ * v2 status read this path is fed from only exposes human-readable descriptions
+ * and has no single disabled_reason. Persisting that would put two formats in
+ * one field depending on which path last wrote. Requirements stay webhook-owned.
  */
 export const syncStripeConnectStatusFromLive = userMutation({
 	args: {
 		chargesEnabled: v.boolean(),
 		payoutsEnabled: v.boolean(),
 		detailsSubmitted: v.boolean(),
-		requirementsCurrentlyDue: v.array(v.string()),
 		bankLast4: v.optional(v.string()),
 		bankName: v.optional(v.union(v.string(), v.null())),
 		bankUpdatedAt: v.optional(v.number()),
@@ -672,7 +677,6 @@ export const syncStripeConnectStatusFromLive = userMutation({
 			stripeChargesEnabled: args.chargesEnabled,
 			stripePayoutsEnabled: args.payoutsEnabled,
 			stripeDetailsSubmitted: args.detailsSubmitted,
-			stripeRequirementsCurrentlyDue: args.requirementsCurrentlyDue,
 			stripeStatusUpdatedAt: Date.now(),
 		};
 

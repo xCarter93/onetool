@@ -67,23 +67,33 @@ export async function POST() {
 			);
 		}
 
-		await fetchMutation(
-			api.organizations.syncStripeConnectStatusFromLive,
-			{
-				chargesEnabled: derived.chargesEnabled,
-				payoutsEnabled: derived.payoutsEnabled,
-				detailsSubmitted: derived.detailsSubmitted,
-				requirementsCurrentlyDue: derived.requirements?.currently_due ?? [],
-				...(bank
-					? {
-							bankLast4: bank.last4,
-							bankName: bank.bankName,
-							bankUpdatedAt: Date.now(),
-						}
-					: {}),
-			},
-			{ token: ctx.convexToken }
-		);
+		// Best-effort write-through: the route's contract is returning live
+		// status (it also auto-runs on tab focus), so a transient Convex error
+		// must not fail the read. The heal is idempotent and retried on every
+		// refresh, so a logged miss self-corrects on the next call.
+		try {
+			await fetchMutation(
+				api.organizations.syncStripeConnectStatusFromLive,
+				{
+					chargesEnabled: derived.chargesEnabled,
+					payoutsEnabled: derived.payoutsEnabled,
+					detailsSubmitted: derived.detailsSubmitted,
+					...(bank
+						? {
+								bankLast4: bank.last4,
+								bankName: bank.bankName,
+								bankUpdatedAt: Date.now(),
+							}
+						: {}),
+				},
+				{ token: ctx.convexToken }
+			);
+		} catch (cacheErr) {
+			console.error(
+				"[stripe-connect/status] cache write-through failed",
+				cacheErr
+			);
+		}
 
 		return NextResponse.json({
 			accountId: account.id,
