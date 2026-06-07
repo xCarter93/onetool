@@ -20,6 +20,7 @@ import {
 } from "lucide-react-native";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
 import { TaskItem } from "@/components/TaskItem";
+import { AppHeader } from "@/components/app-header";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface TaskData {
@@ -212,6 +213,7 @@ export default function TasksScreen() {
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={["bottom"]}
 		>
+			<AppHeader mode="root" title="Tasks" />
 			{/* Header Stats */}
 			{tasks.length > 0 && (
 				<View style={styles.statsBar}>

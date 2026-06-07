@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, ChevronRight, Building2, X } from "lucide-react-native";
 import { colors, fontFamily, radius, spacing } from "@/lib/theme";
 import { FABMenu } from "@/components/FABMenu";
+import { AppHeader } from "@/components/app-header";
 
 // Status config using primary color for active states
 const statusConfig = {
@@ -97,6 +98,7 @@ export default function ClientsScreen() {
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={["bottom"]}
 		>
+			<AppHeader mode="root" title="Clients" />
 			{/* Search Bar */}
 			<View style={styles.searchContainer}>
 				<View style={styles.searchBar}>

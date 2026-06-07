@@ -21,6 +21,7 @@ import {
 } from "lucide-react-native";
 import { colors, fontFamily, radius, spacing } from "@/lib/theme";
 import { FABMenu } from "@/components/FABMenu";
+import { AppHeader } from "@/components/app-header";
 
 // Status config using consistent colors
 const statusConfig = {
@@ -127,6 +128,7 @@ export default function ProjectsScreen() {
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={["bottom"]}
 		>
+			<AppHeader mode="detail" title="Work" />
 			{/* Search Bar */}
 			<View style={styles.searchContainer}>
 				<View style={styles.searchBar}>

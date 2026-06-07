@@ -38,6 +38,7 @@ import {
 	CalendarProject,
 } from "@/components/AppCalendar";
 import { FABMenu } from "@/components/FABMenu";
+import { AppHeader } from "@/components/app-header";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 export default function HomeScreen() {
@@ -247,6 +248,7 @@ export default function HomeScreen() {
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={["bottom"]}
 		>
+			<AppHeader mode="root" home />
 			<ScrollView
 				style={{ flex: 1 }}
 				contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}

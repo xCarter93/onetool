@@ -13,6 +13,7 @@ import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
+import { AppHeader } from "@/components/app-header";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/Card";
 import { EditableField } from "@/components/EditableField";
@@ -97,6 +98,7 @@ export default function ProjectDetailScreen() {
 				style={{ flex: 1, backgroundColor: colors.background }}
 				edges={["bottom"]}
 			>
+				<AppHeader mode="detail" />
 				<View style={styles.loadingContainer}>
 					<Text style={styles.loadingText}>Loading project...</Text>
 				</View>
@@ -126,6 +128,7 @@ export default function ProjectDetailScreen() {
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={["bottom"]}
 		>
+			<AppHeader mode="detail" />
 			<ScrollView
 				contentContainerStyle={{ padding: spacing.md }}
 				refreshControl={

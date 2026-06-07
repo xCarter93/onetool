@@ -13,6 +13,7 @@ import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { colors, spacing, fontFamily, radius } from "@/lib/theme";
 import { Mail, Building, LogOut, Shield, Bell } from "lucide-react-native";
 import { NotificationModal } from "@/components/NotificationModal";
+import { AppHeader } from "@/components/app-header";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 
@@ -45,6 +46,7 @@ export default function ProfileScreen() {
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={["bottom"]}
 		>
+			<AppHeader mode="detail" title="Profile" />
 			<ScrollView
 				style={{ flex: 1 }}
 				contentContainerStyle={{ padding: spacing.md }}
