@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
+import { useConvex } from "convex/react";
 import { FileText, Home, ReceiptText, LogOut } from "lucide-react";
 import { BrandHeader } from "./brand-header";
 import { PoweredByOneTool } from "./powered-by-onetool";
@@ -37,6 +38,7 @@ export function PortalShell({
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
+	const convex = useConvex();
 	const [pending, startTransition] = useTransition();
 
 	// Gap 4 (Plan 14-08): suppress MobileTabBar on /portal/c/{id}/quotes/{quoteId}
@@ -53,12 +55,15 @@ export function PortalShell({
 	const suppressTabBar = isQuoteDetail || isInvoiceDetail;
 
 	function handleSignOut() {
+		// Synchronously tear down the Convex client first: close() clears every
+		// query listener before the revoke below deletes the portalSessions row.
+		// Otherwise the row delete reactively re-runs live subscriptions (e.g.
+		// invoices.get), which throw UNAUTHENTICATED and flash the error boundary
+		// before navigation. Hard navigation alone can't win this race — it's
+		// async, so the socket stays live until the new document commits.
+		void convex.close();
 		startTransition(() => {
 			// keepalive lets the revoke survive the hard navigation below.
-			// Hard-navigate (not router.push) so all portal useQuery subscribers
-			// tear down before the session row is revoked; a soft transition
-			// keeps the source page mounted long enough for an in-flight refetch
-			// to hit the revoked session and throw UNAUTHENTICATED.
 			void fetch("/api/portal/logout", {
 				method: "POST",
 				credentials: "same-origin",
