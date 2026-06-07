@@ -84,15 +84,6 @@ export function EmailThreadSheet({
 		? allContacts?.find((c) => c._id === selectedContactId)
 		: primaryContact;
 
-	// Set default selected contact to primary when contacts load
-	const [prevPrimaryContact, setPrevPrimaryContact] = useState(primaryContact);
-	if (primaryContact !== prevPrimaryContact) {
-		setPrevPrimaryContact(primaryContact);
-		if (primaryContact && !selectedContactId) {
-			setSelectedContactId(primaryContact._id);
-		}
-	}
-
 	// Auto-scroll to bottom when thread updates
 	useEffect(() => {
 		if (thread && thread.length > 0) {
@@ -249,7 +240,7 @@ export function EmailThreadSheet({
 										Send To
 									</label>
 									<StyledSelect
-										value={selectedContactId || ""}
+										value={selectedContactId ?? primaryContact?._id ?? ""}
 										onValueChange={(value) =>
 											setSelectedContactId(value as Id<"clientContacts">)
 										}

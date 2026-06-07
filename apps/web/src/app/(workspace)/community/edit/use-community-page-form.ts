@@ -469,11 +469,20 @@ export function useCommunityPageForm() {
 		setAvatarUrl(resolvedAvatarUrl);
 	}
 
-	// Merge resolved gallery URLs into items as they arrive.
+	// Merge resolved gallery URLs into items as they arrive. Build the lookup map
+	// only when the query result changes, not on every render.
+	const galleryUrlMap = useMemo(
+		() =>
+			new Map(
+				(galleryUrlsQuery ?? []).map((item) => [
+					String(item.storageId),
+					item.url,
+				]),
+			),
+		[galleryUrlsQuery],
+	);
 	if (galleryUrlsQuery) {
-		const urlMap = new Map(
-			galleryUrlsQuery.map((item) => [String(item.storageId), item.url]),
-		);
+		const urlMap = galleryUrlMap;
 		const needsUpdate = galleryItems.some((item) => {
 			const url = urlMap.get(String(item.storageId));
 			return url !== undefined && item.url !== url;
