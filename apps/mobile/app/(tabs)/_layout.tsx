@@ -1,5 +1,5 @@
 import { Tabs, Redirect } from "expo-router";
-import { useAuth, useUser } from "@clerk/clerk-expo";
+import { useAuth, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { View, Text, Image } from "react-native";

@@ -1,4 +1,4 @@
-// Expo SDK 52+ monorepo configuration
+// Expo SDK 56+ monorepo configuration
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
 
@@ -7,10 +7,8 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// Enable symlinks for pnpm
-config.resolver.unstable_enableSymlinks = true;
-
 // Force React to always resolve from mobile app's node_modules
+// (pnpm hoists multiple React copies; pin to one to avoid runtime errors)
 const reactPath = path.resolve(projectRoot, "node_modules/react");
 
 config.resolver.extraNodeModules = {

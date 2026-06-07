@@ -2,7 +2,6 @@
 	"extends": "@onetool/tsconfig/expo.json",
 	"compilerOptions": {
 		"strict": true,
-		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./*"]
 		}

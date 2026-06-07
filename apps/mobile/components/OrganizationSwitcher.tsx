@@ -9,7 +9,7 @@ import {
 	Image,
 } from "react-native";
 import { useState } from "react";
-import { useOrganizationList, useOrganization } from "@clerk/clerk-expo";
+import { useOrganizationList, useOrganization } from "@clerk/expo";
 import { colors, spacing, styles, fontFamily, radius } from "@/lib/theme";
 import { Check, Building, X, RefreshCw } from "lucide-react-native";
 

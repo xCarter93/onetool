@@ -1,6 +1,6 @@
 import { View, Text, Modal, Pressable, ScrollView, Alert, Image } from "react-native";
 import { useState } from "react";
-import { useUser, useAuth, useOrganization } from "@clerk/clerk-expo";
+import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, spacing, styles, fontFamily } from "@/lib/theme";

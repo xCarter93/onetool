@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { useAuth, useOrganization } from "@clerk/clerk-expo";
+import { useAuth, useOrganization } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
 import { Send, Paperclip, X } from "lucide-react-native";

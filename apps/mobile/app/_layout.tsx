@@ -3,14 +3,14 @@ import {
 	ClerkLoaded,
 	useAuth,
 	useOrganization,
-} from "@clerk/clerk-expo";
+} from "@clerk/expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { useEffect, useState, type PropsWithChildren } from "react";
-import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import { tokenCache } from "@clerk/expo/token-cache";
 import { useFonts } from "expo-font";
 import {
 	Outfit_400Regular,

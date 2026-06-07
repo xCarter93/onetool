@@ -8,11 +8,10 @@ import {
 	Platform,
 	Alert,
 } from "react-native";
-import { useSignUp } from "@clerk/clerk-expo";
+import { useSignUp } from "@clerk/expo";
 import { Link, useRouter } from "expo-router";
-import { useSSO } from "@clerk/clerk-expo";
+import { useSSO } from "@clerk/expo";
 import * as WebBrowser from "expo-web-browser";
-import * as AuthSession from "expo-auth-session";
 import {
 	colors,
 	spacing,
@@ -38,7 +37,7 @@ WebBrowser.maybeCompleteAuthSession();
 export default function SignUpScreen() {
 	useWarmUpBrowser();
 
-	const { isLoaded, signUp, setActive } = useSignUp();
+	const { signUp } = useSignUp();
 	const { startSSOFlow } = useSSO();
 	const router = useRouter();
 
@@ -50,24 +49,38 @@ export default function SignUpScreen() {
 
 	// Handle submission of sign-up form
 	const onSignUpPress = async () => {
-		if (!isLoaded) return;
-
 		try {
 			setLoading(true);
-			// Start sign-up process using email and password provided
-			await signUp.create({
+			// Create the sign-up with email and password
+			const { error } = await signUp.password({
 				emailAddress,
 				password,
 			});
 
-			// Send user an email with verification code
-			await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+			if (error) {
+				Alert.alert(
+					"Error",
+					error.longMessage || error.message || "Failed to sign up"
+				);
+				return;
+			}
 
-			// Set 'pendingVerification' to true to display second form
+			// Send the verification code to the user's email
+			const { error: sendError } = await signUp.verifications.sendEmailCode();
+			if (sendError) {
+				Alert.alert(
+					"Error",
+					sendError.longMessage ||
+						sendError.message ||
+						"Failed to send verification code"
+				);
+				return;
+			}
+
+			// Show the verification code form
 			setPendingVerification(true);
 		} catch (err: any) {
-			// See https://clerk.com/docs/guides/development/custom-flows/error-handling
-			Alert.alert("Error", err.errors?.[0]?.message || "Failed to sign up");
+			Alert.alert("Error", err?.message || "Failed to sign up");
 			console.error(JSON.stringify(err, null, 2));
 		} finally {
 			setLoading(false);
@@ -76,30 +89,29 @@ export default function SignUpScreen() {
 
 	// Handle submission of verification form
 	const onVerifyPress = async () => {
-		if (!isLoaded) return;
-
 		try {
 			setLoading(true);
-			// Use the code the user provided to attempt verification
-			const signUpAttempt = await signUp.attemptEmailAddressVerification({
-				code,
-			});
+			// Verify the email with the code the user provided
+			const { error } = await signUp.verifications.verifyEmailCode({ code });
 
-			// If verification was completed, set the session to active
-			// and redirect the user
-			if (signUpAttempt.status === "complete") {
-				await setActive({ session: signUpAttempt.createdSessionId });
+			if (error) {
+				Alert.alert(
+					"Error",
+					error.longMessage || error.message || "Failed to verify email"
+				);
+				return;
+			}
+
+			// Activate the new session, then redirect
+			if (signUp.status === "complete") {
+				await signUp.finalize();
 				router.replace("/(tabs)");
 			} else {
-				// If the status is not complete, check why. User may need to
-				// complete further steps.
-				console.error(JSON.stringify(signUpAttempt, null, 2));
+				// Further steps would be handled here
+				console.error("Sign-up incomplete:", signUp.status);
 			}
 		} catch (err: any) {
-			Alert.alert(
-				"Error",
-				err.errors?.[0]?.message || "Failed to verify email"
-			);
+			Alert.alert("Error", err?.message || "Failed to verify email");
 			console.error(JSON.stringify(err, null, 2));
 		} finally {
 			setLoading(false);

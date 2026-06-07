@@ -1,4 +1,4 @@
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSignIn } from "@clerk/expo";
 import { Link, useRouter } from "expo-router";
 import {
 	Text,
@@ -10,9 +10,8 @@ import {
 	Alert,
 } from "react-native";
 import React from "react";
-import { useSSO } from "@clerk/clerk-expo";
+import { useSSO } from "@clerk/expo";
 import * as WebBrowser from "expo-web-browser";
-import * as AuthSession from "expo-auth-session";
 import { colors, spacing, fontFamily } from "@/lib/theme";
 import { StyledButton } from "@/components/styled";
 import { GoogleIcon } from "@/components/GoogleIcon";
@@ -33,7 +32,7 @@ WebBrowser.maybeCompleteAuthSession();
 export default function SignInScreen() {
 	useWarmUpBrowser();
 
-	const { signIn, setActive, isLoaded } = useSignIn();
+	const { signIn } = useSignIn();
 	const { startSSOFlow } = useSSO();
 	const router = useRouter();
 
@@ -43,28 +42,32 @@ export default function SignInScreen() {
 
 	// Handle the submission of the sign-in form
 	const onSignInPress = async () => {
-		if (!isLoaded) return;
-
 		try {
 			setLoading(true);
-			// Start the sign-in process using the email and password provided
-			const signInAttempt = await signIn.create({
+			// Submit the identifier and password
+			const { error } = await signIn.password({
 				identifier: emailAddress,
 				password,
 			});
 
-			// If sign-in process is complete, set the created session as active
-			// and redirect the user
-			if (signInAttempt.status === "complete") {
-				await setActive({ session: signInAttempt.createdSessionId });
+			if (error) {
+				Alert.alert(
+					"Error",
+					error.longMessage || error.message || "Failed to sign in"
+				);
+				return;
+			}
+
+			// Activate the new session, then redirect
+			if (signIn.status === "complete") {
+				await signIn.finalize();
 				router.replace("/(tabs)");
 			} else {
-				// If the status isn't complete, check why. User might need to
-				// complete further steps.
-				console.error(JSON.stringify(signInAttempt, null, 2));
+				// Further steps (e.g. MFA) would be handled here
+				console.error("Sign-in incomplete:", signIn.status);
 			}
 		} catch (err: any) {
-			Alert.alert("Error", err.errors?.[0]?.message || "Failed to sign in");
+			Alert.alert("Error", err?.message || "Failed to sign in");
 			console.error(JSON.stringify(err, null, 2));
 		} finally {
 			setLoading(false);

@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useState } from "react";
-import { useUser, useAuth, useOrganization } from "@clerk/clerk-expo";
+import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { colors, spacing, fontFamily, radius } from "@/lib/theme";
 import { Mail, Building, LogOut, Shield, Bell } from "lucide-react-native";
 import { NotificationModal } from "@/components/NotificationModal";
