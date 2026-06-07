@@ -77,7 +77,7 @@ const clerkHandler = clerkMiddleware(async (auth, request) => {
 		}
 
 		// Prevent members from accessing /home and any subpaths
-		if (!isAdmin && pathname.startsWith("/home")) {
+		if (!isAdmin && (pathname === "/home" || pathname.startsWith("/home/"))) {
 			const redirectUrl = request.nextUrl.clone();
 			redirectUrl.pathname = "/projects";
 			return NextResponse.redirect(redirectUrl);

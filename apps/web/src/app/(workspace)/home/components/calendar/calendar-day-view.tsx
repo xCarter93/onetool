@@ -74,6 +74,8 @@ export function CalendarDayView({
 	if (selectedEventId !== prevSelectedEventId) {
 		setPrevSelectedEventId(selectedEventId);
 		setResolvedEventId(null);
+		// Drop stale details until the new target resolves from dayEvents.
+		setSelectedEvent(null);
 	}
 	if (selectedEventId && resolvedEventId !== selectedEventId) {
 		const event = dayEvents.find((e) => e.id === selectedEventId);

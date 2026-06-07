@@ -132,6 +132,7 @@ export function EmailThreadSheet({
 					clientId,
 					subject: subject.trim(),
 					messageBody: replyBody.trim(),
+					contactId: selectedContactId ?? primaryContact?._id,
 				});
 				toast.success("Email Sent", "Your email has been sent successfully");
 			} else {

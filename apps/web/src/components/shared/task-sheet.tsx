@@ -114,7 +114,9 @@ export function TaskSheet({
 	// Done during render via the previous-value pattern (keyed on the inputs
 	// that should trigger a re-init) instead of a setState-in-effect.
 	const initKey = `${mode ?? ""}|${isEditMode}|${isCreateMode}|${task?._id ?? ""}|${task?.date ?? ""}|${initialValues?.clientId ?? ""}|${initialValues?.projectId ?? ""}`;
-	const [prevInitKey, setPrevInitKey] = useState(initKey);
+	// Sentinel null so the init block runs on first render (edit sheets mount
+	// with the task already present, so prevInitKey must differ initially).
+	const [prevInitKey, setPrevInitKey] = useState<string | null>(null);
 	if (initKey !== prevInitKey) {
 		setPrevInitKey(initKey);
 		if (isEditMode && task) {

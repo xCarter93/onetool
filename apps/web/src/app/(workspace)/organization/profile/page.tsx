@@ -656,14 +656,22 @@ export default function OrganizationProfilePage() {
 	// the microtask runs, so without this a re-render in between could schedule a
 	// second fetch. Reset in finally so error retries still work.
 	const statusInFlightRef = React.useRef(false);
+	// One automatic fetch per tab/account context, so a failed fetch (which leaves
+	// stripeStatus null) doesn't re-trigger the effect and spam network/toasts.
+	const statusAutoFetchedRef = React.useRef(false);
+	React.useEffect(() => {
+		statusAutoFetchedRef.current = false;
+	}, [activeTab, organization?.stripeConnectAccountId]);
 	React.useEffect(() => {
 		if (
 			activeTab === "payments" &&
 			organization?.stripeConnectAccountId &&
 			!stripeStatus &&
 			!statusLoading &&
-			!statusInFlightRef.current
+			!statusInFlightRef.current &&
+			!statusAutoFetchedRef.current
 		) {
+			statusAutoFetchedRef.current = true;
 			statusInFlightRef.current = true;
 			// Defer so the effect doesn't trigger setState synchronously
 			queueMicrotask(() => {
