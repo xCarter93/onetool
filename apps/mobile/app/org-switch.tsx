@@ -66,7 +66,7 @@ export default function OrgSwitchSheet() {
 
 	return (
 		<View style={[styles.container, { backgroundColor: t.card }]}>
-			<View style={styles.titleRow}>
+			<View style={[styles.header, { borderBottomColor: t.line }]}>
 				<Text style={[styles.title, { color: t.ink }]}>
 					Switch organization
 				</Text>
@@ -76,8 +76,10 @@ export default function OrgSwitchSheet() {
 			</View>
 
 			<ScrollView
+				style={styles.list}
 				contentContainerStyle={{
 					paddingHorizontal: 16,
+					paddingTop: 12,
 					paddingBottom: insets.bottom + 24,
 				}}
 			>
@@ -176,13 +178,21 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	titleRow: {
+	// Own padded header row above the list. minHeight + grabber clearance keep
+	// the title/Cancel from colliding with the first org row; the hairline border
+	// visually anchors the header so the list scrolls beneath, not under, it.
+	header: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
+		minHeight: 56,
 		paddingHorizontal: 16,
-		paddingTop: 20,
-		paddingBottom: 12,
+		paddingTop: 24,
+		paddingBottom: 14,
+		borderBottomWidth: StyleSheet.hairlineWidth,
+	},
+	list: {
+		flex: 1,
 	},
 	title: {
 		fontSize: 18,
