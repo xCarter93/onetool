@@ -4,9 +4,9 @@
 		"slug": "onetool-mg3hyu",
 		"version": "1.0.0",
 		"scheme": "onetool",
-		"orientation": "portrait",
+		"orientation": "default",
 		"icon": "./assets/icon.png",
-		"userInterfaceStyle": "automatic",
+		"userInterfaceStyle": "light",
 		"platforms": ["ios"],
 		"ios": {
 			"bundleIdentifier": "biz.onetool.app",
