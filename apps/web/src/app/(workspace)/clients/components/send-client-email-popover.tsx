@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
 	Popover,
 	PopoverTrigger,
@@ -40,12 +40,14 @@ export function SendClientEmailPopover({
 	const toast = useToast();
 
 	// Reset form when popover opens
-	useEffect(() => {
+	const [wasOpen, setWasOpen] = useState(isOpen);
+	if (isOpen !== wasOpen) {
+		setWasOpen(isOpen);
 		if (isOpen) {
 			setSubject("");
 			setMessage("");
 		}
-	}, [isOpen]);
+	}
 
 	const handleSend = async () => {
 		if (!primaryContact?.email) {

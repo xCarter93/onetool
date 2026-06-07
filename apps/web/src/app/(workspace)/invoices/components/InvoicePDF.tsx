@@ -356,9 +356,11 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 	organization,
 	payments,
 }) => {
+	// Capture "now" once so the overdue check stays pure across renders
+	const [now] = React.useState(() => Date.now());
 	const isPaid = invoice.status === "paid";
 	const isOverdue =
-		!isPaid && invoice.status === "sent" && invoice.dueDate < Date.now();
+		!isPaid && invoice.status === "sent" && invoice.dueDate < now;
 
 	// Format client address
 	const clientAddress = client

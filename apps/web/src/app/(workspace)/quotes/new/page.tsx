@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -79,27 +79,37 @@ export default function NewQuotePage() {
 	// Mutations
 	const createQuote = useMutation(api.quotes.create);
 
-	// Set project and client from URL params
-	useEffect(() => {
-		if (projectFromParam && !selectedProject) {
+	// Set project and client from URL params once data resolves
+	const [syncedProjectParam, setSyncedProjectParam] = useState<
+		typeof projectFromParam
+	>(undefined);
+	if (projectFromParam && projectFromParam !== syncedProjectParam) {
+		setSyncedProjectParam(projectFromParam);
+		if (!selectedProject) {
 			setSelectedProject(projectFromParam);
-			// Find and set the client for this project
 			const client = clients.find((c) => c._id === projectFromParam.clientId);
 			if (client && !selectedClient) {
 				setSelectedClient(client);
 			}
 		}
-	}, [projectFromParam, clients, selectedProject, selectedClient]);
+	}
 
 	// Set client from clientId URL param (when no projectId is provided)
-	useEffect(() => {
-		if (clientIdParam && !projectIdParam && !selectedClient && clients.length > 0) {
+	const [syncedClientList, setSyncedClientList] = useState(clients);
+	if (clients !== syncedClientList) {
+		setSyncedClientList(clients);
+		if (
+			clientIdParam &&
+			!projectIdParam &&
+			!selectedClient &&
+			clients.length > 0
+		) {
 			const client = clients.find((c) => c._id === clientIdParam);
 			if (client) {
 				setSelectedClient(client);
 			}
 		}
-	}, [clientIdParam, projectIdParam, clients, selectedClient]);
+	}
 
 	const clientOptions = useMemo(
 		() => clients.map((client) => client.companyName),

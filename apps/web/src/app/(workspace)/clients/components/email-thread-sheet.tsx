@@ -85,11 +85,13 @@ export function EmailThreadSheet({
 		: primaryContact;
 
 	// Set default selected contact to primary when contacts load
-	useEffect(() => {
+	const [prevPrimaryContact, setPrevPrimaryContact] = useState(primaryContact);
+	if (primaryContact !== prevPrimaryContact) {
+		setPrevPrimaryContact(primaryContact);
 		if (primaryContact && !selectedContactId) {
 			setSelectedContactId(primaryContact._id);
 		}
-	}, [primaryContact, selectedContactId]);
+	}
 
 	// Auto-scroll to bottom when thread updates
 	useEffect(() => {
@@ -99,13 +101,15 @@ export function EmailThreadSheet({
 	}, [thread]);
 
 	// Reset form when sheet closes
-	useEffect(() => {
+	const [wasOpen, setWasOpen] = useState(isOpen);
+	if (isOpen !== wasOpen) {
+		setWasOpen(isOpen);
 		if (!isOpen) {
 			setSubject("");
 			setReplyBody("");
 			setSelectedContactId(null);
 		}
-	}, [isOpen]);
+	}
 
 	const handleSendEmail = async () => {
 		// Validate inputs

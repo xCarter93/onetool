@@ -2,15 +2,21 @@
 
 import { IconMoon, IconSun } from "@intentui/icons";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
+
+const emptySubscribe = () => () => {};
 
 export function ThemeSwitcher({
 	...props
 }: React.ComponentProps<typeof Button>) {
 	const { resolvedTheme, setTheme } = useTheme();
-	const [mounted, setMounted] = useState(false);
-	useEffect(() => setMounted(true), []);
+	// true on the client, false during SSR/first render — avoids hydration mismatch
+	const mounted = useSyncExternalStore(
+		emptySubscribe,
+		() => true,
+		() => false,
+	);
 
 	const toggleTheme = () => {
 		const nextTheme = resolvedTheme === "light" ? "dark" : "light";

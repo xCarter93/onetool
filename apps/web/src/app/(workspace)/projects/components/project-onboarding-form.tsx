@@ -1,7 +1,7 @@
 /* eslint-disable react/no-children-prop */
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import * as z from 'zod/v3';
 import { useToastOperations } from "@/hooks/use-toast";
@@ -318,20 +318,35 @@ export function ProjectOnboardingForm({
 		},
 	});
 
+	// Adopt a newly preselected client during render; reset child selections too
+	const [prevPreselectedClientId, setPrevPreselectedClientId] =
+		useState(preselectedClientId);
+	if (preselectedClientId && preselectedClientId !== prevPreselectedClientId) {
+		setPrevPreselectedClientId(preselectedClientId);
+		setSelectedClientId(preselectedClientId);
+	}
+
+	// Keep the form's clientId field in sync with the preselected prop
 	useEffect(() => {
 		if (preselectedClientId) {
-			setSelectedClientId(preselectedClientId);
 			form.setFieldValue("clientId", preselectedClientId);
 		}
 	}, [preselectedClientId, form]);
 
-	useEffect(() => {
+	// Reset property/contact when the selected client changes
+	const [prevSelectedClientId, setPrevSelectedClientId] =
+		useState(selectedClientId);
+	if (selectedClientId !== prevSelectedClientId) {
+		setPrevSelectedClientId(selectedClientId);
 		setSelectedPropertyId(null);
 		setSelectedContactId(null);
-	}, [selectedClientId]);
+	}
 
-	useEffect(() => {
-		if (!clientProperties) return;
+	// Default the selected property once the client's properties load/change
+	const [prevClientProperties, setPrevClientProperties] =
+		useState(clientProperties);
+	if (clientProperties && clientProperties !== prevClientProperties) {
+		setPrevClientProperties(clientProperties);
 		setSelectedPropertyId((current) => {
 			if (
 				current &&
@@ -345,10 +360,12 @@ export function ProjectOnboardingForm({
 				null;
 			return primary ? primary._id : null;
 		});
-	}, [clientProperties]);
+	}
 
-	useEffect(() => {
-		if (!clientContacts) return;
+	// Default the selected contact once the client's contacts load/change
+	const [prevClientContacts, setPrevClientContacts] = useState(clientContacts);
+	if (clientContacts && clientContacts !== prevClientContacts) {
+		setPrevClientContacts(clientContacts);
 		setSelectedContactId((current) => {
 			if (
 				current &&
@@ -362,7 +379,7 @@ export function ProjectOnboardingForm({
 				null;
 			return primary ? primary._id : null;
 		});
-	}, [clientContacts]);
+	}
 
 	const selectedClient = useMemo(() => {
 		if (!selectedClientId) return null;

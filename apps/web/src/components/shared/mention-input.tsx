@@ -92,47 +92,20 @@ export function MentionInput({
 			})
 			.filter((user): user is NonNullable<typeof user> => user !== null) || [];
 
-	// Manage blob URLs for image previews to prevent memory leaks
+	// Keep a live reference to the preview URLs for unmount cleanup
+	const previewUrlsRef = useRef(previewUrls);
 	useEffect(() => {
-		// Create preview URLs for new image attachments
-		const newPreviewUrls = new Map(previewUrls);
-		let hasChanges = false;
+		previewUrlsRef.current = previewUrls;
+	}, [previewUrls]);
 
-		// Add URLs for new attachments (by tempId)
-		attachments.forEach((attachment) => {
-			const isImage = attachment.file.type.startsWith("image/");
-			if (isImage && !newPreviewUrls.has(attachment.tempId)) {
-				const url = URL.createObjectURL(attachment.file);
-				newPreviewUrls.set(attachment.tempId, url);
-				hasChanges = true;
-			}
-		});
-
-		// Remove URLs for deleted attachments and revoke them
-		const currentTempIds = new Set(attachments.map((a) => a.tempId));
-		Array.from(newPreviewUrls.keys()).forEach((tempId) => {
-			if (!currentTempIds.has(tempId)) {
-				const url = newPreviewUrls.get(tempId);
-				if (url) {
-					URL.revokeObjectURL(url);
-					newPreviewUrls.delete(tempId);
-					hasChanges = true;
-				}
-			}
-		});
-
-		if (hasChanges) {
-			setPreviewUrls(newPreviewUrls);
-		}
-
-		// Cleanup: revoke all URLs on unmount
+	// Revoke any remaining blob URLs on unmount to prevent memory leaks
+	useEffect(() => {
 		return () => {
-			newPreviewUrls.forEach((url) => {
+			previewUrlsRef.current.forEach((url) => {
 				URL.revokeObjectURL(url);
 			});
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [attachments]);
+	}, []);
 
 	// Filter users based on search query
 	const filteredUsers = organizationUsers.filter((user) =>
@@ -278,6 +251,18 @@ export function MentionInput({
 		// Add validated attachments to state using functional setter
 		setAttachments((prev) => [...prev, ...validatedAttachments]);
 
+		// Create preview URLs for image attachments
+		const newImageUrls = validatedAttachments
+			.filter((a) => a.file.type.startsWith("image/"))
+			.map((a) => [a.tempId, URL.createObjectURL(a.file)] as const);
+		if (newImageUrls.length > 0) {
+			setPreviewUrls((prev) => {
+				const next = new Map(prev);
+				newImageUrls.forEach(([tempId, url]) => next.set(tempId, url));
+				return next;
+			});
+		}
+
 		// Start uploading files - capture tempId for each attachment
 		for (const attachment of validatedAttachments) {
 			const { tempId } = attachment;
@@ -338,6 +323,14 @@ export function MentionInput({
 	// Remove attachment
 	const handleRemoveAttachment = (tempId: string) => {
 		setAttachments((prev) => prev.filter((a) => a.tempId !== tempId));
+		setPreviewUrls((prev) => {
+			const url = prev.get(tempId);
+			if (!url) return prev;
+			URL.revokeObjectURL(url);
+			const next = new Map(prev);
+			next.delete(tempId);
+			return next;
+		});
 	};
 
 	// Format file size

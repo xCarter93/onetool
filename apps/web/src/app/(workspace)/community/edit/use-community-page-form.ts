@@ -270,14 +270,33 @@ export function useCommunityPageForm() {
 		services: null,
 		pricing: null,
 	});
-	const savedSnapshotRef = useRef<Snapshot | null>(null);
+	// Baseline snapshot of last-saved server state, used for dirty detection.
+	const [savedSnapshot, setSavedSnapshot] = useState<Snapshot | null>(null);
+
+	// Stable per-section ref-callbacks. Constructed here (where sectionRefs is
+	// owned) so consumers don't mutate a hook-returned ref. Setters write on
+	// commit, not during render.
+	const sectionRefSetters = useMemo(
+		() =>
+			Object.fromEntries(
+				SECTION_LIST.map((section) => [
+					section.id,
+					(el: HTMLElement | null) => {
+						sectionRefs.current[section.id] = el;
+					},
+				]),
+			) as Record<SectionId, (el: HTMLElement | null) => void>,
+		[],
+	);
+
+	// Reset the debounced value immediately when the slug is too short.
+	if (slug.length < 3 && debouncedSlug !== "") {
+		setDebouncedSlug("");
+	}
 
 	// Slug debounce
 	useEffect(() => {
-		if (slug.length < 3) {
-			setDebouncedSlug("");
-			return;
-		}
+		if (slug.length < 3) return;
 		const timer = setTimeout(() => setDebouncedSlug(slug), 300);
 		return () => clearTimeout(timer);
 	}, [slug]);
@@ -294,9 +313,11 @@ export function useCommunityPageForm() {
 		}
 	}, [communityPage, router]);
 
-	// Sync server data to local state
-	useEffect(() => {
-		if (!communityPage) return;
+	// Sync server data to local state whenever the server doc changes.
+	// Runs during render via the prev-value pattern instead of an effect.
+	const [prevCommunityPage, setPrevCommunityPage] = useState(communityPage);
+	if (communityPage && communityPage !== prevCommunityPage) {
+		setPrevCommunityPage(communityPage);
 
 		const draftBio =
 			(communityPage.draftBioContent as JSONContent | undefined) ??
@@ -372,7 +393,7 @@ export function useCommunityPageForm() {
 		const serverTheme = (communityPage.draftTheme as string) || "clean-professional";
 		setTheme(serverTheme);
 
-		savedSnapshotRef.current = createSnapshot({
+		setSavedSnapshot(createSnapshot({
 			pageTitle: communityPage.pageTitle || "",
 			slug: communityPage.slug,
 			metaDescription: communityPage.metaDescription || "",
@@ -413,8 +434,8 @@ export function useCommunityPageForm() {
 			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
 			theme: serverTheme,
-		});
-	}, [communityPage]);
+		}));
+	}
 
 	// Image URL queries
 	const bannerUrlQuery = useQuery(
@@ -432,35 +453,42 @@ export function useCommunityPageForm() {
 			: "skip",
 	);
 
-	useEffect(() => {
-		if (bannerUrlQuery) setBannerUrl(bannerUrlQuery);
-	}, [bannerUrlQuery]);
+	// Adopt resolved banner URL when the query produces a value (keeps the
+	// previous URL during reloads instead of flashing empty).
+	if (bannerUrlQuery && bannerUrl !== bannerUrlQuery) {
+		setBannerUrl(bannerUrlQuery);
+	}
 
-	useEffect(() => {
-		if (avatarUrlQuery) setAvatarUrl(avatarUrlQuery);
-		else if (!avatarStorageId && organization?.logoUrl) {
-			setAvatarUrl(organization.logoUrl);
-		}
-	}, [avatarUrlQuery, avatarStorageId, organization?.logoUrl]);
+	// Adopt resolved avatar URL, falling back to the org logo when none is set.
+	const resolvedAvatarUrl = avatarUrlQuery
+		? avatarUrlQuery
+		: !avatarStorageId && organization?.logoUrl
+			? organization.logoUrl
+			: null;
+	if (resolvedAvatarUrl !== null && avatarUrl !== resolvedAvatarUrl) {
+		setAvatarUrl(resolvedAvatarUrl);
+	}
 
-	useEffect(() => {
-		if (!galleryUrlsQuery) return;
+	// Merge resolved gallery URLs into items as they arrive.
+	if (galleryUrlsQuery) {
 		const urlMap = new Map(
 			galleryUrlsQuery.map((item) => [String(item.storageId), item.url]),
 		);
-		setGalleryItems((prev) => {
-			let changed = false;
-			const next = prev.map((item) => {
-				const url = urlMap.get(String(item.storageId));
-				if (url !== undefined && item.url !== url) {
-					changed = true;
-					return { ...item, url };
-				}
-				return item;
-			});
-			return changed ? next : prev;
+		const needsUpdate = galleryItems.some((item) => {
+			const url = urlMap.get(String(item.storageId));
+			return url !== undefined && item.url !== url;
 		});
-	}, [galleryUrlsQuery]);
+		if (needsUpdate) {
+			setGalleryItems((prev) =>
+				prev.map((item) => {
+					const url = urlMap.get(String(item.storageId));
+					return url !== undefined && item.url !== url
+						? { ...item, url }
+						: item;
+				}),
+			);
+		}
+	}
 
 	// Validation
 	const validateSlug = useCallback((value: string) => {
@@ -613,7 +641,7 @@ export function useCommunityPageForm() {
 	);
 
 	const dirtyBySection = useMemo(() => {
-		const saved = savedSnapshotRef.current;
+		const saved = savedSnapshot;
 		if (!saved) {
 			return {
 				mainSettings: false,
@@ -634,7 +662,7 @@ export function useCommunityPageForm() {
 			services: saved.services !== currentSnapshot.services,
 			pricing: saved.pricing !== currentSnapshot.pricing,
 		};
-	}, [currentSnapshot]);
+	}, [currentSnapshot, savedSnapshot]);
 
 	const hasUnsavedChanges = useMemo(
 		() => Object.values(dirtyBySection).some(Boolean),
@@ -732,7 +760,7 @@ export function useCommunityPageForm() {
 				await publishMutation();
 			}
 
-			savedSnapshotRef.current = currentSnapshot;
+			setSavedSnapshot(currentSnapshot);
 			toast.success(
 				isPublic ? "Changes published" : "Draft saved",
 				isPublic
@@ -812,7 +840,7 @@ export function useCommunityPageForm() {
 
 			await publishMutation();
 			setIsPublic(true);
-			savedSnapshotRef.current = createSnapshot({
+			setSavedSnapshot(createSnapshot({
 				pageTitle,
 				slug,
 				metaDescription,
@@ -837,7 +865,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
-			});
+			}));
 			toast.success("Published!", "Your community page is now live and public");
 		} catch (error) {
 			toast.error(
@@ -853,7 +881,7 @@ export function useCommunityPageForm() {
 		try {
 			await upsert({ isPublic: false });
 			setIsPublic(false);
-			savedSnapshotRef.current = createSnapshot({
+			setSavedSnapshot(createSnapshot({
 				pageTitle,
 				slug,
 				metaDescription,
@@ -878,7 +906,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
-			});
+			}));
 			toast.success("Page is now private", "Only you can see your page");
 		} catch {
 			toast.error("Failed to update visibility");
@@ -1042,6 +1070,7 @@ export function useCommunityPageForm() {
 		activeSection,
 		setActiveSection,
 		sectionRefs,
+		sectionRefSetters,
 		dirtyBySection,
 		// Loading state
 		isLoading: communityPage === undefined,

@@ -66,12 +66,23 @@ export function PaymentErrorBanner({
 	onRetry,
 }: PaymentErrorBannerProps) {
 	// Live countdown for rate_limited; ticks every second until 0.
-	const [remaining, setRemaining] = useState<number | null>(
-		error.code === "rate_limited" ? (error.retryAfterSeconds ?? null) : null,
+	const initialRemaining =
+		error.code === "rate_limited" ? (error.retryAfterSeconds ?? null) : null;
+	const [remaining, setRemaining] = useState<number | null>(initialRemaining);
+
+	// Reset the countdown during render when the error identity changes —
+	// avoids a synchronous setState in an effect.
+	const [prevErrorKey, setPrevErrorKey] = useState(
+		`${error.code}:${error.retryAfterSeconds}`,
 	);
+	const errorKey = `${error.code}:${error.retryAfterSeconds}`;
+	if (errorKey !== prevErrorKey) {
+		setPrevErrorKey(errorKey);
+		setRemaining(initialRemaining);
+	}
+
 	useEffect(() => {
 		if (error.code !== "rate_limited") return;
-		setRemaining(error.retryAfterSeconds ?? null);
 		if (!error.retryAfterSeconds || error.retryAfterSeconds <= 0) return;
 		const id = setInterval(() => {
 			setRemaining((s) => (s !== null && s > 0 ? s - 1 : 0));

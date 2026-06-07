@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,18 @@ export function TourStartModal({
 	const [dontShowAgain, setDontShowAgain] = useState(false);
 	const modalRef = useRef<HTMLDivElement>(null);
 	const previousActiveElement = useRef<HTMLElement | null>(null);
+
+	const handleSkip = useCallback(() => {
+		if (dontShowAgain) {
+			onDontShowAgain();
+		} else {
+			onSkip();
+		}
+	}, [dontShowAgain, onDontShowAgain, onSkip]);
+
+	const handleStartTour = () => {
+		onStartTour();
+	};
 
 	// Handle focus management
 	useEffect(() => {
@@ -74,19 +86,7 @@ export function TourStartModal({
 
 		document.addEventListener("keydown", handleEscape);
 		return () => document.removeEventListener("keydown", handleEscape);
-	}, [isOpen]);
-
-	const handleSkip = () => {
-		if (dontShowAgain) {
-			onDontShowAgain();
-		} else {
-			onSkip();
-		}
-	};
-
-	const handleStartTour = () => {
-		onStartTour();
-	};
+	}, [isOpen, handleSkip]);
 
 	if (!isOpen) return null;
 

@@ -6,7 +6,6 @@ import React, {
 	useState,
 	useCallback,
 	ReactNode,
-	useEffect,
 } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence } from "motion/react";
@@ -63,11 +62,12 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
 }) => {
 	const [toasts, setToasts] = useState<Toast[]>([]);
 	const pathname = usePathname();
+	const [prevPathname, setPrevPathname] = useState(pathname);
 
-	// Clear certain types of toasts when navigating to a different page
-	useEffect(() => {
-		// Clear success and info toasts on navigation, but keep error and warning toasts
-		// Also keep loading toasts as they might be in progress
+	// On navigation, keep only error/warning/loading toasts. Adjusted during
+	// render (prev-value pattern) rather than in an effect to avoid an extra commit.
+	if (pathname !== prevPathname) {
+		setPrevPathname(pathname);
 		setToasts((prevToasts) =>
 			prevToasts.filter(
 				(toast) =>
@@ -76,7 +76,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
 					toast.type === "loading"
 			)
 		);
-	}, [pathname]); // This will run whenever the route changes
+	}
 
 	const generateId = useCallback(() => {
 		return Math.random().toString(36).substring(2) + Date.now().toString(36);

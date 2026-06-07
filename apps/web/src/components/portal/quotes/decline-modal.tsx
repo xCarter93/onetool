@@ -47,14 +47,21 @@ export function DeclineModal({
 	const [submitError, setSubmitError] = useState<string | null>(null);
 	const dialogRef = useRef<HTMLDivElement>(null);
 
-	useEffect(() => {
+	// Reset form state when the dialog closes — during render via the
+	// previous-value pattern instead of a synchronous setState in an effect.
+	const [prevOpen, setPrevOpen] = useState(open);
+	if (open !== prevOpen) {
+		setPrevOpen(open);
 		if (!open) {
 			setReason("");
 			setActiveChip(null);
 			setSubmitting(false);
 			setSubmitError(null);
-			return;
 		}
+	}
+
+	useEffect(() => {
+		if (!open) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape" && !submitting) onOpenChange(false);
 		};

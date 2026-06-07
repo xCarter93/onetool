@@ -330,6 +330,7 @@ export default function OrganizationProfilePage() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const { organization: clerkOrganization } = useOrganization();
+	const clerkOrgImageUrl = clerkOrganization?.imageUrl;
 	const toast = useToast();
 	const { hasPremiumAccess } = useFeatureAccess();
 
@@ -397,12 +398,12 @@ export default function OrganizationProfilePage() {
 		[router, hasPremiumAccess, toast]
 	);
 
-	React.useEffect(() => {
-		if (organization === undefined) {
-			return;
-		}
-
-		if (!businessDirty) {
+	// Re-sync the form from org data during render whenever org data changes
+	// (unless the user has unsaved edits)
+	const [prevOrganization, setPrevOrganization] = useState(organization);
+	if (organization !== prevOrganization) {
+		setPrevOrganization(organization);
+		if (organization !== undefined && !businessDirty) {
 			// Use structured fields if available, otherwise parse from legacy address
 			const { street, city, state, zip } = parseAddress(organization?.address);
 			setBusinessForm({
@@ -420,7 +421,7 @@ export default function OrganizationProfilePage() {
 				logoInvertInDarkMode: organization?.logoInvertInDarkMode ?? true,
 			});
 		}
-	}, [organization, businessDirty]);
+	}
 
 	const isLoading = organization === undefined || currentUser === undefined;
 	const isOwner = Boolean(
@@ -507,7 +508,7 @@ export default function OrganizationProfilePage() {
 				latitude: businessForm.latitude ?? undefined,
 				longitude: businessForm.longitude ?? undefined,
 				companySize: businessForm.companySize as "1-10" | "10-100" | "100+",
-				logoUrl: clerkOrganization?.imageUrl ?? undefined,
+				logoUrl: clerkOrgImageUrl ?? undefined,
 				logoInvertInDarkMode: businessForm.logoInvertInDarkMode,
 			});
 
@@ -527,7 +528,7 @@ export default function OrganizationProfilePage() {
 		}
 	}, [
 		businessForm,
-		clerkOrganization?.imageUrl,
+		clerkOrgImageUrl,
 		isOwner,
 		toast,
 		updateOrganization,
@@ -651,14 +652,25 @@ export default function OrganizationProfilePage() {
 		}
 	}, [organization?.stripeConnectAccountId, toast]);
 
+	// Synchronous in-flight guard: the deferred fetch flips statusLoading only once
+	// the microtask runs, so without this a re-render in between could schedule a
+	// second fetch. Reset in finally so error retries still work.
+	const statusInFlightRef = React.useRef(false);
 	React.useEffect(() => {
 		if (
 			activeTab === "payments" &&
 			organization?.stripeConnectAccountId &&
 			!stripeStatus &&
-			!statusLoading
+			!statusLoading &&
+			!statusInFlightRef.current
 		) {
-			void refreshStripeAccountStatus();
+			statusInFlightRef.current = true;
+			// Defer so the effect doesn't trigger setState synchronously
+			queueMicrotask(() => {
+				void refreshStripeAccountStatus().finally(() => {
+					statusInFlightRef.current = false;
+				});
+			});
 		}
 	}, [
 		activeTab,
@@ -679,7 +691,8 @@ export default function OrganizationProfilePage() {
 			!onboardingLoading
 		) {
 			refreshTriggeredRef.current = true;
-			void handleStartStripeOnboarding();
+			// Defer so the effect doesn't trigger setState synchronously
+			queueMicrotask(() => void handleStartStripeOnboarding());
 		}
 	}, [
 		activeTab,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -124,29 +124,32 @@ export default function InvoiceLineEditorPage() {
 		rate: 0,
 	});
 
-	// Initialize discount and tax state from invoice data
-	useEffect(() => {
-		if (invoice) {
-			// Check if discount is enabled based on discountAmount
-			const hasDiscount = invoice.discountAmount !== undefined && invoice.discountAmount > 0;
-			setDiscount({
-				enabled: hasDiscount,
-				amount: invoice.discountAmount || 0,
-				type: "fixed", // Invoice stores fixed amounts
-			});
+	// Initialize discount and tax state when invoice data loads/changes
+	const [prevInvoice, setPrevInvoice] = useState(invoice);
+	if (invoice && invoice !== prevInvoice) {
+		setPrevInvoice(invoice);
 
-			// Check if tax is enabled based on taxAmount
-			const hasTax = invoice.taxAmount !== undefined && invoice.taxAmount > 0;
-			// Calculate approximate tax rate from the stored amount
-			const approxTaxRate = hasTax && invoice.subtotal > 0
+		// Check if discount is enabled based on discountAmount
+		const hasDiscount =
+			invoice.discountAmount !== undefined && invoice.discountAmount > 0;
+		setDiscount({
+			enabled: hasDiscount,
+			amount: invoice.discountAmount || 0,
+			type: "fixed", // Invoice stores fixed amounts
+		});
+
+		// Check if tax is enabled based on taxAmount
+		const hasTax = invoice.taxAmount !== undefined && invoice.taxAmount > 0;
+		// Calculate approximate tax rate from the stored amount
+		const approxTaxRate =
+			hasTax && invoice.subtotal > 0
 				? (invoice.taxAmount! / invoice.subtotal) * 100
 				: 0;
-			setTax({
-				enabled: hasTax,
-				rate: approxTaxRate,
-			});
-		}
-	}, [invoice]);
+		setTax({
+			enabled: hasTax,
+			rate: approxTaxRate,
+		});
+	}
 
 	// Use line items directly from the database
 	const allLineItems = useMemo(() => {
@@ -633,9 +636,12 @@ function InvoiceLineItemRow({
 	const [editedItem, setEditedItem] = useState<LineItem>(item);
 	const [isSaving, setIsSaving] = useState(false);
 
-	React.useEffect(() => {
+	// Reset local edits when the underlying item changes
+	const [prevItem, setPrevItem] = useState(item);
+	if (item !== prevItem) {
+		setPrevItem(item);
 		setEditedItem(item);
-	}, [item]);
+	}
 
 	const handleFieldChange = (field: keyof LineItem, value: string | number) => {
 		setEditedItem((prev) => ({

@@ -42,13 +42,22 @@ export default function Page() {
 	// Automatically detect and save timezone if not set
 	useAutoTimezone();
 
-	// Load view preference from localStorage
-	useEffect(() => {
+	// True only after client hydration; gates localStorage reads to avoid mismatch
+	const hydrated = React.useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false
+	);
+
+	// Load saved view preference after hydration, once
+	const [viewLoaded, setViewLoaded] = useState(false);
+	if (hydrated && !viewLoaded) {
+		setViewLoaded(true);
 		const savedView = localStorage.getItem("home-view-mode");
 		if (savedView === "calendar" || savedView === "dashboard") {
 			setViewMode(savedView);
 		}
-	}, []);
+	}
 
 	// Show tour modal for first-time users
 	useEffect(() => {

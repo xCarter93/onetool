@@ -2,7 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useConvexAuth } from "convex/react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 // Short bridges only — once Convex's own auth-loading signal flips, that
 // drives the skeleton. Longer values force loading state to outlive the
@@ -21,6 +21,21 @@ const listeners = new Set<() => void>();
 function notify(): void {
 	for (const fn of listeners) fn();
 }
+
+function subscribe(listener: () => void): () => void {
+	listeners.add(listener);
+	return () => {
+		listeners.delete(listener);
+	};
+}
+
+// External-store snapshot: true while the grace window is open. Reading the
+// clock here (not during render) keeps the component render pure.
+function getGraceSnapshot(): boolean {
+	return Date.now() < switchExpiresAt;
+}
+
+const getServerGraceSnapshot = (): boolean => false;
 
 function openGraceWindow(durationMs: number): void {
 	const newExpiresAt = Date.now() + durationMs;
@@ -64,21 +79,18 @@ export function markOrgSwitching(): void {
 export function useIsOrgSwitching(): boolean {
 	const { orgId, isLoaded } = useAuth();
 	const { isLoading: isConvexAuthLoading } = useConvexAuth();
-	const [, forceRender] = useState(0);
 
 	// Observing during render is intentional: hooks freshly mounted from a
 	// post-switch remount need to see the in-flight window on their FIRST
 	// render. `observe` is idempotent on re-entry.
 	if (isLoaded) observe(orgId ?? null);
 
-	useEffect(() => {
-		const listener = () => forceRender((n) => n + 1);
-		listeners.add(listener);
-		return () => {
-			listeners.delete(listener);
-		};
-	}, []);
+	const graceActive = useSyncExternalStore(
+		subscribe,
+		getGraceSnapshot,
+		getServerGraceSnapshot,
+	);
 
-	const inGracePeriod = isLoaded && Date.now() < switchExpiresAt;
+	const inGracePeriod = isLoaded && graceActive;
 	return inGracePeriod || isConvexAuthLoading;
 }

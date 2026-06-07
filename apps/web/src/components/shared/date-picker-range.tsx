@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import {
 	Popover,
@@ -116,6 +116,24 @@ const normalizeRange = (range?: DateRange | null): DateRange | undefined => {
 	return { from, to };
 };
 
+// Find the preset whose range matches a controlled value, if any
+const findMatchingPreset = (
+	value: DateRange | undefined,
+	presets: Preset[]
+): string | undefined => {
+	if (value === undefined) return undefined;
+	const normalizedValue = normalizeRange(value);
+	if (!normalizedValue) return undefined;
+	const matchingPreset = presets.find((preset) => {
+		const presetRange = normalizeRange(preset.getRange());
+		return (
+			presetRange?.from?.getTime() === normalizedValue.from?.getTime() &&
+			presetRange?.to?.getTime() === normalizedValue.to?.getTime()
+		);
+	});
+	return matchingPreset?.label;
+};
+
 export default function DatePickerRange({
 	value,
 	onChange,
@@ -128,11 +146,10 @@ export default function DatePickerRange({
 		[presets]
 	);
 
-	const initialDefaultRef = useRef<DateRange | undefined>(undefined);
-	if (!initialDefaultRef.current) {
-		initialDefaultRef.current = value ?? defaultPresetRange;
-	}
-	const defaultRange = initialDefaultRef.current;
+	// Capture the initial default range once (stable across renders)
+	const [defaultRange] = useState<DateRange | undefined>(
+		() => value ?? defaultPresetRange
+	);
 
 	const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 	const [draftRange, setDraftRange] = useState<DateRange | undefined>(
@@ -142,7 +159,7 @@ export default function DatePickerRange({
 		undefined
 	);
 	const [committedPreset, setCommittedPreset] = useState<string | undefined>(
-		undefined
+		() => (value !== undefined ? findMatchingPreset(value, presets) : undefined)
 	);
 
 	const committedRange = useMemo(
@@ -150,35 +167,33 @@ export default function DatePickerRange({
 		[value, defaultRange]
 	);
 
-	useEffect(() => {
+	// Sync draft when the committed range changes
+	const [prevCommittedRange, setPrevCommittedRange] = useState(committedRange);
+	if (committedRange !== prevCommittedRange) {
+		setPrevCommittedRange(committedRange);
 		setDraftRange(committedRange);
+	}
 
-		const normalizedValue =
-			value === undefined ? undefined : normalizeRange(value);
-
-		if (!normalizedValue) {
-			if (value === undefined) return;
-			setCommittedPreset(undefined);
-			return;
+	// In controlled mode, recompute the committed preset from value/presets
+	const [prevValue, setPrevValue] = useState(value);
+	const [prevPresets, setPrevPresets] = useState(presets);
+	if (value !== prevValue || presets !== prevPresets) {
+		setPrevValue(value);
+		setPrevPresets(presets);
+		if (value !== undefined) {
+			setCommittedPreset(findMatchingPreset(value, presets));
 		}
+	}
 
-		const matchingPreset = presets.find((preset) => {
-			const presetRange = normalizeRange(preset.getRange());
-			return (
-				presetRange?.from?.getTime() === normalizedValue.from?.getTime() &&
-				presetRange?.to?.getTime() === normalizedValue.to?.getTime()
-			);
-		});
-
-		setCommittedPreset(matchingPreset?.label);
-	}, [committedRange, presets, value]);
-
-	useEffect(() => {
+	// When the popover closes, discard any unapplied draft edits
+	const [prevPopoverOpen, setPrevPopoverOpen] = useState(isPopoverOpen);
+	if (isPopoverOpen !== prevPopoverOpen) {
+		setPrevPopoverOpen(isPopoverOpen);
 		if (!isPopoverOpen) {
 			setDraftRange(committedRange);
 			setActivePreset(committedPreset);
 		}
-	}, [isPopoverOpen, committedRange, committedPreset]);
+	}
 
 	const handleSelect = (selected: DateRange | undefined) => {
 		setDraftRange(normalizeRange(selected));

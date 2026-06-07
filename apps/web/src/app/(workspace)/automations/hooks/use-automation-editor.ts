@@ -313,35 +313,35 @@ export function useAutomationEditor(automationId: string | null) {
 	const [showClearConfirm, setShowClearConfirm] = useState(false);
 	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	useEffect(() => {
-		if (existingAutomation && !hasInitialized) {
-			setName(existingAutomation.name);
-			setDescription(existingAutomation.description || "");
+	// Initialize form state once the automation loads. Runs during render via
+	// the prev-value pattern; hasInitialized ensures it fires only once so later
+	// realtime updates don't clobber in-progress edits.
+	if (existingAutomation && !hasInitialized) {
+		setHasInitialized(true);
+		setName(existingAutomation.name);
+		setDescription(existingAutomation.description || "");
 
-			const savedTrigger = existingAutomation.trigger as Record<string, unknown>;
-			if ("schedule" in savedTrigger && savedTrigger.type === "scheduled") {
-				setTrigger({
-					type: "scheduled",
-					objectType:
-						(savedTrigger.objectType as TriggerConfig["objectType"]) || "client",
-					schedule: savedTrigger.schedule as TriggerConfig["schedule"],
-				});
-			} else if ("objectType" in savedTrigger && savedTrigger.objectType) {
-				setTrigger({
-					type:
-						(savedTrigger.type as TriggerConfig["type"]) || "status_changed",
-					objectType: savedTrigger.objectType as TriggerConfig["objectType"],
-					fromStatus: savedTrigger.fromStatus as string | undefined,
-					toStatus: savedTrigger.toStatus as string | undefined,
-					field: savedTrigger.field as string | undefined,
-				});
-			}
-
-			setNodes(existingAutomation.nodes as WorkflowNode[]);
-			setIsActive(existingAutomation.isActive ?? false);
-			setHasInitialized(true);
+		const savedTrigger = existingAutomation.trigger as Record<string, unknown>;
+		if ("schedule" in savedTrigger && savedTrigger.type === "scheduled") {
+			setTrigger({
+				type: "scheduled",
+				objectType:
+					(savedTrigger.objectType as TriggerConfig["objectType"]) || "client",
+				schedule: savedTrigger.schedule as TriggerConfig["schedule"],
+			});
+		} else if ("objectType" in savedTrigger && savedTrigger.objectType) {
+			setTrigger({
+				type: (savedTrigger.type as TriggerConfig["type"]) || "status_changed",
+				objectType: savedTrigger.objectType as TriggerConfig["objectType"],
+				fromStatus: savedTrigger.fromStatus as string | undefined,
+				toStatus: savedTrigger.toStatus as string | undefined,
+				field: savedTrigger.field as string | undefined,
+			});
 		}
-	}, [existingAutomation, hasInitialized]);
+
+		setNodes(existingAutomation.nodes as WorkflowNode[]);
+		setIsActive(existingAutomation.isActive ?? false);
+	}
 
 	useEffect(() => {
 		return () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -121,18 +121,6 @@ export default function QuoteLineEditorPage() {
 		showTotals: true,
 	});
 
-	// Initialize PDF settings from quote data
-	useEffect(() => {
-		if (quote?.pdfSettings) {
-			setPdfSettings({
-				showQuantities: quote.pdfSettings.showQuantities ?? true,
-				showUnitPrices: quote.pdfSettings.showUnitPrices ?? true,
-				showLineItemTotals: quote.pdfSettings.showLineItemTotals ?? true,
-				showTotals: quote.pdfSettings.showTotals ?? true,
-			});
-		}
-	}, [quote]);
-
 	// Tax and discount state
 	const [discount, setDiscount] = useState<{
 		enabled: boolean;
@@ -148,20 +136,28 @@ export default function QuoteLineEditorPage() {
 		rate: 0,
 	});
 
-	// Initialize discount and tax state from quote data
-	useEffect(() => {
-		if (quote) {
-			setDiscount({
-				enabled: quote.discountEnabled || false,
-				amount: quote.discountAmount || 0,
-				type: quote.discountType || "percentage",
-			});
-			setTax({
-				enabled: quote.taxEnabled || false,
-				rate: quote.taxRate || 0,
+	// Sync local PDF/discount/tax state when quote data changes
+	const [syncedQuote, setSyncedQuote] = useState<typeof quote>(undefined);
+	if (quote && quote !== syncedQuote) {
+		setSyncedQuote(quote);
+		if (quote.pdfSettings) {
+			setPdfSettings({
+				showQuantities: quote.pdfSettings.showQuantities ?? true,
+				showUnitPrices: quote.pdfSettings.showUnitPrices ?? true,
+				showLineItemTotals: quote.pdfSettings.showLineItemTotals ?? true,
+				showTotals: quote.pdfSettings.showTotals ?? true,
 			});
 		}
-	}, [quote]);
+		setDiscount({
+			enabled: quote.discountEnabled || false,
+			amount: quote.discountAmount || 0,
+			type: quote.discountType || "percentage",
+		});
+		setTax({
+			enabled: quote.taxEnabled || false,
+			rate: quote.taxRate || 0,
+		});
+	}
 
 	// Use line items directly from the database
 	const allLineItems = useMemo(() => {
@@ -804,9 +800,12 @@ function LineItemRow({
 	const [editedItem, setEditedItem] = useState<LineItem>(item);
 	const [isSaving, setIsSaving] = useState(false);
 
-	React.useEffect(() => {
+	// Resync local edits when the underlying item changes
+	const [syncedItem, setSyncedItem] = useState(item);
+	if (item !== syncedItem) {
+		setSyncedItem(item);
 		setEditedItem(item);
-	}, [item]);
+	}
 
 	const handleFieldChange = (field: keyof LineItem, value: string | number) => {
 		setEditedItem((prev) => ({

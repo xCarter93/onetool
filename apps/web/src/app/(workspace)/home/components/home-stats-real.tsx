@@ -316,40 +316,32 @@ export default function HomeStatsReal() {
 		[revenueThisMonth]
 	);
 
+	// Extract counts so memo deps are plain numbers (not `.current` ref-like access)
+	const totalClientsCurrent = safeNumber(homeStats?.totalClients.current);
+	const completedProjectsCurrent = safeNumber(
+		homeStats?.completedProjects.current
+	);
+	const approvedQuotesCurrent = safeNumber(homeStats?.approvedQuotes.current);
+	const invoicesSentCurrent = safeNumber(homeStats?.invoicesSent.current);
+
 	const clientsTotals = useMemo(
-		() =>
-			getRangeTotals(
-				clientsSeries,
-				safeNumber(homeStats?.totalClients.current)
-			),
-		[clientsSeries, homeStats]
+		() => getRangeTotals(clientsSeries, totalClientsCurrent),
+		[clientsSeries, totalClientsCurrent]
 	);
 
 	const projectsTotals = useMemo(
-		() =>
-			getRangeTotals(
-				projectsSeries,
-				safeNumber(homeStats?.completedProjects.current)
-			),
-		[projectsSeries, homeStats]
+		() => getRangeTotals(projectsSeries, completedProjectsCurrent),
+		[projectsSeries, completedProjectsCurrent]
 	);
 
 	const quotesTotals = useMemo(
-		() =>
-			getRangeTotals(
-				quotesSeries,
-				safeNumber(homeStats?.approvedQuotes.current)
-			),
-		[quotesSeries, homeStats]
+		() => getRangeTotals(quotesSeries, approvedQuotesCurrent),
+		[quotesSeries, approvedQuotesCurrent]
 	);
 
 	const invoicesTotals = useMemo(
-		() =>
-			getRangeTotals(
-				invoicesSeries,
-				safeNumber(homeStats?.invoicesSent.current)
-			),
-		[invoicesSeries, homeStats]
+		() => getRangeTotals(invoicesSeries, invoicesSentCurrent),
+		[invoicesSeries, invoicesSentCurrent]
 	);
 
 	const metrics: MetricDefinition[] = useMemo(() => {

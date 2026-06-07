@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Monitor, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,10 +11,20 @@ const OPTIONS = [
 	{ value: "dark", label: "Dark", Icon: Moon },
 ] as const;
 
+const emptySubscribe = () => () => {};
+
+// True after hydration, false on server — avoids theme/server mismatch.
+function useMounted() {
+	return useSyncExternalStore(
+		emptySubscribe,
+		() => true,
+		() => false,
+	);
+}
+
 export function PortalThemeSwitcher({ className }: { className?: string }) {
 	const { theme, setTheme } = useTheme();
-	const [mounted, setMounted] = useState(false);
-	useEffect(() => setMounted(true), []);
+	const mounted = useMounted();
 
 	const active = mounted ? (theme ?? "system") : "system";
 
@@ -55,8 +65,7 @@ export function PortalThemeSwitcher({ className }: { className?: string }) {
 
 export function PortalThemeIconButton({ className }: { className?: string }) {
 	const { theme, setTheme } = useTheme();
-	const [mounted, setMounted] = useState(false);
-	useEffect(() => setMounted(true), []);
+	const mounted = useMounted();
 
 	const current = mounted ? (theme ?? "system") : "system";
 	const next =

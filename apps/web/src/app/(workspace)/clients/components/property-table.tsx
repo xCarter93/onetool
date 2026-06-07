@@ -326,11 +326,14 @@ function PropertyRow({
 }) {
 	const [editedProperty, setEditedProperty] = useState<Property>(property);
 
-	React.useEffect(() => {
+	// Resync edits from the source property while editing
+	const [prevSource, setPrevSource] = useState({ isEditing, property });
+	if (prevSource.isEditing !== isEditing || prevSource.property !== property) {
+		setPrevSource({ isEditing, property });
 		if (isEditing) {
 			setEditedProperty(property);
 		}
-	}, [isEditing, property]);
+	}
 
 	const handleFieldChange = (
 		field: keyof Property,

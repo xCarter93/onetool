@@ -119,9 +119,10 @@ export default function LineChart6({
 	);
 
 	// Track whether the initial animation has completed
-	const hasAnimated = useRef(false);
+	const [hasAnimated, setHasAnimated] = useState(false);
 	useEffect(() => {
-		hasAnimated.current = true;
+		const id = requestAnimationFrame(() => setHasAnimated(true));
+		return () => cancelAnimationFrame(id);
 	}, []);
 
 	// Measure sparkline width from first stat card button
@@ -142,16 +143,12 @@ export default function LineChart6({
 		return () => observer.disconnect();
 	}, []);
 
-	useEffect(() => {
-		if (selectedMetric && selectedMetric !== internalMetric) {
-			setInternalMetric(selectedMetric);
-			return;
-		}
-
-		if (!internalMetric && firstMetricKey) {
-			setInternalMetric(firstMetricKey);
-		}
-	}, [firstMetricKey, internalMetric, selectedMetric]);
+	// Sync internal selection with controlled prop / first metric during render
+	if (selectedMetric && selectedMetric !== internalMetric) {
+		setInternalMetric(selectedMetric);
+	} else if (!internalMetric && firstMetricKey) {
+		setInternalMetric(firstMetricKey);
+	}
 
 	const activeMetricKey = selectedMetric ?? internalMetric;
 
@@ -316,8 +313,8 @@ export default function LineChart6({
 											<AnimatedNumber
 												value={metric.value ?? 0}
 												format={metric.format}
-												duration={hasAnimated.current ? 400 : 600}
-												delay={hasAnimated.current ? 0 : 300}
+												duration={hasAnimated ? 400 : 600}
+												delay={hasAnimated ? 0 : 300}
 											/>
 										)}
 									</span>

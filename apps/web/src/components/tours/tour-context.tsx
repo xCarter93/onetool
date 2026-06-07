@@ -8,12 +8,15 @@ import React, {
 	useEffect,
 	useRef,
 	useState,
+	useSyncExternalStore,
 	useMemo,
 	type ReactNode,
 	type Dispatch,
 	type Context,
 } from "react";
 import { createPortal } from "react-dom";
+
+const emptySubscribe = () => () => {};
 
 // ============================================================================
 // Types
@@ -165,15 +168,16 @@ export function TourContextProvider<T extends string>({
 	});
 
 	const [isRegistered, setIsRegistered] = useState(false);
-	const [mounted, setMounted] = useState(false);
 	const registry = useRef<Set<T>>(new Set());
 	const prevIsActive = useRef(state.isActive);
 	const prevCurrentStepId = useRef(state.currentStepId);
 
-	// Track mounting for portal rendering
-	useEffect(() => {
-		setMounted(true);
-	}, []);
+	// Track mounting for portal rendering (false during SSR/first render)
+	const mounted = useSyncExternalStore(
+		emptySubscribe,
+		() => true,
+		() => false
+	);
 
 	// Handle step registration
 	const handleStepRegistration = useCallback(

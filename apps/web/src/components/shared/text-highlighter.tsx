@@ -109,10 +109,12 @@ export const TextHighlighter = forwardRef<
 		const [currentDirection, setCurrentDirection] =
 			useState<HighlightDirection>(direction);
 
-		// Update direction when prop changes
-		useEffect(() => {
+		// Sync current direction when the prop changes
+		const [prevDirection, setPrevDirection] = useState(direction);
+		if (direction !== prevDirection) {
+			setPrevDirection(direction);
 			setCurrentDirection(direction);
-		}, [direction]);
+		}
 
 		// Always call the hook, but only use the result when needed
 		const inViewResult = useInView(componentRef, useInViewOptions);

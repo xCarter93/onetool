@@ -9,7 +9,7 @@ import {
 } from "@clerk/nextjs/experimental";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,12 @@ export default function SubscriptionPage() {
 	const router = useRouter();
 	const { hasPremiumAccess, isLoading, hasOrganization } = useFeatureAccess();
 	const { resolvedTheme } = useTheme();
-	const [mounted, setMounted] = useState(false);
+	// True only after client hydration; avoids theme hydration mismatch
+	const mounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false
+	);
 
 	// Fetch organization plans from Clerk
 	const { data: plans, isLoading: plansLoading } = usePlans({
@@ -46,10 +51,6 @@ export default function SubscriptionPage() {
 	const businessPlan = plans?.find(
 		(plan) => plan.slug === "onetool_business_plan_org"
 	);
-
-	useEffect(() => {
-		setMounted(true);
-	}, []);
 
 	const isDark = mounted ? resolvedTheme === "dark" : false;
 

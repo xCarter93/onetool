@@ -1,21 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 
 export const useMediaQuery = (query: string) => {
-  const [value, setValue] = useState<boolean | undefined>()
-
-  useEffect(() => {
-    const onChange = (event: MediaQueryListEvent) => {
-      setValue(event.matches)
-    }
-
+  const subscribe = (callback: () => void) => {
     const result = matchMedia(query)
-    setValue(result.matches)
-    result.addEventListener("change", onChange)
+    result.addEventListener("change", callback)
+    return () => result.removeEventListener("change", callback)
+  }
 
-    return () => result.removeEventListener("change", onChange)
-  }, [query])
-
-  return value
+  // Server snapshot returns undefined to preserve prior SSR behavior.
+  return useSyncExternalStore(
+    subscribe,
+    () => matchMedia(query).matches,
+    () => undefined as boolean | undefined,
+  )
 }

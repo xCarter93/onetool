@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
 	Sheet,
 	SheetContent,
@@ -50,12 +50,14 @@ export function SendEmailSheet({
 	const [isSending, setIsSending] = useState(false);
 
 	// Reset form when sheet opens
-	useEffect(() => {
+	const [wasOpen, setWasOpen] = useState(isOpen);
+	if (isOpen !== wasOpen) {
+		setWasOpen(isOpen);
 		if (isOpen) {
 			setCcEmails([]);
 			setMessage("");
 		}
-	}, [isOpen]);
+	}
 
 	const handleSend = async () => {
 		if (!primaryContact?.email) {

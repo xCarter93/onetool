@@ -76,8 +76,8 @@ const clerkHandler = clerkMiddleware(async (auth, request) => {
 			return NextResponse.redirect(redirectUrl);
 		}
 
-		// Prevent members from accessing /home
-		if (!isAdmin && pathname === "/home") {
+		// Prevent members from accessing /home and any subpaths
+		if (!isAdmin && pathname.startsWith("/home")) {
 			const redirectUrl = request.nextUrl.clone();
 			redirectUrl.pathname = "/projects";
 			return NextResponse.redirect(redirectUrl);
@@ -85,7 +85,7 @@ const clerkHandler = clerkMiddleware(async (auth, request) => {
 	}
 });
 
-export default async function middleware(
+export default async function proxy(
 	request: NextRequest,
 	event: NextFetchEvent,
 ) {

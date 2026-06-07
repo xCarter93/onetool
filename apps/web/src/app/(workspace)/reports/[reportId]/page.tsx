@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -121,22 +121,22 @@ export default function ReportViewPage() {
 	const [dateRangePreset, setDateRangePreset] = useState<string>("this_month");
 	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
 
-	// Initialize form state when report loads
-	useEffect(() => {
-		if (report) {
-			setName(report.name);
-			setDescription(report.description || "");
-			setEntityType(report.config.entityType);
-			setGroupBy(report.config.groupBy?.[0] || "status");
-			setVizType(report.visualization.type);
-			// Detect date range preset from report config
-			if (report.config.dateRange) {
-				setDateRangePreset(detectDateRangePreset(report.config.dateRange));
-			} else {
-				setDateRangePreset("all_time");
-			}
+	// Initialize form state when the loaded report changes (during render)
+	const [prevReportId, setPrevReportId] = useState(report?._id);
+	if (report && report._id !== prevReportId) {
+		setPrevReportId(report._id);
+		setName(report.name);
+		setDescription(report.description || "");
+		setEntityType(report.config.entityType);
+		setGroupBy(report.config.groupBy?.[0] || "status");
+		setVizType(report.visualization.type);
+		// Detect date range preset from report config
+		if (report.config.dateRange) {
+			setDateRangePreset(detectDateRangePreset(report.config.dateRange));
+		} else {
+			setDateRangePreset("all_time");
 		}
-	}, [report]);
+	}
 
 	// Get effective date range (custom or preset)
 	const getEffectiveDateRange = () => {

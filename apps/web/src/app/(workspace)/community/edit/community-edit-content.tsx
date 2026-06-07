@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { StyledBadge } from "@/components/ui/styled/styled-badge";
 import { cn } from "@/lib/utils";
-import { useCommunityPageForm, SECTION_LIST, type SectionId } from "./use-community-page-form";
+import { useCommunityPageForm, SECTION_LIST } from "./use-community-page-form";
 import { MainSettingsSection } from "./sections/main-settings-section";
 import { BioSection } from "./sections/bio-section";
 import { GallerySection } from "./sections/gallery-section";
@@ -19,19 +19,9 @@ import { PreviewModal } from "./preview-modal";
 
 export default function CommunityEditContent() {
 	const router = useRouter();
-	const { mainSettings, design, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
+	const { mainSettings, design, businessInfo, bio, gallery, services, pricing, actions, activeSection, setActiveSection, sectionRefs, sectionRefSetters, dirtyBySection, isLoading, isRedirecting } = useCommunityPageForm();
 	const isPageLoaded = !isLoading && !isRedirecting;
 	const [previewOpen, setPreviewOpen] = useState(false);
-
-	// Stable sectionRef setters — created once so they don't break React.memo
-	const sectionRefSetters = useMemo(() => {
-		const setters = {} as Record<SectionId, (el: HTMLElement | null) => void>;
-		for (const section of SECTION_LIST) {
-			setters[section.id] = (el: HTMLElement | null) => { sectionRefs.current[section.id] = el; };
-		}
-		return setters;
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
 
 	// Sentinel-based sticky header detection
 	const sentinelRef = useRef<HTMLDivElement>(null);

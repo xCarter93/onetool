@@ -118,14 +118,16 @@ export function ClientDetailSidebar({
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const nameInputRef = useRef<HTMLInputElement>(null);
 
-	// Keep localTags in sync with client data
-	useEffect(() => {
+	// Keep localTags in sync with client data when not editing
+	const [prevClientTags, setPrevClientTags] = useState(client.tags);
+	if (client.tags !== prevClientTags) {
+		setPrevClientTags(client.tags);
 		const clientTagsStr = JSON.stringify(client.tags || []);
 		const localTagsStr = JSON.stringify(localTags);
 		if (localTagsStr !== clientTagsStr && editingField === null) {
 			setLocalTags(client.tags || []);
 		}
-	}, [client.tags, localTags, editingField]);
+	}
 
 	// Auto-focus inputs when entering edit mode
 	useEffect(() => {

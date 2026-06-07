@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -110,24 +110,27 @@ export function TaskSheet({
 	const isEditMode = mode === "edit" || !!task;
 	const isCreateMode = mode === "create" || !task;
 
-	// Initialize form with task data if editing
-	useEffect(() => {
+	// Initialize form with task data when editing, or reset for create mode.
+	// Done during render via the previous-value pattern (keyed on the inputs
+	// that should trigger a re-init) instead of a setState-in-effect.
+	const initKey = `${mode ?? ""}|${isEditMode}|${isCreateMode}|${task?._id ?? ""}|${task?.date ?? ""}|${initialValues?.clientId ?? ""}|${initialValues?.projectId ?? ""}`;
+	const [prevInitKey, setPrevInitKey] = useState(initKey);
+	if (initKey !== prevInitKey) {
+		setPrevInitKey(initKey);
 		if (isEditMode && task) {
-			const taskDate = new Date(task.date);
 			setFormData({
 				title: task.title,
 				description: task.description || "",
 				type: task.type || "external",
 				clientId: task.clientId || "",
 				projectId: task.projectId || "",
-				date: taskDate,
+				date: new Date(task.date),
 				assigneeUserId: task.assigneeUserId || "",
 				status: task.status,
 				repeat: task.repeat || "none",
 				repeatUntil: task.repeatUntil ? new Date(task.repeatUntil) : undefined,
 			});
 		} else if (isCreateMode) {
-			// Reset form for create mode with optional initial values
 			const today = new Date();
 			today.setHours(0, 0, 0, 0);
 			setFormData({
@@ -143,7 +146,7 @@ export function TaskSheet({
 				repeatUntil: undefined,
 			});
 		}
-	}, [task, isEditMode, isCreateMode, initialValues, mode]);
+	}
 
 	const handleInputChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }));

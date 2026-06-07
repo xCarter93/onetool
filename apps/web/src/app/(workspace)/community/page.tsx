@@ -47,12 +47,14 @@ export default function CommunityPage() {
 	const [copied, setCopied] = useState(false);
 	const [debouncedSlug, setDebouncedSlug] = useState("");
 
+	// Reset the debounced value immediately when the slug is too short.
+	if (slug.length < 3 && debouncedSlug !== "") {
+		setDebouncedSlug("");
+	}
+
 	// Debounce slug for availability check
 	useEffect(() => {
-		if (slug.length < 3) {
-			setDebouncedSlug("");
-			return;
-		}
+		if (slug.length < 3) return;
 		const timer = setTimeout(() => setDebouncedSlug(slug), 300);
 		return () => clearTimeout(timer);
 	}, [slug]);
@@ -62,18 +64,24 @@ export default function CommunityPage() {
 		debouncedSlug.length >= 3 ? { slug: debouncedSlug } : "skip",
 	);
 
-	// Initialize form from organization data
-	useEffect(() => {
-		if (communityPage === null && organization) {
-			const defaultSlug = organization.name
-				.toLowerCase()
-				.replace(/[^a-z0-9]+/g, "-")
-				.replace(/^-|-$/g, "")
-				.substring(0, 50);
-			setSlug(defaultSlug);
-			setPageTitle(organization.name);
-		}
-	}, [communityPage, organization]);
+	// Initialize form from organization data once it loads (no community page yet).
+	const [initializedOrgName, setInitializedOrgName] = useState<string | null>(
+		null,
+	);
+	if (
+		communityPage === null &&
+		organization &&
+		initializedOrgName !== organization.name
+	) {
+		const defaultSlug = organization.name
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "")
+			.substring(0, 50);
+		setSlug(defaultSlug);
+		setPageTitle(organization.name);
+		setInitializedOrgName(organization.name);
+	}
 
 	// Slug validation
 	const validateSlug = useCallback((value: string) => {
@@ -124,14 +132,15 @@ export default function CommunityPage() {
 	};
 
 	// Copy URL
+	const communitySlug = communityPage?.slug;
 	const handleCopyUrl = useCallback(() => {
-		if (!communityPage?.slug) return;
-		const url = `${window.location.origin}/communities/${communityPage.slug}`;
+		if (!communitySlug) return;
+		const url = `${window.location.origin}/communities/${communitySlug}`;
 		navigator.clipboard.writeText(url);
 		setCopied(true);
 		setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
 		toast.success("URL copied", "Share this link with your audience");
-	}, [communityPage?.slug, toast]);
+	}, [communitySlug, toast]);
 
 	// Format date helper
 	const formatDate = (timestamp?: number) => {

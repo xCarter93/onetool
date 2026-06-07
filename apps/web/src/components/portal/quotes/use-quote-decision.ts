@@ -59,16 +59,21 @@ export function useQuoteDecision(
 
 	// --- REVIEWS-mandated rate-limit cooldown state ---
 	const [cooldownUntil, setCooldownUntil] = useState<number>(0);
-	const [, setTick] = useState(0);
+	// Remaining seconds held in state and decremented on a 1s interval — keeps
+	// the render pure (no Date.now() read during render). Seeded by the 429
+	// handlers when the cooldown starts.
+	const [cooldownSecondsRemaining, setCooldownSecondsRemaining] = useState(0);
 	useEffect(() => {
 		if (cooldownUntil <= Date.now()) return;
-		const id = setInterval(() => setTick((t) => t + 1), 1000);
+		const id = setInterval(() => {
+			const remaining = Math.max(
+				0,
+				Math.ceil((cooldownUntil - Date.now()) / 1000),
+			);
+			setCooldownSecondsRemaining(remaining);
+		}, 1000);
 		return () => clearInterval(id);
 	}, [cooldownUntil]);
-	const cooldownSecondsRemaining = Math.max(
-		0,
-		Math.ceil((cooldownUntil - Date.now()) / 1000),
-	);
 
 	// --- REVIEWS-mandated stale-409 reset (declared BEFORE submit fns) ---
 	const resetForStale = useCallback(() => {
@@ -137,6 +142,7 @@ export function useQuoteDecision(
 							? body.retryAfterSeconds
 							: 10;
 					setCooldownUntil(Date.now() + retrySec * 1000);
+					setCooldownSecondsRemaining(retrySec);
 					const errObj: DecisionError = {
 						code: "rate_limited",
 						message: body.error ?? "Too many requests",
@@ -249,6 +255,7 @@ export function useQuoteDecision(
 							? body.retryAfterSeconds
 							: 10;
 					setCooldownUntil(Date.now() + retrySec * 1000);
+					setCooldownSecondsRemaining(retrySec);
 					const errObj: DecisionError = {
 						code: "rate_limited",
 						message: body.error ?? "Too many requests",

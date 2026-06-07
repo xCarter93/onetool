@@ -27,13 +27,10 @@ export function GalleryCarousel({ images }: GalleryCarouselProps) {
 		return () => clearInterval(timer);
 	}, [images.length]);
 
-	useEffect(() => {
-		if (images.length === 0) {
-			setActiveSlide(0);
-		} else if (activeSlide >= images.length) {
-			setActiveSlide(0);
-		}
-	}, [images.length, activeSlide]);
+	// Clamp out-of-range slide during render when the image set shrinks.
+	if (activeSlide !== 0 && activeSlide >= images.length) {
+		setActiveSlide(0);
+	}
 
 	if (images.length === 0) return null;
 

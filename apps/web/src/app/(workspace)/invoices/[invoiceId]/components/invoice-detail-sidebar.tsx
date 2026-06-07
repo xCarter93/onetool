@@ -123,11 +123,13 @@ export function InvoiceDetailSidebar({
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
 		undefined
 	);
+	// Capture "now" once at mount to keep the overdue check pure across renders
+	const [now] = useState(() => Date.now());
 
 	const currentStatus =
 		invoice.status === "sent" &&
 		invoice.dueDate &&
-		invoice.dueDate < Date.now()
+		invoice.dueDate < now
 			? "overdue"
 			: (invoice.status as InvoiceStatus);
 

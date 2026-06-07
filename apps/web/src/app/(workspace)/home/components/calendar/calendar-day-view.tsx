@@ -65,15 +65,23 @@ export function CalendarDayView({
 		}
 	}, [date]);
 
-	// Handle selected event from navigation
-	useEffect(() => {
-		if (selectedEventId) {
-			const event = dayEvents.find((e) => e.id === selectedEventId);
-			if (event) {
-				setSelectedEvent(event);
-			}
+	// Sync selected event from navigation. Resolution is retried each render until
+	// the event appears in dayEvents (events may load after the id arrives); the
+	// `resolvedEventId` guard stops once matched and won't clobber a user click.
+	const [prevSelectedEventId, setPrevSelectedEventId] =
+		useState(selectedEventId);
+	const [resolvedEventId, setResolvedEventId] = useState<string | null>(null);
+	if (selectedEventId !== prevSelectedEventId) {
+		setPrevSelectedEventId(selectedEventId);
+		setResolvedEventId(null);
+	}
+	if (selectedEventId && resolvedEventId !== selectedEventId) {
+		const event = dayEvents.find((e) => e.id === selectedEventId);
+		if (event) {
+			setResolvedEventId(selectedEventId);
+			setSelectedEvent(event);
 		}
-	}, [selectedEventId, dayEvents]);
+	}
 
 	const handleEventClick = (event: CalendarEvent) => {
 		setSelectedEvent(event);
