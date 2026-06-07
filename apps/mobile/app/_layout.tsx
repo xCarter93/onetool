@@ -6,7 +6,7 @@ import {
 } from "@clerk/expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
-import { Slot } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { useEffect, useState, type PropsWithChildren } from "react";
@@ -83,7 +83,24 @@ export default function RootLayout() {
 				<ConvexClerkProvider>
 					<View style={{ flex: 1 }}>
 						<StatusBar style="auto" />
-						<Slot />
+						<Stack screenOptions={{ headerShown: false }}>
+							<Stack.Screen name="(tabs)" />
+							<Stack.Screen name="(auth)" />
+							<Stack.Screen name="index" />
+							<Stack.Screen
+								name="org-switch"
+								options={{
+									presentation: "formSheet",
+									sheetAllowedDetents: [0.5, 0.9],
+									sheetGrabberVisible: true,
+									headerShown: false,
+								}}
+							/>
+							<Stack.Screen
+								name="tasks/new"
+								options={{ presentation: "modal" }}
+							/>
+						</Stack>
 					</View>
 				</ConvexClerkProvider>
 			</ClerkLoaded>
