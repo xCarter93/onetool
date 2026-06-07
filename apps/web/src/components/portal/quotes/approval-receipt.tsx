@@ -11,8 +11,24 @@
  * Respects prefers-reduced-motion for the Collapsible animation.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { CheckCircle2, ChevronDown } from "lucide-react";
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+function subscribeReducedMotion(callback: () => void) {
+	const mq = window.matchMedia(REDUCED_MOTION_QUERY);
+	mq.addEventListener("change", callback);
+	return () => mq.removeEventListener("change", callback);
+}
+
+function useReducedMotion() {
+	return useSyncExternalStore(
+		subscribeReducedMotion,
+		() => window.matchMedia(REDUCED_MOTION_QUERY).matches,
+		() => false,
+	);
+}
 
 export interface ApprovalReceiptProps {
 	receipt: {
@@ -59,16 +75,7 @@ export function ApprovalReceipt({
 	ipAddress,
 }: ApprovalReceiptProps) {
 	const [expanded, setExpanded] = useState(false);
-	const [reduceMotion, setReduceMotion] = useState(false);
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-		setReduceMotion(mq.matches);
-		const onChange = (e: MediaQueryListEvent) => setReduceMotion(e.matches);
-		mq.addEventListener("change", onChange);
-		return () => mq.removeEventListener("change", onChange);
-	}, []);
+	const reduceMotion = useReducedMotion();
 
 	const isApproved = receipt.action === "approved";
 	const { date, time } = formatDateTime(receipt.createdAt);

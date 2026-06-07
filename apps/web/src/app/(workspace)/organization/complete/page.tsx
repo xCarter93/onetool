@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, {
+	useMemo,
+	useState,
+	useEffect,
+	useSyncExternalStore,
+} from "react";
 import { useUser, useOrganization, useOrganizationList } from "@clerk/nextjs";
 import { PricingTable } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ProgressBar, { ProgressStep } from "@/components/shared/progress-bar";
 import SelectService from "@/components/shared/choice-set";
 import { Input } from "@/components/ui/input";
@@ -40,9 +45,11 @@ interface FormData {
 
 export default function CompleteOrganizationMetadata() {
 	const { user } = useUser();
-	const { organization: clerkOrganization } = useOrganization();
+	const { organization: clerkOrganization, isLoaded: clerkOrgLoaded } =
+		useOrganization();
 	const { resolvedTheme } = useTheme();
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const completeMetadata = useMutation(api.organizations.completeMetadata);
 	const organization = useQuery(api.organizations.get);
 	const needsCompletion = useQuery(api.organizations.needsMetadataCompletion);
@@ -57,7 +64,12 @@ export default function CompleteOrganizationMetadata() {
 	const [currentStep, setCurrentStep] = useState(1);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [mounted, setMounted] = useState(false);
+	// True only after client hydration; avoids theme hydration mismatch
+	const mounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false
+	);
 	const [hasCreatedOrg, setHasCreatedOrg] = useState(false);
 
 	// Import wizard state machine: collapsed -> expanded -> completed
@@ -67,10 +79,6 @@ export default function CompleteOrganizationMetadata() {
 	const [importSummary, setImportSummary] = useState<{
 		count: number;
 	} | null>(null);
-
-	// Track the initial org ID when in "creating new" mode to detect when a new org is created
-	const initialOrgIdRef = React.useRef<string | null>(null);
-	const hasInitializedRef = React.useRef(false);
 
 	// Step 1: custom create-org form state (replaces Clerk's <CreateOrganization>)
 	const {
@@ -109,27 +117,12 @@ export default function CompleteOrganizationMetadata() {
 	});
 
 
-	// Check if we're creating a new organization (from query param)
-	const [isCreatingNew, setIsCreatingNew] = useState(false);
-	const [queryParamsInitialized, setQueryParamsInitialized] = useState(false);
-
-	// Initialize the creating flag from query parameter after mount
-	useEffect(() => {
-		if (typeof window !== "undefined") {
-			const searchParams = new URLSearchParams(window.location.search);
-			setIsCreatingNew(searchParams.get("creating") === "true");
-			setQueryParamsInitialized(true);
-		}
-	}, []);
+	// Whether we're creating a new organization (from query param)
+	const isCreatingNew = searchParams.get("creating") === "true";
 
 	// Redirect if metadata is already complete
 	// Only redirect when organization exists in Convex AND metadata is marked complete
 	React.useEffect(() => {
-		// Wait for query params to be initialized before running this logic
-		if (!queryParamsInitialized) {
-			return;
-		}
-
 		// Don't redirect if we're in the process of creating a new organization
 		if (isCreatingNew) {
 			return;
@@ -151,51 +144,33 @@ export default function CompleteOrganizationMetadata() {
 			// it means the metadata is already complete
 			router.push("/home");
 		}
-	}, [
-		needsCompletion,
-		organization,
-		clerkOrganization,
-		router,
-		isCreatingNew,
-		queryParamsInitialized,
-	]);
+	}, [needsCompletion, organization, clerkOrganization, router, isCreatingNew]);
 
-	// Initialize tracking of the initial org when in "creating new" mode
-	useEffect(() => {
-		// Wait for query params to be initialized
-		if (!queryParamsInitialized) {
-			return;
-		}
+	// In "creating new" mode, snapshot the org id once Clerk has loaded so we can
+	// detect when a brand-new org gets created (id changes). Capturing before Clerk
+	// loads would record null and the step would never advance.
+	const [initialOrgId, setInitialOrgId] = useState<string | null>(null);
+	const [initialOrgCaptured, setInitialOrgCaptured] = useState(false);
+	if (isCreatingNew && clerkOrgLoaded && !initialOrgCaptured) {
+		setInitialOrgCaptured(true);
+		setInitialOrgId(clerkOrganization?.id ?? null);
+	}
 
-		if (!hasInitializedRef.current && isCreatingNew) {
-			initialOrgIdRef.current = clerkOrganization?.id || null;
-			hasInitializedRef.current = true;
-		}
-	}, [clerkOrganization, isCreatingNew, queryParamsInitialized]);
-
-	// Check if user already has an organization - if so, skip step 1
-	// BUT: If creating a new org, wait until the org ID changes (indicating new org was created)
-	useEffect(() => {
-		// Wait for query params to be initialized before running this logic
-		if (!queryParamsInitialized) {
-			return;
-		}
-
+	// Skip step 1 once an organization exists. Run during render when the org
+	// identity changes rather than in an effect.
+	const [prevOrgId, setPrevOrgId] = useState<string | null>(null);
+	const currentOrgId = clerkOrganization?.id ?? null;
+	if (currentOrgId !== prevOrgId) {
+		setPrevOrgId(currentOrgId);
 		if (clerkOrganization && !hasCreatedOrg) {
-			// If we're in "creating new org" mode
 			if (isCreatingNew) {
-				// Check if the org ID has changed from the initial one
-				const currentOrgId = clerkOrganization.id;
-				const initialOrgId = initialOrgIdRef.current;
-
-				// Only advance if the org ID changed (meaning they created a new org)
-				if (initialOrgId && currentOrgId !== initialOrgId) {
+				// Advance once captured and the id changed — covers first org (null → id)
+				if (initialOrgCaptured && currentOrgId !== initialOrgId) {
 					setHasCreatedOrg(true);
 					if (currentStep === 1) {
 						setCurrentStep(2);
 					}
 				}
-				// If org ID hasn't changed, stay on step 1
 			} else {
 				// Normal flow: user already has an org, skip step 1
 				setHasCreatedOrg(true);
@@ -204,18 +179,7 @@ export default function CompleteOrganizationMetadata() {
 				}
 			}
 		}
-	}, [
-		clerkOrganization,
-		hasCreatedOrg,
-		currentStep,
-		isCreatingNew,
-		queryParamsInitialized,
-	]);
-
-	// Prevent hydration mismatch
-	React.useEffect(() => {
-		setMounted(true);
-	}, []);
+	}
 
 	const currentTheme = mounted ? resolvedTheme : "light";
 	const isDark = currentTheme === "dark";

@@ -1,11 +1,28 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import {
+	useState,
+	useCallback,
+	useMemo,
+	useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, X, Keyboard } from "lucide-react";
 import { StyledButton } from "@/components/ui/styled/styled-button";
+
+// Subscribe to viewport size so positioning stays pure and SSR-safe
+function subscribeViewport(callback: () => void) {
+	window.addEventListener("resize", callback);
+	return () => window.removeEventListener("resize", callback);
+}
+function getViewportSnapshot() {
+	return `${window.innerWidth}x${window.innerHeight}`;
+}
+function getViewportServerSnapshot() {
+	return null;
+}
 
 interface TourTooltipProps {
 	title: string;
@@ -34,16 +51,18 @@ export function TourTooltip({
 	isLastStep,
 	targetRect,
 }: TourTooltipProps) {
-	const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
-	const [mounted, setMounted] = useState(false);
 	const [tooltipDimensions, setTooltipDimensions] = useState({
 		width: 320,
 		height: 280,
 	});
 
-	useEffect(() => {
-		setMounted(true);
-	}, []);
+	// null during SSR/first render; viewport string ("WxH") on the client
+	const viewport = useSyncExternalStore(
+		subscribeViewport,
+		getViewportSnapshot,
+		getViewportServerSnapshot
+	);
+	const mounted = viewport !== null;
 
 	// Use callback ref to measure tooltip when it mounts
 	const tooltipRef = useCallback((node: HTMLDivElement | null) => {
@@ -57,14 +76,13 @@ export function TourTooltip({
 	}, []);
 
 	// Calculate tooltip position to stay within viewport
-	useEffect(() => {
-		if (!targetRect || !mounted) return;
+	const tooltipStyle = useMemo<React.CSSProperties>(() => {
+		if (!targetRect || !viewport) return {};
 
 		const tooltipWidth = tooltipDimensions.width;
 		const tooltipHeight = tooltipDimensions.height;
 
-		const viewportWidth = window.innerWidth;
-		const viewportHeight = window.innerHeight;
+		const [viewportWidth, viewportHeight] = viewport.split("x").map(Number);
 		const padding = 16; // Padding from viewport edges
 		const highlightBorder = 6; // Tour element border extension
 		const gap = 36; // Gap between tooltip and target (including highlight border)
@@ -142,13 +160,13 @@ export function TourTooltip({
 			Math.min(top, viewportHeight - tooltipHeight - padding)
 		);
 
-		setTooltipStyle({
+		return {
 			position: "fixed",
 			left: `${left}px`,
 			top: `${top}px`,
 			zIndex: 10000,
-		});
-	}, [targetRect, position, mounted, tooltipDimensions]);
+		};
+	}, [targetRect, position, viewport, tooltipDimensions]);
 
 	const tooltipContent = (
 		<motion.div

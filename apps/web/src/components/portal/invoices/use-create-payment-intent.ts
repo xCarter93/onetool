@@ -91,10 +91,10 @@ export function useCreatePaymentIntent({
 		}
 		const controller = new AbortController();
 		abortRef.current = controller;
-		setStatus("loading");
-		setError(null);
 
 		(async () => {
+			setStatus("loading");
+			setError(null);
 			try {
 				const res = await fetch(
 					`/api/portal/invoices/${invoiceId}/payment-intent`,

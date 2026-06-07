@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -84,11 +84,22 @@ export function SignaturesTab({
 		useState<"client_first" | "org_first">(signingOrder);
 	const [isSaving, setIsSaving] = useState(false);
 
-	useEffect(() => {
+	// Resync local state when props change
+	const [prevProps, setPrevProps] = useState({
+		requiresCountersignature,
+		countersignerId,
+		signingOrder,
+	});
+	if (
+		prevProps.requiresCountersignature !== requiresCountersignature ||
+		prevProps.countersignerId !== countersignerId ||
+		prevProps.signingOrder !== signingOrder
+	) {
+		setPrevProps({ requiresCountersignature, countersignerId, signingOrder });
 		setEnabled(requiresCountersignature);
 		setSelectedUserId(countersignerId);
 		setOrder(signingOrder);
-	}, [requiresCountersignature, countersignerId, signingOrder]);
+	}
 
 	const selectedCountersigner = useMemo(() => {
 		if (!selectedUserId || !users) return null;

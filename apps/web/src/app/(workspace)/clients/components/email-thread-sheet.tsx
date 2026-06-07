@@ -84,13 +84,6 @@ export function EmailThreadSheet({
 		? allContacts?.find((c) => c._id === selectedContactId)
 		: primaryContact;
 
-	// Set default selected contact to primary when contacts load
-	useEffect(() => {
-		if (primaryContact && !selectedContactId) {
-			setSelectedContactId(primaryContact._id);
-		}
-	}, [primaryContact, selectedContactId]);
-
 	// Auto-scroll to bottom when thread updates
 	useEffect(() => {
 		if (thread && thread.length > 0) {
@@ -99,13 +92,15 @@ export function EmailThreadSheet({
 	}, [thread]);
 
 	// Reset form when sheet closes
-	useEffect(() => {
+	const [wasOpen, setWasOpen] = useState(isOpen);
+	if (isOpen !== wasOpen) {
+		setWasOpen(isOpen);
 		if (!isOpen) {
 			setSubject("");
 			setReplyBody("");
 			setSelectedContactId(null);
 		}
-	}, [isOpen]);
+	}
 
 	const handleSendEmail = async () => {
 		// Validate inputs
@@ -137,6 +132,7 @@ export function EmailThreadSheet({
 					clientId,
 					subject: subject.trim(),
 					messageBody: replyBody.trim(),
+					contactId: selectedContactId ?? primaryContact?._id,
 				});
 				toast.success("Email Sent", "Your email has been sent successfully");
 			} else {
@@ -245,7 +241,7 @@ export function EmailThreadSheet({
 										Send To
 									</label>
 									<StyledSelect
-										value={selectedContactId || ""}
+										value={selectedContactId ?? primaryContact?._id ?? ""}
 										onValueChange={(value) =>
 											setSelectedContactId(value as Id<"clientContacts">)
 										}

@@ -135,7 +135,6 @@ export function ApprovalRail({
 		submitApprove,
 		submitDecline,
 		dismissError,
-		cooldownUntil,
 		cooldownSecondsRemaining,
 	} = useQuoteDecision(quote._id, latestDocument?._id);
 
@@ -157,7 +156,9 @@ export function ApprovalRail({
 		dismissError();
 	};
 
-	const isCooldownActive = Date.now() < cooldownUntil;
+	// Derived from the hook's per-second countdown rather than a render-time
+	// Date.now() read (purity).
+	const isCooldownActive = cooldownSecondsRemaining > 0;
 	const submitting = state === "submitting";
 
 	const canApprove = useMemo(() => {

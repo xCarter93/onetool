@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 
 interface ComboBoxProps {
 	options: string[];
@@ -22,34 +22,34 @@ const ComboBox = ({
 	const [selectedOption, setSelectedOption] = useState<string | null>(
 		value || null
 	);
-	const [filteredOptions, setFilteredOptions] = useState<string[]>(options);
 	const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
 
 	const comboBoxRef = useRef<HTMLDivElement>(null);
 	const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-	useEffect(() => {
-		if (inputValue === "") {
-			setFilteredOptions(options);
-		} else {
-			setFilteredOptions(
-				options.filter((option) =>
-					option.toLowerCase().includes(inputValue.toLowerCase())
-				)
-			);
-		}
-		setHighlightedIndex(-1); // Reset highlighted index when filtering
-		// Reset option refs array
-		optionRefs.current = [];
-	}, [inputValue, options]);
-
-	// Update internal state when value prop changes
-	useEffect(() => {
+	// Sync internal state when controlled value prop changes
+	const [prevValue, setPrevValue] = useState(value);
+	if (value !== prevValue) {
+		setPrevValue(value);
 		if (value !== undefined) {
 			setInputValue(value);
 			setSelectedOption(value);
 		}
-	}, [value]);
+	}
+
+	const filteredOptions = useMemo(() => {
+		if (inputValue === "") return options;
+		return options.filter((option) =>
+			option.toLowerCase().includes(inputValue.toLowerCase())
+		);
+	}, [inputValue, options]);
+
+	// Reset highlight when the available options change
+	const [prevOptions, setPrevOptions] = useState(options);
+	if (options !== prevOptions) {
+		setPrevOptions(options);
+		setHighlightedIndex(-1);
+	}
 
 	// Scroll to highlighted option
 	useEffect(() => {

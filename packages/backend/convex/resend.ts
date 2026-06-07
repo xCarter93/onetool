@@ -20,6 +20,7 @@ export const sendClientEmail = userMutation({
 		subject: v.string(),
 		messageBody: v.string(),
 		threadId: v.optional(v.string()), // Optional for starting a thread
+		contactId: v.optional(v.id("clientContacts")), // Recipient; defaults to primary
 	},
 	handler: async (ctx, args) => {
 		const user = await getCurrentUserOrThrow(ctx);
@@ -50,8 +51,18 @@ export const sendClientEmail = userMutation({
 			)
 			.first();
 
-		if (!primaryContact || !primaryContact.email) {
-			throw new Error("Client does not have a valid primary contact email");
+		// Resolve recipient: explicit selection or fall back to the primary contact.
+		let recipient = primaryContact;
+		if (args.contactId) {
+			const selected = await ctx.db.get(args.contactId);
+			if (!selected || selected.clientId !== args.clientId) {
+				throw new Error("Selected contact does not belong to this client");
+			}
+			recipient = selected;
+		}
+
+		if (!recipient || !recipient.email) {
+			throw new Error("Selected contact does not have a valid email address");
 		}
 
 		// Build email HTML with organization branding
@@ -61,7 +72,7 @@ export const sendClientEmail = userMutation({
 			organizationEmail: organization.email,
 			organizationPhone: organization.phone,
 			organizationAddress: organization.address,
-			clientName: `${primaryContact.firstName} ${primaryContact.lastName}`,
+			clientName: `${recipient.firstName} ${recipient.lastName}`,
 			messageBody: args.messageBody,
 			senderName: user.name, // Add sender's name for personalization
 		});
@@ -86,7 +97,7 @@ export const sendClientEmail = userMutation({
 			replyTo: string[];
 		} = {
 			from: `${fromName} <${fromEmail}>`,
-			to: primaryContact.email,
+			to: recipient.email,
 			subject: args.subject,
 			html: emailHtml,
 			// Use organization's receiving address for replies
@@ -114,8 +125,8 @@ export const sendClientEmail = userMutation({
 			messagePreview,
 			fromEmail: fromEmail,
 			fromName: fromName,
-			toEmail: primaryContact.email,
-			toName: `${primaryContact.firstName} ${primaryContact.lastName}`,
+			toEmail: recipient.email,
+			toName: `${recipient.firstName} ${recipient.lastName}`,
 			status: "sent",
 			sentAt: Date.now(),
 			sentBy: user._id,

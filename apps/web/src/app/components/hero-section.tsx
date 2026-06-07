@@ -1,7 +1,12 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import {
+	useState,
+	useRef,
+	useSyncExternalStore,
+	type MouseEvent as ReactMouseEvent,
+} from "react";
 import Image from "next/image";
 import { motion, useMotionValue, useSpring } from "motion/react";
 import { StyledButton } from "@/components/ui/styled/styled-button";
@@ -11,8 +16,15 @@ import { Calendar, Sparkles } from "lucide-react";
 
 const PARALLAX_INTENSITY = 20;
 
+const emptySubscribe = () => () => {};
+
 export default function HeroSection() {
-	const [mounted, setMounted] = useState(false);
+	// True after hydration, false on server — gates theme-dependent rendering.
+	const mounted = useSyncExternalStore(
+		emptySubscribe,
+		() => true,
+		() => false,
+	);
 	const { resolvedTheme } = useTheme();
 	const sectionRef = useRef<HTMLElement>(null);
 
@@ -24,10 +36,6 @@ export default function HeroSection() {
 	const mouseY = useMotionValue(0);
 	const x = useSpring(mouseX, { damping: 25, stiffness: 150 });
 	const y = useSpring(mouseY, { damping: 25, stiffness: 150 });
-
-	useEffect(() => {
-		setMounted(true);
-	}, []);
 
 	const handleMouseMove = (e: ReactMouseEvent<HTMLElement>) => {
 		if (!sectionRef.current) return;

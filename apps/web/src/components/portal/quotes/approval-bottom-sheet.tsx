@@ -99,7 +99,6 @@ export function ApprovalBottomSheet({
 		submitApprove,
 		submitDecline,
 		dismissError,
-		cooldownUntil,
 		cooldownSecondsRemaining,
 	} = useQuoteDecision(quote._id, latestDocument?._id);
 
@@ -118,7 +117,9 @@ export function ApprovalBottomSheet({
 		dismissError();
 	};
 
-	const isCooldownActive = Date.now() < cooldownUntil;
+	// Derived from the hook's per-second countdown rather than a render-time
+	// Date.now() read (purity).
+	const isCooldownActive = cooldownSecondsRemaining > 0;
 	const submitting = state === "submitting";
 
 	// Sheet keyboard + focus management — manual since this is a custom dialog,

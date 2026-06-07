@@ -8,7 +8,7 @@
  * quotes render the receipt panel on first render.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Download } from "lucide-react";
@@ -70,6 +70,10 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	const params = useParams<{ clientPortalId: string }>();
 	const clientPortalId = params?.clientPortalId ?? "";
 
+	// Stable mount timestamp for the resolved-fallback panel — avoids an
+	// impure Date.now() during render while keeping the same fallback value.
+	const [mountedAt] = useState(() => Date.now());
+
 	const data = useQuery(api.portal.quotes.get, { quoteId });
 	// Plan 14-08 Gap 4: aligned to PortalShell's md (768px) boundary so the
 	// rail/sheet split matches the desktop-sidebar/mobile-chrome split — no
@@ -82,15 +86,14 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 
 	// Reactive stale detection: pin the documentId we mounted on; if the
 	// reactive query updates with a different latestDocument._id, surface
-	// the stale banner immediately.
+	// the stale banner immediately. Pinned during render the first time a
+	// documentId is seen (or reset via the banner's onReload).
 	const [pinnedDocumentId, setPinnedDocumentId] = useState<string | null>(
 		null,
 	);
-	useEffect(() => {
-		if (data?.latestDocument?._id && pinnedDocumentId === null) {
-			setPinnedDocumentId(data.latestDocument._id);
-		}
-	}, [data?.latestDocument?._id, pinnedDocumentId]);
+	if (pinnedDocumentId === null && data?.latestDocument?._id) {
+		setPinnedDocumentId(data.latestDocument._id);
+	}
 
 	// Loading
 	if (data === undefined) {
@@ -214,7 +217,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 					resolvedAt:
 						(quote.status === "approved"
 							? quote.approvedAt
-							: quote.declinedAt) ?? Date.now(),
+							: quote.declinedAt) ?? mountedAt,
 					total: quote.total,
 				}
 			: undefined;

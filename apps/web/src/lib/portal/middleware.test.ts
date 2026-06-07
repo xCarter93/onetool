@@ -131,7 +131,7 @@ describe("portal middleware refresh", () => {
 
 describe("portal middleware isolation", () => {
 	it("Clerk middleware delegates to portalMiddleware for /portal and /api/portal routes", () => {
-		const middlewarePath = resolve(__dirname, "../../middleware.ts");
+		const middlewarePath = resolve(__dirname, "../../proxy.ts");
 		const src = readFileSync(middlewarePath, "utf8");
 		expect(src).toContain("if (isPortalRoute(request))");
 		expect(src).toContain("return portalMiddleware(request)");
@@ -147,12 +147,12 @@ describe("portal middleware isolation", () => {
 	});
 
 	it("portal dispatch happens BEFORE clerkMiddleware is invoked [Review fix #13]", () => {
-		const middlewarePath = resolve(__dirname, "../../middleware.ts");
+		const middlewarePath = resolve(__dirname, "../../proxy.ts");
 		const src = readFileSync(middlewarePath, "utf8");
-		expect(src).toMatch(/export default async function middleware/);
+		expect(src).toMatch(/export default async function proxy/);
 		expect(src).not.toMatch(/export default clerkMiddleware/);
 		const dispatcherIdx = src.indexOf(
-			"export default async function middleware",
+			"export default async function proxy",
 		);
 		const portalCheckIdx = src.indexOf(
 			"if (isPortalRoute(request))",

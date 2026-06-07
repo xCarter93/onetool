@@ -305,11 +305,14 @@ function ContactRow({
 }) {
 	const [editedContact, setEditedContact] = useState<Contact>(contact);
 
-	React.useEffect(() => {
+	// Resync edits from the source contact while editing
+	const [prevSource, setPrevSource] = useState({ isEditing, contact });
+	if (prevSource.isEditing !== isEditing || prevSource.contact !== contact) {
+		setPrevSource({ isEditing, contact });
 		if (isEditing) {
 			setEditedContact(contact);
 		}
-	}, [isEditing, contact]);
+	}
 
 	const handleFieldChange = (field: keyof Contact, value: string | boolean) => {
 		setEditedContact((prev) => ({

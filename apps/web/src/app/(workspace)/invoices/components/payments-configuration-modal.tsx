@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -56,6 +56,19 @@ interface LocalPayment {
 // ============================================================================
 // Utility Functions
 // ============================================================================
+
+const mapExistingPayments = (
+	existingPayments: ExistingPayment[]
+): LocalPayment[] =>
+	existingPayments.map((p) => ({
+		id: p._id,
+		originalId: p._id,
+		paymentAmount: p.paymentAmount,
+		dueDate: p.dueDate,
+		description: p.description || "",
+		isPaid: p.status === "paid",
+		sortOrder: p.sortOrder,
+	}));
 
 const formatCurrency = (amount: number): string => {
 	return new Intl.NumberFormat("en-US", {
@@ -123,9 +136,13 @@ function PaymentRow({
 	const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
 	// Sync amount input when payment changes externally
-	useEffect(() => {
-		setAmountInput(payment.paymentAmount > 0 ? payment.paymentAmount.toFixed(2) : "");
-	}, [payment.paymentAmount]);
+	const [prevAmount, setPrevAmount] = useState(payment.paymentAmount);
+	if (payment.paymentAmount !== prevAmount) {
+		setPrevAmount(payment.paymentAmount);
+		setAmountInput(
+			payment.paymentAmount > 0 ? payment.paymentAmount.toFixed(2) : ""
+		);
+	}
 
 	const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const formatted = formatCurrencyInput(e.target.value);
@@ -429,35 +446,24 @@ export function PaymentsConfigurationModal({
 
 	// Convert existing payments to local state
 	const [payments, setPayments] = useState<LocalPayment[]>(() =>
-		existingPayments.map((p) => ({
-			id: p._id,
-			originalId: p._id,
-			paymentAmount: p.paymentAmount,
-			dueDate: p.dueDate,
-			description: p.description || "",
-			isPaid: p.status === "paid",
-			sortOrder: p.sortOrder,
-		}))
+		mapExistingPayments(existingPayments)
 	);
 
 	const [isSaving, setIsSaving] = useState(false);
 
 	// Reset state when modal opens with new data
-	useEffect(() => {
-		if (isOpen) {
-			setPayments(
-				existingPayments.map((p) => ({
-					id: p._id,
-					originalId: p._id,
-					paymentAmount: p.paymentAmount,
-					dueDate: p.dueDate,
-					description: p.description || "",
-					isPaid: p.status === "paid",
-					sortOrder: p.sortOrder,
-				}))
-			);
-		}
-	}, [isOpen, existingPayments]);
+	const [prevReset, setPrevReset] = useState({ isOpen, existingPayments });
+	if (
+		isOpen &&
+		(prevReset.isOpen !== isOpen ||
+			prevReset.existingPayments !== existingPayments)
+	) {
+		setPrevReset({ isOpen, existingPayments });
+		setPayments(mapExistingPayments(existingPayments));
+	} else if (prevReset.isOpen !== isOpen) {
+		// Keep tracker in sync when closing without resetting payments
+		setPrevReset({ isOpen, existingPayments });
+	}
 
 	// Calculate validation state
 	const { isValid, difference } = useMemo(() => {

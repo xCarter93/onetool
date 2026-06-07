@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Modal from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,13 @@ export function SendForSignatureModal({
 	const [recipients, setRecipients] = useState<Recipient[]>([]);
 	const [message, setMessage] = useState("");
 
-	useEffect(() => {
+	// Reset recipients/message when the modal opens, closes, or contact changes
+	const [prevState, setPrevState] = useState({ isOpen, primaryContact });
+	if (
+		prevState.isOpen !== isOpen ||
+		prevState.primaryContact !== primaryContact
+	) {
+		setPrevState({ isOpen, primaryContact });
 		if (isOpen && primaryContact?.email) {
 			setRecipients([
 				{
@@ -47,7 +53,7 @@ export function SendForSignatureModal({
 			setRecipients([]);
 			setMessage("");
 		}
-	}, [isOpen, primaryContact]);
+	}
 
 	const addRecipient = () => {
 		setRecipients([

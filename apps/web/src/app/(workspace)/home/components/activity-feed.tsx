@@ -30,6 +30,8 @@ export default function ActivityFeed({
 }: ActivityFeedProps) {
 	const [selectedFilter, setSelectedFilter] = useState<TimeFilter>("7d");
 	const [currentPage, setCurrentPage] = useState(1);
+	// Snapshot "now" at mount; reading Date.now() during render is impure
+	const [now] = useState(() => Date.now());
 	const isOrgSwitching = useIsOrgSwitching();
 
 	// Fetch all recent activities from Convex (no backend filtering)
@@ -43,7 +45,7 @@ export default function ActivityFeed({
 
 		// Filter activities by time range
 		const dayRange = TIME_FILTER_TO_DAYS[selectedFilter];
-		const cutoffTime = Date.now() - dayRange * 24 * 60 * 60 * 1000;
+		const cutoffTime = now - dayRange * 24 * 60 * 60 * 1000;
 
 		const filtered = activitiesToFilter.filter((activityItem) => {
 			return activityItem.timestamp >= cutoffTime;
@@ -56,7 +58,7 @@ export default function ActivityFeed({
 			filteredActivities: filtered,
 			totalPages: pages,
 		};
-	}, [allActivities, selectedFilter, itemsPerPage]);
+	}, [allActivities, selectedFilter, itemsPerPage, now]);
 
 	// Get current page activities
 	const currentPageActivities = useMemo(() => {

@@ -7,7 +7,7 @@ import {
 	FileText,
 	Server,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { StyledButton } from "@/components/ui/styled/styled-button";
@@ -18,6 +18,8 @@ import { useRouter } from "next/navigation";
 function cn(...classes: (string | undefined | null | false)[]): string {
 	return classes.filter(Boolean).join(" ");
 }
+
+const emptySubscribe = () => () => {};
 
 // Animated number component
 interface AnimatedNumberProps {
@@ -196,7 +198,12 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 
 export default function PricingSection() {
 	const [isYearly, setIsYearly] = useState(false);
-	const [mounted, setMounted] = useState(false);
+	// True after hydration, false on server — gates theme-dependent rendering.
+	const mounted = useSyncExternalStore(
+		emptySubscribe,
+		() => true,
+		() => false,
+	);
 	const { resolvedTheme } = useTheme();
 	const router = useRouter();
 
@@ -204,10 +211,6 @@ export default function PricingSection() {
 		for: "organization",
 		enabled: true,
 	});
-
-	useEffect(() => {
-		setMounted(true);
-	}, []);
 
 	const getDisplayPlans = () => {
 		const freePlan = plans.find((p) => p.name === "Free");
