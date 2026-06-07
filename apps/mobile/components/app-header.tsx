@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { useRouter, type Href } from "expo-router";
@@ -106,9 +106,18 @@ export function AppHeader({
 						accessibilityRole="button"
 						accessibilityLabel="Switch organization"
 					>
-						<View style={[styles.orgTile, { backgroundColor: t.accent }]}>
-							<Text style={styles.orgTileText}>{orgInitials}</Text>
-						</View>
+						{organization?.imageUrl ? (
+							<Image
+								source={{ uri: organization.imageUrl }}
+								style={styles.orgTile}
+							/>
+						) : (
+							<View
+								style={[styles.orgTile, { backgroundColor: t.accent }]}
+							>
+								<Text style={styles.orgTileText}>{orgInitials}</Text>
+							</View>
+						)}
 						<Text
 							style={[styles.orgName, { color: t.ink }]}
 							numberOfLines={1}
@@ -144,7 +153,11 @@ export function AppHeader({
 					accessibilityRole="button"
 					accessibilityLabel="Profile"
 				>
-					<Avatar text={userInitials} size={40} />
+					<Avatar
+						text={userInitials}
+						size={40}
+						imageUrl={user?.hasImage ? user.imageUrl : null}
+					/>
 				</Pressable>
 			</View>
 
