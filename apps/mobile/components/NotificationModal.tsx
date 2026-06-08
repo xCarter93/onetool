@@ -7,12 +7,11 @@ import {
 	ActivityIndicator,
 	Dimensions,
 } from "react-native";
-import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { colors, spacing, styles, fontFamily } from "@/lib/theme";
-import { Bell, X, BellOff } from "lucide-react-native";
+import { X, BellOff } from "lucide-react-native";
 import {
 	formatRelativeTime,
 	truncateText,
@@ -58,9 +57,10 @@ export function NotificationModal({
 			}
 		}
 
-		// Navigate to the entity if URL is provided
+		// Navigate to the entity if URL is provided. actionUrl is a backend-stored
+		// string, so it can't be statically validated against the route union.
 		if (actionUrl) {
-			router.push(actionUrl);
+			router.push(actionUrl as Href);
 			onClose();
 		}
 	};
@@ -179,8 +179,8 @@ export function NotificationModal({
 									{ textAlign: "center", fontSize: 13 },
 								]}
 							>
-								You're all caught up! We'll notify you when something important
-								happens.
+								You&apos;re all caught up! We&apos;ll notify you when something
+								important happens.
 							</Text>
 						</View>
 					) : (
