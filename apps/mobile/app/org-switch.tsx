@@ -66,12 +66,13 @@ export default function OrgSwitchSheet() {
 
 	return (
 		<View style={[styles.container, { backgroundColor: t.card }]}>
+			{/* Title bar comes from the native screen header (see _layout.tsx). This
+			    route renders only the scrollable org list. */}
 			<ScrollView
 				style={styles.list}
 				contentContainerStyle={{
 					paddingHorizontal: 16,
-					// Clear the absolutely-pinned header so row 1 never sits under it.
-					paddingTop: HEADER_HEIGHT + 12,
+					paddingTop: 12,
 					paddingBottom: insets.bottom + 24,
 				}}
 			>
@@ -144,22 +145,6 @@ export default function OrgSwitchSheet() {
 				)}
 			</ScrollView>
 
-			{/* Opaque header pinned over the list — immune to form-sheet flex collapse,
-			    so the title/Cancel can never overlap the first org row. */}
-			<View
-				style={[
-					styles.header,
-					{ backgroundColor: t.card, borderBottomColor: t.line },
-				]}
-			>
-				<Text style={[styles.title, { color: t.ink }]}>
-					Switch organization
-				</Text>
-				<Pressable onPress={() => router.back()} hitSlop={8}>
-					<Text style={[styles.cancel, { color: t.sub }]}>Cancel</Text>
-				</Pressable>
-			</View>
-
 			{switching && (
 				<View
 					style={[
@@ -178,9 +163,6 @@ export default function OrgSwitchSheet() {
 	);
 }
 
-// Fixed sheet-header height — shared by the pinned header and the list's top inset.
-const HEADER_HEIGHT = 56;
-
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
@@ -189,34 +171,8 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	// Absolute, fixed-height header pinned to the top of the sheet content. Pinning
-	// it (rather than relying on flex-stacking, which collapses in a New-Arch form
-	// sheet) is what guarantees the title/Cancel never overlap the first org row;
-	// the list is padded by HEADER_HEIGHT to start cleanly beneath it.
-	header: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		height: HEADER_HEIGHT,
-		zIndex: 10,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: 16,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-	},
 	list: {
 		flex: 1,
-	},
-	title: {
-		fontSize: 18,
-		fontFamily: fontFamily.bold,
-		letterSpacing: -0.3,
-	},
-	cancel: {
-		fontSize: type.body,
-		fontFamily: fontFamily.medium,
 	},
 	row: {
 		flexDirection: "row",
