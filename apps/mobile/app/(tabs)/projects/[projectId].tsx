@@ -5,8 +5,10 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
+	Modal,
+	TouchableOpacity,
 } from "react-native";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState, useCallback, useMemo } from "react";
@@ -15,8 +17,21 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { Badge, Card, Eyebrow, ListRow, Ring, SectionHeader } from "@/components/ui";
+import { EditableField } from "@/components/EditableField";
+import { StatusPickerSheet } from "@/components/StatusPickerSheet";
+import { MentionModal } from "@/components/MentionModal";
 import { ProjectDocuments } from "@/components/ProjectDocuments";
-import { Building2 } from "lucide-react-native";
+import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
+import { Building2, MessageSquare, X } from "lucide-react-native";
+
+const STATUS_OPTIONS = [
+	{ value: "planned", label: "Planned" },
+	{ value: "in-progress", label: "In Progress" },
+	{ value: "completed", label: "Completed" },
+	{ value: "cancelled", label: "Cancelled" },
+];
+
+type DateField = "startDate" | "endDate";
 
 function formatDate(timestamp: number | undefined): string | null {
 	if (!timestamp) return null;
@@ -61,6 +76,11 @@ export default function ProjectDetailScreen() {
 	const router = useRouter();
 	const t = useTokens();
 	const [refreshing, setRefreshing] = useState(false);
+	const [statusPickerVisible, setStatusPickerVisible] = useState(false);
+	const [dateField, setDateField] = useState<DateField | null>(null);
+	const [mentionVisible, setMentionVisible] = useState(false);
+
+	const updateProject = useMutation(api.projects.update);
 
 	const project = useQuery(
 		api.projects.get,
@@ -102,6 +122,52 @@ export default function ProjectDetailScreen() {
 		setTimeout(() => setRefreshing(false), 1000);
 	}, []);
 
+	// Send ONLY the edited field — projects.update throws on zero updates (Pitfall 3).
+	const saveField = useCallback(
+		async (field: "title" | "description", value: string) => {
+			if (!projectId) return;
+			await updateProject({ id: projectId as Id<"projects">, [field]: value });
+		},
+		[projectId, updateProject]
+	);
+
+	const handleStatusSelect = useCallback(
+		async (next: string) => {
+			if (!projectId) return;
+			try {
+				await updateProject({
+					id: projectId as Id<"projects">,
+					status: next as
+						| "planned"
+						| "in-progress"
+						| "completed"
+						| "cancelled",
+				});
+			} catch (error) {
+				console.error("Failed to update status:", error);
+			}
+		},
+		[projectId, updateProject]
+	);
+
+	const handleDateSelect = useCallback(
+		async (dateId: string) => {
+			if (!projectId || !dateField) return;
+			const ms = fromDateId(dateId).getTime();
+			const field = dateField;
+			setDateField(null);
+			try {
+				await updateProject({
+					id: projectId as Id<"projects">,
+					[field]: ms,
+				});
+			} catch (error) {
+				console.error("Failed to update date:", error);
+			}
+		},
+		[projectId, dateField, updateProject]
+	);
+
 	if (!project) {
 		return (
 			<SafeAreaView
@@ -138,9 +204,17 @@ export default function ProjectDetailScreen() {
 				<Card>
 					<View style={styles.headerTop}>
 						<View style={styles.headerTitleCol}>
-							<Text style={[styles.title, { color: t.ink }]}>
-								{project.title}
-							</Text>
+							<EditableField
+								label="Title"
+								value={project.title}
+								onSave={(v) => saveField("title", v)}
+								placeholder="Project title"
+								renderValue={(v) => (
+									<Text style={[styles.title, { color: t.ink }]}>
+										{v}
+									</Text>
+								)}
+							/>
 							<Pressable
 								onPress={() =>
 									router.push(`/clients/${project.clientId}`)
@@ -158,7 +232,33 @@ export default function ProjectDetailScreen() {
 								</Text>
 							</Pressable>
 						</View>
-						<Badge status={project.status} big />
+						<View style={styles.headerActions}>
+							<Pressable
+								onPress={() => setStatusPickerVisible(true)}
+								accessibilityRole="button"
+								accessibilityLabel="Change status"
+								style={({ pressed }) => [pressed && styles.pressed]}
+							>
+								<Badge status={project.status} big />
+							</Pressable>
+							<Pressable
+								onPress={() => setMentionVisible(true)}
+								accessibilityRole="button"
+								accessibilityLabel="Team chat"
+								style={({ pressed }) => [
+									styles.chatBtn,
+									{ backgroundColor: t.accentSoft },
+									pressed && styles.pressed,
+								]}
+							>
+								<MessageSquare size={16} color={t.accent} />
+								<Text
+									style={[styles.chatBtnText, { color: t.accent }]}
+								>
+									Team chat
+								</Text>
+							</Pressable>
+						</View>
 					</View>
 
 					{taskProgress ? (
@@ -184,10 +284,12 @@ export default function ProjectDetailScreen() {
 								<KV
 									label="Start"
 									value={formatDate(project.startDate) ?? "Not set"}
+									onPress={() => setDateField("startDate")}
 								/>
 								<KV
 									label="Due"
 									value={formatDate(project.endDate) ?? "Not set"}
+									onPress={() => setDateField("endDate")}
 								/>
 							</View>
 						</View>
@@ -196,26 +298,30 @@ export default function ProjectDetailScreen() {
 							<KV
 								label="Start"
 								value={formatDate(project.startDate) ?? "Not set"}
+								onPress={() => setDateField("startDate")}
 							/>
 							<KV
 								label="Due"
 								value={formatDate(project.endDate) ?? "Not set"}
+								onPress={() => setDateField("endDate")}
 							/>
 						</View>
 					)}
 				</Card>
 
-				{/* Description */}
+				{/* Description — inline editable */}
 				<Card style={styles.section}>
 					<Eyebrow>Description</Eyebrow>
-					<Text
-						style={[
-							styles.description,
-							{ color: project.description ? t.sub : t.faint },
-						]}
-					>
-						{project.description || "No description"}
-					</Text>
+					<View style={{ marginTop: 8 }}>
+						<EditableField
+							label=""
+							value={project.description}
+							onSave={(v) => saveField("description", v)}
+							placeholder="Add a description…"
+							multiline
+							numberOfLines={3}
+						/>
+					</View>
 				</Card>
 
 				{/* Related quotes */}
@@ -285,6 +391,64 @@ export default function ProjectDetailScreen() {
 
 				<View style={{ height: 32 }} />
 			</ScrollView>
+
+			{/* Status picker */}
+			<StatusPickerSheet
+				visible={statusPickerVisible}
+				value={project.status}
+				options={STATUS_OPTIONS}
+				onSelect={handleStatusSelect}
+				onClose={() => setStatusPickerVisible(false)}
+				title="Project status"
+			/>
+
+			{/* Date picker — Modal wrapping AppCalendar (tasks/new.tsx pattern) */}
+			<Modal
+				visible={dateField !== null}
+				transparent
+				animationType="slide"
+				onRequestClose={() => setDateField(null)}
+			>
+				<View style={styles.dateBackdrop}>
+					<View style={[styles.dateSheet, { backgroundColor: t.bg }]}>
+						<View style={styles.dateSheetHeader}>
+							<Text style={[styles.dateSheetTitle, { color: t.ink }]}>
+								{dateField === "endDate"
+									? "Select due date"
+									: "Select start date"}
+							</Text>
+							<TouchableOpacity
+								onPress={() => setDateField(null)}
+								accessibilityRole="button"
+								accessibilityLabel="Close"
+							>
+								<X size={24} color={t.ink} />
+							</TouchableOpacity>
+						</View>
+						<AppCalendar
+							selectedDate={
+								dateField === "endDate"
+									? project.endDate
+										? toDateId(new Date(project.endDate))
+										: undefined
+									: project.startDate
+										? toDateId(new Date(project.startDate))
+										: undefined
+							}
+							onDateSelect={handleDateSelect}
+						/>
+					</View>
+				</View>
+			</Modal>
+
+			{/* Team chat */}
+			<MentionModal
+				visible={mentionVisible}
+				onClose={() => setMentionVisible(false)}
+				entityType="project"
+				entityId={projectId as Id<"projects">}
+				entityName={project.title}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -330,6 +494,45 @@ const styles = StyleSheet.create({
 	clientLinkText: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 14,
+	},
+	headerActions: {
+		alignItems: "flex-end",
+		gap: 10,
+	},
+	chatBtn: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		height: 34,
+		paddingHorizontal: 12,
+		borderRadius: radii.rSm,
+	},
+	chatBtnText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 13,
+	},
+	dateBackdrop: {
+		flex: 1,
+		backgroundColor: "rgba(0,0,0,0.5)",
+		justifyContent: "center",
+		alignItems: "center",
+		padding: 16,
+	},
+	dateSheet: {
+		width: "100%",
+		maxWidth: 420,
+		borderRadius: radii.r,
+		padding: 16,
+	},
+	dateSheetHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: 12,
+	},
+	dateSheetTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 18,
 	},
 	progressRow: {
 		flexDirection: "row",
