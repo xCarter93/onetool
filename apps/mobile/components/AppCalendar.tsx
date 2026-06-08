@@ -2,19 +2,16 @@ import React, { memo, useCallback, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import { colors, fontFamily, radius, spacing } from "@/lib/theme";
+import { dateIdFromUtcMs, utcMsFromDateId } from "@/lib/date";
 
-// Helper to convert Date to YYYY-MM-DD string
+// Date <-> YYYY-MM-DD via the shared UTC-safe helpers so the calendar, the task
+// form, and the list all share one convention matching the backend's Date.UTC storage.
 export function toDateId(date: Date): string {
-	const year = date.getFullYear();
-	const month = String(date.getMonth() + 1).padStart(2, "0");
-	const day = String(date.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
+	return dateIdFromUtcMs(date.getTime());
 }
 
-// Helper to convert YYYY-MM-DD string to Date
 export function fromDateId(dateId: string): Date {
-	const [year, month, day] = dateId.split("-").map(Number);
-	return new Date(year, month - 1, day);
+	return new Date(utcMsFromDateId(dateId));
 }
 
 // Project colors - frosted glass style
