@@ -8,6 +8,10 @@ interface RevenueGaugeProps {
 	label: string;
 	value: string;
 	goal: string;
+	// Optional meta-column extras (mockup): a green trend chip + a muted to-go
+	// helper line. Additive — existing callers without them are unchanged.
+	trend?: string;
+	toGo?: string;
 }
 
 // MDS-05 dark revenue-goal gauge card. The dark gradient uses RN New Arch
@@ -16,7 +20,14 @@ const GRADIENT: ViewStyle = {
 	experimental_backgroundImage: "linear-gradient(135deg,#0b1220,#1c2734)",
 } as unknown as ViewStyle;
 
-export function RevenueGauge({ pct, label, value, goal }: RevenueGaugeProps) {
+export function RevenueGauge({
+	pct,
+	label,
+	value,
+	goal,
+	trend,
+	toGo,
+}: RevenueGaugeProps) {
 	const t = useTokens();
 	const clamped = Math.min(Math.max(Math.round(pct), 0), 100);
 
@@ -40,6 +51,18 @@ export function RevenueGauge({ pct, label, value, goal }: RevenueGaugeProps) {
 				<Text style={styles.goal} numberOfLines={1}>
 					{goal}
 				</Text>
+				{trend ? (
+					<View style={styles.trendChip}>
+						<Text style={styles.trendText} numberOfLines={1}>
+							{trend}
+						</Text>
+					</View>
+				) : null}
+				{toGo ? (
+					<Text style={styles.toGo} numberOfLines={1}>
+						{toGo}
+					</Text>
+				) : null}
 			</View>
 		</View>
 	);
@@ -87,5 +110,24 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		color: "rgba(255,255,255,0.6)",
 		marginTop: 2,
+	},
+	trendChip: {
+		alignSelf: "flex-start",
+		backgroundColor: "rgba(70,217,138,0.16)",
+		borderRadius: 9999,
+		paddingHorizontal: 8,
+		paddingVertical: 2,
+		marginTop: 8,
+	},
+	trendText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 12,
+		color: "#46d98a",
+	},
+	toGo: {
+		fontFamily: fontFamily.regular,
+		fontSize: 12,
+		color: "rgba(255,255,255,0.5)",
+		marginTop: 6,
 	},
 });

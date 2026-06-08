@@ -67,6 +67,14 @@ export default function HomeScreen() {
 	const allClients = useQuery(api.clients.list, {});
 	const allProjects = useQuery(api.projects.list, {});
 
+	// Org doc — the gauge gate reads monthlyRevenueTarget directly. getHomeStats
+	// always returns a 50k fallback target, so we MUST detect "no goal" here.
+	const org = useQuery(api.organizations.get, {});
+
+	// Open quotes (status=sent) + overdue invoices for the KPI grid.
+	const openQuotes = useQuery(api.quotes.list, { status: "sent" });
+	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
+
 	// Fetch calendar events for a 3-month range based on displayed month.
 	// Hydration-gated skip (Pitfall 4): a calendar-first persisted user must not
 	// see a dashboard flash, and the query must not fire in dashboard view.
@@ -179,6 +187,18 @@ export default function HomeScreen() {
 		allProjects?.filter((p) => p.status === "planned").length ?? 0;
 	const inProgressProjects =
 		allProjects?.filter((p) => p.status === "in-progress").length ?? 0;
+
+	// Revenue gauge gate: only a real, positive org target counts. NEVER gate on
+	// homeStats.revenueGoal.target (always >0 via the 50k fallback).
+	const hasTarget =
+		typeof org?.monthlyRevenueTarget === "number" &&
+		org.monthlyRevenueTarget > 0;
+
+	// Open-quotes value = sum of calculated quote totals (quotes.list exposes q.total).
+	const openQuotesValue = (openQuotes ?? []).reduce(
+		(sum, q) => sum + (q.total ?? 0),
+		0
+	);
 
 	// Get events for the selected date
 	const selectedDateEvents = useMemo(() => {
@@ -407,62 +427,42 @@ export default function HomeScreen() {
 							</Pressable>
 						)}
 
-						{/* Revenue Goal Progress */}
-						{homeStats && homeStats.revenueGoal.target > 0 && (
-							<View style={styles.revenueCard}>
-								<View style={styles.revenueHeader}>
-									<View style={styles.revenueIconContainer}>
-										<Target size={18} color={colors.primary} />
-									</View>
-									<View style={styles.revenueInfo}>
-										<Text style={styles.revenueTitle}>
-											Monthly Revenue Goal
-										</Text>
-										<Text style={styles.revenueSubtitle}>
-											{Math.round(homeStats.revenueGoal.percentage)}% complete
-										</Text>
-									</View>
-								</View>
-								<View style={styles.revenueProgressRow}>
-									<ProgressRing
-										percentage={homeStats.revenueGoal.percentage}
-										size={100}
-										strokeWidth={10}
-										color={colors.primary}
+						{/* Revenue — gauge only when a real org target is set, else earned-only */}
+						{homeStats &&
+							(hasTarget ? (
+								<View style={styles.revenueBlock}>
+									<RevenueGauge
+										pct={homeStats.revenueGoal.percentage}
+										label={`${currentMonthUpper} REVENUE`}
+										value={formatCurrency(homeStats.revenueGoal.current)}
+										goal={`of ${formatCurrency(
+											org!.monthlyRevenueTarget!
+										)} goal`}
+										trend={`${
+											homeStats.revenueGoal.changeType === "decrease"
+												? "-"
+												: "+"
+										}${Math.abs(homeStats.revenueGoal.changePercentage)}%`}
+										toGo={`${formatCurrency(
+											Math.max(
+												org!.monthlyRevenueTarget! -
+													homeStats.revenueGoal.current,
+												0
+											)
+										)} to go`}
 									/>
-									<View style={styles.revenueStatsColumn}>
-										<View style={styles.revenueStatLarge}>
-											<Text style={styles.revenueStatLabelLarge}>Earned</Text>
-											<Text style={styles.revenueStatValueLarge}>
-												{formatCurrency(homeStats.revenueGoal.current)}
-											</Text>
-										</View>
-										<View style={styles.revenueStatLarge}>
-											<Text style={styles.revenueStatLabelLarge}>Target</Text>
-											<Text style={styles.revenueStatValueLarge}>
-												{formatCurrency(homeStats.revenueGoal.target)}
-											</Text>
-										</View>
-										<View style={styles.revenueStatLarge}>
-											<Text style={styles.revenueStatLabelLarge}>
-												Remaining
-											</Text>
-											<Text
-												style={[
-													styles.revenueStatValueLarge,
-													{ color: colors.mutedForeground },
-												]}
-											>
-												{formatCurrency(
-													homeStats.revenueGoal.target -
-														homeStats.revenueGoal.current
-												)}
-											</Text>
-										</View>
-									</View>
 								</View>
-							</View>
-						)}
+							) : (
+								<View style={styles.earnedOnlyCard}>
+									<Eyebrow>{`${currentMonthUpper} REVENUE`}</Eyebrow>
+									<Text style={styles.earnedValue}>
+										{formatCurrency(homeStats.revenueGoal.current)}
+									</Text>
+									<Pressable onPress={() => router.push("/profile")}>
+										<Text style={styles.earnedLink}>Set a monthly goal</Text>
+									</Pressable>
+								</View>
+							))}
 
 						{/* Tasks Section */}
 						<View style={styles.section}>
@@ -800,65 +800,28 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.regular,
 		color: "#991b1b",
 	},
-	revenueCard: {
+	revenueBlock: {
+		marginBottom: spacing.md,
+	},
+	earnedOnlyCard: {
 		backgroundColor: colors.card,
 		borderRadius: radius.lg,
 		padding: spacing.md,
 		borderWidth: 1,
-		borderColor: colors.border,
+		borderColor: tokens.line,
 		marginBottom: spacing.md,
 	},
-	revenueHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		marginBottom: spacing.md,
+	earnedValue: {
+		fontSize: 28,
+		fontFamily: fontFamily.bold,
+		color: tokens.ink,
+		marginTop: 6,
 	},
-	revenueIconContainer: {
-		width: 36,
-		height: 36,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	revenueInfo: {
-		flex: 1,
-	},
-	revenueTitle: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-	},
-	revenueSubtitle: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	revenueProgressRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: spacing.md,
-	},
-	revenueStatsColumn: {
-		flex: 1,
-		gap: spacing.sm,
-	},
-	revenueStatLarge: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-	},
-	revenueStatLabelLarge: {
+	earnedLink: {
 		fontSize: 13,
 		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-	},
-	revenueStatValueLarge: {
-		fontSize: 16,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
+		color: tokens.accent,
+		marginTop: spacing.sm,
 	},
 	section: {
 		marginBottom: spacing.md,
