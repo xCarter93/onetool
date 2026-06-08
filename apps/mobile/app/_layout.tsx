@@ -136,8 +136,16 @@ export default function RootLayout() {
 								}}
 							/>
 							<Stack.Screen
-								name="tasks/new"
-								options={{ presentation: "modal" }}
+								name="tasks/form"
+								options={{
+									presentation: "formSheet",
+									contentStyle: { backgroundColor: "transparent" },
+									headerShown: false,
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								}}
 							/>
 						</Stack>
 					</View>

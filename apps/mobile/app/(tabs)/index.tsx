@@ -434,7 +434,7 @@ export default function HomeScreen() {
 							<View style={styles.quickGrid}>
 								<Pressable
 									style={styles.quickTile}
-									onPress={() => router.push("/tasks/new")}
+									onPress={() => router.push("/tasks/form")}
 								>
 									<View
 										style={[
