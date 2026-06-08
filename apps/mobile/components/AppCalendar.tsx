@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
-import { colors, fontFamily, radius, spacing } from "@/lib/theme";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { dateIdFromUtcMs, utcMsFromDateId } from "@/lib/date";
 
 // Date <-> YYYY-MM-DD via the shared UTC-safe helpers so the calendar, the task
@@ -58,43 +58,6 @@ interface AppCalendarProps {
 	initialMonth?: string;
 }
 
-// Calendar theme matching app design - with circle outline for selected date
-const calendarTheme = {
-	backgroundColor: colors.card,
-	calendarBackground: colors.card,
-	textSectionTitleColor: colors.mutedForeground,
-	textSectionTitleDisabledColor: colors.muted,
-	// Selected date - transparent background with primary text (we'll add border via customStyle)
-	selectedDayBackgroundColor: "transparent",
-	selectedDayTextColor: colors.primary,
-	todayTextColor: colors.primary,
-	todayBackgroundColor: "transparent",
-	dayTextColor: colors.foreground,
-	textDisabledColor: colors.muted,
-	dotColor: colors.primary,
-	selectedDotColor: colors.primary,
-	arrowColor: colors.foreground,
-	disabledArrowColor: colors.muted,
-	monthTextColor: colors.foreground,
-	indicatorColor: colors.primary,
-	textDayFontFamily: fontFamily.regular,
-	textMonthFontFamily: fontFamily.semibold,
-	textDayHeaderFontFamily: fontFamily.medium,
-	textDayFontSize: 14,
-	textMonthFontSize: 16,
-	textDayHeaderFontSize: 12,
-	"stylesheet.calendar.header": {
-		week: {
-			marginTop: spacing.xs,
-			flexDirection: "row",
-			justifyContent: "space-around",
-			borderBottomWidth: 1,
-			borderBottomColor: colors.border,
-			paddingBottom: spacing.sm,
-		},
-	},
-};
-
 export const AppCalendar = memo(function AppCalendar({
 	selectedDate,
 	onDateSelect,
@@ -106,7 +69,65 @@ export const AppCalendar = memo(function AppCalendar({
 	hideArrows = false,
 	initialMonth,
 }: AppCalendarProps) {
+	const t = useTokens();
 	const today = useMemo(() => toDateId(new Date()), []);
+
+	// Field Kit calendar theme — selected date = accent (UI-SPEC).
+	const calendarTheme = useMemo(
+		() => ({
+			backgroundColor: t.card,
+			calendarBackground: t.card,
+			textSectionTitleColor: t.sub,
+			textSectionTitleDisabledColor: t.faint,
+			selectedDayBackgroundColor: "transparent",
+			selectedDayTextColor: t.accent,
+			todayTextColor: t.accent,
+			todayBackgroundColor: "transparent",
+			dayTextColor: t.ink,
+			textDisabledColor: t.faint,
+			dotColor: t.accent,
+			selectedDotColor: t.accent,
+			arrowColor: t.ink,
+			disabledArrowColor: t.faint,
+			monthTextColor: t.ink,
+			indicatorColor: t.accent,
+			textDayFontFamily: fontFamily.regular,
+			textMonthFontFamily: fontFamily.semibold,
+			textDayHeaderFontFamily: fontFamily.medium,
+			textDayFontSize: 14,
+			textMonthFontSize: 16,
+			textDayHeaderFontSize: 12,
+			"stylesheet.calendar.header": {
+				week: {
+					marginTop: 4,
+					flexDirection: "row",
+					justifyContent: "space-around",
+					borderBottomWidth: 1,
+					borderBottomColor: t.line,
+					paddingBottom: 8,
+				},
+			},
+		}),
+		[t]
+	);
+
+	const styles = useMemo(
+		() =>
+			StyleSheet.create({
+				container: {
+					backgroundColor: t.card,
+					borderRadius: radii.lg,
+					padding: 8,
+					borderWidth: 1,
+					borderColor: t.line,
+					overflow: "hidden",
+				},
+				calendar: {
+					borderRadius: radii.lg,
+				},
+			}),
+		[t]
+	);
 
 	// Track the currently displayed month internally to prevent jumping
 	const [displayedMonth, setDisplayedMonth] = useState(
@@ -118,7 +139,7 @@ export const AppCalendar = memo(function AppCalendar({
 		const marks: Record<string, any> = {};
 
 		// Add project period markings
-		projects.forEach((project, projectIndex) => {
+		projects.forEach((project) => {
 			const start = fromDateId(project.startDate);
 			const end = fromDateId(project.endDate);
 
@@ -145,7 +166,7 @@ export const AppCalendar = memo(function AppCalendar({
 							endingDay: isEnd,
 							color: projectColor,
 						}],
-						textColor: colors.foreground,
+						textColor: t.ink,
 					};
 				} else {
 					// Add this project as a new period (supports multiple overlapping projects)
@@ -164,7 +185,7 @@ export const AppCalendar = memo(function AppCalendar({
 									color: projectColor,
 								}
 							],
-							textColor: colors.foreground,
+							textColor: t.ink,
 						};
 					} else {
 						marks[dateId].periods.push({
@@ -182,7 +203,7 @@ export const AppCalendar = memo(function AppCalendar({
 		// Add task dot markings
 		tasks.forEach((task) => {
 			const dateId = task.date;
-			const taskColor = task.color || colors.primary;
+			const taskColor = task.color || t.accent;
 
 			if (!marks[dateId]) {
 				marks[dateId] = {
@@ -204,16 +225,16 @@ export const AppCalendar = memo(function AppCalendar({
 			if (!marks[selectedDate]) {
 				marks[selectedDate] = {
 					selected: true,
-					selectedColor: "rgba(0, 166, 244, 0.15)", // Light primary background
-					selectedTextColor: colors.primary, // Primary color text
+					selectedColor: t.accent + "26", // accent at low alpha
+					selectedTextColor: t.accent,
 					customStyles: {
 						container: {
 							borderWidth: 2,
-							borderColor: colors.primary,
+							borderColor: t.accent,
 							borderRadius: 16,
 						},
 						text: {
-							color: colors.primary,
+							color: t.accent,
 							fontFamily: fontFamily.semibold,
 						},
 					},
@@ -222,16 +243,16 @@ export const AppCalendar = memo(function AppCalendar({
 				marks[selectedDate] = {
 					...marks[selectedDate],
 					selected: true,
-					selectedColor: "rgba(0, 166, 244, 0.15)",
-					selectedTextColor: colors.foreground, // Keep text visible on period
+					selectedColor: t.accent + "26",
+					selectedTextColor: t.ink, // Keep text visible on period
 					customStyles: {
 						container: {
 							borderWidth: 2,
-							borderColor: colors.primary,
+							borderColor: t.accent,
 							borderRadius: 16,
 						},
 						text: {
-							color: colors.foreground,
+							color: t.ink,
 							fontFamily: fontFamily.semibold,
 						},
 					},
@@ -240,7 +261,7 @@ export const AppCalendar = memo(function AppCalendar({
 		}
 
 		return marks;
-	}, [tasks, projects, selectedDate]);
+	}, [tasks, projects, selectedDate, t]);
 
 	// Handle day press
 	const handleDayPress = useCallback(
@@ -280,18 +301,4 @@ export const AppCalendar = memo(function AppCalendar({
 			/>
 		</View>
 	);
-});
-
-const styles = StyleSheet.create({
-	container: {
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.sm,
-		borderWidth: 1,
-		borderColor: colors.border,
-		overflow: "hidden",
-	},
-	calendar: {
-		borderRadius: radius.md,
-	},
 });
