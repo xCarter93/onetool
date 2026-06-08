@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { useOrganizationList, useOrganization } from "@clerk/expo";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Check, Building, RefreshCw } from "lucide-react-native";
+import { Check, Building, RefreshCw, X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
 
@@ -103,12 +103,12 @@ export default function OrgSwitchSheet() {
 				<View style={styles.headerAction}>
 					<Pressable
 						onPress={() => router.back()}
-						style={({ pressed }) => [
-							styles.cancelButton,
-							{ backgroundColor: pressed ? t.secondary : t.muted },
-						]}
+						hitSlop={8}
+						accessibilityRole="button"
+						accessibilityLabel="Close"
+						style={styles.closeBtn}
 					>
-						<Text style={[styles.cancelText, { color: t.sub }]}>Cancel</Text>
+						<X size={22} color={t.sub} />
 					</Pressable>
 				</View>
 			</View>
@@ -274,14 +274,12 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "flex-end",
 	},
-	cancelButton: {
+	closeBtn: {
+		width: 32,
+		height: 32,
 		borderRadius: 999,
-		paddingHorizontal: 13,
-		paddingVertical: 10,
-	},
-	cancelText: {
-		fontSize: 18,
-		fontFamily: fontFamily.medium,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	state: {
 		flex: 1,

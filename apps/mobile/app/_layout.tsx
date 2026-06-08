@@ -124,6 +124,18 @@ export default function RootLayout() {
 								}}
 							/>
 							<Stack.Screen
+								name="journey"
+								options={{
+									presentation: "formSheet",
+									contentStyle: { backgroundColor: "transparent" },
+									headerShown: false,
+									sheetAllowedDetents: [0.52, 0.9],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								}}
+							/>
+							<Stack.Screen
 								name="tasks/new"
 								options={{ presentation: "modal" }}
 							/>

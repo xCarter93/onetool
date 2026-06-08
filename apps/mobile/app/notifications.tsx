@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { BellOff } from "lucide-react-native";
+import { BellOff, X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import {
 	formatRelativeTime,
@@ -73,12 +73,12 @@ export default function NotificationsSheet() {
 				<View style={styles.headerAction}>
 					<Pressable
 						onPress={() => router.back()}
-						style={({ pressed }) => [
-							styles.cancelButton,
-							{ backgroundColor: pressed ? t.secondary : t.muted },
-						]}
+						hitSlop={8}
+						accessibilityRole="button"
+						accessibilityLabel="Close"
+						style={styles.closeBtn}
 					>
-						<Text style={[styles.cancelText, { color: t.sub }]}>Cancel</Text>
+						<X size={22} color={t.sub} />
 					</Pressable>
 				</View>
 			</View>
@@ -195,14 +195,12 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "flex-end",
 	},
-	cancelButton: {
+	closeBtn: {
+		width: 32,
+		height: 32,
 		borderRadius: 999,
-		paddingHorizontal: 13,
-		paddingVertical: 10,
-	},
-	cancelText: {
-		fontSize: 18,
-		fontFamily: fontFamily.medium,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	state: {
 		flex: 1,

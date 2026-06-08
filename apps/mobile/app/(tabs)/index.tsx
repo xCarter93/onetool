@@ -29,7 +29,7 @@ import {
 	SectionHeader,
 	ListRow,
 } from "@/components/ui";
-import { JourneyProgress } from "@/components/JourneyProgress";
+import { JourneyCard } from "@/components/JourneyCard";
 import { createGlyph } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
@@ -520,8 +520,8 @@ export default function HomeScreen() {
 							</View>
 						</View>
 
-						{/* Journey progress — capability retained, re-homed after the hero rewrite */}
-						<JourneyProgress />
+						{/* Journey — compact gauge tile; opens the /journey sheet for detail */}
+						<JourneyCard />
 					</>
 				) : (
 					/* Calendar View — custom MonthGrid fed by getCalendarEvents */
