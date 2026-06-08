@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { icons } from "lucide-react-native";
+import { icons, ArrowUpRight } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Card } from "./card";
 import { Eyebrow } from "./eyebrow";
@@ -12,6 +12,8 @@ interface StatCardProps {
 	icon?: keyof typeof icons;
 	tone?: string;
 	onPress?: () => void;
+	// Faint top-right ↗ glyph signalling the tile opens its own surface.
+	showExternalAffordance?: boolean;
 }
 
 export function StatCard({
@@ -21,6 +23,7 @@ export function StatCard({
 	icon,
 	tone,
 	onPress,
+	showExternalAffordance,
 }: StatCardProps) {
 	const t = useTokens();
 	const Glyph = icon ? icons[icon] : null;
@@ -28,6 +31,11 @@ export function StatCard({
 
 	return (
 		<Card onPress={onPress}>
+			{showExternalAffordance ? (
+				<View style={styles.affordance} pointerEvents="none">
+					<ArrowUpRight size={16} color={t.faint} />
+				</View>
+			) : null}
 			<View style={styles.header}>
 				{Glyph ? (
 					<View style={[styles.tile, { backgroundColor: tint + "14" }]}>
@@ -49,6 +57,11 @@ export function StatCard({
 }
 
 const styles = StyleSheet.create({
+	affordance: {
+		position: "absolute",
+		top: 14,
+		right: 14,
+	},
 	header: {
 		flexDirection: "row",
 		alignItems: "center",

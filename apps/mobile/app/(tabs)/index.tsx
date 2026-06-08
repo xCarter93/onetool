@@ -315,97 +315,56 @@ export default function HomeScreen() {
 
 				{viewMode === "dashboard" ? (
 					<>
-						{/* Quick Stats Row */}
-						<View style={styles.statsRow}>
-							<Pressable
-								style={styles.statCardWide}
-								onPress={() => router.push("/clients")}
-							>
-								<View style={styles.statTopRow}>
-									<View style={styles.statIconContainer}>
-										<Users size={18} color={colors.primary} />
-									</View>
-									<View style={styles.statValueContainer}>
-										<Text style={styles.statLabel}>Total Clients</Text>
-										<Text style={styles.statValue}>{totalClients}</Text>
-									</View>
+						{/* 2x2 KPI grid */}
+						<View style={styles.kpiGrid}>
+							<View style={styles.kpiRow}>
+								<View style={styles.kpiCell}>
+									<StatCard
+										label="Active Clients"
+										value={activeClients}
+										foot={`${leadClients} new leads`}
+										icon="Users"
+										tone="#00a6f4"
+										showExternalAffordance
+										onPress={() => router.push("/clients")}
+									/>
 								</View>
-								<View style={styles.statBreakdownRow}>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[
-												styles.statBreakdownNumber,
-												{ color: colors.success },
-											]}
-										>
-											{activeClients}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>Active</Text>
-									</Text>
-									<Text style={styles.statBreakdownSeparator}> · </Text>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[
-												styles.statBreakdownNumber,
-												{ color: colors.mutedForeground },
-											]}
-										>
-											{inactiveClients}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>Inactive</Text>
-									</Text>
-									{leadClients > 0 && (
-										<>
-											<Text style={styles.statBreakdownSeparator}> · </Text>
-											<Text style={styles.statBreakdownItem}>
-												<Text
-													style={[
-														styles.statBreakdownNumber,
-														{ color: colors.primary },
-													]}
-												>
-													{leadClients}
-												</Text>{" "}
-												<Text style={styles.statBreakdownLabel}>Leads</Text>
-											</Text>
-										</>
-									)}
+								<View style={styles.kpiCell}>
+									<StatCard
+										label="Active Projects"
+										value={activeProjects}
+										foot={`${plannedProjects} planned`}
+										icon="FolderKanban"
+										tone="#7c5cff"
+										showExternalAffordance
+										onPress={() => router.push("/projects")}
+									/>
 								</View>
-							</Pressable>
-
-							<Pressable
-								style={styles.statCardWide}
-								onPress={() => router.push("/projects")}
-							>
-								<View style={styles.statTopRow}>
-									<View style={styles.statIconContainer}>
-										<FolderKanban size={18} color={colors.primary} />
-									</View>
-									<View style={styles.statValueContainer}>
-										<Text style={styles.statLabel}>Active Projects</Text>
-										<Text style={styles.statValue}>{activeProjects}</Text>
-									</View>
+							</View>
+							<View style={styles.kpiRow}>
+								<View style={styles.kpiCell}>
+									<StatCard
+										label="Unpaid"
+										value={formatCurrency(homeStats?.invoicesSent.outstanding ?? 0)}
+										foot={`${overdueInvoices?.length ?? 0} overdue`}
+										icon="Receipt"
+										tone="#e8930c"
+										showExternalAffordance
+										onPress={() => router.push("/money")}
+									/>
 								</View>
-								<View style={styles.statBreakdownRow}>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[styles.statBreakdownNumber, { color: "#3b82f6" }]}
-										>
-											{plannedProjects}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>Planned</Text>
-									</Text>
-									<Text style={styles.statBreakdownSeparator}> · </Text>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[styles.statBreakdownNumber, { color: "#f59e0b" }]}
-										>
-											{inProgressProjects}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>In Progress</Text>
-									</Text>
+								<View style={styles.kpiCell}>
+									<StatCard
+										label="Open Quotes"
+										value={formatCurrency(openQuotesValue)}
+										foot={`${openQuotes?.length ?? 0} awaiting reply`}
+										icon="FileText"
+										tone="#1f9d57"
+										showExternalAffordance
+										onPress={() => router.push("/money")}
+									/>
 								</View>
-							</Pressable>
+							</View>
 						</View>
 
 						{/* Overdue Warning */}
@@ -659,7 +618,7 @@ const styles = StyleSheet.create({
 		marginBottom: spacing.md,
 	},
 	heroWash: {
-		...StyleSheet.absoluteFillObject,
+		...StyleSheet.absoluteFill,
 	},
 	greeting: {
 		fontSize: 25,
@@ -687,92 +646,16 @@ const styles = StyleSheet.create({
 	toggleRow: {
 		marginTop: spacing.md,
 	},
-	statsRow: {
-		flexDirection: "row",
-		gap: spacing.sm,
+	kpiGrid: {
+		gap: 12,
 		marginBottom: spacing.md,
 	},
-	statCard: {
+	kpiRow: {
+		flexDirection: "row",
+		gap: 12,
+	},
+	kpiCell: {
 		flex: 1,
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	statCardWide: {
-		flex: 1,
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-		minHeight: 110,
-	},
-	statTopRow: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		marginBottom: spacing.sm,
-	},
-	statIconContainer: {
-		width: 36,
-		height: 36,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	statValueContainer: {
-		flex: 1,
-		alignItems: "center",
-	},
-	statContent: {},
-	statLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		textAlign: "center",
-		marginBottom: 2,
-	},
-	statValue: {
-		fontSize: 28,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-		lineHeight: 32,
-	},
-	statBreakdownRow: {
-		flexDirection: "row",
-		flexWrap: "wrap",
-		alignItems: "center",
-	},
-	statBreakdownItem: {
-		flexDirection: "row",
-		alignItems: "baseline",
-	},
-	statBreakdownNumber: {
-		fontSize: 13,
-		fontFamily: fontFamily.bold,
-	},
-	statBreakdownLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	statBreakdownSeparator: {
-		fontSize: 11,
-		color: colors.mutedForeground,
-	},
-	statChange: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-		marginTop: spacing.xs,
-		flexWrap: "wrap",
-	},
-	statChangeText: {
-		fontSize: 11,
-		fontFamily: fontFamily.medium,
 	},
 	alertCard: {
 		flexDirection: "row",
