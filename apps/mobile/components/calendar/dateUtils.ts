@@ -4,6 +4,9 @@
 // fixed-millisecond day windows (those skip/duplicate the hour on DST days).
 
 // Event shapes mirror calendar.getCalendarEvents (calendar.ts:73-109).
+// Loosely mirror calendar.getCalendarEvents — the unused-here metadata fields
+// (assignedUserIds/projectNumber/etc.) stay optional/string so the typed Convex
+// return assigns cleanly. Only id/title/dates/status/clientName drive layout.
 export type ProjectEvent = {
 	id: string;
 	type: "project";
@@ -14,8 +17,8 @@ export type ProjectEvent = {
 	status: string;
 	clientId: string;
 	clientName: string;
-	assignedUserIds: string[];
-	projectNumber: number;
+	assignedUserIds?: string[];
+	projectNumber?: string | number;
 };
 
 export type TaskEvent = {

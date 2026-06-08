@@ -5,22 +5,16 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
-	Modal,
-	TouchableOpacity,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
 import {
-	FolderKanban,
-	CheckSquare,
-	ChevronRight,
 	Check,
 	Search,
-	X,
 	Receipt,
 	Plus,
 	FileText,
@@ -38,13 +32,13 @@ import {
 import { JourneyProgress } from "@/components/JourneyProgress";
 import { createGlyph } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
+import { MonthGrid } from "@/components/calendar/MonthGrid";
+import { DaySheet } from "@/components/calendar/DaySheet";
 import {
-	AppCalendar,
-	toDateId,
-	fromDateId,
-	CalendarTask,
-	CalendarProject,
-} from "@/components/AppCalendar";
+	buildMonthCells,
+	nextLocalDayStart,
+	startOfLocalDay as startOfLocalDayCell,
+} from "@/components/calendar/dateUtils";
 import { useViewMode } from "@/lib/useViewMode";
 import { AppHeader } from "@/components/app-header";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -103,17 +97,22 @@ export default function HomeScreen() {
 	const router = useRouter();
 	const [refreshing, setRefreshing] = useState(false);
 	const { viewMode, setViewMode, hydrated } = useViewMode();
-	const [selectedDate, setSelectedDate] = useState<string>(
-		toDateId(new Date())
-	);
-	// Track the currently displayed month separately for data fetching
-	const [displayedMonth, setDisplayedMonth] = useState<string>(
-		toDateId(new Date())
-	);
-	const [showDateModal, setShowDateModal] = useState(false);
-	// Real optimistic completion set for inline needs-attention task rows. An id
-	// added here renders completed (green + strikethrough); rolled back on throw.
+	// Displayed month drives both the MonthGrid render and the fetch window.
+	const today = new Date();
+	const [displayed, setDisplayed] = useState<{ year: number; month: number }>({
+		year: today.getFullYear(),
+		month: today.getMonth(),
+	});
+	// Day-sheet state: the tapped day (local-midnight ts) + open flag.
+	const [selectedDayTs, setSelectedDayTs] = useState<number | null>(null);
+	const [sheetOpen, setSheetOpen] = useState(false);
+	// Real optimistic completion set, shared by inline needs-attention rows AND
+	// the day sheet. An id here renders completed (green + strikethrough); rolled
+	// back on throw. updatingTasks gates the in-flight checkbox affordance.
 	const [completedTaskIds, setCompletedTaskIds] = useState<Set<Id<"tasks">>>(
+		new Set()
+	);
+	const [updatingTasks, setUpdatingTasks] = useState<Set<Id<"tasks">>>(
 		new Set()
 	);
 
@@ -138,37 +137,23 @@ export default function HomeScreen() {
 	const awaitingQuotes = useQuery(api.quotes.getAwaitingSigning, {});
 	const recentActivity = useQuery(api.activities.getRecent, { limit: 5 });
 
-	// Fetch calendar events for a 3-month range based on displayed month.
-	// Hydration-gated skip (Pitfall 4): a calendar-first persisted user must not
-	// see a dashboard flash, and the query must not fire in dashboard view.
+	// Fetch window covers the FIRST..LAST visible cell of the 42-grid so the
+	// adjacent-month cells (and their markers) have data. Hydration-gated skip
+	// (Pitfall 4): a calendar-first persisted user must not see a dashboard flash,
+	// and the query must not fire in dashboard view.
+	const calendarArgs =
+		!hydrated || viewMode !== "calendar"
+			? ("skip" as const)
+			: (() => {
+					const cells = buildMonthCells(displayed.year, displayed.month);
+					return {
+						startDate: startOfLocalDayCell(cells[0].getTime()),
+						endDate: nextLocalDayStart(cells[41].getTime()) - 1,
+					};
+				})();
 	const calendarEvents = useQuery(
 		api.calendar.getCalendarEvents,
-		!hydrated || viewMode !== "calendar"
-			? "skip"
-			: {
-					startDate: (() => {
-						const date = fromDateId(displayedMonth);
-						// Start from first day of previous month
-						const firstDay = new Date(
-							date.getFullYear(),
-							date.getMonth() - 1,
-							1
-						);
-						firstDay.setHours(0, 0, 0, 0);
-						return firstDay.getTime();
-					})(),
-					endDate: (() => {
-						const date = fromDateId(displayedMonth);
-						// End at last day of next month
-						const lastDay = new Date(
-							date.getFullYear(),
-							date.getMonth() + 2,
-							0
-						);
-						lastDay.setHours(23, 59, 59, 999);
-						return lastDay.getTime();
-					})(),
-				}
+		calendarArgs
 	);
 
 	const completeTask = useMutation(api.tasks.complete);
@@ -214,6 +199,33 @@ export default function HomeScreen() {
 		}
 	};
 
+	// Day-sheet complete (Pattern 4 / T-20-07). Optimistically flip the row to
+	// completed + mark in-flight, then call tasks.complete. CRUCIALLY never close
+	// the sheet here — the reactive getCalendarEvents re-run updates BOTH the sheet
+	// list and the MonthGrid markers, and the completed row stays visible (the
+	// query returns all statuses) with completed styling driven by completedTaskIds.
+	// On throw (already-completed) roll back the optimistic flip.
+	const handleCompleteFromSheet = async (taskId: Id<"tasks">) => {
+		if (completedTaskIds.has(taskId)) return;
+		setCompletedTaskIds((prev) => new Set(prev).add(taskId));
+		setUpdatingTasks((prev) => new Set(prev).add(taskId));
+		try {
+			await completeTask({ id: taskId });
+		} catch {
+			setCompletedTaskIds((prev) => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
+			});
+		} finally {
+			setUpdatingTasks((prev) => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
+			});
+		}
+	};
+
 	// Calculate client stats
 	const totalClients = allClients?.length ?? 0;
 	const activeClients =
@@ -251,75 +263,8 @@ export default function HomeScreen() {
 		(awaitingQuotes?.length ?? 0) +
 		(overdueTasks?.length ?? 0);
 
-	// Get events for the selected date
-	const selectedDateEvents = useMemo(() => {
-		if (!calendarEvents) return { tasks: [], projects: [] };
-
-		// Use Flash Calendar's fromDateId utility
-		const selectedDay = fromDateId(selectedDate);
-		selectedDay.setHours(0, 0, 0, 0);
-		const selectedTimestamp = selectedDay.getTime();
-		const nextDay = new Date(selectedDay);
-		nextDay.setDate(nextDay.getDate() + 1);
-		const nextDayTimestamp = nextDay.getTime();
-
-		// Filter tasks for the selected date
-		const tasksForDate = calendarEvents.tasks.filter((task) => {
-			return (
-				task.startDate >= selectedTimestamp && task.startDate < nextDayTimestamp
-			);
-		});
-
-		// Filter projects that are active on the selected date
-		const projectsForDate = calendarEvents.projects.filter((project) => {
-			const projectEnd = project.endDate || project.startDate;
-			return (
-				project.startDate <= selectedTimestamp &&
-				projectEnd >= selectedTimestamp
-			);
-		});
-
-		return {
-			tasks: tasksForDate,
-			projects: projectsForDate,
-		};
-	}, [calendarEvents, selectedDate]);
-
-	// Format calendar tasks for marking
-	const calendarTasks: CalendarTask[] = useMemo(() => {
-		if (!calendarEvents) return [];
-
-		return calendarEvents.tasks.map((task) => ({
-			id: task.id,
-			date: toDateId(new Date(task.startDate)),
-			title: task.title,
-			color: colors.primary,
-		}));
-	}, [calendarEvents]);
-
-	// Format calendar projects for period marking
-	const calendarProjects: CalendarProject[] = useMemo(() => {
-		if (!calendarEvents) return [];
-
-		return calendarEvents.projects.map((project) => ({
-			id: project.id,
-			startDate: toDateId(new Date(project.startDate)),
-			endDate: toDateId(new Date(project.endDate || project.startDate)),
-			title: project.title,
-			status: project.status as "in_progress" | "completed" | "not_started",
-		}));
-	}, [calendarEvents]);
-
-	// Handle date selection - show modal with events
-	const handleDateSelect = useCallback((dateId: string) => {
-		setSelectedDate(dateId);
-		setShowDateModal(true);
-	}, []);
-
-	// Handle month navigation - update the displayed month for data fetching
-	const handleMonthChange = useCallback((monthDateId: string) => {
-		setDisplayedMonth(monthDateId);
-	}, []);
+	// Single bucketing path: DaySheet buckets the day arrays internally via
+	// dateUtils (tasksOnDay/projectsOnDay) — no duplicate filtering memo here.
 
 	return (
 		<SafeAreaView
@@ -629,146 +574,40 @@ export default function HomeScreen() {
 						<JourneyProgress />
 					</>
 				) : (
-					/* Calendar View */
+					/* Calendar View — custom MonthGrid fed by getCalendarEvents */
 					<View style={styles.calendarSection}>
-						<AppCalendar
-							selectedDate={selectedDate}
-							onDateSelect={handleDateSelect}
-							onMonthChange={handleMonthChange}
-							tasks={calendarTasks}
-							projects={calendarProjects}
+						<MonthGrid
+							projects={calendarEvents?.projects ?? []}
+							tasks={calendarEvents?.tasks ?? []}
+							year={displayed.year}
+							month={displayed.month}
+							onMonthChange={(y, m) => setDisplayed({ year: y, month: m })}
+							onDayPress={(ts) => {
+								setSelectedDayTs(ts);
+								setSheetOpen(true);
+							}}
 						/>
 					</View>
 				)}
 			</ScrollView>
 
-			{/* Date Events Modal */}
-			<Modal
-				visible={showDateModal}
-				transparent
-				animationType="slide"
-				onRequestClose={() => setShowDateModal(false)}
-			>
-				<TouchableOpacity
-					style={styles.modalBackdrop}
-					activeOpacity={1}
-					onPress={() => setShowDateModal(false)}
-				>
-					<Pressable
-						style={styles.modalContent}
-						onPress={(e) => e.stopPropagation()}
-					>
-						{/* Modal Header */}
-						<View style={styles.modalHeader}>
-							<View style={styles.modalHandleBar} />
-							<View style={styles.modalTitleContainer}>
-								<Text style={styles.modalTitle}>
-									{fromDateId(selectedDate).toLocaleDateString("en-US", {
-										weekday: "long",
-										month: "long",
-										day: "numeric",
-									})}
-								</Text>
-								<TouchableOpacity
-									onPress={() => setShowDateModal(false)}
-									style={styles.modalCloseButton}
-								>
-									<X size={24} color={colors.foreground} />
-								</TouchableOpacity>
-							</View>
-						</View>
-
-						{/* Modal Content */}
-						<ScrollView style={styles.modalScrollView}>
-							{/* Projects for this date */}
-							{selectedDateEvents.projects.length > 0 && (
-								<View style={styles.modalSection}>
-									<Text style={styles.modalSectionTitle}>Projects</Text>
-									{selectedDateEvents.projects.map((project) => (
-										<Pressable
-											key={project.id}
-											style={styles.modalEventCard}
-											onPress={() => {
-												setShowDateModal(false);
-												router.push(`/projects/${project.id}`);
-											}}
-										>
-											<View style={styles.modalEventIcon}>
-												<FolderKanban size={18} color={colors.primary} />
-											</View>
-											<View style={styles.modalEventContent}>
-												<Text style={styles.modalEventTitle}>
-													{project.title}
-												</Text>
-												<Text style={styles.modalEventSubtitle}>
-													{project.clientName}
-												</Text>
-												{project.startDate && project.endDate && (
-													<Text style={styles.modalEventMeta}>
-														{new Date(project.startDate).toLocaleDateString()} -{" "}
-														{new Date(project.endDate).toLocaleDateString()}
-													</Text>
-												)}
-											</View>
-											<ChevronRight size={18} color={colors.border} />
-										</Pressable>
-									))}
-								</View>
-							)}
-
-							{/* Tasks for this date */}
-							{selectedDateEvents.tasks.length > 0 && (
-								<View style={styles.modalSection}>
-									<Text style={styles.modalSectionTitle}>Tasks</Text>
-									{selectedDateEvents.tasks.map((task) => (
-										<Pressable
-											key={task.id}
-											style={styles.modalEventCard}
-											onPress={() => {
-												setShowDateModal(false);
-												router.push(`/tasks`);
-											}}
-										>
-											<View style={styles.modalEventIcon}>
-												<CheckSquare size={18} color={colors.primary} />
-											</View>
-											<View style={styles.modalEventContent}>
-												<Text style={styles.modalEventTitle}>{task.title}</Text>
-												<Text style={styles.modalEventSubtitle}>
-													{task.clientName}
-												</Text>
-												{task.startTime && (
-													<Text style={styles.modalEventMeta}>
-														{task.startTime}
-														{task.endTime && ` - ${task.endTime}`}
-													</Text>
-												)}
-											</View>
-											<ChevronRight size={18} color={colors.border} />
-										</Pressable>
-									))}
-								</View>
-							)}
-
-							{/* Empty State */}
-							{selectedDateEvents.projects.length === 0 &&
-								selectedDateEvents.tasks.length === 0 && (
-									<View style={styles.modalEmptyState}>
-										<View style={styles.modalEmptyIcon}>
-											<CheckSquare size={28} color={colors.mutedForeground} />
-										</View>
-										<Text style={styles.modalEmptyTitle}>
-											Nothing scheduled
-										</Text>
-										<Text style={styles.modalEmptyText}>
-											No tasks or projects for this day
-										</Text>
-									</View>
-								)}
-						</ScrollView>
-					</Pressable>
-				</TouchableOpacity>
-			</Modal>
+			{/* Day detail sheet — PARENT owns close + navigation (no double-close
+			    race). Optimistic complete keeps the sheet open; the reactive
+			    getCalendarEvents re-run recomputes the grid markers. */}
+			<DaySheet
+				visible={sheetOpen}
+				dayTs={selectedDayTs}
+				projects={calendarEvents?.projects ?? []}
+				tasks={calendarEvents?.tasks ?? []}
+				onClose={() => setSheetOpen(false)}
+				onProjectPress={(id) => {
+					setSheetOpen(false);
+					router.push(`/projects/${id}`);
+				}}
+				onCompleteTask={handleCompleteFromSheet}
+				completedTaskIds={completedTaskIds}
+				updating={updatingTasks}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -919,124 +758,5 @@ const styles = StyleSheet.create({
 	},
 	calendarSection: {
 		gap: spacing.md,
-	},
-	modalBackdrop: {
-		flex: 1,
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		justifyContent: "flex-end",
-	},
-	modalContent: {
-		backgroundColor: colors.background,
-		borderTopLeftRadius: radius.xl,
-		borderTopRightRadius: radius.xl,
-		maxHeight: "80%",
-		paddingBottom: spacing.xl,
-	},
-	modalHeader: {
-		paddingTop: spacing.sm,
-		paddingHorizontal: spacing.md,
-		paddingBottom: spacing.md,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.border,
-	},
-	modalHandleBar: {
-		width: 40,
-		height: 4,
-		backgroundColor: colors.muted,
-		borderRadius: radius.full,
-		alignSelf: "center",
-		marginBottom: spacing.md,
-	},
-	modalTitleContainer: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-	},
-	modalTitle: {
-		fontSize: 18,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-	},
-	modalCloseButton: {
-		padding: spacing.xs,
-	},
-	modalScrollView: {
-		maxHeight: "100%",
-	},
-	modalSection: {
-		padding: spacing.md,
-	},
-	modalSectionTitle: {
-		fontSize: 14,
-		fontFamily: fontFamily.semibold,
-		color: colors.mutedForeground,
-		textTransform: "uppercase",
-		letterSpacing: 0.5,
-		marginBottom: spacing.sm,
-	},
-	modalEventCard: {
-		flexDirection: "row",
-		alignItems: "center",
-		padding: spacing.sm,
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-		marginBottom: spacing.sm,
-	},
-	modalEventIcon: {
-		width: 36,
-		height: 36,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	modalEventContent: {
-		flex: 1,
-	},
-	modalEventTitle: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: 2,
-	},
-	modalEventSubtitle: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginBottom: 2,
-	},
-	modalEventMeta: {
-		fontSize: 12,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	modalEmptyState: {
-		alignItems: "center",
-		paddingVertical: spacing.xl * 2,
-		paddingHorizontal: spacing.lg,
-	},
-	modalEmptyIcon: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.muted,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: spacing.md,
-	},
-	modalEmptyTitle: {
-		fontSize: 16,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
-	},
-	modalEmptyText: {
-		fontSize: 14,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		textAlign: "center",
 	},
 });
