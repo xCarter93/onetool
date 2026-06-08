@@ -15,22 +15,28 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
 import {
-	Users,
 	FolderKanban,
 	CheckSquare,
 	ChevronRight,
-	AlertCircle,
+	Check,
 	Search,
 	X,
+	Receipt,
+	Plus,
+	FileText,
+	UserPlus,
 } from "lucide-react-native";
-import { TaskItem } from "@/components/TaskItem";
 import {
 	HalftoneBg,
 	Eyebrow,
 	SegmentedToggle,
 	RevenueGauge,
 	StatCard,
+	SectionHeader,
+	ListRow,
 } from "@/components/ui";
+import { JourneyProgress } from "@/components/JourneyProgress";
+import { createGlyph } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import {
 	AppCalendar,
@@ -42,6 +48,56 @@ import {
 import { useViewMode } from "@/lib/useViewMode";
 import { AppHeader } from "@/components/app-header";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
+
+// Local midnight for a timestamp — used only for day-difference label rounding.
+function startOfLocalDay(ts: number): number {
+	const d = new Date(ts);
+	d.setHours(0, 0, 0, 0);
+	return d.getTime();
+}
+
+// Label an awaiting-signing quote by validUntil across the full 7-day window.
+function quoteExpiryLabel(validUntil?: number): string {
+	if (validUntil === undefined) return "Awaiting signature";
+	const today = startOfLocalDay(Date.now());
+	const days = Math.round((startOfLocalDay(validUntil) - today) / 86400000);
+	if (days < 0) return "Expired";
+	if (days === 0) return "Expires today";
+	if (days === 1) return "Expires tomorrow";
+	if (days <= 7) return `Expires in ${days} days`;
+	return `Expires ${new Date(validUntil).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	})}`;
+}
+
+// Pick a needs/feed glyph for an activity type. Uses canonical lucide map keys
+// (Signature/SquareCheckBig — the FileSignature/CheckSquare aliases are not keys).
+function activityIcon(
+	activityType: string
+): "Signature" | "Receipt" | "SquareCheckBig" | "Activity" {
+	if (activityType.startsWith("quote")) return "Signature";
+	if (activityType.startsWith("invoice") || activityType.startsWith("payment"))
+		return "Receipt";
+	if (activityType.startsWith("task")) return "SquareCheckBig";
+	return "Activity";
+}
+
+// Short relative timestamp for the activity feed (mirrors the web feed intent).
+function relativeTime(ts: number): string {
+	const diff = Date.now() - ts;
+	const mins = Math.round(diff / 60000);
+	if (mins < 1) return "just now";
+	if (mins < 60) return `${mins}m ago`;
+	const hours = Math.round(mins / 60);
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.round(hours / 24);
+	if (days < 7) return `${days}d ago`;
+	return new Date(ts).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	});
+}
 
 export default function HomeScreen() {
 	const router = useRouter();
@@ -55,12 +111,14 @@ export default function HomeScreen() {
 		toDateId(new Date())
 	);
 	const [showDateModal, setShowDateModal] = useState(false);
-	const [updatingTasks, setUpdatingTasks] = useState<Set<string>>(new Set());
+	// Real optimistic completion set for inline needs-attention task rows. An id
+	// added here renders completed (green + strikethrough); rolled back on throw.
+	const [completedTaskIds, setCompletedTaskIds] = useState<Set<Id<"tasks">>>(
+		new Set()
+	);
 
 	const user = useQuery(api.users.current);
 	const homeStats = useQuery(api.homeStatsOptimized.getHomeStats, {});
-	const taskStats = useQuery(api.tasks.getStats, {});
-	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
 	const overdueTasks = useQuery(api.tasks.getOverdue, {});
 
 	// Query clients and projects for stat cards
@@ -74,6 +132,11 @@ export default function HomeScreen() {
 	// Open quotes (status=sent) + overdue invoices for the KPI grid.
 	const openQuotes = useQuery(api.quotes.list, { status: "sent" });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
+
+	// Needs-attention: awaiting-signing quotes (sent + validUntil within 7d window,
+	// includes already-expired). Recent activity feed (real data).
+	const awaitingQuotes = useQuery(api.quotes.getAwaitingSigning, {});
+	const recentActivity = useQuery(api.activities.getRecent, { limit: 5 });
 
 	// Fetch calendar events for a 3-month range based on displayed month.
 	// Hydration-gated skip (Pitfall 4): a calendar-first persisted user must not
@@ -109,7 +172,6 @@ export default function HomeScreen() {
 	);
 
 	const completeTask = useMutation(api.tasks.complete);
-	const updateTask = useMutation(api.tasks.update);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
@@ -135,39 +197,22 @@ export default function HomeScreen() {
 		.toLocaleDateString("en-US", { month: "long" })
 		.toUpperCase();
 
-	// Combine and dedupe tasks for display
-	const allTasks = useMemo(() => {
-		const combined = [...(overdueTasks || []), ...(upcomingTasks || [])];
-		const uniqueTasks = combined.filter(
-			(task, index, self) => self.findIndex((t) => t._id === task._id) === index
-		);
-		return uniqueTasks.slice(0, 5);
-	}, [overdueTasks, upcomingTasks]);
-
-	const handleToggleTask = async (taskId: string) => {
-		setUpdatingTasks((prev) => new Set(prev).add(taskId));
+	// Inline complete for a past-due needs-attention task. Optimistically marks
+	// the row completed, then calls tasks.complete; rolls back the local id on a
+	// throw (e.g. already-completed) so no falsely-checked row remains (T-20-05).
+	const handleCompleteTask = async (taskId: Id<"tasks">) => {
+		if (completedTaskIds.has(taskId)) return;
+		setCompletedTaskIds((prev) => new Set(prev).add(taskId));
 		try {
-			const task = allTasks.find((t) => t._id === taskId);
-			if (task) {
-				if (task.status === "completed") {
-					await updateTask({ id: taskId as Id<"tasks">, status: "pending" });
-				} else {
-					await completeTask({ id: taskId as Id<"tasks"> });
-				}
-			}
-		} catch (error) {
-			console.error("Failed to update task:", error);
-		} finally {
-			setUpdatingTasks((prev) => {
-				const newSet = new Set(prev);
-				newSet.delete(taskId);
-				return newSet;
+			await completeTask({ id: taskId });
+		} catch {
+			setCompletedTaskIds((prev) => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
 			});
 		}
 	};
-
-	const overdueCount = overdueTasks?.length ?? 0;
-	const todayTasksCount = taskStats?.todayTasks ?? 0;
 
 	// Calculate client stats
 	const totalClients = allClients?.length ?? 0;
@@ -199,6 +244,12 @@ export default function HomeScreen() {
 		(sum, q) => sum + (q.total ?? 0),
 		0
 	);
+
+	// Needs-attention aggregate count. The whole section renders only when > 0.
+	const naCount =
+		(overdueInvoices?.length ?? 0) +
+		(awaitingQuotes?.length ?? 0) +
+		(overdueTasks?.length ?? 0);
 
 	// Get events for the selected date
 	const selectedDateEvents = useMemo(() => {
@@ -367,23 +418,70 @@ export default function HomeScreen() {
 							</View>
 						</View>
 
-						{/* Overdue Warning */}
-						{overdueCount > 0 && (
-							<Pressable
-								style={styles.alertCard}
-								onPress={() => router.push("/tasks")}
-							>
-								<View style={styles.alertIcon}>
-									<AlertCircle size={18} color={colors.danger} />
+						{/* Needs attention — renders ONLY when non-empty (no empty state).
+						    Aggregates overdue invoices + awaiting-signing quotes + past-due
+						    tasks. Invoices/quotes deep-link to /money; tasks complete inline. */}
+						{naCount > 0 && (
+							<View style={styles.section}>
+								<View style={styles.naHeader}>
+									<SectionHeader title="Needs attention" />
+									<View style={styles.naBadge}>
+										<Text style={styles.naBadgeText}>{naCount}</Text>
+									</View>
 								</View>
-								<View style={styles.alertContent}>
-									<Text style={styles.alertTitle}>
-										{overdueCount} Overdue Task{overdueCount !== 1 ? "s" : ""}
-									</Text>
-									<Text style={styles.alertText}>Tap to view and complete</Text>
+								<View style={styles.naList}>
+									{(overdueInvoices ?? []).map((inv) => (
+										<ListRow
+											key={inv._id}
+											icon="Receipt"
+											iconColor={tokens.danger}
+											title={`Invoice ${inv.invoiceNumber}`}
+											sub={`${formatCurrency(inv.total)} overdue`}
+											onPress={() => router.push("/money")}
+										/>
+									))}
+									{(awaitingQuotes ?? []).map((q) => (
+										<ListRow
+											key={q._id}
+											icon="Signature"
+											iconColor={tokens.warning}
+											title={q.title || "Quote"}
+											sub={quoteExpiryLabel(q.validUntil)}
+											onPress={() => router.push("/money")}
+										/>
+									))}
+									{(overdueTasks ?? []).map((task) => {
+										const done = completedTaskIds.has(task._id);
+										return (
+											<ListRow
+												key={task._id}
+												showChevron={false}
+												icon="SquareCheckBig"
+												iconColor={tokens.accent}
+												title={task.title}
+												sub={`Due ${new Date(task.date).toLocaleDateString(
+													"en-US",
+													{ month: "short", day: "numeric" }
+												)}`}
+												right={
+													<Pressable
+														onPress={() => handleCompleteTask(task._id)}
+														hitSlop={10}
+														style={[
+															styles.checkbox,
+															done && styles.checkboxDone,
+														]}
+													>
+														{done ? (
+															<Check size={16} color="#fff" strokeWidth={3} />
+														) : null}
+													</Pressable>
+												}
+											/>
+										);
+									})}
 								</View>
-								<ChevronRight size={18} color={colors.danger} />
-							</Pressable>
+							</View>
 						)}
 
 						{/* Revenue — gauge only when a real org target is set, else earned-only */}
@@ -423,43 +521,112 @@ export default function HomeScreen() {
 								</View>
 							))}
 
-						{/* Tasks Section */}
+						{/* Active-projects summary row — opens Work (distinct from KPI tile) */}
 						<View style={styles.section}>
-							<View style={styles.sectionHeader}>
-								<Text style={styles.sectionTitle}>Your Tasks</Text>
+							<ListRow
+								icon="FolderKanban"
+								iconColor="#7c5cff"
+								title="Active projects"
+								sub={`${activeProjects} in progress`}
+								last
+								onPress={() => router.push("/projects")}
+							/>
+						</View>
+
+						{/* Quick actions */}
+						<View style={styles.section}>
+							<SectionHeader title="Quick actions" />
+							<View style={styles.quickGrid}>
 								<Pressable
-									onPress={() => router.push("/tasks")}
-									style={styles.sectionAction}
+									style={styles.quickTile}
+									onPress={() => router.push("/tasks/new")}
 								>
-									<Text style={styles.sectionActionText}>View All</Text>
-									<ChevronRight size={16} color={colors.primary} />
+									<View
+										style={[
+											styles.quickIcon,
+											{ backgroundColor: createGlyph.task + "1A" },
+										]}
+									>
+										<Plus size={20} color={createGlyph.task} />
+									</View>
+									<Text style={styles.quickLabel}>New Task</Text>
+								</Pressable>
+								<Pressable
+									style={styles.quickTile}
+									onPress={() => router.push("/money")}
+								>
+									<View
+										style={[
+											styles.quickIcon,
+											{ backgroundColor: createGlyph.quote + "1A" },
+										]}
+									>
+										<FileText size={20} color={createGlyph.quote} />
+									</View>
+									<Text style={styles.quickLabel}>New Quote</Text>
+								</Pressable>
+								<Pressable
+									style={styles.quickTile}
+									onPress={() => router.push("/clients")}
+								>
+									<View
+										style={[
+											styles.quickIcon,
+											{ backgroundColor: createGlyph.client + "1A" },
+										]}
+									>
+										<UserPlus size={20} color={createGlyph.client} />
+									</View>
+									<Text style={styles.quickLabel}>Add Client</Text>
+								</Pressable>
+								<Pressable
+									style={styles.quickTile}
+									onPress={() => router.push("/money")}
+								>
+									<View
+										style={[
+											styles.quickIcon,
+											{ backgroundColor: createGlyph.invoice + "1A" },
+										]}
+									>
+										<Receipt size={20} color={createGlyph.invoice} />
+									</View>
+									<Text style={styles.quickLabel}>New Invoice</Text>
 								</Pressable>
 							</View>
-
-							{allTasks.length > 0 ? (
-								<View style={styles.tasksList}>
-									{allTasks.map((task) => (
-										<TaskItem
-											key={task._id}
-											id={task._id}
-											title={task.title}
-											date={task.date}
-											startTime={task.startTime}
-											endTime={task.endTime}
-											status={task.status}
-											isUpdating={updatingTasks.has(task._id)}
-											onToggleComplete={handleToggleTask}
-										/>
-									))}
-								</View>
-							) : (
-								<View style={styles.emptyState}>
-									<CheckSquare size={28} color={colors.mutedForeground} />
-									<Text style={styles.emptyTitle}>No upcoming tasks</Text>
-									<Text style={styles.emptyText}>You're all caught up!</Text>
-								</View>
-							)}
 						</View>
+
+						{/* Recent activity — real data; section header retained even when empty */}
+						<View style={styles.section}>
+							<SectionHeader title="Recent activity" />
+							<View style={styles.naList}>
+								{recentActivity && recentActivity.length > 0 ? (
+									recentActivity.map((item, i) => (
+										<ListRow
+											key={item._id}
+											showChevron={false}
+											icon={activityIcon(item.activityType)}
+											iconColor={tokens.accent}
+											title={item.description}
+											sub={relativeTime(item.timestamp)}
+											last={i === recentActivity.length - 1}
+										/>
+									))
+								) : (
+									<ListRow
+										showChevron={false}
+										icon="Activity"
+										iconColor={tokens.faint}
+										title="No recent activity"
+										sub="Activity will appear here as you work"
+										last
+									/>
+								)}
+							</View>
+						</View>
+
+						{/* Journey progress — capability retained, re-homed after the hero rewrite */}
+						<JourneyProgress />
 					</>
 				) : (
 					/* Calendar View */
@@ -657,32 +824,6 @@ const styles = StyleSheet.create({
 	kpiCell: {
 		flex: 1,
 	},
-	alertCard: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: "#fef2f2",
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: "#fecaca",
-		marginBottom: spacing.md,
-	},
-	alertIcon: {
-		marginRight: spacing.sm,
-	},
-	alertContent: {
-		flex: 1,
-	},
-	alertTitle: {
-		fontSize: 14,
-		fontFamily: fontFamily.semibold,
-		color: colors.danger,
-	},
-	alertText: {
-		fontSize: 12,
-		fontFamily: fontFamily.regular,
-		color: "#991b1b",
-	},
 	revenueBlock: {
 		marginBottom: spacing.md,
 	},
@@ -709,49 +850,72 @@ const styles = StyleSheet.create({
 	section: {
 		marginBottom: spacing.md,
 	},
-	sectionHeader: {
+	naHeader: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: spacing.sm,
-	},
-	sectionTitle: {
-		fontSize: 17,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-	},
-	sectionAction: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-	},
-	sectionActionText: {
-		fontSize: 13,
-		fontFamily: fontFamily.medium,
-		color: colors.primary,
-	},
-	tasksList: {
 		gap: spacing.sm,
+		marginBottom: spacing.xs,
 	},
-	emptyState: {
+	naBadge: {
+		minWidth: 22,
+		height: 22,
+		paddingHorizontal: 7,
+		borderRadius: radius.full,
+		backgroundColor: tokens.danger,
 		alignItems: "center",
-		paddingVertical: spacing.xl,
+		justifyContent: "center",
+	},
+	naBadgeText: {
+		fontSize: 12,
+		fontFamily: fontFamily.bold,
+		color: "#fff",
+	},
+	naList: {
 		backgroundColor: colors.card,
 		borderRadius: radius.lg,
 		borderWidth: 1,
-		borderColor: colors.border,
+		borderColor: tokens.line,
+		paddingHorizontal: spacing.md,
 	},
-	emptyTitle: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
+	checkbox: {
+		width: 26,
+		height: 26,
+		borderRadius: 7,
+		borderWidth: 2,
+		borderColor: tokens.border,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	checkboxDone: {
+		backgroundColor: tokens.success,
+		borderColor: tokens.success,
+	},
+	quickGrid: {
+		flexDirection: "row",
+		gap: spacing.sm,
 		marginTop: spacing.sm,
 	},
-	emptyText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginTop: spacing.xs,
+	quickTile: {
+		flex: 1,
+		alignItems: "center",
+		gap: spacing.xs,
+		backgroundColor: colors.card,
+		borderRadius: radius.lg,
+		borderWidth: 1,
+		borderColor: tokens.line,
+		paddingVertical: spacing.md,
+	},
+	quickIcon: {
+		width: 40,
+		height: 40,
+		borderRadius: 12,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	quickLabel: {
+		fontSize: 12,
+		fontFamily: fontFamily.medium,
+		color: tokens.ink,
 	},
 	calendarSection: {
 		gap: spacing.md,
