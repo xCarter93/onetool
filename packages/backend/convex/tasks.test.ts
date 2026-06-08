@@ -729,6 +729,200 @@ describe("Tasks", () => {
 		});
 	});
 
+	describe("update — phase 22 mobile edit-sheet paths", () => {
+		// These tests lock the tasks.update behavior the Phase 22 mobile edit sheet
+		// (Plan 22-03) depends on: repeat/repeatUntil round-trip, external<->internal
+		// type switching, and undefined-field filtering. tasks.ts is intentionally
+		// unchanged — this is regression coverage for already-observed behavior.
+
+		const date = Date.UTC(2026, 5, 10);
+		const until = Date.UTC(2026, 6, 10); // until > date
+
+		async function seedOrgUser(ctx: any) {
+			const userId = await ctx.db.insert("users", {
+				name: "Test User",
+				email: "test@example.com",
+				image: "https://example.com/image.jpg",
+				externalId: "user_123",
+			});
+
+			const orgId = await ctx.db.insert("organizations", {
+				clerkOrganizationId: "org_123",
+				name: "Test Org",
+				ownerUserId: userId,
+			});
+
+			await ctx.db.insert("organizationMemberships", {
+				orgId,
+				userId,
+				role: "admin",
+			});
+
+			return { userId, orgId };
+		}
+
+		function asUser() {
+			return t.withIdentity({ subject: "user_123", activeOrgId: "org_123" });
+		}
+
+		it("update round-trips repeat and repeatUntil", async () => {
+			const { clientId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				return { clientId };
+			});
+
+			const user = asUser();
+
+			const taskId = await user.mutation(api.tasks.create, {
+				title: "Round-trip Task",
+				date,
+				status: "pending",
+				clientId,
+				type: "external",
+				repeat: "none",
+			});
+
+			await user.mutation(api.tasks.update, {
+				id: taskId,
+				repeat: "weekly",
+				repeatUntil: until,
+			});
+
+			const task = await user.query(api.tasks.get, { id: taskId });
+			expect(task?.repeat).toBe("weekly");
+			expect(task?.repeatUntil).toBe(until);
+		});
+
+		it("update allows external→internal type switch without a client", async () => {
+			const { clientId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				return { clientId };
+			});
+
+			const user = asUser();
+
+			const taskId = await user.mutation(api.tasks.create, {
+				title: "Switch to Internal",
+				date,
+				status: "pending",
+				clientId,
+				type: "external",
+			});
+
+			// Must NOT throw — switching to internal removes the external→client requirement.
+			await user.mutation(api.tasks.update, {
+				id: taskId,
+				type: "internal",
+			});
+
+			const task = await user.query(api.tasks.get, { id: taskId });
+			expect(task?.type).toBe("internal");
+		});
+
+		it("update keeps external task valid when only repeat changes (existing clientId satisfies the rule)", async () => {
+			const { clientId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				return { clientId };
+			});
+
+			const user = asUser();
+
+			const taskId = await user.mutation(api.tasks.create, {
+				title: "Repeat-only Update",
+				date,
+				status: "pending",
+				clientId,
+				type: "external",
+			});
+
+			// No clientId in the update payload — the existing clientId satisfies the
+			// external rule, so this must resolve.
+			await user.mutation(api.tasks.update, {
+				id: taskId,
+				repeat: "daily",
+				repeatUntil: until,
+			});
+
+			const task = await user.query(api.tasks.get, { id: taskId });
+			expect(task?.repeat).toBe("daily");
+			expect(task?.clientId).toBe(clientId);
+		});
+
+		it("update rejects internal→external when no client is present", async () => {
+			await t.run(async (ctx) => {
+				await seedOrgUser(ctx);
+			});
+
+			const user = asUser();
+
+			const taskId = await user.mutation(api.tasks.create, {
+				title: "Internal Task",
+				date,
+				status: "pending",
+				type: "internal",
+			});
+
+			// Reverse direction of the type switch the mobile form exposes: switching an
+			// internal (clientless) task to external with no client MUST reject.
+			await expect(
+				user.mutation(api.tasks.update, {
+					id: taskId,
+					type: "external",
+				})
+			).rejects.toThrow(/External tasks require a client/);
+		});
+
+		it("update filters undefined fields — optional fields cannot be cleared", async () => {
+			const { clientId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				return { clientId };
+			});
+
+			const user = asUser();
+
+			const taskId = await user.mutation(api.tasks.create, {
+				title: "Has Description",
+				description: "original description",
+				date,
+				status: "pending",
+				clientId,
+				type: "external",
+			});
+
+			// tasks.update runs filterUndefined (lib/crud.ts) — undefined args are dropped,
+			// so optional fields cannot be cleared via update (Plan 22-03 known limitation).
+			await user.mutation(api.tasks.update, {
+				id: taskId,
+				title: "still here",
+				description: undefined,
+			});
+
+			const task = await user.query(api.tasks.get, { id: taskId });
+			expect(task?.title).toBe("still here");
+			expect(task?.description).toBe("original description");
+		});
+	});
+
 	describe("complete", () => {
 		it("should mark task as completed", async () => {
 			const { userId, clientId, taskId } = await t.run(async (ctx) => {
