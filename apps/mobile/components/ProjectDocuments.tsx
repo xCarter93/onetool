@@ -8,18 +8,27 @@ import {
 } from "react-native";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Card } from "@/components/Card";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
-import { FileText, Download, FileCheck, FolderOpen } from "lucide-react-native";
+import { Card } from "@/components/ui";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
+import { FileText, Download } from "lucide-react-native";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface ProjectDocumentsProps {
 	projectId: Id<"projects">;
 }
 
-// Helper utilities
+type ProjectDocument = {
+	_id: Id<"projectDocuments">;
+	name: string;
+	fileName: string;
+	fileSize: number;
+	mimeType: string;
+	uploadedAt: number;
+	downloadUrl: string | null;
+};
+
 const formatFileSize = (bytes: number): string => {
-	if (bytes === 0) return "0 Bytes";
+	if (bytes <= 0) return "0 Bytes";
 	const k = 1024;
 	const sizes = ["Bytes", "KB", "MB", "GB"];
 	let i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -27,103 +36,62 @@ const formatFileSize = (bytes: number): string => {
 	return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
 };
 
-const formatDate = (timestamp: number): string => {
-	return new Date(timestamp).toLocaleDateString("en-US", {
+const formatDate = (timestamp: number): string =>
+	new Date(timestamp).toLocaleDateString("en-US", {
 		year: "numeric",
 		month: "short",
 		day: "numeric",
 	});
-};
-
-const isImage = (mimeType: string) => mimeType.startsWith("image/");
-const isPdf = (mimeType: string) => mimeType === "application/pdf";
-
-// Unified document type for both attachments and signed quotes
-type UnifiedDocument = {
-	_id: string;
-	fileName: string;
-	fileSize: number;
-	mimeType: string;
-	uploadedAt: number;
-	downloadUrl: string | null;
-	type: "attachment" | "signed-quote";
-	quoteNumber?: string | null;
-};
 
 export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
-	// Fetch both attachments and signed documents
-	const attachments = useQuery(api.messageAttachments.listByEntity, {
-		entityType: "project",
-		entityId: projectId,
-	});
-	const signedDocuments = useQuery(api.documents.listSignedByProject, {
-		projectId,
-	});
+	const t = useTokens();
+	const docsResult = useQuery(
+		api.projectDocuments.listByProject,
+		projectId ? { projectId } : "skip"
+	);
+	const loading = docsResult === undefined;
+	const docs = docsResult ?? [];
 
-	// Combine and sort documents
-	const allDocuments: UnifiedDocument[] | undefined =
-		attachments && signedDocuments
-			? [
-					// Map attachments
-					...attachments.map((att) => ({
-						_id: att._id,
-						fileName: att.fileName,
-						fileSize: att.fileSize,
-						mimeType: att.mimeType,
-						uploadedAt: att.uploadedAt,
-						downloadUrl: att.downloadUrl,
-						type: "attachment" as const,
-					})),
-					// Map signed documents
-					...signedDocuments.map((doc) => ({
-						_id: doc._id,
-						fileName: doc.fileName,
-						fileSize: doc.fileSize,
-						mimeType: doc.mimeType,
-						uploadedAt: doc.uploadedAt,
-						downloadUrl: doc.downloadUrl,
-						type: "signed-quote" as const,
-						quoteNumber: doc.quoteNumber,
-					})),
-				].sort((a, b) => b.uploadedAt - a.uploadedAt)
-			: undefined;
-
-	const handleDocumentPress = async (document: UnifiedDocument) => {
-		if (!document.downloadUrl) return;
-
+	const handleDocumentPress = async (doc: ProjectDocument) => {
+		// downloadUrl can be null when the storage ref is missing — never call
+		// Linking.openURL(null).
+		if (!doc.downloadUrl) return;
 		try {
-			const canOpen = await Linking.canOpenURL(document.downloadUrl);
-			if (canOpen) {
-				await Linking.openURL(document.downloadUrl);
-			}
+			const canOpen = await Linking.canOpenURL(doc.downloadUrl);
+			if (canOpen) await Linking.openURL(doc.downloadUrl);
 		} catch (error) {
 			console.error("Failed to open document:", error);
 		}
 	};
 
-	// Loading state
-	if (allDocuments === undefined) {
+	if (loading) {
 		return (
-			<Card title="Project Documents" style={{ marginTop: spacing.md }}>
+			<Card style={styles.card}>
+				<Text style={[styles.cardTitle, { color: t.ink }]}>
+					Project Documents
+				</Text>
 				<View style={styles.loadingContainer}>
-					<ActivityIndicator size="small" color={colors.primary} />
-					<Text style={styles.loadingText}>Loading documents...</Text>
+					<ActivityIndicator size="small" color={t.accent} />
+					<Text style={[styles.loadingText, { color: t.mutedForeground }]}>
+						Loading documents...
+					</Text>
 				</View>
 			</Card>
 		);
 	}
 
-	// Empty state
-	if (allDocuments.length === 0) {
+	if (docs.length === 0) {
 		return (
-			<Card title="Project Documents" style={{ marginTop: spacing.md }}>
+			<Card style={styles.card}>
+				<Text style={[styles.cardTitle, { color: t.ink }]}>
+					Project Documents
+				</Text>
 				<View style={styles.emptyContainer}>
-					<View style={styles.emptyIcon}>
-						<FolderOpen size={32} color={colors.mutedForeground} />
+					<View style={[styles.emptyIcon, { backgroundColor: t.muted }]}>
+						<FileText size={28} color={t.mutedForeground} />
 					</View>
-					<Text style={styles.emptyTitle}>No documents yet</Text>
-					<Text style={styles.emptyText}>
-						Documents and signed quotes will appear here
+					<Text style={[styles.emptyTitle, { color: t.ink }]}>
+						No documents yet
 					</Text>
 				</View>
 			</Card>
@@ -131,147 +99,144 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 	}
 
 	return (
-		<Card
-			title={`Project Documents (${allDocuments.length})`}
-			style={{ marginTop: spacing.md }}
-		>
+		<Card style={styles.card}>
+			<Text style={[styles.cardTitle, { color: t.ink }]}>
+				Project Documents ({docs.length})
+			</Text>
 			<View style={styles.documentsList}>
-				{allDocuments.map((document) => (
-					<Pressable
-						key={document._id}
-						style={({ pressed }) => [
-							styles.documentItem,
-							pressed && styles.documentItemPressed,
-						]}
-						onPress={() => handleDocumentPress(document)}
-						disabled={!document.downloadUrl}
-					>
-						{/* File icon */}
-						<View style={styles.documentIcon}>
-							{document.type === "signed-quote" ? (
-								<FileCheck size={20} color="#10b981" />
-							) : isPdf(document.mimeType) ? (
-								<FileText size={20} color="#ef4444" />
-							) : isImage(document.mimeType) ? (
-								<FileText size={20} color="#3b82f6" />
-							) : (
-								<FileText size={20} color={colors.mutedForeground} />
-							)}
-						</View>
+				{docs.map((doc) => {
+					const openable = !!doc.downloadUrl;
+					return (
+						<Pressable
+							key={doc._id}
+							style={({ pressed }) => [
+								styles.documentItem,
+								{ backgroundColor: t.surface, borderColor: t.line },
+								pressed && openable && styles.documentItemPressed,
+							]}
+							onPress={() => handleDocumentPress(doc)}
+							disabled={!openable}
+						>
+							<View style={[styles.documentIcon, { backgroundColor: t.card }]}>
+								<FileText size={20} color={t.mutedForeground} />
+							</View>
 
-						{/* File details */}
-						<View style={styles.documentInfo}>
-							<Text style={styles.documentName} numberOfLines={2}>
-								{document.fileName}
-							</Text>
-							<View style={styles.documentMeta}>
-								{document.fileSize > 0 && (
-									<>
-										<Text style={styles.documentMetaText}>
-											{formatFileSize(document.fileSize)}
-										</Text>
-										<Text style={styles.documentMetaSeparator}>•</Text>
-									</>
-								)}
-								<Text style={styles.documentMetaText}>
-									{formatDate(document.uploadedAt)}
+							<View style={styles.documentInfo}>
+								<Text
+									style={[styles.documentName, { color: t.ink }]}
+									numberOfLines={2}
+								>
+									{doc.name || doc.fileName}
 								</Text>
-								{document.quoteNumber && (
-									<>
-										<Text style={styles.documentMetaSeparator}>•</Text>
-										<Text style={styles.documentMetaText}>
-											Quote #{document.quoteNumber}
-										</Text>
-									</>
+								<View style={styles.documentMeta}>
+									{doc.fileSize > 0 && (
+										<>
+											<Text
+												style={[
+													styles.documentMetaText,
+													{ color: t.mutedForeground },
+												]}
+											>
+												{formatFileSize(doc.fileSize)}
+											</Text>
+											<Text
+												style={[
+													styles.documentMetaSeparator,
+													{ color: t.mutedForeground },
+												]}
+											>
+												•
+											</Text>
+										</>
+									)}
+									<Text
+										style={[
+											styles.documentMetaText,
+											{ color: t.mutedForeground },
+										]}
+									>
+										{formatDate(doc.uploadedAt)}
+									</Text>
+								</View>
+							</View>
+
+							<View style={styles.downloadIndicator}>
+								{openable ? (
+									<Download size={16} color={t.accent} />
+								) : (
+									<Text
+										style={[
+											styles.unavailableText,
+											{ color: t.mutedForeground },
+										]}
+									>
+										Unavailable
+									</Text>
 								)}
 							</View>
-							{document.type === "signed-quote" && (
-								<View style={styles.signedBadge}>
-									<Text style={styles.signedBadgeText}>Signed Quote</Text>
-								</View>
-							)}
-						</View>
-
-						{/* Download indicator */}
-						<View style={styles.downloadIndicator}>
-							{document.downloadUrl ? (
-								<Download size={16} color={colors.primary} />
-							) : (
-								<ActivityIndicator
-									size="small"
-									color={colors.mutedForeground}
-								/>
-							)}
-						</View>
-					</Pressable>
-				))}
+						</Pressable>
+					);
+				})}
 			</View>
 		</Card>
 	);
 }
 
 const styles = StyleSheet.create({
+	card: {
+		marginTop: 16,
+	},
+	cardTitle: {
+		fontSize: 16,
+		fontFamily: fontFamily.semibold,
+	},
 	loadingContainer: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		gap: spacing.sm,
-		paddingVertical: spacing.lg,
+		gap: 8,
+		paddingVertical: 24,
 	},
 	loadingText: {
 		fontSize: 13,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
 	},
 	emptyContainer: {
 		alignItems: "center",
-		paddingVertical: spacing.xl,
+		paddingVertical: 28,
 	},
 	emptyIcon: {
 		width: 56,
 		height: 56,
 		borderRadius: 28,
-		backgroundColor: colors.muted,
 		alignItems: "center",
 		justifyContent: "center",
-		marginBottom: spacing.md,
+		marginBottom: 12,
 	},
 	emptyTitle: {
 		fontSize: 15,
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
-	},
-	emptyText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		textAlign: "center",
-		maxWidth: 250,
+		marginBottom: 12,
 	},
 	documentsList: {
-		gap: spacing.sm,
-		marginTop: spacing.sm,
+		gap: 8,
+		marginTop: 12,
 	},
 	documentItem: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: spacing.sm,
-		padding: spacing.sm,
-		backgroundColor: colors.muted,
-		borderRadius: radius.md,
+		gap: 8,
+		padding: 8,
+		borderRadius: radii.rSm,
 		borderWidth: 1,
-		borderColor: colors.border,
 	},
 	documentItemPressed: {
-		backgroundColor: colors.card,
 		opacity: 0.7,
 	},
 	documentIcon: {
 		width: 40,
 		height: 40,
-		borderRadius: radius.md,
-		backgroundColor: colors.card,
+		borderRadius: radii.md,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -282,7 +247,6 @@ const styles = StyleSheet.create({
 	documentName: {
 		fontSize: 13,
 		fontFamily: fontFamily.medium,
-		color: colors.foreground,
 		marginBottom: 2,
 	},
 	documentMeta: {
@@ -293,30 +257,19 @@ const styles = StyleSheet.create({
 	documentMetaText: {
 		fontSize: 11,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
 	},
 	documentMetaSeparator: {
 		fontSize: 11,
-		color: colors.mutedForeground,
 		marginHorizontal: 4,
 	},
-	signedBadge: {
-		alignSelf: "flex-start",
-		backgroundColor: "#d1fae5",
-		paddingHorizontal: spacing.xs,
-		paddingVertical: 2,
-		borderRadius: radius.sm,
-		marginTop: 4,
-	},
-	signedBadgeText: {
-		fontSize: 10,
-		fontFamily: fontFamily.semibold,
-		color: "#065f46",
-	},
 	downloadIndicator: {
-		width: 24,
+		minWidth: 24,
 		height: 24,
 		alignItems: "center",
 		justifyContent: "center",
+	},
+	unavailableText: {
+		fontSize: 10,
+		fontFamily: fontFamily.medium,
 	},
 });
