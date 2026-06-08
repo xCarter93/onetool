@@ -197,16 +197,24 @@ describe("weekRowSpans", () => {
 		expect(spans[1].endCol).toBe(2);
 	});
 
-	it("clamps a project extending beyond the visible grid to grid bounds", () => {
-		// Project from far before to far after the visible month.
+	it("clamps a project covering the whole visible grid to grid bounds (all 6 rows, full width)", () => {
+		// June 2026 grid is May 31 → July 11. Cover it end-to-end.
 		const p = makeProject(
 			"p1",
-			localTs(2026, 4, 1),
-			localTs(2026, 6, 1)
+			localTs(2026, 4, 31),
+			localTs(2026, 6, 11)
 		);
-		const spans = weekRowSpans([p], cells);
-		// One segment per week-row that the project covers (all 6 rows here).
+		const spans = weekRowSpans([p], cells).sort((a, b) => a.row - b.row);
+		// One full-width segment per week-row (all 6 rows).
 		expect(spans).toHaveLength(6);
-		expect(spans.every((s) => s.startCol >= 0 && s.endCol <= 6)).toBe(true);
+		expect(spans.every((s) => s.startCol === 0 && s.endCol === 6)).toBe(true);
+	});
+
+	it("emits no segment for a week-row the project does not intersect", () => {
+		// Ends July 1 (row 4) — last row (July 5-11) is untouched.
+		const p = makeProject("p1", localTs(2026, 4, 31), localTs(2026, 6, 1));
+		const spans = weekRowSpans([p], cells);
+		expect(spans).toHaveLength(5);
+		expect(spans.some((s) => s.row === 5)).toBe(false);
 	});
 });
