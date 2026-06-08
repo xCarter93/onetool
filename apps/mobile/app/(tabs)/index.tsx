@@ -29,7 +29,6 @@ import {
 import { ProgressRing } from "@/components/ProgressRing";
 import { TaskItem } from "@/components/TaskItem";
 import { JourneyProgress } from "@/components/JourneyProgress";
-import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import {
 	AppCalendar,
 	toDateId,
@@ -37,14 +36,14 @@ import {
 	CalendarTask,
 	CalendarProject,
 } from "@/components/AppCalendar";
-import { FABMenu } from "@/components/FABMenu";
+import { useViewMode } from "@/lib/useViewMode";
 import { AppHeader } from "@/components/app-header";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 export default function HomeScreen() {
 	const router = useRouter();
 	const [refreshing, setRefreshing] = useState(false);
-	const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
+	const { viewMode, setViewMode, hydrated } = useViewMode();
 	const [selectedDate, setSelectedDate] = useState<string>(
 		toDateId(new Date())
 	);
@@ -65,11 +64,14 @@ export default function HomeScreen() {
 	const allClients = useQuery(api.clients.list, {});
 	const allProjects = useQuery(api.projects.list, {});
 
-	// Fetch calendar events for a 3-month range based on displayed month
+	// Fetch calendar events for a 3-month range based on displayed month.
+	// Hydration-gated skip (Pitfall 4): a calendar-first persisted user must not
+	// see a dashboard flash, and the query must not fire in dashboard view.
 	const calendarEvents = useQuery(
 		api.calendar.getCalendarEvents,
-		viewMode === "calendar"
-			? {
+		!hydrated || viewMode !== "calendar"
+			? "skip"
+			: {
 					startDate: (() => {
 						const date = fromDateId(displayedMonth);
 						// Start from first day of previous month
@@ -93,7 +95,6 @@ export default function HomeScreen() {
 						return lastDay.getTime();
 					})(),
 				}
-			: "skip"
 	);
 
 	const completeTask = useMutation(api.tasks.complete);
@@ -494,9 +495,6 @@ export default function HomeScreen() {
 					</View>
 				)}
 			</ScrollView>
-
-			{/* FAB Menu */}
-			<FABMenu />
 
 			{/* Date Events Modal */}
 			<Modal
