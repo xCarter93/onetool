@@ -5,6 +5,7 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
+	Linking,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -12,539 +13,583 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
+import { fontFamily, radii, useTokens, STATUS } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { StatusBadge } from "@/components/StatusBadge";
-import { Card } from "@/components/Card";
 import { EditableField } from "@/components/EditableField";
-import { SectionHeader } from "@/components/SectionHeader";
+import { StatusPickerSheet } from "@/components/StatusPickerSheet";
 import { MentionModal } from "@/components/MentionModal";
+import { Card, Avatar, Badge, SectionHeader, ListRow } from "@/components/ui";
 import {
-	Mail,
 	Phone,
-	FolderKanban,
-	FileText,
-	ChevronRight,
-	User,
-	Tag,
+	Mail,
 	MessageSquare,
+	ChevronRight,
+	MapPin,
+	User,
 } from "lucide-react-native";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
 
+const STATUS_OPTIONS = [
+	{ value: "lead", label: "Lead" },
+	{ value: "active", label: "Active" },
+	{ value: "inactive", label: "Inactive" },
+	// archived is intentionally exposed — the detail screen is the only place a
+	// status can change, so an admin must be able to revert a mis-set archived
+	// client. The list still hides archived from its default view (Plan 03).
+	{ value: "archived", label: "Archived" },
+];
+
+const formatCurrency = (amount: number) =>
+	new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		minimumFractionDigits: 0,
+		maximumFractionDigits: 0,
+	}).format(amount);
+
 export default function ClientDetailScreen() {
+	const t = useTokens();
 	const { clientId } = useLocalSearchParams<{ clientId: string }>();
 	const router = useRouter();
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
+	const [statusSheetVisible, setStatusSheetVisible] = useState(false);
+	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
 
 	const client = useQuery(
 		api.clients.get,
 		clientId ? { id: clientId as Id<"clients"> } : "skip"
 	);
-
-	const contacts = useQuery(
-		api.clientContacts.listByClient,
-		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
-	);
-
-	const projects = useQuery(
-		api.projects.list,
-		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
-	);
-
-	const quotes = useQuery(
-		api.quotes.list,
-		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
-	);
-
-	const invoices = useQuery(
-		api.invoices.list,
-		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
-	);
+	const contacts =
+		useQuery(
+			api.clientContacts.listByClient,
+			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
+		) ?? [];
+	const properties =
+		useQuery(
+			api.clientProperties.listByClient,
+			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
+		) ?? [];
+	const projects =
+		useQuery(
+			api.projects.list,
+			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
+		) ?? [];
+	const quotes =
+		useQuery(
+			api.quotes.list,
+			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
+		) ?? [];
+	const invoices =
+		useQuery(
+			api.invoices.list,
+			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
+		) ?? [];
 
 	const updateClient = useMutation(api.clients.update);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
-		setTimeout(() => setRefreshing(false), 1000);
+		setTimeout(() => setRefreshing(false), 800);
 	}, []);
 
-	const handleUpdateField = async (field: string, value: string) => {
-		if (!clientId) return;
-		await updateClient({
-			id: clientId as Id<"clients">,
-			[field]: value,
-		});
+	// Send ONLY the edited field; skip unchanged values (clients.update throws
+	// "No updates" on an empty patch — Pitfall 3).
+	const handleSaveField = async (
+		field: "companyName" | "notes",
+		value: string
+	) => {
+		if (!clientId || !client) return;
+		if ((client[field] ?? "") === value) return;
+		await updateClient({ id: clientId as Id<"clients">, [field]: value });
 	};
 
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(amount);
+	const handleSelectStatus = async (next: string) => {
+		if (!clientId || !client || next === client.status) return;
+		setOptimisticStatus(next);
+		try {
+			await updateClient({
+				id: clientId as Id<"clients">,
+				status: next as ClientStatus,
+			});
+		} catch {
+			setOptimisticStatus(null);
+		}
 	};
 
 	if (!client) {
 		return (
 			<SafeAreaView
-				style={{ flex: 1, backgroundColor: colors.background }}
+				style={[styles.flex, { backgroundColor: t.bg }]}
 				edges={["bottom"]}
 			>
 				<AppHeader mode="detail" />
-				<View style={styles.loadingContainer}>
-					<Text style={styles.loadingText}>Loading client...</Text>
-				</View>
+				<ScrollView contentContainerStyle={styles.scroll}>
+					<View
+						style={[
+							styles.skeletonCard,
+							{ backgroundColor: t.card, borderColor: t.line },
+						]}
+					/>
+					<View
+						style={[
+							styles.skeletonRow,
+							{ backgroundColor: t.muted, marginTop: 14 },
+						]}
+					/>
+					<View
+						style={[
+							styles.skeletonRow,
+							{ backgroundColor: t.muted, marginTop: 10 },
+						]}
+					/>
+				</ScrollView>
 			</SafeAreaView>
 		);
 	}
 
-	const primaryContact = contacts?.find((c) => c.isPrimary) ?? contacts?.[0];
-	const recentProjects = projects?.slice(0, 3) ?? [];
-	const recentQuotes = quotes?.slice(0, 3) ?? [];
-	const recentInvoices = invoices?.slice(0, 3) ?? [];
+	const initials = client.companyName
+		.split(" ")
+		.map((w) => w[0])
+		.join("")
+		.slice(0, 2)
+		.toUpperCase();
+	const status = optimisticStatus ?? client.status;
+	const statusLabel = STATUS[status as keyof typeof STATUS]?.label ?? status;
 
-	// Calculate total quote value
-	const totalQuoteValue =
-		quotes?.reduce((sum, q) => sum + (q.total || 0), 0) ?? 0;
-	const approvedQuotes =
-		quotes?.filter((q) => q.status === "approved").length ?? 0;
+	const primaryProperty = properties.find((p) => p.isPrimary) ?? properties[0];
+
+	const recentProjects = projects.slice(0, 3);
+	const recentQuotes = quotes.slice(0, 3);
+	const recentInvoices = invoices.slice(0, 3);
 
 	return (
 		<SafeAreaView
-			style={{ flex: 1, backgroundColor: colors.background }}
+			style={[styles.flex, { backgroundColor: t.bg }]}
 			edges={["bottom"]}
 		>
-			<AppHeader mode="detail" />
+			<AppHeader mode="detail" title={client.companyName} />
 			<ScrollView
-				contentContainerStyle={{ padding: spacing.md }}
+				contentContainerStyle={styles.scroll}
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Header Card */}
-				<View style={styles.headerCard}>
-					<View style={styles.headerTop}>
-						<Text style={styles.companyName}>{client.companyName}</Text>
-						<View style={styles.statusBadgeContainer}>
-							<StatusBadge status={client.status} />
+				{/* Identity */}
+				<Card>
+					<View style={styles.identityRow}>
+						<Avatar text={initials} size={56} />
+						<View style={styles.identityBody}>
+							<Text
+								style={[styles.companyName, { color: t.ink }]}
+								numberOfLines={2}
+							>
+								{client.companyName}
+							</Text>
+							<Pressable
+								onPress={() => setStatusSheetVisible(true)}
+								accessibilityRole="button"
+								accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
+								style={({ pressed }) => [
+									styles.statusTrigger,
+									pressed && styles.pressed,
+								]}
+							>
+								<Badge status={status} big />
+								<ChevronRight size={15} color={t.faint} />
+							</Pressable>
 						</View>
 					</View>
-					{client.communicationPreference && (
-						<View style={styles.communicationRow}>
-							{client.communicationPreference === "email" && (
-								<>
-									<Mail size={14} color={colors.mutedForeground} />
-									<Text style={styles.communicationText}>Email preferred</Text>
-								</>
-							)}
-							{client.communicationPreference === "phone" && (
-								<>
-									<Phone size={14} color={colors.mutedForeground} />
-									<Text style={styles.communicationText}>Phone preferred</Text>
-								</>
-							)}
-							{client.communicationPreference === "both" && (
-								<>
-									<Mail size={14} color={colors.mutedForeground} />
-									<Phone size={14} color={colors.mutedForeground} />
-									<Text style={styles.communicationText}>Email & Phone</Text>
-								</>
-							)}
-						</View>
-					)}
-				</View>
+				</Card>
 
-				{/* Quick Stats */}
-				<View style={styles.statsRow}>
-					<View style={styles.statBox}>
-						<Text style={styles.statValue}>{projects?.length ?? 0}</Text>
-						<Text style={styles.statLabel}>Projects</Text>
-					</View>
-					<View style={styles.statBox}>
-						<Text style={styles.statValue}>{quotes?.length ?? 0}</Text>
-						<Text style={styles.statLabel}>Quotes</Text>
-					</View>
-					<View style={styles.statBox}>
-						<Text style={styles.statValue}>{invoices?.length ?? 0}</Text>
-						<Text style={styles.statLabel}>Invoices</Text>
-					</View>
-				</View>
+				{/* Team chat — relocated from the old floating FAB */}
+				<Pressable
+					onPress={() => setMentionModalVisible(true)}
+					accessibilityRole="button"
+					accessibilityLabel="Open team chat"
+					style={({ pressed }) => [
+						styles.teamChat,
+						{ backgroundColor: t.accentSoft },
+						pressed && styles.pressed,
+					]}
+				>
+					<MessageSquare size={18} color={t.accent} />
+					<Text style={[styles.teamChatText, { color: t.accent }]}>
+						Team chat
+					</Text>
+				</Pressable>
 
-				{/* Primary Contact */}
-				{primaryContact && (
-					<Card title="Primary Contact" style={{ marginTop: spacing.md }}>
-						<View style={styles.contactCard}>
-							<View style={styles.contactAvatar}>
-								<User size={20} color={colors.primary} />
-							</View>
-							<View style={styles.contactInfo}>
-								<Text style={styles.contactName}>
-									{primaryContact.firstName} {primaryContact.lastName}
-								</Text>
-								{primaryContact.email && (
-									<Pressable style={styles.contactRow}>
-										<Mail size={14} color={colors.mutedForeground} />
-										<Text style={styles.contactText}>
-											{primaryContact.email}
-										</Text>
-									</Pressable>
-								)}
-								{primaryContact.phone && (
-									<Pressable style={styles.contactRow}>
-										<Phone size={14} color={colors.mutedForeground} />
-										<Text style={styles.contactText}>
-											{primaryContact.phone}
-										</Text>
-									</Pressable>
-								)}
-							</View>
-						</View>
-					</Card>
-				)}
-
-				{/* Notes */}
-				<Card title="Notes" style={{ marginTop: spacing.md }}>
-					<View style={{ marginTop: spacing.sm }}>
+				{/* Company (inline edit) */}
+				<View style={styles.section}>
+					<SectionHeader title="Company" />
+					<Card style={styles.fieldCard}>
 						<EditableField
-							label=""
+							label="Company name"
+							value={client.companyName}
+							onSave={(value) => handleSaveField("companyName", value)}
+							placeholder="Company name"
+						/>
+						<EditableField
+							label="Notes"
 							value={client.notes}
-							onSave={(value) => handleUpdateField("notes", value)}
+							onSave={(value) => handleSaveField("notes", value)}
 							placeholder="Add notes about this client..."
 							multiline
 							numberOfLines={4}
 						/>
-					</View>
-				</Card>
+					</Card>
+				</View>
 
-				{/* Projects Section */}
-				<View style={{ marginTop: spacing.lg }}>
+				{/* Contacts (read-only; Call on phone) */}
+				<View style={styles.section}>
+					<SectionHeader title={`Contacts${countSuffix(contacts.length)}`} />
+					{contacts.length > 0 ? (
+						<Card style={styles.listCard}>
+							{contacts.map((contact, i) => {
+								const name =
+									`${contact.firstName} ${contact.lastName}`.trim() ||
+									"Unnamed contact";
+								const isLast = i === contacts.length - 1;
+								return (
+									<View
+										key={contact._id}
+										style={[
+											styles.contactRow,
+											{
+												borderBottomColor: t.line,
+												borderBottomWidth: isLast ? 0 : 1,
+											},
+										]}
+									>
+										<View style={styles.contactHead}>
+											<View
+												style={[
+													styles.contactIcon,
+													{ backgroundColor: t.accentSoft },
+												]}
+											>
+												<User size={16} color={t.accent} />
+											</View>
+											<View style={styles.contactInfo}>
+												<Text
+													style={[styles.contactName, { color: t.ink }]}
+													numberOfLines={1}
+												>
+													{name}
+													{contact.isPrimary ? "  ·  Primary" : ""}
+												</Text>
+												{contact.jobTitle ? (
+													<Text
+														style={[styles.contactSub, { color: t.sub }]}
+														numberOfLines={1}
+													>
+														{contact.jobTitle}
+													</Text>
+												) : null}
+											</View>
+										</View>
+										<View style={styles.contactActions}>
+											{contact.email ? (
+												<View style={styles.contactLine}>
+													<Mail size={14} color={t.faint} />
+													<Text
+														style={[styles.contactLineText, { color: t.sub }]}
+														numberOfLines={1}
+													>
+														{contact.email}
+													</Text>
+												</View>
+											) : null}
+											{contact.phone ? (
+												<Pressable
+													onPress={() => Linking.openURL(`tel:${contact.phone}`)}
+													accessibilityRole="button"
+													accessibilityLabel={`Call ${name}`}
+													style={({ pressed }) => [
+														styles.callRow,
+														pressed && styles.pressed,
+													]}
+												>
+													<Phone size={14} color={t.accent} />
+													<Text
+														style={[styles.callText, { color: t.accent }]}
+														numberOfLines={1}
+													>
+														{contact.phone}
+													</Text>
+												</Pressable>
+											) : null}
+										</View>
+									</View>
+								);
+							})}
+						</Card>
+					) : (
+						<EmptyRow text="No contacts yet" />
+					)}
+				</View>
+
+				{/* Properties (the section missing today) */}
+				<View style={styles.section}>
 					<SectionHeader
-						title="Projects"
-						count={projects?.length}
-						icon={<FolderKanban size={18} color="#8b5cf6" />}
-						actionLabel={
-							projects && projects.length > 0 ? "View All" : undefined
-						}
+						title={`Properties${countSuffix(properties.length)}`}
+					/>
+					{properties.length > 0 ? (
+						<Card style={styles.listCard}>
+							{properties.map((property, i) => {
+								const title =
+									property.propertyName ||
+									property.streetAddress ||
+									"Property";
+								const sub =
+									property.formattedAddress ||
+									[
+										property.streetAddress,
+										property.city,
+										property.state,
+										property.zipCode,
+									]
+										.filter(Boolean)
+										.join(", ");
+								const isPrimary = property._id === primaryProperty?._id;
+								return (
+									<View
+										key={property._id}
+										style={[
+											styles.contactRow,
+											{
+												borderBottomColor: t.line,
+												borderBottomWidth: i === properties.length - 1 ? 0 : 1,
+											},
+										]}
+									>
+										<View style={styles.contactHead}>
+											<View
+												style={[
+													styles.contactIcon,
+													{ backgroundColor: t.accentSoft },
+												]}
+											>
+												<MapPin size={16} color={t.accent} />
+											</View>
+											<View style={styles.contactInfo}>
+												<Text
+													style={[styles.contactName, { color: t.ink }]}
+													numberOfLines={1}
+												>
+													{title}
+													{isPrimary ? "  ·  Primary" : ""}
+												</Text>
+												{sub ? (
+													<Text
+														style={[styles.contactSub, { color: t.sub }]}
+														numberOfLines={2}
+													>
+														{sub}
+													</Text>
+												) : null}
+											</View>
+										</View>
+									</View>
+								);
+							})}
+						</Card>
+					) : (
+						<EmptyRow text="No properties yet" />
+					)}
+				</View>
+
+				{/* Projects */}
+				<View style={styles.section}>
+					<SectionHeader
+						title={`Projects${countSuffix(projects.length)}`}
+						action={projects.length > 0 ? "View all" : undefined}
 						onAction={() => router.push("/projects")}
 					/>
-
 					{recentProjects.length > 0 ? (
-						<View style={styles.relatedList}>
-							{recentProjects.map((project) => (
-								<Pressable
+						<Card style={styles.listCard}>
+							{recentProjects.map((project, i) => (
+								<ListRow
 									key={project._id}
-									style={styles.relatedItem}
+									title={project.title}
+									status={project.status}
+									showChevron={false}
 									onPress={() => router.push(`/projects/${project._id}`)}
-								>
-									<View style={styles.relatedItemContent}>
-										<Text style={styles.relatedItemTitle} numberOfLines={1}>
-											{project.title}
-										</Text>
-										<StatusBadge status={project.status} />
-									</View>
-									<ChevronRight size={16} color={colors.mutedForeground} />
-								</Pressable>
+									last={i === recentProjects.length - 1}
+								/>
 							))}
-						</View>
+						</Card>
 					) : (
-						<View style={styles.emptyRelated}>
-							<Text style={styles.emptyRelatedText}>No projects yet</Text>
-						</View>
+						<EmptyRow text="No projects yet" />
 					)}
 				</View>
 
-				{/* Quotes Section */}
-				<View style={{ marginTop: spacing.lg }}>
-					<SectionHeader
-						title="Quotes"
-						count={quotes?.length}
-						subtitle={
-							approvedQuotes > 0 ? `${approvedQuotes} approved` : undefined
-						}
-						icon={<FileText size={18} color="#10b981" />}
-					/>
-
+				{/* Quotes */}
+				<View style={styles.section}>
+					<SectionHeader title={`Quotes${countSuffix(quotes.length)}`} />
 					{recentQuotes.length > 0 ? (
-						<View style={styles.relatedList}>
-							{recentQuotes.map((quote) => (
-								<View key={quote._id} style={styles.relatedItem}>
-									<View style={styles.relatedItemContent}>
-										<View style={{ flex: 1 }}>
-											<Text style={styles.relatedItemTitle} numberOfLines={1}>
-												{quote.title || `Quote #${quote.quoteNumber}`}
-											</Text>
-											<Text style={styles.relatedItemValue}>
-												{formatCurrency(quote.total)}
-											</Text>
-										</View>
-										<StatusBadge status={quote.status} />
-									</View>
-								</View>
+						<Card style={styles.listCard}>
+							{recentQuotes.map((quote, i) => (
+								<ListRow
+									key={quote._id}
+									title={quote.title || `Quote #${quote.quoteNumber}`}
+									sub={formatCurrency(quote.total)}
+									status={quote.status}
+									showChevron={false}
+									onPress={() => router.push("/money")}
+									last={i === recentQuotes.length - 1}
+								/>
 							))}
-						</View>
+						</Card>
 					) : (
-						<View style={styles.emptyRelated}>
-							<Text style={styles.emptyRelatedText}>No quotes yet</Text>
-						</View>
+						<EmptyRow text="No quotes yet" />
 					)}
 				</View>
 
-				{/* Invoices Section */}
-				<View style={{ marginTop: spacing.lg }}>
-					<SectionHeader
-						title="Invoices"
-						count={invoices?.length}
-						icon={<FileText size={18} color="#3b82f6" />}
-					/>
-
+				{/* Invoices */}
+				<View style={styles.section}>
+					<SectionHeader title={`Invoices${countSuffix(invoices.length)}`} />
 					{recentInvoices.length > 0 ? (
-						<View style={styles.relatedList}>
-							{recentInvoices.map((invoice) => (
-								<View key={invoice._id} style={styles.relatedItem}>
-									<View style={styles.relatedItemContent}>
-										<View style={{ flex: 1 }}>
-											<Text style={styles.relatedItemTitle} numberOfLines={1}>
-												Invoice #{invoice.invoiceNumber}
-											</Text>
-											<Text style={styles.relatedItemValue}>
-												{formatCurrency(invoice.total)}
-											</Text>
-										</View>
-										<StatusBadge status={invoice.status} />
-									</View>
-								</View>
+						<Card style={styles.listCard}>
+							{recentInvoices.map((invoice, i) => (
+								<ListRow
+									key={invoice._id}
+									title={`Invoice #${invoice.invoiceNumber}`}
+									sub={formatCurrency(invoice.total)}
+									status={invoice.status}
+									showChevron={false}
+									onPress={() => router.push("/money")}
+									last={i === recentInvoices.length - 1}
+								/>
 							))}
-						</View>
+						</Card>
 					) : (
-						<View style={styles.emptyRelated}>
-							<Text style={styles.emptyRelatedText}>No invoices yet</Text>
-						</View>
+						<EmptyRow text="No invoices yet" />
 					)}
 				</View>
 
-				{/* Tags */}
-				{client.tags && client.tags.length > 0 && (
-					<Card title="Tags" style={{ marginTop: spacing.lg }}>
-						<View style={styles.tagsContainer}>
-							{client.tags.map((tag, index) => (
-								<View key={index} style={styles.tag}>
-									<Tag size={12} color={colors.primary} />
-									<Text style={styles.tagText}>{tag}</Text>
-								</View>
-							))}
-						</View>
-					</Card>
-				)}
-
-				{/* Bottom spacing */}
-				<View style={{ height: spacing.xl }} />
+				<View style={{ height: 32 }} />
 			</ScrollView>
 
-			{/* Floating Action Button for Mentions */}
-			<Pressable
-				style={styles.fab}
-				onPress={() => setMentionModalVisible(true)}
-			>
-				<MessageSquare size={24} color="#ffffff" />
-			</Pressable>
+			<StatusPickerSheet
+				visible={statusSheetVisible}
+				value={status}
+				options={STATUS_OPTIONS}
+				onSelect={handleSelectStatus}
+				onClose={() => setStatusSheetVisible(false)}
+				title="Client status"
+			/>
 
-			{/* Mention Modal */}
-			{client && (
-				<MentionModal
-					visible={mentionModalVisible}
-					onClose={() => setMentionModalVisible(false)}
-					entityType="client"
-					entityId={clientId as Id<"clients">}
-					entityName={client.companyName}
-				/>
-			)}
+			<MentionModal
+				visible={mentionModalVisible}
+				onClose={() => setMentionModalVisible(false)}
+				entityType="client"
+				entityId={clientId as Id<"clients">}
+				entityName={client.companyName}
+			/>
 		</SafeAreaView>
 	);
 }
 
+function countSuffix(n: number) {
+	return n > 0 ? `  ·  ${n}` : "";
+}
+
+function EmptyRow({ text }: { text: string }) {
+	const t = useTokens();
+	return (
+		<View
+			style={[
+				styles.empty,
+				{ backgroundColor: t.muted, borderColor: t.line },
+			]}
+		>
+			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
+		</View>
+	);
+}
+
 const styles = StyleSheet.create({
-	loadingContainer: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	loadingText: {
-		fontSize: 16,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	headerCard: {
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
+	flex: { flex: 1 },
+	scroll: { padding: 16, gap: 0 },
+	pressed: { opacity: 0.7 },
+
+	skeletonCard: {
+		height: 96,
+		borderRadius: radii.rLg,
 		borderWidth: 1,
-		borderColor: colors.border,
 	},
-	headerTop: {
+	skeletonRow: {
+		height: 60,
+		borderRadius: radii.r,
+	},
+
+	identityRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "space-between",
-		gap: spacing.sm,
+		gap: 14,
 	},
+	identityBody: { flex: 1, minWidth: 0 },
 	companyName: {
-		fontSize: 24,
 		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-		flex: 1,
+		fontSize: 20,
+		letterSpacing: -0.2,
 	},
-	communicationRow: {
+	statusTrigger: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: spacing.xs,
-		marginTop: spacing.md,
-	},
-	communicationText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	statusBadgeContainer: {
-		transform: [{ scale: 1.4 }],
-	},
-	statsRow: {
-		flexDirection: "row",
-		marginTop: spacing.md,
-		gap: spacing.sm,
-	},
-	statBox: {
-		flex: 1,
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		padding: spacing.sm,
-		alignItems: "center",
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	statValue: {
-		fontSize: 18,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-	},
-	statLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginTop: 2,
-	},
-	contactCard: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		marginTop: spacing.sm,
-	},
-	contactAvatar: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
-		backgroundColor: "rgba(0, 166, 244, 0.08)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	contactInfo: {
-		flex: 1,
-	},
-	contactName: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
-	},
-	contactRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: spacing.xs,
-		marginTop: 4,
-	},
-	contactText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	relatedList: {
-		gap: spacing.xs,
-	},
-	relatedItem: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		padding: spacing.sm,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	relatedItemContent: {
-		flex: 1,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginRight: spacing.sm,
-	},
-	relatedItemTitle: {
-		fontSize: 14,
-		fontFamily: fontFamily.medium,
-		color: colors.foreground,
-		flex: 1,
-		marginRight: spacing.sm,
-	},
-	relatedItemValue: {
-		fontSize: 13,
-		fontFamily: fontFamily.semibold,
-		color: colors.primary,
-		marginTop: 2,
-	},
-	emptyRelated: {
-		backgroundColor: colors.muted,
-		borderRadius: radius.md,
-		padding: spacing.md,
-		alignItems: "center",
-	},
-	emptyRelatedText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	tagsContainer: {
-		flexDirection: "row",
-		flexWrap: "wrap",
-		marginTop: spacing.sm,
-		gap: spacing.xs,
-	},
-	tag: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		paddingHorizontal: spacing.sm,
-		paddingVertical: spacing.xs,
-		borderRadius: radius.full,
 		gap: 4,
+		marginTop: 8,
+		alignSelf: "flex-start",
 	},
-	tagText: {
-		fontSize: 12,
-		fontFamily: fontFamily.medium,
-		color: colors.primary,
-	},
-	fab: {
-		position: "absolute",
-		right: 24,
-		bottom: 24,
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.primary,
+
+	teamChat: {
+		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.3,
-		shadowRadius: 8,
-		elevation: 8,
+		gap: 8,
+		height: 44,
+		borderRadius: radii.rSm,
+		marginTop: 12,
 	},
+	teamChatText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 14,
+	},
+
+	section: { marginTop: 22, gap: 10 },
+	fieldCard: { paddingBottom: 2 },
+	listCard: { paddingVertical: 6 },
+
+	contactRow: { paddingVertical: 12, paddingHorizontal: 4, gap: 8 },
+	contactHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+	contactIcon: {
+		width: 32,
+		height: 32,
+		borderRadius: 9,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	contactInfo: { flex: 1, minWidth: 0 },
+	contactName: { fontFamily: fontFamily.semibold, fontSize: 15 },
+	contactSub: { fontFamily: fontFamily.regular, fontSize: 13, marginTop: 2 },
+	contactActions: { gap: 6, paddingLeft: 42 },
+	contactLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+	contactLineText: { fontFamily: fontFamily.regular, fontSize: 13, flex: 1 },
+	callRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		alignSelf: "flex-start",
+	},
+	callText: { fontFamily: fontFamily.semibold, fontSize: 13 },
+
+	empty: {
+		borderRadius: radii.r,
+		borderWidth: 1,
+		paddingVertical: 18,
+		alignItems: "center",
+	},
+	emptyText: { fontFamily: fontFamily.regular, fontSize: 13 },
 });
