@@ -13,22 +13,25 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useState, useCallback, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
+import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
 import {
 	Users,
 	FolderKanban,
 	CheckSquare,
-	Plus,
 	ChevronRight,
-	TrendingUp,
-	TrendingDown,
 	AlertCircle,
-	Target,
+	Search,
 	X,
 } from "lucide-react-native";
-import { ProgressRing } from "@/components/ProgressRing";
 import { TaskItem } from "@/components/TaskItem";
-import { JourneyProgress } from "@/components/JourneyProgress";
+import {
+	HalftoneBg,
+	Eyebrow,
+	SegmentedToggle,
+	RevenueGauge,
+	StatCard,
+} from "@/components/ui";
+import { formatCurrency } from "@/lib/format";
 import {
 	AppCalendar,
 	toDateId,
@@ -105,21 +108,24 @@ export default function HomeScreen() {
 		setTimeout(() => setRefreshing(false), 1000);
 	}, []);
 
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(amount);
-	};
-
 	const getTimeBasedGreeting = () => {
 		const hour = new Date().getHours();
 		if (hour < 12) return "Good morning";
 		if (hour < 17) return "Good afternoon";
 		return "Good evening";
 	};
+
+	// UPPERCASE date eyebrow — e.g. "SATURDAY · JUNE 7"
+	const now = new Date();
+	const dateEyebrow = `${now.toLocaleDateString("en-US", {
+		weekday: "long",
+	})} · ${now.toLocaleDateString("en-US", {
+		month: "long",
+		day: "numeric",
+	})}`.toUpperCase();
+	const currentMonthUpper = now
+		.toLocaleDateString("en-US", { month: "long" })
+		.toUpperCase();
 
 	// Combine and dedupe tasks for display
 	const allTasks = useMemo(() => {
@@ -257,20 +263,34 @@ export default function HomeScreen() {
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Header Section */}
-				<View style={styles.headerSection}>
+				{/* Hero — halftone brand wash bleeding from the top, fading before the toggle */}
+				<View style={styles.hero}>
+					{/* Brand wash sits absolutely behind the hero content */}
+					<View style={styles.heroWash} pointerEvents="none">
+						<HalftoneBg brand={0.6} />
+					</View>
+
+					<Eyebrow>{dateEyebrow}</Eyebrow>
 					<Text style={styles.greeting}>
 						{getTimeBasedGreeting()}
 						{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
 					</Text>
-				</View>
 
-				{/* Journey Progress */}
-				<JourneyProgress />
+					{/* Search pill — render only; behavior lands in P24 */}
+					<View
+						style={styles.searchPill}
+						importantForAccessibility="no"
+						accessibilityElementsHidden
+					>
+						<Search size={18} color={tokens.faint} />
+						<Text style={styles.searchPlaceholder}>
+							Search clients, projects, invoices…
+						</Text>
+					</View>
 
-				{/* View Toggle - Below Journey Progress */}
-				<View style={styles.viewToggleContainer}>
-					<ViewToggle value={viewMode} onChange={setViewMode} />
+					<View style={styles.toggleRow}>
+						<SegmentedToggle value={viewMode} onChange={setViewMode} />
+					</View>
 				</View>
 
 				{viewMode === "dashboard" ? (
@@ -628,18 +648,44 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-	headerSection: {
+	hero: {
+		position: "relative",
+		// Bleed the brand wash to the screen edges (escape ScrollView padding)
+		marginHorizontal: -spacing.md,
+		marginTop: -spacing.md,
+		paddingHorizontal: spacing.md,
+		paddingTop: spacing.md,
+		paddingBottom: spacing.lg,
 		marginBottom: spacing.md,
 	},
-	greeting: {
-		fontSize: 26,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
+	heroWash: {
+		...StyleSheet.absoluteFillObject,
 	},
-	viewToggleContainer: {
+	greeting: {
+		fontSize: 25,
+		fontFamily: fontFamily.semibold,
+		color: tokens.ink,
+		marginTop: 6,
+	},
+	searchPill: {
+		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: spacing.lg,
-		marginTop: spacing.sm,
+		gap: spacing.sm,
+		backgroundColor: tokens.card,
+		borderWidth: 1,
+		borderColor: tokens.line,
+		borderRadius: 9999,
+		paddingVertical: 12,
+		paddingHorizontal: spacing.md,
+		marginTop: spacing.md,
+	},
+	searchPlaceholder: {
+		fontSize: 14,
+		fontFamily: fontFamily.regular,
+		color: tokens.faint,
+	},
+	toggleRow: {
+		marginTop: spacing.md,
 	},
 	statsRow: {
 		flexDirection: "row",
