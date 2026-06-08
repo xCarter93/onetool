@@ -7,10 +7,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useTokens } from "@/lib/theme";
 import { DaySheet } from "@/components/calendar/DaySheet";
-import {
-	startOfLocalDay,
-	nextLocalDayStart,
-} from "@/components/calendar/dateUtils";
+import { DAY_MS } from "@/components/calendar/dateUtils";
 
 // Day-detail form-sheet route — same native sheet type as /org-switch (chrome in
 // _layout.tsx). Owns the single-day getCalendarEvents query, the tasks.complete
@@ -27,14 +24,15 @@ export default function DaySheetRoute() {
 	const [updating, setUpdating] = useState<Set<Id<"tasks">>>(new Set());
 	const completeTask = useMutation(api.tasks.complete);
 
-	// Single-day window — getCalendarEvents returns events overlapping it, so
-	// multi-day projects that span this day are included.
+	// Single UTC-day window (dayTs is the cell's UTC-midnight key from MonthGrid).
+	// getCalendarEvents returns events overlapping it, so multi-day projects that
+	// span this day are included.
 	const calendarArgs =
 		dayTs == null
 			? ("skip" as const)
 			: {
-					startDate: startOfLocalDay(dayTs),
-					endDate: nextLocalDayStart(dayTs) - 1,
+					startDate: dayTs,
+					endDate: dayTs + DAY_MS - 1,
 				};
 	const events = useQuery(api.calendar.getCalendarEvents, calendarArgs);
 

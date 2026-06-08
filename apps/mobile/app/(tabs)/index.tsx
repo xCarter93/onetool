@@ -11,7 +11,14 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
-import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
+import {
+	colors,
+	fontFamily,
+	spacing,
+	radius,
+	tokens,
+	createGlyph,
+} from "@/lib/theme";
 import {
 	Check,
 	Search,
@@ -30,13 +37,12 @@ import {
 	ListRow,
 } from "@/components/ui";
 import { JourneyCard } from "@/components/JourneyCard";
-import { createGlyph } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import {
 	buildMonthCells,
-	nextLocalDayStart,
-	startOfLocalDay as startOfLocalDayCell,
+	cellDayKey,
+	DAY_MS,
 } from "@/components/calendar/dateUtils";
 import { useViewMode } from "@/lib/useViewMode";
 import { AppHeader } from "@/components/app-header";
@@ -138,9 +144,11 @@ export default function HomeScreen() {
 			? ("skip" as const)
 			: (() => {
 					const cells = buildMonthCells(displayed.year, displayed.month);
+					// UTC-day window covering the first..last visible cell, matching the
+					// Date.UTC storage of task.date / project dates (see dateUtils).
 					return {
-						startDate: startOfLocalDayCell(cells[0].getTime()),
-						endDate: nextLocalDayStart(cells[41].getTime()) - 1,
+						startDate: cellDayKey(cells[0]),
+						endDate: cellDayKey(cells[41]) + DAY_MS - 1,
 					};
 				})();
 	const calendarEvents = useQuery(
@@ -192,11 +200,8 @@ export default function HomeScreen() {
 	};
 
 	// Calculate client stats
-	const totalClients = allClients?.length ?? 0;
 	const activeClients =
 		allClients?.filter((c) => c.status === "active").length ?? 0;
-	const inactiveClients =
-		allClients?.filter((c) => c.status === "inactive").length ?? 0;
 	const leadClients =
 		allClients?.filter((c) => c.status === "lead").length ?? 0;
 
@@ -207,8 +212,6 @@ export default function HomeScreen() {
 		).length ?? 0;
 	const plannedProjects =
 		allProjects?.filter((p) => p.status === "planned").length ?? 0;
-	const inProgressProjects =
-		allProjects?.filter((p) => p.status === "in-progress").length ?? 0;
 
 	// Revenue gauge gate: only a real, positive org target counts. NEVER gate on
 	// homeStats.revenueGoal.target (always >0 via the 50k fallback).
@@ -368,7 +371,11 @@ export default function HomeScreen() {
 												title={task.title}
 												sub={`Due ${new Date(task.date).toLocaleDateString(
 													"en-US",
-													{ month: "short", day: "numeric" }
+													{
+														month: "short",
+														day: "numeric",
+														timeZone: "UTC",
+													}
 												)}`}
 												right={
 													<Pressable

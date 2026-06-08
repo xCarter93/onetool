@@ -9,10 +9,10 @@ import {
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import {
 	buildMonthCells,
+	cellDayKey,
 	isMultiDayProject,
 	projectsOnDay,
 	sameLocalDay,
-	startOfLocalDay,
 	tasksOnDay,
 	weekRowSpans,
 	type ProjectEvent,
@@ -146,9 +146,10 @@ export function MonthGrid({
 							const cell = cells[row * 7 + col];
 							const inMonth = cell.getMonth() === month;
 							const isToday = sameLocalDay(cell, today);
-							const dayTasks = tasksOnDay(tasks, cell);
+							const dayKey = cellDayKey(cell);
+							const dayTasks = tasksOnDay(tasks, dayKey);
 							const taskDots = Math.min(dayTasks.length, 2);
-							const hasSingleDayProject = projectsOnDay(projects, cell).some(
+							const hasSingleDayProject = projectsOnDay(projects, dayKey).some(
 								(p) => !isMultiDayProject(p)
 							);
 
@@ -156,7 +157,7 @@ export function MonthGrid({
 								<Pressable
 									key={col}
 									style={styles.cell}
-									onPress={() => onDayPress(startOfLocalDay(cell.getTime()))}
+									onPress={() => onDayPress(dayKey)}
 								>
 									<View
 										style={[

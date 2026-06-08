@@ -42,18 +42,21 @@ export function DaySheet({
 }: DaySheetProps) {
 	const t = useTokens();
 
-	const day = dayTs != null ? new Date(dayTs) : null;
-	const dayProjects = day ? projectsOnDay(projects, day) : [];
-	const dayTasks = day ? tasksOnDay(tasks, day) : [];
+	const dayProjects = dayTs != null ? projectsOnDay(projects, dayTs) : [];
+	const dayTasks = dayTs != null ? tasksOnDay(tasks, dayTs) : [];
 	const isEmpty = dayProjects.length === 0 && dayTasks.length === 0;
 
-	const headerLabel = day
-		? day.toLocaleDateString("en-US", {
-				weekday: "long",
-				month: "long",
-				day: "numeric",
-			})
-		: "";
+	// dayTs and the event dates are UTC-midnight — render in UTC so the label
+	// shows the intended calendar date, not the prior evening in a local tz.
+	const headerLabel =
+		dayTs != null
+			? new Date(dayTs).toLocaleDateString("en-US", {
+					weekday: "long",
+					month: "long",
+					day: "numeric",
+					timeZone: "UTC",
+				})
+			: "";
 
 	return (
 		<View style={styles.sheet}>
@@ -89,12 +92,14 @@ export function DaySheet({
 							const start = new Date(p.startDate).toLocaleDateString("en-US", {
 								month: "short",
 								day: "numeric",
+								timeZone: "UTC",
 							});
 							const end =
 								p.endDate != null
 									? new Date(p.endDate).toLocaleDateString("en-US", {
 											month: "short",
 											day: "numeric",
+											timeZone: "UTC",
 										})
 									: null;
 							const dates = end && end !== start ? `${start} – ${end}` : start;

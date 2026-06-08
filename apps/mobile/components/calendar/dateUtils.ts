@@ -1,7 +1,15 @@
-// Pure local-day grid + bucketing + week-row span geometry for MonthGrid.
+// Pure month-grid geometry + UTC-day bucketing for MonthGrid.
 // No React/RN imports — unit-testable under a plain node Vitest environment.
-// Convention: LOCAL-day math throughout (matches index.tsx). No UTC, no
-// fixed-millisecond day windows (those skip/duplicate the hour on DST days).
+//
+// Convention: a "day" is keyed by the UTC-midnight ms of its CALENDAR date, the
+// same space task.date / project.startDate are stored in (Date.UTC — see
+// lib/date.ts and the web calendar). Grid cells are LOCAL-midnight Dates; we read
+// their visual Y/M/D and re-key through Date.UTC so a cell and a stored event sit
+// in one comparable space. This is what makes a UTC-stored "June 8" task land on
+// the June 8 cell in every timezone — local-day bucketing put it on June 7 for
+// any host behind UTC. No time-of-day enters a key, so it is DST-immune.
+
+export const DAY_MS = 86_400_000;
 
 // Event shapes mirror calendar.getCalendarEvents (calendar.ts:73-109).
 // Loosely mirror calendar.getCalendarEvents — the unused-here metadata fields
@@ -54,20 +62,18 @@ export function buildMonthCells(year: number, month: number): Date[] {
 	});
 }
 
-// Local midnight of the day containing ts.
-export function startOfLocalDay(ts: number): number {
-	const d = new Date(ts);
-	d.setHours(0, 0, 0, 0);
-	return d.getTime();
+// UTC-midnight key for a grid cell's VISUAL calendar date (cell is local-midnight).
+export function cellDayKey(cell: Date): number {
+	return Date.UTC(cell.getFullYear(), cell.getMonth(), cell.getDate());
 }
 
-// DST-safe next local midnight — one CALENDAR day later via the Date ctor,
-// never a fixed-millisecond add (that drifts on 23/25-hour DST transition days).
-export function nextLocalDayStart(ts: number): number {
+// UTC-midnight key for a stored event timestamp (already Date.UTC-based).
+export function eventDayKey(ts: number): number {
 	const d = new Date(ts);
-	return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+	return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
+// Local-day equality — used only for the "today" pill (local now vs visual cell).
 export function sameLocalDay(a: Date, b: Date): boolean {
 	return (
 		a.getFullYear() === b.getFullYear() &&
@@ -76,28 +82,27 @@ export function sameLocalDay(a: Date, b: Date): boolean {
 	);
 }
 
-// Tasks whose start falls within [startOfDay, nextLocalDayStart) — DST-safe.
-export function tasksOnDay(tasks: TaskEvent[], day: Date): TaskEvent[] {
-	const ts = startOfLocalDay(day.getTime());
-	const next = nextLocalDayStart(ts);
-	return tasks.filter((t) => t.startDate >= ts && t.startDate < next);
+// Tasks whose stored date matches dayKey (UTC-midnight of the cell's calendar date).
+export function tasksOnDay(tasks: TaskEvent[], dayKey: number): TaskEvent[] {
+	return tasks.filter((t) => eventDayKey(t.startDate) === dayKey);
 }
 
-// Projects active on the day (overlap filter, reuses index.tsx logic).
-export function projectsOnDay(projects: ProjectEvent[], day: Date): ProjectEvent[] {
-	const ts = startOfLocalDay(day.getTime());
+// Projects active on dayKey (inclusive UTC-day overlap).
+export function projectsOnDay(
+	projects: ProjectEvent[],
+	dayKey: number
+): ProjectEvent[] {
 	return projects.filter((p) => {
-		const end = p.endDate ?? p.startDate;
-		return startOfLocalDay(p.startDate) <= ts && startOfLocalDay(end) >= ts;
+		const start = eventDayKey(p.startDate);
+		const end = eventDayKey(p.endDate ?? p.startDate);
+		return start <= dayKey && end >= dayKey;
 	});
 }
 
-// Multi-day = end local-day strictly after start local-day. Single-day projects
-// draw a per-day green dot; multi-day projects rely only on the span bar.
+// Multi-day = end UTC-day strictly after start UTC-day. Single-day projects draw a
+// per-day green dot; multi-day projects rely only on the span bar.
 export function isMultiDayProject(p: ProjectEvent): boolean {
-	return (
-		p.endDate != null && startOfLocalDay(p.endDate) > startOfLocalDay(p.startDate)
-	);
+	return p.endDate != null && eventDayKey(p.endDate) > eventDayKey(p.startDate);
 }
 
 // One continuous span segment per (project x intersecting week-row), clamped to
@@ -109,11 +114,11 @@ export function weekRowSpans(
 	cells: Date[]
 ): SpanSegment[] {
 	const segments: SpanSegment[] = [];
-	const cellDays = cells.map((c) => startOfLocalDay(c.getTime()));
+	const cellDays = cells.map(cellDayKey);
 
 	for (const project of projects) {
-		const pStart = startOfLocalDay(project.startDate);
-		const pEnd = startOfLocalDay(project.endDate ?? project.startDate);
+		const pStart = eventDayKey(project.startDate);
+		const pEnd = eventDayKey(project.endDate ?? project.startDate);
 
 		for (let row = 0; row < 6; row++) {
 			let startCol = -1;

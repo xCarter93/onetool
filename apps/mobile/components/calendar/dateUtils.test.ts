@@ -1,20 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildMonthCells,
+	cellDayKey,
+	DAY_MS,
+	eventDayKey,
 	isMultiDayProject,
-	nextLocalDayStart,
 	projectsOnDay,
 	sameLocalDay,
-	startOfLocalDay,
 	tasksOnDay,
 	weekRowSpans,
 	type ProjectEvent,
 	type TaskEvent,
 } from "./dateUtils";
 
-// Helpers to build fixture events at deterministic LOCAL day boundaries.
-const localTs = (y: number, m: number, d: number) =>
-	new Date(y, m, d, 9, 0, 0).getTime();
+// Real events store dates as UTC-midnight (Date.UTC — see lib/date.ts).
+const utcTs = (y: number, m: number, d: number) => Date.UTC(y, m, d);
+// Day key for a calendar date, as MonthGrid derives it from a local-midnight cell.
+const dayKey = (y: number, m: number, d: number) =>
+	cellDayKey(new Date(y, m, d));
 
 const makeProject = (
 	id: string,
@@ -57,106 +60,86 @@ describe("buildMonthCells", () => {
 
 	it("cells[0] is the Sunday on/before June 1 2026 (May 31 — June 1 is a Monday)", () => {
 		const cells = buildMonthCells(2026, 5);
-		// May 31 2026 is a Sunday.
 		expect(cells[0].getFullYear()).toBe(2026);
 		expect(cells[0].getMonth()).toBe(4); // May
 		expect(cells[0].getDate()).toBe(31);
 		expect(cells[0].getDay()).toBe(0); // Sunday
 	});
 
-	it("cells[41] is the last visible Saturday of the grid", () => {
+	it("cells[41] is the last visible Saturday, with sequential calendar days", () => {
 		const cells = buildMonthCells(2026, 5);
 		expect(cells[41].getDay()).toBe(6); // Saturday
-		// Sequential days, no gaps.
+		// Consecutive calendar dates differ by exactly one UTC day (DST-immune).
 		for (let i = 1; i < cells.length; i++) {
-			const prev = startOfLocalDay(cells[i - 1].getTime());
-			const cur = startOfLocalDay(cells[i].getTime());
-			expect(cur).toBe(nextLocalDayStart(prev));
+			expect(cellDayKey(cells[i])).toBe(cellDayKey(cells[i - 1]) + DAY_MS);
 		}
 	});
 });
 
-describe("nextLocalDayStart (DST-safe)", () => {
-	it("advances exactly one calendar day to local midnight, not +86400000, on US spring-forward", () => {
-		// March 8 2026 is US spring-forward (23-hour day).
-		const springForward = new Date(2026, 2, 8, 12, 0, 0).getTime();
-		const next = nextLocalDayStart(springForward);
-		const expected = new Date(2026, 2, 9, 0, 0, 0).getTime();
-		expect(next).toBe(expected);
-		// Must NOT equal start-of-day + 86400000 on a 23-hour day.
-		expect(next).not.toBe(startOfLocalDay(springForward) + 86_400_000);
+describe("cellDayKey / eventDayKey", () => {
+	it("maps a UTC-stored date onto the matching calendar-date cell (the timezone-drift bug)", () => {
+		// A task created for June 8 is stored at Date.UTC(2026,5,8). It MUST key to
+		// the June 8 cell regardless of host timezone — local bucketing drifted it
+		// onto June 7 for any host behind UTC.
+		expect(eventDayKey(utcTs(2026, 5, 8))).toBe(dayKey(2026, 5, 8));
+		expect(eventDayKey(utcTs(2026, 5, 8))).not.toBe(dayKey(2026, 5, 7));
 	});
 
-	it("returns a local-midnight timestamp", () => {
-		const next = nextLocalDayStart(localTs(2026, 5, 7));
-		const d = new Date(next);
-		expect(d.getHours()).toBe(0);
-		expect(d.getMinutes()).toBe(0);
-		expect(d.getSeconds()).toBe(0);
+	it("eventDayKey strips any time-of-day to UTC midnight", () => {
+		const noon = Date.UTC(2026, 5, 8, 12, 30, 0);
+		expect(eventDayKey(noon)).toBe(dayKey(2026, 5, 8));
 	});
 });
 
-describe("startOfLocalDay / sameLocalDay", () => {
-	it("startOfLocalDay zeroes the time", () => {
-		const d = new Date(startOfLocalDay(localTs(2026, 5, 7)));
-		expect(d.getHours()).toBe(0);
-		expect(d.getDate()).toBe(7);
-	});
-
-	it("sameLocalDay compares y/m/d", () => {
-		expect(
-			sameLocalDay(new Date(2026, 5, 7, 1), new Date(2026, 5, 7, 23))
-		).toBe(true);
-		expect(
-			sameLocalDay(new Date(2026, 5, 7), new Date(2026, 5, 8))
-		).toBe(false);
+describe("sameLocalDay", () => {
+	it("compares local y/m/d", () => {
+		expect(sameLocalDay(new Date(2026, 5, 7, 1), new Date(2026, 5, 7, 23))).toBe(
+			true
+		);
+		expect(sameLocalDay(new Date(2026, 5, 7), new Date(2026, 5, 8))).toBe(false);
 	});
 });
 
 describe("tasksOnDay", () => {
 	it("returns the task on its day and nothing on the next day", () => {
-		const task = makeTask("t1", localTs(2026, 5, 7));
-		expect(tasksOnDay([task], new Date(2026, 5, 7))).toHaveLength(1);
-		expect(tasksOnDay([task], new Date(2026, 5, 8))).toHaveLength(0);
+		const task = makeTask("t1", utcTs(2026, 5, 7));
+		expect(tasksOnDay([task], dayKey(2026, 5, 7))).toHaveLength(1);
+		expect(tasksOnDay([task], dayKey(2026, 5, 8))).toHaveLength(0);
 	});
 });
 
 describe("projectsOnDay", () => {
 	it("returns single-day project on its day", () => {
-		const p = makeProject("p1", localTs(2026, 5, 7));
-		expect(projectsOnDay([p], new Date(2026, 5, 7))).toHaveLength(1);
-		expect(projectsOnDay([p], new Date(2026, 5, 8))).toHaveLength(0);
+		const p = makeProject("p1", utcTs(2026, 5, 7));
+		expect(projectsOnDay([p], dayKey(2026, 5, 7))).toHaveLength(1);
+		expect(projectsOnDay([p], dayKey(2026, 5, 8))).toHaveLength(0);
 	});
 
 	it("returns a multi-day project across its full span", () => {
-		const p = makeProject("p1", localTs(2026, 5, 8), localTs(2026, 5, 11));
-		expect(projectsOnDay([p], new Date(2026, 5, 8))).toHaveLength(1);
-		expect(projectsOnDay([p], new Date(2026, 5, 10))).toHaveLength(1);
-		expect(projectsOnDay([p], new Date(2026, 5, 11))).toHaveLength(1);
-		expect(projectsOnDay([p], new Date(2026, 5, 12))).toHaveLength(0);
+		const p = makeProject("p1", utcTs(2026, 5, 8), utcTs(2026, 5, 11));
+		expect(projectsOnDay([p], dayKey(2026, 5, 8))).toHaveLength(1);
+		expect(projectsOnDay([p], dayKey(2026, 5, 10))).toHaveLength(1);
+		expect(projectsOnDay([p], dayKey(2026, 5, 11))).toHaveLength(1);
+		expect(projectsOnDay([p], dayKey(2026, 5, 12))).toHaveLength(0);
 	});
 });
 
 describe("isMultiDayProject", () => {
 	it("is false for a single-day project", () => {
-		expect(isMultiDayProject(makeProject("p1", localTs(2026, 5, 7)))).toBe(
-			false
-		);
+		expect(isMultiDayProject(makeProject("p1", utcTs(2026, 5, 7)))).toBe(false);
 	});
 
-	it("is false when endDate equals startDate's local day", () => {
+	it("is false when endDate is the same UTC day as startDate", () => {
 		expect(
 			isMultiDayProject(
-				makeProject("p1", localTs(2026, 5, 7), new Date(2026, 5, 7, 18).getTime())
+				makeProject("p1", utcTs(2026, 5, 7), Date.UTC(2026, 5, 7, 18))
 			)
 		).toBe(false);
 	});
 
-	it("is true for a project spanning multiple local days", () => {
+	it("is true for a project spanning multiple UTC days", () => {
 		expect(
-			isMultiDayProject(
-				makeProject("p1", localTs(2026, 5, 7), localTs(2026, 5, 9))
-			)
+			isMultiDayProject(makeProject("p1", utcTs(2026, 5, 7), utcTs(2026, 5, 9)))
 		).toBe(true);
 	});
 });
@@ -166,7 +149,7 @@ describe("weekRowSpans", () => {
 
 	it("single-day project → one segment, startCol === endCol", () => {
 		// June 7 2026 is a Sunday → column 0 of its row.
-		const p = makeProject("p1", localTs(2026, 5, 7), localTs(2026, 5, 7));
+		const p = makeProject("p1", utcTs(2026, 5, 7), utcTs(2026, 5, 7));
 		const spans = weekRowSpans([p], cells);
 		expect(spans).toHaveLength(1);
 		expect(spans[0].startCol).toBe(spans[0].endCol);
@@ -174,7 +157,7 @@ describe("weekRowSpans", () => {
 	});
 
 	it("within-week multi-day project (Mon June 8 → Thu June 11) → one segment, startCol < endCol, no wrap", () => {
-		const p = makeProject("p1", localTs(2026, 5, 8), localTs(2026, 5, 11));
+		const p = makeProject("p1", utcTs(2026, 5, 8), utcTs(2026, 5, 11));
 		const spans = weekRowSpans([p], cells);
 		expect(spans).toHaveLength(1);
 		expect(spans[0].startCol).toBeLessThan(spans[0].endCol);
@@ -184,7 +167,7 @@ describe("weekRowSpans", () => {
 	});
 
 	it("Sat→Sun wrap project (Sat June 13 → Tue June 16) → two segments continuous across the wrap", () => {
-		const p = makeProject("p1", localTs(2026, 5, 13), localTs(2026, 5, 16));
+		const p = makeProject("p1", utcTs(2026, 5, 13), utcTs(2026, 5, 16));
 		const spans = weekRowSpans([p], cells).sort((a, b) => a.row - b.row);
 		expect(spans).toHaveLength(2);
 		// Segment 1: ends at col 6 (Saturday) in week-row N.
@@ -199,11 +182,7 @@ describe("weekRowSpans", () => {
 
 	it("clamps a project covering the whole visible grid to grid bounds (all 6 rows, full width)", () => {
 		// June 2026 grid is May 31 → July 11. Cover it end-to-end.
-		const p = makeProject(
-			"p1",
-			localTs(2026, 4, 31),
-			localTs(2026, 6, 11)
-		);
+		const p = makeProject("p1", utcTs(2026, 4, 31), utcTs(2026, 6, 11));
 		const spans = weekRowSpans([p], cells).sort((a, b) => a.row - b.row);
 		// One full-width segment per week-row (all 6 rows).
 		expect(spans).toHaveLength(6);
@@ -212,7 +191,7 @@ describe("weekRowSpans", () => {
 
 	it("emits no segment for a week-row the project does not intersect", () => {
 		// Ends July 1 (row 4) — last row (July 5-11) is untouched.
-		const p = makeProject("p1", localTs(2026, 4, 31), localTs(2026, 6, 1));
+		const p = makeProject("p1", utcTs(2026, 4, 31), utcTs(2026, 6, 1));
 		const spans = weekRowSpans([p], cells);
 		expect(spans).toHaveLength(5);
 		expect(spans.some((s) => s.row === 5)).toBe(false);
