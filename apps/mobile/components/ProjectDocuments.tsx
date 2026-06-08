@@ -6,11 +6,13 @@ import {
 	Linking,
 	ActivityIndicator,
 } from "react-native";
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Card } from "@/components/ui";
+import { Card, Button } from "@/components/ui";
 import { fontFamily, radii, useTokens } from "@/lib/theme";
-import { FileText, Download } from "lucide-react-native";
+import { FileText, Download, Upload } from "lucide-react-native";
+import * as DocumentPicker from "expo-document-picker";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface ProjectDocumentsProps {
@@ -25,6 +27,39 @@ type ProjectDocument = {
 	mimeType: string;
 	uploadedAt: number;
 	downloadUrl: string | null;
+};
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// Generic fallback MIME the picker emits when it cannot identify a type. It is
+// NOT in the server's allowed list, so we never forward it to create() —
+// resolve from the file extension instead (unknown extensions abort upload).
+const GENERIC_MIME = "application/" + "octet-stream";
+
+// extension -> MIME, drawn from ALLOWED_MESSAGE_ATTACHMENT_TYPES (lib/storage.ts).
+const EXTENSION_MIME: Record<string, string> = {
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	png: "image/png",
+	gif: "image/gif",
+	webp: "image/webp",
+	svg: "image/svg+xml",
+	pdf: "application/pdf",
+	doc: "application/msword",
+	docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	xls: "application/vnd.ms-excel",
+	xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	ppt: "application/vnd.ms-powerpoint",
+	pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	txt: "text/plain",
+	csv: "text/csv",
+	zip: "application/zip",
+};
+
+const mimeFromExtension = (fileName: string): string | null => {
+	const ext = fileName.split(".").pop()?.toLowerCase();
+	if (!ext) return null;
+	return EXTENSION_MIME[ext] ?? null;
 };
 
 const formatFileSize = (bytes: number): string => {
@@ -45,12 +80,104 @@ const formatDate = (timestamp: number): string =>
 
 export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 	const t = useTokens();
+	const [uploading, setUploading] = useState(false);
+	const [uploadError, setUploadError] = useState<string | null>(null);
+
 	const docsResult = useQuery(
 		api.projectDocuments.listByProject,
 		projectId ? { projectId } : "skip"
 	);
 	const loading = docsResult === undefined;
 	const docs = docsResult ?? [];
+
+	const generateUploadUrl = useMutation(api.projectDocuments.generateUploadUrl);
+	const createDoc = useMutation(api.projectDocuments.create);
+
+	const handleUpload = async () => {
+		setUploadError(null);
+		try {
+			const result = await DocumentPicker.getDocumentAsync({
+				type: "*/*",
+				copyToCacheDirectory: true,
+			});
+			if (result.canceled) return;
+			const asset = result.assets[0];
+			if (!asset) return;
+
+			setUploading(true);
+
+			// Build the blob first so its size is known when the picker omits one.
+			const blob = await (await fetch(asset.uri)).blob();
+
+			// Server rejects fileSize <= 0 — derive from blob.size when missing.
+			const fileSize = asset.size && asset.size > 0 ? asset.size : blob.size;
+			if (fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
+				setUploadError("Upload failed. Try again.");
+				return;
+			}
+
+			// Generic fallback is not server-allowed — resolve from extension.
+			const resolvedMime =
+				asset.mimeType && asset.mimeType !== GENERIC_MIME
+					? asset.mimeType
+					: mimeFromExtension(asset.name);
+			if (!resolvedMime) {
+				setUploadError("Upload failed. Try again.");
+				return;
+			}
+
+			const uploadUrl = await generateUploadUrl();
+			const up = await fetch(uploadUrl, {
+				method: "POST",
+				headers: { "Content-Type": resolvedMime },
+				body: blob,
+			});
+			if (!up.ok) throw new Error("Upload failed");
+			const { storageId } = (await up.json()) as {
+				storageId: Id<"_storage">;
+			};
+
+			await createDoc({
+				projectId,
+				name: asset.name,
+				fileName: asset.name,
+				fileSize,
+				mimeType: resolvedMime,
+				storageId,
+			});
+			// listByProject is reactive — it auto-refreshes after create.
+		} catch (error) {
+			console.error("Document upload error:", error);
+			setUploadError("Upload failed. Try again.");
+		} finally {
+			setUploading(false);
+		}
+	};
+
+	const uploadButton = (
+		<View style={styles.uploadRow}>
+			{uploading ? (
+				<View style={styles.uploadingRow}>
+					<ActivityIndicator size="small" color={t.accent} />
+					<Text style={[styles.uploadingText, { color: t.mutedForeground }]}>
+						Uploading…
+					</Text>
+				</View>
+			) : (
+				<Button
+					title="Upload document"
+					variant="secondary"
+					icon={<Upload size={16} color={t.ink} />}
+					onPress={handleUpload}
+				/>
+			)}
+			{uploadError ? (
+				<Text style={[styles.errorText, { color: t.danger }]}>
+					{uploadError}
+				</Text>
+			) : null}
+		</View>
+	);
 
 	const handleDocumentPress = async (doc: ProjectDocument) => {
 		// downloadUrl can be null when the storage ref is missing — never call
@@ -93,6 +220,7 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 					<Text style={[styles.emptyTitle, { color: t.ink }]}>
 						No documents yet
 					</Text>
+					{uploadButton}
 				</View>
 			</Card>
 		);
@@ -178,6 +306,7 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 					);
 				})}
 			</View>
+			{uploadButton}
 		</Card>
 	);
 }
@@ -270,6 +399,25 @@ const styles = StyleSheet.create({
 	},
 	unavailableText: {
 		fontSize: 10,
+		fontFamily: fontFamily.medium,
+	},
+	uploadRow: {
+		marginTop: 12,
+		gap: 8,
+		alignItems: "center",
+	},
+	uploadingRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		paddingVertical: 12,
+	},
+	uploadingText: {
+		fontSize: 13,
+		fontFamily: fontFamily.medium,
+	},
+	errorText: {
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 	},
 });
