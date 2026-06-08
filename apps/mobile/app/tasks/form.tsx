@@ -9,7 +9,7 @@ import {
 	ActivityIndicator,
 	StyleSheet,
 } from "react-native";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
@@ -112,11 +112,12 @@ export default function TaskFormSheet() {
 	const [repeatUntilPickerOpen, setRepeatUntilPickerOpen] = useState(false);
 
 	// Init sentinel (mirror web prevInitKey) — seed once when edit task loads.
-	const appliedKeyRef = useRef<string | null>(null);
+	// Render-safe setState-during-render pattern (not a ref) so re-renders don't clobber edits.
+	const [appliedKey, setAppliedKey] = useState<string | null>(null);
 	const initKey = `${isEdit}|${task?._id ?? ""}|${task?.date ?? ""}|${params.clientId ?? ""}|${params.projectId ?? ""}`;
-	if (initKey !== appliedKeyRef.current) {
+	if (initKey !== appliedKey) {
 		if (isEdit && task) {
-			appliedKeyRef.current = initKey;
+			setAppliedKey(initKey);
 			const loadedType: TaskType = task.type === "internal" ? "internal" : "external";
 			setType(loadedType);
 			setTitle(task.title);
@@ -132,7 +133,7 @@ export default function TaskFormSheet() {
 				task.repeatUntil ? dateIdFromUtcMs(task.repeatUntil) : undefined
 			);
 		} else if (!isEdit) {
-			appliedKeyRef.current = initKey;
+			setAppliedKey(initKey);
 		}
 	}
 
