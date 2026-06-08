@@ -3,7 +3,7 @@ import { FlashList } from "@shopify/flash-list";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
@@ -82,6 +82,30 @@ export default function TasksScreen() {
 		new Map<Id<"tasks">, "completed" | "pending">()
 	);
 	const [updating, setUpdating] = useState(new Set<Id<"tasks">>());
+
+	// Reconcile the overlay against server truth: once the query reflects the
+	// override (or the task is gone), drop it so cross-screen changes (e.g.
+	// completing from Home) aren't shadowed by a stale local override.
+	useEffect(() => {
+		if (!tasks) return;
+		setOptimisticStatus((prev) => {
+			if (prev.size === 0) return prev;
+			const serverById = new Map(tasks.map((task) => [task._id, task.status]));
+			const next = new Map(prev);
+			let changed = false;
+			for (const [id, override] of prev) {
+				const server = serverById.get(id);
+				if (
+					server === undefined ||
+					(server === "completed") === (override === "completed")
+				) {
+					next.delete(id);
+					changed = true;
+				}
+			}
+			return changed ? next : prev;
+		});
+	}, [tasks]);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
@@ -288,9 +312,19 @@ export default function TasksScreen() {
 
 	const ListHeader = (
 		<View style={styles.statsRow}>
-			<StatCard label="Open" value={stats.open} />
-			<StatCard label="Overdue" value={stats.overdue} tone="#e23b3b" />
-			<StatCard label="Today" value={stats.today} tone="#00a6f4" />
+			<StatCard label="Open" value={stats.open} style={styles.statCard} />
+			<StatCard
+				label="Overdue"
+				value={stats.overdue}
+				tone="#e23b3b"
+				style={styles.statCard}
+			/>
+			<StatCard
+				label="Today"
+				value={stats.today}
+				tone="#00a6f4"
+				style={styles.statCard}
+			/>
 		</View>
 	);
 
@@ -366,6 +400,9 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		gap: 10,
 		marginBottom: 16,
+	},
+	statCard: {
+		flex: 1,
 	},
 	groupBlock: {
 		marginBottom: 18,

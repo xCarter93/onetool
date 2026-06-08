@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { icons, ArrowUpRight } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Card } from "./card";
@@ -12,6 +12,7 @@ interface StatCardProps {
 	icon?: keyof typeof icons;
 	tone?: string;
 	onPress?: () => void;
+	style?: ViewStyle | ViewStyle[];
 	// Faint top-right ↗ glyph signalling the tile opens its own surface.
 	showExternalAffordance?: boolean;
 }
@@ -23,6 +24,7 @@ export function StatCard({
 	icon,
 	tone,
 	onPress,
+	style,
 	showExternalAffordance,
 }: StatCardProps) {
 	const t = useTokens();
@@ -30,7 +32,7 @@ export function StatCard({
 	const tint = tone || t.accent;
 
 	return (
-		<Card onPress={onPress}>
+		<Card onPress={onPress} style={style}>
 			{showExternalAffordance ? (
 				<View style={styles.affordance} pointerEvents="none">
 					<ArrowUpRight size={16} color={t.faint} />
