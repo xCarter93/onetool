@@ -7,6 +7,7 @@ import {
 	Alert,
 	Image,
 	StyleSheet,
+	useWindowDimensions,
 } from "react-native";
 import { useState } from "react";
 import { useOrganizationList, useOrganization } from "@clerk/expo";
@@ -24,6 +25,7 @@ import { Avatar } from "@/components/ui";
 export default function OrgSwitchSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { height: winH } = useWindowDimensions();
 	const { userMemberships, setActive, isLoaded } = useOrganizationList({
 		userMemberships: {
 			infinite: true,
@@ -67,9 +69,11 @@ export default function OrgSwitchSheet() {
 	return (
 		<View style={[styles.container, { backgroundColor: t.card }]}>
 			{/* Title bar comes from the native screen header (see _layout.tsx). This
-			    route renders only the scrollable org list. */}
+			    route renders only the scrollable org list. maxHeight (not flex:1) sizes
+			    the list to its content — a flex:1 ScrollView collapses to zero height as
+			    the sole in-flow child of the form-sheet content frame. */}
 			<ScrollView
-				style={styles.list}
+				style={{ maxHeight: winH * 0.85 }}
 				contentContainerStyle={{
 					paddingHorizontal: 16,
 					paddingTop: 12,
@@ -170,9 +174,6 @@ const styles = StyleSheet.create({
 	center: {
 		alignItems: "center",
 		justifyContent: "center",
-	},
-	list: {
-		flex: 1,
 	},
 	row: {
 		flexDirection: "row",

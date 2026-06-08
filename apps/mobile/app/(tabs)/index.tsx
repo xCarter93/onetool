@@ -280,11 +280,13 @@ export default function HomeScreen() {
 				}
 			>
 				{/* Hero — halftone brand wash bleeding from the top, fading before the toggle.
-				    HalftoneBg renders its own absoluteFill root; mounting it directly (no
-				    extra absoluteFill wrapper) bounds it to the hero box — nesting it under
-				    another absoluteFill made Fabric resolve it against the full screen. */}
+				    The wash wrapper has an explicit HEIGHT: HalftoneBg's absoluteFill can
+				    only resolve (instead of escaping to full-screen) inside a parent with a
+				    definite height — overflow:hidden does NOT clip the escape on Fabric. */}
 				<View style={styles.hero}>
-					<HalftoneBg brand={0.6} />
+					<View style={styles.heroWash} pointerEvents="none">
+						<HalftoneBg brand={0.6} />
+					</View>
 
 					<Eyebrow>{dateEyebrow}</Eyebrow>
 					<Text style={styles.greeting}>
@@ -615,10 +617,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	hero: {
 		position: "relative",
-		// Clip the absolutely-filled wash to the hero's content box — without this,
-		// Fabric measures the absoluteFill against screen space and BG.png bleeds
-		// full-screen behind the scroll content.
-		overflow: "hidden",
 		// Bleed the brand wash to the screen edges (escape ScrollView padding)
 		marginHorizontal: -spacing.md,
 		marginTop: -spacing.md,
@@ -626,6 +624,16 @@ const styles = StyleSheet.create({
 		paddingTop: spacing.md,
 		paddingBottom: spacing.lg,
 		marginBottom: spacing.md,
+	},
+	// Definite-height band for the brand wash. The explicit height is what bounds
+	// HalftoneBg's inner absoluteFill (image + scrim); its bottom edge is the solid
+	// surface color, so a few px of overshoot past the hero content is invisible.
+	heroWash: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		height: 240,
 	},
 	greeting: {
 		fontSize: 25,
