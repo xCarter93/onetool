@@ -7,12 +7,15 @@
 		"dev": "expo start --clear",
 		"ios": "expo run:ios",
 		"build:ios": "eas build --platform ios",
-		"lint": "eslint ."
+		"lint": "eslint .",
+		"test": "vitest",
+		"test:once": "vitest run"
 	},
 	"dependencies": {
 		"@clerk/expo": "^3.3.1",
 		"@expo-google-fonts/outfit": "^0.2.3",
 		"@onetool/backend": "workspace:*",
+		"@react-native-async-storage/async-storage": "2.2.0",
 		"@shopify/flash-list": "2.0.2",
 		"convex": "^1.30.0",
 		"expo": "~56.0.9",
@@ -43,6 +46,7 @@
 		"@babel/core": "^7.29.7",
 		"@onetool/tsconfig": "workspace:*",
 		"@types/react": "~19.2.17",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^4.0.16"
 	}
 }
