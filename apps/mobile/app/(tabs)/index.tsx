@@ -428,18 +428,6 @@ export default function HomeScreen() {
 								</View>
 							))}
 
-						{/* Active-projects summary row — opens Work (distinct from KPI tile) */}
-						<View style={styles.section}>
-							<ListRow
-								icon="FolderKanban"
-								iconColor="#7c5cff"
-								title="Active projects"
-								sub={`${activeProjects} in progress`}
-								last
-								onPress={() => router.push("/projects")}
-							/>
-						</View>
-
 						{/* Quick actions */}
 						<View style={styles.section}>
 							<SectionHeader title="Quick actions" />

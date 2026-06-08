@@ -1,8 +1,10 @@
 import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	CheckCircle2,
+	ChevronDown,
 	Circle,
 	Users,
 	FolderKanban,
@@ -93,6 +95,8 @@ const journeySteps: JourneyStep[] = [
 
 export function JourneyProgress() {
 	const journeyProgress = useQuery(api.homeStats.getJourneyProgress);
+	// Collapsed by default — the step strip is reference info, not daily-use.
+	const [expanded, setExpanded] = useState(false);
 
 	if (!journeyProgress) {
 		return (
@@ -109,12 +113,18 @@ export function JourneyProgress() {
 
 	const completedCount = journeySteps.filter(
 		(step) =>
-			journeyProgress[step.completionKey as keyof typeof journeyProgress]
+			journeyProgress[step.completionKey as keyof typeof journeyProgress],
 	).length;
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.header}>
+			<Pressable
+				style={styles.header}
+				onPress={() => setExpanded((v) => !v)}
+				accessibilityRole="button"
+				accessibilityState={{ expanded }}
+				accessibilityLabel={`Your Journey, ${completedCount} of ${journeySteps.length} completed`}
+			>
 				<View style={styles.headerContent}>
 					<Text style={styles.title}>Your Journey</Text>
 					<Text style={styles.subtitle}>
@@ -126,64 +136,76 @@ export function JourneyProgress() {
 						{Math.round((completedCount / journeySteps.length) * 100)}%
 					</Text>
 				</View>
-			</View>
+				<ChevronDown
+					size={20}
+					color={colors.mutedForeground}
+					style={[styles.chevron, expanded && styles.chevronExpanded]}
+				/>
+			</Pressable>
 
-			<ScrollView
-				horizontal
-				showsHorizontalScrollIndicator={false}
-				contentContainerStyle={styles.scrollContent}
-				style={styles.scrollView}
-			>
-				{journeySteps.map((step, index) => {
-					const isCompleted =
-						journeyProgress[step.completionKey as keyof typeof journeyProgress];
-					const IconComponent = step.icon;
+			{expanded && (
+				<ScrollView
+					horizontal
+					showsHorizontalScrollIndicator={false}
+					contentContainerStyle={styles.scrollContent}
+					style={styles.scrollView}
+				>
+					{journeySteps.map((step, index) => {
+						const isCompleted =
+							journeyProgress[
+								step.completionKey as keyof typeof journeyProgress
+							];
+						const IconComponent = step.icon;
 
-					return (
-						<View
-							key={step.id}
-							style={[styles.stepCard, isCompleted && styles.stepCardCompleted]}
-						>
+						return (
 							<View
+								key={step.id}
 								style={[
-									styles.stepIconContainer,
-									{
-										backgroundColor: isCompleted
-											? "rgba(0, 166, 244, 0.15)"
-											: "rgba(0, 166, 244, 0.1)",
-									},
+									styles.stepCard,
+									isCompleted && styles.stepCardCompleted,
 								]}
 							>
-								<IconComponent
-									size={20}
-									color={isCompleted ? step.color : colors.mutedForeground}
-								/>
-							</View>
-
-							<View style={styles.stepContent}>
-								<Text
+								<View
 									style={[
-										styles.stepTitle,
-										isCompleted && styles.stepTitleCompleted,
+										styles.stepIconContainer,
+										{
+											backgroundColor: isCompleted
+												? "rgba(0, 166, 244, 0.15)"
+												: "rgba(0, 166, 244, 0.1)",
+										},
 									]}
-									numberOfLines={1}
 								>
-									{step.shortTitle}
-								</Text>
-								<Text style={styles.stepNumber}>Step {step.id}</Text>
-							</View>
+									<IconComponent
+										size={20}
+										color={isCompleted ? step.color : colors.mutedForeground}
+									/>
+								</View>
 
-							<View style={styles.statusIcon}>
-								{isCompleted ? (
-									<CheckCircle2 size={18} color="#10b981" />
-								) : (
-									<Circle size={18} color={colors.border} />
-								)}
+								<View style={styles.stepContent}>
+									<Text
+										style={[
+											styles.stepTitle,
+											isCompleted && styles.stepTitleCompleted,
+										]}
+										numberOfLines={1}
+									>
+										{step.shortTitle}
+									</Text>
+									<Text style={styles.stepNumber}>Step {step.id}</Text>
+								</View>
+
+								<View style={styles.statusIcon}>
+									{isCompleted ? (
+										<CheckCircle2 size={18} color="#10b981" />
+									) : (
+										<Circle size={18} color={colors.border} />
+									)}
+								</View>
 							</View>
-						</View>
-					);
-				})}
-			</ScrollView>
+						);
+					})}
+				</ScrollView>
+			)}
 		</View>
 	);
 }
@@ -195,7 +217,6 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: spacing.md,
 	},
 	headerContent: {
 		flex: 1,
@@ -224,8 +245,15 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.bold,
 		color: "#fff",
 	},
+	chevron: {
+		marginLeft: spacing.sm,
+	},
+	chevronExpanded: {
+		transform: [{ rotate: "180deg" }],
+	},
 	scrollView: {
 		marginHorizontal: -spacing.md,
+		marginTop: spacing.md,
 	},
 	scrollContent: {
 		paddingHorizontal: spacing.md,

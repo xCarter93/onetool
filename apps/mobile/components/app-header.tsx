@@ -16,7 +16,6 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
-import { NotificationModal } from "@/components/NotificationModal";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -66,9 +65,6 @@ export function AppHeader({
 	const onHeaderLayout = (e: LayoutChangeEvent) =>
 		setHeaderHeight(e.nativeEvent.layout.height);
 
-	// Notifications open in a shared bottom sheet from the bell (every screen).
-	const [notifOpen, setNotifOpen] = useState(false);
-
 	const detail = mode === "detail";
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
@@ -77,9 +73,10 @@ export function AppHeader({
 		user?.primaryEmailAddress?.emailAddress,
 	);
 
-	// org-switch is owned by a sibling plan and not yet in the generated route
-	// types — cast keeps the typed router clean.
+	// Form-sheet routes not yet in the generated route types — cast keeps the
+	// typed router clean.
 	const ORG_SWITCH: Href = "/org-switch" as Href;
+	const NOTIFICATIONS: Href = "/notifications" as Href;
 
 	return (
 		<View style={{ paddingTop: insets.top + 8 }} onLayout={onHeaderLayout}>
@@ -159,7 +156,7 @@ export function AppHeader({
 
 				{/* Constant right cluster (root + detail) */}
 				<Pressable
-					onPress={() => setNotifOpen(true)}
+					onPress={() => router.push(NOTIFICATIONS)}
 					style={[styles.iconBtn, { borderColor: t.line }]}
 					accessibilityRole="button"
 					accessibilityLabel="Notifications"
@@ -206,11 +203,6 @@ export function AppHeader({
 					</Text>
 				</View>
 			) : null}
-
-			<NotificationModal
-				visible={notifOpen}
-				onClose={() => setNotifOpen(false)}
-			/>
 		</View>
 	);
 }

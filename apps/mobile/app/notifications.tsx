@@ -1,0 +1,273 @@
+import {
+	View,
+	Text,
+	Pressable,
+	ScrollView,
+	ActivityIndicator,
+	StyleSheet,
+} from "react-native";
+import { router, type Href } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { BellOff } from "lucide-react-native";
+import { fontFamily, type, useTokens } from "@/lib/theme";
+import {
+	formatRelativeTime,
+	truncateText,
+	stripAuthorIdFromMessage,
+} from "@/lib/notification-utils";
+
+// Notifications form-sheet route — same native sheet type + chrome as /org-switch
+// and /day-sheet (sheet options in _layout.tsx). Owns the list query + markRead.
+export default function NotificationsSheet() {
+	const t = useTokens();
+	const insets = useSafeAreaInsets();
+	const notificationData = useQuery(api.notifications.listForCurrentUser, {
+		limit: 50,
+	});
+	const markRead = useMutation(api.notifications.markRead);
+
+	const notifications = notificationData?.notifications ?? [];
+	const unreadCount = notificationData?.unreadCount ?? 0;
+	const loading = notificationData === undefined;
+
+	const handlePress = async (
+		id: Id<"notifications">,
+		actionUrl?: string,
+		isRead?: boolean,
+	) => {
+		if (!isRead) {
+			try {
+				await markRead({ id });
+			} catch (error) {
+				console.error("Failed to mark notification as read:", error);
+			}
+		}
+		if (actionUrl) {
+			router.back();
+			router.push(actionUrl as Href);
+		}
+	};
+
+	return (
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: t.card, paddingBottom: insets.bottom },
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			<View style={styles.header}>
+				<View style={styles.titleWrap}>
+					<Text style={[styles.title, { color: t.ink }]}>Notifications</Text>
+					{unreadCount > 0 ? (
+						<View style={[styles.badge, { backgroundColor: t.danger }]}>
+							<Text style={styles.badgeText}>
+								{unreadCount > 9 ? "9+" : unreadCount}
+							</Text>
+						</View>
+					) : null}
+				</View>
+				<View style={styles.headerAction}>
+					<Pressable
+						onPress={() => router.back()}
+						style={({ pressed }) => [
+							styles.cancelButton,
+							{ backgroundColor: pressed ? t.secondary : t.muted },
+						]}
+					>
+						<Text style={[styles.cancelText, { color: t.sub }]}>Cancel</Text>
+					</Pressable>
+				</View>
+			</View>
+
+			{loading ? (
+				<View style={styles.state}>
+					<ActivityIndicator size="small" color={t.accent} />
+				</View>
+			) : notifications.length === 0 ? (
+				<View style={styles.state}>
+					<View style={[styles.emptyTile, { backgroundColor: t.muted }]}>
+						<BellOff size={42} color={t.faint} />
+					</View>
+					<Text style={[styles.emptyTitle, { color: t.ink }]}>
+						No notifications
+					</Text>
+					<Text style={[styles.emptySub, { color: t.sub }]}>
+						You're all caught up.
+					</Text>
+				</View>
+			) : (
+				<ScrollView
+					style={styles.list}
+					contentContainerStyle={{ paddingBottom: 24 }}
+				>
+					{notifications.map((n, i) => (
+						<Pressable
+							key={n._id}
+							onPress={() => handlePress(n._id, n.actionUrl, n.isRead)}
+							style={({ pressed }) => [
+								styles.row,
+								{ borderBottomColor: t.line },
+								i === notifications.length - 1 && styles.rowLast,
+								!n.isRead && { backgroundColor: t.accentSoft },
+								pressed && { backgroundColor: t.surface },
+							]}
+						>
+							<View style={styles.dotCol}>
+								{!n.isRead ? (
+									<View style={[styles.dot, { backgroundColor: t.accent }]} />
+								) : null}
+							</View>
+							<View style={styles.rowBody}>
+								<Text
+									style={[styles.rowTitle, { color: t.ink }]}
+									numberOfLines={1}
+								>
+									{n.title}
+								</Text>
+								<Text
+									style={[styles.rowMessage, { color: t.sub }]}
+									numberOfLines={2}
+								>
+									{truncateText(stripAuthorIdFromMessage(n.message), 100)}
+								</Text>
+								<Text style={[styles.rowTime, { color: t.faint }]}>
+									{formatRelativeTime(n._creationTime)}
+								</Text>
+							</View>
+						</Pressable>
+					))}
+				</ScrollView>
+			)}
+		</View>
+	);
+}
+
+const styles = StyleSheet.create({
+	container: {
+		flex: 1,
+		borderTopLeftRadius: 30,
+		borderTopRightRadius: 30,
+		overflow: "hidden",
+	},
+	grabber: {
+		alignSelf: "center",
+		width: 44,
+		height: 5,
+		borderRadius: 999,
+		marginTop: 10,
+		marginBottom: 16,
+	},
+	header: {
+		flexDirection: "row",
+		alignItems: "center",
+		paddingHorizontal: 20,
+		paddingBottom: 18,
+	},
+	titleWrap: {
+		flex: 2,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+	},
+	title: {
+		fontSize: 24,
+		lineHeight: 30,
+		fontFamily: fontFamily.bold,
+	},
+	badge: {
+		borderRadius: 999,
+		minWidth: 22,
+		paddingHorizontal: 6,
+		paddingVertical: 2,
+		alignItems: "center",
+	},
+	badgeText: {
+		color: "#fff",
+		fontSize: 12,
+		fontFamily: fontFamily.semibold,
+	},
+	headerAction: {
+		flex: 1,
+		alignItems: "flex-end",
+	},
+	cancelButton: {
+		borderRadius: 999,
+		paddingHorizontal: 13,
+		paddingVertical: 10,
+	},
+	cancelText: {
+		fontSize: 18,
+		fontFamily: fontFamily.medium,
+	},
+	state: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 32,
+		gap: 10,
+	},
+	emptyTile: {
+		width: 72,
+		height: 72,
+		borderRadius: 36,
+		alignItems: "center",
+		justifyContent: "center",
+		marginBottom: 4,
+	},
+	emptyTitle: {
+		fontSize: type.body,
+		fontFamily: fontFamily.semibold,
+		textAlign: "center",
+	},
+	emptySub: {
+		fontSize: type.xs,
+		fontFamily: fontFamily.regular,
+		textAlign: "center",
+	},
+	list: {
+		flex: 1,
+	},
+	row: {
+		flexDirection: "row",
+		gap: 12,
+		paddingHorizontal: 20,
+		paddingVertical: 14,
+		borderBottomWidth: 1,
+	},
+	rowLast: {
+		borderBottomWidth: 0,
+	},
+	dotCol: {
+		width: 8,
+		alignItems: "center",
+		paddingTop: 6,
+	},
+	dot: {
+		width: 8,
+		height: 8,
+		borderRadius: 4,
+	},
+	rowBody: {
+		flex: 1,
+	},
+	rowTitle: {
+		fontSize: 14,
+		fontFamily: fontFamily.semibold,
+		marginBottom: 4,
+	},
+	rowMessage: {
+		fontSize: 13,
+		lineHeight: 18,
+		fontFamily: fontFamily.regular,
+		marginBottom: 4,
+	},
+	rowTime: {
+		fontSize: 12,
+		fontFamily: fontFamily.regular,
+	},
+});
