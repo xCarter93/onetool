@@ -279,12 +279,12 @@ export default function HomeScreen() {
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Hero — halftone brand wash bleeding from the top, fading before the toggle */}
+				{/* Hero — halftone brand wash bleeding from the top, fading before the toggle.
+				    HalftoneBg renders its own absoluteFill root; mounting it directly (no
+				    extra absoluteFill wrapper) bounds it to the hero box — nesting it under
+				    another absoluteFill made Fabric resolve it against the full screen. */}
 				<View style={styles.hero}>
-					{/* Brand wash sits absolutely behind the hero content */}
-					<View style={styles.heroWash} pointerEvents="none">
-						<HalftoneBg brand={0.6} />
-					</View>
+					<HalftoneBg brand={0.6} />
 
 					<Eyebrow>{dateEyebrow}</Eyebrow>
 					<Text style={styles.greeting}>
@@ -626,9 +626,6 @@ const styles = StyleSheet.create({
 		paddingTop: spacing.md,
 		paddingBottom: spacing.lg,
 		marginBottom: spacing.md,
-	},
-	heroWash: {
-		...StyleSheet.absoluteFill,
 	},
 	greeting: {
 		fontSize: 25,
