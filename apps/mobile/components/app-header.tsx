@@ -1,5 +1,12 @@
-import React from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import {
+	Image,
+	type LayoutChangeEvent,
+	Pressable,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { useRouter, type Href } from "expo-router";
@@ -50,6 +57,14 @@ export function AppHeader({
 	});
 	const unreadCount = notificationData?.unreadCount ?? 0;
 
+	// Measure the header so the brand wash gets a DEFINITE-height box. HalftoneBg /
+	// BlurView use absoluteFill, which escapes to full-screen inside an
+	// indefinite-height parent on Fabric (this is what painted BG.png behind the
+	// whole Home screen). overflow:hidden does not clip that escape.
+	const [headerHeight, setHeaderHeight] = useState(0);
+	const onHeaderLayout = (e: LayoutChangeEvent) =>
+		setHeaderHeight(e.nativeEvent.layout.height);
+
 	const detail = mode === "detail";
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
@@ -64,29 +79,35 @@ export function AppHeader({
 	const NOTIFICATIONS: Href = "/notifications" as Href;
 
 	return (
-		<View style={{ paddingTop: insets.top + 8 }}>
-			{/* Background variant */}
-			{home ? (
-				<HalftoneBg brand={0.6} />
-			) : (
-				<>
-					<BlurView
-						tint="light"
-						intensity={90}
-						style={StyleSheet.absoluteFill}
-					/>
-					<View
-						style={[
-							StyleSheet.absoluteFill,
-							{
-								backgroundColor: "rgba(245,247,249,0.55)",
-								borderBottomWidth: 1,
-								borderBottomColor: t.line,
-							},
-						]}
-					/>
-				</>
-			)}
+		<View style={{ paddingTop: insets.top + 8 }} onLayout={onHeaderLayout}>
+			{/* Background variant — bounded to the measured header height so the
+			    absoluteFill wash can't escape full-screen. */}
+			<View
+				style={{ position: "absolute", top: 0, left: 0, right: 0, height: headerHeight }}
+				pointerEvents="none"
+			>
+				{home ? (
+					<HalftoneBg brand={0.6} />
+				) : (
+					<>
+						<BlurView
+							tint="light"
+							intensity={90}
+							style={StyleSheet.absoluteFill}
+						/>
+						<View
+							style={[
+								StyleSheet.absoluteFill,
+								{
+									backgroundColor: "rgba(245,247,249,0.55)",
+									borderBottomWidth: 1,
+									borderBottomColor: t.line,
+								},
+							]}
+						/>
+					</>
+				)}
+			</View>
 
 			{/* Top row */}
 			<View style={styles.topRow}>
