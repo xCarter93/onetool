@@ -615,6 +615,10 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	hero: {
 		position: "relative",
+		// Clip the absolutely-filled wash to the hero's content box — without this,
+		// Fabric measures the absoluteFill against screen space and BG.png bleeds
+		// full-screen behind the scroll content.
+		overflow: "hidden",
 		// Bleed the brand wash to the screen edges (escape ScrollView padding)
 		marginHorizontal: -spacing.md,
 		marginTop: -spacing.md,
