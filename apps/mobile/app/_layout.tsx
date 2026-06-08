@@ -6,10 +6,9 @@ import {
 } from "@clerk/expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
-import { Stack, router } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, Text, View } from "react-native";
-import { colors, fontFamily } from "@/lib/theme";
+import { View } from "react-native";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { useFonts } from "expo-font";
@@ -92,34 +91,12 @@ export default function RootLayout() {
 								name="org-switch"
 								options={{
 									presentation: "formSheet",
-									sheetAllowedDetents: [0.5, 0.9],
-									sheetGrabberVisible: true,
-									// Native screen header owns the title bar: the OS sizes the
-									// sheet content frame, so the list can't collapse and the
-									// header can't overlap row 1 (both JS-header failure modes).
-									headerShown: true,
-									headerTitle: "Switch organization",
-									headerTitleAlign: "left",
-									headerShadowVisible: false,
-									headerStyle: { backgroundColor: colors.card },
-									headerTitleStyle: {
-										fontFamily: fontFamily.bold,
-										fontSize: 18,
-										color: colors.foreground,
-									},
-									headerRight: () => (
-										<Pressable onPress={() => router.back()} hitSlop={8}>
-											<Text
-												style={{
-													fontFamily: fontFamily.medium,
-													fontSize: 16,
-													color: colors.mutedForeground,
-												}}
-											>
-												Cancel
-											</Text>
-										</Pressable>
-									),
+									contentStyle: { backgroundColor: "transparent" },
+									headerShown: false,
+									sheetAllowedDetents: [0.52, 0.9],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
 								}}
 							/>
 							<Stack.Screen

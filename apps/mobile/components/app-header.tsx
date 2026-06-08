@@ -15,7 +15,7 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
-import { Avatar, HalftoneBg } from "@/components/ui";
+import { Avatar } from "@/components/ui";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -80,15 +80,18 @@ export function AppHeader({
 
 	return (
 		<View style={{ paddingTop: insets.top + 8 }} onLayout={onHeaderLayout}>
-			{/* Background variant — bounded to the measured header height so the
-			    absoluteFill wash can't escape full-screen. */}
-			<View
-				style={{ position: "absolute", top: 0, left: 0, right: 0, height: headerHeight }}
-				pointerEvents="none"
-			>
-				{home ? (
-					<HalftoneBg brand={0.6} />
-				) : (
+			{!home ? (
+				<View
+					style={{
+						position: "absolute",
+						top: 0,
+						left: 0,
+						right: 0,
+						height: headerHeight,
+						overflow: "hidden",
+					}}
+					pointerEvents="none"
+				>
 					<>
 						<BlurView
 							tint="light"
@@ -106,8 +109,8 @@ export function AppHeader({
 							]}
 						/>
 					</>
-				)}
-			</View>
+				</View>
+			) : null}
 
 			{/* Top row */}
 			<View style={styles.topRow}>

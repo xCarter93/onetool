@@ -6,14 +6,22 @@ import {
 	Alert,
 	Image,
 	StyleSheet,
+	ScrollView,
 } from "react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOrganizationList, useOrganization } from "@clerk/expo";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Check, Building } from "lucide-react-native";
+import { Check, Building, RefreshCw } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
+
+const MEMBERSHIP_PAGE_SIZE = 25;
+
+function formatRole(role: string): string {
+	const normalized = role.replace(/^org:/, "").replace(/[_-]/g, " ");
+	return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
 
 // Org switcher form-sheet body. Sheet chrome (detents/grabber) comes from the
 // Stack.Screen options in _layout.tsx — this file is the content only.
@@ -26,17 +34,40 @@ export default function OrgSwitchSheet() {
 	const { userMemberships, setActive, isLoaded } = useOrganizationList({
 		userMemberships: {
 			infinite: true,
+			keepPreviousData: true,
+			pageSize: MEMBERSHIP_PAGE_SIZE,
 		},
 	});
 	const { organization: activeOrg } = useOrganization();
 	const [switching, setSwitching] = useState(false);
+
+	const organizationList = userMemberships.data ?? [];
+	const membershipIsLoading = Boolean(userMemberships.isLoading);
+	const membershipIsFetching = Boolean(userMemberships.isFetching);
+	const membershipIsError = Boolean(userMemberships.isError);
+	const hasNextMembershipPage = Boolean(userMemberships.hasNextPage);
+	const loadingMemberships =
+		!isLoaded || (membershipIsLoading && organizationList.length === 0);
+
+	useEffect(() => {
+		if (!isLoaded || !hasNextMembershipPage || membershipIsFetching) return;
+		userMemberships.fetchNext?.();
+	}, [
+		isLoaded,
+		hasNextMembershipPage,
+		membershipIsFetching,
+		userMemberships.fetchNext,
+	]);
 
 	const handleOrgSwitch = async (orgId: string) => {
 		try {
 			setSwitching(true);
 
 			// Switch the active organization in Clerk
-			await setActive?.({ organization: orgId });
+			if (!setActive) {
+				throw new Error("Clerk is not ready to switch organizations.");
+			}
+			await setActive({ organization: orgId });
 
 			// Settle so Clerk finishes updating before the ConvexProvider key-reinit fires
 			await new Promise((resolve) => setTimeout(resolve, 500));
@@ -53,97 +84,145 @@ export default function OrgSwitchSheet() {
 		}
 	};
 
-	if (!isLoaded) {
-		return (
-			<View style={[styles.container, styles.center]}>
-				<ActivityIndicator size="small" color={t.accent} />
-			</View>
-		);
-	}
-
-	const organizationList = userMemberships?.data || [];
-
 	return (
-		<View style={[styles.container, { backgroundColor: t.card }]}>
-			{/* Title bar comes from the native screen header (see _layout.tsx). Rows
-			    render in a plain View (intrinsic height) so they always lay out — a
-			    ScrollView has no intrinsic height and collapsed to zero inside the
-			    form sheet's content frame, leaving the list blank. */}
-			<View
-				style={{
-					paddingHorizontal: 16,
-					paddingTop: 12,
-					paddingBottom: insets.bottom + 24,
-				}}
-			>
-				{organizationList.length > 0 ? (
-					organizationList.map((membership) => {
-						const org = membership.organization;
-						const isActive = org.id === activeOrg?.id;
-						const role =
-							membership.role.charAt(0).toUpperCase() +
-							membership.role.slice(1);
-
-						return (
-							<Pressable
-								key={org.id}
-								onPress={() => handleOrgSwitch(org.id)}
-								disabled={switching || isActive}
-								style={({ pressed }) => [
-									styles.row,
-									{
-										backgroundColor: isActive
-											? t.surface
-											: pressed
-												? t.surface
-												: "transparent",
-										borderColor: isActive ? t.accent : t.line,
-									},
-								]}
-							>
-								<View style={styles.rowLeft}>
-									{org.imageUrl ? (
-										<Image
-											source={{ uri: org.imageUrl }}
-											style={styles.orgImage}
-										/>
-									) : (
-										<Avatar text={org.name[0] || "O"} size={40} />
-									)}
-									<View style={styles.rowText}>
-										<Text
-											style={[
-												styles.orgName,
-												{
-													color: t.ink,
-													fontFamily: isActive
-														? fontFamily.semibold
-														: fontFamily.regular,
-												},
-											]}
-											numberOfLines={1}
-										>
-											{org.name}
-										</Text>
-										<Text style={[styles.role, { color: t.sub }]}>{role}</Text>
-									</View>
-								</View>
-								{isActive && <Check size={20} color={t.accent} />}
-							</Pressable>
-						);
-					})
-				) : (
-					<View style={styles.empty}>
-						<Building size={48} color={t.faint} />
-						<Text style={[styles.emptyTitle, { color: t.ink }]}>
-							No organizations found
-						</Text>
-						<Text style={[styles.emptySub, { color: t.sub }]}>
-							You can create one from the web app.
-						</Text>
-					</View>
-				)}
+		<View
+			style={[
+				styles.container,
+				{
+					backgroundColor: t.card,
+					paddingBottom: insets.bottom,
+				},
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			<View style={styles.header}>
+				<View style={{ flex: 1 }} />
+				<Text style={[styles.title, { color: t.ink }]}>
+					Switch organization
+				</Text>
+				<View style={styles.headerAction}>
+					<Pressable
+						onPress={() => router.back()}
+						style={({ pressed }) => [
+							styles.cancelButton,
+							{ backgroundColor: pressed ? t.secondary : t.muted },
+						]}
+					>
+						<Text style={[styles.cancelText, { color: t.sub }]}>Cancel</Text>
+					</Pressable>
+				</View>
 			</View>
+
+			{loadingMemberships ? (
+				<View style={styles.state}>
+					<ActivityIndicator size="small" color={t.accent} />
+				</View>
+			) : membershipIsError ? (
+				<View style={styles.state}>
+					<Building size={42} color={t.faint} />
+					<Text style={[styles.emptyTitle, { color: t.ink }]}>
+						Unable to load organizations
+					</Text>
+					<Text style={[styles.emptySub, { color: t.sub }]}>
+						Check your connection and try again.
+					</Text>
+					<Pressable
+						onPress={() => void userMemberships.revalidate?.()}
+						style={({ pressed }) => [
+							styles.retryButton,
+							{
+								backgroundColor: pressed ? t.accentMid : t.accentSoft,
+							},
+						]}
+					>
+						<RefreshCw size={16} color={t.accent} />
+						<Text style={[styles.retryText, { color: t.accent }]}>Retry</Text>
+					</Pressable>
+				</View>
+			) : (
+				<ScrollView
+					style={styles.list}
+					contentContainerStyle={[
+						styles.listContent,
+						organizationList.length === 0 && styles.emptyListContent,
+					]}
+					showsVerticalScrollIndicator={organizationList.length > 6}
+				>
+					{organizationList.length > 0 ? (
+						organizationList.map((membership) => {
+							const org = membership.organization;
+							const isActive = org.id === activeOrg?.id;
+							const role = formatRole(membership.role ?? "member");
+
+							return (
+								<Pressable
+									key={org.id}
+									onPress={() => handleOrgSwitch(org.id)}
+									disabled={switching || isActive}
+									style={({ pressed }) => [
+										styles.row,
+										{
+											backgroundColor: isActive
+												? t.surface
+												: pressed
+													? t.surface
+													: "transparent",
+											borderColor: isActive ? t.accent : t.line,
+										},
+									]}
+								>
+									<View style={styles.rowLeft}>
+										{org.imageUrl ? (
+											<Image
+												source={{ uri: org.imageUrl }}
+												style={styles.orgImage}
+											/>
+										) : (
+											<Avatar text={(org.name || "O").slice(0, 2)} size={40} />
+										)}
+										<View style={styles.rowText}>
+											<Text
+												style={[
+													styles.orgName,
+													{
+														color: t.ink,
+														fontFamily: isActive
+															? fontFamily.semibold
+															: fontFamily.regular,
+													},
+												]}
+												numberOfLines={1}
+											>
+												{org.name}
+											</Text>
+											<Text style={[styles.role, { color: t.sub }]}>
+												{role}
+											</Text>
+										</View>
+									</View>
+									{isActive && <Check size={20} color={t.accent} />}
+								</Pressable>
+							);
+						})
+					) : (
+						<View style={styles.empty}>
+							<Building size={48} color={t.faint} />
+							<Text style={[styles.emptyTitle, { color: t.ink }]}>
+								No organizations found
+							</Text>
+							<Text style={[styles.emptySub, { color: t.sub }]}>
+								You can create one from the web app.
+							</Text>
+						</View>
+					)}
+
+					{membershipIsFetching && organizationList.length > 0 ? (
+						<View style={styles.loadingMore}>
+							<ActivityIndicator size="small" color={t.accent} />
+						</View>
+					) : null}
+				</ScrollView>
+			)}
 
 			{switching && (
 				<View
@@ -166,9 +245,60 @@ export default function OrgSwitchSheet() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
+		borderTopLeftRadius: 30,
+		borderTopRightRadius: 30,
+		overflow: "hidden",
 	},
-	center: {
+	grabber: {
+		alignSelf: "center",
+		width: 44,
+		height: 5,
+		borderRadius: 999,
+		marginTop: 10,
+		marginBottom: 16,
+	},
+	header: {
+		flexDirection: "row",
 		alignItems: "center",
+		paddingHorizontal: 20,
+		paddingBottom: 18,
+	},
+	title: {
+		flex: 2,
+		textAlign: "center",
+		fontSize: 24,
+		lineHeight: 30,
+		fontFamily: fontFamily.bold,
+	},
+	headerAction: {
+		flex: 1,
+		alignItems: "flex-end",
+	},
+	cancelButton: {
+		borderRadius: 999,
+		paddingHorizontal: 13,
+		paddingVertical: 10,
+	},
+	cancelText: {
+		fontSize: 18,
+		fontFamily: fontFamily.medium,
+	},
+	state: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 32,
+		gap: 10,
+	},
+	list: {
+		flex: 1,
+	},
+	listContent: {
+		paddingHorizontal: 16,
+		paddingBottom: 24,
+	},
+	emptyListContent: {
+		flexGrow: 1,
 		justifyContent: "center",
 	},
 	row: {
@@ -211,10 +341,29 @@ const styles = StyleSheet.create({
 		fontSize: type.body,
 		fontFamily: fontFamily.semibold,
 		marginTop: 8,
+		textAlign: "center",
 	},
 	emptySub: {
 		fontSize: type.xs,
 		fontFamily: fontFamily.regular,
+		textAlign: "center",
+	},
+	retryButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		borderRadius: 999,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginTop: 8,
+	},
+	retryText: {
+		fontSize: type.sm,
+		fontFamily: fontFamily.semibold,
+	},
+	loadingMore: {
+		alignItems: "center",
+		paddingVertical: 12,
 	},
 	overlay: {
 		alignItems: "center",

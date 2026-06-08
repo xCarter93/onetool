@@ -269,25 +269,20 @@ export default function HomeScreen() {
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
+			edges={[]}
 		>
+			<View style={styles.pageWash} pointerEvents="none">
+				<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10} />
+			</View>
 			<AppHeader mode="root" home />
 			<ScrollView
 				style={{ flex: 1 }}
-				contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
+				contentContainerStyle={styles.scrollContent}
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Hero — halftone brand wash bleeding from the top, fading before the toggle.
-				    The wash wrapper has an explicit HEIGHT: HalftoneBg's absoluteFill can
-				    only resolve (instead of escaping to full-screen) inside a parent with a
-				    definite height — overflow:hidden does NOT clip the escape on Fabric. */}
 				<View style={styles.hero}>
-					<View style={styles.heroWash} pointerEvents="none">
-						<HalftoneBg brand={0.6} />
-					</View>
-
 					<Eyebrow>{dateEyebrow}</Eyebrow>
 					<Text style={styles.greeting}>
 						{getTimeBasedGreeting()}
@@ -615,9 +610,16 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+	pageWash: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		height: 380,
+		overflow: "hidden",
+	},
 	hero: {
 		position: "relative",
-		// Bleed the brand wash to the screen edges (escape ScrollView padding)
 		marginHorizontal: -spacing.md,
 		marginTop: -spacing.md,
 		paddingHorizontal: spacing.md,
@@ -625,15 +627,10 @@ const styles = StyleSheet.create({
 		paddingBottom: spacing.lg,
 		marginBottom: spacing.md,
 	},
-	// Definite-height band for the brand wash. The explicit height is what bounds
-	// HalftoneBg's inner absoluteFill (image + scrim); its bottom edge is the solid
-	// surface color, so a few px of overshoot past the hero content is invisible.
-	heroWash: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		height: 240,
+	scrollContent: {
+		flexGrow: 1,
+		padding: spacing.md,
+		paddingBottom: spacing.md,
 	},
 	greeting: {
 		fontSize: 25,
