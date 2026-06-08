@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
 		gap: spacing.md,
 	},
 	loadingText: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
@@ -252,13 +252,13 @@ const styles = StyleSheet.create({
 		marginBottom: spacing.md,
 	},
 	emptyTitle: {
-		fontSize: 17,
+		fontSize: 15,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 		marginBottom: spacing.xs,
 	},
 	emptyText: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 		textAlign: "center",
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	avatarText: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.semibold,
 		color: "#ffffff",
 	},
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
 	},
 	authorName: {
 		flex: 1,
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 	},
@@ -314,13 +314,13 @@ const styles = StyleSheet.create({
 		borderColor: colors.border,
 	},
 	messageText: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.foreground,
 		lineHeight: 20,
 	},
 	mentionTag: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 		color: colors.primary,
 		backgroundColor: "rgba(59, 130, 246, 0.12)",
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
 		minWidth: 0,
 	},
 	attachmentName: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.medium,
 		color: colors.foreground,
 	},

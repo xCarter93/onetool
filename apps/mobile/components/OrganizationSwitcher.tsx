@@ -111,7 +111,7 @@ export function OrganizationSwitcher() {
 							style={{
 								color: "#fff",
 								fontFamily: fontFamily.semibold,
-								fontSize: 16,
+								fontSize: 14,
 							}}
 						>
 							{activeOrg?.name?.[0] || "P"}
@@ -134,7 +134,7 @@ export function OrganizationSwitcher() {
 					</Text>
 					<Text
 						style={{
-							fontSize: 14,
+							fontSize: 13,
 							fontFamily: fontFamily.semibold,
 							color: colors.foreground,
 						}}
@@ -198,7 +198,7 @@ export function OrganizationSwitcher() {
 								borderBottomColor: colors.border,
 							}}
 						>
-							<Text style={[styles.heading, { fontSize: 18 }]}>
+							<Text style={[styles.heading, { fontSize: 16 }]}>
 								Switch Organization
 							</Text>
 							<Pressable
@@ -272,7 +272,7 @@ export function OrganizationSwitcher() {
 														style={{
 															color: "#fff",
 															fontFamily: fontFamily.semibold,
-															fontSize: 16,
+															fontSize: 14,
 														}}
 														>
 															{membership.organization.name[0]}
@@ -291,7 +291,7 @@ export function OrganizationSwitcher() {
 													<Text
 														style={[
 															styles.mutedText,
-															{ fontSize: 12, marginTop: 2 },
+															{ fontSize: 11, marginTop: 2 },
 														]}
 													>
 														{membership.role.charAt(0).toUpperCase() +
@@ -312,7 +312,7 @@ export function OrganizationSwitcher() {
 										No organizations found
 									</Text>
 									<Text
-										style={[styles.mutedText, { fontSize: 12, marginTop: 4 }]}
+										style={[styles.mutedText, { fontSize: 11, marginTop: 4 }]}
 									>
 										You can create one from the web app
 									</Text>

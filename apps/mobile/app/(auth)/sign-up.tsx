@@ -263,14 +263,14 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.background,
 	},
 	title: {
-		fontSize: 32,
+		fontSize: 28,
 		fontFamily: fontFamily.bold,
 		marginBottom: spacing.xs,
 		textAlign: "center",
 		color: colors.foreground,
 	},
 	subtitle: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 		marginBottom: spacing.xl,
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
 		borderRadius: 8,
 		padding: spacing.md,
 		marginBottom: spacing.md,
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.regular,
 		backgroundColor: colors.background,
 		color: colors.foreground,
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
 		marginHorizontal: spacing.md,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
-		fontSize: 14,
+		fontSize: 13,
 	},
 	footer: {
 		flexDirection: "row",
@@ -312,11 +312,11 @@ const styles = StyleSheet.create({
 	footerText: {
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
-		fontSize: 14,
+		fontSize: 13,
 	},
 	linkText: {
 		fontFamily: fontFamily.semibold,
 		color: colors.primary,
-		fontSize: 14,
+		fontSize: 13,
 	},
 });

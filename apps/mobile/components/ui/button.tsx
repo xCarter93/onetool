@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 15,
+		fontSize: 13,
 	},
 	pressed: {
 		opacity: 0.85,

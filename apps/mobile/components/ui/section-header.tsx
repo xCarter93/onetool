@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.bold,
-		fontSize: 18,
+		fontSize: 16,
 		letterSpacing: -0.2,
 		flexShrink: 1,
 	},
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
 	},
 	actionText: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 13.5,
+		fontSize: 12.5,
 	},
 	pressed: {
 		opacity: 0.6,

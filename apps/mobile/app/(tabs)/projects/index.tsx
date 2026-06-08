@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
 	searchInput: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 15,
+		fontSize: 13,
 		paddingVertical: 0,
 	},
 	chipRow: {
@@ -286,11 +286,11 @@ const styles = StyleSheet.create({
 	},
 	chipLabel: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 13.5,
+		fontSize: 12.5,
 	},
 	chipCount: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 13,
+		fontSize: 12,
 	},
 	card: {
 		backgroundColor: "#fff",
@@ -315,13 +315,13 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 16,
+		fontSize: 14,
 		color: "#09090b",
 		marginTop: 2,
 	},
 	client: {
 		fontFamily: fontFamily.regular,
-		fontSize: 14,
+		fontSize: 13,
 		color: "#5b6675",
 		marginTop: 2,
 	},
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
 	},
 	metaText: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12.5,
+		fontSize: 11.5,
 		color: "#5b6675",
 	},
 	skeletonCard: {
@@ -350,13 +350,13 @@ const styles = StyleSheet.create({
 	},
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 20,
+		fontSize: 18,
 		color: "#09090b",
 		marginBottom: 8,
 	},
 	emptyText: {
 		fontFamily: fontFamily.regular,
-		fontSize: 14,
+		fontSize: 13,
 		color: "#5b6675",
 		textAlign: "center",
 	},

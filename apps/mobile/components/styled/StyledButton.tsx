@@ -135,7 +135,7 @@ function getSizeStyles(size: "sm" | "md" | "lg") {
 					paddingVertical: spacing.xs + 2,
 				},
 				text: {
-					fontSize: 12,
+					fontSize: 11,
 				},
 			});
 		case "lg":
@@ -145,7 +145,7 @@ function getSizeStyles(size: "sm" | "md" | "lg") {
 					paddingVertical: spacing.sm + 2,
 				},
 				text: {
-					fontSize: 16,
+					fontSize: 14,
 				},
 			});
 		case "md":
@@ -156,7 +156,7 @@ function getSizeStyles(size: "sm" | "md" | "lg") {
 					paddingVertical: spacing.sm,
 				},
 				text: {
-					fontSize: 14,
+					fontSize: 13,
 				},
 			});
 	}

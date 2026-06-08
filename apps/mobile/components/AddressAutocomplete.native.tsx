@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
 	searchInput: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 15,
+		fontSize: 13,
 		paddingVertical: 10,
 	},
 	suggestions: {
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
 	suggestionText: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 14,
+		fontSize: 13,
 	},
 	selectedCard: {
 		borderRadius: radii.lg,
@@ -302,11 +302,11 @@ const styles = StyleSheet.create({
 	},
 	selectedLine: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 15,
+		fontSize: 13,
 	},
 	selectedSub: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 		marginTop: 2,
 	},
 	manualInput: {
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 12,
 		fontFamily: fontFamily.regular,
-		fontSize: 15,
+		fontSize: 13,
 		minHeight: 48,
 	},
 	manualRow: {

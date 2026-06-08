@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
 		minWidth: 0,
 	},
 	userName: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 		color: colors.foreground,
 	},
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
 		color: colors.mutedForeground,
 	},
 	attachmentError: {
-		fontSize: 12,
+		fontSize: 11,
 		color: "#ef4444",
 	},
 	mentionedIndicator: {
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
 		borderColor: colors.border,
 		paddingHorizontal: spacing.sm,
 		paddingVertical: spacing.sm,
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.foreground,
 	},

@@ -112,7 +112,7 @@ export function StatusBadge({ status, customLabel }: StatusBadgeProps) {
 			<Text
 				style={{
 					color: config.textColor,
-					fontSize: 12,
+					fontSize: 11,
 					fontFamily: fontFamily.medium,
 				}}
 			>

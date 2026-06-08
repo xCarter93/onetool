@@ -42,7 +42,7 @@ export function AppHeader() {
         >
           <Text
             style={{
-              fontSize: 13,
+              fontSize: 12,
               fontFamily: fontFamily.semibold,
               color: colors.primary,
             }}

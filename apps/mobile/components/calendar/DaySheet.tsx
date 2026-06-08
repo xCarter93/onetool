@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 	},
 	headerTitle: {
-		fontSize: 18,
+		fontSize: 16,
 		fontFamily: fontFamily.semibold,
 		letterSpacing: -0.2,
 		flexShrink: 1,
@@ -308,11 +308,11 @@ const styles = StyleSheet.create({
 	},
 	rowTitle: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 15,
+		fontSize: 13,
 	},
 	rowSub: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 		marginTop: 2,
 	},
 	strike: {
@@ -351,12 +351,12 @@ const styles = StyleSheet.create({
 		marginBottom: 16,
 	},
 	emptyTitle: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.semibold,
 		marginBottom: 4,
 	},
 	emptyBody: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		textAlign: "center",
 	},

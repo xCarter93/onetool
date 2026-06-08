@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
 		justifyContent: "space-between",
 		marginBottom: 12,
 	},
-	monthName: { fontSize: 17, fontFamily: fontFamily.bold, letterSpacing: -0.2 },
+	monthName: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.2 },
 	year: { fontFamily: fontFamily.semibold },
 	navRow: { flexDirection: "row", alignItems: "center", gap: 6 },
 	todayBtn: {
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 5,
 		paddingHorizontal: 12,
 	},
-	todayText: { fontSize: 12.5, fontFamily: fontFamily.semibold },
+	todayText: { fontSize: 11.5, fontFamily: fontFamily.semibold },
 	navBtn: {
 		width: 30,
 		height: 30,
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	dayNum: { fontSize: 14 },
+	dayNum: { fontSize: 13 },
 	markerRow: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -346,5 +346,5 @@ const styles = StyleSheet.create({
 	},
 	legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
 	legendBar: { width: 14, height: SPAN_BAR_H, borderRadius: SPAN_BAR_H },
-	legendText: { fontSize: 12, fontFamily: fontFamily.regular },
+	legendText: { fontSize: 11, fontFamily: fontFamily.regular },
 });

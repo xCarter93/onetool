@@ -65,19 +65,19 @@ const styles = StyleSheet.create({
 		opacity: 0.85,
 	},
 	pct: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.bold,
 	},
 	body: {
 		flex: 1,
 	},
 	title: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.semibold,
 		marginBottom: 2,
 	},
 	sub: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.regular,
 	},
 });

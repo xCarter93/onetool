@@ -79,11 +79,11 @@ const styles = StyleSheet.create({
 	},
 	value: {
 		fontFamily: fontFamily.bold,
-		fontSize: 28,
+		fontSize: 24,
 	},
 	foot: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 		marginTop: 4,
 	},
 });

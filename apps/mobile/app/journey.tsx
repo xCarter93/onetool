@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	title: {
-		fontSize: 24,
+		fontSize: 21,
 		lineHeight: 30,
 		fontFamily: fontFamily.bold,
 	},
@@ -165,11 +165,11 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	rowTitle: {
-		fontSize: 15,
+		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 	},
 	rowSub: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.regular,
 		marginTop: 2,
 	},

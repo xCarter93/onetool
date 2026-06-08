@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
 		marginBottom: 16,
 	},
 	label: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.semibold,
 		marginBottom: 4,
 	},
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 	},
 	value: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 	},
 	placeholder: {
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
 		borderRadius: radii.lg,
 		paddingHorizontal: 12,
 		paddingVertical: 10,
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 	},
 	actions: {

@@ -176,14 +176,14 @@ export const radii = {
 
 // Type scale (Outfit, px). eyebrow is UPPERCASE +0.06em; headings semibold -0.02em.
 export const type = {
-	display: 72,
-	h1: 32,
-	h2: 24,
-	h3: 20,
-	h4: 16,
-	body: 14,
-	sm: 13,
-	xs: 12,
+	display: 63,
+	h1: 28,
+	h2: 21,
+	h3: 18,
+	h4: 14,
+	body: 13,
+	sm: 12,
+	xs: 11,
 	eyebrow: 11,
 } as const;
 
@@ -202,22 +202,22 @@ export const shadow = {
 // ----------------------------------------------------------------------------
 export const styles = StyleSheet.create({
 	heading: {
-		fontSize: 24,
+		fontSize: 21,
 		fontFamily: fontFamily.bold,
 		color: colors.foreground,
 	},
 	cardTitle: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 	},
 	text: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.foreground,
 	},
 	mutedText: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
@@ -240,7 +240,7 @@ export const styles = StyleSheet.create({
 	},
 	primaryButtonText: {
 		color: colors.primaryForeground,
-		fontSize: 16,
+		fontSize: 14,
 		fontWeight: "600",
 	},
 
@@ -251,7 +251,7 @@ export const styles = StyleSheet.create({
 		borderRadius: radius.md,
 		paddingVertical: spacing.sm + 4,
 		paddingHorizontal: spacing.md,
-		fontSize: 16,
+		fontSize: 14,
 		color: colors.foreground,
 	},
 });

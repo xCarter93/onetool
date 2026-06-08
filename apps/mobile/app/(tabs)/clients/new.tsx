@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 12,
 		fontFamily: fontFamily.regular,
-		fontSize: 15,
+		fontSize: 13,
 		minHeight: 48,
 	},
 	multiline: {
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
 	},
 	selectText: {
 		fontFamily: fontFamily.regular,
-		fontSize: 15,
+		fontSize: 13,
 	},
 	row: {
 		flexDirection: "row",

@@ -135,12 +135,12 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	headerTitle: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 	},
 	headerSubtitle: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 		marginTop: 2,

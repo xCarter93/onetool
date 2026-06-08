@@ -73,6 +73,6 @@ const styles = StyleSheet.create({
 		borderRadius: radii.xl,
 	},
 	label: {
-		fontSize: 13,
+		fontSize: 12,
 	},
 });

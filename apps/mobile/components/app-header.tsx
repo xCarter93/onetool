@@ -251,12 +251,12 @@ const styles = StyleSheet.create({
 	},
 	orgTileText: {
 		fontFamily: fontFamily.bold,
-		fontSize: 12,
+		fontSize: 11,
 		color: "#fff",
 	},
 	orgName: {
 		fontFamily: fontFamily.bold,
-		fontSize: 14,
+		fontSize: 13,
 		maxWidth: 150,
 	},
 	badge: {
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
 	},
 	eyebrow: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 12.5,
+		fontSize: 11.5,
 		letterSpacing: 0.6,
 		marginBottom: 2,
 	},

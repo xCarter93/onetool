@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.bold,
-		fontSize: 24,
+		fontSize: 21,
 		letterSpacing: -0.3,
 	},
 	clientLink: {
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
 	},
 	clientLinkText: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
+		fontSize: 13,
 	},
 	headerActions: {
 		alignItems: "flex-end",
@@ -523,7 +523,7 @@ const styles = StyleSheet.create({
 	},
 	teamChatText: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
+		fontSize: 13,
 	},
 	kvEditable: {
 		paddingBottom: 5,
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
 	},
 	dateSheetTitle: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 18,
+		fontSize: 16,
 	},
 	progressRow: {
 		flexDirection: "row",
@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
 	},
 	ringText: {
 		fontFamily: fontFamily.bold,
-		fontSize: 18,
+		fontSize: 16,
 	},
 	kvCol: {
 		flex: 1,
@@ -577,18 +577,18 @@ const styles = StyleSheet.create({
 	},
 	kvLabel: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 	},
 	kvValue: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
+		fontSize: 13,
 	},
 	section: {
 		marginTop: 14,
 	},
 	description: {
 		fontFamily: fontFamily.regular,
-		fontSize: 14,
+		fontSize: 13,
 		lineHeight: 21,
 		marginTop: 10,
 	},
@@ -604,11 +604,11 @@ const styles = StyleSheet.create({
 	},
 	emptyText: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 	},
 	more: {
 		fontFamily: fontFamily.medium,
-		fontSize: 12,
+		fontSize: 11,
 		paddingVertical: 8,
 		paddingHorizontal: 4,
 	},

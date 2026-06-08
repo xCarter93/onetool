@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
 	},
 	ringPct: {
 		fontFamily: fontFamily.bold,
-		fontSize: 22,
+		fontSize: 20,
 		color: "#ffffff",
 	},
 	ringLabel: {
@@ -102,12 +102,12 @@ const styles = StyleSheet.create({
 	},
 	value: {
 		fontFamily: fontFamily.bold,
-		fontSize: 22,
+		fontSize: 20,
 		color: "#ffffff",
 	},
 	goal: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 		color: "rgba(255,255,255,0.6)",
 		marginTop: 2,
 	},
@@ -121,12 +121,12 @@ const styles = StyleSheet.create({
 	},
 	trendText: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 12,
+		fontSize: 11,
 		color: "#46d98a",
 	},
 	toGo: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12,
+		fontSize: 11,
 		color: "rgba(255,255,255,0.5)",
 		marginTop: 6,
 	},

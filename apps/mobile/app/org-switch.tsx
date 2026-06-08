@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
 	title: {
 		flex: 2,
 		textAlign: "center",
-		fontSize: 24,
+		fontSize: 21,
 		lineHeight: 30,
 		fontFamily: fontFamily.bold,
 	},

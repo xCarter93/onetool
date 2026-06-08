@@ -141,17 +141,17 @@ const styles = StyleSheet.create({
 	},
 	avatarText: {
 		color: "#fff",
-		fontSize: 32,
+		fontSize: 28,
 		fontFamily: fontFamily.semibold,
 	},
 	userName: {
-		fontSize: 22,
+		fontSize: 20,
 		fontFamily: fontFamily.bold,
 		color: colors.foreground,
 		marginBottom: 4,
 	},
 	userEmail: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
@@ -175,12 +175,12 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	detailLabel: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
 	detailValue: {
-		fontSize: 15,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: colors.foreground,
 	},
@@ -197,19 +197,19 @@ const styles = StyleSheet.create({
 		marginLeft: spacing.sm,
 		color: colors.danger,
 		fontFamily: fontFamily.semibold,
-		fontSize: 15,
+		fontSize: 13,
 	},
 	appInfo: {
 		alignItems: "center",
 		marginTop: spacing.lg,
 	},
 	appInfoText: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
 	appInfoVersion: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 		marginTop: 4,

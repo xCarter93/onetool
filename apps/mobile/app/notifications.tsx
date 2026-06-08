@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	title: {
-		fontSize: 24,
+		fontSize: 21,
 		lineHeight: 30,
 		fontFamily: fontFamily.bold,
 	},
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
 	},
 	badgeText: {
 		color: "#fff",
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.semibold,
 	},
 	headerAction: {
@@ -254,18 +254,18 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	rowTitle: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 		marginBottom: 4,
 	},
 	rowMessage: {
-		fontSize: 13,
+		fontSize: 12,
 		lineHeight: 18,
 		fontFamily: fontFamily.regular,
 		marginBottom: 4,
 	},
 	rowTime: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 	},
 });

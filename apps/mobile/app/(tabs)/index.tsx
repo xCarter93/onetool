@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
 		paddingBottom: spacing.md,
 	},
 	greeting: {
-		fontSize: 25,
+		fontSize: 22,
 		fontFamily: fontFamily.semibold,
 		color: tokens.ink,
 		marginTop: 6,
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
 		marginTop: spacing.md,
 	},
 	searchPlaceholder: {
-		fontSize: 14,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
 		color: tokens.faint,
 	},
@@ -615,13 +615,13 @@ const styles = StyleSheet.create({
 		marginBottom: spacing.md,
 	},
 	earnedValue: {
-		fontSize: 28,
+		fontSize: 24,
 		fontFamily: fontFamily.bold,
 		color: tokens.ink,
 		marginTop: 6,
 	},
 	earnedLink: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 		color: tokens.accent,
 		marginTop: spacing.sm,
@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	naBadgeText: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.bold,
 		color: "#fff",
 	},
@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	quickLabel: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.medium,
 		color: tokens.ink,
 	},

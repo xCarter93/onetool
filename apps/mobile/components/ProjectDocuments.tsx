@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
 		marginTop: 16,
 	},
 	cardTitle: {
-		fontSize: 16,
+		fontSize: 14,
 		fontFamily: fontFamily.semibold,
 	},
 	loadingContainer: {
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 24,
 	},
 	loadingText: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.regular,
 	},
 	emptyContainer: {
@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
 		marginBottom: 12,
 	},
 	emptyTitle: {
-		fontSize: 15,
+		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 		marginBottom: 12,
 	},
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
 		minWidth: 0,
 	},
 	documentName: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 		marginBottom: 2,
 	},
@@ -413,11 +413,11 @@ const styles = StyleSheet.create({
 		paddingVertical: 12,
 	},
 	uploadingText: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 	},
 	errorText: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.medium,
 	},
 });

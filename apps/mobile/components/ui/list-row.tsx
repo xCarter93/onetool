@@ -87,11 +87,11 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 15,
+		fontSize: 13,
 	},
 	sub: {
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 12,
 		marginTop: 2,
 	},
 	pressed: {

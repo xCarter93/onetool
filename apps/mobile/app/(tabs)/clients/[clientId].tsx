@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
 	identityBody: { flex: 1, minWidth: 0 },
 	companyName: {
 		fontFamily: fontFamily.bold,
-		fontSize: 20,
+		fontSize: 18,
 		letterSpacing: -0.2,
 	},
 	statusTrigger: {
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
 	},
 	teamChatText: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
+		fontSize: 13,
 	},
 
 	section: { marginTop: 22, gap: 10 },
@@ -570,18 +570,18 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	contactInfo: { flex: 1, minWidth: 0 },
-	contactName: { fontFamily: fontFamily.semibold, fontSize: 15 },
-	contactSub: { fontFamily: fontFamily.regular, fontSize: 13, marginTop: 2 },
+	contactName: { fontFamily: fontFamily.semibold, fontSize: 13 },
+	contactSub: { fontFamily: fontFamily.regular, fontSize: 12, marginTop: 2 },
 	contactActions: { gap: 6, paddingLeft: 42 },
 	contactLine: { flexDirection: "row", alignItems: "center", gap: 8 },
-	contactLineText: { fontFamily: fontFamily.regular, fontSize: 13, flex: 1 },
+	contactLineText: { fontFamily: fontFamily.regular, fontSize: 12, flex: 1 },
 	callRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
 		alignSelf: "flex-start",
 	},
-	callText: { fontFamily: fontFamily.semibold, fontSize: 13 },
+	callText: { fontFamily: fontFamily.semibold, fontSize: 12 },
 
 	empty: {
 		borderRadius: radii.r,
@@ -589,5 +589,5 @@ const styles = StyleSheet.create({
 		paddingVertical: 18,
 		alignItems: "center",
 	},
-	emptyText: { fontFamily: fontFamily.regular, fontSize: 13 },
+	emptyText: { fontFamily: fontFamily.regular, fontSize: 12 },
 });

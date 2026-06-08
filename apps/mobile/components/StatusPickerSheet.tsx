@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
 	title: {
 		flex: 2,
 		textAlign: "center",
-		fontSize: 20,
+		fontSize: 18,
 		lineHeight: 26,
 		fontFamily: fontFamily.bold,
 	},

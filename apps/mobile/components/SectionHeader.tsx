@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
 		gap: spacing.sm,
 	},
 	title: {
-		fontSize: 15,
+		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 	},
@@ -89,12 +89,12 @@ const styles = StyleSheet.create({
 		borderRadius: 12,
 	},
 	countText: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.medium,
 		color: "#fff",
 	},
 	subtitle: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 		marginTop: 2,
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
 		opacity: 0.7,
 	},
 	actionLabel: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 		color: colors.primary,
 	},

@@ -101,7 +101,7 @@ export function NotificationModal({
 						}}
 					>
 						<View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-							<Text style={[styles.heading, { fontSize: 18 }]}>
+							<Text style={[styles.heading, { fontSize: 16 }]}>
 								Notifications
 							</Text>
 							{unreadCount > 0 && (
@@ -118,7 +118,7 @@ export function NotificationModal({
 									<Text
 										style={{
 											color: "#fff",
-											fontSize: 12,
+											fontSize: 11,
 											fontFamily: fontFamily.semibold,
 										}}
 									>
@@ -168,7 +168,7 @@ export function NotificationModal({
 							<Text
 								style={[
 									styles.heading,
-									{ fontSize: 20, marginBottom: spacing.sm },
+									{ fontSize: 18, marginBottom: spacing.sm },
 								]}
 							>
 								No notifications
@@ -176,7 +176,7 @@ export function NotificationModal({
 							<Text
 								style={[
 									styles.mutedText,
-									{ textAlign: "center", fontSize: 15 },
+									{ textAlign: "center", fontSize: 13 },
 								]}
 							>
 								You're all caught up! We'll notify you when something important
@@ -229,7 +229,7 @@ export function NotificationModal({
 										<View style={{ flex: 1 }}>
 											<Text
 												style={{
-													fontSize: 14,
+													fontSize: 13,
 													fontFamily: fontFamily.semibold,
 													color: colors.foreground,
 													marginBottom: 4,
@@ -239,7 +239,7 @@ export function NotificationModal({
 											</Text>
 											<Text
 												style={{
-													fontSize: 13,
+													fontSize: 12,
 													color: colors.mutedForeground,
 													marginBottom: 4,
 													lineHeight: 18,
@@ -253,7 +253,7 @@ export function NotificationModal({
 											</Text>
 											<Text
 												style={{
-													fontSize: 12,
+													fontSize: 11,
 													color: colors.mutedForeground,
 												}}
 											>

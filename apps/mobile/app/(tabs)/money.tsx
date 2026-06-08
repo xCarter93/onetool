@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
 	},
 	body: {
 		fontFamily: fontFamily.regular,
-		fontSize: 14,
+		fontSize: 13,
 		lineHeight: 20,
 	},
 });
