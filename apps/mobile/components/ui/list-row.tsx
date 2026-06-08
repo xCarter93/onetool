@@ -12,6 +12,7 @@ interface ListRowProps {
 	sub?: string;
 	right?: React.ReactNode;
 	status?: string;
+	showChevron?: boolean;
 	onPress?: () => void;
 	last?: boolean;
 }
@@ -24,6 +25,7 @@ export function ListRow({
 	sub,
 	right,
 	status,
+	showChevron = true,
 	onPress,
 	last,
 }: ListRowProps) {
@@ -58,7 +60,7 @@ export function ListRow({
 			</View>
 			{status ? <Badge status={status} /> : null}
 			{right}
-			<ChevronRight size={18} color={t.faint} />
+			{showChevron ? <ChevronRight size={18} color={t.faint} /> : null}
 		</Pressable>
 	);
 }
