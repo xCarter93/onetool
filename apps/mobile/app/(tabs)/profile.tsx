@@ -8,27 +8,15 @@ import {
 	StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useState } from "react";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { colors, spacing, fontFamily, radius } from "@/lib/theme";
-import { Mail, Building, LogOut, Shield, Bell } from "lucide-react-native";
-import { NotificationModal } from "@/components/NotificationModal";
+import { Mail, Building, LogOut, Shield } from "lucide-react-native";
 import { AppHeader } from "@/components/app-header";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 
 export default function ProfileScreen() {
-	const [notificationModalVisible, setNotificationModalVisible] =
-		useState(false);
 	const { user } = useUser();
 	const { signOut } = useAuth();
 	const { organization, membership } = useOrganization();
-
-	// Fetch notification count for badge
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
-	const unreadCount = notificationData?.unreadCount || 0;
 
 	const handleSignOut = () => {
 		Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -74,24 +62,6 @@ export default function ProfileScreen() {
 						{user?.primaryEmailAddress?.emailAddress}
 					</Text>
 				</View>
-
-				{/* Notifications Button */}
-				<Pressable
-					style={styles.notificationButton}
-					onPress={() => setNotificationModalVisible(true)}
-				>
-					<View style={styles.notificationButtonContent}>
-						<Bell size={20} color={colors.foreground} />
-						<Text style={styles.notificationButtonText}>Notifications</Text>
-					</View>
-					{unreadCount > 0 && (
-						<View style={styles.notificationBadge}>
-							<Text style={styles.notificationBadgeText}>
-								{unreadCount > 9 ? "9+" : unreadCount}
-							</Text>
-						</View>
-					)}
-				</Pressable>
 
 				{/* Account Details */}
 				<View style={styles.detailsCard}>
@@ -144,12 +114,6 @@ export default function ProfileScreen() {
 					<Text style={styles.appInfoVersion}>Version 1.0.0</Text>
 				</View>
 			</ScrollView>
-
-			{/* Notification Modal */}
-			<NotificationModal
-				visible={notificationModalVisible}
-				onClose={() => setNotificationModalVisible(false)}
-			/>
 		</SafeAreaView>
 	);
 }
@@ -190,40 +154,6 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
-	},
-	notificationButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingVertical: spacing.md,
-		paddingHorizontal: spacing.md,
-		borderRadius: radius.lg,
-		marginBottom: spacing.md,
-		backgroundColor: colors.muted,
-	},
-	notificationButtonContent: {
-		flexDirection: "row",
-		alignItems: "center",
-	},
-	notificationButtonText: {
-		marginLeft: spacing.sm,
-		fontFamily: fontFamily.semibold,
-		fontSize: 15,
-		color: colors.foreground,
-	},
-	notificationBadge: {
-		backgroundColor: colors.danger,
-		borderRadius: 10,
-		minWidth: 24,
-		height: 24,
-		alignItems: "center",
-		justifyContent: "center",
-		paddingHorizontal: 6,
-	},
-	notificationBadgeText: {
-		color: "#fff",
-		fontSize: 12,
-		fontFamily: fontFamily.semibold,
 	},
 	detailsCard: {
 		backgroundColor: colors.muted,

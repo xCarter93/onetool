@@ -10,7 +10,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
 import {
 	Check,
@@ -33,7 +33,6 @@ import { JourneyProgress } from "@/components/JourneyProgress";
 import { createGlyph } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
-import { DaySheet } from "@/components/calendar/DaySheet";
 import {
 	buildMonthCells,
 	nextLocalDayStart,
@@ -103,16 +102,9 @@ export default function HomeScreen() {
 		year: today.getFullYear(),
 		month: today.getMonth(),
 	});
-	// Day-sheet state: the tapped day (local-midnight ts) + open flag.
-	const [selectedDayTs, setSelectedDayTs] = useState<number | null>(null);
-	const [sheetOpen, setSheetOpen] = useState(false);
-	// Real optimistic completion set, shared by inline needs-attention rows AND
-	// the day sheet. An id here renders completed (green + strikethrough); rolled
-	// back on throw. updatingTasks gates the in-flight checkbox affordance.
+	// Optimistic completion set for the inline needs-attention task rows. An id
+	// here renders completed (green + strikethrough); rolled back on throw.
 	const [completedTaskIds, setCompletedTaskIds] = useState<Set<Id<"tasks">>>(
-		new Set()
-	);
-	const [updatingTasks, setUpdatingTasks] = useState<Set<Id<"tasks">>>(
 		new Set()
 	);
 
@@ -199,33 +191,6 @@ export default function HomeScreen() {
 		}
 	};
 
-	// Day-sheet complete (Pattern 4 / T-20-07). Optimistically flip the row to
-	// completed + mark in-flight, then call tasks.complete. CRUCIALLY never close
-	// the sheet here — the reactive getCalendarEvents re-run updates BOTH the sheet
-	// list and the MonthGrid markers, and the completed row stays visible (the
-	// query returns all statuses) with completed styling driven by completedTaskIds.
-	// On throw (already-completed) roll back the optimistic flip.
-	const handleCompleteFromSheet = async (taskId: Id<"tasks">) => {
-		if (completedTaskIds.has(taskId)) return;
-		setCompletedTaskIds((prev) => new Set(prev).add(taskId));
-		setUpdatingTasks((prev) => new Set(prev).add(taskId));
-		try {
-			await completeTask({ id: taskId });
-		} catch {
-			setCompletedTaskIds((prev) => {
-				const next = new Set(prev);
-				next.delete(taskId);
-				return next;
-			});
-		} finally {
-			setUpdatingTasks((prev) => {
-				const next = new Set(prev);
-				next.delete(taskId);
-				return next;
-			});
-		}
-	};
-
 	// Calculate client stats
 	const totalClients = allClients?.length ?? 0;
 	const activeClients =
@@ -283,7 +248,7 @@ export default function HomeScreen() {
 				}
 			>
 				<View style={styles.hero}>
-					<Eyebrow>{dateEyebrow}</Eyebrow>
+					<Eyebrow color={tokens.ink}>{dateEyebrow}</Eyebrow>
 					<Text style={styles.greeting}>
 						{getTimeBasedGreeting()}
 						{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
@@ -579,32 +544,13 @@ export default function HomeScreen() {
 							year={displayed.year}
 							month={displayed.month}
 							onMonthChange={(y, m) => setDisplayed({ year: y, month: m })}
-							onDayPress={(ts) => {
-								setSelectedDayTs(ts);
-								setSheetOpen(true);
-							}}
+							onDayPress={(ts) =>
+								router.push(`/day-sheet?dayTs=${ts}` as Href)
+							}
 						/>
 					</View>
 				)}
 			</ScrollView>
-
-			{/* Day detail sheet — PARENT owns close + navigation (no double-close
-			    race). Optimistic complete keeps the sheet open; the reactive
-			    getCalendarEvents re-run recomputes the grid markers. */}
-			<DaySheet
-				visible={sheetOpen}
-				dayTs={selectedDayTs}
-				projects={calendarEvents?.projects ?? []}
-				tasks={calendarEvents?.tasks ?? []}
-				onClose={() => setSheetOpen(false)}
-				onProjectPress={(id) => {
-					setSheetOpen(false);
-					router.push(`/projects/${id}`);
-				}}
-				onCompleteTask={handleCompleteFromSheet}
-				completedTaskIds={completedTaskIds}
-				updating={updatingTasks}
-			/>
 		</SafeAreaView>
 	);
 }

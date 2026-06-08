@@ -1,20 +1,6 @@
-import {
-	Modal,
-	Pressable,
-	ScrollView,
-	StyleSheet,
-	Text,
-	View,
-	type ViewStyle,
-} from "react-native";
-import {
-	Calendar,
-	Check,
-	ChevronRight,
-	Folder,
-	X,
-} from "lucide-react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Calendar, Check, ChevronRight, Folder, X } from "lucide-react-native";
+import { fontFamily, useTokens } from "@/lib/theme";
 import {
 	projectsOnDay,
 	tasksOnDay,
@@ -28,7 +14,6 @@ const CHECKBOX = 24; // checkbox glyph box (wrapped in a 44x44 tap target)
 const TAP = 44; // WCAG 2.1 AA minimum tap target
 
 type DaySheetProps = {
-	visible: boolean;
 	dayTs: number | null;
 	projects: ProjectEvent[];
 	tasks: TaskEvent[];
@@ -39,14 +24,13 @@ type DaySheetProps = {
 	updating: Set<Id<"tasks">>;
 };
 
-// RN-core Modal day sheet (no third-party bottom-sheet lib). The PARENT owns the
-// getCalendarEvents data, the tasks.complete mutation, and the optimistic Sets;
-// DaySheet buckets the full day arrays internally via tasksOnDay/projectsOnDay.
+// Presentational day-sheet content, hosted by the /day-sheet form-sheet route
+// (same native sheet type as /org-switch). The ROUTE owns the getCalendarEvents
+// data, the tasks.complete mutation, and the optimistic Sets; DaySheet buckets
+// the full day arrays internally via tasksOnDay/projectsOnDay.
 // OWNERSHIP CONTRACT: the project row emits onProjectPress ONLY — it never calls
-// onClose. The parent hides the sheet AND navigates (resolves double-close race).
-// Only the X button and Modal onRequestClose call onClose.
+// onClose. The route dismisses the sheet AND navigates. Only the X button calls onClose.
 export function DaySheet({
-	visible,
 	dayTs,
 	projects,
 	tasks,
@@ -71,211 +55,184 @@ export function DaySheet({
 			})
 		: "";
 
-	const sheetStyle: ViewStyle = {
-		backgroundColor: t.card,
-		borderTopLeftRadius: radii.rLg,
-		borderTopRightRadius: radii.rLg,
-		maxHeight: "74%",
-		paddingBottom: 32,
-		boxShadow: shadow.lg,
-	};
-
 	return (
-		<Modal
-			visible={visible}
-			transparent
-			animationType="slide"
-			onRequestClose={onClose}
-		>
-			<Pressable style={styles.backdrop} onPress={onClose}>
-				{/* Stop propagation so taps inside the sheet don't dismiss it. */}
-				<Pressable style={sheetStyle} onPress={(e) => e.stopPropagation()}>
-					<View style={styles.grabber}>
-						<View style={[styles.grabberBar, { backgroundColor: t.line }]} />
-					</View>
+		<View style={styles.sheet}>
+			<View style={styles.grabber}>
+				<View style={[styles.grabberBar, { backgroundColor: t.line }]} />
+			</View>
 
-					{/* Header — full date + accessible X close (icon-only -> label REQUIRED) */}
-					<View style={[styles.header, { borderBottomColor: t.line }]}>
-						<Text style={[styles.headerTitle, { color: t.ink }]}>
-							{headerLabel}
-						</Text>
-						<Pressable
-							onPress={onClose}
-							hitSlop={8}
-							accessibilityRole="button"
-							accessibilityLabel="Close"
-							style={styles.closeBtn}
-						>
-							<X size={22} color={t.sub} />
-						</Pressable>
-					</View>
+			{/* Header — full date + accessible X close (icon-only -> label REQUIRED) */}
+			<View style={[styles.header, { borderBottomColor: t.line }]}>
+				<Text style={[styles.headerTitle, { color: t.ink }]}>
+					{headerLabel}
+				</Text>
+				<Pressable
+					onPress={onClose}
+					hitSlop={8}
+					accessibilityRole="button"
+					accessibilityLabel="Close"
+					style={styles.closeBtn}
+				>
+					<X size={22} color={t.sub} />
+				</Pressable>
+			</View>
 
-					<ScrollView
-						style={styles.scroll}
-						contentContainerStyle={styles.scrollContent}
-					>
-						{/* Projects FIRST when present. Row emits onProjectPress only. */}
-						{dayProjects.length > 0 && (
-							<View style={styles.section}>
-								<Text style={[styles.eyebrow, { color: t.faint }]}>
-									Projects
-								</Text>
-								{dayProjects.map((p) => {
-									const start = new Date(p.startDate).toLocaleDateString("en-US", {
-										month: "short",
-										day: "numeric",
-									});
-									const end =
-										p.endDate != null
-											? new Date(p.endDate).toLocaleDateString("en-US", {
-													month: "short",
-													day: "numeric",
-												})
-											: null;
-									const dates = end && end !== start ? `${start} – ${end}` : start;
-									const sub = p.clientName
-										? `${p.clientName} · ${dates}`
-										: dates;
-									return (
-										<Pressable
-											key={p.id}
-											onPress={() => onProjectPress(p.id as Id<"projects">)}
-											style={({ pressed }) => [
-												styles.row,
-												{ borderBottomColor: t.line },
-												pressed && styles.pressed,
-											]}
+			<ScrollView
+				style={styles.scroll}
+				contentContainerStyle={styles.scrollContent}
+			>
+				{/* Projects FIRST when present. Row emits onProjectPress only. */}
+				{dayProjects.length > 0 && (
+					<View style={styles.section}>
+						<Text style={[styles.eyebrow, { color: t.faint }]}>Projects</Text>
+						{dayProjects.map((p) => {
+							const start = new Date(p.startDate).toLocaleDateString("en-US", {
+								month: "short",
+								day: "numeric",
+							});
+							const end =
+								p.endDate != null
+									? new Date(p.endDate).toLocaleDateString("en-US", {
+											month: "short",
+											day: "numeric",
+										})
+									: null;
+							const dates = end && end !== start ? `${start} – ${end}` : start;
+							const sub = p.clientName ? `${p.clientName} · ${dates}` : dates;
+							return (
+								<Pressable
+									key={p.id}
+									onPress={() => onProjectPress(p.id as Id<"projects">)}
+									style={({ pressed }) => [
+										styles.row,
+										{ borderBottomColor: t.line },
+										pressed && styles.pressed,
+									]}
+								>
+									<View
+										style={[
+											styles.tile,
+											{ backgroundColor: PROJECT_GREEN + "14" },
+										]}
+									>
+										<Folder size={20} color={PROJECT_GREEN} />
+									</View>
+									<View style={styles.rowBody}>
+										<Text
+											style={[styles.rowTitle, { color: t.ink }]}
+											numberOfLines={1}
 										>
-											<View
-												style={[
-													styles.tile,
-													{ backgroundColor: PROJECT_GREEN + "14" },
-												]}
-											>
-												<Folder size={20} color={PROJECT_GREEN} />
-											</View>
-											<View style={styles.rowBody}>
-												<Text
-													style={[styles.rowTitle, { color: t.ink }]}
-													numberOfLines={1}
-												>
-													{p.title}
-												</Text>
-												<Text
-													style={[styles.rowSub, { color: t.sub }]}
-													numberOfLines={1}
-												>
-													{sub}
-												</Text>
-											</View>
-											<ChevronRight size={18} color={t.faint} />
-										</Pressable>
-									);
-								})}
-							</View>
-						)}
+											{p.title}
+										</Text>
+										<Text
+											style={[styles.rowSub, { color: t.sub }]}
+											numberOfLines={1}
+										>
+											{sub}
+										</Text>
+									</View>
+									<ChevronRight size={18} color={t.faint} />
+								</Pressable>
+							);
+						})}
+					</View>
+				)}
 
-						{/* Tasks AFTER projects. Checkbox -> onCompleteTask; never closes.
+				{/* Tasks AFTER projects. Checkbox -> onCompleteTask; never closes.
 						    getCalendarEvents returns ALL statuses, so a just-completed
 						    task stays visible here with completed styling. */}
-						{dayTasks.length > 0 && (
-							<View style={styles.section}>
-								<Text style={[styles.eyebrow, { color: t.faint }]}>Tasks</Text>
-								{dayTasks.map((task) => {
-									const id = task.id as Id<"tasks">;
-									const done =
-										completedTaskIds.has(id) || task.status === "completed";
-									const isUpdating = updating.has(id);
-									const sub = [task.startTime, task.clientName]
-										.filter(Boolean)
-										.join(" · ");
-									return (
-										<View
-											key={task.id}
-											style={[styles.row, { borderBottomColor: t.line }]}
-										>
-											<Pressable
-												onPress={() => onCompleteTask(id)}
-												disabled={isUpdating}
-												hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-												accessibilityRole="checkbox"
-												accessibilityState={{ checked: done }}
-												accessibilityLabel={
-													done ? "Mark task incomplete" : "Complete task"
-												}
-												style={styles.checkTap}
-											>
-												<View
-													style={[
-														styles.checkbox,
-														done
-															? {
-																	backgroundColor: PROJECT_GREEN,
-																	borderColor: PROJECT_GREEN,
-																}
-															: { borderColor: "#cbd3de" },
-														isUpdating && styles.checkboxPending,
-													]}
-												>
-													{done ? (
-														<Check size={15} color="#ffffff" strokeWidth={3} />
-													) : null}
-												</View>
-											</Pressable>
-											<View style={styles.rowBody}>
-												<Text
-													style={[
-														styles.rowTitle,
-														{ color: done ? t.faint : t.ink },
-														done && styles.strike,
-													]}
-													numberOfLines={1}
-												>
-													{task.title}
-												</Text>
-												{sub ? (
-													<Text
-														style={[styles.rowSub, { color: t.sub }]}
-														numberOfLines={1}
-													>
-														{sub}
-													</Text>
-												) : null}
-											</View>
-										</View>
-									);
-								})}
-							</View>
-						)}
-
-						{/* Empty state — both sections empty. */}
-						{isEmpty && (
-							<View style={styles.empty}>
+				{dayTasks.length > 0 && (
+					<View style={styles.section}>
+						<Text style={[styles.eyebrow, { color: t.faint }]}>Tasks</Text>
+						{dayTasks.map((task) => {
+							const id = task.id as Id<"tasks">;
+							const done =
+								completedTaskIds.has(id) || task.status === "completed";
+							const isUpdating = updating.has(id);
+							const sub = [task.startTime, task.clientName]
+								.filter(Boolean)
+								.join(" · ");
+							return (
 								<View
-									style={[styles.emptyTile, { backgroundColor: t.muted }]}
+									key={task.id}
+									style={[styles.row, { borderBottomColor: t.line }]}
 								>
-									<Calendar size={26} color={t.faint} />
+									<Pressable
+										onPress={() => onCompleteTask(id)}
+										disabled={isUpdating}
+										hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+										accessibilityRole="checkbox"
+										accessibilityState={{ checked: done }}
+										accessibilityLabel={
+											done ? "Mark task incomplete" : "Complete task"
+										}
+										style={styles.checkTap}
+									>
+										<View
+											style={[
+												styles.checkbox,
+												done
+													? {
+															backgroundColor: PROJECT_GREEN,
+															borderColor: PROJECT_GREEN,
+														}
+													: { borderColor: "#cbd3de" },
+												isUpdating && styles.checkboxPending,
+											]}
+										>
+											{done ? (
+												<Check size={15} color="#ffffff" strokeWidth={3} />
+											) : null}
+										</View>
+									</Pressable>
+									<View style={styles.rowBody}>
+										<Text
+											style={[
+												styles.rowTitle,
+												{ color: done ? t.faint : t.ink },
+												done && styles.strike,
+											]}
+											numberOfLines={1}
+										>
+											{task.title}
+										</Text>
+										{sub ? (
+											<Text
+												style={[styles.rowSub, { color: t.sub }]}
+												numberOfLines={1}
+											>
+												{sub}
+											</Text>
+										) : null}
+									</View>
 								</View>
-								<Text style={[styles.emptyTitle, { color: t.ink }]}>
-									Nothing scheduled
-								</Text>
-								<Text style={[styles.emptyBody, { color: t.sub }]}>
-									No tasks or projects on this day.
-								</Text>
-							</View>
-						)}
-					</ScrollView>
-				</Pressable>
-			</Pressable>
-		</Modal>
+							);
+						})}
+					</View>
+				)}
+
+				{/* Empty state — both sections empty. */}
+				{isEmpty && (
+					<View style={styles.empty}>
+						<View style={[styles.emptyTile, { backgroundColor: t.muted }]}>
+							<Calendar size={26} color={t.faint} />
+						</View>
+						<Text style={[styles.emptyTitle, { color: t.ink }]}>
+							Nothing scheduled
+						</Text>
+						<Text style={[styles.emptyBody, { color: t.sub }]}>
+							No tasks or projects on this day.
+						</Text>
+					</View>
+				)}
+			</ScrollView>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	backdrop: {
+	sheet: {
 		flex: 1,
-		backgroundColor: "rgba(0,0,0,0.5)",
-		justifyContent: "flex-end",
 	},
 	grabber: {
 		alignItems: "center",
@@ -311,7 +268,7 @@ const styles = StyleSheet.create({
 		marginLeft: 8,
 	},
 	scroll: {
-		flexGrow: 0,
+		flex: 1,
 	},
 	scrollContent: {
 		paddingHorizontal: 16,

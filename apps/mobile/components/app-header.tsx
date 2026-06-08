@@ -16,6 +16,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
+import { NotificationModal } from "@/components/NotificationModal";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -65,6 +66,9 @@ export function AppHeader({
 	const onHeaderLayout = (e: LayoutChangeEvent) =>
 		setHeaderHeight(e.nativeEvent.layout.height);
 
+	// Notifications open in a shared bottom sheet from the bell (every screen).
+	const [notifOpen, setNotifOpen] = useState(false);
+
 	const detail = mode === "detail";
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
@@ -73,10 +77,9 @@ export function AppHeader({
 		user?.primaryEmailAddress?.emailAddress,
 	);
 
-	// These routes are owned by sibling plans (org-switch → Plan 04, notifications → P24)
-	// and are not yet in the generated route types — cast keeps the typed router clean.
+	// org-switch is owned by a sibling plan and not yet in the generated route
+	// types — cast keeps the typed router clean.
 	const ORG_SWITCH: Href = "/org-switch" as Href;
-	const NOTIFICATIONS: Href = "/notifications" as Href;
 
 	return (
 		<View style={{ paddingTop: insets.top + 8 }} onLayout={onHeaderLayout}>
@@ -156,8 +159,7 @@ export function AppHeader({
 
 				{/* Constant right cluster (root + detail) */}
 				<Pressable
-					// TODO(P24): /notifications route content is supplied by Plan 24.
-					onPress={() => router.push(NOTIFICATIONS)}
+					onPress={() => setNotifOpen(true)}
 					style={[styles.iconBtn, { borderColor: t.line }]}
 					accessibilityRole="button"
 					accessibilityLabel="Notifications"
@@ -204,6 +206,11 @@ export function AppHeader({
 					</Text>
 				</View>
 			) : null}
+
+			<NotificationModal
+				visible={notifOpen}
+				onClose={() => setNotifOpen(false)}
+			/>
 		</View>
 	);
 }

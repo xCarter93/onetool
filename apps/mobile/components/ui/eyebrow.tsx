@@ -4,11 +4,15 @@ import { fontFamily, useTokens } from "@/lib/theme";
 
 interface EyebrowProps {
 	children: React.ReactNode;
+	// Override the default faint tone — e.g. ink for strong contrast over the brand wash.
+	color?: string;
 }
 
-export function Eyebrow({ children }: EyebrowProps) {
+export function Eyebrow({ children, color }: EyebrowProps) {
 	const t = useTokens();
-	return <Text style={[styles.text, { color: t.faint }]}>{children}</Text>;
+	return (
+		<Text style={[styles.text, { color: color ?? t.faint }]}>{children}</Text>
+	);
 }
 
 const styles = StyleSheet.create({
