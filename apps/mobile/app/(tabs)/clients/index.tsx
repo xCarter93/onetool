@@ -182,7 +182,7 @@ export default function ClientsScreen() {
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: t.surface }}
-			edges={["bottom"]}
+			edges={[]}
 		>
 			<AppHeader mode="root" title="Clients" />
 
@@ -254,7 +254,7 @@ export default function ClientsScreen() {
 const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
-		paddingBottom: 120,
+		paddingBottom: 24,
 		paddingTop: 8,
 	},
 	listHeader: {

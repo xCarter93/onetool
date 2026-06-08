@@ -62,7 +62,11 @@ function KV({
 	return (
 		<Pressable
 			onPress={onPress}
-			style={({ pressed }) => [pressed && styles.pressed]}
+			style={({ pressed }) => [
+				styles.kvEditable,
+				{ borderBottomColor: t.faint },
+				pressed && styles.pressed,
+			]}
 			accessibilityRole="button"
 			accessibilityLabel={`Edit ${label}`}
 		>
@@ -172,7 +176,7 @@ export default function ProjectDetailScreen() {
 		return (
 			<SafeAreaView
 				style={{ flex: 1, backgroundColor: t.bg }}
-				edges={["bottom"]}
+				edges={[]}
 			>
 				<AppHeader mode="detail" />
 				<ScrollView contentContainerStyle={styles.scroll}>
@@ -192,7 +196,7 @@ export default function ProjectDetailScreen() {
 		clientNameById.get(project.clientId) ?? "View client";
 
 	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={["bottom"]}>
+		<SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={[]}>
 			<AppHeader mode="detail" />
 			<ScrollView
 				contentContainerStyle={styles.scroll}
@@ -237,26 +241,13 @@ export default function ProjectDetailScreen() {
 								onPress={() => setStatusPickerVisible(true)}
 								accessibilityRole="button"
 								accessibilityLabel="Change status"
-								style={({ pressed }) => [pressed && styles.pressed]}
-							>
-								<Badge status={project.status} big />
-							</Pressable>
-							<Pressable
-								onPress={() => setMentionVisible(true)}
-								accessibilityRole="button"
-								accessibilityLabel="Team chat"
 								style={({ pressed }) => [
-									styles.chatBtn,
-									{ backgroundColor: t.accentSoft },
+									styles.statusTrigger,
+									{ borderBottomColor: t.faint },
 									pressed && styles.pressed,
 								]}
 							>
-								<MessageSquare size={16} color={t.accent} />
-								<Text
-									style={[styles.chatBtnText, { color: t.accent }]}
-								>
-									Team chat
-								</Text>
+								<Badge status={project.status} big />
 							</Pressable>
 						</View>
 					</View>
@@ -308,6 +299,23 @@ export default function ProjectDetailScreen() {
 						</View>
 					)}
 				</Card>
+
+				{/* Team chat — full-width pill, matching the client detail screen */}
+				<Pressable
+					onPress={() => setMentionVisible(true)}
+					accessibilityRole="button"
+					accessibilityLabel="Open team chat"
+					style={({ pressed }) => [
+						styles.teamChat,
+						{ backgroundColor: t.accentSoft },
+						pressed && styles.pressed,
+					]}
+				>
+					<MessageSquare size={18} color={t.accent} />
+					<Text style={[styles.teamChatText, { color: t.accent }]}>
+						Team chat
+					</Text>
+				</Pressable>
 
 				{/* Description — inline editable */}
 				<Card style={styles.section}>
@@ -499,17 +507,27 @@ const styles = StyleSheet.create({
 		alignItems: "flex-end",
 		gap: 10,
 	},
-	chatBtn: {
+	statusTrigger: {
+		alignSelf: "flex-end",
+		paddingBottom: 5,
+		borderBottomWidth: 1,
+	},
+	teamChat: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 6,
-		height: 34,
-		paddingHorizontal: 12,
+		justifyContent: "center",
+		gap: 8,
+		height: 44,
 		borderRadius: radii.rSm,
+		marginTop: 12,
 	},
-	chatBtnText: {
+	teamChatText: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 13,
+		fontSize: 14,
+	},
+	kvEditable: {
+		paddingBottom: 5,
+		borderBottomWidth: 1,
 	},
 	dateBackdrop: {
 		flex: 1,

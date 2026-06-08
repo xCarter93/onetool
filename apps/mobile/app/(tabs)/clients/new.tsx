@@ -165,7 +165,7 @@ export default function NewClientScreen() {
 
 	return (
 		<SafeAreaView
-			edges={["top"]}
+			edges={[]}
 			style={[styles.screen, { backgroundColor: t.bg }]}
 		>
 			<AppHeader mode="detail" title="New client" sub="Clients" />

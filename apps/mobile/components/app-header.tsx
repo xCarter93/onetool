@@ -213,6 +213,9 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 10,
 		paddingHorizontal: 16,
+		// Breathing room below the icon row so screen content / the title block
+		// never sits flush against it (notably on detail screens with no title).
+		paddingBottom: 10,
 	},
 	iconBtn: {
 		position: "relative",
@@ -277,7 +280,7 @@ const styles = StyleSheet.create({
 	titleBlock: {
 		paddingHorizontal: 16,
 		paddingBottom: 12,
-		paddingTop: 10,
+		paddingTop: 2,
 	},
 	eyebrow: {
 		fontFamily: fontFamily.semibold,

@@ -12,7 +12,7 @@ export default function MoneyScreen() {
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: t.surface }}
-			edges={["bottom"]}
+			edges={[]}
 		>
 			<AppHeader mode="root" title="Money" />
 			<View style={styles.center}>

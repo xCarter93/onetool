@@ -23,7 +23,6 @@ import {
 	Phone,
 	Mail,
 	MessageSquare,
-	ChevronRight,
 	MapPin,
 	User,
 } from "lucide-react-native";
@@ -122,7 +121,7 @@ export default function ClientDetailScreen() {
 		return (
 			<SafeAreaView
 				style={[styles.flex, { backgroundColor: t.bg }]}
-				edges={["bottom"]}
+				edges={[]}
 			>
 				<AppHeader mode="detail" />
 				<ScrollView contentContainerStyle={styles.scroll}>
@@ -167,7 +166,7 @@ export default function ClientDetailScreen() {
 	return (
 		<SafeAreaView
 			style={[styles.flex, { backgroundColor: t.bg }]}
-			edges={["bottom"]}
+			edges={[]}
 		>
 			<AppHeader mode="detail" title={client.companyName} />
 			<ScrollView
@@ -193,11 +192,11 @@ export default function ClientDetailScreen() {
 								accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
 								style={({ pressed }) => [
 									styles.statusTrigger,
+									{ borderBottomColor: t.faint },
 									pressed && styles.pressed,
 								]}
 							>
 								<Badge status={status} big />
-								<ChevronRight size={15} color={t.faint} />
 							</Pressable>
 						</View>
 					</View>
@@ -537,11 +536,10 @@ const styles = StyleSheet.create({
 		letterSpacing: -0.2,
 	},
 	statusTrigger: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
 		marginTop: 8,
 		alignSelf: "flex-start",
+		paddingBottom: 5,
+		borderBottomWidth: 1,
 	},
 
 	teamChat: {

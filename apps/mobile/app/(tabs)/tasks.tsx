@@ -211,7 +211,7 @@ export default function TasksScreen() {
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
+			edges={[]}
 		>
 			<AppHeader mode="root" title="Tasks" />
 			{/* Header Stats */}

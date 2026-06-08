@@ -195,7 +195,7 @@ export default function ProjectsScreen() {
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: t.surface }}
-			edges={["bottom"]}
+			edges={[]}
 		>
 			<AppHeader mode="detail" title="Work" />
 
@@ -247,7 +247,7 @@ export default function ProjectsScreen() {
 const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
-		paddingBottom: 120,
+		paddingBottom: 24,
 		paddingTop: 8,
 	},
 	listHeader: {

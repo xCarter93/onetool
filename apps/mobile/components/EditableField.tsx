@@ -8,7 +8,7 @@ import {
 	ActivityIndicator,
 	KeyboardTypeOptions,
 } from "react-native";
-import { Pencil, Check, X } from "lucide-react-native";
+import { Check, X } from "lucide-react-native";
 import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 interface EditableFieldProps {
@@ -82,7 +82,9 @@ export function EditableField({
 	if (isEditing) {
 		return (
 			<View style={styles.container}>
-				<Text style={[styles.label, { color: t.sub }]}>{label}</Text>
+				{label ? (
+					<Text style={[styles.label, { color: t.sub }]}>{label}</Text>
+				) : null}
 				<View style={styles.editRow}>
 					<TextInput
 						ref={inputRef}
@@ -147,23 +149,22 @@ export function EditableField({
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.labelRow}>
+			{label ? (
 				<Text style={[styles.label, { color: t.sub }]}>{label}</Text>
-				{editable && (
-					<Pressable
-						onPress={handleEdit}
-						accessibilityRole="button"
-						accessibilityLabel={`Edit ${label}`}
-						style={({ pressed }) => [
-							styles.editButton,
-							pressed && styles.actionPressed,
-						]}
-					>
-						<Pencil size={14} color={t.faint} />
-					</Pressable>
-				)}
-			</View>
-			<View style={styles.valueContainer}>
+			) : null}
+			<Pressable
+				onPress={editable ? handleEdit : undefined}
+				disabled={!editable}
+				accessibilityRole={editable ? "button" : undefined}
+				accessibilityLabel={editable ? `Edit ${label || "field"}` : undefined}
+				style={({ pressed }) => [
+					styles.valueContainer,
+					// Editable values carry a quiet dotted underline — the single,
+					// consistent "tap to edit" affordance across text/status/dates.
+					editable && { ...styles.editableUnderline, borderBottomColor: t.faint },
+					pressed && editable && styles.actionPressed,
+				]}
+			>
 				{renderValue ? (
 					renderValue(value)
 				) : (
@@ -177,7 +178,7 @@ export function EditableField({
 						{value || placeholder}
 					</Text>
 				)}
-			</View>
+			</Pressable>
 		</View>
 	);
 }
@@ -186,21 +187,19 @@ const styles = StyleSheet.create({
 	container: {
 		marginBottom: 16,
 	},
-	labelRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: 4,
-	},
 	label: {
 		fontSize: 16,
 		fontFamily: fontFamily.semibold,
-	},
-	editButton: {
-		padding: 4,
+		marginBottom: 4,
 	},
 	valueContainer: {
 		minHeight: 24,
+	},
+	editableUnderline: {
+		alignSelf: "flex-start",
+		minWidth: 120,
+		paddingBottom: 6,
+		borderBottomWidth: 1,
 	},
 	value: {
 		fontSize: 14,
