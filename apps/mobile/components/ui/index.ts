@@ -12,3 +12,4 @@ export { Ring } from "./ring";
 export { RevenueGauge } from "./revenue-gauge";
 export { HalftoneBg } from "./halftone-bg";
 export { SegmentedToggle } from "./segmented-toggle";
+export { Toggle2 } from "./toggle-2";
