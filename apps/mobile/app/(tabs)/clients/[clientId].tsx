@@ -16,7 +16,7 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, useTokens, STATUS } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { EditableField } from "@/components/EditableField";
-import { StatusPickerSheet } from "@/components/StatusPickerSheet";
+import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
 import { Card, Avatar, Badge, SectionHeader, ListRow } from "@/components/ui";
 import {
@@ -53,7 +53,6 @@ export default function ClientDetailScreen() {
 	const router = useRouter();
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
-	const [statusSheetVisible, setStatusSheetVisible] = useState(false);
 	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
 
 	const client = useQuery(
@@ -186,18 +185,23 @@ export default function ClientDetailScreen() {
 							>
 								{client.companyName}
 							</Text>
-							<Pressable
-								onPress={() => setStatusSheetVisible(true)}
-								accessibilityRole="button"
-								accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
-								style={({ pressed }) => [
-									styles.statusTrigger,
-									{ borderBottomColor: t.faint },
-									pressed && styles.pressed,
-								]}
+							<FieldMenu
+								title="Client status"
+								value={status}
+								options={STATUS_OPTIONS}
+								onSelect={handleSelectStatus}
 							>
-								<Badge status={status} big />
-							</Pressable>
+								<View
+									accessibilityRole="button"
+									accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
+									style={[
+										styles.statusTrigger,
+										{ borderBottomColor: t.faint },
+									]}
+								>
+									<Badge status={status} big />
+								</View>
+							</FieldMenu>
 						</View>
 					</View>
 				</Card>
@@ -470,15 +474,6 @@ export default function ClientDetailScreen() {
 
 				<View style={{ height: 32 }} />
 			</ScrollView>
-
-			<StatusPickerSheet
-				visible={statusSheetVisible}
-				value={status}
-				options={STATUS_OPTIONS}
-				onSelect={handleSelectStatus}
-				onClose={() => setStatusSheetVisible(false)}
-				title="Client status"
-			/>
 
 			<MentionModal
 				visible={mentionModalVisible}

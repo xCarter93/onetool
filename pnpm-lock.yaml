@@ -24,6 +24,9 @@ importers:
       '@expo-google-fonts/outfit':
         specifier: ^0.2.3
         version: 0.2.3
+      '@expo/ui':
+        specifier: ~56.0.16
+        version: 56.0.16(8e8e1241e51dc5bf0081472071aac843)
       '@onetool/backend':
         specifier: workspace:*
         version: link:../../packages/backend

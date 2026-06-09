@@ -4,7 +4,6 @@ import {
 	Alert,
 	KeyboardAvoidingView,
 	Platform,
-	Pressable,
 	ScrollView,
 	StyleSheet,
 	Text,
@@ -17,7 +16,6 @@ import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import * as Crypto from "expo-crypto";
-import { ChevronDown } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui";
@@ -25,7 +23,7 @@ import {
 	AddressAutocomplete,
 	type AddressValue,
 } from "@/components/AddressAutocomplete.native";
-import { StatusPickerSheet } from "@/components/StatusPickerSheet";
+import { FieldMenu } from "@/components/FieldMenu";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
 
@@ -54,7 +52,6 @@ export default function NewClientScreen() {
 	// Section 1 — client
 	const [companyName, setCompanyName] = useState("");
 	const [status, setStatus] = useState<ClientStatus>("lead");
-	const [statusSheetOpen, setStatusSheetOpen] = useState(false);
 	const [notes, setNotes] = useState("");
 
 	// Section 2 — primary contact
@@ -203,20 +200,13 @@ export default function NewClientScreen() {
 						) : null}
 
 						<FieldLabel text="Status" tokens={t} />
-						<Pressable
-							onPress={() => setStatusSheetOpen(true)}
-							style={[
-								styles.select,
-								{ borderColor: t.border, backgroundColor: t.card },
-							]}
-							accessibilityRole="button"
-							accessibilityLabel="Select status"
-						>
-							<Text style={[styles.selectText, { color: t.ink }]}>
-								{statusLabel}
-							</Text>
-							<ChevronDown size={18} color={t.sub} />
-						</Pressable>
+						<FieldMenu
+							title="Client status"
+							value={status}
+							options={STATUS_OPTIONS}
+							label={statusLabel}
+							onSelect={(next) => setStatus(next as ClientStatus)}
+						/>
 
 						<FieldLabel text="Notes (optional)" tokens={t} />
 						<TextInput
@@ -336,15 +326,6 @@ export default function NewClientScreen() {
 					/>
 				</ScrollView>
 			</KeyboardAvoidingView>
-
-			<StatusPickerSheet
-				visible={statusSheetOpen}
-				value={status}
-				options={STATUS_OPTIONS}
-				onSelect={(next) => setStatus(next as ClientStatus)}
-				onClose={() => setStatusSheetOpen(false)}
-				title="Client status"
-			/>
 		</SafeAreaView>
 	);
 }
@@ -419,19 +400,6 @@ const styles = StyleSheet.create({
 	multiline: {
 		minHeight: 88,
 		paddingTop: 12,
-	},
-	select: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		borderWidth: 1,
-		borderRadius: radii.lg,
-		paddingHorizontal: 12,
-		minHeight: 48,
-	},
-	selectText: {
-		fontFamily: fontFamily.regular,
-		fontSize: 13,
 	},
 	row: {
 		flexDirection: "row",

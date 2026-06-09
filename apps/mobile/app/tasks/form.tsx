@@ -4,10 +4,10 @@ import {
 	TextInput,
 	ScrollView,
 	Pressable,
-	Modal,
 	Alert,
 	ActivityIndicator,
 	StyleSheet,
+	Animated,
 } from "react-native";
 import { useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,8 +18,9 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { X, ChevronDown } from "lucide-react-native";
 import { fontFamily, type, radii, useTokens } from "@/lib/theme";
 import { Button } from "@/components/ui";
-import { StatusPickerSheet } from "@/components/StatusPickerSheet";
+import { FieldMenu } from "@/components/FieldMenu";
 import { AppCalendar } from "@/components/AppCalendar";
+import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { utcMsFromDateId, todayUtcDateId, dateIdFromUtcMs } from "@/lib/date";
 
 const TYPE_OPTIONS = [
@@ -39,6 +40,9 @@ const REPEAT_OPTIONS = [
 	{ value: "monthly", label: "Monthly" },
 	{ value: "yearly", label: "Yearly" },
 ];
+
+// Off-screen start distance for the calendar slide-up (>= sheet height).
+const SHEET_SLIDE = 600;
 
 type TaskType = "external" | "internal";
 type TaskStatus = "pending" | "in-progress" | "completed" | "cancelled";
@@ -101,13 +105,7 @@ export default function TaskFormSheet() {
 	const [submitting, setSubmitting] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 
-	// Picker open flags
-	const [typePickerOpen, setTypePickerOpen] = useState(false);
-	const [clientPickerOpen, setClientPickerOpen] = useState(false);
-	const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-	const [assigneePickerOpen, setAssigneePickerOpen] = useState(false);
-	const [statusPickerOpen, setStatusPickerOpen] = useState(false);
-	const [repeatPickerOpen, setRepeatPickerOpen] = useState(false);
+	// Calendar modal open flags (date fields keep the sheet calendar)
 	const [datePickerOpen, setDatePickerOpen] = useState(false);
 	const [repeatUntilPickerOpen, setRepeatUntilPickerOpen] = useState(false);
 
@@ -297,10 +295,19 @@ export default function TaskFormSheet() {
 				>
 					{/* Type */}
 					<FieldLabel text="Type" color={t.sub} />
-					<SelectRow
+					<FieldMenu
+						title="Task type"
+						value={type}
+						options={TYPE_OPTIONS}
 						label={labelFor(TYPE_OPTIONS, type, "External")}
-						onPress={() => setTypePickerOpen(true)}
-						t={t}
+						onSelect={(next) => {
+							const nextType = next as TaskType;
+							setType(nextType);
+							if (nextType === "internal") {
+								setClientId("");
+								setProjectId("");
+							}
+						}}
 					/>
 
 					{/* Title */}
@@ -341,15 +348,20 @@ export default function TaskFormSheet() {
 					{type === "external" ? (
 						<>
 							<FieldLabel text="Client" color={t.sub} />
-							<SelectRow
+							<FieldMenu
+								title="Select client"
+								value={clientId}
+								options={clientOptions}
 								label={
 									clientId
 										? labelFor(clientOptions, clientId, "Select a client")
 										: "Select a client"
 								}
 								placeholder={!clientId}
-								onPress={() => setClientPickerOpen(true)}
-								t={t}
+								onSelect={(next) => {
+									setClientId(next as Id<"clients">);
+									setProjectId(""); // client change clears staged project
+								}}
 							/>
 							{!clientId ? (
 								<Text style={[styles.hint, { color: t.faint }]}>
@@ -358,7 +370,10 @@ export default function TaskFormSheet() {
 							) : null}
 
 							<FieldLabel text="Project" color={t.sub} />
-							<SelectRow
+							<FieldMenu
+								title="Select project"
+								value={projectId}
+								options={projectOptions}
 								label={
 									projectId
 										? labelFor(projectOptions, projectId, "No project")
@@ -366,10 +381,7 @@ export default function TaskFormSheet() {
 								}
 								placeholder={!projectId}
 								disabled={!clientId}
-								onPress={() => {
-									if (clientId) setProjectPickerOpen(true);
-								}}
-								t={t}
+								onSelect={(next) => setProjectId(next as Id<"projects">)}
 							/>
 						</>
 					) : null}
@@ -384,31 +396,41 @@ export default function TaskFormSheet() {
 
 					{/* Assignee */}
 					<FieldLabel text="Assignee" color={t.sub} />
-					<SelectRow
+					<FieldMenu
+						title="Assignee"
+						value={assigneeUserId}
+						options={assigneeOptions}
 						label={
 							assigneeUserId
 								? labelFor(assigneeOptions, assigneeUserId, "Unassigned")
 								: "Unassigned"
 						}
 						placeholder={!assigneeUserId}
-						onPress={() => setAssigneePickerOpen(true)}
-						t={t}
+						onSelect={(next) => setAssigneeUserId(next as Id<"users">)}
 					/>
 
 					{/* Status */}
 					<FieldLabel text="Status" color={t.sub} />
-					<SelectRow
+					<FieldMenu
+						title="Status"
+						value={status}
+						options={STATUS_OPTIONS}
 						label={labelFor(STATUS_OPTIONS, status, "Pending")}
-						onPress={() => setStatusPickerOpen(true)}
-						t={t}
+						onSelect={(next) => setStatus(next as TaskStatus)}
 					/>
 
 					{/* Repeat */}
 					<FieldLabel text="Repeat" color={t.sub} />
-					<SelectRow
+					<FieldMenu
+						title="Repeat"
+						value={repeat}
+						options={REPEAT_OPTIONS}
 						label={labelFor(REPEAT_OPTIONS, repeat, "None")}
-						onPress={() => setRepeatPickerOpen(true)}
-						t={t}
+						onSelect={(next) => {
+							const nextRepeat = next as TaskRepeat;
+							setRepeat(nextRepeat);
+							if (nextRepeat === "none") setRepeatUntilId(undefined);
+						}}
 					/>
 
 					{/* Repeat until — only when repeat != none */}
@@ -468,71 +490,7 @@ export default function TaskFormSheet() {
 				</ScrollView>
 			)}
 
-			{/* Pickers */}
-			<StatusPickerSheet
-				visible={typePickerOpen}
-				value={type}
-				options={TYPE_OPTIONS}
-				onSelect={(next) => {
-					const nextType = next as TaskType;
-					setType(nextType);
-					if (nextType === "internal") {
-						setClientId("");
-						setProjectId("");
-					}
-				}}
-				onClose={() => setTypePickerOpen(false)}
-				title="Task type"
-			/>
-			<StatusPickerSheet
-				visible={clientPickerOpen}
-				value={clientId}
-				options={clientOptions}
-				onSelect={(next) => {
-					setClientId(next as Id<"clients">);
-					setProjectId(""); // client change clears staged project
-				}}
-				onClose={() => setClientPickerOpen(false)}
-				title="Select client"
-			/>
-			<StatusPickerSheet
-				visible={projectPickerOpen}
-				value={projectId}
-				options={projectOptions}
-				onSelect={(next) => setProjectId(next as Id<"projects">)}
-				onClose={() => setProjectPickerOpen(false)}
-				title="Select project"
-			/>
-			<StatusPickerSheet
-				visible={assigneePickerOpen}
-				value={assigneeUserId}
-				options={assigneeOptions}
-				onSelect={(next) => setAssigneeUserId(next as Id<"users">)}
-				onClose={() => setAssigneePickerOpen(false)}
-				title="Assignee"
-			/>
-			<StatusPickerSheet
-				visible={statusPickerOpen}
-				value={status}
-				options={STATUS_OPTIONS}
-				onSelect={(next) => setStatus(next as TaskStatus)}
-				onClose={() => setStatusPickerOpen(false)}
-				title="Status"
-			/>
-			<StatusPickerSheet
-				visible={repeatPickerOpen}
-				value={repeat}
-				options={REPEAT_OPTIONS}
-				onSelect={(next) => {
-					const nextRepeat = next as TaskRepeat;
-					setRepeat(nextRepeat);
-					if (nextRepeat === "none") setRepeatUntilId(undefined);
-				}}
-				onClose={() => setRepeatPickerOpen(false)}
-				title="Repeat"
-			/>
-
-			{/* Date pickers (AppCalendar in a Modal) */}
+			{/* Date pickers (AppCalendar in an in-sheet overlay, not a Modal) */}
 			<CalendarModal
 				visible={datePickerOpen}
 				selectedDate={dateId}
@@ -623,18 +581,36 @@ function CalendarModal({
 	t: ReturnType<typeof useTokens>;
 	insets: { bottom: number };
 }) {
+	// In-sheet overlay instead of a nested RN <Modal>: a transparent Modal
+	// presented from inside an Expo Router formSheet deadlocks touch handling
+	// on iOS after a SwiftUI menu (FieldMenu) interaction. A plain absolute
+	// overlay stays in the RN hierarchy, so there's no cross-window conflict.
+	const { mounted, progress } = useOverlayTransition(visible);
+	if (!mounted) return null;
+	const translateY = progress.interpolate({
+		inputRange: [0, 1],
+		outputRange: [SHEET_SLIDE, 0],
+	});
 	return (
-		<Modal
-			visible={visible}
-			transparent
-			animationType="slide"
-			onRequestClose={onClose}
-		>
-			<Pressable style={styles.backdrop} onPress={onClose} />
-			<View
+		<View style={styles.overlay}>
+			<Animated.View
+				style={[styles.backdrop, { opacity: progress }]}
+				pointerEvents="none"
+			/>
+			<Pressable
+				style={StyleSheet.absoluteFill}
+				onPress={onClose}
+				accessibilityRole="button"
+				accessibilityLabel="Close date picker"
+			/>
+			<Animated.View
 				style={[
 					styles.calendarSheet,
-					{ backgroundColor: t.card, paddingBottom: insets.bottom + 12 },
+					{
+						backgroundColor: t.card,
+						paddingBottom: insets.bottom + 12,
+						transform: [{ translateY }],
+					},
 				]}
 			>
 				<View style={[styles.grabber, { backgroundColor: t.border }]} />
@@ -660,8 +636,8 @@ function CalendarModal({
 						minDate={minDate}
 					/>
 				</View>
-			</View>
-		</Modal>
+			</Animated.View>
+		</View>
 	);
 }
 
@@ -671,6 +647,14 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	overlay: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		zIndex: 10,
 	},
 	grabber: {
 		alignSelf: "center",

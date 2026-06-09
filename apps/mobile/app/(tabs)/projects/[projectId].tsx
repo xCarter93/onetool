@@ -5,8 +5,8 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
-	Modal,
 	TouchableOpacity,
+	Animated,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -18,7 +18,8 @@ import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { Badge, Card, Eyebrow, ListRow, Ring, SectionHeader } from "@/components/ui";
 import { EditableField } from "@/components/EditableField";
-import { StatusPickerSheet } from "@/components/StatusPickerSheet";
+import { FieldMenu } from "@/components/FieldMenu";
+import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { MentionModal } from "@/components/MentionModal";
 import { ProjectDocuments } from "@/components/ProjectDocuments";
 import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
@@ -80,9 +81,18 @@ export default function ProjectDetailScreen() {
 	const router = useRouter();
 	const t = useTokens();
 	const [refreshing, setRefreshing] = useState(false);
-	const [statusPickerVisible, setStatusPickerVisible] = useState(false);
 	const [dateField, setDateField] = useState<DateField | null>(null);
 	const [mentionVisible, setMentionVisible] = useState(false);
+
+	// Animated date overlay. `shownField` is set when opening (not cleared on
+	// close) so the header/selection don't flip while the sheet slides out.
+	const { mounted: dateMounted, progress: dateProgress } =
+		useOverlayTransition(dateField !== null);
+	const [shownField, setShownField] = useState<DateField | null>(null);
+	const openDatePicker = useCallback((field: DateField) => {
+		setShownField(field);
+		setDateField(field);
+	}, []);
 
 	const updateProject = useMutation(api.projects.update);
 
@@ -237,18 +247,23 @@ export default function ProjectDetailScreen() {
 							</Pressable>
 						</View>
 						<View style={styles.headerActions}>
-							<Pressable
-								onPress={() => setStatusPickerVisible(true)}
-								accessibilityRole="button"
-								accessibilityLabel="Change status"
-								style={({ pressed }) => [
-									styles.statusTrigger,
-									{ borderBottomColor: t.faint },
-									pressed && styles.pressed,
-								]}
+							<FieldMenu
+								title="Project status"
+								value={project.status}
+								options={STATUS_OPTIONS}
+								onSelect={handleStatusSelect}
 							>
-								<Badge status={project.status} big />
-							</Pressable>
+								<View
+									accessibilityRole="button"
+									accessibilityLabel="Change status"
+									style={[
+										styles.statusTrigger,
+										{ borderBottomColor: t.faint },
+									]}
+								>
+									<Badge status={project.status} big />
+								</View>
+							</FieldMenu>
 						</View>
 					</View>
 
@@ -275,12 +290,12 @@ export default function ProjectDetailScreen() {
 								<KV
 									label="Start"
 									value={formatDate(project.startDate) ?? "Not set"}
-									onPress={() => setDateField("startDate")}
+									onPress={() => openDatePicker("startDate")}
 								/>
 								<KV
 									label="Due"
 									value={formatDate(project.endDate) ?? "Not set"}
-									onPress={() => setDateField("endDate")}
+									onPress={() => openDatePicker("endDate")}
 								/>
 							</View>
 						</View>
@@ -289,12 +304,12 @@ export default function ProjectDetailScreen() {
 							<KV
 								label="Start"
 								value={formatDate(project.startDate) ?? "Not set"}
-								onPress={() => setDateField("startDate")}
+								onPress={() => openDatePicker("startDate")}
 							/>
 							<KV
 								label="Due"
 								value={formatDate(project.endDate) ?? "Not set"}
-								onPress={() => setDateField("endDate")}
+								onPress={() => openDatePicker("endDate")}
 							/>
 						</View>
 					)}
@@ -400,54 +415,60 @@ export default function ProjectDetailScreen() {
 				<View style={{ height: 32 }} />
 			</ScrollView>
 
-			{/* Status picker */}
-			<StatusPickerSheet
-				visible={statusPickerVisible}
-				value={project.status}
-				options={STATUS_OPTIONS}
-				onSelect={handleStatusSelect}
-				onClose={() => setStatusPickerVisible(false)}
-				title="Project status"
-			/>
-
-			{/* Date picker — Modal wrapping AppCalendar (tasks/new.tsx pattern) */}
-			<Modal
-				visible={dateField !== null}
-				transparent
-				animationType="slide"
-				onRequestClose={() => setDateField(null)}
-			>
-				<View style={styles.dateBackdrop}>
-					<View style={[styles.dateSheet, { backgroundColor: t.bg }]}>
-						<View style={styles.dateSheetHeader}>
-							<Text style={[styles.dateSheetTitle, { color: t.ink }]}>
-								{dateField === "endDate"
-									? "Select due date"
-									: "Select start date"}
-							</Text>
-							<TouchableOpacity
-								onPress={() => setDateField(null)}
-								accessibilityRole="button"
-								accessibilityLabel="Close"
-							>
-								<X size={24} color={t.ink} />
-							</TouchableOpacity>
-						</View>
-						<AppCalendar
-							selectedDate={
-								dateField === "endDate"
-									? project.endDate
-										? toDateId(new Date(project.endDate))
-										: undefined
-									: project.startDate
-										? toDateId(new Date(project.startDate))
-										: undefined
-							}
-							onDateSelect={handleDateSelect}
-						/>
-					</View>
+			{/* Date picker — in-screen overlay (not a RN Modal): a Modal opened
+			    after a SwiftUI menu (FieldMenu) interaction deadlocks touch
+			    handling on iOS. A plain overlay stays in the RN hierarchy. */}
+			{dateMounted ? (
+				<View style={styles.dateOverlay}>
+					<Animated.View
+						style={[styles.dateBackdrop, { opacity: dateProgress }]}
+					>
+						<Animated.View
+							style={[
+								styles.dateSheet,
+								{
+									backgroundColor: t.bg,
+									transform: [
+										{
+											translateY: dateProgress.interpolate({
+												inputRange: [0, 1],
+												outputRange: [24, 0],
+											}),
+										},
+									],
+								},
+							]}
+						>
+							<View style={styles.dateSheetHeader}>
+								<Text style={[styles.dateSheetTitle, { color: t.ink }]}>
+									{shownField === "endDate"
+										? "Select due date"
+										: "Select start date"}
+								</Text>
+								<TouchableOpacity
+									onPress={() => setDateField(null)}
+									accessibilityRole="button"
+									accessibilityLabel="Close"
+								>
+									<X size={24} color={t.ink} />
+								</TouchableOpacity>
+							</View>
+							<AppCalendar
+								selectedDate={
+									shownField === "endDate"
+										? project.endDate
+											? toDateId(new Date(project.endDate))
+											: undefined
+										: project.startDate
+											? toDateId(new Date(project.startDate))
+											: undefined
+								}
+								onDateSelect={handleDateSelect}
+							/>
+						</Animated.View>
+					</Animated.View>
 				</View>
-			</Modal>
+			) : null}
 
 			{/* Team chat */}
 			<MentionModal
@@ -528,6 +549,14 @@ const styles = StyleSheet.create({
 	kvEditable: {
 		paddingBottom: 5,
 		borderBottomWidth: 1,
+	},
+	dateOverlay: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		zIndex: 10,
 	},
 	dateBackdrop: {
 		flex: 1,
