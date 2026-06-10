@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
 	View,
 	Text,
@@ -12,7 +12,24 @@ import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { ChevronRight, Folder } from "lucide-react-native";
+import { Avatar } from "@/components/ui";
 import { fontFamily, type, radii, STATUS, useTokens } from "@/lib/theme";
+
+// Inline initials — no importable shared helper exists (clients/index.tsx's
+// initialsFrom is module-local, non-exported). See INITIALS NOTE in 24-02 plan.
+function initialsFrom(name: string): string {
+	const words = name.trim().split(/\s+/).filter(Boolean);
+	if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+	return name.slice(0, 2).toUpperCase();
+}
+
+// Dismiss-then-navigate (notifications.tsx pattern) — synchronous, no await/setTimeout.
+const openResult = (href: string) => {
+	router.back();
+	router.push(href as Href);
+};
 
 // Full-screen global search overlay (ACT-01). Content-only — presentation
 // (FullSheet detent [1.0]) is registered in app/_layout.tsx. Replaces the 24-01 stub.
@@ -32,6 +49,14 @@ export default function SearchOverlay() {
 	const projectHits = useQuery(api.projects.search, q ? { query: q } : "skip");
 	const recentClients = useQuery(api.clients.list, q ? "skip" : {});
 	const recentProjects = useQuery(api.projects.list, q ? "skip" : {});
+
+	// Newest 3 by creation time (recent / empty-query state).
+	const recentC = [...(recentClients ?? [])]
+		.sort((a, b) => b._creationTime - a._creationTime)
+		.slice(0, 3);
+	const recentP = [...(recentProjects ?? [])]
+		.sort((a, b) => b._creationTime - a._creationTime)
+		.slice(0, 3);
 
 	// DISPLAY mode = raw input (no ~250ms Recent lag while typing).
 	const typing = raw.trim().length > 0;
@@ -102,9 +127,115 @@ export default function SearchOverlay() {
 							Try a different name or number.
 						</Text>
 					</View>
-				) : null}
+				) : typing ? (
+					<>
+						{clientHits && clientHits.length > 0 ? (
+							<ResultGroup label="Clients">
+								{clientHits.map((c) => (
+									<ClientRow key={c._id} c={c} />
+								))}
+							</ResultGroup>
+						) : null}
+						{projectHits && projectHits.length > 0 ? (
+							<ResultGroup label="Projects">
+								{projectHits.map((p) => (
+									<ProjectRow key={p._id} p={p} />
+								))}
+							</ResultGroup>
+						) : null}
+					</>
+				) : (
+					<>
+						<Text style={[styles.eyebrow, { color: t.faint }]}>RECENT</Text>
+						{recentC.length > 0 ? (
+							<ResultGroup label="Clients">
+								{recentC.map((c) => (
+									<ClientRow key={c._id} c={c} />
+								))}
+							</ResultGroup>
+						) : null}
+						{recentP.length > 0 ? (
+							<ResultGroup label="Projects">
+								{recentP.map((p) => (
+									<ProjectRow key={p._id} p={p} />
+								))}
+							</ResultGroup>
+						) : null}
+					</>
+				)}
 			</ScrollView>
 		</View>
+	);
+}
+
+function ResultGroup({
+	label,
+	children,
+}: {
+	label: string;
+	children: ReactNode;
+}) {
+	const t = useTokens();
+	return (
+		<View>
+			<Text style={[styles.groupLabel, { color: t.faint }]}>
+				{label.toUpperCase()}
+			</Text>
+			<View
+				style={[styles.card, { backgroundColor: t.card, borderColor: t.line }]}
+			>
+				{children}
+			</View>
+		</View>
+	);
+}
+
+function ClientRow({ c }: { c: Doc<"clients"> }) {
+	const t = useTokens();
+	return (
+		<Pressable
+			onPress={() => openResult(`/clients/${c._id}`)}
+			style={styles.row}
+			accessibilityRole="button"
+		>
+			<Avatar text={initialsFrom(c.companyName)} size={40} />
+			<View style={styles.rowText}>
+				<Text style={[styles.rowTitle, { color: t.ink }]} numberOfLines={1}>
+					{c.companyName}
+				</Text>
+				<Text style={[styles.rowSub, { color: t.sub }]} numberOfLines={1}>
+					{STATUS[c.status].label}
+				</Text>
+			</View>
+			<ChevronRight size={18} color={t.faint} />
+		</Pressable>
+	);
+}
+
+function ProjectRow({ p }: { p: Doc<"projects"> }) {
+	const t = useTokens();
+	const sub = p.projectNumber
+		? `#${p.projectNumber}`
+		: STATUS[p.status].label;
+	return (
+		<Pressable
+			onPress={() => openResult(`/projects/${p._id}`)}
+			style={styles.row}
+			accessibilityRole="button"
+		>
+			<View style={[styles.projectTile, { backgroundColor: t.accentSoft }]}>
+				<Folder size={20} color={t.accent} />
+			</View>
+			<View style={styles.rowText}>
+				<Text style={[styles.rowTitle, { color: t.ink }]} numberOfLines={1}>
+					{p.title}
+				</Text>
+				<Text style={[styles.rowSub, { color: t.sub }]} numberOfLines={1}>
+					{sub}
+				</Text>
+			</View>
+			<ChevronRight size={18} color={t.faint} />
+		</Pressable>
 	);
 }
 
@@ -163,5 +294,50 @@ const styles = StyleSheet.create({
 		fontSize: type.body,
 		fontFamily: fontFamily.regular,
 		textAlign: "center",
+	},
+	eyebrow: {
+		fontSize: type.eyebrow,
+		fontFamily: fontFamily.semibold,
+		letterSpacing: 0.6,
+		marginTop: 8,
+	},
+	groupLabel: {
+		fontSize: type.eyebrow,
+		fontFamily: fontFamily.semibold,
+		letterSpacing: 0.6,
+		marginTop: 8,
+	},
+	card: {
+		borderWidth: 1,
+		borderRadius: radii.r,
+		padding: 6,
+		marginTop: 8,
+	},
+	row: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
+		paddingHorizontal: 10,
+		paddingVertical: 12,
+		minHeight: 44,
+	},
+	rowText: {
+		flex: 1,
+	},
+	rowTitle: {
+		fontSize: type.h4,
+		fontFamily: fontFamily.semibold,
+	},
+	rowSub: {
+		fontSize: type.body,
+		fontFamily: fontFamily.regular,
+		marginTop: 2,
+	},
+	projectTile: {
+		width: 40,
+		height: 40,
+		borderRadius: 12,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 });
