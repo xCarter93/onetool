@@ -28,6 +28,13 @@ export default function InvoiceDetailScreen() {
 		api.invoiceLineItems.listByInvoice,
 		id ? { invoiceId: id as Id<"invoices"> } : "skip"
 	);
+	// optionalUserQuery (same as invoices.get) — returns null, never throws.
+	// undefined = Payment section loading; null = LOADED invoice-derived fallback.
+	// NOT a screen-state driver — invoices.get owns the undefined/null branches.
+	const withPayments = useQuery(
+		api.invoices.getWithPayments,
+		id ? { id: id as Id<"invoices"> } : "skip"
+	);
 	const clients = useQuery(api.clients.list, {});
 
 	const clientName = useMemo(() => {
@@ -103,6 +110,22 @@ export default function InvoiceDetailScreen() {
 			value: formatCurrency(invoice.taxAmount ?? 0),
 		});
 	}
+
+	// PAYMENT SECTION inputs — keyed off withPayments (NOT a screen-state driver).
+	const payments = withPayments?.payments ?? [];
+	const summary = withPayments?.paymentSummary;
+	const hasRows = payments.length > 0;
+	// PAID PREDICATE (pinned) — drives the no-rows summary copy + percent.
+	const isPaid = invoice.status === "paid" || invoice.paidAt != null;
+	// Align the summary "of $Y" to the loaded query total so it matches
+	// paidAmount/remainingAmount; fall back to invoice.total before load.
+	const summaryTotal = withPayments?.total ?? invoice.total;
+	// Clamped progress percent (RevenueGauge idiom).
+	const pct = hasRows
+		? Math.min(Math.max(Math.round(summary?.percentPaid ?? 0), 0), 100)
+		: isPaid
+			? 100
+			: 0;
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
