@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
+import { CheckCircle2, XCircle } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
@@ -13,6 +14,8 @@ import { formatCurrency, formatDocumentDate } from "@/lib/format";
 export default function QuoteDetailScreen() {
 	const t = useTokens();
 	const { id } = useLocalSearchParams<{ id: string }>();
+	// Signed signature URLs can expire mid-session — fall back to a caption on load error.
+	const [sigError, setSigError] = useState(false);
 
 	const quote = useQuery(
 		api.quotes.get,
@@ -23,6 +26,13 @@ export default function QuoteDetailScreen() {
 		id ? { quoteId: id as Id<"quotes"> } : "skip"
 	);
 	const clients = useQuery(api.clients.list, {});
+	// getApprovalAudit is a userQuery that THROWS on missing/forbidden — the "skip"
+	// guard is the only gate; the app-level error boundary handles the throw path.
+	// audit drives ONLY the Approval block; quotes.get stays the sole screen driver.
+	const audit = useQuery(
+		api.quotes.getApprovalAudit,
+		id ? { quoteId: id as Id<"quotes"> } : "skip"
+	);
 
 	const clientName = useMemo(() => {
 		const map = new Map<string, string>();
@@ -102,6 +112,19 @@ export default function QuoteDetailScreen() {
 			value: formatCurrency(quote.taxAmount ?? 0),
 		});
 	}
+
+	// Approval state machine — prefer the richer audit row, fall back to quote.status.
+	const latest = Array.isArray(audit) ? audit[0] : undefined;
+	const auditEmpty = Array.isArray(audit) && audit.length === 0;
+	const resolvedStatus =
+		quote.status === "approved" || quote.status === "declined";
+
+	// Show/hide gate — a draft (unsent, no audit row, non-resolved) renders NOTHING,
+	// and never flashes a skeleton while audit is still loading.
+	const showApproval = !(
+		!quote.sentAt &&
+		(audit === undefined || (auditEmpty && !resolvedStatus))
+	);
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
@@ -205,6 +228,122 @@ export default function QuoteDetailScreen() {
 							total={{ label: "Total", value: formatCurrency(quote.total) }}
 						/>
 					</View>
+
+					{/* Approval — read-only lifecycle state below the totals. */}
+					{showApproval ? (
+						<>
+							<View style={[styles.divider, { backgroundColor: t.line }]} />
+							<View style={styles.approvalBlock}>
+								<Eyebrow>Approval</Eyebrow>
+
+								{audit === undefined ? (
+									// Loading (only reachable for a sent quote — drafts are hidden).
+									<View
+										style={[
+											styles.approvalSkeleton,
+											{ backgroundColor: t.muted },
+										]}
+									/>
+								) : latest?.action === "approved" ? (
+									// Approved (audit row): contact email + date + signature.
+									<>
+										<View style={styles.approvalRow}>
+											<CheckCircle2 size={18} color={"#1f9d57"} />
+											<Text style={[styles.approvalLabel, { color: t.ink }]}>
+												Approved
+											</Text>
+										</View>
+										<Text style={[styles.approvalCaption, { color: t.sub }]}>
+											{latest.contactEmail} ·{" "}
+											{formatDocumentDate(latest.createdAt)}
+										</Text>
+										{latest.signatureUrl && !sigError ? (
+											<Image
+												source={{ uri: latest.signatureUrl }}
+												accessibilityLabel="Client signature"
+												accessibilityRole="image"
+												resizeMode="contain"
+												onError={() => setSigError(true)}
+												style={[styles.signature, { borderColor: t.line }]}
+											/>
+										) : latest.signatureUrl && sigError ? (
+											<Text
+												style={[styles.approvalCaption, { color: t.faint }]}
+											>
+												Signature unavailable
+											</Text>
+										) : null}
+									</>
+								) : latest?.action === "declined" ? (
+									// Declined (audit row): decline reason.
+									<>
+										<View style={styles.approvalRow}>
+											<XCircle size={18} color={"#e23b3b"} />
+											<Text
+												style={[styles.approvalLabel, { color: "#e23b3b" }]}
+											>
+												Declined
+											</Text>
+										</View>
+										<Text style={[styles.approvalCaption, { color: t.sub }]}>
+											{formatDocumentDate(latest.createdAt)}
+										</Text>
+										{latest.declineReason ? (
+											<Text
+												style={[styles.approvalCaption, { color: t.sub }]}
+											>
+												“{latest.declineReason}”
+											</Text>
+										) : null}
+									</>
+								) : auditEmpty && quote.status === "approved" ? (
+									// Approved (resolved-without-audit): status + approvedAt, no email/signature.
+									<>
+										<View style={styles.approvalRow}>
+											<CheckCircle2 size={18} color={"#1f9d57"} />
+											<Text style={[styles.approvalLabel, { color: t.ink }]}>
+												Approved
+											</Text>
+										</View>
+										{quote.approvedAt ? (
+											<Text
+												style={[styles.approvalCaption, { color: t.sub }]}
+											>
+												{formatDocumentDate(quote.approvedAt)}
+											</Text>
+										) : null}
+									</>
+								) : auditEmpty && quote.status === "declined" ? (
+									// Declined (resolved-without-audit): status + declinedAt, no reason.
+									<>
+										<View style={styles.approvalRow}>
+											<XCircle size={18} color={"#e23b3b"} />
+											<Text
+												style={[styles.approvalLabel, { color: "#e23b3b" }]}
+											>
+												Declined
+											</Text>
+										</View>
+										{quote.declinedAt ? (
+											<Text
+												style={[styles.approvalCaption, { color: t.sub }]}
+											>
+												{formatDocumentDate(quote.declinedAt)}
+											</Text>
+										) : null}
+									</>
+								) : auditEmpty && quote.sentAt && !resolvedStatus ? (
+									// Awaiting — sent, not yet resolved.
+									<Text style={[styles.approvalLabel, { color: t.ink }]}>
+										Awaiting client signature{" "}
+										<Text style={[styles.approvalCaption, { color: t.faint }]}>
+											· sent {formatDocumentDate(quote.sentAt)}
+										</Text>
+									</Text>
+								) : null}
+							</View>
+						</>
+					) : null}
 				</Card>
 
 				<View style={{ height: 32 }} />
@@ -280,6 +419,24 @@ const styles = StyleSheet.create({
 	skeletonLine: { height: 48, borderRadius: radii.r },
 	lineSkeletonBlock: { paddingHorizontal: 18, paddingVertical: 12, gap: 10 },
 	lineSkeleton: { height: 40, borderRadius: radii.sm },
+
+	approvalBlock: {
+		paddingHorizontal: 18,
+		paddingBottom: 18,
+		paddingTop: 14,
+		gap: 8,
+	},
+	approvalRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+	approvalLabel: { fontFamily: fontFamily.bold, fontSize: type.h4 },
+	approvalCaption: { fontFamily: fontFamily.regular, fontSize: type.sm },
+	approvalSkeleton: { height: 14, borderRadius: radii.sm, width: "100%" },
+	signature: {
+		width: 160,
+		height: 64,
+		borderRadius: radii.md,
+		borderWidth: 1,
+		backgroundColor: "#fff",
+	},
 
 	notFound: {
 		flex: 1,
