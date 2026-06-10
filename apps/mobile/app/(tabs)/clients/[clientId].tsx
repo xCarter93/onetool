@@ -25,6 +25,7 @@ import {
 	MessageSquare,
 	MapPin,
 	User,
+	ChevronDown,
 } from "lucide-react-native";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
@@ -194,12 +195,10 @@ export default function ClientDetailScreen() {
 								<View
 									accessibilityRole="button"
 									accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
-									style={[
-										styles.statusTrigger,
-										{ borderBottomColor: t.faint },
-									]}
+									style={styles.statusTrigger}
 								>
 									<Badge status={status} big />
+									<ChevronDown size={16} color={t.faint} />
 								</View>
 							</FieldMenu>
 						</View>
@@ -441,9 +440,9 @@ export default function ClientDetailScreen() {
 									status={quote.status}
 									showChevron={false}
 									onPress={() =>
-										// Cast: nested money detail routes aren't in the generated route map.
+										// Cast: dynamic detail route isn't in the generated route map.
 										router.push({
-											pathname: "/money/quote/[id]",
+											pathname: "/quote/[id]",
 											params: { id: quote._id },
 										} as unknown as Href)
 									}
@@ -469,9 +468,9 @@ export default function ClientDetailScreen() {
 									status={invoice.status}
 									showChevron={false}
 									onPress={() =>
-										// Cast: nested money detail routes aren't in the generated route map.
+										// Cast: dynamic detail route isn't in the generated route map.
 										router.push({
-											pathname: "/money/invoice/[id]",
+											pathname: "/invoice/[id]",
 											params: { id: invoice._id },
 										} as unknown as Href)
 									}
@@ -544,9 +543,10 @@ const styles = StyleSheet.create({
 	},
 	statusTrigger: {
 		marginTop: 8,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
 		alignSelf: "flex-start",
-		paddingBottom: 5,
-		borderBottomWidth: 1,
 	},
 
 	teamChat: {

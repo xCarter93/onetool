@@ -87,6 +87,10 @@ export default function RootLayout() {
 							<Stack.Screen name="(tabs)" />
 							<Stack.Screen name="(auth)" />
 							<Stack.Screen name="index" />
+							{/* Shared document details — root-level so back returns to the
+							    origin tab (client/project/money), not the Money stack. */}
+							<Stack.Screen name="quote/[id]" />
+							<Stack.Screen name="invoice/[id]" />
 							<Stack.Screen
 								name="org-switch"
 								options={{

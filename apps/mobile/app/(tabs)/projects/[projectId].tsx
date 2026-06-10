@@ -360,9 +360,9 @@ export default function ProjectDetailScreen() {
 									}
 									status={quote.status}
 									onPress={() =>
-										// Cast: nested money detail routes aren't in the generated route map.
+										// Cast: dynamic detail route isn't in the generated route map.
 										router.push({
-											pathname: "/money/quote/[id]",
+											pathname: "/quote/[id]",
 											params: { id: quote._id },
 										} as unknown as Href)
 									}
@@ -395,9 +395,9 @@ export default function ProjectDetailScreen() {
 									title={`Invoice #${invoice.invoiceNumber}`}
 									status={invoice.status}
 									onPress={() =>
-										// Cast: nested money detail routes aren't in the generated route map.
+										// Cast: dynamic detail route isn't in the generated route map.
 										router.push({
-											pathname: "/money/invoice/[id]",
+											pathname: "/invoice/[id]",
 											params: { id: invoice._id },
 										} as unknown as Href)
 									}

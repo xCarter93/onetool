@@ -125,9 +125,8 @@ export default function MoneyScreen() {
 					</Text>
 				}
 				onPress={() =>
-					// Cast: route type generates once 23-04 adds invoice/[id].
 					router.push({
-						pathname: "/money/invoice/[id]",
+						pathname: "/invoice/[id]",
 						params: { id: item._id },
 					} as unknown as Href)
 				}
@@ -146,9 +145,8 @@ export default function MoneyScreen() {
 					pressed && styles.pressed,
 				]}
 				onPress={() =>
-					// Cast: route type generates once 23-03 adds quote/[id].
 					router.push({
-						pathname: "/money/quote/[id]",
+						pathname: "/quote/[id]",
 						params: { id: item._id },
 					} as unknown as Href)
 				}

@@ -199,10 +199,12 @@ export default function QuoteDetailScreen() {
 					<View style={[styles.divider, { backgroundColor: t.line }]} />
 
 					{/* Totals — read straight from quotes.get (never recomputed). */}
-					<TotalsBlock
-						rows={totalsRows}
-						total={{ label: "Total", value: formatCurrency(quote.total) }}
-					/>
+					<View style={styles.totalsWrap}>
+						<TotalsBlock
+							rows={totalsRows}
+							total={{ label: "Total", value: formatCurrency(quote.total) }}
+						/>
+					</View>
 				</Card>
 
 				<View style={{ height: 32 }} />
@@ -245,6 +247,9 @@ const styles = StyleSheet.create({
 	metaValue: { fontFamily: fontFamily.semibold, fontSize: type.sm },
 
 	divider: { height: 1, marginHorizontal: 18 },
+
+	// Inset the totals to align with line-item content + give the card a bottom edge.
+	totalsWrap: { paddingHorizontal: 18, paddingBottom: 18 },
 
 	lineRow: {
 		flexDirection: "row",
