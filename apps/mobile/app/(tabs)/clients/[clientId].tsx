@@ -185,27 +185,35 @@ export default function ClientDetailScreen() {
 							>
 								{client.companyName}
 							</Text>
-							<FieldMenu
-								title="Client status"
-								value={status}
-								options={STATUS_OPTIONS}
-								onSelect={handleSelectStatus}
-							>
-								{/* Bare Badge is the sole trigger child — a row sibling
-								    (e.g. a chevron) gets squeezed by the native menu host
-								    and clips the label. Underline affordance matches the
-								    project status pill. */}
-								<View
-									accessibilityRole="button"
-									accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
-									style={[
-										styles.statusTrigger,
-										{ borderBottomColor: t.faint },
-									]}
+							{/* alignSelf:flex-start sizes the menu host to its content.
+							    The parent identityBody is flex:1/minWidth:0 (so the long
+							    company name wraps), which otherwise stretches the native
+							    MenuView trigger and clips the Badge label to "..". The
+							    project pill avoids this only because its parent uses
+							    alignItems:flex-end. */}
+							<View style={styles.statusWrap}>
+								<FieldMenu
+									title="Client status"
+									value={status}
+									options={STATUS_OPTIONS}
+									onSelect={handleSelectStatus}
 								>
-									<Badge status={status} big />
-								</View>
-							</FieldMenu>
+									{/* Bare Badge is the sole trigger child — a row sibling
+									    (e.g. a chevron) gets squeezed by the native menu host
+									    and clips the label. Underline affordance matches the
+									    project status pill. */}
+									<View
+										accessibilityRole="button"
+										accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
+										style={[
+											styles.statusTrigger,
+											{ borderBottomColor: t.faint },
+										]}
+									>
+										<Badge status={status} big />
+									</View>
+								</FieldMenu>
+							</View>
 						</View>
 					</View>
 				</Card>
@@ -546,8 +554,11 @@ const styles = StyleSheet.create({
 		fontSize: 18,
 		letterSpacing: -0.2,
 	},
-	statusTrigger: {
+	statusWrap: {
 		marginTop: 8,
+		alignSelf: "flex-start",
+	},
+	statusTrigger: {
 		alignSelf: "flex-start",
 		paddingBottom: 5,
 		borderBottomWidth: 1,
