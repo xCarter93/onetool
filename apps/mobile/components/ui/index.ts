@@ -14,3 +14,4 @@ export { HalftoneBg } from "./halftone-bg";
 export { SegmentedToggle } from "./segmented-toggle";
 export { Toggle2 } from "./toggle-2";
 export { TotalsBlock } from "./totals-block";
+export { ScrollFade } from "./scroll-fade";

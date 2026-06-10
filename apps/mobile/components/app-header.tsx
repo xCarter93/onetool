@@ -15,7 +15,7 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
-import { Avatar } from "@/components/ui";
+import { Avatar, ScrollFade } from "@/components/ui";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -79,7 +79,10 @@ export function AppHeader({
 	const NOTIFICATIONS: Href = "/notifications" as Href;
 
 	return (
-		<View style={{ paddingTop: insets.top + 8 }} onLayout={onHeaderLayout}>
+		<View
+			style={{ paddingTop: insets.top + 8, zIndex: 3 }}
+			onLayout={onHeaderLayout}
+		>
 			{!home ? (
 				<View
 					style={{
@@ -203,6 +206,10 @@ export function AppHeader({
 					</Text>
 				</View>
 			) : null}
+
+			{/* Soft fade so scroll content dissolves into the header (skip on Home —
+			    its dark halftone hero must not fade to the light surface). */}
+			{!home ? <ScrollFade edge="top" /> : null}
 		</View>
 	);
 }

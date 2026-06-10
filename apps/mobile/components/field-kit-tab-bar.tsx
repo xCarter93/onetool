@@ -13,6 +13,7 @@ import {
 	type LucideIcon,
 } from "lucide-react-native";
 import { fontFamily, shadow, useTokens } from "@/lib/theme";
+import { ScrollFade } from "@/components/ui";
 
 const INACTIVE = "#9aa4b2";
 
@@ -91,6 +92,8 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 				},
 			]}
 		>
+			{/* Soft fade so scroll content dissolves into the bar above the chrome. */}
+			<ScrollFade edge="bottom" />
 			{renderItem(TABS[0])}
 			{renderItem(TABS[1])}
 
