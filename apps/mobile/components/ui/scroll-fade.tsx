@@ -9,7 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 // the grey mid-gradient darkening seen on Android.
 const SURFACE = "#f5f7f9";
 const CLEAR = "rgba(245,247,249,0)";
-export const FADE_HEIGHT = 26;
+export const FADE_HEIGHT = 32;
 
 export function ScrollFade({ edge }: { edge: "top" | "bottom" }) {
 	const top = edge === "top";
@@ -31,8 +31,11 @@ const styles = StyleSheet.create({
 		right: 0,
 		height: FADE_HEIGHT,
 	},
-	// Sits just below the header, over the top of the scroll content.
-	below: { top: "100%" },
-	// Sits just above the footer, over the bottom of the scroll content.
-	above: { bottom: "100%" },
+	// Anchored to the parent's edges with a negative offset (not a percentage,
+	// which mis-resolves on Fabric) so the strip sits in the gap between the
+	// static chrome and the scroll content.
+	// Just below the header, over the top of the scroll content.
+	below: { bottom: -FADE_HEIGHT },
+	// Just above the footer, over the bottom of the scroll content.
+	above: { top: -FADE_HEIGHT },
 });
