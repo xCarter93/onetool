@@ -107,6 +107,8 @@ export const STATUS = {
 	overdue: { label: "Overdue", c: "#e23b3b" },
 	declined: { label: "Declined", c: "#e23b3b" },
 	expired: { label: "Expired", c: "#8a94a3" },
+	pending: { label: "Pending", c: "#e8930c" },
+	refunded: { label: "Refunded", c: "#8a94a3" },
 } as const;
 
 // Create-sheet glyph colors (gap — consumed by P24's create sheet).
