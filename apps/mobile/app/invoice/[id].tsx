@@ -225,6 +225,88 @@ export default function InvoiceDetailScreen() {
 					</Card>
 				</View>
 
+				{/* Payment — progress bar + paid-vs-outstanding summary + installments.
+				    ALWAYS renders (read-only). Section loading keys off withPayments
+				    === undefined; null falls back to the invoice-derived summary. */}
+				<View style={styles.section}>
+					<Eyebrow>Payment</Eyebrow>
+					<Card>
+						{/* Hand-built linear progress bar (two Views) with full a11y */}
+						<View
+							accessibilityRole="progressbar"
+							accessibilityValue={{ now: pct, min: 0, max: 100 }}
+							accessibilityLabel={`Payment progress, ${pct} percent paid`}
+							style={[styles.barTrack, { backgroundColor: t.line }]}
+						>
+							<View
+								style={[
+									styles.barFill,
+									{ backgroundColor: t.accent, width: `${pct}%` },
+								]}
+							/>
+						</View>
+
+						{/* Summary line — every amount through formatCurrency (dollars). */}
+						{withPayments === undefined ? (
+							<View style={[styles.barSkeleton, { backgroundColor: t.muted }]} />
+						) : hasRows && summary ? (
+							<Text style={[styles.summaryLine, { color: t.ink }]}>
+								Paid {formatCurrency(summary.paidAmount)} of{" "}
+								{formatCurrency(summaryTotal)}
+								{summary.remainingAmount > 0
+									? ` · ${formatCurrency(summary.remainingAmount)} outstanding`
+									: ""}
+							</Text>
+						) : isPaid ? (
+							<Text style={[styles.summaryLine, { color: t.ink }]}>
+								Paid in full {formatCurrency(summaryTotal)}
+								{invoice.paidAt
+									? ` · ${formatDocumentDate(invoice.paidAt)}`
+									: ""}
+							</Text>
+						) : (
+							<Text style={[styles.summaryLine, { color: t.ink }]}>
+								{formatCurrency(summaryTotal)} outstanding
+							</Text>
+						)}
+
+						{/* Installment list — only for payment-plan invoices (hasRows). */}
+						{withPayments !== undefined && hasRows
+							? payments.map((payment, i) => (
+									<View
+										key={payment._id}
+										style={[
+											styles.payRow,
+											{
+												borderBottomColor: t.line,
+												borderBottomWidth:
+													i === payments.length - 1 ? 0 : 1,
+											},
+										]}
+									>
+										<View style={styles.payBody}>
+											<Text
+												style={[styles.payLabel, { color: t.ink }]}
+												numberOfLines={1}
+											>
+												{payment.description ?? `Payment ${i + 1}`}
+											</Text>
+											<Text style={[styles.paySub, { color: t.faint }]}>
+												Due {formatDocumentDate(payment.dueDate)}
+											</Text>
+										</View>
+										<View style={styles.payRight}>
+											<Text style={[styles.payAmount, { color: t.ink }]}>
+												{formatCurrency(payment.paymentAmount)}
+											</Text>
+											<Badge status={payment.status} />
+										</View>
+									</View>
+								))
+							: null}
+					</Card>
+				</View>
+
 				{/* Metadata KV — Invoice # / Issued / Due / Paid (Paid only when present) */}
 				<View style={styles.section}>
 					<Eyebrow>Details</Eyebrow>
@@ -352,6 +434,52 @@ const styles = StyleSheet.create({
 		fontSize: type.h4,
 		paddingVertical: 14,
 		paddingHorizontal: 4,
+	},
+
+	barTrack: {
+		height: 6,
+		borderRadius: 999,
+		marginVertical: 8,
+		width: "100%",
+		overflow: "hidden",
+	},
+	barFill: {
+		height: 6,
+		borderRadius: 999,
+	},
+	barSkeleton: {
+		height: 14,
+		borderRadius: 6,
+		width: "70%",
+		marginTop: 2,
+	},
+	summaryLine: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.h4,
+		marginTop: 2,
+	},
+	payRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 12,
+		paddingVertical: 12,
+		paddingHorizontal: 4,
+		marginTop: 4,
+	},
+	payBody: { flex: 1, minWidth: 0, gap: 3 },
+	payLabel: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.h4,
+	},
+	paySub: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.sm,
+	},
+	payRight: { alignItems: "flex-end", gap: 6 },
+	payAmount: {
+		fontFamily: fontFamily.bold,
+		fontSize: type.h4,
 	},
 
 	metaCard: { paddingVertical: 6 },
