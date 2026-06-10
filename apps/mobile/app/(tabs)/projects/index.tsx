@@ -15,7 +15,7 @@ import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Calendar, X } from "lucide-react-native";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import { Badge, Eyebrow } from "@/components/ui";
+import { Badge, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 
 type Project = Doc<"projects">;
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
 		paddingBottom: 24,
-		paddingTop: 8,
+		paddingTop: SCROLL_TOP_INSET,
 	},
 	listHeader: {
 		gap: 12,

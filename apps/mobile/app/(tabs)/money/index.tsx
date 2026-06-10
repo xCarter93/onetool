@@ -14,7 +14,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { Badge, Eyebrow, ListRow, Toggle2 } from "@/components/ui";
+import { Badge, Eyebrow, ListRow, Toggle2, SCROLL_TOP_INSET } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 // Dark hero gradient — RN ignores CSS gradient strings on backgroundColor; apply
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
 		paddingBottom: 24,
-		paddingTop: 8,
+		paddingTop: SCROLL_TOP_INSET,
 	},
 	listHeader: {
 		gap: 16,

@@ -9,7 +9,12 @@ import { LinearGradient } from "expo-linear-gradient";
 // the grey mid-gradient darkening seen on Android.
 const SURFACE = "#f5f7f9";
 const CLEAR = "rgba(245,247,249,0)";
-export const FADE_HEIGHT = 32;
+export const FADE_HEIGHT = 28;
+
+// Top padding list/scroll screens apply so their first item clears the fade zone
+// at rest — content only dissolves once scrolled up into the strip, never by
+// default. Slightly larger than FADE_HEIGHT for a touch of breathing room.
+export const SCROLL_TOP_INSET = 32;
 
 export function ScrollFade({ edge }: { edge: "top" | "bottom" }) {
 	const top = edge === "top";

@@ -7,7 +7,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Card, StatCard, Button } from "@/components/ui";
+import { Card, StatCard, Button, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 import { TaskRow } from "@/components/TaskRow";
 import { utcDayStartMs, dateIdFromUtcMs } from "@/lib/date";
@@ -393,7 +393,7 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
-		paddingTop: 12,
+		paddingTop: SCROLL_TOP_INSET,
 		paddingBottom: 32,
 	},
 	statsRow: {

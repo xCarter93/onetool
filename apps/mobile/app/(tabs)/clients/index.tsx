@@ -14,7 +14,7 @@ import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Plus, X } from "lucide-react-native";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import { Avatar, Badge } from "@/components/ui";
+import { Avatar, Badge, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 
 // listWithProjectCounts returns a reshaped DTO (id/name/status display string),
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
 		paddingBottom: 24,
-		paddingTop: 8,
+		paddingTop: SCROLL_TOP_INSET,
 	},
 	listHeader: {
 		gap: 12,
