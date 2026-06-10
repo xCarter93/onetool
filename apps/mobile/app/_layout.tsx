@@ -151,6 +151,32 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								}}
 							/>
+							{/* Short fixed detent — two create rows + title (hand-tune in <verification>). */}
+							<Stack.Screen
+								name="create"
+								options={{
+									presentation: "formSheet",
+									contentStyle: { backgroundColor: "transparent" },
+									headerShown: false,
+									sheetAllowedDetents: [0.4],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								}}
+							/>
+							{/* Full-screen search overlay (UI-SPEC FullSheet). */}
+							<Stack.Screen
+								name="search"
+								options={{
+									presentation: "formSheet",
+									contentStyle: { backgroundColor: "transparent" },
+									headerShown: false,
+									sheetAllowedDetents: [1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								}}
+							/>
 						</Stack>
 					</View>
 				</ConvexClerkProvider>
