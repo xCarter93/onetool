@@ -164,14 +164,16 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								}}
 							/>
-							{/* Full-screen search overlay (UI-SPEC FullSheet). */}
+							{/* Near-full search overlay. Opens at 0.9 (draggable to full) so the
+							    input clears the status bar — a single [1.0] detent renders content
+							    under the notch (matches tasks/form's [0.9, 1.0] pattern). */}
 							<Stack.Screen
 								name="search"
 								options={{
 									presentation: "formSheet",
 									contentStyle: { backgroundColor: "transparent" },
 									headerShown: false,
-									sheetAllowedDetents: [1.0],
+									sheetAllowedDetents: [0.9, 1.0],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,

@@ -72,17 +72,18 @@ export default function SearchOverlay() {
 	return (
 		<View
 			style={[
-				styles.root,
-				{ backgroundColor: t.surface, paddingTop: insets.top },
+				styles.container,
+				{ backgroundColor: t.card, paddingBottom: insets.bottom },
 			]}
 		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
 			<View style={styles.header}>
 				<TextInput
 					style={[
 						styles.input,
 						{
 							color: t.ink,
-							backgroundColor: t.card,
+							backgroundColor: t.surface,
 							borderColor: t.line,
 						},
 					]}
@@ -240,15 +241,26 @@ function ProjectRow({ p }: { p: Doc<"projects"> }) {
 }
 
 const styles = StyleSheet.create({
-	root: {
+	container: {
 		flex: 1,
+		borderTopLeftRadius: 30,
+		borderTopRightRadius: 30,
+		overflow: "hidden",
+	},
+	grabber: {
+		alignSelf: "center",
+		width: 44,
+		height: 5,
+		borderRadius: 999,
+		marginTop: 10,
+		marginBottom: 8,
 	},
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
 		paddingHorizontal: 16,
-		paddingVertical: 12,
+		paddingBottom: 12,
 	},
 	input: {
 		flex: 1,
