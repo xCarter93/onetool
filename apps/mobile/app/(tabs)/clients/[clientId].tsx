@@ -25,7 +25,6 @@ import {
 	MessageSquare,
 	MapPin,
 	User,
-	ChevronDown,
 } from "lucide-react-native";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
@@ -192,13 +191,19 @@ export default function ClientDetailScreen() {
 								options={STATUS_OPTIONS}
 								onSelect={handleSelectStatus}
 							>
+								{/* Bare Badge is the sole trigger child — a row sibling
+								    (e.g. a chevron) gets squeezed by the native menu host
+								    and clips the label. Underline affordance matches the
+								    project status pill. */}
 								<View
 									accessibilityRole="button"
 									accessibilityLabel={`Status: ${statusLabel}. Tap to change`}
-									style={styles.statusTrigger}
+									style={[
+										styles.statusTrigger,
+										{ borderBottomColor: t.faint },
+									]}
 								>
 									<Badge status={status} big />
-									<ChevronDown size={16} color={t.faint} />
 								</View>
 							</FieldMenu>
 						</View>
@@ -543,10 +548,9 @@ const styles = StyleSheet.create({
 	},
 	statusTrigger: {
 		marginTop: 8,
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
 		alignSelf: "flex-start",
+		paddingBottom: 5,
+		borderBottomWidth: 1,
 	},
 
 	teamChat: {
