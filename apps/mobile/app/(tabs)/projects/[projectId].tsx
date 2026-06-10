@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -359,7 +359,13 @@ export default function ProjectDetailScreen() {
 										quote.title || `Quote #${quote.quoteNumber}`
 									}
 									status={quote.status}
-									onPress={() => router.push("/money")}
+									onPress={() =>
+										// Cast: nested money detail routes aren't in the generated route map.
+										router.push({
+											pathname: "/money/quote/[id]",
+											params: { id: quote._id },
+										} as unknown as Href)
+									}
 									last={i === Math.min(quotes.length, 3) - 1}
 								/>
 							))}
@@ -388,7 +394,13 @@ export default function ProjectDetailScreen() {
 									key={invoice._id}
 									title={`Invoice #${invoice.invoiceNumber}`}
 									status={invoice.status}
-									onPress={() => router.push("/money")}
+									onPress={() =>
+										// Cast: nested money detail routes aren't in the generated route map.
+										router.push({
+											pathname: "/money/invoice/[id]",
+											params: { id: invoice._id },
+										} as unknown as Href)
+									}
 									last={i === Math.min(invoices.length, 3) - 1}
 								/>
 							))}
