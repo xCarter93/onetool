@@ -11,22 +11,8 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
-import {
-	colors,
-	fontFamily,
-	spacing,
-	radius,
-	tokens,
-	createGlyph,
-} from "@/lib/theme";
-import {
-	Check,
-	Search,
-	Receipt,
-	Plus,
-	FileText,
-	UserPlus,
-} from "lucide-react-native";
+import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
+import { Check, Search } from "lucide-react-native";
 import {
 	HalftoneBg,
 	Eyebrow,
@@ -257,17 +243,18 @@ export default function HomeScreen() {
 						{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
 					</Text>
 
-					{/* Search pill — render only; behavior lands in P24 */}
-					<View
+					{/* Search pill — opens the /search overlay */}
+					<Pressable
 						style={styles.searchPill}
-						importantForAccessibility="no"
-						accessibilityElementsHidden
+						onPress={() => router.push("/search" as Href)}
+						accessibilityRole="button"
+						accessibilityLabel="Search clients, projects"
 					>
 						<Search size={18} color={tokens.faint} />
 						<Text style={styles.searchPlaceholder}>
-							Search clients, projects, invoices…
+							Search clients, projects…
 						</Text>
-					</View>
+					</Pressable>
 
 					<View style={styles.toggleRow}>
 						<SegmentedToggle value={viewMode} onChange={setViewMode} />
@@ -434,69 +421,6 @@ export default function HomeScreen() {
 									</Pressable>
 								</View>
 							))}
-
-						{/* Quick actions */}
-						<View style={styles.section}>
-							<SectionHeader title="Quick actions" />
-							<View style={styles.quickGrid}>
-								<Pressable
-									style={styles.quickTile}
-									onPress={() => router.push("/tasks/form")}
-								>
-									<View
-										style={[
-											styles.quickIcon,
-											{ backgroundColor: createGlyph.task + "1A" },
-										]}
-									>
-										<Plus size={20} color={createGlyph.task} />
-									</View>
-									<Text style={styles.quickLabel}>New Task</Text>
-								</Pressable>
-								<Pressable
-									style={styles.quickTile}
-									onPress={() => router.push("/money")}
-								>
-									<View
-										style={[
-											styles.quickIcon,
-											{ backgroundColor: createGlyph.quote + "1A" },
-										]}
-									>
-										<FileText size={20} color={createGlyph.quote} />
-									</View>
-									<Text style={styles.quickLabel}>New Quote</Text>
-								</Pressable>
-								<Pressable
-									style={styles.quickTile}
-									onPress={() => router.push("/clients")}
-								>
-									<View
-										style={[
-											styles.quickIcon,
-											{ backgroundColor: createGlyph.client + "1A" },
-										]}
-									>
-										<UserPlus size={20} color={createGlyph.client} />
-									</View>
-									<Text style={styles.quickLabel}>Add Client</Text>
-								</Pressable>
-								<Pressable
-									style={styles.quickTile}
-									onPress={() => router.push("/money")}
-								>
-									<View
-										style={[
-											styles.quickIcon,
-											{ backgroundColor: createGlyph.invoice + "1A" },
-										]}
-									>
-										<Receipt size={20} color={createGlyph.invoice} />
-									</View>
-									<Text style={styles.quickLabel}>New Invoice</Text>
-								</Pressable>
-							</View>
-						</View>
 
 						{/* Recent activity — real data; section header retained even when empty */}
 						<View style={styles.section}>
@@ -675,33 +599,6 @@ const styles = StyleSheet.create({
 	checkboxDone: {
 		backgroundColor: tokens.success,
 		borderColor: tokens.success,
-	},
-	quickGrid: {
-		flexDirection: "row",
-		gap: spacing.sm,
-		marginTop: spacing.sm,
-	},
-	quickTile: {
-		flex: 1,
-		alignItems: "center",
-		gap: spacing.xs,
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		borderWidth: 1,
-		borderColor: tokens.line,
-		paddingVertical: spacing.md,
-	},
-	quickIcon: {
-		width: 40,
-		height: 40,
-		borderRadius: 12,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	quickLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.medium,
-		color: tokens.ink,
 	},
 	calendarSection: {
 		gap: spacing.md,
