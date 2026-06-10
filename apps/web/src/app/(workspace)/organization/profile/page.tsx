@@ -89,28 +89,51 @@ const primaryActionButtonClasses =
 // Calm primary button used inside the Clerk OrganizationProfile, mirroring
 // primaryActionButtonClasses so the embedded component matches the workspace.
 const clerkPrimaryButtonClasses =
-	"!bg-primary/10 hover:!bg-primary/15 !text-primary hover:!text-primary/80 ring-1 !ring-primary/30 hover:!ring-primary/40 font-medium py-2.5 px-6 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 border-0";
+	"!bg-primary/10 hover:!bg-primary/15 !text-primary hover:!text-primary ring-1 !ring-primary/25 hover:!ring-primary/40 font-semibold text-sm py-2 px-4 rounded-lg !shadow-none transition-colors duration-200 border-0";
+
+// Danger-zone action button (Leave / Delete organization). Uses the real
+// --danger token (the --destructive token is mapped but never defined). Quiet
+// ghost that only fills on hover so the danger zone reads without shouting.
+const clerkDangerButtonClasses =
+	"!bg-transparent hover:!bg-danger/10 !text-danger hover:!text-danger ring-1 !ring-danger/25 hover:!ring-danger/40 font-semibold text-sm py-2 px-4 rounded-lg !shadow-none transition-colors duration-200 border-0";
 
 // Hoisted so the large appearance object is not reallocated on every render.
 const orgProfileAppearance = {
 	elements: {
-		cardBox: "w-full",
+		// Fully transparent so the embedded component blends into the page rather
+		// than reading as a card-within-a-card.
+		cardBox: "w-full !bg-transparent !shadow-none !border-none",
 		rootBox: "w-full text-foreground",
 		card: "w-full !shadow-none !bg-transparent !border-none !p-0",
+		scrollBox: "!bg-transparent !shadow-none !border-none",
 		headerTitle:
-			"text-2xl font-semibold !text-foreground dark:!text-foreground mb-2 tracking-tight",
+			"text-2xl font-semibold !text-foreground dark:!text-foreground mb-1 tracking-tight",
 		headerSubtitle:
 			"text-sm !text-muted-foreground dark:!text-muted-foreground mb-6 leading-relaxed",
-		navbar:
-			"border-b !border-border/40 dark:!border-border/40 !bg-transparent w-full",
+		// Transparent nav; every tab stays legible (muted → foreground → primary).
+		navbar: "!bg-transparent !border-none !shadow-none w-full",
+		// Active state is applied via the button's own data-active attribute so it
+		// actually lights up (the navbarButtonActive descriptor is never emitted).
 		navbarButton:
-			"px-4 py-2 !text-muted-foreground dark:!text-muted-foreground hover:!text-foreground dark:hover:!text-foreground hover:!bg-muted/40 dark:hover:!bg-muted/20 rounded-lg transition-all duration-200 font-medium",
-		navbarButtonActive:
-			"!bg-primary/10 dark:!bg-primary/20 !text-primary dark:!text-primary px-4 py-2 rounded-lg font-medium !shadow-none ring-1 !ring-primary/20",
-		navbarButtonText: "!text-foreground dark:!text-foreground text-lg",
+			"group px-3 py-2 rounded-lg font-medium !text-muted-foreground dark:!text-muted-foreground hover:!text-foreground dark:hover:!text-foreground hover:!bg-muted/50 dark:hover:!bg-muted/25 transition-colors duration-200 data-[active=true]:!bg-primary/10 dark:data-[active=true]:!bg-primary/15 data-[active=true]:!text-primary dark:data-[active=true]:!text-primary",
+		navbarButtonIcon:
+			"!text-muted-foreground group-hover:!text-foreground group-data-[active=true]:!text-primary transition-colors duration-200",
+		navbarButtonText:
+			"text-base font-medium !text-muted-foreground dark:!text-muted-foreground group-hover:!text-foreground dark:group-hover:!text-foreground group-data-[active=true]:!text-primary dark:group-data-[active=true]:!text-primary",
 		tabButton: "text-lg",
+		// Flat settings list: each setting is a plain row separated by a hairline
+		// divider — no cards, no accent bars, no wrapper.
+		profileSection:
+			"py-5 border-b !border-border/50 dark:!border-border/40 last:!border-b-0",
+		profileSectionItem: "gap-4",
+		// Eyebrow-style label. Color is scoped per-variant so the two !important
+		// rules never collide at equal specificity.
 		profileSectionTitleText:
-			"text-lg font-semibold !text-foreground dark:!text-foreground mb-2 tracking-tight",
+			"text-[0.7rem] font-semibold uppercase tracking-[0.08em] mb-1",
+		profileSectionTitleText__organizationProfile:
+			"!text-muted-foreground dark:!text-muted-foreground",
+		profileSectionTitleText__organizationDanger:
+			"!text-danger/80 dark:!text-danger/80",
 		profileSectionDescriptionText:
 			"text-sm !text-muted-foreground dark:!text-muted-foreground mb-6 leading-relaxed",
 		profileSectionContent: "space-y-6 text-lg",
@@ -119,8 +142,20 @@ const orgProfileAppearance = {
 			"text-sm font-semibold !text-foreground tracking-wide",
 		profileSectionContentItemValue:
 			"text-sm !text-muted-foreground dark:!text-muted-foreground",
-		profileSectionPrimaryButton: "text-lg",
-		profileSectionPrimaryButtonText: "text-lg",
+		// Org logo + name preview row.
+		organizationPreview: "gap-3.5 items-center",
+		organizationPreviewAvatarBox:
+			"!w-12 !h-12 !rounded-xl ring-1 !ring-border/60 dark:!ring-border/50 shadow-sm overflow-hidden",
+		organizationPreviewAvatarImage: "!w-12 !h-12 !rounded-xl object-cover",
+		organizationPreviewMainIdentifier:
+			"text-base font-semibold !text-foreground dark:!text-foreground tracking-tight",
+		organizationPreviewSecondaryIdentifier:
+			"text-sm !text-muted-foreground dark:!text-muted-foreground",
+		// Neutral base + per-variant primary / danger treatments.
+		profileSectionPrimaryButton: "text-sm font-medium",
+		profileSectionPrimaryButton__organizationProfile: clerkPrimaryButtonClasses,
+		profileSectionPrimaryButton__organizationDanger: clerkDangerButtonClasses,
+		profileSectionPrimaryButtonText: "text-sm",
 		paymentMethodRowType: "text-lg",
 		paymentMethodRowValue: "text-lg",
 		paymentMethodRowBadge: "text-lg",
@@ -129,7 +164,7 @@ const orgProfileAppearance = {
 		profileSectionContentItemValueInputShowPasswordButton:
 			"!text-muted-foreground hover:!text-foreground dark:!text-muted-foreground dark:hover:!text-foreground",
 		pageScrollBox: "!bg-transparent",
-		page: "space-y-8 !bg-transparent",
+		page: "space-y-0 !bg-transparent",
 		form: "space-y-6",
 		formFieldLabel: "text-sm font-semibold !text-foreground tracking-wide",
 		formFieldInput:
@@ -172,15 +207,15 @@ const orgProfileAppearance = {
 			"!bg-background border !border-border/60 dark:!border-border/40 rounded-lg p-2",
 	},
 	variables: {
-		colorPrimary: "hsl(var(--primary))",
-		colorText: "hsl(var(--foreground))",
-		colorTextSecondary: "hsl(var(--muted-foreground))",
-		colorNeutral: "hsl(var(--muted-foreground))",
-		colorBackground: "transparent",
-		colorInputBackground: "hsl(var(--background))",
-		colorInputText: "hsl(var(--foreground))",
+		// Only override brand accents. Do NOT set colorBackground / colorText /
+		// colorNeutral: Clerk derives every surface shade (navbar, billing cards,
+		// menus) from those, and a transparent background + dark text base makes it
+		// paint all surfaces black. Letting them default keeps Clerk's light/dark
+		// surfaces correct; surface transparency is handled by element classes.
+		colorPrimary: "var(--primary)",
+		colorDanger: "var(--danger)",
 		fontFamily: "inherit",
-		borderRadius: "0.75rem",
+		borderRadius: "0.875rem",
 		spacingUnit: "1rem",
 	},
 } as const;
@@ -352,7 +387,7 @@ export default function OrganizationProfilePage() {
 	const onboardingComplete = Boolean(
 		stripeStatus?.detailsSubmitted &&
 		stripeStatus?.chargesEnabled &&
-		stripeStatus?.payoutsEnabled
+		stripeStatus?.payoutsEnabled,
 	);
 
 	// Get active tab from search params
@@ -395,7 +430,7 @@ export default function OrganizationProfilePage() {
 					: `/organization/profile?${params.toString()}`;
 			router.push(newUrl);
 		},
-		[router, hasPremiumAccess, toast]
+		[router, hasPremiumAccess, toast],
 	);
 
 	// Re-sync the form from org data during render whenever org data changes
@@ -428,7 +463,7 @@ export default function OrganizationProfilePage() {
 		organization &&
 		currentUser &&
 		"ownerUserId" in organization &&
-		organization.ownerUserId === currentUser._id
+		organization.ownerUserId === currentUser._id,
 	);
 
 	const combineAddress = React.useCallback(() => {
@@ -458,7 +493,7 @@ export default function OrganizationProfilePage() {
 		if (!requiredFields.every(Boolean)) {
 			toast.warning(
 				"Missing required information",
-				"Email, phone, and full mailing address are required."
+				"Email, phone, and full mailing address are required.",
 			);
 			return false;
 		}
@@ -466,7 +501,7 @@ export default function OrganizationProfilePage() {
 		if (!businessForm.companySize) {
 			toast.warning(
 				"Select company size",
-				"Choose the option that best represents your team."
+				"Choose the option that best represents your team.",
 			);
 			return false;
 		}
@@ -478,7 +513,7 @@ export default function OrganizationProfilePage() {
 		if (!isOwner) {
 			toast.error(
 				"Permission required",
-				"Only the organization owner can update business details."
+				"Only the organization owner can update business details.",
 			);
 			return;
 		}
@@ -515,7 +550,7 @@ export default function OrganizationProfilePage() {
 			setBusinessDirty(false);
 			toast.success(
 				"Business info updated",
-				"Organization details have been saved."
+				"Organization details have been saved.",
 			);
 		} catch (error) {
 			const message =
@@ -539,7 +574,7 @@ export default function OrganizationProfilePage() {
 		if (!isOwner) {
 			toast.error(
 				"Permission required",
-				"Only the organization owner can manage payments."
+				"Only the organization owner can manage payments.",
 			);
 			return;
 		}
@@ -558,7 +593,7 @@ export default function OrganizationProfilePage() {
 			if (!accountResponse.ok) {
 				throw new Error(
 					accountData?.error ??
-						"Stripe could not create or retrieve the connected account."
+						"Stripe could not create or retrieve the connected account.",
 				);
 			}
 
@@ -578,7 +613,7 @@ export default function OrganizationProfilePage() {
 			if (!linkResponse.ok) {
 				throw new Error(
 					linkData?.error ??
-						"Stripe could not generate an onboarding link. Try again."
+						"Stripe could not generate an onboarding link. Try again.",
 				);
 			}
 
@@ -601,7 +636,7 @@ export default function OrganizationProfilePage() {
 			toast.error(
 				"Stripe onboarding failed",
 				getUserFriendlyErrorMessage(error) ??
-					"Unable to start Stripe onboarding right now."
+					"Unable to start Stripe onboarding right now.",
 			);
 		} finally {
 			setOnboardingLoading(false);
@@ -612,7 +647,7 @@ export default function OrganizationProfilePage() {
 		if (!organization?.stripeConnectAccountId) {
 			toast.warning(
 				"No Stripe account yet",
-				"Create an account first to check status."
+				"Create an account first to check status.",
 			);
 			return;
 		}
@@ -630,7 +665,7 @@ export default function OrganizationProfilePage() {
 			if (!statusResponse.ok) {
 				throw new Error(
 					statusData?.error ??
-						"Stripe could not provide the latest onboarding status."
+						"Stripe could not provide the latest onboarding status.",
 				);
 			}
 
@@ -645,7 +680,7 @@ export default function OrganizationProfilePage() {
 			logError(error, { action: "stripe_status" });
 			toast.error(
 				"Unable to load Stripe status",
-				getUserFriendlyErrorMessage(error) ?? "Try again in a moment."
+				getUserFriendlyErrorMessage(error) ?? "Try again in a moment.",
 			);
 		} finally {
 			setStatusLoading(false);
@@ -864,7 +899,7 @@ export default function OrganizationProfilePage() {
 														setBusinessDirty(true);
 														const nextValue = event.target.value.replace(
 															/^https?:\/\//i,
-															""
+															"",
 														);
 														setBusinessForm((prev) => ({
 															...prev,
@@ -1177,13 +1212,15 @@ export default function OrganizationProfilePage() {
 												<ConnectionStatusStrip
 													accountId={organization.stripeConnectAccountId}
 													detailsSubmitted={Boolean(
-														stripeStatus.detailsSubmitted
+														stripeStatus.detailsSubmitted,
 													)}
 													chargesEnabled={Boolean(stripeStatus.chargesEnabled)}
 													payoutsEnabled={Boolean(stripeStatus.payoutsEnabled)}
 													bankName={organization.stripeExternalAccountBankName}
 													last4={organization.stripeExternalAccountLast4}
-													updatedAt={organization.stripeExternalAccountUpdatedAt}
+													updatedAt={
+														organization.stripeExternalAccountUpdatedAt
+													}
 													onChangeBank={
 														onboardingComplete && isOwner
 															? () => {
@@ -1347,7 +1384,7 @@ function DocumentsTab() {
 
 	const documents = useQuery(api.organizationDocuments.list);
 	const generateUploadUrl = useMutation(
-		api.organizationDocuments.generateUploadUrl
+		api.organizationDocuments.generateUploadUrl,
 	);
 	const createDocument = useMutation(api.organizationDocuments.create);
 	const removeDocument = useMutation(api.organizationDocuments.remove);
