@@ -76,10 +76,19 @@ function KV({
 	);
 }
 
-export default function ProjectDetailScreen() {
-	const { projectId } = useLocalSearchParams<{ projectId: string }>();
+// Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
+// route wrapper below stays byte-identical. The iPad pane passes "pane".
+export function ProjectDetailBody({
+	id,
+	headerMode = "root",
+}: {
+	id: string;
+	headerMode?: "root" | "pane";
+}) {
+	const projectId = id;
 	const router = useRouter();
 	const t = useTokens();
+	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [dateField, setDateField] = useState<DateField | null>(null);
 	const [mentionVisible, setMentionVisible] = useState(false);
@@ -188,7 +197,7 @@ export default function ProjectDetailScreen() {
 				style={{ flex: 1, backgroundColor: t.bg }}
 				edges={[]}
 			>
-				<AppHeader mode="detail" />
+				<AppHeader mode={appHeaderMode} />
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View style={[styles.skeletonHeader, { backgroundColor: t.card }]} />
 					<View
@@ -207,7 +216,7 @@ export default function ProjectDetailScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={[]}>
-			<AppHeader mode="detail" />
+			<AppHeader mode={appHeaderMode} />
 			<ScrollView
 				contentContainerStyle={styles.scroll}
 				refreshControl={
@@ -492,6 +501,12 @@ export default function ProjectDetailScreen() {
 			/>
 		</SafeAreaView>
 	);
+}
+
+// Thin route wrapper — iPhone-identical (renders the body in "root" mode).
+export default function ProjectDetailScreen() {
+	const { projectId } = useLocalSearchParams<{ projectId: string }>();
+	return <ProjectDetailBody id={projectId} />;
 }
 
 const styles = StyleSheet.create({

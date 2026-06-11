@@ -11,9 +11,17 @@ import { AppHeader } from "@/components/app-header";
 import { Badge, Card, Eyebrow, TotalsBlock } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
-export default function QuoteDetailScreen() {
+// Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
+// route wrapper below is byte-identical. The iPad Money pane passes "pane".
+export function QuoteDetailBody({
+	id,
+	headerMode = "root",
+}: {
+	id: string;
+	headerMode?: "root" | "pane";
+}) {
 	const t = useTokens();
-	const { id } = useLocalSearchParams<{ id: string }>();
+	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	// Signed signature URLs can expire mid-session — fall back to a caption on load error.
 	const [sigError, setSigError] = useState(false);
 
@@ -44,7 +52,7 @@ export default function QuoteDetailScreen() {
 	if (quote === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode="detail" />
+				<AppHeader mode={appHeaderMode} />
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
 						style={[
@@ -69,7 +77,7 @@ export default function QuoteDetailScreen() {
 	if (quote === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode="detail" title="Quote" />
+				<AppHeader mode={appHeaderMode} title="Quote" />
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>
 						Not found
@@ -128,7 +136,7 @@ export default function QuoteDetailScreen() {
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<AppHeader mode="detail" title={headerTitle} />
+			<AppHeader mode={appHeaderMode} title={headerTitle} />
 			<ScrollView contentContainerStyle={styles.scroll}>
 				<Card style={styles.docCard}>
 					{/* Header block */}
@@ -350,6 +358,12 @@ export default function QuoteDetailScreen() {
 			</ScrollView>
 		</SafeAreaView>
 	);
+}
+
+// Thin route wrapper — iPhone-identical (renders the body in "root" mode).
+export default function QuoteDetailScreen() {
+	const { id } = useLocalSearchParams<{ id: string }>();
+	return <QuoteDetailBody id={id} />;
 }
 
 const styles = StyleSheet.create({

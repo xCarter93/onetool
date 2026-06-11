@@ -14,9 +14,17 @@ import { formatCurrency, formatDocumentDate } from "@/lib/format";
 // (CONTEXT diverges from the prototype's summary view), reusing the shared
 // TotalsBlock + formatDocumentDate so this layout matches quote/[id] exactly.
 // Totals come straight from invoices.get (calculated server-side) — never recomputed.
-export default function InvoiceDetailScreen() {
+// Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
+// route wrapper below is byte-identical. The iPad Money pane passes "pane".
+export function InvoiceDetailBody({
+	id,
+	headerMode = "root",
+}: {
+	id: string;
+	headerMode?: "root" | "pane";
+}) {
 	const t = useTokens();
-	const { id } = useLocalSearchParams<{ id: string }>();
+	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
 
@@ -47,7 +55,7 @@ export default function InvoiceDetailScreen() {
 	if (invoice === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode="detail" />
+				<AppHeader mode={appHeaderMode} />
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
 						style={[
@@ -70,7 +78,7 @@ export default function InvoiceDetailScreen() {
 	if (invoice === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode="detail" />
+				<AppHeader mode={appHeaderMode} />
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>Not found</Text>
 					<Text style={[styles.notFoundBody, { color: t.sub }]}>
@@ -129,7 +137,7 @@ export default function InvoiceDetailScreen() {
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<AppHeader mode="detail" title={invoice.invoiceNumber} />
+			<AppHeader mode={appHeaderMode} title={invoice.invoiceNumber} />
 			<ScrollView contentContainerStyle={styles.scroll}>
 				{/* Header block — number, effective status badge, client */}
 				<Card>
@@ -328,6 +336,12 @@ export default function InvoiceDetailScreen() {
 			</ScrollView>
 		</SafeAreaView>
 	);
+}
+
+// Thin route wrapper — iPhone-identical (renders the body in "root" mode).
+export default function InvoiceDetailScreen() {
+	const { id } = useLocalSearchParams<{ id: string }>();
+	return <InvoiceDetailBody id={id} />;
 }
 
 function MetaRow({

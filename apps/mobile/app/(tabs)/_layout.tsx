@@ -5,6 +5,8 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { FieldKitTabBar } from "@/components/field-kit-tab-bar";
 import { resolveAuthDestination } from "@/lib/postAuthRouting";
+import { useDevice } from "@/lib/use-device";
+import { IpadShell } from "@/components/ipad/ipad-shell";
 
 export default function TabLayout() {
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
@@ -13,6 +15,7 @@ export default function TabLayout() {
     userMemberships: true,
   });
   const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
+  const { device } = useDevice();
 
   // If the user is not signed in, redirect them to the sign-in page
   if (!isSignedIn) {
@@ -37,6 +40,12 @@ export default function TabLayout() {
   // resolves to the wizard — never let them fall through to blank tabs.
   if (dest === "/(onboarding)/create-organization") {
     return <Redirect href={dest as Href} />;
+  }
+
+  // iPad branch (P26) — gated AFTER all auth redirects so the iPhone path below
+  // stays byte-identical (RESP-04). The shell replaces Tabs + FieldKitTabBar.
+  if (device === "ipad") {
+    return <IpadShell />;
   }
 
   return (

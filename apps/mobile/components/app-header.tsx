@@ -51,10 +51,13 @@ export function AppHeader({
 	const { organization } = useOrganization();
 	const { user } = useUser();
 
-	// Unread notifications count for the bell badge (read-only, org-scoped).
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
+	// Pane mode (iPad panes) renders no bell — so the notifications query must
+	// not run. Skip-gate it on mode !== "pane".
+	const pane = mode === "pane";
+	const notificationData = useQuery(
+		api.notifications.listForCurrentUser,
+		pane ? "skip" : { limit: 1 },
+	);
 	const unreadCount = notificationData?.unreadCount ?? 0;
 
 	// Measure the header so the brand wash gets a DEFINITE-height box. HalftoneBg /
@@ -77,6 +80,35 @@ export function AppHeader({
 	// typed router clean.
 	const ORG_SWITCH: Href = "/org-switch" as Href;
 	const NOTIFICATIONS: Href = "/notifications" as Href;
+
+	// Pane mode (iPad P26): a light header — back arrow + optional title ONLY.
+	// The sidebar owns the org chip, bell, and avatar, so all three are
+	// suppressed here. Additive: root/detail paths below are byte-identical.
+	if (pane) {
+		const paneTop = Math.max(insets.top, 36);
+		return (
+			<View style={{ paddingTop: paneTop, zIndex: 3 }}>
+				<View style={styles.topRow}>
+					<Pressable
+						onPress={() => router.back()}
+						style={[styles.iconBtn, { borderColor: t.line }]}
+						accessibilityRole="button"
+						accessibilityLabel="Go back"
+					>
+						<ArrowLeft size={20} color={t.ink} />
+					</Pressable>
+					{title ? (
+						<Text
+							style={[styles.paneTitle, { color: t.ink }]}
+							numberOfLines={1}
+						>
+							{title}
+						</Text>
+					) : null}
+				</View>
+			</View>
+		);
+	}
 
 	return (
 		<View
@@ -283,6 +315,11 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.bold,
 		fontSize: 10,
 		color: "#fff",
+	},
+	paneTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 18,
+		flexShrink: 1,
 	},
 	titleBlock: {
 		paddingHorizontal: 16,

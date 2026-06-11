@@ -47,10 +47,20 @@ const formatCurrency = (amount: number) =>
 		maximumFractionDigits: 0,
 	}).format(amount);
 
-export default function ClientDetailScreen() {
+// Body extracted (P26 Option B) so the iPad pane can render this without the
+// route shell. headerMode DEFAULTS to "root" → the iPhone route wrapper below is
+// byte-identical to before. In a pane the shell passes headerMode="pane".
+export function ClientDetailBody({
+	id,
+	headerMode = "root",
+}: {
+	id: string;
+	headerMode?: "root" | "pane";
+}) {
 	const t = useTokens();
-	const { clientId } = useLocalSearchParams<{ clientId: string }>();
+	const clientId = id;
 	const router = useRouter();
+	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
 	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
@@ -122,7 +132,7 @@ export default function ClientDetailScreen() {
 				style={[styles.flex, { backgroundColor: t.bg }]}
 				edges={[]}
 			>
-				<AppHeader mode="detail" />
+				<AppHeader mode={appHeaderMode} />
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
 						style={[
@@ -167,7 +177,7 @@ export default function ClientDetailScreen() {
 			style={[styles.flex, { backgroundColor: t.bg }]}
 			edges={[]}
 		>
-			<AppHeader mode="detail" title={client.companyName} />
+			<AppHeader mode={appHeaderMode} title={client.companyName} />
 			<ScrollView
 				contentContainerStyle={styles.scroll}
 				refreshControl={
@@ -508,6 +518,13 @@ export default function ClientDetailScreen() {
 			/>
 		</SafeAreaView>
 	);
+}
+
+// Thin route wrapper — reads the id from the route, renders the body in "root"
+// mode (iPhone-identical). The iPad pane imports ClientDetailBody directly.
+export default function ClientDetailScreen() {
+	const { clientId } = useLocalSearchParams<{ clientId: string }>();
+	return <ClientDetailBody id={clientId} />;
 }
 
 function countSuffix(n: number) {
