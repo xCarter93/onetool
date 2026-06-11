@@ -61,6 +61,8 @@ export default function SignUpScreen() {
 	});
 	const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
 
+	const [firstName, setFirstName] = React.useState("");
+	const [lastName, setLastName] = React.useState("");
 	const [emailAddress, setEmailAddress] = React.useState("");
 	const [password, setPassword] = React.useState("");
 	const [pendingVerification, setPendingVerification] = React.useState(false);
@@ -68,6 +70,8 @@ export default function SignUpScreen() {
 	const [loading, setLoading] = React.useState(false);
 
 	// Inline Field Kit error state (no OS alert popups).
+	const [firstNameError, setFirstNameError] = React.useState<string | null>(null);
+	const [lastNameError, setLastNameError] = React.useState<string | null>(null);
 	const [emailError, setEmailError] = React.useState<string | null>(null);
 	const [passwordError, setPasswordError] = React.useState<string | null>(null);
 	const [codeError, setCodeError] = React.useState<string | null>(null);
@@ -103,11 +107,34 @@ export default function SignUpScreen() {
 	const onSignUpPress = async () => {
 		try {
 			setLoading(true);
+			setFirstNameError(null);
+			setLastNameError(null);
 			setEmailError(null);
 			setPasswordError(null);
 			setFormError(null);
 
-			const { error } = await signUp.password({ emailAddress, password });
+			// First/last name are required by the Clerk instance — collect them up
+			// front so the sign-up reaches "complete" after email verification and
+			// finalize() succeeds (SSO supplies these from the provider account).
+			const fName = firstName.trim();
+			const lName = lastName.trim();
+			let invalid = false;
+			if (!fName) {
+				setFirstNameError("Enter your first name.");
+				invalid = true;
+			}
+			if (!lName) {
+				setLastNameError("Enter your last name.");
+				invalid = true;
+			}
+			if (invalid) return;
+
+			const { error } = await signUp.password({
+				emailAddress,
+				password,
+				firstName: fName,
+				lastName: lName,
+			});
 			if (error) {
 				const mapped = mapAuthError(error);
 				if (mapped.field === "email") setEmailError(mapped.message);
@@ -268,6 +295,52 @@ export default function SignUpScreen() {
 			onProviderError={setFormError}
 			onAppleSuccess={goAfterAuth}
 		>
+			<View style={styles.nameRow}>
+				<View style={styles.nameField}>
+					<TextInput
+						style={[
+							styles.input,
+							styles.nameInput,
+							firstNameError ? styles.inputError : null,
+						]}
+						autoCapitalize="words"
+						value={firstName}
+						placeholder="First name"
+						placeholderTextColor={tokens.mutedForeground}
+						textContentType="givenName"
+						onChangeText={(v) => {
+							setFirstName(v);
+							if (firstNameError) setFirstNameError(null);
+						}}
+						editable={!loading}
+					/>
+				</View>
+				<View style={styles.nameField}>
+					<TextInput
+						style={[
+							styles.input,
+							styles.nameInput,
+							lastNameError ? styles.inputError : null,
+						]}
+						autoCapitalize="words"
+						value={lastName}
+						placeholder="Last name"
+						placeholderTextColor={tokens.mutedForeground}
+						textContentType="familyName"
+						onChangeText={(v) => {
+							setLastName(v);
+							if (lastNameError) setLastNameError(null);
+						}}
+						editable={!loading}
+					/>
+				</View>
+			</View>
+			{firstNameError || lastNameError ? (
+				<Text style={styles.errorText}>
+					{firstNameError ?? lastNameError}
+				</Text>
+			) : null}
+
 			<TextInput
 				style={[styles.input, emailError ? styles.inputError : null]}
 				autoCapitalize="none"
@@ -364,6 +437,17 @@ const styles = StyleSheet.create({
 	},
 	inputError: {
 		borderColor: tokens.destructive,
+	},
+	nameRow: {
+		flexDirection: "row",
+		gap: spacing.md,
+		marginTop: spacing.md,
+	},
+	nameField: {
+		flex: 1,
+	},
+	nameInput: {
+		marginTop: 0,
 	},
 	errorText: {
 		fontFamily: fontFamily.regular,
