@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, Building, RefreshCw, X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
+import { CenteredModal } from "@/components/ipad/centered-modal";
+import { useDevice } from "@/lib/use-device";
 
 const MEMBERSHIP_PAGE_SIZE = 25;
 
@@ -31,6 +33,7 @@ function formatRole(role: string): string {
 export default function OrgSwitchSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { device } = useDevice();
 	const { userMemberships, setActive, isLoaded } = useOrganizationList({
 		userMemberships: {
 			infinite: true,
@@ -84,17 +87,8 @@ export default function OrgSwitchSheet() {
 		}
 	};
 
-	return (
-		<View
-			style={[
-				styles.container,
-				{
-					backgroundColor: t.card,
-					paddingBottom: insets.bottom,
-				},
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+	const content = (
+		<>
 			<View style={styles.header}>
 				<View style={{ flex: 1 }} />
 				<Text style={[styles.title, { color: t.ink }]}>
@@ -238,6 +232,33 @@ export default function OrgSwitchSheet() {
 					</Text>
 				</View>
 			)}
+		</>
+	);
+
+	// iPad (Strategy B): centered card; maxHeight 86% so a long org list scrolls within it.
+	if (device === "ipad") {
+		return (
+			<CenteredModal onScrimPress={() => router.back()} maxHeight="86%">
+				<View style={[styles.padCard, { backgroundColor: t.card }]}>
+					{content}
+				</View>
+			</CenteredModal>
+		);
+	}
+
+	// iPhone — existing bottom sheet, byte-identical.
+	return (
+		<View
+			style={[
+				styles.container,
+				{
+					backgroundColor: t.card,
+					paddingBottom: insets.bottom,
+				},
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			{content}
 		</View>
 	);
 }
@@ -248,6 +269,11 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	// iPad card (CenteredModal supplies the shell + radius + maxHeight bound).
+	padCard: {
+		flexShrink: 1,
+		paddingTop: 18,
 	},
 	grabber: {
 		alignSelf: "center",

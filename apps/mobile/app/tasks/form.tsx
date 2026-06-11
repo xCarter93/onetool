@@ -22,6 +22,8 @@ import { FieldMenu } from "@/components/FieldMenu";
 import { AppCalendar } from "@/components/AppCalendar";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { utcMsFromDateId, todayUtcDateId, dateIdFromUtcMs } from "@/lib/date";
+import { CenteredModal } from "@/components/ipad/centered-modal";
+import { useDevice } from "@/lib/use-device";
 
 const TYPE_OPTIONS = [
 	{ value: "external", label: "External" },
@@ -69,6 +71,7 @@ function formatDateLabel(dateId: string): string {
 export default function TaskFormSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { device } = useDevice();
 	const params = useLocalSearchParams<{
 		taskId?: string;
 		clientId?: string;
@@ -239,14 +242,8 @@ export default function TaskFormSheet() {
 
 	const headerTitle = isEdit ? "Edit task" : "New task";
 
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+	const content = (
+		<>
 			<View style={styles.header}>
 				<View style={{ flex: 1 }} />
 				<Text style={[styles.headerTitle, { color: t.ink }]}>
@@ -516,6 +513,31 @@ export default function TaskFormSheet() {
 				t={t}
 				insets={insets}
 			/>
+		</>
+	);
+
+	// iPad (Strategy B): centered card; maxHeight 92% so the tall form + keyboard
+	// scroll within it and never clip (this is a 0.9,1.0 sheet on iPhone).
+	if (device === "ipad") {
+		return (
+			<CenteredModal onScrimPress={() => router.back()} maxHeight="92%">
+				<View style={[styles.padCard, { backgroundColor: t.card }]}>
+					{content}
+				</View>
+			</CenteredModal>
+		);
+	}
+
+	// iPhone — existing bottom sheet, byte-identical.
+	return (
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: t.card, paddingBottom: insets.bottom },
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			{content}
 		</View>
 	);
 }
@@ -647,6 +669,11 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	// iPad card (CenteredModal supplies the shell + radius + maxHeight bound).
+	padCard: {
+		flexShrink: 1,
+		paddingTop: 18,
 	},
 	overlay: {
 		position: "absolute",

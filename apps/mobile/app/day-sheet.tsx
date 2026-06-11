@@ -8,6 +8,8 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useTokens } from "@/lib/theme";
 import { DaySheet } from "@/components/calendar/DaySheet";
 import { DAY_MS } from "@/components/calendar/dateUtils";
+import { CenteredModal } from "@/components/ipad/centered-modal";
+import { useDevice } from "@/lib/use-device";
 
 // Day-detail form-sheet route — same native sheet type as /org-switch (chrome in
 // _layout.tsx). Owns the single-day getCalendarEvents query, the tasks.complete
@@ -15,6 +17,7 @@ import { DAY_MS } from "@/components/calendar/dateUtils";
 export default function DaySheetRoute() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { device } = useDevice();
 	const params = useLocalSearchParams<{ dayTs?: string }>();
 	const dayTs = params.dayTs ? Number(params.dayTs) : null;
 
@@ -66,6 +69,29 @@ export default function DaySheetRoute() {
 		router.push(`/projects/${id}` as Href);
 	};
 
+	const sheet = (
+		<DaySheet
+			dayTs={dayTs}
+			projects={events?.projects ?? []}
+			tasks={events?.tasks ?? []}
+			onClose={() => router.back()}
+			onProjectPress={handleProjectPress}
+			onCompleteTask={handleCompleteTask}
+			completedTaskIds={completedTaskIds}
+			updating={updating}
+		/>
+	);
+
+	// iPad (Strategy B): centered card; maxHeight 86% so a full day scrolls within it.
+	if (device === "ipad") {
+		return (
+			<CenteredModal onScrimPress={() => router.back()} maxHeight="86%">
+				<View style={[styles.padCard, { backgroundColor: t.card }]}>{sheet}</View>
+			</CenteredModal>
+		);
+	}
+
+	// iPhone — existing bottom sheet, byte-identical.
 	return (
 		<View
 			style={[
@@ -73,16 +99,7 @@ export default function DaySheetRoute() {
 				{ backgroundColor: t.card, paddingBottom: insets.bottom },
 			]}
 		>
-			<DaySheet
-				dayTs={dayTs}
-				projects={events?.projects ?? []}
-				tasks={events?.tasks ?? []}
-				onClose={() => router.back()}
-				onProjectPress={handleProjectPress}
-				onCompleteTask={handleCompleteTask}
-				completedTaskIds={completedTaskIds}
-				updating={updating}
-			/>
+			{sheet}
 		</View>
 	);
 }
@@ -93,5 +110,9 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	// iPad card (CenteredModal supplies the shell + radius + maxHeight bound).
+	padCard: {
+		flexShrink: 1,
 	},
 });

@@ -16,6 +16,8 @@ import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { ChevronRight, Folder } from "lucide-react-native";
 import { Avatar } from "@/components/ui";
 import { fontFamily, type, radii, STATUS, useTokens } from "@/lib/theme";
+import { CenteredModal } from "@/components/ipad/centered-modal";
+import { useDevice } from "@/lib/use-device";
 
 // Inline initials — no importable shared helper exists (clients/index.tsx's
 // initialsFrom is module-local, non-exported). See INITIALS NOTE in 24-02 plan.
@@ -36,6 +38,7 @@ const openResult = (href: string) => {
 export default function SearchOverlay() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { device } = useDevice();
 
 	// Raw input drives DISPLAY mode; debounced `q` drives query execution.
 	const [raw, setRaw] = useState("");
@@ -69,51 +72,46 @@ export default function SearchOverlay() {
 	const recentLoading =
 		!typing && (recentClients === undefined || recentProjects === undefined);
 
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.border }]} />
-			<View style={styles.header}>
-				<TextInput
-					style={[
-						styles.input,
-						{
-							color: t.ink,
-							backgroundColor: t.surface,
-							borderColor: t.line,
-						},
-					]}
-					placeholder="Search clients, projects…"
-					placeholderTextColor={t.faint}
-					value={raw}
-					onChangeText={setRaw}
-					autoFocus
-					autoCorrect={false}
-					autoCapitalize="none"
-					returnKeyType="search"
-				/>
-				<Pressable
-					onPress={() => router.back()}
-					hitSlop={8}
-					accessibilityRole="button"
-					accessibilityLabel="Cancel search"
-					style={styles.cancel}
-				>
-					<Text style={[styles.cancelText, { color: t.accent }]}>Cancel</Text>
-				</Pressable>
-			</View>
-
-			<ScrollView
-				style={styles.body}
-				contentContainerStyle={styles.bodyContent}
-				keyboardShouldPersistTaps="handled"
-				keyboardDismissMode="on-drag"
+	const header = (
+		<View style={styles.header}>
+			<TextInput
+				style={[
+					styles.input,
+					{
+						color: t.ink,
+						backgroundColor: t.surface,
+						borderColor: t.line,
+					},
+				]}
+				placeholder="Search clients, projects…"
+				placeholderTextColor={t.faint}
+				value={raw}
+				onChangeText={setRaw}
+				autoFocus
+				autoCorrect={false}
+				autoCapitalize="none"
+				returnKeyType="search"
+			/>
+			<Pressable
+				onPress={() => router.back()}
+				hitSlop={8}
+				accessibilityRole="button"
+				accessibilityLabel="Cancel search"
+				style={styles.cancel}
 			>
-				{recentLoading ? (
+				<Text style={[styles.cancelText, { color: t.accent }]}>Cancel</Text>
+			</Pressable>
+		</View>
+	);
+
+	const body = (
+		<ScrollView
+			style={styles.body}
+			contentContainerStyle={styles.bodyContent}
+			keyboardShouldPersistTaps="handled"
+			keyboardDismissMode="on-drag"
+		>
+			{recentLoading ? (
 					<View style={styles.spinner}>
 						<ActivityIndicator color={t.accent} />
 					</View>
@@ -164,7 +162,32 @@ export default function SearchOverlay() {
 						) : null}
 					</>
 				)}
-			</ScrollView>
+		</ScrollView>
+	);
+
+	// iPad (Strategy B): centered card; maxHeight 86% so results scroll within it.
+	if (device === "ipad") {
+		return (
+			<CenteredModal onScrimPress={() => router.back()} maxHeight="86%">
+				<View style={[styles.padCard, { backgroundColor: t.card }]}>
+					{header}
+					{body}
+				</View>
+			</CenteredModal>
+		);
+	}
+
+	// iPhone — existing bottom sheet, byte-identical.
+	return (
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: t.card, paddingBottom: insets.bottom },
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			{header}
+			{body}
 		</View>
 	);
 }
@@ -246,6 +269,11 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	// iPad card padding (CenteredModal supplies the card shell + radius).
+	padCard: {
+		flexShrink: 1,
+		paddingTop: 18,
 	},
 	grabber: {
 		alignSelf: "center",

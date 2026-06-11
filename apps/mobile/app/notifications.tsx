@@ -18,12 +18,15 @@ import {
 	truncateText,
 	stripAuthorIdFromMessage,
 } from "@/lib/notification-utils";
+import { CenteredModal } from "@/components/ipad/centered-modal";
+import { useDevice } from "@/lib/use-device";
 
 // Notifications form-sheet route — same native sheet type + chrome as /org-switch
 // and /day-sheet (sheet options in _layout.tsx). Owns the list query + markRead.
 export default function NotificationsSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { device } = useDevice();
 	const notificationData = useQuery(api.notifications.listForCurrentUser, {
 		limit: 50,
 	});
@@ -51,38 +54,34 @@ export default function NotificationsSheet() {
 		}
 	};
 
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.border }]} />
-			<View style={styles.header}>
-				<View style={styles.titleWrap}>
-					<Text style={[styles.title, { color: t.ink }]}>Notifications</Text>
-					{unreadCount > 0 ? (
-						<View style={[styles.badge, { backgroundColor: t.danger }]}>
-							<Text style={styles.badgeText}>
-								{unreadCount > 9 ? "9+" : unreadCount}
-							</Text>
-						</View>
-					) : null}
-				</View>
-				<View style={styles.headerAction}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={8}
-						accessibilityRole="button"
-						accessibilityLabel="Close"
-						style={styles.closeBtn}
-					>
-						<X size={22} color={t.sub} />
-					</Pressable>
-				</View>
+	const header = (
+		<View style={styles.header}>
+			<View style={styles.titleWrap}>
+				<Text style={[styles.title, { color: t.ink }]}>Notifications</Text>
+				{unreadCount > 0 ? (
+					<View style={[styles.badge, { backgroundColor: t.danger }]}>
+						<Text style={styles.badgeText}>
+							{unreadCount > 9 ? "9+" : unreadCount}
+						</Text>
+					</View>
+				) : null}
 			</View>
+			<View style={styles.headerAction}>
+				<Pressable
+					onPress={() => router.back()}
+					hitSlop={8}
+					accessibilityRole="button"
+					accessibilityLabel="Close"
+					style={styles.closeBtn}
+				>
+					<X size={22} color={t.sub} />
+				</Pressable>
+			</View>
+		</View>
+	);
 
+	const body = (
+		<>
 			{loading ? (
 				<View style={styles.state}>
 					<ActivityIndicator size="small" color={t.accent} />
@@ -142,6 +141,32 @@ export default function NotificationsSheet() {
 					))}
 				</ScrollView>
 			)}
+		</>
+	);
+
+	// iPad (Strategy B): centered card; maxHeight 86% so a long list scrolls within it.
+	if (device === "ipad") {
+		return (
+			<CenteredModal onScrimPress={() => router.back()} maxHeight="86%">
+				<View style={[styles.padCard, { backgroundColor: t.card }]}>
+					{header}
+					{body}
+				</View>
+			</CenteredModal>
+		);
+	}
+
+	// iPhone — existing bottom sheet, byte-identical.
+	return (
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: t.card, paddingBottom: insets.bottom },
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			{header}
+			{body}
 		</View>
 	);
 }
@@ -152,6 +177,11 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	// iPad card (CenteredModal supplies the shell + radius + maxHeight bound).
+	padCard: {
+		flexShrink: 1,
+		paddingTop: 18,
 	},
 	grabber: {
 		alignSelf: "center",
