@@ -87,27 +87,34 @@ export default function CreateOrganizationScreen() {
 	const [companySize, setCompanySize] = useState<CompanySize | undefined>();
 
 	// --- Webhook-race / setup state -----------------------------------------
-	// createdOrgRef holds the Clerk org id created (or reused) this session; it
-	// gates the org-id-match race predicate and the no-duplicate retry path.
+	// createdOrgRef holds the Clerk org id created this session — but ONLY for the
+	// brief tick before setActive() lands: setActive flips the active org, which
+	// bumps the root _layout ConvexProvider key and REMOUNTS this screen, resetting
+	// all in-memory state (refs included). The durable signal across that remount
+	// is the active Clerk org itself, so the org-id gate keys off activeOrg first.
 	const createdOrgRef = useRef<string | null>(null);
-	const [createdOrgId, setCreatedOrgId] = useState<string | null>(null);
+	const creatingRef = useRef(false); // in-flight guard against duplicate creates
 	const [settingUp, setSettingUp] = useState(false);
 	const [setupStartedAt, setSetupStartedAt] = useState<number | null>(null);
 	const [timedOut, setTimedOut] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 
 	// The reactive Convex row flips to the matching org once createFromClerk
-	// inserts it — org-id MATCH, not mere non-null (canWriteMetadata).
-	const metadataReady = canWriteMetadata(convexOrg, createdOrgId);
+	// inserts it — org-id MATCH, not mere non-null (canWriteMetadata). Keyed off
+	// the durable active org id (createdOrgRef is reset by the remount and is only
+	// read inside handlers, never during render).
+	const metadataReady = canWriteMetadata(convexOrg, activeOrg?.id ?? null);
 
-	// While "setting up", advance to step 2 the moment the matching row appears.
-	// Done during render (sentinel pattern, not an effect) so the overlay->step-2
-	// transition has no setState-in-effect cascade.
-	if (settingUp && metadataReady) {
+	// Once an active org exists, the create step is done. setActive() remounts this
+	// screen with step reset to 1; re-derive from the durable active org so we
+	// resume at step 2 instead of restarting step 1 — restarting created a fresh
+	// duplicate org on every Continue. Also clears the setup overlay (no-op after
+	// a remount, since fresh state already has settingUp=false).
+	if (activeOrg && step === 1) {
+		setStep(2);
 		setSettingUp(false);
 		setTimedOut(false);
 		setSetupStartedAt(null);
-		if (step === 1) setStep(2);
 	}
 
 	// 30s timeout tick — surfaces the recovery copy distinctly from the spinner.
@@ -138,24 +145,39 @@ export default function CreateOrganizationScreen() {
 				// Retry path: an org was already created this session — re-wait, do
 				// NOT create a duplicate.
 			} else {
+				// In-flight guard around the create itself: setActive remounts this
+				// screen, so a second tap before that lands must NOT fire a second
+				// createOrganization (the duplicate-org bug). Reset only on failure;
+				// on success the remount discards this instance's ref entirely.
+				if (creatingRef.current) return;
+				creatingRef.current = true;
 				if (!createOrganization || !setActive) {
 					throw new Error("Clerk is not ready");
 				}
 				const org = await createOrganization({ name: orgName.trim() });
 				createdOrgRef.current = org.id;
+				// setActive remounts this screen (root ConvexProvider key bump). The
+				// remounted instance resumes at step 2 via the activeOrg sentinel; any
+				// state set after this line may be discarded by the remount.
 				await setActive({ organization: org.id });
 			}
 
-			setCreatedOrgId(createdOrgRef.current);
 			setSettingUp(true);
 			setSetupStartedAt(Date.now());
 		} catch {
+			creatingRef.current = false;
 			setSettingUp(false);
 			setFormError("Couldn't create your organization. Try again.");
 		}
 	}
 
 	function handleStep1Continue() {
+		// Org already active (e.g. tapped during the post-create remount): advance,
+		// never create a duplicate.
+		if (activeOrg) {
+			setStep(2);
+			return;
+		}
 		const result = validateStep1({ orgName });
 		if (!result.valid) {
 			setFieldErrors(result.fields);
