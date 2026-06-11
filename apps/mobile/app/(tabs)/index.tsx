@@ -273,7 +273,6 @@ export default function HomeScreen() {
 										foot={`${leadClients} new leads`}
 										icon="Users"
 										tone="#00a6f4"
-										showExternalAffordance
 										onPress={() => router.push("/clients")}
 									/>
 								</View>
@@ -284,7 +283,6 @@ export default function HomeScreen() {
 										foot={`${plannedProjects} planned`}
 										icon="FolderKanban"
 										tone="#7c5cff"
-										showExternalAffordance
 										onPress={() => router.push("/projects")}
 									/>
 								</View>
@@ -297,7 +295,6 @@ export default function HomeScreen() {
 										foot={`${overdueInvoices?.length ?? 0} overdue`}
 										icon="Receipt"
 										tone="#e8930c"
-										showExternalAffordance
 										onPress={() => router.push("/money")}
 									/>
 								</View>
@@ -308,7 +305,6 @@ export default function HomeScreen() {
 										foot={`${openQuotes?.length ?? 0} awaiting reply`}
 										icon="FileText"
 										tone="#1f9d57"
-										showExternalAffordance
 										onPress={() => router.push("/money")}
 									/>
 								</View>

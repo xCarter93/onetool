@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
-import { icons, ArrowUpRight } from "lucide-react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { icons } from "lucide-react-native";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { Card } from "./card";
 import { Eyebrow } from "./eyebrow";
 
@@ -13,8 +13,9 @@ interface StatCardProps {
 	tone?: string;
 	onPress?: () => void;
 	style?: ViewStyle | ViewStyle[];
-	// Faint top-right ↗ glyph signalling the tile opens its own surface.
-	showExternalAffordance?: boolean;
+	// Large faded glyph bleeding off the bottom-right corner (Fi-style). Defaults
+	// on whenever an icon is set; pass false to suppress it.
+	watermark?: boolean;
 }
 
 export function StatCard({
@@ -25,25 +26,25 @@ export function StatCard({
 	tone,
 	onPress,
 	style,
-	showExternalAffordance,
+	watermark = true,
 }: StatCardProps) {
 	const t = useTokens();
-	const Glyph = icon ? icons[icon] : null;
+	// Local alias: computed access directly on the imported namespace trips
+	// eslint import/namespace.
+	const iconMap = icons;
+	const Glyph = icon ? iconMap[icon] : null;
 	const tint = tone || t.accent;
 
 	return (
 		<Card onPress={onPress} style={style}>
-			{showExternalAffordance ? (
-				<View style={styles.affordance} pointerEvents="none">
-					<ArrowUpRight size={16} color={t.faint} />
+			{Glyph && watermark ? (
+				<View style={styles.watermarkClip} pointerEvents="none">
+					<View style={styles.watermark}>
+						<Glyph size={132} color={tint} strokeWidth={2} />
+					</View>
 				</View>
 			) : null}
-			<View style={styles.header}>
-				{Glyph ? (
-					<View style={[styles.tile, { backgroundColor: tint + "14" }]}>
-						<Glyph size={18} color={tint} />
-					</View>
-				) : null}
+			<View style={styles.label}>
 				<Eyebrow>{label}</Eyebrow>
 			</View>
 			<Text style={[styles.value, { color: t.ink }]} numberOfLines={1}>
@@ -59,23 +60,24 @@ export function StatCard({
 }
 
 const styles = StyleSheet.create({
-	affordance: {
+	// Fills the card inside its border so the oversized glyph clips at the corner.
+	watermarkClip: {
 		position: "absolute",
-		top: 14,
-		right: 14,
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		borderRadius: radii.rLg,
+		overflow: "hidden",
 	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
+	watermark: {
+		position: "absolute",
+		right: -26,
+		bottom: -32,
+		opacity: 0.16,
+	},
+	label: {
 		marginBottom: 10,
-	},
-	tile: {
-		width: 32,
-		height: 32,
-		borderRadius: 10,
-		alignItems: "center",
-		justifyContent: "center",
 	},
 	value: {
 		fontFamily: fontFamily.bold,
