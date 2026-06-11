@@ -86,6 +86,7 @@ export default function RootLayout() {
 						<Stack screenOptions={{ headerShown: false }}>
 							<Stack.Screen name="(tabs)" />
 							<Stack.Screen name="(auth)" />
+							<Stack.Screen name="(onboarding)" />
 							<Stack.Screen name="index" />
 							{/* Shared document details — root-level so back returns to the
 							    origin tab (client/project/money), not the Money stack. */}
