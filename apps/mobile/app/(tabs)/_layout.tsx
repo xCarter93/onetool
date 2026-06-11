@@ -1,13 +1,41 @@
 import { Tabs, Redirect } from "expo-router";
-import { useAuth } from "@clerk/expo";
+import type { Href } from "expo-router";
+import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { FieldKitTabBar } from "@/components/field-kit-tab-bar";
+import { resolveAuthDestination } from "@/lib/postAuthRouting";
 
 export default function TabLayout() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded: authLoaded } = useAuth();
+  const { organization, isLoaded: orgLoaded } = useOrganization();
+  const { userMemberships, isLoaded: listLoaded } = useOrganizationList({
+    userMemberships: true,
+  });
+  const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
 
   // If the user is not signed in, redirect them to the sign-in page
   if (!isSignedIn) {
     return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  const dest = resolveAuthDestination({
+    isLoaded: Boolean(authLoaded && orgLoaded && listLoaded),
+    isSignedIn: Boolean(isSignedIn),
+    hasActiveOrg: Boolean(organization),
+    membershipCount: userMemberships?.data?.length ?? 0,
+    needsMetadata,
+  });
+
+  // Hold while orgs/metadata resolve — don't gate tabs on a half-loaded state.
+  if (dest === "loading") {
+    return null;
+  }
+
+  // Defensive gate: a signed-in user with no active org / incomplete metadata
+  // resolves to the wizard — never let them fall through to blank tabs.
+  if (dest === "/(onboarding)/create-organization") {
+    return <Redirect href={dest as Href} />;
   }
 
   return (
