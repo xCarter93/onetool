@@ -11,6 +11,7 @@ import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
+import { useDevice } from "@/lib/use-device";
 import { useFonts } from "expo-font";
 import {
 	Outfit_400Regular,
@@ -48,8 +49,42 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 	);
 }
 
+// Overlay presentation per device (26-05, Strategy B). iPhone keeps the native
+// `formSheet` bottom sheet BYTE-IDENTICAL (detents preserved); iPad swaps to a
+// transparent full-screen modal so the body's own CenteredModal owns the scrim +
+// centered card (no native-sheet double-frame). `iPhoneSheet` carries the exact
+// per-screen detents; only `presentation`/`sheet*` differ by device.
+function overlayOptions(
+	device: "phone" | "ipad",
+	iPhoneSheet: {
+		sheetAllowedDetents: number[];
+		sheetInitialDetentIndex: number;
+		sheetGrabberVisible: boolean;
+		sheetCornerRadius: number;
+	}
+) {
+	if (device === "ipad") {
+		return {
+			presentation: "transparentModal" as const,
+			contentStyle: { backgroundColor: "transparent" },
+			headerShown: false,
+			animation: "fade" as const,
+		};
+	}
+	return {
+		presentation: "formSheet" as const,
+		contentStyle: { backgroundColor: "transparent" },
+		headerShown: false,
+		...iPhoneSheet,
+	};
+}
+
 export default function RootLayout() {
 	const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+	// 26-05 Strategy B: iPad overlays present as transparentModal (CenteredModal
+	// owns the scrim); iPhone keeps formSheet. useWindowDimensions-backed, so a
+	// rotate re-evaluates the branch.
+	const { device } = useDevice();
 
 	// Load Outfit font (same as web app)
 	const [fontsLoaded, fontError] = useFonts({
@@ -94,91 +129,70 @@ export default function RootLayout() {
 							<Stack.Screen name="invoice/[id]" />
 							<Stack.Screen
 								name="org-switch"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 							<Stack.Screen
 								name="day-sheet"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 							<Stack.Screen
 								name="notifications"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 							<Stack.Screen
 								name="journey"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 							<Stack.Screen
 								name="tasks/form"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.9, 1.0],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 							{/* Short fixed detent — two create rows + title (hand-tune in <verification>). */}
 							<Stack.Screen
 								name="create"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.4],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 							{/* Near-full search overlay. Opens at 0.9 (draggable to full) so the
 							    input clears the status bar — a single [1.0] detent renders content
 							    under the notch (matches tasks/form's [0.9, 1.0] pattern). */}
 							<Stack.Screen
 								name="search"
-								options={{
-									presentation: "formSheet",
-									contentStyle: { backgroundColor: "transparent" },
-									headerShown: false,
+								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.9, 1.0],
 									sheetInitialDetentIndex: 0,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
-								}}
+								})}
 							/>
 						</Stack>
 					</View>

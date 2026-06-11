@@ -3,6 +3,8 @@ import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ListChecks, UserPlus, ChevronRight } from "lucide-react-native";
 import { fontFamily, type, radii, createGlyph, useTokens } from "@/lib/theme";
+import { CenteredModal } from "@/components/ipad/centered-modal";
+import { useDevice } from "@/lib/use-device";
 
 // Create action-sheet — presentation (detents/corner) lives in _layout.tsx.
 // Exactly two create entry points; the ＋ FAB is the only opener.
@@ -26,6 +28,7 @@ const OPTIONS = [
 export default function CreateSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
+	const { device } = useDevice();
 
 	// Dismiss-then-push (verbatim from notifications.tsx) — synchronous, no delay.
 	const choose = (href: string) => {
@@ -33,14 +36,9 @@ export default function CreateSheet() {
 		router.push(href as Href);
 	};
 
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+	// Body content is identical across devices; only the outer container differs.
+	const content = (
+		<>
 			<View style={styles.titleRow}>
 				<Text style={[styles.title, { color: t.ink }]}>Create</Text>
 			</View>
@@ -68,6 +66,32 @@ export default function CreateSheet() {
 					</Pressable>
 				))}
 			</View>
+		</>
+	);
+
+	// iPad (Strategy B): CenteredModal owns the scrim + centered card (the root
+	// Stack presents this route as a transparentModal). No grabber/bottom-sheet
+	// chrome inside the card.
+	if (device === "ipad") {
+		return (
+			<CenteredModal onScrimPress={() => router.back()}>
+				<View style={[styles.padCard, { backgroundColor: t.card }]}>
+					{content}
+				</View>
+			</CenteredModal>
+		);
+	}
+
+	// iPhone — existing bottom sheet, byte-identical.
+	return (
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: t.card, paddingBottom: insets.bottom },
+			]}
+		>
+			<View style={[styles.grabber, { backgroundColor: t.border }]} />
+			{content}
 		</View>
 	);
 }
@@ -78,6 +102,11 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 30,
 		borderTopRightRadius: 30,
 		overflow: "hidden",
+	},
+	// iPad card padding (CenteredModal supplies the card shell + radius).
+	padCard: {
+		paddingTop: 20,
+		paddingBottom: 20,
 	},
 	grabber: {
 		alignSelf: "center",
