@@ -4,7 +4,12 @@
 // creation and premature tabs/wizard flashes. No React imports — Vitest-testable.
 
 export type AuthRoutingState = {
-	isLoaded: boolean;
+	// Clerk auth resolved (useAuth().isLoaded). Gates EVERY decision.
+	authLoaded: boolean;
+	// Org context resolved (useOrganization + useOrganizationList). Only
+	// meaningful for a signed-in user — the org hooks never reach isLoaded:true
+	// without an active session, so the signed-out path must NOT wait on it.
+	orgLoaded: boolean;
 	isSignedIn: boolean;
 	hasActiveOrg: boolean;
 	membershipCount: number;
@@ -19,8 +24,15 @@ const LOADING = "loading";
 // Resolve the enriched model to a deterministic destination. "loading" is a
 // sentinel: the caller renders splash/null and does NOT redirect.
 export function resolveAuthDestination(state: AuthRoutingState): string {
-	if (!state.isLoaded) return LOADING;
+	// Auth must resolve before any decision.
+	if (!state.authLoaded) return LOADING;
+	// Signed out: go straight to sign-in. Do NOT gate on orgLoaded — Clerk's org
+	// hooks stay unloaded without an active user, which otherwise hangs the auth
+	// layout on a permanent "loading" (blank screen) after sign-out.
 	if (!state.isSignedIn) return SIGN_IN;
+	// Signed in: wait for org context before choosing tabs vs wizard, else a
+	// transiently-null active org flashes the wizard.
+	if (!state.orgLoaded) return LOADING;
 
 	if (state.hasActiveOrg) {
 		// metadata still resolving — avoid a premature tabs/wizard flash

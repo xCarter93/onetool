@@ -20,7 +20,8 @@ export default function TabLayout() {
   }
 
   const dest = resolveAuthDestination({
-    isLoaded: Boolean(authLoaded && orgLoaded && listLoaded),
+    authLoaded: Boolean(authLoaded),
+    orgLoaded: Boolean(orgLoaded && listLoaded),
     isSignedIn: Boolean(isSignedIn),
     hasActiveOrg: Boolean(organization),
     membershipCount: userMemberships?.data?.length ?? 0,

@@ -6,7 +6,8 @@ import {
 } from "./postAuthRouting";
 
 const base: AuthRoutingState = {
-	isLoaded: true,
+	authLoaded: true,
+	orgLoaded: true,
 	isSignedIn: true,
 	hasActiveOrg: true,
 	membershipCount: 1,
@@ -14,8 +15,8 @@ const base: AuthRoutingState = {
 };
 
 describe("resolveAuthDestination", () => {
-	it("returns 'loading' while not loaded", () => {
-		expect(resolveAuthDestination({ ...base, isLoaded: false })).toBe(
+	it("returns 'loading' while auth is not loaded", () => {
+		expect(resolveAuthDestination({ ...base, authLoaded: false })).toBe(
 			"loading"
 		);
 	});
@@ -26,10 +27,30 @@ describe("resolveAuthDestination", () => {
 		).toBe("/(auth)/sign-in");
 	});
 
+	// Regression: Clerk's org hooks never reach isLoaded:true without an active
+	// user, so a signed-out user must reach sign-in WITHOUT waiting on org
+	// context — otherwise the auth layout hangs on a blank screen after sign-out.
+	it("routes signed-out users to sign-in even when org context is unloaded", () => {
+		expect(
+			resolveAuthDestination({
+				...base,
+				isSignedIn: false,
+				orgLoaded: false,
+			})
+		).toBe("/(auth)/sign-in");
+	});
+
+	it("returns 'loading' for a signed-in user while org context resolves", () => {
+		expect(
+			resolveAuthDestination({ ...base, orgLoaded: false })
+		).toBe("loading");
+	});
+
 	it("resumes the wizard when active org has incomplete metadata", () => {
 		expect(
 			resolveAuthDestination({
-				isLoaded: true,
+				authLoaded: true,
+				orgLoaded: true,
 				isSignedIn: true,
 				hasActiveOrg: true,
 				membershipCount: 1,
@@ -53,7 +74,8 @@ describe("resolveAuthDestination", () => {
 	it("routes a member with no active org to the wizard (has-memberships)", () => {
 		expect(
 			resolveAuthDestination({
-				isLoaded: true,
+				authLoaded: true,
+				orgLoaded: true,
 				isSignedIn: true,
 				hasActiveOrg: false,
 				membershipCount: 2,
@@ -65,7 +87,8 @@ describe("resolveAuthDestination", () => {
 	it("routes a brand-new no-org user to the wizard", () => {
 		expect(
 			resolveAuthDestination({
-				isLoaded: true,
+				authLoaded: true,
+				orgLoaded: true,
 				isSignedIn: true,
 				hasActiveOrg: false,
 				membershipCount: 0,

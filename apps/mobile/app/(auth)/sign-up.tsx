@@ -56,7 +56,9 @@ export default function SignUpScreen() {
 	// Routing state hooks — build AuthRoutingState for navigateAfterAuth.
 	const { isLoaded: authLoaded, isSignedIn } = useAuth();
 	const { organization } = useOrganization();
-	const { userMemberships } = useOrganizationList({ userMemberships: true });
+	const { userMemberships, isLoaded: orgListLoaded } = useOrganizationList({
+		userMemberships: true,
+	});
 	const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
 
 	const [emailAddress, setEmailAddress] = React.useState("");
@@ -79,7 +81,8 @@ export default function SignUpScreen() {
 		navigateAfterAuth(
 			(href) => router.replace(href as Parameters<typeof router.replace>[0]),
 			resolveAuthDestination({
-				isLoaded: authLoaded,
+				authLoaded: Boolean(authLoaded),
+				orgLoaded: Boolean(orgListLoaded),
 				isSignedIn: Boolean(isSignedIn),
 				hasActiveOrg: Boolean(organization),
 				membershipCount: userMemberships?.data?.length ?? 0,
@@ -89,6 +92,7 @@ export default function SignUpScreen() {
 	}, [
 		router,
 		authLoaded,
+		orgListLoaded,
 		isSignedIn,
 		organization,
 		userMemberships?.data?.length,

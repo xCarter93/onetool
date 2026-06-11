@@ -66,7 +66,8 @@ export default function SignInScreen() {
 		navigateAfterAuth(
 			(href) => router.replace(href as Parameters<typeof router.replace>[0]),
 			resolveAuthDestination({
-				isLoaded: Boolean(authLoaded && orgListLoaded),
+				authLoaded: Boolean(authLoaded),
+				orgLoaded: Boolean(orgListLoaded),
 				isSignedIn: Boolean(isSignedIn),
 				hasActiveOrg: Boolean(activeOrg),
 				membershipCount: userMemberships?.data?.length ?? 0,

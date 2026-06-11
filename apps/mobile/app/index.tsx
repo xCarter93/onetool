@@ -15,7 +15,8 @@ export default function Index() {
 	const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
 
 	const dest = resolveAuthDestination({
-		isLoaded: Boolean(authLoaded && orgLoaded && listLoaded),
+		authLoaded: Boolean(authLoaded),
+		orgLoaded: Boolean(orgLoaded && listLoaded),
 		isSignedIn: Boolean(isSignedIn),
 		hasActiveOrg: Boolean(organization),
 		membershipCount: userMemberships?.data?.length ?? 0,

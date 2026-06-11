@@ -259,7 +259,8 @@ export default function CreateOrganizationScreen() {
 			navigateAfterAuth(
 				(href) => router.replace(href as Parameters<typeof router.replace>[0]),
 				resolveAuthDestination({
-					isLoaded: Boolean(authLoaded && isLoaded),
+					authLoaded: Boolean(authLoaded),
+					orgLoaded: Boolean(isLoaded),
 					isSignedIn: Boolean(isSignedIn),
 					hasActiveOrg: Boolean(activeOrg),
 					membershipCount: userMemberships?.data?.length ?? 0,

@@ -15,7 +15,8 @@ export default function AuthRoutesLayout() {
 
 	const isSignedInBool = Boolean(isSignedIn);
 	const dest = resolveAuthDestination({
-		isLoaded: Boolean(authLoaded && orgLoaded && listLoaded),
+		authLoaded: Boolean(authLoaded),
+		orgLoaded: Boolean(orgLoaded && listLoaded),
 		isSignedIn: isSignedInBool,
 		hasActiveOrg: Boolean(organization),
 		membershipCount: userMemberships?.data?.length ?? 0,
