@@ -11,10 +11,28 @@ import { useTokens } from "@/lib/theme";
 import {
 	SelectionProvider,
 	useSelection,
-	type SelectionTab,
 } from "@/lib/selection-context";
 import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
+import { PaneHeader } from "@/components/ipad/pane-header";
+import { DetailPlaceholder } from "@/components/ipad/detail-placeholder";
+import ClientsScreen from "@/app/(tabs)/clients/index";
+import ProjectsScreen from "@/app/(tabs)/projects/index";
+import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
+import { ProjectDetailBody } from "@/app/(tabs)/projects/[projectId]";
+
+// Master-detail list-pane bodies + their PaneHeader titles, keyed by tab. The
+// shell owns the ONE list-pane header (PaneHeader); the body renders with
+// headerMode="pane" to suppress its own AppHeader (locked single-header
+// convention from 26-01). The detail body owns its OWN one header (PaneHeader
+// via the onBack prop — see below).
+const LIST_PANE: Record<
+	"clients" | "projects",
+	{ title: string; Screen: typeof ClientsScreen }
+> = {
+	clients: { title: "Clients", Screen: ClientsScreen },
+	projects: { title: "Work", Screen: ProjectsScreen },
+};
 
 // The shell tracks one extra surface beyond the sidebar nav: Profile (reached
 // via the footer, not a nav row). It never highlights a nav row — mapped to a
@@ -80,7 +98,7 @@ function IpadShellInner() {
 	const t = useTokens();
 	const router = useRouter();
 	const { orientation } = useDevice();
-	const { select } = useSelection();
+	const { state, select, clear } = useSelection();
 	const pathname = usePathname();
 
 	// activeTab is held in LOCAL STATE so a sidebar tap swaps only the content
@@ -153,17 +171,72 @@ function IpadShellInner() {
 	const isMasterDetail = MASTER_DETAIL.includes(activeTab);
 	const detailTab = activeTab as "clients" | "projects" | "money";
 
-	// ── Portrait: sidebar + single content pane ──────────────────────────────
+	// Clients/Work share the list-pane wiring (330px list + selection-driven
+	// detail). Money has no list pane yet (26-03 owns it) — it stays detail-only
+	// via PaneDetailHost (its kind→quote/invoice routing lives there).
+	const listConfig = detailTab === "money" ? null : LIST_PANE[detailTab];
+	const selectedId = detailTab === "money" ? null : state[detailTab];
+	const hasSelection =
+		detailTab === "money" ? state.money !== null : selectedId !== null;
+
+	// List-pane body: shell owns the PaneHeader title; the body renders
+	// headerMode="pane" + onSelect drives the shell selection (NEVER router.push
+	// to a (tabs) sibling — that re-mounts and slides the whole shell, 26-01).
+	const listPaneBody = listConfig ? (
+		<View style={styles.fill}>
+			<PaneHeader title={listConfig.title} />
+			<listConfig.Screen
+				headerMode="pane"
+				onSelect={(id: string) =>
+					select(detailTab as "clients" | "projects", id)
+				}
+				selectedId={selectedId}
+			/>
+		</View>
+	) : null;
+
+	// Detail body. Clients/Work render their *DetailBody directly with onBack=
+	// clear(tab) so the body's ONE header (PaneHeader) returns to the list/
+	// placeholder without a router pop. Money keeps PaneDetailHost (26-03 domain).
+	// Selection persists across rotation, so the same record stays open/highlighted.
+	const renderDetail = (withBack: boolean) => {
+		if (detailTab === "clients" && state.clients) {
+			return (
+				<ClientDetailBody
+					id={state.clients}
+					headerMode="pane"
+					onBack={withBack ? () => clear("clients") : undefined}
+				/>
+			);
+		}
+		if (detailTab === "projects" && state.projects) {
+			return (
+				<ProjectDetailBody
+					id={state.projects}
+					headerMode="pane"
+					onBack={withBack ? () => clear("projects") : undefined}
+				/>
+			);
+		}
+		// Money (or no selection) → PaneDetailHost handles placeholder + routing.
+		return <PaneDetailHost tab={detailTab} />;
+	};
+
+	// ── Portrait: sidebar + single content pane (push list → detail) ──────────
 	if (orientation === "portrait") {
 		return (
 			<View style={[styles.root, { backgroundColor: t.surface }]}>
 				{sidebar}
 				<View style={styles.contentPane}>
-					{/* TODO(26-02/03/04): per-tab portrait pane content (list → detail
-					    push within the pane). For now, master-detail tabs render the
-					    detail host (placeholder until a selection exists). */}
 					{isMasterDetail ? (
-						<PaneDetailHost tab={detailTab} />
+						hasSelection ? (
+							// Detail open full-width; back clears selection → returns to list.
+							renderDetail(true)
+						) : listConfig ? (
+							listPaneBody
+						) : (
+							<PaneDetailHost tab={detailTab} />
+						)
 					) : (
 						<PortraitSlot tab={activeTab} />
 					)}
@@ -178,16 +251,21 @@ function IpadShellInner() {
 			{sidebar}
 			{isMasterDetail ? (
 				<>
-					{/* TODO(26-02/03/04): the 330px list pane content. */}
 					<View style={[styles.listPane, { borderRightColor: t.line }]}>
-						<ListPaneSlot tab={detailTab} />
+						{listPaneBody ?? <PortraitSlot tab={activeTab} />}
 					</View>
 					<View style={styles.detailPane}>
-						<PaneDetailHost tab={detailTab} />
+						{hasSelection ? (
+							// Landscape: no back affordance — the list is always visible, so
+							// the detail body renders its plain pane header (no onBack).
+							renderDetail(false)
+						) : (
+							<DetailPlaceholder tab={detailTab} />
+						)}
 					</View>
 				</>
 			) : (
-				// TODO(26-02/03/04): Home wide dashboard, Tasks wide list, Profile pane.
+				// TODO(26-04): Home wide dashboard, Tasks wide list, Profile pane.
 				<View style={styles.contentPane}>
 					<PortraitSlot tab={activeTab} />
 				</View>
@@ -196,15 +274,10 @@ function IpadShellInner() {
 	);
 }
 
-// Wave-2 fill-in slots — kept minimal so the shell compiles + the structure is
-// verifiable. These will be replaced by the real per-tab content.
+// Non-master-detail fill-in slot (Home / Tasks / Profile — 26-04 fills these).
 function PortraitSlot({ tab }: { tab: ShellTab }) {
 	const t = useTokens();
 	return <View style={[styles.slot, { backgroundColor: t.surface }]} accessibilityLabel={`${tab}-pane`} />;
-}
-function ListPaneSlot({ tab }: { tab: SelectionTab }) {
-	const t = useTokens();
-	return <View style={[styles.slot, { backgroundColor: t.surface }]} accessibilityLabel={`${tab}-list`} />;
 }
 
 export function IpadShell() {
@@ -237,6 +310,9 @@ const styles = StyleSheet.create({
 		overflow: "hidden",
 	},
 	slot: {
+		flex: 1,
+	},
+	fill: {
 		flex: 1,
 	},
 });

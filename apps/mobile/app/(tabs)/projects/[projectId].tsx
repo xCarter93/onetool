@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { Badge, Card, Eyebrow, ListRow, Ring, SectionHeader } from "@/components/ui";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
@@ -81,13 +82,21 @@ function KV({
 export function ProjectDetailBody({
 	id,
 	headerMode = "root",
+	onBack,
 }: {
 	id: string;
 	headerMode?: "root" | "pane";
+	// See ClientDetailBody — onBack clears the shell selection (router.back would
+	// pop out of the shell); keeps one header per pane.
+	onBack?: () => void;
 }) {
 	const projectId = id;
 	const router = useRouter();
 	const t = useTokens();
+	// In an iPad pane the header is a PaneHeader (onBack clears the shell
+	// selection; router.back would pop out of the shell). onBack is undefined in
+	// landscape (list always visible → no back button).
+	const isPane = headerMode === "pane";
 	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [dateField, setDateField] = useState<DateField | null>(null);
@@ -197,7 +206,11 @@ export function ProjectDetailBody({
 				style={{ flex: 1, backgroundColor: t.bg }}
 				edges={[]}
 			>
-				<AppHeader mode={appHeaderMode} />
+				{isPane ? (
+					<PaneHeader onBack={onBack} />
+				) : (
+					<AppHeader mode={appHeaderMode} />
+				)}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View style={[styles.skeletonHeader, { backgroundColor: t.card }]} />
 					<View
@@ -216,7 +229,11 @@ export function ProjectDetailBody({
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={[]}>
-			<AppHeader mode={appHeaderMode} />
+			{isPane ? (
+				<PaneHeader title={project.title} onBack={onBack} />
+			) : (
+				<AppHeader mode={appHeaderMode} />
+			)}
 			<ScrollView
 				contentContainerStyle={styles.scroll}
 				refreshControl={

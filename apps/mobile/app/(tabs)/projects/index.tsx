@@ -29,9 +29,23 @@ function formatDate(timestamp: number | undefined): string | null {
 	});
 }
 
-export default function ProjectsScreen() {
+// headerMode/onSelect/selectedId default off → the iPhone path (router.push,
+// AppHeader mode="detail" title="Work", no selected highlight) is byte-identical.
+// The iPad shell renders this as the Work list pane (tab id "projects"):
+// headerMode="pane" suppresses the AppHeader (shell mounts PaneHeader), onSelect
+// drives the detail pane via shell selection, selectedId marks the row.
+export default function ProjectsScreen({
+	headerMode = "root",
+	onSelect,
+	selectedId = null,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (id: string) => void;
+	selectedId?: string | null;
+} = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -94,6 +108,10 @@ export default function ProjectsScreen() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [allProjects, filter, searchQuery, clientNameById]);
 
+	// iPad pane: tap drives shell selection (no route push). iPhone: push route.
+	const openProject = (id: string) =>
+		onSelect ? onSelect(id) : router.push(`/projects/${id}`);
+
 	const renderProject = ({ item }: { item: Project }) => {
 		const start = formatDate(item.startDate);
 		const end = formatDate(item.endDate);
@@ -105,11 +123,16 @@ export default function ProjectsScreen() {
 					: end
 						? `Due ${end}`
 						: null;
+		const isSelected = isPane && item._id === selectedId;
 
 		return (
 			<Pressable
-				style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-				onPress={() => router.push(`/projects/${item._id}`)}
+				style={({ pressed }) => [
+					styles.card,
+					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					pressed && styles.cardPressed,
+				]}
+				onPress={() => openProject(item._id)}
 			>
 				<View style={styles.cardTop}>
 					<View style={styles.cardTitleCol}>
@@ -197,7 +220,9 @@ export default function ProjectsScreen() {
 			style={{ flex: 1, backgroundColor: t.surface }}
 			edges={[]}
 		>
-			<AppHeader mode="detail" title="Work" />
+			{/* Pane mode: shell mounts PaneHeader title="Work" above this body.
+			    iPhone: AppHeader mode="detail" title="Work" (byte-identical). */}
+			{isPane ? null : <AppHeader mode="detail" title="Work" />}
 
 			{loading ? (
 				<View style={styles.listContent}>

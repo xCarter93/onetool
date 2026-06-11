@@ -46,9 +46,23 @@ function initialsFrom(name: string): string {
 	return name.slice(0, 2).toUpperCase();
 }
 
-export default function ClientsScreen() {
+// headerMode/onSelect/selectedId default off → the iPhone path (router.push,
+// AppHeader mode="root", no selected highlight) is byte-identical. The iPad
+// shell renders this as a list pane: headerMode="pane" suppresses the self-
+// mounted AppHeader (shell mounts PaneHeader), onSelect drives the detail pane
+// via the shell selection instead of a route push, selectedId marks the row.
+export default function ClientsScreen({
+	headerMode = "root",
+	onSelect,
+	selectedId = null,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (id: string) => void;
+	selectedId?: string | null;
+} = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -87,12 +101,23 @@ export default function ClientsScreen() {
 
 	const goToNew = () => router.push("/clients/new");
 
+	// On iPad pane: row tap drives the shell selection (no route push — the
+	// (tabs) group has no in-group navigator, so a push slides the whole shell).
+	// On iPhone: push the detail route exactly as before.
+	const openClient = (id: string) =>
+		onSelect ? onSelect(id) : router.push(`/clients/${id}`);
+
 	const renderClient = ({ item }: { item: ClientRow }) => {
 		const contactName = item.primaryContact?.name ?? "—";
+		const isSelected = isPane && item.id === selectedId;
 		return (
 			<Pressable
-				style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-				onPress={() => router.push(`/clients/${item.id}`)}
+				style={({ pressed }) => [
+					styles.card,
+					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					pressed && styles.cardPressed,
+				]}
+				onPress={() => openClient(item.id)}
 			>
 				<Avatar text={initialsFrom(item.name)} size={48} />
 				<View style={styles.cardBody}>
@@ -184,7 +209,9 @@ export default function ClientsScreen() {
 			style={{ flex: 1, backgroundColor: t.surface }}
 			edges={[]}
 		>
-			<AppHeader mode="root" title="Clients" />
+			{/* Pane mode: the shell mounts PaneHeader above this body (one header
+			    per pane — locked convention). iPhone: AppHeader mode="root". */}
+			{isPane ? null : <AppHeader mode="root" title="Clients" />}
 
 			{loading ? (
 				<View style={styles.listContent}>

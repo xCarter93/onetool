@@ -1,5 +1,12 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+	Pressable,
+	StyleSheet,
+	Text,
+	View,
+	type StyleProp,
+	type ViewStyle,
+} from "react-native";
 import { ChevronRight, icons } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Badge } from "./badge";
@@ -15,6 +22,10 @@ interface ListRowProps {
 	showChevron?: boolean;
 	onPress?: () => void;
 	last?: boolean;
+	// iPad master-detail selected-row highlight (26-02). Defaults off so every
+	// existing iPhone call site renders byte-identical.
+	selected?: boolean;
+	containerStyle?: StyleProp<ViewStyle>;
 }
 
 export function ListRow({
@@ -28,6 +39,8 @@ export function ListRow({
 	showChevron = true,
 	onPress,
 	last,
+	selected = false,
+	containerStyle,
 }: ListRowProps) {
 	const t = useTokens();
 	const Glyph = icon ? icons[icon] : null;
@@ -39,6 +52,12 @@ export function ListRow({
 			style={({ pressed }) => [
 				styles.row,
 				{ borderBottomColor: t.line, borderBottomWidth: last ? 0 : 1 },
+				selected && {
+					backgroundColor: t.accentSoft,
+					borderLeftWidth: 3,
+					borderLeftColor: t.accent,
+				},
+				containerStyle,
 				pressed && styles.pressed,
 			]}
 		>

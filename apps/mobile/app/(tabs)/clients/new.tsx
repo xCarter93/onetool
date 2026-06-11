@@ -18,7 +18,9 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import * as Crypto from "expo-crypto";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { Button } from "@/components/ui";
+import { useDevice } from "@/lib/use-device";
 import {
 	AddressAutocomplete,
 	type AddressValue,
@@ -41,9 +43,19 @@ const EMPTY_ADDRESS: AddressValue = {
 	zipCode: "",
 };
 
-export default function NewClientScreen() {
+// headerMode defaults "root" → iPhone full-screen create is byte-identical. On
+// iPad the shell renders this route full-width via its stack-route Slot beside
+// the sidebar; headerMode="pane" suppresses the self-mounted AppHeader so the
+// pane owns one header (PaneHeader with a back affordance dismisses to the list).
+export default function NewClientScreen({
+	headerMode,
+}: { headerMode?: "root" | "pane" } = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const { device } = useDevice();
+	// The shell renders /clients/new via <Slot /> (no props), so the route self-
+	// detects iPad here. An explicit headerMode prop still wins (future callers).
+	const isPane = headerMode ? headerMode === "pane" : device === "ipad";
 
 	const createClient = useMutation(api.clients.create);
 	const createContact = useMutation(api.clientContacts.create);
@@ -165,7 +177,13 @@ export default function NewClientScreen() {
 			edges={[]}
 			style={[styles.screen, { backgroundColor: t.bg }]}
 		>
-			<AppHeader mode="detail" title="New client" sub="Clients" />
+			{/* Pane mode (iPad full-width stack slot): one header, with a back
+			    affordance to the clients list. iPhone: AppHeader (byte-identical). */}
+			{isPane ? (
+				<PaneHeader title="New client" onBack={() => router.back()} />
+			) : (
+				<AppHeader mode="detail" title="New client" sub="Clients" />
+			)}
 			<KeyboardAvoidingView
 				style={styles.flex}
 				behavior={Platform.OS === "ios" ? "padding" : undefined}

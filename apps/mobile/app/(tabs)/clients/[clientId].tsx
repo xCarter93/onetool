@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, useTokens, STATUS } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
@@ -53,13 +54,22 @@ const formatCurrency = (amount: number) =>
 export function ClientDetailBody({
 	id,
 	headerMode = "root",
+	onBack,
 }: {
 	id: string;
 	headerMode?: "root" | "pane";
+	// iPad pane: when the shell provides onBack, the body's header is a PaneHeader
+	// whose back CLEARS the shell selection (router.back would pop out of the
+	// shell — selection-driven nav never pushed a route). Keeps ONE header.
+	onBack?: () => void;
 }) {
 	const t = useTokens();
 	const clientId = id;
 	const router = useRouter();
+	// In an iPad pane the header is a PaneHeader (the shell's selection drives
+	// nav, so onBack clears it; router.back would pop out of the shell). onBack
+	// is undefined in landscape (list always visible → no back button shown).
+	const isPane = headerMode === "pane";
 	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
@@ -132,7 +142,11 @@ export function ClientDetailBody({
 				style={[styles.flex, { backgroundColor: t.bg }]}
 				edges={[]}
 			>
-				<AppHeader mode={appHeaderMode} />
+				{isPane ? (
+					<PaneHeader onBack={onBack} />
+				) : (
+					<AppHeader mode={appHeaderMode} />
+				)}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
 						style={[
@@ -177,7 +191,11 @@ export function ClientDetailBody({
 			style={[styles.flex, { backgroundColor: t.bg }]}
 			edges={[]}
 		>
-			<AppHeader mode={appHeaderMode} title={client.companyName} />
+			{isPane ? (
+				<PaneHeader title={client.companyName} onBack={onBack} />
+			) : (
+				<AppHeader mode={appHeaderMode} title={client.companyName} />
+			)}
 			<ScrollView
 				contentContainerStyle={styles.scroll}
 				refreshControl={
