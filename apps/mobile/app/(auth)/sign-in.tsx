@@ -1,20 +1,27 @@
-import { useSignIn } from "@clerk/expo";
-import { Link, useRouter } from "expo-router";
 import {
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-	StyleSheet,
-	Platform,
-	Alert,
-} from "react-native";
+	useSignIn,
+	useSSO,
+	useAuth,
+	useOrganization,
+	useOrganizationList,
+} from "@clerk/expo";
+import { Link, useRouter } from "expo-router";
+import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform } from "react-native";
 import React from "react";
-import { useSSO } from "@clerk/expo";
 import * as WebBrowser from "expo-web-browser";
-import { colors, spacing, fontFamily } from "@/lib/theme";
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
 import { StyledButton } from "@/components/styled";
-import { GoogleIcon } from "@/components/GoogleIcon";
+import { AuthScreenShell } from "@/components/auth/AuthScreenShell";
+import {
+	mapAuthError,
+	isCancellation,
+	isOAuthDismissed,
+	isIncompleteSignIn,
+	mapIncompleteStatus,
+} from "@/lib/authErrors";
+import { navigateAfterAuth, resolveAuthDestination } from "@/lib/postAuthRouting";
 
 // Preloads the browser for Android devices
 const useWarmUpBrowser = () => {
@@ -29,6 +36,8 @@ const useWarmUpBrowser = () => {
 
 WebBrowser.maybeCompleteAuthSession();
 
+type FieldErrors = { email?: string; password?: string };
+
 export default function SignInScreen() {
 	useWarmUpBrowser();
 
@@ -36,219 +45,244 @@ export default function SignInScreen() {
 	const { startSSOFlow } = useSSO();
 	const router = useRouter();
 
+	// Post-auth routing inputs — the single destination resolver consumes these.
+	const { isLoaded: authLoaded, isSignedIn } = useAuth();
+	const { organization: activeOrg } = useOrganization();
+	const { userMemberships, isLoaded: orgListLoaded } = useOrganizationList({
+		userMemberships: true,
+	});
+	const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
+
 	const [emailAddress, setEmailAddress] = React.useState("");
 	const [password, setPassword] = React.useState("");
 	const [loading, setLoading] = React.useState(false);
+	const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
+	const [formError, setFormError] = React.useState<string | null>(null);
 
-	// Handle the submission of the sign-in form
+	// Centralized post-auth navigation — every success path routes through here;
+	// never a hardcoded tabs destination. router.replace is typed to a Href
+	// literal union; the helper deals in plain strings — cast at the boundary.
+	const goAfterAuth = React.useCallback(() => {
+		navigateAfterAuth(
+			(href) => router.replace(href as Parameters<typeof router.replace>[0]),
+			resolveAuthDestination({
+				isLoaded: Boolean(authLoaded && orgListLoaded),
+				isSignedIn: Boolean(isSignedIn),
+				hasActiveOrg: Boolean(activeOrg),
+				membershipCount: userMemberships?.data?.length ?? 0,
+				needsMetadata,
+			})
+		);
+	}, [
+		router,
+		authLoaded,
+		orgListLoaded,
+		isSignedIn,
+		activeOrg,
+		userMemberships,
+		needsMetadata,
+	]);
+
+	const clearErrors = () => {
+		setFieldErrors({});
+		setFormError(null);
+	};
+
+	// Email/password sign-in via the Clerk future API.
 	const onSignInPress = async () => {
 		try {
 			setLoading(true);
-			// Submit the identifier and password
+			clearErrors();
+
 			const { error } = await signIn.password({
 				identifier: emailAddress,
 				password,
 			});
 
 			if (error) {
-				Alert.alert(
-					"Error",
-					error.longMessage || error.message || "Failed to sign in"
-				);
+				const mapped = mapAuthError(error);
+				if (mapped.field === "email" || mapped.field === "password") {
+					setFieldErrors({ [mapped.field]: mapped.message });
+				} else {
+					setFormError(mapped.message);
+				}
 				return;
 			}
 
-			// Activate the new session, then redirect
 			if (signIn.status === "complete") {
 				await signIn.finalize();
-				router.replace("/(tabs)");
-			} else {
-				// Further steps (e.g. MFA) would be handled here
-				console.error("Sign-in incomplete:", signIn.status);
+				goAfterAuth();
+			} else if (isIncompleteSignIn(signIn.status)) {
+				// Preserve the MFA / missing_requirements branch as an inline message
+				// rather than silently dropping it.
+				setFormError(mapIncompleteStatus(signIn.status).message);
 			}
-		} catch (err: any) {
-			Alert.alert("Error", err?.message || "Failed to sign in");
-			console.error(JSON.stringify(err, null, 2));
+		} catch (err) {
+			const mapped = mapAuthError(err);
+			if (mapped.field === "email" || mapped.field === "password") {
+				setFieldErrors({ [mapped.field]: mapped.message });
+			} else {
+				setFormError(mapped.message);
+			}
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// Handle Google OAuth sign-in
+	// Google OAuth sign-in. Dismissal is silent — detected both via the
+	// authSessionResult (non-throwing dismiss) and via a thrown cancellation.
 	const handleGoogleSignIn = React.useCallback(async () => {
 		try {
 			setLoading(true);
+			clearErrors();
 
-			const {
-				createdSessionId,
-				setActive: ssoSetActive,
-				signIn,
-				signUp,
-			} = await startSSOFlow({
-				strategy: "oauth_google",
-			});
+			const { createdSessionId, setActive, authSessionResult } =
+				await startSSOFlow({ strategy: "oauth_google" });
 
-			if (createdSessionId && ssoSetActive) {
-				await ssoSetActive({ session: createdSessionId });
-				router.replace("/(tabs)");
-			} else {
-				// Handle cases where user needs to complete additional steps
-				if (signUp?.status === "missing_requirements") {
-					Alert.alert(
-						"Additional Information Required",
-						"Please complete your profile to continue."
-					);
-				} else if (signIn?.status && signIn.status !== "complete") {
-					Alert.alert(
-						"Additional Verification Required",
-						"Please complete the additional verification steps."
-					);
-				}
+			if (isOAuthDismissed(authSessionResult)) return;
+
+			if (createdSessionId && setActive) {
+				await setActive({ session: createdSessionId });
+				goAfterAuth();
 			}
-		} catch (err: any) {
-			console.error("OAuth error:", JSON.stringify(err, null, 2));
-			Alert.alert(
-				"Error",
-				err.errors?.[0]?.message || "Failed to sign in with Google"
-			);
+		} catch (err) {
+			if (isCancellation(err) || isOAuthDismissed(err)) return;
+			setFormError(mapAuthError(err).message);
 		} finally {
 			setLoading(false);
 		}
-	}, [startSSOFlow]);
+	}, [startSSOFlow, goAfterAuth]);
 
 	return (
-		<View style={styles.container}>
-			<Text style={styles.title}>Welcome back</Text>
-			<Text style={styles.subtitle}>Sign in to continue to OneTool</Text>
+		<AuthScreenShell
+			title="Welcome back"
+			subtitle="Sign in to continue to OneTool"
+			appleType="SIGN_IN"
+			loading={loading}
+			onGoogle={handleGoogleSignIn}
+			onProviderError={setFormError}
+			onAppleSuccess={goAfterAuth}
+		>
+			<View>
+				<TextInput
+					style={[styles.input, fieldErrors.email ? styles.inputError : null]}
+					autoCapitalize="none"
+					value={emailAddress}
+					placeholder="Email"
+					placeholderTextColor={tokens.mutedForeground}
+					keyboardType="email-address"
+					onChangeText={(t) => {
+						setEmailAddress(t);
+						if (fieldErrors.email)
+							setFieldErrors((prev) => ({ ...prev, email: undefined }));
+					}}
+					editable={!loading}
+				/>
+				{fieldErrors.email ? (
+					<Text style={styles.fieldErrorText}>{fieldErrors.email}</Text>
+				) : null}
 
-			{/* Google OAuth Button */}
-			<StyledButton
-				intent="outline"
-				size="lg"
-				onPress={handleGoogleSignIn}
-				isLoading={loading}
-				disabled={loading}
-				showArrow={false}
-				icon={<GoogleIcon size={20} />}
-				style={{ marginBottom: spacing.md }}
-			>
-				Continue with Google
-			</StyledButton>
+				<TextInput
+					style={[
+						styles.input,
+						styles.inputSpacingTop,
+						fieldErrors.password ? styles.inputError : null,
+					]}
+					value={password}
+					placeholder="Password"
+					placeholderTextColor={tokens.mutedForeground}
+					secureTextEntry
+					onChangeText={(t) => {
+						setPassword(t);
+						if (fieldErrors.password)
+							setFieldErrors((prev) => ({ ...prev, password: undefined }));
+					}}
+					editable={!loading}
+				/>
+				{fieldErrors.password ? (
+					<Text style={styles.fieldErrorText}>{fieldErrors.password}</Text>
+				) : null}
 
-			<View style={styles.divider}>
-				<View style={styles.dividerLine} />
-				<Text style={styles.dividerText}>or</Text>
-				<View style={styles.dividerLine} />
+				{formError ? (
+					<View style={styles.formError}>
+						<Text style={styles.formErrorText}>{formError}</Text>
+					</View>
+				) : null}
+
+				<StyledButton
+					intent="primary"
+					size="lg"
+					onPress={onSignInPress}
+					isLoading={loading}
+					disabled={loading}
+					showArrow={false}
+					textStyle={{ fontFamily: fontFamily.bold }}
+					style={styles.cta}
+				>
+					Sign in
+				</StyledButton>
+
+				<View style={styles.footer}>
+					<Text style={styles.footerText}>Don&apos;t have an account? </Text>
+					<Link href="/(auth)/sign-up" asChild>
+						<TouchableOpacity disabled={loading}>
+							<Text style={styles.linkText}>Sign up</Text>
+						</TouchableOpacity>
+					</Link>
+				</View>
 			</View>
-
-			{/* Email/Password Form */}
-			<TextInput
-				style={styles.input}
-				autoCapitalize="none"
-				value={emailAddress}
-				placeholder="Email"
-				placeholderTextColor={colors.mutedForeground}
-				keyboardType="email-address"
-				onChangeText={setEmailAddress}
-				editable={!loading}
-			/>
-
-			<TextInput
-				style={styles.input}
-				value={password}
-				placeholder="Password"
-				placeholderTextColor={colors.mutedForeground}
-				secureTextEntry={true}
-				onChangeText={setPassword}
-				editable={!loading}
-			/>
-
-			<StyledButton
-				intent="primary"
-				size="lg"
-				onPress={onSignInPress}
-				isLoading={loading}
-				disabled={loading}
-				showArrow={false}
-				style={{ marginBottom: spacing.md }}
-			>
-				Sign In
-			</StyledButton>
-
-			<View style={styles.footer}>
-				<Text style={styles.footerText}>Don't have an account? </Text>
-				<Link href="/(auth)/sign-up" asChild>
-					<TouchableOpacity disabled={loading}>
-						<Text style={styles.linkText}>Sign up</Text>
-					</TouchableOpacity>
-				</Link>
-			</View>
-		</View>
+		</AuthScreenShell>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		justifyContent: "center",
-		padding: spacing.lg,
-		backgroundColor: colors.background,
-	},
-	title: {
-		fontSize: 28,
-		fontFamily: fontFamily.bold,
-		marginBottom: spacing.xs,
-		textAlign: "center",
-		color: colors.foreground,
-	},
-	subtitle: {
-		fontSize: 14,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginBottom: spacing.xl,
-		textAlign: "center",
-	},
 	input: {
 		borderWidth: 1,
-		borderColor: colors.border,
-		borderRadius: 8,
+		borderColor: tokens.border,
+		borderRadius: radii.lg,
 		padding: spacing.md,
-		marginBottom: spacing.md,
-		fontSize: 14,
+		fontSize: type.body,
 		fontFamily: fontFamily.regular,
-		backgroundColor: colors.background,
-		color: colors.foreground,
+		backgroundColor: tokens.card,
+		color: tokens.ink,
 	},
-	divider: {
-		flexDirection: "row",
-		alignItems: "center",
-		marginVertical: spacing.lg,
+	inputSpacingTop: {
+		marginTop: spacing.md,
 	},
-	dividerLine: {
-		flex: 1,
-		height: 1,
-		backgroundColor: colors.border,
+	inputError: {
+		borderColor: tokens.danger,
 	},
-	dividerText: {
-		marginHorizontal: spacing.md,
+	fieldErrorText: {
+		marginTop: spacing.sm,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		fontSize: 13,
+		fontSize: type.body,
+		color: tokens.danger,
+	},
+	formError: {
+		marginTop: spacing.md,
+	},
+	formErrorText: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.body,
+		color: tokens.danger,
+	},
+	cta: {
+		marginTop: spacing.lg,
 	},
 	footer: {
 		flexDirection: "row",
 		justifyContent: "center",
-		marginTop: spacing.md,
+		marginTop: spacing.lg,
 		alignItems: "center",
 	},
 	footerText: {
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		fontSize: 13,
+		fontSize: type.body,
+		color: tokens.mutedForeground,
 	},
 	linkText: {
-		fontFamily: fontFamily.semibold,
-		color: colors.primary,
-		fontSize: 13,
+		fontFamily: fontFamily.bold,
+		fontSize: type.body,
+		color: tokens.accent,
 	},
 });
