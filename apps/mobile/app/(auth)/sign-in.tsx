@@ -110,13 +110,24 @@ export default function SignInScreen() {
 				return;
 			}
 
-			if (signIn.status === "complete") {
-				await signIn.finalize();
+			// signIn.password resolves with only { error }; the signIn closure
+			// snapshot's .status is stale this tick, so finalize directly (it acts
+			// on live client state) rather than gating on the stale status — which
+			// otherwise silently stalled a correct sign-in. finalize converts the
+			// complete sign-in into an active session; goAfterAuth + the reactive
+			// auth layout route onward.
+			const { error: finalizeError } = await signIn.finalize();
+			if (!finalizeError) {
 				goAfterAuth();
-			} else if (isIncompleteSignIn(signIn.status)) {
-				// Preserve the MFA / missing_requirements branch as an inline message
-				// rather than silently dropping it.
+				return;
+			}
+
+			// finalize rejected: the sign-in needs more factors (e.g. MFA). Surface
+			// the incomplete reason inline, falling back to the mapped error.
+			if (isIncompleteSignIn(signIn.status)) {
 				setFormError(mapIncompleteStatus(signIn.status).message);
+			} else {
+				setFormError(mapAuthError(finalizeError).message);
 			}
 		} catch (err) {
 			const mapped = mapAuthError(err);

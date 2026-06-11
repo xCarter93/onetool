@@ -143,10 +143,18 @@ export default function SignUpScreen() {
 				return;
 			}
 
-			if (signUp.status === "complete") {
-				await signUp.finalize();
-				goAfterAuth();
+			// verifyEmailCode resolves with only { error }; the signUp closure
+			// snapshot's .status is stale this tick, so finalize directly (it acts
+			// on live client state) instead of gating on the stale status — which
+			// otherwise left the user stuck on the verify screen. finalize converts
+			// the now-complete sign-up into an active session; goAfterAuth + the
+			// reactive auth layout then route onward (new user -> wizard).
+			const { error: finalizeError } = await signUp.finalize();
+			if (finalizeError) {
+				setCodeError(mapAuthError(finalizeError).message);
+				return;
 			}
+			goAfterAuth();
 		} catch (err) {
 			setCodeError(mapAuthError(err).message);
 		} finally {
