@@ -21,6 +21,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { fontFamily, spacing, tokens, type } from "@/lib/theme";
+import { useDevice } from "@/lib/use-device";
 import { StyledButton } from "@/components/styled";
 import { AuthScreenShell } from "@/components/auth/AuthScreenShell";
 import {
@@ -52,6 +53,8 @@ export default function SignUpScreen() {
 	const { signUp } = useSignUp();
 	const { startSSOFlow } = useSSO();
 	const router = useRouter();
+	const { device } = useDevice();
+	const isPad = device === "ipad";
 
 	// Routing state hooks — build AuthRoutingState for navigateAfterAuth.
 	const { isLoaded: authLoaded, isSignedIn } = useAuth();
@@ -236,48 +239,54 @@ export default function SignUpScreen() {
 			>
 				<ScrollView
 					style={styles.flex}
-					contentContainerStyle={styles.verifyContent}
+					contentContainerStyle={[
+						styles.verifyContent,
+						// iPad: center the ~480pt card column, both orientations.
+						isPad && styles.verifyContentPad,
+					]}
 					keyboardShouldPersistTaps="handled"
 				>
-					<Text style={styles.title}>Verify your email</Text>
-					<Text style={styles.subtitle}>
-						We sent a 6-digit code to {emailAddress}
-					</Text>
+					<View style={isPad ? styles.cardPad : undefined}>
+						<Text style={styles.title}>Verify your email</Text>
+						<Text style={styles.subtitle}>
+							We sent a 6-digit code to {emailAddress}
+						</Text>
 
-					<TextInput
-						style={[styles.input, codeError ? styles.inputError : null]}
-						value={code}
-						placeholder="6-digit code"
-						placeholderTextColor={tokens.mutedForeground}
-						keyboardType="number-pad"
-						onChangeText={(v) => {
-							setCode(v);
-							if (codeError) setCodeError(null);
-						}}
-						editable={!loading}
-					/>
-					{codeError ? (
-						<Text style={styles.errorText}>{codeError}</Text>
-					) : null}
+						<TextInput
+							style={[styles.input, codeError ? styles.inputError : null]}
+							value={code}
+							placeholder="6-digit code"
+							placeholderTextColor={tokens.mutedForeground}
+							keyboardType="number-pad"
+							onChangeText={(v) => {
+								setCode(v);
+								if (codeError) setCodeError(null);
+							}}
+							editable={!loading}
+						/>
+						{codeError ? (
+							<Text style={styles.errorText}>{codeError}</Text>
+						) : null}
 
-					<StyledButton
-						intent="primary"
-						size="lg"
-						onPress={onVerifyPress}
-						isLoading={loading}
-						disabled={loading}
-						showArrow={false}
-						textStyle={styles.ctaLabel}
-						style={styles.cta}
-					>
-						Verify email
-					</StyledButton>
+						<StyledButton
+							intent="primary"
+							size="lg"
+							onPress={onVerifyPress}
+							isLoading={loading}
+							disabled={loading}
+							showArrow={false}
+							textStyle={styles.ctaLabel}
+							style={styles.cta}
+						>
+							Verify email
+						</StyledButton>
 
-					<View style={styles.footer}>
-						<Text style={styles.footerText}>Didn&apos;t get it? </Text>
-						<TouchableOpacity onPress={onResendPress} disabled={loading}>
-							<Text style={styles.linkText}>Resend code</Text>
-						</TouchableOpacity>
+						<View style={styles.footer}>
+							<Text style={styles.footerText}>Didn&apos;t get it? </Text>
+							<TouchableOpacity onPress={onResendPress} disabled={loading}>
+								<Text style={styles.linkText}>Resend code</Text>
+							</TouchableOpacity>
+						</View>
 					</View>
 				</ScrollView>
 			</KeyboardAvoidingView>
@@ -411,6 +420,15 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		paddingHorizontal: spacing.lg,
 		paddingVertical: spacing.xl,
+	},
+	// iPad: also center horizontally so the card sits mid-screen.
+	verifyContentPad: {
+		alignItems: "center",
+	},
+	// iPad: ~480pt centered brand card for the verify sub-view.
+	cardPad: {
+		width: "100%",
+		maxWidth: 480,
 	},
 	title: {
 		fontFamily: fontFamily.bold,

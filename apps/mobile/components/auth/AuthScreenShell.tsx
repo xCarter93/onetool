@@ -12,6 +12,7 @@ import { HalftoneBg } from "@/components/ui";
 import { StyledButton } from "@/components/styled";
 import { GoogleIcon } from "@/components/GoogleIcon";
 import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
+import { useDevice } from "@/lib/use-device";
 import { AppleButton } from "./AppleButton";
 
 interface AuthScreenShellProps {
@@ -39,6 +40,8 @@ export function AuthScreenShell({
 	onAppleSuccess,
 	children,
 }: AuthScreenShellProps) {
+	const { device } = useDevice();
+	const isPad = device === "ipad";
 	return (
 		<KeyboardAvoidingView
 			style={styles.flex}
@@ -46,12 +49,19 @@ export function AuthScreenShell({
 		>
 			<ScrollView
 				style={styles.flex}
-				contentContainerStyle={styles.scrollContent}
+				contentContainerStyle={[
+					styles.scrollContent,
+					// iPad: vertically center the ~480pt brand-card column over the wash,
+					// both orientations. iPhone path unchanged.
+					isPad && styles.scrollContentPad,
+				]}
 				keyboardShouldPersistTaps="handled"
 			>
 				{/* Hero — bounded 220 height so HalftoneBg's internal flex:1 neither
-				    collapses nor overgrows inside the scroll/keyboard layout. */}
-				<View style={styles.hero}>
+				    collapses nor overgrows inside the scroll/keyboard layout. On iPad
+				    it's constrained to the centered card width (definite box → the
+				    BG wash stays inside the card, no full-screen escape). */}
+				<View style={[styles.hero, isPad && styles.cardWidthPad]}>
 					<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10}>
 						<View style={styles.heroContent}>
 							<Image
@@ -64,7 +74,7 @@ export function AuthScreenShell({
 					</HalftoneBg>
 				</View>
 
-				<View style={styles.body}>
+				<View style={[styles.body, isPad && styles.cardWidthPad]}>
 					<Text style={styles.title}>{title}</Text>
 					<Text style={styles.subtitle}>{subtitle}</Text>
 
@@ -113,6 +123,17 @@ const styles = StyleSheet.create({
 	scrollContent: {
 		flexGrow: 1,
 		paddingBottom: spacing.xl,
+	},
+	// iPad: center the card column vertically + horizontally over the wash.
+	scrollContentPad: {
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	// iPad: ~480pt centered brand card (hero + body share the same width).
+	cardWidthPad: {
+		width: "100%",
+		maxWidth: 480,
+		alignSelf: "center",
 	},
 	hero: {
 		height: 220,

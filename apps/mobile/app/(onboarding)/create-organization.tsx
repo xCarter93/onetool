@@ -20,6 +20,7 @@ import {
 import { Card, Eyebrow } from "@/components/ui";
 import { StyledButton } from "@/components/styled";
 import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
+import { useDevice } from "@/lib/use-device";
 import {
 	canWriteMetadata,
 	isSetupTimedOut,
@@ -51,6 +52,8 @@ const EMPTY_ADDRESS: AddressValue = {
 export default function CreateOrganizationScreen() {
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
+	const { device } = useDevice();
+	const isPad = device === "ipad";
 
 	// --- Auth / org hooks ---------------------------------------------------
 	const { organization: activeOrg } = useOrganization();
@@ -336,7 +339,11 @@ export default function CreateOrganizationScreen() {
 	return (
 		<View style={[styles.screen, { paddingTop: insets.top + spacing.lg }]}>
 			<ScrollView
-				contentContainerStyle={styles.scroll}
+				contentContainerStyle={[
+					styles.scroll,
+					// iPad: ~480pt centered card column over the brand wash.
+					isPad && styles.cardPad,
+				]}
 				keyboardShouldPersistTaps="handled"
 			>
 				<Text style={styles.entryTitle}>Let&apos;s set up your business</Text>
@@ -451,7 +458,11 @@ export default function CreateOrganizationScreen() {
 			</ScrollView>
 
 			<View
-				style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}
+				style={[
+					styles.footer,
+					isPad && styles.footerPad,
+					{ paddingBottom: insets.bottom + spacing.md },
+				]}
 			>
 				{step > 1 ? (
 					<View style={styles.footerHalf}>
@@ -490,6 +501,18 @@ const styles = StyleSheet.create({
 	},
 	scroll: {
 		paddingBottom: spacing.xl,
+	},
+	// iPad: ~480pt centered card column (wizard step content).
+	cardPad: {
+		width: "100%",
+		maxWidth: 480,
+		alignSelf: "center",
+	},
+	// iPad: keep the footer buttons aligned under the centered card.
+	footerPad: {
+		width: "100%",
+		maxWidth: 480,
+		alignSelf: "center",
 	},
 	entryTitle: {
 		fontFamily: fontFamily.bold,
