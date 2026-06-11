@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
 	Slot,
@@ -83,14 +83,25 @@ function IpadShellInner() {
 	const { select } = useSelection();
 	const pathname = usePathname();
 
-	// activeTab is DERIVED from the route (pure) rather than held in state — every
-	// nav/push changes the pathname, so the pathname is the single source of
-	// truth for the active tab. This avoids a setState-in-effect (the repo's
-	// react-hooks/set-state-in-effect rule is error-level) and keeps the sidebar
-	// highlight in lock-step with the route. select() reconciliation (which
-	// targets the durable SelectionProvider, not React render state) runs in the
-	// effect below.
-	const activeTab = useMemo<ShellTab>(() => tabFromPathname(pathname), [pathname]);
+	// activeTab is held in LOCAL STATE so a sidebar tap swaps only the content
+	// pane — the iPad sidebar is a persistent frame, not a navigation push. A
+	// router.push() for tab switching re-mounts the whole (tabs) layout and
+	// slides the entire shell in, because the (tabs) group has no in-group
+	// navigator (the shell renders pane content directly, not via Slot). Sidebar
+	// taps set this state directly (no routing → no slide).
+	//
+	// Route-driven entry (deep link, notification, detail cross-link) still
+	// reconciles: when the pathname changes EXTERNALLY we re-derive the tab at
+	// render time (React's "adjust state when a prop changes" pattern — a plain
+	// setState during render, NOT a setState-in-effect, which is error-level in
+	// this repo). select() reconciliation runs in the effect below.
+	const derivedTab = useMemo<ShellTab>(() => tabFromPathname(pathname), [pathname]);
+	const [activeTab, setActiveTab] = useState<ShellTab>(derivedTab);
+	const [syncedPathname, setSyncedPathname] = useState(pathname);
+	if (pathname !== syncedPathname) {
+		setSyncedPathname(pathname);
+		setActiveTab(derivedTab);
+	}
 
 	// Route → selection reconciliation. On a detail route, sync the durable
 	// selection so the triptych opens the target. select() dispatches to the
@@ -111,17 +122,9 @@ function IpadShellInner() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [pathname]);
 
-	// Nav pushes the route; activeTab re-derives from the new pathname.
-	const onNavigate = (tab: SidebarTab) => {
-		const dest: Record<SidebarTab, Href> = {
-			home: "/(tabs)" as Href,
-			clients: "/(tabs)/clients",
-			projects: "/(tabs)/projects",
-			tasks: "/(tabs)/tasks",
-			money: "/(tabs)/money",
-		};
-		router.push(dest[tab]);
-	};
+	// Sidebar nav swaps the content pane in place (local state → no router push,
+	// so the persistent sidebar never re-mounts or slides).
+	const onNavigate = (tab: SidebarTab) => setActiveTab(tab);
 
 	// "profile" is not a nav id, so passing it highlights no nav row (correct —
 	// Profile is reached via the footer). Cast narrows ShellTab → SidebarTab.
@@ -130,7 +133,7 @@ function IpadShellInner() {
 			activeTab={activeTab as SidebarTab}
 			onNavigate={onNavigate}
 			onCreate={() => router.push("/create" as Href)}
-			onProfile={() => router.push("/(tabs)/profile")}
+			onProfile={() => setActiveTab("profile")}
 			onNotifications={() => router.push("/notifications" as Href)}
 		/>
 	);
