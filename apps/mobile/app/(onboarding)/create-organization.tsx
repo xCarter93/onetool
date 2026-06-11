@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
+import { useOrganization, useOrganizationList } from "@clerk/expo";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Check } from "lucide-react-native";
@@ -28,10 +28,6 @@ import {
 	validateStep2,
 	validateStep3,
 } from "@/lib/wizardValidation";
-import {
-	navigateAfterAuth,
-	resolveAuthDestination,
-} from "@/lib/postAuthRouting";
 
 type Step = 1 | 2 | 3;
 type CompanySize = "1-10" | "10-100" | "100+";
@@ -57,9 +53,8 @@ export default function CreateOrganizationScreen() {
 	const router = useRouter();
 
 	// --- Auth / org hooks ---------------------------------------------------
-	const { isLoaded: authLoaded, isSignedIn } = useAuth();
 	const { organization: activeOrg } = useOrganization();
-	const { createOrganization, setActive, userMemberships, isLoaded } =
+	const { createOrganization, setActive, userMemberships } =
 		useOrganizationList({ userMemberships: true });
 
 	// --- Convex precondition + race-gate sources ----------------------------
@@ -98,6 +93,9 @@ export default function CreateOrganizationScreen() {
 	const [setupStartedAt, setSetupStartedAt] = useState<number | null>(null);
 	const [timedOut, setTimedOut] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
+	// Set after completeMetadata commits; navigation is deferred until the
+	// reactive needsMetadata query confirms false (see effect below).
+	const [finishing, setFinishing] = useState(false);
 
 	// The reactive Convex row flips to the matching org once createFromClerk
 	// inserts it — org-id MATCH, not mere non-null (canWriteMetadata). Keyed off
@@ -127,6 +125,15 @@ export default function CreateOrganizationScreen() {
 		}, 1000);
 		return () => clearInterval(id);
 	}, [settingUp, setupStartedAt]);
+
+	// Post-completeMetadata navigation: wait for the reactive needsMetadata query
+	// to confirm false before routing to the app, so neither this navigation nor
+	// the (tabs) layout reads the stale `true` and bounces back into the wizard.
+	useEffect(() => {
+		if (finishing && needsMetadata === false) {
+			router.replace("/(tabs)" as Parameters<typeof router.replace>[0]);
+		}
+	}, [finishing, needsMetadata, router]);
 
 	// --- Org creation (membership-aware + no-duplicate retry) ----------------
 	async function runOrgCreate() {
@@ -275,24 +282,16 @@ export default function CreateOrganizationScreen() {
 				longitude: address.longitude,
 				companySize,
 			});
-			// Route via the shared post-auth helper — never hardcode "/(tabs)".
-			// router.replace is typed to a Href literal union; the helper deals in
-			// plain strings, so adapt with a single cast at the boundary.
-			navigateAfterAuth(
-				(href) => router.replace(href as Parameters<typeof router.replace>[0]),
-				resolveAuthDestination({
-					authLoaded: Boolean(authLoaded),
-					orgLoaded: Boolean(isLoaded),
-					isSignedIn: Boolean(isSignedIn),
-					hasActiveOrg: Boolean(activeOrg),
-					membershipCount: userMemberships?.data?.length ?? 0,
-					// After completeMetadata, needsMetadata flips to false -> "/(tabs)".
-					needsMetadata: needsMetadata === undefined ? false : needsMetadata,
-				})
-			);
+			// Do NOT navigate yet. needsMetadata is a reactive query that is still
+			// `true` this tick (the subscription hasn't observed the just-committed
+			// mutation). Navigating now — anywhere — bounces back into the wizard:
+			// both resolveAuthDestination and the (tabs) layout read the stale `true`
+			// and route to the wizard. Flip `finishing` and let the effect navigate
+			// once needsMetadata reactively confirms `false`. Keep `submitting` true
+			// so the button stays in its loading state through the brief wait.
+			setFinishing(true);
 		} catch {
 			setFormError("Couldn't create your organization. Try again.");
-		} finally {
 			setSubmitting(false);
 		}
 	}
