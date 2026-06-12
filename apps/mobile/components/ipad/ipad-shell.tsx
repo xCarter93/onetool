@@ -24,9 +24,12 @@ import {
 } from "@/lib/shell-nav";
 import ClientsScreen from "@/app/(tabs)/clients/index";
 import ProjectsScreen from "@/app/(tabs)/projects/index";
+import MoneyScreen from "@/app/(tabs)/money/index";
 import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
 import { ClientCreateBody } from "@/app/(tabs)/clients/new";
 import { ProjectDetailBody } from "@/app/(tabs)/projects/[projectId]";
+import { QuoteDetailBody } from "@/app/quote/[id]";
+import { InvoiceDetailBody } from "@/app/invoice/[id]";
 
 // Master-detail list-pane bodies + their PaneHeader titles, keyed by tab. The
 // shell owns the ONE list-pane header (PaneHeader); the body renders with
@@ -246,36 +249,55 @@ function IpadShellInner() {
 	const detailTab = activeTab as "clients" | "projects" | "money";
 
 	// Clients/Work share the list-pane wiring (330px list + selection-driven
-	// detail). Money has no list pane yet (26-03 owns it) — it stays detail-only
-	// via PaneDetailHost (its kind→quote/invoice routing lives there).
+	// detail). Money (26-03) also has a list pane, but its selection shape is
+	// {kind,id} not a bare id, so it's wired separately below.
 	const listConfig = detailTab === "money" ? null : LIST_PANE[detailTab];
 	const selectedId = detailTab === "money" ? null : state[detailTab];
 	const hasSelection =
 		detailTab === "money" ? state.money !== null : selectedId !== null;
 
+	// Money list pane: the {kind,id} asymmetry (Pitfall 3). The Invoices/Quotes
+	// toggle lives inside MoneyScreen; a row tap calls select("money", {kind,id})
+	// so PaneDetailHost can switch the quote vs invoice ROOT detail. selected=
+	// state.money drives the accent highlight on the row matching kind AND id.
+	const moneyListPaneBody = (
+		<View style={styles.fill}>
+			<PaneHeader title="Money" />
+			<MoneyScreen
+				headerMode="pane"
+				onSelect={(sel) => select("money", sel)}
+				selected={state.money}
+			/>
+		</View>
+	);
+
 	// List-pane body: shell owns the PaneHeader title; the body renders
 	// headerMode="pane" + onSelect drives the shell selection (NEVER router.push
 	// to a (tabs) sibling — that re-mounts and slides the whole shell, 26-01).
-	const listPaneBody = listConfig ? (
-		<View style={styles.fill}>
-			<PaneHeader title={listConfig.title} />
-			<listConfig.Screen
-				headerMode="pane"
-				onSelect={(id: string) => {
-					// detailTab is "clients" | "projects" here (money has no list pane);
-					// narrow to a literal so select()'s per-tab overload matches.
-					if (detailTab === "clients") select("clients", id);
-					else select("projects", id);
-				}}
-				selectedId={selectedId}
-			/>
-		</View>
-	) : null;
+	const listPaneBody =
+		detailTab === "money"
+			? moneyListPaneBody
+			: listConfig ? (
+					<View style={styles.fill}>
+						<PaneHeader title={listConfig.title} />
+						<listConfig.Screen
+							headerMode="pane"
+							onSelect={(id: string) => {
+								// detailTab is "clients" | "projects" here.
+								// narrow to a literal so select()'s per-tab overload matches.
+								if (detailTab === "clients") select("clients", id);
+								else select("projects", id);
+							}}
+							selectedId={selectedId}
+						/>
+					</View>
+				) : null;
 
-	// Detail body. Clients/Work render their *DetailBody directly with onBack=
-	// clear(tab) so the body's ONE header (PaneHeader) returns to the list/
-	// placeholder without a router pop. Money keeps PaneDetailHost (26-03 domain).
-	// Selection persists across rotation, so the same record stays open/highlighted.
+	// Detail body. Clients/Work/Money render their *DetailBody directly with
+	// onBack=clear(tab) so the body's ONE header (PaneHeader) returns to the list/
+	// placeholder without a router pop. Money carries {kind,id} so it switches the
+	// quote vs invoice body (Pitfall 3 — never the wrong screen). Selection persists
+	// across rotation, so the same record stays open/highlighted.
 	const renderDetail = (withBack: boolean) => {
 		if (detailTab === "clients" && state.clients) {
 			return (
@@ -295,7 +317,21 @@ function IpadShellInner() {
 				/>
 			);
 		}
-		// Money (or no selection) → PaneDetailHost handles placeholder + routing.
+		if (detailTab === "money" && state.money) {
+			// {kind} selects the body — a quote selection renders the quote detail,
+			// an invoice selection renders the invoice detail (never the wrong one).
+			const onBack = withBack ? () => clear("money") : undefined;
+			return state.money.kind === "quote" ? (
+				<QuoteDetailBody id={state.money.id} headerMode="pane" onBack={onBack} />
+			) : (
+				<InvoiceDetailBody
+					id={state.money.id}
+					headerMode="pane"
+					onBack={onBack}
+				/>
+			);
+		}
+		// No selection → PaneDetailHost renders the placeholder.
 		return <PaneDetailHost tab={detailTab} />;
 	};
 
@@ -338,7 +374,7 @@ function IpadShellInner() {
 							hasSelection ? (
 								// Detail open full-width; back clears selection → returns to list.
 								renderDetail(true)
-							) : listConfig ? (
+							) : listPaneBody ? (
 								listPaneBody
 							) : (
 								<PaneDetailHost tab={detailTab} />

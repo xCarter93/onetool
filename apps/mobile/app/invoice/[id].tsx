@@ -7,6 +7,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { Badge, Card, Eyebrow, TotalsBlock } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
@@ -19,12 +20,25 @@ import { formatCurrency, formatDocumentDate } from "@/lib/format";
 export function InvoiceDetailBody({
 	id,
 	headerMode = "root",
+	onBack,
 }: {
 	id: string;
 	headerMode?: "root" | "pane";
+	// iPad pane: when the shell provides onBack the header is a PaneHeader whose
+	// back CLEARS the shell selection (router.back would pop out of the shell —
+	// money selection drives nav, no route was pushed). Keeps ONE header per pane.
+	onBack?: () => void;
 }) {
 	const t = useTokens();
 	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
+	// In an iPad pane WITH an onBack the body owns a PaneHeader (back → clear
+	// selection); otherwise AppHeader (root/detail = router back, pane = no back).
+	const renderHeader = (title?: string) =>
+		headerMode === "pane" && onBack ? (
+			<PaneHeader title={title} onBack={onBack} />
+		) : (
+			<AppHeader mode={appHeaderMode} title={title} />
+		);
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
 
@@ -55,7 +69,7 @@ export function InvoiceDetailBody({
 	if (invoice === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode={appHeaderMode} />
+				{renderHeader()}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
 						style={[
@@ -78,7 +92,7 @@ export function InvoiceDetailBody({
 	if (invoice === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode={appHeaderMode} />
+				{renderHeader()}
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>Not found</Text>
 					<Text style={[styles.notFoundBody, { color: t.sub }]}>
@@ -137,7 +151,7 @@ export function InvoiceDetailBody({
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<AppHeader mode={appHeaderMode} title={invoice.invoiceNumber} />
+			{renderHeader(invoice.invoiceNumber)}
 			<ScrollView contentContainerStyle={styles.scroll}>
 				{/* Header block — number, effective status badge, client */}
 				<Card>

@@ -8,6 +8,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { Badge, Card, Eyebrow, TotalsBlock } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
@@ -16,12 +17,25 @@ import { formatCurrency, formatDocumentDate } from "@/lib/format";
 export function QuoteDetailBody({
 	id,
 	headerMode = "root",
+	onBack,
 }: {
 	id: string;
 	headerMode?: "root" | "pane";
+	// iPad pane: when the shell provides onBack the header is a PaneHeader whose
+	// back CLEARS the shell selection (router.back would pop out of the shell —
+	// money selection drives nav, no route was pushed). Keeps ONE header per pane.
+	onBack?: () => void;
 }) {
 	const t = useTokens();
 	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
+	// In an iPad pane WITH an onBack the body owns a PaneHeader (back → clear
+	// selection); otherwise AppHeader (root/detail = router back, pane = no back).
+	const renderHeader = (title?: string) =>
+		headerMode === "pane" && onBack ? (
+			<PaneHeader title={title} onBack={onBack} />
+		) : (
+			<AppHeader mode={appHeaderMode} title={title} />
+		);
 	// Signed signature URLs can expire mid-session — fall back to a caption on load error.
 	const [sigError, setSigError] = useState(false);
 
@@ -52,7 +66,7 @@ export function QuoteDetailBody({
 	if (quote === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode={appHeaderMode} />
+				{renderHeader()}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
 						style={[
@@ -77,7 +91,7 @@ export function QuoteDetailBody({
 	if (quote === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<AppHeader mode={appHeaderMode} title="Quote" />
+				{renderHeader("Quote")}
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>
 						Not found
@@ -136,7 +150,7 @@ export function QuoteDetailBody({
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<AppHeader mode={appHeaderMode} title={headerTitle} />
+			{renderHeader(headerTitle)}
 			<ScrollView contentContainerStyle={styles.scroll}>
 				<Card style={styles.docCard}>
 					{/* Header block */}

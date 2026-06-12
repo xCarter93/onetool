@@ -44,9 +44,28 @@ type QuoteRow = {
 	_creationTime: number;
 };
 
-export default function MoneyScreen() {
+// The shell selection shape for Money. Mirrors selection-context's
+// state.money: { kind: "quote" | "invoice"; id: string } | null.
+type MoneySelection = { kind: "quote" | "invoice"; id: string };
+
+// headerMode/onSelect/selected default off → the iPhone path (router.push to the
+// ROOT /quote/[id] + /invoice/[id] routes, AppHeader mode="root", no selected
+// highlight) is BYTE-IDENTICAL. The iPad shell renders this as a list pane:
+// headerMode="pane" suppresses the self-mounted AppHeader (shell mounts the one
+// PaneHeader), onSelect drives the detail pane via the shell selection ({kind,id})
+// instead of a route push, selected marks the row matching kind AND id.
+export default function MoneyScreen({
+	headerMode = "root",
+	onSelect,
+	selected = null,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (sel: MoneySelection) => void;
+	selected?: MoneySelection | null;
+} = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const isPane = headerMode === "pane";
 	const [tab, setTab] = useState<Tab>("invoices");
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
@@ -112,6 +131,8 @@ export default function MoneyScreen() {
 					? t.danger
 					: t.accent;
 		const client = clientName.get(item.clientId) ?? "Client";
+		const isSelected =
+			isPane && selected?.kind === "invoice" && selected.id === item._id;
 		return (
 			<ListRow
 				icon="Receipt"
@@ -119,16 +140,22 @@ export default function MoneyScreen() {
 				title={item.invoiceNumber}
 				sub={`${client} · due ${formatDocumentDate(item.dueDate)}`}
 				status={displayStatus}
+				selected={isSelected}
 				right={
 					<Text style={[styles.amount, { color: t.ink }]}>
 						{formatCurrency(item.total)}
 					</Text>
 				}
 				onPress={() =>
-					router.push({
-						pathname: "/invoice/[id]",
-						params: { id: item._id },
-					} as unknown as Href)
+					// iPad pane: drive the shell selection ({kind,id}) — never a route
+					// push to a (tabs)/ROOT sibling (that slides the whole shell). iPhone:
+					// push the ROOT /invoice/[id] route exactly as before.
+					onSelect
+						? onSelect({ kind: "invoice", id: item._id })
+						: router.push({
+								pathname: "/invoice/[id]",
+								params: { id: item._id },
+							} as unknown as Href)
 				}
 			/>
 		);
@@ -137,18 +164,25 @@ export default function MoneyScreen() {
 	const renderQuote = ({ item }: { item: QuoteRow }) => {
 		const client = clientName.get(item.clientId) ?? "Client";
 		const primary = item.title || `Quote ${item.quoteNumber ?? ""}`.trim();
+		const isSelected =
+			isPane && selected?.kind === "quote" && selected.id === item._id;
 		return (
 			<Pressable
 				style={({ pressed }) => [
 					styles.quoteCard,
 					{ backgroundColor: t.card, borderColor: t.line },
+					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
 					pressed && styles.pressed,
 				]}
 				onPress={() =>
-					router.push({
-						pathname: "/quote/[id]",
-						params: { id: item._id },
-					} as unknown as Href)
+					// iPad pane: drive the shell selection ({kind,id}). iPhone: push the
+					// ROOT /quote/[id] route exactly as before.
+					onSelect
+						? onSelect({ kind: "quote", id: item._id })
+						: router.push({
+								pathname: "/quote/[id]",
+								params: { id: item._id },
+							} as unknown as Href)
 				}
 			>
 				<View style={styles.quoteTop}>
@@ -217,7 +251,9 @@ export default function MoneyScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			<AppHeader mode="root" title="Money" />
+			{/* Pane mode: the shell mounts PaneHeader above this body (one header
+			    per pane — locked convention). iPhone: AppHeader mode="root". */}
+			{isPane ? null : <AppHeader mode="root" title="Money" />}
 			{activeLoading ? (
 				<View style={styles.listContent}>
 					{ListHeader}
