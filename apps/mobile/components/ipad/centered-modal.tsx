@@ -9,8 +9,9 @@ import { useTokens } from "@/lib/theme";
 
 // Reusable iPad scrim + centered card wrapper for overlays (Create / Search /
 // Notifications / day-sheet / org-switch on iPad). Plan 26-05 wraps each overlay
-// body in this. `maxHeight` (DEFAULT unbounded) bounds the card so long content
-// scrolls within it and never clips on iPad — 26-05 depends on it; shipped here.
+// body in this. When `maxHeight` is given it becomes a DEFINITE card height so
+// the overlay's flex:1 body resolves (an auto-height parent collapses flex:1 to
+// 0); without it the card stays content-sized (e.g. the short Create sheet).
 
 interface CenteredModalProps {
 	children: React.ReactNode;
@@ -37,7 +38,8 @@ export function CenteredModal({
 				style={[
 					styles.card,
 					{ backgroundColor: t.card },
-					maxHeight !== undefined ? { maxHeight } : null,
+					// Definite height (not just a cap) so flex:1 bodies fill the card.
+					maxHeight !== undefined ? { height: maxHeight } : null,
 				]}
 			>
 				{children}

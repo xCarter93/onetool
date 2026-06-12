@@ -127,9 +127,10 @@ const styles = StyleSheet.create({
 		borderTopRightRadius: 30,
 		overflow: "hidden",
 	},
-	// iPad card (CenteredModal supplies the shell + radius + maxHeight bound).
+	// iPad card (CenteredModal supplies the shell + radius + definite height).
+	// flex:1 (not flexShrink) so the body's flex:1 list resolves a basis.
 	padCard: {
-		flexShrink: 1,
+		flex: 1,
 		paddingTop: 18,
 	},
 	grabber: {
