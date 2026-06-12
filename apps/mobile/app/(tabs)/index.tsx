@@ -11,6 +11,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
 import { Check, Search } from "lucide-react-native";
 import {
@@ -254,8 +255,24 @@ export default function HomeScreen({
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={[]}
 		>
-			<View style={styles.pageWash} pointerEvents="none">
+			{/* Brand wash. iPhone + iPad-portrait: fixed 380 band (byte-identical).
+			    iPad-landscape (wide): the HalftoneBg image is sized off the full
+			    ~1366pt window while this pane is only ~1136pt wide, so the image's
+			    own bottomFade gets cropped mid-fade by the fixed band → a hard
+			    horizontal edge. A taller wide band plus a transparent→background
+			    LinearGradient over the lower band dissolves that crop into the page. */}
+			<View
+				style={[styles.pageWash, wide && styles.pageWashWide]}
+				pointerEvents="none"
+			>
 				<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10} />
+				{wide ? (
+					<LinearGradient
+						pointerEvents="none"
+						colors={["rgba(245,245,245,0)", colors.background]}
+						style={styles.washFadeWide}
+					/>
+				) : null}
 			</View>
 			{/* iPhone: AppHeader root. iPad pane: shell mounts the one PaneHeader
 			    (single-header convention) so the self-mounted AppHeader is suppressed. */}
@@ -354,7 +371,55 @@ export default function HomeScreen({
 
 						// Needs attention — renders ONLY when non-empty (no empty state).
 						// Invoices/quotes deep-link to /money via the shell; tasks complete inline.
-						const needsAttention = naCount > 0 && (
+						const kpiGridWide = (
+								<View style={styles.kpiRowWide}>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Clients"
+											value={activeClients}
+											foot={`${leadClients} new leads`}
+											icon="Users"
+											tone="#00a6f4"
+											onPress={() => goTab("clients", "/clients")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Projects"
+											value={activeProjects}
+											foot={`${plannedProjects} planned`}
+											icon="FolderKanban"
+											tone="#7c5cff"
+											onPress={() => goTab("projects", "/projects")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Unpaid"
+											value={formatCurrency(
+												homeStats?.invoicesSent.outstanding ?? 0
+											)}
+											foot={`${overdueInvoices?.length ?? 0} overdue`}
+											icon="Receipt"
+											tone="#e8930c"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Open Quotes"
+											value={formatCurrency(openQuotesValue)}
+											foot={`${openQuotes?.length ?? 0} awaiting reply`}
+											icon="FileText"
+											tone="#1f9d57"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+								</View>
+							);
+
+							// Needs attention block (single-column path) below.
+							const needsAttention = naCount > 0 && (
 							<View style={styles.section}>
 								<View style={styles.naHeader}>
 									<SectionHeader title="Needs attention" />
@@ -493,21 +558,25 @@ export default function HomeScreen({
 						// Journey — compact gauge tile; opens the /journey sheet for detail.
 						const journey = <JourneyCard />;
 
-						// iPad landscape: 2-column 1.3fr / 1fr split mirroring PadHome.
-						// LEFT (flex 1.3): revenue → KPI → needs-attention → recent activity.
-						// RIGHT (flex 1): journey (+ future Today/This-week). Portrait + iPhone
-						// keep the EXISTING single-column order, byte-identical.
+						// iPad landscape (Option A): full-width revenue, 4-across KPI row,
+						// then a two-column row - recent activity (wider) beside journey +
+						// needs-attention stacked. Portrait + iPhone keep the EXISTING
+						// single-column order below, byte-identical.
 						if (wide) {
 							return (
-								<View style={styles.wideRow}>
-									<View style={styles.wideLeft}>
-										{revenueBlock}
-										{kpiGrid}
-										{needsAttention}
-										{recentActivityBlock}
+								<>
+									{revenueBlock}
+									{kpiGridWide}
+									<View style={styles.wideRow}>
+										<View style={styles.wideMain}>
+											{recentActivityBlock}
+										</View>
+										<View style={styles.wideSide}>
+											{journey}
+											{needsAttention}
+										</View>
 									</View>
-									<View style={styles.wideRight}>{journey}</View>
-								</View>
+								</>
 							);
 						}
 
@@ -549,6 +618,21 @@ const styles = StyleSheet.create({
 		right: 0,
 		height: 380,
 		overflow: "hidden",
+	},
+	// iPad-landscape only: a taller wash band gives the hero image's own
+	// bottomFade room to complete inside the visible strip instead of being
+	// cropped mid-fade by the fixed 380 band (the hard horizontal edge).
+	pageWashWide: {
+		height: 460,
+	},
+	// iPad-landscape only: transparent→page-background gradient over the lower
+	// wash band, dissolving any residual crop into the page (no hard edge).
+	washFadeWide: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		height: 180,
 	},
 	hero: {
 		position: "relative",
@@ -597,6 +681,12 @@ const styles = StyleSheet.create({
 	kpiRow: {
 		flexDirection: "row",
 		gap: 12,
+	},
+	// iPad-landscape only: the four StatCards 4-across in one flex:1 row.
+	kpiRowWide: {
+		flexDirection: "row",
+		gap: 12,
+		marginBottom: spacing.md,
 	},
 	kpiCell: {
 		flex: 1,
@@ -670,15 +760,18 @@ const styles = StyleSheet.create({
 	calendarSection: {
 		gap: spacing.md,
 	},
-	// iPad landscape 2-column dashboard (1.3fr / 1fr split, gap 18) — PadHome.
+	// iPad-landscape lower row: recent activity (wider, flex 1.5) beside the
+	// journey + needs-attention stack (flex 1). Items start-aligned so the
+	// shorter column does not stretch to match the taller one.
 	wideRow: {
 		flexDirection: "row",
 		gap: 18,
+		alignItems: "flex-start",
 	},
-	wideLeft: {
-		flex: 1.3,
+	wideMain: {
+		flex: 1.5,
 	},
-	wideRight: {
+	wideSide: {
 		flex: 1,
 	},
 });
