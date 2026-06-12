@@ -16,6 +16,7 @@ import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { DetailPlaceholder } from "@/components/ipad/detail-placeholder";
+import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import ClientsScreen from "@/app/(tabs)/clients/index";
 import ProjectsScreen from "@/app/(tabs)/projects/index";
 import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
@@ -94,6 +95,22 @@ function isStackRoute(pathname: string): boolean {
 	return false;
 }
 
+// Overlay/modal routes that do NOT map to a shell tab. On iPad these present as
+// transparentModal (26-05), which keeps the (tabs) shell MOUNTED underneath, so
+// usePathname() reports the overlay route while the shell still renders. Syncing
+// activeTab off these would (a) jump the underlying tab to "home" and (b) — because
+// a transparent modal leaves usePathname() resolving inconsistently between the
+// overlay and the underlying route across renders — fire setState every render,
+// crashing with "Maximum update depth exceeded". The shell ignores them: the
+// underlying tab stays put while an overlay is open.
+function isOverlayRoute(pathname: string): boolean {
+	if (/^\/(notifications|create|search|org-switch|day-sheet|journey)(\/|$)/.test(pathname)) {
+		return true;
+	}
+	if (/^\/tasks\/(form|new)(\/|$)/.test(pathname)) return true;
+	return false;
+}
+
 function IpadShellInner() {
 	const t = useTokens();
 	const router = useRouter();
@@ -116,7 +133,9 @@ function IpadShellInner() {
 	const derivedTab = useMemo<ShellTab>(() => tabFromPathname(pathname), [pathname]);
 	const [activeTab, setActiveTab] = useState<ShellTab>(derivedTab);
 	const [syncedPathname, setSyncedPathname] = useState(pathname);
-	if (pathname !== syncedPathname) {
+	// Reconcile ONLY for real shell routes; skip overlay/modal routes (they keep
+	// the shell mounted underneath and would otherwise loop — see isOverlayRoute).
+	if (pathname !== syncedPathname && !isOverlayRoute(pathname)) {
 		setSyncedPathname(pathname);
 		setActiveTab(derivedTab);
 	}
@@ -144,6 +163,30 @@ function IpadShellInner() {
 	// so the persistent sidebar never re-mounts or slides).
 	const onNavigate = (tab: SidebarTab) => setActiveTab(tab);
 
+	// In-pane navigation for detail bodies / list screens rendered INSIDE the
+	// shell (provided via ShellNavProvider below). A cross-link (client → project,
+	// project → client, "View all") switches the tab + selection in place instead
+	// of router.push-ing a (tabs) sibling, which would re-mount and slide the whole
+	// shell. On iPhone there is no provider, so those callers fall back to router.
+	const shellNav = useMemo<ShellNav>(
+		() => ({
+			open: (tab, id) => {
+				setActiveTab(tab);
+				if (id === undefined) return;
+				// select() is overloaded per tab (string id for clients/projects,
+				// {kind,id} for money) — narrow to a literal so an overload matches.
+				if (tab === "money") {
+					select("money", id as { kind: "quote" | "invoice"; id: string });
+				} else if (tab === "clients") {
+					select("clients", id as string);
+				} else {
+					select("projects", id as string);
+				}
+			},
+		}),
+		[select],
+	);
+
 	// "profile" is not a nav id, so passing it highlights no nav row (correct —
 	// Profile is reached via the footer). Cast narrows ShellTab → SidebarTab.
 	const sidebar = (
@@ -159,12 +202,14 @@ function IpadShellInner() {
 	// A full-screen stack route (e.g. /clients/new) → sidebar + full-width Slot.
 	if (isStackRoute(pathname)) {
 		return (
-			<View style={[styles.root, { backgroundColor: t.surface }]}>
-				{sidebar}
-				<View style={styles.contentPane}>
-					<Slot />
+			<ShellNavProvider value={shellNav}>
+				<View style={[styles.root, { backgroundColor: t.surface }]}>
+					{sidebar}
+					<View style={styles.contentPane}>
+						<Slot />
+					</View>
 				</View>
-			</View>
+			</ShellNavProvider>
 		);
 	}
 
@@ -187,9 +232,12 @@ function IpadShellInner() {
 			<PaneHeader title={listConfig.title} />
 			<listConfig.Screen
 				headerMode="pane"
-				onSelect={(id: string) =>
-					select(detailTab as "clients" | "projects", id)
-				}
+				onSelect={(id: string) => {
+					// detailTab is "clients" | "projects" here (money has no list pane);
+					// narrow to a literal so select()'s per-tab overload matches.
+					if (detailTab === "clients") select("clients", id);
+					else select("projects", id);
+				}}
 				selectedId={selectedId}
 			/>
 		</View>
@@ -225,52 +273,56 @@ function IpadShellInner() {
 	// ── Portrait: sidebar + single content pane (push list → detail) ──────────
 	if (orientation === "portrait") {
 		return (
-			<View style={[styles.root, { backgroundColor: t.surface }]}>
-				{sidebar}
-				<View style={styles.contentPane}>
-					{isMasterDetail ? (
-						hasSelection ? (
-							// Detail open full-width; back clears selection → returns to list.
-							renderDetail(true)
-						) : listConfig ? (
-							listPaneBody
+			<ShellNavProvider value={shellNav}>
+				<View style={[styles.root, { backgroundColor: t.surface }]}>
+					{sidebar}
+					<View style={styles.contentPane}>
+						{isMasterDetail ? (
+							hasSelection ? (
+								// Detail open full-width; back clears selection → returns to list.
+								renderDetail(true)
+							) : listConfig ? (
+								listPaneBody
+							) : (
+								<PaneDetailHost tab={detailTab} />
+							)
 						) : (
-							<PaneDetailHost tab={detailTab} />
-						)
-					) : (
-						<PortraitSlot tab={activeTab} />
-					)}
+							<PortraitSlot tab={activeTab} />
+						)}
+					</View>
 				</View>
-			</View>
+			</ShellNavProvider>
 		);
 	}
 
 	// ── Landscape: sidebar + (master-detail) 330px list pane + flex detail ────
 	return (
-		<View style={[styles.root, { backgroundColor: t.surface }]}>
-			{sidebar}
-			{isMasterDetail ? (
-				<>
-					<View style={[styles.listPane, { borderRightColor: t.line }]}>
-						{listPaneBody ?? <PortraitSlot tab={activeTab} />}
+		<ShellNavProvider value={shellNav}>
+			<View style={[styles.root, { backgroundColor: t.surface }]}>
+				{sidebar}
+				{isMasterDetail ? (
+					<>
+						<View style={[styles.listPane, { borderRightColor: t.line }]}>
+							{listPaneBody ?? <PortraitSlot tab={activeTab} />}
+						</View>
+						<View style={styles.detailPane}>
+							{hasSelection ? (
+								// Landscape: no back affordance — the list is always visible, so
+								// the detail body renders its plain pane header (no onBack).
+								renderDetail(false)
+							) : (
+								<DetailPlaceholder tab={detailTab} />
+							)}
+						</View>
+					</>
+				) : (
+					// TODO(26-04): Home wide dashboard, Tasks wide list, Profile pane.
+					<View style={styles.contentPane}>
+						<PortraitSlot tab={activeTab} />
 					</View>
-					<View style={styles.detailPane}>
-						{hasSelection ? (
-							// Landscape: no back affordance — the list is always visible, so
-							// the detail body renders its plain pane header (no onBack).
-							renderDetail(false)
-						) : (
-							<DetailPlaceholder tab={detailTab} />
-						)}
-					</View>
-				</>
-			) : (
-				// TODO(26-04): Home wide dashboard, Tasks wide list, Profile pane.
-				<View style={styles.contentPane}>
-					<PortraitSlot tab={activeTab} />
-				</View>
-			)}
-		</View>
+				)}
+			</View>
+		</ShellNavProvider>
 	);
 }
 

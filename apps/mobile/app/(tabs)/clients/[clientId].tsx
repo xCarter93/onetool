@@ -16,6 +16,7 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, useTokens, STATUS } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
+import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
@@ -66,6 +67,10 @@ export function ClientDetailBody({
 	const t = useTokens();
 	const clientId = id;
 	const router = useRouter();
+	// On iPad the body renders inside the shell → cross-links navigate via the
+	// shell selection (no router.push to a (tabs) sibling, which slides the whole
+	// shell). On iPhone there's no provider → null → router.push (route nav).
+	const shellNav = useShellNav();
 	// In an iPad pane the header is a PaneHeader (the shell's selection drives
 	// nav, so onBack clears it; router.back would pop out of the shell). onBack
 	// is undefined in landscape (list always visible → no back button shown).
@@ -448,7 +453,9 @@ export function ClientDetailBody({
 					<SectionHeader
 						title={`Projects${countSuffix(projects.length)}`}
 						action={projects.length > 0 ? "View all" : undefined}
-						onAction={() => router.push("/projects")}
+						onAction={() =>
+							shellNav ? shellNav.open("projects") : router.push("/projects")
+						}
 					/>
 					{recentProjects.length > 0 ? (
 						<Card style={styles.listCard}>
@@ -458,7 +465,11 @@ export function ClientDetailBody({
 									title={project.title}
 									status={project.status}
 									showChevron={false}
-									onPress={() => router.push(`/projects/${project._id}`)}
+									onPress={() =>
+										shellNav
+											? shellNav.open("projects", project._id)
+											: router.push(`/projects/${project._id}`)
+									}
 									last={i === recentProjects.length - 1}
 								/>
 							))}

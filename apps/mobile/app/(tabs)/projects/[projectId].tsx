@@ -17,6 +17,7 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
+import { useShellNav } from "@/lib/shell-nav";
 import { Badge, Card, Eyebrow, ListRow, Ring, SectionHeader } from "@/components/ui";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
@@ -93,6 +94,9 @@ export function ProjectDetailBody({
 	const projectId = id;
 	const router = useRouter();
 	const t = useTokens();
+	// iPad: cross-links navigate via the shell selection (no router.push to a
+	// (tabs) sibling, which slides the whole shell). iPhone: null → router.push.
+	const shellNav = useShellNav();
 	// In an iPad pane the header is a PaneHeader (onBack clears the shell
 	// selection; router.back would pop out of the shell). onBack is undefined in
 	// landscape (list always visible → no back button).
@@ -257,7 +261,9 @@ export function ProjectDetailBody({
 							/>
 							<Pressable
 								onPress={() =>
-									router.push(`/clients/${project.clientId}`)
+									shellNav
+										? shellNav.open("clients", project.clientId)
+										: router.push(`/clients/${project.clientId}`)
 								}
 								style={({ pressed }) => [
 									styles.clientLink,
