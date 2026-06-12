@@ -5,6 +5,7 @@ import { ListChecks, UserPlus, ChevronRight } from "lucide-react-native";
 import { fontFamily, type, radii, createGlyph, useTokens } from "@/lib/theme";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
+import { requestShellCreate } from "@/lib/shell-nav";
 
 // Create action-sheet — presentation (detents/corner) lives in _layout.tsx.
 // Exactly two create entry points; the ＋ FAB is the only opener.
@@ -31,7 +32,17 @@ export default function CreateSheet() {
 	const { device } = useDevice();
 
 	// Dismiss-then-push (verbatim from notifications.tsx) — synchronous, no delay.
+	// EXCEPTION: on iPad, "New Client" opens IN-PANE. This modal is a
+	// transparentModal OUTSIDE the shell tree (can't call useShellNav), so it
+	// hands the request to the still-mounted shell via the module-level signal,
+	// then just dismisses — no router.push to /clients/new (which slides the
+	// whole shell). iPhone keeps dismiss-then-push (byte-identical).
 	const choose = (href: string) => {
+		if (device === "ipad" && href === "/clients/new") {
+			requestShellCreate("clients");
+			router.back();
+			return;
+		}
 		router.back();
 		router.push(href as Href);
 	};

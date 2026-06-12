@@ -16,10 +16,16 @@ import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { DetailPlaceholder } from "@/components/ipad/detail-placeholder";
-import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
+import {
+	ShellNavProvider,
+	consumeShellCreate,
+	type ShellNav,
+	type ShellNavTab,
+} from "@/lib/shell-nav";
 import ClientsScreen from "@/app/(tabs)/clients/index";
 import ProjectsScreen from "@/app/(tabs)/projects/index";
 import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
+import { ClientCreateBody } from "@/app/(tabs)/clients/new";
 import { ProjectDetailBody } from "@/app/(tabs)/projects/[projectId]";
 
 // Master-detail list-pane bodies + their PaneHeader titles, keyed by tab. The
@@ -140,6 +146,19 @@ function IpadShellInner() {
 		setActiveTab(derivedTab);
 	}
 
+	// In-pane create surface. When set, the content pane renders that tab's
+	// create body instead of the list/detail (no router.push → no slide). The
+	// ＋Create modal (outside the shell tree) hands its request via the module-
+	// level pendingCreate signal, consumed here at render time: read-and-clear,
+	// then switch the active tab + open create. This is the "adjust state when a
+	// prop changes" render-time setState pattern (NOT setState-in-effect).
+	const [creating, setCreating] = useState<ShellNavTab | null>(null);
+	const pendingCreate = consumeShellCreate();
+	if (pendingCreate && creating !== pendingCreate) {
+		setActiveTab(pendingCreate);
+		setCreating(pendingCreate);
+	}
+
 	// Route → selection reconciliation. On a detail route, sync the durable
 	// selection so the triptych opens the target. select() dispatches to the
 	// SelectionProvider reducer (an external-ish store), not local render state.
@@ -160,8 +179,12 @@ function IpadShellInner() {
 	}, [pathname]);
 
 	// Sidebar nav swaps the content pane in place (local state → no router push,
-	// so the persistent sidebar never re-mounts or slides).
-	const onNavigate = (tab: SidebarTab) => setActiveTab(tab);
+	// so the persistent sidebar never re-mounts or slides). Also exits any open
+	// create surface — tapping a nav row abandons the in-pane create.
+	const onNavigate = (tab: SidebarTab) => {
+		setActiveTab(tab);
+		setCreating(null);
+	};
 
 	// In-pane navigation for detail bodies / list screens rendered INSIDE the
 	// shell (provided via ShellNavProvider below). A cross-link (client → project,
@@ -172,6 +195,7 @@ function IpadShellInner() {
 		() => ({
 			open: (tab, id) => {
 				setActiveTab(tab);
+				setCreating(null);
 				if (id === undefined) return;
 				// select() is overloaded per tab (string id for clients/projects,
 				// {kind,id} for money) — narrow to a literal so an overload matches.
@@ -182,6 +206,11 @@ function IpadShellInner() {
 				} else {
 					select("projects", id as string);
 				}
+			},
+			// Open the in-pane create surface for `tab` (no router.push → no slide).
+			startCreate: (tab) => {
+				setActiveTab(tab);
+				setCreating(tab);
 			},
 		}),
 		[select],
@@ -269,6 +298,34 @@ function IpadShellInner() {
 		// Money (or no selection) → PaneDetailHost handles placeholder + routing.
 		return <PaneDetailHost tab={detailTab} />;
 	};
+
+	// In-pane create surface (currently only Clients has a create body). The body
+	// owns its ONE PaneHeader (headerMode="pane"); onDone exits create and, on a
+	// successful create, opens the new client in the detail pane. Rendered FULL-
+	// WIDTH over the content pane — no router.push, so the sidebar never slides.
+	const exitCreate = () => setCreating(null);
+	const createPaneBody =
+		creating === "clients" ? (
+			<ClientCreateBody
+				headerMode="pane"
+				onDone={(newId) => {
+					exitCreate();
+					if (newId) shellNav.open("clients", newId);
+				}}
+			/>
+		) : null;
+
+	// Create takes over the whole content area (sidebar + full-width body).
+	if (createPaneBody) {
+		return (
+			<ShellNavProvider value={shellNav}>
+				<View style={[styles.root, { backgroundColor: t.surface }]}>
+					{sidebar}
+					<View style={styles.contentPane}>{createPaneBody}</View>
+				</View>
+			</ShellNavProvider>
+		);
+	}
 
 	// ── Portrait: sidebar + single content pane (push list → detail) ──────────
 	if (orientation === "portrait") {

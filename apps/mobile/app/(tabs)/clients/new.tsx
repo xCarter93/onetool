@@ -44,17 +44,24 @@ const EMPTY_ADDRESS: AddressValue = {
 };
 
 // headerMode defaults "root" → iPhone full-screen create is byte-identical. On
-// iPad the shell renders this route full-width via its stack-route Slot beside
-// the sidebar; headerMode="pane" suppresses the self-mounted AppHeader so the
-// pane owns one header (PaneHeader with a back affordance dismisses to the list).
-export default function NewClientScreen({
+// iPad the shell renders this body IN-PANE (no router.push to a (tabs) sibling,
+// which would slide the whole shell); headerMode="pane" suppresses the self-
+// mounted AppHeader so the pane owns one header (PaneHeader with a back
+// affordance dismisses to the list). onDone fires after a successful create
+// (newId) or a cancel (undefined): the shell uses it to exit the create surface
+// and open the new client in the detail pane. On iPhone onDone is absent → the
+// body routes itself (router.replace to the new client / router.back on cancel).
+export function ClientCreateBody({
 	headerMode,
-}: { headerMode?: "root" | "pane" } = {}) {
+	onDone,
+}: {
+	headerMode?: "root" | "pane";
+	onDone?: (newId?: string) => void;
+} = {}) {
 	const t = useTokens();
 	const router = useRouter();
 	const { device } = useDevice();
-	// The shell renders /clients/new via <Slot /> (no props), so the route self-
-	// detects iPad here. An explicit headerMode prop still wins (future callers).
+	// No explicit headerMode (iPhone route) → self-detect; the shell passes "pane".
 	const isPane = headerMode ? headerMode === "pane" : device === "ipad";
 
 	const createClient = useMutation(api.clients.create);
@@ -159,7 +166,10 @@ export default function NewClientScreen({
 			if (warnings.length > 0) {
 				Alert.alert("Client created", warnings.join("\n"), [{ text: "OK" }]);
 			}
-			router.replace(`/clients/${clientId}`);
+			// In-shell (iPad): hand the new id to the shell so it exits create and
+			// opens the client in the detail pane. iPhone: route to the detail screen.
+			if (onDone) onDone(clientId);
+			else router.replace(`/clients/${clientId}`);
 		} catch (err) {
 			console.error("Client create failed:", err);
 			Alert.alert(
@@ -180,7 +190,10 @@ export default function NewClientScreen({
 			{/* Pane mode (iPad full-width stack slot): one header, with a back
 			    affordance to the clients list. iPhone: AppHeader (byte-identical). */}
 			{isPane ? (
-				<PaneHeader title="New client" onBack={() => router.back()} />
+				<PaneHeader
+					title="New client"
+					onBack={() => (onDone ? onDone() : router.back())}
+				/>
 			) : (
 				<AppHeader mode="detail" title="New client" sub="Clients" />
 			)}
@@ -346,6 +359,14 @@ export default function NewClientScreen({
 			</KeyboardAvoidingView>
 		</SafeAreaView>
 	);
+}
+
+// Thin iPhone route wrapper — renders the body self-detecting headerMode and
+// routing itself (router.replace to the new client / router.back on cancel).
+// Byte-identical to the previous full-screen create. The iPad shell imports
+// ClientCreateBody directly with headerMode="pane" + onDone.
+export default function NewClientScreen() {
+	return <ClientCreateBody />;
 }
 
 function Section({

@@ -16,6 +16,7 @@ import { Search, Plus, X } from "lucide-react-native";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { Avatar, Badge, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
+import { useShellNav } from "@/lib/shell-nav";
 
 // listWithProjectCounts returns a reshaped DTO (id/name/status display string),
 // NOT Doc<"clients">. Field names used verbatim below.
@@ -62,6 +63,7 @@ export default function ClientsScreen({
 } = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const shellNav = useShellNav();
 	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
@@ -99,7 +101,11 @@ export default function ClientsScreen({
 		);
 	}, [allClients, filter, searchQuery]);
 
-	const goToNew = () => router.push("/clients/new");
+	// In the iPad shell: open the in-pane create surface (no router.push to a
+	// (tabs) sibling, which slides the whole shell). iPhone has no provider →
+	// fall back to the full-screen create route (byte-identical).
+	const goToNew = () =>
+		shellNav ? shellNav.startCreate("clients") : router.push("/clients/new");
 
 	// On iPad pane: row tap drives the shell selection (no route push — the
 	// (tabs) group has no in-group navigator, so a push slides the whole shell).
