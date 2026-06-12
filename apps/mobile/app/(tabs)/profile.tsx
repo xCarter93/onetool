@@ -6,11 +6,21 @@ import { Avatar, Card } from "@/components/ui";
 import { Mail, Building, LogOut, Shield } from "lucide-react-native";
 import { AppHeader } from "@/components/app-header";
 
-export default function ProfileScreen() {
+// headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
+// edge-to-edge content) is byte-identical. The iPad shell renders Profile as a
+// single comfortable centered pane: headerMode="pane" suppresses the AppHeader
+// (shell mounts the one PaneHeader title="Profile") and the content is bounded
+// to a centered column so it is not stretched edge-to-edge.
+export default function ProfileScreen({
+	headerMode = "root",
+}: {
+	headerMode?: "root" | "pane";
+} = {}) {
 	const { user } = useUser();
 	const { signOut } = useAuth();
 	const { organization, membership } = useOrganization();
 	const t = useTokens();
+	const isPane = headerMode === "pane";
 
 	const handleSignOut = () => {
 		Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -30,8 +40,17 @@ export default function ProfileScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			<AppHeader mode="root" title="Profile" />
-			<ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+			{/* iPad pane: shell mounts the one PaneHeader title="Profile" (single-header
+			    convention) so the self-mounted AppHeader is suppressed. */}
+			{isPane ? null : <AppHeader mode="root" title="Profile" />}
+			<ScrollView
+				style={{ flex: 1 }}
+				contentContainerStyle={[
+					{ padding: 16 },
+					// iPad: comfortable centered column (not stretched edge-to-edge).
+					isPane && { maxWidth: 560, alignSelf: "center", width: "100%" },
+				]}
+			>
 				{/* User Avatar & Name */}
 				<View style={{ alignItems: "center", marginBottom: 24, paddingVertical: 24 }}>
 					<Avatar text={initials} imageUrl={user?.imageUrl} size={80} />

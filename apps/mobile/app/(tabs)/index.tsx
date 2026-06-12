@@ -32,6 +32,7 @@ import {
 } from "@/components/calendar/dateUtils";
 import { useViewMode } from "@/lib/useViewMode";
 import { AppHeader } from "@/components/app-header";
+import { useShellNav } from "@/lib/shell-nav";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 // Local midnight for a timestamp — used only for day-difference label rounding.
@@ -84,8 +85,21 @@ function relativeTime(ts: number): string {
 	});
 }
 
-export default function HomeScreen() {
+// headerMode/wide default off → the iPhone path (AppHeader mode="root" home,
+// single-column ScrollView, raw router.push) is byte-identical. The iPad shell
+// renders this as a single pane: headerMode="pane" suppresses the self-mounted
+// AppHeader (shell mounts the one PaneHeader with the search affordance), and
+// wide=true (landscape) re-flows the dashboard into two columns.
+export default function HomeScreen({
+	headerMode = "root",
+	wide = false,
+}: {
+	headerMode?: "root" | "pane";
+	wide?: boolean;
+} = {}) {
 	const router = useRouter();
+	const shellNav = useShellNav();
+	const isPane = headerMode === "pane";
 	const [refreshing, setRefreshing] = useState(false);
 	const { viewMode, setViewMode, hydrated } = useViewMode();
 	// Displayed month drives both the MonthGrid render and the fetch window.
@@ -220,6 +234,21 @@ export default function HomeScreen() {
 	// Single bucketing path: DaySheet buckets the day arrays internally via
 	// dateUtils (tasksOnDay/projectsOnDay) — no duplicate filtering memo here.
 
+	// Home internal navigation. On iPad (inside the shell) every tab jump MUST go
+	// through the ShellNav context — a raw router.push to a (tabs) sibling re-mounts
+	// the whole shell and slides it (26-01). useShellNav() is null on iPhone, so the
+	// raw router.push fallback keeps the iPhone path byte-identical.
+	//
+	// KPI / needs-attention rows currently target the bare LIST routes (/clients,
+	// /projects, /money). The 26-01 usePathname reconciliation layer DOES map these
+	// to the matching activeTab on a real route change, but on iPad we route through
+	// the shell directly so no push leaves the shell stale or slides a fresh (tabs).
+	const goTab = (tab: "clients" | "projects" | "money", route: Href) =>
+		shellNav ? shellNav.open(tab) : router.push(route);
+	// The search pill opens the centered Search overlay (26-05) — a transparentModal
+	// over the mounted shell, so it stays a plain router.push on both devices.
+	const openSearch = () => router.push("/search" as Href);
+
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: colors.background }}
@@ -228,7 +257,9 @@ export default function HomeScreen() {
 			<View style={styles.pageWash} pointerEvents="none">
 				<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10} />
 			</View>
-			<AppHeader mode="root" home />
+			{/* iPhone: AppHeader root. iPad pane: shell mounts the one PaneHeader
+			    (single-header convention) so the self-mounted AppHeader is suppressed. */}
+			{isPane ? null : <AppHeader mode="root" home />}
 			<ScrollView
 				style={{ flex: 1 }}
 				contentContainerStyle={styles.scrollContent}
@@ -246,7 +277,7 @@ export default function HomeScreen() {
 					{/* Search pill — opens the /search overlay */}
 					<Pressable
 						style={styles.searchPill}
-						onPress={() => router.push("/search" as Href)}
+						onPress={openSearch}
 						accessibilityRole="button"
 						accessibilityLabel="Search clients, projects"
 					>
@@ -262,59 +293,68 @@ export default function HomeScreen() {
 				</View>
 
 				{viewMode === "dashboard" ? (
-					<>
-						{/* 2x2 KPI grid */}
-						<View style={styles.kpiGrid}>
-							<View style={styles.kpiRow}>
-								<View style={styles.kpiCell}>
-									<StatCard
-										label="Active Clients"
-										value={activeClients}
-										foot={`${leadClients} new leads`}
-										icon="Users"
-										tone="#00a6f4"
-										onPress={() => router.push("/clients")}
-									/>
-								</View>
-								<View style={styles.kpiCell}>
-									<StatCard
-										label="Active Projects"
-										value={activeProjects}
-										foot={`${plannedProjects} planned`}
-										icon="FolderKanban"
-										tone="#7c5cff"
-										onPress={() => router.push("/projects")}
-									/>
-								</View>
-							</View>
-							<View style={styles.kpiRow}>
-								<View style={styles.kpiCell}>
-									<StatCard
-										label="Unpaid"
-										value={formatCurrency(homeStats?.invoicesSent.outstanding ?? 0)}
-										foot={`${overdueInvoices?.length ?? 0} overdue`}
-										icon="Receipt"
-										tone="#e8930c"
-										onPress={() => router.push("/money")}
-									/>
-								</View>
-								<View style={styles.kpiCell}>
-									<StatCard
-										label="Open Quotes"
-										value={formatCurrency(openQuotesValue)}
-										foot={`${openQuotes?.length ?? 0} awaiting reply`}
-										icon="FileText"
-										tone="#1f9d57"
-										onPress={() => router.push("/money")}
-									/>
-								</View>
-							</View>
-						</View>
+					(() => {
+						// Dashboard sections extracted as inline JSX (NOT new hooks — no
+						// useQuery/useMemo/useState added/removed/reordered between paths,
+						// so hook order is identical for iPhone and iPad). Composed single-
+						// column (iPhone + iPad portrait) or 2-column (iPad landscape, wide).
 
-						{/* Needs attention — renders ONLY when non-empty (no empty state).
-						    Aggregates overdue invoices + awaiting-signing quotes + past-due
-						    tasks. Invoices/quotes deep-link to /money; tasks complete inline. */}
-						{naCount > 0 && (
+						// 2x2 KPI grid. On iPad these jump through the shell (goTab); on
+						// iPhone goTab falls back to the same router.push as before.
+						const kpiGrid = (
+							<View style={styles.kpiGrid}>
+								<View style={styles.kpiRow}>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Clients"
+											value={activeClients}
+											foot={`${leadClients} new leads`}
+											icon="Users"
+											tone="#00a6f4"
+											onPress={() => goTab("clients", "/clients")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Projects"
+											value={activeProjects}
+											foot={`${plannedProjects} planned`}
+											icon="FolderKanban"
+											tone="#7c5cff"
+											onPress={() => goTab("projects", "/projects")}
+										/>
+									</View>
+								</View>
+								<View style={styles.kpiRow}>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Unpaid"
+											value={formatCurrency(
+												homeStats?.invoicesSent.outstanding ?? 0
+											)}
+											foot={`${overdueInvoices?.length ?? 0} overdue`}
+											icon="Receipt"
+											tone="#e8930c"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Open Quotes"
+											value={formatCurrency(openQuotesValue)}
+											foot={`${openQuotes?.length ?? 0} awaiting reply`}
+											icon="FileText"
+											tone="#1f9d57"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+								</View>
+							</View>
+						);
+
+						// Needs attention — renders ONLY when non-empty (no empty state).
+						// Invoices/quotes deep-link to /money via the shell; tasks complete inline.
+						const needsAttention = naCount > 0 && (
 							<View style={styles.section}>
 								<View style={styles.naHeader}>
 									<SectionHeader title="Needs attention" />
@@ -330,7 +370,7 @@ export default function HomeScreen() {
 											iconColor={tokens.danger}
 											title={`Invoice ${inv.invoiceNumber}`}
 											sub={`${formatCurrency(inv.total)} overdue`}
-											onPress={() => router.push("/money")}
+											onPress={() => goTab("money", "/money")}
 										/>
 									))}
 									{(awaitingQuotes ?? []).map((q) => (
@@ -340,7 +380,7 @@ export default function HomeScreen() {
 											iconColor={tokens.warning}
 											title={q.title || "Quote"}
 											sub={quoteExpiryLabel(q.validUntil)}
-											onPress={() => router.push("/money")}
+											onPress={() => goTab("money", "/money")}
 										/>
 									))}
 									{(overdueTasks ?? []).map((task) => {
@@ -379,11 +419,11 @@ export default function HomeScreen() {
 									})}
 								</View>
 							</View>
-						)}
+						);
 
-						{/* Revenue — gauge only when a real org target is set, else earned-only */}
-						{homeStats &&
-							(hasTarget ? (
+						// Revenue — gauge only when a real org target is set, else earned-only.
+						const revenueBlock = homeStats ? (
+							hasTarget ? (
 								<View style={styles.revenueBlock}>
 									<RevenueGauge
 										pct={homeStats.revenueGoal.percentage}
@@ -416,40 +456,71 @@ export default function HomeScreen() {
 										<Text style={styles.earnedLink}>Set a monthly goal</Text>
 									</Pressable>
 								</View>
-							))}
+							)
+						) : null;
 
-						{/* Recent activity — real data; section header retained even when empty */}
-						<View style={styles.section}>
-							<SectionHeader title="Recent activity" />
-							<View style={styles.naList}>
-								{recentActivity && recentActivity.length > 0 ? (
-									recentActivity.map((item, i) => (
+						// Recent activity — real data; section header retained even when empty.
+						const recentActivityBlock = (
+							<View style={styles.section}>
+								<SectionHeader title="Recent activity" />
+								<View style={styles.naList}>
+									{recentActivity && recentActivity.length > 0 ? (
+										recentActivity.map((item, i) => (
+											<ListRow
+												key={item._id}
+												showChevron={false}
+												icon={activityIcon(item.activityType)}
+												iconColor={tokens.accent}
+												title={item.description}
+												sub={relativeTime(item.timestamp)}
+												last={i === recentActivity.length - 1}
+											/>
+										))
+									) : (
 										<ListRow
-											key={item._id}
 											showChevron={false}
-											icon={activityIcon(item.activityType)}
-											iconColor={tokens.accent}
-											title={item.description}
-											sub={relativeTime(item.timestamp)}
-											last={i === recentActivity.length - 1}
+											icon="Activity"
+											iconColor={tokens.faint}
+											title="No recent activity"
+											sub="Activity will appear here as you work"
+											last
 										/>
-									))
-								) : (
-									<ListRow
-										showChevron={false}
-										icon="Activity"
-										iconColor={tokens.faint}
-										title="No recent activity"
-										sub="Activity will appear here as you work"
-										last
-									/>
-								)}
+									)}
+								</View>
 							</View>
-						</View>
+						);
 
-						{/* Journey — compact gauge tile; opens the /journey sheet for detail */}
-						<JourneyCard />
-					</>
+						// Journey — compact gauge tile; opens the /journey sheet for detail.
+						const journey = <JourneyCard />;
+
+						// iPad landscape: 2-column 1.3fr / 1fr split mirroring PadHome.
+						// LEFT (flex 1.3): revenue → KPI → needs-attention → recent activity.
+						// RIGHT (flex 1): journey (+ future Today/This-week). Portrait + iPhone
+						// keep the EXISTING single-column order, byte-identical.
+						if (wide) {
+							return (
+								<View style={styles.wideRow}>
+									<View style={styles.wideLeft}>
+										{revenueBlock}
+										{kpiGrid}
+										{needsAttention}
+										{recentActivityBlock}
+									</View>
+									<View style={styles.wideRight}>{journey}</View>
+								</View>
+							);
+						}
+
+						return (
+							<>
+								{kpiGrid}
+								{needsAttention}
+								{revenueBlock}
+								{recentActivityBlock}
+								{journey}
+							</>
+						);
+					})()
 				) : (
 					/* Calendar View — custom MonthGrid fed by getCalendarEvents */
 					<View style={styles.calendarSection}>
@@ -598,5 +669,16 @@ const styles = StyleSheet.create({
 	},
 	calendarSection: {
 		gap: spacing.md,
+	},
+	// iPad landscape 2-column dashboard (1.3fr / 1fr split, gap 18) — PadHome.
+	wideRow: {
+		flexDirection: "row",
+		gap: 18,
+	},
+	wideLeft: {
+		flex: 1.3,
+	},
+	wideRight: {
+		flex: 1,
 	},
 });

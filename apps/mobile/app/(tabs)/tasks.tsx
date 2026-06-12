@@ -63,9 +63,19 @@ interface GroupBlock {
 	total: number;
 }
 
-export default function TasksScreen() {
+// headerMode defaults to "root" → the iPhone path (self-mounted AppHeader) is
+// byte-identical. The iPad shell renders Tasks as a SINGLE WIDE LIST pane:
+// headerMode="pane" suppresses the AppHeader (shell mounts the one PaneHeader
+// title="Tasks"). Tasks is explicitly NOT master-detail — no selection, no
+// detail pane, no split. The list simply fills the pane width.
+export default function TasksScreen({
+	headerMode = "root",
+}: {
+	headerMode?: "root" | "pane";
+} = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const isPane = headerMode === "pane";
 	const [refreshing, setRefreshing] = useState(false);
 
 	const tasks = useQuery(api.tasks.list, {});
@@ -330,7 +340,9 @@ export default function TasksScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			<AppHeader mode="root" title="Tasks" />
+			{/* iPad pane: shell mounts the one PaneHeader title="Tasks" (single-header
+			    convention) so the self-mounted AppHeader is suppressed. */}
+			{isPane ? null : <AppHeader mode="root" title="Tasks" />}
 
 			{loading ? (
 				<View style={styles.listContent}>

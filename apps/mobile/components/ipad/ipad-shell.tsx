@@ -25,6 +25,9 @@ import {
 import ClientsScreen from "@/app/(tabs)/clients/index";
 import ProjectsScreen from "@/app/(tabs)/projects/index";
 import MoneyScreen from "@/app/(tabs)/money/index";
+import HomeScreen from "@/app/(tabs)/index";
+import TasksScreen from "@/app/(tabs)/tasks";
+import ProfileScreen from "@/app/(tabs)/profile";
 import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
 import { ClientCreateBody } from "@/app/(tabs)/clients/new";
 import { ProjectDetailBody } from "@/app/(tabs)/projects/[projectId]";
@@ -380,7 +383,7 @@ function IpadShellInner() {
 								<PaneDetailHost tab={detailTab} />
 							)
 						) : (
-							<PortraitSlot tab={activeTab} />
+							<NonMasterDetailPane tab={activeTab} orientation="portrait" />
 						)}
 					</View>
 				</View>
@@ -396,7 +399,9 @@ function IpadShellInner() {
 				{isMasterDetail ? (
 					<>
 						<View style={[styles.listPane, { borderRightColor: t.line }]}>
-							{listPaneBody ?? <PortraitSlot tab={activeTab} />}
+							{listPaneBody ?? (
+								<NonMasterDetailPane tab={activeTab} orientation="landscape" />
+							)}
 						</View>
 						<View style={styles.detailPane}>
 							{hasSelection ? (
@@ -409,9 +414,10 @@ function IpadShellInner() {
 						</View>
 					</>
 				) : (
-					// TODO(26-04): Home wide dashboard, Tasks wide list, Profile pane.
+					// Home (2-col wide dashboard) / Tasks (single wide list) / Profile
+					// (centered pane) — single content pane, no list+detail split.
 					<View style={styles.contentPane}>
-						<PortraitSlot tab={activeTab} />
+						<NonMasterDetailPane tab={activeTab} orientation="landscape" />
 					</View>
 				)}
 			</View>
@@ -419,10 +425,53 @@ function IpadShellInner() {
 	);
 }
 
-// Non-master-detail fill-in slot (Home / Tasks / Profile — 26-04 fills these).
-function PortraitSlot({ tab }: { tab: ShellTab }) {
+// Non-master-detail single pane (Home / Tasks / Profile). Each body renders with
+// headerMode="pane" so the shell owns the ONE header (the body suppresses its
+// AppHeader and mounts a PaneHeader where a title is needed). Home is the only
+// orientation-sensitive body: wide=true (landscape) re-flows it into 2 columns.
+// Tasks is always a single wide list; Profile is a centered pane — neither ever
+// shows a 330px list pane or a detail pane.
+function NonMasterDetailPane({
+	tab,
+	orientation,
+}: {
+	tab: ShellTab;
+	orientation: "portrait" | "landscape";
+}) {
 	const t = useTokens();
-	return <View style={[styles.slot, { backgroundColor: t.surface }]} accessibilityLabel={`${tab}-pane`} />;
+	let body: React.ReactNode = null;
+	if (tab === "tasks") {
+		// Shell owns the one header; Tasks fills the pane as a single wide list.
+		body = (
+			<>
+				<PaneHeader title="Tasks" />
+				<TasksScreen headerMode="pane" />
+			</>
+		);
+	} else if (tab === "profile") {
+		body = (
+			<>
+				<PaneHeader title="Profile" />
+				<ProfileScreen headerMode="pane" />
+			</>
+		);
+	} else if (tab === "home") {
+		// Home: 2-column in landscape (wide), single column in portrait. Home owns
+		// its own greeting hero + in-content search pill (the header affordance), so
+		// the shell does NOT mount a redundant PaneHeader for it — still one header
+		// per pane (locked single-header convention).
+		body = (
+			<HomeScreen headerMode="pane" wide={orientation === "landscape"} />
+		);
+	}
+	return (
+		<View
+			style={[styles.slot, { backgroundColor: t.surface }]}
+			accessibilityLabel={`${tab}-pane`}
+		>
+			{body}
+		</View>
+	);
 }
 
 export function IpadShell() {
