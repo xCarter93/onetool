@@ -255,22 +255,27 @@ export default function HomeScreen({
 			style={{ flex: 1, backgroundColor: colors.background }}
 			edges={[]}
 		>
-			{/* Brand wash. iPhone + iPad-portrait: fixed 380 band (byte-identical).
-			    iPad-landscape (wide): the HalftoneBg image is sized off the full
-			    ~1366pt window while this pane is only ~1136pt wide, so the image's
-			    own bottomFade gets cropped mid-fade by the fixed band → a hard
-			    horizontal edge. A taller wide band plus a transparent→background
-			    LinearGradient over the lower band dissolves that crop into the page. */}
+			{/* Brand wash. iPhone (!isPane): fixed 380 band (byte-identical).
+			    iPad (isPane, either orientation): the HalftoneBg image is sized off
+			    the full window (~1024pt portrait / ~1366pt landscape) while this pane
+			    is narrower (~794pt portrait / ~1136pt landscape), so the image's own
+			    bottomFade gets cropped mid-fade by the fixed band → a hard horizontal
+			    edge. A taller band plus a transparent→background LinearGradient over
+			    the lower band dissolves that crop into the page. Portrait and landscape
+			    use different band heights (portrait's narrower window crops sooner). */}
 			<View
-				style={[styles.pageWash, wide && styles.pageWashWide]}
+				style={[
+					styles.pageWash,
+					isPane && (wide ? styles.pageWashWide : styles.pageWashPane),
+				]}
 				pointerEvents="none"
 			>
 				<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10} />
-				{wide ? (
+				{isPane ? (
 					<LinearGradient
 						pointerEvents="none"
 						colors={["rgba(245,245,245,0)", colors.background]}
-						style={styles.washFadeWide}
+						style={wide ? styles.washFadeWide : styles.washFadePane}
 					/>
 				) : null}
 			</View>
@@ -487,42 +492,48 @@ export default function HomeScreen({
 						);
 
 						// Revenue — gauge only when a real org target is set, else earned-only.
-						const revenueBlock = homeStats ? (
-							hasTarget ? (
-								<View style={styles.revenueBlock}>
-									<RevenueGauge
-										pct={homeStats.revenueGoal.percentage}
-										label={`${currentMonthUpper} REVENUE`}
-										value={formatCurrency(homeStats.revenueGoal.current)}
-										goal={`of ${formatCurrency(
-											org!.monthlyRevenueTarget!
-										)} goal`}
-										trend={`${
-											homeStats.revenueGoal.changeType === "decrease"
-												? "-"
-												: "+"
-										}${Math.abs(homeStats.revenueGoal.changePercentage)}%`}
-										toGo={`${formatCurrency(
-											Math.max(
-												org!.monthlyRevenueTarget! -
-													homeStats.revenueGoal.current,
-												0
-											)
-										)} to go`}
-									/>
-								</View>
-							) : (
-								<View style={styles.earnedOnlyCard}>
-									<Eyebrow>{`${currentMonthUpper} REVENUE`}</Eyebrow>
-									<Text style={styles.earnedValue}>
-										{formatCurrency(homeStats.revenueGoal.current)}
-									</Text>
-									<Pressable onPress={() => router.push("/profile")}>
-										<Text style={styles.earnedLink}>Set a monthly goal</Text>
-									</Pressable>
-								</View>
-							)
-						) : null;
+						// renderRevenue(wide): wide=false → iPhone / iPad-portrait byte-
+						// identical; wide=true → the full-width landscape gauge (Issue 1).
+						const renderRevenue = (wideGauge: boolean) =>
+							homeStats ? (
+								hasTarget ? (
+									<View style={styles.revenueBlock}>
+										<RevenueGauge
+											wide={wideGauge}
+											pct={homeStats.revenueGoal.percentage}
+											label={`${currentMonthUpper} REVENUE`}
+											value={formatCurrency(homeStats.revenueGoal.current)}
+											goal={`of ${formatCurrency(
+												org!.monthlyRevenueTarget!
+											)} goal`}
+											trend={`${
+												homeStats.revenueGoal.changeType === "decrease"
+													? "-"
+													: "+"
+											}${Math.abs(homeStats.revenueGoal.changePercentage)}%`}
+											toGo={`${formatCurrency(
+												Math.max(
+													org!.monthlyRevenueTarget! -
+														homeStats.revenueGoal.current,
+													0
+												)
+											)} to go`}
+										/>
+									</View>
+								) : (
+									<View style={styles.earnedOnlyCard}>
+										<Eyebrow>{`${currentMonthUpper} REVENUE`}</Eyebrow>
+										<Text style={styles.earnedValue}>
+											{formatCurrency(homeStats.revenueGoal.current)}
+										</Text>
+										<Pressable onPress={() => router.push("/profile")}>
+											<Text style={styles.earnedLink}>Set a monthly goal</Text>
+										</Pressable>
+									</View>
+								)
+							) : null;
+						// iPhone + iPad-portrait revenue (wide=false → byte-identical gauge).
+						const revenueBlock = renderRevenue(false);
 
 						// Recent activity — real data; section header retained even when empty.
 						const recentActivityBlock = (
@@ -560,18 +571,20 @@ export default function HomeScreen({
 
 						// iPad landscape (Option A): full-width revenue, 4-across KPI row,
 						// then a two-column row - recent activity (wider) beside journey +
-						// needs-attention stacked. Portrait + iPhone keep the EXISTING
-						// single-column order below, byte-identical.
+						// needs-attention stacked. The right column leads with a spacer so
+						// the JourneyCard's top aligns with the left list card's top (the
+						// left column leads with a SectionHeader; Issue 2).
 						if (wide) {
 							return (
 								<>
-									{revenueBlock}
+									{renderRevenue(true)}
 									{kpiGridWide}
 									<View style={styles.wideRow}>
 										<View style={styles.wideMain}>
 											{recentActivityBlock}
 										</View>
 										<View style={styles.wideSide}>
+											<View style={styles.wideSideHeaderSpacer} />
 											{journey}
 											{needsAttention}
 										</View>
@@ -580,6 +593,22 @@ export default function HomeScreen({
 							);
 						}
 
+						// iPad portrait (isPane && !wide): dark revenue hero FIRST, then the
+						// 2x2 KPI grid, needs-attention, recent activity, journey (Issue 3).
+						// This is distinct from the iPhone single-column order below.
+						if (isPane) {
+							return (
+								<>
+									{revenueBlock}
+									{kpiGrid}
+									{needsAttention}
+									{recentActivityBlock}
+									{journey}
+								</>
+							);
+						}
+
+						// iPhone (!isPane) — EXISTING single-column order, byte-identical.
 						return (
 							<>
 								{kpiGrid}
@@ -619,20 +648,35 @@ const styles = StyleSheet.create({
 		height: 380,
 		overflow: "hidden",
 	},
-	// iPad-landscape only: a taller wash band gives the hero image's own
-	// bottomFade room to complete inside the visible strip instead of being
-	// cropped mid-fade by the fixed 380 band (the hard horizontal edge).
+	// iPad-landscape: a taller wash band gives the hero image's own bottomFade
+	// room to complete inside the visible strip instead of being cropped mid-fade
+	// by the fixed 380 band (the hard horizontal edge).
 	pageWashWide: {
 		height: 460,
 	},
-	// iPad-landscape only: transparent→page-background gradient over the lower
-	// wash band, dissolving any residual crop into the page (no hard edge).
+	// iPad-portrait: the narrower window crops the image's bottomFade sooner than
+	// landscape, so a slightly taller-than-iPhone band + the fade overlay below
+	// dissolves the crop cleanly (tuned independently of landscape).
+	pageWashPane: {
+		height: 420,
+	},
+	// iPad-landscape: transparent→page-background gradient over the lower wash
+	// band, dissolving any residual crop into the page (no hard edge).
 	washFadeWide: {
 		position: "absolute",
 		left: 0,
 		right: 0,
 		bottom: 0,
 		height: 180,
+	},
+	// iPad-portrait fade overlay — taller than landscape's so the portrait band's
+	// earlier crop dissolves fully into the page background.
+	washFadePane: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		height: 200,
 	},
 	hero: {
 		position: "relative",
@@ -773,5 +817,12 @@ const styles = StyleSheet.create({
 	},
 	wideSide: {
 		flex: 1,
+	},
+	// iPad-landscape: pushes the right column down so the JourneyCard's top edge
+	// aligns with the top of the left column's Recent-activity list card. The left
+	// column leads with a SectionHeader (16px bold, ~20px row) before its list
+	// card; matching that height here gives both columns a clean top baseline.
+	wideSideHeaderSpacer: {
+		height: 20,
 	},
 });
