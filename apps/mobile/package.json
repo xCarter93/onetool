@@ -9,7 +9,9 @@
 		"build:ios": "eas build --platform ios",
 		"lint": "eslint .",
 		"test": "vitest",
-		"test:once": "vitest run"
+		"test:once": "vitest run",
+		"check:appstore": "node scripts/check-app-store-config.cjs",
+		"check:privacy-drift": "node scripts/check-privacy-manifest-drift.cjs --advisory"
 	},
 	"dependencies": {
 		"@clerk/expo": "^3.3.1",
