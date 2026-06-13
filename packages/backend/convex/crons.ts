@@ -17,4 +17,11 @@ crons.hourly(
 	internal.serviceStatusActions.checkServiceStatus
 );
 
+// Backstop sweep for partial-failure org-deletion cascades.
+crons.daily(
+	"reconcile orphaned org data",
+	{ hourUTC: 3, minuteUTC: 30 }, // Off-peak, distinct from the 02:00 cleanup
+	internal.orgCascade.reconcileOrphanedOrgData
+);
+
 export default crons;
