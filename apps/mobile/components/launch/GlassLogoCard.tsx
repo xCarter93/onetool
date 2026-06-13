@@ -10,6 +10,7 @@ import Animated, {
 	withTiming,
 } from "react-native-reanimated";
 import { fontFamily } from "@/lib/theme";
+import { useDevice } from "@/lib/use-device";
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
@@ -20,6 +21,8 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 // swapped for a flat rgba fill (RESEARCH Pitfall 5).
 export function GlassLogoCard() {
 	const reduceMotion = useReducedMotion();
+	const { device } = useDevice();
+	const isPad = device === "ipad";
 	const card = useSharedValue(reduceMotion ? 1 : 0);
 	const tag = useSharedValue(reduceMotion ? 1 : 0);
 
@@ -52,7 +55,7 @@ export function GlassLogoCard() {
 	}));
 
 	return (
-		<View style={styles.stage}>
+		<View style={[styles.stage, isPad && styles.stagePad]}>
 			{reduceMotion ? (
 				<Animated.View style={[styles.card, styles.cardFlat, cardStyle]}>
 					<Image
@@ -90,6 +93,13 @@ const styles = StyleSheet.create({
 		gap: 22,
 		paddingHorizontal: 28,
 		width: "100%",
+	},
+	// iPad: confine the brand card to a contained element instead of stretching
+	// across the large canvas. width:100% + maxWidth keeps the card/logo
+	// proportional; alignSelf centers it. iPhone keeps the unbounded stage above.
+	stagePad: {
+		maxWidth: 420,
+		alignSelf: "center",
 	},
 	card: {
 		width: "100%",
