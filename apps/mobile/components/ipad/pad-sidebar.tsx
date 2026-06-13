@@ -239,8 +239,10 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 	},
 	brandLogo: {
+		// Explicit definite w/h (not aspectRatio — Fabric ignores height when
+		// paired with aspectRatio here). 908x237 source ≈ 3.83:1 → 122x32.
+		width: 122,
 		height: 32,
-		aspectRatio: 908 / 237,
 	},
 	orgRow: {
 		marginHorizontal: 12,
