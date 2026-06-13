@@ -56,7 +56,7 @@ export default function CreateOrganizationScreen() {
 	const isPad = device === "ipad";
 
 	// --- Auth / org hooks ---------------------------------------------------
-	const { user } = useUser();
+	const { user, isLoaded: userLoaded } = useUser();
 	const { organization: activeOrg } = useOrganization();
 	const { createOrganization, setActive, userMemberships } =
 		useOrganizationList({ userMemberships: true });
@@ -115,8 +115,9 @@ export default function CreateOrganizationScreen() {
 	// by a flag — the apps/mobile lint forbids setState in an effect.
 	if (!nameSeeded && user) {
 		setNameSeeded(true);
-		if (user.firstName) setFirstName(user.firstName);
-		if (user.lastName) setLastName(user.lastName);
+		// Only fill empty fields — never clobber input typed before Clerk hydrated.
+		if (user.firstName && !firstName) setFirstName(user.firstName);
+		if (user.lastName && !lastName) setLastName(user.lastName);
 	}
 
 	// Once an active org exists, the create step is done. setActive() remounts this
@@ -201,6 +202,9 @@ export default function CreateOrganizationScreen() {
 			setStep(2);
 			return;
 		}
+		// Block until Clerk has hydrated the user — otherwise user.update() below is
+		// skipped and the name is never persisted before org creation.
+		if (!userLoaded) return;
 		const result = validateStep1({ firstName, lastName, orgName });
 		if (!result.valid) {
 			setFieldErrors(result.fields);

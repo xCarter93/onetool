@@ -78,7 +78,7 @@ export default function ProfileScreen({
 
 		if (hasAppleLogin) {
 			message +=
-				"\n\nYou signed in with Apple. After deleting, open Settings → your name → Sign-In & Security → Sign in with Apple → OneTool → Stop Using Apple ID to fully revoke access.";
+				"\n\nYou signed in with Apple. After deleting, open Settings → your name → Sign in with Apple → OneTool → Stop Using Apple ID to fully revoke access.";
 		}
 
 		Alert.alert("Delete Account", message, [

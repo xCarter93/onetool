@@ -28,6 +28,12 @@ describe("validateStep1", () => {
 	});
 
 	it("treats whitespace-only values as empty", () => {
+		expect(validateStep1({ ...full, firstName: "   " }).fields).toContain(
+			"firstName"
+		);
+		expect(validateStep1({ ...full, lastName: "   " }).fields).toContain(
+			"lastName"
+		);
 		expect(validateStep1({ ...full, orgName: "   " }).fields).toContain(
 			"orgName"
 		);

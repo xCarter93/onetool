@@ -44,7 +44,7 @@ interface FormData {
 }
 
 export default function CompleteOrganizationMetadata() {
-	const { user } = useUser();
+	const { user, isLoaded: userLoaded } = useUser();
 	const { organization: clerkOrganization, isLoaded: clerkOrgLoaded } =
 		useOrganization();
 	const { resolvedTheme } = useTheme();
@@ -134,8 +134,9 @@ export default function CompleteOrganizationMetadata() {
 	// by a flag — the eslint config forbids setState inside an effect.
 	if (!nameSeeded && user) {
 		setNameSeeded(true);
-		if (user.firstName) setFirstName(user.firstName);
-		if (user.lastName) setLastName(user.lastName);
+		// Only fill empty fields — never clobber input typed before Clerk hydrated.
+		if (user.firstName && !firstName) setFirstName(user.firstName);
+		if (user.lastName && !lastName) setLastName(user.lastName);
 	}
 
 	// Whether we're creating a new organization (from query param)
@@ -433,21 +434,32 @@ export default function CompleteOrganizationMetadata() {
 			hasError = true;
 		}
 		if (hasError) return;
-		// Guard: hook still initializing
-		if (!orgListLoaded || !createOrganization) return;
+		// Guard: hooks still initializing. userLoaded gates the name write below —
+		// without it, user is null and the name is never persisted before org create.
+		if (!orgListLoaded || !createOrganization || !userLoaded) return;
 
 		setCreateSubmitting(true);
 		try {
 			// Persist the user's name to Clerk before org creation (re-syncs to
 			// convex users.name via the user.updated webhook). Skip when unchanged.
+			// Own try/catch so a name-write failure reports accurately instead of the
+			// org-creation error below.
 			if (
 				user &&
 				(user.firstName !== trimmedFirst || user.lastName !== trimmedLast)
 			) {
-				await user.update({
-					firstName: trimmedFirst,
-					lastName: trimmedLast,
-				});
+				try {
+					await user.update({
+						firstName: trimmedFirst,
+						lastName: trimmedLast,
+					});
+				} catch {
+					toast.warning(
+						"Couldn't save your name",
+						"Please try again."
+					);
+					return;
+				}
 			}
 
 			// 1. Create org — or reuse one from a prior failed attempt with the same
