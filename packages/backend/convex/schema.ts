@@ -790,6 +790,21 @@ export default defineSchema({
 		.index("by_entity", ["entityType", "entityId"]) // NEW: Efficient lookup for "all attachments on entity X"
 		.index("by_org_entity", ["orgId", "entityType", "entityId"]), // NEW: Org-scoped entity lookup
 
+	// Push notification device tokens.
+	// INTENTIONALLY userId-scoped, NOT orgId-scoped: a mention can originate in
+	// any org the author shares with the tagged user, and the push must reach the
+	// tagged user regardless of their active org. Deliberate exception to the
+	// CLAUDE.md multi-tenant rule (see push.ts header).
+	pushTokens: defineTable({
+		userId: v.id("users"),
+		token: v.string(), // "ExponentPushToken[...]"
+		platform: v.union(v.literal("ios"), v.literal("android")),
+		deviceName: v.optional(v.string()),
+		lastSeenAt: v.number(),
+	})
+		.index("by_user", ["userId"])
+		.index("by_token", ["token"]),
+
 	// Service Status - monitoring for external service health
 	serviceStatus: defineTable({
 		serviceName: v.string(), // "convex", "clerk_auth", "clerk_billing", "boldsign_esignature", "stripe"
