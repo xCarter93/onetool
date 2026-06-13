@@ -28,7 +28,8 @@ describe("orgCascade", () => {
 
 	describe("full cascade drains every seeded org-scoped table", () => {
 		it("removes all child data + storage-holding rows + maintains aggregates", async () => {
-			const { orgId } = await t.run(async (ctx) => {
+			const { orgId, docStorageId, bannerStorageId, galleryStorageId } =
+				await t.run(async (ctx) => {
 				const userId = await ctx.db.insert("users", {
 					name: "Owner",
 					email: "owner@example.com",
@@ -246,7 +247,7 @@ describe("orgCascade", () => {
 					createdAt: Date.now(),
 				});
 
-				return { orgId };
+				return { orgId, docStorageId, bannerStorageId, galleryStorageId };
 			});
 
 			// Delete the org row synchronously (entry-point behaviour), then drain.
@@ -288,10 +289,23 @@ describe("orgCascade", () => {
 					).length;
 				}
 				const org = await ctx.db.get(orgId);
-				return { result, orgIsNull: org === null };
+				// Storage blobs held by deleted records must be gone (no orphans).
+				const docUrl = await ctx.storage.getUrl(docStorageId);
+				const bannerUrl = await ctx.storage.getUrl(bannerStorageId);
+				const galleryUrl = await ctx.storage.getUrl(galleryStorageId);
+				return {
+					result,
+					orgIsNull: org === null,
+					docStorageGone: docUrl === null,
+					bannerStorageGone: bannerUrl === null,
+					galleryStorageGone: galleryUrl === null,
+				};
 			});
 
 			expect(counts.orgIsNull).toBe(true);
+			expect(counts.docStorageGone).toBe(true);
+			expect(counts.bannerStorageGone).toBe(true);
+			expect(counts.galleryStorageGone).toBe(true);
 			for (const [table, n] of Object.entries(counts.result)) {
 				expect(`${table}:${n}`).toBe(`${table}:0`);
 			}
