@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { View, Text, ScrollView, Alert, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card } from "@/components/ui";
-import { Mail, Building, LogOut, Shield } from "lucide-react-native";
+import { Mail, Building, LogOut, Shield, Trash2 } from "lucide-react-native";
 import { AppHeader } from "@/components/app-header";
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
@@ -22,6 +25,20 @@ export default function ProfileScreen({
 	const t = useTokens();
 	const isPane = headerMode === "pane";
 
+	// TRUE ownership comes from the BACKEND (Convex), NOT the Clerk org:admin role —
+	// a co-admin who is not the org owner must take the member path.
+	const org = useQuery(api.organizations.get);
+	const me = useQuery(api.users.current);
+	// Both queries must resolve before we trust the owner gate — undefined (loading)
+	// would read as not-owner and wrongly route an owner down the member path.
+	const ownershipResolved = org !== undefined && me !== undefined;
+	const isOwner = !!(org && me && org.ownerUserId === me._id);
+	// Count is for CONFIRM COPY ONLY (blast-radius warning), never the owner gate.
+	const otherMembers = Math.max(0, (organization?.membersCount ?? 1) - 1);
+
+	// Guard against a double-tap launching the destroy+delete flow twice (no spinner per CONTEXT).
+	const [isDeleting, setIsDeleting] = useState(false);
+
 	const handleSignOut = () => {
 		Alert.alert("Sign Out", "Are you sure you want to sign out?", [
 			{ text: "Cancel", style: "cancel" },
@@ -29,6 +46,78 @@ export default function ProfileScreen({
 				text: "Sign Out",
 				style: "destructive",
 				onPress: () => signOut(),
+			},
+		]);
+	};
+
+	const handleDeleteAccount = () => {
+		if (isDeleting || !ownershipResolved) return;
+
+		// Three-way confirm copy chosen by path BEFORE the Alert.
+		let message: string;
+		if (isOwner && otherMembers === 0) {
+			message =
+				"This permanently deletes your account and your entire organization — all clients, projects, quotes, and invoices. This cannot be undone.";
+		} else if (isOwner) {
+			message = `You own this organization. Deleting your account will permanently delete the organization and ALL its business data for you and ${otherMembers} other member${
+				otherMembers === 1 ? "" : "s"
+			} — they will lose access immediately. This cannot be undone.`;
+		} else {
+			// Member/co-admin: only their own account is removed; org data stays.
+			message =
+				"This removes your account from the organization and deletes your user. The organization's data remains for the other members. This cannot be undone.";
+		}
+
+		Alert.alert("Delete Account", message, [
+			{ text: "Cancel", style: "cancel" },
+			{
+				text: "Delete Account",
+				style: "destructive",
+				onPress: async () => {
+					if (isDeleting) return;
+					setIsDeleting(true);
+
+					// Owner path: destroy the org FIRST (fires organization.deleted →
+					// the 28-04 backend cascade erases all org data; child rows drain
+					// asynchronously) THEN delete the user (fires user.deleted).
+					if (isOwner && organization) {
+						try {
+							await organization.destroy();
+						} catch {
+							Alert.alert(
+								"Delete Account",
+								"Couldn't delete your account. Please try again.",
+							);
+							setIsDeleting(false);
+							return;
+						}
+						// Org is gone; finishing means deleting the user.
+						try {
+							await user?.delete();
+						} catch {
+							// Partial failure: org destroyed but user remains — recoverable.
+							// On retry, org is now null so isOwner is false → member path runs user.delete() alone.
+							Alert.alert(
+								"Delete Account",
+								"Your organization was deleted, but we couldn't finish deleting your account. Tap Delete Account again to retry.",
+							);
+							setIsDeleting(false);
+						}
+						// On success the session tears down; the auth listener routes the app out.
+						return;
+					}
+
+					// Member path (or org-less owner retry): just delete the user.
+					try {
+						await user?.delete();
+					} catch {
+						Alert.alert(
+							"Delete Account",
+							"Couldn't delete your account. Please try again.",
+						);
+						setIsDeleting(false);
+					}
+				},
 			},
 		]);
 	};
@@ -167,6 +256,36 @@ export default function ProfileScreen({
 						}}
 					>
 						Sign Out
+					</Text>
+				</Pressable>
+
+				{/* Delete Account (App Store 5.1.1(v)) — confirm-gated, backend-owner-aware */}
+				<Pressable
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						justifyContent: "center",
+						paddingVertical: 16,
+						borderRadius: radii.lg,
+						marginTop: 12,
+						backgroundColor: t.card,
+						borderWidth: 1,
+						borderColor: t.line,
+						opacity: isDeleting || !ownershipResolved ? 0.5 : 1,
+					}}
+					onPress={handleDeleteAccount}
+					disabled={isDeleting || !ownershipResolved}
+				>
+					<Trash2 size={20} color={t.danger} />
+					<Text
+						style={{
+							marginLeft: 8,
+							color: t.danger,
+							fontFamily: fontFamily.semibold,
+							fontSize: 13,
+						}}
+					>
+						Delete Account
 					</Text>
 				</Pressable>
 
