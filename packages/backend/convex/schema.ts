@@ -1454,7 +1454,9 @@ export default defineSchema({
 		createdAt: v.number(),
 	})
 		.index("by_user_org", ["userId", "orgId"])
-		.index("by_user_client", ["userId", "clientId"]),
+		.index("by_user_client", ["userId", "clientId"])
+		// by_org: drained by the org-deletion cascade.
+		.index("by_org", ["orgId"]),
 
 	// Portal OTP codes — short-lived 6-digit codes for portal sign-in
 	// (PORTAL-01, PORTAL-04). One row per (clientPortalId, email) request.
@@ -1482,7 +1484,9 @@ export default defineSchema({
 		// Kept for legacy diagnostic queries; NOT used by Plan 03 verifyOtp.
 		.index("by_email_and_org", ["email", "orgId"])
 		.index("by_contact", ["clientContactId"])
-		.index("by_expires", ["expiresAt"]),
+		.index("by_expires", ["expiresAt"])
+		// by_org: drained by the org-deletion cascade.
+		.index("by_org", ["orgId"]),
 
 	// Portal sessions — one row per active device session (PORTAL-03,
 	// multi-device allowed; revocation by jti).
@@ -1504,7 +1508,9 @@ export default defineSchema({
 	})
 		.index("by_contact", ["clientContactId"])
 		.index("by_jti", ["tokenJti"])
-		.index("by_expires", ["expiresAt"]),
+		.index("by_expires", ["expiresAt"])
+		// by_org: drained by the org-deletion cascade.
+		.index("by_org", ["orgId"]),
 
 	// Stripe Connect webhook event ledger.
 	stripeWebhookEvents: defineTable({
