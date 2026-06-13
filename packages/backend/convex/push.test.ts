@@ -1,4 +1,3 @@
-import { convexTest } from "convex-test";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
@@ -11,7 +10,8 @@ import { createTestOrg, addMemberToOrg } from "./test.helpers";
 // RED on creation is the intended Wave 0 state (Nyquist compliance).
 
 describe("push", () => {
-	let t: ReturnType<typeof convexTest>;
+	// Schema-aware instance type so indexed ctx.db queries in t.run typecheck.
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -134,6 +134,9 @@ describe("push", () => {
 		let fetchSpy: ReturnType<typeof vi.fn>;
 
 		beforeEach(() => {
+			// Fake timers + finishAllScheduledFunctions is the convex-test pattern for
+			// draining a runAfter(0) scheduled ACTION (finishInProgress alone misses it).
+			vi.useFakeTimers();
 			fetchSpy = vi.fn(
 				async () =>
 					({
@@ -146,6 +149,7 @@ describe("push", () => {
 
 		afterEach(() => {
 			vi.unstubAllGlobals();
+			vi.useRealTimers();
 		});
 
 		it("pushes the RAW body + notificationId + orgId for a client mention, and rewrites the url for a quote mention (computed notificationType, not a literal)", async () => {
@@ -170,7 +174,7 @@ describe("push", () => {
 					const quoteId = await ctx.db.insert("quotes", {
 						orgId: author.orgId,
 						clientId,
-						quoteNumber: 1,
+						quoteNumber: "1",
 						title: "Q1",
 						status: "draft",
 						subtotal: 0,
@@ -199,7 +203,7 @@ describe("push", () => {
 				entityId: clientId,
 				entityName: "Acme Co",
 			});
-			await t.finishInProgressScheduledFunctions();
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 			expect(fetchSpy).toHaveBeenCalledWith(
 				"https://exp.host/--/api/v2/push/send",
@@ -227,7 +231,7 @@ describe("push", () => {
 				entityId: quoteId,
 				entityName: "Q1",
 			});
-			await t.finishInProgressScheduledFunctions();
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 			expect(fetchSpy).toHaveBeenCalled();
 			const quoteCall = fetchSpy.mock.calls.at(-1)!;
@@ -258,48 +262,49 @@ describe("push", () => {
 		});
 
 		it("schedules NO sendNotificationPush job for a non-mention type (payment_received)", async () => {
-			// A notification creation path with a non-mention type must NOT push:
-			// enqueuePush self-gates on PUSHABLE_TYPES (v1 mentions-only gate).
-			const { authorClerk, clerkOrgId, taggedId } = await t.run(
-				async (ctx) => {
-					const author = await createTestOrg(ctx);
-					const tagged = await addMemberToOrg(ctx, author.orgId);
-					await ctx.db.insert("pushTokens", {
-						userId: tagged.userId,
-						token: "ExponentPushToken[N]",
-						platform: "ios",
-						lastSeenAt: Date.now(),
-					});
-					return {
-						authorClerk: author.clerkUserId,
-						clerkOrgId: author.clerkOrgId,
-						taggedId: tagged.userId,
-					};
-				}
-			);
-			expect(taggedId).toBeDefined();
-
-			const asAuthor = t.withIdentity({
-				subject: authorClerk,
-				activeOrgId: clerkOrgId,
+			// A notification with a non-mention type must NOT push: enqueuePush
+			// self-gates on PUSHABLE_TYPES (v1 mentions-only gate).
+			const { orgId, clerkOrgId, taggedId } = await t.run(async (ctx) => {
+				const author = await createTestOrg(ctx);
+				const tagged = await addMemberToOrg(ctx, author.orgId);
+				await ctx.db.insert("pushTokens", {
+					userId: tagged.userId,
+					token: "ExponentPushToken[N]",
+					platform: "ios",
+					lastSeenAt: Date.now(),
+				});
+				return {
+					orgId: author.orgId,
+					clerkOrgId: author.clerkOrgId,
+					taggedId: tagged.userId,
+				};
 			});
 
-			// enqueuePush is exercised directly via sendNotificationPush gating:
-			// invoking it with a notificationType NOT in PUSHABLE_TYPES must drain
-			// to zero fetches.
-			await t.action(internal.push.sendNotificationPush, {
-				taggedUserId: taggedId,
-				title: "Payment received",
-				body: "payment_received",
-				url: "/money",
-				notificationId: "non_mention_placeholder" as never,
-				orgId: clerkOrgId,
+			// enqueuePush self-gates on PUSHABLE_TYPES: a non-mention type schedules
+			// no sendNotificationPush job, so no exp.host fetch ever occurs.
+			await t.run(async (ctx) => {
+				const notificationId = await ctx.db.insert("notifications", {
+					orgId,
+					userId: taggedId,
+					notificationType: "payment_received",
+					title: "Payment received",
+					message: "payment_received",
+					isRead: false,
+				});
+				const { enqueuePush } = await import("./push");
+				await enqueuePush(ctx, {
+					notificationType: "payment_received",
+					taggedUserId: taggedId,
+					title: "Payment received",
+					body: "payment_received",
+					url: "/money",
+					notificationId,
+					orgId: clerkOrgId,
+				});
 			});
 			await t.finishInProgressScheduledFunctions();
 
-			// No mention → no push. (sendNotificationPush itself sends to tokens,
-			// but the mentions-only gate lives in enqueuePush; a non-mention
-			// creation path never reaches sendNotificationPush.)
+			// No mention type → no scheduled send → no exp.host fetch.
 			expect(fetchSpy).not.toHaveBeenCalledWith(
 				"https://exp.host/--/api/v2/push/send",
 				expect.anything()

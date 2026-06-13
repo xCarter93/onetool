@@ -9,9 +9,20 @@
 // onboarding. sendNotificationPush / pruneToken are internal-only (not
 // client-callable).
 
-import { mutation, internalQuery, internalMutation } from "./_generated/server";
+import {
+	mutation,
+	internalQuery,
+	internalMutation,
+	internalAction,
+	type MutationCtx,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./lib/auth";
+
+const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const EXPO_CHUNK_SIZE = 100;
 
 // Raw mutation (NOT userMutation): userMutation resolves an active org and throws
 // for pre-org users (onboarding). getCurrentUserOrThrow needs only auth.
@@ -79,3 +90,106 @@ export const pruneToken = internalMutation({
 		}
 	},
 });
+
+// Sends one push per device token in <=100-message chunks to the Expo Push API.
+// Stays in the default runtime (no "use node") — bare fetch + scheduler/runMutation.
+export const sendNotificationPush = internalAction({
+	args: {
+		taggedUserId: v.id("users"),
+		title: v.string(),
+		body: v.string(),
+		url: v.string(),
+		notificationId: v.id("notifications"),
+		orgId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const tokens = await ctx.runQuery(internal.push.tokensForUser, {
+			userId: args.taggedUserId,
+		});
+		if (tokens.length === 0) return;
+
+		// data carries url + notificationId + orgId so the client tap can switch
+		// the active org (cross-org) then mark the notification read (PUSH-04).
+		const messages = tokens.map((t) => ({
+			to: t.token,
+			title: args.title,
+			body: args.body,
+			data: {
+				url: args.url,
+				notificationId: args.notificationId,
+				orgId: args.orgId,
+			},
+			sound: "default" as const,
+		}));
+
+		for (let i = 0; i < messages.length; i += EXPO_CHUNK_SIZE) {
+			const chunk = messages.slice(i, i + EXPO_CHUNK_SIZE);
+			const response = await fetch(EXPO_PUSH_URL, {
+				method: "POST",
+				headers: {
+					Accept: "application/json",
+					"Accept-Encoding": "gzip, deflate",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(chunk),
+			});
+			if (!response.ok) {
+				console.error(
+					`Expo push failed: ${response.status} ${response.statusText}`
+				);
+				continue;
+			}
+			const json = (await response.json()) as {
+				data?: Array<{
+					status?: string;
+					details?: { error?: string };
+				}>;
+			};
+			const tickets = json.data ?? [];
+			// AWAIT each prune (never an un-awaited forEach) so dead tokens are removed.
+			for (let idx = 0; idx < tickets.length; idx++) {
+				const ticket = tickets[idx];
+				if (
+					ticket?.status === "error" &&
+					ticket?.details?.error === "DeviceNotRegistered"
+				) {
+					await ctx.runMutation(internal.push.pruneToken, {
+						token: chunk[idx].to,
+					});
+				}
+			}
+		}
+	},
+});
+
+// v1 allowlist: ONLY the 3 mention literals push. Adding a future push type is a
+// ~2-line diff (add the literal here; call enqueuePush at its creation site).
+export const PUSHABLE_TYPES = new Set<string>([
+	"client_mention",
+	"project_mention",
+	"quote_mention",
+]);
+
+// Single extensibility seam: self-gates on PUSHABLE_TYPES, then schedules the send.
+export async function enqueuePush(
+	ctx: { scheduler: MutationCtx["scheduler"] },
+	args: {
+		notificationType: string;
+		taggedUserId: Id<"users">;
+		title: string;
+		body: string;
+		url: string;
+		notificationId: Id<"notifications">;
+		orgId: string;
+	}
+) {
+	if (!PUSHABLE_TYPES.has(args.notificationType)) return;
+	await ctx.scheduler.runAfter(0, internal.push.sendNotificationPush, {
+		taggedUserId: args.taggedUserId,
+		title: args.title,
+		body: args.body,
+		url: args.url,
+		notificationId: args.notificationId,
+		orgId: args.orgId,
+	});
+}

@@ -15,6 +15,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { enqueuePush } from "./push";
 import {
 	optionalUserQuery,
 	systemMutation,
@@ -1060,6 +1061,32 @@ export const createMention = userMutation({
 				throw error;
 			}
 		}
+
+		// Enqueue the device push AFTER the rollback block — a rolled-back mention
+		// (which throws above) never reaches here. enqueuePush self-gates on
+		// PUSHABLE_TYPES. Future notification types push by calling this same helper
+		// at their creation site once their type is added to PUSHABLE_TYPES.
+		// clerkOrgId is the Clerk active-org id (for plan 03's setActive), NOT the
+		// Convex organizations._id — mirrors resolveCurrentUserOrgId in lib/auth.
+		const clerkIdentity = currentUser as typeof currentUser & {
+			activeOrgId?: string;
+			orgId?: string | null;
+			org_id?: string | null;
+		};
+		const clerkOrgId =
+			clerkIdentity.activeOrgId ??
+			clerkIdentity.orgId ??
+			clerkIdentity.org_id ??
+			"";
+		await enqueuePush(ctx, {
+			notificationType, // COMPUTED notificationTypeMap[entityType] — NOT a literal
+			taggedUserId: args.taggedUserId,
+			title,
+			body: args.message, // RAW text, not the authorId:message composite
+			url: actionUrl,
+			notificationId,
+			orgId: clerkOrgId,
+		});
 
 		return notificationId;
 	},
