@@ -5,112 +5,164 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
-	Modal,
-	TouchableOpacity,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
+import { useRouter, type Href } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, fontFamily, spacing, radius, tokens } from "@/lib/theme";
+import { Check, Search } from "lucide-react-native";
 import {
-	Users,
-	FolderKanban,
-	CheckSquare,
-	Plus,
-	ChevronRight,
-	TrendingUp,
-	TrendingDown,
-	AlertCircle,
-	Target,
-	X,
-} from "lucide-react-native";
-import { ProgressRing } from "@/components/ProgressRing";
-import { TaskItem } from "@/components/TaskItem";
-import { JourneyProgress } from "@/components/JourneyProgress";
-import { ViewToggle, ViewMode } from "@/components/ViewToggle";
+	HalftoneBg,
+	Eyebrow,
+	SegmentedToggle,
+	RevenueGauge,
+	StatCard,
+	SectionHeader,
+	ListRow,
+} from "@/components/ui";
+import { JourneyCard } from "@/components/JourneyCard";
+import { formatCurrency } from "@/lib/format";
+import { MonthGrid } from "@/components/calendar/MonthGrid";
 import {
-	AppCalendar,
-	toDateId,
-	fromDateId,
-	CalendarTask,
-	CalendarProject,
-} from "@/components/AppCalendar";
-import { FABMenu } from "@/components/FABMenu";
+	buildMonthCells,
+	cellDayKey,
+	DAY_MS,
+} from "@/components/calendar/dateUtils";
+import { useViewMode } from "@/lib/useViewMode";
+import { AppHeader } from "@/components/app-header";
+import { useShellNav } from "@/lib/shell-nav";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 
-export default function HomeScreen() {
+// Local midnight for a timestamp — used only for day-difference label rounding.
+function startOfLocalDay(ts: number): number {
+	const d = new Date(ts);
+	d.setHours(0, 0, 0, 0);
+	return d.getTime();
+}
+
+// Label an awaiting-signing quote by validUntil across the full 7-day window.
+function quoteExpiryLabel(validUntil?: number): string {
+	if (validUntil === undefined) return "Awaiting signature";
+	const today = startOfLocalDay(Date.now());
+	const days = Math.round((startOfLocalDay(validUntil) - today) / 86400000);
+	if (days < 0) return "Expired";
+	if (days === 0) return "Expires today";
+	if (days === 1) return "Expires tomorrow";
+	if (days <= 7) return `Expires in ${days} days`;
+	return `Expires ${new Date(validUntil).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	})}`;
+}
+
+// Pick a needs/feed glyph for an activity type. Uses canonical lucide map keys
+// (Signature/SquareCheckBig — the FileSignature/CheckSquare aliases are not keys).
+function activityIcon(
+	activityType: string
+): "Signature" | "Receipt" | "SquareCheckBig" | "Activity" {
+	if (activityType.startsWith("quote")) return "Signature";
+	if (activityType.startsWith("invoice") || activityType.startsWith("payment"))
+		return "Receipt";
+	if (activityType.startsWith("task")) return "SquareCheckBig";
+	return "Activity";
+}
+
+// Short relative timestamp for the activity feed (mirrors the web feed intent).
+function relativeTime(ts: number): string {
+	const diff = Date.now() - ts;
+	const mins = Math.round(diff / 60000);
+	if (mins < 1) return "just now";
+	if (mins < 60) return `${mins}m ago`;
+	const hours = Math.round(mins / 60);
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.round(hours / 24);
+	if (days < 7) return `${days}d ago`;
+	return new Date(ts).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	});
+}
+
+// headerMode/wide default off → the iPhone path (AppHeader mode="root" home,
+// single-column ScrollView, raw router.push) is byte-identical. The iPad shell
+// renders this as a single pane: headerMode="pane" suppresses the self-mounted
+// AppHeader (shell mounts the one PaneHeader with the search affordance), and
+// wide=true (landscape) re-flows the dashboard into two columns.
+export default function HomeScreen({
+	headerMode = "root",
+	wide = false,
+}: {
+	headerMode?: "root" | "pane";
+	wide?: boolean;
+} = {}) {
 	const router = useRouter();
+	const shellNav = useShellNav();
+	const isPane = headerMode === "pane";
 	const [refreshing, setRefreshing] = useState(false);
-	const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
-	const [selectedDate, setSelectedDate] = useState<string>(
-		toDateId(new Date())
+	const { viewMode, setViewMode, hydrated } = useViewMode();
+	// Displayed month drives both the MonthGrid render and the fetch window.
+	const today = new Date();
+	const [displayed, setDisplayed] = useState<{ year: number; month: number }>({
+		year: today.getFullYear(),
+		month: today.getMonth(),
+	});
+	// Optimistic completion set for the inline needs-attention task rows. An id
+	// here renders completed (green + strikethrough); rolled back on throw.
+	const [completedTaskIds, setCompletedTaskIds] = useState<Set<Id<"tasks">>>(
+		new Set()
 	);
-	// Track the currently displayed month separately for data fetching
-	const [displayedMonth, setDisplayedMonth] = useState<string>(
-		toDateId(new Date())
-	);
-	const [showDateModal, setShowDateModal] = useState(false);
-	const [updatingTasks, setUpdatingTasks] = useState<Set<string>>(new Set());
 
 	const user = useQuery(api.users.current);
 	const homeStats = useQuery(api.homeStatsOptimized.getHomeStats, {});
-	const taskStats = useQuery(api.tasks.getStats, {});
-	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
 	const overdueTasks = useQuery(api.tasks.getOverdue, {});
 
 	// Query clients and projects for stat cards
 	const allClients = useQuery(api.clients.list, {});
 	const allProjects = useQuery(api.projects.list, {});
 
-	// Fetch calendar events for a 3-month range based on displayed month
+	// Org doc — the gauge gate reads monthlyRevenueTarget directly. getHomeStats
+	// always returns a 50k fallback target, so we MUST detect "no goal" here.
+	const org = useQuery(api.organizations.get, {});
+
+	// Open quotes (status=sent) + overdue invoices for the KPI grid.
+	const openQuotes = useQuery(api.quotes.list, { status: "sent" });
+	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
+
+	// Needs-attention: awaiting-signing quotes (sent + validUntil within 7d window,
+	// includes already-expired). Recent activity feed (real data).
+	const awaitingQuotes = useQuery(api.quotes.getAwaitingSigning, {});
+	const recentActivity = useQuery(api.activities.getRecent, { limit: 5 });
+
+	// Fetch window covers the FIRST..LAST visible cell of the 42-grid so the
+	// adjacent-month cells (and their markers) have data. Hydration-gated skip
+	// (Pitfall 4): a calendar-first persisted user must not see a dashboard flash,
+	// and the query must not fire in dashboard view.
+	const calendarArgs =
+		!hydrated || viewMode !== "calendar"
+			? ("skip" as const)
+			: (() => {
+					const cells = buildMonthCells(displayed.year, displayed.month);
+					// UTC-day window covering the first..last visible cell, matching the
+					// Date.UTC storage of task.date / project dates (see dateUtils).
+					return {
+						startDate: cellDayKey(cells[0]),
+						endDate: cellDayKey(cells[41]) + DAY_MS - 1,
+					};
+				})();
 	const calendarEvents = useQuery(
 		api.calendar.getCalendarEvents,
-		viewMode === "calendar"
-			? {
-					startDate: (() => {
-						const date = fromDateId(displayedMonth);
-						// Start from first day of previous month
-						const firstDay = new Date(
-							date.getFullYear(),
-							date.getMonth() - 1,
-							1
-						);
-						firstDay.setHours(0, 0, 0, 0);
-						return firstDay.getTime();
-					})(),
-					endDate: (() => {
-						const date = fromDateId(displayedMonth);
-						// End at last day of next month
-						const lastDay = new Date(
-							date.getFullYear(),
-							date.getMonth() + 2,
-							0
-						);
-						lastDay.setHours(23, 59, 59, 999);
-						return lastDay.getTime();
-					})(),
-				}
-			: "skip"
+		calendarArgs
 	);
 
 	const completeTask = useMutation(api.tasks.complete);
-	const updateTask = useMutation(api.tasks.update);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
 		setTimeout(() => setRefreshing(false), 1000);
 	}, []);
-
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(amount);
-	};
 
 	const getTimeBasedGreeting = () => {
 		const hour = new Date().getHours();
@@ -119,46 +171,38 @@ export default function HomeScreen() {
 		return "Good evening";
 	};
 
-	// Combine and dedupe tasks for display
-	const allTasks = useMemo(() => {
-		const combined = [...(overdueTasks || []), ...(upcomingTasks || [])];
-		const uniqueTasks = combined.filter(
-			(task, index, self) => self.findIndex((t) => t._id === task._id) === index
-		);
-		return uniqueTasks.slice(0, 5);
-	}, [overdueTasks, upcomingTasks]);
+	// UPPERCASE date eyebrow — e.g. "SATURDAY · JUNE 7"
+	const now = new Date();
+	const dateEyebrow = `${now.toLocaleDateString("en-US", {
+		weekday: "long",
+	})} · ${now.toLocaleDateString("en-US", {
+		month: "long",
+		day: "numeric",
+	})}`.toUpperCase();
+	const currentMonthUpper = now
+		.toLocaleDateString("en-US", { month: "long" })
+		.toUpperCase();
 
-	const handleToggleTask = async (taskId: string) => {
-		setUpdatingTasks((prev) => new Set(prev).add(taskId));
+	// Inline complete for a past-due needs-attention task. Optimistically marks
+	// the row completed, then calls tasks.complete; rolls back the local id on a
+	// throw (e.g. already-completed) so no falsely-checked row remains (T-20-05).
+	const handleCompleteTask = async (taskId: Id<"tasks">) => {
+		if (completedTaskIds.has(taskId)) return;
+		setCompletedTaskIds((prev) => new Set(prev).add(taskId));
 		try {
-			const task = allTasks.find((t) => t._id === taskId);
-			if (task) {
-				if (task.status === "completed") {
-					await updateTask({ id: taskId as Id<"tasks">, status: "pending" });
-				} else {
-					await completeTask({ id: taskId as Id<"tasks"> });
-				}
-			}
-		} catch (error) {
-			console.error("Failed to update task:", error);
-		} finally {
-			setUpdatingTasks((prev) => {
-				const newSet = new Set(prev);
-				newSet.delete(taskId);
-				return newSet;
+			await completeTask({ id: taskId });
+		} catch {
+			setCompletedTaskIds((prev) => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
 			});
 		}
 	};
 
-	const overdueCount = overdueTasks?.length ?? 0;
-	const todayTasksCount = taskStats?.todayTasks ?? 0;
-
 	// Calculate client stats
-	const totalClients = allClients?.length ?? 0;
 	const activeClients =
 		allClients?.filter((c) => c.status === "active").length ?? 0;
-	const inactiveClients =
-		allClients?.filter((c) => c.status === "inactive").length ?? 0;
 	const leadClients =
 		allClients?.filter((c) => c.status === "lead").length ?? 0;
 
@@ -169,818 +213,620 @@ export default function HomeScreen() {
 		).length ?? 0;
 	const plannedProjects =
 		allProjects?.filter((p) => p.status === "planned").length ?? 0;
-	const inProgressProjects =
-		allProjects?.filter((p) => p.status === "in-progress").length ?? 0;
 
-	// Get events for the selected date
-	const selectedDateEvents = useMemo(() => {
-		if (!calendarEvents) return { tasks: [], projects: [] };
+	// Revenue gauge gate: only a real, positive org target counts. NEVER gate on
+	// homeStats.revenueGoal.target (always >0 via the 50k fallback).
+	const hasTarget =
+		typeof org?.monthlyRevenueTarget === "number" &&
+		org.monthlyRevenueTarget > 0;
 
-		// Use Flash Calendar's fromDateId utility
-		const selectedDay = fromDateId(selectedDate);
-		selectedDay.setHours(0, 0, 0, 0);
-		const selectedTimestamp = selectedDay.getTime();
-		const nextDay = new Date(selectedDay);
-		nextDay.setDate(nextDay.getDate() + 1);
-		const nextDayTimestamp = nextDay.getTime();
+	// Open-quotes value = sum of calculated quote totals (quotes.list exposes q.total).
+	const openQuotesValue = (openQuotes ?? []).reduce(
+		(sum, q) => sum + (q.total ?? 0),
+		0
+	);
 
-		// Filter tasks for the selected date
-		const tasksForDate = calendarEvents.tasks.filter((task) => {
-			return (
-				task.startDate >= selectedTimestamp && task.startDate < nextDayTimestamp
-			);
-		});
+	// Needs-attention aggregate count. The whole section renders only when > 0.
+	const naCount =
+		(overdueInvoices?.length ?? 0) +
+		(awaitingQuotes?.length ?? 0) +
+		(overdueTasks?.length ?? 0);
 
-		// Filter projects that are active on the selected date
-		const projectsForDate = calendarEvents.projects.filter((project) => {
-			const projectEnd = project.endDate || project.startDate;
-			return (
-				project.startDate <= selectedTimestamp &&
-				projectEnd >= selectedTimestamp
-			);
-		});
+	// Single bucketing path: DaySheet buckets the day arrays internally via
+	// dateUtils (tasksOnDay/projectsOnDay) — no duplicate filtering memo here.
 
-		return {
-			tasks: tasksForDate,
-			projects: projectsForDate,
-		};
-	}, [calendarEvents, selectedDate]);
-
-	// Format calendar tasks for marking
-	const calendarTasks: CalendarTask[] = useMemo(() => {
-		if (!calendarEvents) return [];
-
-		return calendarEvents.tasks.map((task) => ({
-			id: task.id,
-			date: toDateId(new Date(task.startDate)),
-			title: task.title,
-			color: colors.primary,
-		}));
-	}, [calendarEvents]);
-
-	// Format calendar projects for period marking
-	const calendarProjects: CalendarProject[] = useMemo(() => {
-		if (!calendarEvents) return [];
-
-		return calendarEvents.projects.map((project) => ({
-			id: project.id,
-			startDate: toDateId(new Date(project.startDate)),
-			endDate: toDateId(new Date(project.endDate || project.startDate)),
-			title: project.title,
-			status: project.status as "in_progress" | "completed" | "not_started",
-		}));
-	}, [calendarEvents]);
-
-	// Handle date selection - show modal with events
-	const handleDateSelect = useCallback((dateId: string) => {
-		setSelectedDate(dateId);
-		setShowDateModal(true);
-	}, []);
-
-	// Handle month navigation - update the displayed month for data fetching
-	const handleMonthChange = useCallback((monthDateId: string) => {
-		setDisplayedMonth(monthDateId);
-	}, []);
+	// Home internal navigation. On iPad (inside the shell) every tab jump MUST go
+	// through the ShellNav context — a raw router.push to a (tabs) sibling re-mounts
+	// the whole shell and slides it (26-01). useShellNav() is null on iPhone, so the
+	// raw router.push fallback keeps the iPhone path byte-identical.
+	//
+	// KPI / needs-attention rows currently target the bare LIST routes (/clients,
+	// /projects, /money). The 26-01 usePathname reconciliation layer DOES map these
+	// to the matching activeTab on a real route change, but on iPad we route through
+	// the shell directly so no push leaves the shell stale or slides a fresh (tabs).
+	const goTab = (tab: "clients" | "projects" | "money", route: Href) =>
+		shellNav ? shellNav.open(tab) : router.push(route);
+	// The search pill opens the centered Search overlay (26-05) — a transparentModal
+	// over the mounted shell, so it stays a plain router.push on both devices.
+	const openSearch = () => router.push("/search" as Href);
+	// Profile: in-pane on iPad (a raw push to the /profile (tabs) sibling slides
+	// the whole shell); plain router.push on iPhone where there's no shell.
+	const goProfile = () =>
+		shellNav ? shellNav.openProfile() : router.push("/profile" as Href);
 
 	return (
 		<SafeAreaView
 			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
+			edges={[]}
 		>
+			{/* Brand wash. iPhone (!isPane): fixed 380 band (byte-identical).
+			    iPad (isPane, either orientation): the HalftoneBg image is sized off
+			    the full window (~1024pt portrait / ~1366pt landscape) while this pane
+			    is narrower (~794pt portrait / ~1136pt landscape), so the image's own
+			    bottomFade gets cropped mid-fade by the fixed band → a hard horizontal
+			    edge. A taller band plus a transparent→background LinearGradient over
+			    the lower band dissolves that crop into the page. Portrait and landscape
+			    use different band heights (portrait's narrower window crops sooner). */}
+			<View
+				style={[
+					styles.pageWash,
+					isPane && (wide ? styles.pageWashWide : styles.pageWashPane),
+				]}
+				pointerEvents="none"
+			>
+				<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10} />
+				{isPane ? (
+					<LinearGradient
+						pointerEvents="none"
+						colors={["rgba(245,245,245,0)", colors.background]}
+						style={wide ? styles.washFadeWide : styles.washFadePane}
+					/>
+				) : null}
+			</View>
+			{/* iPhone: AppHeader root. iPad pane: shell mounts the one PaneHeader
+			    (single-header convention) so the self-mounted AppHeader is suppressed. */}
+			{isPane ? null : <AppHeader mode="root" home />}
 			<ScrollView
 				style={{ flex: 1 }}
-				contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
+				contentContainerStyle={styles.scrollContent}
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Header Section */}
-				<View style={styles.headerSection}>
+				<View style={styles.hero}>
+					<Eyebrow color={tokens.ink}>{dateEyebrow}</Eyebrow>
 					<Text style={styles.greeting}>
 						{getTimeBasedGreeting()}
 						{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
 					</Text>
-				</View>
 
-				{/* Journey Progress */}
-				<JourneyProgress />
+					{/* Search pill — opens the /search overlay */}
+					<Pressable
+						style={styles.searchPill}
+						onPress={openSearch}
+						accessibilityRole="button"
+						accessibilityLabel="Search clients, projects"
+					>
+						<Search size={18} color={tokens.faint} />
+						<Text style={styles.searchPlaceholder}>
+							Search clients, projects…
+						</Text>
+					</Pressable>
 
-				{/* View Toggle - Below Journey Progress */}
-				<View style={styles.viewToggleContainer}>
-					<ViewToggle value={viewMode} onChange={setViewMode} />
+					<View style={styles.toggleRow}>
+						<SegmentedToggle value={viewMode} onChange={setViewMode} />
+					</View>
 				</View>
 
 				{viewMode === "dashboard" ? (
-					<>
-						{/* Quick Stats Row */}
-						<View style={styles.statsRow}>
-							<Pressable
-								style={styles.statCardWide}
-								onPress={() => router.push("/clients")}
-							>
-								<View style={styles.statTopRow}>
-									<View style={styles.statIconContainer}>
-										<Users size={18} color={colors.primary} />
-									</View>
-									<View style={styles.statValueContainer}>
-										<Text style={styles.statLabel}>Total Clients</Text>
-										<Text style={styles.statValue}>{totalClients}</Text>
-									</View>
-								</View>
-								<View style={styles.statBreakdownRow}>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[
-												styles.statBreakdownNumber,
-												{ color: colors.success },
-											]}
-										>
-											{activeClients}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>Active</Text>
-									</Text>
-									<Text style={styles.statBreakdownSeparator}> · </Text>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[
-												styles.statBreakdownNumber,
-												{ color: colors.mutedForeground },
-											]}
-										>
-											{inactiveClients}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>Inactive</Text>
-									</Text>
-									{leadClients > 0 && (
-										<>
-											<Text style={styles.statBreakdownSeparator}> · </Text>
-											<Text style={styles.statBreakdownItem}>
-												<Text
-													style={[
-														styles.statBreakdownNumber,
-														{ color: colors.primary },
-													]}
-												>
-													{leadClients}
-												</Text>{" "}
-												<Text style={styles.statBreakdownLabel}>Leads</Text>
-											</Text>
-										</>
-									)}
-								</View>
-							</Pressable>
+					(() => {
+						// Dashboard sections extracted as inline JSX (NOT new hooks — no
+						// useQuery/useMemo/useState added/removed/reordered between paths,
+						// so hook order is identical for iPhone and iPad). Composed single-
+						// column (iPhone + iPad portrait) or 2-column (iPad landscape, wide).
 
-							<Pressable
-								style={styles.statCardWide}
-								onPress={() => router.push("/projects")}
-							>
-								<View style={styles.statTopRow}>
-									<View style={styles.statIconContainer}>
-										<FolderKanban size={18} color={colors.primary} />
+						// 2x2 KPI grid. On iPad these jump through the shell (goTab); on
+						// iPhone goTab falls back to the same router.push as before.
+						const kpiGrid = (
+							<View style={styles.kpiGrid}>
+								<View style={styles.kpiRow}>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Clients"
+											value={activeClients}
+											foot={`${leadClients} new leads`}
+											icon="Users"
+											tone="#00a6f4"
+											onPress={() => goTab("clients", "/clients")}
+										/>
 									</View>
-									<View style={styles.statValueContainer}>
-										<Text style={styles.statLabel}>Active Projects</Text>
-										<Text style={styles.statValue}>{activeProjects}</Text>
-									</View>
-								</View>
-								<View style={styles.statBreakdownRow}>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[styles.statBreakdownNumber, { color: "#3b82f6" }]}
-										>
-											{plannedProjects}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>Planned</Text>
-									</Text>
-									<Text style={styles.statBreakdownSeparator}> · </Text>
-									<Text style={styles.statBreakdownItem}>
-										<Text
-											style={[styles.statBreakdownNumber, { color: "#f59e0b" }]}
-										>
-											{inProgressProjects}
-										</Text>{" "}
-										<Text style={styles.statBreakdownLabel}>In Progress</Text>
-									</Text>
-								</View>
-							</Pressable>
-						</View>
-
-						{/* Overdue Warning */}
-						{overdueCount > 0 && (
-							<Pressable
-								style={styles.alertCard}
-								onPress={() => router.push("/tasks")}
-							>
-								<View style={styles.alertIcon}>
-									<AlertCircle size={18} color={colors.danger} />
-								</View>
-								<View style={styles.alertContent}>
-									<Text style={styles.alertTitle}>
-										{overdueCount} Overdue Task{overdueCount !== 1 ? "s" : ""}
-									</Text>
-									<Text style={styles.alertText}>Tap to view and complete</Text>
-								</View>
-								<ChevronRight size={18} color={colors.danger} />
-							</Pressable>
-						)}
-
-						{/* Revenue Goal Progress */}
-						{homeStats && homeStats.revenueGoal.target > 0 && (
-							<View style={styles.revenueCard}>
-								<View style={styles.revenueHeader}>
-									<View style={styles.revenueIconContainer}>
-										<Target size={18} color={colors.primary} />
-									</View>
-									<View style={styles.revenueInfo}>
-										<Text style={styles.revenueTitle}>
-											Monthly Revenue Goal
-										</Text>
-										<Text style={styles.revenueSubtitle}>
-											{Math.round(homeStats.revenueGoal.percentage)}% complete
-										</Text>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Projects"
+											value={activeProjects}
+											foot={`${plannedProjects} planned`}
+											icon="FolderKanban"
+											tone="#7c5cff"
+											onPress={() => goTab("projects", "/projects")}
+										/>
 									</View>
 								</View>
-								<View style={styles.revenueProgressRow}>
-									<ProgressRing
-										percentage={homeStats.revenueGoal.percentage}
-										size={100}
-										strokeWidth={10}
-										color={colors.primary}
-									/>
-									<View style={styles.revenueStatsColumn}>
-										<View style={styles.revenueStatLarge}>
-											<Text style={styles.revenueStatLabelLarge}>Earned</Text>
-											<Text style={styles.revenueStatValueLarge}>
-												{formatCurrency(homeStats.revenueGoal.current)}
-											</Text>
-										</View>
-										<View style={styles.revenueStatLarge}>
-											<Text style={styles.revenueStatLabelLarge}>Target</Text>
-											<Text style={styles.revenueStatValueLarge}>
-												{formatCurrency(homeStats.revenueGoal.target)}
-											</Text>
-										</View>
-										<View style={styles.revenueStatLarge}>
-											<Text style={styles.revenueStatLabelLarge}>
-												Remaining
-											</Text>
-											<Text
-												style={[
-													styles.revenueStatValueLarge,
-													{ color: colors.mutedForeground },
-												]}
-											>
-												{formatCurrency(
-													homeStats.revenueGoal.target -
-														homeStats.revenueGoal.current
-												)}
-											</Text>
-										</View>
+								<View style={styles.kpiRow}>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Unpaid"
+											value={formatCurrency(
+												homeStats?.invoicesSent.outstanding ?? 0
+											)}
+											foot={`${overdueInvoices?.length ?? 0} overdue`}
+											icon="Receipt"
+											tone="#e8930c"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Open Quotes"
+											value={formatCurrency(openQuotesValue)}
+											foot={`${openQuotes?.length ?? 0} awaiting reply`}
+											icon="FileText"
+											tone="#1f9d57"
+											onPress={() => goTab("money", "/money")}
+										/>
 									</View>
 								</View>
 							</View>
-						)}
+						);
 
-						{/* Tasks Section */}
-						<View style={styles.section}>
-							<View style={styles.sectionHeader}>
-								<Text style={styles.sectionTitle}>Your Tasks</Text>
-								<Pressable
-									onPress={() => router.push("/tasks")}
-									style={styles.sectionAction}
-								>
-									<Text style={styles.sectionActionText}>View All</Text>
-									<ChevronRight size={16} color={colors.primary} />
-								</Pressable>
-							</View>
+						// Needs attention — renders ONLY when non-empty (no empty state).
+						// Invoices/quotes deep-link to /money via the shell; tasks complete inline.
+						const kpiGridWide = (
+								<View style={styles.kpiRowWide}>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Clients"
+											value={activeClients}
+											foot={`${leadClients} new leads`}
+											icon="Users"
+											tone="#00a6f4"
+											onPress={() => goTab("clients", "/clients")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Active Projects"
+											value={activeProjects}
+											foot={`${plannedProjects} planned`}
+											icon="FolderKanban"
+											tone="#7c5cff"
+											onPress={() => goTab("projects", "/projects")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Unpaid"
+											value={formatCurrency(
+												homeStats?.invoicesSent.outstanding ?? 0
+											)}
+											foot={`${overdueInvoices?.length ?? 0} overdue`}
+											icon="Receipt"
+											tone="#e8930c"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+									<View style={styles.kpiCell}>
+										<StatCard
+											label="Open Quotes"
+											value={formatCurrency(openQuotesValue)}
+											foot={`${openQuotes?.length ?? 0} awaiting reply`}
+											icon="FileText"
+											tone="#1f9d57"
+											onPress={() => goTab("money", "/money")}
+										/>
+									</View>
+								</View>
+							);
 
-							{allTasks.length > 0 ? (
-								<View style={styles.tasksList}>
-									{allTasks.map((task) => (
-										<TaskItem
-											key={task._id}
-											id={task._id}
-											title={task.title}
-											date={task.date}
-											startTime={task.startTime}
-											endTime={task.endTime}
-											status={task.status}
-											isUpdating={updatingTasks.has(task._id)}
-											onToggleComplete={handleToggleTask}
+							// Needs attention block (single-column path) below.
+							const needsAttention = naCount > 0 && (
+							<View style={styles.section}>
+								<View style={styles.naHeader}>
+									<SectionHeader title="Needs attention" />
+									<View style={styles.naBadge}>
+										<Text style={styles.naBadgeText}>{naCount}</Text>
+									</View>
+								</View>
+								<View style={styles.naList}>
+									{(overdueInvoices ?? []).map((inv) => (
+										<ListRow
+											key={inv._id}
+											icon="Receipt"
+											iconColor={tokens.danger}
+											title={`Invoice ${inv.invoiceNumber}`}
+											sub={`${formatCurrency(inv.total)} overdue`}
+											onPress={() => goTab("money", "/money")}
 										/>
 									))}
+									{(awaitingQuotes ?? []).map((q) => (
+										<ListRow
+											key={q._id}
+											icon="Signature"
+											iconColor={tokens.warning}
+											title={q.title || "Quote"}
+											sub={quoteExpiryLabel(q.validUntil)}
+											onPress={() => goTab("money", "/money")}
+										/>
+									))}
+									{(overdueTasks ?? []).map((task) => {
+										const done = completedTaskIds.has(task._id);
+										return (
+											<ListRow
+												key={task._id}
+												showChevron={false}
+												icon="SquareCheckBig"
+												iconColor={tokens.accent}
+												title={task.title}
+												sub={`Due ${new Date(task.date).toLocaleDateString(
+													"en-US",
+													{
+														month: "short",
+														day: "numeric",
+														timeZone: "UTC",
+													}
+												)}`}
+												right={
+													<Pressable
+														onPress={() => handleCompleteTask(task._id)}
+														hitSlop={10}
+														style={[
+															styles.checkbox,
+															done && styles.checkboxDone,
+														]}
+													>
+														{done ? (
+															<Check size={16} color="#fff" strokeWidth={3} />
+														) : null}
+													</Pressable>
+												}
+											/>
+										);
+									})}
 								</View>
-							) : (
-								<View style={styles.emptyState}>
-									<CheckSquare size={28} color={colors.mutedForeground} />
-									<Text style={styles.emptyTitle}>No upcoming tasks</Text>
-									<Text style={styles.emptyText}>You're all caught up!</Text>
+							</View>
+						);
+
+						// Revenue — gauge only when a real org target is set, else earned-only.
+						// renderRevenue(wide): wide=false → iPhone / iPad-portrait byte-
+						// identical; wide=true → the full-width landscape gauge (Issue 1).
+						const renderRevenue = (wideGauge: boolean) =>
+							homeStats ? (
+								hasTarget ? (
+									<View style={styles.revenueBlock}>
+										<RevenueGauge
+											wide={wideGauge}
+											pct={homeStats.revenueGoal.percentage}
+											label={`${currentMonthUpper} REVENUE`}
+											value={formatCurrency(homeStats.revenueGoal.current)}
+											goal={`of ${formatCurrency(
+												org!.monthlyRevenueTarget!
+											)} goal`}
+											trend={`${
+												homeStats.revenueGoal.changeType === "decrease"
+													? "-"
+													: "+"
+											}${Math.abs(homeStats.revenueGoal.changePercentage)}%`}
+											toGo={`${formatCurrency(
+												Math.max(
+													org!.monthlyRevenueTarget! -
+														homeStats.revenueGoal.current,
+													0
+												)
+											)} to go`}
+										/>
+									</View>
+								) : (
+									<View style={styles.earnedOnlyCard}>
+										<Eyebrow>{`${currentMonthUpper} REVENUE`}</Eyebrow>
+										<Text style={styles.earnedValue}>
+											{formatCurrency(homeStats.revenueGoal.current)}
+										</Text>
+										<Pressable onPress={goProfile}>
+											<Text style={styles.earnedLink}>Set a monthly goal</Text>
+										</Pressable>
+									</View>
+								)
+							) : null;
+						// iPhone + iPad-portrait revenue (wide=false → byte-identical gauge).
+						const revenueBlock = renderRevenue(false);
+
+						// Recent activity — real data; section header retained even when empty.
+						const recentActivityBlock = (
+							<View style={styles.section}>
+								<SectionHeader title="Recent activity" />
+								<View style={styles.naList}>
+									{recentActivity && recentActivity.length > 0 ? (
+										recentActivity.map((item, i) => (
+											<ListRow
+												key={item._id}
+												showChevron={false}
+												icon={activityIcon(item.activityType)}
+												iconColor={tokens.accent}
+												title={item.description}
+												sub={relativeTime(item.timestamp)}
+												last={i === recentActivity.length - 1}
+											/>
+										))
+									) : (
+										<ListRow
+											showChevron={false}
+											icon="Activity"
+											iconColor={tokens.faint}
+											title="No recent activity"
+											sub="Activity will appear here as you work"
+											last
+										/>
+									)}
 								</View>
-							)}
-						</View>
-					</>
+							</View>
+						);
+
+						// Journey — compact gauge tile; opens the /journey sheet for detail.
+						const journey = <JourneyCard />;
+
+						// iPad landscape (Option A): full-width revenue, 4-across KPI row,
+						// then a two-column row - recent activity (wider) beside journey +
+						// needs-attention stacked. The right column leads with a spacer so
+						// the JourneyCard's top aligns with the left list card's top (the
+						// left column leads with a SectionHeader; Issue 2).
+						if (wide) {
+							return (
+								<>
+									{renderRevenue(true)}
+									{kpiGridWide}
+									<View style={styles.wideRow}>
+										<View style={styles.wideMain}>
+											{recentActivityBlock}
+										</View>
+										<View style={styles.wideSide}>
+											<View style={styles.wideSideHeaderSpacer} />
+											{journey}
+											{needsAttention}
+										</View>
+									</View>
+								</>
+							);
+						}
+
+						// iPad portrait (isPane && !wide): dark revenue hero FIRST, then the
+						// 2x2 KPI grid, needs-attention, recent activity, journey (Issue 3).
+						// This is distinct from the iPhone single-column order below.
+						if (isPane) {
+							return (
+								<>
+									{revenueBlock}
+									{kpiGrid}
+									{needsAttention}
+									{recentActivityBlock}
+									{journey}
+								</>
+							);
+						}
+
+						// iPhone (!isPane) — EXISTING single-column order, byte-identical.
+						return (
+							<>
+								{kpiGrid}
+								{needsAttention}
+								{revenueBlock}
+								{recentActivityBlock}
+								{journey}
+							</>
+						);
+					})()
 				) : (
-					/* Calendar View */
+					/* Calendar View — custom MonthGrid fed by getCalendarEvents */
 					<View style={styles.calendarSection}>
-						<AppCalendar
-							selectedDate={selectedDate}
-							onDateSelect={handleDateSelect}
-							onMonthChange={handleMonthChange}
-							tasks={calendarTasks}
-							projects={calendarProjects}
+						<MonthGrid
+							projects={calendarEvents?.projects ?? []}
+							tasks={calendarEvents?.tasks ?? []}
+							year={displayed.year}
+							month={displayed.month}
+							onMonthChange={(y, m) => setDisplayed({ year: y, month: m })}
+							onDayPress={(ts) =>
+								router.push(`/day-sheet?dayTs=${ts}` as Href)
+							}
 						/>
 					</View>
 				)}
 			</ScrollView>
-
-			{/* FAB Menu */}
-			<FABMenu />
-
-			{/* Date Events Modal */}
-			<Modal
-				visible={showDateModal}
-				transparent
-				animationType="slide"
-				onRequestClose={() => setShowDateModal(false)}
-			>
-				<TouchableOpacity
-					style={styles.modalBackdrop}
-					activeOpacity={1}
-					onPress={() => setShowDateModal(false)}
-				>
-					<Pressable
-						style={styles.modalContent}
-						onPress={(e) => e.stopPropagation()}
-					>
-						{/* Modal Header */}
-						<View style={styles.modalHeader}>
-							<View style={styles.modalHandleBar} />
-							<View style={styles.modalTitleContainer}>
-								<Text style={styles.modalTitle}>
-									{fromDateId(selectedDate).toLocaleDateString("en-US", {
-										weekday: "long",
-										month: "long",
-										day: "numeric",
-									})}
-								</Text>
-								<TouchableOpacity
-									onPress={() => setShowDateModal(false)}
-									style={styles.modalCloseButton}
-								>
-									<X size={24} color={colors.foreground} />
-								</TouchableOpacity>
-							</View>
-						</View>
-
-						{/* Modal Content */}
-						<ScrollView style={styles.modalScrollView}>
-							{/* Projects for this date */}
-							{selectedDateEvents.projects.length > 0 && (
-								<View style={styles.modalSection}>
-									<Text style={styles.modalSectionTitle}>Projects</Text>
-									{selectedDateEvents.projects.map((project) => (
-										<Pressable
-											key={project.id}
-											style={styles.modalEventCard}
-											onPress={() => {
-												setShowDateModal(false);
-												router.push(`/projects/${project.id}`);
-											}}
-										>
-											<View style={styles.modalEventIcon}>
-												<FolderKanban size={18} color={colors.primary} />
-											</View>
-											<View style={styles.modalEventContent}>
-												<Text style={styles.modalEventTitle}>
-													{project.title}
-												</Text>
-												<Text style={styles.modalEventSubtitle}>
-													{project.clientName}
-												</Text>
-												{project.startDate && project.endDate && (
-													<Text style={styles.modalEventMeta}>
-														{new Date(project.startDate).toLocaleDateString()} -{" "}
-														{new Date(project.endDate).toLocaleDateString()}
-													</Text>
-												)}
-											</View>
-											<ChevronRight size={18} color={colors.border} />
-										</Pressable>
-									))}
-								</View>
-							)}
-
-							{/* Tasks for this date */}
-							{selectedDateEvents.tasks.length > 0 && (
-								<View style={styles.modalSection}>
-									<Text style={styles.modalSectionTitle}>Tasks</Text>
-									{selectedDateEvents.tasks.map((task) => (
-										<Pressable
-											key={task.id}
-											style={styles.modalEventCard}
-											onPress={() => {
-												setShowDateModal(false);
-												router.push(`/tasks`);
-											}}
-										>
-											<View style={styles.modalEventIcon}>
-												<CheckSquare size={18} color={colors.primary} />
-											</View>
-											<View style={styles.modalEventContent}>
-												<Text style={styles.modalEventTitle}>{task.title}</Text>
-												<Text style={styles.modalEventSubtitle}>
-													{task.clientName}
-												</Text>
-												{task.startTime && (
-													<Text style={styles.modalEventMeta}>
-														{task.startTime}
-														{task.endTime && ` - ${task.endTime}`}
-													</Text>
-												)}
-											</View>
-											<ChevronRight size={18} color={colors.border} />
-										</Pressable>
-									))}
-								</View>
-							)}
-
-							{/* Empty State */}
-							{selectedDateEvents.projects.length === 0 &&
-								selectedDateEvents.tasks.length === 0 && (
-									<View style={styles.modalEmptyState}>
-										<View style={styles.modalEmptyIcon}>
-											<CheckSquare size={28} color={colors.mutedForeground} />
-										</View>
-										<Text style={styles.modalEmptyTitle}>
-											Nothing scheduled
-										</Text>
-										<Text style={styles.modalEmptyText}>
-											No tasks or projects for this day
-										</Text>
-									</View>
-								)}
-						</ScrollView>
-					</Pressable>
-				</TouchableOpacity>
-			</Modal>
 		</SafeAreaView>
 	);
 }
 
 const styles = StyleSheet.create({
-	headerSection: {
+	pageWash: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		height: 380,
+		overflow: "hidden",
+	},
+	// iPad-landscape: a taller wash band gives the hero image's own bottomFade
+	// room to complete inside the visible strip instead of being cropped mid-fade
+	// by the fixed 380 band (the hard horizontal edge).
+	pageWashWide: {
+		height: 460,
+	},
+	// iPad-portrait: the narrower window crops the image's bottomFade sooner than
+	// landscape, so a slightly taller-than-iPhone band + the fade overlay below
+	// dissolves the crop cleanly (tuned independently of landscape).
+	pageWashPane: {
+		height: 420,
+	},
+	// iPad-landscape: transparent→page-background gradient over the lower wash
+	// band, dissolving any residual crop into the page (no hard edge).
+	washFadeWide: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		height: 180,
+	},
+	// iPad-portrait fade overlay — taller than landscape's so the portrait band's
+	// earlier crop dissolves fully into the page background.
+	washFadePane: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		height: 200,
+	},
+	hero: {
+		position: "relative",
+		marginHorizontal: -spacing.md,
+		marginTop: -spacing.md,
+		paddingHorizontal: spacing.md,
+		paddingTop: spacing.md,
+		paddingBottom: spacing.lg,
 		marginBottom: spacing.md,
+	},
+	scrollContent: {
+		flexGrow: 1,
+		padding: spacing.md,
+		paddingBottom: spacing.md,
 	},
 	greeting: {
-		fontSize: 26,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-	},
-	viewToggleContainer: {
-		alignItems: "center",
-		marginBottom: spacing.lg,
-		marginTop: spacing.sm,
-	},
-	statsRow: {
-		flexDirection: "row",
-		gap: spacing.sm,
-		marginBottom: spacing.md,
-	},
-	statCard: {
-		flex: 1,
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	statCardWide: {
-		flex: 1,
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-		minHeight: 110,
-	},
-	statTopRow: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		marginBottom: spacing.sm,
-	},
-	statIconContainer: {
-		width: 36,
-		height: 36,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	statValueContainer: {
-		flex: 1,
-		alignItems: "center",
-	},
-	statContent: {},
-	statLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		textAlign: "center",
-		marginBottom: 2,
-	},
-	statValue: {
-		fontSize: 28,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-		lineHeight: 32,
-	},
-	statBreakdownRow: {
-		flexDirection: "row",
-		flexWrap: "wrap",
-		alignItems: "center",
-	},
-	statBreakdownItem: {
-		flexDirection: "row",
-		alignItems: "baseline",
-	},
-	statBreakdownNumber: {
-		fontSize: 13,
-		fontFamily: fontFamily.bold,
-	},
-	statBreakdownLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	statBreakdownSeparator: {
-		fontSize: 11,
-		color: colors.mutedForeground,
-	},
-	statChange: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-		marginTop: spacing.xs,
-		flexWrap: "wrap",
-	},
-	statChangeText: {
-		fontSize: 11,
-		fontFamily: fontFamily.medium,
-	},
-	alertCard: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: "#fef2f2",
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: "#fecaca",
-		marginBottom: spacing.md,
-	},
-	alertIcon: {
-		marginRight: spacing.sm,
-	},
-	alertContent: {
-		flex: 1,
-	},
-	alertTitle: {
-		fontSize: 14,
+		fontSize: 22,
 		fontFamily: fontFamily.semibold,
-		color: colors.danger,
+		color: tokens.ink,
+		marginTop: 6,
 	},
-	alertText: {
+	searchPill: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.sm,
+		backgroundColor: tokens.card,
+		borderWidth: 1,
+		borderColor: tokens.line,
+		borderRadius: 9999,
+		paddingVertical: 12,
+		paddingHorizontal: spacing.md,
+		marginTop: spacing.md,
+	},
+	searchPlaceholder: {
+		fontSize: 13,
+		fontFamily: fontFamily.regular,
+		color: tokens.faint,
+	},
+	toggleRow: {
+		marginTop: spacing.md,
+	},
+	kpiGrid: {
+		gap: 12,
+		marginBottom: spacing.md,
+	},
+	kpiRow: {
+		flexDirection: "row",
+		gap: 12,
+	},
+	// iPad-landscape only: the four StatCards 4-across in one flex:1 row.
+	kpiRowWide: {
+		flexDirection: "row",
+		gap: 12,
+		marginBottom: spacing.md,
+	},
+	kpiCell: {
+		flex: 1,
+	},
+	revenueBlock: {
+		marginBottom: spacing.md,
+	},
+	earnedOnlyCard: {
+		backgroundColor: colors.card,
+		borderRadius: radius.lg,
+		padding: spacing.md,
+		borderWidth: 1,
+		borderColor: tokens.line,
+		marginBottom: spacing.md,
+	},
+	earnedValue: {
+		fontSize: 24,
+		fontFamily: fontFamily.bold,
+		color: tokens.ink,
+		marginTop: 6,
+	},
+	earnedLink: {
 		fontSize: 12,
-		fontFamily: fontFamily.regular,
-		color: "#991b1b",
-	},
-	revenueCard: {
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-		marginBottom: spacing.md,
-	},
-	revenueHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		marginBottom: spacing.md,
-	},
-	revenueIconContainer: {
-		width: 36,
-		height: 36,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	revenueInfo: {
-		flex: 1,
-	},
-	revenueTitle: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-	},
-	revenueSubtitle: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	revenueProgressRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: spacing.md,
-	},
-	revenueStatsColumn: {
-		flex: 1,
-		gap: spacing.sm,
-	},
-	revenueStatLarge: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-	},
-	revenueStatLabelLarge: {
-		fontSize: 13,
 		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-	},
-	revenueStatValueLarge: {
-		fontSize: 16,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
+		color: tokens.accent,
+		marginTop: spacing.sm,
 	},
 	section: {
 		marginBottom: spacing.md,
 	},
-	sectionHeader: {
+	naHeader: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: spacing.sm,
-	},
-	sectionTitle: {
-		fontSize: 17,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-	},
-	sectionAction: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-	},
-	sectionActionText: {
-		fontSize: 13,
-		fontFamily: fontFamily.medium,
-		color: colors.primary,
-	},
-	tasksList: {
 		gap: spacing.sm,
+		marginBottom: spacing.xs,
 	},
-	emptyState: {
+	naBadge: {
+		minWidth: 22,
+		height: 22,
+		paddingHorizontal: 7,
+		borderRadius: radius.full,
+		backgroundColor: tokens.danger,
 		alignItems: "center",
-		paddingVertical: spacing.xl,
+		justifyContent: "center",
+	},
+	naBadgeText: {
+		fontSize: 11,
+		fontFamily: fontFamily.bold,
+		color: "#fff",
+	},
+	naList: {
 		backgroundColor: colors.card,
 		borderRadius: radius.lg,
 		borderWidth: 1,
-		borderColor: colors.border,
+		borderColor: tokens.line,
+		paddingHorizontal: spacing.md,
 	},
-	emptyTitle: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginTop: spacing.sm,
+	checkbox: {
+		width: 26,
+		height: 26,
+		borderRadius: 7,
+		borderWidth: 2,
+		borderColor: tokens.border,
+		alignItems: "center",
+		justifyContent: "center",
 	},
-	emptyText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginTop: spacing.xs,
+	checkboxDone: {
+		backgroundColor: tokens.success,
+		borderColor: tokens.success,
 	},
 	calendarSection: {
 		gap: spacing.md,
 	},
-	modalBackdrop: {
-		flex: 1,
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		justifyContent: "flex-end",
-	},
-	modalContent: {
-		backgroundColor: colors.background,
-		borderTopLeftRadius: radius.xl,
-		borderTopRightRadius: radius.xl,
-		maxHeight: "80%",
-		paddingBottom: spacing.xl,
-	},
-	modalHeader: {
-		paddingTop: spacing.sm,
-		paddingHorizontal: spacing.md,
-		paddingBottom: spacing.md,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.border,
-	},
-	modalHandleBar: {
-		width: 40,
-		height: 4,
-		backgroundColor: colors.muted,
-		borderRadius: radius.full,
-		alignSelf: "center",
-		marginBottom: spacing.md,
-	},
-	modalTitleContainer: {
+	// iPad-landscape lower row: recent activity (wider, flex 1.5) beside the
+	// journey + needs-attention stack (flex 1). Items start-aligned so the
+	// shorter column does not stretch to match the taller one.
+	wideRow: {
 		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
+		gap: 18,
+		alignItems: "flex-start",
 	},
-	modalTitle: {
-		fontSize: 18,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
+	wideMain: {
+		flex: 1.5,
 	},
-	modalCloseButton: {
-		padding: spacing.xs,
-	},
-	modalScrollView: {
-		maxHeight: "100%",
-	},
-	modalSection: {
-		padding: spacing.md,
-	},
-	modalSectionTitle: {
-		fontSize: 14,
-		fontFamily: fontFamily.semibold,
-		color: colors.mutedForeground,
-		textTransform: "uppercase",
-		letterSpacing: 0.5,
-		marginBottom: spacing.sm,
-	},
-	modalEventCard: {
-		flexDirection: "row",
-		alignItems: "center",
-		padding: spacing.sm,
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-		marginBottom: spacing.sm,
-	},
-	modalEventIcon: {
-		width: 36,
-		height: 36,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	modalEventContent: {
+	wideSide: {
 		flex: 1,
 	},
-	modalEventTitle: {
-		fontSize: 15,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: 2,
-	},
-	modalEventSubtitle: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginBottom: 2,
-	},
-	modalEventMeta: {
-		fontSize: 12,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	modalEmptyState: {
-		alignItems: "center",
-		paddingVertical: spacing.xl * 2,
-		paddingHorizontal: spacing.lg,
-	},
-	modalEmptyIcon: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.muted,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: spacing.md,
-	},
-	modalEmptyTitle: {
-		fontSize: 16,
-		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
-	},
-	modalEmptyText: {
-		fontSize: 14,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		textAlign: "center",
+	// iPad-landscape: pushes the right column down so the JourneyCard's top edge
+	// aligns with the top of the left column's Recent-activity list card. The left
+	// column leads with a SectionHeader (16px bold, ~20px row) before its list
+	// card; matching that height here gives both columns a clean top baseline.
+	wideSideHeaderSpacer: {
+		height: 20,
 	},
 });

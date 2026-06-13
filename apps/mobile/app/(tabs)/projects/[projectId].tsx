@@ -5,521 +5,693 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
+	TouchableOpacity,
+	Animated,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState, useCallback } from "react";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { useState, useCallback, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
-import { StatusBadge } from "@/components/StatusBadge";
-import { Card } from "@/components/Card";
+import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { AppHeader } from "@/components/app-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
+import { useShellNav } from "@/lib/shell-nav";
+import { Badge, Card, Eyebrow, ListRow, Ring, SectionHeader } from "@/components/ui";
 import { EditableField } from "@/components/EditableField";
-import { SectionHeader } from "@/components/SectionHeader";
-import { ProjectDocuments } from "@/components/ProjectDocuments";
+import { FieldMenu } from "@/components/FieldMenu";
+import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { MentionModal } from "@/components/MentionModal";
-import {
-	Building2,
-	FileText,
-	ChevronRight,
-	MessageSquare,
-} from "lucide-react-native";
+import { ProjectDocuments } from "@/components/ProjectDocuments";
+import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
+import { Building2, MessageSquare, X } from "lucide-react-native";
 
-type ProjectStatus = "planned" | "in-progress" | "completed" | "cancelled";
+const STATUS_OPTIONS = [
+	{ value: "planned", label: "Planned" },
+	{ value: "in-progress", label: "In Progress" },
+	{ value: "completed", label: "Completed" },
+	{ value: "cancelled", label: "Cancelled" },
+];
 
-export default function ProjectDetailScreen() {
-	const { projectId } = useLocalSearchParams<{ projectId: string }>();
+type DateField = "startDate" | "endDate";
+
+function formatDate(timestamp: number | undefined): string | null {
+	if (!timestamp) return null;
+	return new Date(timestamp).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+}
+
+function KV({
+	label,
+	value,
+	onPress,
+}: {
+	label: string;
+	value: string;
+	onPress?: () => void;
+}) {
+	const t = useTokens();
+	const body = (
+		<View style={styles.kvRow}>
+			<Text style={[styles.kvLabel, { color: t.faint }]}>{label}</Text>
+			<Text style={[styles.kvValue, { color: t.ink }]}>{value}</Text>
+		</View>
+	);
+	if (!onPress) return body;
+	return (
+		<Pressable
+			onPress={onPress}
+			style={({ pressed }) => [
+				styles.kvEditable,
+				{ borderBottomColor: t.faint },
+				pressed && styles.pressed,
+			]}
+			accessibilityRole="button"
+			accessibilityLabel={`Edit ${label}`}
+		>
+			{body}
+		</Pressable>
+	);
+}
+
+// Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
+// route wrapper below stays byte-identical. The iPad pane passes "pane".
+export function ProjectDetailBody({
+	id,
+	headerMode = "root",
+	onBack,
+}: {
+	id: string;
+	headerMode?: "root" | "pane";
+	// See ClientDetailBody — onBack clears the shell selection (router.back would
+	// pop out of the shell); keeps one header per pane.
+	onBack?: () => void;
+}) {
+	const projectId = id;
 	const router = useRouter();
+	const t = useTokens();
+	// iPad: cross-links navigate via the shell selection (no router.push to a
+	// (tabs) sibling, which slides the whole shell). iPhone: null → router.push.
+	const shellNav = useShellNav();
+	// In an iPad pane the header is a PaneHeader (onBack clears the shell
+	// selection; router.back would pop out of the shell). onBack is undefined in
+	// landscape (list always visible → no back button).
+	const isPane = headerMode === "pane";
+	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
-	const [mentionModalVisible, setMentionModalVisible] = useState(false);
+	const [dateField, setDateField] = useState<DateField | null>(null);
+	const [mentionVisible, setMentionVisible] = useState(false);
+
+	// Animated date overlay. `shownField` is set when opening (not cleared on
+	// close) so the header/selection don't flip while the sheet slides out.
+	const { mounted: dateMounted, progress: dateProgress } =
+		useOverlayTransition(dateField !== null);
+	const [shownField, setShownField] = useState<DateField | null>(null);
+	const openDatePicker = useCallback((field: DateField) => {
+		setShownField(field);
+		setDateField(field);
+	}, []);
+
+	const updateProject = useMutation(api.projects.update);
 
 	const project = useQuery(
 		api.projects.get,
 		projectId ? { id: projectId as Id<"projects"> } : "skip"
 	);
-
+	const clients = useQuery(api.clients.list, {});
 	const quotes = useQuery(
 		api.quotes.list,
 		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
-
 	const invoices = useQuery(
 		api.invoices.list,
 		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
+	const tasks = useQuery(
+		api.tasks.list,
+		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
+	);
 
-	const updateProject = useMutation(api.projects.update);
+	// Single org-scoped clients query → name lookup. No per-row clients.get (N+1).
+	const clientNameById = useMemo(
+		() =>
+			new Map<Id<"clients">, string>(
+				(clients ?? []).map((c) => [c._id, c.companyName])
+			),
+		[clients]
+	);
+
+	// Optional task progress — only render when tasks.list cleanly supplies it.
+	const taskProgress = useMemo(() => {
+		if (!tasks || tasks.length === 0) return null;
+		const total = tasks.length;
+		const done = tasks.filter((tk) => tk.status === "completed").length;
+		return { done, total, pct: Math.round((done / total) * 100) };
+	}, [tasks]);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
 		setTimeout(() => setRefreshing(false), 1000);
 	}, []);
 
-	const handleUpdateField = async (field: string, value: string) => {
-		if (!projectId) return;
-		await updateProject({
-			id: projectId as Id<"projects">,
-			[field]: value,
-		});
-	};
+	// Send ONLY the edited field — projects.update throws on zero updates (Pitfall 3).
+	const saveField = useCallback(
+		async (field: "title" | "description", value: string) => {
+			if (!projectId) return;
+			await updateProject({ id: projectId as Id<"projects">, [field]: value });
+		},
+		[projectId, updateProject]
+	);
 
-	const formatDate = (timestamp: number | undefined) => {
-		if (!timestamp) return null;
-		return new Date(timestamp).toLocaleDateString("en-US", {
-			weekday: "short",
-			month: "long",
-			day: "numeric",
-			year: "numeric",
-		});
-	};
+	const handleStatusSelect = useCallback(
+		async (next: string) => {
+			if (!projectId) return;
+			try {
+				await updateProject({
+					id: projectId as Id<"projects">,
+					status: next as
+						| "planned"
+						| "in-progress"
+						| "completed"
+						| "cancelled",
+				});
+			} catch (error) {
+				console.error("Failed to update status:", error);
+			}
+		},
+		[projectId, updateProject]
+	);
 
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(amount);
-	};
-
-	// Calculate quote value
-	const totalQuoteValue =
-		quotes?.reduce((sum, q) => sum + (q.total || 0), 0) ?? 0;
-	const approvedQuoteValue =
-		quotes
-			?.filter((q) => q.status === "approved")
-			.reduce((sum, q) => sum + (q.total || 0), 0) ?? 0;
+	const handleDateSelect = useCallback(
+		async (dateId: string) => {
+			if (!projectId || !dateField) return;
+			const ms = fromDateId(dateId).getTime();
+			const field = dateField;
+			setDateField(null);
+			try {
+				await updateProject({
+					id: projectId as Id<"projects">,
+					[field]: ms,
+				});
+			} catch (error) {
+				console.error("Failed to update date:", error);
+			}
+		},
+		[projectId, dateField, updateProject]
+	);
 
 	if (!project) {
 		return (
 			<SafeAreaView
-				style={{ flex: 1, backgroundColor: colors.background }}
-				edges={["bottom"]}
+				style={{ flex: 1, backgroundColor: t.bg }}
+				edges={[]}
 			>
-				<View style={styles.loadingContainer}>
-					<Text style={styles.loadingText}>Loading project...</Text>
-				</View>
+				{isPane ? (
+					<PaneHeader onBack={onBack} />
+				) : (
+					<AppHeader mode={appHeaderMode} />
+				)}
+				<ScrollView contentContainerStyle={styles.scroll}>
+					<View style={[styles.skeletonHeader, { backgroundColor: t.card }]} />
+					<View
+						style={[styles.skeletonBlock, { backgroundColor: t.card }]}
+					/>
+					<View
+						style={[styles.skeletonBlock, { backgroundColor: t.card }]}
+					/>
+				</ScrollView>
 			</SafeAreaView>
 		);
 	}
 
-	const getStatusColor = (status: string) => {
-		switch (status) {
-			case "completed":
-				return "#10b981";
-			case "in-progress":
-				return "#f59e0b";
-			case "planned":
-				return "#3b82f6";
-			case "cancelled":
-				return "#ef4444";
-			default:
-				return colors.mutedForeground;
-		}
-	};
-
-	const statusColor = getStatusColor(project.status);
+	const clientName =
+		clientNameById.get(project.clientId) ?? "View client";
 
 	return (
-		<SafeAreaView
-			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
-		>
+		<SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={[]}>
+			{isPane ? (
+				<PaneHeader title={project.title} onBack={onBack} />
+			) : (
+				<AppHeader mode={appHeaderMode} />
+			)}
 			<ScrollView
-				contentContainerStyle={{ padding: spacing.md }}
+				contentContainerStyle={styles.scroll}
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Header Card */}
-				<View style={[styles.headerCard, { borderLeftColor: statusColor }]}>
+				{/* Header card: title, client link, status, optional progress, dates */}
+				<Card>
 					<View style={styles.headerTop}>
-						<Text style={styles.projectTitle}>{project.title}</Text>
-						<View style={styles.statusBadgeContainer}>
-							<StatusBadge status={project.status} />
-						</View>
-					</View>
-
-					{project.projectNumber && (
-						<View style={styles.projectNumberRow}>
-							<Text style={styles.projectNumberLabel}>Project #</Text>
-							<Text style={styles.projectNumber}>{project.projectNumber}</Text>
-						</View>
-					)}
-
-					{/* Client Info */}
-					{project.clientId && (
-						<Pressable
-							style={styles.clientRow}
-							onPress={() => router.push(`/clients/${project.clientId}`)}
-						>
-							<Building2 size={16} color={colors.mutedForeground} />
-							<Text style={styles.clientName}>View Client</Text>
-							<ChevronRight size={16} color={colors.mutedForeground} />
-						</Pressable>
-					)}
-				</View>
-
-				{/* Quick Stats */}
-				<View style={styles.statsRow}>
-					<View style={styles.statBox}>
-						<Text style={styles.statValue}>{quotes?.length ?? 0}</Text>
-						<Text style={styles.statLabel}>Quotes</Text>
-					</View>
-					<View style={styles.statBox}>
-						<Text style={styles.statValue}>{invoices?.length ?? 0}</Text>
-						<Text style={styles.statLabel}>Invoices</Text>
-					</View>
-				</View>
-
-				{/* Progress Bar */}
-				{/* Removed - was based on task completion */}
-
-				{/* Dates */}
-				<Card title="Schedule" style={{ marginTop: spacing.md }}>
-					<View style={styles.datesContainer}>
-						<View style={styles.dateItem}>
-							<View>
-								<Text style={styles.dateLabel}>Start Date</Text>
-								<Text style={styles.dateValue}>
-									{project.startDate
-										? formatDate(project.startDate)
-										: "Not set"}
+						<View style={styles.headerTitleCol}>
+							<EditableField
+								label="Title"
+								value={project.title}
+								onSave={(v) => saveField("title", v)}
+								placeholder="Project title"
+								renderValue={(v) => (
+									<Text style={[styles.title, { color: t.ink }]}>
+										{v}
+									</Text>
+								)}
+							/>
+							<Pressable
+								onPress={() =>
+									shellNav
+										? shellNav.open("clients", project.clientId)
+										: router.push(`/clients/${project.clientId}`)
+								}
+								style={({ pressed }) => [
+									styles.clientLink,
+									pressed && styles.pressed,
+								]}
+								accessibilityRole="button"
+								accessibilityLabel="View client"
+							>
+								<Building2 size={14} color={t.accent} />
+								<Text style={[styles.clientLinkText, { color: t.accent }]}>
+									{clientName}
 								</Text>
+							</Pressable>
+						</View>
+						<View style={styles.headerActions}>
+							<FieldMenu
+								title="Project status"
+								value={project.status}
+								options={STATUS_OPTIONS}
+								onSelect={handleStatusSelect}
+							>
+								<View
+									accessibilityRole="button"
+									accessibilityLabel="Change status"
+									style={[
+										styles.statusTrigger,
+										{ borderBottomColor: t.faint },
+									]}
+								>
+									<Badge status={project.status} big />
+								</View>
+							</FieldMenu>
+						</View>
+					</View>
+
+					{taskProgress ? (
+						<View style={styles.progressRow}>
+							<Ring
+								pct={taskProgress.pct}
+								size={72}
+								stroke={9}
+								track="#eef1f5"
+								color={
+									project.status === "completed" ? t.success : t.accent
+								}
+							>
+								<Text style={[styles.ringText, { color: t.ink }]}>
+									{taskProgress.pct}%
+								</Text>
+							</Ring>
+							<View style={styles.kvCol}>
+								<KV
+									label="Tasks"
+									value={`${taskProgress.done} of ${taskProgress.total} done`}
+								/>
+								<KV
+									label="Start"
+									value={formatDate(project.startDate) ?? "Not set"}
+									onPress={() => openDatePicker("startDate")}
+								/>
+								<KV
+									label="Due"
+									value={formatDate(project.endDate) ?? "Not set"}
+									onPress={() => openDatePicker("endDate")}
+								/>
 							</View>
 						</View>
-						<View style={styles.dateDivider} />
-						<View style={styles.dateItem}>
-							<View>
-								<Text style={styles.dateLabel}>End Date</Text>
-								<Text style={styles.dateValue}>
-									{project.endDate ? formatDate(project.endDate) : "Not set"}
-								</Text>
-							</View>
+					) : (
+						<View style={styles.kvColStandalone}>
+							<KV
+								label="Start"
+								value={formatDate(project.startDate) ?? "Not set"}
+								onPress={() => openDatePicker("startDate")}
+							/>
+							<KV
+								label="Due"
+								value={formatDate(project.endDate) ?? "Not set"}
+								onPress={() => openDatePicker("endDate")}
+							/>
 						</View>
-					</View>
+					)}
 				</Card>
 
-				{/* Description */}
-				<Card title="Description" style={{ marginTop: spacing.md }}>
-					<View style={{ marginTop: spacing.sm }}>
+				{/* Team chat — full-width pill, matching the client detail screen */}
+				<Pressable
+					onPress={() => setMentionVisible(true)}
+					accessibilityRole="button"
+					accessibilityLabel="Open team chat"
+					style={({ pressed }) => [
+						styles.teamChat,
+						{ backgroundColor: t.accentSoft },
+						pressed && styles.pressed,
+					]}
+				>
+					<MessageSquare size={18} color={t.accent} />
+					<Text style={[styles.teamChatText, { color: t.accent }]}>
+						Team chat
+					</Text>
+				</Pressable>
+
+				{/* Description — inline editable */}
+				<Card style={styles.section}>
+					<Eyebrow>Description</Eyebrow>
+					<View style={{ marginTop: 8 }}>
 						<EditableField
 							label=""
 							value={project.description}
-							onSave={(value) => handleUpdateField("description", value)}
-							placeholder="Add a description..."
+							onSave={(v) => saveField("description", v)}
+							placeholder="Add a description…"
 							multiline
 							numberOfLines={3}
 						/>
 					</View>
 				</Card>
 
-				{/* Quotes Section */}
-				<View style={{ marginTop: spacing.lg }}>
-					<SectionHeader
-						title="Quotes"
-						count={quotes?.length}
-						icon={<FileText size={18} color="#10b981" />}
-					/>
-
+				{/* Related quotes */}
+				<View style={styles.section}>
+					<SectionHeader title="Quotes" />
 					{quotes && quotes.length > 0 ? (
-						<View style={styles.quotesList}>
-							{quotes.slice(0, 3).map((quote) => (
-								<View key={quote._id} style={styles.quoteItem}>
-									<View style={styles.quoteItemContent}>
-										<View style={{ flex: 1 }}>
-											<Text style={styles.quoteTitle} numberOfLines={1}>
-												{quote.title || `Quote #${quote.quoteNumber}`}
-											</Text>
-											<Text style={styles.quoteValue}>
-												{formatCurrency(quote.total)}
-											</Text>
-										</View>
-										<StatusBadge status={quote.status} />
-									</View>
-								</View>
+						<Card style={styles.listCard}>
+							{quotes.slice(0, 3).map((quote, i) => (
+								<ListRow
+									key={quote._id}
+									title={
+										quote.title || `Quote #${quote.quoteNumber}`
+									}
+									status={quote.status}
+									onPress={() =>
+										// Cast: dynamic detail route isn't in the generated route map.
+										router.push({
+											pathname: "/quote/[id]",
+											params: { id: quote._id },
+										} as unknown as Href)
+									}
+									last={i === Math.min(quotes.length, 3) - 1}
+								/>
 							))}
-						</View>
+							{quotes.length > 3 ? (
+								<Text style={[styles.more, { color: t.faint }]}>
+									+{quotes.length - 3} more
+								</Text>
+							) : null}
+						</Card>
 					) : (
-						<View style={styles.emptySection}>
-							<Text style={styles.emptySectionText}>No quotes yet</Text>
-						</View>
+						<Card style={styles.emptyCard}>
+							<Text style={[styles.emptyText, { color: t.faint }]}>
+								No quotes yet
+							</Text>
+						</Card>
 					)}
 				</View>
 
-				{/* Invoices Section */}
-				<View style={{ marginTop: spacing.lg }}>
-					<SectionHeader
-						title="Invoices"
-						count={invoices?.length}
-						icon={<FileText size={18} color="#3b82f6" />}
-					/>
-
+				{/* Related invoices */}
+				<View style={styles.section}>
+					<SectionHeader title="Invoices" />
 					{invoices && invoices.length > 0 ? (
-						<View style={styles.quotesList}>
-							{invoices.slice(0, 3).map((invoice) => (
-								<View key={invoice._id} style={styles.quoteItem}>
-									<View style={styles.quoteItemContent}>
-										<View style={{ flex: 1 }}>
-											<Text style={styles.quoteTitle} numberOfLines={1}>
-												Invoice #{invoice.invoiceNumber}
-											</Text>
-											<Text style={styles.quoteValue}>
-												{formatCurrency(invoice.total)}
-											</Text>
-										</View>
-										<StatusBadge status={invoice.status} />
-									</View>
-								</View>
+						<Card style={styles.listCard}>
+							{invoices.slice(0, 3).map((invoice, i) => (
+								<ListRow
+									key={invoice._id}
+									title={`Invoice #${invoice.invoiceNumber}`}
+									status={invoice.status}
+									onPress={() =>
+										// Cast: dynamic detail route isn't in the generated route map.
+										router.push({
+											pathname: "/invoice/[id]",
+											params: { id: invoice._id },
+										} as unknown as Href)
+									}
+									last={i === Math.min(invoices.length, 3) - 1}
+								/>
 							))}
-						</View>
+							{invoices.length > 3 ? (
+								<Text style={[styles.more, { color: t.faint }]}>
+									+{invoices.length - 3} more
+								</Text>
+							) : null}
+						</Card>
 					) : (
-						<View style={styles.emptySection}>
-							<Text style={styles.emptySectionText}>No invoices yet</Text>
-						</View>
+						<Card style={styles.emptyCard}>
+							<Text style={[styles.emptyText, { color: t.faint }]}>
+								No invoices yet
+							</Text>
+						</Card>
 					)}
 				</View>
 
-				{/* Project Documents Section */}
+				{/* Documents — rewired component (Plan 02) */}
 				{projectId && (
 					<ProjectDocuments projectId={projectId as Id<"projects">} />
 				)}
 
-				{/* Bottom spacing */}
-				<View style={{ height: spacing.xl }} />
+				<View style={{ height: 32 }} />
 			</ScrollView>
 
-			{/* Floating Action Button for Mentions */}
-			<Pressable
-				style={styles.fab}
-				onPress={() => setMentionModalVisible(true)}
-			>
-				<MessageSquare size={24} color="#ffffff" />
-			</Pressable>
+			{/* Date picker — in-screen overlay (not a RN Modal): a Modal opened
+			    after a SwiftUI menu (FieldMenu) interaction deadlocks touch
+			    handling on iOS. A plain overlay stays in the RN hierarchy. */}
+			{dateMounted ? (
+				<View style={styles.dateOverlay}>
+					<Animated.View
+						style={[styles.dateBackdrop, { opacity: dateProgress }]}
+					>
+						<Animated.View
+							style={[
+								styles.dateSheet,
+								{
+									backgroundColor: t.bg,
+									transform: [
+										{
+											translateY: dateProgress.interpolate({
+												inputRange: [0, 1],
+												outputRange: [24, 0],
+											}),
+										},
+									],
+								},
+							]}
+						>
+							<View style={styles.dateSheetHeader}>
+								<Text style={[styles.dateSheetTitle, { color: t.ink }]}>
+									{shownField === "endDate"
+										? "Select due date"
+										: "Select start date"}
+								</Text>
+								<TouchableOpacity
+									onPress={() => setDateField(null)}
+									accessibilityRole="button"
+									accessibilityLabel="Close"
+								>
+									<X size={24} color={t.ink} />
+								</TouchableOpacity>
+							</View>
+							<AppCalendar
+								selectedDate={
+									shownField === "endDate"
+										? project.endDate
+											? toDateId(new Date(project.endDate))
+											: undefined
+										: project.startDate
+											? toDateId(new Date(project.startDate))
+											: undefined
+								}
+								onDateSelect={handleDateSelect}
+							/>
+						</Animated.View>
+					</Animated.View>
+				</View>
+			) : null}
 
-			{/* Mention Modal */}
-			{project && (
-				<MentionModal
-					visible={mentionModalVisible}
-					onClose={() => setMentionModalVisible(false)}
-					entityType="project"
-					entityId={projectId as Id<"projects">}
-					entityName={project.title}
-				/>
-			)}
+			{/* Team chat */}
+			<MentionModal
+				visible={mentionVisible}
+				onClose={() => setMentionVisible(false)}
+				entityType="project"
+				entityId={projectId as Id<"projects">}
+				entityName={project.title}
+			/>
 		</SafeAreaView>
 	);
 }
 
+// Thin route wrapper — iPhone-identical (renders the body in "root" mode).
+export default function ProjectDetailScreen() {
+	const { projectId } = useLocalSearchParams<{ projectId: string }>();
+	return <ProjectDetailBody id={projectId} />;
+}
+
 const styles = StyleSheet.create({
-	loadingContainer: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
+	scroll: {
+		padding: 16,
+		gap: 0,
 	},
-	loadingText: {
-		fontSize: 16,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+	skeletonHeader: {
+		height: 140,
+		borderRadius: radii.rLg,
+		marginBottom: 14,
+		boxShadow: shadow.card,
 	},
-	headerCard: {
-		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-		borderLeftWidth: 4,
+	skeletonBlock: {
+		height: 80,
+		borderRadius: radii.rLg,
+		marginBottom: 14,
+		boxShadow: shadow.card,
 	},
 	headerTop: {
 		flexDirection: "row",
-		alignItems: "center",
+		alignItems: "flex-start",
 		justifyContent: "space-between",
-		gap: spacing.sm,
-		marginBottom: spacing.sm,
+		gap: 10,
 	},
-	projectTitle: {
-		fontSize: 24,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
+	headerTitleCol: {
 		flex: 1,
+		minWidth: 0,
 	},
-	statusBadgeContainer: {
-		transform: [{ scale: 1.3 }],
+	title: {
+		fontFamily: fontFamily.bold,
+		fontSize: 21,
+		letterSpacing: -0.3,
 	},
-	projectNumberRow: {
+	clientLink: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: spacing.xs,
-		marginBottom: spacing.sm,
+		gap: 6,
+		marginTop: 6,
 	},
-	projectNumberLabel: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	projectNumber: {
-		fontSize: 13,
+	clientLinkText: {
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-	},
-	clientRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: spacing.xs,
-		paddingVertical: spacing.xs,
-		marginTop: spacing.xs,
-		borderTopWidth: 1,
-		borderTopColor: colors.border,
-	},
-	clientName: {
-		flex: 1,
-		fontSize: 14,
-		fontFamily: fontFamily.medium,
-		color: colors.primary,
-	},
-	statsRow: {
-		flexDirection: "row",
-		marginTop: spacing.md,
-		gap: spacing.sm,
-	},
-	statBox: {
-		flex: 1,
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		padding: spacing.sm,
-		alignItems: "center",
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	statValue: {
-		fontSize: 18,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-	},
-	statLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginTop: 2,
-	},
-	progressCard: {
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		padding: spacing.md,
-		marginTop: spacing.md,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	progressHeader: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		marginBottom: spacing.sm,
-	},
-	progressLabel: {
-		fontSize: 14,
-		fontFamily: fontFamily.medium,
-		color: colors.foreground,
-	},
-	progressPercentage: {
-		fontSize: 14,
-		fontFamily: fontFamily.bold,
-		color: colors.primary,
-	},
-	progressBar: {
-		height: 8,
-		backgroundColor: colors.muted,
-		borderRadius: 4,
-		overflow: "hidden",
-	},
-	progressFill: {
-		height: "100%",
-		borderRadius: 4,
-	},
-	datesContainer: {
-		flexDirection: "row",
-		alignItems: "center",
-		marginTop: spacing.sm,
-	},
-	dateItem: {
-		flex: 1,
-	},
-	dateLabel: {
-		fontSize: 12,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-	},
-	dateValue: {
-		fontSize: 14,
-		fontFamily: fontFamily.medium,
-		color: colors.foreground,
-	},
-	dateDivider: {
-		width: 1,
-		height: 40,
-		backgroundColor: colors.border,
-		marginHorizontal: spacing.md,
-	},
-	tasksList: {
-		gap: spacing.sm,
-	},
-	quotesList: {
-		gap: spacing.xs,
-	},
-	quoteItem: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: colors.card,
-		borderRadius: radius.md,
-		padding: spacing.sm,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	quoteItemContent: {
-		flex: 1,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginRight: spacing.sm,
-	},
-	quoteTitle: {
-		fontSize: 14,
-		fontFamily: fontFamily.medium,
-		color: colors.foreground,
-		marginBottom: 2,
-	},
-	quoteValue: {
 		fontSize: 13,
-		fontFamily: fontFamily.semibold,
-		color: colors.primary,
-		marginTop: 2,
 	},
-	emptySection: {
-		backgroundColor: colors.muted,
-		borderRadius: radius.md,
-		padding: spacing.md,
-		alignItems: "center",
+	headerActions: {
+		alignItems: "flex-end",
+		gap: 10,
 	},
-	emptySectionText: {
-		fontSize: 13,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+	statusTrigger: {
+		alignSelf: "flex-end",
+		paddingBottom: 5,
+		borderBottomWidth: 1,
 	},
-	fab: {
-		position: "absolute",
-		right: 24,
-		bottom: 24,
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.primary,
+	teamChat: {
+		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.3,
-		shadowRadius: 8,
-		elevation: 8,
+		gap: 8,
+		height: 44,
+		borderRadius: radii.rSm,
+		marginTop: 12,
+	},
+	teamChatText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 13,
+	},
+	kvEditable: {
+		paddingBottom: 5,
+		borderBottomWidth: 1,
+	},
+	dateOverlay: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		zIndex: 10,
+	},
+	dateBackdrop: {
+		flex: 1,
+		backgroundColor: "rgba(0,0,0,0.5)",
+		justifyContent: "center",
+		alignItems: "center",
+		padding: 16,
+	},
+	dateSheet: {
+		width: "100%",
+		maxWidth: 420,
+		borderRadius: radii.r,
+		padding: 16,
+	},
+	dateSheetHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: 12,
+	},
+	dateSheetTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 16,
+	},
+	progressRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 16,
+		marginTop: 16,
+	},
+	ringText: {
+		fontFamily: fontFamily.bold,
+		fontSize: 16,
+	},
+	kvCol: {
+		flex: 1,
+		gap: 10,
+	},
+	kvColStandalone: {
+		marginTop: 16,
+		gap: 10,
+	},
+	kvRow: {
+		flexDirection: "row",
+		alignItems: "baseline",
+		justifyContent: "space-between",
+	},
+	kvLabel: {
+		fontFamily: fontFamily.regular,
+		fontSize: 12,
+	},
+	kvValue: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 13,
+	},
+	section: {
+		marginTop: 14,
+	},
+	description: {
+		fontFamily: fontFamily.regular,
+		fontSize: 13,
+		lineHeight: 21,
+		marginTop: 10,
+	},
+	listCard: {
+		marginTop: 10,
+		paddingVertical: 6,
+		paddingHorizontal: 12,
+	},
+	emptyCard: {
+		marginTop: 10,
+		alignItems: "center",
+		paddingVertical: 20,
+	},
+	emptyText: {
+		fontFamily: fontFamily.regular,
+		fontSize: 12,
+	},
+	more: {
+		fontFamily: fontFamily.medium,
+		fontSize: 11,
+		paddingVertical: 8,
+		paddingHorizontal: 4,
+	},
+	pressed: {
+		opacity: 0.6,
 	},
 });

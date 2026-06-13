@@ -7,17 +7,17 @@ import {
 	ActivityIndicator,
 	Dimensions,
 } from "react-native";
-import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { colors, spacing, styles, fontFamily } from "@/lib/theme";
-import { Bell, X, BellOff } from "lucide-react-native";
+import { X, BellOff } from "lucide-react-native";
 import {
 	formatRelativeTime,
 	truncateText,
 	stripAuthorIdFromMessage,
 } from "@/lib/notification-utils";
+import { normalizeActionUrl } from "@/lib/push-deeplink";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -58,10 +58,15 @@ export function NotificationModal({
 			}
 		}
 
-		// Navigate to the entity if URL is provided
+		// Navigate to the entity if URL is provided. actionUrl is a backend-stored
+		// string, so normalize + guard it's an app-relative path before pushing
+		// (mirrors app/notifications.tsx — never force-push an arbitrary string).
 		if (actionUrl) {
-			router.push(actionUrl);
-			onClose();
+			const target = normalizeActionUrl(actionUrl);
+			if (target.startsWith("/")) {
+				router.push(target as Href);
+				onClose();
+			}
 		}
 	};
 
@@ -101,7 +106,7 @@ export function NotificationModal({
 						}}
 					>
 						<View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-							<Text style={[styles.heading, { fontSize: 18 }]}>
+							<Text style={[styles.heading, { fontSize: 16 }]}>
 								Notifications
 							</Text>
 							{unreadCount > 0 && (
@@ -118,7 +123,7 @@ export function NotificationModal({
 									<Text
 										style={{
 											color: "#fff",
-											fontSize: 12,
+											fontSize: 11,
 											fontFamily: fontFamily.semibold,
 										}}
 									>
@@ -168,7 +173,7 @@ export function NotificationModal({
 							<Text
 								style={[
 									styles.heading,
-									{ fontSize: 20, marginBottom: spacing.sm },
+									{ fontSize: 18, marginBottom: spacing.sm },
 								]}
 							>
 								No notifications
@@ -176,11 +181,11 @@ export function NotificationModal({
 							<Text
 								style={[
 									styles.mutedText,
-									{ textAlign: "center", fontSize: 15 },
+									{ textAlign: "center", fontSize: 13 },
 								]}
 							>
-								You're all caught up! We'll notify you when something important
-								happens.
+								You&apos;re all caught up! We&apos;ll notify you when something
+								important happens.
 							</Text>
 						</View>
 					) : (
@@ -229,7 +234,7 @@ export function NotificationModal({
 										<View style={{ flex: 1 }}>
 											<Text
 												style={{
-													fontSize: 14,
+													fontSize: 13,
 													fontFamily: fontFamily.semibold,
 													color: colors.foreground,
 													marginBottom: 4,
@@ -239,7 +244,7 @@ export function NotificationModal({
 											</Text>
 											<Text
 												style={{
-													fontSize: 13,
+													fontSize: 12,
 													color: colors.mutedForeground,
 													marginBottom: 4,
 													lineHeight: 18,
@@ -253,7 +258,7 @@ export function NotificationModal({
 											</Text>
 											<Text
 												style={{
-													fontSize: 12,
+													fontSize: 11,
 													color: colors.mutedForeground,
 												}}
 											>

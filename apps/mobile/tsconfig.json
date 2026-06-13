@@ -2,7 +2,10 @@
 	"extends": "@onetool/tsconfig/expo.json",
 	"compilerOptions": {
 		"strict": true,
-		"baseUrl": ".",
+		// Pin ambient @types instead of auto-scanning node_modules/@types — a hoisted
+		// @types/dompurify stub (web-only dep) otherwise leaks in and fails to resolve.
+		// "node" is needed for Node globals (Blob/Buffer) in imported backend code.
+		"types": ["node"],
 		"paths": {
 			"@/*": ["./*"]
 		}

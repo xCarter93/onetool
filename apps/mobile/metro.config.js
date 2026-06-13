@@ -1,4 +1,4 @@
-// Expo SDK 52+ monorepo configuration
+// Expo SDK 56+ pnpm monorepo configuration
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
 
@@ -7,43 +7,35 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// Enable symlinks for pnpm
-config.resolver.unstable_enableSymlinks = true;
+// Watch the whole monorepo so hoisted/workspace deps resolve
+config.watchFolders = [workspaceRoot];
 
-// Force React to always resolve from mobile app's node_modules
-const reactPath = path.resolve(projectRoot, "node_modules/react");
-
-config.resolver.extraNodeModules = {
-	react: reactPath,
-};
-
-// Block ALL nested React copies except the one in mobile/node_modules
-config.resolver.blockList = [
-	// Block react in workspace root node_modules
-	new RegExp(`${workspaceRoot}/node_modules/react/`),
-	// Block any nested React in other packages
-	/.*\/node_modules\/.*\/node_modules\/react\/.*/,
+// Resolve from the app first, then the hoisted root store.
+config.resolver.nodeModulesPaths = [
+	path.resolve(projectRoot, "node_modules"),
+	path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// Custom resolver to aggressively redirect all React imports
+// react-dom is never executed on native, but isomorphic deps (expo-router,
+// @clerk/*) import it, and at module load it asserts its version equals react's
+// (React error #527). pnpm scatters react-dom@19.2.7 peer copies inside those
+// packages' node_modules that a non-clean install can't collapse, and Expo's
+// resolver resolves them relative to the importer (ignoring originModulePath).
+// So resolve react-dom directly from the hoisted root copy (pinned to react's
+// version via root pnpm.overrides) and hand metro the concrete file path.
+const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-	// Intercept any React import and force it to mobile's React
-	if (
-		moduleName === "react" ||
-		moduleName === "react/jsx-runtime" ||
-		moduleName === "react/jsx-dev-runtime"
-	) {
+	if (moduleName === "react-dom" || moduleName.startsWith("react-dom/")) {
 		return {
-			filePath:
-				moduleName === "react"
-					? path.join(reactPath, "index.js")
-					: path.join(reactPath, moduleName.replace("react/", "") + ".js"),
 			type: "sourceFile",
+			filePath: require.resolve(moduleName, { paths: [workspaceRoot] }),
 		};
 	}
-
-	// Use default resolution for everything else
-	return context.resolveRequest(context, moduleName, platform);
+	return (defaultResolveRequest ?? context.resolveRequest)(
+		context,
+		moduleName,
+		platform
+	);
 };
 
 module.exports = config;

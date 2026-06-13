@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 	},
 	text: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.semibold,
 		textAlign: "center",
 	},

@@ -790,6 +790,21 @@ export default defineSchema({
 		.index("by_entity", ["entityType", "entityId"]) // NEW: Efficient lookup for "all attachments on entity X"
 		.index("by_org_entity", ["orgId", "entityType", "entityId"]), // NEW: Org-scoped entity lookup
 
+	// Push notification device tokens.
+	// INTENTIONALLY userId-scoped, NOT orgId-scoped: a mention can originate in
+	// any org the author shares with the tagged user, and the push must reach the
+	// tagged user regardless of their active org. Deliberate exception to the
+	// CLAUDE.md multi-tenant rule (see push.ts header).
+	pushTokens: defineTable({
+		userId: v.id("users"),
+		token: v.string(), // "ExponentPushToken[...]"
+		platform: v.union(v.literal("ios"), v.literal("android")),
+		deviceName: v.optional(v.string()),
+		lastSeenAt: v.number(),
+	})
+		.index("by_user", ["userId"])
+		.index("by_token", ["token"]),
+
 	// Service Status - monitoring for external service health
 	serviceStatus: defineTable({
 		serviceName: v.string(), // "convex", "clerk_auth", "clerk_billing", "boldsign_esignature", "stripe"
@@ -1439,7 +1454,9 @@ export default defineSchema({
 		createdAt: v.number(),
 	})
 		.index("by_user_org", ["userId", "orgId"])
-		.index("by_user_client", ["userId", "clientId"]),
+		.index("by_user_client", ["userId", "clientId"])
+		// by_org: drained by the org-deletion cascade.
+		.index("by_org", ["orgId"]),
 
 	// Portal OTP codes — short-lived 6-digit codes for portal sign-in
 	// (PORTAL-01, PORTAL-04). One row per (clientPortalId, email) request.
@@ -1467,7 +1484,9 @@ export default defineSchema({
 		// Kept for legacy diagnostic queries; NOT used by Plan 03 verifyOtp.
 		.index("by_email_and_org", ["email", "orgId"])
 		.index("by_contact", ["clientContactId"])
-		.index("by_expires", ["expiresAt"]),
+		.index("by_expires", ["expiresAt"])
+		// by_org: drained by the org-deletion cascade.
+		.index("by_org", ["orgId"]),
 
 	// Portal sessions — one row per active device session (PORTAL-03,
 	// multi-device allowed; revocation by jti).
@@ -1489,7 +1508,9 @@ export default defineSchema({
 	})
 		.index("by_contact", ["clientContactId"])
 		.index("by_jti", ["tokenJti"])
-		.index("by_expires", ["expiresAt"]),
+		.index("by_expires", ["expiresAt"])
+		// by_org: drained by the org-deletion cascade.
+		.index("by_org", ["orgId"]),
 
 	// Stripe Connect webhook event ledger.
 	stripeWebhookEvents: defineTable({

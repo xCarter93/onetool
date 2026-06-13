@@ -2,7 +2,7 @@ import {
 	View,
 	Text,
 	Pressable,
-	RefreshControl,
+	ScrollView,
 	TextInput,
 	StyleSheet,
 } from "react-native";
@@ -10,327 +10,413 @@ import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "expo-router";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Search, ChevronRight, Building2, X } from "lucide-react-native";
-import { colors, fontFamily, radius, spacing } from "@/lib/theme";
-import { FABMenu } from "@/components/FABMenu";
+import { Search, Plus, X } from "lucide-react-native";
+import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { Avatar, Badge, SCROLL_TOP_INSET } from "@/components/ui";
+import { AppHeader } from "@/components/app-header";
+import { useShellNav } from "@/lib/shell-nav";
 
-// Status config using primary color for active states
-const statusConfig = {
-	lead: { label: "Lead", color: colors.primary },
-	active: { label: "Active", color: colors.success },
-	inactive: { label: "Inactive", color: colors.mutedForeground },
-	archived: { label: "Archived", color: colors.mutedForeground },
-} as const;
+// listWithProjectCounts returns a reshaped DTO (id/name/status display string),
+// NOT Doc<"clients">. Field names used verbatim below.
+type ClientRow = {
+	id: string;
+	name: string;
+	location: string;
+	activeProjects: number;
+	lastActivity: string;
+	status: "Active" | "Prospect" | "Paused" | "Archived";
+	primaryContact: { name: string; email: string; jobTitle: string } | null;
+};
 
-export default function ClientsScreen() {
+// Chip filter keys map to the DTO display-string status (NOT the raw enum).
+type FilterValue = "all" | "Active" | "Prospect" | "Paused";
+
+// Map the DTO display string to the STATUS pill map key for Badge coloring.
+const STATUS_KEY: Record<ClientRow["status"], string> = {
+	Active: "active",
+	Prospect: "lead",
+	Paused: "inactive",
+	Archived: "archived",
+};
+
+function initialsFrom(name: string): string {
+	const words = name.trim().split(/\s+/).filter(Boolean);
+	if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+	return name.slice(0, 2).toUpperCase();
+}
+
+// headerMode/onSelect/selectedId default off → the iPhone path (router.push,
+// AppHeader mode="root", no selected highlight) is byte-identical. The iPad
+// shell renders this as a list pane: headerMode="pane" suppresses the self-
+// mounted AppHeader (shell mounts PaneHeader), onSelect drives the detail pane
+// via the shell selection instead of a route push, selectedId marks the row.
+export default function ClientsScreen({
+	headerMode = "root",
+	onSelect,
+	selectedId = null,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (id: string) => void;
+	selectedId?: string | null;
+} = {}) {
 	const router = useRouter();
-	const [refreshing, setRefreshing] = useState(false);
+	const t = useTokens();
+	const shellNav = useShellNav();
+	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
+	const [filter, setFilter] = useState<FilterValue>("all");
 
-	const clients = useQuery(api.clients.list, {}) ?? [];
+	const clients = useQuery(api.clients.listWithProjectCounts, {}) as
+		| ClientRow[]
+		| undefined;
 
-	const filteredClients = useMemo(() => {
-		if (!searchQuery.trim()) return clients;
-		const query = searchQuery.toLowerCase();
-		return clients.filter((client) =>
-			client.companyName.toLowerCase().includes(query)
+	const loading = clients === undefined;
+	const allClients = useMemo(() => clients ?? [], [clients]);
+
+	const counts = useMemo(
+		() => ({
+			all: allClients.length,
+			Active: allClients.filter((c) => c.status === "Active").length,
+			Prospect: allClients.filter((c) => c.status === "Prospect").length,
+			Paused: allClients.filter((c) => c.status === "Paused").length,
+		}),
+		[allClients]
+	);
+
+	const chips: { value: FilterValue; label: string }[] = [
+		{ value: "all", label: "All" },
+		{ value: "Active", label: "Active" },
+		{ value: "Prospect", label: "Leads" },
+		{ value: "Paused", label: "Inactive" },
+	];
+
+	const visibleClients = useMemo(() => {
+		const q = searchQuery.trim().toLowerCase();
+		return allClients.filter(
+			(c) =>
+				(filter === "all" || c.status === filter) &&
+				(q === "" || c.name.toLowerCase().includes(q))
 		);
-	}, [clients, searchQuery]);
+	}, [allClients, filter, searchQuery]);
 
-	const onRefresh = useCallback(() => {
-		setRefreshing(true);
-		setTimeout(() => setRefreshing(false), 1000);
-	}, []);
+	// In the iPad shell: open the in-pane create surface (no router.push to a
+	// (tabs) sibling, which slides the whole shell). iPhone has no provider →
+	// fall back to the full-screen create route (byte-identical).
+	const goToNew = () =>
+		shellNav ? shellNav.startCreate("clients") : router.push("/clients/new");
 
-	// Get initials for avatar
-	const getInitials = (name: string) => {
-		const words = name.split(" ");
-		if (words.length >= 2) {
-			return (words[0][0] + words[1][0]).toUpperCase();
-		}
-		return name.substring(0, 2).toUpperCase();
-	};
+	// On iPad pane: row tap drives the shell selection (no route push — the
+	// (tabs) group has no in-group navigator, so a push slides the whole shell).
+	// On iPhone: push the detail route exactly as before.
+	const openClient = (id: string) =>
+		onSelect ? onSelect(id) : router.push(`/clients/${id}`);
 
-	const renderClient = ({ item }: { item: (typeof clients)[0] }) => {
-		const status = statusConfig[item.status as keyof typeof statusConfig] || {
-			label: item.status,
-			color: colors.mutedForeground,
-		};
-
+	const renderClient = ({ item }: { item: ClientRow }) => {
+		const contactName = item.primaryContact?.name ?? "—";
+		const isSelected = isPane && item.id === selectedId;
 		return (
 			<Pressable
 				style={({ pressed }) => [
-					styles.clientRow,
-					pressed && styles.clientRowPressed,
+					styles.card,
+					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					pressed && styles.cardPressed,
 				]}
-				onPress={() => router.push(`/clients/${item._id}`)}
+				onPress={() => openClient(item.id)}
 			>
-				{/* Avatar */}
-				<View style={styles.avatar}>
-					<Text style={styles.avatarText}>{getInitials(item.companyName)}</Text>
-				</View>
-
-				{/* Client Info */}
-				<View style={styles.clientInfo}>
-					<Text style={styles.companyName} numberOfLines={1}>
-						{item.companyName}
+				<Avatar text={initialsFrom(item.name)} size={48} />
+				<View style={styles.cardBody}>
+					<Text style={styles.name} numberOfLines={1}>
+						{item.name}
 					</Text>
-					<View style={styles.clientMeta}>
-						<View
-							style={[styles.statusDot, { backgroundColor: status.color }]}
-						/>
-						<Text style={[styles.statusText, { color: status.color }]}>
-							{status.label}
-						</Text>
-					</View>
+					<Text style={styles.subline} numberOfLines={1}>
+						{contactName} · {item.activeProjects} projects
+					</Text>
 				</View>
-
-				<ChevronRight size={18} color={colors.border} />
+				<View style={styles.cardRight}>
+					<Badge status={STATUS_KEY[item.status]} />
+					{/* No per-client invoice/quote aggregation source exists — show — (never fake a $ figure). */}
+					<Text style={styles.value}>—</Text>
+				</View>
 			</Pressable>
 		);
 	};
 
-	return (
-		<SafeAreaView
-			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
-		>
-			{/* Search Bar */}
-			<View style={styles.searchContainer}>
-				<View style={styles.searchBar}>
-					<Search size={18} color={colors.mutedForeground} />
-					<TextInput
-						style={styles.searchInput}
-						placeholder="Search clients..."
-						placeholderTextColor={colors.mutedForeground}
-						value={searchQuery}
-						onChangeText={setSearchQuery}
-					/>
-					{searchQuery.length > 0 && (
-						<Pressable
-							onPress={() => setSearchQuery("")}
-							style={styles.clearButton}
-						>
-							<X size={16} color={colors.mutedForeground} />
-						</Pressable>
-					)}
-				</View>
+	const ListHeader = (
+		<View style={styles.listHeader}>
+			<Pressable
+				onPress={goToNew}
+				style={({ pressed }) => [
+					styles.newBtn,
+					{ backgroundColor: t.accent },
+					pressed && { opacity: 0.9 },
+				]}
+				accessibilityRole="button"
+				accessibilityLabel="New client"
+			>
+				<Plus size={18} color="#fff" />
+				<Text style={styles.newBtnLabel}>New client</Text>
+			</Pressable>
 
-				{searchQuery && (
-					<Text style={styles.resultsCount}>
-						{filteredClients.length} result
-						{filteredClients.length !== 1 ? "s" : ""}
-					</Text>
+			<View style={styles.searchBar}>
+				<Search size={19} color={t.faint} />
+				<TextInput
+					value={searchQuery}
+					onChangeText={setSearchQuery}
+					placeholder="Search clients…"
+					placeholderTextColor={t.faint}
+					style={[styles.searchInput, { color: t.ink }]}
+				/>
+				{searchQuery.length > 0 && (
+					<Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+						<X size={16} color={t.faint} />
+					</Pressable>
 				)}
 			</View>
 
-			{/* Summary Bar */}
-			<View style={styles.summaryBar}>
-				<Text style={styles.summaryText}>
-					{clients.length} total client{clients.length !== 1 ? "s" : ""}
-				</Text>
-				<View style={styles.summaryStats}>
-					<View style={styles.summaryStatItem}>
-						<View
-							style={[styles.summaryDot, { backgroundColor: colors.success }]}
-						/>
-						<Text style={styles.summaryStatText}>
-							{clients.filter((c) => c.status === "active").length} active
-						</Text>
-					</View>
-				</View>
-			</View>
+			<ScrollView
+				horizontal
+				showsHorizontalScrollIndicator={false}
+				contentContainerStyle={styles.chipRow}
+			>
+				{chips.map((chip) => {
+					const active = chip.value === filter;
+					return (
+						<Pressable
+							key={chip.value}
+							onPress={() => setFilter(chip.value)}
+							style={[
+								styles.chip,
+								active
+									? { backgroundColor: t.accent, borderColor: t.accent }
+									: { backgroundColor: t.card, borderColor: t.line },
+							]}
+						>
+							<Text
+								style={[styles.chipLabel, { color: active ? "#fff" : t.sub }]}
+							>
+								{chip.label}
+							</Text>
+							<Text
+								style={[styles.chipCount, { color: active ? "#fff" : t.faint }]}
+							>
+								{counts[chip.value]}
+							</Text>
+						</Pressable>
+					);
+				})}
+			</ScrollView>
+		</View>
+	);
 
-			<FlashList
-				data={filteredClients}
-				keyExtractor={(item) => item._id}
-				renderItem={renderClient}
-				contentContainerStyle={styles.listContent}
-				ItemSeparatorComponent={() => <View style={styles.separator} />}
-				refreshControl={
-					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-				}
-				ListEmptyComponent={
-					<View style={styles.emptyState}>
-						<View style={styles.emptyIcon}>
-							<Building2 size={28} color={colors.mutedForeground} />
+	return (
+		<SafeAreaView
+			style={{ flex: 1, backgroundColor: t.surface }}
+			edges={[]}
+		>
+			{/* Pane mode: the shell mounts PaneHeader above this body (one header
+			    per pane — locked convention). iPhone: AppHeader mode="root". */}
+			{isPane ? null : <AppHeader mode="root" title="Clients" />}
+
+			{loading ? (
+				<View style={styles.listContent}>
+					{ListHeader}
+					{[0, 1, 2, 3].map((i) => (
+						<View key={i} style={[styles.card, styles.skeletonCard]}>
+							<View style={[styles.skeleton, styles.skeletonAvatar]} />
+							<View style={styles.cardBody}>
+								<View style={[styles.skeleton, { width: "60%", height: 16 }]} />
+								<View
+									style={[
+										styles.skeleton,
+										{ width: "40%", height: 13, marginTop: 6 },
+									]}
+								/>
+							</View>
 						</View>
-						<Text style={styles.emptyTitle}>
-							{searchQuery ? "No clients found" : "No clients yet"}
-						</Text>
-						<Text style={styles.emptyText}>
-							{searchQuery
-								? "Try adjusting your search"
-								: "Add your first client to get started"}
-						</Text>
-					</View>
-				}
-			/>
-
-			{/* FAB Menu */}
-			<FABMenu />
+					))}
+				</View>
+			) : (
+				<FlashList
+					data={visibleClients}
+					keyExtractor={(item) => item.id}
+					renderItem={renderClient}
+					ListHeaderComponent={ListHeader}
+					contentContainerStyle={styles.listContent}
+					ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+					ListEmptyComponent={
+						<View style={styles.emptyState}>
+							{allClients.length === 0 ? (
+								<>
+									<Text style={styles.emptyTitle}>No clients yet</Text>
+									<Text style={styles.emptyText}>
+										Add your first client to start tracking work.
+									</Text>
+									<Pressable
+										onPress={goToNew}
+										style={({ pressed }) => [
+											styles.newBtn,
+											styles.emptyBtn,
+											{ backgroundColor: t.accent },
+											pressed && { opacity: 0.9 },
+										]}
+										accessibilityRole="button"
+										accessibilityLabel="New client"
+									>
+										<Plus size={18} color="#fff" />
+										<Text style={styles.newBtnLabel}>New client</Text>
+									</Pressable>
+								</>
+							) : (
+								<>
+									<Text style={styles.emptyTitle}>No clients found</Text>
+									<Text style={styles.emptyText}>
+										Try a different search or filter.
+									</Text>
+								</>
+							)}
+						</View>
+					}
+				/>
+			)}
 		</SafeAreaView>
 	);
 }
 
 const styles = StyleSheet.create({
-	searchContainer: {
-		paddingHorizontal: spacing.md,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.xs,
+	listContent: {
+		paddingHorizontal: 16,
+		paddingBottom: 24,
+		paddingTop: SCROLL_TOP_INSET,
+	},
+	listHeader: {
+		gap: 12,
+		paddingBottom: 12,
+	},
+	newBtn: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		minHeight: 46,
+		borderRadius: 15,
+		boxShadow: shadow.md,
+	},
+	newBtnLabel: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 13,
+		color: "#fff",
 	},
 	searchBar: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: colors.muted,
-		borderRadius: radius.lg,
-		paddingHorizontal: spacing.sm,
-		height: 44,
+		gap: 9,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e9edf2",
+		borderRadius: 15,
+		paddingHorizontal: 14,
+		height: 46,
 	},
 	searchInput: {
 		flex: 1,
-		paddingHorizontal: spacing.sm,
-		fontSize: 15,
 		fontFamily: fontFamily.regular,
-		color: colors.foreground,
-	},
-	clearButton: {
-		padding: spacing.xs,
-	},
-	resultsCount: {
-		fontSize: 12,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-		marginTop: spacing.xs,
-		marginLeft: spacing.xs,
-	},
-	summaryBar: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: spacing.md,
-		paddingVertical: spacing.sm,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.border,
-	},
-	summaryText: {
 		fontSize: 13,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
+		paddingVertical: 0,
 	},
-	summaryStats: {
-		flexDirection: "row",
-		gap: spacing.md,
+	chipRow: {
+		gap: 8,
+		paddingRight: 16,
 	},
-	summaryStatItem: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-	},
-	summaryDot: {
-		width: 6,
-		height: 6,
-		borderRadius: 3,
-	},
-	summaryStatText: {
-		fontSize: 12,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-	},
-	listContent: {
-		paddingBottom: 100,
-	},
-	clientRow: {
+	chip: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: spacing.md,
-		paddingHorizontal: spacing.md,
-		backgroundColor: colors.background,
+		gap: 5,
+		minHeight: 36,
+		paddingHorizontal: 15,
+		borderRadius: 999,
+		borderWidth: 1,
 	},
-	clientRowPressed: {
-		backgroundColor: colors.muted,
-	},
-	separator: {
-		height: 1,
-		backgroundColor: colors.border,
-		marginLeft: 56 + spacing.md,
-	},
-	avatar: {
-		width: 44,
-		height: 44,
-		borderRadius: 22,
-		backgroundColor: "rgba(0, 166, 244, 0.08)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	avatarText: {
-		fontSize: 15,
+	chipLabel: {
 		fontFamily: fontFamily.semibold,
-		color: colors.primary,
+		fontSize: 12.5,
 	},
-	clientInfo: {
-		flex: 1,
-		marginRight: spacing.sm,
-	},
-	companyName: {
-		fontSize: 15,
+	chipCount: {
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: 2,
-	},
-	clientMeta: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: spacing.xs,
-	},
-	metaItem: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 3,
-		flex: 1,
-	},
-	metaText: {
 		fontSize: 12,
+	},
+	card: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 13,
+		backgroundColor: "#fff",
+		borderRadius: radii.rLg,
+		borderWidth: 1,
+		borderColor: "#e9edf2",
+		boxShadow: shadow.card,
+		padding: 13,
+		minHeight: 44,
+	},
+	cardPressed: {
+		opacity: 0.85,
+	},
+	cardBody: {
+		flex: 1,
+		minWidth: 0,
+	},
+	name: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 14,
+		color: "#09090b",
+	},
+	subline: {
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		flex: 1,
+		fontSize: 13,
+		color: "#5b6675",
+		marginTop: 2,
 	},
-	statusDot: {
-		width: 6,
-		height: 6,
-		borderRadius: 3,
+	cardRight: {
+		alignItems: "flex-end",
+		gap: 5,
 	},
-	statusText: {
-		fontSize: 11,
-		fontFamily: fontFamily.medium,
+	value: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 11.5,
+		color: "#5b6675",
+	},
+	skeletonCard: {
+		marginBottom: 10,
+	},
+	skeleton: {
+		backgroundColor: "#e9edf2",
+		borderRadius: 6,
+	},
+	skeletonAvatar: {
+		width: 48,
+		height: 48,
+		borderRadius: 16,
 	},
 	emptyState: {
 		alignItems: "center",
-		paddingVertical: spacing.xl * 2,
-		paddingHorizontal: spacing.lg,
-	},
-	emptyIcon: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.muted,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: spacing.md,
+		paddingVertical: 64,
+		paddingHorizontal: 24,
 	},
 	emptyTitle: {
-		fontSize: 16,
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
+		fontSize: 18,
+		color: "#09090b",
+		marginBottom: 8,
 	},
 	emptyText: {
-		fontSize: 14,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+		fontSize: 13,
+		color: "#5b6675",
 		textAlign: "center",
+	},
+	emptyBtn: {
+		marginTop: 20,
+		paddingHorizontal: 22,
+		alignSelf: "center",
 	},
 });

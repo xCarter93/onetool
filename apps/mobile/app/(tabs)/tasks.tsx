@@ -1,416 +1,498 @@
-import {
-	View,
-	Text,
-	SectionList,
-	Pressable,
-	RefreshControl,
-	StyleSheet,
-} from "react-native";
+import { View, Text, StyleSheet, RefreshControl, Alert } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useState, useCallback, useMemo } from "react";
+import { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import {
-	Plus,
-	CheckSquare,
-	AlertTriangle,
-	Calendar,
-	Clock,
-} from "lucide-react-native";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
-import { TaskItem } from "@/components/TaskItem";
-import { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { Card, StatCard, Button, SCROLL_TOP_INSET } from "@/components/ui";
+import { AppHeader } from "@/components/app-header";
+import { TaskRow } from "@/components/TaskRow";
+import { utcDayStartMs, dateIdFromUtcMs } from "@/lib/date";
+import { Plus } from "lucide-react-native";
 
-interface TaskData {
-	_id: string;
-	title: string;
-	date: number;
-	startTime?: string;
-	endTime?: string;
-	status: "pending" | "in-progress" | "completed" | "cancelled";
-	priority?: "low" | "medium" | "high" | "urgent";
-	clientName?: string;
-	projectName?: string;
+type Task = Doc<"tasks">;
+type EffStatus = "pending" | "in-progress" | "completed" | "cancelled";
+
+type GroupKey = "overdue" | "today" | "upcoming" | "completed" | "cancelled";
+
+const GROUP_META: Record<GroupKey, { label: string; color: string }> = {
+	overdue: { label: "Overdue", color: "#e23b3b" },
+	today: { label: "Today", color: "#00a6f4" },
+	upcoming: { label: "Upcoming", color: "#8a94a3" },
+	completed: { label: "Completed", color: "#1f9d57" },
+	cancelled: { label: "Cancelled", color: "#e23b3b" },
+};
+
+const MONTHS = [
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
+];
+
+// "YYYY-MM-DD" -> "Jun 12" (UTC day, matching the form's stored convention).
+function dateLabelFromMs(ms: number): string {
+	const [, m, d] = dateIdFromUtcMs(ms).split("-").map(Number);
+	return `${MONTHS[m - 1]} ${d}`;
 }
 
-interface Section {
-	title: string;
-	type: "overdue" | "today" | "upcoming" | "completed";
-	data: TaskData[];
-	icon: React.ReactNode;
-	color: string;
+function avatarTextFrom(name?: string, email?: string): string {
+	const src = name ?? email ?? "?";
+	return src
+		.split(" ")
+		.map((s) => s[0])
+		.slice(0, 2)
+		.join("")
+		.toUpperCase();
 }
 
-export default function TasksScreen() {
+interface GroupBlock {
+	key: GroupKey;
+	tasks: Task[];
+	total: number;
+}
+
+// headerMode defaults to "root" → the iPhone path (self-mounted AppHeader) is
+// byte-identical. The iPad shell renders Tasks as a SINGLE WIDE LIST pane:
+// headerMode="pane" suppresses the AppHeader (shell mounts the one PaneHeader
+// title="Tasks"). Tasks is explicitly NOT master-detail — no selection, no
+// detail pane, no split. The list simply fills the pane width.
+export default function TasksScreen({
+	headerMode = "root",
+}: {
+	headerMode?: "root" | "pane";
+} = {}) {
 	const router = useRouter();
+	const t = useTokens();
+	const isPane = headerMode === "pane";
 	const [refreshing, setRefreshing] = useState(false);
-	const [updatingTasks, setUpdatingTasks] = useState<Set<string>>(new Set());
 
-	const tasks = useQuery(api.tasks.list, {}) ?? [];
+	const tasks = useQuery(api.tasks.list, {});
+	const clients = useQuery(api.clients.list, {});
+	const users = useQuery(api.users.listByOrg);
 	const completeTask = useMutation(api.tasks.complete);
 	const updateTask = useMutation(api.tasks.update);
+
+	const loading =
+		tasks === undefined || clients === undefined || users === undefined;
+
+	// Optimistic status overlay + in-flight set (Map so un-complete also renders).
+	const [optimisticStatus, setOptimisticStatus] = useState(
+		new Map<Id<"tasks">, "completed" | "pending">()
+	);
+	const [updating, setUpdating] = useState(new Set<Id<"tasks">>());
+
+	// Reconcile the overlay against server truth: once the query reflects the
+	// override (or the task is gone), drop it so cross-screen changes (e.g.
+	// completing from Home) aren't shadowed by a stale local override.
+	useEffect(() => {
+		if (!tasks) return;
+		setOptimisticStatus((prev) => {
+			if (prev.size === 0) return prev;
+			const serverById = new Map(tasks.map((task) => [task._id, task.status]));
+			const next = new Map(prev);
+			let changed = false;
+			for (const [id, override] of prev) {
+				const server = serverById.get(id);
+				if (
+					server === undefined ||
+					(server === "completed") === (override === "completed")
+				) {
+					next.delete(id);
+					changed = true;
+				}
+			}
+			return changed ? next : prev;
+		});
+	}, [tasks]);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
 		setTimeout(() => setRefreshing(false), 1000);
 	}, []);
 
-	// Calculate date boundaries
-	const today = useMemo(() => {
-		const d = new Date();
-		d.setHours(0, 0, 0, 0);
-		return d.getTime();
-	}, []);
+	const clientsById = useMemo(() => {
+		const m = new Map<Id<"clients">, string>();
+		(clients ?? []).forEach((c) => m.set(c._id, c.companyName));
+		return m;
+	}, [clients]);
 
-	const tomorrow = useMemo(() => {
-		const d = new Date(today);
-		d.setDate(d.getDate() + 1);
-		return d.getTime();
-	}, [today]);
+	const usersById = useMemo(() => {
+		const m = new Map<
+			Id<"users">,
+			{ name?: string; email?: string; image?: string | null }
+		>();
+		(users ?? []).forEach((u) =>
+			m.set(u._id, { name: u.name, email: u.email, image: u.image })
+		);
+		return m;
+	}, [users]);
 
-	// Group tasks into sections
-	const sections = useMemo((): Section[] => {
-		const overdue: TaskData[] = [];
-		const todayTasks: TaskData[] = [];
-		const upcoming: TaskData[] = [];
-		const completed: TaskData[] = [];
+	// UTC-day boundaries (matches the form's Date.UTC storage — no local midnight).
+	// Lazy useState init keeps Date.now() out of render (react-hooks/purity).
+	const [today] = useState(() => utcDayStartMs(Date.now()));
+	const tomorrow = useMemo(() => today + 86400000, [today]);
 
-		tasks.forEach((task: TaskData) => {
-			if (task.status === "completed") {
+	const effStatus = useCallback(
+		(task: Task): EffStatus =>
+			(optimisticStatus.get(task._id) ?? task.status) as EffStatus,
+		[optimisticStatus]
+	);
+
+	const groups = useMemo((): GroupBlock[] => {
+		const all = tasks ?? [];
+		const cancelled: Task[] = [];
+		const completed: Task[] = [];
+		const overdue: Task[] = [];
+		const todayTasks: Task[] = [];
+		const upcoming: Task[] = [];
+
+		for (const task of all) {
+			const status = effStatus(task);
+			// Branch cancelled + completed FIRST so they never leak into a date bucket.
+			if (status === "cancelled") {
+				cancelled.push(task);
+			} else if (status === "completed") {
 				completed.push(task);
 			} else if (task.date < today) {
 				overdue.push(task);
-			} else if (task.date >= today && task.date < tomorrow) {
+			} else if (task.date < tomorrow) {
 				todayTasks.push(task);
 			} else {
 				upcoming.push(task);
 			}
-		});
+		}
 
-		// Sort each section
+		cancelled.sort((a, b) => (b.completedAt ?? b.date) - (a.completedAt ?? a.date));
+		completed.sort((a, b) => (b.completedAt ?? b.date) - (a.completedAt ?? a.date));
 		overdue.sort((a, b) => a.date - b.date);
 		todayTasks.sort((a, b) => {
-			if (a.startTime && b.startTime)
-				return a.startTime.localeCompare(b.startTime);
-			return 0;
+			const ta = a.startTime ?? "";
+			const tb = b.startTime ?? "";
+			if (ta !== tb) return ta.localeCompare(tb);
+			return a.title.localeCompare(b.title);
 		});
 		upcoming.sort((a, b) => a.date - b.date);
-		completed.sort((a, b) => b.date - a.date);
 
-		const result: Section[] = [];
-
-		if (overdue.length > 0) {
+		const result: GroupBlock[] = [];
+		if (overdue.length)
+			result.push({ key: "overdue", tasks: overdue, total: overdue.length });
+		if (todayTasks.length)
+			result.push({ key: "today", tasks: todayTasks, total: todayTasks.length });
+		if (upcoming.length)
+			result.push({ key: "upcoming", tasks: upcoming, total: upcoming.length });
+		if (completed.length)
 			result.push({
-				title: "Overdue",
-				type: "overdue",
-				data: overdue,
-				icon: <AlertTriangle size={16} color="#dc2626" />,
-				color: "#dc2626",
+				key: "completed",
+				tasks: completed.slice(0, 10),
+				total: completed.length,
 			});
-		}
-
-		if (todayTasks.length > 0) {
+		if (cancelled.length)
 			result.push({
-				title: "Today",
-				type: "today",
-				data: todayTasks,
-				icon: <Calendar size={16} color={colors.primary} />,
-				color: colors.primary,
+				key: "cancelled",
+				tasks: cancelled.slice(0, 10),
+				total: cancelled.length,
 			});
-		}
-
-		if (upcoming.length > 0) {
-			result.push({
-				title: "Upcoming",
-				type: "upcoming",
-				data: upcoming,
-				icon: <Clock size={16} color="#8b5cf6" />,
-				color: "#8b5cf6",
-			});
-		}
-
-		if (completed.length > 0) {
-			result.push({
-				title: "Completed",
-				type: "completed",
-				data: completed.slice(0, 10), // Only show last 10 completed
-				icon: <CheckSquare size={16} color="#10b981" />,
-				color: "#10b981",
-			});
-		}
-
 		return result;
-	}, [tasks, today, tomorrow]);
+	}, [tasks, today, tomorrow, effStatus]);
 
-	const handleToggleTask = async (taskId: string) => {
-		setUpdatingTasks((prev) => new Set(prev).add(taskId));
-		try {
-			const task = tasks.find((t: TaskData) => t._id === taskId);
-			if (task) {
-				if (task.status === "completed") {
-					await updateTask({ id: taskId as Id<"tasks">, status: "pending" });
-				} else {
-					await completeTask({ id: taskId as Id<"tasks"> });
-				}
+	const stats = useMemo(() => {
+		let open = 0;
+		let overdueN = 0;
+		let todayN = 0;
+		for (const g of groups) {
+			if (g.key === "overdue") {
+				overdueN = g.total;
+				open += g.total;
+			} else if (g.key === "today") {
+				todayN = g.total;
+				open += g.total;
+			} else if (g.key === "upcoming") {
+				open += g.total;
 			}
-		} catch (error) {
-			console.error("Failed to update task:", error);
-		} finally {
-			setUpdatingTasks((prev) => {
-				const newSet = new Set(prev);
-				newSet.delete(taskId);
-				return newSet;
-			});
 		}
-	};
+		return { open, overdue: overdueN, today: todayN };
+	}, [groups]);
 
-	const renderTask = ({ item }: { item: TaskData }) => (
-		<TaskItem
-			id={item._id}
-			title={item.title}
-			date={item.date}
-			startTime={item.startTime}
-			endTime={item.endTime}
-			status={item.status}
-			priority={item.priority}
-			clientName={item.clientName}
-			projectName={item.projectName}
-			isUpdating={updatingTasks.has(item._id)}
-			onToggleComplete={handleToggleTask}
-		/>
+	const onToggle = useCallback(
+		async (task: Task) => {
+			const eff = optimisticStatus.get(task._id) ?? task.status;
+			const goingComplete = eff !== "completed";
+			setOptimisticStatus((prev) => {
+				const next = new Map(prev);
+				next.set(task._id, goingComplete ? "completed" : "pending");
+				return next;
+			});
+			setUpdating((prev) => new Set(prev).add(task._id));
+			try {
+				if (goingComplete) {
+					await completeTask({ id: task._id });
+				} else {
+					await updateTask({ id: task._id, status: "pending" });
+				}
+			} catch {
+				setOptimisticStatus((prev) => {
+					const next = new Map(prev);
+					next.delete(task._id);
+					return next;
+				});
+				Alert.alert("Couldn't update that task. Try again.");
+			} finally {
+				setUpdating((prev) => {
+					const next = new Set(prev);
+					next.delete(task._id);
+					return next;
+				});
+			}
+		},
+		[optimisticStatus, completeTask, updateTask]
 	);
 
-	const renderSectionHeader = ({ section }: { section: Section }) => (
-		<View style={[styles.sectionHeader, { borderLeftColor: section.color }]}>
-			<View
-				style={[styles.sectionIcon, { backgroundColor: `${section.color}15` }]}
-			>
-				{section.icon}
-			</View>
-			<Text style={styles.sectionTitle}>{section.title}</Text>
-			<View
-				style={[styles.sectionCount, { backgroundColor: `${section.color}15` }]}
-			>
-				<Text style={[styles.sectionCountText, { color: section.color }]}>
-					{section.data.length}
-				</Text>
-			</View>
+	const renderGroup = useCallback(
+		({ item }: { item: GroupBlock }) => {
+			const meta = GROUP_META[item.key];
+			return (
+				<View style={styles.groupBlock}>
+					<View style={styles.groupHeader}>
+						<View style={[styles.groupDot, { backgroundColor: meta.color }]} />
+						<Text style={[styles.groupLabel, { color: t.ink }]}>
+							{meta.label}
+						</Text>
+						<View
+							style={[styles.countPill, { backgroundColor: meta.color + "18" }]}
+						>
+							<Text style={[styles.countText, { color: meta.color }]}>
+								{item.total}
+							</Text>
+						</View>
+					</View>
+					<Card style={styles.groupCard}>
+						{item.tasks.map((task, index) => {
+							const status = effStatus(task);
+							const assignee = task.assigneeUserId
+								? usersById.get(task.assigneeUserId)
+								: undefined;
+							const clientName = task.clientId
+								? clientsById.get(task.clientId)
+								: undefined;
+							return (
+								<TaskRow
+									key={task._id}
+									title={task.title}
+									dateLabel={dateLabelFromMs(task.date)}
+									timeLabel={task.startTime || undefined}
+									clientName={clientName}
+									status={status}
+									assigneeText={avatarTextFrom(
+										assignee?.name,
+										assignee?.email
+									)}
+									assigneeImage={assignee?.image}
+									assigneeName={assignee?.name ?? assignee?.email}
+									isCompleted={status === "completed"}
+									isUpdating={updating.has(task._id)}
+									isLast={index === item.tasks.length - 1}
+									onToggle={() => onToggle(task)}
+									onOpen={() =>
+										router.push({
+											pathname: "/tasks/form",
+											params: { taskId: task._id },
+										})
+									}
+								/>
+							);
+						})}
+					</Card>
+				</View>
+			);
+		},
+		[t, effStatus, usersById, clientsById, updating, onToggle, router]
+	);
+
+	const ListHeader = (
+		<View style={styles.statsRow}>
+			<StatCard label="Open" value={stats.open} style={styles.statCard} />
+			<StatCard
+				label="Overdue"
+				value={stats.overdue}
+				tone="#e23b3b"
+				style={styles.statCard}
+			/>
+			<StatCard
+				label="Today"
+				value={stats.today}
+				tone="#00a6f4"
+				style={styles.statCard}
+			/>
 		</View>
 	);
 
-	// Calculate stats
-	const overdueCount =
-		sections.find((s) => s.type === "overdue")?.data.length ?? 0;
-	const todayCount = sections.find((s) => s.type === "today")?.data.length ?? 0;
-	const totalPending = tasks.filter(
-		(t: TaskData) => t.status !== "completed"
-	).length;
-
 	return (
-		<SafeAreaView
-			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
-		>
-			{/* Header Stats */}
-			{tasks.length > 0 && (
-				<View style={styles.statsBar}>
-					<View style={styles.statItem}>
-						<Text style={styles.statValue}>{totalPending}</Text>
-						<Text style={styles.statLabel}>Pending</Text>
-					</View>
-					{overdueCount > 0 && (
-						<>
-							<View style={styles.statDivider} />
-							<View style={styles.statItem}>
-								<Text style={[styles.statValue, { color: colors.danger }]}>
-									{overdueCount}
-								</Text>
-								<Text style={styles.statLabel}>Overdue</Text>
+		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
+			{/* iPad pane: shell mounts the one PaneHeader title="Tasks" (single-header
+			    convention) so the self-mounted AppHeader is suppressed. */}
+			{isPane ? null : <AppHeader mode="root" title="Tasks" />}
+
+			{loading ? (
+				<View style={styles.listContent}>
+					{[0, 1, 2].map((i) => (
+						<View key={i} style={styles.skeletonBlock}>
+							<View style={[styles.skeleton, { width: "30%", height: 16 }]} />
+							<View style={[styles.skeletonCard]}>
+								{[0, 1, 2].map((j) => (
+									<View key={j} style={styles.skeletonRow}>
+										<View style={[styles.skeleton, styles.skeletonBox]} />
+										<View style={{ flex: 1 }}>
+											<View
+												style={[styles.skeleton, { width: "55%", height: 15 }]}
+											/>
+											<View
+												style={[
+													styles.skeleton,
+													{ width: "35%", height: 13, marginTop: 6 },
+												]}
+											/>
+										</View>
+									</View>
+								))}
 							</View>
-						</>
-					)}
-					<View style={styles.statDivider} />
-					<View style={styles.statItem}>
-						<Text style={[styles.statValue, { color: colors.primary }]}>
-							{todayCount}
-						</Text>
-						<Text style={styles.statLabel}>Today</Text>
-					</View>
-				</View>
-			)}
-
-			<SectionList
-				sections={sections}
-				keyExtractor={(item) => item._id}
-				renderItem={renderTask}
-				renderSectionHeader={renderSectionHeader}
-				contentContainerStyle={styles.listContent}
-				stickySectionHeadersEnabled={false}
-				ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-				SectionSeparatorComponent={() => (
-					<View style={{ height: spacing.lg }} />
-				)}
-				refreshControl={
-					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-				}
-				ListEmptyComponent={
-					<View style={styles.emptyState}>
-						<View style={styles.emptyIcon}>
-							<CheckSquare size={32} color={colors.mutedForeground} />
 						</View>
-						<Text style={styles.emptyTitle}>No tasks yet</Text>
-						<Text style={styles.emptyText}>
-							Create your first task to get started
-						</Text>
-						<Pressable
-							style={styles.emptyButton}
-							onPress={() => router.push("/tasks/new")}
-						>
-							<Plus size={18} color={colors.primary} />
-							<Text style={styles.emptyButtonText}>Add Task</Text>
-						</Pressable>
-					</View>
-				}
-			/>
-
-			{/* FAB */}
-			<Pressable
-				style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-				onPress={() => router.push("/tasks/new")}
-			>
-				<Plus size={24} color="#ffffff" />
-			</Pressable>
+					))}
+				</View>
+			) : (
+				<FlashList
+					data={groups}
+					keyExtractor={(item) => item.key}
+					renderItem={renderGroup}
+					ListHeaderComponent={ListHeader}
+					contentContainerStyle={styles.listContent}
+					refreshControl={
+						<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+					}
+					ListEmptyComponent={
+						<View style={styles.emptyState}>
+							<Text style={[styles.emptyTitle, { color: t.ink }]}>
+								No tasks yet
+							</Text>
+							<Text style={[styles.emptyText, { color: t.sub }]}>
+								Create your first task to plan your work.
+							</Text>
+							<Button
+								title="New task"
+								icon={<Plus size={18} color="#fff" />}
+								onPress={() => router.push({ pathname: "/tasks/form" })}
+								style={styles.emptyBtn}
+							/>
+						</View>
+					}
+				/>
+			)}
 		</SafeAreaView>
 	);
 }
 
 const styles = StyleSheet.create({
-	statsBar: {
-		flexDirection: "row",
-		backgroundColor: colors.card,
-		marginHorizontal: spacing.md,
-		marginTop: spacing.md,
-		padding: spacing.md,
-		borderRadius: radius.lg,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
-	statItem: {
-		flex: 1,
-		alignItems: "center",
-	},
-	statValue: {
-		fontSize: 20,
-		fontFamily: fontFamily.bold,
-		color: colors.foreground,
-	},
-	statLabel: {
-		fontSize: 11,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		marginTop: 2,
-	},
-	statDivider: {
-		width: 1,
-		backgroundColor: colors.border,
-		marginHorizontal: spacing.sm,
-	},
 	listContent: {
-		padding: spacing.md,
-		paddingBottom: 100,
+		paddingHorizontal: 16,
+		paddingTop: SCROLL_TOP_INSET,
+		paddingBottom: 32,
 	},
-	sectionHeader: {
+	statsRow: {
+		flexDirection: "row",
+		gap: 10,
+		marginBottom: 16,
+	},
+	statCard: {
+		flex: 1,
+	},
+	groupBlock: {
+		marginBottom: 18,
+	},
+	groupHeader: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: colors.muted,
-		borderRadius: radius.md,
-		padding: spacing.sm,
-		borderLeftWidth: 3,
-		marginBottom: spacing.sm,
+		gap: 8,
+		marginBottom: 8,
+		paddingHorizontal: 2,
 	},
-	sectionIcon: {
-		width: 28,
-		height: 28,
-		borderRadius: radius.sm,
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
+	groupDot: {
+		width: 9,
+		height: 9,
+		borderRadius: 9,
 	},
-	sectionTitle: {
+	groupLabel: {
 		flex: 1,
-		fontSize: 14,
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
+		fontSize: type.body,
 	},
-	sectionCount: {
-		paddingHorizontal: spacing.sm,
+	countPill: {
+		paddingHorizontal: 9,
 		paddingVertical: 2,
-		borderRadius: radius.full,
+		borderRadius: 999,
 	},
-	sectionCountText: {
-		fontSize: 12,
+	countText: {
 		fontFamily: fontFamily.bold,
+		fontSize: type.xs,
+	},
+	groupCard: {
+		paddingVertical: 6,
+		paddingHorizontal: 6,
 	},
 	emptyState: {
 		alignItems: "center",
-		paddingVertical: spacing.xl * 2,
-	},
-	emptyIcon: {
-		width: 64,
-		height: 64,
-		borderRadius: 32,
-		backgroundColor: colors.muted,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: spacing.md,
+		paddingVertical: 64,
+		paddingHorizontal: 24,
 	},
 	emptyTitle: {
-		fontSize: 18,
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
+		fontSize: type.h3,
+		marginBottom: 8,
 	},
 	emptyText: {
-		fontSize: 14,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+		fontSize: type.body,
 		textAlign: "center",
-		marginBottom: spacing.md,
+		marginBottom: 20,
 	},
-	emptyButton: {
+	emptyBtn: {
+		paddingHorizontal: 22,
+		alignSelf: "center",
+	},
+	skeletonBlock: {
+		marginBottom: 18,
+	},
+	skeleton: {
+		backgroundColor: "#e9edf2",
+		borderRadius: 6,
+	},
+	skeletonCard: {
+		backgroundColor: "#fff",
+		borderRadius: radii.rLg,
+		borderWidth: 1,
+		borderColor: "#e9edf2",
+		padding: 12,
+		marginTop: 10,
+		gap: 12,
+	},
+	skeletonRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: spacing.xs,
-		paddingVertical: spacing.sm,
-		paddingHorizontal: spacing.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		borderRadius: radius.md,
-		borderWidth: 1,
-		borderColor: `${colors.primary}30`,
+		gap: 12,
 	},
-	emptyButtonText: {
-		fontSize: 14,
-		fontFamily: fontFamily.semibold,
-		color: colors.primary,
-	},
-	fab: {
-		position: "absolute",
-		bottom: 24,
-		right: 24,
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.primary,
-		alignItems: "center",
-		justifyContent: "center",
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.25,
-		shadowRadius: 4,
-		elevation: 5,
-	},
-	fabPressed: {
-		opacity: 0.8,
+	skeletonBox: {
+		width: 28,
+		height: 28,
+		borderRadius: 9,
 	},
 });

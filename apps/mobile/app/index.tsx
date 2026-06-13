@@ -1,13 +1,32 @@
 import { Redirect } from "expo-router";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { View, ActivityIndicator } from "react-native";
 import type { Href } from "expo-router";
+import { resolveAuthDestination } from "@/lib/postAuthRouting";
 
 export default function Index() {
-	const { isSignedIn, isLoaded } = useAuth();
+	const { isSignedIn, isLoaded: authLoaded } = useAuth();
+	const { organization, isLoaded: orgLoaded } = useOrganization();
+	const { userMemberships, isLoaded: listLoaded } = useOrganizationList({
+		userMemberships: true,
+	});
+	const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
 
-	// Show loading state while checking auth
-	if (!isLoaded) {
+	const dest = resolveAuthDestination({
+		authLoaded: Boolean(authLoaded),
+		orgLoaded: Boolean(orgLoaded && listLoaded),
+		isSignedIn: Boolean(isSignedIn),
+		hasActiveOrg: Boolean(organization),
+		membershipCount: userMemberships?.data?.length ?? 0,
+		needsMetadata,
+	});
+
+	// "loading" sentinel: orgs/metadata still resolving — hold the splash, do
+	// NOT redirect. A signed-in no-org user resolves to the wizard, never a
+	// /(tabs) flash on cold start.
+	if (dest === "loading") {
 		return (
 			<View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
 				<ActivityIndicator size="large" />
@@ -15,10 +34,5 @@ export default function Index() {
 		);
 	}
 
-	// Redirect based on authentication status
-	if (isSignedIn) {
-		return <Redirect href="/(tabs)" />;
-	}
-
-	return <Redirect href={"/(auth)/sign-in" as Href} />;
+	return <Redirect href={dest as Href} />;
 }

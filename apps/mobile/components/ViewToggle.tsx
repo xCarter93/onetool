@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
 		elevation: 2,
 	},
 	buttonText: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 		color: colors.mutedForeground,
 	},

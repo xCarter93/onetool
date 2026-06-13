@@ -12,6 +12,7 @@ import { internal } from "./_generated/api";
 import {
 	ensureMembership,
 	listMembershipsByOrg,
+	listMembershipsByUser,
 	removeMembership,
 } from "./lib/memberships";
 import { optionalUserQuery, userMutation } from "./lib/factories";
@@ -103,13 +104,51 @@ export const deleteFromClerk = internalMutation({
 	async handler(ctx, { clerkUserId }) {
 		const user = await userByExternalId(ctx, clerkUserId);
 
-		if (user !== null) {
-			await ctx.db.delete(user._id);
-		} else {
+		if (user === null) {
 			console.warn(
 				`Can't delete user, there is none for Clerk user ID: ${clerkUserId}`
 			);
+			return;
 		}
+
+		// Sole-owner policy: deleting a user who owns an org deletes that org now
+		// + drains its data async (Apple 5.1.1(v) / GDPR erasure).
+		const ownedOrgs = await ctx.db
+			.query("organizations")
+			.withIndex("by_owner", (q) => q.eq("ownerUserId", user._id))
+			.collect();
+		for (const org of ownedOrgs) {
+			const orgMemberships = await listMembershipsByOrg(ctx, org._id);
+			for (const membership of orgMemberships) {
+				await ctx.db.delete(membership._id);
+			}
+			await ctx.db.delete(org._id);
+			await ctx.scheduler.runAfter(
+				0,
+				internal.orgCascade.cascadeDeleteOrgDataChunk,
+				{ orgId: org._id }
+			);
+		}
+
+		// Delete the user's remaining memberships (re-listed after owned-org
+		// deletes, guarded against rows already removed above).
+		const remainingMemberships = await listMembershipsByUser(ctx, user._id);
+		for (const membership of remainingMemberships) {
+			if ((await ctx.db.get(membership._id)) !== null) {
+				await ctx.db.delete(membership._id);
+			}
+		}
+
+		// Delete the user's push tokens.
+		const pushTokens = await ctx.db
+			.query("pushTokens")
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
+			.collect();
+		for (const token of pushTokens) {
+			await ctx.db.delete(token._id);
+		}
+
+		await ctx.db.delete(user._id);
 	},
 });
 

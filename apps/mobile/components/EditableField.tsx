@@ -8,8 +8,8 @@ import {
 	ActivityIndicator,
 	KeyboardTypeOptions,
 } from "react-native";
-import { colors, fontFamily, radius, spacing } from "@/lib/theme";
-import { Pencil, Check, X } from "lucide-react-native";
+import { Check, X } from "lucide-react-native";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 interface EditableFieldProps {
 	label: string;
@@ -36,6 +36,7 @@ export function EditableField({
 	editable = true,
 	renderValue,
 }: EditableFieldProps) {
+	const t = useTokens();
 	const [isEditing, setIsEditing] = useState(false);
 	const [editValue, setEditValue] = useState(value || "");
 	const [isSaving, setIsSaving] = useState(false);
@@ -47,9 +48,8 @@ export function EditableField({
 		}
 	}, [isEditing]);
 
-	useEffect(() => {
-		setEditValue(value || "");
-	}, [value]);
+	// editValue is seeded from `value` on every edit-entry (handleEdit) and cancel,
+	// so no effect is needed to mirror the prop — it is only read while editing.
 
 	const handleEdit = () => {
 		setEditValue(value || "");
@@ -82,12 +82,19 @@ export function EditableField({
 	if (isEditing) {
 		return (
 			<View style={styles.container}>
-				<Text style={styles.label}>{label}</Text>
+				{label ? (
+					<Text style={[styles.label, { color: t.sub }]}>{label}</Text>
+				) : null}
 				<View style={styles.editRow}>
 					<TextInput
 						ref={inputRef}
 						style={[
 							styles.input,
+							{
+								borderColor: t.accent,
+								color: t.ink,
+								backgroundColor: t.card,
+							},
 							multiline && {
 								height: numberOfLines * 24,
 								textAlignVertical: "top",
@@ -96,7 +103,7 @@ export function EditableField({
 						value={editValue}
 						onChangeText={setEditValue}
 						placeholder={placeholder}
-						placeholderTextColor={colors.mutedForeground}
+						placeholderTextColor={t.faint}
 						multiline={multiline}
 						numberOfLines={numberOfLines}
 						keyboardType={keyboardType}
@@ -105,28 +112,32 @@ export function EditableField({
 					/>
 					<View style={styles.actions}>
 						{isSaving ? (
-							<ActivityIndicator size="small" color={colors.primary} />
+							<ActivityIndicator size="small" color={t.accent} />
 						) : (
 							<>
 								<Pressable
 									onPress={handleSave}
+									accessibilityRole="button"
+									accessibilityLabel="Save changes"
 									style={({ pressed }) => [
 										styles.actionButton,
-										styles.saveButton,
+										{ borderColor: t.accent, backgroundColor: t.accentSoft },
 										pressed && styles.actionPressed,
 									]}
 								>
-									<Check size={16} color={colors.success} />
+									<Check size={16} color={t.accent} />
 								</Pressable>
 								<Pressable
 									onPress={handleCancel}
+									accessibilityRole="button"
+									accessibilityLabel="Discard changes"
 									style={({ pressed }) => [
 										styles.actionButton,
-										styles.cancelButton,
+										{ borderColor: t.border, backgroundColor: t.surface },
 										pressed && styles.actionPressed,
 									]}
 								>
-									<X size={16} color={colors.danger} />
+									<X size={16} color={t.danger} />
 								</Pressable>
 							</>
 						)}
@@ -138,99 +149,90 @@ export function EditableField({
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.labelRow}>
-				<Text style={styles.label}>{label}</Text>
-				{editable && (
-					<Pressable
-						onPress={handleEdit}
-						style={({ pressed }) => [
-							styles.editButton,
-							pressed && styles.actionPressed,
-						]}
-					>
-						<Pencil size={14} color={colors.mutedForeground} />
-					</Pressable>
-				)}
-			</View>
-			<View style={styles.valueContainer}>
+			{label ? (
+				<Text style={[styles.label, { color: t.sub }]}>{label}</Text>
+			) : null}
+			<Pressable
+				onPress={editable ? handleEdit : undefined}
+				disabled={!editable}
+				accessibilityRole={editable ? "button" : undefined}
+				accessibilityLabel={editable ? `Edit ${label || "field"}` : undefined}
+				style={({ pressed }) => [
+					styles.valueContainer,
+					// Editable values carry a quiet dotted underline — the single,
+					// consistent "tap to edit" affordance across text/status/dates.
+					editable && { ...styles.editableUnderline, borderBottomColor: t.faint },
+					pressed && editable && styles.actionPressed,
+				]}
+			>
 				{renderValue ? (
 					renderValue(value)
 				) : (
-					<Text style={[styles.value, !value && styles.placeholder]}>
+					<Text
+						style={[
+							styles.value,
+							{ color: t.ink },
+							!value && [styles.placeholder, { color: t.faint }],
+						]}
+					>
 						{value || placeholder}
 					</Text>
 				)}
-			</View>
+			</Pressable>
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
 	container: {
-		marginBottom: spacing.md,
-	},
-	labelRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: spacing.xs,
+		marginBottom: 16,
 	},
 	label: {
-		fontSize: 13,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-	},
-	editButton: {
-		padding: spacing.xs,
+		fontSize: 14,
+		fontFamily: fontFamily.semibold,
+		marginBottom: 4,
 	},
 	valueContainer: {
 		minHeight: 24,
 	},
+	editableUnderline: {
+		alignSelf: "flex-start",
+		minWidth: 120,
+		paddingBottom: 6,
+		borderBottomWidth: 1,
+	},
 	value: {
-		fontSize: 15,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
-		color: colors.foreground,
 	},
 	placeholder: {
-		color: colors.mutedForeground,
 		fontStyle: "italic",
 	},
 	editRow: {
 		flexDirection: "row",
 		alignItems: "flex-start",
-		gap: spacing.sm,
+		gap: 8,
 	},
 	input: {
 		flex: 1,
 		borderWidth: 1,
-		borderColor: colors.primary,
-		borderRadius: radius.md,
-		paddingHorizontal: spacing.sm,
-		paddingVertical: spacing.xs,
-		fontSize: 15,
+		borderRadius: radii.lg,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		fontSize: 13,
 		fontFamily: fontFamily.regular,
-		color: colors.foreground,
-		backgroundColor: colors.background,
 	},
 	actions: {
 		flexDirection: "row",
-		gap: spacing.xs,
+		gap: 6,
 	},
 	actionButton: {
-		width: 32,
-		height: 32,
-		borderRadius: radius.md,
+		width: 36,
+		height: 36,
+		borderRadius: radii.lg,
 		alignItems: "center",
 		justifyContent: "center",
 		borderWidth: 1,
-	},
-	saveButton: {
-		backgroundColor: "#dcfce7",
-		borderColor: "#86efac",
-	},
-	cancelButton: {
-		backgroundColor: "#fee2e2",
-		borderColor: "#fecaca",
 	},
 	actionPressed: {
 		opacity: 0.7,

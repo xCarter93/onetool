@@ -301,6 +301,14 @@ export const deleteFromClerk = internalMutation({
 		// Delete the organization
 		await ctx.db.delete(organization._id);
 
+		// Org row + memberships deleted now; child data drains async via the
+		// scheduled chunk worker (reconciliation cron backstops partial failures).
+		await ctx.scheduler.runAfter(
+			0,
+			internal.orgCascade.cascadeDeleteOrgDataChunk,
+			{ orgId: organization._id }
+		);
+
 		console.log(
 			`Successfully deleted organization: ${args.clerkOrganizationId}`
 		);
@@ -728,6 +736,14 @@ export const deleteOrganization = userMutation({
 
 		// Delete the organization
 		await ctx.db.delete(userOrgId);
+
+		// Org row + memberships deleted now; child data drains async via the
+		// scheduled chunk worker (reconciliation cron backstops partial failures).
+		await ctx.scheduler.runAfter(
+			0,
+			internal.orgCascade.cascadeDeleteOrgDataChunk,
+			{ orgId: userOrgId }
+		);
 
 		return { success: true };
 	},

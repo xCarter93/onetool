@@ -2,376 +2,387 @@ import {
 	View,
 	Text,
 	Pressable,
-	RefreshControl,
+	ScrollView,
 	TextInput,
 	StyleSheet,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-	Search,
-	ChevronRight,
-	Calendar,
-	FolderKanban,
-	X,
-} from "lucide-react-native";
-import { colors, fontFamily, radius, spacing } from "@/lib/theme";
-import { FABMenu } from "@/components/FABMenu";
+import { Search, Calendar, X } from "lucide-react-native";
+import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { Badge, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
+import { AppHeader } from "@/components/app-header";
 
-// Status config using consistent colors
-const statusConfig = {
-	planned: { label: "Planned", color: colors.primary },
-	"in-progress": { label: "In Progress", color: "#f59e0b" },
-	completed: { label: "Completed", color: colors.success },
-	cancelled: { label: "Cancelled", color: colors.danger },
-} as const;
+type Project = Doc<"projects">;
+type FilterValue = "all" | "active" | "in-progress" | "completed";
 
-export default function ProjectsScreen() {
+function formatDate(timestamp: number | undefined): string | null {
+	if (!timestamp) return null;
+	return new Date(timestamp).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	});
+}
+
+// headerMode/onSelect/selectedId default off → the iPhone path (router.push,
+// AppHeader mode="detail" title="Work", no selected highlight) is byte-identical.
+// The iPad shell renders this as the Work list pane (tab id "projects"):
+// headerMode="pane" suppresses the AppHeader (shell mounts PaneHeader), onSelect
+// drives the detail pane via shell selection, selectedId marks the row.
+export default function ProjectsScreen({
+	headerMode = "root",
+	onSelect,
+	selectedId = null,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (id: string) => void;
+	selectedId?: string | null;
+} = {}) {
 	const router = useRouter();
-	const [refreshing, setRefreshing] = useState(false);
+	const t = useTokens();
+	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
+	const [filter, setFilter] = useState<FilterValue>("all");
 
-	const projects = useQuery(api.projects.list, {}) ?? [];
+	const projects = useQuery(api.projects.list, {});
+	const clients = useQuery(api.clients.list, {});
 
-	const filteredProjects = useMemo(() => {
-		if (!searchQuery.trim()) return projects;
-		const query = searchQuery.toLowerCase();
-		return projects.filter(
-			(project) =>
-				project.title.toLowerCase().includes(query) ||
-				project.projectNumber?.toString().includes(query)
-		);
-	}, [projects, searchQuery]);
+	const loading = projects === undefined || clients === undefined;
 
-	const onRefresh = useCallback(() => {
-		setRefreshing(true);
-		setTimeout(() => setRefreshing(false), 1000);
-	}, []);
+	// Single org-scoped clients query → name map. No per-row clients.get (N+1).
+	const clientNameById = useMemo(
+		() =>
+			new Map<Id<"clients">, string>(
+				(clients ?? []).map((c) => [c._id, c.companyName])
+			),
+		[clients]
+	);
+	const clientName = (p: Project) =>
+		clientNameById.get(p.clientId) ?? "Unknown client";
 
-	const formatDate = (timestamp: number | undefined) => {
-		if (!timestamp) return null;
-		return new Date(timestamp).toLocaleDateString("en-US", {
-			month: "short",
-			day: "numeric",
-		});
-	};
+	const allProjects = useMemo(() => projects ?? [], [projects]);
 
-	const renderProject = ({ item }: { item: (typeof projects)[0] }) => {
-		const status = statusConfig[item.status as keyof typeof statusConfig] || {
-			label: item.status,
-			color: colors.mutedForeground,
-		};
+	const counts = useMemo(
+		() => ({
+			all: allProjects.length,
+			active: allProjects.filter(
+				(p) => p.status === "in-progress" || p.status === "planned"
+			).length,
+			"in-progress": allProjects.filter((p) => p.status === "in-progress")
+				.length,
+			completed: allProjects.filter((p) => p.status === "completed").length,
+		}),
+		[allProjects]
+	);
+
+	const chips: { value: FilterValue; label: string }[] = [
+		{ value: "all", label: "All" },
+		{ value: "active", label: "Active" },
+		{ value: "in-progress", label: "In Progress" },
+		{ value: "completed", label: "Done" },
+	];
+
+	const visibleProjects = useMemo(() => {
+		let list = allProjects;
+		if (filter === "active") {
+			list = list.filter(
+				(p) => p.status === "in-progress" || p.status === "planned"
+			);
+		} else if (filter !== "all") {
+			list = list.filter((p) => p.status === filter);
+		}
+		const q = searchQuery.trim().toLowerCase();
+		if (q) {
+			list = list.filter(
+				(p) =>
+					p.title.toLowerCase().includes(q) ||
+					clientName(p).toLowerCase().includes(q)
+			);
+		}
+		return list;
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [allProjects, filter, searchQuery, clientNameById]);
+
+	// iPad pane: tap drives shell selection (no route push). iPhone: push route.
+	const openProject = (id: string) =>
+		onSelect ? onSelect(id) : router.push(`/projects/${id}`);
+
+	const renderProject = ({ item }: { item: Project }) => {
+		const start = formatDate(item.startDate);
+		const end = formatDate(item.endDate);
+		const range =
+			start && end
+				? `${start} – ${end}`
+				: start
+					? `Starts ${start}`
+					: end
+						? `Due ${end}`
+						: null;
+		const isSelected = isPane && item._id === selectedId;
 
 		return (
 			<Pressable
 				style={({ pressed }) => [
-					styles.projectRow,
-					pressed && styles.projectRowPressed,
+					styles.card,
+					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					pressed && styles.cardPressed,
 				]}
-				onPress={() => router.push(`/projects/${item._id}`)}
+				onPress={() => openProject(item._id)}
 			>
-				{/* Icon */}
-				<View style={styles.projectIcon}>
-					<FolderKanban size={18} color={colors.primary} />
-				</View>
-
-				{/* Project Info */}
-				<View style={styles.projectInfo}>
-					<View style={styles.projectHeader}>
-						<Text style={styles.projectTitle} numberOfLines={1}>
+				<View style={styles.cardTop}>
+					<View style={styles.cardTitleCol}>
+						<Eyebrow>#{item.projectNumber}</Eyebrow>
+						<Text style={styles.title} numberOfLines={1}>
 							{item.title}
 						</Text>
-						{item.projectNumber && (
-							<Text style={styles.projectNumber}>#{item.projectNumber}</Text>
-						)}
-					</View>
-					<View style={styles.projectMeta}>
-						{(item.startDate || item.endDate) && (
-							<View style={styles.metaItem}>
-								<Calendar size={11} color={colors.mutedForeground} />
-								<Text style={styles.metaText}>
-									{item.startDate && formatDate(item.startDate)}
-									{item.startDate && item.endDate && " → "}
-									{item.endDate && formatDate(item.endDate)}
-								</Text>
-							</View>
-						)}
-						<View
-							style={[styles.statusDot, { backgroundColor: status.color }]}
-						/>
-						<Text style={[styles.statusText, { color: status.color }]}>
-							{status.label}
+						<Text style={styles.client} numberOfLines={1}>
+							{clientName(item)}
 						</Text>
 					</View>
+					<Badge status={item.status} />
 				</View>
-
-				<ChevronRight size={18} color={colors.border} />
+				{range && (
+					<View style={styles.metaRow}>
+						<Calendar size={14} color={t.faint} />
+						<Text style={styles.metaText}>{range}</Text>
+					</View>
+				)}
 			</Pressable>
 		);
 	};
 
-	// Count projects by status
-	const statusCounts = useMemo(() => {
-		return {
-			inProgress: projects.filter((p) => p.status === "in-progress").length,
-			completed: projects.filter((p) => p.status === "completed").length,
-		};
-	}, [projects]);
-
-	return (
-		<SafeAreaView
-			style={{ flex: 1, backgroundColor: colors.background }}
-			edges={["bottom"]}
-		>
-			{/* Search Bar */}
-			<View style={styles.searchContainer}>
-				<View style={styles.searchBar}>
-					<Search size={18} color={colors.mutedForeground} />
-					<TextInput
-						style={styles.searchInput}
-						placeholder="Search projects..."
-						placeholderTextColor={colors.mutedForeground}
-						value={searchQuery}
-						onChangeText={setSearchQuery}
-					/>
-					{searchQuery.length > 0 && (
-						<Pressable
-							onPress={() => setSearchQuery("")}
-							style={styles.clearButton}
-						>
-							<X size={16} color={colors.mutedForeground} />
-						</Pressable>
-					)}
-				</View>
-
-				{searchQuery && (
-					<Text style={styles.resultsCount}>
-						{filteredProjects.length} result
-						{filteredProjects.length !== 1 ? "s" : ""}
-					</Text>
+	const ListHeader = (
+		<View style={styles.listHeader}>
+			<View style={styles.searchBar}>
+				<Search size={19} color={t.faint} />
+				<TextInput
+					value={searchQuery}
+					onChangeText={setSearchQuery}
+					placeholder="Search work…"
+					placeholderTextColor={t.faint}
+					style={[styles.searchInput, { color: t.ink }]}
+				/>
+				{searchQuery.length > 0 && (
+					<Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+						<X size={16} color={t.faint} />
+					</Pressable>
 				)}
 			</View>
 
-			{/* Summary Bar */}
-			<View style={styles.summaryBar}>
-				<Text style={styles.summaryText}>
-					{projects.length} total project{projects.length !== 1 ? "s" : ""}
-				</Text>
-				<View style={styles.summaryStats}>
-					<View style={styles.summaryStatItem}>
-						<View style={[styles.summaryDot, { backgroundColor: "#f59e0b" }]} />
-						<Text style={styles.summaryStatText}>
-							{statusCounts.inProgress} active
-						</Text>
-					</View>
-					<View style={styles.summaryStatItem}>
-						<View
-							style={[styles.summaryDot, { backgroundColor: colors.success }]}
-						/>
-						<Text style={styles.summaryStatText}>
-							{statusCounts.completed} done
-						</Text>
-					</View>
-				</View>
-			</View>
+			<ScrollView
+				horizontal
+				showsHorizontalScrollIndicator={false}
+				contentContainerStyle={styles.chipRow}
+			>
+				{chips.map((chip) => {
+					const active = chip.value === filter;
+					return (
+						<Pressable
+							key={chip.value}
+							onPress={() => setFilter(chip.value)}
+							style={[
+								styles.chip,
+								active
+									? { backgroundColor: t.ink, borderColor: t.ink }
+									: { backgroundColor: t.card, borderColor: t.line },
+							]}
+						>
+							<Text
+								style={[
+									styles.chipLabel,
+									{ color: active ? "#fff" : t.sub },
+								]}
+							>
+								{chip.label}
+							</Text>
+							<Text
+								style={[
+									styles.chipCount,
+									{ color: active ? "#fff" : t.faint },
+								]}
+							>
+								{counts[chip.value]}
+							</Text>
+						</Pressable>
+					);
+				})}
+			</ScrollView>
+		</View>
+	);
 
-			<FlashList
-				data={filteredProjects}
-				keyExtractor={(item) => item._id}
-				renderItem={renderProject}
-				contentContainerStyle={styles.listContent}
-				ItemSeparatorComponent={() => <View style={styles.separator} />}
-				refreshControl={
-					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-				}
-				ListEmptyComponent={
-					<View style={styles.emptyState}>
-						<View style={styles.emptyIcon}>
-							<FolderKanban size={28} color={colors.mutedForeground} />
+	return (
+		<SafeAreaView
+			style={{ flex: 1, backgroundColor: t.surface }}
+			edges={[]}
+		>
+			{/* Pane mode: shell mounts PaneHeader title="Work" above this body.
+			    iPhone: AppHeader mode="detail" title="Work" (byte-identical). */}
+			{isPane ? null : <AppHeader mode="detail" title="Work" />}
+
+			{loading ? (
+				<View style={styles.listContent}>
+					{ListHeader}
+					{[0, 1, 2, 3].map((i) => (
+						<View key={i} style={[styles.card, styles.skeletonCard]}>
+							<View style={[styles.skeleton, { width: 48, height: 11 }]} />
+							<View
+								style={[styles.skeleton, { width: "70%", height: 16, marginTop: 8 }]}
+							/>
+							<View
+								style={[styles.skeleton, { width: "45%", height: 13, marginTop: 6 }]}
+							/>
 						</View>
-						<Text style={styles.emptyTitle}>
-							{searchQuery ? "No projects found" : "No projects yet"}
-						</Text>
-						<Text style={styles.emptyText}>
-							{searchQuery
-								? "Try adjusting your search"
-								: "Create your first project to get started"}
-						</Text>
-					</View>
-				}
-			/>
-
-			{/* FAB Menu */}
-			<FABMenu />
+					))}
+				</View>
+			) : (
+				<FlashList
+					data={visibleProjects}
+					keyExtractor={(item) => item._id}
+					renderItem={renderProject}
+					ListHeaderComponent={ListHeader}
+					contentContainerStyle={styles.listContent}
+					ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+					ListEmptyComponent={
+						<View style={styles.emptyState}>
+							{allProjects.length === 0 ? (
+								<>
+									<Text style={styles.emptyTitle}>No work yet</Text>
+									<Text style={styles.emptyText}>
+										Projects you create will show up here.
+									</Text>
+								</>
+							) : (
+								<Text style={styles.emptyText}>
+									Try a different search or filter.
+								</Text>
+							)}
+						</View>
+					}
+				/>
+			)}
 		</SafeAreaView>
 	);
 }
 
 const styles = StyleSheet.create({
-	searchContainer: {
-		paddingHorizontal: spacing.md,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.xs,
+	listContent: {
+		paddingHorizontal: 16,
+		paddingBottom: 24,
+		paddingTop: SCROLL_TOP_INSET,
+	},
+	listHeader: {
+		gap: 12,
+		paddingBottom: 12,
 	},
 	searchBar: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: colors.muted,
-		borderRadius: radius.lg,
-		paddingHorizontal: spacing.sm,
-		height: 44,
+		gap: 9,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e9edf2",
+		borderRadius: 15,
+		paddingHorizontal: 14,
+		height: 46,
 	},
 	searchInput: {
 		flex: 1,
-		paddingHorizontal: spacing.sm,
-		fontSize: 15,
 		fontFamily: fontFamily.regular,
-		color: colors.foreground,
-	},
-	clearButton: {
-		padding: spacing.xs,
-	},
-	resultsCount: {
-		fontSize: 12,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-		marginTop: spacing.xs,
-		marginLeft: spacing.xs,
-	},
-	summaryBar: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: spacing.md,
-		paddingVertical: spacing.sm,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.border,
-	},
-	summaryText: {
 		fontSize: 13,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
+		paddingVertical: 0,
 	},
-	summaryStats: {
-		flexDirection: "row",
-		gap: spacing.md,
+	chipRow: {
+		gap: 8,
+		paddingRight: 16,
 	},
-	summaryStatItem: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-	},
-	summaryDot: {
-		width: 6,
-		height: 6,
-		borderRadius: 3,
-	},
-	summaryStatText: {
-		fontSize: 12,
-		fontFamily: fontFamily.medium,
-		color: colors.mutedForeground,
-	},
-	listContent: {
-		paddingBottom: 100,
-	},
-	projectRow: {
+	chip: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: spacing.md,
-		paddingHorizontal: spacing.md,
-		backgroundColor: colors.background,
+		gap: 5,
+		minHeight: 36,
+		paddingHorizontal: 15,
+		borderRadius: 999,
+		borderWidth: 1,
 	},
-	projectRowPressed: {
-		backgroundColor: colors.muted,
-	},
-	separator: {
-		height: 1,
-		backgroundColor: colors.border,
-		marginLeft: 44 + spacing.md,
-	},
-	projectIcon: {
-		width: 44,
-		height: 44,
-		borderRadius: radius.md,
-		backgroundColor: "rgba(0, 166, 244, 0.1)",
-		alignItems: "center",
-		justifyContent: "center",
-		marginRight: spacing.sm,
-	},
-	projectInfo: {
-		flex: 1,
-		marginRight: spacing.sm,
-	},
-	projectHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: spacing.xs,
-		marginBottom: 2,
-	},
-	projectTitle: {
-		fontSize: 15,
+	chipLabel: {
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		flex: 1,
+		fontSize: 12.5,
 	},
-	projectNumber: {
+	chipCount: {
+		fontFamily: fontFamily.semibold,
 		fontSize: 12,
-		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
 	},
-	projectMeta: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: spacing.xs,
+	card: {
+		backgroundColor: "#fff",
+		borderRadius: radii.rLg,
+		borderWidth: 1,
+		borderColor: "#e9edf2",
+		boxShadow: shadow.card,
+		padding: 16,
 	},
-	metaItem: {
+	cardPressed: {
+		opacity: 0.85,
+	},
+	cardTop: {
 		flexDirection: "row",
-		alignItems: "center",
-		gap: 3,
+		alignItems: "flex-start",
+		justifyContent: "space-between",
+		gap: 10,
+	},
+	cardTitleCol: {
 		flex: 1,
+		minWidth: 0,
+	},
+	title: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 14,
+		color: "#09090b",
+		marginTop: 2,
+	},
+	client: {
+		fontFamily: fontFamily.regular,
+		fontSize: 13,
+		color: "#5b6675",
+		marginTop: 2,
+	},
+	metaRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		marginTop: 12,
 	},
 	metaText: {
-		fontSize: 12,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+		fontSize: 11.5,
+		color: "#5b6675",
 	},
-	statusDot: {
-		width: 6,
-		height: 6,
-		borderRadius: 3,
+	skeletonCard: {
+		marginBottom: 12,
 	},
-	statusText: {
-		fontSize: 11,
-		fontFamily: fontFamily.medium,
+	skeleton: {
+		backgroundColor: "#e9edf2",
+		borderRadius: 6,
 	},
 	emptyState: {
 		alignItems: "center",
-		paddingVertical: spacing.xl * 2,
-		paddingHorizontal: spacing.lg,
-	},
-	emptyIcon: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		backgroundColor: colors.muted,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: spacing.md,
+		paddingVertical: 64,
+		paddingHorizontal: 24,
 	},
 	emptyTitle: {
-		fontSize: 16,
 		fontFamily: fontFamily.semibold,
-		color: colors.foreground,
-		marginBottom: spacing.xs,
+		fontSize: 18,
+		color: "#09090b",
+		marginBottom: 8,
 	},
 	emptyText: {
-		fontSize: 14,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+		fontSize: 13,
+		color: "#5b6675",
 		textAlign: "center",
 	},
 });

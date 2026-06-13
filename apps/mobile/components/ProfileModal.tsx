@@ -1,6 +1,6 @@
 import { View, Text, Modal, Pressable, ScrollView, Alert, Image } from "react-native";
 import { useState } from "react";
-import { useUser, useAuth, useOrganization } from "@clerk/clerk-expo";
+import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, spacing, styles, fontFamily } from "@/lib/theme";
@@ -60,7 +60,7 @@ export function ProfileModal() {
 						}}
 					/>
 				) : (
-					<Text style={{ color: "#fff", fontFamily: fontFamily.semibold, fontSize: 14 }}>
+					<Text style={{ color: "#fff", fontFamily: fontFamily.semibold, fontSize: 13 }}>
 						{user?.firstName?.[0] ||
 							user?.emailAddresses[0]?.emailAddress[0]?.toUpperCase()}
 					</Text>
@@ -131,7 +131,7 @@ export function ProfileModal() {
 								borderBottomColor: colors.border,
 							}}
 						>
-							<Text style={[styles.heading, { fontSize: 18 }]}>Profile</Text>
+							<Text style={[styles.heading, { fontSize: 16 }]}>Profile</Text>
 							<Pressable
 								onPress={() => setModalVisible(false)}
 								style={{ padding: 4 }}
@@ -170,7 +170,7 @@ export function ProfileModal() {
 										}}
 									>
 						<Text
-							style={{ color: "#fff", fontSize: 32, fontFamily: fontFamily.semibold }}
+							style={{ color: "#fff", fontSize: 28, fontFamily: fontFamily.semibold }}
 						>
 							{user?.firstName?.[0] ||
 								user?.emailAddresses[0]?.emailAddress[0]?.toUpperCase()}
@@ -179,7 +179,7 @@ export function ProfileModal() {
 								)}
 
 								<Text
-									style={[styles.heading, { fontSize: 20, marginBottom: 4 }]}
+									style={[styles.heading, { fontSize: 18, marginBottom: 4 }]}
 								>
 									{user?.firstName} {user?.lastName}
 								</Text>
@@ -234,7 +234,7 @@ export function ProfileModal() {
 										<Text
 											style={{
 												color: "#fff",
-												fontSize: 12,
+												fontSize: 11,
 												fontFamily: fontFamily.semibold,
 											}}
 										>
@@ -262,7 +262,7 @@ export function ProfileModal() {
 								>
 									<Mail size={20} color={colors.mutedForeground} />
 									<View style={{ marginLeft: spacing.md, flex: 1 }}>
-										<Text style={[styles.mutedText, { fontSize: 12 }]}>
+										<Text style={[styles.mutedText, { fontSize: 11 }]}>
 											Email
 										</Text>
 										<Text style={styles.text}>
@@ -285,7 +285,7 @@ export function ProfileModal() {
 									>
 										<Building size={20} color={colors.mutedForeground} />
 										<View style={{ marginLeft: spacing.md, flex: 1 }}>
-											<Text style={[styles.mutedText, { fontSize: 12 }]}>
+											<Text style={[styles.mutedText, { fontSize: 11 }]}>
 												Organization
 											</Text>
 											<Text style={styles.text}>{organization.name}</Text>
@@ -307,7 +307,7 @@ export function ProfileModal() {
 									>
 										<Shield size={20} color={colors.mutedForeground} />
 										<View style={{ marginLeft: spacing.md, flex: 1 }}>
-											<Text style={[styles.mutedText, { fontSize: 12 }]}>
+											<Text style={[styles.mutedText, { fontSize: 11 }]}>
 												Role
 											</Text>
 											<Text style={styles.text}>
@@ -349,11 +349,11 @@ export function ProfileModal() {
 
 							{/* App Info */}
 							<View style={{ alignItems: "center", marginTop: spacing.lg }}>
-								<Text style={[styles.mutedText, { fontSize: 12 }]}>
+								<Text style={[styles.mutedText, { fontSize: 11 }]}>
 									OneTool Mobile
 								</Text>
 								<Text
-									style={[styles.mutedText, { fontSize: 12, marginTop: 4 }]}
+									style={[styles.mutedText, { fontSize: 11, marginTop: 4 }]}
 								>
 									Version 1.0.0
 								</Text>

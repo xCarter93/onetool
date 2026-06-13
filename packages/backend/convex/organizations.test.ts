@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 
@@ -1075,6 +1075,9 @@ describe("Organizations", () => {
 				activeOrgId: "org_123",
 			});
 
+			// Fake timers BEFORE the mutation so the scheduled runAfter(0) cascade
+			// worker is captured and drained (not fired against a closed txn).
+			vi.useFakeTimers();
 			const result = await asUser.mutation(
 				api.organizations.deleteOrganization,
 				{
@@ -1083,6 +1086,9 @@ describe("Organizations", () => {
 			);
 
 			expect(result).toEqual({ success: true });
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			vi.useRealTimers();
 
 			// Verify organization is deleted
 			const org = await t.run(async (ctx) => {
@@ -1405,11 +1411,17 @@ describe("Organizations", () => {
 					return { orgId, membershipId };
 				});
 
+				// Fake timers BEFORE the mutation so the scheduled runAfter(0)
+				// cascade worker is captured and drained (not fired post-txn).
+				vi.useFakeTimers();
 				const result = await t.mutation(internal.organizations.deleteFromClerk, {
 					clerkOrganizationId: "org_clerk_delete",
 				});
 
 				expect(result).toEqual({ success: true });
+
+				await t.finishAllScheduledFunctions(vi.runAllTimers);
+				vi.useRealTimers();
 
 				// Verify organization is deleted
 				const org = await t.run(async (ctx) => {

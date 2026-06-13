@@ -83,12 +83,12 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	percentage: {
-		fontSize: 24,
+		fontSize: 21,
 		fontFamily: fontFamily.bold,
 		color: colors.foreground,
 	},
 	label: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.medium,
 		color: colors.mutedForeground,
 		marginTop: 2,

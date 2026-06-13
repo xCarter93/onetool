@@ -1,25 +1,11 @@
 import { Stack } from "expo-router";
-import { AppHeader } from "@/components/AppHeader";
 
+// Shared AppHeader is rendered inside each screen now — the stack shows no header.
 export default function ProjectsLayout() {
   return (
-    <Stack>
-      <Stack.Screen
-        name="index"
-        options={{
-          header: () => <AppHeader />,
-          headerShown: true,
-        }}
-      />
-      <Stack.Screen
-        name="[projectId]"
-        options={{
-          headerShown: true,
-          headerBackTitle: "Projects",
-          headerTitle: "Project Details",
-        }}
-      />
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="[projectId]" />
     </Stack>
   );
 }
-

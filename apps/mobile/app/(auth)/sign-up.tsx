@@ -1,26 +1,38 @@
 import * as React from "react";
 import {
+	KeyboardAvoidingView,
+	Platform,
+	ScrollView,
+	StyleSheet,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
-	StyleSheet,
-	Platform,
-	Alert,
 } from "react-native";
-import { useSignUp } from "@clerk/clerk-expo";
-import { Link, useRouter } from "expo-router";
-import { useSSO } from "@clerk/clerk-expo";
-import * as WebBrowser from "expo-web-browser";
-import * as AuthSession from "expo-auth-session";
 import {
-	colors,
-	spacing,
-	fontFamily,
-	styles as themeStyles,
-} from "@/lib/theme";
+	useAuth,
+	useOrganization,
+	useOrganizationList,
+	useSignUp,
+	useSSO,
+} from "@clerk/expo";
+import { Link, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { fontFamily, spacing, tokens, type } from "@/lib/theme";
+import { useDevice } from "@/lib/use-device";
 import { StyledButton } from "@/components/styled";
-import { GoogleIcon } from "@/components/GoogleIcon";
+import { AuthScreenShell } from "@/components/auth/AuthScreenShell";
+import {
+	isCancellation,
+	isOAuthDismissed,
+	mapAuthError,
+} from "@/lib/authErrors";
+import {
+	navigateAfterAuth,
+	resolveAuthDestination,
+} from "@/lib/postAuthRouting";
 
 // Preloads the browser for Android devices
 const useWarmUpBrowser = () => {
@@ -38,186 +50,340 @@ WebBrowser.maybeCompleteAuthSession();
 export default function SignUpScreen() {
 	useWarmUpBrowser();
 
-	const { isLoaded, signUp, setActive } = useSignUp();
+	const { signUp } = useSignUp();
 	const { startSSOFlow } = useSSO();
 	const router = useRouter();
+	const { device } = useDevice();
+	const isPad = device === "ipad";
 
+	// Routing state hooks — build AuthRoutingState for navigateAfterAuth.
+	const { isLoaded: authLoaded, isSignedIn } = useAuth();
+	const { organization } = useOrganization();
+	const { userMemberships, isLoaded: orgListLoaded } = useOrganizationList({
+		userMemberships: true,
+	});
+	const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
+
+	const [firstName, setFirstName] = React.useState("");
+	const [lastName, setLastName] = React.useState("");
 	const [emailAddress, setEmailAddress] = React.useState("");
 	const [password, setPassword] = React.useState("");
 	const [pendingVerification, setPendingVerification] = React.useState(false);
 	const [code, setCode] = React.useState("");
 	const [loading, setLoading] = React.useState(false);
 
-	// Handle submission of sign-up form
-	const onSignUpPress = async () => {
-		if (!isLoaded) return;
+	// Inline Field Kit error state (no OS alert popups).
+	const [firstNameError, setFirstNameError] = React.useState<string | null>(null);
+	const [lastNameError, setLastNameError] = React.useState<string | null>(null);
+	const [emailError, setEmailError] = React.useState<string | null>(null);
+	const [passwordError, setPasswordError] = React.useState<string | null>(null);
+	const [codeError, setCodeError] = React.useState<string | null>(null);
+	const [formError, setFormError] = React.useState<string | null>(null);
 
+	// Single post-auth navigation point. A brand-new signup has no active org,
+	// so resolveAuthDestination returns the create-organization wizard.
+	const goAfterAuth = React.useCallback(() => {
+		// router.replace is typed to a Href union; the helper deals in plain
+		// strings, so cast at the boundary (matches the 25-04 wizard).
+		navigateAfterAuth(
+			(href) => router.replace(href as Parameters<typeof router.replace>[0]),
+			resolveAuthDestination({
+				authLoaded: Boolean(authLoaded),
+				orgLoaded: Boolean(orgListLoaded),
+				isSignedIn: Boolean(isSignedIn),
+				hasActiveOrg: Boolean(organization),
+				membershipCount: userMemberships?.data?.length ?? 0,
+				needsMetadata,
+			})
+		);
+	}, [
+		router,
+		authLoaded,
+		orgListLoaded,
+		isSignedIn,
+		organization,
+		userMemberships?.data?.length,
+		needsMetadata,
+	]);
+
+	// Email/password sign-up → send the 6-digit code, then show the verify view.
+	const onSignUpPress = async () => {
 		try {
 			setLoading(true);
-			// Start sign-up process using email and password provided
-			await signUp.create({
+			setFirstNameError(null);
+			setLastNameError(null);
+			setEmailError(null);
+			setPasswordError(null);
+			setFormError(null);
+
+			// First/last name are required by the Clerk instance — collect them up
+			// front so the sign-up reaches "complete" after email verification and
+			// finalize() succeeds (SSO supplies these from the provider account).
+			const fName = firstName.trim();
+			const lName = lastName.trim();
+			let invalid = false;
+			if (!fName) {
+				setFirstNameError("Enter your first name.");
+				invalid = true;
+			}
+			if (!lName) {
+				setLastNameError("Enter your last name.");
+				invalid = true;
+			}
+			if (invalid) return;
+
+			const { error } = await signUp.password({
 				emailAddress,
 				password,
+				firstName: fName,
+				lastName: lName,
 			});
+			if (error) {
+				const mapped = mapAuthError(error);
+				if (mapped.field === "email") setEmailError(mapped.message);
+				else if (mapped.field === "password") setPasswordError(mapped.message);
+				else setFormError(mapped.message);
+				return;
+			}
 
-			// Send user an email with verification code
-			await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+			const { error: sendError } =
+				await signUp.verifications.sendEmailCode();
+			if (sendError) {
+				setFormError(mapAuthError(sendError).message);
+				return;
+			}
 
-			// Set 'pendingVerification' to true to display second form
 			setPendingVerification(true);
-		} catch (err: any) {
-			// See https://clerk.com/docs/guides/development/custom-flows/error-handling
-			Alert.alert("Error", err.errors?.[0]?.message || "Failed to sign up");
-			console.error(JSON.stringify(err, null, 2));
+		} catch (err) {
+			setFormError(mapAuthError(err).message);
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// Handle submission of verification form
+	// Verify the 6-digit email code → finalize → centralized nav.
 	const onVerifyPress = async () => {
-		if (!isLoaded) return;
-
 		try {
 			setLoading(true);
-			// Use the code the user provided to attempt verification
-			const signUpAttempt = await signUp.attemptEmailAddressVerification({
-				code,
-			});
+			setCodeError(null);
 
-			// If verification was completed, set the session to active
-			// and redirect the user
-			if (signUpAttempt.status === "complete") {
-				await setActive({ session: signUpAttempt.createdSessionId });
-				router.replace("/(tabs)");
-			} else {
-				// If the status is not complete, check why. User may need to
-				// complete further steps.
-				console.error(JSON.stringify(signUpAttempt, null, 2));
+			const { error } = await signUp.verifications.verifyEmailCode({ code });
+			if (error) {
+				setCodeError(mapAuthError(error).message);
+				return;
 			}
-		} catch (err: any) {
-			Alert.alert(
-				"Error",
-				err.errors?.[0]?.message || "Failed to verify email"
-			);
-			console.error(JSON.stringify(err, null, 2));
+
+			// verifyEmailCode resolves with only { error }; the signUp closure
+			// snapshot's .status is stale this tick, so finalize directly (it acts
+			// on live client state) instead of gating on the stale status — which
+			// otherwise left the user stuck on the verify screen. finalize converts
+			// the now-complete sign-up into an active session; goAfterAuth + the
+			// reactive auth layout then route onward (new user -> wizard).
+			const { error: finalizeError } = await signUp.finalize();
+			if (finalizeError) {
+				setCodeError(mapAuthError(finalizeError).message);
+				return;
+			}
+			goAfterAuth();
+		} catch (err) {
+			setCodeError(mapAuthError(err).message);
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// Handle Google OAuth sign-up
+	// Resend the verification code (verify sub-view "Resend code" link).
+	const onResendPress = async () => {
+		try {
+			setLoading(true);
+			setCodeError(null);
+			const { error } = await signUp.verifications.sendEmailCode();
+			if (error) setCodeError(mapAuthError(error).message);
+		} catch (err) {
+			setCodeError(mapAuthError(err).message);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// Google OAuth sign-up — silent dismiss, pre-verified (skips verification).
 	const handleGoogleSignUp = React.useCallback(async () => {
 		try {
 			setLoading(true);
+			setFormError(null);
 
-			const {
-				createdSessionId,
-				setActive: ssoSetActive,
-				signUp,
-			} = await startSSOFlow({
-				strategy: "oauth_google",
-			});
+			const { createdSessionId, setActive, authSessionResult } =
+				await startSSOFlow({ strategy: "oauth_google" });
 
-			if (createdSessionId && ssoSetActive) {
-				await ssoSetActive({ session: createdSessionId });
-				router.replace("/(tabs)");
-			} else if (signUp?.status === "missing_requirements") {
-				Alert.alert(
-					"Additional Information Required",
-					"Please complete your profile to continue."
-				);
+			// Silent dismiss: user closed the browser without authenticating.
+			if (isOAuthDismissed(authSessionResult)) return;
+
+			if (createdSessionId && setActive) {
+				await setActive({ session: createdSessionId });
+				goAfterAuth();
 			}
-		} catch (err: any) {
-			console.error("OAuth error:", JSON.stringify(err, null, 2));
-			Alert.alert(
-				"Error",
-				err.errors?.[0]?.message || "Failed to sign up with Google"
-			);
+		} catch (err) {
+			if (isCancellation(err) || isOAuthDismissed(err)) return;
+			setFormError(mapAuthError(err).message);
 		} finally {
 			setLoading(false);
 		}
-	}, [startSSOFlow]);
+	}, [startSSOFlow, goAfterAuth]);
 
+	// Verification sub-view (Field Kit — no provider pair / shell here).
 	if (pendingVerification) {
 		return (
-			<View style={styles.container}>
-				<Text style={styles.title}>Verify your email</Text>
-				<Text style={styles.subtitle}>
-					We sent a verification code to {emailAddress}
-				</Text>
-
-			<TextInput
-				style={styles.input}
-				value={code}
-				placeholder="Enter verification code"
-				placeholderTextColor={colors.mutedForeground}
-				keyboardType="number-pad"
-				onChangeText={setCode}
-				editable={!loading}
-			/>
-
-				<StyledButton
-					intent="primary"
-					size="lg"
-					onPress={onVerifyPress}
-					isLoading={loading}
-					disabled={loading}
-					showArrow={false}
-					style={{ marginBottom: spacing.md }}
+			<KeyboardAvoidingView
+				style={styles.flex}
+				behavior={Platform.OS === "ios" ? "padding" : undefined}
+			>
+				<ScrollView
+					style={styles.flex}
+					contentContainerStyle={[
+						styles.verifyContent,
+						// iPad: center the ~480pt card column, both orientations.
+						isPad && styles.verifyContentPad,
+					]}
+					keyboardShouldPersistTaps="handled"
 				>
-					Verify Email
-				</StyledButton>
-			</View>
+					<View style={isPad ? styles.cardPad : undefined}>
+						<Text style={styles.title}>Verify your email</Text>
+						<Text style={styles.subtitle}>
+							We sent a 6-digit code to {emailAddress}
+						</Text>
+
+						<TextInput
+							style={[styles.input, codeError ? styles.inputError : null]}
+							value={code}
+							placeholder="6-digit code"
+							placeholderTextColor={tokens.mutedForeground}
+							keyboardType="number-pad"
+							onChangeText={(v) => {
+								setCode(v);
+								if (codeError) setCodeError(null);
+							}}
+							editable={!loading}
+						/>
+						{codeError ? (
+							<Text style={styles.errorText}>{codeError}</Text>
+						) : null}
+
+						<StyledButton
+							intent="primary"
+							size="lg"
+							onPress={onVerifyPress}
+							isLoading={loading}
+							disabled={loading}
+							showArrow={false}
+							textStyle={styles.ctaLabel}
+							style={styles.cta}
+						>
+							Verify email
+						</StyledButton>
+
+						<View style={styles.footer}>
+							<Text style={styles.footerText}>Didn&apos;t get it? </Text>
+							<TouchableOpacity onPress={onResendPress} disabled={loading}>
+								<Text style={styles.linkText}>Resend code</Text>
+							</TouchableOpacity>
+						</View>
+					</View>
+				</ScrollView>
+			</KeyboardAvoidingView>
 		);
 	}
 
+	// Create-account view — shared AuthScreenShell (Apple/Google pair + hero).
 	return (
-		<View style={styles.container}>
-			<Text style={styles.title}>Create your account</Text>
-			<Text style={styles.subtitle}>Sign up to get started with OneTool</Text>
-
-			{/* Google OAuth Button */}
-			<StyledButton
-				intent="outline"
-				size="lg"
-				onPress={handleGoogleSignUp}
-				isLoading={loading}
-				disabled={loading}
-				showArrow={false}
-				icon={<GoogleIcon size={20} />}
-				style={{ marginBottom: spacing.md }}
-			>
-				Continue with Google
-			</StyledButton>
-
-			<View style={styles.divider}>
-				<View style={styles.dividerLine} />
-				<Text style={styles.dividerText}>or</Text>
-				<View style={styles.dividerLine} />
+		<AuthScreenShell
+			title="Create your account"
+			subtitle="Sign up to get started with OneTool"
+			appleType="SIGN_UP"
+			loading={loading}
+			onGoogle={handleGoogleSignUp}
+			onProviderError={setFormError}
+			onAppleSuccess={goAfterAuth}
+		>
+			<View style={styles.nameRow}>
+				<View style={styles.nameField}>
+					<TextInput
+						style={[
+							styles.input,
+							styles.nameInput,
+							firstNameError ? styles.inputError : null,
+						]}
+						autoCapitalize="words"
+						value={firstName}
+						placeholder="First name"
+						placeholderTextColor={tokens.mutedForeground}
+						textContentType="givenName"
+						onChangeText={(v) => {
+							setFirstName(v);
+							if (firstNameError) setFirstNameError(null);
+						}}
+						editable={!loading}
+					/>
+				</View>
+				<View style={styles.nameField}>
+					<TextInput
+						style={[
+							styles.input,
+							styles.nameInput,
+							lastNameError ? styles.inputError : null,
+						]}
+						autoCapitalize="words"
+						value={lastName}
+						placeholder="Last name"
+						placeholderTextColor={tokens.mutedForeground}
+						textContentType="familyName"
+						onChangeText={(v) => {
+							setLastName(v);
+							if (lastNameError) setLastNameError(null);
+						}}
+						editable={!loading}
+					/>
+				</View>
 			</View>
+			{firstNameError || lastNameError ? (
+				<Text style={styles.errorText}>
+					{firstNameError ?? lastNameError}
+				</Text>
+			) : null}
 
-			{/* Email/Password Form */}
 			<TextInput
-				style={styles.input}
+				style={[styles.input, emailError ? styles.inputError : null]}
 				autoCapitalize="none"
 				value={emailAddress}
 				placeholder="Email"
-				placeholderTextColor={colors.mutedForeground}
+				placeholderTextColor={tokens.mutedForeground}
 				keyboardType="email-address"
-				onChangeText={setEmailAddress}
+				onChangeText={(v) => {
+					setEmailAddress(v);
+					if (emailError) setEmailError(null);
+				}}
 				editable={!loading}
 			/>
+			{emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
 
 			<TextInput
-				style={styles.input}
+				style={[styles.input, passwordError ? styles.inputError : null]}
 				value={password}
 				placeholder="Password"
-				placeholderTextColor={colors.mutedForeground}
-				secureTextEntry={true}
-				onChangeText={setPassword}
+				placeholderTextColor={tokens.mutedForeground}
+				secureTextEntry
+				onChangeText={(v) => {
+					setPassword(v);
+					if (passwordError) setPasswordError(null);
+				}}
 				editable={!loading}
 			/>
+			{passwordError ? (
+				<Text style={styles.errorText}>{passwordError}</Text>
+			) : null}
+
+			{formError ? (
+				<Text style={[styles.errorText, styles.formError]}>{formError}</Text>
+			) : null}
 
 			<StyledButton
 				intent="primary"
@@ -226,9 +392,10 @@ export default function SignUpScreen() {
 				isLoading={loading}
 				disabled={loading}
 				showArrow={false}
-				style={{ marginBottom: spacing.md }}
+				textStyle={styles.ctaLabel}
+				style={styles.cta}
 			>
-				Sign Up
+				Create account
 			</StyledButton>
 
 			<View style={styles.footer}>
@@ -239,72 +406,96 @@ export default function SignUpScreen() {
 					</TouchableOpacity>
 				</Link>
 			</View>
-		</View>
+		</AuthScreenShell>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
+	flex: {
 		flex: 1,
+		backgroundColor: tokens.bg,
+	},
+	verifyContent: {
+		flexGrow: 1,
 		justifyContent: "center",
-		padding: spacing.lg,
-		backgroundColor: colors.background,
+		paddingHorizontal: spacing.lg,
+		paddingVertical: spacing.xl,
+	},
+	// iPad: also center horizontally so the card sits mid-screen.
+	verifyContentPad: {
+		alignItems: "center",
+	},
+	// iPad: ~480pt centered brand card for the verify sub-view.
+	cardPad: {
+		width: "100%",
+		maxWidth: 480,
 	},
 	title: {
-		fontSize: 32,
 		fontFamily: fontFamily.bold,
+		fontSize: type.h1,
+		color: tokens.ink,
 		marginBottom: spacing.xs,
-		textAlign: "center",
-		color: colors.foreground,
 	},
 	subtitle: {
-		fontSize: 16,
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
+		fontSize: type.h4,
+		color: tokens.mutedForeground,
 		marginBottom: spacing.xl,
-		textAlign: "center",
 	},
 	input: {
 		borderWidth: 1,
-		borderColor: colors.border,
+		borderColor: tokens.border,
 		borderRadius: 8,
 		padding: spacing.md,
-		marginBottom: spacing.md,
-		fontSize: 16,
+		marginTop: spacing.md,
+		fontSize: type.body,
 		fontFamily: fontFamily.regular,
-		backgroundColor: colors.background,
-		color: colors.foreground,
+		backgroundColor: tokens.card,
+		color: tokens.ink,
 	},
-	divider: {
+	inputError: {
+		borderColor: tokens.destructive,
+	},
+	nameRow: {
 		flexDirection: "row",
-		alignItems: "center",
-		marginVertical: spacing.lg,
+		gap: spacing.md,
+		marginTop: spacing.md,
 	},
-	dividerLine: {
+	nameField: {
 		flex: 1,
-		height: 1,
-		backgroundColor: colors.border,
 	},
-	dividerText: {
-		marginHorizontal: spacing.md,
+	nameInput: {
+		marginTop: 0,
+	},
+	errorText: {
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		fontSize: 14,
+		fontSize: type.body,
+		color: tokens.destructive,
+		marginTop: spacing.sm,
+	},
+	formError: {
+		marginTop: spacing.md,
+	},
+	cta: {
+		marginTop: spacing.md,
+	},
+	ctaLabel: {
+		fontFamily: fontFamily.bold,
 	},
 	footer: {
 		flexDirection: "row",
 		justifyContent: "center",
-		marginTop: spacing.md,
 		alignItems: "center",
+		marginTop: spacing.md,
 	},
 	footerText: {
 		fontFamily: fontFamily.regular,
-		color: colors.mutedForeground,
-		fontSize: 14,
+		fontSize: type.body,
+		color: tokens.mutedForeground,
 	},
 	linkText: {
-		fontFamily: fontFamily.semibold,
-		color: colors.primary,
-		fontSize: 14,
+		fontFamily: fontFamily.bold,
+		fontSize: type.body,
+		color: tokens.accent,
 	},
 });

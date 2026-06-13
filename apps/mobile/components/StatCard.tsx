@@ -147,13 +147,13 @@ const styles = StyleSheet.create({
 		marginRight: spacing.sm,
 	},
 	label: {
-		fontSize: 13,
+		fontSize: 12,
 		fontFamily: fontFamily.medium,
 		color: colors.mutedForeground,
 		flex: 1,
 	},
 	value: {
-		fontSize: 28,
+		fontSize: 24,
 		fontFamily: fontFamily.bold,
 		color: colors.foreground,
 		marginBottom: spacing.xs,
@@ -169,11 +169,11 @@ const styles = StyleSheet.create({
 		gap: 4,
 	},
 	changeText: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.medium,
 	},
 	subValue: {
-		fontSize: 12,
+		fontSize: 11,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
