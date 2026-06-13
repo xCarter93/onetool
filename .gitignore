@@ -62,3 +62,6 @@ src/app/(workspace)/settings/debug/
 /.planning
 skills-lock.json
 /.playwright-mcp
+
+# App Store pre-submission runbook (contains config/credential locations — never commit)
+apps/mobile/APP-STORE-SUBMISSION.md
