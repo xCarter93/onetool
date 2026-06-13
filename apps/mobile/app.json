@@ -22,7 +22,15 @@
 			"expo-font",
 			"expo-document-picker",
 			"@clerk/expo",
-			"expo-apple-authentication"
+			"expo-apple-authentication",
+			[
+				"expo-splash-screen",
+				{
+					"backgroundColor": "#031125",
+					"image": "./assets/splash.png",
+					"resizeMode": "cover"
+				}
+			]
 		],
 		"experiments": {
 			"typedRoutes": true,
