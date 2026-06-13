@@ -6,12 +6,13 @@ import {
 	ActivityIndicator,
 	StyleSheet,
 } from "react-native";
+import { useEffect, useState } from "react";
 import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { BellOff, X } from "lucide-react-native";
+import { BellOff, BellRing, X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import {
 	formatRelativeTime,
@@ -20,6 +21,9 @@ import {
 } from "@/lib/notification-utils";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
+import { normalizeActionUrl } from "@/lib/push-deeplink";
+import { usePushRegistration } from "@/lib/use-push-registration";
+import { PushPrePrompt } from "@/components/push/PushPrePrompt";
 
 // Notifications form-sheet route — same native sheet type + chrome as /org-switch
 // and /day-sheet (sheet options in _layout.tsx). Owns the list query + markRead.
@@ -32,9 +36,33 @@ export default function NotificationsSheet() {
 	});
 	const markRead = useMutation(api.notifications.markRead);
 
+	const { getPushPermissionStatus, enablePushNotifications } =
+		usePushRegistration();
+	// Affordance gate: show the enable prompt whenever permission is NOT granted
+	// (so "Not now" users — or never-asked users — can opt in here).
+	const [pushGranted, setPushGranted] = useState(true);
+	const [showEnable, setShowEnable] = useState(false);
+
 	const notifications = notificationData?.notifications ?? [];
 	const unreadCount = notificationData?.unreadCount ?? 0;
 	const loading = notificationData === undefined;
+
+	useEffect(() => {
+		let active = true;
+		getPushPermissionStatus().then(({ status }) => {
+			if (active) setPushGranted(status === "granted");
+		});
+		return () => {
+			active = false;
+		};
+	}, [getPushPermissionStatus]);
+
+	const handleEnable = async () => {
+		await enablePushNotifications();
+		const { status } = await getPushPermissionStatus();
+		setPushGranted(status === "granted");
+		setShowEnable(false);
+	};
 
 	const handlePress = async (
 		id: Id<"notifications">,
@@ -49,8 +77,11 @@ export default function NotificationsSheet() {
 			}
 		}
 		if (actionUrl) {
-			router.back();
-			router.push(actionUrl as Href);
+			const target = normalizeActionUrl(actionUrl);
+			if (target.startsWith("/")) {
+				router.back();
+				router.push(target as Href);
+			}
 		}
 	};
 
@@ -82,6 +113,24 @@ export default function NotificationsSheet() {
 
 	const body = (
 		<>
+			{!pushGranted ? (
+				<Pressable
+					onPress={() => setShowEnable(true)}
+					accessibilityRole="button"
+					style={({ pressed }) => [
+						styles.enableRow,
+						{
+							backgroundColor: pressed ? t.accentMid : t.accentSoft,
+							borderColor: t.accent,
+						},
+					]}
+				>
+					<BellRing size={18} color={t.accent} />
+					<Text style={[styles.enableLabel, { color: t.accent }]}>
+						Enable push notifications
+					</Text>
+				</Pressable>
+			) : null}
 			{loading ? (
 				<View style={styles.state}>
 					<ActivityIndicator size="small" color={t.accent} />
@@ -95,7 +144,7 @@ export default function NotificationsSheet() {
 						No notifications
 					</Text>
 					<Text style={[styles.emptySub, { color: t.sub }]}>
-						You're all caught up.
+						You&apos;re all caught up.
 					</Text>
 				</View>
 			) : (
@@ -144,6 +193,12 @@ export default function NotificationsSheet() {
 		</>
 	);
 
+	// Enable-prompt overlay (the affordance opens it on demand). Reuses the soft
+	// pre-prompt component; Enable here fires the real iOS prompt.
+	const prePrompt = showEnable ? (
+		<PushPrePrompt onEnable={handleEnable} onDismiss={() => setShowEnable(false)} />
+	) : null;
+
 	// iPad (Strategy B): centered card; maxHeight 86% so a long list scrolls within it.
 	if (device === "ipad") {
 		return (
@@ -152,12 +207,14 @@ export default function NotificationsSheet() {
 					{header}
 					{body}
 				</View>
+				{prePrompt}
 			</CenteredModal>
 		);
 	}
 
 	// iPhone — existing bottom sheet, byte-identical.
 	return (
+		<>
 		<View
 			style={[
 				styles.container,
@@ -168,6 +225,8 @@ export default function NotificationsSheet() {
 			{header}
 			{body}
 		</View>
+		{prePrompt}
+		</>
 	);
 }
 
@@ -232,6 +291,21 @@ const styles = StyleSheet.create({
 		borderRadius: 999,
 		alignItems: "center",
 		justifyContent: "center",
+	},
+	enableRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		marginHorizontal: 20,
+		marginBottom: 14,
+		paddingVertical: 12,
+		borderRadius: 14,
+		borderWidth: 1,
+	},
+	enableLabel: {
+		fontSize: type.sm,
+		fontFamily: fontFamily.semibold,
 	},
 	state: {
 		flex: 1,
