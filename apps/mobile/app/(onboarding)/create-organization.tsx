@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useOrganization, useOrganizationList } from "@clerk/expo";
+import { useOrganization, useOrganizationList, useUser } from "@clerk/expo";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Check } from "lucide-react-native";
@@ -34,7 +34,7 @@ type Step = 1 | 2 | 3;
 type CompanySize = "1-10" | "10-100" | "100+";
 
 const STEP_TITLES: Record<Step, string> = {
-	1: "Name your organization",
+	1: "Your name and business",
 	2: "Business details",
 	3: "How big is your team?",
 };
@@ -56,6 +56,7 @@ export default function CreateOrganizationScreen() {
 	const isPad = device === "ipad";
 
 	// --- Auth / org hooks ---------------------------------------------------
+	const { user } = useUser();
 	const { organization: activeOrg } = useOrganization();
 	const { createOrganization, setActive, userMemberships } =
 		useOrganizationList({ userMemberships: true });
@@ -75,6 +76,9 @@ export default function CreateOrganizationScreen() {
 	const [formError, setFormError] = useState<string | null>(null);
 
 	// Step-1
+	const [firstName, setFirstName] = useState("");
+	const [lastName, setLastName] = useState("");
+	const [nameSeeded, setNameSeeded] = useState(false);
 	const [orgName, setOrgName] = useState("");
 	// Step-2
 	const [address, setAddress] = useState<AddressValue>(EMPTY_ADDRESS);
@@ -105,6 +109,15 @@ export default function CreateOrganizationScreen() {
 	// the durable active org id (createdOrgRef is reset by the remount and is only
 	// read inside handlers, never during render).
 	const metadataReady = canWriteMetadata(convexOrg, activeOrg?.id ?? null);
+
+	// Seed the name inputs once from Clerk (Google / email sign-ups arrive with a
+	// name; Apple returning-auth sign-ups do not). Render-time derivation, guarded
+	// by a flag — the apps/mobile lint forbids setState in an effect.
+	if (!nameSeeded && user) {
+		setNameSeeded(true);
+		if (user.firstName) setFirstName(user.firstName);
+		if (user.lastName) setLastName(user.lastName);
+	}
 
 	// Once an active org exists, the create step is done. setActive() remounts this
 	// screen with step reset to 1; re-derive from the durable active org so we
@@ -181,19 +194,34 @@ export default function CreateOrganizationScreen() {
 		}
 	}
 
-	function handleStep1Continue() {
+	async function handleStep1Continue() {
 		// Org already active (e.g. tapped during the post-create remount): advance,
 		// never create a duplicate.
 		if (activeOrg) {
 			setStep(2);
 			return;
 		}
-		const result = validateStep1({ orgName });
+		const result = validateStep1({ firstName, lastName, orgName });
 		if (!result.valid) {
 			setFieldErrors(result.fields);
 			return;
 		}
 		setFieldErrors([]);
+
+		// Persist the name to Clerk BEFORE org creation: setActive() in runOrgCreate
+		// remounts this screen and wipes step-1 state, so the name must live in Clerk
+		// (which re-syncs to convex users.name via the user.updated webhook) to
+		// survive. Skip the write when nothing changed.
+		const fName = firstName.trim();
+		const lName = lastName.trim();
+		if (user && (user.firstName !== fName || user.lastName !== lName)) {
+			try {
+				await user.update({ firstName: fName, lastName: lName });
+			} catch {
+				setFormError("Couldn't save your name. Try again.");
+				return;
+			}
+		}
 
 		// PRECONDITION: wait for the Convex user row before creating the org —
 		// otherwise createFromClerk's owner lookup throws and organizations.get
@@ -232,7 +260,7 @@ export default function CreateOrganizationScreen() {
 
 	function handleAdvance() {
 		if (step === 1) {
-			handleStep1Continue();
+			void handleStep1Continue();
 			return;
 		}
 		if (step === 2) {
@@ -373,6 +401,26 @@ export default function CreateOrganizationScreen() {
 
 				{step === 1 ? (
 					<View style={styles.stepBody}>
+						<TextInput
+							value={firstName}
+							onChangeText={setFirstName}
+							placeholder="First name"
+							placeholderTextColor={tokens.faint}
+							editable={!submitting}
+							style={styles.input}
+							autoCapitalize="words"
+							textContentType="givenName"
+						/>
+						<TextInput
+							value={lastName}
+							onChangeText={setLastName}
+							placeholder="Last name"
+							placeholderTextColor={tokens.faint}
+							editable={!submitting}
+							style={styles.input}
+							autoCapitalize="words"
+							textContentType="familyName"
+						/>
 						<TextInput
 							value={orgName}
 							onChangeText={setOrgName}

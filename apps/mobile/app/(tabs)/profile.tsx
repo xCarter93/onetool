@@ -39,6 +39,14 @@ export default function ProfileScreen({
 	// Guard against a double-tap launching the destroy+delete flow twice (no spinner per CONTEXT).
 	const [isDeleting, setIsDeleting] = useState(false);
 
+	// Apple 5.1.1(v): a Sign in with Apple user must be told to revoke the app's
+	// access on Apple's side. Clerk brokers the token (no refresh token exposed),
+	// so we can't revoke server-side — instead we surface the manual step in the
+	// delete confirmation. Match both "apple" and "oauth_apple" provider shapes.
+	const hasAppleLogin = !!user?.externalAccounts?.some((a) =>
+		a.provider?.toLowerCase().includes("apple"),
+	);
+
 	const handleSignOut = () => {
 		Alert.alert("Sign Out", "Are you sure you want to sign out?", [
 			{ text: "Cancel", style: "cancel" },
@@ -66,6 +74,11 @@ export default function ProfileScreen({
 			// Member/co-admin: only their own account is removed; org data stays.
 			message =
 				"This removes your account from the organization and deletes your user. The organization's data remains for the other members. This cannot be undone.";
+		}
+
+		if (hasAppleLogin) {
+			message +=
+				"\n\nYou signed in with Apple. After deleting, open Settings → your name → Sign-In & Security → Sign in with Apple → OneTool → Stop Using Apple ID to fully revoke access.";
 		}
 
 		Alert.alert("Delete Account", message, [

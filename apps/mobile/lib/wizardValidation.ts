@@ -14,8 +14,19 @@ function isEmpty(value: string | undefined): boolean {
 	return !value || value.trim() === "";
 }
 
-export function validateStep1(v: { orgName: string }): StepValidation {
-	const fields = isEmpty(v.orgName) ? ["orgName"] : [];
+// firstName/lastName are required HERE (the onboarding wizard), not at the Clerk
+// sign-up step. The Clerk instance keeps them optional so Sign in with Apple can
+// complete on returning auth (Apple only returns the name on first authorization);
+// the wizard backfills the name into Clerk before org creation.
+export function validateStep1(v: {
+	firstName: string;
+	lastName: string;
+	orgName: string;
+}): StepValidation {
+	const fields: string[] = [];
+	if (isEmpty(v.firstName)) fields.push("firstName");
+	if (isEmpty(v.lastName)) fields.push("lastName");
+	if (isEmpty(v.orgName)) fields.push("orgName");
 	return { valid: fields.length === 0, fields };
 }
 
