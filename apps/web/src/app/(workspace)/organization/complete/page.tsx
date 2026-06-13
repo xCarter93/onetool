@@ -44,7 +44,7 @@ interface FormData {
 }
 
 export default function CompleteOrganizationMetadata() {
-	const { user } = useUser();
+	const { user, isLoaded: userLoaded } = useUser();
 	const { organization: clerkOrganization, isLoaded: clerkOrgLoaded } =
 		useOrganization();
 	const { resolvedTheme } = useTheme();
@@ -87,6 +87,19 @@ export default function CompleteOrganizationMetadata() {
 		setActive,
 	} = useOrganizationList();
 	const [orgName, setOrgName] = useState("");
+	// First/last name are required HERE, not at the Clerk sign-up step: the Clerk
+	// instance keeps name optional so Sign in with Apple completes on returning
+	// auth (Apple returns the name only on first authorization). Captured here and
+	// written to Clerk before org creation. Mirrors the mobile onboarding wizard.
+	const [firstName, setFirstName] = useState("");
+	const [lastName, setLastName] = useState("");
+	const [createFirstNameError, setCreateFirstNameError] = useState<
+		string | null
+	>(null);
+	const [createLastNameError, setCreateLastNameError] = useState<string | null>(
+		null
+	);
+	const [nameSeeded, setNameSeeded] = useState(false);
 	const [logoFile, setLogoFile] = useState<File | null>(null);
 	const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
 	const [createSubmitting, setCreateSubmitting] = useState(false);
@@ -116,6 +129,15 @@ export default function CompleteOrganizationMetadata() {
 		logoInvertInDarkMode: true,
 	});
 
+	// Seed the name inputs once from Clerk (Google / email sign-ups arrive with a
+	// name; Apple returning-auth sign-ups do not). Render-time derivation, guarded
+	// by a flag — the eslint config forbids setState inside an effect.
+	if (!nameSeeded && user) {
+		setNameSeeded(true);
+		// Only fill empty fields — never clobber input typed before Clerk hydrated.
+		if (user.firstName && !firstName) setFirstName(user.firstName);
+		if (user.lastName && !lastName) setLastName(user.lastName);
+	}
 
 	// Whether we're creating a new organization (from query param)
 	const isCreatingNew = searchParams.get("creating") === "true";
@@ -392,17 +414,54 @@ export default function CompleteOrganizationMetadata() {
 	> = async (e) => {
 		e.preventDefault();
 		setCreateNameError(null);
+		setCreateFirstNameError(null);
+		setCreateLastNameError(null);
 
+		const trimmedFirst = firstName.trim();
+		const trimmedLast = lastName.trim();
 		const trimmedName = orgName.trim();
+		let hasError = false;
+		if (!trimmedFirst) {
+			setCreateFirstNameError("First name is required");
+			hasError = true;
+		}
+		if (!trimmedLast) {
+			setCreateLastNameError("Last name is required");
+			hasError = true;
+		}
 		if (!trimmedName) {
 			setCreateNameError("Organization name is required");
-			return;
+			hasError = true;
 		}
-		// Guard: hook still initializing
-		if (!orgListLoaded || !createOrganization) return;
+		if (hasError) return;
+		// Guard: hooks still initializing. userLoaded gates the name write below —
+		// without it, user is null and the name is never persisted before org create.
+		if (!orgListLoaded || !createOrganization || !userLoaded) return;
 
 		setCreateSubmitting(true);
 		try {
+			// Persist the user's name to Clerk before org creation (re-syncs to
+			// convex users.name via the user.updated webhook). Skip when unchanged.
+			// Own try/catch so a name-write failure reports accurately instead of the
+			// org-creation error below.
+			if (
+				user &&
+				(user.firstName !== trimmedFirst || user.lastName !== trimmedLast)
+			) {
+				try {
+					await user.update({
+						firstName: trimmedFirst,
+						lastName: trimmedLast,
+					});
+				} catch {
+					toast.warning(
+						"Couldn't save your name",
+						"Please try again."
+					);
+					return;
+				}
+			}
+
 			// 1. Create org — or reuse one from a prior failed attempt with the same
 			// name to avoid orphaning + duplicating on retry.
 			const cached = createdOrgRef.current;
@@ -459,6 +518,75 @@ export default function CompleteOrganizationMetadata() {
 						className="space-y-6"
 						noValidate
 					>
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+							<div>
+								<label
+									htmlFor="first-name"
+									className="block text-sm font-semibold text-foreground mb-3 tracking-wide"
+								>
+									First Name
+								</label>
+								<Input
+									id="first-name"
+									value={firstName}
+									onChange={(e) => {
+										setFirstName(e.target.value);
+										if (createFirstNameError)
+											setCreateFirstNameError(null);
+									}}
+									disabled={createSubmitting}
+									placeholder="Jane"
+									autoComplete="given-name"
+									aria-invalid={createFirstNameError ? true : undefined}
+									aria-describedby={
+										createFirstNameError ? "first-name-error" : undefined
+									}
+									className="w-full border-border dark:border-border bg-background dark:bg-background focus:bg-background dark:focus:bg-background transition-colors shadow-sm ring-1 ring-border/10"
+								/>
+								{createFirstNameError && (
+									<p
+										id="first-name-error"
+										className="mt-2 text-sm text-destructive"
+									>
+										{createFirstNameError}
+									</p>
+								)}
+							</div>
+							<div>
+								<label
+									htmlFor="last-name"
+									className="block text-sm font-semibold text-foreground mb-3 tracking-wide"
+								>
+									Last Name
+								</label>
+								<Input
+									id="last-name"
+									value={lastName}
+									onChange={(e) => {
+										setLastName(e.target.value);
+										if (createLastNameError)
+											setCreateLastNameError(null);
+									}}
+									disabled={createSubmitting}
+									placeholder="Doe"
+									autoComplete="family-name"
+									aria-invalid={createLastNameError ? true : undefined}
+									aria-describedby={
+										createLastNameError ? "last-name-error" : undefined
+									}
+									className="w-full border-border dark:border-border bg-background dark:bg-background focus:bg-background dark:focus:bg-background transition-colors shadow-sm ring-1 ring-border/10"
+								/>
+								{createLastNameError && (
+									<p
+										id="last-name-error"
+										className="mt-2 text-sm text-destructive"
+									>
+										{createLastNameError}
+									</p>
+								)}
+							</div>
+						</div>
+
 						<div>
 							<label
 								htmlFor="org-name"

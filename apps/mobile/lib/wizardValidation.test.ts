@@ -9,22 +9,38 @@ import {
 } from "./wizardValidation";
 
 describe("validateStep1", () => {
-	it("is invalid for an empty org name", () => {
-		expect(validateStep1({ orgName: "" })).toEqual({
+	const full = { firstName: "Ada", lastName: "Lovelace", orgName: "Acme" };
+
+	it("lists every missing required field", () => {
+		expect(
+			validateStep1({ firstName: "", lastName: "", orgName: "" })
+		).toEqual({
 			valid: false,
-			fields: ["orgName"],
+			fields: ["firstName", "lastName", "orgName"],
 		});
 	});
 
-	it("is invalid for whitespace-only org name", () => {
-		expect(validateStep1({ orgName: "   " }).valid).toBe(false);
+	it("is invalid when the name is missing even with an org name", () => {
+		const result = validateStep1({ ...full, firstName: "", lastName: "" });
+		expect(result.valid).toBe(false);
+		expect(result.fields).toContain("firstName");
+		expect(result.fields).toContain("lastName");
 	});
 
-	it("is valid for a real org name", () => {
-		expect(validateStep1({ orgName: "Acme" })).toEqual({
-			valid: true,
-			fields: [],
-		});
+	it("treats whitespace-only values as empty", () => {
+		expect(validateStep1({ ...full, firstName: "   " }).fields).toContain(
+			"firstName"
+		);
+		expect(validateStep1({ ...full, lastName: "   " }).fields).toContain(
+			"lastName"
+		);
+		expect(validateStep1({ ...full, orgName: "   " }).fields).toContain(
+			"orgName"
+		);
+	});
+
+	it("is valid when name and org name are all present", () => {
+		expect(validateStep1(full)).toEqual({ valid: true, fields: [] });
 	});
 });
 
