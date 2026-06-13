@@ -1,48 +1,61 @@
 {
-	"expo": {
-		"name": "OneTool",
-		"slug": "onetool-mg3hyu",
-		"version": "1.0.0",
-		"scheme": "onetool",
-		"orientation": "default",
-		"icon": "./assets/icon.png",
-		"userInterfaceStyle": "light",
-		"platforms": ["ios"],
-		"ios": {
-			"bundleIdentifier": "biz.onetool.app",
-			"supportsTablet": true,
-			"usesAppleSignIn": true,
-			"infoPlist": {
-				"ITSAppUsesNonExemptEncryption": false
-			}
-		},
-		"plugins": [
-			"expo-router",
-			"expo-secure-store",
-			"expo-font",
-			"expo-document-picker",
-			"@clerk/expo",
-			"expo-apple-authentication",
-			"expo-notifications",
-			[
-				"expo-splash-screen",
-				{
-					"backgroundColor": "#031125",
-					"image": "./assets/splash.png",
-					"resizeMode": "cover"
-				}
-			]
-		],
-		"experiments": {
-			"typedRoutes": true,
-			"autolinkingModuleResolution": true
-		},
-		"extra": {
-			"router": {},
-			"eas": {
-				"projectId": "6984c14f-84fc-4379-9c29-d55c1adb2801"
-			}
-		},
-		"owner": "onetool"
-	}
+  "expo": {
+    "name": "OneTool",
+    "slug": "onetool-mg3hyu",
+    "version": "1.0.0",
+    "scheme": "onetool",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "platforms": [
+      "ios"
+    ],
+    "ios": {
+      "bundleIdentifier": "biz.onetool.app",
+      "supportsTablet": true,
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-document-picker",
+      "@clerk/expo",
+      "expo-apple-authentication",
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#031125",
+          "image": "./assets/splash.png",
+          "resizeMode": "cover"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "extraPods": [
+              { "name": "GoogleUtilities", "modular_headers": true },
+              { "name": "RecaptchaInterop", "modular_headers": true }
+            ]
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "autolinkingModuleResolution": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6984c14f-84fc-4379-9c29-d55c1adb2801"
+      }
+    },
+    "owner": "onetool"
+  }
 }
