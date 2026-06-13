@@ -228,7 +228,7 @@ function ClientRow({ c }: { c: Doc<"clients"> }) {
 					{c.companyName}
 				</Text>
 				<Text style={[styles.rowSub, { color: t.sub }]} numberOfLines={1}>
-					{STATUS[c.status].label}
+					{STATUS[c.status]?.label ?? c.status}
 				</Text>
 			</View>
 			<ChevronRight size={18} color={t.faint} />
@@ -240,7 +240,7 @@ function ProjectRow({ p }: { p: Doc<"projects"> }) {
 	const t = useTokens();
 	const sub = p.projectNumber
 		? `#${p.projectNumber}`
-		: STATUS[p.status].label;
+		: (STATUS[p.status]?.label ?? p.status);
 	return (
 		<Pressable
 			onPress={() => openResult(`/projects/${p._id}`)}

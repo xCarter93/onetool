@@ -31,8 +31,9 @@ export function CenteredModal({
 			<Pressable
 				style={StyleSheet.absoluteFill}
 				onPress={onScrimPress}
-				accessibilityRole="button"
-				accessibilityLabel="Dismiss"
+				disabled={!onScrimPress}
+				accessibilityRole={onScrimPress ? "button" : undefined}
+				accessibilityLabel={onScrimPress ? "Dismiss" : undefined}
 			/>
 			<View
 				style={[

@@ -377,6 +377,7 @@ export function QuoteDetailBody({
 // Thin route wrapper — iPhone-identical (renders the body in "root" mode).
 export default function QuoteDetailScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
+	if (!id) return null;
 	return <QuoteDetailBody id={id} />;
 }
 

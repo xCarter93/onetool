@@ -68,7 +68,8 @@ export function TaskRow({
 				onPress={onToggle}
 				hitSlop={10}
 				disabled={isUpdating}
-				accessibilityRole="button"
+				accessibilityRole="checkbox"
+				accessibilityState={{ checked: isCompleted }}
 				accessibilityLabel={isCompleted ? "Mark not complete" : "Mark complete"}
 				style={[styles.box, { borderColor: boxBorder, backgroundColor: boxBg }]}
 			>

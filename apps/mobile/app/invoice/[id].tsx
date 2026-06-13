@@ -355,6 +355,7 @@ export function InvoiceDetailBody({
 // Thin route wrapper — iPhone-identical (renders the body in "root" mode).
 export default function InvoiceDetailScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
+	if (!id) return null;
 	return <InvoiceDetailBody id={id} />;
 }
 

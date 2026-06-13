@@ -101,9 +101,10 @@ function tabFromPathname(pathname: string): ShellTab {
 
 function isStackRoute(pathname: string): boolean {
 	// Triptych detail routes are reconciled into the shell (handled below); any
-	// OTHER nested/stack route (e.g. /clients/new, /tasks/form) renders via Slot.
+	// OTHER nested/stack route (e.g. /clients/new) renders via Slot. /tasks/form
+	// is NOT here — it presents as a transparentModal (isOverlayRoute), so the
+	// shell must stay mounted underneath rather than swap to a full-width Slot.
 	if (/^\/clients\/new\b/.test(pathname)) return true;
-	if (/^\/tasks\/(form|new)\b/.test(pathname)) return true;
 	return false;
 }
 
@@ -217,6 +218,11 @@ function IpadShellInner() {
 			startCreate: (tab) => {
 				setActiveTab(tab);
 				setCreating(tab);
+			},
+			// Profile pane in place (mirrors the sidebar footer's onProfile).
+			openProfile: () => {
+				setActiveTab("profile");
+				setCreating(null);
 			},
 		}),
 		[select],

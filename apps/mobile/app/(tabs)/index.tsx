@@ -249,6 +249,10 @@ export default function HomeScreen({
 	// The search pill opens the centered Search overlay (26-05) — a transparentModal
 	// over the mounted shell, so it stays a plain router.push on both devices.
 	const openSearch = () => router.push("/search" as Href);
+	// Profile: in-pane on iPad (a raw push to the /profile (tabs) sibling slides
+	// the whole shell); plain router.push on iPhone where there's no shell.
+	const goProfile = () =>
+		shellNav ? shellNav.openProfile() : router.push("/profile" as Href);
 
 	return (
 		<SafeAreaView
@@ -526,7 +530,7 @@ export default function HomeScreen({
 										<Text style={styles.earnedValue}>
 											{formatCurrency(homeStats.revenueGoal.current)}
 										</Text>
-										<Pressable onPress={() => router.push("/profile")}>
+										<Pressable onPress={goProfile}>
 											<Text style={styles.earnedLink}>Set a monthly goal</Text>
 										</Pressable>
 									</View>

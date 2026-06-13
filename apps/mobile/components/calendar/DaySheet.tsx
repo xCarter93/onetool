@@ -154,6 +154,9 @@ export function DaySheet({
 							const done =
 								completedTaskIds.has(id) || task.status === "completed";
 							const isUpdating = updating.has(id);
+							// onCompleteTask is complete-only (no un-complete), so a done row
+							// is inert — disable it rather than label it as reversible.
+							const isDisabled = isUpdating || done;
 							const sub = [task.startTime, task.clientName]
 								.filter(Boolean)
 								.join(" · ");
@@ -164,13 +167,11 @@ export function DaySheet({
 								>
 									<Pressable
 										onPress={() => onCompleteTask(id)}
-										disabled={isUpdating}
+										disabled={isDisabled}
 										hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
 										accessibilityRole="checkbox"
-										accessibilityState={{ checked: done }}
-										accessibilityLabel={
-											done ? "Mark task incomplete" : "Complete task"
-										}
+										accessibilityState={{ checked: done, disabled: isDisabled }}
+										accessibilityLabel={done ? "Task completed" : "Complete task"}
 										style={styles.checkTap}
 									>
 										<View

@@ -17,11 +17,6 @@ export default function TabLayout() {
   const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
   const { device } = useDevice();
 
-  // If the user is not signed in, redirect them to the sign-in page
-  if (!isSignedIn) {
-    return <Redirect href="/(auth)/sign-in" />;
-  }
-
   const dest = resolveAuthDestination({
     authLoaded: Boolean(authLoaded),
     orgLoaded: Boolean(orgLoaded && listLoaded),
@@ -31,9 +26,16 @@ export default function TabLayout() {
     needsMetadata,
   });
 
-  // Hold while orgs/metadata resolve — don't gate tabs on a half-loaded state.
+  // Hold while auth/orgs/metadata resolve — don't gate tabs on a half-loaded
+  // state. isSignedIn is undefined (falsy) while Clerk loads, so resolving the
+  // sign-in redirect through `dest` avoids bouncing a signed-in user on boot.
   if (dest === "loading") {
     return null;
+  }
+
+  // Not signed in — resolved AFTER the loading gate (see above).
+  if (dest === "/(auth)/sign-in") {
+    return <Redirect href="/(auth)/sign-in" />;
   }
 
   // Defensive gate: a signed-in user with no active org / incomplete metadata

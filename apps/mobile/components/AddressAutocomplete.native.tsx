@@ -113,8 +113,24 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 	const [loading, setLoading] = useState(false);
 	const [selected, setSelected] = useState(Boolean(value.streetAddress));
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Monotonic request id — drop responses that resolve out of order (a slow
+	// earlier fetch must not overwrite a newer query's suggestions).
+	const requestSeqRef = useRef(0);
+
+	// Re-sync local UI from a controlled `value` that changes after mount (edit
+	// flows load the address async). Render-time derivation (NOT setState-in-
+	// effect, which is error-level in this repo): typing never calls onChange, so
+	// `value` is stable mid-keystroke — this only fires on an external change.
+	const nextQuery = value.formattedAddress ?? value.streetAddress ?? "";
+	const [syncedQuery, setSyncedQuery] = useState(nextQuery);
+	if (syncedQuery !== nextQuery) {
+		setSyncedQuery(nextQuery);
+		setQuery(nextQuery);
+		setSelected(Boolean(value.streetAddress));
+	}
 
 	const runSearch = useCallback(async (text: string) => {
+		const seq = ++requestSeqRef.current;
 		const trimmed = text.trim();
 		if (trimmed.length < 3) {
 			setSuggestions([]);
@@ -123,13 +139,16 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 		setLoading(true);
 		try {
 			const res = await fetch(buildUrl(trimmed));
+			if (!res.ok) throw new Error(`Mapbox request failed: ${res.status}`);
 			const data: { features?: MapboxFeature[] } = await res.json();
+			if (seq !== requestSeqRef.current) return;
 			setSuggestions(data.features ?? []);
 		} catch (err) {
+			if (seq !== requestSeqRef.current) return;
 			console.error("Mapbox address lookup failed:", err);
 			setSuggestions([]);
 		} finally {
-			setLoading(false);
+			if (seq === requestSeqRef.current) setLoading(false);
 		}
 	}, []);
 

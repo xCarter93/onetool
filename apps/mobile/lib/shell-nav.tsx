@@ -19,6 +19,10 @@ export interface ShellNav {
 	// to /clients/new (which slides the whole shell). The shell renders the
 	// create body in the content pane and exits on success/cancel.
 	startCreate: (tab: ShellNavTab) => void;
+	// Switch to the Profile pane in place. Profile isn't a ShellNavTab (no nav
+	// row), so it needs its own entry point — a raw router.push("/profile")
+	// re-mounts and slides the whole shell.
+	openProfile: () => void;
 }
 
 const ShellNavContext = createContext<ShellNav | null>(null);

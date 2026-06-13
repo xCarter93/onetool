@@ -17,6 +17,7 @@ import {
 	truncateText,
 	stripAuthorIdFromMessage,
 } from "@/lib/notification-utils";
+import { normalizeActionUrl } from "@/lib/push-deeplink";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -58,10 +59,14 @@ export function NotificationModal({
 		}
 
 		// Navigate to the entity if URL is provided. actionUrl is a backend-stored
-		// string, so it can't be statically validated against the route union.
+		// string, so normalize + guard it's an app-relative path before pushing
+		// (mirrors app/notifications.tsx — never force-push an arbitrary string).
 		if (actionUrl) {
-			router.push(actionUrl as Href);
-			onClose();
+			const target = normalizeActionUrl(actionUrl);
+			if (target.startsWith("/")) {
+				router.push(target as Href);
+				onClose();
+			}
 		}
 	};
 

@@ -136,8 +136,22 @@ export function MonthGrid({
 				const rowSpans = spansByRow[row]
 					.slice()
 					.sort((a, b) => a.startCol - b.startCol);
-				const visibleSpans = rowSpans.slice(0, MAX_LANES);
-				const overflow = rowSpans.length - visibleSpans.length;
+				// Pack into lanes by collision, not raw count: place each span in the
+				// first lane whose last span ended before this one starts. Only spans
+				// that don't fit within MAX_LANES concurrent lanes count as overflow,
+				// so non-overlapping spans aren't hidden and +N isn't inflated.
+				const laneEndCols: number[] = new Array(MAX_LANES).fill(-1);
+				const placed: { span: SpanSegment; lane: number }[] = [];
+				let overflow = 0;
+				for (const s of rowSpans) {
+					const lane = laneEndCols.findIndex((endCol) => s.startCol > endCol);
+					if (lane === -1) {
+						overflow += 1;
+						continue;
+					}
+					laneEndCols[lane] = s.endCol;
+					placed.push({ span: s, lane });
+				}
 
 				return (
 					<View key={row} style={styles.weekRow}>
@@ -204,7 +218,7 @@ export function MonthGrid({
 
 						{/* Span bar overlay — below the number band; taps fall through. */}
 						<View style={styles.spanOverlay} pointerEvents="none">
-							{visibleSpans.map((s, lane) => {
+							{placed.map(({ span: s, lane }) => {
 								const leftPct = (s.startCol / 7) * 100;
 								const widthPct = ((s.endCol - s.startCol + 1) / 7) * 100;
 								return (
