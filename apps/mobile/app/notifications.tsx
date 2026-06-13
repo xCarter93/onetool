@@ -58,10 +58,15 @@ export default function NotificationsSheet() {
 	}, [getPushPermissionStatus]);
 
 	const handleEnable = async () => {
-		await enablePushNotifications();
-		const { status } = await getPushPermissionStatus();
-		setPushGranted(status === "granted");
-		setShowEnable(false);
+		try {
+			await enablePushNotifications();
+			const { status } = await getPushPermissionStatus();
+			setPushGranted(status === "granted");
+		} catch (error) {
+			console.error("Failed to enable push notifications:", error);
+		} finally {
+			setShowEnable(false); // always close the overlay, even on throw
+		}
 	};
 
 	const handlePress = async (

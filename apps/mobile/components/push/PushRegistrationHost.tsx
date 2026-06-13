@@ -122,12 +122,16 @@ export function PushRegistrationHost({ children }: PropsWithChildren) {
 		if (!markReadReady || !markReadRef.current) return;
 
 		let cancelled = false;
+		let didSwitchOrg = false;
 		const run = async () => {
 			try {
 				// Cross-org: switch into the originating org before resolving the
 				// entity view + markRead (both are active-org scoped).
 				if (pendingTap.orgId && pendingTap.orgId !== activeOrgId) {
-					if (setActive) await setActive({ organization: pendingTap.orgId });
+					if (setActive) {
+						await setActive({ organization: pendingTap.orgId });
+						didSwitchOrg = true; // keep pendingTap for the post-remount re-run
+					}
 					return; // re-run after remount publishes a fresh markRead
 				}
 				if (cancelled) return;
@@ -144,7 +148,10 @@ export function PushRegistrationHost({ children }: PropsWithChildren) {
 			} catch (error) {
 				if (__DEV__) console.warn("push tap processing failed", error);
 			} finally {
-				if (!cancelled) setPendingTap(null);
+				// Do NOT clear on the cross-org path — the org switch remounts the
+				// Convex child and re-runs this effect; pendingTap must survive so the
+				// re-run (now same-org) can navigate + markRead.
+				if (!cancelled && !didSwitchOrg) setPendingTap(null);
 			}
 		};
 		void run();

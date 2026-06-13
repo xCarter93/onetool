@@ -7,9 +7,9 @@ import * as Device from "expo-device";
 // getExpoPushTokenAsync; passed directly to avoid an expo-constants dep.
 const EAS_PROJECT_ID = "6984c14f-84fc-4379-9c29-d55c1adb2801";
 
-// Cold-start guard so an explicit enable (or re-render) never re-fires
+// Cold-start cache so an explicit enable (or re-render) never re-fires
 // getExpoPushTokenAsync twice per launch. Reset implicitly per process.
-let tokenAcquired = false;
+let cachedToken: string | null = null;
 
 export interface PushPermissionStatus {
 	status: Notifications.PermissionStatus;
@@ -43,17 +43,12 @@ export function usePushRegistration(): {
 			const { status } = await Notifications.requestPermissionsAsync();
 			if (status !== "granted") return null;
 
-			if (tokenAcquired) {
-				const existing = await Notifications.getExpoPushTokenAsync({
-					projectId: EAS_PROJECT_ID,
-				});
-				return existing.data;
-			}
+			if (cachedToken) return cachedToken;
 			const token = await Notifications.getExpoPushTokenAsync({
 				projectId: EAS_PROJECT_ID,
 			});
-			tokenAcquired = true;
-			return token.data; // "ExponentPushToken[...]"
+			cachedToken = token.data;
+			return cachedToken; // "ExponentPushToken[...]"
 		}, [userId]);
 
 	return { getPushPermissionStatus, enablePushNotifications };
