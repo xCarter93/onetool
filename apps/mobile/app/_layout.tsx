@@ -5,7 +5,9 @@ import {
 	useOrganization,
 } from "@clerk/expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { ConvexReactClient } from "convex/react";
+import { ConvexReactClient, useMutation, useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
@@ -22,6 +24,10 @@ import {
 import * as SplashScreen from "expo-splash-screen";
 import { LaunchOverlay } from "@/components/launch/LaunchOverlay";
 import { useLaunchReadiness } from "@/lib/use-launch-readiness";
+import {
+	PushRegistrationHost,
+	usePushBridge,
+} from "@/components/push/PushRegistrationHost";
 
 // Module-level cold-start replay guard. Survives the ConvexClerkProvider
 // key={convexKey} remount on org switch because RootLayout itself never remounts —
@@ -54,6 +60,41 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 			{children as any}
 		</ConvexProviderWithClerk>
 	);
+}
+
+// Thin inner Convex child (UNDER ConvexClerkProvider). Owns the three things that
+// need Convex: (a) idempotent token upsert via registerToken; (b) publishing the
+// markRead mutation UP to the host so its tap handler can mark a push read;
+// (c) APP-WIDE badge sync from the reactive unread count (works whether or not the
+// notifications screen is open — PUSH-06). Remounts harmlessly on org switch.
+function PushConvexChild() {
+	const { registerMarkRead, pushToken } = usePushBridge();
+	const registerToken = useMutation(api.push.registerToken);
+	const markRead = useMutation(api.notifications.markRead);
+	const notificationData = useQuery(api.notifications.listForCurrentUser, {
+		limit: 1,
+	});
+	const unreadCount = notificationData?.unreadCount;
+
+	// Publish markRead up to the host (re-publishes after each org-switch remount).
+	useEffect(() => {
+		registerMarkRead((args) => markRead(args));
+	}, [registerMarkRead, markRead]);
+
+	// Idempotent upsert-by-token — a remount-driven re-write is harmless (plan 01).
+	useEffect(() => {
+		if (!pushToken) return;
+		void registerToken({ token: pushToken, platform: "ios" });
+	}, [pushToken, registerToken]);
+
+	// TODO(cross-org badge): unreadCount is ACTIVE-ORG scoped (Pitfall 5), so a
+	// multi-org user sees only the active org's unread count. A cross-org
+	// unreadCountForUser query is the documented future fix.
+	useEffect(() => {
+		if (unreadCount != null) void Notifications.setBadgeCountAsync(unreadCount);
+	}, [unreadCount]);
+
+	return null;
 }
 
 // Mounts the animated launch overlay as a SIBLING of `children` (the
@@ -151,10 +192,16 @@ export default function RootLayout() {
 	return (
 		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
-				<ClerkLoaded>
-					<ConvexClerkProvider>
-						<View style={{ flex: 1 }}>
-						<StatusBar style="auto" />
+				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap
+				    listeners + cross-org setActive live ABOVE the Convex remount
+				    boundary so an org switch never tears them down. The token-write /
+				    markRead / badge child (PushConvexChild) sits UNDER Convex. */}
+				<PushRegistrationHost>
+					<ClerkLoaded>
+						<ConvexClerkProvider>
+							<PushConvexChild />
+							<View style={{ flex: 1 }}>
+							<StatusBar style="auto" />
 						<Stack screenOptions={{ headerShown: false }}>
 							<Stack.Screen name="(tabs)" />
 							<Stack.Screen name="(auth)" />
@@ -231,10 +278,11 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								})}
 							/>
-						</Stack>
-					</View>
-					</ConvexClerkProvider>
-				</ClerkLoaded>
+							</Stack>
+							</View>
+						</ConvexClerkProvider>
+					</ClerkLoaded>
+				</PushRegistrationHost>
 			</LaunchHost>
 		</ClerkProvider>
 	);
