@@ -20,6 +20,13 @@ import {
 	Outfit_700Bold,
 } from "@expo-google-fonts/outfit";
 import * as SplashScreen from "expo-splash-screen";
+import { LaunchOverlay } from "@/components/launch/LaunchOverlay";
+import { useLaunchReadiness } from "@/lib/use-launch-readiness";
+
+// Module-level cold-start replay guard. Survives the ConvexClerkProvider
+// key={convexKey} remount on org switch because RootLayout itself never remounts —
+// so an org switch never replays the brand animation (Pitfall 2 / T-27-04).
+let hasPlayedLaunch = false;
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -46,6 +53,38 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 		<ConvexProviderWithClerk key={convexKey} client={convex} useAuth={useAuth}>
 			{children as any}
 		</ConvexProviderWithClerk>
+	);
+}
+
+// Mounts the animated launch overlay as a SIBLING of `children` (the
+// ClerkLoaded > ConvexClerkProvider subtree), inside ClerkProvider but ABOVE the
+// Convex remount boundary. useLaunchReadiness calls Clerk useAuth — valid here
+// because LaunchHost is under ClerkProvider; the overlay animates immediately on
+// cold start WHILE Clerk is still loading (not gated on ClerkLoaded). Once
+// dismissed, the module-level hasPlayedLaunch flag keeps an org switch from
+// replaying it.
+function LaunchHost({
+	fontsLoaded,
+	fontError,
+	children,
+}: PropsWithChildren<{ fontsLoaded: boolean; fontError: Error | null }>) {
+	const [showLaunch, setShowLaunch] = useState(!hasPlayedLaunch);
+	const ready = useLaunchReadiness(fontsLoaded, fontError);
+
+	return (
+		<>
+			{children}
+			{showLaunch && (
+				<LaunchOverlay
+					ready={ready}
+					onFirstFrameReady={() => SplashScreen.hide()}
+					onDismissed={() => {
+						hasPlayedLaunch = true;
+						setShowLaunch(false);
+					}}
+				/>
+			)}
+		</>
 	);
 }
 
@@ -94,12 +133,9 @@ export default function RootLayout() {
 		Outfit_700Bold,
 	});
 
-	useEffect(() => {
-		if (fontsLoaded || fontError) {
-			// Hide splash screen once fonts are loaded
-			SplashScreen.hide();
-		}
-	}, [fontsLoaded, fontError]);
+	// Native-splash hand-off is re-sequenced (Pitfall 4): hide() is NO LONGER tied
+	// to font load — it fires from LaunchOverlay's onFirstFrameReady (onLayout) so
+	// the JS overlay paints BEFORE the native splash is removed (no blank frame).
 
 	if (!publishableKey) {
 		throw new Error(
@@ -114,9 +150,10 @@ export default function RootLayout() {
 
 	return (
 		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-			<ClerkLoaded>
-				<ConvexClerkProvider>
-					<View style={{ flex: 1 }}>
+			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
+				<ClerkLoaded>
+					<ConvexClerkProvider>
+						<View style={{ flex: 1 }}>
 						<StatusBar style="auto" />
 						<Stack screenOptions={{ headerShown: false }}>
 							<Stack.Screen name="(tabs)" />
@@ -196,8 +233,9 @@ export default function RootLayout() {
 							/>
 						</Stack>
 					</View>
-				</ConvexClerkProvider>
-			</ClerkLoaded>
+					</ConvexClerkProvider>
+				</ClerkLoaded>
+			</LaunchHost>
 		</ClerkProvider>
 	);
 }
