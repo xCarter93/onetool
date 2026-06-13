@@ -30,8 +30,8 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#031125",
-          "image": "./assets/splash.png",
-          "resizeMode": "cover"
+          "image": "./assets/OneTool-mark.png",
+          "imageWidth": 120
         }
       ],
       [
