@@ -18,7 +18,6 @@ import {
 	Plus,
 	Receipt,
 	Users,
-	Wrench,
 } from "lucide-react-native";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
@@ -99,10 +98,13 @@ export function PadSidebar({
 					/>
 				</View>
 				<View style={styles.brandRow}>
-					<View style={[styles.brandTile, { backgroundColor: t.accent }]}>
-						<Wrench size={21} color="#fff" />
-					</View>
-					<Text style={[styles.brandName, { color: t.ink }]}>OneTool</Text>
+					<Image
+						source={require("@/assets/OneTool-wordmark.png")}
+						style={styles.brandLogo}
+						resizeMode="contain"
+						accessibilityRole="image"
+						accessibilityLabel="OneTool"
+					/>
 				</View>
 			</View>
 
@@ -235,19 +237,10 @@ const styles = StyleSheet.create({
 	brandRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 10,
 	},
-	brandTile: {
-		width: 38,
-		height: 38,
-		borderRadius: 11,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	brandName: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 18,
-		lineHeight: 20,
+	brandLogo: {
+		height: 32,
+		aspectRatio: 908 / 237,
 	},
 	orgRow: {
 		marginHorizontal: 12,
