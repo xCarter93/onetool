@@ -14,7 +14,7 @@
 		"check:privacy-drift": "node scripts/check-privacy-manifest-drift.cjs --advisory"
 	},
 	"dependencies": {
-		"@clerk/expo": "^3.3.1",
+		"@clerk/expo": "3.4.2",
 		"@expo-google-fonts/outfit": "^0.2.3",
 		"@expo/ui": "~56.0.16",
 		"@onetool/backend": "workspace:*",
