@@ -16,7 +16,8 @@ export type AuthRoutingState = {
 	needsMetadata: boolean | undefined;
 };
 
-const SIGN_IN = "/(auth)/sign-in";
+// The (auth) group index host (Clerk AuthView). The signed-out destination.
+const SIGN_IN = "/(auth)";
 const WIZARD = "/(onboarding)/create-organization";
 const TABS = "/(tabs)";
 const LOADING = "loading";
@@ -46,15 +47,4 @@ export function resolveAuthDestination(state: AuthRoutingState): string {
 	// brand-new users both go to the wizard. The wizard detects existing
 	// memberships and sets one active rather than creating a duplicate org.
 	return WIZARD;
-}
-
-// The single post-auth navigation point consumed by sign-in, sign-up, the
-// Apple button onSuccess, and wizard completion — replaces every hardcoded
-// router.replace("/(tabs)"). Skips navigation on the "loading" sentinel.
-export function navigateAfterAuth(
-	replace: (href: string) => void,
-	destination: string
-): void {
-	if (destination === LOADING) return;
-	replace(destination);
 }

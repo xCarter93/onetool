@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
-import { BlurView } from "expo-blur";
 import Animated, {
 	Easing,
 	useAnimatedStyle,
@@ -12,23 +11,21 @@ import Animated, {
 import { fontFamily } from "@/lib/theme";
 import { useDevice } from "@/lib/use-device";
 
-const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
-
-// Frosted glass card holding the OneTool logo + the two-line tagline beneath it.
-// Card entrance: opacity 0→1, translateY 18→0, scale 0.94→1, 1s, delay 350ms.
+// OneTool logo + two-line tagline on the launch overlay. No frosted-glass card —
+// the bare logo animates in over the KenBurns backdrop.
+// Logo entrance: opacity 0→1, translateY 18→0, scale 0.94→1, 1s, delay 350ms.
 // Tagline entrance: opacity 0→1, translateY 10→0, 800ms, delay 950ms.
-// Reduced-motion: everything renders at final state immediately; the BlurView is
-// swapped for a flat rgba fill (RESEARCH Pitfall 5).
+// Reduced-motion: everything renders at final state immediately.
 export function GlassLogoCard() {
 	const reduceMotion = useReducedMotion();
 	const { device } = useDevice();
 	const isPad = device === "ipad";
-	const card = useSharedValue(reduceMotion ? 1 : 0);
+	const logo = useSharedValue(reduceMotion ? 1 : 0);
 	const tag = useSharedValue(reduceMotion ? 1 : 0);
 
 	useEffect(() => {
 		if (reduceMotion) return;
-		card.value = withDelay(
+		logo.value = withDelay(
 			350,
 			withTiming(1, {
 				duration: 1000,
@@ -39,13 +36,13 @@ export function GlassLogoCard() {
 			950,
 			withTiming(1, { duration: 800, easing: Easing.out(Easing.quad) })
 		);
-	}, [reduceMotion, card, tag]);
+	}, [reduceMotion, logo, tag]);
 
-	const cardStyle = useAnimatedStyle(() => ({
-		opacity: card.value,
+	const logoStyle = useAnimatedStyle(() => ({
+		opacity: logo.value,
 		transform: [
-			{ translateY: 18 - card.value * 18 },
-			{ scale: 0.94 + card.value * 0.06 },
+			{ translateY: 18 - logo.value * 18 },
+			{ scale: 0.94 + logo.value * 0.06 },
 		],
 	}));
 
@@ -56,27 +53,13 @@ export function GlassLogoCard() {
 
 	return (
 		<View style={[styles.stage, isPad && styles.stagePad]}>
-			{reduceMotion ? (
-				<Animated.View style={[styles.card, styles.cardFlat, cardStyle]}>
-					<Image
-						source={require("../../assets/OneTool.png")}
-						style={styles.logo}
-						resizeMode="contain"
-					/>
-				</Animated.View>
-			) : (
-				<AnimatedBlurView
-					intensity={28}
-					tint="light"
-					style={[styles.card, cardStyle]}
-				>
-					<Image
-						source={require("../../assets/OneTool.png")}
-						style={styles.logo}
-						resizeMode="contain"
-					/>
-				</AnimatedBlurView>
-			)}
+			<Animated.View style={[styles.logoWrap, logoStyle]}>
+				<Image
+					source={require("../../assets/OneTool-wordmark.png")}
+					style={styles.logo}
+					resizeMode="contain"
+				/>
+			</Animated.View>
 			<Animated.View style={tagStyle}>
 				<Text style={styles.tagline}>
 					One tool.{"\n"}
@@ -94,30 +77,23 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 28,
 		width: "100%",
 	},
-	// iPad: confine the brand card to a contained element instead of stretching
-	// across the large canvas. width:100% + maxWidth keeps the card/logo
-	// proportional; alignSelf centers it. iPhone keeps the unbounded stage above.
+	// iPad: confine the brand lockup to a contained element instead of stretching
+	// across the large canvas. width:100% + maxWidth keeps the logo proportional;
+	// alignSelf centers it. iPhone keeps the unbounded stage above.
 	stagePad: {
 		maxWidth: 420,
 		alignSelf: "center",
 	},
-	card: {
+	// Horizontal inset preserves the logo's prior on-screen size now that the
+	// card padding is gone.
+	logoWrap: {
 		width: "100%",
-		borderRadius: 24,
-		paddingVertical: 30,
 		paddingHorizontal: 26,
-		overflow: "hidden",
-		borderWidth: 1,
-		borderColor: "rgba(255,255,255,0.5)",
-		boxShadow: "0 18px 40px -14px rgba(3,17,37,0.55)",
-	},
-	cardFlat: {
-		backgroundColor: "rgba(255,255,255,0.82)",
 	},
 	logo: {
 		width: "100%",
 		height: undefined,
-		aspectRatio: 1536 / 1024,
+		aspectRatio: 908 / 237,
 	},
 	tagline: {
 		textAlign: "center",

@@ -34,8 +34,8 @@ export default function TabLayout() {
   }
 
   // Not signed in — resolved AFTER the loading gate (see above).
-  if (dest === "/(auth)/sign-in") {
-    return <Redirect href="/(auth)/sign-in" />;
+  if (dest === "/(auth)") {
+    return <Redirect href="/(auth)" />;
   }
 
   // Defensive gate: a signed-in user with no active org / incomplete metadata

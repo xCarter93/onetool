@@ -44,7 +44,7 @@
     "@react-email/components": "^1.0.3",
     "@react-email/render": "^2.0.1",
     "boldsign": "^2.0.1",
-    "convex": "^1.30.0",
+    "convex": "~1.40.0",
     "convex-helpers": "0.1.113",
     "resend": "^6.5.2",
     "stripe": "22.1.1",

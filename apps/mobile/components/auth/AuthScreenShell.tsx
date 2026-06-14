@@ -5,82 +5,23 @@ import {
 	Platform,
 	ScrollView,
 	StyleSheet,
-	Text,
 	View,
 } from "react-native";
 import { HalftoneBg } from "@/components/ui";
-import { StyledButton } from "@/components/styled";
-import { GoogleIcon } from "@/components/GoogleIcon";
-import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
+import { radii, spacing, tokens } from "@/lib/theme";
 import { useDevice } from "@/lib/use-device";
-import { AppleButton } from "./AppleButton";
 
 interface AuthScreenShellProps {
-	title: string;
-	subtitle: string;
-	appleType: "SIGN_IN" | "SIGN_UP";
-	onGoogle: () => void;
-	loading: boolean;
-	onProviderError: (message: string) => void;
-	onAppleSuccess: () => void;
 	children: React.ReactNode;
 }
 
-// Shared auth surface for sign-in and sign-up. iPhone: bounded-height
-// Home-matching HalftoneBg hero + body column. iPad: full-bleed BG.png +
-// navy scrim + a centered floating white card (logo/tagline header lives
-// inside the card — the illustration is the page, so there's no cropped band).
-// Both share an equal-weight Apple/Google provider pair (guideline 4.8), an
-// "or" divider, and the form slot. Two font weights only (bold labels, regular
-// body) — the Google StyledButton label is force-overridden to bold.
-export function AuthScreenShell({
-	title,
-	subtitle,
-	appleType,
-	onGoogle,
-	loading,
-	onProviderError,
-	onAppleSuccess,
-	children,
-}: AuthScreenShellProps) {
+// Chrome-only auth surface. AuthView renders its own logo + "Continue to OneTool"
+// heading, so the shell carries NO logo/tagline/title of its own (that was a
+// duplicate). iPhone: a decorative HalftoneBg banner + a flex body the host
+// fills. iPad: full-bleed BG.png + navy scrim + a centered floating card.
+export function AuthScreenShell({ children }: AuthScreenShellProps) {
 	const { device, width, height } = useDevice();
 	const isPad = device === "ipad";
-
-	// Providers + divider + form — identical on both layouts; only the frame
-	// (hero band vs. floating card) differs.
-	const providersAndForm = (
-		<>
-			<View style={styles.providerPair}>
-				<AppleButton
-					type={appleType}
-					disabled={loading}
-					onError={onProviderError}
-					onSuccess={onAppleSuccess}
-				/>
-				<StyledButton
-					intent="outline"
-					size="lg"
-					onPress={onGoogle}
-					isLoading={loading}
-					disabled={loading}
-					showArrow={false}
-					icon={<GoogleIcon size={20} />}
-					textStyle={{ fontFamily: fontFamily.bold }}
-					style={styles.googleButton}
-				>
-					Continue with Google
-				</StyledButton>
-			</View>
-
-			<View style={styles.divider}>
-				<View style={styles.dividerLine} />
-				<Text style={styles.dividerText}>or</Text>
-				<View style={styles.dividerLine} />
-			</View>
-
-			{children}
-		</>
-	);
 
 	if (isPad) {
 		return (
@@ -110,62 +51,27 @@ export function AuthScreenShell({
 						contentContainerStyle={styles.scrollContentPad}
 						keyboardShouldPersistTaps="handled"
 					>
-						<View style={styles.card}>
-							<View style={styles.cardHeader}>
-								<Image
-									source={require("@/assets/OneTool.png")}
-									style={styles.logo}
-									resizeMode="contain"
-								/>
-								<Text style={styles.tagline}>
-									Run your business from one place
-								</Text>
-							</View>
-
-							<Text style={styles.title}>{title}</Text>
-							<Text style={styles.subtitle}>{subtitle}</Text>
-
-							{providersAndForm}
-						</View>
+						<View style={styles.card}>{children}</View>
 					</ScrollView>
 				</KeyboardAvoidingView>
 			</View>
 		);
 	}
 
+	// Phone: a plain flex column (no ScrollView/KeyboardAvoidingView). AuthView
+	// fills its parent and manages its own scroll + keyboard avoidance natively;
+	// wrapping it in a ScrollView gave its flex:1 host 0 height (blank body).
 	return (
-		<KeyboardAvoidingView
-			style={styles.flex}
-			behavior={Platform.OS === "ios" ? "padding" : undefined}
-		>
-			<ScrollView
-				style={styles.flex}
-				contentContainerStyle={styles.scrollContent}
-				keyboardShouldPersistTaps="handled"
-			>
-				{/* Hero — bounded 220 height so HalftoneBg's internal flex:1 neither
-				    collapses nor overgrows inside the scroll/keyboard layout. */}
-				<View style={styles.hero}>
-					<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10}>
-						<View style={styles.heroContent}>
-							<Image
-								source={require("@/assets/OneTool.png")}
-								style={styles.logo}
-								resizeMode="contain"
-							/>
-							<Text style={styles.tagline}>Run your business from one place</Text>
-						</View>
-					</HalftoneBg>
-				</View>
+		<View style={styles.flex}>
+			{/* Decorative brand banner — bounded 220 height; no logo/tagline (those
+			    now live inside AuthView). */}
+			<View style={styles.hero}>
+				<HalftoneBg brand={0.85} imageFit="width" imageOffsetTop={-10} />
+			</View>
 
-				<View style={styles.body}>
-					<Text style={styles.title}>{title}</Text>
-					<Text style={styles.subtitle}>{subtitle}</Text>
-
-					{providersAndForm}
-				</View>
-			</ScrollView>
-		</KeyboardAvoidingView>
+			{/* flex:1 so the AuthView host resolves to the remaining screen height. */}
+			<View style={[styles.body, styles.flex]}>{children}</View>
+		</View>
 	);
 }
 
@@ -177,10 +83,6 @@ const styles = StyleSheet.create({
 	flexTransparent: {
 		flex: 1,
 		backgroundColor: "transparent",
-	},
-	scrollContent: {
-		flexGrow: 1,
-		paddingBottom: spacing.xl,
 	},
 	// iPad: center the floating card vertically + horizontally over the
 	// full-bleed illustration; outer padding keeps it off the screen edges
@@ -202,79 +104,25 @@ const styles = StyleSheet.create({
 	scrim: {
 		backgroundColor: "rgba(13, 27, 42, 0.28)",
 	},
-	// iPad: the floating auth card.
+	// iPad: the floating auth card. Bg matches the AuthView surface (#f5f5f5) so
+	// the card and the embedded component read as one continuous gray panel —
+	// no white frame around a gray component.
 	card: {
 		width: "100%",
 		maxWidth: 440,
-		backgroundColor: tokens.card,
+		backgroundColor: tokens.bg,
 		borderRadius: radii["3xl"],
 		paddingHorizontal: spacing.xl,
 		paddingTop: spacing.xl,
 		paddingBottom: spacing.xl,
 		boxShadow: "0 18px 40px -12px rgba(13, 27, 42, 0.45)",
 	},
-	// iPad: logo + tagline header inside the card (replaces the phone hero band).
-	cardHeader: {
-		alignItems: "center",
-		gap: spacing.sm,
-		marginBottom: spacing.sm,
-	},
 	hero: {
 		height: 220,
 	},
-	heroContent: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
-		gap: spacing.sm,
-	},
-	logo: {
-		width: 160,
-		height: 48,
-	},
-	tagline: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		color: tokens.sub,
-		textAlign: "center",
-	},
+	// Phone: the host sits directly under the banner; AuthView supplies its own
+	// internal padding so this only adds a little top breathing room.
 	body: {
-		paddingHorizontal: spacing.lg,
-		backgroundColor: tokens.bg,
-	},
-	title: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h1,
-		color: tokens.ink,
-		marginTop: spacing.lg,
-		marginBottom: spacing.xs,
-	},
-	subtitle: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-		color: tokens.mutedForeground,
-		marginBottom: spacing.xl,
-	},
-	providerPair: {
-		gap: spacing.md,
-	},
-	googleButton: {
-		borderRadius: radii.lg,
-	},
-	divider: {
-		flexDirection: "row",
-		alignItems: "center",
-		marginVertical: spacing.lg,
-	},
-	dividerLine: {
-		flex: 1,
-		height: 1,
-		backgroundColor: tokens.border,
-	},
-	dividerText: {
-		marginHorizontal: spacing.md,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		color: tokens.mutedForeground,
+		paddingTop: spacing.sm,
 	},
 });

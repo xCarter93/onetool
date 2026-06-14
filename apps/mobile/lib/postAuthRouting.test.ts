@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	navigateAfterAuth,
 	resolveAuthDestination,
 	type AuthRoutingState,
 } from "./postAuthRouting";
@@ -24,7 +23,7 @@ describe("resolveAuthDestination", () => {
 	it("routes signed-out users to sign-in", () => {
 		expect(
 			resolveAuthDestination({ ...base, isSignedIn: false })
-		).toBe("/(auth)/sign-in");
+		).toBe("/(auth)");
 	});
 
 	// Regression: Clerk's org hooks never reach isLoaded:true without an active
@@ -37,7 +36,7 @@ describe("resolveAuthDestination", () => {
 				isSignedIn: false,
 				orgLoaded: false,
 			})
-		).toBe("/(auth)/sign-in");
+		).toBe("/(auth)");
 	});
 
 	it("returns 'loading' for a signed-in user while org context resolves", () => {
@@ -95,23 +94,5 @@ describe("resolveAuthDestination", () => {
 				needsMetadata: undefined,
 			})
 		).toBe("/(onboarding)/create-organization");
-	});
-});
-
-describe("navigateAfterAuth", () => {
-	it("does NOT call replace when destination is 'loading'", () => {
-		let called = false;
-		navigateAfterAuth(() => {
-			called = true;
-		}, "loading");
-		expect(called).toBe(false);
-	});
-
-	it("calls replace with the destination otherwise", () => {
-		let arg: string | null = null;
-		navigateAfterAuth((href) => {
-			arg = href;
-		}, "/(tabs)");
-		expect(arg).toBe("/(tabs)");
 	});
 });

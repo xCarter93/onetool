@@ -1,0 +1,23 @@
+{
+  "colors": {
+    "primary": "#00a6f4",
+    "primaryForeground": "#ffffff",
+    "background": "#f5f5f5",
+    "foreground": "#09090b",
+    "mutedForeground": "#71717b",
+    "muted": "#f4f4f5",
+    "border": "#0f172a",
+    "input": "#ffffff",
+    "inputForeground": "#09090b",
+    "ring": "#0084d1",
+    "danger": "#e7000b",
+    "success": "#009966",
+    "warning": "#ffb900",
+    "neutral": "#71717b",
+    "shadow": "#0f172a2e"
+  },
+  "design": {
+    "borderRadius": 12,
+    "fontFamily": "Outfit"
+  }
+}
