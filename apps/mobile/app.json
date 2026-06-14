@@ -127,7 +127,10 @@
       "router": {},
       "eas": {
         "projectId": "6984c14f-84fc-4379-9c29-d55c1adb2801"
-      }
+      },
+      "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "402187947909-2gen9v26eo937uri25hla9lfg0np2ul9.apps.googleusercontent.com",
+      "EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID": "402187947909-p3nu4ndmpoiqrlgti2bhm9cnnoihntib.apps.googleusercontent.com",
+      "EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.402187947909-p3nu4ndmpoiqrlgti2bhm9cnnoihntib"
     },
     "owner": "onetool"
   }

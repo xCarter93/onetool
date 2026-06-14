@@ -9,78 +9,26 @@ import {
 	View,
 } from "react-native";
 import { HalftoneBg } from "@/components/ui";
-import { StyledButton } from "@/components/styled";
-import { GoogleIcon } from "@/components/GoogleIcon";
 import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
 import { useDevice } from "@/lib/use-device";
-import { AppleButton } from "./AppleButton";
 
 interface AuthScreenShellProps {
 	title: string;
 	subtitle: string;
-	appleType: "SIGN_IN" | "SIGN_UP";
-	onGoogle: () => void;
-	loading: boolean;
-	onProviderError: (message: string) => void;
-	onAppleSuccess: () => void;
 	children: React.ReactNode;
 }
 
-// Shared auth surface for sign-in and sign-up. iPhone: bounded-height
-// Home-matching HalftoneBg hero + body column. iPad: full-bleed BG.png +
-// navy scrim + a centered floating white card (logo/tagline header lives
-// inside the card — the illustration is the page, so there's no cropped band).
-// Both share an equal-weight Apple/Google provider pair (guideline 4.8), an
-// "or" divider, and the form slot. Two font weights only (bold labels, regular
-// body) — the Google StyledButton label is force-overridden to bold.
+// Chrome-only auth surface. iPhone: bounded-height Home-matching HalftoneBg
+// hero + body column. iPad: full-bleed BG.png + navy scrim + a centered
+// floating white card (logo/tagline header lives inside the card). A single
+// children body slot — the host fills it (AuthView).
 export function AuthScreenShell({
 	title,
 	subtitle,
-	appleType,
-	onGoogle,
-	loading,
-	onProviderError,
-	onAppleSuccess,
 	children,
 }: AuthScreenShellProps) {
 	const { device, width, height } = useDevice();
 	const isPad = device === "ipad";
-
-	// Providers + divider + form — identical on both layouts; only the frame
-	// (hero band vs. floating card) differs.
-	const providersAndForm = (
-		<>
-			<View style={styles.providerPair}>
-				<AppleButton
-					type={appleType}
-					disabled={loading}
-					onError={onProviderError}
-					onSuccess={onAppleSuccess}
-				/>
-				<StyledButton
-					intent="outline"
-					size="lg"
-					onPress={onGoogle}
-					isLoading={loading}
-					disabled={loading}
-					showArrow={false}
-					icon={<GoogleIcon size={20} />}
-					textStyle={{ fontFamily: fontFamily.bold }}
-					style={styles.googleButton}
-				>
-					Continue with Google
-				</StyledButton>
-			</View>
-
-			<View style={styles.divider}>
-				<View style={styles.dividerLine} />
-				<Text style={styles.dividerText}>or</Text>
-				<View style={styles.dividerLine} />
-			</View>
-
-			{children}
-		</>
-	);
 
 	if (isPad) {
 		return (
@@ -125,7 +73,7 @@ export function AuthScreenShell({
 							<Text style={styles.title}>{title}</Text>
 							<Text style={styles.subtitle}>{subtitle}</Text>
 
-							{providersAndForm}
+							{children}
 						</View>
 					</ScrollView>
 				</KeyboardAvoidingView>
@@ -162,7 +110,7 @@ export function AuthScreenShell({
 					<Text style={styles.title}>{title}</Text>
 					<Text style={styles.subtitle}>{subtitle}</Text>
 
-					{providersAndForm}
+					{children}
 				</View>
 			</ScrollView>
 		</KeyboardAvoidingView>
@@ -254,27 +202,5 @@ const styles = StyleSheet.create({
 		fontSize: type.h4,
 		color: tokens.mutedForeground,
 		marginBottom: spacing.xl,
-	},
-	providerPair: {
-		gap: spacing.md,
-	},
-	googleButton: {
-		borderRadius: radii.lg,
-	},
-	divider: {
-		flexDirection: "row",
-		alignItems: "center",
-		marginVertical: spacing.lg,
-	},
-	dividerLine: {
-		flex: 1,
-		height: 1,
-		backgroundColor: tokens.border,
-	},
-	dividerText: {
-		marginHorizontal: spacing.md,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		color: tokens.mutedForeground,
 	},
 });
