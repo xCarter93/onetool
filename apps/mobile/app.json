@@ -96,7 +96,7 @@
       "expo-secure-store",
       "expo-font",
       "expo-document-picker",
-      "@clerk/expo",
+      ["@clerk/expo", { "theme": "./clerk-theme.json" }],
       "expo-apple-authentication",
       "expo-notifications",
       [
