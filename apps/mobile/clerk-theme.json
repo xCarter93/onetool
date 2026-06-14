@@ -2,12 +2,12 @@
   "colors": {
     "primary": "#00a6f4",
     "primaryForeground": "#ffffff",
-    "background": "#ffffff",
+    "background": "#f5f5f5",
     "foreground": "#09090b",
     "mutedForeground": "#71717b",
     "muted": "#f4f4f5",
-    "border": "#e1e1e5",
-    "input": "#d4d4d8",
+    "border": "#0f172a",
+    "input": "#ffffff",
     "inputForeground": "#09090b",
     "ring": "#0084d1",
     "danger": "#e7000b",
@@ -17,7 +17,7 @@
     "shadow": "#0f172a2e"
   },
   "design": {
-    "borderRadius": 8,
+    "borderRadius": 12,
     "fontFamily": "Outfit"
   }
 }
