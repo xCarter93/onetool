@@ -39,8 +39,29 @@ export function NavUser() {
 						<UserButton
 							appearance={{
 								elements: {
+									userButtonTrigger:
+										"rounded-lg focus-visible:ring-2 focus-visible:ring-primary/40",
 									avatarBox: "h-8 w-8 rounded-lg",
-									userButtonPopoverCard: "rounded-lg",
+									userButtonAvatarBox: "h-8 w-8 rounded-lg",
+									// Popover card — matches the header popovers
+									userButtonPopoverCard:
+										"bg-popover text-popover-foreground border border-border rounded-xl shadow-xl",
+									userButtonPopoverMain: "bg-popover",
+									userButtonPopoverActionButton:
+										"rounded-lg hover:bg-muted/60 transition-colors text-foreground",
+									userButtonPopoverActionButtonIcon: "text-muted-foreground",
+									userButtonPopoverActionButtonText: "text-sm text-foreground",
+									userButtonPopoverFooter: "border-t border-border",
+									userPreviewMainIdentifier:
+										"text-sm font-semibold text-foreground",
+									userPreviewSecondaryIdentifier:
+										"text-xs text-muted-foreground",
+								},
+								variables: {
+									colorPrimary: "#00a6f4",
+									colorTextOnPrimaryBackground: "#ffffff",
+									fontFamily: "inherit",
+									borderRadius: "0.5rem",
 								},
 							}}
 						/>

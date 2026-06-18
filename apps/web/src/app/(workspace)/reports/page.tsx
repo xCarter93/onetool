@@ -1,73 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
-import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import {
-	BarChart3,
-	Plus,
-	FileText,
-	Calendar,
-	Trash2,
-	ExternalLink,
-	Copy,
-	PieChart,
-	TrendingUp,
-	Table as TableIcon,
-} from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Copy, Plus, Trash2 } from "lucide-react";
+import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
+import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import {
+	entityLabels,
+	formatRelativeTime,
+	groupByOptions,
+	reportTemplates,
+	visualizationIcons,
+} from "./report-config";
 
-const formatDate = (timestamp: number) => {
-	return new Date(timestamp).toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
+function templateHref(t: (typeof reportTemplates)[number]) {
+	const qs = new URLSearchParams({
+		entity: t.entityType,
+		group: t.groupBy,
+		viz: t.viz,
+		range: t.dateRange,
+		name: t.name,
 	});
-};
+	return `/reports/new?${qs.toString()}`;
+}
 
-const formatRelativeTime = (timestamp: number) => {
-	const now = Date.now();
-	const diff = now - timestamp;
-	const minutes = Math.floor(diff / 60000);
-	const hours = Math.floor(diff / 3600000);
-	const days = Math.floor(diff / 86400000);
-
-	if (minutes < 1) return "Just now";
-	if (minutes < 60) return `${minutes}m ago`;
-	if (hours < 24) return `${hours}h ago`;
-	if (days < 7) return `${days}d ago`;
-	return formatDate(timestamp);
-};
-
-const visualizationIcons = {
-	table: TableIcon,
-	bar: BarChart3,
-	line: TrendingUp,
-	pie: PieChart,
-};
-
-const entityLabels: Record<string, string> = {
-	clients: "Clients",
-	projects: "Projects",
-	tasks: "Tasks",
-	quotes: "Quotes",
-	invoices: "Invoices",
-	activities: "Activities",
-};
-
-function ReportCard({
+function ReportRow({
 	report,
 	onView,
 	onDelete,
@@ -78,82 +40,63 @@ function ReportCard({
 	onDelete: () => void;
 	onDuplicate: () => void;
 }) {
-	const VizIcon = visualizationIcons[report.visualization.type] || BarChart3;
+	const VizIcon = visualizationIcons[report.visualization.type];
+	const groupBy = report.config.groupBy?.[0];
+	const groupByLabel =
+		groupByOptions[report.config.entityType]?.find((o) => o.value === groupBy)
+			?.label ?? groupBy;
+	const source = entityLabels[report.config.entityType] ?? report.config.entityType;
 
 	return (
-		<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40 hover:ring-primary/30 transition-all duration-200">
-			<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-			<CardHeader className="relative z-10 pb-3">
-				<div className="flex items-start justify-between gap-3">
-					<div className="flex items-center gap-3 min-w-0">
-						<div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-							<VizIcon className="w-5 h-5 text-primary" />
-						</div>
-						<div className="min-w-0">
-							<CardTitle className="text-base font-semibold text-foreground truncate">
-								{report.name}
-							</CardTitle>
-							<CardDescription className="text-xs mt-0.5">
-								{entityLabels[report.config.entityType] || report.config.entityType}
-								{report.config.groupBy?.[0] && ` by ${report.config.groupBy[0]}`}
-							</CardDescription>
-						</div>
+		<tr
+			onClick={onView}
+			className="group cursor-pointer transition-colors hover:bg-muted/40"
+		>
+			<td className="py-3 pl-2 pr-3">
+				<div className="flex items-center gap-3">
+					<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+						<VizIcon className="h-4.5 w-4.5" />
 					</div>
-					<Badge
-						variant="outline"
-						className="flex-shrink-0 text-xs capitalize"
-					>
-						{report.visualization.type}
-					</Badge>
-				</div>
-			</CardHeader>
-			<CardContent className="relative z-10 pt-0">
-				{report.description && (
-					<p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-						{report.description}
-					</p>
-				)}
-				<div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
-					<div className="flex items-center gap-1">
-						<Calendar className="w-3 h-3" />
-						<span>Updated {formatRelativeTime(report.updatedAt)}</span>
+					<div className="min-w-0">
+						<p className="truncate font-medium text-foreground">{report.name}</p>
+						<p className="truncate text-xs text-muted-foreground">
+							{source}
+							{groupByLabel ? ` · by ${groupByLabel}` : ""}
+						</p>
 					</div>
-					{report.isPublic && (
-						<Badge variant="secondary" className="text-xs">
-							Shared
-						</Badge>
-					)}
 				</div>
-				<div className="flex items-center gap-2">
+			</td>
+			<td className="hidden px-3 py-3 text-sm capitalize text-muted-foreground sm:table-cell">
+				{report.visualization.type}
+			</td>
+			<td className="hidden px-3 py-3 text-sm text-muted-foreground md:table-cell">
+				{formatRelativeTime(report.updatedAt)}
+			</td>
+			<td className="py-3 pl-3 pr-2">
+				<div
+					onClick={(e) => e.stopPropagation()}
+					className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+				>
 					<Button
-						intent="outline"
-						size="sm"
-						onPress={onView}
-						className="flex-1"
-					>
-						<ExternalLink className="w-4 h-4 mr-1.5" />
-						View
-					</Button>
-					<Button
-						intent="outline"
+						intent="plain"
 						size="sq-sm"
-						onPress={onDuplicate}
 						aria-label="Duplicate report"
+						onPress={onDuplicate}
 					>
-						<Copy className="w-4 h-4" />
+						<Copy className="h-4 w-4" />
 					</Button>
 					<Button
-						intent="outline"
+						intent="plain"
 						size="sq-sm"
-						onPress={onDelete}
-						className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
 						aria-label="Delete report"
+						className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950"
+						onPress={onDelete}
 					>
-						<Trash2 className="w-4 h-4" />
+						<Trash2 className="h-4 w-4" />
 					</Button>
 				</div>
-			</CardContent>
-		</Card>
+			</td>
+		</tr>
 	);
 }
 
@@ -169,45 +112,38 @@ export default function ReportsPage() {
 		name: string;
 	} | null>(null);
 
-	const handleDelete = (id: string, name: string) => {
-		setReportToDelete({ id, name });
-		setDeleteModalOpen(true);
-	};
-
 	const confirmDelete = async () => {
-		if (reportToDelete) {
-			try {
-				await deleteReport({ id: reportToDelete.id as Id<"reports"> });
-				setDeleteModalOpen(false);
-				setReportToDelete(null);
-			} catch (error) {
-				console.error("Failed to delete report:", error);
-			}
+		if (!reportToDelete) return;
+		try {
+			await deleteReport({ id: reportToDelete.id as Id<"reports"> });
+			setDeleteModalOpen(false);
+			setReportToDelete(null);
+		} catch (error) {
+			console.error("Failed to delete report:", error);
 		}
 	};
 
 	const handleDuplicate = async (id: string) => {
 		try {
-			const newReportId = await duplicateReport({ id: id as Id<"reports"> });
-			router.push(`/reports/${newReportId}`);
+			const newId = await duplicateReport({ id: id as Id<"reports"> });
+			router.push(`/reports/${newId}`);
 		} catch (error) {
 			console.error("Failed to duplicate report:", error);
 		}
 	};
 
 	const isLoading = reports === undefined;
-	const isEmpty = !isLoading && (!reports || reports.length === 0);
 
 	return (
-		<div className="relative p-6 space-y-6">
+		<div className="space-y-8 p-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
+					<div className="h-6 w-1.5 rounded-full bg-linear-to-b from-primary to-primary/60" />
 					<div>
 						<h1 className="text-2xl font-bold text-foreground">Reports</h1>
-						<p className="text-muted-foreground text-sm">
-							Build and view analytics reports for your organization
+						<p className="text-sm text-muted-foreground">
+							Build and view analytics for your organization
 						</p>
 					</div>
 				</div>
@@ -221,127 +157,104 @@ export default function ReportsPage() {
 				</StyledButton>
 			</div>
 
-			{/* Stats Cards */}
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<FileText className="size-4" /> Total Reports
-						</CardTitle>
-						<CardDescription>Reports in your workspace</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								reports?.length || 0
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<BarChart3 className="size-4" /> Chart Reports
-						</CardTitle>
-						<CardDescription>Visual analytics reports</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								reports?.filter((r) => r.visualization.type !== "table").length || 0
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<TableIcon className="size-4" /> Table Reports
-						</CardTitle>
-						<CardDescription>Tabular data reports</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								reports?.filter((r) => r.visualization.type === "table").length || 0
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			{/* Reports Grid */}
-			{isEmpty ? (
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardContent className="relative z-10 py-12 text-center">
-						<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-							<BarChart3 className="h-12 w-12 text-muted-foreground" />
-						</div>
-						<h3 className="text-lg font-semibold text-foreground mb-2">
-							No reports yet
-						</h3>
-						<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-							Create your first report to visualize your business data and gain insights.
-						</p>
-						<StyledButton
-							onClick={() => router.push("/reports/new")}
-							intent="primary"
-							size="md"
-							icon={<Plus className="h-4 w-4" />}
-						>
-							Create Your First Report
-						</StyledButton>
-					</CardContent>
-				</Card>
-			) : isLoading ? (
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-					{Array.from({ length: 6 }).map((_, i) => (
-						<Card
-							key={i}
-							className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40"
-						>
-							<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-							<CardHeader className="relative z-10">
-								<div className="flex items-center gap-3">
-									<div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" />
-									<div className="space-y-2 flex-1">
-										<div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-										<div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-									</div>
+			{/* Templates */}
+			<section className="space-y-3">
+				<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+					Start from a template
+				</h2>
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					{reportTemplates.map((t) => {
+						const Icon = t.icon;
+						return (
+							<Link
+								key={t.id}
+								href={templateHref(t)}
+								className="group flex items-start gap-3 rounded-xl border border-border/60 bg-background/40 p-4 transition-colors hover:border-primary/40 hover:bg-muted/40"
+							>
+								<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+									<Icon className="h-4.5 w-4.5" />
 								</div>
-							</CardHeader>
-							<CardContent className="relative z-10">
-								<div className="h-12 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
-								<div className="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							</CardContent>
-						</Card>
-					))}
+								<div className="min-w-0">
+									<p className="font-medium text-foreground">{t.name}</p>
+									<p className="text-xs text-muted-foreground">
+										{t.description}
+									</p>
+								</div>
+							</Link>
+						);
+					})}
 				</div>
-			) : (
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-					{reports?.map((report) => (
-						<ReportCard
-							key={report._id}
-							report={report}
-							onView={() => router.push(`/reports/${report._id}`)}
-							onDelete={() => handleDelete(report._id, report.name)}
-							onDuplicate={() => handleDuplicate(report._id)}
-						/>
-					))}
-				</div>
-			)}
+			</section>
 
-			{/* Delete Confirmation Modal */}
+			{/* Saved reports */}
+			<section className="space-y-3">
+				<div className="flex items-center gap-2">
+					<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Your reports
+					</h2>
+					{!isLoading && reports && reports.length > 0 && (
+						<span className="rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
+							{reports.length}
+						</span>
+					)}
+				</div>
+
+				{isLoading ? (
+					<div className="space-y-2">
+						{Array.from({ length: 4 }).map((_, i) => (
+							<div
+								key={i}
+								className="flex items-center gap-3 rounded-lg px-2 py-3"
+							>
+								<div className="h-9 w-9 animate-pulse rounded-lg bg-muted" />
+								<div className="space-y-2">
+									<div className="h-4 w-40 animate-pulse rounded bg-muted" />
+									<div className="h-3 w-24 animate-pulse rounded bg-muted" />
+								</div>
+							</div>
+						))}
+					</div>
+				) : !reports || reports.length === 0 ? (
+					<div className="rounded-xl border border-dashed border-border/70 px-6 py-12 text-center">
+						<p className="font-medium text-foreground">No reports yet</p>
+						<p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+							Pick a template above to get started, or build one from scratch.
+						</p>
+					</div>
+				) : (
+					<div className="overflow-x-auto rounded-xl border border-border/60">
+						<table className="w-full border-collapse">
+							<thead>
+								<tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+									<th className="py-2 pl-2 pr-3 font-medium">Name</th>
+									<th className="hidden px-3 py-2 font-medium sm:table-cell">
+										Type
+									</th>
+									<th className="hidden px-3 py-2 font-medium md:table-cell">
+										Updated
+									</th>
+									<th className="py-2 pl-3 pr-2" />
+								</tr>
+							</thead>
+							<tbody className="divide-y divide-border/60">
+								{reports.map((report) => (
+									<ReportRow
+										key={report._id}
+										report={report}
+										onView={() => router.push(`/reports/${report._id}`)}
+										onDelete={() => {
+											setReportToDelete({ id: report._id, name: report.name });
+											setDeleteModalOpen(true);
+										}}
+										onDuplicate={() => handleDuplicate(report._id)}
+									/>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
+			</section>
+
 			{reportToDelete && (
 				<DeleteConfirmationModal
 					isOpen={deleteModalOpen}
@@ -355,4 +268,3 @@ export default function ReportsPage() {
 		</div>
 	);
 }
-

@@ -8,8 +8,11 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { formatDistanceToNow } from "date-fns";
-import { Circle, AlertCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, AlertCircle } from "lucide-react";
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
+
+type Health = "operational" | "degraded" | "outage";
 
 export function ServiceStatusBadge() {
 	const services = useQuery(api.serviceStatus.getAll);
@@ -20,37 +23,91 @@ export function ServiceStatusBadge() {
 		(s) => s.status === "operational"
 	).length;
 	const totalCount = services.length;
-	const hasIssues = operationalCount < totalCount;
 
-	const statusColor =
+	const health: Health =
 		operationalCount === totalCount
-			? "bg-emerald-400" // green for all operational
+			? "operational"
 			: operationalCount >= totalCount / 2
-				? "bg-amber-400" // amber for some issues
-				: "bg-red-400"; // red for major issues
+				? "degraded"
+				: "outage";
+
+	const theme = {
+		operational: {
+			dot: "bg-emerald-500",
+			pill: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 hover:bg-emerald-500/15 dark:text-emerald-300",
+			tile: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+			icon: CheckCircle2,
+			label: "All systems operational",
+		},
+		degraded: {
+			dot: "bg-amber-500",
+			pill: "bg-amber-500/10 text-amber-700 ring-amber-500/20 hover:bg-amber-500/15 dark:text-amber-300",
+			tile: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+			icon: AlertTriangle,
+			label: `${operationalCount}/${totalCount} operational`,
+		},
+		outage: {
+			dot: "bg-red-500",
+			pill: "bg-red-500/10 text-red-700 ring-red-500/20 hover:bg-red-500/15 dark:text-red-300",
+			tile: "bg-red-500/10 text-red-600 dark:text-red-400",
+			icon: AlertCircle,
+			label: `${operationalCount}/${totalCount} operational`,
+		},
+	}[health];
+
+	const HealthIcon = theme.icon;
 
 	return (
 		<Popover>
 			<PopoverTrigger asChild>
-				<button className="relative flex items-center gap-3 rounded-full px-4 py-2 transition-all duration-200 cursor-pointer hover:ring-2 hover:ring-primary/30">
-					<span
-						className={`relative inline-flex h-2.5 w-2.5 ${hasIssues ? "" : "animate-pulse"}`}
-					>
+				<button
+					className={cn(
+						"inline-flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+						theme.pill
+					)}
+				>
+					<span className="relative flex size-2">
 						<span
-							className={`absolute inline-flex h-full w-full rounded-full ${statusColor} opacity-60 blur-sm`}
+							className={cn(
+								"absolute inline-flex h-full w-full rounded-full opacity-75",
+								theme.dot,
+								health === "operational" && "motion-safe:animate-ping"
+							)}
 						/>
 						<span
-							className={`relative inline-flex h-2.5 w-2.5 rounded-full ${statusColor}`}
+							className={cn(
+								"relative inline-flex size-2 rounded-full",
+								theme.dot
+							)}
 						/>
 					</span>
-					<span className="text-sm font-medium text-foreground/80">
-						{operationalCount}/{totalCount} services operational
-					</span>
+					<span className="whitespace-nowrap">{theme.label}</span>
 				</button>
 			</PopoverTrigger>
-			<PopoverContent className="w-80 bg-background! border-border shadow-xl">
-				<div className="space-y-4">
-					<h3 className="font-semibold text-sm">Service Status</h3>
+			<PopoverContent
+				align="center"
+				sideOffset={10}
+				className="w-80 rounded-xl border-border p-0 shadow-xl"
+			>
+				<div className="flex items-center gap-3 border-b border-border px-4 py-3">
+					<span
+						className={cn(
+							"flex size-9 items-center justify-center rounded-full",
+							theme.tile
+						)}
+					>
+						<HealthIcon className="size-5" />
+					</span>
+					<div className="min-w-0">
+						<p className="text-sm font-semibold text-foreground">
+							{theme.label}
+						</p>
+						<p className="text-xs text-muted-foreground">
+							{operationalCount} of {totalCount} services online
+						</p>
+					</div>
+				</div>
+				<div className="p-2">
 					{services.map((service) => (
 						<ServiceStatusItem key={service._id} service={service} />
 					))}
@@ -61,40 +118,58 @@ export function ServiceStatusBadge() {
 }
 
 function ServiceStatusItem({ service }: { service: Doc<"serviceStatus"> }) {
-	const getStatusIcon = (status: string) => {
+	const meta = (status: string) => {
 		switch (status) {
 			case "operational":
-				return <Circle className="h-3 w-3 fill-emerald-400 text-emerald-400" />;
+				return {
+					dot: "bg-emerald-500",
+					label: "Operational",
+					text: "text-emerald-600 dark:text-emerald-400",
+				};
 			case "degraded":
 			case "partial_outage":
-				return <AlertTriangle className="h-3 w-3 text-amber-400" />;
+				return {
+					dot: "bg-amber-500",
+					label: "Degraded",
+					text: "text-amber-600 dark:text-amber-400",
+				};
 			case "major_outage":
-				return <AlertCircle className="h-3 w-3 text-red-400" />;
+				return {
+					dot: "bg-red-500",
+					label: "Outage",
+					text: "text-red-600 dark:text-red-400",
+				};
 			default:
-				return <Circle className="h-3 w-3 text-gray-400" />;
+				return {
+					dot: "bg-muted-foreground",
+					label: "Unknown",
+					text: "text-muted-foreground",
+				};
 		}
 	};
 
-	// Custom display name mapping
 	const getDisplayName = (serviceName: string) => {
-		if (serviceName === "boldsign_esignature") {
-			return "E-Signature";
-		}
+		if (serviceName === "boldsign_esignature") return "E-Signature";
 		return serviceName
 			.replace(/_/g, " ")
 			.replace(/\b\w/g, (l) => l.toUpperCase());
 	};
 
-	const displayName = getDisplayName(service.serviceName);
+	const m = meta(service.status);
 
 	return (
-		<div className="flex items-center justify-between text-sm">
-			<div className="flex items-center gap-2">
-				{getStatusIcon(service.status)}
-				<span>{displayName}</span>
+		<div className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/60">
+			<div className="flex min-w-0 items-center gap-2.5">
+				<span className={cn("size-2 shrink-0 rounded-full", m.dot)} />
+				<span className="truncate text-sm font-medium text-foreground">
+					{getDisplayName(service.serviceName)}
+				</span>
 			</div>
-			<div className="text-xs text-muted-foreground">
-				{formatDistanceToNow(service.lastChecked, { addSuffix: true })}
+			<div className="flex shrink-0 items-center gap-2">
+				<span className={cn("text-xs font-medium", m.text)}>{m.label}</span>
+				<span className="text-[11px] text-muted-foreground">
+					{formatDistanceToNow(service.lastChecked, { addSuffix: true })}
+				</span>
 			</div>
 		</div>
 	);

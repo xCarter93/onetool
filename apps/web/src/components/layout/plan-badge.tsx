@@ -18,6 +18,7 @@ import {
 	Briefcase,
 	ArrowUpRight,
 	Loader2,
+	Check,
 } from "lucide-react";
 import { formatLimit, getUsagePercentage } from "@/lib/plan-limits";
 import { motion } from "motion/react";
@@ -176,27 +177,27 @@ export function PlanBadge() {
 					<div className="p-4 space-y-3 bg-background">
 						<div className="space-y-2 text-sm">
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<span className="text-green-500">✓</span>
+								<Check className="size-3.5 shrink-0 text-emerald-500" />
 								<span>Unlimited clients</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<span className="text-green-500">✓</span>
+								<Check className="size-3.5 shrink-0 text-emerald-500" />
 								<span>Unlimited projects</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<span className="text-green-500">✓</span>
+								<Check className="size-3.5 shrink-0 text-emerald-500" />
 								<span>Unlimited e-signatures</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<span className="text-green-500">✓</span>
+								<Check className="size-3.5 shrink-0 text-emerald-500" />
 								<span>Custom SKUs</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<span className="text-green-500">✓</span>
+								<Check className="size-3.5 shrink-0 text-emerald-500" />
 								<span>Organization documents</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<span className="text-green-500">✓</span>
+								<Check className="size-3.5 shrink-0 text-emerald-500" />
 								<span>AI import</span>
 							</div>
 						</div>

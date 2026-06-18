@@ -1,14 +1,6 @@
 "use client";
 
-import React, {
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import { StyledBadge } from "@/components/ui/styled/styled-badge";
+import React, { useMemo } from "react";
 import {
 	ChartConfig,
 	ChartContainer,
@@ -16,11 +8,8 @@ import {
 } from "@/components/ui/chart";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { DateRange } from "react-day-picker";
-import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
 import { Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
-import { AnimatedNumber } from "./animated-number";
-import { StatCardSparkline } from "./stat-card-sparkline";
 
 const parseLocalDate = (dateString: string) =>
 	new Date(`${dateString}T00:00:00`);
@@ -69,7 +58,7 @@ interface MetricChartProps {
 	onDateRangeChange?: (range?: DateRange) => void;
 	/** Optional floating action button rendered in bottom-right of card */
 	floatingAction?: React.ReactNode;
-	/** Last 7 data points per metric for sparkline rendering */
+	/** Last 7 data points per metric — accepted for API compatibility */
 	sparklineData?: MetricDataMap;
 }
 
@@ -98,61 +87,27 @@ const CustomTooltip = ({ active, payload, metrics }: TooltipProps) => {
 	return null;
 };
 
+/**
+ * Chart-only card body: an eyebrow + title + date-range header above the
+ * interactive line chart for whichever metric is currently selected. Metric
+ * selection lives in the parent (the stat spotlight + KPI chips), so this
+ * component just renders the active series.
+ */
 export default function LineChart6({
 	metrics,
 	chartConfig,
 	dataByMetric,
 	selectedMetric,
-	onMetricChange,
 	title = "Performance",
 	description,
 	className,
-	height = 360,
+	height = 280,
 	dateRange,
 	onDateRangeChange,
 	floatingAction,
-	sparklineData,
 }: MetricChartProps) {
 	const firstMetricKey = metrics[0]?.key ?? "";
-	const [internalMetric, setInternalMetric] = useState<string>(
-		selectedMetric ?? firstMetricKey
-	);
-
-	// Track whether the initial animation has completed
-	const [hasAnimated, setHasAnimated] = useState(false);
-	useEffect(() => {
-		const id = requestAnimationFrame(() => setHasAnimated(true));
-		return () => cancelAnimationFrame(id);
-	}, []);
-
-	// Measure sparkline width from first stat card button
-	const gridRef = useRef<HTMLDivElement>(null);
-	const [sparklineWidth, setSparklineWidth] = useState(0);
-	useLayoutEffect(() => {
-		const grid = gridRef.current;
-		if (!grid) return;
-		const measure = () => {
-			const firstButton = grid.querySelector("button");
-			if (firstButton) {
-				setSparklineWidth(firstButton.clientWidth - 32); // subtract p-4 padding (16px each side)
-			}
-		};
-		measure();
-		const observer = new ResizeObserver(measure);
-		observer.observe(grid);
-		return () => observer.disconnect();
-	}, []);
-
-	// Sync internal selection with controlled prop / first metric during render
-	if (selectedMetric && selectedMetric !== internalMetric) {
-		setInternalMetric(selectedMetric);
-	} else if (!internalMetric && firstMetricKey) {
-		setInternalMetric(firstMetricKey);
-	}
-
-	const activeMetricKey = selectedMetric ?? internalMetric;
-
-	// Uniform chart color for all metrics
+	const activeMetricKey = selectedMetric ?? firstMetricKey;
 	const uniformColor = "var(--chart-1)";
 
 	const activeMetric = useMemo(
@@ -164,7 +119,6 @@ export default function LineChart6({
 		() => dataByMetric[activeMetricKey] ?? [],
 		[dataByMetric, activeMetricKey]
 	);
-	const activeColor = uniformColor;
 
 	const { isFlatLine, flatValue } = useMemo(() => {
 		if (!chartData.length) return { isFlatLine: false, flatValue: undefined };
@@ -186,164 +140,28 @@ export default function LineChart6({
 		return { isFlatLine: min === max, flatValue: min };
 	}, [chartData, activeMetricKey]);
 
-	const getSeriesChangePercent = useCallback(
-		(key: string) => {
-			const series = dataByMetric[key] ?? [];
-			if (!series.length) return undefined;
-
-			const firstDatum = series.find((point) =>
-				Number.isFinite(Number(point[key]))
-			);
-			const lastDatum = [...series]
-				.reverse()
-				.find((point) => Number.isFinite(Number(point[key])));
-
-			if (!firstDatum || !lastDatum) return undefined;
-
-			const firstVal = Number(firstDatum[key]);
-			const lastVal = Number(lastDatum[key]);
-
-			if (!Number.isFinite(firstVal) || !Number.isFinite(lastVal)) {
-				return undefined;
-			}
-
-			if (lastVal === firstVal) return 0;
-			if (firstVal === 0) return lastVal > 0 ? 100 : 0;
-
-			return ((lastVal - firstVal) / Math.abs(firstVal)) * 100;
-		},
-		[dataByMetric]
-	);
-
-	const handleMetricChange = (key: string) => {
-		if (onMetricChange) {
-			onMetricChange(key);
-		}
-		setInternalMetric(key);
-	};
-
 	return (
-		<div className={cn("relative w-full", className)}>
-			<div className="space-y-3 pb-4">
-				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-					<div className="space-y-1">
-						<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-							Overview
-						</p>
-						<h3 className="text-lg font-semibold text-foreground">{title}</h3>
-						{description ? (
-							<p className="text-sm text-muted-foreground">{description}</p>
-						) : null}
-					</div>
-					<div className="w-full sm:w-auto">
-						<DatePickerRange
-							value={dateRange}
-							onChange={(range) => onDateRangeChange?.(range)}
-							showArrow={false}
-						/>
-					</div>
+		<div className={cn("relative flex h-full w-full flex-col", className)}>
+			<div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+				<div className="space-y-1">
+					<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+						Overview
+					</p>
+					<h3 className="text-lg font-bold text-foreground">{title}</h3>
+					{description ? (
+						<p className="text-sm text-muted-foreground">{description}</p>
+					) : null}
 				</div>
-
-				<div
-					ref={gridRef}
-					className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 items-stretch"
-				>
-					{metrics.map((metric) => {
-						const prev = metric.previousValue ?? 0;
-						const seriesChange = getSeriesChangePercent(metric.key);
-						const computedChangeRaw =
-							seriesChange ??
-							metric.changePercent ??
-							(prev === 0
-								? metric.value > 0
-									? 100
-									: 0
-								: ((metric.value - prev) / Math.abs(prev || 1)) * 100);
-						const computedChange =
-							Math.abs(computedChangeRaw ?? 0) < 1e-9
-								? 0
-								: (computedChangeRaw ?? 0);
-						const computedChangeType =
-							computedChange === 0
-								? "neutral"
-								: (metric.changeType ??
-									(computedChange > 0 ? "increase" : "decrease"));
-						const badgeVariant =
-							computedChangeType === "increase"
-								? "success"
-								: computedChangeType === "decrease"
-									? "destructive"
-									: "outline";
-						const BadgeIcon =
-							computedChangeType === "increase"
-								? ArrowUp
-								: computedChangeType === "decrease"
-									? ArrowDown
-									: ArrowRight;
-
-						const isActive = metric.key === activeMetricKey;
-
-						return (
-							<button
-								key={metric.key}
-								type="button"
-								onClick={() => handleMetricChange(metric.key)}
-								className={cn(
-									"flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card/60 p-4 text-left transition-all duration-150 hover:border-primary/60 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 h-full",
-									isActive && "bg-primary/5 shadow-sm"
-								)}
-								style={isActive ? { borderColor: uniformColor } : undefined}
-							>
-								<div className="flex w-full items-center justify-between gap-3">
-									<span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-										{metric.label}
-									</span>
-									<StyledBadge variant={badgeVariant}>
-										<BadgeIcon className="mr-1 size-3" />
-										{metric.isLoading
-											? "..."
-											: `${Math.abs(computedChange).toFixed(1)}%`}
-									</StyledBadge>
-								</div>
-								<div className="flex w-full flex-col gap-1 flex-1">
-									<span className="text-2xl font-semibold leading-none text-foreground tabular-nums">
-										{metric.isLoading ? (
-											"..."
-										) : (
-											<AnimatedNumber
-												value={metric.value ?? 0}
-												format={metric.format}
-												duration={hasAnimated ? 400 : 600}
-												delay={hasAnimated ? 0 : 300}
-											/>
-										)}
-									</span>
-									{metric.subtitle ? (
-										<span className="text-xs text-muted-foreground">
-											{metric.subtitle}
-										</span>
-									) : null}
-								</div>
-								{sparklineData?.[metric.key] &&
-									sparklineData[metric.key].length > 0 && (
-										<div className="mt-auto w-full">
-											<StatCardSparkline
-												data={sparklineData[metric.key]}
-												dataKey={metric.key}
-												color={uniformColor}
-												isActive={isActive}
-												width={sparklineWidth}
-												height={28}
-											/>
-										</div>
-									)}
-							</button>
-						);
-					})}
+				<div className="w-full sm:w-auto">
+					<DatePickerRange
+						value={dateRange}
+						onChange={(range) => onDateRangeChange?.(range)}
+						showArrow={false}
+					/>
 				</div>
 			</div>
 
-			<div className="pt-0">
+			<div className="min-h-0 flex-1">
 				<ChartContainer
 					config={chartConfig}
 					className="w-full overflow-visible aspect-auto [&_.recharts-curve.recharts-tooltip-cursor]:stroke-initial"
@@ -417,7 +235,10 @@ export default function LineChart6({
 
 						<ChartTooltip
 							content={<CustomTooltip metrics={metrics} />}
-							cursor={{ strokeDasharray: "3 3", stroke: "var(--muted-foreground)" }}
+							cursor={{
+								strokeDasharray: "3 3",
+								stroke: "var(--muted-foreground)",
+							}}
 						/>
 
 						<rect
@@ -432,7 +253,7 @@ export default function LineChart6({
 						{isFlatLine && flatValue !== undefined ? (
 							<ReferenceLine
 								y={flatValue}
-								stroke={activeColor}
+								stroke={uniformColor}
 								strokeWidth={3}
 								strokeOpacity={0.95}
 								ifOverflow="extendDomain"
@@ -442,12 +263,12 @@ export default function LineChart6({
 						<Line
 							type="monotone"
 							dataKey={activeMetricKey}
-							stroke={activeColor}
+							stroke={uniformColor}
 							strokeWidth={2.5}
 							dot={false}
 							activeDot={{
 								r: 6,
-								fill: activeColor,
+								fill: uniformColor,
 								stroke: "white",
 								strokeWidth: 2,
 								filter: "url(#dotShadow)",
@@ -461,8 +282,6 @@ export default function LineChart6({
 			{floatingAction && (
 				<div className="absolute bottom-4 left-4 z-10">{floatingAction}</div>
 			)}
-
-			<hr className="border-border/60" />
 		</div>
 	);
 }
