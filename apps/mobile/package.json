@@ -3,6 +3,13 @@
 	"version": "0.0.1",
 	"private": true,
 	"main": "expo-router/entry",
+	"expo": {
+		"autolinking": {
+			"ios": {
+				"buildFromSource": [".*"]
+			}
+		}
+	},
 	"scripts": {
 		"dev": "expo start --clear",
 		"ios": "expo run:ios",
