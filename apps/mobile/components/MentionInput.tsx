@@ -14,7 +14,8 @@ import { useAuth, useOrganization } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
 import { Send, Paperclip, X } from "lucide-react-native";
-import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { pickUpload } from "@/lib/upload";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface MentionInputProps {
@@ -158,31 +159,34 @@ export function MentionInput({
 	// Handle file selection
 	const handleFileSelect = async () => {
 		try {
-			const result = await DocumentPicker.getDocumentAsync({
-				type: "*/*",
-				copyToCacheDirectory: true,
-				multiple: true,
-			});
-
-			if (result.canceled) return;
+			// Photo Library / Take Photo / Choose File — name + MIME already resolved.
+			const files = await pickUpload({ multiple: true });
+			if (files.length === 0) return;
 
 			const validatedAttachments: AttachmentFile[] = [];
 
-			for (const asset of result.assets) {
+			for (const file of files) {
 				const tempId = Math.random().toString(36);
 
+				// Server rejects fileSize <= 0 — derive from disk when the source omits it.
+				let size = file.size > 0 ? file.size : 0;
+				if (size <= 0) {
+					const info = await FileSystem.getInfoAsync(file.uri);
+					size = info.exists ? info.size : 0;
+				}
+
 				// Validate file size (10MB limit)
-				if (asset.size && asset.size > 10 * 1024 * 1024) {
-					Alert.alert("File too large", `${asset.name} exceeds 10MB limit`);
+				if (size > 10 * 1024 * 1024) {
+					Alert.alert("File too large", `${file.name} exceeds 10MB limit`);
 					continue;
 				}
 
 				validatedAttachments.push({
 					tempId,
-					name: asset.name,
-					size: asset.size || 0,
-					uri: asset.uri,
-					mimeType: asset.mimeType || "application/octet-stream",
+					name: file.name,
+					size,
+					uri: file.uri,
+					mimeType: file.mimeType,
 					uploading: false,
 					error: undefined,
 				});
@@ -201,21 +205,23 @@ export function MentionInput({
 				try {
 					const uploadUrl = await generateUploadUrl();
 
-					// Read file and upload
-					const response = await fetch(attachment.uri);
-					const blob = await response.blob();
+					// Stream the file URI natively. RN's bridgeless fetch() can't read
+					// a local file:// blob, so a Blob body uploads empty / throws.
+					const uploadResult = await FileSystem.uploadAsync(
+						uploadUrl,
+						attachment.uri,
+						{
+							httpMethod: "POST",
+							uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+							headers: { "Content-Type": attachment.mimeType },
+						}
+					);
 
-					const uploadResult = await fetch(uploadUrl, {
-						method: "POST",
-						headers: { "Content-Type": attachment.mimeType },
-						body: blob,
-					});
-
-					if (!uploadResult.ok) {
+					if (uploadResult.status !== 200) {
 						throw new Error("Upload failed");
 					}
 
-					const { storageId } = (await uploadResult.json()) as {
+					const { storageId } = JSON.parse(uploadResult.body) as {
 						storageId: Id<"_storage">;
 					};
 
