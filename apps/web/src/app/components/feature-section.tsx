@@ -226,7 +226,6 @@ const highlights: HighlightProps[] = [
 		title: "Mobile access",
 		subtitle:
 			"Take your projects, tasks, and clients with you on the go with the iOS companion app.",
-		comingSoon: true,
 	},
 	{
 		Icon: Shield,
