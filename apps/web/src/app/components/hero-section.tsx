@@ -12,9 +12,12 @@ import { motion, useMotionValue, useSpring } from "motion/react";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { AccentCTA } from "@/app/components/landing/accent-cta";
 import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
-import { Calendar, Sparkles } from "lucide-react";
+import { Calendar } from "lucide-react";
 
 const PARALLAX_INTENSITY = 20;
+
+const APP_STORE_URL =
+	"https://apps.apple.com/us/app/onetool-small-business-crm/id6757319255";
 
 const emptySubscribe = () => () => {};
 
@@ -61,6 +64,11 @@ export default function HeroSection() {
 		? "/Dashboard-dark.png"
 		: "/Dashboard-light.png";
 
+	// White badge reads on the dark overlay, black on the light one.
+	const appStoreBadgeSrc = mounted && resolvedTheme === "dark"
+		? "/app-store-badge-white.svg"
+		: "/app-store-badge-black.svg";
+
 	return (
 		<section
 			id="home"
@@ -87,19 +95,6 @@ export default function HeroSection() {
 			{/* Content */}
 			<div className="relative z-10 pt-28 sm:pt-36 lg:pt-44 pb-8 sm:pb-12">
 				<div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
-					{/* Badge */}
-					<motion.div
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						transition={{ duration: 0.6, delay: 0.1 }}
-						className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 mb-6"
-					>
-						<Sparkles className="h-3.5 w-3.5 text-primary" />
-						<span className="text-xs font-medium text-primary">
-							Now Available
-						</span>
-					</motion.div>
-
 					{/* Headline */}
 					<motion.h1
 						initial={{ opacity: 0, y: 20 }}
@@ -144,6 +139,32 @@ export default function HeroSection() {
 						>
 							Schedule a Demo
 						</StyledButton>
+					</motion.div>
+
+					{/* iOS App Store badge — smart link: opens the App Store app on iOS, the web product page on desktop */}
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.6, delay: 0.5 }}
+						className="mt-6 flex justify-center"
+					>
+						<a
+							href={APP_STORE_URL}
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-label="Download OneTool on the App Store"
+							className="inline-block transition-transform hover:scale-[1.03] active:scale-[0.98]"
+						>
+							<Image
+								src={appStoreBadgeSrc}
+								alt="Download on the App Store"
+								width={132}
+								height={44}
+								className="h-11 w-auto"
+								priority
+								unoptimized
+							/>
+						</a>
 					</motion.div>
 				</div>
 
