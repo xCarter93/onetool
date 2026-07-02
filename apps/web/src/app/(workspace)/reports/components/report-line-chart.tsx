@@ -125,12 +125,15 @@ export function ReportLineChart({
 						cursor={{ strokeDasharray: "3 3", stroke: PRIMARY_BLUE }}
 						content={<ChartTooltipContent />}
 					/>
-					{/* Area fill under the line */}
+					{/* Area fill under the line — decorative only; without
+					    tooltipType="none" it duplicates the Line's tooltip entry
+					    (two payload rows keyed "value" → React duplicate-key error) */}
 					<Area
 						type="monotone"
 						dataKey="value"
 						stroke="none"
 						fill="url(#lineGradient)"
+						tooltipType="none"
 					/>
 					{/* Main line with connected points */}
 					<Line
