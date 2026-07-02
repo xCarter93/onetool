@@ -16,6 +16,7 @@ import {
 	MessageSquarePlus,
 	Sparkles,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -28,42 +29,18 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-
-const TOOL_LABELS: Record<string, string> = {
-	getSchedule: "Checked the schedule",
-	getTasks: "Looked up tasks",
-	getBusinessStats: "Pulled business stats",
-	runReport: "Ran a report",
-	listClients: "Looked up clients",
-	getClient: "Fetched client details",
-	listProjects: "Looked up projects",
-	getProject: "Fetched project details",
-	listQuotes: "Looked up quotes",
-	getQuote: "Fetched quote details",
-	listInvoices: "Looked up invoices",
-	getInvoice: "Fetched invoice details",
-	searchClientEmails: "Searched emails",
-	getEmailThread: "Read an email thread",
-	getDocuments: "Looked up documents",
-	getActivity: "Checked recent activity",
-};
+import {
+	ToolPartRenderer,
+	type AssistantToolPart,
+} from "./renderers";
+import { useScreenContext } from "./use-screen-context";
 
 const SUGGESTIONS = [
 	"What's on the schedule this week?",
-	"How is revenue tracking this month?",
+	"Chart revenue by month this year",
 	"Which invoices are overdue?",
 	"Any quotes waiting on approval?",
 ];
-
-function ToolChip({ partType }: { partType: string }) {
-	const name = partType.replace(/^tool-/, "");
-	return (
-		<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-			<Sparkles className="size-3" />
-			{TOOL_LABELS[name] ?? `Used ${name}`}
-		</div>
-	);
-}
 
 // No typography plugin in this app — style markdown elements directly.
 const MARKDOWN_CLASS = [
@@ -118,7 +95,12 @@ function MessageItem({ message }: { message: UIMessage }) {
 					);
 				}
 				if (part.type.startsWith("tool-")) {
-					return <ToolChip key={i} partType={part.type} />;
+					return (
+						<ToolPartRenderer
+							key={i}
+							part={part as unknown as AssistantToolPart}
+						/>
+					);
 				}
 				return null;
 			})}
@@ -145,6 +127,11 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	} | null>(null);
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const toast = useToast();
+	const router = useRouter();
+	const getScreenContext = useScreenContext();
+	// navigate tool calls already executed (or present when the thread loaded —
+	// history must never replay navigation).
+	const seenNavigationsRef = useRef<Set<string> | null>(null);
 
 	const threads = useQuery(
 		api.assistantChat.listThreads,
@@ -171,6 +158,47 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
 	}, [messageCount, isResponding]);
 
+	useEffect(() => {
+		seenNavigationsRef.current = null;
+	}, [threadId]);
+
+	// Client-executed navigate tool: the server only validates the path; the
+	// actual routing happens here when a new tool result streams in.
+	useEffect(() => {
+		if (messages.status === "LoadingFirstPage" || !messages.results) return;
+		const navParts = messages.results
+			.filter((m) => m.role === "assistant")
+			.flatMap((m) => m.parts)
+			.map((p) => p as unknown as AssistantToolPart)
+			.filter(
+				(p) =>
+					p.type === "tool-navigate" &&
+					p.state === "output-available" &&
+					typeof p.toolCallId === "string"
+			);
+		// First non-loading snapshot is thread history — record, don't replay.
+		if (seenNavigationsRef.current === null) {
+			seenNavigationsRef.current = new Set(
+				navParts.map((p) => p.toolCallId as string)
+			);
+			return;
+		}
+		for (const part of navParts) {
+			const id = part.toolCallId as string;
+			if (seenNavigationsRef.current.has(id)) continue;
+			seenNavigationsRef.current.add(id);
+			const output = part.output as { ok?: boolean; path?: string };
+			if (
+				output?.ok &&
+				typeof output.path === "string" &&
+				output.path.startsWith("/") &&
+				!output.path.startsWith("//")
+			) {
+				router.push(output.path);
+			}
+		}
+	}, [messages.results, messages.status, router]);
+
 	const handleSend = async (promptOverride?: string) => {
 		const prompt = (promptOverride ?? input).trim();
 		if (!prompt || isResponding) return;
@@ -191,7 +219,11 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 				({ messageId } = await sendMessage({ threadId: tid, prompt }));
 				pendingRetryRef.current = { threadId: tid, prompt, messageId };
 			}
-			await streamResponse({ threadId: tid, promptMessageId: messageId });
+			await streamResponse({
+				threadId: tid,
+				promptMessageId: messageId,
+				screenContext: getScreenContext(),
+			});
 			pendingRetryRef.current = null;
 		} catch {
 			setInput(prompt);

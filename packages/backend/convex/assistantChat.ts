@@ -27,6 +27,7 @@ import { rateLimiter } from "./rateLimits";
 const TITLE_MAX_LENGTH = 60;
 // Cost guard: bound what a single message can send to the model.
 const PROMPT_MAX_LENGTH = 4000;
+const SCREEN_CONTEXT_MAX_LENGTH = 4000;
 
 export const createThread = userMutation({
 	args: {},
@@ -93,7 +94,13 @@ export const authorizeThread = internalQuery({
 });
 
 export const streamResponse = action({
-	args: { threadId: v.string(), promptMessageId: v.string() },
+	args: {
+		threadId: v.string(),
+		promptMessageId: v.string(),
+		// Client-serialized snapshot of what the user is looking at (route +
+		// view parameters only, never data values — see useScreenContext).
+		screenContext: v.optional(v.string()),
+	},
 	// Explicit return type: this module is in the generated api graph, so
 	// inferring through ctx.runQuery(internal…) would create a type cycle.
 	handler: async (ctx, args): Promise<void> => {
@@ -113,12 +120,18 @@ export const streamResponse = action({
 		// Per-call `system` overrides the agent's static instructions, letting us
 		// anchor relative dates ("this week", "overdue") to the real current date.
 		const today = new Date().toISOString();
+		// Oversized context is dropped, not truncated — cut JSON is worse than none.
+		const screenBlock =
+			args.screenContext &&
+			args.screenContext.length <= SCREEN_CONTEXT_MAX_LENGTH
+				? `\n\n<current-screen>\n${args.screenContext}\n</current-screen>`
+				: "";
 		await assistantAgent.streamText(
 			ctx,
 			{ threadId: args.threadId, userId },
 			{
 				promptMessageId: args.promptMessageId,
-				system: `${INSTRUCTIONS}\n\nThe current date and time is ${today} (UTC).`,
+				system: `${INSTRUCTIONS}\n\nThe current date and time is ${today} (UTC).${screenBlock}`,
 			},
 			{ saveStreamDeltas: true }
 		);

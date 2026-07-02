@@ -280,6 +280,39 @@ interface ActivityItem {
 
 type NotFound = { found: false };
 
+type ReportVisualization = "bar" | "line" | "pie" | "table";
+
+// ---------------------------------------------------------------------------
+// Navigation (client-executed — the web app intercepts the result and routes)
+// ---------------------------------------------------------------------------
+
+const NAVIGATE_ALLOWED_PATHS: RegExp[] = [
+	/^\/home$/,
+	/^\/clients$/,
+	/^\/clients\/new$/,
+	/^\/clients\/import$/,
+	/^\/clients\/[A-Za-z0-9_-]+$/,
+	/^\/projects$/,
+	/^\/projects\/new$/,
+	/^\/projects\/[A-Za-z0-9_-]+$/,
+	/^\/quotes$/,
+	/^\/quotes\/new$/,
+	/^\/quotes\/[A-Za-z0-9_-]+$/,
+	/^\/invoices$/,
+	/^\/invoices\/[A-Za-z0-9_-]+$/,
+	/^\/tasks$/,
+	/^\/reports$/,
+	/^\/reports\/new$/,
+	/^\/reports\/[A-Za-z0-9_-]+$/,
+	/^\/automations$/,
+	/^\/subscription$/,
+	/^\/organization\/profile$/,
+];
+
+export function isAllowedWorkspacePath(path: string): boolean {
+	return NAVIGATE_ALLOWED_PATHS.some((pattern) => pattern.test(path));
+}
+
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
@@ -403,9 +436,18 @@ export const runReport = createTool({
 		groupBy: z.string().optional(),
 		startDate: isoDate.optional(),
 		endDate: isoDate.optional(),
+		visualization: z
+			.enum(["bar", "line", "pie", "table"])
+			.optional()
+			.describe(
+				"How the result is shown to the user in chat. Pick 'line' for time series, 'pie' for share-of-total, 'table' for exact values. Defaults to bar."
+			),
 	}),
-	execute: async (ctx, input): Promise<ReportDataResult> => {
-		return await ctx.runQuery(api.reportData.executeReport, {
+	execute: async (
+		ctx,
+		input
+	): Promise<ReportDataResult & { visualization: ReportVisualization }> => {
+		const result = await ctx.runQuery(api.reportData.executeReport, {
 			entityType: input.entityType,
 			groupBy: input.groupBy,
 			dateRange:
@@ -416,6 +458,7 @@ export const runReport = createTool({
 						}
 					: undefined,
 		});
+		return { ...result, visualization: input.visualization ?? "bar" };
 	},
 });
 
@@ -863,6 +906,30 @@ export const getActivity = createTool({
 	},
 });
 
+export const navigate = createTool({
+	description: [
+		"Open a page in the app for the user. Use when they ask to go somewhere, or after resolving the record they want to see.",
+		"Valid paths: /home, /clients, /clients/{clientId}, /clients/new, /clients/import, /projects, /projects/{projectId}, /projects/new, /quotes, /quotes/{quoteId}, /quotes/new, /invoices, /invoices/{invoiceId}, /tasks, /reports, /reports/{reportId}, /reports/new, /automations, /subscription, /organization/profile.",
+		"IDs must come from lookup tools — never guess an ID.",
+	].join("\n"),
+	inputSchema: z.object({
+		path: z.string().describe("Workspace path starting with /"),
+	}),
+	execute: async (
+		_ctx,
+		input
+	): Promise<{ ok: boolean; path: string; reason?: string }> => {
+		if (!isAllowedWorkspacePath(input.path)) {
+			return {
+				ok: false,
+				path: input.path,
+				reason: "Not a valid app path. Use one of the documented paths.",
+			};
+		}
+		return { ok: true, path: input.path };
+	},
+});
+
 export const assistantTools = {
 	getSchedule,
 	getTasks,
@@ -880,4 +947,5 @@ export const assistantTools = {
 	getEmailThread,
 	getDocuments,
 	getActivity,
+	navigate,
 };

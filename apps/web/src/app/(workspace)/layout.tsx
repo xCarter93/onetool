@@ -8,6 +8,7 @@ import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
 import { AdminFab } from "@/components/layout/admin-fab";
+import { ScreenContextProvider } from "@/components/assistant/use-screen-context";
 import "./workspace-theme.css";
 
 export default async function WorkspaceLayout({
@@ -51,7 +52,9 @@ export default async function WorkspaceLayout({
 									}}
 								/>
 
-								<SidebarWithHeader>{children}</SidebarWithHeader>
+								<ScreenContextProvider>
+									<SidebarWithHeader>{children}</SidebarWithHeader>
+								</ScreenContextProvider>
 								{hasAdminAccess && <AdminFab />}
 							</div>
 						</div>

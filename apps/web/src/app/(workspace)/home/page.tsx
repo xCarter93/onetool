@@ -12,6 +12,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
+import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { LayoutDashboard, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,9 @@ export default function Page() {
 
 	// Automatically detect and save timezone if not set
 	useAutoTimezone();
+
+	// Let the assistant see which home view is active ("what am I looking at?")
+	usePublishScreenContext(() => ({ homeView: viewMode }));
 
 	// True only after client hydration; gates localStorage reads to avoid mismatch
 	const hydrated = React.useSyncExternalStore(
