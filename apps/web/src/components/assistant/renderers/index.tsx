@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { Component, type ComponentType, type ReactNode } from "react";
 import { AlertCircle, Sparkles } from "lucide-react";
 import { EmailsRenderer } from "./emails-renderer";
 import { NavigateRenderer } from "./navigate-renderer";
@@ -69,6 +69,21 @@ function ToolChip({ name, state }: { name: string; state?: string }) {
 	);
 }
 
+// Renderers consume untyped tool output — a malformed payload must degrade
+// to the chip, not take down the whole sheet.
+class RendererErrorBoundary extends Component<
+	{ fallback: ReactNode; children: ReactNode },
+	{ failed: boolean }
+> {
+	state = { failed: false };
+	static getDerivedStateFromError() {
+		return { failed: true };
+	}
+	render() {
+		return this.state.failed ? this.props.fallback : this.props.children;
+	}
+}
+
 export function ToolPartRenderer({ part }: { part: AssistantToolPart }) {
 	const name = part.type.replace(/^tool-/, "");
 	const Renderer = TOOL_RENDERERS[name];
@@ -77,7 +92,13 @@ export function ToolPartRenderer({ part }: { part: AssistantToolPart }) {
 		part.state === "output-available" &&
 		part.output !== undefined
 	) {
-		return <Renderer input={part.input} output={part.output} />;
+		return (
+			<RendererErrorBoundary
+				fallback={<ToolChip name={name} state="output-error" />}
+			>
+				<Renderer input={part.input} output={part.output} />
+			</RendererErrorBoundary>
+		);
 	}
 	return <ToolChip name={name} state={part.state} />;
 }

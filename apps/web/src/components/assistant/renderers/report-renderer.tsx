@@ -34,11 +34,12 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 		);
 	}
 
-	// Same label→name + metadata-spread mapping report-preview.tsx uses.
+	// Same label→name + metadata-spread mapping report-preview.tsx uses;
+	// spread first so metadata keys can never clobber the chart encoding.
 	const chartData = report.data.map((point) => ({
+		...point.metadata,
 		name: point.label,
 		value: point.value,
-		...point.metadata,
 	}));
 
 	const chartProps = {

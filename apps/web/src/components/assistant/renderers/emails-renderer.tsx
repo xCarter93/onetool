@@ -40,7 +40,8 @@ export function EmailsRenderer({ output }: ToolRendererProps) {
 		);
 	}
 
-	const hidden = Math.max(result.totalCount, emails.length) - ROW_CAP;
+	const shown = Math.min(emails.length, ROW_CAP);
+	const hidden = Math.max(result.totalCount, emails.length) - shown;
 
 	return (
 		<div className="rounded-xl border border-border bg-card px-3.5 py-1">

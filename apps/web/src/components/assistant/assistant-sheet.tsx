@@ -129,8 +129,10 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	const toast = useToast();
 	const router = useRouter();
 	const getScreenContext = useScreenContext();
-	// navigate tool calls already executed (or present when the thread loaded —
-	// history must never replay navigation).
+	// navigate tool calls already executed. null = "seed from the next
+	// snapshot without navigating" (set when opening a historical thread);
+	// a fresh empty Set (set at thread creation) means navigate immediately —
+	// a brand-new thread has no history that could replay.
 	const seenNavigationsRef = useRef<Set<string> | null>(null);
 
 	const threads = useQuery(
@@ -157,10 +159,6 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
 	}, [messageCount, isResponding]);
-
-	useEffect(() => {
-		seenNavigationsRef.current = null;
-	}, [threadId]);
 
 	// Client-executed navigate tool: the server only validates the path; the
 	// actual routing happens here when a new tool result streams in.
@@ -210,6 +208,8 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 				const created = await createThread({});
 				tid = created.threadId;
 				setThreadId(tid);
+				// New thread has no history — navigate calls can run right away.
+				seenNavigationsRef.current = new Set();
 			}
 			const pending = pendingRetryRef.current;
 			let messageId: string;
@@ -236,6 +236,7 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	const startNewChat = () => {
 		setThreadId(null);
 		setShowHistory(false);
+		seenNavigationsRef.current = null;
 	};
 
 	return (
@@ -297,6 +298,9 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 									onClick={() => {
 										setThreadId(t.threadId);
 										setShowHistory(false);
+										// Historical thread: seed the baseline from its first
+										// snapshot so past navigations never replay.
+										seenNavigationsRef.current = null;
 									}}
 									className={cn(
 										"w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-foreground/[0.04]",
