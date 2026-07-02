@@ -1,0 +1,38 @@
+"use client";
+
+import { Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/**
+ * Bottom-of-viewport trigger for the assistant panel — the header notches
+ * mirrored: a tab bulging up from the bottom frame band (.assistant-notch in
+ * globals.css). The hover lift reveals a sliver of frame beneath it, which is
+ * the same color, so the tab reads as pulling up while staying fused to the
+ * frame. Slides away below the edge while the panel is open.
+ */
+export function AssistantNotch({
+	open,
+	onOpen,
+}: {
+	open: boolean;
+	onOpen: () => void;
+}) {
+	return (
+		<div
+			className={cn(
+				"fixed bottom-0 right-6 z-40 transition-transform duration-300 ease-out sm:right-12 md:right-24",
+				open && "pointer-events-none translate-y-12"
+			)}
+		>
+			<button
+				type="button"
+				onClick={onOpen}
+				aria-label="Open assistant chat"
+				className="assistant-notch flex h-10 min-w-64 cursor-pointer items-center justify-center gap-2 rounded-t-xl px-14 text-sm font-medium text-muted-foreground transition-[transform,color] duration-200 ease-out hover:-translate-y-1 hover:text-foreground focus-visible:-translate-y-1 focus-visible:text-foreground focus-visible:outline-none"
+			>
+				<Sparkles className="size-4 text-primary" />
+				Assistant
+			</button>
+		</div>
+	);
+}

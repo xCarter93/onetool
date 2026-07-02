@@ -30,28 +30,10 @@ export default async function WorkspaceLayout({
 					<ConfirmDialogProvider>
 						<div className="workspace-zone min-h-screen flex-1 md:min-h-min">
 							<AnalyticsIdentity />
-							{/* Modern Background with Subtle Texture */}
+							{/* No ambient blobs / grid overlays here: absolutely-positioned
+							    decorations paint over the static picture-frame background
+							    (but under the card and notches), tinting the frame unevenly. */}
 							<div className="relative bg-background min-h-screen">
-								{/* Ambient Light Effects */}
-								<div className="absolute inset-0 overflow-hidden">
-									<div className="absolute -inset-10 opacity-50">
-										<div className="absolute top-0 -left-4 w-72 h-72 bg-primary/10 rounded-full mix-blend-multiply filter blur-xl animate-blob" />
-										<div className="absolute top-0 -right-4 w-72 h-72 bg-primary/10 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000" />
-										<div className="absolute -bottom-8 left-20 w-72 h-72 bg-primary/5 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000" />
-									</div>
-								</div>
-
-								{/* Subtle Grid Pattern */}
-								<div
-									className="absolute inset-0 bg-[linear-gradient(to_right,var(--color-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border)_1px,transparent_1px)] bg-size-[4rem_4rem] opacity-[0.03] dark:opacity-[0.05]"
-									style={{
-										maskImage:
-											"radial-gradient(ellipse at center, transparent 20%, black)",
-										WebkitMaskImage:
-											"radial-gradient(ellipse at center, transparent 20%, black)",
-									}}
-								/>
-
 								<ScreenContextProvider>
 									<SidebarWithHeader>{children}</SidebarWithHeader>
 								</ScreenContextProvider>

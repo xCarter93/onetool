@@ -11,21 +11,17 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
 	ArrowUp,
+	Eye,
 	History,
 	Loader2,
 	MessageSquarePlus,
 	Sparkles,
+	X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {
-	Sheet,
-	SheetContent,
-	SheetDescription,
-	SheetHeader,
-	SheetTitle,
-} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -33,6 +29,7 @@ import {
 	ToolPartRenderer,
 	type AssistantToolPart,
 } from "./renderers";
+import { useCurrentRecord } from "./use-current-record";
 import { useScreenContext } from "./use-screen-context";
 
 const SUGGESTIONS = [
@@ -108,12 +105,73 @@ function MessageItem({ message }: { message: UIMessage }) {
 	);
 }
 
-interface AssistantSheetProps {
+/** "The page you're on is shared with the assistant" strip for record pages. */
+function RecordContextBanner() {
+	const record = useCurrentRecord();
+	if (!record) return null;
+	return (
+		<div className="flex shrink-0 items-center gap-2 border-b border-border bg-primary/[0.04] px-4 py-2 text-xs">
+			<Eye className="size-3.5 shrink-0 text-primary" />
+			{record.name === undefined ? (
+				<span className="text-muted-foreground">
+					The page you&apos;re viewing is shared as context
+				</span>
+			) : (
+				<>
+					<span className="min-w-0 truncate">
+						<span className="font-medium text-foreground">{record.name}</span>
+						<span className="text-muted-foreground">
+							{" "}
+							· {record.kindLabel}
+						</span>
+						{record.status && (
+							<span className="capitalize text-muted-foreground">
+								{" "}
+								· {record.status}
+							</span>
+						)}
+					</span>
+					<span className="ml-auto shrink-0 text-muted-foreground">
+						In context
+					</span>
+				</>
+			)}
+		</div>
+	);
+}
+
+function HeaderButton({
+	onClick,
+	label,
+	active,
+	children,
+}: {
+	onClick: () => void;
+	label: string;
+	active?: boolean;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground",
+				active && "bg-foreground/[0.08] text-foreground"
+			)}
+			aria-label={label}
+		>
+			{children}
+		</button>
+	);
+}
+
+interface AssistantPanelProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
 
-export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
+export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 	const [threadId, setThreadId] = useState<string | null>(null);
 	const [showHistory, setShowHistory] = useState(false);
 	const [input, setInput] = useState("");
@@ -159,6 +217,15 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
 	}, [messageCount, isResponding]);
+
+	useEffect(() => {
+		if (!open) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") onOpenChange(false);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [open, onOpenChange]);
 
 	// Client-executed navigate tool: the server only validates the path; the
 	// actual routing happens here when a new tool result streams in.
@@ -240,166 +307,172 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	};
 
 	return (
-		<Sheet open={open} onOpenChange={onOpenChange}>
-			<SheetContent
-				side="right"
-				className="flex w-full flex-col gap-0 bg-background p-0 sm:max-w-lg"
-			>
-				<SheetHeader className="shrink-0 border-b border-border px-4 py-3">
-					<div className="flex items-center justify-between pr-8">
+		<AnimatePresence>
+			{open && (
+				<motion.div
+					key="assistant-panel"
+					role="dialog"
+					aria-label="Assistant chat"
+					initial={{ y: "110%" }}
+					animate={{ y: 0 }}
+					exit={{ y: "110%" }}
+					transition={{ type: "tween", duration: 0.25, ease: "easeOut" }}
+					className="fixed inset-x-0 bottom-0 z-50 flex h-[min(85dvh,640px)] flex-col overflow-hidden rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-2 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-2xl"
+				>
+					<div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
 						<div>
-							<SheetTitle className="flex items-center gap-2 text-base">
+							<h2 className="flex items-center gap-2 text-base font-semibold">
 								<Sparkles className="size-4 text-primary" />
 								Assistant
-							</SheetTitle>
-							<SheetDescription className="text-xs">
+							</h2>
+							<p className="text-xs text-muted-foreground">
 								Ask about your clients, schedule, quotes, invoices, and more
-							</SheetDescription>
+							</p>
 						</div>
 						<div className="flex items-center gap-1">
-							<button
-								type="button"
+							<HeaderButton
 								onClick={() => setShowHistory((v) => !v)}
-								className={cn(
-									"inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground",
-									showHistory && "bg-foreground/[0.08] text-foreground"
-								)}
-								aria-label="Conversation history"
+								label="Conversation history"
+								active={showHistory}
 							>
 								<History className="size-4" />
-							</button>
-							<button
-								type="button"
-								onClick={startNewChat}
-								className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-								aria-label="New conversation"
-							>
+							</HeaderButton>
+							<HeaderButton onClick={startNewChat} label="New conversation">
 								<MessageSquarePlus className="size-4" />
-							</button>
-						</div>
-					</div>
-				</SheetHeader>
-
-				{showHistory ? (
-					<div className="flex-1 overflow-y-auto p-2">
-						{threads === undefined ? (
-							<div className="flex justify-center py-8">
-								<Loader2 className="size-5 animate-spin text-muted-foreground" />
-							</div>
-						) : threads.length === 0 ? (
-							<p className="py-8 text-center text-sm text-muted-foreground">
-								No conversations yet
-							</p>
-						) : (
-							threads.map((t) => (
-								<button
-									key={t.threadId}
-									type="button"
-									onClick={() => {
-										setThreadId(t.threadId);
-										setShowHistory(false);
-										// Historical thread: seed the baseline from its first
-										// snapshot so past navigations never replay.
-										seenNavigationsRef.current = null;
-									}}
-									className={cn(
-										"w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-foreground/[0.04]",
-										t.threadId === threadId && "bg-foreground/[0.06]"
-									)}
-								>
-									<span className="line-clamp-1">{t.title}</span>
-									<span className="text-xs text-muted-foreground">
-										{new Date(t.lastMessageAt).toLocaleDateString(undefined, {
-											month: "short",
-											day: "numeric",
-										})}
-									</span>
-								</button>
-							))
-						)}
-					</div>
-				) : (
-					<div className="flex-1 overflow-y-auto px-4 py-4">
-						{!threadId || messageCount === 0 ? (
-							<div className="flex h-full flex-col items-center justify-center gap-4">
-								<div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10">
-									<Sparkles className="size-6 text-primary" />
-								</div>
-								<p className="max-w-xs text-center text-sm text-muted-foreground">
-									Ask anything about your business — I can look at live data
-									across your whole workspace.
-								</p>
-								<div className="flex w-full max-w-sm flex-col gap-2">
-									{SUGGESTIONS.map((s) => (
-										<button
-											key={s}
-											type="button"
-											onClick={() => void handleSend(s)}
-											disabled={isResponding}
-											className="cursor-pointer rounded-xl border border-border px-3.5 py-2.5 text-left text-sm text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-										>
-											{s}
-										</button>
-									))}
-								</div>
-							</div>
-						) : (
-							<div className="flex flex-col gap-4">
-								{messages.results.map((message) => (
-									<MessageItem key={message.key} message={message} />
-								))}
-								{isResponding &&
-									messages.results[messages.results.length - 1]?.role ===
-										"user" && (
-										<div className="flex items-center gap-2 text-sm text-muted-foreground">
-											<Loader2 className="size-3.5 animate-spin" />
-											Thinking…
-										</div>
-									)}
-								<div ref={bottomRef} />
-							</div>
-						)}
-					</div>
-				)}
-
-				{!showHistory && (
-					<div className="shrink-0 border-t border-border p-3">
-						<div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
-							<Textarea
-								value={input}
-								onChange={(e) => setInput(e.target.value)}
-								onKeyDown={(e) => {
-									if (
-										e.key === "Enter" &&
-										!e.shiftKey &&
-										!e.nativeEvent.isComposing
-									) {
-										e.preventDefault();
-										void handleSend();
-									}
-								}}
-								placeholder="Ask about your business…"
-								rows={1}
-								maxLength={4000}
-								className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
-							/>
-							<button
-								type="button"
-								onClick={() => void handleSend()}
-								disabled={!input.trim() || isResponding}
-								className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
-								aria-label="Send message"
+							</HeaderButton>
+							<HeaderButton
+								onClick={() => onOpenChange(false)}
+								label="Close assistant"
 							>
-								<ArrowUp className="size-4" />
-							</button>
+								<X className="size-4" />
+							</HeaderButton>
 						</div>
-						<p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-							Read-only for now — the assistant can look things up but not
-							change them.
-						</p>
 					</div>
-				)}
-			</SheetContent>
-		</Sheet>
+
+					<RecordContextBanner />
+
+					{showHistory ? (
+						<div className="flex-1 overflow-y-auto p-2">
+							{threads === undefined ? (
+								<div className="flex justify-center py-8">
+									<Loader2 className="size-5 animate-spin text-muted-foreground" />
+								</div>
+							) : threads.length === 0 ? (
+								<p className="py-8 text-center text-sm text-muted-foreground">
+									No conversations yet
+								</p>
+							) : (
+								threads.map((t) => (
+									<button
+										key={t.threadId}
+										type="button"
+										onClick={() => {
+											setThreadId(t.threadId);
+											setShowHistory(false);
+											// Historical thread: seed the baseline from its first
+											// snapshot so past navigations never replay.
+											seenNavigationsRef.current = null;
+										}}
+										className={cn(
+											"w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-foreground/[0.04]",
+											t.threadId === threadId && "bg-foreground/[0.06]"
+										)}
+									>
+										<span className="line-clamp-1">{t.title}</span>
+										<span className="text-xs text-muted-foreground">
+											{new Date(t.lastMessageAt).toLocaleDateString(undefined, {
+												month: "short",
+												day: "numeric",
+											})}
+										</span>
+									</button>
+								))
+							)}
+						</div>
+					) : (
+						<div className="flex-1 overflow-y-auto px-4 py-4">
+							{!threadId || messageCount === 0 ? (
+								<div className="flex h-full flex-col items-center justify-center gap-4">
+									<div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10">
+										<Sparkles className="size-6 text-primary" />
+									</div>
+									<p className="max-w-xs text-center text-sm text-muted-foreground">
+										Ask anything about your business — I can look at live data
+										across your whole workspace.
+									</p>
+									<div className="flex w-full max-w-sm flex-col gap-2">
+										{SUGGESTIONS.map((s) => (
+											<button
+												key={s}
+												type="button"
+												onClick={() => void handleSend(s)}
+												disabled={isResponding}
+												className="cursor-pointer rounded-xl border border-border px-3.5 py-2.5 text-left text-sm text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												{s}
+											</button>
+										))}
+									</div>
+								</div>
+							) : (
+								<div className="flex flex-col gap-4">
+									{messages.results.map((message) => (
+										<MessageItem key={message.key} message={message} />
+									))}
+									{isResponding &&
+										messages.results[messages.results.length - 1]?.role ===
+											"user" && (
+											<div className="flex items-center gap-2 text-sm text-muted-foreground">
+												<Loader2 className="size-3.5 animate-spin" />
+												Thinking…
+											</div>
+										)}
+									<div ref={bottomRef} />
+								</div>
+							)}
+						</div>
+					)}
+
+					{!showHistory && (
+						<div className="shrink-0 border-t border-border p-3">
+							<div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
+								<Textarea
+									value={input}
+									onChange={(e) => setInput(e.target.value)}
+									onKeyDown={(e) => {
+										if (
+											e.key === "Enter" &&
+											!e.shiftKey &&
+											!e.nativeEvent.isComposing
+										) {
+											e.preventDefault();
+											void handleSend();
+										}
+									}}
+									placeholder="Ask about your business…"
+									rows={1}
+									maxLength={4000}
+									autoFocus
+									className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
+								/>
+								<button
+									type="button"
+									onClick={() => void handleSend()}
+									disabled={!input.trim() || isResponding}
+									className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+									aria-label="Send message"
+								>
+									<ArrowUp className="size-4" />
+								</button>
+							</div>
+							<p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+								Read-only for now — the assistant can look things up but not
+								change them.
+							</p>
+						</div>
+					)}
+				</motion.div>
+			)}
+		</AnimatePresence>
 	);
 }
