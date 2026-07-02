@@ -45,4 +45,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: 10 * MINUTE,
 		capacity: 5,
 	},
+
+	// Bound per-user assistant LLM spend — streamResponse is client-callable.
+	assistantMessage: {
+		kind: "token bucket",
+		rate: 60,
+		period: HOUR,
+		capacity: 15,
+	},
 });

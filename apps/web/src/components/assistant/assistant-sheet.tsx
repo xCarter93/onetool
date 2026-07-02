@@ -136,6 +136,13 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 	const [showHistory, setShowHistory] = useState(false);
 	const [input, setInput] = useState("");
 	const [isResponding, setIsResponding] = useState(false);
+	// User message already saved but streamResponse failed — retry must reuse
+	// this messageId instead of re-saving a duplicate user message.
+	const pendingRetryRef = useRef<{
+		threadId: string;
+		prompt: string;
+		messageId: string;
+	} | null>(null);
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const toast = useToast();
 
@@ -176,8 +183,16 @@ export function AssistantSheet({ open, onOpenChange }: AssistantSheetProps) {
 				tid = created.threadId;
 				setThreadId(tid);
 			}
-			const { messageId } = await sendMessage({ threadId: tid, prompt });
+			const pending = pendingRetryRef.current;
+			let messageId: string;
+			if (pending && pending.threadId === tid && pending.prompt === prompt) {
+				messageId = pending.messageId;
+			} else {
+				({ messageId } = await sendMessage({ threadId: tid, prompt }));
+				pendingRetryRef.current = { threadId: tid, prompt, messageId };
+			}
 			await streamResponse({ threadId: tid, promptMessageId: messageId });
+			pendingRetryRef.current = null;
 		} catch {
 			setInput(prompt);
 			toast.error("The assistant hit a snag", "Please try that again.");

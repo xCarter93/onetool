@@ -49,9 +49,19 @@ export const recordUsage = internalMutation({
 					.unique()
 			: null;
 
+		// Without meta the row has no orgId, so orgCascade's by_org delete would
+		// never reclaim it. Threads always get meta at creation, so skip the
+		// unattributable row rather than orphan it.
+		if (!meta) {
+			console.warn(
+				`agentUsage: no thread meta for threadId=${args.threadId}; skipping usage record`
+			);
+			return;
+		}
+
 		await ctx.db.insert("agentUsage", {
-			orgId: meta?.orgId,
-			userId: meta?.userId,
+			orgId: meta.orgId,
+			userId: meta.userId,
 			threadId: args.threadId,
 			agentName: args.agentName,
 			model: args.model,

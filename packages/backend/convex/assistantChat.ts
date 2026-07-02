@@ -12,6 +12,7 @@ import { action, internalQuery } from "./_generated/server";
 import { assistantAgent, INSTRUCTIONS } from "./assistantAgent";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { userMutation, userQuery } from "./lib/factories";
+import { rateLimiter } from "./rateLimits";
 
 /**
  * AI assistant chat plumbing.
@@ -24,8 +25,7 @@ import { userMutation, userQuery } from "./lib/factories";
  */
 
 const TITLE_MAX_LENGTH = 60;
-// Cost guard until Phase 3 rate limiting: bound what a single message can send
-// to the model.
+// Cost guard: bound what a single message can send to the model.
 const PROMPT_MAX_LENGTH = 4000;
 
 export const createThread = userMutation({
@@ -101,6 +101,14 @@ export const streamResponse = action({
 			internal.assistantChat.authorizeThread,
 			{ threadId: args.threadId }
 		);
+
+		// Rate-limit here, not in sendMessage: this action can be re-invoked
+		// directly with an existing promptMessageId, each call costing a full
+		// LLM generation.
+		await rateLimiter.limit(ctx, "assistantMessage", {
+			key: userId,
+			throws: true,
+		});
 
 		// Per-call `system` overrides the agent's static instructions, letting us
 		// anchor relative dates ("this week", "overdue") to the real current date.
