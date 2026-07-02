@@ -1,3 +1,4 @@
+import { register as registerAgentComponent } from "@convex-dev/agent/test";
 import { convexTest } from "convex-test";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -7,7 +8,7 @@ import schema from "./schema";
  * Test setup for Convex tests
  * This file exports a modules glob that convex-test uses to load all Convex functions
  */
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 export const modules = import.meta.glob("./**/*.ts");
 
 // Schema for rate limiter component (from @convex-dev/rate-limiter)
@@ -49,13 +50,13 @@ const aggregateSchema = defineSchema({
 // Modules for aggregate components
 // In pnpm monorepo, dependencies are hoisted to root node_modules
 // Try multiple paths to find the aggregate component modules
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 const aggregateModulesRoot = import.meta.glob(
 	"/node_modules/@convex-dev/aggregate/dist/esm/component/**/*.js"
 ) as Record<string, () => Promise<unknown>>;
 
 // Fallback: try relative path from packages/backend
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 const aggregateModulesRelative = import.meta.glob(
 	"../../node_modules/@convex-dev/aggregate/dist/esm/component/**/*.js"
 ) as Record<string, () => Promise<unknown>>;
@@ -67,13 +68,13 @@ const aggregateModules =
 		: aggregateModulesRelative;
 
 // Rate limiter component modules
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 const rateLimiterModulesRoot = import.meta.glob(
 	"/node_modules/@convex-dev/rate-limiter/dist/component/**/*.js"
 ) as Record<string, () => Promise<unknown>>;
 
 // Fallback: try relative path from packages/backend
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 const rateLimiterModulesRelative = import.meta.glob(
 	"../../node_modules/@convex-dev/rate-limiter/dist/component/**/*.js"
 ) as Record<string, () => Promise<unknown>>;
@@ -100,13 +101,13 @@ const migrationsSchema = defineSchema({
 });
 
 // Migrations component modules
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 const migrationsModulesRoot = import.meta.glob(
 	"/node_modules/@convex-dev/migrations/dist/esm/component/**/*.js"
 ) as Record<string, () => Promise<unknown>>;
 
 // Fallback: try relative path from packages/backend
-// @ts-expect-error - import.meta.glob is provided by Vitest
+// import.meta.glob is provided by Vitest (typed via vite/client)
 const migrationsModulesRelative = import.meta.glob(
 	"../../node_modules/@convex-dev/migrations/dist/esm/component/**/*.js"
 ) as Record<string, () => Promise<unknown>>;
@@ -154,6 +155,9 @@ export function setupConvexTest() {
 			"Warning: Migrations modules not found. Tests requiring migrations may fail."
 		);
 	}
+
+	// AI assistant agent component (ships its own test registration helper)
+	registerAgentComponent(t);
 
 	return t;
 }

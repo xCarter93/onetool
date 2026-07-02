@@ -3,6 +3,7 @@ import aggregate from "@convex-dev/aggregate/convex.config";
 import resend from "@convex-dev/resend/convex.config";
 import rateLimiter from "@convex-dev/rate-limiter/convex.config";
 import migrations from "@convex-dev/migrations/convex.config";
+import agent from "@convex-dev/agent/convex.config";
 
 const app = defineApp();
 
@@ -21,5 +22,8 @@ app.use(rateLimiter);
 
 // Database migrations
 app.use(migrations);
+
+// AI assistant agent (threads/messages/streaming)
+app.use(agent);
 
 export default app;

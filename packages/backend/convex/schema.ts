@@ -1531,4 +1531,30 @@ export default defineSchema({
 	})
 		.index("by_stripe_event_id", ["stripeEventId"])
 		.index("by_status", ["status"]),
+
+	// App-side metadata for AI assistant threads. The @convex-dev/agent
+	// component owns the threads/messages themselves; this table lets us list
+	// and authorize threads through our own org-scoped queries.
+	agentThreadMeta: defineTable({
+		threadId: v.string(),
+		orgId: v.id("organizations"),
+		userId: v.id("users"),
+		title: v.optional(v.string()),
+		lastMessageAt: v.number(),
+	})
+		.index("by_thread", ["threadId"])
+		.index("by_org_user", ["orgId", "userId", "lastMessageAt"]),
+
+	// Per-generation token usage from the assistant's usageHandler.
+	agentUsage: defineTable({
+		orgId: v.optional(v.id("organizations")),
+		userId: v.optional(v.id("users")),
+		threadId: v.optional(v.string()),
+		agentName: v.optional(v.string()),
+		model: v.string(),
+		provider: v.string(),
+		inputTokens: v.number(),
+		outputTokens: v.number(),
+		totalTokens: v.number(),
+	}).index("by_org", ["orgId"]),
 });
