@@ -1,6 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
+import { Sparkles } from "lucide-react";
+import { AssistantSheet } from "@/components/assistant/assistant-sheet";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
@@ -47,12 +49,29 @@ function NotchedItem({
 	);
 }
 
+function AssistantTrigger({ onClick }: { onClick: () => void }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="relative inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+			aria-label="Open assistant"
+		>
+			<Sparkles className="size-5" />
+		</button>
+	);
+}
+
 /**
  * Floating pill-shaped header for mobile viewports.
- * Two pill groups: left (sidebar toggle) and right (notifications, settings).
+ * Two pill groups: left (sidebar toggle) and right (assistant, notifications, settings).
  * Only visible below the md breakpoint.
  */
-function MobileFloatingHeader() {
+function MobileFloatingHeader({
+	onOpenAssistant,
+}: {
+	onOpenAssistant: () => void;
+}) {
 	return (
 		<div className="fixed top-2 left-3 right-3 z-40 flex justify-between pointer-events-none md:hidden">
 			{/* Left pill — sidebar toggle */}
@@ -60,8 +79,9 @@ function MobileFloatingHeader() {
 				<SidebarTrigger className="h-5 w-5 text-muted-foreground [&_svg]:size-3.5" />
 			</div>
 
-			{/* Right pill — notifications, settings */}
+			{/* Right pill — assistant, notifications, settings */}
 			<div className="pointer-events-auto flex items-center bg-sidebar/90 backdrop-blur-sm rounded-lg border border-border/40 px-1.5 py-1 [&_button]:p-1.5 [&_button]:rounded-md [&_svg]:size-3.5">
+				<AssistantTrigger onClick={onOpenAssistant} />
 				<NotificationBell />
 				<SettingsPopover />
 			</div>
@@ -70,6 +90,8 @@ function MobileFloatingHeader() {
 }
 
 export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
+	const [assistantOpen, setAssistantOpen] = useState(false);
+
 	return (
 		<TourContextProvider<HomeTour>
 			TourContext={HomeTourContext}
@@ -81,7 +103,9 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 					{/* Thin navbar with notched items */}
 					<header className="sticky top-0 z-30">
 						{/* Mobile floating pill header */}
-						<MobileFloatingHeader />
+						<MobileFloatingHeader
+							onOpenAssistant={() => setAssistantOpen(true)}
+						/>
 
 						{/* One solid header background: full-width strip with the
 						    sidebar→header scoop carved into its bottom-left. Sits
@@ -106,6 +130,7 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 
 							{/* Right side controls notch */}
 							<NotchedItem contentClassName="gap-1" showRightEar={false}>
+								<AssistantTrigger onClick={() => setAssistantOpen(true)} />
 								<NotificationBell />
 								<SettingsPopover />
 							</NotchedItem>
@@ -113,6 +138,8 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 					</header>
 
 					<div className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0">{children}</div>
+
+					<AssistantSheet open={assistantOpen} onOpenChange={setAssistantOpen} />
 				</SidebarInset>
 			</SidebarProvider>
 		</TourContextProvider>
