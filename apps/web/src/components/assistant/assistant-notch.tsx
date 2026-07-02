@@ -27,6 +27,9 @@ export function AssistantNotch({
 			<button
 				type="button"
 				onClick={onOpen}
+				disabled={open}
+				tabIndex={open ? -1 : undefined}
+				aria-hidden={open}
 				aria-label="Open assistant chat"
 				className="assistant-notch flex h-10 min-w-64 cursor-pointer items-center justify-center gap-2 rounded-t-xl px-14 text-sm font-medium text-muted-foreground transition-[transform,color] duration-200 ease-out hover:-translate-y-1 hover:text-foreground focus-visible:-translate-y-1 focus-visible:text-foreground focus-visible:outline-none"
 			>

@@ -293,7 +293,8 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 			});
 			pendingRetryRef.current = null;
 		} catch {
-			setInput(prompt);
+			// Restore the failed prompt, but never clobber a newer draft.
+			setInput((current) => (current.trim() ? current : prompt));
 			toast.error("The assistant hit a snag", "Please try that again.");
 		} finally {
 			setIsResponding(false);
