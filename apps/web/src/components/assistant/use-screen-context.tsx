@@ -1,5 +1,6 @@
 "use client";
 
+import { SCREEN_CONTEXT_MAX_LENGTH } from "@onetool/backend/convex/lib/assistantShared";
 import {
 	createContext,
 	useCallback,
@@ -62,10 +63,6 @@ export function usePublishScreenContext(getExtras: ExtrasGetter) {
 	}, [ctx]);
 }
 
-// Keep in sync with SCREEN_CONTEXT_MAX_LENGTH in convex/assistantChat.ts —
-// the server drops (not truncates) anything longer.
-const SCREEN_CONTEXT_MAX_LENGTH = 4000;
-
 /** Returns a stable getter that serializes the current screen snapshot. */
 export function useScreenContext(): () => string | undefined {
 	const ctx = useContext(ScreenContextContext);
@@ -82,7 +79,11 @@ export function useScreenContext(): () => string | undefined {
 		}
 		for (const getter of ctx?.getters.current ?? []) {
 			try {
-				Object.assign(snapshot, getter.current?.());
+				const extras = getter.current?.();
+				for (const [key, value] of Object.entries(extras ?? {})) {
+					// path/query are reserved for the real URL above.
+					if (key !== "path" && key !== "query") snapshot[key] = value;
+				}
 			} catch {
 				// A broken publisher must never block sending a message.
 			}

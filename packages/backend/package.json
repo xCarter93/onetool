@@ -24,6 +24,10 @@
     "./convex/emailMessages": {
       "types": "./convex/emailMessages.ts",
       "default": "./convex/emailMessages.ts"
+    },
+    "./convex/lib/assistantShared": {
+      "types": "./convex/lib/assistantShared.ts",
+      "default": "./convex/lib/assistantShared.ts"
     }
   },
   "scripts": {

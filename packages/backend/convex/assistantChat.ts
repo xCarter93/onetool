@@ -10,6 +10,7 @@ import { components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalQuery } from "./_generated/server";
 import { assistantAgent, INSTRUCTIONS } from "./assistantAgent";
+import { SCREEN_CONTEXT_MAX_LENGTH } from "./lib/assistantShared";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { userMutation, userQuery } from "./lib/factories";
 import { rateLimiter } from "./rateLimits";
@@ -27,7 +28,6 @@ import { rateLimiter } from "./rateLimits";
 const TITLE_MAX_LENGTH = 60;
 // Cost guard: bound what a single message can send to the model.
 const PROMPT_MAX_LENGTH = 4000;
-const SCREEN_CONTEXT_MAX_LENGTH = 4000;
 
 export const createThread = userMutation({
 	args: {},
