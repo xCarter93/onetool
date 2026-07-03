@@ -3,31 +3,12 @@
 import React from "react";
 import { Trash2, Repeat } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
-import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import type { FetchConfig } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 
-const ENTITY_TYPES = [
-	{ value: "client", label: "Client" },
-	{ value: "project", label: "Project" },
-	{ value: "quote", label: "Quote" },
-	{ value: "invoice", label: "Invoice" },
-	{ value: "task", label: "Task" },
-] as const;
-
 export function LoopConfigPanel({
 	nodeId,
-	trigger,
 	nodes,
-	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
 	rfNodes,
@@ -43,10 +24,6 @@ export function LoopConfigPanel({
 		);
 	}
 
-	const currentConfig = (node.config as FetchConfig | undefined) || {
-		entityType: trigger?.objectType || "client",
-	};
-
 	return (
 		<div className="flex flex-col h-full">
 			<ConfigPanelHeader
@@ -58,36 +35,9 @@ export function LoopConfigPanel({
 			/>
 
 			<div className="flex-1">
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Loop source</Label>
-					<Select
-						value={currentConfig.entityType}
-						onValueChange={(value) =>
-							onNodeChange(nodeId, {
-								config: {
-									...currentConfig,
-									entityType: value as FetchConfig["entityType"],
-								},
-							})
-						}
-					>
-						<SelectTrigger className="mt-2">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{ENTITY_TYPES.map((entity) => (
-								<SelectItem key={entity.value} value={entity.value}>
-									{entity.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-
-				<div className="py-4">
-					<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-						Loop configuration coming in a future update.
-					</div>
+				<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+					Loops are arriving in an upcoming update. This step won&apos;t be
+					saveable until then.
 				</div>
 			</div>
 

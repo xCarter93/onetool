@@ -1,78 +1,19 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-	RefreshCw,
-	Plus,
-	Edit,
-	Clock,
-	Mail,
-	Search,
-	Check,
-	X,
-	type LucideIcon,
-} from "lucide-react";
+import { RefreshCw, Plus, Edit, Clock, Search, Check, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TRIGGER_TYPE_OPTIONS, type TriggerType } from "../../lib/node-types";
 
-type TriggerGroupItem = {
-	type: string;
-	label: string;
-	icon: LucideIcon;
-	color: string;
+const TRIGGER_ICONS: Record<TriggerType, LucideIcon> = {
+	status_changed: RefreshCw,
+	record_created: Plus,
+	record_updated: Edit,
+	scheduled: Clock,
 };
 
-type TriggerGroup = {
-	label: string;
-	items: TriggerGroupItem[];
-};
-
-const TRIGGER_GROUPS: TriggerGroup[] = [
-	{
-		label: "Records",
-		items: [
-			{
-				type: "status_changed",
-				label: "Status Changed",
-				icon: RefreshCw,
-				color: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
-			},
-			{
-				type: "record_created",
-				label: "Record Created",
-				icon: Plus,
-				color: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
-			},
-			{
-				type: "record_updated",
-				label: "Record Updated",
-				icon: Edit,
-				color: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
-			},
-		],
-	},
-	{
-		label: "Scheduling",
-		items: [
-			{
-				type: "scheduled",
-				label: "Scheduled",
-				icon: Clock,
-				color: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
-			},
-		],
-	},
-	{
-		label: "Communication",
-		items: [
-			{
-				type: "email_received",
-				label: "Email Received",
-				icon: Mail,
-				color: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
-			},
-		],
-	},
-];
+const TRIGGER_COLOR =
+	"bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400";
 
 interface TriggerPickerProps {
 	onSelect: (triggerType: string) => void;
@@ -88,12 +29,9 @@ export function TriggerPicker({
 	const [search, setSearch] = useState("");
 	const lowerSearch = search.toLowerCase();
 
-	const filteredGroups = TRIGGER_GROUPS.map((group) => ({
-		...group,
-		items: group.items.filter((item) =>
-			item.label.toLowerCase().includes(lowerSearch)
-		),
-	})).filter((group) => group.items.length > 0);
+	const filteredOptions = TRIGGER_TYPE_OPTIONS.filter((option) =>
+		option.label.toLowerCase().includes(lowerSearch)
+	);
 
 	return (
 		<div className="space-y-4">
@@ -127,45 +65,51 @@ export function TriggerPicker({
 				/>
 			</div>
 
-			{/* Grouped list */}
-			<div className="space-y-6">
-				{filteredGroups.map((group) => (
-					<div key={group.label}>
-						<div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">
-							{group.label}
-						</div>
-						<div className="space-y-0.5">
-							{group.items.map((item) => {
-								const Icon = item.icon;
-								return (
-									<button
-										key={item.type}
-										type="button"
-										onClick={() => onSelect(item.type)}
-										className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors text-left"
-									>
-										<div
-											className={cn(
-												"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-												item.color
-											)}
-										>
-											<Icon className="h-4 w-4" />
-										</div>
-										<span className="text-sm flex-1">
-											{item.label}
-										</span>
-										{currentTriggerType === item.type && (
-											<Check className="h-4 w-4 text-primary shrink-0" />
-										)}
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				))}
+			{/* List */}
+			<div className="space-y-0.5">
+				{filteredOptions.map((option) => {
+					const Icon = TRIGGER_ICONS[option.value];
+					return (
+						<button
+							key={option.value}
+							type="button"
+							disabled={option.comingSoon}
+							onClick={() => !option.comingSoon && onSelect(option.value)}
+							className={cn(
+								"w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-left",
+								option.comingSoon
+									? "opacity-50 cursor-not-allowed"
+									: "hover:bg-accent"
+							)}
+						>
+							<div
+								className={cn(
+									"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+									TRIGGER_COLOR
+								)}
+							>
+								<Icon className="h-4 w-4" />
+							</div>
+							<div className="flex-1 min-w-0">
+								<div className="text-sm">{option.label}</div>
+								<div className="text-xs text-muted-foreground truncate">
+									{option.description}
+								</div>
+							</div>
+							{option.comingSoon ? (
+								<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+									Soon
+								</span>
+							) : (
+								currentTriggerType === option.value && (
+									<Check className="h-4 w-4 text-primary shrink-0" />
+								)
+							)}
+						</button>
+					);
+				})}
 
-				{filteredGroups.length === 0 && (
+				{filteredOptions.length === 0 && (
 					<div className="text-sm text-muted-foreground text-center py-4">
 						No triggers match your search
 					</div>

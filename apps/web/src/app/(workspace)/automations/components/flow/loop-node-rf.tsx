@@ -6,29 +6,26 @@ import { Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import type { LoopNodeConfig } from "../../lib/node-types";
 
-function getSummary(data: Record<string, unknown>): {
+function getSummary(config: LoopNodeConfig | undefined): {
 	title: string;
 	description: string;
 	isConfigured: boolean;
 } {
-	const config = data.config as
-		| { entityType?: string; filters?: unknown[]; limit?: number }
-		| undefined;
-	if (!config || !config.entityType)
-		return { title: "Loop", description: "Configure loop...", isConfigured: false };
-
-	const entityLabel =
-		config.entityType.charAt(0).toUpperCase() + config.entityType.slice(1);
+	if (!config || !config.sourceNodeId) {
+		return { title: "Loop", description: "Not available yet", isConfigured: false };
+	}
 	return {
-		title: `Loop ${entityLabel}`,
-		description: `Iterate over ${entityLabel.toLowerCase()} records`,
+		title: "Loop",
+		description: `Iterate over records from "${config.sourceNodeId}"`,
 		isConfigured: true,
 	};
 }
 
 export const LoopNodeRF = memo(({ data, selected }: NodeProps) => {
-	const { title, description, isConfigured } = getSummary(data);
+	const config = (data as Record<string, unknown>)?.config as LoopNodeConfig | undefined;
+	const { title, description, isConfigured } = getSummary(config);
 
 	return (
 		<BaseNode

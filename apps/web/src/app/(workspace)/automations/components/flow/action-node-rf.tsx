@@ -6,64 +6,51 @@ import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { OBJECT_TYPE_LABELS, type ActionNodeConfig } from "../../lib/node-types";
 
-function getSummary(data: Record<string, unknown>): {
+function getSummary(config: ActionNodeConfig | undefined): {
 	title: string;
 	description: string;
 	isConfigured: boolean;
 } {
-	const config =
-		(data as Record<string, unknown>).config ||
-		(data as Record<string, unknown>).action;
-	const action = config as
-		| {
-				targetType?: string;
-				actionType?: string;
-				newStatus?: string;
-				field?: string;
-				value?: unknown;
-				notificationRecipient?: string;
-				createRecordType?: string;
-		  }
-		| undefined;
-	if (!action || !action.actionType)
+	if (!config) {
 		return { title: "Configure action", description: "Select an action type...", isConfigured: false };
-
-	const target = action.targetType ?? "self";
-	const actionLabels: Record<string, string> = {
-		update_status: "Update Status",
-		update_field: "Update Field",
-		send_notification: "Send Notification",
-		create_record: "Create Record",
-	};
-	const title = actionLabels[action.actionType] ?? action.actionType;
-
-	let description: string;
-	if (
-		(action.actionType === "update_field" ||
-			action.actionType === "update_status") &&
-		action.newStatus
-	) {
-		description = action.field
-			? `${target}: ${action.field} \u2192 ${action.newStatus}`
-			: `${target} \u2192 ${action.newStatus}`;
-	} else if (action.actionType === "send_notification") {
-		description = action.notificationRecipient
-			? `Notify ${action.notificationRecipient}`
-			: "Configure recipient...";
-	} else if (action.actionType === "create_record") {
-		description = action.createRecordType
-			? `Create ${action.createRecordType}`
-			: "Configure record type...";
-	} else {
-		description = `Target: ${target}`;
 	}
 
-	return { title, description, isConfigured: true };
+	const action = config.action;
+	const targetLabel =
+		action.type === "update_field"
+			? action.target === "self"
+				? "this record"
+				: OBJECT_TYPE_LABELS[action.target.related]
+			: undefined;
+
+	switch (action.type) {
+		case "update_field": {
+			if (!action.field) {
+				return { title: "Update Record", description: "Choose a field...", isConfigured: false };
+			}
+			const value = action.value.kind === "static" ? action.value.value : "...";
+			return {
+				title: `Update ${action.field}`,
+				description: `on ${targetLabel} → ${value ?? "..."}`,
+				isConfigured: true,
+			};
+		}
+		case "send_notification":
+			return { title: "Send Notification", description: "Not enabled yet", isConfigured: true };
+		case "create_task":
+			return { title: "Create Task", description: "Not enabled yet", isConfigured: true };
+		case "send_team_message":
+			return { title: "Send Team Message", description: "Not enabled yet", isConfigured: true };
+		default:
+			return { title: "Configure action", description: "Select an action type...", isConfigured: false };
+	}
 }
 
 export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
-	const { title, description, isConfigured } = getSummary(data);
+	const config = (data as Record<string, unknown>)?.config as ActionNodeConfig | undefined;
+	const { title, description, isConfigured } = getSummary(config);
 
 	return (
 		<BaseNode

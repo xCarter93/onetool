@@ -1,4 +1,13 @@
-import type { WorkflowNode } from "../lib/node-types";
+/**
+ * Minimal shape the graph traversal helpers need. WorkflowNode and the
+ * editor's PlaceholderEntry (lib/flow-adapter.ts) both satisfy this.
+ */
+export type GraphNode = {
+	id: string;
+	type: string;
+	nextNodeId?: string;
+	elseNodeId?: string;
+};
 
 /**
  * Collect all node IDs in the subtree rooted at startNodeId.
@@ -7,9 +16,9 @@ import type { WorkflowNode } from "../lib/node-types";
  */
 export function collectSubtree(
 	startNodeId: string,
-	nodes: WorkflowNode[]
+	nodes: GraphNode[]
 ): Set<string> {
-	const nodeMap = new Map<string, WorkflowNode>();
+	const nodeMap = new Map<string, GraphNode>();
 	for (const node of nodes) {
 		nodeMap.set(node.id, node);
 	}
@@ -43,9 +52,9 @@ export function collectSubtree(
  */
 export function collectLoopBody(
 	loopNodeId: string,
-	nodes: WorkflowNode[]
+	nodes: GraphNode[]
 ): Set<string> {
-	const nodeMap = new Map<string, WorkflowNode>();
+	const nodeMap = new Map<string, GraphNode>();
 	for (const node of nodes) {
 		nodeMap.set(node.id, node);
 	}
@@ -90,7 +99,7 @@ export function collectLoopBody(
  */
 export function findParent(
 	nodeId: string,
-	nodes: WorkflowNode[]
+	nodes: GraphNode[]
 ): { parentId: string | null; branch: "next" | "else" | null } {
 	for (const node of nodes) {
 		if (node.nextNodeId === nodeId) {

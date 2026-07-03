@@ -18,6 +18,7 @@ type StepGroupItem = {
 	label: string;
 	icon: LucideIcon;
 	color: string;
+	comingSoon?: boolean;
 };
 
 type StepGroup = {
@@ -51,6 +52,7 @@ const STEP_GROUPS: StepGroup[] = [
 				label: "Fetch Records",
 				icon: Database,
 				color: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
+				comingSoon: true,
 			},
 		],
 	},
@@ -62,6 +64,7 @@ const STEP_GROUPS: StepGroup[] = [
 				label: "Loop",
 				icon: Repeat,
 				color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
+				comingSoon: true,
 			},
 		],
 	},
@@ -140,8 +143,14 @@ export function StepPicker({ onSelect, onClose }: StepPickerProps) {
 									<button
 										key={item.type}
 										type="button"
-										onClick={() => onSelect(item.type)}
-										className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors text-left"
+										disabled={item.comingSoon}
+										onClick={() => !item.comingSoon && onSelect(item.type)}
+										className={cn(
+											"w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-left",
+											item.comingSoon
+												? "opacity-50 cursor-not-allowed"
+												: "hover:bg-accent"
+										)}
 									>
 										<div
 											className={cn(
@@ -154,6 +163,11 @@ export function StepPicker({ onSelect, onClose }: StepPickerProps) {
 										<span className="text-sm flex-1">
 											{item.label}
 										</span>
+										{item.comingSoon && (
+											<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+												Soon
+											</span>
+										)}
 									</button>
 								);
 							})}

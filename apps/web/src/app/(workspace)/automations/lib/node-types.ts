@@ -1,148 +1,217 @@
 /**
- * Discriminated union type system for workflow automation nodes.
+ * Workflow builder type system — a thin veneer over the shared backend model.
  *
- * Every node type has its own typed config shape. The discriminated union
- * keyed on `type` makes invalid combinations (e.g. condition + action on
- * same node) structurally impossible. Adding new node types in Phase 10
- * is additive -- just add a new union member.
+ * The single source of truth for node/trigger/condition shapes is
+ * packages/backend/convex/lib/workflowTypes.ts, and for per-entity field
+ * metadata packages/backend/convex/lib/fieldRegistry.ts (both imported via
+ * @onetool/backend subpath exports; neither pulls in _generated). This file
+ * re-exports that model and adds editor-only types: React Flow node data
+ * payloads and the in-progress trigger draft.
  */
 
 import type { Node, Edge } from "@xyflow/react";
-import type { TriggerConfig, TriggerType } from "../components/trigger-node";
-
-// Re-export trigger types for convenience
-export type { TriggerConfig, TriggerType };
-
-// ---------------------------------------------------------------------------
-// 1. Shared operator type (extracted for use in both NodeBase and ConditionConfig)
-// ---------------------------------------------------------------------------
-
-export type ConditionOperator =
-	| "equals"
-	| "not_equals"
-	| "contains"
-	| "exists"
-	| "greater_than"
-	| "less_than"
-	| "is_true"
-	| "is_false"
-	| "before"
-	| "after";
+import type {
+	AutomationObjectType,
+	WorkflowNodeConfig,
+	WorkflowNodeType,
+} from "@onetool/backend/convex/lib/workflowTypes";
+import { AUTOMATION_OBJECT_TYPES } from "@onetool/backend/convex/lib/workflowTypes";
+import { RELATED_OBJECTS } from "@onetool/backend/convex/lib/fieldRegistry";
 
 // ---------------------------------------------------------------------------
-// 2. NodeBase -- shared fields across all node types
+// 1. Shared model re-exports
 // ---------------------------------------------------------------------------
 
-export interface NodeBase {
+export {
+	AUTOMATION_OBJECT_TYPES,
+	CONDITION_OPERATORS,
+	VALUELESS_OPERATORS,
+	NODE_TYPES,
+	MAX_FETCH_LIMIT,
+	DEFAULT_FETCH_LIMIT,
+	MAX_LOOP_ITERATIONS,
+	MAX_CONDITION_GROUPS,
+	MAX_RULES_PER_GROUP,
+} from "@onetool/backend/convex/lib/workflowTypes";
+
+export type {
+	AutomationObjectType,
+	AutomationTrigger,
+	AutomationTriggerV2,
+	AutomationStatus,
+	AutomationAction,
+	ActionTarget,
+	ConditionOperator,
+	ConditionRule,
+	ConditionGroup,
+	ValueRef,
+	WorkflowNodeConfig,
+	WorkflowNodeType,
+} from "@onetool/backend/convex/lib/workflowTypes";
+
+export {
+	FIELD_REGISTRY,
+	OPERATORS_BY_TYPE,
+	RELATED_OBJECTS,
+	RELATION_FIELD,
+	getFieldDefinition,
+	getWritableFields,
+	getFilterableFields,
+	operatorsForField,
+	getStatusOptions,
+} from "@onetool/backend/convex/lib/fieldRegistry";
+
+export type {
+	FieldDefinition,
+	FieldType,
+} from "@onetool/backend/convex/lib/fieldRegistry";
+
+// ---------------------------------------------------------------------------
+// 2. Object-type UI options
+// ---------------------------------------------------------------------------
+
+export const OBJECT_TYPE_LABELS: Record<AutomationObjectType, string> = {
+	client: "Client",
+	project: "Project",
+	quote: "Quote",
+	invoice: "Invoice",
+	task: "Task",
+};
+
+export const OBJECT_TYPE_OPTIONS: {
+	value: AutomationObjectType;
+	label: string;
+}[] = AUTOMATION_OBJECT_TYPES.map((value) => ({
+	value,
+	label: OBJECT_TYPE_LABELS[value],
+}));
+
+// ---------------------------------------------------------------------------
+// 3. Per-kind config aliases (narrowed from the shared discriminated union)
+// ---------------------------------------------------------------------------
+
+export type ConditionNodeConfig = Extract<
+	WorkflowNodeConfig,
+	{ kind: "condition" }
+>;
+export type ActionNodeConfig = Extract<WorkflowNodeConfig, { kind: "action" }>;
+export type FetchNodeConfig = Extract<
+	WorkflowNodeConfig,
+	{ kind: "fetch_records" }
+>;
+export type LoopNodeConfig = Extract<WorkflowNodeConfig, { kind: "loop" }>;
+export type DelayNodeConfig = Extract<WorkflowNodeConfig, { kind: "delay" }>;
+export type DelayUntilNodeConfig = Extract<
+	WorkflowNodeConfig,
+	{ kind: "delay_until" }
+>;
+
+// ---------------------------------------------------------------------------
+// 4. Editor node — mirrors automations.ts nodeArgValidator, except `config`
+//    is optional while the user is still configuring the step. Save-time
+//    validation requires every node to have a complete config.
+// ---------------------------------------------------------------------------
+
+export interface WorkflowNode {
 	id: string;
+	type: WorkflowNodeType;
+	config?: WorkflowNodeConfig;
 	nextNodeId?: string;
 	elseNodeId?: string;
-	/** Persisted UI position from manual drag */
+	/** Loop body entry point. */
+	bodyStartNodeId?: string;
+	/** Persisted UI position from manual drag. */
 	position?: { x: number; y: number };
-	/**
-	 * @deprecated Legacy field -- use `config` on ConditionNode instead.
-	 * Kept for backward compatibility during migration (Plans 02-05).
-	 */
-	condition?: {
-		field: string;
-		operator: ConditionOperator;
-		value: unknown;
+}
+
+export type NodeType = WorkflowNodeType;
+
+// ---------------------------------------------------------------------------
+// 5. Trigger draft — the editor's in-progress trigger state. Serialized to a
+//    v2 AutomationTriggerV2 at save time (see validation.ts / flow-adapter).
+//    email_received is intentionally absent: read-only legacy, never writable.
+// ---------------------------------------------------------------------------
+
+export type TriggerType =
+	| "status_changed"
+	| "record_created"
+	| "record_updated"
+	| "scheduled";
+
+export const TRIGGER_TYPE_OPTIONS: {
+	value: TriggerType;
+	label: string;
+	description: string;
+	comingSoon?: boolean;
+}[] = [
+	{
+		value: "status_changed",
+		label: "Status changes",
+		description: "When a record moves to a specific status",
+	},
+	{
+		value: "record_created",
+		label: "Record created",
+		description: "When a new record is added",
+	},
+	{
+		value: "record_updated",
+		label: "Record updated",
+		description: "When fields on a record change",
+	},
+	{
+		value: "scheduled",
+		label: "On a schedule",
+		description: "Runs daily, weekly, or monthly",
+		comingSoon: true,
+	},
+];
+
+export type TriggerConfig = {
+	type?: TriggerType;
+	objectType?: AutomationObjectType;
+	/** status_changed */
+	fromStatus?: string;
+	toStatus?: string;
+	/** record_updated — fire only when one of these fields changed. */
+	fields?: string[];
+	/** scheduled (Slice 2) */
+	schedule?: {
+		frequency: "daily" | "weekly" | "monthly";
+		timezone: string;
+		time?: string;
+		dayOfWeek?: number;
+		dayOfMonth?: number;
 	};
-	/**
-	 * @deprecated Legacy field -- use `config` on ActionNode instead.
-	 * Kept for backward compatibility during migration (Plans 02-05).
-	 */
-	action?: {
-		targetType: "self" | "project" | "client" | "quote" | "invoice";
-		actionType: "update_status" | "update_field" | "send_notification" | "create_record";
-		newStatus: string;
-		field?: string;
-		value?: unknown;
-		notificationRecipient?: string;
-		notificationMessage?: string;
-		createRecordType?: "task" | "project";
-		createRecordFields?: Record<string, unknown>;
-	};
-}
-
-// ---------------------------------------------------------------------------
-// 3. Per-type config interfaces
-// ---------------------------------------------------------------------------
-
-export type ConditionConfig = {
-	field: string;
-	operator: ConditionOperator;
-	value: unknown;
-};
-
-export type ActionConfig = {
-	targetType: "self" | "project" | "client" | "quote" | "invoice";
-	actionType: "update_field" | "send_notification" | "create_record";
-	/** Backward compat for existing automations using update_status */
-	newStatus?: string;
-	field?: string;
-	value?: unknown;
-	notificationRecipient?: string;
-	notificationMessage?: string;
-	createRecordType?: "task" | "project";
-	createRecordFields?: Record<string, unknown>;
-};
-
-export type FetchConfig = {
-	entityType: "client" | "project" | "quote" | "invoice" | "task";
-	filters?: Array<{ field: string; operator: string; value: unknown }>;
-	limit?: number;
 };
 
 // ---------------------------------------------------------------------------
-// 4. Discriminated union WorkflowNode
+// 6. Action target UI options (derived from the registry relations map)
 // ---------------------------------------------------------------------------
 
-export type WorkflowNode =
-	| (NodeBase & { type: "condition"; config?: ConditionConfig })
-	| (NodeBase & { type: "action"; config?: ActionConfig })
-	| (NodeBase & { type: "fetch_records"; config?: FetchConfig })
-	| (NodeBase & { type: "loop"; config?: FetchConfig })
-	| (NodeBase & { type: "end" });
+export type ActionTargetOption = {
+	/** "self" or the related object type. */
+	value: "self" | AutomationObjectType;
+	label: string;
+	/** The object type the target resolves to (drives field pickers). */
+	objectType: AutomationObjectType;
+};
 
-// ---------------------------------------------------------------------------
-// 5. NodeType literal union (derived from discriminated union)
-// ---------------------------------------------------------------------------
-
-export type NodeType = WorkflowNode["type"];
-
-// ---------------------------------------------------------------------------
-// 6. Type guards
-// ---------------------------------------------------------------------------
-
-export function isConditionNode(
-	node: WorkflowNode
-): node is Extract<WorkflowNode, { type: "condition" }> {
-	return node.type === "condition";
-}
-
-export function isActionNode(
-	node: WorkflowNode
-): node is Extract<WorkflowNode, { type: "action" }> {
-	return node.type === "action";
-}
-
-export function isFetchNode(
-	node: WorkflowNode
-): node is Extract<WorkflowNode, { type: "fetch_records" }> {
-	return node.type === "fetch_records";
-}
-
-export function isLoopNode(
-	node: WorkflowNode
-): node is Extract<WorkflowNode, { type: "loop" }> {
-	return node.type === "loop";
-}
-
-export function isEndNode(
-	node: WorkflowNode
-): node is Extract<WorkflowNode, { type: "end" }> {
-	return node.type === "end";
+export function getTargetOptions(
+	objectType: AutomationObjectType
+): ActionTargetOption[] {
+	return [
+		{
+			value: "self",
+			label: `This ${OBJECT_TYPE_LABELS[objectType]}`,
+			objectType,
+		},
+		...RELATED_OBJECTS[objectType].map((related) => ({
+			value: related,
+			label: `Related ${OBJECT_TYPE_LABELS[related]}`,
+			objectType: related,
+		})),
+	];
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +221,7 @@ export function isEndNode(
 export type TriggerNodeData = {
 	nodeType: "trigger";
 	trigger: TriggerConfig;
-	triggerObjectType: string | null;
+	triggerObjectType: AutomationObjectType | null;
 };
 
 export type TriggerPlaceholderNodeData = {
@@ -161,29 +230,29 @@ export type TriggerPlaceholderNodeData = {
 
 export type ConditionNodeData = {
 	nodeType: "condition";
-	config: ConditionConfig;
-	triggerObjectType: string | null;
+	config?: ConditionNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
 	_dbNode: WorkflowNode;
 };
 
 export type ActionNodeData = {
 	nodeType: "action";
-	config: ActionConfig;
-	triggerObjectType: string | null;
+	config?: ActionNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
 	_dbNode: WorkflowNode;
 };
 
 export type FetchNodeData = {
 	nodeType: "fetch_records";
-	config?: FetchConfig;
-	triggerObjectType: string | null;
+	config?: FetchNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
 	_dbNode: WorkflowNode;
 };
 
 export type LoopNodeData = {
 	nodeType: "loop";
-	config?: FetchConfig;
-	triggerObjectType: string | null;
+	config?: LoopNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
 	_dbNode: WorkflowNode;
 };
 
@@ -205,7 +274,10 @@ export type TerminalNodeData = {
 // ---------------------------------------------------------------------------
 
 export type TriggerRFNode = Node<TriggerNodeData, "triggerNode">;
-export type TriggerPlaceholderRFNode = Node<TriggerPlaceholderNodeData, "triggerPlaceholderNode">;
+export type TriggerPlaceholderRFNode = Node<
+	TriggerPlaceholderNodeData,
+	"triggerPlaceholderNode"
+>;
 export type ConditionRFNode = Node<ConditionNodeData, "conditionNode">;
 export type ActionRFNode = Node<ActionNodeData, "actionNode">;
 export type FetchRFNode = Node<FetchNodeData, "fetchNode">;
@@ -229,7 +301,7 @@ export type AppNode =
 // 9. AppEdge type
 // ---------------------------------------------------------------------------
 
-export type BranchType = "yes" | "no" | "each" | "after" | "loop_back";
+export type BranchType = "next" | "yes" | "no" | "each" | "after" | "loop_back";
 
 export type EdgeData = {
 	branchType?: BranchType;
@@ -240,64 +312,3 @@ export type EdgeData = {
 };
 
 export type AppEdge = Edge<EdgeData>;
-
-// ---------------------------------------------------------------------------
-// 10. Constants re-exported from workflow-node.tsx and trigger-node.tsx
-// ---------------------------------------------------------------------------
-
-/** Field options for conditions, keyed by trigger object type */
-export const FIELD_OPTIONS: Record<string, { value: string; label: string }[]> = {
-	client: [
-		{ value: "status", label: "Status" },
-		{ value: "priorityLevel", label: "Priority Level" },
-		{ value: "clientType", label: "Client Type" },
-		{ value: "clientSize", label: "Client Size" },
-		{ value: "category", label: "Category" },
-		{ value: "industry", label: "Industry" },
-	],
-	project: [
-		{ value: "status", label: "Status" },
-		{ value: "projectType", label: "Project Type" },
-		{ value: "title", label: "Title" },
-	],
-	quote: [
-		{ value: "status", label: "Status" },
-		{ value: "title", label: "Title" },
-	],
-	invoice: [
-		{ value: "status", label: "Status" },
-		{ value: "invoiceNumber", label: "Invoice Number" },
-	],
-	task: [
-		{ value: "status", label: "Status" },
-		{ value: "priority", label: "Priority" },
-		{ value: "type", label: "Type" },
-	],
-};
-
-/** Target options for actions, keyed by trigger object type */
-export const TARGET_OPTIONS: Record<
-	string,
-	{ value: string; label: string; type: string }[]
-> = {
-	client: [{ value: "self", label: "This Client", type: "client" }],
-	project: [
-		{ value: "self", label: "This Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-	quote: [
-		{ value: "self", label: "This Quote", type: "quote" },
-		{ value: "project", label: "Related Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-	invoice: [
-		{ value: "self", label: "This Invoice", type: "invoice" },
-		{ value: "project", label: "Related Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-	task: [
-		{ value: "self", label: "This Task", type: "task" },
-		{ value: "project", label: "Related Project", type: "project" },
-		{ value: "client", label: "Related Client", type: "client" },
-	],
-};

@@ -6,71 +6,68 @@ import { AlertTriangle, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
-import { FIELD_OPTIONS } from "../../lib/node-types";
+import {
+	VALUELESS_OPERATORS,
+	getFilterableFields,
+	type AutomationObjectType,
+	type ConditionNodeConfig,
+	type ConditionRule,
+} from "../../lib/node-types";
 
-function getSummary(data: Record<string, unknown>): {
+const OPERATOR_LABELS: Record<string, string> = {
+	equals: "equals",
+	not_equals: "does not equal",
+	contains: "contains",
+	not_contains: "does not contain",
+	is_empty: "is empty",
+	is_not_empty: "is not empty",
+	greater_than: "is greater than",
+	less_than: "is less than",
+	gte: "is at least",
+	lte: "is at most",
+	is_true: "is true",
+	is_false: "is false",
+	before: "is before",
+	after: "is after",
+};
+
+function describeRule(rule: ConditionRule): string {
+	const opLabel = OPERATOR_LABELS[rule.operator] ?? rule.operator;
+	if ((VALUELESS_OPERATORS as readonly string[]).includes(rule.operator)) {
+		return `${rule.field} ${opLabel}`;
+	}
+	const value = rule.value?.kind === "static" ? rule.value.value : "...";
+	return `${rule.field} ${opLabel} "${value ?? "..."}"`;
+}
+
+function getSummary(config: ConditionNodeConfig | undefined): {
 	title: string;
 	description: string;
 	isConfigured: boolean;
 } {
-	const config =
-		(data as Record<string, unknown>).config ||
-		(data as Record<string, unknown>).condition;
-	const condition = config as
-		| { field?: string; operator?: string; value?: unknown }
-		| undefined;
-	if (!condition || !condition.field)
+	const allRules = (config?.groups ?? []).flatMap((g) => g.rules);
+	if (!config || allRules.length === 0) {
 		return { title: "Set a condition", description: "Configure condition...", isConfigured: false };
-
-	const operatorLabels: Record<string, string> = {
-		equals: "equals",
-		not_equals: "does not equal",
-		contains: "contains",
-		exists: "exists",
-		greater_than: "is greater than",
-		less_than: "is less than",
-		is_true: "is true",
-		is_false: "is false",
-		before: "is before",
-		after: "is after",
-	};
-	const opLabel = condition.operator
-		? (operatorLabels[condition.operator] ?? condition.operator)
-		: "equals";
-
-	const title = condition.field;
-	let description: string;
-	if (
-		condition.operator === "exists" ||
-		condition.operator === "is_true" ||
-		condition.operator === "is_false"
-	) {
-		description = `${condition.field} ${opLabel}`;
-	} else {
-		description = `${condition.field} ${opLabel} "${condition.value ?? "..."}"`;
 	}
 
-	return { title, description, isConfigured: true };
+	const [first, ...rest] = allRules;
+	const description =
+		rest.length > 0 ? `${describeRule(first)} +${rest.length} more` : describeRule(first);
+
+	return { title: first.field, description, isConfigured: true };
 }
 
 export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
-	const { title, description, isConfigured } = getSummary(data);
-	const config =
-		(data as Record<string, unknown>)?.config ||
-		(data as Record<string, unknown>)?.condition;
-	const condition = config as
-		| { field?: string; operator?: string; value?: unknown }
-		| undefined;
-	const triggerObjectType = data?.triggerObjectType as string | null;
+	const config = (data as Record<string, unknown>)?.config as ConditionNodeConfig | undefined;
+	const { title, description, isConfigured } = getSummary(config);
+	const triggerObjectType = data?.triggerObjectType as AutomationObjectType | null;
 
 	const isFieldInvalid = useMemo(() => {
-		if (!condition?.field || !triggerObjectType) return false;
-		const validFields = FIELD_OPTIONS[triggerObjectType] || [];
-		return (
-			validFields.length > 0 &&
-			!validFields.some((f) => f.value === condition.field)
-		);
-	}, [condition?.field, triggerObjectType]);
+		const firstRule = config?.groups?.[0]?.rules?.[0];
+		if (!firstRule?.field || !triggerObjectType) return false;
+		const validFields = getFilterableFields(triggerObjectType);
+		return validFields.length > 0 && !validFields.some((f) => f.key === firstRule.field);
+	}, [config, triggerObjectType]);
 
 	return (
 		<BaseNode

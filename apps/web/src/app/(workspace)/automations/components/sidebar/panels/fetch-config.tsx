@@ -11,17 +11,16 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import type { FetchConfig } from "../../../lib/node-types";
+import {
+	DEFAULT_FETCH_LIMIT,
+	MAX_FETCH_LIMIT,
+	OBJECT_TYPE_OPTIONS,
+	type AutomationObjectType,
+	type FetchNodeConfig,
+	type WorkflowNode,
+} from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-
-const ENTITY_TYPES = [
-	{ value: "client", label: "Client" },
-	{ value: "project", label: "Project" },
-	{ value: "quote", label: "Quote" },
-	{ value: "invoice", label: "Invoice" },
-	{ value: "task", label: "Task" },
-] as const;
 
 export function FetchConfigPanel({
 	nodeId,
@@ -43,11 +42,15 @@ export function FetchConfigPanel({
 		);
 	}
 
-	const currentConfig =
-		(node.config as FetchConfig | undefined) ||
-		(node as unknown as { fetchConfig?: FetchConfig }).fetchConfig || {
-			entityType: trigger?.objectType || "client",
-		};
+	const currentConfig: FetchNodeConfig = (node.config as FetchNodeConfig | undefined) ?? {
+		kind: "fetch_records",
+		objectType: trigger?.objectType || "client",
+		filters: [],
+	};
+
+	const commit = (next: FetchNodeConfig) => {
+		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
+	};
 
 	return (
 		<div className="flex flex-col h-full">
@@ -61,23 +64,18 @@ export function FetchConfigPanel({
 
 			<div className="flex-1">
 				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Entity type</Label>
+					<Label className="text-sm font-medium">Object type</Label>
 					<Select
-						value={currentConfig.entityType}
+						value={currentConfig.objectType}
 						onValueChange={(value) =>
-							onNodeChange(nodeId, {
-								config: {
-									...currentConfig,
-									entityType: value as FetchConfig["entityType"],
-								},
-							})
+							commit({ ...currentConfig, objectType: value as AutomationObjectType })
 						}
 					>
 						<SelectTrigger className="mt-2">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
-							{ENTITY_TYPES.map((entity) => (
+							{OBJECT_TYPE_OPTIONS.map((entity) => (
 								<SelectItem key={entity.value} value={entity.value}>
 									{entity.label}
 								</SelectItem>
@@ -86,9 +84,26 @@ export function FetchConfigPanel({
 					</Select>
 				</div>
 
+				<div className="border-b border-border py-4">
+					<Label className="text-sm font-medium">Limit</Label>
+					<input
+						type="number"
+						min={1}
+						max={MAX_FETCH_LIMIT}
+						className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+						value={currentConfig.limit ?? DEFAULT_FETCH_LIMIT}
+						onChange={(e) =>
+							commit({
+								...currentConfig,
+								limit: e.target.value === "" ? undefined : Number(e.target.value),
+							})
+						}
+					/>
+				</div>
+
 				<div className="py-4">
 					<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-						Filter configuration coming in a future update.
+						Filters coming soon.
 					</div>
 				</div>
 			</div>

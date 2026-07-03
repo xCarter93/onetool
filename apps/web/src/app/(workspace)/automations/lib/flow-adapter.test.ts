@@ -7,16 +7,51 @@ import {
 	RF_NODE_TYPES,
 	RF_EDGE_TYPES,
 	isTerminalId,
+	type EditorNode,
 } from "./flow-adapter";
-import type { WorkflowNode } from "../components/workflow-node";
-import type { TriggerConfig } from "../components/trigger-node";
+import type {
+	ActionNodeConfig,
+	ConditionNodeConfig,
+	TriggerConfig,
+	WorkflowNode,
+} from "./node-types";
 
-const makeTrigger = (
-	overrides?: Partial<TriggerConfig>
-): TriggerConfig => ({
+const makeTrigger = (overrides?: Partial<TriggerConfig>): TriggerConfig => ({
+	type: "status_changed",
 	objectType: "client",
 	toStatus: "active",
 	...overrides,
+});
+
+const updateStatusAction = (newStatus: string): ActionNodeConfig => ({
+	kind: "action",
+	action: {
+		type: "update_field",
+		target: "self",
+		field: "status",
+		value: { kind: "static", value: newStatus },
+	},
+});
+
+const updateClientStatusAction = (newStatus: string): ActionNodeConfig => ({
+	kind: "action",
+	action: {
+		type: "update_field",
+		target: { related: "client" },
+		field: "status",
+		value: { kind: "static", value: newStatus },
+	},
+});
+
+const statusEqualsCondition = (value: string): ConditionNodeConfig => ({
+	kind: "condition",
+	logic: "and",
+	groups: [
+		{
+			logic: "and",
+			rules: [{ field: "status", operator: "equals", value: { kind: "static", value } }],
+		},
+	],
 });
 
 describe("flow-adapter", () => {
@@ -35,20 +70,16 @@ describe("flow-adapter", () => {
 		expect(result.nodes).toHaveLength(2);
 		expect(result.nodes[0].id).toBe(TRIGGER_NODE_ID);
 		expect(result.nodes[0].type).toBe("triggerNode");
-		expect(result.nodes[0].data.trigger).toEqual(trigger);
+		expect((result.nodes[0].data as { trigger: TriggerConfig }).trigger).toEqual(trigger);
 	});
 
 	it("converts single action node to RF format", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "a1",
 				type: "action",
-				action: {
-					targetType: "self",
-					actionType: "update_status",
-					newStatus: "active",
-				},
+				config: updateStatusAction("active"),
 			},
 		];
 
@@ -63,25 +94,17 @@ describe("flow-adapter", () => {
 
 	it("converts linear chain to sequential RF edges", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "a1",
 				type: "action",
-				action: {
-					targetType: "self",
-					actionType: "update_status",
-					newStatus: "active",
-				},
+				config: updateStatusAction("active"),
 				nextNodeId: "a2",
 			},
 			{
 				id: "a2",
 				type: "action",
-				action: {
-					targetType: "client",
-					actionType: "update_status",
-					newStatus: "inactive",
-				},
+				config: updateClientStatusAction("inactive"),
 			},
 		];
 
@@ -102,47 +125,31 @@ describe("flow-adapter", () => {
 
 	it("converts condition node to branching RF edges", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
-				condition: {
-					field: "status",
-					operator: "equals",
-					value: "active",
-				},
+				config: statusEqualsCondition("active"),
 				nextNodeId: "a1",
 				elseNodeId: "a2",
 			},
 			{
 				id: "a1",
 				type: "action",
-				action: {
-					targetType: "self",
-					actionType: "update_status",
-					newStatus: "completed",
-				},
+				config: updateStatusAction("completed"),
 			},
 			{
 				id: "a2",
 				type: "action",
-				action: {
-					targetType: "client",
-					actionType: "update_status",
-					newStatus: "inactive",
-				},
+				config: updateClientStatusAction("inactive"),
 			},
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
 
 		// Find branch edges from c1
-		const yesEdge = result.edges.find(
-			(e) => e.source === "c1" && e.target === "a1"
-		);
-		const noEdge = result.edges.find(
-			(e) => e.source === "c1" && e.target === "a2"
-		);
+		const yesEdge = result.edges.find((e) => e.source === "c1" && e.target === "a1");
+		const noEdge = result.edges.find((e) => e.source === "c1" && e.target === "a2");
 
 		expect(yesEdge).toBeDefined();
 		expect(yesEdge!.type).toBe(RF_EDGE_TYPES.branchLabel);
@@ -157,15 +164,11 @@ describe("flow-adapter", () => {
 
 	it("round-trips single action without data loss", () => {
 		const trigger = makeTrigger();
-		const originalNodes: WorkflowNode[] = [
+		const originalNodes: EditorNode[] = [
 			{
 				id: "a1",
 				type: "action",
-				action: {
-					targetType: "self",
-					actionType: "update_status",
-					newStatus: "active",
-				},
+				config: updateStatusAction("active"),
 			},
 		];
 
@@ -176,7 +179,7 @@ describe("flow-adapter", () => {
 		expect(result.nodes).toHaveLength(1);
 		expect(result.nodes[0].id).toBe("a1");
 		expect(result.nodes[0].type).toBe("action");
-		expect(result.nodes[0].action).toEqual(originalNodes[0].action);
+		expect(result.nodes[0].config).toEqual((originalNodes[0] as WorkflowNode).config);
 		// Single node has no outgoing pointer
 		expect(result.nodes[0].nextNodeId).toBeUndefined();
 		expect(result.nodes[0].elseNodeId).toBeUndefined();
@@ -184,35 +187,23 @@ describe("flow-adapter", () => {
 
 	it("round-trips condition with branches without data loss", () => {
 		const trigger = makeTrigger();
-		const originalNodes: WorkflowNode[] = [
+		const originalNodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
-				condition: {
-					field: "status",
-					operator: "equals",
-					value: "active",
-				},
+				config: statusEqualsCondition("active"),
 				nextNodeId: "a1",
 				elseNodeId: "a2",
 			},
 			{
 				id: "a1",
 				type: "action",
-				action: {
-					targetType: "self",
-					actionType: "update_status",
-					newStatus: "completed",
-				},
+				config: updateStatusAction("completed"),
 			},
 			{
 				id: "a2",
 				type: "action",
-				action: {
-					targetType: "client",
-					actionType: "update_status",
-					newStatus: "inactive",
-				},
+				config: updateClientStatusAction("inactive"),
 			},
 		];
 
@@ -226,56 +217,40 @@ describe("flow-adapter", () => {
 		expect(c1).toBeDefined();
 		expect(c1!.nextNodeId).toBe("a1");
 		expect(c1!.elseNodeId).toBe("a2");
-		expect(c1!.condition).toEqual(originalNodes[0].condition);
+		expect(c1!.config).toEqual((originalNodes[0] as WorkflowNode).config);
 
 		const a1 = result.nodes.find((n) => n.id === "a1");
-		expect(a1!.action).toEqual(originalNodes[1].action);
+		expect(a1!.config).toEqual((originalNodes[1] as WorkflowNode).config);
 
 		const a2 = result.nodes.find((n) => n.id === "a2");
-		expect(a2!.action).toEqual(originalNodes[2].action);
+		expect(a2!.config).toEqual((originalNodes[2] as WorkflowNode).config);
 	});
 
 	it("round-trips complex graph preserving all structure", () => {
 		const trigger = makeTrigger({ objectType: "project", toStatus: "completed" });
-		const originalNodes: WorkflowNode[] = [
+		const originalNodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
-				condition: {
-					field: "status",
-					operator: "equals",
-					value: "in-progress",
-				},
+				config: statusEqualsCondition("in-progress"),
 				nextNodeId: "a1",
 				elseNodeId: "a2",
 			},
 			{
 				id: "a1",
 				type: "action",
-				action: {
-					targetType: "self",
-					actionType: "update_status",
-					newStatus: "completed",
-				},
+				config: updateStatusAction("completed"),
 				nextNodeId: "a3",
 			},
 			{
 				id: "a2",
 				type: "action",
-				action: {
-					targetType: "client",
-					actionType: "update_status",
-					newStatus: "inactive",
-				},
+				config: updateClientStatusAction("inactive"),
 			},
 			{
 				id: "a3",
 				type: "action",
-				action: {
-					targetType: "client",
-					actionType: "update_status",
-					newStatus: "active",
-				},
+				config: updateClientStatusAction("active"),
 			},
 		];
 
@@ -316,24 +291,16 @@ describe("flow-adapter", () => {
 
 	it("all condition edges have branchType metadata", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
-				condition: { field: "status", operator: "equals", value: "active" },
+				config: statusEqualsCondition("active"),
 				nextNodeId: "a1",
 				elseNodeId: "a2",
 			},
-			{
-				id: "a1",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
-			{
-				id: "a2",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
+			{ id: "a1", type: "action", config: updateStatusAction("done") },
+			{ id: "a2", type: "action", config: updateClientStatusAction("inactive") },
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
@@ -346,23 +313,15 @@ describe("flow-adapter", () => {
 
 	it("all loop edges have branchType metadata", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "loop1",
 				type: "loop",
 				nextNodeId: "b1",
 				elseNodeId: "a1",
 			},
-			{
-				id: "b1",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
-			{
-				id: "a1",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
+			{ id: "b1", type: "action", config: updateStatusAction("done") },
+			{ id: "a1", type: "action", config: updateClientStatusAction("inactive") },
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
@@ -375,18 +334,14 @@ describe("flow-adapter", () => {
 
 	it("linear edges have branchType next", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "a1",
 				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+				config: updateStatusAction("done"),
 				nextNodeId: "a2",
 			},
-			{
-				id: "a2",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
+			{ id: "a2", type: "action", config: updateClientStatusAction("inactive") },
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
@@ -397,12 +352,8 @@ describe("flow-adapter", () => {
 
 	it("trigger-to-root edge has branchType next", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
-			{
-				id: "a1",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
+		const nodes: EditorNode[] = [
+			{ id: "a1", type: "action", config: updateStatusAction("done") },
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
@@ -413,11 +364,11 @@ describe("flow-adapter", () => {
 
 	it("terminal stub edges inherit branchType", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
-				condition: { field: "status", operator: "equals", value: "active" },
+				config: statusEqualsCondition("active"),
 				// No nextNodeId or elseNodeId - both are terminal stubs
 			},
 		];
@@ -435,24 +386,16 @@ describe("flow-adapter", () => {
 
 	it("edge IDs include sourceHandle for condition branches", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
-				condition: { field: "status", operator: "equals", value: "active" },
+				config: statusEqualsCondition("active"),
 				nextNodeId: "a1",
 				elseNodeId: "a2",
 			},
-			{
-				id: "a1",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
-			{
-				id: "a2",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
+			{ id: "a1", type: "action", config: updateStatusAction("done") },
+			{ id: "a2", type: "action", config: updateClientStatusAction("inactive") },
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
@@ -465,23 +408,15 @@ describe("flow-adapter", () => {
 
 	it("round-trips loop node with branches without data loss", () => {
 		const trigger = makeTrigger();
-		const originalNodes: WorkflowNode[] = [
+		const originalNodes: EditorNode[] = [
 			{
 				id: "loop1",
 				type: "loop",
 				nextNodeId: "b1",
 				elseNodeId: "a1",
 			},
-			{
-				id: "b1",
-				type: "action",
-				action: { targetType: "self", actionType: "update_status", newStatus: "done" },
-			},
-			{
-				id: "a1",
-				type: "action",
-				action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
-			},
+			{ id: "b1", type: "action", config: updateStatusAction("done") },
+			{ id: "a1", type: "action", config: updateClientStatusAction("inactive") },
 		];
 
 		const rf = automationToReactFlow(trigger, originalNodes);
@@ -495,7 +430,7 @@ describe("flow-adapter", () => {
 
 	it("routes loop-back from a condition's yes terminal when the loop body ends at a condition", () => {
 		const trigger = makeTrigger();
-		const nodes: WorkflowNode[] = [
+		const nodes: EditorNode[] = [
 			{
 				id: "loop1",
 				type: "loop",
@@ -504,7 +439,7 @@ describe("flow-adapter", () => {
 			{
 				id: "cond1",
 				type: "condition",
-				condition: { field: "status", operator: "equals", value: "active" },
+				config: statusEqualsCondition("active"),
 			},
 		];
 
@@ -523,5 +458,16 @@ describe("flow-adapter", () => {
 		expect(RF_EDGE_TYPES.afterLast).toBe("afterLastEdge");
 		// plusButton should not exist
 		expect((RF_EDGE_TYPES as Record<string, string>).plusButton).toBeUndefined();
+	});
+
+	it("filters out placeholder nodes when serializing", () => {
+		const trigger = makeTrigger();
+		const nodes: EditorNode[] = [
+			{ id: "p1", type: "placeholder" },
+		];
+
+		const rf = automationToReactFlow(trigger, nodes);
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+		expect(result.nodes).toHaveLength(0);
 	});
 });

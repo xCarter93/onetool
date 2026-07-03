@@ -5,7 +5,6 @@ import { Trash2, Zap } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -14,12 +13,14 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import {
-	STATUS_OPTIONS,
-	OBJECT_TYPES,
+	OBJECT_TYPE_OPTIONS,
 	TRIGGER_TYPE_OPTIONS,
+	getFilterableFields,
+	getStatusOptions,
+	type AutomationObjectType,
 	type TriggerConfig,
 	type TriggerType,
-} from "../../trigger-node";
+} from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 
@@ -31,50 +32,33 @@ export function TriggerConfigPanel({
 	rfNodes,
 	rfEdges,
 }: ConfigPanelProps) {
-	const currentTrigger = trigger || {
-		type: "status_changed" as TriggerType,
-		objectType: "quote" as const,
-		toStatus: "approved",
+	const currentTrigger: TriggerConfig = trigger || {
+		type: "status_changed",
+		objectType: "quote",
+		toStatus: "",
 	};
 	const triggerType = currentTrigger.type || "status_changed";
-	const statusOptions = STATUS_OPTIONS[currentTrigger.objectType] || [];
+	const objectType = currentTrigger.objectType || "quote";
+	const statusOptions = getStatusOptions(objectType);
+	const filterableFields = getFilterableFields(objectType);
 
 	const handleTriggerTypeChange = (value: string) => {
 		const newType = value as TriggerType;
-		if (newType === "email_received") {
-			onTriggerChange({ type: newType, objectType: "client" });
-		} else if (newType === "scheduled") {
-			onTriggerChange({
-				type: newType,
-				objectType: currentTrigger.objectType,
-				schedule: {
-					frequency: "daily",
-					timezone:
-						Intl.DateTimeFormat().resolvedOptions().timeZone,
-				},
-			});
-		} else if (
-			newType === "record_created" ||
-			newType === "record_updated"
-		) {
-			onTriggerChange({
-				type: newType,
-				objectType: currentTrigger.objectType,
-			});
+		if (newType === "record_created" || newType === "record_updated") {
+			onTriggerChange({ type: newType, objectType });
 		} else {
-			const newStatusOptions =
-				STATUS_OPTIONS[currentTrigger.objectType] || [];
+			const newStatusOptions = getStatusOptions(objectType);
 			onTriggerChange({
-				type: newType,
-				objectType: currentTrigger.objectType,
+				type: "status_changed",
+				objectType,
 				toStatus: newStatusOptions[0]?.value || "",
 			});
 		}
 	};
 
 	const handleObjectTypeChange = (value: string) => {
-		const newObjType = value as TriggerConfig["objectType"];
-		const newStatusOptions = STATUS_OPTIONS[newObjType] || [];
+		const newObjType = value as AutomationObjectType;
+		const newStatusOptions = getStatusOptions(newObjType);
 		onTriggerChange({
 			...currentTrigger,
 			objectType: newObjType,
@@ -83,7 +67,16 @@ export function TriggerConfigPanel({
 				triggerType === "status_changed"
 					? newStatusOptions[0]?.value || ""
 					: undefined,
+			fields: undefined,
 		});
+	};
+
+	const toggleField = (field: string) => {
+		const current = currentTrigger.fields ?? [];
+		const next = current.includes(field)
+			? current.filter((f) => f !== field)
+			: [...current, field];
+		onTriggerChange({ ...currentTrigger, fields: next });
 	};
 
 	return (
@@ -100,75 +93,49 @@ export function TriggerConfigPanel({
 				{/* Trigger type selector */}
 				<div className="border-b border-border py-4">
 					<Label className="text-sm font-medium">Trigger event</Label>
-					<Select
-						value={triggerType}
-						onValueChange={handleTriggerTypeChange}
-					>
+					<Select value={triggerType} onValueChange={handleTriggerTypeChange}>
 						<SelectTrigger className="mt-2">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							{TRIGGER_TYPE_OPTIONS.map((t) => (
-								<SelectItem key={t.value} value={t.value}>
+								<SelectItem key={t.value} value={t.value} disabled={t.comingSoon}>
 									{t.label}
+									{t.comingSoon ? " (Soon)" : ""}
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
 				</div>
 
-				{/* Object type -- shown for all except scheduled */}
-				{triggerType !== "scheduled" && (
-					<div className="border-b border-border py-4">
-						<Label className="text-sm font-medium">
-							{triggerType === "email_received"
-								? "From"
-								: "Object type"}
-						</Label>
-						<Select
-							value={currentTrigger.objectType}
-							onValueChange={handleObjectTypeChange}
-							disabled={triggerType === "email_received"}
-						>
-							<SelectTrigger className="mt-2">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{triggerType === "email_received" ? (
-									<SelectItem value="client">
-										Client
-									</SelectItem>
-								) : (
-									OBJECT_TYPES.map((type) => (
-										<SelectItem
-											key={type.value}
-											value={type.value}
-										>
-											{type.label}
-										</SelectItem>
-									))
-								)}
-							</SelectContent>
-						</Select>
-					</div>
-				)}
+				{/* Object type */}
+				<div className="border-b border-border py-4">
+					<Label className="text-sm font-medium">Object type</Label>
+					<Select value={objectType} onValueChange={handleObjectTypeChange}>
+						<SelectTrigger className="mt-2">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{OBJECT_TYPE_OPTIONS.map((type) => (
+								<SelectItem key={type.value} value={type.value}>
+									{type.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
 
 				{/* Status change-specific fields */}
 				{triggerType === "status_changed" && (
 					<>
 						<div className="border-b border-border py-4">
-							<Label className="text-sm font-medium">
-								Changes from
-							</Label>
+							<Label className="text-sm font-medium">Changes from</Label>
 							<Select
 								value={currentTrigger.fromStatus || "any"}
 								onValueChange={(value) =>
 									onTriggerChange({
 										...currentTrigger,
-										fromStatus:
-											value === "any"
-												? undefined
-												: value,
+										fromStatus: value === "any" ? undefined : value,
 									})
 								}
 							>
@@ -176,14 +143,9 @@ export function TriggerConfigPanel({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="any">
-										Any status
-									</SelectItem>
+									<SelectItem value="any">Any status</SelectItem>
 									{statusOptions.map((status) => (
-										<SelectItem
-											key={status.value}
-											value={status.value}
-										>
+										<SelectItem key={status.value} value={status.value}>
 											{status.label}
 										</SelectItem>
 									))}
@@ -196,10 +158,7 @@ export function TriggerConfigPanel({
 							<Select
 								value={currentTrigger.toStatus || ""}
 								onValueChange={(value) =>
-									onTriggerChange({
-										...currentTrigger,
-										toStatus: value,
-									})
+									onTriggerChange({ ...currentTrigger, toStatus: value })
 								}
 							>
 								<SelectTrigger className="mt-2">
@@ -207,10 +166,7 @@ export function TriggerConfigPanel({
 								</SelectTrigger>
 								<SelectContent>
 									{statusOptions.map((status) => (
-										<SelectItem
-											key={status.value}
-											value={status.value}
-										>
+										<SelectItem key={status.value} value={status.value}>
 											{status.label}
 										</SelectItem>
 									))}
@@ -224,106 +180,31 @@ export function TriggerConfigPanel({
 				{triggerType === "record_updated" && (
 					<div className="border-b border-border py-4">
 						<Label className="text-sm font-medium">
-							Field (optional)
+							Fields (optional)
 						</Label>
-						<Input
-							className="mt-2"
-							value={currentTrigger.field || ""}
-							onChange={(e) =>
-								onTriggerChange({
-									...currentTrigger,
-									field: e.target.value || undefined,
-								})
-							}
-							placeholder="Any field"
-						/>
-						<p className="text-xs text-muted-foreground mt-1">
-							Leave blank to trigger on any field change
+						<div className="mt-2 flex flex-wrap gap-1.5">
+							{filterableFields.map((field) => {
+								const active = (currentTrigger.fields ?? []).includes(field.key);
+								return (
+									<button
+										key={field.key}
+										type="button"
+										onClick={() => toggleField(field.key)}
+										className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+											active
+												? "bg-primary/10 border-primary text-primary"
+												: "bg-muted text-muted-foreground border-border hover:bg-accent"
+										}`}
+									>
+										{field.label}
+									</button>
+								);
+							})}
+						</div>
+						<p className="text-xs text-muted-foreground mt-2">
+							Leave empty to trigger on any field change
 						</p>
 					</div>
-				)}
-
-				{/* Scheduled -- frequency picker */}
-				{triggerType === "scheduled" && (
-					<>
-						<div className="border-b border-border py-4">
-							<Label className="text-sm font-medium">
-								Frequency
-							</Label>
-							<Select
-								value={
-									currentTrigger.schedule?.frequency ||
-									"daily"
-								}
-								onValueChange={(value) =>
-									onTriggerChange({
-										...currentTrigger,
-										schedule: {
-											...currentTrigger.schedule!,
-											frequency: value as
-												| "daily"
-												| "weekly"
-												| "monthly",
-										},
-									})
-								}
-							>
-								<SelectTrigger className="mt-2">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="daily">Daily</SelectItem>
-									<SelectItem value="weekly">
-										Weekly
-									</SelectItem>
-									<SelectItem value="monthly">
-										Monthly
-									</SelectItem>
-								</SelectContent>
-							</Select>
-						</div>
-
-						<div className="border-b border-border py-4">
-							<Label className="text-sm font-medium">Time</Label>
-							<Input
-								className="mt-2"
-								type="time"
-								value={
-									currentTrigger.schedule?.time || "09:00"
-								}
-								onChange={(e) =>
-									onTriggerChange({
-										...currentTrigger,
-										schedule: {
-											...currentTrigger.schedule!,
-											time: e.target.value,
-										},
-									})
-								}
-							/>
-						</div>
-
-						<div className="border-b border-border py-4">
-							<Label className="text-sm font-medium">Timezone</Label>
-							<Input
-								className="mt-2"
-								value={
-									currentTrigger.schedule?.timezone ||
-									Intl.DateTimeFormat().resolvedOptions().timeZone
-								}
-								onChange={(e) =>
-									onTriggerChange({
-										...currentTrigger,
-										schedule: {
-											...currentTrigger.schedule!,
-											timezone: e.target.value,
-										},
-									})
-								}
-								placeholder="America/New_York"
-							/>
-						</div>
-					</>
 				)}
 
 				<div className="py-4 text-xs text-muted-foreground">

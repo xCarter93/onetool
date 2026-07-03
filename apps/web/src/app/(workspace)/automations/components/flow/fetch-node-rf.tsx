@@ -6,25 +6,19 @@ import { Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { OBJECT_TYPE_LABELS, type FetchNodeConfig } from "../../lib/node-types";
 
-function getSummary(data: Record<string, unknown>): {
+function getSummary(config: FetchNodeConfig | undefined): {
 	title: string;
 	description: string;
 	isConfigured: boolean;
 } {
-	const config = data.config as
-		| {
-				entityType?: string;
-				filters?: Array<{ field: string; operator: string; value: unknown }>;
-				limit?: number;
-		  }
-		| undefined;
-	if (!config || !config.entityType)
+	if (!config || !config.objectType) {
 		return { title: "Fetch Records", description: "Configure data source...", isConfigured: false };
+	}
 
-	const entityLabel =
-		config.entityType.charAt(0).toUpperCase() + config.entityType.slice(1);
-	const filterCount = config.filters?.length ?? 0;
+	const entityLabel = OBJECT_TYPE_LABELS[config.objectType];
+	const filterCount = config.filters?.reduce((sum, g) => sum + g.rules.length, 0) ?? 0;
 	const description =
 		filterCount > 0
 			? `${entityLabel} with ${filterCount} filter${filterCount > 1 ? "s" : ""}`
@@ -34,7 +28,8 @@ function getSummary(data: Record<string, unknown>): {
 }
 
 export const FetchNodeRF = memo(({ data, selected }: NodeProps) => {
-	const { title, description, isConfigured } = getSummary(data);
+	const config = (data as Record<string, unknown>)?.config as FetchNodeConfig | undefined;
+	const { title, description, isConfigured } = getSummary(config);
 
 	return (
 		<BaseNode

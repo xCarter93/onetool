@@ -38,9 +38,9 @@ describe("edge geometry", () => {
 		const workflowNodes: WorkflowNode[] = [
 			{ id: "loop1", type: "loop", nextNodeId: "cond1", elseNodeId: "after1" },
 			{ id: "cond1", type: "condition", nextNodeId: "yes1", elseNodeId: "no1" },
-			{ id: "yes1", type: "action", config: { targetType: "self", actionType: "update_field" } },
-			{ id: "no1", type: "action", config: { targetType: "self", actionType: "update_field" } },
-			{ id: "after1", type: "action", config: { targetType: "self", actionType: "update_field" } },
+			{ id: "yes1", type: "action" },
+			{ id: "no1", type: "action" },
+			{ id: "after1", type: "action" },
 		];
 
 		const layoutedNodes: Node[] = [

@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import type { TriggerConfig } from "../trigger-node";
-import type { WorkflowNode } from "../../lib/node-types";
+import type { TriggerConfig, WorkflowNode } from "../../lib/node-types";
+import type { EditorNode } from "../../lib/flow-adapter";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
 import { TriggerConfigPanel } from "./panels/trigger-config";
@@ -33,7 +33,7 @@ export type SidebarMode =
 export interface ConfigPanelProps {
 	nodeId?: string;
 	trigger: TriggerConfig | null;
-	nodes: WorkflowNode[];
+	nodes: EditorNode[];
 	onTriggerChange: (trigger: TriggerConfig) => void;
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
@@ -89,7 +89,7 @@ interface AutomationSidebarProps {
 	isOpen: boolean;
 	mode: SidebarMode | null;
 	trigger: TriggerConfig | null;
-	nodes: WorkflowNode[];
+	nodes: EditorNode[];
 	onClose: () => void;
 	onTriggerTypeSelect: (triggerType: string) => void;
 	onStepTypeSelect: (stepType: string, placeholderNodeId: string) => void;

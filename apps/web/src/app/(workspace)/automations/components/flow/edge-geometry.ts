@@ -44,8 +44,7 @@ export function computeAfterLastRouteRightX(
 	workflowNodes: WorkflowNode[]
 ): number | undefined {
 	const loopNode = workflowNodes.find(
-		(node): node is Extract<WorkflowNode, { type: "loop" }> =>
-			node.id === loopNodeId && node.type === "loop"
+		(node) => node.id === loopNodeId && node.type === "loop"
 	);
 	if (!loopNode) return undefined;
 
