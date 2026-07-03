@@ -1,4 +1,7 @@
-import type { WorkflowNode } from "./node-types";
+import type { FetchConfig, WorkflowNode } from "./node-types";
+
+/** Runtime shape written by flow-adapter serialization (hidden behind casts there). */
+type LegacyLoopConfig = { sourceNodeId: string; batchSize?: number };
 
 /**
  * Save-time bridge: converts the editor's legacy node shapes into the v2
@@ -53,6 +56,7 @@ function conditionRule(field: string, operator: string, value: unknown) {
 }
 
 function nodeConfig(node: WorkflowNode): Record<string, unknown> {
+	const nodeId = node.id;
 	switch (node.type) {
 		case "condition": {
 			const legacy = node.condition;
@@ -147,7 +151,8 @@ function nodeConfig(node: WorkflowNode): Record<string, unknown> {
 			}
 		}
 		case "fetch_records": {
-			const legacy = node.fetchConfig;
+			const legacy =
+				(node as { fetchConfig?: FetchConfig }).fetchConfig ?? node.config;
 			if (!legacy) {
 				throw new Error(`Find-records step "${node.id}" is not configured yet`);
 			}
@@ -169,7 +174,7 @@ function nodeConfig(node: WorkflowNode): Record<string, unknown> {
 			};
 		}
 		case "loop": {
-			const legacy = node.loopConfig;
+			const legacy = (node as { loopConfig?: LegacyLoopConfig }).loopConfig;
 			if (!legacy) {
 				throw new Error(`Loop step "${node.id}" is not configured yet`);
 			}
@@ -184,7 +189,7 @@ function nodeConfig(node: WorkflowNode): Record<string, unknown> {
 		case "end":
 			return { kind: "end" };
 		default:
-			throw new Error(`Step "${node.id}" has an unsupported type`);
+			throw new Error(`Step "${nodeId}" has an unsupported type`);
 	}
 }
 
