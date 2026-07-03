@@ -121,6 +121,8 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 					</div>
 				</SidebarInset>
 
+				{/* Always visible — free-plan users get an upgrade prompt inside the
+				    panel (and the backend enforces the plan gate regardless). */}
 				<AssistantNotch
 					open={assistantOpen}
 					onOpen={() => setAssistantOpen(true)}

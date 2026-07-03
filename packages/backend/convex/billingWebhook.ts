@@ -128,6 +128,7 @@ export const handleSubscriptionCreated = internalMutation({
 		subscriptionId: v.string(),
 		organizationId: v.string(),
 		planId: v.string(),
+		planSlug: v.optional(v.string()),
 		status: v.string(),
 		currentPeriodStart: v.optional(v.number()),
 	},
@@ -142,6 +143,9 @@ export const handleSubscriptionCreated = internalMutation({
 		await ctx.db.patch(org._id, {
 			clerkSubscriptionId: args.subscriptionId,
 			clerkPlanId: args.planId,
+			// Only overwrite when the event carried plan items — patching
+			// undefined would unset the field.
+			...(args.planSlug !== undefined ? { clerkPlanSlug: args.planSlug } : {}),
 			subscriptionStatus: toSubscriptionStatus(args.status),
 			billingCycleStart: args.currentPeriodStart || Date.now(),
 		});
@@ -159,6 +163,7 @@ export const handleSubscriptionActive = internalMutation({
 		subscriptionId: v.string(),
 		organizationId: v.string(),
 		planId: v.string(),
+		planSlug: v.optional(v.string()),
 		currentPeriodStart: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
@@ -172,6 +177,7 @@ export const handleSubscriptionActive = internalMutation({
 		await ctx.db.patch(org._id, {
 			clerkSubscriptionId: args.subscriptionId,
 			clerkPlanId: args.planId,
+			...(args.planSlug !== undefined ? { clerkPlanSlug: args.planSlug } : {}),
 			subscriptionStatus: "active",
 			billingCycleStart: args.currentPeriodStart || Date.now(),
 		});
@@ -189,6 +195,7 @@ export const handleSubscriptionUpdated = internalMutation({
 		subscriptionId: v.string(),
 		organizationId: v.string(),
 		planId: v.string(),
+		planSlug: v.optional(v.string()),
 		status: v.string(),
 		currentPeriodStart: v.optional(v.number()),
 	},
@@ -207,6 +214,7 @@ export const handleSubscriptionUpdated = internalMutation({
 		await ctx.db.patch(org._id, {
 			clerkSubscriptionId: args.subscriptionId,
 			clerkPlanId: args.planId,
+			...(args.planSlug !== undefined ? { clerkPlanSlug: args.planSlug } : {}),
 			subscriptionStatus: toSubscriptionStatus(args.status),
 			billingCycleStart: args.currentPeriodStart,
 		});

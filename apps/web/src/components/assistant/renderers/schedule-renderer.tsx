@@ -3,20 +3,24 @@
 import { CalendarDays, FolderKanban } from "lucide-react";
 import type { ToolRendererProps } from "./index";
 
-// Mirrors getSchedule's output shape in convex/assistantTools.ts.
+// Mirrors getSchedule's output shape in convex/assistantTools.ts. Dates are
+// ISO YYYY-MM-DD strings; historical threads replay older outputs where the
+// same fields were epoch ms, so both are accepted.
+type DayValue = string | number;
+
 interface ScheduleOutput {
 	projects: Array<{
 		id: string;
 		title: string;
-		startDate?: number;
-		endDate?: number;
+		startDate?: DayValue;
+		endDate?: DayValue;
 		status: string;
 		clientName: string;
 	}>;
 	tasks: Array<{
 		id: string;
 		title: string;
-		date: number;
+		date?: DayValue;
 		startTime?: string;
 		endTime?: string;
 		status: string;
@@ -27,13 +31,21 @@ interface ScheduleOutput {
 const ROW_CAP = 8;
 
 // Task/project dates are stored at UTC-midnight — format in UTC, never local.
-function formatDay(ms: number) {
-	return new Date(ms).toLocaleDateString(undefined, {
+// (ISO day strings parse as UTC midnight.)
+function formatDay(day: DayValue) {
+	return new Date(day).toLocaleDateString(undefined, {
 		weekday: "short",
 		month: "short",
 		day: "numeric",
 		timeZone: "UTC",
 	});
+}
+
+// Undated or unparseable entries sort to the end.
+function dayMs(day: DayValue | undefined) {
+	if (day === undefined) return Number.POSITIVE_INFINITY;
+	const ms = typeof day === "number" ? day : Date.parse(day);
+	return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
 }
 
 function Row({
@@ -78,9 +90,9 @@ export function ScheduleRenderer({ output }: ToolRendererProps) {
 		);
 	}
 
-	const sortedTasks = [...tasks].sort((a, b) => a.date - b.date);
+	const sortedTasks = [...tasks].sort((a, b) => dayMs(a.date) - dayMs(b.date));
 	const sortedProjects = [...projects].sort(
-		(a, b) => (a.startDate ?? 0) - (b.startDate ?? 0)
+		(a, b) => dayMs(a.startDate) - dayMs(b.startDate)
 	);
 
 	return (
@@ -98,9 +110,11 @@ export function ScheduleRenderer({ output }: ToolRendererProps) {
 								primary={task.title}
 								secondary={task.clientName}
 								when={
-									task.startTime
-										? `${formatDay(task.date)} · ${task.startTime}`
-										: formatDay(task.date)
+									task.date === undefined
+										? (task.startTime ?? "")
+										: task.startTime
+											? `${formatDay(task.date)} · ${task.startTime}`
+											: formatDay(task.date)
 								}
 							/>
 						))}

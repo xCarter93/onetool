@@ -19,10 +19,12 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Textarea } from "@/components/ui/textarea";
+import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -36,7 +38,7 @@ const SUGGESTIONS = [
 	"What's on the schedule this week?",
 	"Chart revenue by month this year",
 	"Which invoices are overdue?",
-	"Any quotes waiting on approval?",
+	"Create a task for tomorrow morning",
 ];
 
 // No typography plugin in this app — style markdown elements directly.
@@ -166,6 +168,33 @@ function HeaderButton({
 	);
 }
 
+/** Free-plan body: the panel opens, but chat is replaced by an upgrade prompt.
+ *  The backend enforces the same gate in sendMessage/streamResponse. */
+function UpgradePrompt() {
+	return (
+		<div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-8">
+			<div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10">
+				<Sparkles className="size-6 text-primary" />
+			</div>
+			<div className="text-center">
+				<p className="text-sm font-medium">
+					The assistant is part of the Business plan
+				</p>
+				<p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
+					Upgrade to ask questions about your business and let the assistant
+					make changes for you.
+				</p>
+			</div>
+			<Link
+				href="/subscription"
+				className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+			>
+				View plans
+			</Link>
+		</div>
+	);
+}
+
 interface AssistantPanelProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -187,6 +216,10 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 	const toast = useToast();
 	const router = useRouter();
 	const getScreenContext = useScreenContext();
+	// While access is loading, show the normal chat UI (no upgrade-prompt flash
+	// for premium users); the backend gate blocks any send that sneaks in.
+	const { planLimits, isLoading: accessLoading } = useFeatureAccess();
+	const locked = !accessLoading && !planLimits.canUseAiAssistant;
 	// navigate tool calls already executed. null = "seed from the next
 	// snapshot without navigating" (set when opening a historical thread);
 	// a fresh empty Set (set at thread creation) means navigate immediately —
@@ -331,16 +364,23 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 							</p>
 						</div>
 						<div className="flex items-center gap-1">
-							<HeaderButton
-								onClick={() => setShowHistory((v) => !v)}
-								label="Conversation history"
-								active={showHistory}
-							>
-								<History className="size-4" />
-							</HeaderButton>
-							<HeaderButton onClick={startNewChat} label="New conversation">
-								<MessageSquarePlus className="size-4" />
-							</HeaderButton>
+							{!locked && (
+								<>
+									<HeaderButton
+										onClick={() => setShowHistory((v) => !v)}
+										label="Conversation history"
+										active={showHistory}
+									>
+										<History className="size-4" />
+									</HeaderButton>
+									<HeaderButton
+										onClick={startNewChat}
+										label="New conversation"
+									>
+										<MessageSquarePlus className="size-4" />
+									</HeaderButton>
+								</>
+							)}
 							<HeaderButton
 								onClick={() => onOpenChange(false)}
 								label="Close assistant"
@@ -350,9 +390,11 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 						</div>
 					</div>
 
-					<RecordContextBanner />
+					{locked && <UpgradePrompt />}
 
-					{showHistory ? (
+					{!locked && <RecordContextBanner />}
+
+					{!locked && (showHistory ? (
 						<div className="flex-1 overflow-y-auto p-2">
 							{threads === undefined ? (
 								<div className="flex justify-center py-8">
@@ -432,9 +474,9 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 								</div>
 							)}
 						</div>
-					)}
+					))}
 
-					{!showHistory && (
+					{!locked && !showHistory && (
 						<div className="shrink-0 border-t border-border p-3">
 							<div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
 								<Textarea
@@ -467,8 +509,8 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 								</button>
 							</div>
 							<p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-								Read-only for now — the assistant can look things up but not
-								change them.
+								The assistant can make changes you ask for — double-check
+								anything important.
 							</p>
 						</div>
 					)}
