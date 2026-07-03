@@ -12,7 +12,8 @@ interface EmailsOutput {
 		from: string;
 		to: string;
 		status: string;
-		sentAt: number;
+		// ISO string today; epoch ms in outputs replayed from older threads.
+		sentAt?: string | number;
 		threadId?: string;
 	}>;
 	totalCount: number;
@@ -21,8 +22,9 @@ interface EmailsOutput {
 
 const ROW_CAP = 8;
 
-function formatSentAt(ms: number) {
-	return new Date(ms).toLocaleDateString(undefined, {
+function formatSentAt(sentAt: string | number | undefined) {
+	if (sentAt === undefined) return "";
+	return new Date(sentAt).toLocaleDateString(undefined, {
 		month: "short",
 		day: "numeric",
 	});

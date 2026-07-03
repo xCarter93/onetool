@@ -1,4 +1,4 @@
-import type { QueryCtx, MutationCtx } from "../_generated/server";
+import type { ActionCtx, QueryCtx, MutationCtx } from "../_generated/server";
 import { query } from "../_generated/server";
 
 /**
@@ -75,6 +75,43 @@ export const debugAuthToken = query({
 		};
 	},
 });
+
+/**
+ * Server-side mirror of the web app's useFeatureAccess() premium check
+ * (apps/web/src/hooks/use-feature-access.ts): premium if the user OR org has
+ * the has_premium_feature_access metadata flag, or the org is on the paid
+ * Clerk Billing plan. Reads the same JWT claims debugAuthToken inspects.
+ * Secure-by-default: unauthenticated or claim-less tokens are not premium.
+ */
+export async function hasPremiumAccess(
+	ctx: QueryCtx | MutationCtx | ActionCtx
+): Promise<boolean> {
+	const identity = await ctx.auth.getUserIdentity();
+	if (!identity) {
+		return false;
+	}
+	const token = identity as ClerkIdentityWithClaims;
+
+	const userMetadata =
+		token.publicMetadata ??
+		(token.public_metadata as ClerkIdentityWithClaims["publicMetadata"]);
+	if (userMetadata?.has_premium_feature_access === true) {
+		return true;
+	}
+
+	const orgMetadata =
+		token.orgPublicMetadata ??
+		(token.org_public_metadata as ClerkIdentityWithClaims["orgPublicMetadata"]);
+	if (orgMetadata?.has_premium_feature_access === true) {
+		return true;
+	}
+
+	// Clerk Billing plan claim, e.g. "u:free_user o:onetool_business_plan_org".
+	const planClaim = [token.pla, token.plan]
+		.filter((value): value is string => typeof value === "string")
+		.join(" ");
+	return planClaim.includes("onetool_business_plan_org");
+}
 
 /**
  * Role-based permission utilities

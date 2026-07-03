@@ -6,12 +6,14 @@ import type { HomeStats } from "./homeStats";
 import type { ReportDataResult } from "./reportData";
 
 /**
- * Read-only tools for the AI assistant. Every tool wraps an existing public
- * org-scoped query via ctx.runQuery — the caller's identity propagates, so
- * org isolation (and member-role actor scoping) is inherited, never rebuilt.
+ * Tools for the AI assistant. Every tool wraps an existing public org-scoped
+ * query/mutation via ctx.runQuery/ctx.runMutation — the caller's identity
+ * propagates, so org isolation (and member-role actor scoping) is inherited,
+ * never rebuilt.
  *
- * Output discipline: lists are capped, long text truncated, and fields that
- * are sensitive or useless to an LLM (publicToken, Stripe session internals,
+ * Output discipline: lists are capped, long text truncated, dates converted
+ * to ISO strings (LLMs can't do epoch-ms arithmetic), and fields that are
+ * sensitive or useless to an LLM (publicToken, Stripe session internals,
  * signature audit PII, storage URLs) are stripped.
  *
  * Every execute has an explicit return type: this module is part of the
@@ -52,6 +54,17 @@ function dayEndMs(date: string) {
 	return Date.parse(`${date}T23:59:59.999Z`);
 }
 
+// Dates go to the model as ISO strings, never epoch ms — the LLM cannot do
+// reliable arithmetic on 13-digit timestamps. Day-precision fields (stored
+// UTC-midnight) become YYYY-MM-DD; event instants keep the full timestamp.
+function isoDay(ms: number | undefined | null): string | undefined {
+	return typeof ms === "number" ? new Date(ms).toISOString().slice(0, 10) : undefined;
+}
+
+function isoInstant(ms: number | undefined | null): string | undefined {
+	return typeof ms === "number" ? new Date(ms).toISOString() : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Compact output shapes (what the LLM sees)
 // ---------------------------------------------------------------------------
@@ -60,8 +73,8 @@ interface ScheduleProjectItem {
 	id: string;
 	title: string;
 	description?: string;
-	startDate?: number;
-	endDate?: number;
+	startDate?: string;
+	endDate?: string;
 	status: string;
 	clientId?: string;
 	clientName: string;
@@ -72,7 +85,7 @@ interface ScheduleTaskItem {
 	id: string;
 	title: string;
 	description?: string;
-	date: number;
+	date?: string;
 	startTime?: string;
 	endTime?: string;
 	status: string;
@@ -85,7 +98,7 @@ interface TaskItem {
 	id: string;
 	title: string;
 	description?: string;
-	date: number;
+	date?: string;
 	startTime?: string;
 	endTime?: string;
 	status: string;
@@ -138,9 +151,9 @@ interface ProjectItem {
 	status: string;
 	projectType: string;
 	clientId: string;
-	startDate?: number;
-	endDate?: number;
-	completedAt?: number;
+	startDate?: string;
+	endDate?: string;
+	completedAt?: string;
 }
 
 interface ProjectDetail {
@@ -161,9 +174,9 @@ interface QuoteItem {
 	total: number;
 	clientId: string;
 	projectId?: string;
-	validUntil?: number;
-	sentAt?: number;
-	approvedAt?: number;
+	validUntil?: string;
+	sentAt?: string;
+	approvedAt?: string;
 }
 
 interface QuoteDetail {
@@ -174,7 +187,7 @@ interface QuoteDetail {
 		taxRate?: number;
 		clientMessage?: string;
 		terms?: string;
-		declinedAt?: number;
+		declinedAt?: string;
 	};
 	lineItems: {
 		description: string;
@@ -193,9 +206,9 @@ interface InvoiceItem {
 	total: number;
 	clientId: string;
 	projectId?: string;
-	issuedDate: number;
-	dueDate: number;
-	paidAt?: number;
+	issuedDate?: string;
+	dueDate?: string;
+	paidAt?: string;
 }
 
 interface InvoiceDetail {
@@ -213,10 +226,10 @@ interface InvoiceDetail {
 	}[];
 	payments: {
 		paymentAmount: number;
-		dueDate: number;
+		dueDate?: string;
 		description?: string;
 		status: string;
-		paidAt?: number;
+		paidAt?: string;
 	}[];
 	paymentSummary: {
 		totalPayments: number;
@@ -236,7 +249,7 @@ interface EmailItem {
 	from: string;
 	to: string;
 	status: string;
-	sentAt: number;
+	sentAt?: string;
 	clientId: string;
 	threadId?: string;
 }
@@ -250,7 +263,7 @@ interface EmailThreadResult {
 		from: string;
 		to: string;
 		status: string;
-		sentAt: number;
+		sentAt?: string;
 	}[];
 }
 
@@ -259,7 +272,7 @@ interface GeneratedPdfItem {
 	documentType: string;
 	documentId: string;
 	version: number;
-	generatedAt: number;
+	generatedAt?: string;
 	signatureStatus?: string;
 	signers?: string[];
 }
@@ -268,19 +281,78 @@ interface FileItem {
 	name: string;
 	fileName: string;
 	fileSize: number;
-	uploadedAt: number;
+	uploadedAt?: string;
 }
 
 interface ActivityItem {
 	type: string;
 	description?: string;
-	timestamp: number;
+	timestamp?: string;
 	user?: string;
 }
 
 type NotFound = { found: false };
 
 type ReportVisualization = "bar" | "line" | "pie" | "table";
+
+interface TeamMemberItem {
+	id: string;
+	name: string;
+	email: string;
+}
+
+interface AutomationItem {
+	id: string;
+	name: string;
+	description?: string;
+	isActive: boolean;
+	trigger: string;
+	lastTriggeredAt?: string;
+	triggerCount?: number;
+}
+
+interface AutomationRunItem {
+	status: string;
+	triggeredBy: string;
+	triggeredAt?: string;
+	completedAt?: string;
+	error?: string;
+	nodesExecuted: number;
+}
+
+interface SavedReportItem {
+	id: string;
+	name: string;
+	description?: string;
+	entityType: string;
+	visualization: string;
+	updatedAt?: string;
+}
+
+interface SavedReportDetail {
+	found: true;
+	report: SavedReportItem & {
+		groupBy?: string[];
+		dateRange?: { start?: string; end?: string };
+	};
+}
+
+interface SkuItem {
+	id: string;
+	name: string;
+	unit: string;
+	rate: number;
+	cost?: number;
+	isActive: boolean;
+}
+
+// Write tools report validation failures as data instead of throwing, so the
+// model can read the reason and correct its call.
+type WriteResult<T> = ({ ok: true } & T) | { ok: false; error: string };
+
+function writeError(e: unknown): { ok: false; error: string } {
+	return { ok: false, error: e instanceof Error ? e.message : String(e) };
+}
 
 // ---------------------------------------------------------------------------
 // Navigation (client-executed — the web app intercepts the result and routes)
@@ -340,8 +412,8 @@ export const getSchedule = createTool({
 				id: p.id,
 				title: p.title,
 				description: truncate(p.description, TEXT_CAP),
-				startDate: p.startDate,
-				endDate: p.endDate,
+				startDate: isoDay(p.startDate),
+				endDate: isoDay(p.endDate),
 				status: p.status,
 				clientId: p.clientId,
 				clientName: p.clientName,
@@ -351,7 +423,7 @@ export const getSchedule = createTool({
 				id: t.id,
 				title: t.title,
 				description: truncate(t.description, TEXT_CAP),
-				date: t.startDate,
+				date: isoDay(t.startDate),
 				startTime: t.startTime,
 				endTime: t.endTime,
 				status: t.status,
@@ -365,9 +437,9 @@ export const getSchedule = createTool({
 
 export const getTasks = createTool({
 	description:
-		"List the organization's tasks for a scope: today's tasks, overdue tasks, or upcoming tasks (next N days).",
+		"List the organization's tasks. Scopes: 'today', 'overdue', 'upcoming' (next N days), or 'filtered' — combine any of status, client, project, assignee, and a date range.",
 	inputSchema: z.object({
-		scope: z.enum(["today", "overdue", "upcoming"]),
+		scope: z.enum(["today", "overdue", "upcoming", "filtered"]),
 		daysAhead: z
 			.number()
 			.int()
@@ -375,6 +447,15 @@ export const getTasks = createTool({
 			.max(90)
 			.optional()
 			.describe("Only for scope=upcoming; defaults to 7"),
+		status: z
+			.enum(["pending", "in-progress", "completed", "cancelled"])
+			.optional()
+			.describe("Only for scope=filtered"),
+		clientId: z.string().optional().describe("Only for scope=filtered"),
+		projectId: z.string().optional().describe("Only for scope=filtered"),
+		assigneeUserId: z.string().optional().describe("Only for scope=filtered"),
+		startDate: isoDate.optional().describe("Only for scope=filtered"),
+		endDate: isoDate.optional().describe("Only for scope=filtered"),
 	}),
 	execute: async (ctx, input): Promise<Capped<TaskItem>> => {
 		const tasks =
@@ -382,15 +463,26 @@ export const getTasks = createTool({
 				? await ctx.runQuery(api.tasks.getToday, {})
 				: input.scope === "overdue"
 					? await ctx.runQuery(api.tasks.getOverdue, {})
-					: await ctx.runQuery(api.tasks.getUpcoming, {
-							daysAhead: input.daysAhead,
-						});
+					: input.scope === "upcoming"
+						? await ctx.runQuery(api.tasks.getUpcoming, {
+								daysAhead: input.daysAhead,
+							})
+						: await ctx.runQuery(api.tasks.list, {
+								status: input.status,
+								clientId: input.clientId as Id<"clients"> | undefined,
+								projectId: input.projectId as Id<"projects"> | undefined,
+								assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
+								dateFrom: input.startDate
+									? dayStartMs(input.startDate)
+									: undefined,
+								dateTo: input.endDate ? dayEndMs(input.endDate) : undefined,
+							});
 		return capped(
 			tasks.map((t) => ({
 				id: t._id,
 				title: t.title,
 				description: truncate(t.description, TEXT_CAP),
-				date: t.date,
+				date: isoDay(t.date),
 				startTime: t.startTime,
 				endTime: t.endTime,
 				status: t.status,
@@ -561,9 +653,9 @@ export const listProjects = createTool({
 				status: p.status,
 				projectType: p.projectType,
 				clientId: p.clientId,
-				startDate: p.startDate,
-				endDate: p.endDate,
-				completedAt: p.completedAt,
+				startDate: isoDay(p.startDate),
+				endDate: isoDay(p.endDate),
+				completedAt: isoInstant(p.completedAt),
 			})),
 			LIST_CAP
 		);
@@ -588,9 +680,9 @@ export const getProject = createTool({
 				status: project.status,
 				projectType: project.projectType,
 				clientId: project.clientId,
-				startDate: project.startDate,
-				endDate: project.endDate,
-				completedAt: project.completedAt,
+				startDate: isoDay(project.startDate),
+				endDate: isoDay(project.endDate),
+				completedAt: isoInstant(project.completedAt),
 				assignedUserIds: project.assignedUserIds,
 			},
 		};
@@ -624,9 +716,9 @@ export const listQuotes = createTool({
 				total: q.total,
 				clientId: q.clientId,
 				projectId: q.projectId,
-				validUntil: q.validUntil,
-				sentAt: q.sentAt,
-				approvedAt: q.approvedAt,
+				validUntil: isoDay(q.validUntil),
+				sentAt: isoInstant(q.sentAt),
+				approvedAt: isoInstant(q.approvedAt),
 			})),
 			LIST_CAP
 		);
@@ -659,12 +751,12 @@ export const getQuote = createTool({
 				total: quote.total,
 				clientId: quote.clientId,
 				projectId: quote.projectId,
-				validUntil: quote.validUntil,
+				validUntil: isoDay(quote.validUntil),
 				clientMessage: truncate(quote.clientMessage, BODY_CAP),
 				terms: truncate(quote.terms, BODY_CAP),
-				sentAt: quote.sentAt,
-				approvedAt: quote.approvedAt,
-				declinedAt: quote.declinedAt,
+				sentAt: isoInstant(quote.sentAt),
+				approvedAt: isoInstant(quote.approvedAt),
+				declinedAt: isoInstant(quote.declinedAt),
 			},
 			lineItems: lineItems.map((li) => ({
 				description: li.description,
@@ -700,9 +792,9 @@ export const listInvoices = createTool({
 				total: i.total,
 				clientId: i.clientId,
 				projectId: i.projectId,
-				issuedDate: i.issuedDate,
-				dueDate: i.dueDate,
-				paidAt: i.paidAt,
+				issuedDate: isoDay(i.issuedDate),
+				dueDate: isoDay(i.dueDate),
+				paidAt: isoInstant(i.paidAt),
 			})),
 			LIST_CAP
 		);
@@ -733,9 +825,9 @@ export const getInvoice = createTool({
 				clientId: invoice.clientId,
 				projectId: invoice.projectId,
 				quoteId: invoice.quoteId,
-				issuedDate: invoice.issuedDate,
-				dueDate: invoice.dueDate,
-				paidAt: invoice.paidAt,
+				issuedDate: isoDay(invoice.issuedDate),
+				dueDate: isoDay(invoice.dueDate),
+				paidAt: isoInstant(invoice.paidAt),
 			},
 			lineItems: lineItems.map((li) => ({
 				description: li.description,
@@ -746,10 +838,10 @@ export const getInvoice = createTool({
 			// Stripe session internals intentionally omitted.
 			payments: invoice.payments.map((p) => ({
 				paymentAmount: p.paymentAmount,
-				dueDate: p.dueDate,
+				dueDate: isoDay(p.dueDate),
 				description: p.description,
 				status: p.status,
-				paidAt: p.paidAt,
+				paidAt: isoInstant(p.paidAt),
 			})),
 			paymentSummary: invoice.paymentSummary,
 		};
@@ -779,7 +871,7 @@ export const searchClientEmails = createTool({
 				from: `${e.fromName} <${e.fromEmail}>`,
 				to: `${e.toName} <${e.toEmail}>`,
 				status: e.status,
-				sentAt: e.sentAt,
+				sentAt: isoInstant(e.sentAt),
 				clientId: e.clientId,
 				threadId: e.threadId,
 			})),
@@ -806,7 +898,7 @@ export const getEmailThread = createTool({
 				from: `${m.fromName} <${m.fromEmail}>`,
 				to: `${m.toName} <${m.toEmail}>`,
 				status: m.status,
-				sentAt: m.sentAt,
+				sentAt: isoInstant(m.sentAt),
 			})),
 		};
 	},
@@ -838,7 +930,7 @@ export const getDocuments = createTool({
 					name: d.name,
 					fileName: d.fileName,
 					fileSize: d.fileSize,
-					uploadedAt: d.uploadedAt,
+					uploadedAt: isoInstant(d.uploadedAt),
 				})),
 				LIST_CAP
 			);
@@ -853,7 +945,7 @@ export const getDocuments = createTool({
 					name: d.name,
 					fileName: d.fileName,
 					fileSize: d.fileSize,
-					uploadedAt: d.uploadedAt,
+					uploadedAt: isoInstant(d.uploadedAt),
 				})),
 				LIST_CAP
 			);
@@ -865,7 +957,7 @@ export const getDocuments = createTool({
 				documentType: d.documentType,
 				documentId: d.documentId,
 				version: d.version,
-				generatedAt: d.generatedAt,
+				generatedAt: isoInstant(d.generatedAt),
 				signatureStatus: d.boldsign?.status,
 				signers: d.boldsign?.sentTo.map((s) => s.name),
 			})),
@@ -898,11 +990,329 @@ export const getActivity = createTool({
 			activities.map((a) => ({
 				type: a.activityType,
 				description: truncate(a.description, TEXT_CAP),
-				timestamp: a._creationTime,
+				timestamp: isoInstant(a._creationTime),
 				user: a.user?.name,
 			})),
 			limit
 		);
+	},
+});
+
+export const getTeamMembers = createTool({
+	description:
+		"List the organization's team members (id, name, email). Use to resolve a person's name to their user ID before assigning or filtering tasks by assignee.",
+	inputSchema: z.object({}),
+	execute: async (ctx): Promise<Capped<TeamMemberItem>> => {
+		const members = await ctx.runQuery(api.organizations.getMembers, {});
+		return capped(
+			members.map((m) => ({
+				id: m._id,
+				name: m.name,
+				email: m.email,
+			})),
+			LIST_CAP
+		);
+	},
+});
+
+export const getAutomations = createTool({
+	description:
+		"List the organization's workflow automations: what triggers them, whether they're active, and how often they've run.",
+	inputSchema: z.object({}),
+	execute: async (ctx): Promise<Capped<AutomationItem>> => {
+		const automations = await ctx.runQuery(api.automations.list, {});
+		return capped(
+			automations.map((a) => ({
+				id: a._id,
+				name: a.name,
+				description: truncate(a.description, TEXT_CAP),
+				isActive: a.isActive,
+				trigger:
+					"type" in a.trigger
+						? `${a.trigger.type}${"objectType" in a.trigger ? ` (${a.trigger.objectType})` : ""}`
+						: `status_changed (${a.trigger.objectType})`,
+				lastTriggeredAt: isoInstant(a.lastTriggeredAt),
+				triggerCount: a.triggerCount,
+			})),
+			LIST_CAP
+		);
+	},
+});
+
+export const getAutomationRuns = createTool({
+	description:
+		"Get the recent execution history of one workflow automation: when it ran, whether it succeeded, and any error. Use the id from getAutomations.",
+	inputSchema: z.object({
+		automationId: z.string(),
+		limit: z.number().int().min(1).max(ACTIVITY_CAP).optional(),
+	}),
+	execute: async (ctx, input): Promise<Capped<AutomationRunItem>> => {
+		const limit = input.limit ?? ACTIVITY_CAP;
+		const runs = await ctx.runQuery(api.automations.getExecutions, {
+			automationId: input.automationId as Id<"workflowAutomations">,
+			limit,
+		});
+		return capped(
+			runs.map((r) => ({
+				status: r.status,
+				triggeredBy: r.triggeredBy,
+				triggeredAt: isoInstant(r.triggeredAt),
+				completedAt: isoInstant(r.completedAt),
+				error: truncate(r.error, TEXT_CAP),
+				nodesExecuted: r.nodesExecuted.length,
+			})),
+			limit
+		);
+	},
+});
+
+export const listSavedReports = createTool({
+	description:
+		"List the organization's saved reports (name, entity type, visualization). To show one to the user, get its settings with getSavedReport, then execute it with runReport.",
+	inputSchema: z.object({}),
+	execute: async (ctx): Promise<Capped<SavedReportItem>> => {
+		const reports = await ctx.runQuery(api.reports.list, {});
+		return capped(
+			reports.map((r) => ({
+				id: r._id,
+				name: r.name,
+				description: truncate(r.description, TEXT_CAP),
+				entityType: r.config.entityType,
+				visualization: r.visualization.type,
+				updatedAt: isoInstant(r.updatedAt),
+			})),
+			LIST_CAP
+		);
+	},
+});
+
+export const getSavedReport = createTool({
+	description:
+		"Get one saved report's settings (entity type, groupBy, date range, visualization). Re-run it by passing those settings to runReport.",
+	inputSchema: z.object({ reportId: z.string() }),
+	execute: async (ctx, input): Promise<SavedReportDetail | NotFound> => {
+		const report = await ctx.runQuery(api.reports.get, {
+			id: input.reportId as Id<"reports">,
+		});
+		if (!report) return { found: false };
+		return {
+			found: true,
+			report: {
+				id: report._id,
+				name: report.name,
+				description: truncate(report.description, TEXT_CAP),
+				entityType: report.config.entityType,
+				visualization: report.visualization.type,
+				updatedAt: isoInstant(report.updatedAt),
+				groupBy: report.config.groupBy,
+				dateRange: report.config.dateRange
+					? {
+							start: isoDay(report.config.dateRange.start),
+							end: isoDay(report.config.dateRange.end),
+						}
+					: undefined,
+			},
+		};
+	},
+});
+
+export const listSkus = createTool({
+	description:
+		"List the organization's service catalog (SKUs): what they charge per unit for each service or product. Rates are dollars.",
+	inputSchema: z.object({
+		includeInactive: z.boolean().optional().describe("Defaults to false"),
+	}),
+	execute: async (ctx, input): Promise<Capped<SkuItem>> => {
+		const skus = input.includeInactive
+			? await ctx.runQuery(api.skus.listAll, {})
+			: await ctx.runQuery(api.skus.list, {});
+		return capped(
+			skus.map((s) => ({
+				id: s._id,
+				name: s.name,
+				unit: s.unit,
+				rate: s.rate,
+				cost: s.cost,
+				isActive: s.isActive,
+			})),
+			LIST_CAP
+		);
+	},
+});
+
+// ---------------------------------------------------------------------------
+// Write tools
+//
+// Convention for adding writes:
+// - Wrap an existing org-scoped userMutation via ctx.runMutation — the
+//   caller's identity propagates, so org isolation and role checks are
+//   inherited, exactly like the read tools.
+// - Whitelist editable fields in inputSchema; never pass input through.
+// - Dates come in as YYYY-MM-DD and are stored UTC-midnight (dayStartMs).
+// - Return WriteResult, catching mutation validation errors as data.
+// - Consequential, externally visible actions (e.g. anything that emails a
+//   client) must set needsApproval — none of the current writes qualify.
+//   Note: status changes DO fire emitStatusChangeEvent and can trigger org
+//   automations (PRD risk R3, shipped ungated by decision 2026-07-03).
+// ---------------------------------------------------------------------------
+
+const taskStatus = z.enum(["pending", "in-progress", "completed", "cancelled"]);
+const timeHHMM = z
+	.string()
+	.regex(/^\d{2}:\d{2}$/, "Use HH:MM (24-hour)")
+	.describe("24-hour HH:MM");
+
+export const createTask = createTool({
+	description:
+		"Create a task on the schedule. Resolve clientId/projectId/assigneeUserId with lookup tools first — never guess IDs. Tasks linked to a client are client-facing; tasks without a client are internal.",
+	inputSchema: z.object({
+		title: z.string().min(1),
+		date: isoDate.describe("Day the task is scheduled for (YYYY-MM-DD)"),
+		description: z.string().optional(),
+		startTime: timeHHMM.optional(),
+		endTime: timeHHMM.optional(),
+		clientId: z.string().optional(),
+		projectId: z.string().optional(),
+		assigneeUserId: z.string().optional(),
+		status: taskStatus.optional().describe("Defaults to pending"),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<WriteResult<{ taskId: string }>> => {
+		try {
+			const taskId = await ctx.runMutation(api.tasks.create, {
+				title: input.title,
+				description: input.description,
+				date: dayStartMs(input.date),
+				startTime: input.startTime,
+				endTime: input.endTime,
+				type: input.clientId ? "external" : "internal",
+				clientId: input.clientId as Id<"clients"> | undefined,
+				projectId: input.projectId as Id<"projects"> | undefined,
+				assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
+				status: input.status ?? "pending",
+			});
+			return { ok: true, taskId };
+		} catch (e) {
+			return writeError(e);
+		}
+	},
+});
+
+export const updateTask = createTool({
+	description:
+		"Update a task: reschedule (date/times), retitle, edit the description, reassign, or change its status (e.g. mark completed). Only pass the fields to change. Use the task id from getSchedule or getTasks.",
+	inputSchema: z.object({
+		taskId: z.string(),
+		title: z.string().min(1).optional(),
+		description: z.string().optional(),
+		date: isoDate.optional().describe("New day (YYYY-MM-DD)"),
+		startTime: timeHHMM.optional(),
+		endTime: timeHHMM.optional(),
+		assigneeUserId: z.string().optional(),
+		status: taskStatus.optional(),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<WriteResult<{ taskId: string }>> => {
+		try {
+			const taskId = await ctx.runMutation(api.tasks.update, {
+				id: input.taskId as Id<"tasks">,
+				title: input.title,
+				description: input.description,
+				date: input.date ? dayStartMs(input.date) : undefined,
+				startTime: input.startTime,
+				endTime: input.endTime,
+				assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
+				status: input.status,
+			});
+			return { ok: true, taskId };
+		} catch (e) {
+			return writeError(e);
+		}
+	},
+});
+
+export const updateClient = createTool({
+	description:
+		"Update a client's details: name, description, status, lead source, communication preference, tags, or notes. Only pass the fields to change. Resolve the client with listClients first.",
+	inputSchema: z.object({
+		clientId: z.string(),
+		companyName: z.string().min(1).optional(),
+		companyDescription: z.string().optional(),
+		status: z.enum(["lead", "active", "inactive", "archived"]).optional(),
+		leadSource: z
+			.enum([
+				"word-of-mouth",
+				"website",
+				"social-media",
+				"referral",
+				"advertising",
+				"trade-show",
+				"cold-outreach",
+				"other",
+			])
+			.optional(),
+		communicationPreference: z.enum(["email", "phone", "both"]).optional(),
+		tags: z.array(z.string()).optional().describe("Replaces the full tag list"),
+		notes: z.string().optional(),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<WriteResult<{ clientId: string }>> => {
+		try {
+			const clientId = await ctx.runMutation(api.clients.update, {
+				id: input.clientId as Id<"clients">,
+				companyName: input.companyName,
+				companyDescription: input.companyDescription,
+				status: input.status,
+				leadSource: input.leadSource,
+				communicationPreference: input.communicationPreference,
+				tags: input.tags,
+				notes: input.notes,
+			});
+			return { ok: true, clientId };
+		} catch (e) {
+			return writeError(e);
+		}
+	},
+});
+
+export const updateProject = createTool({
+	description:
+		"Update a project's details: title, description, status, type, or start/end dates. Only pass the fields to change. Resolve the project with listProjects first.",
+	inputSchema: z.object({
+		projectId: z.string(),
+		title: z.string().min(1).optional(),
+		description: z.string().optional(),
+		status: z
+			.enum(["planned", "in-progress", "completed", "cancelled"])
+			.optional(),
+		projectType: z.enum(["one-off", "recurring"]).optional(),
+		startDate: isoDate.optional().describe("YYYY-MM-DD"),
+		endDate: isoDate.optional().describe("YYYY-MM-DD"),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<WriteResult<{ projectId: string }>> => {
+		try {
+			const projectId = await ctx.runMutation(api.projects.update, {
+				id: input.projectId as Id<"projects">,
+				title: input.title,
+				description: input.description,
+				status: input.status,
+				projectType: input.projectType,
+				startDate: input.startDate ? dayStartMs(input.startDate) : undefined,
+				endDate: input.endDate ? dayStartMs(input.endDate) : undefined,
+			});
+			return { ok: true, projectId };
+		} catch (e) {
+			return writeError(e);
+		}
 	},
 });
 
@@ -947,5 +1357,15 @@ export const assistantTools = {
 	getEmailThread,
 	getDocuments,
 	getActivity,
+	getTeamMembers,
+	getAutomations,
+	getAutomationRuns,
+	listSavedReports,
+	getSavedReport,
+	listSkus,
+	createTask,
+	updateTask,
+	updateClient,
+	updateProject,
 	navigate,
 };

@@ -727,6 +727,65 @@ describe("Tasks", () => {
 				})
 			).rejects.toThrowError("Task title cannot be empty");
 		});
+
+		it("should reject updating a task from another organization", async () => {
+			const { taskId } = await t.run(async (ctx) => {
+				const ownerId = await ctx.db.insert("users", {
+					name: "Org A Owner",
+					email: "a@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_a",
+				});
+				const orgAId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_a",
+					name: "Org A",
+					ownerUserId: ownerId,
+				});
+				await ctx.db.insert("organizationMemberships", {
+					orgId: orgAId,
+					userId: ownerId,
+					role: "admin",
+				});
+				const taskId = await ctx.db.insert("tasks", {
+					orgId: orgAId,
+					title: "Org A Task",
+					date: Date.now(),
+					status: "pending",
+					type: "internal",
+				});
+
+				const intruderId = await ctx.db.insert("users", {
+					name: "Org B Owner",
+					email: "b@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_b",
+				});
+				const orgBId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_b",
+					name: "Org B",
+					ownerUserId: intruderId,
+				});
+				await ctx.db.insert("organizationMemberships", {
+					orgId: orgBId,
+					userId: intruderId,
+					role: "admin",
+				});
+
+				return { taskId };
+			});
+
+			const asOrgB = t.withIdentity({
+				subject: "user_b",
+				activeOrgId: "org_b",
+			});
+
+			await expect(
+				asOrgB.mutation(api.tasks.update, {
+					id: taskId,
+					title: "Hijacked",
+				})
+			).rejects.toThrowError();
+		});
 	});
 
 	describe("update — phase 22 mobile edit-sheet paths", () => {

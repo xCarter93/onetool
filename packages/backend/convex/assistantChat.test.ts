@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import {
 	addMemberToOrg,
+	createPremiumTestIdentity,
 	createTestIdentity,
 	createTestOrg,
 } from "./test.helpers";
@@ -53,10 +54,11 @@ describe("assistantChat", () => {
 	it("rejects sendMessage on another org's thread", async () => {
 		const { orgA, orgB } = await seedTwoOrgs();
 		const asA = t.withIdentity(
-			createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			createPremiumTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
 		);
+		// Premium too, so the org-isolation check (not the plan gate) rejects.
 		const asB = t.withIdentity(
-			createTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
+			createPremiumTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
 		);
 
 		const { threadId } = await asA.mutation(api.assistantChat.createThread, {});
@@ -103,7 +105,7 @@ describe("assistantChat", () => {
 	it("saves a message, sets the thread title, and lists messages for the owner only", async () => {
 		const { orgA, orgB } = await seedTwoOrgs();
 		const asA = t.withIdentity(
-			createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			createPremiumTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
 		);
 		const asB = t.withIdentity(
 			createTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
@@ -132,5 +134,62 @@ describe("assistantChat", () => {
 				paginationOpts: PAGE,
 			})
 		).rejects.toThrow("Thread not found");
+	});
+
+	describe("plan gate", () => {
+		it("blocks sendMessage without premium access", async () => {
+			const { orgA } = await seedTwoOrgs();
+			const asFree = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+
+			const { threadId } = await asFree.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+
+			await expect(
+				asFree.mutation(api.assistantChat.sendMessage, {
+					threadId,
+					prompt: "hello",
+				})
+			).rejects.toThrow("Business plan");
+		});
+
+		it("allows sendMessage via the org metadata flag", async () => {
+			const { orgA } = await seedTwoOrgs();
+			const asOrgPremium = t.withIdentity({
+				...createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId),
+				orgPublicMetadata: { has_premium_feature_access: true },
+			});
+
+			const { threadId } = await asOrgPremium.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			const { messageId } = await asOrgPremium.mutation(
+				api.assistantChat.sendMessage,
+				{ threadId, prompt: "hello" }
+			);
+			expect(messageId).toBeTruthy();
+		});
+
+		it("allows sendMessage via the Clerk Billing plan claim", async () => {
+			const { orgA } = await seedTwoOrgs();
+			const asPlan = t.withIdentity({
+				...createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId),
+				pla: "u:free_user o:onetool_business_plan_org",
+			});
+
+			const { threadId } = await asPlan.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			const { messageId } = await asPlan.mutation(
+				api.assistantChat.sendMessage,
+				{ threadId, prompt: "hello" }
+			);
+			expect(messageId).toBeTruthy();
+		});
 	});
 });
