@@ -15,6 +15,7 @@ import {
 } from "date-fns";
 import { formatTime } from "@/lib/calendar-utils";
 import { StyledButton } from "@/components/ui/styled/styled-button";
+import { StyledEmpty, StyledStatusBadge } from "@/components/ui/styled";
 import {
 	ExternalLink,
 	Calendar,
@@ -140,14 +141,11 @@ export function CalendarDetailSidebar({
 
 			{/* Event details or empty state */}
 			{!event ? (
-				<div className="flex-1 flex items-center justify-center p-8">
-					<div className="text-center">
-						<Calendar className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
-						<p className="text-sm text-muted-foreground">
-							Select an event to view details
-						</p>
-					</div>
-				</div>
+				<StyledEmpty
+					icon={<Calendar />}
+					title="Select an event to view details"
+					size="md"
+				/>
 			) : (
 				<div className="flex-1 p-6 space-y-6">
 					{/* Header */}
@@ -169,23 +167,10 @@ export function CalendarDetailSidebar({
 
 					{/* Status Badge */}
 					<div className="flex items-center gap-2">
-						<div
-							className={`
-							px-3 py-1 rounded-full text-xs font-medium
-							${
-								event.status === "completed"
-									? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-									: event.status === "in-progress"
-										? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-										: event.status === "planned"
-											? "bg-muted text-muted-foreground"
-											: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-							}
-						`}
-					>
-						{event.status.replace("-", " ")}
+						<StyledStatusBadge status={event.status} size="sm">
+							{event.status.replace("-", " ")}
+						</StyledStatusBadge>
 					</div>
-				</div>
 
 				{/* Details */}
 					<div className="space-y-4">

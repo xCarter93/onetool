@@ -18,6 +18,13 @@ import {
 } from "@/lib/calendar-utils";
 import type { CalendarEvent } from "@/types/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StyledEmpty } from "@/components/ui/styled";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface WeeklyAgendaProps {
@@ -238,11 +245,7 @@ export function WeeklyAgenda({ onEventClick }: WeeklyAgendaProps) {
 
 				{/* Empty state */}
 				{!isLoading && events.length === 0 && (
-					<div className="flex items-center justify-center py-12">
-						<p className="text-sm text-muted-foreground">
-							No tasks scheduled this week
-						</p>
-					</div>
+					<StyledEmpty title="No tasks scheduled this week" size="sm" />
 				)}
 
 				{/* Event rows (Gantt-lite bars) */}
@@ -253,34 +256,78 @@ export function WeeklyAgenda({ onEventClick }: WeeklyAgendaProps) {
 								getEventGridPosition(event);
 							const colors = getEventColor(event.type, event.status);
 
+							const tooltipContent = (
+								<div className="space-y-1">
+									<div className="font-semibold">{event.title}</div>
+									<div className="text-xs text-muted-foreground">
+										Client: {event.clientName}
+									</div>
+									{event.type === "project" && (
+										<>
+											<div className="text-xs">
+												{format(event.startDate, "MMM d")}
+												{event.endDate &&
+													` - ${format(event.endDate, "MMM d, yyyy")}`}
+											</div>
+											<div className="text-xs capitalize">
+												Status: {event.status}
+											</div>
+										</>
+									)}
+									{event.description && (
+										<div className="text-xs mt-1 max-w-xs">
+											{event.description.slice(0, 100)}
+											{event.description.length > 100 && "..."}
+										</div>
+									)}
+								</div>
+							);
+
 							return (
 								<div
 									key={String(event.id)}
 									className="grid grid-cols-7 gap-0"
 								>
-									<div
-										className={cn(
-											"rounded-md px-2 py-1 cursor-pointer border transition-colors duration-150",
-											colors.bg,
-											colors.border,
-											colors.text,
-											colors.hover,
-											clippedLeft && "rounded-l-none",
-											clippedRight && "rounded-r-none"
-										)}
-										style={{
-											gridColumnStart: startCol,
-											gridColumnEnd: `span ${colSpan}`,
-										}}
-										onClick={() => onEventClick?.(event.startDate)}
-									>
-										<p className="text-xs font-medium truncate">
-											{event.title}
-										</p>
-										<p className="text-xs opacity-70 truncate">
-											{event.clientName}
-										</p>
-									</div>
+									<TooltipProvider>
+										<Tooltip delayDuration={300}>
+											<TooltipTrigger asChild>
+												<div
+													role="button"
+													tabIndex={0}
+													className={cn(
+														"rounded-md px-2 py-1 cursor-pointer border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+														colors.bg,
+														colors.border,
+														colors.text,
+														colors.hover,
+														clippedLeft && "rounded-l-none",
+														clippedRight && "rounded-r-none"
+													)}
+													style={{
+														gridColumnStart: startCol,
+														gridColumnEnd: `span ${colSpan}`,
+													}}
+													onClick={() => onEventClick?.(event.startDate)}
+													onKeyDown={(e) => {
+														if (e.key === "Enter" || e.key === " ") {
+															e.preventDefault();
+															onEventClick?.(event.startDate);
+														}
+													}}
+												>
+													<p className="text-xs font-medium truncate">
+														{event.title}
+													</p>
+													<p className="text-xs opacity-70 truncate">
+														{event.clientName}
+													</p>
+												</div>
+											</TooltipTrigger>
+											<TooltipContent side="top" className="max-w-sm">
+												{tooltipContent}
+											</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
 								</div>
 							);
 						})}

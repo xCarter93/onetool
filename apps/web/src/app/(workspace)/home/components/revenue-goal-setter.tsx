@@ -97,7 +97,7 @@ export default function RevenueGoalSetter() {
 			<CardContent className="relative z-10">
 				<div className="flex items-center justify-between mb-4">
 					<div className="flex items-center space-x-3">
-						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800">
+						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10 text-success ring-1 ring-success/20">
 							<ChartBarIcon className="w-5 h-5" />
 						</div>
 						<div>
@@ -145,7 +145,7 @@ export default function RevenueGoalSetter() {
 								onClick={handleSave}
 								size="sm"
 								intent="primary"
-								className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+								className="flex-1 bg-success hover:bg-success/90 text-white"
 								isDisabled={
 									!tempValue ||
 									isNaN(parseFloat(tempValue.replace(/,/g, ""))) ||
@@ -184,13 +184,13 @@ export default function RevenueGoalSetter() {
 							<div className="space-y-2">
 								<div className="flex justify-between text-sm">
 									<span className="text-muted-foreground">Progress</span>
-									<span className="font-medium text-emerald-600 dark:text-emerald-400">
+									<span className="font-medium text-success">
 										{revenueGoalProgress.percentage}% completed
 									</span>
 								</div>
 								<div className="w-full bg-muted rounded-full h-2">
 									<div
-										className="bg-linear-to-r from-emerald-500 to-emerald-600 h-2 rounded-full transition-all duration-500 ease-out"
+										className="bg-linear-to-r from-success/80 to-success h-2 rounded-full transition-all duration-500 ease-out"
 										style={{
 											width: `${Math.min(revenueGoalProgress.percentage, 100)}%`,
 										}}

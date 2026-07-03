@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/map";
 import { MapDetailSidebar } from "./map-detail-sidebar";
 import type { PropertyDetails } from "./map-detail-sidebar";
+import { StyledEmpty } from "@/components/ui/styled";
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
@@ -196,15 +197,12 @@ export default function ClientPropertiesMap({
 			{/* Empty State */}
 			{properties.length === 0 && (
 				<div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-					<div className="text-center space-y-2">
-						<MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
-						<p className="text-sm text-muted-foreground font-medium">
-							No properties mapped
-						</p>
-						<p className="text-xs text-muted-foreground/70">
-							Add addresses to client properties to see them here.
-						</p>
-					</div>
+					<StyledEmpty
+						icon={<MapPin />}
+						title="No properties mapped"
+						description="Add addresses to client properties to see them here."
+						size="sm"
+					/>
 				</div>
 			)}
 		</div>

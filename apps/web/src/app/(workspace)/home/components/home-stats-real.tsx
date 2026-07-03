@@ -33,7 +33,8 @@ import {
 	Users,
 	type LucideIcon,
 } from "lucide-react";
-import { StyledBadge } from "@/components/ui/styled/styled-badge";
+import { StyledStatusBadge } from "@/components/ui/styled";
+import { Progress } from "@/components/ui/progress";
 import { AnimatedNumber } from "@/components/animated-number";
 import { StatCardSparkline } from "@/components/stat-card-sparkline";
 import { cn } from "@/lib/utils";
@@ -191,19 +192,19 @@ const METRIC_VISUALS: Record<string, { icon: LucideIcon; tile: string }> = {
 
 function changeBadge(metric: MetricDefinition) {
 	const changeType = metric.changeType ?? "neutral";
-	const variant =
+	const role =
 		changeType === "increase"
 			? "success"
 			: changeType === "decrease"
-				? "destructive"
-				: "outline";
+				? "danger"
+				: "neutral";
 	const Icon =
 		changeType === "increase"
 			? ArrowUp
 			: changeType === "decrease"
 				? ArrowDown
 				: ArrowRight;
-	return { change: Math.abs(metric.changePercent ?? 0), variant, Icon } as const;
+	return { change: Math.abs(metric.changePercent ?? 0), role, Icon } as const;
 }
 
 /** Sparkline that measures its own width so it can live in a fluid grid cell. */
@@ -259,7 +260,7 @@ function KpiChip({
 }) {
 	const visual = METRIC_VISUALS[metric.key];
 	const Icon = visual?.icon ?? Users;
-	const { change, variant, Icon: BadgeIcon } = changeBadge(metric);
+	const { change, role, Icon: BadgeIcon } = changeBadge(metric);
 
 	return (
 		<button
@@ -280,10 +281,10 @@ function KpiChip({
 				>
 					<Icon className="size-4" />
 				</span>
-				<StyledBadge variant={variant}>
+				<StyledStatusBadge role={role} size="sm">
 					<BadgeIcon className="mr-1 size-3" />
 					{metric.isLoading ? "..." : `${change.toFixed(1)}%`}
-				</StyledBadge>
+				</StyledStatusBadge>
 			</div>
 			<div className="min-w-0">
 				<p className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -318,7 +319,7 @@ function RevenueSpotlight({
 	onSelect: () => void;
 	progressPct: number;
 }) {
-	const { change, variant, Icon: BadgeIcon } = changeBadge(metric);
+	const { change, role, Icon: BadgeIcon } = changeBadge(metric);
 	const clampedProgress = Math.min(100, Math.max(0, progressPct));
 
 	return (
@@ -345,10 +346,10 @@ function RevenueSpotlight({
 						Revenue
 					</span>
 				</span>
-				<StyledBadge variant={variant}>
+				<StyledStatusBadge role={role} size="sm">
 					<BadgeIcon className="mr-1 size-3" />
 					{metric.isLoading ? "..." : `${change.toFixed(1)}%`}
-				</StyledBadge>
+				</StyledStatusBadge>
 			</div>
 
 			<div className="relative mt-5">
@@ -367,12 +368,10 @@ function RevenueSpotlight({
 			</div>
 
 			<div className="relative mt-auto pt-5">
-				<div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
-					<div
-						className="h-full rounded-full bg-primary transition-all duration-700"
-						style={{ width: `${clampedProgress}%` }}
-					/>
-				</div>
+				<Progress
+					value={clampedProgress}
+					className="h-2 rounded-full bg-primary/15 [&>div]:rounded-full [&>div]:bg-primary [&>div]:duration-700"
+				/>
 				<div className="mt-3">
 					<MeasuredSparkline
 						data={data}

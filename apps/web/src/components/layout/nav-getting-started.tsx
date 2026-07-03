@@ -12,6 +12,7 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 interface JourneyProgress {
@@ -111,12 +112,10 @@ export function NavGettingStarted() {
 
 					{/* Progress bar */}
 					<div className="px-3 pb-2">
-						<div className="h-1 w-full rounded-full bg-border/50 overflow-hidden">
-							<div
-								className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
-								style={{ width: `${percentage}%` }}
-							/>
-						</div>
+						<Progress
+							value={percentage}
+							className="h-1 bg-border/50 [&>div]:rounded-full [&>div]:duration-500 [&>div]:ease-out"
+						/>
 					</div>
 
 					{/* Checklist with animation */}

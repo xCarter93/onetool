@@ -6,6 +6,7 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { BRAND } from "@/lib/brand";
 
 export function NavUser() {
 	const { user } = useUser();
@@ -58,8 +59,8 @@ export function NavUser() {
 										"text-xs text-muted-foreground",
 								},
 								variables: {
-									colorPrimary: "#00a6f4",
-									colorTextOnPrimaryBackground: "#ffffff",
+									colorPrimary: BRAND.primary,
+									colorTextOnPrimaryBackground: BRAND.onPrimary,
 									fontFamily: "inherit",
 									borderRadius: "0.5rem",
 								},

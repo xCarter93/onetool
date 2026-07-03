@@ -21,7 +21,12 @@
 	"registries": {
 		"@intentui": "https://intentui.com/r/{name}",
 		"@kibo-ui": "https://www.kibo-ui.com/r/{name}.json",
-		"@reui": "https://reui.io/r/{name}.json",
+		"@reui": {
+			"url": "https://reui.io/r/radix-nova/{name}.json",
+			"headers": {
+				"Authorization": "Bearer ${REUI_LICENSE_KEY}"
+			}
+		},
 		"@wigggle-ui": "https://wigggle-ui.vercel.app/r/{name}.json",
 		"@react-bits": "https://reactbits.dev/r/{name}.json",
 		"@reactbits-starter": {

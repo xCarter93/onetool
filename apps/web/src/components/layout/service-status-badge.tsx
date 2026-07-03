@@ -33,23 +33,23 @@ export function ServiceStatusBadge() {
 
 	const theme = {
 		operational: {
-			dot: "bg-emerald-500",
-			pill: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 hover:bg-emerald-500/15 dark:text-emerald-300",
-			tile: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+			dot: "bg-success",
+			pill: "bg-success/10 text-success-foreground ring-success/20 hover:bg-success/15",
+			tile: "bg-success/10 text-success-foreground",
 			icon: CheckCircle2,
 			label: "All systems operational",
 		},
 		degraded: {
-			dot: "bg-amber-500",
-			pill: "bg-amber-500/10 text-amber-700 ring-amber-500/20 hover:bg-amber-500/15 dark:text-amber-300",
-			tile: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+			dot: "bg-warning",
+			pill: "bg-warning/10 text-warning-foreground ring-warning/20 hover:bg-warning/15",
+			tile: "bg-warning/10 text-warning-foreground",
 			icon: AlertTriangle,
 			label: `${operationalCount}/${totalCount} operational`,
 		},
 		outage: {
-			dot: "bg-red-500",
-			pill: "bg-red-500/10 text-red-700 ring-red-500/20 hover:bg-red-500/15 dark:text-red-300",
-			tile: "bg-red-500/10 text-red-600 dark:text-red-400",
+			dot: "bg-destructive",
+			pill: "bg-destructive/10 text-destructive-foreground ring-destructive/20 hover:bg-destructive/15",
+			tile: "bg-destructive/10 text-destructive-foreground",
 			icon: AlertCircle,
 			label: `${operationalCount}/${totalCount} operational`,
 		},
@@ -122,22 +122,22 @@ function ServiceStatusItem({ service }: { service: Doc<"serviceStatus"> }) {
 		switch (status) {
 			case "operational":
 				return {
-					dot: "bg-emerald-500",
+					dot: "bg-success",
 					label: "Operational",
-					text: "text-emerald-600 dark:text-emerald-400",
+					text: "text-success-foreground",
 				};
 			case "degraded":
 			case "partial_outage":
 				return {
-					dot: "bg-amber-500",
+					dot: "bg-warning",
 					label: "Degraded",
-					text: "text-amber-600 dark:text-amber-400",
+					text: "text-warning-foreground",
 				};
 			case "major_outage":
 				return {
-					dot: "bg-red-500",
+					dot: "bg-destructive",
 					label: "Outage",
-					text: "text-red-600 dark:text-red-400",
+					text: "text-destructive-foreground",
 				};
 			default:
 				return {

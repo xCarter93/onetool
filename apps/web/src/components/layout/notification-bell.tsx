@@ -5,6 +5,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
+import { Badge } from "@/components/reui/badge";
 import {
 	Popover,
 	PopoverContent,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StyledEmpty } from "@/components/ui/styled";
 import {
 	formatRelativeTime,
 	truncateText,
@@ -74,9 +76,14 @@ export function NotificationBell() {
 				>
 					<Bell className="size-5" />
 					{unreadCount > 0 && (
-						<span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-sidebar">
+						<Badge
+							variant="destructive"
+							size="xs"
+							radius="full"
+							className="absolute right-1 top-1 ring-2 ring-sidebar"
+						>
 							{unreadCount > 9 ? "9+" : unreadCount}
-						</span>
+						</Badge>
 					)}
 				</button>
 			</PopoverTrigger>
@@ -119,17 +126,13 @@ export function NotificationBell() {
 							))}
 						</div>
 					) : notifications.length === 0 ? (
-						<div className="flex flex-col items-center justify-center px-4 py-14 text-center">
-							<div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
-								<Bell className="size-6 text-muted-foreground" />
-							</div>
-							<p className="text-sm font-medium text-foreground">
-								You&apos;re all caught up
-							</p>
-							<p className="mt-1 text-xs text-muted-foreground">
-								New notifications will appear here
-							</p>
-						</div>
+						<StyledEmpty
+							icon={<Bell />}
+							title="You're all caught up"
+							description="New notifications will appear here"
+							// ScrollArea's viewport doesn't stretch children, so match its height explicitly
+							className="h-[400px] justify-center"
+						/>
 					) : (
 						<div className="p-1.5">
 							{notifications.map((notification) => (

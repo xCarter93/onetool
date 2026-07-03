@@ -194,7 +194,7 @@ export function AutomationSidebar({
 								<div className="pt-6 border-t border-border">
 									<button
 										type="button"
-										className="w-full rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:opacity-90"
+										className="w-full rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90"
 										onClick={() => onDeleteNode(mode.nodeId)}
 									>
 										Delete Node

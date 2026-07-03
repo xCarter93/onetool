@@ -13,9 +13,8 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { StyledSegmentedControl } from "@/components/ui/styled";
 import { LayoutDashboard, CalendarDays } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
 	TourElement,
 	TourStartModal,
@@ -173,36 +172,26 @@ export default function Page() {
 							HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].tooltipPosition
 						}
 					>
-						<ButtonGroup>
-							<button
-								onClick={() => handleViewChange("dashboard")}
-								aria-pressed={viewMode === "dashboard"}
-								aria-label="Dashboard view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "dashboard"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border",
-								)}
-							>
-								<LayoutDashboard className="w-4 h-4" />
-								<span className="hidden sm:inline">Dashboard</span>
-							</button>
-							<button
-								onClick={() => handleViewChange("calendar")}
-								aria-pressed={viewMode === "calendar"}
-								aria-label="Calendar view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "calendar"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border",
-								)}
-							>
-								<CalendarDays className="w-4 h-4" />
-								<span className="hidden sm:inline">Calendar</span>
-							</button>
-						</ButtonGroup>
+						<StyledSegmentedControl
+							value={viewMode}
+							onValueChange={handleViewChange}
+							options={[
+								{
+									value: "dashboard",
+									label: "Dashboard",
+									icon: <LayoutDashboard className="w-4 h-4" />,
+									ariaLabel: "Dashboard view",
+									hideLabelOnMobile: true,
+								},
+								{
+									value: "calendar",
+									label: "Calendar",
+									icon: <CalendarDays className="w-4 h-4" />,
+									ariaLabel: "Calendar view",
+									hideLabelOnMobile: true,
+								},
+							]}
+						/>
 					</TourElement>
 				</div>
 

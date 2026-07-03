@@ -32,6 +32,14 @@
 	--color-success-foreground: var(--success-fg);
 	--color-warning: var(--warning);
 	--color-warning-foreground: var(--warning-fg);
+	--color-info: var(--info);
+	--color-info-foreground: var(--info-fg);
+	--color-invert: var(--invert);
+	--color-invert-foreground: var(--invert-fg);
+	--color-destructive-foreground: var(--danger-fg);
+	/* ReUI "focus" accent role — aliased to primary for OneTool */
+	--color-focus: var(--primary);
+	--color-focus-foreground: var(--primary-fg);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -77,14 +85,22 @@
 	--muted: oklch(0.967 0.001 286.375);
 	--muted-fg: oklch(0.552 0.016 285.938);
 
+	/* Semantic status roles; -fg = readable on tinted bg (ReUI convention), solids use text-white */
 	--success: oklch(0.596 0.145 163.225);
-	--success-fg: oklch(1 0 0);
+	--success-fg: oklch(0.262 0.051 172.552);
 
 	--warning: oklch(0.828 0.189 84.429);
 	--warning-fg: oklch(0.279 0.077 45.635);
 
 	--danger: oklch(0.577 0.245 27.325);
-	--danger-fg: oklch(0.971 0.013 17.38);
+	--danger-fg: oklch(0.396 0.141 25.723);
+	--destructive: var(--danger);
+
+	--info: oklch(0.685 0.169 237.323);
+	--info-fg: oklch(0.391 0.09 240.876);
+
+	--invert: oklch(0.21 0.006 285.885);
+	--invert-fg: oklch(0.985 0 0);
 
 	--border: oklch(0.911 0.006 286.286);
 	--input: oklch(0.871 0.006 286.286);
@@ -155,13 +171,20 @@
 	--overlay-fg: oklch(0.985 0 0);
 
 	--success: oklch(0.596 0.145 163.225);
-	--success-fg: oklch(1 0 0);
+	--success-fg: oklch(0.696 0.17 162.48);
 
 	--warning: oklch(0.828 0.189 84.429);
-	--warning-fg: oklch(0.279 0.077 45.635);
+	--warning-fg: oklch(0.769 0.188 70.08);
 
 	--danger: oklch(0.577 0.245 27.325);
-	--danger-fg: oklch(0.971 0.013 17.38);
+	--danger-fg: oklch(0.704 0.191 22.216);
+	--destructive: var(--danger);
+
+	--info: oklch(0.685 0.169 237.323);
+	--info-fg: oklch(0.746 0.16 232.661);
+
+	--invert: oklch(0.985 0 0);
+	--invert-fg: oklch(0.21 0.006 285.885);
 
 	--border: oklch(0.27 0.013 285.805);
 	--input: oklch(0.32 0.013 285.805);

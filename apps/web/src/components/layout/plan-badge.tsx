@@ -11,13 +11,13 @@ import {
 } from "@/components/ui/popover";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Crown,
 	Users,
 	FileSignature,
 	Briefcase,
 	ArrowUpRight,
-	Loader2,
 	Check,
 } from "lucide-react";
 import { formatLimit, getUsagePercentage } from "@/lib/plan-limits";
@@ -36,14 +36,7 @@ export function PlanBadge() {
 	const router = useRouter();
 
 	if (isLoading) {
-		return (
-			<div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-border/50">
-				<Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-				<span className="text-xs font-medium text-muted-foreground">
-					Loading...
-				</span>
-			</div>
-		);
+		return <Skeleton className="h-9 w-28 rounded-full" />;
 	}
 
 	const planName = hasPremiumAccess ? "Business" : "Free";
@@ -61,18 +54,18 @@ export function PlanBadge() {
 					whileTap={{ scale: 0.95 }}
 					className={`group inline-flex items-center gap-2.5 font-semibold transition-all duration-200 rounded-lg ring-1 shadow-sm hover:shadow-md backdrop-blur-sm ${
 						hasPremiumAccess
-							? "px-4 py-2 text-sm bg-linear-to-br from-amber-500/10 via-amber-400/15 to-yellow-500/10 hover:from-amber-500/15 hover:via-amber-400/20 hover:to-yellow-500/15 ring-amber-500/30 hover:ring-amber-500/50 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+							? "px-4 py-2 text-sm bg-warning/15 hover:bg-warning/20 ring-warning/30 hover:ring-warning/50 text-warning-foreground border border-warning/20"
 							: "px-4 py-2 text-sm text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
 					}`}
 				>
 					{hasPremiumAccess ? (
-						<Crown className="h-4 w-4 text-amber-500 drop-shadow-sm" />
+						<Crown className="h-4 w-4 text-warning drop-shadow-sm" />
 					) : (
 						<Users className="h-4 w-4" />
 					)}
 					<span className="font-bold tracking-tight">{planName}</span>
 					{hasPremiumAccess && (
-						<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+						<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-warning/20 text-warning-foreground border border-warning/30">
 							PRO
 						</span>
 					)}
@@ -86,7 +79,7 @@ export function PlanBadge() {
 					<div className="flex items-center justify-between mb-2">
 						<div className="flex items-center gap-2">
 							{hasPremiumAccess ? (
-								<Crown className="h-5 w-5 text-amber-500" />
+								<Crown className="h-5 w-5 text-warning" />
 							) : (
 								<Users className="h-5 w-5 text-muted-foreground" />
 							)}
@@ -177,27 +170,27 @@ export function PlanBadge() {
 					<div className="p-4 space-y-3 bg-background">
 						<div className="space-y-2 text-sm">
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-emerald-500" />
+								<Check className="size-3.5 shrink-0 text-success" />
 								<span>Unlimited clients</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-emerald-500" />
+								<Check className="size-3.5 shrink-0 text-success" />
 								<span>Unlimited projects</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-emerald-500" />
+								<Check className="size-3.5 shrink-0 text-success" />
 								<span>Unlimited e-signatures</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-emerald-500" />
+								<Check className="size-3.5 shrink-0 text-success" />
 								<span>Custom SKUs</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-emerald-500" />
+								<Check className="size-3.5 shrink-0 text-success" />
 								<span>Organization documents</span>
 							</div>
 							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-emerald-500" />
+								<Check className="size-3.5 shrink-0 text-success" />
 								<span>AI import</span>
 							</div>
 						</div>

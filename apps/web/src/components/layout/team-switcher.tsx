@@ -13,6 +13,7 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { markOrgSwitching } from "@/hooks/use-is-org-switching";
+import { BRAND } from "@/lib/brand";
 
 // Detail routes whose [id] segment refers to an org-scoped entity that won't
 // exist in the new org — fall back to the list page on switch.
@@ -115,8 +116,8 @@ export function TeamSwitcher() {
 								organizationSwitcherPopoverFooter: "border-t border-border mt-2 pt-2",
 							},
 							variables: {
-								colorPrimary: "#00a6f4",
-								colorTextOnPrimaryBackground: "#ffffff",
+								colorPrimary: BRAND.primary,
+								colorTextOnPrimaryBackground: BRAND.onPrimary,
 								fontFamily: "inherit",
 								fontSize: "0.875rem",
 								borderRadius: "0.5rem",

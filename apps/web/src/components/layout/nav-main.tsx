@@ -457,10 +457,12 @@ export function NavMain({
 									</SidebarMenuButton>
 									{typeof item.badgeCount === "number" && item.badgeCount > 0 && (
 										<SidebarMenuBadge
-											className={cn(
-												item.badgeVariant === "alert" &&
-													"bg-red-500 text-white ring-2 ring-red-300 shadow-[0_0_0_2px_rgba(255,255,255,0.35)]"
-											)}
+											className={
+												// solid fill: explicit text-white per foreground-token convention
+												item.badgeVariant === "alert"
+													? "bg-destructive text-white"
+													: undefined
+											}
 										>
 											{item.badgeCount}
 										</SidebarMenuBadge>

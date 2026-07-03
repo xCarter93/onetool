@@ -7,6 +7,7 @@ import { CalendarMonthView } from "./calendar-month-view";
 import { CalendarWeekView } from "./calendar-week-view";
 import { CalendarDayView } from "./calendar-day-view";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { StyledSegmentedControl } from "@/components/ui/styled";
 import {
 	ChevronLeft,
 	ChevronRight,
@@ -222,44 +223,27 @@ export function CalendarContainer() {
 					</div>
 
 					{/* View Switcher */}
-					<ButtonGroup>
-						<button
-							onClick={() => setView("month")}
-							className={cn(
-								navButtonClass,
-								view === "month"
-									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-							)}
-						>
-							<CalendarRange className="w-4 h-4" />
-							Month
-						</button>
-						<button
-							onClick={() => setView("week")}
-							className={cn(
-								navButtonClass,
-								view === "week"
-									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-							)}
-						>
-							<CalendarDays className="w-4 h-4" />
-							Week
-						</button>
-						<button
-							onClick={() => setView("day")}
-							className={cn(
-								navButtonClass,
-								view === "day"
-									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-							)}
-						>
-							<Calendar className="w-4 h-4" />
-							Day
-						</button>
-					</ButtonGroup>
+					<StyledSegmentedControl
+						value={view}
+						onValueChange={setView}
+						options={[
+							{
+								value: "month",
+								label: "Month",
+								icon: <CalendarRange className="w-4 h-4" />,
+							},
+							{
+								value: "week",
+								label: "Week",
+								icon: <CalendarDays className="w-4 h-4" />,
+							},
+							{
+								value: "day",
+								label: "Day",
+								icon: <Calendar className="w-4 h-4" />,
+							},
+						]}
+					/>
 				</div>
 
 				{/* Stats */}
