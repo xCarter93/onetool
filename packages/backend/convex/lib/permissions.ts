@@ -1,5 +1,6 @@
-import type { ActionCtx, QueryCtx, MutationCtx } from "../_generated/server";
+import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { query } from "../_generated/server";
+import { getCurrentUserOrgIdOrNull } from "./auth";
 
 /**
  * Server-side permission checking utilities
@@ -76,15 +77,24 @@ export const debugAuthToken = query({
 	},
 });
 
+export const PREMIUM_PLAN_SLUG = "onetool_business_plan_org";
+
+// Statuses under which a subscription grants access (free trials arrive as
+// "active" with is_free_trial on the item, so "trialing" rarely appears).
+const PREMIUM_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+
 /**
  * Server-side mirror of the web app's useFeatureAccess() premium check
  * (apps/web/src/hooks/use-feature-access.ts): premium if the user OR org has
- * the has_premium_feature_access metadata flag, or the org is on the paid
- * Clerk Billing plan. Reads the same JWT claims debugAuthToken inspects.
- * Secure-by-default: unauthenticated or claim-less tokens are not premium.
+ * the has_premium_feature_access metadata flag (present in the "convex" JWT
+ * template), or the org's billing-webhook-synced subscription is on the paid
+ * plan. Clerk's `pla` billing claim is NOT in custom JWT templates and reading
+ * plans from session claims is unsupported — the org doc (kept current by
+ * billingWebhook.ts) is the plan source of truth here.
+ * Secure-by-default: unauthenticated callers are not premium.
  */
 export async function hasPremiumAccess(
-	ctx: QueryCtx | MutationCtx | ActionCtx
+	ctx: QueryCtx | MutationCtx
 ): Promise<boolean> {
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) {
@@ -106,16 +116,15 @@ export async function hasPremiumAccess(
 		return true;
 	}
 
-	// Clerk Billing plan claim, e.g. "u:free_user o:onetool_business_plan_org".
-	// Exact token match — a substring check would also accept longer slugs.
-	return [token.pla, token.plan]
-		.filter((value): value is string => typeof value === "string")
-		.flatMap((claim) => claim.split(/\s+/))
-		.some(
-			(entry) =>
-				entry === "o:onetool_business_plan_org" ||
-				entry === "onetool_business_plan_org"
-		);
+	const orgId = await getCurrentUserOrgIdOrNull(ctx);
+	if (!orgId) {
+		return false;
+	}
+	const org = await ctx.db.get(orgId);
+	return (
+		org?.clerkPlanSlug === PREMIUM_PLAN_SLUG &&
+		PREMIUM_SUBSCRIPTION_STATUSES.has(org.subscriptionStatus ?? "")
+	);
 }
 
 /**

@@ -64,6 +64,7 @@ export default defineSchema({
 		// Clerk Billing & Subscription
 		clerkSubscriptionId: v.optional(v.string()), // Clerk subscription ID
 		clerkPlanId: v.optional(v.string()), // Clerk plan identifier
+		clerkPlanSlug: v.optional(v.string()), // Active paid plan slug from webhook items[] (plan gate source of truth)
 		subscriptionStatus: v.optional(
 			v.union(
 				v.literal("active"),

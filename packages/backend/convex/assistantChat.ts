@@ -83,10 +83,14 @@ export const sendMessage = userMutation({
 	},
 });
 
-/** Auth check usable from the action: identity propagates via ctx.runQuery. */
+/** Auth + plan check usable from the action: identity propagates via
+ *  ctx.runQuery, and hasPremiumAccess needs a database-backed ctx. */
 export const authorizeThread = internalQuery({
 	args: { threadId: v.string() },
 	handler: async (ctx, args): Promise<{ userId: Id<"users"> }> => {
+		if (!(await hasPremiumAccess(ctx))) {
+			throw new Error(PREMIUM_REQUIRED_MESSAGE);
+		}
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 		const meta = await ctx.db
@@ -111,11 +115,9 @@ export const streamResponse = action({
 	// Explicit return type: this module is in the generated api graph, so
 	// inferring through ctx.runQuery(internal…) would create a type cycle.
 	handler: async (ctx, args): Promise<void> => {
-		// Plan gate before generation (repeated from sendMessage because this
-		// action can be invoked directly with an existing promptMessageId).
-		if (!(await hasPremiumAccess(ctx))) {
-			throw new Error(PREMIUM_REQUIRED_MESSAGE);
-		}
+		// authorizeThread also enforces the plan gate — this action can be
+		// invoked directly with an existing promptMessageId, and generation
+		// must never start for free-plan callers.
 		const { userId } = await ctx.runQuery(
 			internal.assistantChat.authorizeThread,
 			{ threadId: args.threadId }

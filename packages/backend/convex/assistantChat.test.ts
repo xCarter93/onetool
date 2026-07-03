@@ -190,22 +190,52 @@ describe("assistantChat", () => {
 			).rejects.toThrow("Business plan");
 		});
 
-		it("allows sendMessage via the Clerk Billing plan claim", async () => {
+		it("allows sendMessage via the webhook-synced org subscription", async () => {
 			const { orgA } = await seedTwoOrgs();
-			const asPlan = t.withIdentity({
-				...createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId),
-				pla: "u:free_user o:onetool_business_plan_org",
+			// What billingWebhook.ts writes when the org subscribes to the paid plan.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgA.orgId, {
+					clerkPlanSlug: "onetool_business_plan_org",
+					subscriptionStatus: "active",
+				});
 			});
+			const asPaid = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
 
-			const { threadId } = await asPlan.mutation(
+			const { threadId } = await asPaid.mutation(
 				api.assistantChat.createThread,
 				{}
 			);
-			const { messageId } = await asPlan.mutation(
+			const { messageId } = await asPaid.mutation(
 				api.assistantChat.sendMessage,
 				{ threadId, prompt: "hello" }
 			);
 			expect(messageId).toBeTruthy();
+		});
+
+		it("blocks sendMessage when the org subscription is on the free plan", async () => {
+			const { orgA } = await seedTwoOrgs();
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgA.orgId, {
+					clerkPlanSlug: "free_org",
+					subscriptionStatus: "active",
+				});
+			});
+			const asFree = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+
+			const { threadId } = await asFree.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			await expect(
+				asFree.mutation(api.assistantChat.sendMessage, {
+					threadId,
+					prompt: "hello",
+				})
+			).rejects.toThrow("Business plan");
 		});
 	});
 });
