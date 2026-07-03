@@ -17,8 +17,11 @@ import {
 	RELATION_FIELD,
 	getFieldDefinition,
 	getStatusOptions,
+	type FieldDefinition,
 } from "./lib/fieldRegistry";
 import {
+	type ActionTarget,
+	type AutomationAction,
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type WorkflowNodeConfig,
@@ -173,6 +176,165 @@ const MAX_RECURSION_DEPTH = 5; // Max chain of automations triggering each other
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 const MAX_EXECUTIONS_PER_WINDOW = 100; // Max executions per org per minute
 
+type MatchAndScheduleResult = {
+	triggered: number;
+	recursionLimited?: boolean;
+	rateLimited?: boolean;
+};
+
+type MatchAndScheduleParams = {
+	eventId: Id<"domainEvents">;
+	entityType: ObjectType;
+	entityId: string;
+	triggerType: "status_changed" | "record_created" | "record_updated";
+	fromStatus?: string;
+	toStatus?: string;
+	changedFields?: string[];
+	correlationId?: string;
+	executionChain: Id<"workflowAutomations">[];
+	recursionDepth: number;
+	/** Preserves the original event-source label on the automation.triggered log. */
+	eventSource: string;
+};
+
+/**
+ * Shared core of the event-driven handlers: enforce recursion/rate limits,
+ * find automations matching the trigger, then log + schedule execution for
+ * each match. Used by both handleStatusChangeEvent and handleRecordEvent —
+ * they differ only in how they derive trigger params from their event.
+ */
+async function matchAndScheduleAutomations(
+	ctx: MutationCtx & { orgId: Id<"organizations"> },
+	params: MatchAndScheduleParams
+): Promise<MatchAndScheduleResult> {
+	const orgId = ctx.orgId;
+
+	// Check recursion depth limit
+	if (params.recursionDepth >= MAX_RECURSION_DEPTH) {
+		console.warn(
+			`Automation recursion limit reached (depth: ${params.recursionDepth}) for org ${orgId}. ` +
+				`Chain: ${params.executionChain.join(" → ")}`
+		);
+		return { triggered: 0, recursionLimited: true };
+	}
+
+	// Find matching automations
+	const automations = await ctx.runQuery(
+		internal.automationExecutor.findMatchingAutomations,
+		{
+			orgId,
+			objectType: params.entityType,
+			triggerType: params.triggerType,
+			fromStatus: params.fromStatus,
+			toStatus: params.toStatus,
+			changedFields: params.changedFields,
+		}
+	);
+
+	if (automations.length === 0) {
+		return { triggered: 0 };
+	}
+
+	// Rate limiting check
+	const oneMinuteAgo = Date.now() - RATE_LIMIT_WINDOW_MS;
+	const recentExecutions = await ctx.db
+		.query("workflowExecutions")
+		.withIndex("by_org_triggeredAt", (q) =>
+			q.eq("orgId", orgId).gte("triggeredAt", oneMinuteAgo)
+		)
+		.take(MAX_EXECUTIONS_PER_WINDOW);
+
+	if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
+		console.warn(
+			`Automation rate limit reached for org ${orgId}. ` +
+				`${recentExecutions.length}+ executions in the last minute.`
+		);
+		return { triggered: 0, rateLimited: true };
+	}
+
+	let triggered = 0;
+
+	// Schedule execution for each matching automation
+	for (const automation of automations) {
+		// Check if this automation is already in the chain (prevent loops)
+		if (params.executionChain.includes(automation._id)) {
+			console.warn(
+				`Automation loop detected: ${automation._id} already in chain. Skipping.`
+			);
+			// Log as skipped
+			await ctx.db.insert("workflowExecutions", {
+				orgId,
+				automationId: automation._id,
+				triggeredBy: params.entityId,
+				triggeredAt: Date.now(),
+				status: "skipped",
+				nodesExecuted: [],
+				error: "Skipped: Automation loop detected",
+				executionChain: params.executionChain,
+				recursionDepth: params.recursionDepth,
+			});
+			continue;
+		}
+
+		// Build new execution chain
+		const newChain = [...params.executionChain, automation._id];
+
+		// Create execution log entry with event correlation
+		const executionId = await ctx.db.insert("workflowExecutions", {
+			orgId,
+			automationId: automation._id,
+			triggeredBy: params.entityId,
+			triggeredAt: Date.now(),
+			status: "running",
+			nodesExecuted: [],
+			executionChain: newChain,
+			recursionDepth: params.recursionDepth,
+		});
+
+		// Publish automation.triggered event for monitoring
+		await ctx.db.insert("domainEvents", {
+			orgId,
+			eventType: "automation.triggered",
+			eventSource: params.eventSource,
+			payload: {
+				entityType: params.entityType,
+				entityId: params.entityId,
+				metadata: {
+					automationId: automation._id,
+					automationName: automation.name,
+					executionId,
+					isCascade: params.recursionDepth > 0,
+				},
+			},
+			status: "completed", // Informational event, already processed
+			processedAt: Date.now(),
+			attemptCount: 0,
+			correlationId: params.correlationId,
+			causationId: params.eventId,
+			createdAt: Date.now(),
+		});
+
+		// Schedule async execution with chain context
+		await ctx.scheduler.runAfter(
+			0,
+			internal.automationExecutor.executeAutomation,
+			{
+				orgId,
+				executionId,
+				automationId: automation._id,
+				objectType: params.entityType,
+				objectId: params.entityId,
+				executionChain: newChain,
+				recursionDepth: params.recursionDepth + 1,
+			}
+		);
+
+		triggered++;
+	}
+
+	return { triggered };
+}
+
 /**
  * EVENT-DRIVEN HANDLER
  *
@@ -202,135 +364,84 @@ export const handleStatusChangeEvent = systemMutation({
 		executionChain: v.optional(v.array(v.string())),
 		recursionDepth: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		// Get execution context (for cascading automations)
-		const currentDepth = args.recursionDepth ?? 0;
-		const currentChain = (args.executionChain ??
-			[]) as Id<"workflowAutomations">[];
+	handler: async (ctx, args): Promise<MatchAndScheduleResult> => {
+		return matchAndScheduleAutomations(ctx, {
+			eventId: args.eventId,
+			entityType: args.entityType,
+			entityId: args.entityId,
+			triggerType: "status_changed",
+			fromStatus: args.fromStatus,
+			toStatus: args.toStatus,
+			correlationId: args.correlationId,
+			executionChain: (args.executionChain ??
+				[]) as Id<"workflowAutomations">[],
+			recursionDepth: args.recursionDepth ?? 0,
+			eventSource: "automationExecutor.handleStatusChangeEvent",
+		});
+	},
+});
 
-		// Check recursion depth limit
-		if (currentDepth >= MAX_RECURSION_DEPTH) {
+/**
+ * EVENT-DRIVEN HANDLER
+ *
+ * Subscribes to "entity.record_created" / "entity.record_updated" events.
+ * Mirrors handleStatusChangeEvent but derives its trigger params from the
+ * stored domain event (entityType/entityId/changedFields, plus any
+ * cascade executionChain/recursionDepth in payload.metadata) instead of
+ * from args, since record events don't carry a from/to status.
+ */
+export const handleRecordEvent = systemMutation({
+	args: {
+		eventId: v.id("domainEvents"),
+	},
+	handler: async (ctx, args): Promise<MatchAndScheduleResult> => {
+		const event = await ctx.db.get(args.eventId);
+		if (!event) {
 			console.warn(
-				`Automation recursion limit reached (depth: ${currentDepth}) for org ${ctx.orgId}. ` +
-					`Chain: ${currentChain.join(" → ")}`
+				`[AutomationExecutor] handleRecordEvent: event ${args.eventId} not found`
 			);
-			return { triggered: 0, recursionLimited: true };
+			return { triggered: 0 };
 		}
-
-		// Find matching automations
-		const automations = await ctx.runQuery(
-			internal.automationExecutor.findMatchingAutomations,
-			{
-				orgId: ctx.orgId,
-				objectType: args.entityType,
-				triggerType: "status_changed",
-				fromStatus: args.fromStatus,
-				toStatus: args.toStatus,
-			}
-		);
-
-		if (automations.length === 0) {
+		if (event.orgId !== ctx.orgId) {
+			console.warn(
+				`[AutomationExecutor] Cross-org event access blocked: event ${args.eventId} does not belong to org ${ctx.orgId}`
+			);
 			return { triggered: 0 };
 		}
 
-		// Rate limiting check
-		const oneMinuteAgo = Date.now() - RATE_LIMIT_WINDOW_MS;
-		const recentExecutions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_org_triggeredAt", (q) =>
-				q.eq("orgId", ctx.orgId).gte("triggeredAt", oneMinuteAgo)
-			)
-			.take(MAX_EXECUTIONS_PER_WINDOW);
-
-		if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
+		const triggerType =
+			event.eventType === "entity.record_created"
+				? ("record_created" as const)
+				: event.eventType === "entity.record_updated"
+					? ("record_updated" as const)
+					: null;
+		if (!triggerType) {
 			console.warn(
-				`Automation rate limit reached for org ${ctx.orgId}. ` +
-					`${recentExecutions.length}+ executions in the last minute.`
+				`[AutomationExecutor] handleRecordEvent: unexpected event type ${event.eventType}`
 			);
-			return { triggered: 0, rateLimited: true };
+			return { triggered: 0 };
 		}
 
-		let triggered = 0;
+		const metadata = event.payload.metadata as
+			| {
+					changedFields?: string[];
+					executionChain?: string[];
+					recursionDepth?: number;
+			  }
+			| undefined;
 
-		// Schedule execution for each matching automation
-		for (const automation of automations) {
-			// Check if this automation is already in the chain (prevent loops)
-			if (currentChain.includes(automation._id)) {
-				console.warn(
-					`Automation loop detected: ${automation._id} already in chain. Skipping.`
-				);
-				// Log as skipped
-				await ctx.db.insert("workflowExecutions", {
-					orgId: ctx.orgId,
-					automationId: automation._id,
-					triggeredBy: args.entityId,
-					triggeredAt: Date.now(),
-					status: "skipped",
-					nodesExecuted: [],
-					error: "Skipped: Automation loop detected",
-					executionChain: currentChain,
-					recursionDepth: currentDepth,
-				});
-				continue;
-			}
-
-			// Build new execution chain
-			const newChain = [...currentChain, automation._id];
-
-			// Create execution log entry with event correlation
-			const executionId = await ctx.db.insert("workflowExecutions", {
-				orgId: ctx.orgId,
-				automationId: automation._id,
-				triggeredBy: args.entityId,
-				triggeredAt: Date.now(),
-				status: "running",
-				nodesExecuted: [],
-				executionChain: newChain,
-				recursionDepth: currentDepth,
-			});
-
-			// Publish automation.triggered event for monitoring
-			await ctx.db.insert("domainEvents", {
-				orgId: ctx.orgId,
-				eventType: "automation.triggered",
-					eventSource: "automationExecutor.handleStatusChangeEvent",
-				payload: {
-					entityType: args.entityType,
-					entityId: args.entityId,
-					metadata: {
-						automationId: automation._id,
-						automationName: automation.name,
-						executionId,
-						isCascade: currentDepth > 0,
-					},
-				},
-				status: "completed", // Informational event, already processed
-				processedAt: Date.now(),
-				attemptCount: 0,
-				correlationId: args.correlationId,
-				causationId: args.eventId,
-				createdAt: Date.now(),
-			});
-
-			// Schedule async execution with chain context
-			await ctx.scheduler.runAfter(
-				0,
-				internal.automationExecutor.executeAutomation,
-				{
-					orgId: ctx.orgId,
-					executionId,
-					automationId: automation._id,
-					objectType: args.entityType,
-					objectId: args.entityId,
-					executionChain: newChain,
-					recursionDepth: currentDepth + 1,
-				}
-			);
-
-			triggered++;
-		}
-
-		return { triggered };
+		return matchAndScheduleAutomations(ctx, {
+			eventId: args.eventId,
+			entityType: event.payload.entityType,
+			entityId: event.payload.entityId,
+			triggerType,
+			changedFields: metadata?.changedFields,
+			correlationId: event.correlationId,
+			executionChain: (metadata?.executionChain ??
+				[]) as Id<"workflowAutomations">[],
+			recursionDepth: metadata?.recursionDepth ?? 0,
+			eventSource: "automationExecutor.handleRecordEvent",
+		});
 	},
 });
 
@@ -572,6 +683,21 @@ async function executeNode(
 	conditionMet?: boolean;
 	error?: string;
 }> {
+	// v2 nodes carry a discriminated `config`; legacy rows (pre-migration)
+	// only have `condition`/`action` and fall through below.
+	if (node.config) {
+		return executeNodeV2(
+			ctx,
+			node.config,
+			objectType,
+			objectId,
+			triggerObject,
+			orgId,
+			executionChain,
+			recursionDepth
+		);
+	}
+
 	if (node.type === "condition") {
 		return executeConditionNode(node, triggerObject);
 	} else if (node.type === "action") {
@@ -588,6 +714,72 @@ async function executeNode(
 	}
 
 	return { success: false, error: "Unknown node type" };
+}
+
+/**
+ * Execute a v2 node from its discriminated `config`. Only `condition` and
+ * `action` (update_field) are implemented; the rest land in Slice 3.
+ */
+async function executeNodeV2(
+	ctx: MutationCtx,
+	config: WorkflowNodeConfig,
+	objectType: ObjectType,
+	objectId: string,
+	triggerObject: Record<string, unknown>,
+	orgId: Id<"organizations">,
+	executionChain: Id<"workflowAutomations">[],
+	recursionDepth: number
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	conditionMet?: boolean;
+	error?: string;
+}> {
+	switch (config.kind) {
+		case "condition": {
+			if (config.source && typeof config.source === "object") {
+				// Loop-scoped conditions need a loop node's item scope, which
+				// doesn't exist until loop nodes are implemented.
+				return {
+					success: false,
+					error:
+						"Loop-scoped conditions are not yet enabled (lands in Slice 3).",
+				};
+			}
+			const scope: VariableScope = { trigger: { record: triggerObject } };
+			const conditionMet = evaluateConditionGroups(
+				config.logic,
+				config.groups,
+				triggerObject,
+				scope
+			);
+			return { success: true, conditionMet };
+		}
+		case "action":
+			return executeActionNodeV2(
+				ctx,
+				config.action,
+				objectType,
+				objectId,
+				triggerObject,
+				orgId,
+				executionChain,
+				recursionDepth
+			);
+		case "fetch_records":
+		case "loop":
+		case "delay":
+		case "delay_until":
+		case "end":
+			return {
+				success: false,
+				error: `Node kind "${config.kind}" is not yet enabled (lands in Slice 3).`,
+			};
+		default: {
+			const _exhaustive: never = config;
+			return _exhaustive;
+		}
+	}
 }
 
 /**
@@ -680,6 +872,41 @@ async function executeActionNode(
 		};
 	}
 
+	return applyStatusUpdate(
+		ctx,
+		targetInfo,
+		newStatus,
+		orgId,
+		executionChain,
+		recursionDepth
+	);
+}
+
+/**
+ * Apply a status update to a resolved target: validate the status, patch the
+ * record (with completion/approval/paid timestamps), maintain aggregates in
+ * the same transaction, and emit a cascading status_changed event carrying
+ * the execution chain for recursion protection.
+ *
+ * Shared by the legacy update_status action and the v2 update_field action
+ * when `field === "status"`.
+ */
+async function applyStatusUpdate(
+	ctx: MutationCtx,
+	targetInfo: {
+		type: ObjectType;
+		id:
+			| Id<"clients">
+			| Id<"projects">
+			| Id<"quotes">
+			| Id<"invoices">
+			| Id<"tasks">;
+	},
+	newStatus: string,
+	orgId: Id<"organizations">,
+	executionChain: Id<"workflowAutomations">[],
+	recursionDepth: number
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
 	// Validate the new status is valid for the target type
 	if (!isValidStatus(targetInfo.type, newStatus)) {
 		return {
@@ -772,7 +999,7 @@ async function executeActionNode(
 			await ctx.db.insert("domainEvents", {
 				orgId,
 				eventType: "entity.status_changed",
-				eventSource: "automationExecutor.executeActionNode",
+				eventSource: "automationExecutor.applyStatusUpdate",
 				payload: {
 					entityType: targetInfo.type,
 					entityId: targetInfo.id,
@@ -917,6 +1144,286 @@ async function resolveTarget(
 		default:
 			return null;
 	}
+}
+
+/**
+ * Coerce a resolved ValueRef into the field's registry type before writing.
+ * `select` values are validated against the field's option list (static
+ * values are already checked at save time; this guards dynamic var refs).
+ */
+function coerceFieldValue(
+	fieldDef: FieldDefinition,
+	raw: unknown
+): { ok: true; value: unknown } | { ok: false; error: string } {
+	if (raw === undefined || raw === null) {
+		return { ok: true, value: null };
+	}
+
+	switch (fieldDef.type) {
+		case "text":
+			return { ok: true, value: String(raw) };
+		case "select": {
+			const value = String(raw);
+			if (
+				fieldDef.options &&
+				!fieldDef.options.some((option) => option.value === value)
+			) {
+				return {
+					ok: false,
+					error: `"${value}" is not a valid value for field "${fieldDef.key}"`,
+				};
+			}
+			return { ok: true, value };
+		}
+		case "number":
+		case "currency": {
+			const n = typeof raw === "number" ? raw : Number(raw);
+			if (Number.isNaN(n)) {
+				return {
+					ok: false,
+					error: `"${String(raw)}" is not a valid number for field "${fieldDef.key}"`,
+				};
+			}
+			return { ok: true, value: n };
+		}
+		case "boolean": {
+			if (typeof raw === "boolean") return { ok: true, value: raw };
+			if (raw === "true") return { ok: true, value: true };
+			if (raw === "false") return { ok: true, value: false };
+			return {
+				ok: false,
+				error: `"${String(raw)}" is not a valid boolean for field "${fieldDef.key}"`,
+			};
+		}
+		case "date": {
+			const n = typeof raw === "number" ? raw : Date.parse(String(raw));
+			if (Number.isNaN(n)) {
+				return {
+					ok: false,
+					error: `"${String(raw)}" is not a valid date for field "${fieldDef.key}"`,
+				};
+			}
+			return { ok: true, value: n };
+		}
+		case "id":
+			return { ok: true, value: String(raw) };
+		default: {
+			const _exhaustive: never = fieldDef.type;
+			return _exhaustive;
+		}
+	}
+}
+
+/**
+ * Execute a v2 action config. Only `update_field` is implemented; the other
+ * action types (create_task / send_notification / send_team_message) land
+ * in Slice 3.
+ */
+async function executeActionNodeV2(
+	ctx: MutationCtx,
+	action: AutomationAction,
+	objectType: ObjectType,
+	objectId: string,
+	triggerObject: Record<string, unknown>,
+	orgId: Id<"organizations">,
+	executionChain: Id<"workflowAutomations">[],
+	recursionDepth: number
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	if (action.type !== "update_field") {
+		return {
+			success: false,
+			error: `Action type "${action.type}" is not yet enabled (lands in Slice 3).`,
+		};
+	}
+
+	const targetInfo = await resolveTargetV2(
+		ctx,
+		action.target,
+		objectType,
+		objectId,
+		triggerObject,
+		orgId
+	);
+
+	if (!targetInfo) {
+		// Target not found - skip this action (e.g., task has no client)
+		console.warn(
+			`[AutomationExecutor] Target not found: target=${JSON.stringify(action.target)}, objectType=${objectType}, objectId=${objectId}`
+		);
+		return { success: true, skipped: true };
+	}
+
+	const fieldDef = getFieldDefinition(targetInfo.type, action.field);
+	if (!fieldDef) {
+		return {
+			success: false,
+			error: `Unknown field "${action.field}" for ${targetInfo.type}`,
+		};
+	}
+	if (!fieldDef.writable) {
+		return {
+			success: false,
+			error: `Field "${action.field}" is not writable${
+				fieldDef.writeExclusionReason ? `: ${fieldDef.writeExclusionReason}` : ""
+			}`,
+		};
+	}
+
+	const scope: VariableScope = { trigger: { record: triggerObject } };
+	const rawValue = resolveValueRef(action.value, scope);
+	const coerced = coerceFieldValue(fieldDef, rawValue);
+	if (!coerced.ok) {
+		return { success: false, error: coerced.error };
+	}
+
+	// Status writes reuse the existing validation + aggregate + cascade flow.
+	if (action.field === "status") {
+		if (typeof coerced.value !== "string") {
+			return {
+				success: false,
+				error: `Status value for ${targetInfo.type} must be a string`,
+			};
+		}
+		return applyStatusUpdate(
+			ctx,
+			targetInfo,
+			coerced.value,
+			orgId,
+			executionChain,
+			recursionDepth
+		);
+	}
+
+	const targetObject = await getObject(ctx, targetInfo.type, targetInfo.id, orgId);
+	if (!targetObject) {
+		return { success: false, error: "Target object not found" };
+	}
+
+	try {
+		const updatePayload: Record<string, any> = {
+			[action.field]: coerced.value,
+		};
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		await ctx.db.patch(targetInfo.id, updatePayload as any);
+
+		const updatedObject = await ctx.db.get(targetInfo.id);
+		if (!updatedObject) {
+			return {
+				success: false,
+				error: "Target object was deleted during update",
+			};
+		}
+
+		// Keep aggregates in sync; each helper no-ops unless a field it
+		// tracks (status/completedAt/approvedAt/paidAt/total) changed.
+		switch (targetInfo.type) {
+			case "project":
+				await AggregateHelpers.updateProject(
+					ctx,
+					targetObject as Doc<"projects">,
+					updatedObject as Doc<"projects">
+				);
+				break;
+			case "quote":
+				await AggregateHelpers.updateQuote(
+					ctx,
+					targetObject as Doc<"quotes">,
+					updatedObject as Doc<"quotes">
+				);
+				break;
+			case "invoice":
+				await AggregateHelpers.updateInvoice(
+					ctx,
+					targetObject as Doc<"invoices">,
+					updatedObject as Doc<"invoices">
+				);
+				break;
+			// Clients and tasks don't have aggregate field tracking
+		}
+
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Failed to update field",
+		};
+	}
+}
+
+/**
+ * Resolve a v2 action target: "self" is the record in scope; `{ related }`
+ * follows the field-registry relation FK for the record's object type,
+ * falling back to resolving a client indirectly via the record's project
+ * when there's no direct clientId (mirrors legacy resolveTarget's "client"
+ * case).
+ */
+async function resolveTargetV2(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	objectType: ObjectType,
+	objectId: string,
+	triggerObject: Record<string, unknown>,
+	orgId: Id<"organizations">
+): Promise<{
+	type: ObjectType;
+	id:
+		| Id<"clients">
+		| Id<"projects">
+		| Id<"quotes">
+		| Id<"invoices">
+		| Id<"tasks">;
+} | null> {
+	if (target === "self") {
+		return {
+			type: objectType,
+			id: objectId as
+				| Id<"clients">
+				| Id<"projects">
+				| Id<"quotes">
+				| Id<"invoices">
+				| Id<"tasks">,
+		};
+	}
+
+	const relatedType = target.related;
+	const fkField = RELATION_FIELD[objectType]?.[relatedType];
+	let relatedId = fkField
+		? (triggerObject[fkField] as string | undefined)
+		: undefined;
+
+	// Legacy fallback: resolve client indirectly via the record's project when
+	// there's no direct clientId (mirrors resolveTarget's "client" case).
+	if (!relatedId && relatedType === "client") {
+		const projectFk = RELATION_FIELD[objectType]?.project;
+		const projectId = projectFk
+			? (triggerObject[projectFk] as Id<"projects"> | undefined)
+			: undefined;
+		if (projectId) {
+			const project = await ctx.db.get(projectId);
+			if (project && project.orgId === orgId) {
+				relatedId = project.clientId;
+			}
+		}
+	}
+
+	if (!relatedId) {
+		return null;
+	}
+
+	const doc = await getObject(ctx, relatedType, relatedId, orgId);
+	if (!doc) {
+		return null;
+	}
+
+	return {
+		type: relatedType,
+		id: relatedId as
+			| Id<"clients">
+			| Id<"projects">
+			| Id<"quotes">
+			| Id<"invoices">
+			| Id<"tasks">,
+	};
 }
 
 // Cleanup configuration

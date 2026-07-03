@@ -325,16 +325,21 @@ async function dispatchEvent(
 		}
 
 		case EVENT_TYPES.ENTITY_RECORD_CREATED:
-		case EVENT_TYPES.ENTITY_RECORD_UPDATED:
-			// TODO(slice1-executor): dispatch to
-			// internal.automationExecutor.handleRecordEvent({ eventId: event._id })
-			// once that handler exists. Deliberate no-op for now: the event is
-			// stored and marked completed, but no automation runs.
-			console.log(
-				"record event received; executor handler lands with engine v2",
-				event.eventType
+		case EVENT_TYPES.ENTITY_RECORD_UPDATED: {
+			// Route to the automation executor, mirroring the status_changed
+			// dispatch above. Record events carry their own cascade context
+			// (executionChain/recursionDepth) in payload.metadata, so only
+			// eventId/orgId are needed here.
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.handleRecordEvent,
+				{
+					eventId: event._id,
+					orgId: event.orgId,
+				}
 			);
 			break;
+		}
 
 		case EVENT_TYPES.AUTOMATION_TRIGGERED:
 		case EVENT_TYPES.AUTOMATION_COMPLETED:
