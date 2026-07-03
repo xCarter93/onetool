@@ -361,6 +361,238 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("scheduled dispatch", () => {
+		function scheduledAutomation(
+			overrides: {
+				name?: string;
+				schedule?: {
+					frequency: "daily" | "weekly" | "monthly";
+					timezone: string;
+					time?: string;
+					dayOfWeek?: number;
+					dayOfMonth?: number;
+				};
+				nodes?:
+					| ReturnType<typeof conditionNode>[]
+					| ReturnType<typeof updateFieldActionNode>[];
+				isActive?: boolean;
+			} = {}
+		) {
+			return {
+				name: overrides.name ?? "Scheduled automation",
+				trigger: {
+					type: "scheduled" as const,
+					schedule: overrides.schedule ?? {
+						frequency: "daily" as const,
+						timezone: "UTC",
+						time: "09:00",
+					},
+				},
+				nodes: overrides.nodes ?? [conditionNode("cond-1", "status", "equals", "active")],
+				isActive: overrides.isActive,
+			};
+		}
+
+		/** Marks the org as premium so scheduled dispatch isn't gated. */
+		async function makeOrgPremium(orgId: Id<"organizations">) {
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, {
+					clerkPlanSlug: "onetool_business_plan_org",
+					subscriptionStatus: "active",
+				})
+			);
+		}
+
+		async function drainScheduled() {
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		}
+
+		it("create with isActive + scheduled trigger sets nextRunAt; draft leaves it unset", async () => {
+			const { asUser } = await setupUser();
+
+			const activeId = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			const draftId = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ name: "Draft scheduled" })
+			);
+
+			const active = await t.run(async (ctx) => ctx.db.get(activeId));
+			const draft = await t.run(async (ctx) => ctx.db.get(draftId));
+
+			expect(active?.nextRunAt).toBeTypeOf("number");
+			expect(active!.nextRunAt!).toBeGreaterThan(Date.now());
+			expect(draft?.nextRunAt).toBeUndefined();
+		});
+
+		it("toggleActive pause clears nextRunAt; re-activating re-sets it", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			const beforePause = await t.run(async (ctx) => ctx.db.get(id));
+			expect(beforePause?.nextRunAt).toBeTypeOf("number");
+
+			await asUser.mutation(api.automations.toggleActive, { id });
+			const paused = await t.run(async (ctx) => ctx.db.get(id));
+			expect(paused?.status).toBe("paused");
+			expect(paused?.nextRunAt).toBeUndefined();
+
+			await asUser.mutation(api.automations.toggleActive, { id });
+			const reactivated = await t.run(async (ctx) => ctx.db.get(id));
+			expect(reactivated?.status).toBe("active");
+			expect(reactivated?.nextRunAt).toBeTypeOf("number");
+		});
+
+		it("switching an active automation's trigger away from scheduled clears nextRunAt, and back sets it", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			expect((await t.run(async (ctx) => ctx.db.get(id)))?.nextRunAt).toBeTypeOf(
+				"number"
+			);
+
+			await asUser.mutation(api.automations.update, {
+				id,
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [conditionNode("cond-1", "companyName", "contains", "Acme")],
+			});
+			const switchedAway = await t.run(async (ctx) => ctx.db.get(id));
+			expect(switchedAway?.nextRunAt).toBeUndefined();
+
+			await asUser.mutation(api.automations.update, {
+				id,
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily" as const, timezone: "UTC", time: "09:00" },
+				},
+				nodes: [conditionNode("cond-1", "status", "equals", "active")],
+			});
+			const switchedBack = await t.run(async (ctx) => ctx.db.get(id));
+			expect(switchedBack?.nextRunAt).toBeTypeOf("number");
+		});
+
+		it("dispatches due automations: claims first, runs production execution to completion", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			const past = Date.now() - 1000;
+			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+
+			const result = await t.mutation(
+				internal.automationExecutor.dispatchScheduledAutomations,
+				{}
+			);
+			expect(result.due).toBe(1);
+			expect(result.dispatched).toBe(1);
+
+			// Claim-first: nextRunAt already advanced before the run executes.
+			const claimed = await t.run(async (ctx) => ctx.db.get(id));
+			expect(claimed?.nextRunAt).toBeGreaterThan(Date.now());
+
+			await drainScheduled();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].triggeredBy).toBe("schedule");
+			expect(executions[0].mode).toBe("production");
+			expect(executions[0].status).toBe("completed");
+		});
+
+		it("skips dispatch for a non-premium org: inserts a skipped execution and still advances nextRunAt", async () => {
+			const { asUser } = await setupUser();
+			// No premium fields set on the org.
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			const past = Date.now() - 1000;
+			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+
+			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
+			await drainScheduled();
+
+			const automation = await t.run(async (ctx) => ctx.db.get(id));
+			expect(automation?.nextRunAt).toBeGreaterThan(Date.now());
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("skipped");
+			expect(executions[0].error).toMatch(/premium/i);
+		});
+
+		it("clears a stale nextRunAt pointer when the trigger is no longer scheduled, with no execution", async () => {
+			const { asUser } = await setupUser();
+
+			// Active automation with a record_created trigger, whose nextRunAt is
+			// a stale pointer left over from a prior scheduled trigger.
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Stale pointer",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [conditionNode("cond-1", "companyName", "contains", "Acme")],
+				isActive: true,
+			});
+			const past = Date.now() - 1000;
+			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+
+			const result = await t.mutation(
+				internal.automationExecutor.dispatchScheduledAutomations,
+				{}
+			);
+			expect(result.due).toBe(1);
+			expect(result.dispatched).toBe(0);
+
+			const automation = await t.run(async (ctx) => ctx.db.get(id));
+			expect(automation?.nextRunAt).toBeUndefined();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(0);
+		});
+
+		it("a record-dependent action on a scheduled run fails with a clear error", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({
+					isActive: true,
+					nodes: [updateFieldActionNode("act-1", "notes", "Should not run")],
+				})
+			);
+			const past = Date.now() - 1000;
+			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+
+			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
+			await drainScheduled();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("failed");
+			expect(executions[0].error).toMatch(/needs a trigger record/i);
+		});
+	});
+
 	describe("recursion depth guard", () => {
 		it("pins MAX_RECURSION_DEPTH=5: handleRecordEvent short-circuits at depth 5", async () => {
 			const { asUser, orgId } = await setupUser();

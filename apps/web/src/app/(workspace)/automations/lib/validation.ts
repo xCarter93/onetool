@@ -11,6 +11,7 @@ import {
 	VALUELESS_OPERATORS,
 	getWritableFields,
 	operatorsForField,
+	validateSchedule,
 	type ActionNodeConfig,
 	type AutomationObjectType,
 	type ConditionNodeConfig,
@@ -96,9 +97,24 @@ function validateTrigger(
 				});
 			}
 			break;
-		case "scheduled":
-			// Not offered in the picker yet (comingSoon); nothing further to check.
+		case "scheduled": {
+			if (!trigger.schedule) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Configure the schedule",
+				});
+				break;
+			}
+			// Same rules the backend enforces (timezone/time/day bounds).
+			const scheduleError = validateSchedule(trigger.schedule);
+			if (scheduleError) {
+				errors.push({
+					type: "missing_required_config",
+					message: scheduleError,
+				});
+			}
 			break;
+		}
 	}
 }
 

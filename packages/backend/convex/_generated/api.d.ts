@@ -54,6 +54,7 @@ import type * as lib_payments from "../lib/payments.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
+import type * as lib_schedule from "../lib/schedule.js";
 import type * as lib_shared from "../lib/shared.js";
 import type * as lib_storage from "../lib/storage.js";
 import type * as lib_stripe from "../lib/stripe.js";
@@ -158,6 +159,7 @@ declare const fullApi: ApiFromModules<{
   "lib/permissions": typeof lib_permissions;
   "lib/queries": typeof lib_queries;
   "lib/quoteTotals": typeof lib_quoteTotals;
+  "lib/schedule": typeof lib_schedule;
   "lib/shared": typeof lib_shared;
   "lib/storage": typeof lib_storage;
   "lib/stripe": typeof lib_stripe;

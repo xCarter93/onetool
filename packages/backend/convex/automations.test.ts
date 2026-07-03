@@ -132,6 +132,29 @@ describe("Automations", () => {
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.trigger).toHaveProperty("fields", ["status", "title"]);
 		});
+
+		it("accepts a valid scheduled trigger and sets nextRunAt when active", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Nightly sweep",
+				trigger: {
+					type: "scheduled",
+					schedule: {
+						frequency: "daily",
+						timezone: "America/New_York",
+						time: "09:00",
+					},
+				},
+				nodes: [actionNode("act-1", "inactive")],
+				isActive: true,
+			});
+
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.trigger).toHaveProperty("type", "scheduled");
+			expect(automation?.nextRunAt).toBeTypeOf("number");
+			expect(automation!.nextRunAt!).toBeGreaterThan(Date.now());
+		});
 	});
 
 	describe("validation", () => {
@@ -160,6 +183,25 @@ describe("Automations", () => {
 					nodes: [actionNode("act-1", "prospect")],
 				})
 			).rejects.toThrow(/not a valid value/i);
+		});
+
+		it("rejects a scheduled trigger with an invalid IANA timezone", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad timezone",
+					trigger: {
+						type: "scheduled",
+						schedule: {
+							frequency: "daily",
+							timezone: "Not/AZone",
+							time: "09:00",
+						},
+					},
+					nodes: [actionNode("act-1", "inactive")],
+				})
+			).rejects.toThrow(/timezone/i);
 		});
 
 		it("rejects an operator not valid for the field type", async () => {

@@ -33,6 +33,10 @@
       "types": "./convex/lib/fieldRegistry.ts",
       "default": "./convex/lib/fieldRegistry.ts"
     },
+    "./convex/lib/schedule": {
+      "types": "./convex/lib/schedule.ts",
+      "default": "./convex/lib/schedule.ts"
+    },
     "./convex/lib/assistantShared": {
       "types": "./convex/lib/assistantShared.ts",
       "default": "./convex/lib/assistantShared.ts"

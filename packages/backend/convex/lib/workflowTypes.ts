@@ -313,6 +313,8 @@ export const scheduleValidator = v.object({
 	dayOfMonth: v.optional(v.number()),
 });
 
+export type AutomationSchedule = Infer<typeof scheduleValidator>;
+
 export const statusChangedTriggerValidator = v.object({
 	type: v.literal("status_changed"),
 	objectType: objectTypeValidator,

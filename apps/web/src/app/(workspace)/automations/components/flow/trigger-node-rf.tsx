@@ -8,7 +8,9 @@ import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
 import {
 	OBJECT_TYPE_LABELS,
+	describeSchedule,
 	getStatusOptions,
+	validateSchedule,
 	type TriggerConfig,
 } from "../../lib/node-types";
 
@@ -45,8 +47,17 @@ function getSummary(trigger: TriggerConfig | undefined): {
 						? `${objectLabel}.${trigger.fields.join(", ")} changes`
 						: `${objectLabel} updated`,
 			};
-		case "scheduled":
-			return { title: "Scheduled", description: `Runs ${trigger.schedule?.frequency || "daily"}` };
+		case "scheduled": {
+			const schedule = trigger.schedule;
+			// describeSchedule throws on malformed drafts; only summarize valid ones.
+			if (schedule && validateSchedule(schedule) === null) {
+				return {
+					title: "Scheduled",
+					description: describeSchedule(schedule, Date.now()),
+				};
+			}
+			return { title: "Scheduled", description: "Configure the schedule..." };
+		}
 		default:
 			return { title: "Unsupported trigger", description: "Choose a different trigger" };
 	}

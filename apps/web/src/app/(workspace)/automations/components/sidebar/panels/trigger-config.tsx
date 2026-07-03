@@ -12,12 +12,18 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import ComboBox from "@/components/ui/combo-box";
 import {
+	DEFAULT_SCHEDULE_TIME,
 	OBJECT_TYPE_OPTIONS,
 	TRIGGER_TYPE_OPTIONS,
+	describeSchedule,
 	getFilterableFields,
 	getStatusOptions,
+	validateSchedule,
 	type AutomationObjectType,
+	type AutomationSchedule,
 	type TriggerConfig,
 	type TriggerType,
 } from "../../../lib/node-types";
@@ -29,6 +35,44 @@ import {
 	PanelField,
 	PanelSection,
 } from "./panel-primitives";
+
+const WEEKDAY_OPTIONS = [
+	{ value: "0", label: "Sunday" },
+	{ value: "1", label: "Monday" },
+	{ value: "2", label: "Tuesday" },
+	{ value: "3", label: "Wednesday" },
+	{ value: "4", label: "Thursday" },
+	{ value: "5", label: "Friday" },
+	{ value: "6", label: "Saturday" },
+];
+
+function ordinal(n: number): string {
+	const rem100 = n % 100;
+	if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+	const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th";
+	return `${n}${suffix}`;
+}
+
+const DAY_OF_MONTH_OPTIONS = Array.from({ length: 31 }, (_, i) => ({
+	value: String(i + 1),
+	label: `The ${ordinal(i + 1)}`,
+}));
+
+const TIMEZONES: string[] = (() => {
+	try {
+		return Intl.supportedValuesOf("timeZone");
+	} catch {
+		return ["UTC"];
+	}
+})();
+
+function defaultSchedule(): AutomationSchedule {
+	return {
+		frequency: "daily",
+		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+		time: DEFAULT_SCHEDULE_TIME,
+	};
+}
 
 export function TriggerConfigPanel({
 	trigger,
@@ -53,6 +97,12 @@ export function TriggerConfigPanel({
 		const newType = value as TriggerType;
 		if (newType === "record_created" || newType === "record_updated") {
 			onTriggerChange({ type: newType, objectType });
+		} else if (newType === "scheduled") {
+			onTriggerChange({
+				type: "scheduled",
+				objectType,
+				schedule: currentTrigger.schedule ?? defaultSchedule(),
+			});
 		} else {
 			const newStatusOptions = getStatusOptions(objectType);
 			onTriggerChange({
@@ -61,6 +111,31 @@ export function TriggerConfigPanel({
 				toStatus: newStatusOptions[0]?.value || "",
 			});
 		}
+	};
+
+	const schedule = currentTrigger.schedule;
+
+	const updateSchedule = (patch: Partial<AutomationSchedule>) => {
+		const base = schedule ?? defaultSchedule();
+		onTriggerChange({
+			...currentTrigger,
+			schedule: { ...base, ...patch },
+		});
+	};
+
+	const handleFrequencyChange = (value: string) => {
+		const frequency = value as AutomationSchedule["frequency"];
+		const base = schedule ?? defaultSchedule();
+		onTriggerChange({
+			...currentTrigger,
+			schedule: {
+				...base,
+				frequency,
+				dayOfWeek: frequency === "weekly" ? (base.dayOfWeek ?? 1) : undefined,
+				dayOfMonth:
+					frequency === "monthly" ? (base.dayOfMonth ?? 1) : undefined,
+			},
+		});
 	};
 
 	const handleObjectTypeChange = (value: string) => {
@@ -138,7 +213,14 @@ export function TriggerConfigPanel({
 						</Select>
 					</PanelField>
 
-					<PanelField label="Object type">
+					<PanelField
+						label="Object type"
+						helper={
+							triggerType === "scheduled"
+								? "Sets the record context for later steps."
+								: undefined
+						}
+					>
 						<Select value={objectType} onValueChange={handleObjectTypeChange}>
 							<SelectTrigger>
 								<SelectValue />
@@ -198,6 +280,108 @@ export function TriggerConfigPanel({
 									</SelectContent>
 								</Select>
 							</PanelField>
+						</>
+					)}
+
+					{triggerType === "scheduled" && (
+						<>
+							<PanelField label="Repeats">
+								<Select
+									value={schedule?.frequency ?? "daily"}
+									onValueChange={handleFrequencyChange}
+								>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="daily">Daily</SelectItem>
+										<SelectItem value="weekly">Weekly</SelectItem>
+										<SelectItem value="monthly">Monthly</SelectItem>
+									</SelectContent>
+								</Select>
+							</PanelField>
+
+							{schedule?.frequency === "weekly" && (
+								<PanelField label="Day of week">
+									<Select
+										value={String(schedule.dayOfWeek ?? 1)}
+										onValueChange={(value) =>
+											updateSchedule({ dayOfWeek: Number(value) })
+										}
+									>
+										<SelectTrigger>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{WEEKDAY_OPTIONS.map((day) => (
+												<SelectItem key={day.value} value={day.value}>
+													{day.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</PanelField>
+							)}
+
+							{schedule?.frequency === "monthly" && (
+								<PanelField
+									label="Day of month"
+									helper={
+										(schedule.dayOfMonth ?? 1) > 28
+											? "Months without this day run on their last day."
+											: undefined
+									}
+								>
+									<Select
+										value={String(schedule.dayOfMonth ?? 1)}
+										onValueChange={(value) =>
+											updateSchedule({ dayOfMonth: Number(value) })
+										}
+									>
+										<SelectTrigger>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{DAY_OF_MONTH_OPTIONS.map((day) => (
+												<SelectItem key={day.value} value={day.value}>
+													{day.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</PanelField>
+							)}
+
+							<PanelField label="Time">
+								<Input
+									type="time"
+									value={schedule?.time ?? DEFAULT_SCHEDULE_TIME}
+									onChange={(e) => {
+										// Clearing a native time input yields "" — keep the default
+										// instead of saving an invalid empty time.
+										updateSchedule({
+											time: e.target.value || DEFAULT_SCHEDULE_TIME,
+										});
+									}}
+								/>
+							</PanelField>
+
+							<PanelField label="Timezone">
+								<ComboBox
+									options={TIMEZONES}
+									value={schedule?.timezone ?? ""}
+									placeholder="Search timezones..."
+									onSelect={(tz) => {
+										if (tz) updateSchedule({ timezone: tz });
+									}}
+								/>
+							</PanelField>
+
+							{schedule && validateSchedule(schedule) === null && (
+								<p className="text-xs text-muted-foreground">
+									{describeSchedule(schedule, Date.now())}
+								</p>
+							)}
 						</>
 					)}
 

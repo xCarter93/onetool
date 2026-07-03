@@ -25,6 +25,7 @@ import {
 	getStatusOptions,
 	operatorsForField,
 } from "./lib/fieldRegistry";
+import { computeNextRunAt, validateSchedule } from "./lib/schedule";
 
 /**
  * Workflow Automation operations with embedded CRUD helpers
@@ -113,8 +114,6 @@ export function effectiveStatus(
 	return automation.isActive ? "active" : "draft";
 }
 
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 function validateTrigger(trigger: AutomationTrigger): void {
 	if (!("type" in trigger)) {
 		throw new Error("Legacy triggers can no longer be written");
@@ -154,30 +153,11 @@ function validateTrigger(trigger: AutomationTrigger): void {
 			break;
 		}
 		case "scheduled": {
-			const { schedule } = trigger;
-			if (!schedule.timezone.trim()) {
-				throw new Error("Schedule timezone is required");
-			}
-			if (schedule.time !== undefined && !TIME_PATTERN.test(schedule.time)) {
-				throw new Error('Schedule time must be "HH:MM" (24h)');
-			}
-			if (schedule.frequency === "weekly") {
-				if (
-					schedule.dayOfWeek === undefined ||
-					schedule.dayOfWeek < 0 ||
-					schedule.dayOfWeek > 6
-				) {
-					throw new Error("Weekly schedules need a day of week (0-6)");
-				}
-			}
-			if (schedule.frequency === "monthly") {
-				if (
-					schedule.dayOfMonth === undefined ||
-					schedule.dayOfMonth < 1 ||
-					schedule.dayOfMonth > 31
-				) {
-					throw new Error("Monthly schedules need a day of month (1-31)");
-				}
+			// Includes IANA-timezone validation, so a stored schedule can never
+			// make computeNextRunAt throw in the dispatcher.
+			const error = validateSchedule(trigger.schedule);
+			if (error) {
+				throw new Error(error);
 			}
 			break;
 		}
@@ -469,6 +449,22 @@ function buildSnapshot(
 }
 
 /**
+ * Next due time for an automation as it will execute: set only while active
+ * with a scheduled trigger, cleared (undefined) otherwise. Patching
+ * `nextRunAt: undefined` removes the field, which keeps the row out of the
+ * dispatcher's by_status_nextRunAt range.
+ */
+function scheduledNextRunAt(
+	trigger: AutomationTrigger,
+	active: boolean
+): number | undefined {
+	if (!active || !("type" in trigger) || trigger.type !== "scheduled") {
+		return undefined;
+	}
+	return computeNextRunAt(trigger.schedule, Date.now());
+}
+
+/**
  * Get all automations for the current user's organization
  */
 export const list = userQuery({
@@ -565,6 +561,7 @@ export const create = userMutation({
 						publishedAt: now,
 					}
 				: undefined,
+			nextRunAt: scheduledNextRunAt(args.trigger, activate),
 			createdBy: user._id,
 			createdAt: now,
 			updatedAt: now,
@@ -654,6 +651,14 @@ export const update = userMutation({
 			patch.isActive = false;
 		}
 
+		// Keep the dispatch pointer in sync with the trigger that will execute
+		// (the snapshot's when published, else the working copy).
+		const executingTrigger =
+			patch.publishedSnapshot?.trigger ??
+			automation.publishedSnapshot?.trigger ??
+			nextTrigger;
+		patch.nextRunAt = scheduledNextRunAt(executingTrigger, nextActive);
+
 		await ctx.db.patch(id, patch);
 		return id;
 	},
@@ -673,6 +678,7 @@ export const publish = userMutation({
 			status: "active",
 			isActive: true,
 			publishedSnapshot: buildSnapshot(automation),
+			nextRunAt: scheduledNextRunAt(automation.trigger, true),
 			updatedAt: Date.now(),
 		});
 
@@ -694,6 +700,7 @@ export const toggleActive = userMutation({
 			await ctx.db.patch(args.id, {
 				status: "paused",
 				isActive: false,
+				nextRunAt: undefined,
 				updatedAt: Date.now(),
 			});
 		} else {
@@ -705,6 +712,7 @@ export const toggleActive = userMutation({
 				status: "active",
 				isActive: true,
 				publishedSnapshot: buildSnapshot(automation),
+				nextRunAt: scheduledNextRunAt(automation.trigger, true),
 				updatedAt: Date.now(),
 			});
 		}

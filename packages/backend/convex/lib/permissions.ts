@@ -84,6 +84,23 @@ export const PREMIUM_PLAN_SLUG = "onetool_business_plan_org";
 const PREMIUM_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
 
 /**
+ * Plan check from the org doc alone, for system/cron contexts with no request
+ * identity. Cannot see the has_premium_feature_access metadata overrides
+ * (those live in the JWT) — identity-scoped callers use hasPremiumAccess.
+ */
+export function orgHasPremiumPlan(
+	org: {
+		clerkPlanSlug?: string;
+		subscriptionStatus?: string;
+	} | null
+): boolean {
+	return (
+		org?.clerkPlanSlug === PREMIUM_PLAN_SLUG &&
+		PREMIUM_SUBSCRIPTION_STATUSES.has(org.subscriptionStatus ?? "")
+	);
+}
+
+/**
  * Server-side mirror of the web app's useFeatureAccess() premium check
  * (apps/web/src/hooks/use-feature-access.ts): premium if the user OR org has
  * the has_premium_feature_access metadata flag (present in the "convex" JWT
@@ -121,10 +138,7 @@ export async function hasPremiumAccess(
 		return false;
 	}
 	const org = await ctx.db.get(orgId);
-	return (
-		org?.clerkPlanSlug === PREMIUM_PLAN_SLUG &&
-		PREMIUM_SUBSCRIPTION_STATUSES.has(org.subscriptionStatus ?? "")
-	);
+	return orgHasPremiumPlan(org);
 }
 
 /**

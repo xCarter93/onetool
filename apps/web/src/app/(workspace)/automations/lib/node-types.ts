@@ -66,6 +66,14 @@ export type {
 	FieldType,
 } from "@onetool/backend/convex/lib/fieldRegistry";
 
+export {
+	DEFAULT_SCHEDULE_TIME,
+	describeSchedule,
+	validateSchedule,
+} from "@onetool/backend/convex/lib/schedule";
+
+export type { AutomationSchedule } from "@onetool/backend/convex/lib/workflowTypes";
+
 // ---------------------------------------------------------------------------
 // 2. Object-type UI options
 // ---------------------------------------------------------------------------
@@ -163,7 +171,6 @@ export const TRIGGER_TYPE_OPTIONS: {
 		value: "scheduled",
 		label: "On a schedule",
 		description: "Runs daily, weekly, or monthly",
-		comingSoon: true,
 	},
 ];
 

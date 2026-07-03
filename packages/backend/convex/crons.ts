@@ -39,4 +39,12 @@ crons.daily(
 	{}
 );
 
+// Scheduled-trigger dispatcher: runs due automations (claim-first on nextRunAt).
+crons.interval(
+	"dispatch scheduled automations",
+	{ minutes: 15 },
+	internal.automationExecutor.dispatchScheduledAutomations,
+	{}
+);
+
 export default crons;

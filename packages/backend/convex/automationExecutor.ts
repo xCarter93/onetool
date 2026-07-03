@@ -8,6 +8,8 @@ import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
 import { systemMutation } from "./lib/factories";
+import { computeNextRunAt } from "./lib/schedule";
+import { orgHasPremiumPlan } from "./lib/permissions";
 import {
 	evaluateConditionGroups,
 	resolveValueRef,
@@ -445,6 +447,122 @@ export const handleRecordEvent = systemMutation({
 	},
 });
 
+/** Max scheduled automations dispatched per cron tick. */
+const SCHEDULED_DISPATCH_BATCH = 50;
+
+/**
+ * SCHEDULED DISPATCHER (cron, every 15 minutes)
+ *
+ * Finds active automations whose nextRunAt is due and starts a production run
+ * for each. Claim-first: nextRunAt is advanced before the run is scheduled so
+ * a failure below can never cause a tight redispatch loop.
+ *
+ * Until fetch_records lands (Slice 3), scheduled runs execute once with no
+ * trigger record; record-scoped per-item runs come with fetch/loop.
+ */
+// Raw internalMutation — spans orgs, so the org-scoped systemMutation factory doesn't apply.
+export const dispatchScheduledAutomations = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ due: number; dispatched: number }> => {
+		const now = Date.now();
+		const due = await ctx.db
+			.query("workflowAutomations")
+			.withIndex("by_status_nextRunAt", (q) =>
+				// gt(0) keeps rows with no nextRunAt (sorted first) out of the range.
+				q.eq("status", "active").gt("nextRunAt", 0).lte("nextRunAt", now)
+			)
+			.take(SCHEDULED_DISPATCH_BATCH);
+
+		let dispatched = 0;
+		for (const automation of due) {
+			// Per-automation isolation: one bad row must not block the batch.
+			try {
+				const { trigger } = executableDefinition(automation);
+				if (!("type" in trigger) || trigger.type !== "scheduled") {
+					// Stale pointer: the trigger changed without a lifecycle recompute.
+					await ctx.db.patch(automation._id, { nextRunAt: undefined });
+					continue;
+				}
+
+				await ctx.db.patch(automation._id, {
+					nextRunAt: computeNextRunAt(trigger.schedule, now),
+				});
+
+				// Plan gate: the automations UI is premium-gated, but a downgraded
+				// org's schedules keep coming due — skip visibly instead of running.
+				const org = await ctx.db.get(automation.orgId);
+				if (!orgHasPremiumPlan(org)) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId: automation.orgId,
+						automationId: automation._id,
+						triggeredBy: "schedule",
+						triggeredAt: now,
+						status: "skipped",
+						mode: "production",
+						nodesExecuted: [],
+						error: "Skipped: scheduled automations require a premium plan",
+					});
+					continue;
+				}
+
+				const oneMinuteAgo = now - RATE_LIMIT_WINDOW_MS;
+				const recentExecutions = await ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_org_triggeredAt", (q) =>
+						q.eq("orgId", automation.orgId).gte("triggeredAt", oneMinuteAgo)
+					)
+					.take(MAX_EXECUTIONS_PER_WINDOW);
+				if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId: automation.orgId,
+						automationId: automation._id,
+						triggeredBy: "schedule",
+						triggeredAt: now,
+						status: "skipped",
+						mode: "production",
+						nodesExecuted: [],
+						error: "Skipped: automation rate limit reached",
+					});
+					continue;
+				}
+
+				const executionId = await ctx.db.insert("workflowExecutions", {
+					orgId: automation.orgId,
+					automationId: automation._id,
+					triggeredBy: "schedule",
+					triggeredAt: now,
+					status: "running",
+					mode: "production",
+					snapshotVersion: automation.publishedSnapshot?.version,
+					nodesExecuted: [],
+					executionChain: [automation._id],
+					recursionDepth: 0,
+				});
+
+				await ctx.scheduler.runAfter(
+					0,
+					internal.automationExecutor.executeAutomation,
+					{
+						orgId: automation.orgId,
+						executionId,
+						automationId: automation._id,
+						executionChain: [automation._id],
+						recursionDepth: 1,
+					}
+				);
+				dispatched++;
+			} catch (error) {
+				console.error(
+					`[AutomationExecutor] Scheduled dispatch failed for automation ${automation._id}`,
+					error
+				);
+			}
+		}
+
+		return { due: due.length, dispatched };
+	},
+});
+
 /**
  * Execute a single automation workflow
  */
@@ -452,14 +570,18 @@ export const executeAutomation = systemMutation({
 	args: {
 		executionId: v.id("workflowExecutions"),
 		automationId: v.id("workflowAutomations"),
-		objectType: v.union(
-			v.literal("client"),
-			v.literal("project"),
-			v.literal("quote"),
-			v.literal("invoice"),
-			v.literal("task")
+		// Omitted for scheduled runs, which have no trigger record until
+		// fetch_records lands (Slice 3).
+		objectType: v.optional(
+			v.union(
+				v.literal("client"),
+				v.literal("project"),
+				v.literal("quote"),
+				v.literal("invoice"),
+				v.literal("task")
+			)
 		),
-		objectId: v.string(),
+		objectId: v.optional(v.string()),
 		// Execution context for recursion tracking (passed to child automations)
 		executionChain: v.optional(v.array(v.id("workflowAutomations"))),
 		recursionDepth: v.optional(v.number()),
@@ -491,20 +613,26 @@ export const executeAutomation = systemMutation({
 			}
 		);
 
-		// Get the triggering object
-		const triggerObject = await getObject(
-			ctx,
-			args.objectType,
-			args.objectId,
-			automation.orgId
-		);
-		if (!triggerObject) {
-			await ctx.db.patch(args.executionId, {
-				status: "failed",
-				completedAt: Date.now(),
-				error: "Triggering object not found",
-			});
-			return;
+		// Get the triggering object. Scheduled runs have none: conditions
+		// evaluate against an empty record and record-targeting actions
+		// error clearly until fetch_records lands.
+		let triggerObject: Record<string, unknown> = {};
+		if (args.objectType && args.objectId) {
+			const object = await getObject(
+				ctx,
+				args.objectType,
+				args.objectId,
+				automation.orgId
+			);
+			if (!object) {
+				await ctx.db.patch(args.executionId, {
+					status: "failed",
+					completedAt: Date.now(),
+					error: "Triggering object not found",
+				});
+				return;
+			}
+			triggerObject = object;
 		}
 
 		const nodesExecuted: Doc<"workflowExecutions">["nodesExecuted"] = [];
@@ -686,8 +814,8 @@ async function getObject(
 async function executeNode(
 	ctx: MutationCtx,
 	node: AutomationNode,
-	objectType: ObjectType,
-	objectId: string,
+	objectType: ObjectType | undefined,
+	objectId: string | undefined,
 	triggerObject: Record<string, unknown>,
 	orgId: Id<"organizations">,
 	executionChain: Id<"workflowAutomations">[],
@@ -716,6 +844,9 @@ async function executeNode(
 	if (node.type === "condition") {
 		return executeConditionNode(node, triggerObject);
 	} else if (node.type === "action") {
+		if (!objectType || !objectId) {
+			return { success: false, error: NO_TRIGGER_RECORD_ERROR };
+		}
 		return executeActionNode(
 			ctx,
 			node,
@@ -731,6 +862,10 @@ async function executeNode(
 	return { success: false, error: "Unknown node type" };
 }
 
+const NO_TRIGGER_RECORD_ERROR =
+	"This action needs a trigger record. Scheduled automations can act on " +
+	"records once the fetch-records step is available.";
+
 /**
  * Execute a v2 node from its discriminated `config`. Only `condition` and
  * `action` (update_field) are implemented; the rest land in Slice 3.
@@ -738,8 +873,8 @@ async function executeNode(
 async function executeNodeV2(
 	ctx: MutationCtx,
 	config: WorkflowNodeConfig,
-	objectType: ObjectType,
-	objectId: string,
+	objectType: ObjectType | undefined,
+	objectId: string | undefined,
 	triggerObject: Record<string, unknown>,
 	orgId: Id<"organizations">,
 	executionChain: Id<"workflowAutomations">[],
@@ -771,6 +906,9 @@ async function executeNodeV2(
 			return { success: true, conditionMet };
 		}
 		case "action":
+			if (!objectType || !objectId) {
+				return { success: false, error: NO_TRIGGER_RECORD_ERROR };
+			}
 			return executeActionNodeV2(
 				ctx,
 				config.action,
