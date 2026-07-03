@@ -1026,7 +1026,7 @@ export const getAutomations = createTool({
 				id: a._id,
 				name: a.name,
 				description: truncate(a.description, TEXT_CAP),
-				isActive: a.isActive,
+				isActive: a.status ? a.status === "active" : (a.isActive ?? false),
 				trigger:
 					"type" in a.trigger
 						? `${a.trigger.type}${"objectType" in a.trigger ? ` (${a.trigger.objectType})` : ""}`

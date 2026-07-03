@@ -16,7 +16,11 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
-import { emitStatusChangeEvent } from "./eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	optionalUserQuery,
@@ -440,6 +444,13 @@ export const create = userMutation({
 				client?.companyName || "Unknown Client"
 			);
 			await AggregateHelpers.addInvoice(ctx, invoice as InvoiceDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				invoice.orgId,
+				"invoice",
+				invoice._id,
+				"invoices.create"
+			);
 		}
 
 		return invoiceId;
@@ -552,6 +563,15 @@ export const update = userMutation({
 					"invoices.update"
 				);
 			}
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				updatedInvoice.orgId,
+				"invoice",
+				updatedInvoice._id,
+				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				"invoices.update"
+			);
 		}
 
 		return id;

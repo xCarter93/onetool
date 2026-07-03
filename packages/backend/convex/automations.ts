@@ -1,8 +1,30 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { userMutation, userQuery } from "./lib/factories";
+import {
+	AUTOMATION_OBJECT_TYPES,
+	MAX_CONDITION_GROUPS,
+	MAX_FETCH_LIMIT,
+	MAX_RULES_PER_GROUP,
+	VALUELESS_OPERATORS,
+	nodeConfigValidator,
+	nodeTypeValidator,
+	recordCreatedTriggerValidator,
+	recordUpdatedTriggerValidator,
+	scheduledTriggerValidator,
+	statusChangedTriggerValidator,
+	type AutomationObjectType,
+	type AutomationTrigger,
+	type WorkflowNodeConfig,
+} from "./lib/workflowTypes";
+import {
+	RELATED_OBJECTS,
+	getFieldDefinition,
+	getStatusOptions,
+	operatorsForField,
+} from "./lib/fieldRegistry";
 
 /**
  * Workflow Automation operations with embedded CRUD helpers
@@ -13,152 +35,36 @@ import { userMutation, userQuery } from "./lib/factories";
 type AutomationDocument = Doc<"workflowAutomations">;
 type AutomationId = Id<"workflowAutomations">;
 
-// Reusable validators for automation trigger and nodes
-const triggerObjectTypeValidator = v.union(
-	v.literal("client"),
-	v.literal("project"),
-	v.literal("quote"),
-	v.literal("invoice"),
-	v.literal("task")
+// v2-only trigger validator for create/update args (legacy + email_received
+// shapes remain readable from storage but can no longer be written).
+const triggerArgValidator = v.union(
+	statusChangedTriggerValidator,
+	recordCreatedTriggerValidator,
+	recordUpdatedTriggerValidator,
+	scheduledTriggerValidator
 );
 
-const conditionOperatorValidator = v.union(
-	v.literal("equals"),
-	v.literal("not_equals"),
-	v.literal("contains"),
-	v.literal("exists"),
-	v.literal("greater_than"),
-	v.literal("less_than"),
-	v.literal("is_true"),
-	v.literal("is_false"),
-	v.literal("before"),
-	v.literal("after")
-);
-
-const actionTargetTypeValidator = v.union(
-	v.literal("self"),
-	v.literal("project"),
-	v.literal("client"),
-	v.literal("quote"),
-	v.literal("invoice")
-);
-
-const actionTypeValidator = v.union(
-	v.literal("update_status"),
-	v.literal("update_field"),
-	v.literal("send_notification"),
-	v.literal("create_record")
-);
-
-const nodeValidator = v.object({
+// v2-only node validator for create/update args: `config` is required and the
+// legacy condition/action/fetchConfig/loopConfig fields are not accepted.
+const nodeArgValidator = v.object({
 	id: v.string(),
-	type: v.union(
-		v.literal("condition"),
-		v.literal("action"),
-		v.literal("fetch_records"),
-		v.literal("loop"),
-		v.literal("end")
-	),
-	condition: v.optional(
-		v.object({
-			field: v.string(),
-			operator: conditionOperatorValidator,
-			value: v.any(),
-		})
-	),
-	action: v.optional(
-		v.object({
-			targetType: actionTargetTypeValidator,
-			actionType: actionTypeValidator,
-			newStatus: v.string(),
-			// update_field action fields
-			field: v.optional(v.string()),
-			value: v.optional(v.any()),
-			// send_notification action fields
-			notificationRecipient: v.optional(v.string()),
-			notificationMessage: v.optional(v.string()),
-			// create_record action fields
-			createRecordType: v.optional(
-				v.union(v.literal("task"), v.literal("project"))
-			),
-			createRecordFields: v.optional(v.any()),
-		})
-	),
-	// Fetch records config
-	fetchConfig: v.optional(
-		v.object({
-			entityType: triggerObjectTypeValidator,
-			filters: v.optional(
-				v.array(
-					v.object({
-						field: v.string(),
-						operator: v.string(),
-						value: v.any(),
-					})
-				)
-			),
-			limit: v.optional(v.number()),
-		})
-	),
-	// Loop config
-	loopConfig: v.optional(
-		v.object({
-			sourceNodeId: v.string(),
-			batchSize: v.optional(v.number()),
-		})
-	),
+	type: nodeTypeValidator,
+	config: nodeConfigValidator,
 	nextNodeId: v.optional(v.string()),
 	elseNodeId: v.optional(v.string()),
+	bodyStartNodeId: v.optional(v.string()),
+	position: v.optional(v.object({ x: v.number(), y: v.number() })),
 });
 
-// Trigger validator - supports both legacy and v1.2 formats (matches schema.ts)
-const triggerValidator = v.union(
-	// Legacy format (no type field)
-	v.object({
-		objectType: triggerObjectTypeValidator,
-		fromStatus: v.optional(v.string()),
-		toStatus: v.string(),
-	}),
-	// v1.2 status_changed
-	v.object({
-		type: v.literal("status_changed"),
-		objectType: triggerObjectTypeValidator,
-		fromStatus: v.optional(v.string()),
-		toStatus: v.string(),
-	}),
-	// v1.2 record_created
-	v.object({
-		type: v.literal("record_created"),
-		objectType: triggerObjectTypeValidator,
-	}),
-	// v1.2 record_updated
-	v.object({
-		type: v.literal("record_updated"),
-		objectType: triggerObjectTypeValidator,
-		field: v.optional(v.string()),
-	}),
-	// v1.2 email_received
-	v.object({
-		type: v.literal("email_received"),
-		objectType: v.literal("client"),
-	}),
-	// v1.2 scheduled
-	v.object({
-		type: v.literal("scheduled"),
-		schedule: v.object({
-			frequency: v.union(
-				v.literal("daily"),
-				v.literal("weekly"),
-				v.literal("monthly")
-			),
-			timezone: v.string(),
-			time: v.optional(v.string()),
-			dayOfWeek: v.optional(v.number()),
-			dayOfMonth: v.optional(v.number()),
-		}),
-		objectType: v.optional(triggerObjectTypeValidator),
-	})
-);
+type NodeArg = {
+	id: string;
+	type: Doc<"workflowAutomations">["nodes"][number]["type"];
+	config: WorkflowNodeConfig;
+	nextNodeId?: string;
+	elseNodeId?: string;
+	bodyStartNodeId?: string;
+	position?: { x: number; y: number };
+};
 
 // Automation-specific helper functions
 
@@ -198,43 +104,344 @@ async function getAutomationOrThrow(
 }
 
 /**
- * Create an automation with automatic orgId and createdBy assignment
+ * Effective lifecycle status, tolerating unmigrated legacy rows.
  */
-async function createAutomationWithOrg(
-	ctx: MutationCtx,
-	data: Omit<
-		AutomationDocument,
-		"_id" | "_creationTime" | "orgId" | "createdBy" | "createdAt" | "updatedAt"
-	>
-): Promise<AutomationId> {
-	const userOrgId = await getCurrentUserOrgId(ctx);
-	const user = await getCurrentUserOrThrow(ctx);
-	const now = Date.now();
+export function effectiveStatus(
+	automation: Pick<AutomationDocument, "status" | "isActive">
+): "draft" | "active" | "paused" {
+	if (automation.status) return automation.status;
+	return automation.isActive ? "active" : "draft";
+}
 
-	const automationData = {
-		...data,
-		orgId: userOrgId,
-		createdBy: user._id,
-		createdAt: now,
-		updatedAt: now,
-	};
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-	return await ctx.db.insert("workflowAutomations", automationData);
+function validateTrigger(trigger: AutomationTrigger): void {
+	if (!("type" in trigger)) {
+		throw new Error("Legacy triggers can no longer be written");
+	}
+	switch (trigger.type) {
+		case "status_changed": {
+			if (!trigger.toStatus.trim()) {
+				throw new Error("Trigger status is required");
+			}
+			const statuses = getStatusOptions(trigger.objectType).map(
+				(o) => o.value
+			);
+			if (statuses.length > 0 && !statuses.includes(trigger.toStatus)) {
+				throw new Error(
+					`"${trigger.toStatus}" is not a valid ${trigger.objectType} status`
+				);
+			}
+			if (
+				trigger.fromStatus &&
+				statuses.length > 0 &&
+				!statuses.includes(trigger.fromStatus)
+			) {
+				throw new Error(
+					`"${trigger.fromStatus}" is not a valid ${trigger.objectType} status`
+				);
+			}
+			break;
+		}
+		case "record_updated": {
+			for (const field of trigger.fields ?? []) {
+				if (!getFieldDefinition(trigger.objectType, field)) {
+					throw new Error(
+						`Unknown field "${field}" for ${trigger.objectType}`
+					);
+				}
+			}
+			break;
+		}
+		case "scheduled": {
+			const { schedule } = trigger;
+			if (!schedule.timezone.trim()) {
+				throw new Error("Schedule timezone is required");
+			}
+			if (schedule.time !== undefined && !TIME_PATTERN.test(schedule.time)) {
+				throw new Error('Schedule time must be "HH:MM" (24h)');
+			}
+			if (schedule.frequency === "weekly") {
+				if (
+					schedule.dayOfWeek === undefined ||
+					schedule.dayOfWeek < 0 ||
+					schedule.dayOfWeek > 6
+				) {
+					throw new Error("Weekly schedules need a day of week (0-6)");
+				}
+			}
+			if (schedule.frequency === "monthly") {
+				if (
+					schedule.dayOfMonth === undefined ||
+					schedule.dayOfMonth < 1 ||
+					schedule.dayOfMonth > 31
+				) {
+					throw new Error("Monthly schedules need a day of month (1-31)");
+				}
+			}
+			break;
+		}
+		case "record_created":
+			break;
+		default:
+			throw new Error("Unsupported trigger type");
+	}
+}
+
+function triggerObjectType(
+	trigger: AutomationTrigger
+): AutomationObjectType | undefined {
+	if ("objectType" in trigger && trigger.objectType) {
+		return trigger.objectType;
+	}
+	return undefined;
+}
+
+function validateConditionGroups(
+	nodeId: string,
+	groups: { logic: "and" | "or"; rules: { field: string; operator: string; value?: unknown }[] }[],
+	objectType: AutomationObjectType | undefined,
+	context: string
+): void {
+	if (groups.length > MAX_CONDITION_GROUPS) {
+		throw new Error(
+			`Node ${nodeId}: at most ${MAX_CONDITION_GROUPS} ${context} groups allowed`
+		);
+	}
+	for (const group of groups) {
+		if (group.rules.length > MAX_RULES_PER_GROUP) {
+			throw new Error(
+				`Node ${nodeId}: at most ${MAX_RULES_PER_GROUP} rules per group allowed`
+			);
+		}
+		for (const rule of group.rules) {
+			if (!rule.field.trim()) {
+				throw new Error(`Node ${nodeId}: rule is missing a field`);
+			}
+			if (objectType) {
+				const def = getFieldDefinition(objectType, rule.field);
+				if (!def) {
+					throw new Error(
+						`Node ${nodeId}: unknown field "${rule.field}" for ${objectType}`
+					);
+				}
+				const operators = operatorsForField(objectType, rule.field);
+				if (!operators.includes(rule.operator as never)) {
+					throw new Error(
+						`Node ${nodeId}: operator "${rule.operator}" is not valid for field "${rule.field}"`
+					);
+				}
+			}
+			const valueless = (VALUELESS_OPERATORS as readonly string[]).includes(
+				rule.operator
+			);
+			if (!valueless && rule.value === undefined) {
+				throw new Error(
+					`Node ${nodeId}: operator "${rule.operator}" requires a value`
+				);
+			}
+		}
+	}
+}
+
+function validateUpdateFieldAction(
+	nodeId: string,
+	action: Extract<
+		Extract<WorkflowNodeConfig, { kind: "action" }>["action"],
+		{ type: "update_field" }
+	>,
+	scopeObjectType: AutomationObjectType | undefined
+): void {
+	if (!scopeObjectType) return;
+
+	let targetObjectType: AutomationObjectType = scopeObjectType;
+	if (typeof action.target === "object") {
+		if (!RELATED_OBJECTS[scopeObjectType].includes(action.target.related)) {
+			throw new Error(
+				`Node ${nodeId}: ${scopeObjectType} records have no related ${action.target.related}`
+			);
+		}
+		targetObjectType = action.target.related;
+	}
+
+	const def = getFieldDefinition(targetObjectType, action.field);
+	if (!def) {
+		throw new Error(
+			`Node ${nodeId}: unknown field "${action.field}" for ${targetObjectType}`
+		);
+	}
+	if (!def.writable) {
+		throw new Error(
+			`Node ${nodeId}: field "${action.field}" cannot be updated${def.writeExclusionReason ? ` (${def.writeExclusionReason})` : ""}`
+		);
+	}
+	const value = action.value;
+	if (
+		def.type === "select" &&
+		value.kind === "static" &&
+		typeof value.value === "string" &&
+		def.options &&
+		!def.options.some((o) => o.value === value.value)
+	) {
+		throw new Error(
+			`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${action.field}"`
+		);
+	}
 }
 
 /**
- * Update an automation with validation
+ * Full structural validation of a workflow definition. Used on every write;
+ * activation additionally requires at least one node (see validateForActivation).
  */
-async function updateAutomationWithValidation(
-	ctx: MutationCtx,
-	id: AutomationId,
-	updates: Partial<AutomationDocument>
-): Promise<void> {
-	// Validate automation exists and belongs to user's org
-	await getAutomationOrThrow(ctx, id);
+function validateWorkflowDefinition(
+	trigger: AutomationTrigger,
+	nodes: NodeArg[]
+): void {
+	validateTrigger(trigger);
 
-	// Update the automation
-	await ctx.db.patch(id, updates);
+	const objectType = triggerObjectType(trigger);
+	const nodeIds = new Set(nodes.map((n) => n.id));
+	if (nodeIds.size !== nodes.length) {
+		throw new Error("Node ids must be unique");
+	}
+
+	for (const node of nodes) {
+		const config = node.config;
+		const expectedKind = node.type;
+		if (config.kind !== expectedKind) {
+			throw new Error(
+				`Node ${node.id}: config kind "${config.kind}" does not match node type "${node.type}"`
+			);
+		}
+
+		for (const ref of [
+			node.nextNodeId,
+			node.elseNodeId,
+			node.bodyStartNodeId,
+		]) {
+			if (ref !== undefined) {
+				if (!nodeIds.has(ref)) {
+					throw new Error(
+						`Node ${node.id}: references missing node "${ref}"`
+					);
+				}
+				if (ref === node.id) {
+					throw new Error(`Node ${node.id}: references itself`);
+				}
+			}
+		}
+
+		switch (config.kind) {
+			case "condition": {
+				// Conditions sourced from a loop item are validated against the
+				// loop's fetch object type when resolvable.
+				let source: AutomationObjectType | undefined = objectType;
+				if (config.source && typeof config.source === "object") {
+					const loopNode = nodes.find(
+						(n) =>
+							n.id ===
+							(config.source as { loopNodeId: string }).loopNodeId
+					);
+					source = undefined;
+					const loopConfig = loopNode?.config;
+					if (loopConfig?.kind === "loop") {
+						const fetchNode = nodes.find(
+							(n) => n.id === loopConfig.sourceNodeId
+						);
+						if (fetchNode?.config.kind === "fetch_records") {
+							source = fetchNode.config.objectType;
+						}
+					}
+				}
+				validateConditionGroups(node.id, config.groups, source, "condition");
+				break;
+			}
+			case "action": {
+				if (config.action.type === "update_field") {
+					validateUpdateFieldAction(node.id, config.action, objectType);
+				}
+				if (
+					config.action.type === "send_notification" &&
+					!config.action.message.trim()
+				) {
+					throw new Error(`Node ${node.id}: notification message is required`);
+				}
+				if (config.action.type === "send_team_message") {
+					if (!config.action.message.trim()) {
+						throw new Error(`Node ${node.id}: message is required`);
+					}
+					if (
+						typeof config.action.recipients === "object" &&
+						config.action.recipients.userIds.length === 0
+					) {
+						throw new Error(
+							`Node ${node.id}: pick at least one recipient`
+						);
+					}
+				}
+				break;
+			}
+			case "fetch_records": {
+				if (
+					config.limit !== undefined &&
+					(config.limit < 1 || config.limit > MAX_FETCH_LIMIT)
+				) {
+					throw new Error(
+						`Node ${node.id}: fetch limit must be between 1 and ${MAX_FETCH_LIMIT}`
+					);
+				}
+				validateConditionGroups(
+					node.id,
+					config.filters,
+					config.objectType,
+					"filter"
+				);
+				break;
+			}
+			case "loop": {
+				const source = nodes.find((n) => n.id === config.sourceNodeId);
+				if (!source || source.config.kind !== "fetch_records") {
+					throw new Error(
+						`Node ${node.id}: loops must reference a "Find records" node`
+					);
+				}
+				break;
+			}
+			case "delay": {
+				if (config.amount < 1) {
+					throw new Error(`Node ${node.id}: delay must be at least 1`);
+				}
+				break;
+			}
+			case "delay_until":
+			case "end":
+				break;
+		}
+	}
+}
+
+function validateForActivation(
+	trigger: AutomationTrigger,
+	nodes: NodeArg[]
+): void {
+	validateWorkflowDefinition(trigger, nodes);
+	if (nodes.length === 0) {
+		throw new Error("Add at least one step before activating");
+	}
+}
+
+/**
+ * Build the published snapshot from the working copy.
+ */
+function buildSnapshot(
+	automation: Pick<AutomationDocument, "trigger" | "nodes" | "publishedSnapshot">
+): NonNullable<AutomationDocument["publishedSnapshot"]> {
+	return {
+		trigger: automation.trigger,
+		nodes: automation.nodes,
+		version: (automation.publishedSnapshot?.version ?? 0) + 1,
+		publishedAt: Date.now(),
+	};
 }
 
 /**
@@ -270,7 +477,9 @@ export const listActive = userQuery({
 			)
 			.collect();
 
-		return automations.sort((a, b) => a.name.localeCompare(b.name));
+		return automations
+			.filter((a) => effectiveStatus(a) === "active")
+			.sort((a, b) => a.name.localeCompare(b.name));
 	},
 });
 
@@ -285,69 +494,66 @@ export const get = userQuery({
 });
 
 /**
- * Create a new automation
+ * Create a new automation.
+ *
+ * Transitional shim: passing isActive=true publishes immediately (snapshot v1).
+ * Once the draft/publish UI lands, creation defaults to draft and `publish`
+ * is called explicitly.
  */
 export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
-		trigger: triggerValidator,
-		nodes: v.array(nodeValidator),
+		trigger: triggerArgValidator,
+		nodes: v.array(nodeArgValidator),
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
-		// Validate required fields
 		if (!args.name.trim()) {
 			throw new Error("Automation name is required");
 		}
 
-		// Validate toStatus for trigger types that require it (legacy and status_changed)
-		const trigger = args.trigger as Record<string, unknown>;
-		if ("toStatus" in trigger) {
-			const toStatus = trigger.toStatus as string;
-			if (!toStatus.trim()) {
-				throw new Error("Trigger status is required");
-			}
+		const activate = args.isActive ?? false;
+		if (activate) {
+			validateForActivation(args.trigger, args.nodes);
+		} else {
+			validateWorkflowDefinition(args.trigger, args.nodes);
 		}
 
-		// Validate nodes array
-		if (args.nodes.length === 0) {
-			throw new Error("At least one node is required");
-		}
+		const userOrgId = await getCurrentUserOrgId(ctx);
+		const user = await getCurrentUserOrThrow(ctx);
+		const now = Date.now();
 
-		// Validate each node has the right structure
-		for (const node of args.nodes) {
-			// Ensure nodes don't have both condition and action
-			if (node.condition && node.action) {
-				throw new Error(
-					`Node ${node.id} cannot have both condition and action defined`
-				);
-			}
-
-			if (node.type === "condition" && !node.condition) {
-				throw new Error(
-					`Condition node ${node.id} must have a condition defined`
-				);
-			}
-			if (node.type === "action" && !node.action) {
-				throw new Error(`Action node ${node.id} must have an action defined`);
-			}
-		}
-
-		const automationId = await createAutomationWithOrg(ctx, {
+		return await ctx.db.insert("workflowAutomations", {
+			orgId: userOrgId,
 			name: args.name.trim(),
 			description: args.description?.trim(),
-			isActive: args.isActive ?? false,
 			trigger: args.trigger,
 			nodes: args.nodes,
+			status: activate ? "active" : "draft",
+			// Legacy mirror, kept in sync until post-migration tightening.
+			isActive: activate,
+			publishedSnapshot: activate
+				? {
+						trigger: args.trigger,
+						nodes: args.nodes,
+						version: 1,
+						publishedAt: now,
+					}
+				: undefined,
+			createdBy: user._id,
+			createdAt: now,
+			updatedAt: now,
 		});
-
-		return automationId;
 	},
 });
 
 /**
- * Update an automation
+ * Update an automation's working copy (and lifecycle, transitionally).
+ *
+ * Transitional shim: while an automation is active, saving trigger/node
+ * changes republishes them immediately so behavior matches the current UI.
+ * The draft/publish UI will replace this with explicit `publish` calls.
  */
 export const update = userMutation({
 	args: {
@@ -355,99 +561,129 @@ export const update = userMutation({
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
 		isActive: v.optional(v.boolean()),
-		trigger: v.optional(triggerValidator),
-		nodes: v.optional(v.array(nodeValidator)),
+		trigger: v.optional(triggerArgValidator),
+		nodes: v.optional(v.array(nodeArgValidator)),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
 		const { id, ...updates } = args;
+		const automation = await getAutomationOrThrow(ctx, id);
 
-		// Validate fields if being updated
 		if (updates.name !== undefined && !updates.name.trim()) {
 			throw new Error("Automation name cannot be empty");
 		}
 
-		// Validate toStatus for trigger types that have it
-		if (updates.trigger !== undefined) {
-			const trigger = updates.trigger as Record<string, unknown>;
-			if ("toStatus" in trigger) {
-				const toStatus = trigger.toStatus as string;
-				if (!toStatus.trim()) {
-					throw new Error("Trigger status cannot be empty");
+		const nextTrigger = updates.trigger ?? automation.trigger;
+		const nextNodes = (updates.nodes ?? automation.nodes) as NodeArg[];
+		const currentStatus = effectiveStatus(automation);
+		const nextActive =
+			updates.isActive !== undefined
+				? updates.isActive
+				: currentStatus === "active";
+
+		if (updates.trigger !== undefined && !("type" in nextTrigger)) {
+			throw new Error("Legacy triggers can no longer be written");
+		}
+		if (updates.trigger !== undefined || updates.nodes !== undefined) {
+			if (updates.nodes !== undefined) {
+				for (const node of updates.nodes) {
+					if (!node.config) {
+						throw new Error(`Node ${node.id} is missing its configuration`);
+					}
 				}
 			}
-		}
-
-		if (updates.nodes !== undefined) {
-			if (updates.nodes.length === 0) {
-				throw new Error("At least one node is required");
+			if (nextActive) {
+				validateForActivation(nextTrigger, nextNodes);
+			} else {
+				validateWorkflowDefinition(nextTrigger, nextNodes);
 			}
-
-			// Validate each node has the right structure
-			for (const node of updates.nodes) {
-				// Ensure nodes don't have both condition and action
-				if (node.condition && node.action) {
-					throw new Error(
-						`Node ${node.id} cannot have both condition and action defined`
-					);
-				}
-
-				if (node.type === "condition" && !node.condition) {
-					throw new Error(
-						`Condition node ${node.id} must have a condition defined`
-					);
-				}
-				if (node.type === "action" && !node.action) {
-					throw new Error(
-						`Action node ${node.id} must have an action defined`
-					);
-				}
-			}
+		} else if (updates.isActive === true && currentStatus !== "active") {
+			validateForActivation(nextTrigger, nextNodes);
 		}
 
-		// Filter out undefined values and prepare updates
-		const filteredUpdates: Partial<AutomationDocument> = {};
+		const patch: Partial<AutomationDocument> = { updatedAt: Date.now() };
 
-		if (updates.name !== undefined) {
-			filteredUpdates.name = updates.name.trim();
-		}
+		if (updates.name !== undefined) patch.name = updates.name.trim();
 		if (updates.description !== undefined) {
-			filteredUpdates.description = updates.description.trim();
+			patch.description = updates.description.trim();
 		}
-		if (updates.isActive !== undefined) {
-			filteredUpdates.isActive = updates.isActive;
-		}
-		if (updates.trigger !== undefined) {
-			filteredUpdates.trigger = updates.trigger;
-		}
-		if (updates.nodes !== undefined) {
-			filteredUpdates.nodes = updates.nodes;
+		if (updates.trigger !== undefined) patch.trigger = updates.trigger;
+		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
+
+		// Lifecycle handling (transitional save==publish behavior)
+		if (nextActive) {
+			patch.status = "active";
+			patch.isActive = true;
+			if (
+				updates.trigger !== undefined ||
+				updates.nodes !== undefined ||
+				currentStatus !== "active"
+			) {
+				patch.publishedSnapshot = buildSnapshot({
+					trigger: nextTrigger,
+					nodes: nextNodes,
+					publishedSnapshot: automation.publishedSnapshot,
+				});
+			}
+		} else if (updates.isActive === false) {
+			// Deactivating: previously-published automations pause, drafts stay drafts.
+			patch.status = automation.publishedSnapshot ? "paused" : "draft";
+			patch.isActive = false;
 		}
 
-		if (Object.keys(filteredUpdates).length === 0) {
-			throw new Error("No valid updates provided");
-		}
-
-		// Always update the updatedAt timestamp
-		filteredUpdates.updatedAt = Date.now();
-
-		await updateAutomationWithValidation(ctx, id, filteredUpdates);
-
+		await ctx.db.patch(id, patch);
 		return id;
 	},
 });
 
 /**
- * Toggle an automation's active status
+ * Publish the working copy: validate, snapshot, activate.
+ */
+export const publish = userMutation({
+	args: { id: v.id("workflowAutomations") },
+	handler: async (ctx, args): Promise<AutomationId> => {
+		const automation = await getAutomationOrThrow(ctx, args.id);
+
+		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
+
+		await ctx.db.patch(args.id, {
+			status: "active",
+			isActive: true,
+			publishedSnapshot: buildSnapshot(automation),
+			updatedAt: Date.now(),
+		});
+
+		return args.id;
+	},
+});
+
+/**
+ * Toggle an automation between active and paused.
+ * Activating a draft publishes it (snapshot v1).
  */
 export const toggleActive = userMutation({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationId> => {
 		const automation = await getAutomationOrThrow(ctx, args.id);
+		const status = effectiveStatus(automation);
 
-		await ctx.db.patch(args.id, {
-			isActive: !automation.isActive,
-			updatedAt: Date.now(),
-		});
+		if (status === "active") {
+			await ctx.db.patch(args.id, {
+				status: "paused",
+				isActive: false,
+				updatedAt: Date.now(),
+			});
+		} else {
+			validateForActivation(
+				automation.trigger,
+				automation.nodes as NodeArg[]
+			);
+			await ctx.db.patch(args.id, {
+				status: "active",
+				isActive: true,
+				publishedSnapshot: buildSnapshot(automation),
+				updatedAt: Date.now(),
+			});
+		}
 
 		return args.id;
 	},
@@ -499,4 +735,3 @@ export const getExecutions = userQuery({
 		return executions;
 	},
 });
-

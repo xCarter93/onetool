@@ -1,5 +1,108 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+	automationStatusValidator,
+	nodeConfigValidator,
+	nodeTypeValidator,
+	triggerValidator,
+} from "./lib/workflowTypes";
+
+// Transitional workflow node shape: legacy v1 fields (condition/action/
+// fetchConfig/loopConfig) coexist with the v2 `config` union until the
+// post-migration schema tightening drops the legacy fields.
+const workflowNodeValidator = v.object({
+	id: v.string(),
+	type: nodeTypeValidator,
+	// v2 unified config
+	config: v.optional(nodeConfigValidator),
+	// Legacy v1 condition node fields
+	condition: v.optional(
+		v.object({
+			field: v.string(),
+			operator: v.union(
+				v.literal("equals"),
+				v.literal("not_equals"),
+				v.literal("contains"),
+				v.literal("exists"),
+				v.literal("greater_than"),
+				v.literal("less_than"),
+				v.literal("is_true"),
+				v.literal("is_false"),
+				v.literal("before"),
+				v.literal("after")
+			),
+			value: v.any(),
+		})
+	),
+	// Legacy v1 action node fields
+	action: v.optional(
+		v.object({
+			targetType: v.union(
+				v.literal("self"),
+				v.literal("project"),
+				v.literal("client"),
+				v.literal("quote"),
+				v.literal("invoice")
+			),
+			actionType: v.union(
+				v.literal("update_status"),
+				v.literal("update_field"),
+				v.literal("send_notification"),
+				v.literal("create_record")
+			),
+			newStatus: v.string(),
+			field: v.optional(v.string()),
+			value: v.optional(v.any()),
+			notificationRecipient: v.optional(v.string()),
+			notificationMessage: v.optional(v.string()),
+			createRecordType: v.optional(
+				v.union(v.literal("task"), v.literal("project"))
+			),
+			createRecordFields: v.optional(v.any()),
+		})
+	),
+	// Legacy v1 fetch records config
+	fetchConfig: v.optional(
+		v.object({
+			entityType: v.union(
+				v.literal("client"),
+				v.literal("project"),
+				v.literal("quote"),
+				v.literal("invoice"),
+				v.literal("task")
+			),
+			filters: v.optional(
+				v.array(
+					v.object({
+						field: v.string(),
+						operator: v.string(),
+						value: v.any(),
+					})
+				)
+			),
+			limit: v.optional(v.number()),
+		})
+	),
+	// Legacy v1 loop config
+	loopConfig: v.optional(
+		v.object({
+			sourceNodeId: v.string(),
+			batchSize: v.optional(v.number()),
+		})
+	),
+	// Flow control
+	nextNodeId: v.optional(v.string()),
+	elseNodeId: v.optional(v.string()),
+	// Loop body entry point (v2)
+	bodyStartNodeId: v.optional(v.string()),
+	// UI position (persisted for manual drag positioning)
+	position: v.optional(
+		v.object({
+			x: v.number(),
+			y: v.number(),
+		})
+	),
+});
 
 export default defineSchema({
 	// Users - synchronized from Clerk user records
@@ -1171,190 +1274,32 @@ export default defineSchema({
 		orgId: v.id("organizations"),
 		name: v.string(),
 		description: v.optional(v.string()),
-		isActive: v.boolean(),
+		/** @deprecated superseded by `status`; kept until post-migration tightening. */
+		isActive: v.optional(v.boolean()),
+		// Lifecycle: draft (never published), active (published + running),
+		// paused (published but not firing).
+		status: v.optional(automationStatusValidator),
 
-		// Trigger definition - supports both legacy and v1.2 formats
-		trigger: v.union(
-			// Legacy format (no type field) - for backward compatibility
+		// Trigger definition (legacy + v2 formats; see lib/workflowTypes.ts)
+		trigger: triggerValidator,
+
+		// Workflow nodes: flat array linked via nextNodeId/elseNodeId/bodyStartNodeId
+		nodes: v.array(workflowNodeValidator),
+
+		// Immutable copy executed in production; the editor edits the working
+		// copy above and `publish` refreshes this snapshot.
+		publishedSnapshot: v.optional(
 			v.object({
-				objectType: v.union(
-					v.literal("client"),
-					v.literal("project"),
-					v.literal("quote"),
-					v.literal("invoice"),
-					v.literal("task")
-				),
-				fromStatus: v.optional(v.string()),
-				toStatus: v.string(),
-			}),
-			// v1.2 status_changed trigger
-			v.object({
-				type: v.literal("status_changed"),
-				objectType: v.union(
-					v.literal("client"),
-					v.literal("project"),
-					v.literal("quote"),
-					v.literal("invoice"),
-					v.literal("task")
-				),
-				fromStatus: v.optional(v.string()),
-				toStatus: v.string(),
-			}),
-			// v1.2 record_created trigger
-			v.object({
-				type: v.literal("record_created"),
-				objectType: v.union(
-					v.literal("client"),
-					v.literal("project"),
-					v.literal("quote"),
-					v.literal("invoice"),
-					v.literal("task")
-				),
-			}),
-			// v1.2 record_updated trigger
-			v.object({
-				type: v.literal("record_updated"),
-				objectType: v.union(
-					v.literal("client"),
-					v.literal("project"),
-					v.literal("quote"),
-					v.literal("invoice"),
-					v.literal("task")
-				),
-				field: v.optional(v.string()),
-			}),
-			// v1.2 email_received trigger
-			v.object({
-				type: v.literal("email_received"),
-				objectType: v.literal("client"),
-			}),
-			// v1.2 scheduled trigger
-			v.object({
-				type: v.literal("scheduled"),
-				schedule: v.object({
-					frequency: v.union(
-						v.literal("daily"),
-						v.literal("weekly"),
-						v.literal("monthly")
-					),
-					timezone: v.string(),
-					time: v.optional(v.string()),
-					dayOfWeek: v.optional(v.number()),
-					dayOfMonth: v.optional(v.number()),
-				}),
-				objectType: v.optional(
-					v.union(
-						v.literal("client"),
-						v.literal("project"),
-						v.literal("quote"),
-						v.literal("invoice"),
-						v.literal("task")
-					)
-				),
+				trigger: triggerValidator,
+				nodes: v.array(workflowNodeValidator),
+				version: v.number(),
+				publishedAt: v.number(),
 			})
 		),
 
-		// Workflow nodes (linear with conditional branches)
-		nodes: v.array(
-			v.object({
-				id: v.string(),
-				type: v.union(
-					v.literal("condition"),
-					v.literal("action"),
-					v.literal("fetch_records"),
-					v.literal("loop"),
-					v.literal("end")
-				),
-				// Condition node fields
-				condition: v.optional(
-					v.object({
-						field: v.string(),
-						operator: v.union(
-							v.literal("equals"),
-							v.literal("not_equals"),
-							v.literal("contains"),
-							v.literal("exists"),
-							v.literal("greater_than"),
-							v.literal("less_than"),
-							v.literal("is_true"),
-							v.literal("is_false"),
-							v.literal("before"),
-							v.literal("after")
-						),
-						value: v.any(),
-					})
-				),
-				// Action node fields
-				action: v.optional(
-					v.object({
-						targetType: v.union(
-							v.literal("self"),
-							v.literal("project"),
-							v.literal("client"),
-							v.literal("quote"),
-							v.literal("invoice")
-						),
-						actionType: v.union(
-							v.literal("update_status"),
-							v.literal("update_field"),
-							v.literal("send_notification"),
-							v.literal("create_record")
-						),
-						newStatus: v.string(),
-						// update_field action fields
-						field: v.optional(v.string()),
-						value: v.optional(v.any()),
-						// send_notification action fields
-						notificationRecipient: v.optional(v.string()),
-						notificationMessage: v.optional(v.string()),
-						// create_record action fields
-						createRecordType: v.optional(
-							v.union(v.literal("task"), v.literal("project"))
-						),
-						createRecordFields: v.optional(v.any()),
-					})
-				),
-				// Fetch records config
-				fetchConfig: v.optional(
-					v.object({
-						entityType: v.union(
-							v.literal("client"),
-							v.literal("project"),
-							v.literal("quote"),
-							v.literal("invoice"),
-							v.literal("task")
-						),
-						filters: v.optional(
-							v.array(
-								v.object({
-									field: v.string(),
-									operator: v.string(),
-									value: v.any(),
-								})
-							)
-						),
-						limit: v.optional(v.number()),
-					})
-				),
-				// Loop config
-				loopConfig: v.optional(
-					v.object({
-						sourceNodeId: v.string(),
-						batchSize: v.optional(v.number()),
-					})
-				),
-				// Flow control
-				nextNodeId: v.optional(v.string()),
-				elseNodeId: v.optional(v.string()),
-				// UI position (persisted for manual drag positioning)
-				position: v.optional(
-					v.object({
-						x: v.number(),
-						y: v.number(),
-					})
-				),
-			})
-		),
+		// Next due time for scheduled triggers (epoch ms); maintained on
+		// publish/update and by the dispatch cron.
+		nextRunAt: v.optional(v.number()),
 
 		// Tracking
 		createdBy: v.id("users"),
@@ -1364,7 +1309,9 @@ export default defineSchema({
 		triggerCount: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
-		.index("by_org_active", ["orgId", "isActive"]),
+		.index("by_org_active", ["orgId", "isActive"])
+		.index("by_org_status", ["orgId", "status"])
+		.index("by_status_nextRunAt", ["status", "nextRunAt"]),
 
 	// Workflow Execution Logs - tracks automation execution history
 	workflowExecutions: defineTable({
@@ -1376,22 +1323,43 @@ export default defineSchema({
 			v.literal("running"),
 			v.literal("completed"),
 			v.literal("failed"),
-			v.literal("skipped")
+			v.literal("skipped"),
+			v.literal("cancelled")
 		),
 		completedAt: v.optional(v.number()),
+		// production = fired by a real trigger; test = editor test run
+		mode: v.optional(v.union(v.literal("production"), v.literal("test"))),
+		// Test runs are dry runs: actions are simulated, nothing is written.
+		dryRun: v.optional(v.boolean()),
+		// Node currently executing (streamed test runs); cleared on completion.
+		currentNodeId: v.optional(v.string()),
+		// publishedSnapshot.version this run executed (production runs).
+		snapshotVersion: v.optional(v.number()),
+		// The record a test/manual run was started against.
+		triggerRecord: v.optional(
+			v.object({
+				entityType: v.string(),
+				entityId: v.string(),
+				label: v.optional(v.string()),
+			})
+		),
 		nodesExecuted: v.array(
 			v.object({
 				nodeId: v.string(),
 				result: v.union(
 					v.literal("success"),
 					v.literal("skipped"),
-					v.literal("failed")
+					v.literal("failed"),
+					v.literal("running")
 				),
 				error: v.optional(v.string()),
 				// v1.2 per-node timing fields
 				startedAt: v.optional(v.number()),
 				completedAt: v.optional(v.number()),
 				recordsProcessed: v.optional(v.number()),
+				// Bounded (~4KB) input/output snapshots for the runs viewer.
+				input: v.optional(v.any()),
+				output: v.optional(v.any()),
 			})
 		),
 		error: v.optional(v.string()),

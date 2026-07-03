@@ -15,7 +15,11 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
-import { emitStatusChangeEvent } from "./eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	optionalUserQuery,
@@ -266,6 +270,13 @@ export const create = userMutation({
 		if (client) {
 			await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
 			await AggregateHelpers.addClient(ctx, client as ClientDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				client.orgId,
+				"client",
+				client._id,
+				"clients.create"
+			);
 		}
 
 		return clientId;
@@ -562,6 +573,15 @@ export const update = userMutation({
 					"clients.update"
 				);
 			}
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				client.orgId,
+				"client",
+				client._id,
+				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				"clients.update"
+			);
 		}
 
 		return id;

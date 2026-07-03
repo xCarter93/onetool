@@ -8,6 +8,21 @@ import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
 import { systemMutation } from "./lib/factories";
+import {
+	evaluateConditionGroups,
+	resolveValueRef,
+	type VariableScope,
+} from "./lib/conditionEval";
+import {
+	RELATION_FIELD,
+	getFieldDefinition,
+	getStatusOptions,
+} from "./lib/fieldRegistry";
+import {
+	type AutomationObjectType,
+	type AutomationTrigger,
+	type WorkflowNodeConfig,
+} from "./lib/workflowTypes";
 
 /**
  * Automation Execution Engine
@@ -15,7 +30,8 @@ import { systemMutation } from "./lib/factories";
  * Handles finding matching automations and executing their workflows asynchronously.
  *
  * Event-Driven Architecture:
- * - Subscribes to "entity.status_changed" events from the event bus
+ * - Subscribes to "entity.status_changed" / "entity.record_created" /
+ *   "entity.record_updated" events from the event bus
  * - Publishes "automation.triggered", "automation.completed", "automation.failed" events
  * - Decoupled from entity mutations for better maintainability
  *
@@ -23,20 +39,43 @@ import { systemMutation } from "./lib/factories";
  */
 
 // Type definitions
-type ObjectType = "client" | "project" | "quote" | "invoice" | "task";
+type ObjectType = AutomationObjectType;
 type AutomationNode = Doc<"workflowAutomations">["nodes"][number];
-
-// Status types for each object type
-const OBJECT_STATUS_MAP = {
-	client: ["lead", "prospect", "active", "inactive", "archived"],
-	project: ["planned", "in-progress", "completed", "cancelled"],
-	quote: ["draft", "sent", "approved", "declined", "expired"],
-	invoice: ["draft", "sent", "paid", "overdue", "cancelled"],
-	task: ["pending", "in-progress", "completed", "cancelled"],
-} as const;
+type AutomationDoc = Doc<"workflowAutomations">;
 
 /**
- * Find all active automations that match a trigger event
+ * The definition a run executes: the published snapshot when present,
+ * otherwise the working copy (unmigrated legacy rows).
+ */
+function executableDefinition(automation: AutomationDoc): {
+	trigger: AutomationTrigger;
+	nodes: AutomationNode[];
+} {
+	if (automation.publishedSnapshot) {
+		return {
+			trigger: automation.publishedSnapshot.trigger,
+			nodes: automation.publishedSnapshot.nodes,
+		};
+	}
+	return { trigger: automation.trigger, nodes: automation.nodes };
+}
+
+/** Lifecycle check tolerating unmigrated rows (status missing). */
+function isEffectivelyActive(automation: AutomationDoc): boolean {
+	if (automation.status) return automation.status === "active";
+	return automation.isActive === true;
+}
+
+function isValidStatus(objectType: ObjectType, status: string): boolean {
+	const options = getStatusOptions(objectType);
+	return options.some((o) => o.value === status);
+}
+
+/**
+ * Find all active automations that match a trigger event.
+ *
+ * Matching runs against the published snapshot's trigger when present, so
+ * unpublished edits never change what fires in production.
  */
 // Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
 export const findMatchingAutomations = internalQuery({
@@ -49,11 +88,18 @@ export const findMatchingAutomations = internalQuery({
 			v.literal("invoice"),
 			v.literal("task")
 		),
-		fromStatus: v.string(),
-		toStatus: v.string(),
+		triggerType: v.union(
+			v.literal("status_changed"),
+			v.literal("record_created"),
+			v.literal("record_updated")
+		),
+		fromStatus: v.optional(v.string()),
+		toStatus: v.optional(v.string()),
+		changedFields: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
-		// Get all active automations for the org
+	handler: async (ctx, args): Promise<AutomationDoc[]> => {
+		// by_org_active still drives selection until legacy rows are migrated;
+		// isActive is kept as a synced mirror of status === "active".
 		const automations = await ctx.db
 			.query("workflowAutomations")
 			.withIndex("by_org_active", (q) =>
@@ -61,32 +107,63 @@ export const findMatchingAutomations = internalQuery({
 			)
 			.collect();
 
-		// Filter to those matching this trigger
 		return automations.filter((automation) => {
-			const trigger = automation.trigger as Record<string, unknown>;
-
-			// Must match object type
-			if ("objectType" in trigger && trigger.objectType !== args.objectType) {
+			if (!isEffectivelyActive(automation)) {
 				return false;
 			}
 
-			// Only status_changed and legacy triggers match status change events
-			const triggerType = ("type" in trigger ? trigger.type : "status_changed") as string;
-			if (triggerType !== "status_changed") {
+			const { trigger } = executableDefinition(automation);
+			const triggerType =
+				"type" in trigger ? trigger.type : "status_changed";
+
+			if (triggerType !== args.triggerType) {
+				return false;
+			}
+			if (
+				"objectType" in trigger &&
+				trigger.objectType !== args.objectType
+			) {
 				return false;
 			}
 
-			// Must match target status
-			if ("toStatus" in trigger && trigger.toStatus !== args.toStatus) {
-				return false;
+			switch (args.triggerType) {
+				case "status_changed": {
+					if (
+						"toStatus" in trigger &&
+						trigger.toStatus !== args.toStatus
+					) {
+						return false;
+					}
+					if (
+						"fromStatus" in trigger &&
+						trigger.fromStatus &&
+						trigger.fromStatus !== args.fromStatus
+					) {
+						return false;
+					}
+					return true;
+				}
+				case "record_created":
+					return true;
+				case "record_updated": {
+					// Field filter: legacy single `field` or v2 `fields` array;
+					// no filter means any field change matches.
+					const watched: string[] = [];
+					if ("fields" in trigger && trigger.fields) {
+						watched.push(...trigger.fields);
+					}
+					if ("field" in trigger && trigger.field) {
+						watched.push(trigger.field);
+					}
+					if (watched.length === 0) {
+						return true;
+					}
+					const changed = args.changedFields ?? [];
+					return watched.some((f) => changed.includes(f));
+				}
+				default:
+					return false;
 			}
-
-			// If fromStatus is specified, must match
-			if ("fromStatus" in trigger && trigger.fromStatus && trigger.fromStatus !== args.fromStatus) {
-				return false;
-			}
-
-			return true;
 		});
 	},
 });
@@ -146,6 +223,7 @@ export const handleStatusChangeEvent = systemMutation({
 			{
 				orgId: ctx.orgId,
 				objectType: args.entityType,
+				triggerType: "status_changed",
 				fromStatus: args.fromStatus,
 				toStatus: args.toStatus,
 			}
@@ -603,8 +681,7 @@ async function executeActionNode(
 	}
 
 	// Validate the new status is valid for the target type
-	const validStatuses = OBJECT_STATUS_MAP[targetInfo.type] as readonly string[];
-	if (!validStatuses.includes(newStatus)) {
+	if (!isValidStatus(targetInfo.type, newStatus)) {
 		return {
 			success: false,
 			error: `Invalid status "${newStatus}" for ${targetInfo.type}`,

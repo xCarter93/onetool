@@ -24,6 +24,9 @@ import { systemMutation } from "./lib/factories";
 export const EVENT_TYPES = {
 	// Entity status change events
 	ENTITY_STATUS_CHANGED: "entity.status_changed",
+	// Entity lifecycle events
+	ENTITY_RECORD_CREATED: "entity.record_created",
+	ENTITY_RECORD_UPDATED: "entity.record_updated",
 	// Automation events
 	AUTOMATION_TRIGGERED: "automation.triggered",
 	AUTOMATION_COMPLETED: "automation.completed",
@@ -76,8 +79,11 @@ export const publishEvent = systemMutation({
 			attemptCount: 0,
 		});
 
-		// Schedule immediate processing
-		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		// Schedule immediate processing.
+		// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
+		if (!process.env.VITEST) {
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		}
 
 		return eventId;
 	},
@@ -122,6 +128,75 @@ export async function emitStatusChangeEvent(
 	// rejections that fail the test process exit even though every
 	// assertion passes). Same gating pattern as portal/otp.ts uses for
 	// the Resend scheduler hop.
+	if (!process.env.VITEST) {
+		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+	}
+
+	return eventId;
+}
+
+/**
+ * Helper function to publish record-created events from create mutations
+ */
+export async function emitRecordCreatedEvent(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	entityType: EntityType,
+	entityId: string,
+	source: string,
+	correlationId?: string
+): Promise<Id<"domainEvents">> {
+	const eventId = await ctx.db.insert("domainEvents", {
+		orgId,
+		eventType: EVENT_TYPES.ENTITY_RECORD_CREATED,
+		eventSource: source,
+		payload: {
+			entityType,
+			entityId,
+		},
+		status: "pending",
+		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
+		createdAt: Date.now(),
+		attemptCount: 0,
+	});
+
+	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
+	if (!process.env.VITEST) {
+		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+	}
+
+	return eventId;
+}
+
+/**
+ * Helper function to publish record-updated events from update mutations
+ * changedFields lists the patch keys actually applied.
+ */
+export async function emitRecordUpdatedEvent(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	entityType: EntityType,
+	entityId: string,
+	changedFields: string[],
+	source: string,
+	correlationId?: string
+): Promise<Id<"domainEvents">> {
+	const eventId = await ctx.db.insert("domainEvents", {
+		orgId,
+		eventType: EVENT_TYPES.ENTITY_RECORD_UPDATED,
+		eventSource: source,
+		payload: {
+			entityType,
+			entityId,
+			metadata: { changedFields },
+		},
+		status: "pending",
+		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
+		createdAt: Date.now(),
+		attemptCount: 0,
+	});
+
+	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
 	if (!process.env.VITEST) {
 		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
 	}
@@ -248,6 +323,18 @@ async function dispatchEvent(
 			);
 			break;
 		}
+
+		case EVENT_TYPES.ENTITY_RECORD_CREATED:
+		case EVENT_TYPES.ENTITY_RECORD_UPDATED:
+			// TODO(slice1-executor): dispatch to
+			// internal.automationExecutor.handleRecordEvent({ eventId: event._id })
+			// once that handler exists. Deliberate no-op for now: the event is
+			// stored and marked completed, but no automation runs.
+			console.log(
+				"record event received; executor handler lands with engine v2",
+				event.eventType
+			);
+			break;
 
 		case EVENT_TYPES.AUTOMATION_TRIGGERED:
 		case EVENT_TYPES.AUTOMATION_COMPLETED:

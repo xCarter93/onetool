@@ -27,6 +27,7 @@ import {
 	reactFlowToFlatArray,
 } from "../lib/flow-adapter";
 import { collectLoopBody, collectSubtree, findParent } from "../lib/graph-utils";
+import { legacyNodesToV2 } from "../lib/legacy-to-v2";
 import {
 	getValidationToastMessage,
 	validateWorkflowForSave,
@@ -759,23 +760,32 @@ export function useAutomationEditor(automationId: string | null) {
 		setIsSaving(true);
 		try {
 			const normalizedTrigger = normalizeTriggerForSave(trigger);
+			if ("type" in normalizedTrigger && normalizedTrigger.type === "email_received") {
+				toast.error(
+					"Unsupported Trigger",
+					"Email-received triggers are not supported yet. Pick another trigger."
+				);
+				return;
+			}
 			const serialized = reactFlowToFlatArray(layoutedNodes, layoutedEdges);
+			// Save-time bridge: backend now requires v2 `config` nodes.
+			const v2Nodes = legacyNodesToV2(serialized.nodes);
 
 			if (automationId) {
 				await updateAutomation({
 					id: automationId as Id<"workflowAutomations">,
 					name: name.trim(),
 					description: description.trim() || undefined,
-					trigger: normalizedTrigger,
-					nodes: serialized.nodes as never,
+					trigger: normalizedTrigger as never,
+					nodes: v2Nodes as never,
 					isActive,
 				});
 			} else {
 				await createAutomation({
 					name: name.trim(),
 					description: description.trim() || undefined,
-					trigger: normalizedTrigger,
-					nodes: serialized.nodes as never,
+					trigger: normalizedTrigger as never,
+					nodes: v2Nodes as never,
 					isActive,
 				});
 			}
