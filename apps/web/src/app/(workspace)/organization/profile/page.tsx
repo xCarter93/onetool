@@ -1334,29 +1334,33 @@ export default function OrganizationProfilePage() {
 											</section>
 										)}
 
-										{/* Interactive money-flow — full width */}
-										<section className="border-t border-border/40 pt-8">
-											<PaymentsFlow
-												bankName={organization.stripeExternalAccountBankName}
-												last4={organization.stripeExternalAccountLast4}
-											/>
-										</section>
-
-										{/* Reference row: fees (wide) + requirements / learn-more rail */}
-										<div className="grid grid-cols-1 gap-x-10 gap-y-8 border-t border-border/40 pt-8 lg:grid-cols-[1.55fr_1fr] lg:items-start">
-											<FeeDisclosureTable />
-											<div className="space-y-8">
-												<RequirementsSummary
-													loaded={Boolean(stripeStatus)}
-													currentlyDue={
-														stripeStatus?.requirements?.currently_due ?? []
-													}
-												/>
-												<StripeDocLinks />
-											</div>
-										</div>
 									</>
 								)}
+
+								{/* Informational content — shown regardless of onboarding state */}
+								<section className="border-t border-border/40 pt-8">
+									<PaymentsFlow
+										bankName={organization?.stripeExternalAccountBankName}
+										last4={organization?.stripeExternalAccountLast4}
+									/>
+								</section>
+
+								{/* Reference row: fees (wide) + requirements / learn-more rail */}
+								<div className="grid grid-cols-1 gap-x-10 gap-y-8 border-t border-border/40 pt-8 lg:grid-cols-[1.55fr_1fr] lg:items-start">
+									<FeeDisclosureTable />
+									<div className="space-y-8">
+										{/* Account-specific: only meaningful once a Stripe account exists */}
+										{organization?.stripeConnectAccountId && (
+											<RequirementsSummary
+												loaded={Boolean(stripeStatus)}
+												currentlyDue={
+													stripeStatus?.requirements?.currently_due ?? []
+												}
+											/>
+										)}
+										<StripeDocLinks />
+									</div>
+								</div>
 							</div>
 						</TabsContent>
 
