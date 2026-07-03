@@ -19,6 +19,7 @@ import { format, addMonths, addWeeks, addDays } from "date-fns";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
+import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 
 export function CalendarContainer() {
 	const [currentDate, setCurrentDate] = useState(new Date());
@@ -30,6 +31,16 @@ export function CalendarContainer() {
 		() => getViewDateRange(currentDate, view),
 		[currentDate, view]
 	);
+
+	// Assistant screen context: calendar view + visible range (IDs/params only)
+	usePublishScreenContext(() => ({
+		calendarView: view,
+		visibleRange: {
+			start: format(dateRange.start, "yyyy-MM-dd"),
+			end: format(dateRange.end, "yyyy-MM-dd"),
+		},
+		selectedEventId: selectedEventId ?? undefined,
+	}));
 
 	// Convert date range to UTC midnight timestamps to match how tasks are stored
 	const startDateUTC = useMemo(() => {

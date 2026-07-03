@@ -512,83 +512,68 @@
 	}
 
 	/* ========================================================================
-	   Header border-shape notches & sidebar connector (Chrome 147+)
+	   Header border-shape notches (Chrome 147+)
 	   Each notch outline is a single shape() path, so the sidebar-colored
 	   background follows the geometry. The sides are ogee (S-curve) sweeps —
-	   a cubic with both control points horizontal — that stay tangent to the
-	   rail where they emerge, so the thin rail flows smoothly into the notch
-	   with no kink. Unsupported browsers drop border-shape and fall back to a
-	   plain rounded-b tab / no connector.
+	   a cubic with both control points horizontal. The notches hang from the
+	   picture-frame band above the content card (see SidebarWithHeader):
+	   their top edge fuses with the same-colored frame, so the sweeps start
+	   right at the top corners. Unsupported browsers drop border-shape and
+	   fall back to a plain rounded-b tab.
 
-	   Geometry: sweep 36 (x), depth 40 (y floor), half-sweep 18 (control x).
-	   The notch top sits ~12px above the rail's bottom edge (rail h-5 minus
-	   pt-2), so the outer edges drop straight to y=12 and the ogee is
-	   horizontal there — matching the rail's flat bottom for a seamless join.
-	   36px side padding reserves the sweep region for content.
+	   Geometry: sweep 56 (x), depth 40 (y floor), half-sweep 28 (control x).
+	   The wide sweep keeps the S-curve gentle. 56px side padding (px-14)
+	   reserves the sweep region for content.
 	   ======================================================================== */
-	.header-notch,
-	.header-notch--flush-right {
+	.header-notch {
 		background-color: var(--sidebar);
 		/* Must cover the 40px notch depth so border-shape isn't clipped. */
 		min-height: 40px;
 	}
 
-	/* Header background strip. Without border-shape it's just a 20px bar (no
-	   scoop); with it, the box grows to 44px and the scoop is carved in. */
-	.header-bg {
-		background-color: var(--sidebar);
-		height: 20px;
-	}
-
 	@supports (border-shape: shape(from 0 0, close)) {
-		/* Ogee sweep on both sides. Outer edges drop to y=12 (rail bottom)
-		   where the sweep is tangent-horizontal; sweep→floor is tangent too,
-		   so the whole bottom edge is smooth with no walls or corners. */
+		/* Ogee sweep on both sides, starting at the very top edge — the notch
+		   hangs directly from the picture-frame band above the card (same
+		   color, no strip inside the card), so there are no straight
+		   shoulders: top corners flow immediately into the S-curves, which
+		   land tangent on the floor. */
 		.header-notch {
 			border-shape: shape(
 				from 0 0,
 				hline to 100%,
-				vline to 12px,
-				curve to calc(100% - 36px) 40px with
-					calc(100% - 18px) 12px / calc(100% - 18px) 40px,
-				hline to 36px,
-				curve to 0 12px with 18px 40px / 18px 12px,
+				curve to calc(100% - 56px) 100% with
+					calc(100% - 28px) 0 / calc(100% - 28px) 100%,
+				hline to 56px,
+				curve to 0 0 with 28px 100% / 28px 0,
 				close
 			);
 		}
 
-		/* Ogee sweep on the left only; right edge runs flush to the rail end. */
-		.header-notch--flush-right {
-			border-shape: shape(
-				from 0 0,
-				hline to 100%,
-				vline to 26px,
-				arc to calc(100% - 14px) 40px of 14px 14px cw,
-				hline to 36px,
-				curve to 0 12px with 18px 40px / 18px 12px,
-				close
-			);
-		}
+	}
 
-		/* One continuous header background: a 20px strip across the full width
-		   with a concave quarter-round scoop carved into the bottom-left, so
-		   the sidebar flows into the header as a single solid piece (no
-		   separate connector element, no seam). The element bleeds 2px left
-		   under the sidebar to cover the sidebar↔inset hairline, but the scoop
-		   lands its vertical tangent at x=2px — the real content edge — so the
-		   curve still joins flush (the 2px sliver below stays hidden behind the
-		   sidebar). The 44px box height gives the scoop room; the notches are
-		   siblings on top, so the shape doesn't clip them. */
-		.header-bg {
-			height: 44px;
+	/* ========================================================================
+	   Assistant notch — the header notch mirrored vertically: a tab that
+	   bulges UP from the bottom frame band. Flat floor on top, ogee sweeps
+	   down both sides to the bottom edge (same 56px sweep / 28px half-sweep
+	   geometry). Sits flush on the viewport bottom; the frame behind it is
+	   the same color, so the hover lift stays visually fused. 56px side
+	   padding (px-14) reserves the sweeps. Fallback without border-shape:
+	   plain rounded-t tab.
+	   ======================================================================== */
+	.assistant-notch {
+		background-color: var(--sidebar);
+		min-height: 40px;
+	}
+
+	@supports (border-shape: shape(from 0 0, close)) {
+		/* Exact vertical mirror of .header-notch — same sweep 56 / half-sweep
+		   28 / depth 40, so top and bottom notches read as twins. */
+		.assistant-notch {
 			border-shape: shape(
-				from 0 0,
-				hline to 100%,
-				vline to 20px,
-				hline to 26px,
-				curve to 2px 44px with 12.75px 20px / 2px 30.75px,
-				hline to 0,
-				vline to 0,
+				from 0 100%,
+				curve to 56px 0 with 28px 100% / 28px 0,
+				hline to calc(100% - 56px),
+				curve to 100% 100% with calc(100% - 28px) 0 / calc(100% - 28px) 100%,
 				close
 			);
 		}
@@ -610,6 +595,11 @@
 		);
 		background-size: 22px 22px;
 		background-position: -1px -1px;
+		/* Canvas scrolls inside the picture-frame card — keep its scrollbar
+		   thin and quiet so the frame stays the visual boundary. */
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
+			transparent;
 	}
 }
 

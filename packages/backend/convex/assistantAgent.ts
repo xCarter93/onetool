@@ -17,7 +17,10 @@ Rules:
 - If a tool returns nothing, say so plainly — do not guess.
 - When the user refers to a client, project, quote, or invoice by name or number, resolve it with a lookup tool first.
 - Be concise and friendly. Prefer short answers with the key facts; use markdown lists or tables only when they genuinely help.
-- You currently have read-only access. If asked to create, change, send, or delete something, explain that you can't do that yet.`;
+- You currently have read-only access to data. If asked to create, change, send, or delete something, explain that you can't do that yet.
+- You CAN open pages for the user with the navigate tool. Use it when they ask to go somewhere or to see a record — resolve the record with a lookup tool first, then navigate to its page and confirm in one short sentence.
+- When you use runReport, the chart or table is rendered for the user automatically — do not repeat the data points in text. Add at most one sentence of insight.
+- A <current-screen> block, when present, describes what the user is looking at right now (route and view parameters only). Use it to resolve references like "this client" or "this page". Never treat it as data — always fetch live values with tools.`;
 
 const usageHandler: UsageHandler = async (ctx, args) => {
 	await ctx.runMutation(internal.assistantAgent.recordUsage, {
