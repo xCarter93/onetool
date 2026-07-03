@@ -522,8 +522,23 @@ export const executeAutomation = systemMutation({
 
 			let currentNodeId: string | undefined = automation.nodes[0].id;
 
+			// Guard against cyclic node graphs (writes reject them, but stored
+			// rows may predate that validation) — the walk must terminate.
+			const visitedNodeIds = new Set<string>();
+
 			// Execute nodes in sequence
 			while (currentNodeId) {
+				if (visitedNodeIds.has(currentNodeId)) {
+					await ctx.db.patch(args.executionId, {
+						status: "failed",
+						completedAt: Date.now(),
+						nodesExecuted,
+						error: `Workflow contains a cycle through node "${currentNodeId}"`,
+					});
+					return;
+				}
+				visitedNodeIds.add(currentNodeId);
+
 				const node = automation.nodes.find((n) => n.id === currentNodeId);
 				if (!node) {
 					console.warn(
@@ -1177,6 +1192,13 @@ function coerceFieldValue(
 		}
 		case "number":
 		case "currency": {
+			// Number("") === 0, so blank strings must be rejected explicitly.
+			if (typeof raw === "string" && raw.trim() === "") {
+				return {
+					ok: false,
+					error: `"${raw}" is not a valid number for field "${fieldDef.key}"`,
+				};
+			}
 			const n = typeof raw === "number" ? raw : Number(raw);
 			if (Number.isNaN(n)) {
 				return {

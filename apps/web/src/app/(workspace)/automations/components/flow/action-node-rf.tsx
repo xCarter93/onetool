@@ -38,11 +38,23 @@ function getSummary(config: ActionNodeConfig | undefined): {
 			};
 		}
 		case "send_notification":
-			return { title: "Send Notification", description: "Not enabled yet", isConfigured: true };
+			return {
+				title: "Send Notification",
+				description: "Available soon — this step won't run yet",
+				isConfigured: false,
+			};
 		case "create_task":
-			return { title: "Create Task", description: "Not enabled yet", isConfigured: true };
+			return {
+				title: "Create Task",
+				description: "Available soon — this step won't run yet",
+				isConfigured: false,
+			};
 		case "send_team_message":
-			return { title: "Send Team Message", description: "Not enabled yet", isConfigured: true };
+			return {
+				title: "Send Team Message",
+				description: "Available soon — this step won't run yet",
+				isConfigured: false,
+			};
 		default:
 			return { title: "Configure action", description: "Select an action type...", isConfigured: false };
 	}

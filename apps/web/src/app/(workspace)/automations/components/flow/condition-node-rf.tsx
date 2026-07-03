@@ -63,10 +63,13 @@ export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 	const triggerObjectType = data?.triggerObjectType as AutomationObjectType | null;
 
 	const isFieldInvalid = useMemo(() => {
-		const firstRule = config?.groups?.[0]?.rules?.[0];
-		if (!firstRule?.field || !triggerObjectType) return false;
+		const allRules = (config?.groups ?? []).flatMap((g) => g.rules);
+		if (allRules.length === 0 || !triggerObjectType) return false;
 		const validFields = getFilterableFields(triggerObjectType);
-		return validFields.length > 0 && !validFields.some((f) => f.key === firstRule.field);
+		if (validFields.length === 0) return false;
+		return allRules.some(
+			(rule) => rule.field && !validFields.some((f) => f.key === rule.field)
+		);
 	}, [config, triggerObjectType]);
 
 	return (

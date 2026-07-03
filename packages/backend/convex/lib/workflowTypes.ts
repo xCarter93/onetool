@@ -367,10 +367,14 @@ export const triggerValidator = v.union(
 );
 
 export type AutomationTrigger = Infer<typeof triggerValidator>;
-export type AutomationTriggerV2 = Exclude<
-	AutomationTrigger,
-	Infer<typeof legacyTriggerValidator>
->;
+// Built explicitly rather than via Exclude<AutomationTrigger, legacy>: the
+// status_changed shape is width-assignable to the legacy (untyped) shape,
+// so Exclude would silently drop it from the union.
+export type AutomationTriggerV2 =
+	| Infer<typeof statusChangedTriggerValidator>
+	| Infer<typeof recordCreatedTriggerValidator>
+	| Infer<typeof recordUpdatedTriggerValidator>
+	| Infer<typeof scheduledTriggerValidator>;
 
 // ---------------------------------------------------------------------------
 // Automation lifecycle

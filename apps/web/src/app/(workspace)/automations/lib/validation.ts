@@ -48,7 +48,15 @@ function isRuleComplete(
 	const valueless = (VALUELESS_OPERATORS as readonly string[]).includes(
 		rule.operator
 	);
-	if (!valueless && rule.value === undefined) return false;
+	if (!valueless) {
+		if (rule.value === undefined) return false;
+		if (
+			rule.value.kind === "static" &&
+			(rule.value.value === "" || rule.value.value === null)
+		) {
+			return false;
+		}
+	}
 	return true;
 }
 

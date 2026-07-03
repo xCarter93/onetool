@@ -212,6 +212,21 @@ describe("Automations", () => {
 			).rejects.toThrow(/references missing node/i);
 		});
 
+		it("rejects a cyclic node graph", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Cycle",
+					trigger: clientTrigger,
+					nodes: [
+						conditionNode("cond-1", "cond-2"),
+						conditionNode("cond-2", "cond-1"),
+					],
+				})
+			).rejects.toThrow(/cycle/i);
+		});
+
 		it("rejects activating with zero nodes but allows a zero-node draft", async () => {
 			const { asUser } = await setupUser();
 

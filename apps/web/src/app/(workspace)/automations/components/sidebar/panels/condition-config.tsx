@@ -56,8 +56,14 @@ function defaultConfig(): ConditionNodeConfig {
 	return { kind: "condition", logic: "and", groups: [{ logic: "and", rules: [] }] };
 }
 
-function emptyRule(field: string): ConditionRule {
-	return { field, operator: "equals", value: { kind: "static", value: "" } };
+function emptyRule(
+	objectType: AutomationObjectType,
+	field: string
+): ConditionRule {
+	const operator = operatorsForField(objectType, field)[0] ?? "equals";
+	return isValueless(operator)
+		? { field, operator }
+		: { field, operator, value: { kind: "static", value: "" } };
 }
 
 function ValueInput({
@@ -176,7 +182,10 @@ export function ConditionConfigPanel({
 		const group = config.groups[groupIndex];
 		if (group.rules.length >= MAX_RULES_PER_GROUP) return;
 		const firstField = fields[0]?.key ?? "";
-		updateGroup(groupIndex, { ...group, rules: [...group.rules, emptyRule(firstField)] });
+		updateGroup(groupIndex, {
+			...group,
+			rules: [...group.rules, emptyRule(objectType, firstField)],
+		});
 	};
 
 	const removeRule = (groupIndex: number, ruleIndex: number) => {

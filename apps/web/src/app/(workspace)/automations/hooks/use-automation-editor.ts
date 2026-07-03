@@ -130,7 +130,7 @@ function buildLoopNode(id: string): WorkflowNode {
 }
 
 function buildEndNode(id: string): WorkflowNode {
-	return { id, type: "end" };
+	return { id, type: "end", config: { kind: "end" } };
 }
 
 /** Build the v2 trigger arg accepted by automations.create/update. */

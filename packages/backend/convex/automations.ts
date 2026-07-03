@@ -418,6 +418,30 @@ function validateWorkflowDefinition(
 				break;
 		}
 	}
+
+	// Reject cycles across nextNodeId/elseNodeId/bodyStartNodeId — the
+	// executor walks these links and must terminate. (The builder UI cannot
+	// produce cycles; this guards direct API writes.)
+	const byId = new Map(nodes.map((n) => [n.id, n]));
+	const state = new Map<string, "visiting" | "done">();
+	const visit = (id: string): void => {
+		const seen = state.get(id);
+		if (seen === "done") return;
+		if (seen === "visiting") {
+			throw new Error(`Workflow contains a cycle through node "${id}"`);
+		}
+		state.set(id, "visiting");
+		const node = byId.get(id);
+		for (const ref of [
+			node?.nextNodeId,
+			node?.elseNodeId,
+			node?.bodyStartNodeId,
+		]) {
+			if (ref !== undefined) visit(ref);
+		}
+		state.set(id, "done");
+	};
+	for (const node of nodes) visit(node.id);
 }
 
 function validateForActivation(
