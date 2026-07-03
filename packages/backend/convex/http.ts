@@ -415,10 +415,11 @@ http.route({
 			}>;
 		}
 
-		// The active paid plan on a subscription event. Free plans (Clerk default
-		// slugs free_user/free_org) ride along as items too, so filter them out;
-		// a paid upgrade shows the old free item as "ended" beside the new one.
-		function getActivePaidPlan(data: BillingWebhookData) {
+		// The plan slug to persist for a subscription event. Paid items win
+		// (Clerk default slugs free_user/free_org ride along as items too);
+		// falls back to the first active item, which may be a free plan —
+		// a non-null return does NOT imply premium access.
+		function getPreferredActivePlan(data: BillingWebhookData) {
 			const activeItems = (data.items ?? []).filter(
 				(item) => item.status === "active"
 			);
@@ -471,7 +472,7 @@ http.route({
 					console.error("No organization_id in subscription.created event");
 					break;
 				}
-				const activePlan = getActivePaidPlan(data);
+				const activePlan = getPreferredActivePlan(data);
 				await ctx.runMutation(
 					internal.billingWebhook.handleSubscriptionCreated,
 					{
@@ -497,7 +498,7 @@ http.route({
 					console.error("No organization_id in subscription.active event");
 					break;
 				}
-				const activePlan = getActivePaidPlan(data);
+				const activePlan = getPreferredActivePlan(data);
 				await ctx.runMutation(
 					internal.billingWebhook.handleSubscriptionActive,
 					{
@@ -524,7 +525,7 @@ http.route({
 					console.error("No organization_id in subscription.updated event");
 					break;
 				}
-				const activePlan = getActivePaidPlan(data);
+				const activePlan = getPreferredActivePlan(data);
 				await ctx.runMutation(
 					internal.billingWebhook.handleSubscriptionUpdated,
 					{

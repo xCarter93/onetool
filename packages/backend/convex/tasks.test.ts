@@ -514,6 +514,84 @@ describe("Tasks", () => {
 			expect(client1Tasks[0].title).toBe("Task for Client 1");
 		});
 
+		it("should apply date range when combined with an entity filter", async () => {
+			const { clientId1, clientId2 } = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+
+				const clientId1 = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Client 1",
+					status: "active",
+				});
+
+				const clientId2 = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Client 2",
+					status: "active",
+				});
+
+				return { clientId1, clientId2 };
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			const inRange = Date.UTC(2026, 6, 15);
+			const outOfRange = Date.UTC(2026, 7, 15);
+
+			await asUser.mutation(api.tasks.create, {
+				title: "Client 1 July Task",
+				date: inRange,
+				status: "pending",
+				clientId: clientId1,
+				type: "external",
+			});
+
+			await asUser.mutation(api.tasks.create, {
+				title: "Client 1 August Task",
+				date: outOfRange,
+				status: "pending",
+				clientId: clientId1,
+				type: "external",
+			});
+
+			await asUser.mutation(api.tasks.create, {
+				title: "Client 2 July Task",
+				date: inRange,
+				status: "pending",
+				clientId: clientId2,
+				type: "external",
+			});
+
+			const tasks = await asUser.query(api.tasks.list, {
+				clientId: clientId1,
+				dateFrom: Date.UTC(2026, 6, 1),
+				dateTo: Date.UTC(2026, 6, 31),
+			});
+
+			expect(tasks).toHaveLength(1);
+			expect(tasks[0].title).toBe("Client 1 July Task");
+		});
+
 		it.skip("should only show assigned tasks for member users", async () => {
 			const { member1Id, member2Id, clientId } = await t.run(async (ctx) => {
 				const adminId = await ctx.db.insert("users", {

@@ -310,6 +310,14 @@ export const list = optionalUserQuery({
 			tasks = tasks.filter((task) => task.projectId === args.projectId);
 		}
 
+		// Entity-filter branches above skip the by_date index, so apply the
+		// date range here too.
+		if (args.dateFrom && args.dateTo) {
+			tasks = tasks.filter(
+				(task) => task.date >= args.dateFrom! && task.date <= args.dateTo!
+			);
+		}
+
 		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
 
 		// Sort by date
