@@ -79,7 +79,7 @@ export const recordUsage = internalMutation({
 
 export const assistantAgent = new Agent(components.agent, {
 	name: "onetool-assistant",
-	languageModel: openai.chat("gpt-4o-mini"),
+	languageModel: openai.chat("gpt-5-nano"),
 	instructions: INSTRUCTIONS,
 	tools: assistantTools,
 	stopWhen: stepCountIs(8),
