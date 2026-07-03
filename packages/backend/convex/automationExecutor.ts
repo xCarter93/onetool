@@ -162,12 +162,12 @@ export const handleStatusChangeEvent = systemMutation({
 			.withIndex("by_org_triggeredAt", (q) =>
 				q.eq("orgId", ctx.orgId).gte("triggeredAt", oneMinuteAgo)
 			)
-			.collect();
+			.take(MAX_EXECUTIONS_PER_WINDOW);
 
 		if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
 			console.warn(
 				`Automation rate limit reached for org ${ctx.orgId}. ` +
-					`${recentExecutions.length} executions in the last minute.`
+					`${recentExecutions.length}+ executions in the last minute.`
 			);
 			return { triggered: 0, rateLimited: true };
 		}
@@ -303,7 +303,12 @@ export const executeAutomation = systemMutation({
 		);
 
 		// Get the triggering object
-		const triggerObject = await getObject(ctx, args.objectType, args.objectId);
+		const triggerObject = await getObject(
+			ctx,
+			args.objectType,
+			args.objectId,
+			automation.orgId
+		);
 		if (!triggerObject) {
 			await ctx.db.patch(args.executionId, {
 				status: "failed",
@@ -421,12 +426,13 @@ export const executeAutomation = systemMutation({
 });
 
 /**
- * Get an object by type and ID
+ * Get an object by type and ID, asserting it belongs to the given org.
  */
 async function getObject(
 	ctx: MutationCtx,
 	objectType: ObjectType,
-	objectId: string
+	objectId: string,
+	orgId: Id<"organizations">
 ): Promise<
 	| Doc<"clients">
 	| Doc<"projects">
@@ -435,20 +441,39 @@ async function getObject(
 	| Doc<"tasks">
 	| null
 > {
+	let doc:
+		| Doc<"clients">
+		| Doc<"projects">
+		| Doc<"quotes">
+		| Doc<"invoices">
+		| Doc<"tasks">
+		| null;
 	switch (objectType) {
 		case "client":
-			return await ctx.db.get(objectId as Id<"clients">);
+			doc = await ctx.db.get(objectId as Id<"clients">);
+			break;
 		case "project":
-			return await ctx.db.get(objectId as Id<"projects">);
+			doc = await ctx.db.get(objectId as Id<"projects">);
+			break;
 		case "quote":
-			return await ctx.db.get(objectId as Id<"quotes">);
+			doc = await ctx.db.get(objectId as Id<"quotes">);
+			break;
 		case "invoice":
-			return await ctx.db.get(objectId as Id<"invoices">);
+			doc = await ctx.db.get(objectId as Id<"invoices">);
+			break;
 		case "task":
-			return await ctx.db.get(objectId as Id<"tasks">);
+			doc = await ctx.db.get(objectId as Id<"tasks">);
+			break;
 		default:
 			return null;
 	}
+	if (doc && doc.orgId !== orgId) {
+		console.warn(
+			`[AutomationExecutor] Cross-org object access blocked: ${objectType} ${objectId} does not belong to org ${orgId}`
+		);
+		return null;
+	}
+	return doc;
 }
 
 /**
@@ -587,7 +612,7 @@ async function executeActionNode(
 	}
 
 	// Get the current status before update (for triggering cascading automations)
-	const targetObject = await getObject(ctx, targetInfo.type, targetInfo.id);
+	const targetObject = await getObject(ctx, targetInfo.type, targetInfo.id, orgId);
 	if (!targetObject) {
 		return { success: false, error: "Target object not found" };
 	}
@@ -843,12 +868,8 @@ export const cleanupOldExecutions = internalMutation({
 		while (hasMore && deleted < batchSize) {
 			const oldExecutions = await ctx.db
 				.query("workflowExecutions")
-				.filter((q) =>
-					q.and(
-						q.lt(q.field("triggeredAt"), cutoffTime),
-						q.neq(q.field("status"), "running")
-					)
-				)
+				.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoffTime))
+				.filter((q) => q.neq(q.field("status"), "running"))
 				.take(100);
 
 			if (oldExecutions.length === 0) {

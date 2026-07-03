@@ -24,4 +24,19 @@ crons.daily(
 	internal.orgCascade.reconcileOrphanedOrgData
 );
 
+// Retention sweeps for the automation event bus and execution logs.
+crons.daily(
+	"cleanup old domain events",
+	{ hourUTC: 4, minuteUTC: 0 },
+	internal.eventBus.cleanupOldEvents,
+	{}
+);
+
+crons.daily(
+	"cleanup old workflow executions",
+	{ hourUTC: 4, minuteUTC: 30 },
+	internal.automationExecutor.cleanupOldExecutions,
+	{}
+);
+
 export default crons;

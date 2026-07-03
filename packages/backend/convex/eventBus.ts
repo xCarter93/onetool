@@ -137,10 +137,9 @@ export const processEvents = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		// Get pending events, oldest first
-		// Note: Since by_org_status requires orgId, we query all pending events across orgs
 		const pendingEvents = await ctx.db
 			.query("domainEvents")
-			.filter((q) => q.eq(q.field("status"), "pending"))
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.order("asc")
 			.take(BATCH_SIZE);
 
@@ -200,7 +199,7 @@ export const processEvents = internalMutation({
 		// If there are more events, schedule another batch
 		const remainingEvents = await ctx.db
 			.query("domainEvents")
-			.filter((q) => q.eq(q.field("status"), "pending"))
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.first();
 
 		if (remainingEvents) {
@@ -303,7 +302,7 @@ export const replayFailedEvents = internalMutation({
 			// Query all failed events without org filter
 			failedEvents = await ctx.db
 				.query("domainEvents")
-				.filter((q) => q.eq(q.field("status"), "failed"))
+				.withIndex("by_status", (q) => q.eq("status", "failed"))
 				.take(args.limit || 100);
 		}
 
@@ -344,11 +343,8 @@ export const cleanupOldEvents = internalMutation({
 		// Only delete completed events
 		const oldEvents = await ctx.db
 			.query("domainEvents")
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "completed"),
-					q.lt(q.field("createdAt"), cutoffTime)
-				)
+			.withIndex("by_status", (q) =>
+				q.eq("status", "completed").lt("createdAt", cutoffTime)
 			)
 			.take(batchSize);
 

@@ -1162,6 +1162,7 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_org_status", ["orgId", "status"])
+		.index("by_status", ["status", "createdAt"])
 		.index("by_type_status", ["eventType", "status"])
 		.index("by_correlation", ["correlationId"]),
 
@@ -1401,7 +1402,8 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_automation", ["automationId"])
-		.index("by_org_triggeredAt", ["orgId", "triggeredAt"]),
+		.index("by_org_triggeredAt", ["orgId", "triggeredAt"])
+		.index("by_triggeredAt", ["triggeredAt"]),
 
 	// Client Documents - files uploaded directly to client records
 	clientDocuments: defineTable({
