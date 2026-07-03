@@ -41,9 +41,11 @@ function formatDay(day: DayValue) {
 	});
 }
 
+// Undated or unparseable entries sort to the end.
 function dayMs(day: DayValue | undefined) {
-	if (day === undefined) return 0;
-	return typeof day === "number" ? day : Date.parse(day);
+	if (day === undefined) return Number.POSITIVE_INFINITY;
+	const ms = typeof day === "number" ? day : Date.parse(day);
+	return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
 }
 
 function Row({

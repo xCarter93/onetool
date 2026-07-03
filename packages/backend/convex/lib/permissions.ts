@@ -107,10 +107,15 @@ export async function hasPremiumAccess(
 	}
 
 	// Clerk Billing plan claim, e.g. "u:free_user o:onetool_business_plan_org".
-	const planClaim = [token.pla, token.plan]
+	// Exact token match — a substring check would also accept longer slugs.
+	return [token.pla, token.plan]
 		.filter((value): value is string => typeof value === "string")
-		.join(" ");
-	return planClaim.includes("onetool_business_plan_org");
+		.flatMap((claim) => claim.split(/\s+/))
+		.some(
+			(entry) =>
+				entry === "o:onetool_business_plan_org" ||
+				entry === "onetool_business_plan_org"
+		);
 }
 
 /**

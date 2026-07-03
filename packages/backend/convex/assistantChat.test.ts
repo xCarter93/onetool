@@ -174,6 +174,22 @@ describe("assistantChat", () => {
 			expect(messageId).toBeTruthy();
 		});
 
+		it("blocks streamResponse without premium access", async () => {
+			const { orgA } = await seedTwoOrgs();
+			const asFree = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+
+			// The gate runs before thread authorization, so dummy IDs suffice —
+			// this action can be invoked directly, independent of sendMessage.
+			await expect(
+				asFree.action(api.assistantChat.streamResponse, {
+					threadId: "thread_x",
+					promptMessageId: "msg_x",
+				})
+			).rejects.toThrow("Business plan");
+		});
+
 		it("allows sendMessage via the Clerk Billing plan claim", async () => {
 			const { orgA } = await seedTwoOrgs();
 			const asPlan = t.withIdentity({
