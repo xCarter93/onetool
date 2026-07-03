@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { Trash2, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -22,6 +22,11 @@ import {
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
+import {
+	DeleteStepButton,
+	PanelField,
+	PanelSection,
+} from "./panel-primitives";
 
 function defaultConfig(objectType: AutomationObjectType): ActionNodeConfig {
 	const firstWritable = getWritableFields(objectType)[0];
@@ -53,7 +58,7 @@ function ValueInput({
 				value={staticValue === true ? "true" : "false"}
 				onValueChange={(v) => onChange({ kind: "static", value: v === "true" })}
 			>
-				<SelectTrigger className="mt-2">
+				<SelectTrigger>
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
@@ -70,7 +75,7 @@ function ValueInput({
 				value={typeof staticValue === "string" ? staticValue : ""}
 				onValueChange={(v) => onChange({ kind: "static", value: v })}
 			>
-				<SelectTrigger className="mt-2">
+				<SelectTrigger>
 					<SelectValue placeholder="Select value" />
 				</SelectTrigger>
 				<SelectContent>
@@ -86,9 +91,8 @@ function ValueInput({
 
 	if (field.type === "number" || field.type === "currency") {
 		return (
-			<input
+			<Input
 				type="number"
-				className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
 				value={typeof staticValue === "number" ? staticValue : ""}
 				onChange={(e) =>
 					onChange({ kind: "static", value: e.target.value === "" ? null : Number(e.target.value) })
@@ -103,9 +107,8 @@ function ValueInput({
 				? new Date(staticValue).toISOString().slice(0, 10)
 				: "";
 		return (
-			<input
+			<Input
 				type="date"
-				className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
 				value={dateValue}
 				onChange={(e) => {
 					const ms = e.target.value ? new Date(e.target.value).getTime() : null;
@@ -116,9 +119,8 @@ function ValueInput({
 	}
 
 	return (
-		<input
+		<Input
 			type="text"
-			className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
 			value={typeof staticValue === "string" ? staticValue : String(staticValue ?? "")}
 			onChange={(e) => onChange({ kind: "static", value: e.target.value })}
 			placeholder="Value"
@@ -168,17 +170,7 @@ export function ActionConfigPanel({
 					step to use an Update Record action.
 				</div>
 				{onDeleteNode && (
-					<div className="pt-4 border-t border-border mt-4">
-						<button
-							type="button"
-							className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-							onClick={() => onDeleteNode(nodeId)}
-							aria-label="Delete step"
-						>
-							<Trash2 className="h-4 w-4" />
-							<span className="text-sm font-medium">Delete Node</span>
-						</button>
-					</div>
+					<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 				)}
 			</div>
 		);
@@ -239,44 +231,50 @@ export function ActionConfigPanel({
 			/>
 
 			<div className="flex-1">
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Target</Label>
-					<Select value={targetValue} onValueChange={updateTarget}>
-						<SelectTrigger className="mt-2">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{targetOptions.map((target) => (
-								<SelectItem key={target.value} value={target.value}>
-									{target.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+				<PanelSection title="Inputs">
+					<PanelField
+						label="Target"
+						helper={
+							targetValue === "self"
+								? undefined
+								: `Updates the ${targetObjectType} linked to the triggering ${triggerObjectType}.`
+						}
+					>
+						<Select value={targetValue} onValueChange={updateTarget}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{targetOptions.map((target) => (
+									<SelectItem key={target.value} value={target.value}>
+										{target.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</PanelField>
 
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Field</Label>
-					<Select value={action.field} onValueChange={updateField}>
-						<SelectTrigger className="mt-2">
-							<SelectValue placeholder="Select field" />
-						</SelectTrigger>
-						<SelectContent>
-							{writableFields.map((field) => (
-								<SelectItem key={field.key} value={field.key}>
-									{field.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+					<PanelField label="Field">
+						<Select value={action.field} onValueChange={updateField}>
+							<SelectTrigger>
+								<SelectValue placeholder="Select field" />
+							</SelectTrigger>
+							<SelectContent>
+								{writableFields.map((field) => (
+									<SelectItem key={field.key} value={field.key}>
+										{field.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</PanelField>
 
-				{fieldDef && (
-					<div className="border-b border-border py-4">
-						<Label className="text-sm font-medium">Set value to</Label>
-						<ValueInput field={fieldDef} value={action.value} onChange={updateValue} />
-					</div>
-				)}
+					{fieldDef && (
+						<PanelField label="Set value to">
+							<ValueInput field={fieldDef} value={action.value} onChange={updateValue} />
+						</PanelField>
+					)}
+				</PanelSection>
 			</div>
 
 			{/* Next steps tree */}
@@ -291,19 +289,8 @@ export function ActionConfigPanel({
 				</div>
 			)}
 
-			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-4 border-t border-border mt-2">
-					<button
-						type="button"
-						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-						onClick={() => onDeleteNode(nodeId)}
-						aria-label="Delete step"
-					>
-						<Trash2 className="h-4 w-4" />
-						<span className="text-sm font-medium">Delete Node</span>
-					</button>
-				</div>
+				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 			)}
 		</div>
 	);

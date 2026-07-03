@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
@@ -58,16 +57,6 @@ export function ConfigPanelHeader({
 					{/* Node type name */}
 					<h3 className="text-base font-semibold mt-1">{nodeTypeName}</h3>
 				</div>
-				{/* Utility icons top-right */}
-				<div className="flex gap-1">
-					<button
-						type="button"
-						className="nodrag p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-						aria-label="Copy configuration"
-					>
-						<Copy className="h-4 w-4" />
-					</button>
-				</div>
 			</div>
 			{/* Description placeholder */}
 			{isEditing ? (
@@ -84,7 +73,11 @@ export function ConfigPanelHeader({
 				/>
 			) : (
 				<p
-					className="text-sm text-muted-foreground italic mt-3 cursor-text"
+					className={cn(
+						"text-sm text-muted-foreground mt-3",
+						!description && "italic",
+						onDescriptionChange && "cursor-text"
+					)}
 					onClick={handleStartEdit}
 				>
 					{description || "Add a description..."}

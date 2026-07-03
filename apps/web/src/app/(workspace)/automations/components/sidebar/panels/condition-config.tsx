@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { Trash2, GitBranch, Plus, X } from "lucide-react";
+import { GitBranch, Plus, X } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -28,6 +29,7 @@ import {
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
+import { DeleteStepButton, PanelSection } from "./panel-primitives";
 
 const OPERATOR_LABELS: Record<string, string> = {
 	equals: "equals",
@@ -91,9 +93,9 @@ function ValueInput({
 
 	if (field.type === "number" || field.type === "currency") {
 		return (
-			<input
+			<Input
 				type="number"
-				className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+				className="mt-2"
 				value={typeof staticValue === "number" ? staticValue : ""}
 				onChange={(e) =>
 					onChange({ kind: "static", value: e.target.value === "" ? "" : Number(e.target.value) })
@@ -108,9 +110,9 @@ function ValueInput({
 				? new Date(staticValue).toISOString().slice(0, 10)
 				: "";
 		return (
-			<input
+			<Input
 				type="date"
-				className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+				className="mt-2"
 				value={dateValue}
 				onChange={(e) => {
 					const ms = e.target.value ? new Date(e.target.value).getTime() : "";
@@ -121,9 +123,9 @@ function ValueInput({
 	}
 
 	return (
-		<input
+		<Input
 			type="text"
-			className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+			className="mt-2"
 			value={typeof staticValue === "string" ? staticValue : String(staticValue ?? "")}
 			onChange={(e) => onChange({ kind: "static", value: e.target.value })}
 			placeholder="Value"
@@ -207,7 +209,8 @@ export function ConditionConfigPanel({
 				nodeTypeName="Condition"
 			/>
 
-			<div className="flex-1 space-y-4">
+			<div className="flex-1">
+				<PanelSection title="Conditions" className="space-y-4">
 				{config.groups.length > 1 && (
 					<div className="flex items-center gap-2">
 						<span className="text-xs text-muted-foreground">Match</span>
@@ -223,16 +226,20 @@ export function ConditionConfigPanel({
 								<SelectItem value="or">Any</SelectItem>
 							</SelectContent>
 						</Select>
-						<span className="text-xs text-muted-foreground">groups</span>
+						<span className="text-xs text-muted-foreground">groups must match</span>
 					</div>
 				)}
 
 				{config.groups.map((group, groupIndex) => (
-					<div key={groupIndex} className="rounded-md border border-border p-3 space-y-3">
+					<div key={groupIndex} className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-2">
 								<span className="text-xs font-medium text-muted-foreground">
-									{groupIndex === 0 ? "When" : "And when"}
+									{groupIndex === 0
+										? "When"
+										: config.logic === "or"
+											? "Or when"
+											: "And when"}
 								</span>
 								{group.rules.length > 1 && (
 									<Select
@@ -255,13 +262,19 @@ export function ConditionConfigPanel({
 								<button
 									type="button"
 									onClick={() => removeGroup(groupIndex)}
-									className="text-muted-foreground hover:text-destructive"
+									className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
 									aria-label="Remove group"
 								>
 									<X className="h-3.5 w-3.5" />
 								</button>
 							)}
 						</div>
+
+						{group.rules.length === 0 && (
+							<p className="text-xs text-muted-foreground">
+								Add at least one rule to define when the Yes path runs.
+							</p>
+						)}
 
 						{group.rules.map((rule, ruleIndex) => {
 							const fieldDef = getFieldDefinition(objectType, rule.field);
@@ -346,7 +359,7 @@ export function ConditionConfigPanel({
 								intent="outline"
 								size="sm"
 								onPress={() => addRule(groupIndex)}
-								className="w-full gap-1.5"
+								className="w-full gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
 							>
 								<Plus className="h-3.5 w-3.5" /> Add rule
 							</Button>
@@ -360,11 +373,12 @@ export function ConditionConfigPanel({
 						intent="outline"
 						size="sm"
 						onPress={addGroup}
-						className="w-full gap-1.5"
+						className="w-full gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
 					>
-						<Plus className="h-3.5 w-3.5" /> Add group
+						<Plus className="h-3.5 w-3.5" /> Add condition group
 					</Button>
 				)}
+				</PanelSection>
 			</div>
 
 			{/* Next steps tree */}
@@ -379,19 +393,8 @@ export function ConditionConfigPanel({
 				</div>
 			)}
 
-			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-4 border-t border-border mt-2">
-					<button
-						type="button"
-						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-						onClick={() => onDeleteNode(nodeId)}
-						aria-label="Delete step"
-					>
-						<Trash2 className="h-4 w-4" />
-						<span className="text-sm font-medium">Delete Node</span>
-					</button>
-				</div>
+				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 			)}
 		</div>
 	);

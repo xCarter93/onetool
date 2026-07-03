@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
-import { Trash2, Repeat } from "lucide-react";
+import { Repeat } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
+import { DeleteStepButton } from "./panel-primitives";
 
 export function LoopConfigPanel({
 	nodeId,
@@ -35,9 +36,9 @@ export function LoopConfigPanel({
 			/>
 
 			<div className="flex-1">
-				<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-					Loops are arriving in an upcoming update. This step won&apos;t be
-					saveable until then.
+				<div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+					Loops are arriving in an upcoming update. Remove this step to save
+					your workflow.
 				</div>
 			</div>
 
@@ -53,19 +54,8 @@ export function LoopConfigPanel({
 				</div>
 			)}
 
-			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-4 border-t border-border mt-2">
-					<button
-						type="button"
-						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-						onClick={() => onDeleteNode(nodeId)}
-						aria-label="Delete step"
-					>
-						<Trash2 className="h-4 w-4" />
-						<span className="text-sm font-medium">Delete Node</span>
-					</button>
-				</div>
+				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 			)}
 		</div>
 	);

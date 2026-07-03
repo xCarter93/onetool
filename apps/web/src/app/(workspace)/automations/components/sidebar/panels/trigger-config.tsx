@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { Trash2, Zap } from "lucide-react";
+import { Zap, TriangleAlert } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { NextStepTree } from "../next-step-tree";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -21,8 +21,14 @@ import {
 	type TriggerConfig,
 	type TriggerType,
 } from "../../../lib/node-types";
+import { UNSUPPORTED_TRIGGER_TYPE } from "../../../lib/legacy-load";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
+import {
+	DeleteStepButton,
+	PanelField,
+	PanelSection,
+} from "./panel-primitives";
 
 export function TriggerConfigPanel({
 	trigger,
@@ -41,6 +47,7 @@ export function TriggerConfigPanel({
 	const objectType = currentTrigger.objectType || "quote";
 	const statusOptions = getStatusOptions(objectType);
 	const filterableFields = getFilterableFields(objectType);
+	const isUnsupported = triggerType === UNSUPPORTED_TRIGGER_TYPE;
 
 	const handleTriggerTypeChange = (value: string) => {
 		const newType = value as TriggerType;
@@ -90,122 +97,142 @@ export function TriggerConfigPanel({
 			/>
 
 			<div className="flex-1">
-				{/* Trigger type selector */}
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Trigger event</Label>
-					<Select value={triggerType} onValueChange={handleTriggerTypeChange}>
-						<SelectTrigger className="mt-2">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{TRIGGER_TYPE_OPTIONS.map((t) => (
-								<SelectItem key={t.value} value={t.value} disabled={t.comingSoon}>
-									{t.label}
-									{t.comingSoon ? " (Soon)" : ""}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-
-				{/* Object type */}
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Object type</Label>
-					<Select value={objectType} onValueChange={handleObjectTypeChange}>
-						<SelectTrigger className="mt-2">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{OBJECT_TYPE_OPTIONS.map((type) => (
-								<SelectItem key={type.value} value={type.value}>
-									{type.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-
-				{/* Status change-specific fields */}
-				{triggerType === "status_changed" && (
-					<>
-						<div className="border-b border-border py-4">
-							<Label className="text-sm font-medium">Changes from</Label>
-							<Select
-								value={currentTrigger.fromStatus || "any"}
-								onValueChange={(value) =>
-									onTriggerChange({
-										...currentTrigger,
-										fromStatus: value === "any" ? undefined : value,
-									})
-								}
-							>
-								<SelectTrigger className="mt-2">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="any">Any status</SelectItem>
-									{statusOptions.map((status) => (
-										<SelectItem key={status.value} value={status.value}>
-											{status.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-
-						<div className="border-b border-border py-4">
-							<Label className="text-sm font-medium">To</Label>
-							<Select
-								value={currentTrigger.toStatus || ""}
-								onValueChange={(value) =>
-									onTriggerChange({ ...currentTrigger, toStatus: value })
-								}
-							>
-								<SelectTrigger className="mt-2">
-									<SelectValue placeholder="Select status" />
-								</SelectTrigger>
-								<SelectContent>
-									{statusOptions.map((status) => (
-										<SelectItem key={status.value} value={status.value}>
-											{status.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-					</>
-				)}
-
-				{/* Record updated -- optional field filter */}
-				{triggerType === "record_updated" && (
-					<div className="border-b border-border py-4">
-						<Label className="text-sm font-medium">
-							Fields (optional)
-						</Label>
-						<div className="mt-2 flex flex-wrap gap-1.5">
-							{filterableFields.map((field) => {
-								const active = (currentTrigger.fields ?? []).includes(field.key);
-								return (
-									<button
-										key={field.key}
-										type="button"
-										onClick={() => toggleField(field.key)}
-										className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-											active
-												? "bg-primary/10 border-primary text-primary"
-												: "bg-muted text-muted-foreground border-border hover:bg-accent"
-										}`}
-									>
-										{field.label}
-									</button>
-								);
-							})}
-						</div>
-						<p className="text-xs text-muted-foreground mt-2">
-							Leave empty to trigger on any field change
+				{isUnsupported && (
+					<div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5">
+						<TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+						<p className="text-xs text-amber-800 dark:text-amber-300">
+							This automation used an email-received trigger, which is no
+							longer supported. Choose a different trigger event to keep it
+							running.
 						</p>
 					</div>
 				)}
+
+				<PanelSection title="Inputs">
+					<PanelField label="Trigger event">
+						<Select
+							value={isUnsupported ? "" : triggerType}
+							onValueChange={handleTriggerTypeChange}
+						>
+							<SelectTrigger>
+								<SelectValue placeholder="Choose an event" />
+							</SelectTrigger>
+							<SelectContent>
+								{TRIGGER_TYPE_OPTIONS.map((t) => (
+									<SelectItem
+										key={t.value}
+										value={t.value}
+										disabled={t.comingSoon}
+									>
+										<span className="flex items-center gap-2">
+											{t.label}
+											{t.comingSoon && (
+												<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+													Soon
+												</span>
+											)}
+										</span>
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</PanelField>
+
+					<PanelField label="Object type">
+						<Select value={objectType} onValueChange={handleObjectTypeChange}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{OBJECT_TYPE_OPTIONS.map((type) => (
+									<SelectItem key={type.value} value={type.value}>
+										{type.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</PanelField>
+
+					{triggerType === "status_changed" && (
+						<>
+							<PanelField label="Changes from">
+								<Select
+									value={currentTrigger.fromStatus || "any"}
+									onValueChange={(value) =>
+										onTriggerChange({
+											...currentTrigger,
+											fromStatus: value === "any" ? undefined : value,
+										})
+									}
+								>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="any">Any status</SelectItem>
+										{statusOptions.map((status) => (
+											<SelectItem key={status.value} value={status.value}>
+												{status.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</PanelField>
+
+							<PanelField label="To">
+								<Select
+									value={currentTrigger.toStatus || ""}
+									onValueChange={(value) =>
+										onTriggerChange({ ...currentTrigger, toStatus: value })
+									}
+								>
+									<SelectTrigger>
+										<SelectValue placeholder="Select status" />
+									</SelectTrigger>
+									<SelectContent>
+										{statusOptions.map((status) => (
+											<SelectItem key={status.value} value={status.value}>
+												{status.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</PanelField>
+						</>
+					)}
+
+					{triggerType === "record_updated" && (
+						<PanelField
+							label="Watch fields (optional)"
+							helper="Leave empty to trigger on any field change."
+						>
+							<div className="flex flex-wrap gap-1.5">
+								{filterableFields.map((field) => {
+									const active = (currentTrigger.fields ?? []).includes(
+										field.key
+									);
+									return (
+										<button
+											key={field.key}
+											type="button"
+											onClick={() => toggleField(field.key)}
+											aria-pressed={active}
+											className={cn(
+												"px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer",
+												"focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none",
+												active
+													? "bg-primary/10 border-primary text-primary"
+													: "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-foreground"
+											)}
+										>
+											{field.label}
+										</button>
+									);
+								})}
+							</div>
+						</PanelField>
+					)}
+				</PanelSection>
 
 				<div className="py-4 text-xs text-muted-foreground">
 					Changes are saved automatically
@@ -224,19 +251,8 @@ export function TriggerConfigPanel({
 				</div>
 			)}
 
-			{/* Delete trigger */}
 			{onDeleteTrigger && (
-				<div className="pt-4 border-t border-border mt-2">
-					<button
-						type="button"
-						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-						onClick={onDeleteTrigger}
-						aria-label="Delete step"
-					>
-						<Trash2 className="h-4 w-4" />
-						<span className="text-sm font-medium">Delete Trigger</span>
-					</button>
-				</div>
+				<DeleteStepButton label="Delete trigger" onDelete={onDeleteTrigger} />
 			)}
 		</div>
 	);
