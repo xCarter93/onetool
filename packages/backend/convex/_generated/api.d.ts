@@ -74,8 +74,6 @@ import type * as migrations_addReceivingAddresses from "../migrations/addReceivi
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
 import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
-import type * as migrations_migrateAutomationTriggers from "../migrations/migrateAutomationTriggers.js";
-import type * as migrations_migrateAutomationsV2 from "../migrations/migrateAutomationsV2.js";
 import type * as migrations_populateAggregates from "../migrations/populateAggregates.js";
 import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
@@ -188,8 +186,6 @@ declare const fullApi: ApiFromModules<{
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;
   "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
-  "migrations/migrateAutomationTriggers": typeof migrations_migrateAutomationTriggers;
-  "migrations/migrateAutomationsV2": typeof migrations_migrateAutomationsV2;
   "migrations/populateAggregates": typeof migrations_populateAggregates;
   "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;

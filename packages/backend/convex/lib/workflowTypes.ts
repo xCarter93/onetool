@@ -394,8 +394,6 @@ export const recordCreatedTriggerValidator = v.object({
 export const recordUpdatedTriggerValidator = v.object({
 	type: v.literal("record_updated"),
 	objectType: objectTypeValidator,
-	/** @deprecated v1.2 single-field filter; migrated into `fields`. */
-	field: v.optional(v.string()),
 	/** Fire only when one of these fields changed; any field if omitted/empty. */
 	fields: v.optional(v.array(v.string())),
 });
@@ -410,32 +408,16 @@ export const scheduledTriggerValidator = v.object({
 	objectType: v.optional(objectTypeValidator),
 });
 
-/** Retained for stored rows only; not offered in the UI and never fires. */
-export const emailReceivedTriggerValidator = v.object({
-	type: v.literal("email_received"),
-	objectType: v.literal("client"),
-});
-
-/** Legacy pre-v1.2 trigger (no `type` field). Migrated to status_changed. */
-export const legacyTriggerValidator = v.object({
-	objectType: objectTypeValidator,
-	fromStatus: v.optional(v.string()),
-	toStatus: v.string(),
-});
-
 export const triggerValidator = v.union(
-	legacyTriggerValidator,
 	statusChangedTriggerValidator,
 	recordCreatedTriggerValidator,
 	recordUpdatedTriggerValidator,
-	emailReceivedTriggerValidator,
 	scheduledTriggerValidator
 );
 
 export type AutomationTrigger = Infer<typeof triggerValidator>;
-// Built explicitly rather than via Exclude<AutomationTrigger, legacy>: the
-// status_changed shape is width-assignable to the legacy (untyped) shape,
-// so Exclude would silently drop it from the union.
+// v2-only trigger union (legacy/email_received dropped post-migration); kept as
+// a distinct alias for call sites that document the narrowed intent.
 export type AutomationTriggerV2 =
 	| Infer<typeof statusChangedTriggerValidator>
 	| Infer<typeof recordCreatedTriggerValidator>

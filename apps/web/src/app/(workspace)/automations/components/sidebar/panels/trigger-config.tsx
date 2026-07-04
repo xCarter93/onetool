@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Zap, TriangleAlert } from "lucide-react";
+import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NextStepTree } from "../next-step-tree";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
@@ -27,7 +27,6 @@ import {
 	type TriggerConfig,
 	type TriggerType,
 } from "../../../lib/node-types";
-import { UNSUPPORTED_TRIGGER_TYPE } from "../../../lib/legacy-load";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 import {
@@ -94,7 +93,6 @@ export function TriggerConfigPanel({
 	const objectType = currentTrigger.objectType || "quote";
 	const statusOptions = getStatusOptions(objectType);
 	const filterableFields = getFilterableFields(objectType);
-	const isUnsupported = triggerType === UNSUPPORTED_TRIGGER_TYPE;
 
 	const handleTriggerTypeChange = (value: string) => {
 		const newType = value as TriggerType;
@@ -175,21 +173,10 @@ export function TriggerConfigPanel({
 			/>
 
 			<div className="flex-1">
-				{isUnsupported && (
-					<div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5">
-						<TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-						<p className="text-xs text-amber-800 dark:text-amber-300">
-							This automation used an email-received trigger, which is no
-							longer supported. Choose a different trigger event to keep it
-							running.
-						</p>
-					</div>
-				)}
-
 				<PanelSection title="Inputs">
 					<PanelField label="Trigger event">
 						<Select
-							value={isUnsupported ? "" : triggerType}
+							value={triggerType}
 							onValueChange={handleTriggerTypeChange}
 						>
 							<SelectTrigger>

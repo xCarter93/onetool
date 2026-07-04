@@ -736,8 +736,7 @@ export function useAutomationEditor(automationId: string | null) {
 
 	// Lifecycle + publish state derived from the loaded row and the working copy.
 	const status: "draft" | "active" | "paused" =
-		existingAutomation?.status ??
-		(existingAutomation?.isActive ? "active" : "draft");
+		existingAutomation?.status ?? "draft";
 	const isPublished = !!existingAutomation?.publishedSnapshot;
 	const hasSteps = serialized.nodes.length > 0;
 	const isDirty =

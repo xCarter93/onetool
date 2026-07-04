@@ -11,7 +11,7 @@ type BadgeVariant =
 	| "outline";
 
 export const effectiveStatus = (a: Doc<"workflowAutomations">): LifecycleStatus =>
-	a.status ?? (a.isActive ? "active" : "draft");
+	a.status ?? "draft";
 
 export const STATUS_BADGE: Record<
 	LifecycleStatus,

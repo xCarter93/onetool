@@ -117,13 +117,12 @@ async function getAutomationOrThrow(
 }
 
 /**
- * Effective lifecycle status, tolerating unmigrated legacy rows.
+ * Effective lifecycle status; defaults to draft when unset.
  */
 export function effectiveStatus(
-	automation: Pick<AutomationDocument, "status" | "isActive">
+	automation: Pick<AutomationDocument, "status">
 ): "draft" | "active" | "paused" {
-	if (automation.status) return automation.status;
-	return automation.isActive ? "active" : "draft";
+	return automation.status ?? "draft";
 }
 
 function validateTrigger(trigger: AutomationTrigger): void {
@@ -788,14 +787,12 @@ export const listActive = userQuery({
 
 		const automations = await ctx.db
 			.query("workflowAutomations")
-			.withIndex("by_org_active", (q) =>
-				q.eq("orgId", userOrgId).eq("isActive", true)
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", userOrgId).eq("status", "active")
 			)
 			.collect();
 
-		return automations
-			.filter((a) => effectiveStatus(a) === "active")
-			.sort((a, b) => a.name.localeCompare(b.name));
+		return automations.sort((a, b) => a.name.localeCompare(b.name));
 	},
 });
 
@@ -823,6 +820,7 @@ export const create = userMutation({
 		trigger: triggerArgValidator,
 		nodes: v.array(nodeArgValidator),
 		formulas: v.optional(v.array(formulaResourceValidator)),
+		// Activation flag mapped to `status`; not a stored field.
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
@@ -850,8 +848,6 @@ export const create = userMutation({
 			nodes: args.nodes,
 			formulas: args.formulas,
 			status: activate ? "active" : "draft",
-			// Legacy mirror, kept in sync until post-migration tightening.
-			isActive: activate,
 			publishedSnapshot: activate
 				? {
 						trigger: args.trigger,
@@ -943,7 +939,6 @@ export const publish = userMutation({
 
 		await ctx.db.patch(args.id, {
 			status: "active",
-			isActive: true,
 			publishedSnapshot: buildSnapshot(automation),
 			nextRunAt: scheduledNextRunAt(automation.trigger, true),
 			updatedAt: Date.now(),
@@ -972,7 +967,6 @@ export const toggleActive = userMutation({
 		if (status === "active") {
 			await ctx.db.patch(args.id, {
 				status: "paused",
-				isActive: false,
 				nextRunAt: undefined,
 				updatedAt: Date.now(),
 			});
@@ -983,7 +977,6 @@ export const toggleActive = userMutation({
 			// Resume a previously-published automation on its published version.
 			await ctx.db.patch(args.id, {
 				status: "active",
-				isActive: true,
 				nextRunAt: scheduledNextRunAt(
 					automation.publishedSnapshot.trigger,
 					true
@@ -998,7 +991,6 @@ export const toggleActive = userMutation({
 		validateFormulas(automation.formulas);
 		await ctx.db.patch(args.id, {
 			status: "active",
-			isActive: true,
 			publishedSnapshot: buildSnapshot(automation),
 			nextRunAt: scheduledNextRunAt(automation.trigger, true),
 			updatedAt: Date.now(),
@@ -1258,15 +1250,13 @@ export const getRunMetrics = userQuery({
 				)
 			: 0;
 
-		// `status` is optional and legacy rows may carry only the deprecated
-		// `isActive` mirror until migrateAutomationsV2 backfills `status`, so count
-		// effective-active across both to avoid undercounting pre-migration.
-		const orgAutomations = await ctx.db
-			.query("workflowAutomations")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const activeAutomationCount = orgAutomations.filter(
-			(a) => a.status === "active" || (a.status == null && a.isActive === true)
+		const activeAutomationCount = (
+			await ctx.db
+				.query("workflowAutomations")
+				.withIndex("by_org_status", (q) =>
+					q.eq("orgId", orgId).eq("status", "active")
+				)
+				.collect()
 		).length;
 
 		return {

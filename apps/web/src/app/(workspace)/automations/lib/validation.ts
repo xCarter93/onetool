@@ -38,7 +38,6 @@ import {
 	type TriggerConfig,
 	type WorkflowNode,
 } from "./node-types";
-import { UNSUPPORTED_TRIGGER_TYPE } from "./legacy-load";
 import { getScopeObjectType } from "./variables";
 
 export type ValidationResult = {
@@ -47,8 +46,7 @@ export type ValidationResult = {
 		type:
 			| "placeholder_present"
 			| "missing_required_config"
-			| "no_trigger"
-			| "unsupported_trigger";
+			| "no_trigger";
 		message: string;
 		nodeId?: string;
 	}>;
@@ -86,15 +84,6 @@ function validateTrigger(
 ): void {
 	if (!trigger) {
 		errors.push({ type: "no_trigger", message: "No trigger configured" });
-		return;
-	}
-
-	if (trigger.type === UNSUPPORTED_TRIGGER_TYPE) {
-		errors.push({
-			type: "unsupported_trigger",
-			message:
-				"This trigger is no longer supported — choose a different trigger",
-		});
 		return;
 	}
 
@@ -708,7 +697,6 @@ export function getValidationToastMessage(
 	// Priority: trigger issues, then structural issues, then field completeness.
 	const priorities: ValidationResult["errors"][number]["type"][] = [
 		"no_trigger",
-		"unsupported_trigger",
 		"placeholder_present",
 		"missing_required_config",
 	];

@@ -9,89 +9,13 @@ import {
 	triggerValidator,
 } from "./lib/workflowTypes";
 
-// Transitional workflow node shape: legacy v1 fields (condition/action/
-// fetchConfig/loopConfig) coexist with the v2 `config` union until the
-// post-migration schema tightening drops the legacy fields.
+// v2 workflow node shape: each node carries the unified `config` union
+// (see lib/workflowTypes.ts). Legacy v1 fields were dropped post-migration.
 const workflowNodeValidator = v.object({
 	id: v.string(),
 	type: nodeTypeValidator,
 	// v2 unified config
-	config: v.optional(nodeConfigValidator),
-	// Legacy v1 condition node fields
-	condition: v.optional(
-		v.object({
-			field: v.string(),
-			operator: v.union(
-				v.literal("equals"),
-				v.literal("not_equals"),
-				v.literal("contains"),
-				v.literal("exists"),
-				v.literal("greater_than"),
-				v.literal("less_than"),
-				v.literal("is_true"),
-				v.literal("is_false"),
-				v.literal("before"),
-				v.literal("after")
-			),
-			value: v.any(),
-		})
-	),
-	// Legacy v1 action node fields
-	action: v.optional(
-		v.object({
-			targetType: v.union(
-				v.literal("self"),
-				v.literal("project"),
-				v.literal("client"),
-				v.literal("quote"),
-				v.literal("invoice")
-			),
-			actionType: v.union(
-				v.literal("update_status"),
-				v.literal("update_field"),
-				v.literal("send_notification"),
-				v.literal("create_record")
-			),
-			newStatus: v.string(),
-			field: v.optional(v.string()),
-			value: v.optional(v.any()),
-			notificationRecipient: v.optional(v.string()),
-			notificationMessage: v.optional(v.string()),
-			createRecordType: v.optional(
-				v.union(v.literal("task"), v.literal("project"))
-			),
-			createRecordFields: v.optional(v.any()),
-		})
-	),
-	// Legacy v1 fetch records config
-	fetchConfig: v.optional(
-		v.object({
-			entityType: v.union(
-				v.literal("client"),
-				v.literal("project"),
-				v.literal("quote"),
-				v.literal("invoice"),
-				v.literal("task")
-			),
-			filters: v.optional(
-				v.array(
-					v.object({
-						field: v.string(),
-						operator: v.string(),
-						value: v.any(),
-					})
-				)
-			),
-			limit: v.optional(v.number()),
-		})
-	),
-	// Legacy v1 loop config
-	loopConfig: v.optional(
-		v.object({
-			sourceNodeId: v.string(),
-			batchSize: v.optional(v.number()),
-		})
-	),
+	config: nodeConfigValidator,
 	// Flow control
 	nextNodeId: v.optional(v.string()),
 	elseNodeId: v.optional(v.string()),
@@ -1281,13 +1205,11 @@ export default defineSchema({
 		orgId: v.id("organizations"),
 		name: v.string(),
 		description: v.optional(v.string()),
-		/** @deprecated superseded by `status`; kept until post-migration tightening. */
-		isActive: v.optional(v.boolean()),
 		// Lifecycle: draft (never published), active (published + running),
 		// paused (published but not firing).
 		status: v.optional(automationStatusValidator),
 
-		// Trigger definition (legacy + v2 formats; see lib/workflowTypes.ts)
+		// Trigger definition (v2 union; see lib/workflowTypes.ts)
 		trigger: triggerValidator,
 
 		// Workflow nodes: flat array linked via nextNodeId/elseNodeId/bodyStartNodeId
@@ -1320,7 +1242,6 @@ export default defineSchema({
 		triggerCount: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
-		.index("by_org_active", ["orgId", "isActive"])
 		.index("by_org_status", ["orgId", "status"])
 		.index("by_status_nextRunAt", ["status", "nextRunAt"]),
 

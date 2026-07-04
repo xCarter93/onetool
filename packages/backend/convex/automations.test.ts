@@ -164,7 +164,6 @@ describe("Automations", () => {
 
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("draft");
-			expect(automation?.isActive).toBe(false);
 			expect(automation?.publishedSnapshot).toBeUndefined();
 			expect(automation?.nodes).toHaveLength(2);
 		});
@@ -181,7 +180,6 @@ describe("Automations", () => {
 
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("active");
-			expect(automation?.isActive).toBe(true);
 			expect(automation?.publishedSnapshot?.version).toBe(1);
 			expect(automation?.publishedSnapshot?.nodes).toHaveLength(1);
 		});

@@ -96,12 +96,6 @@ function automationFormulaTz(trigger: AutomationTrigger): string {
 	return "UTC";
 }
 
-/** Lifecycle check tolerating unmigrated rows (status missing). */
-function isEffectivelyActive(automation: AutomationDoc): boolean {
-	if (automation.status) return automation.status === "active";
-	return automation.isActive === true;
-}
-
 /** Extract a user id from a "manual:<id>" / "test:<id>" triggeredBy marker. */
 function parseActorUserId(
 	ctx: MutationCtx,
@@ -190,20 +184,16 @@ export const findMatchingAutomations = internalQuery({
 		changedFields: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args): Promise<AutomationDoc[]> => {
-		// by_org_active still drives selection until legacy rows are migrated;
-		// isActive is kept as a synced mirror of status === "active".
+		// Org-scoped active automations; org isolation is enforced by the
+		// by_org_status index prefix (orgId + status === "active").
 		const automations = await ctx.db
 			.query("workflowAutomations")
-			.withIndex("by_org_active", (q) =>
-				q.eq("orgId", args.orgId).eq("isActive", true)
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", args.orgId).eq("status", "active")
 			)
 			.collect();
 
 		return automations.filter((automation) => {
-			if (!isEffectivelyActive(automation)) {
-				return false;
-			}
-
 			const { trigger } = executableDefinition(automation);
 			const triggerType =
 				"type" in trigger ? trigger.type : "status_changed";
@@ -238,14 +228,11 @@ export const findMatchingAutomations = internalQuery({
 				case "record_created":
 					return true;
 				case "record_updated": {
-					// Field filter: legacy single `field` or v2 `fields` array;
-					// no filter means any field change matches.
+					// Field filter via v2 `fields`; no filter means any field
+					// change matches.
 					const watched: string[] = [];
 					if ("fields" in trigger && trigger.fields) {
 						watched.push(...trigger.fields);
-					}
-					if ("field" in trigger && trigger.field) {
-						watched.push(trigger.field);
 					}
 					if (watched.length === 0) {
 						return true;
@@ -1711,9 +1698,9 @@ async function getObject(
 }
 
 /**
- * Execute a per-record node (condition/action, v2 + legacy). Structural
- * kinds (fetch/loop/delay/end) are handled by the walk engine before this
- * is reached.
+ * Execute a per-record node (condition/action) via its v2 `config`.
+ * Structural kinds (fetch/loop/delay/end) are handled by the walk engine
+ * before this is reached.
  */
 async function executeNode(
 	ctx: MutationCtx,
@@ -1726,31 +1713,7 @@ async function executeNode(
 	conditionMet?: boolean;
 	error?: string;
 }> {
-	// v2 nodes carry a discriminated `config`; legacy rows (pre-migration)
-	// only have `condition`/`action` and fall through below.
-	if (node.config) {
-		return executeNodeV2(ctx, node.config, scopeRecord, env);
-	}
-
-	if (node.type === "condition") {
-		return executeConditionNode(node, scopeRecord?.record ?? {});
-	} else if (node.type === "action") {
-		if (!scopeRecord) {
-			return { success: false, error: NO_SCOPE_RECORD_ERROR };
-		}
-		return executeActionNode(
-			ctx,
-			node,
-			scopeRecord.type,
-			scopeRecord.id,
-			scopeRecord.record,
-			env.orgId,
-			env.executionChain,
-			env.recursionDepth
-		);
-	}
-
-	return { success: false, error: "Unknown node type" };
+	return executeNodeV2(ctx, node.config, scopeRecord, env);
 }
 
 const NO_SCOPE_RECORD_ERROR =
@@ -1814,113 +1777,12 @@ async function executeNodeV2(
 }
 
 /**
- * Evaluate a condition node
- */
-function executeConditionNode(
-	node: AutomationNode,
-	triggerObject: Record<string, unknown>
-): { success: boolean; conditionMet: boolean } {
-	if (!node.condition) {
-		return { success: true, conditionMet: true };
-	}
-
-	const { field, operator, value } = node.condition;
-	const fieldValue = triggerObject[field];
-
-	let conditionMet = false;
-
-	switch (operator) {
-		case "equals":
-			conditionMet = fieldValue === value;
-			break;
-		case "not_equals":
-			conditionMet = fieldValue !== value;
-			break;
-		case "contains":
-			if (typeof fieldValue === "string" && typeof value === "string") {
-				conditionMet = fieldValue.includes(value);
-			} else if (Array.isArray(fieldValue)) {
-				conditionMet = fieldValue.includes(value);
-			}
-			break;
-		case "exists":
-			conditionMet = fieldValue !== undefined && fieldValue !== null;
-			break;
-		default:
-			conditionMet = false;
-	}
-
-	return { success: true, conditionMet };
-}
-
-/**
- * Execute an action node
- */
-async function executeActionNode(
-	ctx: MutationCtx,
-	node: AutomationNode,
-	objectType: ObjectType,
-	objectId: string,
-	triggerObject: Record<string, unknown>,
-	orgId: Id<"organizations">,
-	executionChain: Id<"workflowAutomations">[],
-	recursionDepth: number
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-	if (!node.action) {
-		return { success: false, error: "Action node has no action defined" };
-	}
-
-	const { targetType, actionType, newStatus } = node.action;
-
-	if (actionType !== "update_status") {
-		return { success: false, error: `Unknown action type: ${actionType}` };
-	}
-
-	// Resolve the target object
-	const targetInfo = await resolveTarget(
-		ctx,
-		targetType,
-		objectType,
-		objectId,
-		triggerObject,
-		orgId
-	);
-
-	if (!targetInfo) {
-		// Target not found - skip this action (e.g., quote has no project)
-		console.warn(
-			`[AutomationExecutor] Target not found: targetType=${targetType}, objectType=${objectType}, objectId=${objectId}`,
-			{ triggerObject: JSON.stringify(triggerObject) }
-		);
-		return { success: true, skipped: true };
-	}
-
-	// Validate that target type matches expected type
-	if (targetInfo.type !== targetType) {
-		return {
-			success: false,
-			error: `Target resolution returned ${targetInfo.type} but expected ${targetType}`,
-		};
-	}
-
-	return applyStatusUpdate(
-		ctx,
-		targetInfo,
-		newStatus,
-		orgId,
-		executionChain,
-		recursionDepth
-	);
-}
-
-/**
  * Apply a status update to a resolved target: validate the status, patch the
  * record (with completion/approval/paid timestamps), maintain aggregates in
  * the same transaction, and emit a cascading status_changed event carrying
  * the execution chain for recursion protection.
  *
- * Shared by the legacy update_status action and the v2 update_field action
- * when `field === "status"`.
+ * Used by the v2 update_field action when `field === "status"`.
  */
 async function applyStatusUpdate(
 	ctx: MutationCtx,
@@ -2060,120 +1922,6 @@ async function applyStatusUpdate(
 			success: false,
 			error: error instanceof Error ? error.message : "Failed to update status",
 		};
-	}
-}
-
-/**
- * Resolve the target object for an action
- */
-async function resolveTarget(
-	ctx: MutationCtx,
-	targetType: "self" | "project" | "client" | "quote" | "invoice",
-	objectType: ObjectType,
-	objectId: string,
-	triggerObject: Record<string, unknown>,
-	orgId: Id<"organizations">
-): Promise<{
-	type: ObjectType;
-	id:
-		| Id<"clients">
-		| Id<"projects">
-		| Id<"quotes">
-		| Id<"invoices">
-		| Id<"tasks">;
-} | null> {
-	if (targetType === "self") {
-		return {
-			type: objectType,
-			id: objectId as
-				| Id<"clients">
-				| Id<"projects">
-				| Id<"quotes">
-				| Id<"invoices">
-				| Id<"tasks">,
-		};
-	}
-
-	// Resolve related objects based on the trigger object type
-	switch (targetType) {
-		case "project": {
-			// Get project from trigger object
-			const projectId = triggerObject.projectId as Id<"projects"> | undefined;
-			if (!projectId) {
-				return null;
-			}
-			const project = await ctx.db.get(projectId);
-			if (!project || project.orgId !== orgId) {
-				return null;
-			}
-			return { type: "project", id: projectId };
-		}
-
-		case "client": {
-			// Get client - could be direct or via project
-			let clientId = triggerObject.clientId as Id<"clients"> | undefined;
-
-			console.log(`[AutomationExecutor] Resolving client target:`, {
-				directClientId: clientId,
-				projectId: triggerObject.projectId,
-				triggerObjectKeys: Object.keys(triggerObject),
-			});
-
-			if (!clientId) {
-				// Try to get via project
-				const projectId = triggerObject.projectId as Id<"projects"> | undefined;
-				if (projectId) {
-					const project = await ctx.db.get(projectId);
-					if (project) {
-						clientId = project.clientId;
-						console.log(`[AutomationExecutor] Found client via project:`, {
-							projectId,
-							clientId,
-						});
-					}
-				}
-			}
-
-			if (!clientId) {
-				console.warn(`[AutomationExecutor] Could not resolve client ID`, {
-					triggerObject: JSON.stringify(triggerObject),
-				});
-				return null;
-			}
-
-			const client = await ctx.db.get(clientId);
-			if (!client || client.orgId !== orgId) {
-				console.warn(`[AutomationExecutor] Client not found or org mismatch`, {
-					clientId,
-					exists: !!client,
-					orgMatch: client?.orgId === orgId,
-				});
-				return null;
-			}
-			return { type: "client", id: clientId };
-		}
-
-		case "quote": {
-			// Only invoices have a quoteId reference
-			const quoteId = triggerObject.quoteId as Id<"quotes"> | undefined;
-			if (!quoteId) {
-				return null;
-			}
-			const quote = await ctx.db.get(quoteId);
-			if (!quote || quote.orgId !== orgId) {
-				return null;
-			}
-			return { type: "quote", id: quoteId };
-		}
-
-		case "invoice": {
-			// Quotes don't have direct invoice references
-			// We'd need to search, which is expensive - skip for now
-			return null;
-		}
-
-		default:
-			return null;
 	}
 }
 
@@ -2397,8 +2145,7 @@ async function executeActionNodeV2(
  * Resolve a v2 action target: "self" is the record in scope; `{ related }`
  * follows the field-registry relation FK for the record's object type,
  * falling back to resolving a client indirectly via the record's project
- * when there's no direct clientId (mirrors legacy resolveTarget's "client"
- * case).
+ * when there's no direct clientId.
  */
 async function resolveTargetV2(
 	ctx: MutationCtx,
@@ -2434,8 +2181,8 @@ async function resolveTargetV2(
 		? (triggerObject[fkField] as string | undefined)
 		: undefined;
 
-	// Legacy fallback: resolve client indirectly via the record's project when
-	// there's no direct clientId (mirrors resolveTarget's "client" case).
+	// Resolve client indirectly via the record's project when there's no
+	// direct clientId.
 	if (!relatedId && relatedType === "client") {
 		const projectFk = RELATION_FIELD[objectType]?.project;
 		const projectId = projectFk
