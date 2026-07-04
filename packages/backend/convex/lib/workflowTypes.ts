@@ -443,6 +443,44 @@ export type AutomationTriggerV2 =
 	| Infer<typeof scheduledTriggerValidator>;
 
 // ---------------------------------------------------------------------------
+// Formula resources — reusable named expressions (Slice 4.6). Defined once on
+// the automation, referenced anywhere as `formula.<id>` / `{{formula.<id>}}`,
+// evaluated against the values in scope at each reference point. Snapshotted on
+// publish alongside trigger/nodes.
+// ---------------------------------------------------------------------------
+
+export const FORMULA_RETURN_TYPES = [
+	"number",
+	"currency",
+	"text",
+	"date",
+	"boolean",
+] as const;
+
+export type FormulaReturnType = (typeof FORMULA_RETURN_TYPES)[number];
+
+export const formulaResourceValidator = v.object({
+	/** Stable reference key; must not contain dots (resolvePath splits on them). */
+	id: v.string(),
+	/** Display name shown in tokens; rename-safe (references use id). */
+	name: v.string(),
+	returnType: v.union(
+		v.literal("number"),
+		v.literal("currency"),
+		v.literal("text"),
+		v.literal("date"),
+		v.literal("boolean")
+	),
+	/** Source text of the expression (see lib/formula). */
+	expression: v.string(),
+});
+
+export type FormulaResource = Infer<typeof formulaResourceValidator>;
+
+/** Max formula resources per automation. */
+export const MAX_FORMULAS = 30;
+
+// ---------------------------------------------------------------------------
 // Automation lifecycle
 // ---------------------------------------------------------------------------
 

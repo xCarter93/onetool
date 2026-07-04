@@ -240,6 +240,70 @@ describe("Automations", () => {
 		});
 	});
 
+	describe("formulas", () => {
+		it("stores formulas on create and snapshots them on publish", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "With formula",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+				formulas: [
+					{
+						id: "f1",
+						name: "Doubled",
+						returnType: "number",
+						expression: "{trigger.record.budget} * 2",
+					},
+				],
+			});
+			let automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.formulas).toHaveLength(1);
+
+			await asUser.mutation(api.automations.publish, { id });
+			automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot?.formulas).toHaveLength(1);
+		});
+
+		it("rejects a formula with a syntax error", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad formula",
+					trigger: clientTrigger,
+					nodes: [actionNode("act-1")],
+					formulas: [
+						{ id: "f1", name: "Broken", returnType: "number", expression: "1 +" },
+					],
+				})
+			).rejects.toThrow(/syntax error/i);
+		});
+
+		it("rejects a formula reference cycle", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Cyclic",
+					trigger: clientTrigger,
+					nodes: [actionNode("act-1")],
+					formulas: [
+						{
+							id: "a",
+							name: "A",
+							returnType: "number",
+							expression: "{formula.b} + 1",
+						},
+						{
+							id: "b",
+							name: "B",
+							returnType: "number",
+							expression: "{formula.a} + 1",
+						},
+					],
+				})
+			).rejects.toThrow(/cycle/i);
+		});
+	});
+
 	describe("validation", () => {
 		it("rejects an unknown field in a condition rule", async () => {
 			const { asUser } = await setupUser();

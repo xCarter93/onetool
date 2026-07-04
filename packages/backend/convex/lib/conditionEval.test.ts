@@ -687,3 +687,80 @@ describe("evaluateConditionGroups", () => {
 		).toBe(true);
 	});
 });
+
+describe("formula resolution (formula.<id>)", () => {
+	const scope: VariableScope = {
+		trigger: { record: { amount: 150 } },
+		workflow: { now: Date.parse("2026-07-04T12:00:00Z"), tz: "UTC" },
+		formulas: [
+			{
+				id: "f1",
+				name: "Double amount",
+				returnType: "number",
+				expression: "{trigger.record.amount} * 2",
+			},
+			{
+				id: "f2",
+				name: "Plus ten",
+				returnType: "number",
+				// References another formula → nested resolution.
+				expression: "{formula.f1} + 10",
+			},
+			{
+				id: "money",
+				name: "Split three ways",
+				returnType: "currency",
+				expression: "{trigger.record.amount} / 3",
+			},
+			{
+				id: "greeting",
+				name: "Greeting",
+				returnType: "text",
+				expression: 'CONCAT("Owes ", {trigger.record.amount})',
+			},
+		],
+	};
+
+	it("evaluates a formula against the scope", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "formula.f1" }, scope)
+		).toBe(300);
+	});
+
+	it("resolves nested formula references", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "formula.f2" }, scope)
+		).toBe(310);
+	});
+
+	it("rounds currency results to cents", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "formula.money" }, scope)
+		).toBe(50);
+	});
+
+	it("interpolates formulas in text templates", () => {
+		expect(interpolateTemplate("{{formula.greeting}}", scope)).toBe("Owes 150");
+	});
+
+	it("returns fallback for an unknown formula id", () => {
+		expect(
+			resolveValueRef(
+				{ kind: "var", path: "formula.nope", fallback: "n/a" },
+				scope
+			)
+		).toBe("n/a");
+	});
+
+	it("throws on a formula reference cycle (fails closed)", () => {
+		const cyclic: VariableScope = {
+			formulas: [
+				{ id: "a", name: "A", returnType: "number", expression: "{formula.b} + 1" },
+				{ id: "b", name: "B", returnType: "number", expression: "{formula.a} + 1" },
+			],
+		};
+		expect(() =>
+			resolveValueRef({ kind: "var", path: "formula.a" }, cyclic)
+		).toThrow(/cycle/i);
+	});
+});

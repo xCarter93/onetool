@@ -10,8 +10,10 @@ import {
 	MAX_DELAY_MS,
 	MAX_DUE_IN_DAYS,
 	MAX_FETCH_LIMIT,
+	MAX_FORMULAS,
 	MAX_RULES_PER_GROUP,
 	VALUELESS_OPERATORS,
+	formulaResourceValidator,
 	nodeConfigValidator,
 	nodeTypeValidator,
 	recordCreatedTriggerValidator,
@@ -20,8 +22,14 @@ import {
 	statusChangedTriggerValidator,
 	type AutomationObjectType,
 	type AutomationTrigger,
+	type FormulaResource,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
+import {
+	collectReferencedPaths,
+	parseFormula,
+	FormulaError,
+} from "./lib/formula";
 import {
 	RELATED_OBJECTS,
 	getFieldDefinition,
@@ -636,14 +644,100 @@ function validateForActivation(
 }
 
 /**
+ * Validate an automation's formula resources: structure, unique ids, syntax
+ * (each expression must parse), referenced formulas exist, and no reference
+ * cycles. Use-site scope enforcement (a formula is only offered where its
+ * inputs are in scope) is handled in the builder; at runtime an out-of-scope
+ * reference fails the run clearly.
+ */
+function validateFormulas(formulas: FormulaResource[] | undefined): void {
+	if (!formulas || formulas.length === 0) return;
+	if (formulas.length > MAX_FORMULAS) {
+		throw new Error(`An automation can have at most ${MAX_FORMULAS} formulas`);
+	}
+	const ids = new Set<string>();
+	const refs = new Map<string, string[]>();
+	for (const f of formulas) {
+		if (!f.id || f.id.includes(".")) {
+			throw new Error(
+				`Formula id "${f.id}" is invalid (must be non-empty and contain no dots)`
+			);
+		}
+		if (ids.has(f.id)) throw new Error(`Duplicate formula id "${f.id}"`);
+		ids.add(f.id);
+		if (!f.name.trim()) throw new Error("Every formula needs a name");
+
+		let referenced: string[];
+		try {
+			referenced = collectReferencedPaths(parseFormula(f.expression));
+		} catch (err) {
+			const msg = err instanceof FormulaError ? err.message : "invalid expression";
+			throw new Error(`Formula "${f.name}" has a syntax error: ${msg}`);
+		}
+		refs.set(
+			f.id,
+			referenced
+				.filter((p) => p.startsWith("formula."))
+				.map((p) => p.slice("formula.".length))
+		);
+	}
+	for (const [id, deps] of refs) {
+		for (const dep of deps) {
+			if (!ids.has(dep)) {
+				const f = formulas.find((x) => x.id === id);
+				throw new Error(
+					`Formula "${f?.name ?? id}" references a formula that doesn't exist`
+				);
+			}
+		}
+	}
+	detectFormulaCycle(refs, formulas);
+}
+
+/** DFS three-colouring over the formula-reference graph; throws on a cycle. */
+function detectFormulaCycle(
+	refs: Map<string, string[]>,
+	formulas: FormulaResource[]
+): void {
+	const WHITE = 0;
+	const GRAY = 1;
+	const BLACK = 2;
+	const color = new Map<string, number>();
+	for (const id of refs.keys()) color.set(id, WHITE);
+
+	const visit = (id: string): void => {
+		color.set(id, GRAY);
+		for (const dep of refs.get(id) ?? []) {
+			const c = color.get(dep);
+			if (c === GRAY) {
+				const f = formulas.find((x) => x.id === id);
+				throw new Error(
+					`Formula "${f?.name ?? id}" is part of a reference cycle`
+				);
+			}
+			if (c === WHITE) visit(dep);
+		}
+		color.set(id, BLACK);
+	};
+
+	for (const id of refs.keys()) {
+		if (color.get(id) === WHITE) visit(id);
+	}
+}
+
+/**
  * Build the published snapshot from the working copy.
  */
 function buildSnapshot(
-	automation: Pick<AutomationDocument, "trigger" | "nodes" | "publishedSnapshot">
+	automation: Pick<
+		AutomationDocument,
+		"trigger" | "nodes" | "formulas" | "publishedSnapshot"
+	>
 ): NonNullable<AutomationDocument["publishedSnapshot"]> {
 	return {
 		trigger: automation.trigger,
 		nodes: automation.nodes,
+		formulas: automation.formulas,
 		version: (automation.publishedSnapshot?.version ?? 0) + 1,
 		publishedAt: Date.now(),
 	};
@@ -727,6 +821,7 @@ export const create = userMutation({
 		description: v.optional(v.string()),
 		trigger: triggerArgValidator,
 		nodes: v.array(nodeArgValidator),
+		formulas: v.optional(v.array(formulaResourceValidator)),
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
@@ -740,6 +835,7 @@ export const create = userMutation({
 		} else {
 			validateWorkflowDefinition(args.trigger, args.nodes);
 		}
+		validateFormulas(args.formulas);
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const user = await getCurrentUserOrThrow(ctx);
@@ -751,6 +847,7 @@ export const create = userMutation({
 			description: args.description?.trim(),
 			trigger: args.trigger,
 			nodes: args.nodes,
+			formulas: args.formulas,
 			status: activate ? "active" : "draft",
 			// Legacy mirror, kept in sync until post-migration tightening.
 			isActive: activate,
@@ -758,6 +855,7 @@ export const create = userMutation({
 				? {
 						trigger: args.trigger,
 						nodes: args.nodes,
+						formulas: args.formulas,
 						version: 1,
 						publishedAt: now,
 					}
@@ -784,6 +882,7 @@ export const update = userMutation({
 		description: v.optional(v.string()),
 		trigger: v.optional(triggerArgValidator),
 		nodes: v.optional(v.array(nodeArgValidator)),
+		formulas: v.optional(v.array(formulaResourceValidator)),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
 		const { id, ...updates } = args;
@@ -811,6 +910,10 @@ export const update = userMutation({
 			validateWorkflowDefinition(nextTrigger, nextNodes);
 		}
 
+		if (updates.formulas !== undefined) {
+			validateFormulas(updates.formulas);
+		}
+
 		const patch: Partial<AutomationDocument> = { updatedAt: Date.now() };
 
 		if (updates.name !== undefined) patch.name = updates.name.trim();
@@ -819,6 +922,7 @@ export const update = userMutation({
 		}
 		if (updates.trigger !== undefined) patch.trigger = updates.trigger;
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
+		if (updates.formulas !== undefined) patch.formulas = updates.formulas;
 
 		await ctx.db.patch(id, patch);
 		return id;
@@ -834,6 +938,7 @@ export const publish = userMutation({
 		const automation = await getAutomationOrThrow(ctx, args.id);
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
+		validateFormulas(automation.formulas);
 
 		await ctx.db.patch(args.id, {
 			status: "active",
@@ -889,6 +994,7 @@ export const toggleActive = userMutation({
 
 		// Draft with no snapshot: publishing is the only way to go live.
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
+		validateFormulas(automation.formulas);
 		await ctx.db.patch(args.id, {
 			status: "active",
 			isActive: true,

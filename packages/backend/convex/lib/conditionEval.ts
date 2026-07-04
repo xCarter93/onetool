@@ -1,4 +1,17 @@
-import type { ConditionGroup, ConditionRule, ValueRef } from "./workflowTypes";
+import type {
+	ConditionGroup,
+	ConditionRule,
+	FormulaResource,
+	FormulaReturnType,
+	ValueRef,
+} from "./workflowTypes";
+import {
+	evaluateFormula,
+	parseFormula,
+	FormulaError,
+	type FormulaContext,
+	type Val,
+} from "./formula";
 
 /**
  * Pure condition/filter evaluation engine for workflow automations v2.
@@ -17,12 +30,14 @@ export type VariableScope = {
 	/** Per-node outputs: fetch → count; aggregate/adjust-time → result. */
 	nodes?: Record<string, { count?: number; result?: unknown }>;
 	// Built-in globals, populated at run start (see automationExecutor).
-	/** Execution start time (epoch ms); also feeds formula NOW()/TODAY(). */
-	workflow?: { now?: number };
+	/** Execution start time (epoch ms) + tz; feed formula NOW()/TODAY() and date math. */
+	workflow?: { now?: number; tz?: string };
 	/** Always populated (the executor loads the org). */
 	org?: { id?: string; name?: string };
 	/** Triggering actor; empty on scheduled/system/event runs with no actor. */
 	user?: { id?: string; name?: string; email?: string };
+	/** Formula resource definitions, resolved lazily via `formula.<id>` paths. */
+	formulas?: FormulaResource[];
 };
 
 /**
@@ -38,6 +53,7 @@ export type VariableScope = {
  *   workflow.now
  *   org.id | org.name
  *   user.id | user.name | user.email
+ *   formula.<id>   (evaluates a formula resource against the current scope)
  *
  * Unknown or missing paths resolve to the fallback if provided, else undefined.
  */
@@ -48,7 +64,12 @@ export function resolveValueRef(ref: ValueRef, scope: VariableScope): unknown {
 	return resolved;
 }
 
-function resolvePath(path: string, scope: VariableScope): unknown {
+function resolvePath(
+	path: string,
+	scope: VariableScope,
+	// Formula ids currently being resolved — guards against reference cycles.
+	resolving: Set<string> = new Set()
+): unknown {
 	const TRIGGER_RECORD = "trigger.record.";
 	if (path.startsWith(TRIGGER_RECORD)) {
 		const field = path.slice(TRIGGER_RECORD.length);
@@ -105,7 +126,82 @@ function resolvePath(path: string, scope: VariableScope): unknown {
 		return undefined;
 	}
 
+	const FORMULA = "formula.";
+	if (path.startsWith(FORMULA)) {
+		return resolveFormula(path.slice(FORMULA.length), scope, resolving);
+	}
+
 	return undefined;
+}
+
+/**
+ * Evaluate a formula resource by id against the current scope. The evaluator's
+ * variable resolver recurses back into resolvePath, so nested formulas work; a
+ * `resolving` set guards against reference cycles (fail closed).
+ */
+function resolveFormula(
+	id: string,
+	scope: VariableScope,
+	resolving: Set<string>
+): unknown {
+	if (id === "") return undefined;
+	const def = scope.formulas?.find((f) => f.id === id);
+	if (!def) return undefined;
+	if (resolving.has(id)) {
+		throw new FormulaError(
+			"SYNTAX",
+			`Formula "${def.name}" is part of a reference cycle`
+		);
+	}
+	resolving.add(id);
+	try {
+		const ast = parseFormula(def.expression);
+		const ctx: FormulaContext = {
+			resolve: (p) => toFormulaVal(resolvePath(p, scope, resolving)),
+			now: scope.workflow?.now ?? 0,
+			tz: scope.workflow?.tz ?? "UTC",
+		};
+		return applyFormulaReturnType(evaluateFormula(ast, ctx), def.returnType);
+	} finally {
+		resolving.delete(id);
+	}
+}
+
+/** Coerce an arbitrary resolved value into the formula engine's Val union. */
+function toFormulaVal(value: unknown): Val {
+	if (value === null || value === undefined) return null;
+	if (
+		typeof value === "number" ||
+		typeof value === "string" ||
+		typeof value === "boolean" ||
+		value instanceof Date
+	) {
+		return value;
+	}
+	// Arrays/objects aren't representable as a scalar formula value.
+	return null;
+}
+
+/** Normalize a formula result to the resource's declared return type. */
+function applyFormulaReturnType(
+	value: Val,
+	returnType: FormulaReturnType
+): unknown {
+	if (value === null) return null;
+	switch (returnType) {
+		case "currency":
+			// Dollars, rounded to cents (matches CLAUDE.md money convention).
+			return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+		case "date":
+			// Epoch ms, consistent with date fields / adjust_time / delay_until.
+			return value instanceof Date ? value.getTime() : value;
+		case "text":
+			return value instanceof Date ? value.toISOString() : String(value);
+		case "number":
+		case "boolean":
+		default:
+			return value;
+	}
 }
 
 /**

@@ -39,6 +39,7 @@ import {
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type ExecutedNode,
+	type FormulaResource,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
 
@@ -68,14 +69,31 @@ type AutomationDoc = Doc<"workflowAutomations">;
 function executableDefinition(automation: AutomationDoc): {
 	trigger: AutomationTrigger;
 	nodes: AutomationNode[];
+	formulas: FormulaResource[] | undefined;
 } {
 	if (automation.publishedSnapshot) {
 		return {
 			trigger: automation.publishedSnapshot.trigger,
 			nodes: automation.publishedSnapshot.nodes,
+			formulas: automation.publishedSnapshot.formulas,
 		};
 	}
-	return { trigger: automation.trigger, nodes: automation.nodes };
+	return {
+		trigger: automation.trigger,
+		nodes: automation.nodes,
+		formulas: automation.formulas,
+	};
+}
+
+/**
+ * IANA timezone for formula date math. Scheduled automations use their schedule
+ * timezone; everything else defaults to UTC (there is no per-org tz field).
+ */
+function automationFormulaTz(trigger: AutomationTrigger): string {
+	if ("type" in trigger && trigger.type === "scheduled") {
+		return trigger.schedule.timezone;
+	}
+	return "UTC";
 }
 
 /** Lifecycle check tolerating unmigrated rows (status missing). */
@@ -103,10 +121,11 @@ async function buildGlobalsScope(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	nowMs: number,
+	tz: string,
 	triggeredBy: string
 ): Promise<Pick<VariableScope, "workflow" | "org" | "user">> {
 	const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
-		workflow: { now: nowMs },
+		workflow: { now: nowMs, tz },
 	};
 	const org = await ctx.db.get(orgId);
 	if (org) globals.org = { id: orgId, name: org.name };
@@ -765,6 +784,7 @@ export const executeAutomation = systemMutation({
 			ctx,
 			automation.orgId,
 			execution.triggeredAt,
+			automationFormulaTz(definition.trigger),
 			execution.triggeredBy
 		);
 
@@ -787,6 +807,7 @@ export const executeAutomation = systemMutation({
 								}
 							: undefined,
 				},
+				formulas: definition.formulas,
 				...globals,
 			},
 			fetchOutputs: {},
@@ -892,6 +913,7 @@ export const resumeExecution = systemMutation({
 			ctx,
 			automation.orgId,
 			execution.triggeredAt,
+			automationFormulaTz(definition.trigger),
 			execution.triggeredBy
 		);
 
@@ -915,6 +937,7 @@ export const resumeExecution = systemMutation({
 							: undefined,
 				},
 				nodes: {},
+				formulas: definition.formulas,
 				...globals,
 			},
 			fetchOutputs: {},
@@ -3277,6 +3300,7 @@ async function buildDryPlan(
 						? { oldValue: eventOldValue, newValue: eventNewValue }
 						: undefined,
 			},
+			formulas: automation.formulas,
 			...globals,
 		},
 		fetchOutputs: {},
@@ -3365,7 +3389,7 @@ export const startTestRun = userMutation({
 		// The tester is always the actor for a dry run.
 		const testerOrg = await ctx.db.get(ctx.orgId);
 		const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
-			workflow: { now },
+			workflow: { now, tz: automationFormulaTz(trigger) },
 			org: testerOrg ? { id: ctx.orgId, name: testerOrg.name } : undefined,
 			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
 		};

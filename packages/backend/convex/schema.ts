@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import {
 	automationStatusValidator,
 	executedNodeValidator,
+	formulaResourceValidator,
 	nodeConfigValidator,
 	nodeTypeValidator,
 	triggerValidator,
@@ -1289,12 +1290,16 @@ export default defineSchema({
 		// Workflow nodes: flat array linked via nextNodeId/elseNodeId/bodyStartNodeId
 		nodes: v.array(workflowNodeValidator),
 
+		// Reusable named formula resources referenced as formula.<id>.
+		formulas: v.optional(v.array(formulaResourceValidator)),
+
 		// Immutable copy executed in production; the editor edits the working
 		// copy above and `publish` refreshes this snapshot.
 		publishedSnapshot: v.optional(
 			v.object({
 				trigger: triggerValidator,
 				nodes: v.array(workflowNodeValidator),
+				formulas: v.optional(v.array(formulaResourceValidator)),
 				version: v.number(),
 				publishedAt: v.number(),
 			})
