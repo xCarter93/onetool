@@ -49,7 +49,7 @@ export const AggregateNodeRF = memo(({ data, selected }: NodeProps) => {
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+					<div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400 flex items-center justify-center shrink-0">
 						<Sigma className="h-4 w-4" />
 					</div>
 					<div className="min-w-0 flex-1">

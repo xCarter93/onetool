@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { FormulaResource, TriggerConfig, WorkflowNode } from "../../lib/node-types";
 import type { EditorNode } from "../../lib/flow-adapter";
 import { TriggerPicker } from "./trigger-picker";
@@ -219,13 +220,13 @@ export function AutomationSidebar({
 							</div>
 							{onDeleteNode && "nodeId" in mode && (
 								<div className="pt-6 border-t border-border">
-									<button
-										type="button"
-										className="w-full rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90"
-										onClick={() => onDeleteNode(mode.nodeId)}
+									<Button
+										intent="destructive"
+										className="w-full"
+										onPress={() => onDeleteNode(mode.nodeId)}
 									>
 										Delete Node
-									</button>
+									</Button>
 								</div>
 							)}
 						</div>
@@ -260,13 +261,14 @@ export function AutomationSidebar({
 			{mode.mode === "node-config" && (
 				<div className="flex items-center justify-between px-6 py-5 border-b border-border">
 					<span className="text-lg font-semibold">{title}</span>
-					<button
-						onClick={onClose}
-						className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+					<Button
+						intent="plain"
+						size="sq-sm"
+						onPress={onClose}
 						aria-label="Close sidebar"
 					>
 						<X className="h-4 w-4" />
-					</button>
+					</Button>
 				</div>
 			)}
 

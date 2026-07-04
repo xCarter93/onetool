@@ -203,7 +203,8 @@ function AutomationFlowInner({
 					size={1}
 					className="text-muted-foreground/15! dark:text-muted-foreground/10!"
 				/>
-				<ZoomSlider position="bottom-left" orientation="vertical" />
+				{/* bottom-right: the workflow drawer overlays the bottom-left corner */}
+				<ZoomSlider position="bottom-right" orientation="vertical" />
 			</ReactFlow>
 			{contextMenu && (
 				<div

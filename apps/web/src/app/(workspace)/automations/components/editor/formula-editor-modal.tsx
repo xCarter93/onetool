@@ -136,13 +136,19 @@ export function FormulaEditorModal({
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	// Reset editing state whenever the modal opens (create, or edit a formula).
-	useEffect(() => {
-		if (!open) return;
-		setName(formula?.name ?? "");
-		setReturnType(formula?.returnType ?? "text");
-		setExpression(formula?.expression ?? "");
-		setSampleId(undefined);
-	}, [open, formula]);
+	// Guarded render-time derivation instead of an effect; `sessionKey` goes
+	// null on close so reopening the same formula still resets.
+	const [sessionKey, setSessionKey] = useState<string | null>(null);
+	const nextSessionKey = open ? (formula?.id ?? "new") : null;
+	if (nextSessionKey !== sessionKey) {
+		setSessionKey(nextSessionKey);
+		if (nextSessionKey !== null) {
+			setName(formula?.name ?? "");
+			setReturnType(formula?.returnType ?? "text");
+			setExpression(formula?.expression ?? "");
+			setSampleId(undefined);
+		}
+	}
 
 	const selectedSample =
 		sampleRecords.find((r) => r.entityId === sampleId) ?? sampleRecords[0];

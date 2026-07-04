@@ -76,17 +76,17 @@ function StatusLine({ execution }: { execution: ExecutionLike }) {
 
 	const map = {
 		running: {
-			icon: <Loader2 className="size-4 animate-spin text-blue-600" />,
+			icon: <Loader2 className="size-4 animate-spin text-blue-600 dark:text-blue-400" />,
 			text: `Running… ${count} step${count === 1 ? "" : "s"} done`,
 			cls: "text-blue-700 dark:text-blue-300",
 		},
 		completed: {
-			icon: <CheckCircle2 className="size-4 text-emerald-600" />,
+			icon: <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />,
 			text: "Test completed",
 			cls: "text-emerald-700 dark:text-emerald-300",
 		},
 		failed: {
-			icon: <XCircle className="size-4 text-red-600" />,
+			icon: <XCircle className="size-4 text-red-600 dark:text-red-400" />,
 			text: failedText,
 			cls: "text-red-700 dark:text-red-300",
 		},

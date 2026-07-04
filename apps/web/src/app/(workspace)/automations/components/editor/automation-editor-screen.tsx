@@ -19,6 +19,7 @@ import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
 import { runStatusRingClass } from "../../lib/run-status";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 type NodeConfigType =
 	| "condition"
@@ -172,19 +173,19 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				<p className="mt-2 text-sm text-muted-foreground">
 					This automation may have been deleted or you don&apos;t have access to it.
 				</p>
-				<button
-					type="button"
-					onClick={() => router.push("/automations")}
-					className="mt-6 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+				<Button
+					intent="primary"
+					className="mt-6"
+					onPress={() => router.push("/automations")}
 				>
 					Back to Automations
-				</button>
+				</Button>
 			</div>
 		);
 	}
 
 	return (
-		<div className="flex h-screen flex-col">
+		<div className="flex h-svh flex-col md:h-auto md:min-h-0 md:flex-1">
 			<EditorTopBar
 				name={editor.name}
 				description={editor.description}
@@ -204,32 +205,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
 			/>
-			{editor.needsPublish && (
-				<UnpublishedBanner
-					isPublished={editor.isPublished}
-					publishLabel={editor.publishLabel}
-					isPublishing={editor.isPublishing}
-					onPublish={editor.handlePublish}
-				/>
-			)}
 			<div className="flex flex-1 overflow-hidden bg-muted/40">
-				<WorkflowDrawer
-					trigger={editor.trigger}
-					nodes={editor.nodes}
-					rfNodes={editor.layoutedNodes}
-					rfEdges={editor.layoutedEdges}
-					onNavigateToNode={handleNavigateToNode}
-					selectedNodeId={
-						selectedNode && "id" in selectedNode && selectedNode.type !== "placeholder"
-							? selectedNode.id
-							: undefined
-					}
-					open={drawerOpen}
-					onToggle={() => setDrawerOpen((o) => !o)}
-					formulas={editor.formulas}
-					onFormulasChange={editor.onFormulasChange}
-					sampleRecords={editor.sampleRecords}
-				/>
 				<div className="relative flex-1 bg-background">
 					<AutomationFlow
 						nodes={flowNodes}
@@ -240,6 +216,32 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 					/>
+					{/* Floats over the canvas so the dotted background runs behind it. */}
+					<WorkflowDrawer
+						trigger={editor.trigger}
+						nodes={editor.nodes}
+						rfNodes={editor.layoutedNodes}
+						rfEdges={editor.layoutedEdges}
+						onNavigateToNode={handleNavigateToNode}
+						selectedNodeId={
+							selectedNode && "id" in selectedNode && selectedNode.type !== "placeholder"
+								? selectedNode.id
+								: undefined
+						}
+						open={drawerOpen}
+						onToggle={() => setDrawerOpen((o) => !o)}
+						formulas={editor.formulas}
+						onFormulasChange={editor.onFormulasChange}
+						sampleRecords={editor.sampleRecords}
+					/>
+					{editor.needsPublish && (
+						<UnpublishedBanner
+							isPublished={editor.isPublished}
+							publishLabel={editor.publishLabel}
+							isPublishing={editor.isPublishing}
+							onPublish={editor.handlePublish}
+						/>
+					)}
 					{editor.undoBanner && (
 						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
 					)}

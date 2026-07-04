@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { PanelLeft, PanelLeftClose, Zap, Copy, Check, Plus } from "lucide-react";
 import type { Node, Edge } from "@xyflow/react";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { NextStepTree } from "../sidebar/next-step-tree";
 import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
 import { getAvailableVariables, type VariableOption } from "../../lib/variables";
@@ -109,16 +109,15 @@ export function WorkflowDrawer({
 
 	if (!open) {
 		return (
-			<div className="my-3 ml-3 flex w-10 shrink-0 flex-col items-center rounded-xl border border-border bg-card pt-2 shadow-sm">
-				<button
-					type="button"
-					onClick={onToggle}
+			<div className="absolute left-3 top-3 z-10 flex w-10 flex-col items-center rounded-xl border border-border bg-card py-1.5 shadow-sm">
+				<Button
+					intent="plain"
+					size="sq-sm"
+					onPress={onToggle}
 					aria-label="Open workflow panel"
-					title="Open workflow panel"
-					className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<PanelLeft className="h-4 w-4" />
-				</button>
+				</Button>
 				{formulaModalElement}
 			</div>
 		);
@@ -132,18 +131,17 @@ export function WorkflowDrawer({
 	};
 
 	return (
-		<div className="my-3 ml-3 flex w-[280px] shrink-0 flex-col overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
+		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[280px] flex-col overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
 			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
 				<span className="text-sm font-semibold">Workflow</span>
-				<button
-					type="button"
-					onClick={onToggle}
+				<Button
+					intent="plain"
+					size="sq-sm"
+					onPress={onToggle}
 					aria-label="Collapse workflow panel"
-					title="Collapse workflow panel"
-					className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<PanelLeftClose className="h-4 w-4" />
-				</button>
+				</Button>
 			</div>
 
 			{/* Outline */}
@@ -227,20 +225,16 @@ export function WorkflowDrawer({
 					<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 						Resources
 					</span>
-					<button
-						type="button"
-						onClick={() => setFormulaModal({ formula: null })}
-						disabled={formulas.length >= MAX_FORMULAS}
-						title={
-							formulas.length >= MAX_FORMULAS
-								? `Up to ${MAX_FORMULAS} formulas per automation.`
-								: "New formula"
-						}
-						className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+					<Button
+						intent="plain"
+						size="xs"
+						onPress={() => setFormulaModal({ formula: null })}
+						isDisabled={formulas.length >= MAX_FORMULAS}
+						className="text-muted-foreground"
 					>
 						<Plus className="h-3 w-3" />
 						New formula
-					</button>
+					</Button>
 				</div>
 				{formulas.length === 0 ? (
 					<p className="text-sm text-muted-foreground">

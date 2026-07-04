@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { Braces, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -240,14 +241,14 @@ export function ValueInput({
 			</div>
 			<Popover open={open} onOpenChange={setOpen}>
 				<PopoverTrigger asChild>
-					<button
-						type="button"
+					<Button
+						intent="outline"
+						size="sq-md"
 						aria-label="Use a variable"
-						title="Use a variable"
-						className="flex items-center justify-center h-9 w-9 shrink-0 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none transition-colors cursor-pointer"
+						className="shrink-0"
 					>
 						<Braces className="h-4 w-4" />
-					</button>
+					</Button>
 				</PopoverTrigger>
 				<PopoverContent align="end" className="w-72 p-0">
 					<Command>
@@ -306,18 +307,15 @@ export function VariableInsertButton({
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<button
-					type="button"
+				<Button
+					intent="outline"
+					size="xs"
 					aria-label="Insert a variable"
-					title="Insert a variable"
-					className={cn(
-						"inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-border bg-background text-xs font-medium text-muted-foreground shadow-xs hover:text-foreground hover:bg-accent focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none transition-colors cursor-pointer",
-						className
-					)}
+					className={cn("text-muted-foreground", className)}
 				>
 					<Braces className="h-3.5 w-3.5" />
 					Insert variable
-				</button>
+				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-72 p-0">
 				<Command>

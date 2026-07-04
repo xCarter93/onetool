@@ -19,6 +19,7 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export type StepGroupItem = {
 	type: string;
@@ -166,14 +167,15 @@ export function StepPicker({ onSelect, onClose }: StepPickerProps) {
 					Choose what happens next
 				</p>
 				{onClose && (
-					<button
-						type="button"
-						onClick={onClose}
-						className="absolute top-0 right-0 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+					<Button
+						intent="plain"
+						size="sq-xs"
+						onPress={onClose}
+						className="absolute top-0 right-0"
 						aria-label="Close sidebar"
 					>
 						<X className="h-4 w-4" />
-					</button>
+					</Button>
 				)}
 			</div>
 
