@@ -24,6 +24,9 @@ import { systemMutation } from "./lib/factories";
 export const EVENT_TYPES = {
 	// Entity status change events
 	ENTITY_STATUS_CHANGED: "entity.status_changed",
+	// Entity lifecycle events
+	ENTITY_RECORD_CREATED: "entity.record_created",
+	ENTITY_RECORD_UPDATED: "entity.record_updated",
 	// Automation events
 	AUTOMATION_TRIGGERED: "automation.triggered",
 	AUTOMATION_COMPLETED: "automation.completed",
@@ -76,8 +79,11 @@ export const publishEvent = systemMutation({
 			attemptCount: 0,
 		});
 
-		// Schedule immediate processing
-		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		// Schedule immediate processing.
+		// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
+		if (!process.env.VITEST) {
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		}
 
 		return eventId;
 	},
@@ -130,6 +136,75 @@ export async function emitStatusChangeEvent(
 }
 
 /**
+ * Helper function to publish record-created events from create mutations
+ */
+export async function emitRecordCreatedEvent(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	entityType: EntityType,
+	entityId: string,
+	source: string,
+	correlationId?: string
+): Promise<Id<"domainEvents">> {
+	const eventId = await ctx.db.insert("domainEvents", {
+		orgId,
+		eventType: EVENT_TYPES.ENTITY_RECORD_CREATED,
+		eventSource: source,
+		payload: {
+			entityType,
+			entityId,
+		},
+		status: "pending",
+		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
+		createdAt: Date.now(),
+		attemptCount: 0,
+	});
+
+	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
+	if (!process.env.VITEST) {
+		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+	}
+
+	return eventId;
+}
+
+/**
+ * Helper function to publish record-updated events from update mutations
+ * changedFields lists the patch keys actually applied.
+ */
+export async function emitRecordUpdatedEvent(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	entityType: EntityType,
+	entityId: string,
+	changedFields: string[],
+	source: string,
+	correlationId?: string
+): Promise<Id<"domainEvents">> {
+	const eventId = await ctx.db.insert("domainEvents", {
+		orgId,
+		eventType: EVENT_TYPES.ENTITY_RECORD_UPDATED,
+		eventSource: source,
+		payload: {
+			entityType,
+			entityId,
+			metadata: { changedFields },
+		},
+		status: "pending",
+		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
+		createdAt: Date.now(),
+		attemptCount: 0,
+	});
+
+	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
+	if (!process.env.VITEST) {
+		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+	}
+
+	return eventId;
+}
+
+/**
  * Process pending events from the queue
  * This is the event loop that picks up and dispatches events
  */
@@ -137,10 +212,9 @@ export const processEvents = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		// Get pending events, oldest first
-		// Note: Since by_org_status requires orgId, we query all pending events across orgs
 		const pendingEvents = await ctx.db
 			.query("domainEvents")
-			.filter((q) => q.eq(q.field("status"), "pending"))
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.order("asc")
 			.take(BATCH_SIZE);
 
@@ -200,7 +274,7 @@ export const processEvents = internalMutation({
 		// If there are more events, schedule another batch
 		const remainingEvents = await ctx.db
 			.query("domainEvents")
-			.filter((q) => q.eq(q.field("status"), "pending"))
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.first();
 
 		if (remainingEvents) {
@@ -245,6 +319,23 @@ async function dispatchEvent(
 					// Pass execution chain for cascading automations
 					executionChain: metadata?.executionChain,
 					recursionDepth: metadata?.recursionDepth,
+				}
+			);
+			break;
+		}
+
+		case EVENT_TYPES.ENTITY_RECORD_CREATED:
+		case EVENT_TYPES.ENTITY_RECORD_UPDATED: {
+			// Route to the automation executor, mirroring the status_changed
+			// dispatch above. Record events carry their own cascade context
+			// (executionChain/recursionDepth) in payload.metadata, so only
+			// eventId/orgId are needed here.
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.handleRecordEvent,
+				{
+					eventId: event._id,
+					orgId: event.orgId,
 				}
 			);
 			break;
@@ -303,7 +394,7 @@ export const replayFailedEvents = internalMutation({
 			// Query all failed events without org filter
 			failedEvents = await ctx.db
 				.query("domainEvents")
-				.filter((q) => q.eq(q.field("status"), "failed"))
+				.withIndex("by_status", (q) => q.eq("status", "failed"))
 				.take(args.limit || 100);
 		}
 
@@ -344,11 +435,8 @@ export const cleanupOldEvents = internalMutation({
 		// Only delete completed events
 		const oldEvents = await ctx.db
 			.query("domainEvents")
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "completed"),
-					q.lt(q.field("createdAt"), cutoffTime)
-				)
+			.withIndex("by_status", (q) =>
+				q.eq("status", "completed").lt("createdAt", cutoffTime)
 			)
 			.take(batchSize);
 

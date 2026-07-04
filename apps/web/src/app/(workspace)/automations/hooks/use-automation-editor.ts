@@ -3,39 +3,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import type { Edge, Node } from "@xyflow/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import {
-	STATUS_OPTIONS,
+	getStatusOptions,
+	type AutomationAction,
+	type AutomationTrigger,
+	type FormulaResource,
 	type TriggerConfig,
 	type TriggerType,
-} from "../components/trigger-node";
-import type {
-	ActionConfig,
-	ConditionConfig,
-	FetchConfig,
-	WorkflowNode,
+	type WorkflowNode,
 } from "../lib/node-types";
-import { FIELD_OPTIONS } from "../lib/node-types";
 import {
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
 	automationToReactFlow,
 	isTerminalId,
 	reactFlowToFlatArray,
+	type EditorNode,
+	type PlaceholderEntry,
 } from "../lib/flow-adapter";
 import { collectLoopBody, collectSubtree, findParent } from "../lib/graph-utils";
+import {
+	legacyNodeToV2,
+	legacyTriggerToDraft,
+	type DbWorkflowNode,
+} from "../lib/legacy-load";
 import {
 	getValidationToastMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
+import { definitionSignature } from "../lib/editor-signature";
+import { computeNodeStatuses } from "../lib/run-status";
+
+/** A record the test/manual runner can target. */
+export type RunRecordRef = {
+	entityType: "client" | "project" | "quote" | "invoice" | "task";
+	entityId: string;
+};
 
 type DeletedState = {
-	deletedNodes: WorkflowNode[];
+	deletedNodes: EditorNode[];
 	parentId: string | null;
-	branch: "next" | "else" | null;
+	branch: "next" | "else" | "body" | null;
 	reconnectedChildId?: string;
 	previousParentPointer?: string;
 	toastMessage: string;
@@ -46,55 +57,15 @@ function generateId(): string {
 	return `node_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
-function normalizeTriggerForSave(trigger: TriggerConfig) {
-	const triggerType = trigger.type || "status_changed";
-
-	switch (triggerType) {
-		case "record_created":
-			return {
-				type: "record_created" as const,
-				objectType: trigger.objectType,
-			};
-		case "record_updated":
-			return {
-				type: "record_updated" as const,
-				objectType: trigger.objectType,
-				...(trigger.field ? { field: trigger.field } : {}),
-			};
-		case "email_received":
-			return {
-				type: "email_received" as const,
-				objectType: "client" as const,
-			};
-		case "scheduled":
-			return {
-				type: "scheduled" as const,
-				objectType: trigger.objectType,
-				schedule: trigger.schedule || {
-					frequency: "daily" as const,
-					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-				},
-			};
-		case "status_changed":
-		default:
-			return {
-				type: "status_changed" as const,
-				objectType: trigger.objectType,
-				fromStatus: trigger.fromStatus,
-				toStatus: trigger.toStatus!,
-			};
-	}
-}
-
 function buildTriggerFromType(
 	triggerType: string,
 	currentTrigger: TriggerConfig | null
 ): TriggerConfig {
-	const objectType = currentTrigger?.objectType || "quote";
+	const objectType = currentTrigger?.objectType ?? "quote";
 	const nextType = triggerType as TriggerType;
 
-	if (nextType === "email_received") {
-		return { type: nextType, objectType: "client" };
+	if (nextType === "record_created" || nextType === "record_updated") {
+		return { type: nextType, objectType };
 	}
 
 	if (nextType === "scheduled") {
@@ -109,76 +80,59 @@ function buildTriggerFromType(
 		};
 	}
 
-	if (nextType === "record_created" || nextType === "record_updated") {
-		return {
-			type: nextType,
-			objectType,
-		};
-	}
-
-	const statusOptions = STATUS_OPTIONS[objectType] || [];
+	const statusOptions = getStatusOptions(objectType);
 	return {
 		type: "status_changed",
 		objectType,
-		toStatus: statusOptions[0]?.value || "",
+		toStatus: statusOptions[0]?.value ?? "",
 	};
 }
 
-function buildConditionNode(
-	id: string,
-	trigger: TriggerConfig,
-	downstreamId?: string
-): WorkflowNode {
-	const fieldOptions = FIELD_OPTIONS[trigger.objectType] || [];
-	const config: ConditionConfig = {
-		field: fieldOptions[0]?.value || "status",
-		operator: "equals",
-		value: "",
-	};
-
+function buildConditionNode(id: string): WorkflowNode {
 	return {
 		id,
 		type: "condition",
-		config,
-		condition: config,
-		nextNodeId: downstreamId,
+		config: {
+			kind: "condition",
+			logic: "and",
+			groups: [{ logic: "and", rules: [] }],
+		},
 	};
+}
+
+function buildAction(actionType?: string): AutomationAction {
+	switch (actionType) {
+		case "create_task":
+			return { type: "create_task", title: { kind: "static", value: "" } };
+		case "send_notification":
+			return { type: "send_notification", recipient: "org_admins", message: "" };
+		case "send_team_message":
+			return {
+				type: "send_team_message",
+				recipients: "all_members",
+				title: "",
+				message: "",
+			};
+		case "update_field":
+		default:
+			return {
+				type: "update_field",
+				target: "self",
+				field: "",
+				value: { kind: "static", value: null },
+			};
+	}
 }
 
 function buildActionNode(
 	id: string,
-	trigger: TriggerConfig,
-	actionType: ActionConfig["actionType"] = "update_field",
-	downstreamId?: string
+	downstreamId?: string,
+	actionType?: string
 ): WorkflowNode {
-	const statusOptions = STATUS_OPTIONS[trigger.objectType] || [];
-	const config: ActionConfig = {
-		targetType: "self",
-		actionType,
-		newStatus: actionType === "update_field" ? statusOptions[0]?.value || "" : "",
-		...(actionType === "send_notification"
-			? { notificationMessage: "", notificationRecipient: "" }
-			: {}),
-		...(actionType === "create_record"
-			? { createRecordType: "task", createRecordFields: {} }
-			: {}),
-	};
-
 	return {
 		id,
 		type: "action",
-		config,
-		action: {
-			targetType: config.targetType,
-			actionType,
-			newStatus: config.newStatus || "",
-			field: config.field,
-			value: config.value,
-			notificationRecipient: config.notificationRecipient,
-			notificationMessage: config.notificationMessage,
-			createRecordType: config.createRecordType,
-			createRecordFields: config.createRecordFields,
-		},
+		config: { kind: "action", action: buildAction(actionType) },
 		nextNodeId: downstreamId,
 	};
 }
@@ -188,159 +142,199 @@ function buildFetchNode(
 	trigger: TriggerConfig,
 	downstreamId?: string
 ): WorkflowNode {
-	const config: FetchConfig = {
-		entityType: trigger.objectType,
-	};
-
 	return {
 		id,
 		type: "fetch_records",
-		config,
+		config: {
+			kind: "fetch_records",
+			objectType: trigger.objectType ?? "client",
+			filters: [],
+		},
 		nextNodeId: downstreamId,
-	} as WorkflowNode;
+	};
 }
 
-function buildLoopNode(
-	id: string,
-	trigger: TriggerConfig,
-	downstreamId?: string
-): WorkflowNode {
-	const config: FetchConfig = {
-		entityType: trigger.objectType,
-	};
+/** Config (sourceNodeId) is set once the user picks a fetch_records step in the panel. */
+function buildLoopNode(id: string): WorkflowNode {
+	return { id, type: "loop" };
+}
 
+/** sourceNodeId/field are chosen once the user picks a Find records step in the panel. */
+function buildAggregateNode(id: string, downstreamId?: string): WorkflowNode {
 	return {
 		id,
-		type: "loop",
-		config,
-		elseNodeId: downstreamId,
-	} as WorkflowNode;
+		type: "aggregate",
+		config: { kind: "aggregate", sourceNodeId: "", field: "", op: "sum" },
+		nextNodeId: downstreamId,
+	};
 }
 
-function syncNodeForLegacySave(
-	node: WorkflowNode,
-	updates: Partial<WorkflowNode>
-): WorkflowNode {
-	const nextNode = { ...node, ...updates } as WorkflowNode & {
-		config?: unknown;
-		condition?: ConditionConfig;
-		action?: {
-			targetType: "self" | "project" | "client" | "quote" | "invoice";
-			actionType:
-				| "update_status"
-				| "update_field"
-				| "send_notification"
-				| "create_record";
-			newStatus: string;
-			field?: string;
-			value?: unknown;
-			notificationRecipient?: string;
-			notificationMessage?: string;
-			createRecordType?: "task" | "project";
-			createRecordFields?: Record<string, unknown>;
-		};
-		fetchConfig?: FetchConfig;
+function buildAdjustTimeNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "adjust_time",
+		config: {
+			kind: "adjust_time",
+			// Default to "now" (an always-in-scope global) so a fresh node
+			// produces a meaningful time rather than 1970.
+			base: { kind: "var", path: "workflow.now" },
+			amount: 1,
+			unit: "days",
+			direction: "add",
+		},
+		nextNodeId: downstreamId,
 	};
+}
 
-	if (nextNode.type === "condition") {
-		const config =
-			(updates as { config?: ConditionConfig }).config ||
-			(nextNode.config as ConditionConfig | undefined) ||
-			nextNode.condition;
-		if (config) {
-			nextNode.config = config;
-			nextNode.condition = config;
-		}
-	}
+function buildDelayNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "delay",
+		config: { kind: "delay", amount: 1, unit: "hours" },
+		nextNodeId: downstreamId,
+	};
+}
 
-	if (nextNode.type === "action") {
-		const config =
-			(updates as { config?: ActionConfig }).config ||
-			(nextNode.config as ActionConfig | undefined) ||
-			(nextNode.action as ActionConfig | undefined);
-		if (config) {
-			nextNode.config = config;
-			nextNode.action = {
-				targetType: config.targetType || "self",
-				actionType: (config.actionType || "update_field") as
-					| "update_status"
-					| "update_field"
-					| "send_notification"
-					| "create_record",
-				newStatus: typeof config.newStatus === "string" ? config.newStatus : "",
-				field: config.field,
-				value: config.value,
-				notificationRecipient: config.notificationRecipient,
-				notificationMessage: config.notificationMessage,
-				createRecordType: config.createRecordType,
-				createRecordFields: config.createRecordFields,
+function buildDelayUntilNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "delay_until",
+		config: { kind: "delay_until", until: { kind: "static", value: "" } },
+		nextNodeId: downstreamId,
+	};
+}
+
+function buildEndNode(id: string): WorkflowNode {
+	return { id, type: "end", config: { kind: "end" } };
+}
+
+/** Build the v2 trigger arg accepted by automations.create/update. */
+function buildTriggerForSave(trigger: TriggerConfig) {
+	const objectType = trigger.objectType ?? "client";
+
+	switch (trigger.type) {
+		case "record_created":
+			return { type: "record_created" as const, objectType };
+		case "record_updated":
+			return {
+				type: "record_updated" as const,
+				objectType,
+				...(trigger.fields && trigger.fields.length > 0
+					? { fields: trigger.fields }
+					: {}),
 			};
-		}
+		case "scheduled":
+			return {
+				type: "scheduled" as const,
+				objectType,
+				schedule: trigger.schedule ?? {
+					frequency: "daily" as const,
+					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+				},
+			};
+		case "status_changed":
+		default:
+			return {
+				type: "status_changed" as const,
+				objectType,
+				...(trigger.fromStatus ? { fromStatus: trigger.fromStatus } : {}),
+				toStatus: trigger.toStatus ?? "",
+			};
 	}
+}
 
-	if (nextNode.type === "fetch_records") {
-		const config =
-			(updates as { config?: FetchConfig }).config ||
-			(nextNode.config as FetchConfig | undefined) ||
-			nextNode.fetchConfig;
-		if (config) {
-			nextNode.config = config;
-			nextNode.fetchConfig = config;
+/** Narrow serialized nodes to the backend's config-required shape. Save validation guarantees every node is complete before this runs. */
+function toSavableNodes(nodes: WorkflowNode[]) {
+	return nodes.map((node) => {
+		if (!node.config) {
+			throw new Error(`Step "${node.id}" is not fully configured`);
 		}
-	}
-
-	return nextNode as WorkflowNode;
+		return {
+			id: node.id,
+			type: node.type,
+			config: node.config,
+			...(node.nextNodeId !== undefined ? { nextNodeId: node.nextNodeId } : {}),
+			...(node.elseNodeId !== undefined ? { elseNodeId: node.elseNodeId } : {}),
+			...(node.bodyStartNodeId !== undefined
+				? { bodyStartNodeId: node.bodyStartNodeId }
+				: {}),
+			...(node.position !== undefined ? { position: node.position } : {}),
+		};
+	});
 }
 
 export function useAutomationEditor(automationId: string | null) {
 	const router = useRouter();
 	const toast = useToast();
+
+	// The automation id may be minted mid-session when a brand-new automation
+	// is first saved; from then on we operate on that id.
+	const [currentId, setCurrentId] = useState<string | null>(automationId);
+	// Reseed currentId if the automationId prop changes to a different id (e.g.
+	// navigating between automations without a remount). Render-time prev-prop
+	// guard so the unchanged-prop path is a no-op.
+	const [prevAutomationId, setPrevAutomationId] = useState<string | null>(
+		automationId
+	);
+	if (automationId !== prevAutomationId) {
+		setPrevAutomationId(automationId);
+		setCurrentId(automationId);
+	}
+	const effectiveId = currentId ?? automationId;
+
 	const existingAutomation = useQuery(
 		api.automations.get,
-		automationId ? { id: automationId as Id<"workflowAutomations"> } : "skip"
+		effectiveId
+			? { id: effectiveId as Id<"workflowAutomations"> }
+			: "skip"
 	);
 	const createAutomation = useMutation(api.automations.create);
 	const updateAutomation = useMutation(api.automations.update);
+	const publishAutomation = useMutation(api.automations.publish);
+	const startTestRun = useMutation(api.automationExecutor.startTestRun);
+	const cancelTestRun = useMutation(api.automationExecutor.cancelTestRun);
 
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [trigger, setTrigger] = useState<TriggerConfig | null>(null);
-	const [nodes, setNodes] = useState<WorkflowNode[]>([]);
-	const [isActive, setIsActive] = useState(false);
+	const [nodes, setNodes] = useState<EditorNode[]>([]);
+	const [formulas, setFormulas] = useState<FormulaResource[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isPublishing, setIsPublishing] = useState(false);
+	const [isStartingTest, setIsStartingTest] = useState(false);
+	const [activeExecutionId, setActiveExecutionId] =
+		useState<Id<"workflowExecutions"> | null>(null);
 	const [hasInitialized, setHasInitialized] = useState(false);
 	const [deletedNodeState, setDeletedNodeState] = useState<DeletedState | null>(null);
 	const [showClearConfirm, setShowClearConfirm] = useState(false);
 	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Signature of the last saved definition, for dirty detection.
+	const [savedSignature, setSavedSignature] = useState<string | null>(null);
 
 	// Initialize form state once the automation loads. Runs during render via
 	// the prev-value pattern; hasInitialized ensures it fires only once so later
-	// realtime updates don't clobber in-progress edits.
+	// realtime updates don't clobber in-progress edits. Rows that predate the
+	// v2 migration are converted at load time (see lib/legacy-load.ts).
 	if (existingAutomation && !hasInitialized) {
 		setHasInitialized(true);
 		setName(existingAutomation.name);
 		setDescription(existingAutomation.description || "");
-
-		const savedTrigger = existingAutomation.trigger as Record<string, unknown>;
-		if ("schedule" in savedTrigger && savedTrigger.type === "scheduled") {
-			setTrigger({
-				type: "scheduled",
-				objectType:
-					(savedTrigger.objectType as TriggerConfig["objectType"]) || "client",
-				schedule: savedTrigger.schedule as TriggerConfig["schedule"],
-			});
-		} else if ("objectType" in savedTrigger && savedTrigger.objectType) {
-			setTrigger({
-				type: (savedTrigger.type as TriggerConfig["type"]) || "status_changed",
-				objectType: savedTrigger.objectType as TriggerConfig["objectType"],
-				fromStatus: savedTrigger.fromStatus as string | undefined,
-				toStatus: savedTrigger.toStatus as string | undefined,
-				field: savedTrigger.field as string | undefined,
-			});
-		}
-
-		setNodes(existingAutomation.nodes as WorkflowNode[]);
-		setIsActive(existingAutomation.isActive ?? false);
+		setTrigger(
+			legacyTriggerToDraft(existingAutomation.trigger as AutomationTrigger)
+		);
+		setNodes(
+			(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2)
+		);
+		const loadedFormulas =
+			(existingAutomation.formulas as FormulaResource[] | undefined) ?? [];
+		setFormulas(loadedFormulas);
+		setSavedSignature(
+			definitionSignature(
+				legacyTriggerToDraft(existingAutomation.trigger as AutomationTrigger),
+				(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2),
+				loadedFormulas
+			)
+		);
 	}
 
 	useEffect(() => {
@@ -353,6 +347,8 @@ export function useAutomationEditor(automationId: string | null) {
 
 	const clearUndoState = useCallback(() => {
 		setDeletedNodeState(null);
+		// Editing invalidates any run currently painted on the canvas.
+		setActiveExecutionId(null);
 		if (undoTimeoutRef.current) {
 			clearTimeout(undoTimeoutRef.current);
 			undoTimeoutRef.current = null;
@@ -362,7 +358,7 @@ export function useAutomationEditor(automationId: string | null) {
 	const rawFlow = useMemo(() => automationToReactFlow(trigger, nodes), [nodes, trigger]);
 
 	const handleInsertNode = useCallback(
-		(edgeId: string, nodeType: string) => {
+		(edgeId: string, nodeType: string, actionType?: string) => {
 			clearUndoState();
 			if (!trigger) return null;
 
@@ -372,7 +368,10 @@ export function useAutomationEditor(automationId: string | null) {
 			const sourceId = edge.source;
 			const targetId = edge.target;
 			const branchType = (edge.data?.branchType as string) || "next";
-			const isElseBranch = branchType === "no" || branchType === "after";
+			// "no" (condition) -> elseNodeId; "each" (loop body entry) -> bodyStartNodeId;
+			// everything else (incl. loop's "after") is a plain nextNodeId continuation.
+			const isElseBranch = branchType === "no";
+			const isBodyBranch = branchType === "each";
 			const isTerminalTarget = isTerminalId(targetId);
 			const realTargetId =
 				!isTerminalTarget &&
@@ -384,69 +383,64 @@ export function useAutomationEditor(automationId: string | null) {
 			const newId = generateId();
 			const downstreamId = nodeType === "end" ? undefined : realTargetId;
 
-			let newNodes: WorkflowNode[];
+			let newNodes: EditorNode[];
 			switch (nodeType) {
 				case "condition": {
 					const yesPlaceholderId = generateId();
 					const noPlaceholderId = generateId();
-					const condNode = buildConditionNode(newId, trigger);
+					const condNode = buildConditionNode(newId);
 					condNode.nextNodeId = yesPlaceholderId;
 					condNode.elseNodeId = noPlaceholderId;
-					newNodes = [
-						condNode,
-						{ id: yesPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
-						{ id: noPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
-					];
+					const yesPlaceholder: PlaceholderEntry = {
+						id: yesPlaceholderId,
+						type: "placeholder",
+						nextNodeId: downstreamId,
+					};
+					const noPlaceholder: PlaceholderEntry = {
+						id: noPlaceholderId,
+						type: "placeholder",
+					};
+					newNodes = [condNode, yesPlaceholder, noPlaceholder];
 					break;
 				}
 				case "fetch_records":
 					newNodes = [buildFetchNode(newId, trigger, downstreamId)];
 					break;
 				case "loop": {
-					const eachPlaceholderId = generateId();
-					const afterPlaceholderId = generateId();
-					const loopNode = buildLoopNode(newId, trigger);
-					loopNode.nextNodeId = eachPlaceholderId;
-					loopNode.elseNodeId = afterPlaceholderId;
-					newNodes = [
-						loopNode,
-						{ id: eachPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
-						{ id: afterPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
-					];
+					const bodyStartId = generateId();
+					const loopNode = buildLoopNode(newId);
+					loopNode.bodyStartNodeId = bodyStartId;
+					loopNode.nextNodeId = downstreamId;
+					const bodyStartPlaceholder: PlaceholderEntry = {
+						id: bodyStartId,
+						type: "placeholder",
+					};
+					newNodes = [loopNode, bodyStartPlaceholder];
 					break;
 				}
+				case "aggregate":
+					newNodes = [buildAggregateNode(newId, downstreamId)];
+					break;
+				case "adjust_time":
+					newNodes = [buildAdjustTimeNode(newId, downstreamId)];
+					break;
+				case "delay":
+					newNodes = [buildDelayNode(newId, downstreamId)];
+					break;
+				case "delay_until":
+					newNodes = [buildDelayUntilNode(newId, downstreamId)];
+					break;
 				case "end":
-					newNodes = [{
-						id: newId,
-						type: "end",
-					}];
+					newNodes = [buildEndNode(newId)];
 					break;
 				case "placeholder":
-					newNodes = [{
-						id: newId,
-						type: "placeholder",
-						nextNodeId: downstreamId,
-					} as unknown as WorkflowNode];
-					break;
-				case "send_notification":
-					newNodes = [buildActionNode(
-						newId,
-						trigger,
-						"send_notification",
-						downstreamId
-					)];
-					break;
-				case "create_record":
-					newNodes = [buildActionNode(
-						newId,
-						trigger,
-						"create_record",
-						downstreamId
-					)];
+					newNodes = [
+						{ id: newId, type: "placeholder", nextNodeId: downstreamId },
+					];
 					break;
 				case "action":
 				default:
-					newNodes = [buildActionNode(newId, trigger, "update_field", downstreamId)];
+					newNodes = [buildActionNode(newId, downstreamId, actionType)];
 					break;
 			}
 
@@ -459,10 +453,13 @@ export function useAutomationEditor(automationId: string | null) {
 					if (node.id !== sourceId) {
 						return node;
 					}
-					if (isElseBranch) {
-						return { ...node, elseNodeId: newId } as WorkflowNode;
+					if (isBodyBranch) {
+						return { ...node, bodyStartNodeId: newId };
 					}
-					return { ...node, nextNodeId: newId } as WorkflowNode;
+					if (isElseBranch) {
+						return { ...node, elseNodeId: newId };
+					}
+					return { ...node, nextNodeId: newId };
 				});
 			});
 
@@ -472,69 +469,54 @@ export function useAutomationEditor(automationId: string | null) {
 	);
 
 	const handleSelectStepType = useCallback(
-		(nodeId: string, stepType: string) => {
+		(nodeId: string, stepType: string, actionType?: string) => {
 			clearUndoState();
 			if (!trigger) return;
 
 			setNodes((prev) => {
-				const extraNodes: WorkflowNode[] = [];
-				const mapped = prev.map((node) => {
-					const editorNode = node as unknown as {
-						type: string;
-						id: string;
-						nextNodeId?: string;
-					};
-					if (editorNode.id !== nodeId || editorNode.type !== "placeholder") {
+				const extraNodes: EditorNode[] = [];
+				const mapped = prev.map((node): EditorNode => {
+					if (node.id !== nodeId || node.type !== "placeholder") {
 						return node;
 					}
 
-					const downstreamId = editorNode.nextNodeId;
+					const downstreamId = node.nextNodeId;
 					switch (stepType) {
 						case "condition": {
 							const yesPlaceholderId = generateId();
 							const noPlaceholderId = generateId();
-							const condNode = buildConditionNode(nodeId, trigger);
+							const condNode = buildConditionNode(nodeId);
 							condNode.nextNodeId = yesPlaceholderId;
 							condNode.elseNodeId = noPlaceholderId;
 							extraNodes.push(
-								{ id: yesPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
-								{ id: noPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
+								{ id: yesPlaceholderId, type: "placeholder", nextNodeId: downstreamId },
+								{ id: noPlaceholderId, type: "placeholder" }
 							);
 							return condNode;
 						}
 						case "loop": {
-							const eachPlaceholderId = generateId();
-							const afterPlaceholderId = generateId();
-							const loopNode = buildLoopNode(nodeId, trigger);
-							loopNode.nextNodeId = eachPlaceholderId;
-							loopNode.elseNodeId = afterPlaceholderId;
-							extraNodes.push(
-								{ id: eachPlaceholderId, type: "placeholder" } as unknown as WorkflowNode,
-								{ id: afterPlaceholderId, type: "placeholder", nextNodeId: downstreamId } as unknown as WorkflowNode,
-							);
+							const bodyStartId = generateId();
+							const loopNode = buildLoopNode(nodeId);
+							loopNode.bodyStartNodeId = bodyStartId;
+							loopNode.nextNodeId = downstreamId;
+							extraNodes.push({ id: bodyStartId, type: "placeholder" });
 							return loopNode;
 						}
 						case "fetch_records":
 							return buildFetchNode(nodeId, trigger, downstreamId);
+						case "aggregate":
+							return buildAggregateNode(nodeId, downstreamId);
+						case "adjust_time":
+							return buildAdjustTimeNode(nodeId, downstreamId);
+						case "delay":
+							return buildDelayNode(nodeId, downstreamId);
+						case "delay_until":
+							return buildDelayUntilNode(nodeId, downstreamId);
 						case "end":
-							return { id: nodeId, type: "end" } as WorkflowNode;
-						case "send_notification":
-							return buildActionNode(
-								nodeId,
-								trigger,
-								"send_notification",
-								downstreamId
-							);
-						case "create_record":
-							return buildActionNode(
-								nodeId,
-								trigger,
-								"create_record",
-								downstreamId
-							);
+							return buildEndNode(nodeId);
 						case "action":
 						default:
-							return buildActionNode(nodeId, trigger, "update_field", downstreamId);
+							return buildActionNode(nodeId, downstreamId, actionType);
 					}
 				});
 				return [...mapped, ...extraNodes];
@@ -547,9 +529,10 @@ export function useAutomationEditor(automationId: string | null) {
 		(nodeId: string, updates: Partial<WorkflowNode>) => {
 			clearUndoState();
 			setNodes((prev) =>
-				prev.map((node) =>
-					node.id === nodeId ? syncNodeForLegacySave(node, updates) : node
-				)
+				prev.map((node) => {
+					if (node.id !== nodeId || node.type === "placeholder") return node;
+					return { ...node, ...updates };
+				})
 			);
 		},
 		[clearUndoState]
@@ -591,6 +574,10 @@ export function useAutomationEditor(automationId: string | null) {
 				return;
 			}
 
+			// Deleting changes the graph; drop any stale run overlay. Note: NOT
+			// clearUndoState() — that would wipe the undo snapshot set below.
+			setActiveExecutionId(null);
+
 			if (nodeToDelete.type === "condition") {
 				const subtreeIds = collectSubtree(nodeId, nodes);
 				const deletedNodes = nodes.filter((node) => subtreeIds.has(node.id));
@@ -599,9 +586,9 @@ export function useAutomationEditor(automationId: string | null) {
 					const remaining = prev.filter((node) => !subtreeIds.has(node.id));
 					return remaining.map((node) => {
 						if (node.id !== parentId) return node;
-						return branch === "else"
-							? ({ ...node, elseNodeId: undefined } as WorkflowNode)
-							: ({ ...node, nextNodeId: undefined } as WorkflowNode);
+						if (branch === "else") return { ...node, elseNodeId: undefined };
+						if (branch === "body") return { ...node, bodyStartNodeId: undefined };
+						return { ...node, nextNodeId: undefined };
 					});
 				});
 
@@ -620,15 +607,15 @@ export function useAutomationEditor(automationId: string | null) {
 			if (nodeToDelete.type === "loop") {
 				const bodyIds = collectLoopBody(nodeId, nodes);
 				const deletedNodes = nodes.filter((node) => bodyIds.has(node.id));
-				const afterLastChildId = nodeToDelete.elseNodeId;
+				const afterLastChildId = nodeToDelete.nextNodeId;
 
 				setNodes((prev) => {
 					const remaining = prev.filter((node) => !bodyIds.has(node.id));
 					return remaining.map((node) => {
 						if (node.id !== parentId) return node;
-						return branch === "else"
-							? ({ ...node, elseNodeId: afterLastChildId } as WorkflowNode)
-							: ({ ...node, nextNodeId: afterLastChildId } as WorkflowNode);
+						if (branch === "else") return { ...node, elseNodeId: afterLastChildId };
+						if (branch === "body") return { ...node, bodyStartNodeId: afterLastChildId };
+						return { ...node, nextNodeId: afterLastChildId };
 					});
 				});
 
@@ -650,16 +637,18 @@ export function useAutomationEditor(automationId: string | null) {
 				const remaining = prev.filter((node) => node.id !== nodeId);
 				return remaining.map((node) => {
 					if (node.id !== parentId) return node;
-					return branch === "else"
-						? ({ ...node, elseNodeId: childNodeId } as WorkflowNode)
-						: ({ ...node, nextNodeId: childNodeId } as WorkflowNode);
+					if (branch === "else") return { ...node, elseNodeId: childNodeId };
+					if (branch === "body") return { ...node, bodyStartNodeId: childNodeId };
+					return { ...node, nextNodeId: childNodeId };
 				});
 			});
 
 			const label =
 				nodeToDelete.type === "fetch_records"
 					? "Fetch"
-					: nodeToDelete.type.charAt(0).toUpperCase() + nodeToDelete.type.slice(1);
+					: nodeToDelete.type === "placeholder"
+						? "Step"
+						: nodeToDelete.type.charAt(0).toUpperCase() + nodeToDelete.type.slice(1);
 
 			setDeletedNodeState({
 				deletedNodes: [nodeToDelete],
@@ -704,9 +693,10 @@ export function useAutomationEditor(automationId: string | null) {
 			if (parentId && previousParentPointer) {
 				updated = updated.map((node) => {
 					if (node.id !== parentId) return node;
-					return branch === "else"
-						? ({ ...node, elseNodeId: previousParentPointer } as WorkflowNode)
-						: ({ ...node, nextNodeId: previousParentPointer } as WorkflowNode);
+					if (branch === "else") return { ...node, elseNodeId: previousParentPointer };
+					if (branch === "body")
+						return { ...node, bodyStartNodeId: previousParentPointer };
+					return { ...node, nextNodeId: previousParentPointer };
 				});
 			}
 			return updated;
@@ -720,9 +710,7 @@ export function useAutomationEditor(automationId: string | null) {
 		(nodeId: string, position: { x: number; y: number }) => {
 			// Update internal workflow nodes with new drag position for persistence
 			setNodes((prev) =>
-				prev.map((n) =>
-					n.id === nodeId ? ({ ...n, position } as WorkflowNode) : n
-				)
+				prev.map((n) => (n.id === nodeId ? { ...n, position } : n))
 			);
 		},
 		[]
@@ -736,66 +724,115 @@ export function useAutomationEditor(automationId: string | null) {
 	const layoutedNodes = rawFlow.nodes;
 	const layoutedEdges = rawFlow.edges;
 
-	const handleSave = useCallback(async () => {
+	// Backend-shape serialization of the current working copy (drops placeholders).
+	const serialized = useMemo(
+		() => reactFlowToFlatArray(layoutedNodes, layoutedEdges),
+		[layoutedNodes, layoutedEdges]
+	);
+	const workingSignature = useMemo(
+		() => definitionSignature(serialized.trigger, serialized.nodes, formulas),
+		[serialized, formulas]
+	);
+
+	// Lifecycle + publish state derived from the loaded row and the working copy.
+	const status: "draft" | "active" | "paused" =
+		existingAutomation?.status ?? "draft";
+	const isPublished = !!existingAutomation?.publishedSnapshot;
+	const hasSteps = serialized.nodes.length > 0;
+	const isDirty =
+		savedSignature !== null && savedSignature !== workingSignature;
+	const publishedSignature = existingAutomation?.publishedSnapshot
+		? definitionSignature(
+				legacyTriggerToDraft(
+					existingAutomation.publishedSnapshot.trigger as AutomationTrigger
+				),
+				(existingAutomation.publishedSnapshot.nodes as DbWorkflowNode[]).map(
+					legacyNodeToV2
+				),
+				(existingAutomation.publishedSnapshot.formulas as
+					| FormulaResource[]
+					| undefined) ?? []
+			)
+		: null;
+	const needsPublish =
+		hasSteps &&
+		(!isPublished || isDirty || publishedSignature !== workingSignature);
+	const publishLabel = isPublished ? "Publish changes" : "Publish workflow";
+
+	// Live test/manual run subscription drives the per-node canvas chips.
+	const execution = useQuery(
+		api.automationExecutor.getExecution,
+		activeExecutionId ? { executionId: activeExecutionId } : "skip"
+	);
+	const runStatuses = useMemo(
+		() => computeNodeStatuses(execution),
+		[execution]
+	);
+	const isRunning = execution?.status === "running";
+	const sampleRecords = useQuery(
+		api.automationExecutor.getSampleRecords,
+		trigger?.objectType ? { objectType: trigger.objectType } : "skip"
+	);
+
+	/**
+	 * Persist the working copy (create or update). Returns the automation id,
+	 * or null if validation blocked the save. Shared by Save / Publish / Test.
+	 */
+	const persistWorkingCopy = useCallback(async (): Promise<string | null> => {
 		const validation = validateWorkflowForSave(trigger, layoutedNodes);
 		if (!validation.valid) {
 			toast.error(
 				"Validation Error",
 				getValidationToastMessage(validation) || "Please review your workflow."
 			);
-			return;
+			return null;
 		}
-
 		if (!name.trim()) {
 			toast.error("Validation Error", "Please enter an automation name");
-			return;
+			return null;
 		}
-
 		if (!trigger) {
 			toast.error("Validation Error", "Please configure a trigger");
-			return;
+			return null;
 		}
 
-		setIsSaving(true);
-		try {
-			const normalizedTrigger = normalizeTriggerForSave(trigger);
-			const serialized = reactFlowToFlatArray(layoutedNodes, layoutedEdges);
+		const flat = reactFlowToFlatArray(layoutedNodes, layoutedEdges);
+		const triggerArg = buildTriggerForSave(trigger);
+		const nodesArg = toSavableNodes(flat.nodes);
 
-			if (automationId) {
-				await updateAutomation({
-					id: automationId as Id<"workflowAutomations">,
-					name: name.trim(),
-					description: description.trim() || undefined,
-					trigger: normalizedTrigger,
-					nodes: serialized.nodes as never,
-					isActive,
-				});
-			} else {
-				await createAutomation({
-					name: name.trim(),
-					description: description.trim() || undefined,
-					trigger: normalizedTrigger,
-					nodes: serialized.nodes as never,
-					isActive,
-				});
-			}
-
-			toast.success("Automation Saved", "Your changes have been saved");
-			router.push("/automations");
-		} catch (error) {
-			console.error("Failed to save automation:", error);
-			toast.error(
-				"Save Failed",
-				"Failed to save automation. Please try again."
-			);
-		} finally {
-			setIsSaving(false);
+		let id = effectiveId;
+		if (id) {
+			await updateAutomation({
+				id: id as Id<"workflowAutomations">,
+				name: name.trim(),
+				description: description.trim() || undefined,
+				trigger: triggerArg,
+				nodes: nodesArg,
+				formulas,
+			});
+		} else {
+			id = await createAutomation({
+				name: name.trim(),
+				description: description.trim() || undefined,
+				trigger: triggerArg,
+				nodes: nodesArg,
+				formulas,
+			});
+			setCurrentId(id);
+			// Local state IS the just-created doc; don't re-hydrate (and clobber
+			// in-flight edits) when the get query resolves for the minted id.
+			setHasInitialized(true);
+			// Keep the URL in sync so a reload lands back on this automation.
+			router.replace(`/automations/editor?id=${id}`);
 		}
+
+		setSavedSignature(definitionSignature(flat.trigger, flat.nodes, formulas));
+		return id;
 	}, [
-		automationId,
 		createAutomation,
 		description,
-		isActive,
+		effectiveId,
+		formulas,
 		layoutedEdges,
 		layoutedNodes,
 		name,
@@ -805,19 +842,115 @@ export function useAutomationEditor(automationId: string | null) {
 		updateAutomation,
 	]);
 
+	const handleSave = useCallback(async () => {
+		setIsSaving(true);
+		try {
+			const id = await persistWorkingCopy();
+			if (id) toast.success("Saved", "Your changes have been saved");
+		} catch (error) {
+			console.error("Failed to save automation:", error);
+			toast.error("Save Failed", "Failed to save automation. Please try again.");
+		} finally {
+			setIsSaving(false);
+		}
+	}, [persistWorkingCopy, toast]);
+
+	const handlePublish = useCallback(async () => {
+		setIsPublishing(true);
+		try {
+			const id = await persistWorkingCopy();
+			if (!id) return;
+			await publishAutomation({ id: id as Id<"workflowAutomations"> });
+			toast.success("Published", "This automation is now live.");
+		} catch (error) {
+			console.error("Failed to publish automation:", error);
+			toast.error(
+				"Publish Failed",
+				error instanceof Error
+					? error.message
+					: "Could not publish. Review your workflow and try again."
+			);
+		} finally {
+			setIsPublishing(false);
+		}
+	}, [persistWorkingCopy, publishAutomation, toast]);
+
+	const handleStartTest = useCallback(
+		async (record?: RunRecordRef) => {
+			setIsStartingTest(true);
+			try {
+				const id = await persistWorkingCopy();
+				if (!id) return;
+				const executionId = await startTestRun({
+					automationId: id as Id<"workflowAutomations">,
+					record,
+				});
+				setActiveExecutionId(executionId);
+			} catch (error) {
+				console.error("Failed to start test run:", error);
+				toast.error(
+					"Test Failed to Start",
+					error instanceof Error ? error.message : "Please try again."
+				);
+			} finally {
+				setIsStartingTest(false);
+			}
+		},
+		[persistWorkingCopy, startTestRun, toast]
+	);
+
+	const handleCancelTest = useCallback(async () => {
+		if (!activeExecutionId) return;
+		try {
+			await cancelTestRun({ executionId: activeExecutionId });
+		} catch (error) {
+			console.error("Failed to cancel test run:", error);
+			toast.error(
+				"Stop Failed",
+				error instanceof Error ? error.message : "Could not stop the test run."
+			);
+		}
+	}, [activeExecutionId, cancelTestRun, toast]);
+
+	const handleFormulasChange = useCallback(
+		(next: FormulaResource[]) => {
+			clearUndoState();
+			setFormulas(next);
+		},
+		[clearUndoState]
+	);
+
 	return {
 		automation: existingAutomation,
-		isLoading: automationId ? existingAutomation === undefined : false,
-		isNotFound: automationId ? existingAutomation === null : false,
+		isLoading:
+			effectiveId && !hasInitialized ? existingAutomation === undefined : false,
+		isNotFound: effectiveId ? existingAutomation === null : false,
 		name,
 		setName,
 		description,
 		setDescription,
 		trigger,
 		nodes,
-		isActive,
-		setIsActive,
+		formulas,
+		onFormulasChange: handleFormulasChange,
 		isSaving,
+		// Lifecycle + publish state
+		status,
+		isPublished,
+		isDirty,
+		needsPublish,
+		publishLabel,
+		isPublishing,
+		handlePublish,
+		// Test-run state
+		sampleRecords: sampleRecords ?? [],
+		execution,
+		runStatuses,
+		isRunning,
+		isStartingTest,
+		hasActiveRun: activeExecutionId !== null,
+		handleStartTest,
+		handleCancelTest,
 		layoutedNodes,
 		layoutedEdges,
 		handleInsertNode,

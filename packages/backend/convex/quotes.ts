@@ -12,7 +12,11 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
-import { emitStatusChangeEvent } from "./eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	optionalUserQuery,
@@ -408,6 +412,13 @@ export const create = userMutation({
 				client?.companyName || "Unknown Client"
 			);
 			await AggregateHelpers.addQuote(ctx, quote as QuoteDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				quote.orgId,
+				"quote",
+				quote._id,
+				"quotes.create"
+			);
 		}
 
 		return quoteId;
@@ -601,6 +612,15 @@ export const update = userMutation({
 					"quotes.update"
 				);
 			}
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				updatedQuote.orgId,
+				"quote",
+				updatedQuote._id,
+				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				"quotes.update"
+			);
 		}
 
 		return id;

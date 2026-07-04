@@ -24,4 +24,35 @@ crons.daily(
 	internal.orgCascade.reconcileOrphanedOrgData
 );
 
+// Retention sweeps for the automation event bus and execution logs.
+crons.daily(
+	"cleanup old domain events",
+	{ hourUTC: 4, minuteUTC: 0 },
+	internal.eventBus.cleanupOldEvents,
+	{}
+);
+
+crons.daily(
+	"cleanup old workflow executions",
+	{ hourUTC: 4, minuteUTC: 30 },
+	internal.automationExecutor.cleanupOldExecutions,
+	{}
+);
+
+// Scheduled-trigger dispatcher: runs due automations (claim-first on nextRunAt).
+crons.interval(
+	"dispatch scheduled automations",
+	{ minutes: 15 },
+	internal.automationExecutor.dispatchScheduledAutomations,
+	{}
+);
+
+// Watchdog: fail dry-run test executions stuck "running" (a dropped reveal chain).
+crons.interval(
+	"fail stale automation test runs",
+	{ minutes: 10 },
+	internal.automationExecutor.failStaleTestRuns,
+	{}
+);
+
 export default crons;

@@ -1,6 +1,27 @@
 import { describe, it, expect } from "vitest";
 import { collectSubtree, collectLoopBody, findParent } from "./graph-utils";
-import type { WorkflowNode } from "../components/workflow-node";
+import type { WorkflowNode } from "./node-types";
+
+const action = (newStatus: string): WorkflowNode["config"] => ({
+	kind: "action",
+	action: {
+		type: "update_field",
+		target: "self",
+		field: "status",
+		value: { kind: "static", value: newStatus },
+	},
+});
+
+const condition = (value: string): WorkflowNode["config"] => ({
+	kind: "condition",
+	logic: "and",
+	groups: [
+		{
+			logic: "and",
+			rules: [{ field: "status", operator: "equals", value: { kind: "static", value } }],
+		},
+	],
+});
 
 describe("graph-utils", () => {
 	describe("collectSubtree", () => {
@@ -9,25 +30,25 @@ describe("graph-utils", () => {
 				{
 					id: "c1",
 					type: "condition",
-					condition: { field: "status", operator: "equals", value: "active" },
+					config: condition("active"),
 					nextNodeId: "a1",
 					elseNodeId: "a2",
 				},
 				{
 					id: "a1",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 					nextNodeId: "a3",
 				},
 				{
 					id: "a2",
 					type: "action",
-					action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+					config: action("inactive"),
 				},
 				{
 					id: "a3",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "active" },
+					config: action("active"),
 				},
 			];
 
@@ -40,7 +61,7 @@ describe("graph-utils", () => {
 				{
 					id: "a1",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 				},
 			];
 
@@ -53,7 +74,7 @@ describe("graph-utils", () => {
 				{
 					id: "a1",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 				},
 			];
 
@@ -68,24 +89,24 @@ describe("graph-utils", () => {
 				{
 					id: "loop1",
 					type: "loop",
-					nextNodeId: "b1",
-					elseNodeId: "a1",
+					bodyStartNodeId: "b1",
+					nextNodeId: "a1",
 				},
 				{
 					id: "b1",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 					nextNodeId: "b2",
 				},
 				{
 					id: "b2",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "active" },
+					config: action("active"),
 				},
 				{
 					id: "a1",
 					type: "action",
-					action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+					config: action("inactive"),
 				},
 			];
 
@@ -94,7 +115,7 @@ describe("graph-utils", () => {
 			expect(result.has("a1")).toBe(false);
 		});
 
-		it("returns only the loop node if it has no nextNodeId", () => {
+		it("returns only the loop node if it has no bodyStartNodeId", () => {
 			const nodes: WorkflowNode[] = [
 				{
 					id: "loop1",
@@ -111,36 +132,36 @@ describe("graph-utils", () => {
 				{
 					id: "loop1",
 					type: "loop",
-					nextNodeId: "c1",
-					elseNodeId: "after1",
+					bodyStartNodeId: "c1",
+					nextNodeId: "after1",
 				},
 				{
 					id: "c1",
 					type: "condition",
-					condition: { field: "status", operator: "equals", value: "active" },
+					config: condition("active"),
 					nextNodeId: "bodyNext",
 					elseNodeId: "bodyElse",
 				},
 				{
 					id: "bodyNext",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 				},
 				{
 					id: "bodyElse",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "draft" },
+					config: action("draft"),
 				},
 				{
 					id: "after1",
 					type: "action",
-					action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+					config: action("inactive"),
 					nextNodeId: "after2",
 				},
 				{
 					id: "after2",
 					type: "action",
-					action: { targetType: "client", actionType: "update_status", newStatus: "active" },
+					config: action("active"),
 				},
 			];
 
@@ -157,19 +178,19 @@ describe("graph-utils", () => {
 				{
 					id: "c1",
 					type: "condition",
-					condition: { field: "status", operator: "equals", value: "active" },
+					config: condition("active"),
 					nextNodeId: "a1",
 					elseNodeId: "a2",
 				},
 				{
 					id: "a1",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 				},
 				{
 					id: "a2",
 					type: "action",
-					action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+					config: action("inactive"),
 				},
 			];
 
@@ -182,19 +203,19 @@ describe("graph-utils", () => {
 				{
 					id: "c1",
 					type: "condition",
-					condition: { field: "status", operator: "equals", value: "active" },
+					config: condition("active"),
 					nextNodeId: "a1",
 					elseNodeId: "a2",
 				},
 				{
 					id: "a1",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 				},
 				{
 					id: "a2",
 					type: "action",
-					action: { targetType: "client", actionType: "update_status", newStatus: "inactive" },
+					config: action("inactive"),
 				},
 			];
 
@@ -202,12 +223,31 @@ describe("graph-utils", () => {
 			expect(result).toEqual({ parentId: "c1", branch: "else" });
 		});
 
+		it("finds parent via bodyStartNodeId and returns branch 'body'", () => {
+			const nodes: WorkflowNode[] = [
+				{
+					id: "loop1",
+					type: "loop",
+					bodyStartNodeId: "b1",
+					nextNodeId: "a1",
+				},
+				{
+					id: "b1",
+					type: "action",
+					config: action("done"),
+				},
+			];
+
+			const result = findParent("b1", nodes);
+			expect(result).toEqual({ parentId: "loop1", branch: "body" });
+		});
+
 		it("returns null parentId and null branch for root node", () => {
 			const nodes: WorkflowNode[] = [
 				{
 					id: "root",
 					type: "action",
-					action: { targetType: "self", actionType: "update_status", newStatus: "done" },
+					config: action("done"),
 				},
 			];
 

@@ -2,8 +2,9 @@
 
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import type { TriggerConfig } from "../trigger-node";
-import type { WorkflowNode } from "../../lib/node-types";
+import { Button } from "@/components/ui/button";
+import type { FormulaResource, TriggerConfig, WorkflowNode } from "../../lib/node-types";
+import type { EditorNode } from "../../lib/flow-adapter";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
 import { TriggerConfigPanel } from "./panels/trigger-config";
@@ -11,6 +12,9 @@ import { ConditionConfigPanel } from "./panels/condition-config";
 import { ActionConfigPanel } from "./panels/action-config";
 import { FetchConfigPanel } from "./panels/fetch-config";
 import { LoopConfigPanel } from "./panels/loop-config";
+import { AggregateConfigPanel } from "./panels/aggregate-config";
+import { AdjustTimeConfigPanel } from "./panels/adjust-time-config";
+import { DelayConfig, DelayUntilConfig } from "./panels/delay-config";
 
 // ---------------------------------------------------------------------------
 // SidebarMode discriminated union
@@ -24,6 +28,10 @@ export type SidebarMode =
 	| { mode: "node-config"; nodeType: "action"; nodeId: string }
 	| { mode: "node-config"; nodeType: "fetch_records"; nodeId: string }
 	| { mode: "node-config"; nodeType: "loop"; nodeId: string }
+	| { mode: "node-config"; nodeType: "aggregate"; nodeId: string }
+	| { mode: "node-config"; nodeType: "adjust_time"; nodeId: string }
+	| { mode: "node-config"; nodeType: "delay"; nodeId: string }
+	| { mode: "node-config"; nodeType: "delay_until"; nodeId: string }
 	| { mode: "node-config"; nodeType: "end"; nodeId: string };
 
 // ---------------------------------------------------------------------------
@@ -33,7 +41,8 @@ export type SidebarMode =
 export interface ConfigPanelProps {
 	nodeId?: string;
 	trigger: TriggerConfig | null;
-	nodes: WorkflowNode[];
+	nodes: EditorNode[];
+	formulas?: FormulaResource[];
 	onTriggerChange: (trigger: TriggerConfig) => void;
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
@@ -53,6 +62,10 @@ const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
 	action: ActionConfigPanel,
 	fetch_records: FetchConfigPanel,
 	loop: LoopConfigPanel,
+	aggregate: AggregateConfigPanel,
+	adjust_time: AdjustTimeConfigPanel,
+	delay: DelayConfig,
+	delay_until: DelayUntilConfig,
 };
 
 // ---------------------------------------------------------------------------
@@ -74,6 +87,14 @@ function getSidebarTitle(mode: SidebarMode): string {
 			return "Configure Fetch";
 		case "loop":
 			return "Configure Loop";
+		case "aggregate":
+			return "Aggregate";
+		case "adjust_time":
+			return "Adjust time";
+		case "delay":
+			return "Configure Delay";
+		case "delay_until":
+			return "Configure Delay Until";
 		case "end":
 			return "End";
 		default:
@@ -89,10 +110,15 @@ interface AutomationSidebarProps {
 	isOpen: boolean;
 	mode: SidebarMode | null;
 	trigger: TriggerConfig | null;
-	nodes: WorkflowNode[];
+	nodes: EditorNode[];
+	formulas?: FormulaResource[];
 	onClose: () => void;
 	onTriggerTypeSelect: (triggerType: string) => void;
-	onStepTypeSelect: (stepType: string, placeholderNodeId: string) => void;
+	onStepTypeSelect: (
+		stepType: string,
+		placeholderNodeId: string,
+		actionType?: string
+	) => void;
 	onTriggerChange: (trigger: TriggerConfig) => void;
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
@@ -107,6 +133,7 @@ export function AutomationSidebar({
 	mode,
 	trigger,
 	nodes,
+	formulas = [],
 	onClose,
 	onTriggerTypeSelect,
 	onStepTypeSelect,
@@ -158,6 +185,7 @@ export function AutomationSidebar({
 	const configProps: ConfigPanelProps = {
 		trigger,
 		nodes,
+		formulas,
 		onTriggerChange,
 		onNodeChange,
 		onDeleteNode,
@@ -177,8 +205,8 @@ export function AutomationSidebar({
 			case "step-picker":
 				return (
 					<StepPicker
-						onSelect={(type) =>
-							onStepTypeSelect(type, mode.placeholderNodeId)
+						onSelect={(type, actionType) =>
+							onStepTypeSelect(type, mode.placeholderNodeId, actionType)
 						}
 					/>
 				);
@@ -192,13 +220,13 @@ export function AutomationSidebar({
 							</div>
 							{onDeleteNode && "nodeId" in mode && (
 								<div className="pt-6 border-t border-border">
-									<button
-										type="button"
-										className="w-full rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90"
-										onClick={() => onDeleteNode(mode.nodeId)}
+									<Button
+										intent="destructive"
+										className="w-full"
+										onPress={() => onDeleteNode(mode.nodeId)}
 									>
 										Delete Node
-									</button>
+									</Button>
 								</div>
 							)}
 						</div>
@@ -233,13 +261,14 @@ export function AutomationSidebar({
 			{mode.mode === "node-config" && (
 				<div className="flex items-center justify-between px-6 py-5 border-b border-border">
 					<span className="text-lg font-semibold">{title}</span>
-					<button
-						onClick={onClose}
-						className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+					<Button
+						intent="plain"
+						size="sq-sm"
+						onPress={onClose}
 						aria-label="Close sidebar"
 					>
 						<X className="h-4 w-4" />
-					</button>
+					</Button>
 				</div>
 			)}
 

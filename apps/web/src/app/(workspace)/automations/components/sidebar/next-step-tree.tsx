@@ -7,6 +7,8 @@ import {
 	Play,
 	Database,
 	Repeat,
+	Sigma,
+	Clock3,
 	CircleStop,
 	Circle,
 	type LucideIcon,
@@ -23,6 +25,8 @@ interface NextStepTreeProps {
 	nodes: Node[];
 	edges: Edge[];
 	onNavigateToNode: (nodeId: string) => void;
+	/** Hide the built-in "Next steps" heading (e.g. when embedded under another). */
+	hideHeader?: boolean;
 }
 
 interface TreeItem {
@@ -59,6 +63,14 @@ const NODE_TYPE_MAP: Record<
 	loop: {
 		icon: Repeat,
 		color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
+	},
+	aggregate: {
+		icon: Sigma,
+		color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
+	},
+	adjust_time: {
+		icon: Clock3,
+		color: "bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400",
 	},
 	end: {
 		icon: CircleStop,
@@ -136,6 +148,10 @@ function getNodeLabel(node: Node, nodeType?: string): string {
 			return "Fetch Records";
 		case "loop":
 			return "Loop";
+		case "aggregate":
+			return "Aggregate";
+		case "adjust_time":
+			return "Adjust time";
 		case "end":
 			return "End";
 		default:
@@ -152,6 +168,7 @@ export function NextStepTree({
 	nodes,
 	edges,
 	onNavigateToNode,
+	hideHeader = false,
 }: NextStepTreeProps) {
 	const treeItems = buildDownstreamTree(currentNodeId, nodes, edges);
 
@@ -161,9 +178,11 @@ export function NextStepTree({
 
 	return (
 		<div>
-			<div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">
-				Next steps
-			</div>
+			{!hideHeader && (
+				<div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">
+					Next steps
+				</div>
+			)}
 			<div className="space-y-0.5">
 				{treeItems.map((item, index) => {
 					const visual =

@@ -1026,11 +1026,8 @@ export const getAutomations = createTool({
 				id: a._id,
 				name: a.name,
 				description: truncate(a.description, TEXT_CAP),
-				isActive: a.isActive,
-				trigger:
-					"type" in a.trigger
-						? `${a.trigger.type}${"objectType" in a.trigger ? ` (${a.trigger.objectType})` : ""}`
-						: `status_changed (${a.trigger.objectType})`,
+				isActive: a.status === "active",
+				trigger: `${a.trigger.type}${"objectType" in a.trigger ? ` (${a.trigger.objectType})` : ""}`,
 				lastTriggeredAt: isoInstant(a.lastTriggeredAt),
 				triggerCount: a.triggerCount,
 			})),
@@ -1048,10 +1045,13 @@ export const getAutomationRuns = createTool({
 	}),
 	execute: async (ctx, input): Promise<Capped<AutomationRunItem>> => {
 		const limit = input.limit ?? ACTIVITY_CAP;
-		const runs = await ctx.runQuery(api.automations.getExecutions, {
+		const result = await ctx.runQuery(api.automations.getExecutions, {
 			automationId: input.automationId as Id<"workflowAutomations">,
 			limit,
 		});
+		// getExecutions returns an array with no paginationOpts (this call), a
+		// PaginationResult otherwise — narrow for the array-only mapping below.
+		const runs = Array.isArray(result) ? result : result.page;
 		return capped(
 			runs.map((r) => ({
 				status: r.status,

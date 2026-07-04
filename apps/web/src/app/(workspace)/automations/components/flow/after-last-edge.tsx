@@ -5,7 +5,7 @@ import {
 	EdgeLabelRenderer,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus, GitBranch, Play, Search, Repeat, Square } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	DropdownMenu,
@@ -14,6 +14,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getAfterLastGeometry } from "./edge-geometry";
+import { ALL_STEP_ITEMS } from "../sidebar/step-picker";
 
 /**
  * Custom edge for the "After Last" branch of loop nodes.
@@ -32,7 +33,7 @@ export function AfterLastEdge({
 }: EdgeProps) {
 	const isTerminal = data?.isTerminal === true;
 	const onInsertNode = data?.onInsertNode as
-		| ((edgeId: string, nodeType: string) => void)
+		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
 
 	const geometry = getAfterLastGeometry(sourceX, sourceY, targetX, targetY, {
@@ -84,26 +85,18 @@ export function AfterLastEdge({
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="center" sideOffset={8}>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "condition")}>
-								<GitBranch className="h-4 w-4 mr-2" />
-								Add Condition
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "action")}>
-								<Play className="h-4 w-4 mr-2" />
-								Add Action
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "fetch_records")}>
-								<Search className="h-4 w-4 mr-2" />
-								Add Fetch Records
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "loop")}>
-								<Repeat className="h-4 w-4 mr-2" />
-								Add Loop
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onInsertNode?.(id, "end")}>
-								<Square className="h-4 w-4 mr-2" />
-								End Automation
-							</DropdownMenuItem>
+							{ALL_STEP_ITEMS.map((item) => {
+								const Icon = item.icon;
+								return (
+									<DropdownMenuItem
+										key={`${item.type}-${item.actionType ?? ""}-${item.label}`}
+										onClick={() => onInsertNode?.(id, item.type, item.actionType)}
+									>
+										<Icon className="h-4 w-4 mr-2" />
+										{item.label}
+									</DropdownMenuItem>
+								);
+							})}
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</div>

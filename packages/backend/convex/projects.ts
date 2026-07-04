@@ -12,7 +12,11 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
-import { emitStatusChangeEvent } from "./eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	optionalUserQuery,
@@ -262,6 +266,13 @@ export const create = userMutation({
 		if (project) {
 			await ActivityHelpers.projectCreated(ctx, project as ProjectDocument);
 			await AggregateHelpers.addProject(ctx, project as ProjectDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				(project as ProjectDocument).orgId,
+				"project",
+				(project as ProjectDocument)._id,
+				"projects.create"
+			);
 		}
 
 		return projectId;
@@ -503,6 +514,15 @@ export const update = userMutation({
 					"projects.update"
 				);
 			}
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				(project as ProjectDocument).orgId,
+				"project",
+				(project as ProjectDocument)._id,
+				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				"projects.update"
+			);
 		}
 
 		return id;

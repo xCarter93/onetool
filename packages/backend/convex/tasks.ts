@@ -11,7 +11,11 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
-import { emitStatusChangeEvent } from "./eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "./eventBus";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -452,6 +456,13 @@ export const create = userMutation({
 			const parentTask = await ctx.db.get(parentTaskId);
 			if (parentTask) {
 				await ActivityHelpers.taskCreated(ctx, parentTask as TaskDocument);
+				await emitRecordCreatedEvent(
+					ctx,
+					parentTask.orgId,
+					"task",
+					parentTask._id,
+					"tasks.create"
+				);
 			}
 
 			// Create child tasks for remaining occurrences
@@ -473,6 +484,13 @@ export const create = userMutation({
 		const task = await ctx.db.get(taskId);
 		if (task) {
 			await ActivityHelpers.taskCreated(ctx, task as TaskDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				task.orgId,
+				"task",
+				task._id,
+				"tasks.create"
+			);
 		}
 
 		return taskId;
@@ -589,6 +607,15 @@ export const update = userMutation({
 					"tasks.update"
 				);
 			}
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				task.orgId,
+				"task",
+				task._id,
+				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				"tasks.update"
+			);
 		}
 
 		return id;
