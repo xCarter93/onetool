@@ -13,6 +13,8 @@
 import type { Node } from "@xyflow/react";
 import { collectLoopBody } from "./graph-utils";
 import {
+	ADJUST_TIME_UNITS,
+	AGGREGATE_OPERATIONS,
 	DELAY_UNIT_MS,
 	MAX_DELAY_MS,
 	MAX_DUE_IN_DAYS,
@@ -23,6 +25,8 @@ import {
 	operatorsForField,
 	validateSchedule,
 	type ActionNodeConfig,
+	type AdjustTimeNodeConfig,
+	type AggregateNodeConfig,
 	type AutomationObjectType,
 	type ConditionNodeConfig,
 	type ConditionRule,
@@ -34,6 +38,7 @@ import {
 	type WorkflowNode,
 } from "./node-types";
 import { UNSUPPORTED_TRIGGER_TYPE } from "./legacy-load";
+import { getScopeObjectType } from "./variables";
 
 export type ValidationResult = {
 	valid: boolean;
@@ -160,7 +165,9 @@ function validateConditionNode(
 function validateActionNode(
 	nodeId: string,
 	config: ActionNodeConfig | undefined,
-	triggerObjectType: AutomationObjectType | null,
+	// The object type `target: "self"` resolves to at this node — the loop item
+	// inside a loop body, else the trigger record (see getScopeObjectType).
+	scopeObjectType: AutomationObjectType | null,
 	errors: ValidationResult["errors"]
 ): void {
 	if (!config) {
@@ -176,7 +183,7 @@ function validateActionNode(
 
 	switch (action.type) {
 		case "update_field": {
-			if (!triggerObjectType) {
+			if (!scopeObjectType) {
 				errors.push({
 					type: "missing_required_config",
 					message: "Set a trigger before configuring actions",
@@ -186,7 +193,7 @@ function validateActionNode(
 			}
 
 			const targetObjectType: AutomationObjectType =
-				action.target === "self" ? triggerObjectType : action.target.related;
+				action.target === "self" ? scopeObjectType : action.target.related;
 			const writable = getWritableFields(targetObjectType);
 			const field = writable.find((f) => f.key === action.field);
 			if (!field) {
@@ -386,6 +393,111 @@ function validateLoopNode(
 	}
 }
 
+function validateAggregateNode(
+	nodeId: string,
+	config: AggregateNodeConfig | undefined,
+	rfNodes: Node[],
+	errors: ValidationResult["errors"]
+): void {
+	if (!config?.sourceNodeId) {
+		errors.push({
+			type: "missing_required_config",
+			message: 'Aggregates need a "Find records" step to run earlier in the workflow',
+			nodeId,
+		});
+		return;
+	}
+	const source = rfNodes.find((n) => n.id === config.sourceNodeId);
+	const sourceType = (source?.data as Record<string, unknown> | undefined)?.nodeType;
+	if (!source || sourceType !== "fetch_records") {
+		errors.push({
+			type: "missing_required_config",
+			message: 'Aggregates need a "Find records" step to run earlier in the workflow',
+			nodeId,
+		});
+		return;
+	}
+
+	if (!config.field.trim()) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Choose a field to aggregate",
+			nodeId,
+		});
+		return;
+	}
+
+	if (!(AGGREGATE_OPERATIONS as readonly string[]).includes(config.op)) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Choose an aggregate operation",
+			nodeId,
+		});
+	}
+}
+
+function validateAdjustTimeNode(
+	nodeId: string,
+	config: AdjustTimeNodeConfig | undefined,
+	errors: ValidationResult["errors"]
+): void {
+	if (!config?.base) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Set a base time to adjust",
+			nodeId,
+		});
+		return;
+	}
+
+	if (config.base.kind === "static") {
+		const raw = config.base.value;
+		if (raw === null || raw === undefined || raw === "") {
+			errors.push({
+				type: "missing_required_config",
+				message: "Choose a base date",
+				nodeId,
+			});
+			return;
+		}
+		const date = typeof raw === "number" ? new Date(raw) : new Date(String(raw));
+		if (Number.isNaN(date.getTime())) {
+			errors.push({
+				type: "missing_required_config",
+				message: "Choose a valid base date",
+				nodeId,
+			});
+			return;
+		}
+	}
+
+	if (!Number.isInteger(config.amount) || config.amount < 0) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Adjust amount must be a whole number of at least 0",
+			nodeId,
+		});
+		return;
+	}
+
+	if (!(ADJUST_TIME_UNITS as readonly string[]).includes(config.unit)) {
+		errors.push({
+			type: "missing_required_config",
+			message: "Choose a time unit",
+			nodeId,
+		});
+		return;
+	}
+
+	if (config.direction !== "add" && config.direction !== "subtract") {
+		errors.push({
+			type: "missing_required_config",
+			message: "Choose whether to add or subtract",
+			nodeId,
+		});
+	}
+}
+
 function validateDelayNode(
 	nodeId: string,
 	config: DelayNodeConfig | undefined,
@@ -511,7 +623,7 @@ export function validateWorkflowForSave(
 				validateActionNode(
 					node.id,
 					data.config as ActionNodeConfig | undefined,
-					objectType,
+					getScopeObjectType(workflowNodes, node.id, objectType).objectType,
 					errors
 				);
 				break;
@@ -528,6 +640,21 @@ export function validateWorkflowForSave(
 					data.config as LoopNodeConfig | undefined,
 					rfNodes,
 					workflowNodes,
+					errors
+				);
+				break;
+			case "aggregate":
+				validateAggregateNode(
+					node.id,
+					data.config as AggregateNodeConfig | undefined,
+					rfNodes,
+					errors
+				);
+				break;
+			case "adjust_time":
+				validateAdjustTimeNode(
+					node.id,
+					data.config as AdjustTimeNodeConfig | undefined,
 					errors
 				);
 				break;

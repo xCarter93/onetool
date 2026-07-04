@@ -451,6 +451,48 @@ function validateWorkflowDefinition(
 				}
 				break;
 			}
+			case "aggregate": {
+				const source = nodes.find((n) => n.id === config.sourceNodeId);
+				if (!source || source.config.kind !== "fetch_records") {
+					throw new Error(
+						`Node ${node.id}: aggregate must reference a "Find records" node`
+					);
+				}
+				const def = getFieldDefinition(source.config.objectType, config.field);
+				if (!def) {
+					throw new Error(
+						`Node ${node.id}: unknown field "${config.field}" for ${source.config.objectType}`
+					);
+				}
+				if (def.type !== "number" && def.type !== "currency") {
+					throw new Error(
+						`Node ${node.id}: aggregate needs a number or currency field`
+					);
+				}
+				break;
+			}
+			case "adjust_time": {
+				if (!Number.isFinite(config.amount)) {
+					throw new Error(
+						`Node ${node.id}: adjust-time amount must be a number`
+					);
+				}
+				if (config.base.kind === "static") {
+					const raw = config.base.value;
+					const parsed =
+						typeof raw === "number"
+							? raw
+							: typeof raw === "string"
+								? Date.parse(raw)
+								: NaN;
+					if (Number.isNaN(parsed)) {
+						throw new Error(
+							`Node ${node.id}: "Adjust time" base needs a valid date`
+						);
+					}
+				}
+				break;
+			}
 			case "delay": {
 				if (!Number.isInteger(config.amount) || config.amount < 1) {
 					throw new Error(
@@ -729,18 +771,17 @@ export const create = userMutation({
 });
 
 /**
- * Update an automation's working copy (and lifecycle, transitionally).
- *
- * Transitional shim: while an automation is active, saving trigger/node
- * changes republishes them immediately so behavior matches the current UI.
- * The draft/publish UI will replace this with explicit `publish` calls.
+ * Save an automation's working copy. Does NOT change lifecycle: an active
+ * automation keeps running its published snapshot until `publish` is called
+ * again, so saving edits to a live automation leaves it live-but-dirty (the
+ * editor surfaces the unpublished-changes state). Lifecycle transitions go
+ * through `publish` / `toggleActive`.
  */
 export const update = userMutation({
 	args: {
 		id: v.id("workflowAutomations"),
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
-		isActive: v.optional(v.boolean()),
 		trigger: v.optional(triggerArgValidator),
 		nodes: v.optional(v.array(nodeArgValidator)),
 	},
@@ -752,18 +793,12 @@ export const update = userMutation({
 			throw new Error("Automation name cannot be empty");
 		}
 
-		const nextTrigger = updates.trigger ?? automation.trigger;
-		const nextNodes = (updates.nodes ?? automation.nodes) as NodeArg[];
-		const currentStatus = effectiveStatus(automation);
-		const nextActive =
-			updates.isActive !== undefined
-				? updates.isActive
-				: currentStatus === "active";
-
-		if (updates.trigger !== undefined && !("type" in nextTrigger)) {
-			throw new Error("Legacy triggers can no longer be written");
-		}
 		if (updates.trigger !== undefined || updates.nodes !== undefined) {
+			const nextTrigger = updates.trigger ?? automation.trigger;
+			const nextNodes = (updates.nodes ?? automation.nodes) as NodeArg[];
+			if (updates.trigger !== undefined && !("type" in nextTrigger)) {
+				throw new Error("Legacy triggers can no longer be written");
+			}
 			if (updates.nodes !== undefined) {
 				for (const node of updates.nodes) {
 					if (!node.config) {
@@ -771,13 +806,9 @@ export const update = userMutation({
 					}
 				}
 			}
-			if (nextActive) {
-				validateForActivation(nextTrigger, nextNodes);
-			} else {
-				validateWorkflowDefinition(nextTrigger, nextNodes);
-			}
-		} else if (updates.isActive === true && currentStatus !== "active") {
-			validateForActivation(nextTrigger, nextNodes);
+			// Structural validity is enforced on every save; a working copy can
+			// still be incomplete (activation-level checks run at publish time).
+			validateWorkflowDefinition(nextTrigger, nextNodes);
 		}
 
 		const patch: Partial<AutomationDocument> = { updatedAt: Date.now() };
@@ -788,35 +819,6 @@ export const update = userMutation({
 		}
 		if (updates.trigger !== undefined) patch.trigger = updates.trigger;
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
-
-		// Lifecycle handling (transitional save==publish behavior)
-		if (nextActive) {
-			patch.status = "active";
-			patch.isActive = true;
-			if (
-				updates.trigger !== undefined ||
-				updates.nodes !== undefined ||
-				currentStatus !== "active"
-			) {
-				patch.publishedSnapshot = buildSnapshot({
-					trigger: nextTrigger,
-					nodes: nextNodes,
-					publishedSnapshot: automation.publishedSnapshot,
-				});
-			}
-		} else if (updates.isActive === false) {
-			// Deactivating: previously-published automations pause, drafts stay drafts.
-			patch.status = automation.publishedSnapshot ? "paused" : "draft";
-			patch.isActive = false;
-		}
-
-		// Keep the dispatch pointer in sync with the trigger that will execute
-		// (the snapshot's when published, else the working copy).
-		const executingTrigger =
-			patch.publishedSnapshot?.trigger ??
-			automation.publishedSnapshot?.trigger ??
-			nextTrigger;
-		patch.nextRunAt = scheduledNextRunAt(executingTrigger, nextActive);
 
 		await ctx.db.patch(id, patch);
 		return id;
@@ -847,7 +849,13 @@ export const publish = userMutation({
 
 /**
  * Toggle an automation between active and paused.
- * Activating a draft publishes it (snapshot v1).
+ *
+ * - active → paused: stop firing (dispatch pointer cleared).
+ * - paused → active: resume the EXISTING published snapshot — no re-snapshot,
+ *   so any unpublished working-copy edits stay unpublished. nextRunAt is
+ *   recomputed from the published trigger (what will actually run).
+ * - draft → active: no snapshot exists yet, so this publishes the working copy
+ *   (snapshot v1), same as `publish`.
  */
 export const toggleActive = userMutation({
 	args: { id: v.id("workflowAutomations") },
@@ -862,19 +870,32 @@ export const toggleActive = userMutation({
 				nextRunAt: undefined,
 				updatedAt: Date.now(),
 			});
-		} else {
-			validateForActivation(
-				automation.trigger,
-				automation.nodes as NodeArg[]
-			);
+			return args.id;
+		}
+
+		if (automation.publishedSnapshot) {
+			// Resume a previously-published automation on its published version.
 			await ctx.db.patch(args.id, {
 				status: "active",
 				isActive: true,
-				publishedSnapshot: buildSnapshot(automation),
-				nextRunAt: scheduledNextRunAt(automation.trigger, true),
+				nextRunAt: scheduledNextRunAt(
+					automation.publishedSnapshot.trigger,
+					true
+				),
 				updatedAt: Date.now(),
 			});
+			return args.id;
 		}
+
+		// Draft with no snapshot: publishing is the only way to go live.
+		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
+		await ctx.db.patch(args.id, {
+			status: "active",
+			isActive: true,
+			publishedSnapshot: buildSnapshot(automation),
+			nextRunAt: scheduledNextRunAt(automation.trigger, true),
+			updatedAt: Date.now(),
+		});
 
 		return args.id;
 	},

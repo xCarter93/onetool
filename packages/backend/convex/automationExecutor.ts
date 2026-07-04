@@ -2,13 +2,14 @@ import {
 	internalMutation,
 	internalQuery,
 	MutationCtx,
+	QueryCtx,
 } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
 import { ActivityHelpers } from "./lib/activities";
-import { systemMutation } from "./lib/factories";
+import { systemMutation, userMutation, userQuery } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
 import { orgHasPremiumPlan } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
@@ -26,15 +27,18 @@ import {
 	type FieldDefinition,
 } from "./lib/fieldRegistry";
 import {
+	ADJUST_TIME_UNIT_MS,
 	DEFAULT_FETCH_LIMIT,
 	DELAY_UNIT_MS,
 	MAX_DELAY_MS,
 	MAX_FETCH_LIMIT,
 	MAX_LOOP_ITERATIONS,
+	objectTypeValidator,
 	type ActionTarget,
 	type AutomationAction,
 	type AutomationObjectType,
 	type AutomationTrigger,
+	type ExecutedNode,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
 
@@ -78,6 +82,43 @@ function executableDefinition(automation: AutomationDoc): {
 function isEffectivelyActive(automation: AutomationDoc): boolean {
 	if (automation.status) return automation.status === "active";
 	return automation.isActive === true;
+}
+
+/** Extract a user id from a "manual:<id>" / "test:<id>" triggeredBy marker. */
+function parseActorUserId(
+	ctx: MutationCtx,
+	triggeredBy: string
+): Id<"users"> | null {
+	const match = /^(?:manual|test):(.+)$/.exec(triggeredBy);
+	if (!match) return null;
+	return ctx.db.normalizeId("users", match[1]);
+}
+
+/**
+ * Built-in globals available to every run: workflow.now (execution start),
+ * org.id/name, and the triggering user. The user is parsed from triggeredBy
+ * for manual/test runs and is empty for scheduled/event runs (no actor).
+ */
+async function buildGlobalsScope(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	nowMs: number,
+	triggeredBy: string
+): Promise<Pick<VariableScope, "workflow" | "org" | "user">> {
+	const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
+		workflow: { now: nowMs },
+	};
+	const org = await ctx.db.get(orgId);
+	if (org) globals.org = { id: orgId, name: org.name };
+
+	const actorUserId = parseActorUserId(ctx, triggeredBy);
+	if (actorUserId) {
+		const user = await ctx.db.get(actorUserId);
+		if (user) {
+			globals.user = { id: user._id, name: user.name, email: user.email };
+		}
+	}
+	return globals;
 }
 
 function isValidStatus(objectType: ObjectType, status: string): boolean {
@@ -664,6 +705,9 @@ export const executeAutomation = systemMutation({
 		recursionDepth: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		const execution = await ctx.db.get(args.executionId);
+		if (!execution) return;
+
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation) {
 			await ctx.db.patch(args.executionId, {
@@ -674,12 +718,18 @@ export const executeAutomation = systemMutation({
 			return;
 		}
 
+		// Production runs execute the published snapshot (falling back to the
+		// working copy for unmigrated legacy rows). Unpublished working-copy
+		// edits never affect what fires — those are exercised only by dry test
+		// runs (executeTestStep).
+		const definition = executableDefinition(automation);
+
 		console.log(
 			`[AutomationExecutor] Starting automation execution: ${automation.name}`,
 			{
 				automationId: args.automationId,
 				executionId: args.executionId,
-				totalNodes: automation.nodes.length,
+				totalNodes: definition.nodes.length,
 				recursionDepth: args.recursionDepth,
 			}
 		);
@@ -711,10 +761,17 @@ export const executeAutomation = systemMutation({
 			};
 		}
 
+		const globals = await buildGlobalsScope(
+			ctx,
+			automation.orgId,
+			execution.triggeredAt,
+			execution.triggeredBy
+		);
+
 		const env: WalkEnv = {
 			executionId: args.executionId,
 			automation,
-			nodesById: new Map(automation.nodes.map((n) => [n.id, n])),
+			nodesById: new Map(definition.nodes.map((n) => [n.id, n])),
 			orgId: automation.orgId,
 			executionChain: args.executionChain ?? [],
 			recursionDepth: args.recursionDepth ?? 0,
@@ -730,6 +787,7 @@ export const executeAutomation = systemMutation({
 								}
 							: undefined,
 				},
+				...globals,
 			},
 			fetchOutputs: {},
 			nodesExecuted: [],
@@ -738,7 +796,7 @@ export const executeAutomation = systemMutation({
 		};
 
 		try {
-			if (automation.nodes.length === 0) {
+			if (definition.nodes.length === 0) {
 				await ctx.db.patch(args.executionId, {
 					status: "completed",
 					completedAt: Date.now(),
@@ -750,7 +808,7 @@ export const executeAutomation = systemMutation({
 			const outcome = await runWalk(
 				ctx,
 				env,
-				automation.nodes[0].id,
+				definition.nodes[0].id,
 				scopeRecord
 			);
 			await finishWalk(ctx, env, outcome);
@@ -822,10 +880,25 @@ export const resumeExecution = systemMutation({
 			};
 		}
 
+		// Resume on the currently published snapshot (matching executeAutomation).
+		// A republish while a run is parked at a delay therefore continues on the
+		// new version; resumeNodeId is validated below and the run fails clearly
+		// if that node no longer exists.
+		const definition = executableDefinition(automation);
+
+		// workflow.now stays pinned to the original start time so date math is
+		// deterministic across the delay.
+		const globals = await buildGlobalsScope(
+			ctx,
+			automation.orgId,
+			execution.triggeredAt,
+			execution.triggeredBy
+		);
+
 		const env: WalkEnv = {
 			executionId: args.executionId,
 			automation,
-			nodesById: new Map(automation.nodes.map((n) => [n.id, n])),
+			nodesById: new Map(definition.nodes.map((n) => [n.id, n])),
 			orgId: automation.orgId,
 			executionChain: execution.executionChain ?? [],
 			recursionDepth: execution.recursionDepth ?? 0,
@@ -842,6 +915,7 @@ export const resumeExecution = systemMutation({
 							: undefined,
 				},
 				nodes: {},
+				...globals,
 			},
 			fetchOutputs: {},
 			nodesExecuted: [...execution.nodesExecuted],
@@ -868,6 +942,11 @@ export const resumeExecution = systemMutation({
 				count: output.count,
 			};
 			env.scope.nodes![output.nodeId] = { count: output.count };
+		}
+
+		// Restore aggregate/adjust_time results computed before the delay.
+		for (const { nodeId, result } of resume.nodeResults ?? []) {
+			env.scope.nodes![nodeId] = { ...env.scope.nodes![nodeId], result };
 		}
 
 		if (!env.nodesById.has(resume.resumeNodeId)) {
@@ -987,6 +1066,44 @@ async function runWalk(
 			continue;
 		}
 
+		if (config?.kind === "aggregate") {
+			const result = runAggregateNode(env, node.id, config);
+			if (!result.ok) {
+				pushEntry(env, {
+					nodeId: node.id,
+					result: "failed",
+					error: result.error,
+				});
+				return { kind: "failed", error: result.error };
+			}
+			pushEntry(env, {
+				nodeId: node.id,
+				result: "success",
+				output: { result: result.value },
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "adjust_time") {
+			const result = runAdjustTimeNode(env.scope, node.id, config);
+			if (!result.ok) {
+				pushEntry(env, {
+					nodeId: node.id,
+					result: "failed",
+					error: result.error,
+				});
+				return { kind: "failed", error: result.error };
+			}
+			pushEntry(env, {
+				nodeId: node.id,
+				result: "success",
+				output: { result: result.value },
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
 		if (config?.kind === "loop") {
 			if (inLoopNodeId) {
 				const error = "Nested loops are not supported";
@@ -1046,6 +1163,7 @@ async function runWalk(
 							count: output.count,
 						})
 					),
+					nodeResults: collectNodeResults(env.scope),
 				},
 			});
 			await ctx.scheduler.runAt(
@@ -1167,9 +1285,10 @@ async function runLoopNode(
 const FETCH_SCAN_CAP = 1000;
 
 async function fetchOrgRows(
-	ctx: MutationCtx,
+	ctx: QueryCtx | MutationCtx,
 	objectType: ObjectType,
-	orgId: Id<"organizations">
+	orgId: Id<"organizations">,
+	limit: number = FETCH_SCAN_CAP
 ): Promise<Record<string, unknown>[]> {
 	switch (objectType) {
 		case "client":
@@ -1177,37 +1296,40 @@ async function fetchOrgRows(
 				.query("clients")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
-				.take(FETCH_SCAN_CAP);
+				.take(limit);
 		case "project":
 			return await ctx.db
 				.query("projects")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
-				.take(FETCH_SCAN_CAP);
+				.take(limit);
 		case "quote":
 			return await ctx.db
 				.query("quotes")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
-				.take(FETCH_SCAN_CAP);
+				.take(limit);
 		case "invoice":
 			return await ctx.db
 				.query("invoices")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
-				.take(FETCH_SCAN_CAP);
+				.take(limit);
 		case "task":
 			return await ctx.db
 				.query("tasks")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
-				.take(FETCH_SCAN_CAP);
+				.take(limit);
 		default: {
 			const _exhaustive: never = objectType;
 			return _exhaustive;
 		}
 	}
 }
+
+/** The subset of walk state fetch_records needs; shared by real + dry walks. */
+type FetchEnv = Pick<WalkEnv, "orgId" | "scope" | "fetchOutputs">;
 
 /**
  * Run a fetch_records node: org-scoped index scan (newest first, bounded),
@@ -1216,7 +1338,7 @@ async function fetchOrgRows(
  */
 async function runFetchNode(
 	ctx: MutationCtx,
-	env: WalkEnv,
+	env: FetchEnv,
 	nodeId: string,
 	config: Extract<WorkflowNodeConfig, { kind: "fetch_records" }>
 ): Promise<{ ok: true; output: FetchOutput } | { ok: false; error: string }> {
@@ -1264,6 +1386,94 @@ async function runFetchNode(
 				error instanceof Error ? error.message : "Failed to fetch records",
 		};
 	}
+}
+
+/** Rounds a dollar amount to whole cents to avoid IEEE-754 drift. */
+function roundCents(n: number): number {
+	return Math.round(n * 100) / 100;
+}
+
+/** Epoch ms from a number (as-is) or a parseable date string; else NaN. */
+function valueToEpochMs(value: unknown): number {
+	if (typeof value === "number") return value;
+	if (typeof value === "string") return Date.parse(value);
+	return NaN;
+}
+
+/**
+ * Aggregate a fetched collection's numeric field. Sums/averages are computed in
+ * integer cents to keep currency math exact. Writes node.<id>.result. Read-only
+ * (shared by the real walk and the dry test run).
+ */
+function runAggregateNode(
+	env: Pick<WalkEnv, "scope" | "fetchOutputs">,
+	nodeId: string,
+	config: Extract<WorkflowNodeConfig, { kind: "aggregate" }>
+): { ok: true; value: number } | { ok: false; error: string } {
+	const source = env.fetchOutputs[config.sourceNodeId];
+	if (!source) {
+		return {
+			ok: false,
+			error: 'Aggregate needs a "Find records" step earlier in the workflow',
+		};
+	}
+	const nums: number[] = [];
+	for (const record of source.records) {
+		const n = Number(record[config.field]);
+		if (!Number.isNaN(n)) nums.push(n);
+	}
+	let value: number;
+	if (nums.length === 0) {
+		value = 0;
+	} else if (config.op === "sum" || config.op === "avg") {
+		const cents = nums.reduce((acc, n) => acc + Math.round(n * 100), 0);
+		value =
+			config.op === "sum" ? cents / 100 : roundCents(cents / 100 / nums.length);
+	} else if (config.op === "min") {
+		value = Math.min(...nums);
+	} else {
+		value = Math.max(...nums);
+	}
+	env.scope.nodes ??= {};
+	env.scope.nodes[nodeId] = { ...env.scope.nodes[nodeId], result: value };
+	return { ok: true, value };
+}
+
+/**
+ * Shift a base timestamp by a fixed offset. Writes node.<id>.result (epoch ms).
+ * Read-only; shared by the real walk and the dry test run.
+ */
+function runAdjustTimeNode(
+	scope: VariableScope,
+	nodeId: string,
+	config: Extract<WorkflowNodeConfig, { kind: "adjust_time" }>
+): { ok: true; value: number } | { ok: false; error: string } {
+	const baseMs = valueToEpochMs(resolveValueRef(config.base, scope));
+	if (Number.isNaN(baseMs)) {
+		return {
+			ok: false,
+			error: "Adjust time: the base value isn't a valid date",
+		};
+	}
+	const sign = config.direction === "subtract" ? -1 : 1;
+	const value =
+		baseMs + sign * config.amount * ADJUST_TIME_UNIT_MS[config.unit];
+	scope.nodes ??= {};
+	scope.nodes[nodeId] = { ...scope.nodes[nodeId], result: value };
+	return { ok: true, value };
+}
+
+/** Numeric node.<id>.result outputs, persisted so they survive a delay resume. */
+function collectNodeResults(
+	scope: VariableScope
+): { nodeId: string; result: number }[] {
+	const out: { nodeId: string; result: number }[] = [];
+	for (const [nodeId, val] of Object.entries(scope.nodes ?? {})) {
+		if (typeof val.result === "number") {
+			out.push({ nodeId, result: val.result });
+		}
+	}
+	return out;
 }
 
 function computeDelayResume(
@@ -1437,10 +1647,12 @@ async function executeNodeV2(
 			return executeActionNodeV2(ctx, config.action, scopeRecord, env);
 		case "fetch_records":
 		case "loop":
+		case "aggregate":
+		case "adjust_time":
 		case "delay":
 		case "delay_until":
 		case "end":
-			// Structural kinds are consumed by runWalk before executeNode.
+			// Structural/compute kinds are consumed by runWalk before executeNode.
 			return {
 				success: false,
 				error: `Internal error: "${config.kind}" node reached the per-record executor`,
@@ -2541,5 +2753,921 @@ export const getExecutionStats = internalQuery({
 		};
 
 		return { last24h, lastWeek };
+	},
+});
+
+// ---------------------------------------------------------------------------
+// Slice 4: dry-run test mode + manual run
+//
+// Test runs never write. To stream per-node status to the editor, the whole
+// walk is computed up front (reads only) into an ordered `plan`, then revealed
+// one entry per transaction via executeTestStep + scheduler.runAfter — a single
+// mutation would commit every status at once, so the getExecution subscription
+// would never see intermediate states.
+// ---------------------------------------------------------------------------
+
+/** Delay between revealed test-run steps (ms) — paces the live per-node chips. */
+const TEST_STEP_INTERVAL_MS = 150;
+/** Loop iterations sampled per loop in a dry run (keeps the reveal snappy). */
+const DRY_LOOP_SAMPLE = 3;
+/** A test run stuck "running" past this is presumed dropped and marked failed. */
+const STALE_TEST_RUN_MS = 5 * 60 * 1000;
+
+type DryEnv = {
+	orgId: Id<"organizations">;
+	automationName: string;
+	nodesById: Map<string, AutomationNode>;
+	scope: VariableScope;
+	fetchOutputs: Record<string, FetchOutput>;
+	entries: ExecutedNode[];
+	truncated: boolean;
+};
+
+function pushDry(env: DryEnv, entry: ExecutedNode): void {
+	if (env.entries.length >= MAX_EXECUTED_ENTRIES) {
+		if (!env.truncated) {
+			env.truncated = true;
+			env.entries.push({
+				nodeId: entry.nodeId,
+				result: "skipped",
+				error: `Preview truncated after ${MAX_EXECUTED_ENTRIES} steps`,
+			});
+		}
+		return;
+	}
+	env.entries.push(entry);
+}
+
+/** Human label for a record, used in the run's triggerRecord + sample picker. */
+function sampleRecordLabel(
+	objectType: ObjectType,
+	record: Record<string, unknown>
+): string {
+	switch (objectType) {
+		case "client":
+			return String(record.companyName ?? "Client");
+		case "project":
+			return String(record.title ?? "Project");
+		case "quote":
+			return record.quoteNumber
+				? `Quote ${record.quoteNumber}`
+				: String(record.title ?? "Quote");
+		case "invoice":
+			return record.invoiceNumber
+				? `Invoice ${record.invoiceNumber}`
+				: "Invoice";
+		case "task":
+			return String(record.title ?? "Task");
+		default: {
+			const _exhaustive: never = objectType;
+			return _exhaustive;
+		}
+	}
+}
+
+type DryNodeResult = {
+	success: boolean;
+	skipped?: boolean;
+	conditionMet?: boolean;
+	error?: string;
+	output?: unknown;
+};
+
+/**
+ * Describe (without executing) what an action would do. Mirrors the real
+ * executors' validation so a test surfaces the same failures/skips, but never
+ * writes, emits events, or touches aggregates.
+ */
+async function dryExecuteAction(
+	ctx: MutationCtx,
+	action: AutomationAction,
+	scopeRecord: ScopeRecord | undefined,
+	env: DryEnv
+): Promise<DryNodeResult> {
+	switch (action.type) {
+		case "update_field": {
+			if (!scopeRecord) {
+				return { success: false, error: NO_SCOPE_RECORD_ERROR };
+			}
+			const targetInfo = await resolveTargetV2(
+				ctx,
+				action.target,
+				scopeRecord.type,
+				scopeRecord.id,
+				scopeRecord.record,
+				env.orgId
+			);
+			if (!targetInfo) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "Related record not found — would skip" },
+				};
+			}
+			const fieldDef = getFieldDefinition(targetInfo.type, action.field);
+			if (!fieldDef) {
+				return {
+					success: false,
+					error: `Unknown field "${action.field}" for ${targetInfo.type}`,
+				};
+			}
+			if (!fieldDef.writable) {
+				return {
+					success: false,
+					error: `Field "${action.field}" is not writable${
+						fieldDef.writeExclusionReason
+							? `: ${fieldDef.writeExclusionReason}`
+							: ""
+					}`,
+				};
+			}
+			const raw = resolveValueRef(action.value, env.scope);
+			const coerced = coerceFieldValue(fieldDef, raw);
+			if (!coerced.ok) {
+				return { success: false, error: coerced.error };
+			}
+			if (
+				action.field === "status" &&
+				typeof coerced.value === "string" &&
+				!isValidStatus(targetInfo.type, coerced.value)
+			) {
+				return {
+					success: false,
+					error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
+				};
+			}
+			return {
+				success: true,
+				output: {
+					summary: `Would set ${action.field} to ${JSON.stringify(coerced.value)} on the ${targetInfo.type}`,
+				},
+			};
+		}
+		case "create_task": {
+			const title = resolveTextValue(action.title, env.scope);
+			if (!title) {
+				return { success: false, error: "Task title resolved to an empty value" };
+			}
+			if (action.assigneeUserId) {
+				const membership = await getMembership(
+					ctx,
+					action.assigneeUserId as Id<"users">,
+					env.orgId
+				);
+				if (!membership) {
+					return {
+						success: false,
+						error: "Task assignee is not a member of this organization",
+					};
+				}
+			}
+			return { success: true, output: { summary: `Would create task "${title}"` } };
+		}
+		case "send_notification": {
+			let count: number;
+			if (action.recipient === "org_admins") {
+				const ids = await resolveMemberUserIds(ctx, env.orgId, true);
+				if (ids.length === 0) {
+					return { success: true, skipped: true, output: { note: "No admins to notify" } };
+				}
+				count = ids.length;
+			} else if (action.recipient === "record_owner") {
+				const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
+				if (!owner) {
+					return {
+						success: true,
+						skipped: true,
+						output: { note: "No owner found for the record in scope" },
+					};
+				}
+				count = 1;
+			} else {
+				const membership = await getMembership(
+					ctx,
+					action.recipient.userId as Id<"users">,
+					env.orgId
+				);
+				if (!membership) {
+					return {
+						success: false,
+						error: "Notification recipient is not a member of this organization",
+					};
+				}
+				count = 1;
+			}
+			const message = interpolateTemplate(action.message, env.scope).trim();
+			if (!message) {
+				return {
+					success: false,
+					error: "Notification message resolved to an empty value",
+				};
+			}
+			return {
+				success: true,
+				output: { summary: `Would notify ${count} recipient(s): "${message}"` },
+			};
+		}
+		case "send_team_message": {
+			let userIds: Id<"users">[];
+			if (action.recipients === "all_members") {
+				userIds = await resolveMemberUserIds(ctx, env.orgId, false);
+			} else if (action.recipients === "admins") {
+				userIds = await resolveMemberUserIds(ctx, env.orgId, true);
+			} else {
+				const valid: Id<"users">[] = [];
+				for (const raw of action.recipients.userIds) {
+					const membership = await getMembership(ctx, raw as Id<"users">, env.orgId);
+					if (membership) valid.push(raw as Id<"users">);
+				}
+				userIds = valid;
+			}
+			if (userIds.length === 0) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "No recipients to message" },
+				};
+			}
+			const message = interpolateTemplate(action.message, env.scope).trim();
+			if (!message) {
+				return { success: false, error: "Message resolved to an empty value" };
+			}
+			return {
+				success: true,
+				output: { summary: `Would send team message to ${userIds.length} member(s)` },
+			};
+		}
+		default: {
+			const _exhaustive: never = action;
+			return _exhaustive;
+		}
+	}
+}
+
+/** Dry evaluation of a per-record node (condition/action). */
+async function dryExecuteNode(
+	ctx: MutationCtx,
+	node: AutomationNode,
+	scopeRecord: ScopeRecord | undefined,
+	env: DryEnv
+): Promise<DryNodeResult> {
+	const config = node.config;
+	if (config?.kind === "condition") {
+		let record: Record<string, unknown>;
+		if (config.source && typeof config.source === "object") {
+			const loopScope = env.scope.loops?.[config.source.loopNodeId];
+			if (!loopScope) {
+				return {
+					success: false,
+					error: "This condition reads a loop item but no loop is running",
+				};
+			}
+			record = loopScope.item;
+		} else {
+			record = scopeRecord?.record ?? {};
+		}
+		const conditionMet = evaluateConditionGroups(
+			config.logic,
+			config.groups,
+			record,
+			env.scope
+		);
+		return { success: true, conditionMet, output: { conditionMet } };
+	}
+	if (config?.kind === "action") {
+		return dryExecuteAction(ctx, config.action, scopeRecord, env);
+	}
+	// Legacy (config-less) rows aren't produced by the v2 editor; skip in preview.
+	return {
+		success: true,
+		skipped: true,
+		output: { note: "Legacy step — not simulated" },
+	};
+}
+
+/** Dry variant of runLoopNode: samples items and walks the body per item. */
+async function dryRunLoopNode(
+	ctx: MutationCtx,
+	env: DryEnv,
+	node: AutomationNode,
+	config: Extract<WorkflowNodeConfig, { kind: "loop" }>
+): Promise<"chain_done" | "ended" | "failed"> {
+	const source = env.fetchOutputs[config.sourceNodeId];
+	if (!source) {
+		const error =
+			'Loops need a "Find records" step to run earlier in the workflow';
+		pushDry(env, { nodeId: node.id, result: "failed", error });
+		return "failed";
+	}
+
+	const total = Math.min(
+		source.records.length,
+		config.maxIterations ?? MAX_LOOP_ITERATIONS,
+		MAX_LOOP_ITERATIONS
+	);
+	const sampled = Math.min(total, DRY_LOOP_SAMPLE);
+	pushDry(env, {
+		nodeId: node.id,
+		result: "success",
+		recordsProcessed: total,
+		output:
+			total > sampled
+				? { total, sampled, note: `Previewing first ${sampled} of ${total}` }
+				: { total },
+	});
+
+	if (!node.bodyStartNodeId || total === 0) {
+		return "chain_done";
+	}
+
+	env.scope.loops ??= {};
+	try {
+		for (let index = 0; index < sampled; index++) {
+			const item = source.records[index];
+			env.scope.loops[node.id] = { item, index };
+			const itemScope: ScopeRecord = {
+				type: source.objectType,
+				id: String(item._id),
+				record: item,
+			};
+			const outcome = await dryRunWalk(
+				ctx,
+				env,
+				node.bodyStartNodeId,
+				itemScope,
+				true
+			);
+			if (outcome === "failed" || outcome === "ended") return outcome;
+		}
+	} finally {
+		delete env.scope.loops[node.id];
+	}
+
+	return "chain_done";
+}
+
+/**
+ * Dry counterpart of runWalk: same control flow, but never writes, never
+ * checkpoints delays (records "would wait until" and continues), and appends
+ * to env.entries instead of patching the execution row.
+ */
+async function dryRunWalk(
+	ctx: MutationCtx,
+	env: DryEnv,
+	startNodeId: string | undefined,
+	scopeRecord: ScopeRecord | undefined,
+	inLoop: boolean
+): Promise<"chain_done" | "ended" | "failed"> {
+	let currentNodeId = startNodeId;
+	const visited = new Set<string>();
+
+	while (currentNodeId) {
+		if (visited.has(currentNodeId)) {
+			pushDry(env, {
+				nodeId: currentNodeId,
+				result: "failed",
+				error: `Workflow contains a cycle through node "${currentNodeId}"`,
+			});
+			return "failed";
+		}
+		visited.add(currentNodeId);
+
+		const node = env.nodesById.get(currentNodeId);
+		if (!node) return "chain_done";
+		const config = node.config;
+
+		if (config?.kind === "fetch_records") {
+			const fetched = await runFetchNode(ctx, env, node.id, config);
+			if (!fetched.ok) {
+				pushDry(env, { nodeId: node.id, result: "failed", error: fetched.error });
+				return "failed";
+			}
+			pushDry(env, {
+				nodeId: node.id,
+				result: "success",
+				recordsProcessed: fetched.output.count,
+				output: { count: fetched.output.count },
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "aggregate") {
+			const result = runAggregateNode(env, node.id, config);
+			if (!result.ok) {
+				pushDry(env, {
+					nodeId: node.id,
+					result: "failed",
+					error: result.error,
+				});
+				return "failed";
+			}
+			pushDry(env, {
+				nodeId: node.id,
+				result: "success",
+				output: { result: result.value },
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "adjust_time") {
+			const result = runAdjustTimeNode(env.scope, node.id, config);
+			if (!result.ok) {
+				pushDry(env, {
+					nodeId: node.id,
+					result: "failed",
+					error: result.error,
+				});
+				return "failed";
+			}
+			pushDry(env, {
+				nodeId: node.id,
+				result: "success",
+				output: { result: result.value },
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "loop") {
+			if (inLoop) {
+				const error = "Nested loops are not supported";
+				pushDry(env, { nodeId: node.id, result: "failed", error });
+				return "failed";
+			}
+			const outcome = await dryRunLoopNode(ctx, env, node, config);
+			if (outcome !== "chain_done") return outcome;
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "delay" || config?.kind === "delay_until") {
+			if (inLoop) {
+				const error = "Delay steps are not supported inside loops";
+				pushDry(env, { nodeId: node.id, result: "failed", error });
+				return "failed";
+			}
+			const resume = computeDelayResume(config, env.scope);
+			if (!resume.ok) {
+				pushDry(env, { nodeId: node.id, result: "failed", error: resume.error });
+				return "failed";
+			}
+			// Dry runs don't actually wait — record the intent and continue.
+			pushDry(env, {
+				nodeId: node.id,
+				result: "success",
+				output: { wouldWaitUntil: resume.resumeAt, dryRunSkipped: true },
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "end") {
+			pushDry(env, { nodeId: node.id, result: "success" });
+			return "ended";
+		}
+
+		const result = await dryExecuteNode(ctx, node, scopeRecord, env);
+		pushDry(env, {
+			nodeId: node.id,
+			result: result.success
+				? "success"
+				: result.skipped
+					? "skipped"
+					: "failed",
+			error: result.error,
+			output: result.output,
+		});
+		if (!result.success && !result.skipped) return "failed";
+
+		currentNodeId =
+			node.type === "condition"
+				? result.conditionMet
+					? node.nextNodeId
+					: node.elseNodeId
+				: node.nextNodeId;
+	}
+
+	return "chain_done";
+}
+
+/**
+ * Precompute the full dry-run plan for the WORKING copy (what the editor is
+ * testing). Reads only; produces the ordered per-node entries revealed live.
+ */
+async function buildDryPlan(
+	ctx: MutationCtx,
+	automation: AutomationDoc,
+	scopeRecord: ScopeRecord | undefined,
+	triggerObject: Record<string, unknown>,
+	eventOldValue: string | undefined,
+	eventNewValue: string | undefined,
+	globals: Pick<VariableScope, "workflow" | "org" | "user">
+): Promise<ExecutedNode[]> {
+	const env: DryEnv = {
+		orgId: automation.orgId,
+		automationName: automation.name,
+		nodesById: new Map(automation.nodes.map((n) => [n.id, n])),
+		scope: {
+			trigger: {
+				record: triggerObject,
+				event:
+					eventOldValue !== undefined || eventNewValue !== undefined
+						? { oldValue: eventOldValue, newValue: eventNewValue }
+						: undefined,
+			},
+			...globals,
+		},
+		fetchOutputs: {},
+		entries: [],
+		truncated: false,
+	};
+
+	if (automation.nodes.length > 0) {
+		await dryRunWalk(ctx, env, automation.nodes[0].id, scopeRecord, false);
+	}
+	return env.entries;
+}
+
+/**
+ * Start a dry-run test of an automation's working copy against an optional
+ * sample record. Computes the plan, then schedules the live reveal.
+ */
+export const startTestRun = userMutation({
+	args: {
+		automationId: v.id("workflowAutomations"),
+		record: v.optional(
+			v.object({ entityType: objectTypeValidator, entityId: v.string() })
+		),
+	},
+	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		const automation = await ctx.db.get(args.automationId);
+		if (!automation || automation.orgId !== ctx.orgId) {
+			throw new Error("Automation not found");
+		}
+
+		const trigger = automation.trigger;
+		const triggerObjectType =
+			"objectType" in trigger && trigger.objectType
+				? (trigger.objectType as ObjectType)
+				: undefined;
+
+		let triggerObject: Record<string, unknown> = {};
+		let scopeRecord: ScopeRecord | undefined;
+		let triggerRecord:
+			| { entityType: string; entityId: string; label?: string }
+			| undefined;
+		if (args.record) {
+			if (triggerObjectType && args.record.entityType !== triggerObjectType) {
+				throw new Error(
+					`This automation runs on ${triggerObjectType} records — pick a ${triggerObjectType} to test with`
+				);
+			}
+			const obj = await getObject(
+				ctx,
+				args.record.entityType,
+				args.record.entityId,
+				ctx.orgId
+			);
+			if (!obj) {
+				throw new Error("The selected record could not be found");
+			}
+			triggerObject = obj as Record<string, unknown>;
+			// Simulate a status change so status_changed conditions/variables
+			// reflect the tested transition rather than the record's live status.
+			if ("type" in trigger && trigger.type === "status_changed") {
+				triggerObject = { ...triggerObject, status: trigger.toStatus };
+			}
+			scopeRecord = {
+				type: args.record.entityType,
+				id: args.record.entityId,
+				record: triggerObject,
+			};
+			triggerRecord = {
+				entityType: args.record.entityType,
+				entityId: args.record.entityId,
+				label: sampleRecordLabel(
+					args.record.entityType,
+					obj as Record<string, unknown>
+				),
+			};
+		}
+
+		let eventOldValue: string | undefined;
+		let eventNewValue: string | undefined;
+		if ("type" in trigger && trigger.type === "status_changed") {
+			eventOldValue = trigger.fromStatus;
+			eventNewValue = trigger.toStatus;
+		}
+
+		const now = Date.now();
+		// The tester is always the actor for a dry run.
+		const testerOrg = await ctx.db.get(ctx.orgId);
+		const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
+			workflow: { now },
+			org: testerOrg ? { id: ctx.orgId, name: testerOrg.name } : undefined,
+			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
+		};
+
+		const plan = await buildDryPlan(
+			ctx,
+			automation,
+			scopeRecord,
+			triggerObject,
+			eventOldValue,
+			eventNewValue,
+			globals
+		);
+
+		const failed = plan.some((e) => e.result === "failed");
+		const done = plan.length === 0;
+
+		const executionId = await ctx.db.insert("workflowExecutions", {
+			orgId: ctx.orgId,
+			automationId: args.automationId,
+			triggeredBy: `test:${ctx.user._id}`,
+			triggeredAt: now,
+			status: done ? (failed ? "failed" : "completed") : "running",
+			completedAt: done ? now : undefined,
+			mode: "test",
+			dryRun: true,
+			currentNodeId: done ? undefined : plan[0].nodeId,
+			triggerRecord,
+			nodesExecuted: [],
+			testCursor: done ? undefined : { plan },
+			error:
+				done && failed
+					? plan.find((e) => e.result === "failed")?.error
+					: undefined,
+		});
+
+		if (!done) {
+			await ctx.scheduler.runAfter(
+				TEST_STEP_INTERVAL_MS,
+				internal.automationExecutor.executeTestStep,
+				{ orgId: ctx.orgId, executionId }
+			);
+		}
+		return executionId;
+	},
+});
+
+/**
+ * Reveal the next precomputed test-run entry, then reschedule until the plan
+ * is exhausted. One node per transaction so the getExecution subscription
+ * streams per-node status live.
+ */
+export const executeTestStep = systemMutation({
+	args: { executionId: v.id("workflowExecutions") },
+	handler: async (ctx, args): Promise<void> => {
+		const execution = await ctx.db.get(args.executionId);
+		if (!execution || execution.orgId !== ctx.orgId) return;
+		// Cancelled/completed, or not a streaming test run.
+		if (execution.status !== "running" || !execution.testCursor) return;
+
+		const plan = execution.testCursor.plan;
+		const index = execution.nodesExecuted.length;
+
+		if (index >= plan.length) {
+			const failed = execution.nodesExecuted.some((e) => e.result === "failed");
+			await ctx.db.patch(args.executionId, {
+				status: failed ? "failed" : "completed",
+				completedAt: Date.now(),
+				currentNodeId: undefined,
+				testCursor: undefined,
+			});
+			return;
+		}
+
+		const revealed = [...execution.nodesExecuted, plan[index]];
+		const nextIndex = index + 1;
+
+		if (nextIndex < plan.length) {
+			await ctx.db.patch(args.executionId, {
+				nodesExecuted: revealed,
+				currentNodeId: plan[nextIndex].nodeId,
+			});
+			await ctx.scheduler.runAfter(
+				TEST_STEP_INTERVAL_MS,
+				internal.automationExecutor.executeTestStep,
+				{ orgId: ctx.orgId, executionId: args.executionId }
+			);
+			return;
+		}
+
+		const failed = revealed.some((e) => e.result === "failed");
+		await ctx.db.patch(args.executionId, {
+			nodesExecuted: revealed,
+			status: failed ? "failed" : "completed",
+			completedAt: Date.now(),
+			currentNodeId: undefined,
+			testCursor: undefined,
+			error: failed
+				? revealed.find((e) => e.result === "failed")?.error
+				: undefined,
+		});
+	},
+});
+
+/** Cancel an in-progress dry-run test. */
+export const cancelTestRun = userMutation({
+	args: { executionId: v.id("workflowExecutions") },
+	handler: async (ctx, args): Promise<void> => {
+		const execution = await ctx.db.get(args.executionId);
+		if (!execution || execution.orgId !== ctx.orgId) {
+			throw new Error("Test run not found");
+		}
+		if (execution.status !== "running" || execution.mode !== "test") return;
+		await ctx.db.patch(args.executionId, {
+			status: "cancelled",
+			completedAt: Date.now(),
+			currentNodeId: undefined,
+			testCursor: undefined,
+		});
+	},
+});
+
+/**
+ * Run a published automation on demand against a chosen record. Production
+ * mode — real effects — executing the published snapshot via executeAutomation.
+ */
+export const startManualRun = userMutation({
+	args: {
+		automationId: v.id("workflowAutomations"),
+		record: v.optional(
+			v.object({ entityType: objectTypeValidator, entityId: v.string() })
+		),
+	},
+	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		const automation = await ctx.db.get(args.automationId);
+		if (!automation || automation.orgId !== ctx.orgId) {
+			throw new Error("Automation not found");
+		}
+		if (!automation.publishedSnapshot) {
+			throw new Error("Publish this automation before running it manually");
+		}
+
+		const { trigger } = executableDefinition(automation);
+		const triggerType = "type" in trigger ? trigger.type : "status_changed";
+		const objectType =
+			"objectType" in trigger && trigger.objectType
+				? (trigger.objectType as ObjectType)
+				: undefined;
+
+		let triggerRecord:
+			| { entityType: string; entityId: string; label?: string }
+			| undefined;
+		let objType: ObjectType | undefined;
+		let objectId: string | undefined;
+		if (args.record) {
+			if (objectType && args.record.entityType !== objectType) {
+				throw new Error(
+					`This automation runs on ${objectType} records — pick a ${objectType} to run it against`
+				);
+			}
+			const obj = await getObject(
+				ctx,
+				args.record.entityType,
+				args.record.entityId,
+				ctx.orgId
+			);
+			if (!obj) {
+				throw new Error("The selected record could not be found");
+			}
+			objType = args.record.entityType;
+			objectId = args.record.entityId;
+			triggerRecord = {
+				entityType: objType,
+				entityId: objectId,
+				label: sampleRecordLabel(objType, obj as Record<string, unknown>),
+			};
+		} else if (objectType && triggerType !== "scheduled") {
+			throw new Error("Pick a record to run this automation against");
+		}
+
+		// Rate-limit (shared window with event-driven + scheduled runs).
+		const now = Date.now();
+		const recent = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_triggeredAt", (q) =>
+				q.eq("orgId", ctx.orgId).gte("triggeredAt", now - RATE_LIMIT_WINDOW_MS)
+			)
+			.take(MAX_EXECUTIONS_PER_WINDOW);
+		if (recent.length >= MAX_EXECUTIONS_PER_WINDOW) {
+			throw new Error(
+				"Too many automation runs in the last minute — try again shortly"
+			);
+		}
+
+		const executionId = await ctx.db.insert("workflowExecutions", {
+			orgId: ctx.orgId,
+			automationId: args.automationId,
+			triggeredBy: `manual:${ctx.user._id}`,
+			triggeredAt: now,
+			status: "running",
+			mode: "production",
+			snapshotVersion: automation.publishedSnapshot.version,
+			triggerRecord,
+			nodesExecuted: [],
+			executionChain: [args.automationId],
+			recursionDepth: 0,
+		});
+
+		await ctx.scheduler.runAfter(
+			0,
+			internal.automationExecutor.executeAutomation,
+			{
+				orgId: ctx.orgId,
+				executionId,
+				automationId: args.automationId,
+				objectType: objType,
+				objectId,
+				executionChain: [args.automationId],
+				recursionDepth: 1,
+			}
+		);
+
+		return executionId;
+	},
+});
+
+/** Live subscription target for a single run (test or production). */
+export const getExecution = userQuery({
+	args: { executionId: v.id("workflowExecutions") },
+	handler: async (ctx, args): Promise<Doc<"workflowExecutions"> | null> => {
+		const execution = await ctx.db.get(args.executionId);
+		if (!execution || execution.orgId !== ctx.orgId) return null;
+		return execution;
+	},
+});
+
+/**
+ * Latest records of a trigger object type, for the run picker. Accepts an
+ * explicit objectType (so the editor's picker works before the automation is
+ * saved) or derives it from a stored automation's trigger.
+ */
+export const getSampleRecords = userQuery({
+	args: {
+		automationId: v.optional(v.id("workflowAutomations")),
+		objectType: v.optional(objectTypeValidator),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ entityType: ObjectType; entityId: string; label: string }[]> => {
+		let objectType = args.objectType;
+		if (!objectType && args.automationId) {
+			const automation = await ctx.db.get(args.automationId);
+			if (!automation || automation.orgId !== ctx.orgId) return [];
+			// Manual runs execute the published snapshot, so derive the record
+			// type from it — an unpublished object-type edit must not leak here.
+			const { trigger } = executableDefinition(automation);
+			if ("objectType" in trigger && trigger.objectType) {
+				objectType = trigger.objectType as ObjectType;
+			}
+		}
+		if (!objectType) return [];
+
+		const rows = await fetchOrgRows(ctx, objectType, ctx.orgId, 10);
+		return rows.map((row) => ({
+			entityType: objectType as ObjectType,
+			entityId: String(row._id),
+			label: sampleRecordLabel(objectType as ObjectType, row),
+		}));
+	},
+});
+
+/**
+ * Watchdog: fail test runs stuck "running" past STALE_TEST_RUN_MS (a dropped
+ * reveal chain). Production runs parked at delays are excluded (mode !== test).
+ */
+export const failStaleTestRuns = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ failed: number }> => {
+		const cutoff = Date.now() - STALE_TEST_RUN_MS;
+		const stale = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoff))
+			.filter((q) =>
+				q.and(
+					q.eq(q.field("status"), "running"),
+					q.eq(q.field("mode"), "test")
+				)
+			)
+			.take(100);
+
+		let failed = 0;
+		for (const execution of stale) {
+			await ctx.db.patch(execution._id, {
+				status: "failed",
+				completedAt: Date.now(),
+				currentNodeId: undefined,
+				testCursor: undefined,
+				error: execution.error ?? "Test run timed out",
+			});
+			failed++;
+		}
+		return { failed };
 	},
 });

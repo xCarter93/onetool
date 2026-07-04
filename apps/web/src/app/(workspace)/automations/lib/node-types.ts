@@ -36,6 +36,9 @@ export {
 	MAX_DELAY_MS,
 	DELAY_UNIT_MS,
 	MAX_DUE_IN_DAYS,
+	AGGREGATE_OPERATIONS,
+	ADJUST_TIME_UNITS,
+	ADJUST_TIME_UNIT_MS,
 } from "@onetool/backend/convex/lib/workflowTypes";
 
 export type {
@@ -51,6 +54,8 @@ export type {
 	ValueRef,
 	WorkflowNodeConfig,
 	WorkflowNodeType,
+	AggregateOperation,
+	AdjustTimeUnit,
 } from "@onetool/backend/convex/lib/workflowTypes";
 
 export {
@@ -112,6 +117,14 @@ export type FetchNodeConfig = Extract<
 	{ kind: "fetch_records" }
 >;
 export type LoopNodeConfig = Extract<WorkflowNodeConfig, { kind: "loop" }>;
+export type AggregateNodeConfig = Extract<
+	WorkflowNodeConfig,
+	{ kind: "aggregate" }
+>;
+export type AdjustTimeNodeConfig = Extract<
+	WorkflowNodeConfig,
+	{ kind: "adjust_time" }
+>;
 export type DelayNodeConfig = Extract<WorkflowNodeConfig, { kind: "delay" }>;
 export type DelayUntilNodeConfig = Extract<
 	WorkflowNodeConfig,
@@ -279,6 +292,20 @@ export type LoopNodeData = {
 	_dbNode: WorkflowNode;
 };
 
+export type AggregateNodeData = {
+	nodeType: "aggregate";
+	config?: AggregateNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
+	_dbNode: WorkflowNode;
+};
+
+export type AdjustTimeNodeData = {
+	nodeType: "adjust_time";
+	config?: AdjustTimeNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
+	_dbNode: WorkflowNode;
+};
+
 export type DelayNodeData = {
 	nodeType: "delay";
 	config?: DelayNodeConfig;
@@ -319,6 +346,8 @@ export type ConditionRFNode = Node<ConditionNodeData, "conditionNode">;
 export type ActionRFNode = Node<ActionNodeData, "actionNode">;
 export type FetchRFNode = Node<FetchNodeData, "fetchNode">;
 export type LoopRFNode = Node<LoopNodeData, "loopNode">;
+export type AggregateRFNode = Node<AggregateNodeData, "aggregateNode">;
+export type AdjustTimeRFNode = Node<AdjustTimeNodeData, "adjustTimeNode">;
 export type DelayRFNode = Node<DelayNodeData, "delayNode">;
 export type DelayUntilRFNode = Node<DelayUntilNodeData, "delayUntilNode">;
 export type EndRFNode = Node<EndNodeData, "endNode">;
@@ -332,6 +361,8 @@ export type AppNode =
 	| ActionRFNode
 	| FetchRFNode
 	| LoopRFNode
+	| AggregateRFNode
+	| AdjustTimeRFNode
 	| DelayRFNode
 	| DelayUntilRFNode
 	| EndRFNode

@@ -34,7 +34,11 @@ describe("resolveValueRef", () => {
 		},
 		nodes: {
 			fetch1: { count: 7 },
+			calc1: { result: 42.5 },
 		},
+		workflow: { now: 1_700_000_000_000 },
+		org: { id: "org123", name: "Acme Co" },
+		user: { id: "user123", name: "Ada", email: "ada@acme.test" },
 	};
 
 	it("returns static values as-is", () => {
@@ -84,6 +88,42 @@ describe("resolveValueRef", () => {
 		expect(
 			resolveValueRef({ kind: "var", path: "node.fetch1.count" }, scope)
 		).toBe(7);
+	});
+
+	it("resolves node.<id>.result (aggregate/adjust-time output)", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "node.calc1.result" }, scope)
+		).toBe(42.5);
+	});
+
+	it("resolves built-in globals (workflow / org / user)", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "workflow.now" }, scope)
+		).toBe(1_700_000_000_000);
+		expect(resolveValueRef({ kind: "var", path: "org.id" }, scope)).toBe(
+			"org123"
+		);
+		expect(resolveValueRef({ kind: "var", path: "org.name" }, scope)).toBe(
+			"Acme Co"
+		);
+		expect(resolveValueRef({ kind: "var", path: "user.id" }, scope)).toBe(
+			"user123"
+		);
+		expect(resolveValueRef({ kind: "var", path: "user.name" }, scope)).toBe(
+			"Ada"
+		);
+		expect(resolveValueRef({ kind: "var", path: "user.email" }, scope)).toBe(
+			"ada@acme.test"
+		);
+	});
+
+	it("returns fallback for globals missing on the scope (e.g. user on scheduled runs)", () => {
+		expect(
+			resolveValueRef(
+				{ kind: "var", path: "user.email", fallback: "none" },
+				emptyScope
+			)
+		).toBe("none");
 	});
 
 	it("returns undefined for unknown or malformed paths", () => {

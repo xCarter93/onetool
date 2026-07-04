@@ -1,0 +1,752 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { setupConvexTest } from "./test.setup";
+import { createTestOrg, createTestIdentity } from "./test.helpers";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+
+/**
+ * Slice 4 coverage: dry-run test mode (precompute + streamed reveal), manual
+ * run (production, published snapshot), and the supporting queries/watchdog.
+ */
+
+function notesActionNode(id: string, value: string, nextNodeId?: string) {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "update_field" as const,
+				target: "self" as const,
+				field: "notes",
+				value: { kind: "static" as const, value },
+			},
+		},
+		nextNodeId,
+	};
+}
+
+function statusActionNode(id: string, value: string, nextNodeId?: string) {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "update_field" as const,
+				target: "self" as const,
+				field: "status",
+				value: { kind: "static" as const, value },
+			},
+		},
+		nextNodeId,
+	};
+}
+
+function createTaskNode(id: string, title: string, nextNodeId?: string) {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "create_task" as const,
+				title: { kind: "static" as const, value: title },
+			},
+		},
+		nextNodeId,
+	};
+}
+
+function conditionNode(
+	id: string,
+	field: string,
+	operator: string,
+	value: string,
+	opts: { nextNodeId?: string; elseNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "condition" as const,
+		config: {
+			kind: "condition" as const,
+			logic: "and" as const,
+			groups: [
+				{
+					logic: "and" as const,
+					rules: [
+						{
+							field,
+							// eslint-disable-next-line @typescript-eslint/no-explicit-any
+							operator: operator as any,
+							value: { kind: "static" as const, value },
+						},
+					],
+				},
+			],
+		},
+		nextNodeId: opts.nextNodeId,
+		elseNodeId: opts.elseNodeId,
+	};
+}
+
+function fetchNode(
+	id: string,
+	objectType: "client" | "project" | "quote" | "invoice" | "task",
+	opts: { nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "fetch_records" as const,
+		config: {
+			kind: "fetch_records" as const,
+			objectType,
+			filters: [],
+		},
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function loopNode(
+	id: string,
+	sourceNodeId: string,
+	opts: { bodyStartNodeId?: string; nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "loop" as const,
+		config: { kind: "loop" as const, sourceNodeId },
+		bodyStartNodeId: opts.bodyStartNodeId,
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function delayNode(
+	id: string,
+	amount: number,
+	unit: "minutes" | "hours" | "days",
+	opts: { nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "delay" as const,
+		config: { kind: "delay" as const, amount, unit },
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function endNode(id: string) {
+	return { id, type: "end" as const, config: { kind: "end" as const } };
+}
+
+const clientCreatedTrigger = {
+	type: "record_created" as const,
+	objectType: "client" as const,
+};
+
+describe("automation runs (test + manual)", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function setupUser(overrides?: {
+		clerkUserId?: string;
+		clerkOrgId?: string;
+	}) {
+		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		return { ...setup, asUser };
+	}
+
+	async function makeClient(
+		asUser: ReturnType<typeof t.withIdentity>,
+		companyName = "Acme Co"
+	): Promise<Id<"clients">> {
+		return await asUser.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName,
+			status: "lead",
+		});
+	}
+
+	async function drainScheduled() {
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	}
+
+	// ------------------------------------------------------------------
+	// Dry-run test mode
+	// ------------------------------------------------------------------
+
+	describe("startTestRun (dry run)", () => {
+		it("streams to completion without writing anything", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Set notes",
+				trigger: clientCreatedTrigger,
+				nodes: [statusActionNode("act-1", "inactive")],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+
+			// Before the reveal chain runs: first node pending, nothing revealed.
+			const initial = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(initial?.mode).toBe("test");
+			expect(initial?.dryRun).toBe(true);
+			expect(initial?.status).toBe("running");
+			expect(initial?.currentNodeId).toBe("act-1");
+			expect(initial?.nodesExecuted).toHaveLength(0);
+			expect(initial?.triggerRecord?.entityId).toBe(clientId);
+
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			expect(done?.currentNodeId).toBeUndefined();
+			expect(done?.testCursor).toBeUndefined();
+			expect(done?.nodesExecuted.map((n) => n.nodeId)).toEqual(["act-1"]);
+			expect(done?.nodesExecuted[0].result).toBe("success");
+
+			// Dry run must not have touched the client.
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.status).toBe("lead");
+		});
+
+		it("simulates create_task without creating a task", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Make a task",
+				trigger: clientCreatedTrigger,
+				nodes: [createTaskNode("task-1", "Follow up")],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			expect(done?.nodesExecuted[0].result).toBe("success");
+			expect(
+				(done?.nodesExecuted[0].output as { summary?: string })?.summary
+			).toContain("Follow up");
+
+			const tasks = await t.run(async (ctx) =>
+				ctx.db
+					.query("tasks")
+					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.collect()
+			);
+			expect(tasks).toHaveLength(0);
+		});
+
+		it("reveals only the taken branch of a condition", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser, "Globex");
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Branchy",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					conditionNode("cond-1", "companyName", "equals", "Nope", {
+						nextNodeId: "yes-act",
+						elseNodeId: "no-act",
+					}),
+					notesActionNode("yes-act", "yes"),
+					notesActionNode("no-act", "no"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			const nodeIds = done?.nodesExecuted.map((n) => n.nodeId) ?? [];
+			expect(nodeIds).toEqual(["cond-1", "no-act"]);
+			expect(nodeIds).not.toContain("yes-act");
+		});
+
+		it("marks the run failed when a step errors (non-member recipient)", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+			// A syntactically valid users id that is not a member of the org.
+			const strangerId = await t.run(async (ctx) =>
+				ctx.db.insert("users", {
+					name: "Stranger",
+					email: "stranger@example.com",
+					image: "https://example.com/x.jpg",
+					externalId: "user_stranger",
+				})
+			);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Notify stranger",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					{
+						id: "notify-1",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "send_notification" as const,
+								recipient: { userId: strangerId },
+								message: "hi",
+							},
+						},
+					},
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("failed");
+			expect(done?.nodesExecuted[0].result).toBe("failed");
+			expect(done?.error).toMatch(/not a member/i);
+
+			const notifications = await t.run(async (ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+			expect(notifications).toHaveLength(0);
+		});
+
+		it("rejects a record whose entityType mismatches the trigger's object type", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Client only",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+
+			await expect(
+				asUser.mutation(api.automationExecutor.startTestRun, {
+					automationId,
+					record: { entityType: "project", entityId: projectId },
+				})
+			).rejects.toThrow(/pick a client/i);
+		});
+
+		it("runs record-less (no record) for a node with no per-record step", async () => {
+			const { asUser } = await setupUser();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Just end",
+				trigger: clientCreatedTrigger,
+				nodes: [{ id: "end-1", type: "end" as const, config: { kind: "end" as const } }],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			expect(done?.nodesExecuted.map((n) => n.nodeId)).toEqual(["end-1"]);
+		});
+	});
+
+	describe("startTestRun (dry run) — fetch/loop/delay walk", () => {
+		it("samples at most DRY_LOOP_SAMPLE loop iterations and records a would-wait delay without parking or writing", async () => {
+			const { asUser, orgId } = await setupUser();
+			// 5 matching clients so the loop's DRY_LOOP_SAMPLE=3 truncation is observable.
+			for (let i = 0; i < 5; i++) {
+				await makeClient(asUser, `Client ${i}`);
+			}
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Fetch, loop, delay",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					fetchNode("fetch-1", "client", { nextNodeId: "loop-1" }),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "delay-1",
+					}),
+					statusActionNode("body-act", "inactive"),
+					delayNode("delay-1", 1, "hours", { nextNodeId: "end-1" }),
+					endNode("end-1"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			expect(done?.resumeState).toBeUndefined();
+			expect(done?.currentNodeId).toBeUndefined();
+
+			const entries = done?.nodesExecuted ?? [];
+			const loopEntry = entries.find((e) => e.nodeId === "loop-1");
+			expect(loopEntry?.recordsProcessed).toBe(5);
+			expect(loopEntry?.output).toMatchObject({ total: 5, sampled: 3 });
+
+			const bodyEntries = entries.filter((e) => e.nodeId === "body-act");
+			expect(bodyEntries).toHaveLength(3);
+			expect(bodyEntries.every((e) => e.result === "success")).toBe(true);
+
+			const delayEntry = entries.find((e) => e.nodeId === "delay-1");
+			expect(delayEntry?.result).toBe("success");
+			expect(delayEntry?.output).toMatchObject({ dryRunSkipped: true });
+			expect(
+				(delayEntry?.output as { wouldWaitUntil?: number })?.wouldWaitUntil
+			).toBeTypeOf("number");
+
+			expect(entries.map((e) => e.nodeId)).toContain("end-1");
+
+			// Dry run must not have written to any client.
+			const clients = await t.run(async (ctx) =>
+				ctx.db
+					.query("clients")
+					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.collect()
+			);
+			expect(clients.every((c) => c.status === "lead")).toBe(true);
+		});
+	});
+
+	describe("cancelTestRun", () => {
+		it("stops the reveal chain", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Multi step",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					notesActionNode("a", "1", "b"),
+					notesActionNode("b", "2", "c"),
+					notesActionNode("c", "3"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+
+			await asUser.mutation(api.automationExecutor.cancelTestRun, {
+				executionId,
+			});
+
+			const cancelled = await asUser.query(
+				api.automationExecutor.getExecution,
+				{ executionId }
+			);
+			expect(cancelled?.status).toBe("cancelled");
+			expect(cancelled?.testCursor).toBeUndefined();
+
+			// Draining the already-scheduled step must not resurrect the run.
+			await drainScheduled();
+			const stillCancelled = await asUser.query(
+				api.automationExecutor.getExecution,
+				{ executionId }
+			);
+			expect(stillCancelled?.status).toBe("cancelled");
+			expect(stillCancelled?.nodesExecuted).toHaveLength(0);
+		});
+	});
+
+	// ------------------------------------------------------------------
+	// Manual run (production)
+	// ------------------------------------------------------------------
+
+	describe("startManualRun", () => {
+		it("runs the published snapshot with real effects", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Manual notes",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "ran manually")],
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startManualRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const execution = await asUser.query(
+				api.automationExecutor.getExecution,
+				{ executionId }
+			);
+			expect(execution?.mode).toBe("production");
+			expect(execution?.status).toBe("completed");
+			expect(execution?.triggeredBy).toMatch(/^manual:/);
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("ran manually");
+		});
+
+		it("requires the automation to be published", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Unpublished",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "nope")],
+			});
+
+			await expect(
+				asUser.mutation(api.automationExecutor.startManualRun, {
+					automationId,
+					record: { entityType: "client", entityId: clientId },
+				})
+			).rejects.toThrow(/publish/i);
+		});
+
+		it("executes the PUBLISHED snapshot, ignoring unpublished working-copy edits", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Snapshot wins",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "published")],
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+
+			// Edit the working copy but do NOT publish.
+			await asUser.mutation(api.automations.update, {
+				id: automationId,
+				nodes: [notesActionNode("act-1", "working-copy")],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startManualRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("published");
+			const execution = await asUser.query(
+				api.automationExecutor.getExecution,
+				{ executionId }
+			);
+			expect(execution?.snapshotVersion).toBe(1);
+		});
+
+		it("rejects a record whose entityType mismatches the published trigger's object type", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Client only manual",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+
+			await expect(
+				asUser.mutation(api.automationExecutor.startManualRun, {
+					automationId,
+					record: { entityType: "project", entityId: projectId },
+				})
+			).rejects.toThrow(/pick a client/i);
+		});
+
+		it("requires a record when the published trigger scopes an object type", async () => {
+			const { asUser } = await setupUser();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Needs record",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+
+			await expect(
+				asUser.mutation(api.automationExecutor.startManualRun, {
+					automationId,
+				})
+			).rejects.toThrow(/pick a record/i);
+		});
+	});
+
+	// ------------------------------------------------------------------
+	// Supporting queries + watchdog
+	// ------------------------------------------------------------------
+
+	describe("getSampleRecords", () => {
+		it("returns the latest records of the trigger object type with labels", async () => {
+			const { asUser } = await setupUser();
+			await makeClient(asUser, "First Co");
+			await makeClient(asUser, "Second Co");
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Sampler",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+
+			const samples = await asUser.query(
+				api.automationExecutor.getSampleRecords,
+				{ automationId }
+			);
+			expect(samples).toHaveLength(2);
+			expect(samples.every((s) => s.entityType === "client")).toBe(true);
+			expect(samples.map((s) => s.label).sort()).toEqual([
+				"First Co",
+				"Second Co",
+			]);
+		});
+	});
+
+	describe("getExecution", () => {
+		it("returns null for an execution in another org", async () => {
+			const org1 = await setupUser({
+				clerkUserId: "u1",
+				clerkOrgId: "o1",
+			});
+			const org2 = await setupUser({
+				clerkUserId: "u2",
+				clerkOrgId: "o2",
+			});
+			const clientId = await makeClient(org1.asUser);
+
+			const automationId = await org1.asUser.mutation(api.automations.create, {
+				name: "Org1",
+				trigger: clientCreatedTrigger,
+				nodes: [{ id: "end-1", type: "end" as const, config: { kind: "end" as const } }],
+			});
+			const executionId = await org1.asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+
+			expect(
+				await org2.asUser.query(api.automationExecutor.getExecution, {
+					executionId,
+				})
+			).toBeNull();
+		});
+	});
+
+	describe("failStaleTestRuns", () => {
+		it("fails stale test runs but leaves fresh and production runs alone", async () => {
+			const { asUser, orgId } = await setupUser();
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "For ids",
+				trigger: clientCreatedTrigger,
+				nodes: [{ id: "end-1", type: "end" as const, config: { kind: "end" as const } }],
+			});
+
+			const now = Date.now();
+			const staleTest = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "test:x",
+					triggeredAt: now - 10 * 60 * 1000,
+					status: "running",
+					mode: "test",
+					dryRun: true,
+					nodesExecuted: [],
+				})
+			);
+			const freshTest = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "test:y",
+					triggeredAt: now,
+					status: "running",
+					mode: "test",
+					dryRun: true,
+					nodesExecuted: [],
+				})
+			);
+			const staleProd = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - 10 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleTestRuns,
+				{}
+			);
+			expect(result.failed).toBe(1);
+
+			const rows = await t.run(async (ctx) => ({
+				stale: await ctx.db.get(staleTest),
+				fresh: await ctx.db.get(freshTest),
+				prod: await ctx.db.get(staleProd),
+			}));
+			expect(rows.stale?.status).toBe("failed");
+			expect(rows.stale?.error).toMatch(/timed out/i);
+			expect(rows.fresh?.status).toBe("running");
+			expect(rows.prod?.status).toBe("running");
+		});
+	});
+});

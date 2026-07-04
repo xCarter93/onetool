@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
 	automationStatusValidator,
+	executedNodeValidator,
 	nodeConfigValidator,
 	nodeTypeValidator,
 	triggerValidator,
@@ -1345,23 +1346,14 @@ export default defineSchema({
 				label: v.optional(v.string()),
 			})
 		),
-		nodesExecuted: v.array(
+		nodesExecuted: v.array(executedNodeValidator),
+		// Test runs (dry-run) precompute the full walk, then reveal one entry
+		// per transaction so the getExecution subscription streams per-node
+		// status live. `plan` holds the remaining-and-revealed ordered entries;
+		// the number already revealed equals nodesExecuted.length.
+		testCursor: v.optional(
 			v.object({
-				nodeId: v.string(),
-				result: v.union(
-					v.literal("success"),
-					v.literal("skipped"),
-					v.literal("failed"),
-					v.literal("running")
-				),
-				error: v.optional(v.string()),
-				// v1.2 per-node timing fields
-				startedAt: v.optional(v.number()),
-				completedAt: v.optional(v.number()),
-				recordsProcessed: v.optional(v.number()),
-				// Bounded (~4KB) input/output snapshots for the runs viewer.
-				input: v.optional(v.any()),
-				output: v.optional(v.any()),
+				plan: v.array(executedNodeValidator),
 			})
 		),
 		error: v.optional(v.string()),
@@ -1401,6 +1393,11 @@ export default defineSchema({
 						recordIds: v.array(v.string()),
 						count: v.number(),
 					})
+				),
+				// aggregate/adjust_time results computed before the delay, so
+				// node.<id>.result still resolves after the run resumes.
+				nodeResults: v.optional(
+					v.array(v.object({ nodeId: v.string(), result: v.number() }))
 				),
 			})
 		),

@@ -11,6 +11,8 @@ import { ConditionConfigPanel } from "./panels/condition-config";
 import { ActionConfigPanel } from "./panels/action-config";
 import { FetchConfigPanel } from "./panels/fetch-config";
 import { LoopConfigPanel } from "./panels/loop-config";
+import { AggregateConfigPanel } from "./panels/aggregate-config";
+import { AdjustTimeConfigPanel } from "./panels/adjust-time-config";
 import { DelayConfig, DelayUntilConfig } from "./panels/delay-config";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +27,8 @@ export type SidebarMode =
 	| { mode: "node-config"; nodeType: "action"; nodeId: string }
 	| { mode: "node-config"; nodeType: "fetch_records"; nodeId: string }
 	| { mode: "node-config"; nodeType: "loop"; nodeId: string }
+	| { mode: "node-config"; nodeType: "aggregate"; nodeId: string }
+	| { mode: "node-config"; nodeType: "adjust_time"; nodeId: string }
 	| { mode: "node-config"; nodeType: "delay"; nodeId: string }
 	| { mode: "node-config"; nodeType: "delay_until"; nodeId: string }
 	| { mode: "node-config"; nodeType: "end"; nodeId: string };
@@ -56,6 +60,8 @@ const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
 	action: ActionConfigPanel,
 	fetch_records: FetchConfigPanel,
 	loop: LoopConfigPanel,
+	aggregate: AggregateConfigPanel,
+	adjust_time: AdjustTimeConfigPanel,
 	delay: DelayConfig,
 	delay_until: DelayUntilConfig,
 };
@@ -79,6 +85,10 @@ function getSidebarTitle(mode: SidebarMode): string {
 			return "Configure Fetch";
 		case "loop":
 			return "Configure Loop";
+		case "aggregate":
+			return "Aggregate";
+		case "adjust_time":
+			return "Adjust time";
 		case "delay":
 			return "Configure Delay";
 		case "delay_until":

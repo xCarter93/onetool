@@ -46,6 +46,7 @@ export const objectTypeValidator = v.union(
 //   loop.<loopNodeId>.item.<field>  field on the current loop item
 //   loop.<loopNodeId>.index     zero-based loop index
 //   node.<fetchNodeId>.count    number of records a fetch node returned
+//   node.<computeNodeId>.result value produced by an aggregate/adjust-time node
 // ---------------------------------------------------------------------------
 
 export const valueRefValidator = v.union(
@@ -249,11 +250,50 @@ export const endNodeConfigValidator = v.object({
 	kind: v.literal("end"),
 });
 
+// Compute nodes: read from scope, write a value into node.<id>.result. They
+// perform no DB writes, so the dry test run executes them for real.
+
+export const AGGREGATE_OPERATIONS = ["sum", "avg", "min", "max"] as const;
+export type AggregateOperation = (typeof AGGREGATE_OPERATIONS)[number];
+
+export const aggregateNodeConfigValidator = v.object({
+	kind: v.literal("aggregate"),
+	/** Node id of the fetch_records node whose records are aggregated. */
+	sourceNodeId: v.string(),
+	/** Numeric (number/currency) field on the fetched object type. */
+	field: v.string(),
+	op: v.union(
+		v.literal("sum"),
+		v.literal("avg"),
+		v.literal("min"),
+		v.literal("max")
+	),
+});
+
+export const ADJUST_TIME_UNITS = ["minutes", "hours", "days", "weeks"] as const;
+export type AdjustTimeUnit = (typeof ADJUST_TIME_UNITS)[number];
+
+export const adjustTimeNodeConfigValidator = v.object({
+	kind: v.literal("adjust_time"),
+	/** Base timestamp: static epoch-ms/ISO string, or a var path to a date. */
+	base: valueRefValidator,
+	amount: v.number(),
+	unit: v.union(
+		v.literal("minutes"),
+		v.literal("hours"),
+		v.literal("days"),
+		v.literal("weeks")
+	),
+	direction: v.union(v.literal("add"), v.literal("subtract")),
+});
+
 export const nodeConfigValidator = v.union(
 	conditionNodeConfigValidator,
 	actionNodeConfigValidator,
 	fetchNodeConfigValidator,
 	loopNodeConfigValidator,
+	aggregateNodeConfigValidator,
+	adjustTimeNodeConfigValidator,
 	delayNodeConfigValidator,
 	delayUntilNodeConfigValidator,
 	endNodeConfigValidator
@@ -266,6 +306,8 @@ export const NODE_TYPES = [
 	"action",
 	"fetch_records",
 	"loop",
+	"aggregate",
+	"adjust_time",
 	"delay",
 	"delay_until",
 	"end",
@@ -278,6 +320,8 @@ export const nodeTypeValidator = v.union(
 	v.literal("action"),
 	v.literal("fetch_records"),
 	v.literal("loop"),
+	v.literal("aggregate"),
+	v.literal("adjust_time"),
 	v.literal("delay"),
 	v.literal("delay_until"),
 	v.literal("end")
@@ -300,6 +344,14 @@ export const DELAY_UNIT_MS: Record<"minutes" | "hours" | "days", number> = {
 	minutes: 60_000,
 	hours: 3_600_000,
 	days: 86_400_000,
+};
+
+/** Fixed-ms offsets for adjust_time (a "day" is always 86.4M ms, DST-agnostic). */
+export const ADJUST_TIME_UNIT_MS: Record<AdjustTimeUnit, number> = {
+	minutes: 60_000,
+	hours: 3_600_000,
+	days: 86_400_000,
+	weeks: 604_800_000,
 };
 
 /** Upper bound for create_task dueInDays. */
@@ -402,3 +454,32 @@ export const automationStatusValidator = v.union(
 	v.literal("active"),
 	v.literal("paused")
 );
+
+// ---------------------------------------------------------------------------
+// Execution log entry — one per node the engine visits. Shared by
+// workflowExecutions.nodesExecuted and the test-run cursor's precomputed plan
+// (see automationExecutor.ts test-run step machine).
+// ---------------------------------------------------------------------------
+
+export const executedNodeResultValidator = v.union(
+	v.literal("success"),
+	v.literal("skipped"),
+	v.literal("failed"),
+	v.literal("running")
+);
+
+export type ExecutedNodeResult = Infer<typeof executedNodeResultValidator>;
+
+export const executedNodeValidator = v.object({
+	nodeId: v.string(),
+	result: executedNodeResultValidator,
+	error: v.optional(v.string()),
+	startedAt: v.optional(v.number()),
+	completedAt: v.optional(v.number()),
+	recordsProcessed: v.optional(v.number()),
+	// Bounded (~4KB) input/output snapshots for the runs viewer.
+	input: v.optional(v.any()),
+	output: v.optional(v.any()),
+});
+
+export type ExecutedNode = Infer<typeof executedNodeValidator>;

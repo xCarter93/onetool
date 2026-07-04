@@ -31,6 +31,7 @@ import {
 	type UpdateFieldAction,
 	type WorkflowNode,
 } from "../../../lib/node-types";
+import { getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 import {
@@ -96,10 +97,14 @@ function UpdateFieldFields({
 	nodeId,
 	commit,
 }: ActionFieldsProps<UpdateFieldAction> & { triggerObjectType: AutomationObjectType }) {
-	const targetOptions = getTargetOptions(triggerObjectType);
+	// Inside a loop body, `target: "self"` (and its related FKs) resolve against
+	// the loop's fetched item, not the trigger record — mirror the engine.
+	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
+	const scopeObjectType = scope.objectType ?? triggerObjectType;
+	const targetOptions = getTargetOptions(scopeObjectType);
 	const targetValue = typeof action.target === "string" ? action.target : action.target.related;
 	const targetObjectType =
-		targetOptions.find((t) => t.value === targetValue)?.objectType ?? triggerObjectType;
+		targetOptions.find((t) => t.value === targetValue)?.objectType ?? scopeObjectType;
 	const writableFields = getWritableFields(targetObjectType);
 	const fieldDef = writableFields.find((f) => f.key === action.field);
 
@@ -140,8 +145,12 @@ function UpdateFieldFields({
 				label="Target"
 				helper={
 					targetValue === "self"
-						? undefined
-						: `Updates the ${targetObjectType} linked to the triggering ${triggerObjectType}.`
+						? scope.inLoop
+							? "Updates the current record in the loop."
+							: undefined
+						: scope.inLoop
+							? `Updates the ${targetObjectType} linked to the current loop item.`
+							: `Updates the ${targetObjectType} linked to the triggering ${triggerObjectType}.`
 				}
 			>
 				<Select value={targetValue} onValueChange={updateTarget}>
@@ -151,7 +160,9 @@ function UpdateFieldFields({
 					<SelectContent>
 						{targetOptions.map((target) => (
 							<SelectItem key={target.value} value={target.value}>
-								{target.label}
+								{target.value === "self" && scope.inLoop
+									? "Current loop item"
+									: target.label}
 							</SelectItem>
 						))}
 					</SelectContent>

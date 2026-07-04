@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getAvailableVariables, getUpstreamFetchNodes } from "./variables";
+import {
+	getAvailableVariables,
+	getScopeObjectType,
+	getUpstreamFetchNodes,
+} from "./variables";
 import type {
 	FetchNodeConfig,
 	LoopNodeConfig,
@@ -132,6 +136,49 @@ describe("getAvailableVariables", () => {
 
 		const atLoopItself = getAvailableVariables(nodes, statusChangedTrigger, "loop1");
 		expect(atLoopItself.some((o) => o.path.startsWith("loop.loop1."))).toBe(false);
+	});
+});
+
+describe("getScopeObjectType", () => {
+	const fetch = fetchNode("f1", "project");
+	const loop = loopNode("loop1", "f1", { bodyStartNodeId: "body1" });
+	const bodyAction = actionNode("body1", { nextNodeId: "body2" });
+	const bodyAction2 = actionNode("body2");
+	const afterAction = actionNode("after1");
+	const nodes = [fetch, loop, bodyAction, bodyAction2, afterAction];
+
+	it("returns the loop's fetched item type for nodes anywhere in the loop body", () => {
+		expect(getScopeObjectType(nodes, "body1", "client")).toEqual({
+			objectType: "project",
+			inLoop: true,
+		});
+		expect(getScopeObjectType(nodes, "body2", "client")).toEqual({
+			objectType: "project",
+			inLoop: true,
+		});
+	});
+
+	it("returns the trigger type for nodes outside any loop body", () => {
+		expect(getScopeObjectType(nodes, "after1", "client")).toEqual({
+			objectType: "client",
+			inLoop: false,
+		});
+	});
+
+	it("treats the loop node itself as running in the enclosing (trigger) scope", () => {
+		expect(getScopeObjectType(nodes, "loop1", "client")).toEqual({
+			objectType: "client",
+			inLoop: false,
+		});
+	});
+
+	it("stays in-loop but falls back to the trigger type when the fetch source is unresolved", () => {
+		const looseLoop = loopNode("loop2", "missing", { bodyStartNodeId: "b1" });
+		const body = actionNode("b1");
+		expect(getScopeObjectType([looseLoop, body], "b1", "client")).toEqual({
+			objectType: "client",
+			inLoop: true,
+		});
 	});
 });
 

@@ -39,20 +39,46 @@ import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { ManualRunButton } from "./components/manual-run-button";
+
+type LifecycleStatus = "draft" | "active" | "paused";
+
+const effectiveStatus = (a: Doc<"workflowAutomations">): LifecycleStatus =>
+	a.status ?? (a.isActive ? "active" : "draft");
+
+const STATUS_BADGE: Record<
+	LifecycleStatus,
+	{ label: string; variant: "outline" | "success" | "warning" }
+> = {
+	draft: { label: "Draft", variant: "outline" },
+	active: { label: "Active", variant: "success" },
+	paused: { label: "Paused", variant: "warning" },
+};
+
+const triggerObjectType = (
+	a: Doc<"workflowAutomations">
+): "client" | "project" | "quote" | "invoice" | "task" | undefined => {
+	const trigger = a.publishedSnapshot?.trigger ?? a.trigger;
+	return "objectType" in trigger
+		? (trigger.objectType as
+				| "client"
+				| "project"
+				| "quote"
+				| "invoice"
+				| "task")
+		: undefined;
+};
+
+const triggerTypeOf = (
+	a: Doc<"workflowAutomations">
+): string | undefined => {
+	const trigger = a.publishedSnapshot?.trigger ?? a.trigger;
+	return "type" in trigger ? (trigger.type as string) : undefined;
+};
 
 // Format object type for display
 const formatObjectType = (type: string) => {
 	return type.charAt(0).toUpperCase() + type.slice(1);
-};
-
-// Format trigger for display
-const formatTrigger = (trigger: {
-	objectType: string;
-	fromStatus?: string;
-	toStatus: string;
-}) => {
-	const fromPart = trigger.fromStatus ? `from "${trigger.fromStatus}" ` : "";
-	return `When ${formatObjectType(trigger.objectType)} changes ${fromPart}to "${trigger.toStatus}"`;
 };
 
 // Get badge variant for object type
@@ -169,7 +195,12 @@ function AutomationsContent() {
 			await toggleActive({ id: id as Id<"workflowAutomations"> });
 		} catch (error) {
 			console.error("Failed to toggle automation:", error);
-			toast.error("Error", "Failed to toggle automation status");
+			toast.error(
+				"Couldn't update automation",
+				error instanceof Error
+					? error.message
+					: "Failed to change the automation status"
+			);
 		}
 	};
 
@@ -201,7 +232,8 @@ function AutomationsContent() {
 	const isEmpty = !isLoading && automations.length === 0;
 
 	// Count active automations
-	const activeCount = automations?.filter((a) => a.isActive).length ?? 0;
+	const activeCount =
+		automations?.filter((a) => effectiveStatus(a) === "active").length ?? 0;
 
 	return (
 		<div className="relative p-6 space-y-6">
@@ -373,26 +405,46 @@ function AutomationsContent() {
 													</span>
 												</TableCell>
 												<TableCell>
-													<Button
-														intent="outline"
-														size="sm"
-														onPress={() => handleToggleActive(automation._id)}
-														className={`gap-1.5 ${
-															automation.isActive
-																? "text-green-600 hover:text-green-700 border-green-200 hover:border-green-300 dark:text-green-400 dark:border-green-800 dark:hover:border-green-700"
-																: "text-muted-foreground"
-														}`}
-													>
-														{automation.isActive ? (
-															<Power className="h-3.5 w-3.5" />
-														) : (
-															<PowerOff className="h-3.5 w-3.5" />
-														)}
-														{automation.isActive ? "Active" : "Inactive"}
-													</Button>
+													{(() => {
+														const status = effectiveStatus(automation);
+														const badge = STATUS_BADGE[status];
+														return (
+															<div className="flex items-center gap-2">
+																<Badge variant={badge.variant}>
+																	{badge.label}
+																</Badge>
+																<Button
+																	intent="plain"
+																	size="sq-sm"
+																	onPress={() =>
+																		handleToggleActive(automation._id)
+																	}
+																	aria-label={
+																		status === "active"
+																			? `Pause ${automation.name}`
+																			: `Activate ${automation.name}`
+																	}
+																>
+																	{status === "active" ? (
+																		<PowerOff className="h-3.5 w-3.5" />
+																	) : (
+																		<Power className="h-3.5 w-3.5" />
+																	)}
+																</Button>
+															</div>
+														);
+													})()}
 												</TableCell>
 												<TableCell>
 													<div className="flex items-center gap-2">
+														{effectiveStatus(automation) === "active" && (
+															<ManualRunButton
+																automationId={automation._id}
+																automationName={automation.name}
+																objectType={triggerObjectType(automation)}
+																triggerType={triggerTypeOf(automation)}
+															/>
+														)}
 														<Button
 															intent="outline"
 															size="sq-sm"

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity } from "./test.helpers";
 import { api } from "./_generated/api";
+import { computeNextRunAt } from "./lib/schedule";
 
 // Valid v2 trigger: client statuses are lead/active/inactive/archived
 const clientTrigger = {
@@ -406,6 +407,77 @@ describe("Automations", () => {
 			).rejects.toThrow(/delay steps aren't supported inside loops/i);
 		});
 
+		it("rejects an aggregate over a non-numeric field", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad aggregate field",
+					trigger: clientTrigger,
+					nodes: [
+						fetchNode("fetch-1", "invoice", { nextNodeId: "agg-1" }),
+						{
+							id: "agg-1",
+							type: "aggregate" as const,
+							config: {
+								kind: "aggregate" as const,
+								sourceNodeId: "fetch-1",
+								field: "status", // select, not numeric
+								op: "sum" as const,
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/number or currency field/i);
+		});
+
+		it("rejects an aggregate whose source is not a Find records node", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad aggregate source",
+					trigger: clientTrigger,
+					nodes: [
+						{
+							id: "agg-1",
+							type: "aggregate" as const,
+							config: {
+								kind: "aggregate" as const,
+								sourceNodeId: "nope",
+								field: "total",
+								op: "sum" as const,
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/must reference a "Find records" node/i);
+		});
+
+		it("rejects an adjust_time with a non-date static base", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad adjust base",
+					trigger: clientTrigger,
+					nodes: [
+						{
+							id: "adj-1",
+							type: "adjust_time" as const,
+							config: {
+								kind: "adjust_time" as const,
+								base: { kind: "static" as const, value: "not a date" },
+								amount: 5,
+								unit: "days" as const,
+								direction: "add" as const,
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/needs a valid date/i);
+		});
+
 		it("rejects a loop body node that's also reachable from the main chain", async () => {
 			const { asUser } = await setupUser();
 
@@ -597,7 +669,7 @@ describe("Automations", () => {
 	});
 
 	describe("update", () => {
-		it("republishes when nodes change while active", async () => {
+		it("saves the working copy without republishing while active", async () => {
 			const { asUser } = await setupUser();
 
 			const id = await asUser.mutation(api.automations.create, {
@@ -613,8 +685,19 @@ describe("Automations", () => {
 			});
 
 			const automation = await asUser.query(api.automations.get, { id });
+			// Stays active and live on the ORIGINAL snapshot; edits are unpublished.
 			expect(automation?.status).toBe("active");
-			expect(automation?.publishedSnapshot?.version).toBe(2);
+			expect(automation?.publishedSnapshot?.version).toBe(1);
+
+			// Working copy reflects the edit; the published snapshot does not.
+			const value = (node: unknown) =>
+				(
+					node as {
+						config?: { action?: { value?: { value?: unknown } } };
+					}
+				)?.config?.action?.value?.value;
+			expect(value(automation?.nodes[0])).toBe("archived");
+			expect(value(automation?.publishedSnapshot?.nodes[0])).toBe("inactive");
 		});
 
 		it("does not create a snapshot when editing a draft", async () => {
@@ -636,24 +719,6 @@ describe("Automations", () => {
 			expect(automation?.name).toBe("Draft edit renamed");
 			expect(automation?.status).toBe("draft");
 			expect(automation?.publishedSnapshot).toBeUndefined();
-		});
-
-		it("pauses a published automation on isActive:false, keeping the snapshot", async () => {
-			const { asUser } = await setupUser();
-
-			const id = await asUser.mutation(api.automations.create, {
-				name: "To pause",
-				trigger: clientTrigger,
-				nodes: [actionNode("act-1")],
-				isActive: true,
-			});
-
-			await asUser.mutation(api.automations.update, { id, isActive: false });
-
-			const automation = await asUser.query(api.automations.get, { id });
-			expect(automation?.status).toBe("paused");
-			expect(automation?.isActive).toBe(false);
-			expect(automation?.publishedSnapshot?.version).toBe(1);
 		});
 	});
 
@@ -689,7 +754,7 @@ describe("Automations", () => {
 	});
 
 	describe("toggleActive", () => {
-		it("cycles active -> paused -> active, incrementing the snapshot version", async () => {
+		it("cycles active -> paused -> active, resuming the same snapshot", async () => {
 			const { asUser } = await setupUser();
 
 			const id = await asUser.mutation(api.automations.create, {
@@ -704,10 +769,12 @@ describe("Automations", () => {
 			expect(automation?.status).toBe("paused");
 			expect(automation?.publishedSnapshot?.version).toBe(1);
 
+			// Resuming a published automation reuses its snapshot (no republish),
+			// so unpublished working-copy edits stay unpublished.
 			await asUser.mutation(api.automations.toggleActive, { id });
 			automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("active");
-			expect(automation?.publishedSnapshot?.version).toBe(2);
+			expect(automation?.publishedSnapshot?.version).toBe(1);
 		});
 
 		it("publishes a draft with nodes", async () => {
@@ -723,6 +790,67 @@ describe("Automations", () => {
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("active");
 			expect(automation?.publishedSnapshot?.version).toBe(1);
+		});
+
+		it("resumes on the PUBLISHED schedule, ignoring an edited working-copy schedule", async () => {
+			const { asUser } = await setupUser();
+
+			const originalSchedule = {
+				frequency: "daily" as const,
+				timezone: "UTC",
+				time: "09:00",
+			};
+			const workingSchedule = {
+				frequency: "weekly" as const,
+				timezone: "UTC",
+				dayOfWeek: 3,
+				time: "16:00",
+			};
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Resume trigger check",
+				trigger: { type: "scheduled", schedule: originalSchedule },
+				nodes: [actionNode("act-1")],
+				isActive: true,
+			});
+
+			// Pause, then edit the working copy's schedule (no republish).
+			await asUser.mutation(api.automations.toggleActive, { id });
+			await asUser.mutation(api.automations.update, {
+				id,
+				trigger: { type: "scheduled", schedule: workingSchedule },
+			});
+
+			// Resume: must reuse the published snapshot/schedule, not the edit.
+			await asUser.mutation(api.automations.toggleActive, { id });
+
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.status).toBe("active");
+			expect(automation?.publishedSnapshot?.version).toBe(1);
+			expect(automation?.publishedSnapshot?.trigger).toEqual({
+				type: "scheduled",
+				schedule: originalSchedule,
+			});
+
+			const now = Date.now();
+			const expectedFromPublished = computeNextRunAt(originalSchedule, now);
+			const expectedFromWorking = computeNextRunAt(workingSchedule, now);
+			expect(automation!.nextRunAt).toBe(expectedFromPublished);
+			expect(automation!.nextRunAt).not.toBe(expectedFromWorking);
+		});
+
+		it("rejects activating a zero-node draft", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Empty draft toggle",
+				trigger: clientTrigger,
+				nodes: [],
+			});
+
+			await expect(
+				asUser.mutation(api.automations.toggleActive, { id })
+			).rejects.toThrow(/at least one step/i);
 		});
 	});
 

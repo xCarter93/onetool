@@ -83,6 +83,38 @@ export function getUpstreamFetchNodes(
 		}));
 }
 
+/**
+ * The object type an action node's `target: "self"` resolves to at run time:
+ * the loop's fetched item type when the node sits inside a loop body, otherwise
+ * the trigger object type. Mirrors the backend's computeLoopBodyScopeTypes
+ * (automations.ts) so the builder offers the same fields the engine will write.
+ *
+ * `inLoop` lets the panel relabel "self" as the current loop item.
+ */
+export function getScopeObjectType(
+	nodes: WorkflowNode[],
+	targetNodeId: string,
+	triggerObjectType: AutomationObjectType | null
+): { objectType: AutomationObjectType | null; inLoop: boolean } {
+	for (const node of nodes) {
+		if (node.type !== "loop") continue;
+		// The loop node itself runs in the enclosing (trigger) scope, not its body.
+		if (node.id === targetNodeId) continue;
+		const config = node.config as LoopNodeConfig | undefined;
+		if (!config?.sourceNodeId) continue;
+
+		const body = collectLoopBody(node.id, nodes);
+		if (!body.has(targetNodeId)) continue;
+
+		const sourceNode = nodes.find((n) => n.id === config.sourceNodeId);
+		const sourceType = (sourceNode?.config as FetchNodeConfig | undefined)
+			?.objectType;
+		// Nested loops are rejected, so a node belongs to at most one body.
+		return { objectType: sourceType ?? triggerObjectType, inLoop: true };
+	}
+	return { objectType: triggerObjectType, inLoop: false };
+}
+
 /** Normalizes the `type` discriminant across the editor draft and backend trigger shapes. */
 function effectiveTriggerType(
 	trigger: TriggerConfig | AutomationTrigger
@@ -149,6 +181,21 @@ export function getAvailableVariables(
 		});
 	}
 
+	// 3b. node.<computeNodeId>.result — aggregate/adjust_time nodes upstream of target.
+	for (const node of nodes) {
+		if (node.type !== "aggregate" && node.type !== "adjust_time") continue;
+		if (!isReachableFrom(node.id, targetNodeId, byId)) continue;
+		options.push({
+			path: `node.${node.id}.result`,
+			label:
+				node.type === "aggregate"
+					? "Aggregate result"
+					: "Adjusted time result",
+			group: "Computed",
+			fieldType: node.type === "aggregate" ? "number" : "date",
+		});
+	}
+
 	// 4. loop.<loopNodeId>.item.<field> / .index — only inside that loop's body.
 	for (const node of nodes) {
 		if (node.type !== "loop") continue;
@@ -179,6 +226,27 @@ export function getAvailableVariables(
 			fieldType: "number",
 		});
 	}
+
+	// 5. Built-in globals — resolved on every run (user.* is empty on scheduled
+	// runs, but still offered). No graph dependency.
+	options.push(
+		{
+			path: "workflow.now",
+			label: "Current time",
+			group: "Globals",
+			fieldType: "date",
+		},
+		{ path: "org.id", label: "Organization ID", group: "Globals", fieldType: "text" },
+		{
+			path: "org.name",
+			label: "Organization name",
+			group: "Globals",
+			fieldType: "text",
+		},
+		{ path: "user.id", label: "Your user ID", group: "Globals", fieldType: "text" },
+		{ path: "user.name", label: "Your name", group: "Globals", fieldType: "text" },
+		{ path: "user.email", label: "Your email", group: "Globals", fieldType: "text" }
+	);
 
 	return options;
 }

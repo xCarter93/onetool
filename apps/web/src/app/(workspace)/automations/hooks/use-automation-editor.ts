@@ -33,6 +33,14 @@ import {
 	getValidationToastMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
+import { definitionSignature } from "../lib/editor-signature";
+import { computeNodeStatuses } from "../lib/run-status";
+
+/** A record the test/manual runner can target. */
+export type RunRecordRef = {
+	entityType: "client" | "project" | "quote" | "invoice" | "task";
+	entityId: string;
+};
 
 type DeletedState = {
 	deletedNodes: EditorNode[];
@@ -150,6 +158,33 @@ function buildLoopNode(id: string): WorkflowNode {
 	return { id, type: "loop" };
 }
 
+/** sourceNodeId/field are chosen once the user picks a Find records step in the panel. */
+function buildAggregateNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "aggregate",
+		config: { kind: "aggregate", sourceNodeId: "", field: "", op: "sum" },
+		nextNodeId: downstreamId,
+	};
+}
+
+function buildAdjustTimeNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "adjust_time",
+		config: {
+			kind: "adjust_time",
+			// Default to "now" (an always-in-scope global) so a fresh node
+			// produces a meaningful time rather than 1970.
+			base: { kind: "var", path: "workflow.now" },
+			amount: 1,
+			unit: "days",
+			direction: "add",
+		},
+		nextNodeId: downstreamId,
+	};
+}
+
 function buildDelayNode(id: string, downstreamId?: string): WorkflowNode {
 	return {
 		id,
@@ -230,23 +265,39 @@ function toSavableNodes(nodes: WorkflowNode[]) {
 export function useAutomationEditor(automationId: string | null) {
 	const router = useRouter();
 	const toast = useToast();
+
+	// The automation id may be minted mid-session when a brand-new automation
+	// is first saved; from then on we operate on that id.
+	const [currentId, setCurrentId] = useState<string | null>(automationId);
+	const effectiveId = currentId ?? automationId;
+
 	const existingAutomation = useQuery(
 		api.automations.get,
-		automationId ? { id: automationId as Id<"workflowAutomations"> } : "skip"
+		effectiveId
+			? { id: effectiveId as Id<"workflowAutomations"> }
+			: "skip"
 	);
 	const createAutomation = useMutation(api.automations.create);
 	const updateAutomation = useMutation(api.automations.update);
+	const publishAutomation = useMutation(api.automations.publish);
+	const startTestRun = useMutation(api.automationExecutor.startTestRun);
+	const cancelTestRun = useMutation(api.automationExecutor.cancelTestRun);
 
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [trigger, setTrigger] = useState<TriggerConfig | null>(null);
 	const [nodes, setNodes] = useState<EditorNode[]>([]);
-	const [isActive, setIsActive] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isPublishing, setIsPublishing] = useState(false);
+	const [isStartingTest, setIsStartingTest] = useState(false);
+	const [activeExecutionId, setActiveExecutionId] =
+		useState<Id<"workflowExecutions"> | null>(null);
 	const [hasInitialized, setHasInitialized] = useState(false);
 	const [deletedNodeState, setDeletedNodeState] = useState<DeletedState | null>(null);
 	const [showClearConfirm, setShowClearConfirm] = useState(false);
 	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Signature of the last saved definition, for dirty detection.
+	const [savedSignature, setSavedSignature] = useState<string | null>(null);
 
 	// Initialize form state once the automation loads. Runs during render via
 	// the prev-value pattern; hasInitialized ensures it fires only once so later
@@ -262,7 +313,12 @@ export function useAutomationEditor(automationId: string | null) {
 		setNodes(
 			(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2)
 		);
-		setIsActive(existingAutomation.isActive ?? false);
+		setSavedSignature(
+			definitionSignature(
+				legacyTriggerToDraft(existingAutomation.trigger as AutomationTrigger),
+				(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2)
+			)
+		);
 	}
 
 	useEffect(() => {
@@ -275,6 +331,8 @@ export function useAutomationEditor(automationId: string | null) {
 
 	const clearUndoState = useCallback(() => {
 		setDeletedNodeState(null);
+		// Editing invalidates any run currently painted on the canvas.
+		setActiveExecutionId(null);
 		if (undoTimeoutRef.current) {
 			clearTimeout(undoTimeoutRef.current);
 			undoTimeoutRef.current = null;
@@ -344,6 +402,12 @@ export function useAutomationEditor(automationId: string | null) {
 					newNodes = [loopNode, bodyStartPlaceholder];
 					break;
 				}
+				case "aggregate":
+					newNodes = [buildAggregateNode(newId, downstreamId)];
+					break;
+				case "adjust_time":
+					newNodes = [buildAdjustTimeNode(newId, downstreamId)];
+					break;
 				case "delay":
 					newNodes = [buildDelayNode(newId, downstreamId)];
 					break;
@@ -424,6 +488,10 @@ export function useAutomationEditor(automationId: string | null) {
 						}
 						case "fetch_records":
 							return buildFetchNode(nodeId, trigger, downstreamId);
+						case "aggregate":
+							return buildAggregateNode(nodeId, downstreamId);
+						case "adjust_time":
+							return buildAdjustTimeNode(nodeId, downstreamId);
 						case "delay":
 							return buildDelayNode(nodeId, downstreamId);
 						case "delay_until":
@@ -636,67 +704,110 @@ export function useAutomationEditor(automationId: string | null) {
 	const layoutedNodes = rawFlow.nodes;
 	const layoutedEdges = rawFlow.edges;
 
-	const handleSave = useCallback(async () => {
+	// Backend-shape serialization of the current working copy (drops placeholders).
+	const serialized = useMemo(
+		() => reactFlowToFlatArray(layoutedNodes, layoutedEdges),
+		[layoutedNodes, layoutedEdges]
+	);
+	const workingSignature = useMemo(
+		() => definitionSignature(serialized.trigger, serialized.nodes),
+		[serialized]
+	);
+
+	// Lifecycle + publish state derived from the loaded row and the working copy.
+	const status: "draft" | "active" | "paused" =
+		existingAutomation?.status ??
+		(existingAutomation?.isActive ? "active" : "draft");
+	const isPublished = !!existingAutomation?.publishedSnapshot;
+	const hasSteps = serialized.nodes.length > 0;
+	const isDirty =
+		savedSignature !== null && savedSignature !== workingSignature;
+	const publishedSignature = existingAutomation?.publishedSnapshot
+		? definitionSignature(
+				legacyTriggerToDraft(
+					existingAutomation.publishedSnapshot.trigger as AutomationTrigger
+				),
+				(existingAutomation.publishedSnapshot.nodes as DbWorkflowNode[]).map(
+					legacyNodeToV2
+				)
+			)
+		: null;
+	const needsPublish =
+		hasSteps &&
+		(!isPublished || isDirty || publishedSignature !== workingSignature);
+	const publishLabel = isPublished ? "Publish changes" : "Publish workflow";
+
+	// Live test/manual run subscription drives the per-node canvas chips.
+	const execution = useQuery(
+		api.automationExecutor.getExecution,
+		activeExecutionId ? { executionId: activeExecutionId } : "skip"
+	);
+	const runStatuses = useMemo(
+		() => computeNodeStatuses(execution),
+		[execution]
+	);
+	const isRunning = execution?.status === "running";
+	const sampleRecords = useQuery(
+		api.automationExecutor.getSampleRecords,
+		trigger?.objectType ? { objectType: trigger.objectType } : "skip"
+	);
+
+	/**
+	 * Persist the working copy (create or update). Returns the automation id,
+	 * or null if validation blocked the save. Shared by Save / Publish / Test.
+	 */
+	const persistWorkingCopy = useCallback(async (): Promise<string | null> => {
 		const validation = validateWorkflowForSave(trigger, layoutedNodes);
 		if (!validation.valid) {
 			toast.error(
 				"Validation Error",
 				getValidationToastMessage(validation) || "Please review your workflow."
 			);
-			return;
+			return null;
 		}
-
 		if (!name.trim()) {
 			toast.error("Validation Error", "Please enter an automation name");
-			return;
+			return null;
 		}
-
 		if (!trigger) {
 			toast.error("Validation Error", "Please configure a trigger");
-			return;
+			return null;
 		}
 
-		setIsSaving(true);
-		try {
-			const serialized = reactFlowToFlatArray(layoutedNodes, layoutedEdges);
-			const triggerArg = buildTriggerForSave(trigger);
-			const nodesArg = toSavableNodes(serialized.nodes);
+		const flat = reactFlowToFlatArray(layoutedNodes, layoutedEdges);
+		const triggerArg = buildTriggerForSave(trigger);
+		const nodesArg = toSavableNodes(flat.nodes);
 
-			if (automationId) {
-				await updateAutomation({
-					id: automationId as Id<"workflowAutomations">,
-					name: name.trim(),
-					description: description.trim() || undefined,
-					trigger: triggerArg,
-					nodes: nodesArg,
-					isActive,
-				});
-			} else {
-				await createAutomation({
-					name: name.trim(),
-					description: description.trim() || undefined,
-					trigger: triggerArg,
-					nodes: nodesArg,
-					isActive,
-				});
-			}
-
-			toast.success("Automation Saved", "Your changes have been saved");
-			router.push("/automations");
-		} catch (error) {
-			console.error("Failed to save automation:", error);
-			toast.error(
-				"Save Failed",
-				"Failed to save automation. Please try again."
-			);
-		} finally {
-			setIsSaving(false);
+		let id = effectiveId;
+		if (id) {
+			await updateAutomation({
+				id: id as Id<"workflowAutomations">,
+				name: name.trim(),
+				description: description.trim() || undefined,
+				trigger: triggerArg,
+				nodes: nodesArg,
+			});
+		} else {
+			id = await createAutomation({
+				name: name.trim(),
+				description: description.trim() || undefined,
+				trigger: triggerArg,
+				nodes: nodesArg,
+			});
+			setCurrentId(id);
+			// Local state IS the just-created doc; don't re-hydrate (and clobber
+			// in-flight edits) when the get query resolves for the minted id.
+			setHasInitialized(true);
+			// Keep the URL in sync so a reload lands back on this automation.
+			router.replace(`/automations/editor?id=${id}`);
 		}
+
+		setSavedSignature(definitionSignature(flat.trigger, flat.nodes));
+		return id;
 	}, [
-		automationId,
 		createAutomation,
 		description,
-		isActive,
+		effectiveId,
 		layoutedEdges,
 		layoutedNodes,
 		name,
@@ -706,19 +817,105 @@ export function useAutomationEditor(automationId: string | null) {
 		updateAutomation,
 	]);
 
+	const handleSave = useCallback(async () => {
+		setIsSaving(true);
+		try {
+			const id = await persistWorkingCopy();
+			if (id) toast.success("Saved", "Your changes have been saved");
+		} catch (error) {
+			console.error("Failed to save automation:", error);
+			toast.error("Save Failed", "Failed to save automation. Please try again.");
+		} finally {
+			setIsSaving(false);
+		}
+	}, [persistWorkingCopy, toast]);
+
+	const handlePublish = useCallback(async () => {
+		setIsPublishing(true);
+		try {
+			const id = await persistWorkingCopy();
+			if (!id) return;
+			await publishAutomation({ id: id as Id<"workflowAutomations"> });
+			toast.success("Published", "This automation is now live.");
+		} catch (error) {
+			console.error("Failed to publish automation:", error);
+			toast.error(
+				"Publish Failed",
+				error instanceof Error
+					? error.message
+					: "Could not publish. Review your workflow and try again."
+			);
+		} finally {
+			setIsPublishing(false);
+		}
+	}, [persistWorkingCopy, publishAutomation, toast]);
+
+	const handleStartTest = useCallback(
+		async (record?: RunRecordRef) => {
+			setIsStartingTest(true);
+			try {
+				const id = await persistWorkingCopy();
+				if (!id) return;
+				const executionId = await startTestRun({
+					automationId: id as Id<"workflowAutomations">,
+					record,
+				});
+				setActiveExecutionId(executionId);
+			} catch (error) {
+				console.error("Failed to start test run:", error);
+				toast.error(
+					"Test Failed to Start",
+					error instanceof Error ? error.message : "Please try again."
+				);
+			} finally {
+				setIsStartingTest(false);
+			}
+		},
+		[persistWorkingCopy, startTestRun, toast]
+	);
+
+	const handleCancelTest = useCallback(async () => {
+		if (!activeExecutionId) return;
+		try {
+			await cancelTestRun({ executionId: activeExecutionId });
+		} catch (error) {
+			console.error("Failed to cancel test run:", error);
+			toast.error(
+				"Stop Failed",
+				error instanceof Error ? error.message : "Could not stop the test run."
+			);
+		}
+	}, [activeExecutionId, cancelTestRun, toast]);
+
 	return {
 		automation: existingAutomation,
-		isLoading: automationId ? existingAutomation === undefined : false,
-		isNotFound: automationId ? existingAutomation === null : false,
+		isLoading:
+			effectiveId && !hasInitialized ? existingAutomation === undefined : false,
+		isNotFound: effectiveId ? existingAutomation === null : false,
 		name,
 		setName,
 		description,
 		setDescription,
 		trigger,
 		nodes,
-		isActive,
-		setIsActive,
 		isSaving,
+		// Lifecycle + publish state
+		status,
+		isPublished,
+		isDirty,
+		needsPublish,
+		publishLabel,
+		isPublishing,
+		handlePublish,
+		// Test-run state
+		sampleRecords: sampleRecords ?? [],
+		execution,
+		runStatuses,
+		isRunning,
+		isStartingTest,
+		hasActiveRun: activeExecutionId !== null,
+		handleStartTest,
+		handleCancelTest,
 		layoutedNodes,
 		layoutedEdges,
 		handleInsertNode,

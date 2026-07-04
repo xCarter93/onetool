@@ -47,4 +47,12 @@ crons.interval(
 	{}
 );
 
+// Watchdog: fail dry-run test executions stuck "running" (a dropped reveal chain).
+crons.interval(
+	"fail stale automation test runs",
+	{ minutes: 10 },
+	internal.automationExecutor.failStaleTestRuns,
+	{}
+);
+
 export default crons;

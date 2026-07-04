@@ -448,7 +448,7 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(reactivated?.nextRunAt).toBeTypeOf("number");
 		});
 
-		it("switching an active automation's trigger away from scheduled clears nextRunAt, and back sets it", async () => {
+		it("nextRunAt tracks the published trigger, not unpublished working-copy edits", async () => {
 			const { asUser } = await setupUser();
 
 			const id = await asUser.mutation(
@@ -459,14 +459,23 @@ describe("automationExecutor (v2 engine)", () => {
 				"number"
 			);
 
+			// Editing the working copy to a non-scheduled trigger does NOT change
+			// nextRunAt — the published scheduled snapshot still governs dispatch.
 			await asUser.mutation(api.automations.update, {
 				id,
 				trigger: { type: "record_created", objectType: "client" },
 				nodes: [conditionNode("cond-1", "companyName", "contains", "Acme")],
 			});
+			expect(
+				(await t.run(async (ctx) => ctx.db.get(id)))?.nextRunAt
+			).toBeTypeOf("number");
+
+			// Publishing the non-scheduled trigger clears nextRunAt.
+			await asUser.mutation(api.automations.publish, { id });
 			const switchedAway = await t.run(async (ctx) => ctx.db.get(id));
 			expect(switchedAway?.nextRunAt).toBeUndefined();
 
+			// Publishing a scheduled trigger sets it again.
 			await asUser.mutation(api.automations.update, {
 				id,
 				trigger: {
@@ -475,6 +484,7 @@ describe("automationExecutor (v2 engine)", () => {
 				},
 				nodes: [conditionNode("cond-1", "status", "equals", "active")],
 			});
+			await asUser.mutation(api.automations.publish, { id });
 			const switchedBack = await t.run(async (ctx) => ctx.db.get(id));
 			expect(switchedBack?.nextRunAt).toBeTypeOf("number");
 		});
@@ -1002,6 +1012,140 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(task.date).toBeLessThan(Date.now() + 4 * 86_400_000);
 		});
 
+		it("aggregate: sum/avg/min/max over fetched records, precise to cents", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+
+			// Totals 0.10, 0.20, 100 -> sum 100.30 exactly (integer-cent math,
+			// not 100.30000000000001 from naive float addition).
+			const totals = [0.1, 0.2, 100];
+			await t.run(async (ctx) => {
+				for (let i = 0; i < totals.length; i++) {
+					await ctx.db.insert("invoices", {
+						orgId,
+						clientId,
+						invoiceNumber: `INV-${i}`,
+						status: "sent" as const,
+						subtotal: totals[i],
+						total: totals[i],
+						issuedDate: Date.now(),
+						dueDate: Date.now(),
+						publicToken: crypto.randomUUID(),
+					});
+				}
+			});
+
+			const aggNode = (
+				id: string,
+				op: "sum" | "avg" | "min" | "max",
+				next: string
+			) => ({
+				id,
+				type: "aggregate" as const,
+				config: {
+					kind: "aggregate" as const,
+					sourceNodeId: "fetch-1",
+					field: "total",
+					op,
+				},
+				nextNodeId: next,
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Invoice totals",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					fetchNode("fetch-1", "invoice", [], { nextNodeId: "sum" }),
+					aggNode("sum", "sum", "avg"),
+					aggNode("avg", "avg", "min"),
+					aggNode("min", "min", "max"),
+					aggNode("max", "max", "end-1"),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const result = (nodeId: string) =>
+				(
+					executions[0].nodesExecuted.find((n) => n.nodeId === nodeId)
+						?.output as { result: number } | undefined
+				)?.result;
+			expect(result("sum")).toBe(100.3);
+			expect(result("avg")).toBe(33.43); // 100.3 / 3, rounded to cents
+			expect(result("min")).toBe(0.1);
+			expect(result("max")).toBe(100);
+		});
+
+		it("adjust_time: shifts a base timestamp by a fixed offset (add and subtract)", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const base = 1_700_000_000_000;
+			const adjustNode = (
+				id: string,
+				direction: "add" | "subtract",
+				amount: number,
+				unit: "minutes" | "hours" | "days" | "weeks",
+				next: string
+			) => ({
+				id,
+				type: "adjust_time" as const,
+				config: {
+					kind: "adjust_time" as const,
+					base: { kind: "static" as const, value: base },
+					amount,
+					unit,
+					direction,
+				},
+				nextNodeId: next,
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Shift times",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					adjustNode("plus", "add", 5, "days", "minus"),
+					adjustNode("minus", "subtract", 2, "hours", "end-1"),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const result = (nodeId: string) =>
+				(
+					executions[0].nodesExecuted.find((n) => n.nodeId === nodeId)
+						?.output as { result: number } | undefined
+				)?.result;
+			expect(result("plus")).toBe(base + 5 * 86_400_000);
+			expect(result("minus")).toBe(base - 2 * 3_600_000);
+		});
+
 		it("send_notification recipient org_admins: creates an automation_message notification per admin", async () => {
 			const { asUser, orgId } = await setupUser();
 
@@ -1184,6 +1328,100 @@ describe("automationExecutor (v2 engine)", () => {
 				);
 				expect(finalExecution?.status).toBe("completed");
 				expect(finalExecution?.resumeState).toBeUndefined();
+			});
+
+			it("fails clearly when the resume node no longer exists in a republished snapshot", async () => {
+				const { orgId, asUser } = await setupUser();
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Delay then follow up (republished)",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						updateFieldActionNode("act-1", "notes", "before delay", {
+							nextNodeId: "delay-1",
+						}),
+						{
+							id: "delay-1",
+							type: "delay" as const,
+							config: {
+								kind: "delay" as const,
+								amount: 1,
+								unit: "hours" as const,
+							},
+							nextNodeId: "act-2",
+						},
+						updateFieldActionNode("act-2", "notes", "after delay"),
+					],
+					isActive: true,
+				});
+
+				const executionId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: clientId,
+						triggeredAt: Date.now(),
+						status: "running",
+						nodesExecuted: [],
+						executionChain: [automationId],
+						recursionDepth: 0,
+					})
+				);
+
+				await t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					objectType: "client",
+					objectId: clientId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+				const midExecution = await t.run(async (ctx) => ctx.db.get(executionId));
+				expect(midExecution?.resumeState?.resumeNodeId).toBe("act-2");
+
+				// Edit the working copy to drop "act-2" (the parked resume target),
+				// then republish so the run's next hop targets a version without it.
+				await asUser.mutation(api.automations.update, {
+					id: automationId,
+					nodes: [
+						updateFieldActionNode("act-1", "notes", "before delay", {
+							nextNodeId: "delay-1",
+						}),
+						{
+							id: "delay-1",
+							type: "delay" as const,
+							config: {
+								kind: "delay" as const,
+								amount: 1,
+								unit: "hours" as const,
+							},
+						},
+					],
+				});
+				await asUser.mutation(api.automations.publish, { id: automationId });
+
+				await t.mutation(internal.automationExecutor.resumeExecution, {
+					orgId,
+					executionId,
+					automationId,
+				});
+
+				const finalExecution = await t.run(async (ctx) => ctx.db.get(executionId));
+				expect(finalExecution?.status).toBe("failed");
+				expect(finalExecution?.error).toMatch(/next step no longer exists/i);
+				expect(finalExecution?.resumeState).toBeUndefined();
+
+				// The parked-then-failed run must not have applied the post-delay write.
+				const client = await t.run(async (ctx) => ctx.db.get(clientId));
+				expect(client?.notes).toBe("before delay");
 			});
 		});
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AutomationFlow } from "../flow/automation-flow";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
+import { WorkflowDrawer } from "./workflow-drawer";
 import { useAutomationEditor } from "../../hooks/use-automation-editor";
 import { useKeyboardShortcuts } from "../../hooks/use-keyboard-shortcuts";
 import { useSidebarState } from "../../hooks/use-sidebar-state";
@@ -14,13 +15,18 @@ import {
 } from "../../lib/flow-adapter";
 import { EditorTopBar } from "./editor-top-bar";
 import { UndoBanner } from "./undo-banner";
+import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
+import { runStatusRingClass } from "../../lib/run-status";
+import { cn } from "@/lib/utils";
 
 type NodeConfigType =
 	| "condition"
 	| "action"
 	| "fetch_records"
 	| "loop"
+	| "aggregate"
+	| "adjust_time"
 	| "delay"
 	| "delay_until"
 	| "end";
@@ -34,6 +40,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const router = useRouter();
 	const editor = useAutomationEditor(automationId);
 	const sidebar = useSidebarState();
+	const [drawerOpen, setDrawerOpen] = useState(true);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
 
 	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
@@ -69,6 +76,18 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const flowEdges = useMemo(
 		() => editor.layoutedEdges.map((e) => ({ ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } })),
 		[editor.layoutedEdges, handleEdgeInsert]
+	);
+
+	// Paint each node's live run status onto its React Flow wrapper (ring/pulse).
+	const flowNodes = useMemo(
+		() =>
+			editor.layoutedNodes.map((node) => {
+				const ring = runStatusRingClass(editor.runStatuses[node.id]);
+				return ring
+					? { ...node, className: cn(node.className, ring) }
+					: node;
+			}),
+		[editor.layoutedNodes, editor.runStatuses]
 	);
 
 	const handleNodeClick = useCallback(
@@ -169,18 +188,48 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 			<EditorTopBar
 				name={editor.name}
 				description={editor.description}
-				isActive={editor.isActive}
+				status={editor.status}
 				isSaving={editor.isSaving}
+				objectType={editor.trigger?.objectType}
+				triggerType={editor.trigger?.type}
+				sampleRecords={editor.sampleRecords}
+				execution={editor.execution}
+				isRunning={editor.isRunning}
+				isStartingTest={editor.isStartingTest}
+				hasActiveRun={editor.hasActiveRun}
+				onStartTest={editor.handleStartTest}
+				onCancelTest={editor.handleCancelTest}
 				onBack={() => router.push("/automations")}
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
-				onActiveChange={editor.setIsActive}
 				onSave={editor.handleSave}
 			/>
+			{editor.needsPublish && (
+				<UnpublishedBanner
+					isPublished={editor.isPublished}
+					publishLabel={editor.publishLabel}
+					isPublishing={editor.isPublishing}
+					onPublish={editor.handlePublish}
+				/>
+			)}
 			<div className="flex flex-1 overflow-hidden">
+				<WorkflowDrawer
+					trigger={editor.trigger}
+					nodes={editor.nodes}
+					rfNodes={editor.layoutedNodes}
+					rfEdges={editor.layoutedEdges}
+					onNavigateToNode={handleNavigateToNode}
+					selectedNodeId={
+						selectedNode && "id" in selectedNode && selectedNode.type !== "placeholder"
+							? selectedNode.id
+							: undefined
+					}
+					open={drawerOpen}
+					onToggle={() => setDrawerOpen((o) => !o)}
+				/>
 				<div className="relative flex-1">
 					<AutomationFlow
-						nodes={editor.layoutedNodes}
+						nodes={flowNodes}
 						edges={flowEdges}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}

@@ -14,7 +14,15 @@ export type VariableScope = {
 		event?: { oldValue?: unknown; newValue?: unknown };
 	};
 	loops?: Record<string, { item: Record<string, unknown>; index: number }>;
-	nodes?: Record<string, { count: number }>;
+	/** Per-node outputs: fetch → count; aggregate/adjust-time → result. */
+	nodes?: Record<string, { count?: number; result?: unknown }>;
+	// Built-in globals, populated at run start (see automationExecutor).
+	/** Execution start time (epoch ms); also feeds formula NOW()/TODAY(). */
+	workflow?: { now?: number };
+	/** Always populated (the executor loads the org). */
+	org?: { id?: string; name?: string };
+	/** Triggering actor; empty on scheduled/system/event runs with no actor. */
+	user?: { id?: string; name?: string; email?: string };
 };
 
 /**
@@ -26,6 +34,10 @@ export type VariableScope = {
  *   loop.<loopNodeId>.item.<field>
  *   loop.<loopNodeId>.index
  *   node.<nodeId>.count
+ *   node.<nodeId>.result
+ *   workflow.now
+ *   org.id | org.name
+ *   user.id | user.name | user.email
  *
  * Unknown or missing paths resolve to the fallback if provided, else undefined.
  */
@@ -45,6 +57,14 @@ function resolvePath(path: string, scope: VariableScope): unknown {
 	}
 	if (path === "trigger.event.oldValue") return scope.trigger?.event?.oldValue;
 	if (path === "trigger.event.newValue") return scope.trigger?.event?.newValue;
+
+	// Built-in globals (exact-match paths).
+	if (path === "workflow.now") return scope.workflow?.now;
+	if (path === "org.id") return scope.org?.id;
+	if (path === "org.name") return scope.org?.name;
+	if (path === "user.id") return scope.user?.id;
+	if (path === "user.name") return scope.user?.name;
+	if (path === "user.email") return scope.user?.email;
 
 	const LOOP = "loop.";
 	if (path.startsWith(LOOP)) {
@@ -69,11 +89,20 @@ function resolvePath(path: string, scope: VariableScope): unknown {
 	const NODE = "node.";
 	if (path.startsWith(NODE)) {
 		const rest = path.slice(NODE.length);
+		// Node ids never contain dots; the suffix names the output.
 		const COUNT_SUFFIX = ".count";
-		if (!rest.endsWith(COUNT_SUFFIX)) return undefined;
-		const nodeId = rest.slice(0, rest.length - COUNT_SUFFIX.length);
-		if (nodeId === "") return undefined;
-		return scope.nodes?.[nodeId]?.count;
+		const RESULT_SUFFIX = ".result";
+		if (rest.endsWith(COUNT_SUFFIX)) {
+			const nodeId = rest.slice(0, rest.length - COUNT_SUFFIX.length);
+			if (nodeId === "") return undefined;
+			return scope.nodes?.[nodeId]?.count;
+		}
+		if (rest.endsWith(RESULT_SUFFIX)) {
+			const nodeId = rest.slice(0, rest.length - RESULT_SUFFIX.length);
+			if (nodeId === "") return undefined;
+			return scope.nodes?.[nodeId]?.result;
+		}
+		return undefined;
 	}
 
 	return undefined;

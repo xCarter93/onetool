@@ -1,6 +1,8 @@
 import { MarkerType } from "@xyflow/react";
 import type {
 	ActionNodeConfig,
+	AdjustTimeNodeConfig,
+	AggregateNodeConfig,
 	AppEdge,
 	AppNode,
 	ConditionNodeConfig,
@@ -27,6 +29,8 @@ export const RF_NODE_TYPES = {
 	action: "actionNode",
 	fetch_records: "fetchNode",
 	loop: "loopNode",
+	aggregate: "aggregateNode",
+	adjust_time: "adjustTimeNode",
 	delay: "delayNode",
 	delay_until: "delayUntilNode",
 	end: "endNode",
@@ -156,6 +160,20 @@ function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
 			return {
 				nodeType: "loop" as const,
 				config: node.config as LoopNodeConfig | undefined,
+				triggerObjectType,
+				_dbNode: node,
+			};
+		case "aggregate":
+			return {
+				nodeType: "aggregate" as const,
+				config: node.config as AggregateNodeConfig | undefined,
+				triggerObjectType,
+				_dbNode: node,
+			};
+		case "adjust_time":
+			return {
+				nodeType: "adjust_time" as const,
+				config: node.config as AdjustTimeNodeConfig | undefined,
 				triggerObjectType,
 				_dbNode: node,
 			};

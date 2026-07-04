@@ -14,6 +14,8 @@ import {
 	MessagesSquare,
 	Timer,
 	CalendarClock,
+	Sigma,
+	Clock3,
 	type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -96,6 +98,18 @@ export const STEP_GROUPS: StepGroup[] = [
 				label: "Loop",
 				icon: Repeat,
 				color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
+			},
+			{
+				type: "aggregate",
+				label: "Aggregate",
+				icon: Sigma,
+				color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
+			},
+			{
+				type: "adjust_time",
+				label: "Adjust time",
+				icon: Clock3,
+				color: "bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400",
 			},
 			{
 				type: "delay",

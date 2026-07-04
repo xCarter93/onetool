@@ -22,6 +22,8 @@ import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
 import { FetchNodeRF } from "./fetch-node-rf";
 import { LoopNodeRF } from "./loop-node-rf";
+import { AggregateNodeRF } from "./aggregate-node-rf";
+import { AdjustTimeNodeRF } from "./adjust-time-node-rf";
 import { DelayNodeRF } from "./delay-node-rf";
 import { DelayUntilNodeRF } from "./delay-until-node-rf";
 import { EndNodeRF } from "./end-node-rf";
@@ -40,6 +42,8 @@ const nodeTypes = {
 	actionNode: ActionNodeRF,
 	fetchNode: FetchNodeRF,
 	loopNode: LoopNodeRF,
+	aggregateNode: AggregateNodeRF,
+	adjustTimeNode: AdjustTimeNodeRF,
 	delayNode: DelayNodeRF,
 	delayUntilNode: DelayUntilNodeRF,
 	endNode: EndNodeRF,
