@@ -98,7 +98,7 @@ function AutomationFlowInner({
 		if (incomingNodes.length !== prevCountRef.current) {
 			prevCountRef.current = incomingNodes.length;
 			requestAnimationFrame(() => {
-				fitView({ padding: 0.2, duration: 200 });
+				fitView({ padding: 0.2, duration: 200, maxZoom: 1 });
 			});
 		}
 	}, [fitView, incomingEdges, incomingNodes, setEdges, setNodes]);
@@ -186,7 +186,7 @@ function AutomationFlowInner({
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				fitView
-				fitViewOptions={{ padding: 0.2, duration: 300 }}
+				fitViewOptions={{ padding: 0.2, duration: 300, maxZoom: 1 }}
 				nodesDraggable={true}
 				nodesConnectable={false}
 				elementsSelectable={true}
