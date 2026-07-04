@@ -3,7 +3,7 @@
 import React, { useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Bell, ListTodo, MessagesSquare, Play, type LucideIcon } from "lucide-react";
+import { ACTION_META } from "../../../lib/action-meta";
 import { NextStepTree } from "../next-step-tree";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,50 +53,6 @@ function defaultConfig(objectType: AutomationObjectType): ActionNodeConfig {
 	};
 }
 
-const ACTION_META: Record<
-	ActionNodeConfig["action"]["type"],
-	{
-		icon: LucideIcon;
-		bg: string;
-		fg: string;
-		badge: string;
-		name: string;
-		description: string;
-	}
-> = {
-	update_field: {
-		icon: Play,
-		bg: "bg-green-50 dark:bg-green-950/40",
-		fg: "text-green-600 dark:text-green-400",
-		badge: "Actions",
-		name: "Update Record",
-		description: "Set a field on the record in scope.",
-	},
-	create_task: {
-		icon: ListTodo,
-		bg: "bg-green-50 dark:bg-green-950/40",
-		fg: "text-green-600 dark:text-green-400",
-		badge: "Actions",
-		name: "Create Task",
-		description: "Add a task to your workspace.",
-	},
-	send_notification: {
-		icon: Bell,
-		bg: "bg-pink-50 dark:bg-pink-950/40",
-		fg: "text-pink-600 dark:text-pink-400",
-		badge: "Communication",
-		name: "Send Notification",
-		description: "Notify an admin, the record owner, or a teammate.",
-	},
-	send_team_message: {
-		icon: MessagesSquare,
-		bg: "bg-pink-50 dark:bg-pink-950/40",
-		fg: "text-pink-600 dark:text-pink-400",
-		badge: "Communication",
-		name: "Send Team Message",
-		description: "Post a message to your team.",
-	},
-};
 
 /** Splices `{{path}}` into a message string at the textarea's cursor position. */
 function useMessageInsertion(message: string, onChange: (message: string) => void) {
@@ -282,7 +238,15 @@ function CreateTaskFields({
 					max={MAX_DUE_IN_DAYS}
 					value={action.dueInDays ?? 0}
 					onChange={(e) =>
-						update({ dueInDays: e.target.value === "" ? 0 : Number(e.target.value) })
+						update({
+							dueInDays:
+								e.target.value === ""
+									? 0
+									: Math.min(
+											MAX_DUE_IN_DAYS,
+											Math.max(0, Math.floor(Number(e.target.value)) || 0)
+										),
+						})
 					}
 				/>
 			</PanelField>
@@ -387,7 +351,10 @@ function SendNotificationFields({
 				</PanelField>
 			)}
 
-			<PanelField label="Message" helper="Use {{trigger.record.field}} to insert values.">
+			<PanelField
+				label="Message"
+				helper="Insert variable adds a placeholder that's filled in from the record when this runs."
+			>
 				<div className="space-y-1.5">
 					<Textarea
 						ref={messageRef}
@@ -473,7 +440,10 @@ function SendTeamMessageFields({
 				/>
 			</PanelField>
 
-			<PanelField label="Message" helper="Use {{trigger.record.field}} to insert values.">
+			<PanelField
+				label="Message"
+				helper="Insert variable adds a placeholder that's filled in from the record when this runs."
+			>
 				<div className="space-y-1.5">
 					<Textarea
 						ref={messageRef}

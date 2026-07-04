@@ -6,6 +6,7 @@ import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { ACTION_META } from "../../lib/action-meta";
 import { OBJECT_TYPE_LABELS, type ActionNodeConfig } from "../../lib/node-types";
 
 function getSummary(config: ActionNodeConfig | undefined): {
@@ -65,6 +66,8 @@ function getSummary(config: ActionNodeConfig | undefined): {
 export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as ActionNodeConfig | undefined;
 	const { title, description, isConfigured } = getSummary(config);
+	const meta = config ? ACTION_META[config.action.type] : undefined;
+	const Icon = meta?.icon ?? Play;
 
 	return (
 		<BaseNode
@@ -81,8 +84,14 @@ export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
-						<Play className="h-4 w-4" />
+					<div
+						className={cn(
+							"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+							meta?.bg ?? "bg-green-50 dark:bg-green-950/40",
+							meta?.fg ?? "text-green-600 dark:text-green-400",
+						)}
+					>
+						<Icon className="h-4 w-4" />
 					</div>
 					<div className="min-w-0 flex-1">
 						<div className="text-sm font-semibold truncate">{title}</div>
@@ -91,7 +100,7 @@ export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
 						</div>
 					</div>
 					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						Actions
+						{meta?.badge ?? "Actions"}
 					</span>
 				</div>
 			</BaseNodeContent>

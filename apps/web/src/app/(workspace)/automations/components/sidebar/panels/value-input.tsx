@@ -117,11 +117,18 @@ function StaticControl({
 		return (
 			<Input
 				type="number"
-				value={typeof staticValue === "number" ? staticValue : ""}
+				value={
+					typeof staticValue === "number" && !Number.isNaN(staticValue)
+						? staticValue
+						: ""
+				}
 				onChange={(e) =>
 					onChange({
 						kind: "static",
-						value: e.target.value === "" ? null : Number(e.target.value),
+						value:
+							e.target.value === "" || Number.isNaN(Number(e.target.value))
+								? null
+								: Number(e.target.value),
 					})
 				}
 			/>
@@ -298,7 +305,7 @@ export function VariableInsertButton({
 					aria-label="Insert a variable"
 					title="Insert a variable"
 					className={cn(
-						"inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none rounded-sm transition-colors cursor-pointer",
+						"inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-border bg-background text-xs font-medium text-muted-foreground shadow-xs hover:text-foreground hover:bg-accent focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none transition-colors cursor-pointer",
 						className
 					)}
 				>

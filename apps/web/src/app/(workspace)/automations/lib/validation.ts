@@ -410,7 +410,7 @@ function validateDelayNode(
 	if (config.amount * DELAY_UNIT_MS[config.unit] > MAX_DELAY_MS) {
 		errors.push({
 			type: "missing_required_config",
-			message: "Delay can't exceed 90 days",
+			message: `Delay can't exceed ${Math.floor(MAX_DELAY_MS / DELAY_UNIT_MS.days)} days`,
 			nodeId,
 		});
 	}

@@ -109,7 +109,15 @@ export function LoopConfigPanel({
 										commit({
 											...config,
 											maxIterations:
-												e.target.value === "" ? undefined : Number(e.target.value),
+												e.target.value === ""
+													? undefined
+													: Math.min(
+															MAX_LOOP_ITERATIONS,
+															Math.max(
+																1,
+																Math.round(Number(e.target.value)) || 1
+															)
+														),
 										})
 									}
 								/>
