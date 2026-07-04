@@ -589,7 +589,7 @@ describe("automationExecutor (v2 engine)", () => {
 			);
 			expect(executions).toHaveLength(1);
 			expect(executions[0].status).toBe("failed");
-			expect(executions[0].error).toMatch(/needs a trigger record/i);
+			expect(executions[0].error).toMatch(/needs a record to act on/i);
 		});
 	});
 

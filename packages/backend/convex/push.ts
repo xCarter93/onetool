@@ -168,6 +168,8 @@ export const PUSHABLE_TYPES = new Set<string>([
 	"client_mention",
 	"project_mention",
 	"quote_mention",
+	// Workflow-automation team messages (send_team_message action).
+	"automation_message",
 ]);
 
 // Single extensibility seam: self-gates on PUSHABLE_TYPES, then schedules the send.

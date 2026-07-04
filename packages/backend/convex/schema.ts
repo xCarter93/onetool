@@ -792,7 +792,9 @@ export default defineSchema({
 			v.literal("payout_paid"),
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
-			v.literal("bank_account_changed")
+			v.literal("bank_account_changed"),
+			// Workflow-automation messages (send_notification / send_team_message).
+			v.literal("automation_message")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -1367,6 +1369,41 @@ export default defineSchema({
 		executionChain: v.optional(v.array(v.id("workflowAutomations"))),
 		// Depth of recursion (for quick limit check)
 		recursionDepth: v.optional(v.number()),
+		// Delay/delay_until checkpoint: enough state to resume the walk after
+		// the scheduled wait. Fetch outputs are stored as record ids and
+		// re-resolved on resume (deleted records are skipped).
+		resumeState: v.optional(
+			v.object({
+				resumeNodeId: v.string(),
+				resumeAt: v.number(),
+				eventOldValue: v.optional(v.string()),
+				eventNewValue: v.optional(v.string()),
+				objectType: v.optional(
+					v.union(
+						v.literal("client"),
+						v.literal("project"),
+						v.literal("quote"),
+						v.literal("invoice"),
+						v.literal("task")
+					)
+				),
+				objectId: v.optional(v.string()),
+				fetchOutputs: v.array(
+					v.object({
+						nodeId: v.string(),
+						objectType: v.union(
+							v.literal("client"),
+							v.literal("project"),
+							v.literal("quote"),
+							v.literal("invoice"),
+							v.literal("task")
+						),
+						recordIds: v.array(v.string()),
+						count: v.number(),
+					})
+				),
+			})
+		),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_automation", ["automationId"])

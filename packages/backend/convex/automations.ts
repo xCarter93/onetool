@@ -5,7 +5,10 @@ import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { userMutation, userQuery } from "./lib/factories";
 import {
 	AUTOMATION_OBJECT_TYPES,
+	DELAY_UNIT_MS,
 	MAX_CONDITION_GROUPS,
+	MAX_DELAY_MS,
+	MAX_DUE_IN_DAYS,
 	MAX_FETCH_LIMIT,
 	MAX_RULES_PER_GROUP,
 	VALUELESS_OPERATORS,
@@ -340,6 +343,26 @@ function validateWorkflowDefinition(
 				if (config.action.type === "update_field") {
 					validateUpdateFieldAction(node.id, config.action, objectType);
 				}
+				if (config.action.type === "create_task") {
+					const title = config.action.title;
+					if (
+						title.kind === "static" &&
+						(title.value === null || String(title.value).trim() === "")
+					) {
+						throw new Error(`Node ${node.id}: task title is required`);
+					}
+					const dueInDays = config.action.dueInDays;
+					if (
+						dueInDays !== undefined &&
+						(!Number.isInteger(dueInDays) ||
+							dueInDays < 0 ||
+							dueInDays > MAX_DUE_IN_DAYS)
+					) {
+						throw new Error(
+							`Node ${node.id}: due date must be 0-${MAX_DUE_IN_DAYS} days out`
+						);
+					}
+				}
 				if (
 					config.action.type === "send_notification" &&
 					!config.action.message.trim()
@@ -388,12 +411,33 @@ function validateWorkflowDefinition(
 				break;
 			}
 			case "delay": {
-				if (config.amount < 1) {
-					throw new Error(`Node ${node.id}: delay must be at least 1`);
+				if (!Number.isInteger(config.amount) || config.amount < 1) {
+					throw new Error(
+						`Node ${node.id}: delay must be a whole number of at least 1`
+					);
+				}
+				if (config.amount * DELAY_UNIT_MS[config.unit] > MAX_DELAY_MS) {
+					throw new Error(`Node ${node.id}: delays are capped at 90 days`);
 				}
 				break;
 			}
-			case "delay_until":
+			case "delay_until": {
+				if (config.until.kind === "static") {
+					const raw = config.until.value;
+					const parsed =
+						typeof raw === "number"
+							? raw
+							: typeof raw === "string"
+								? Date.parse(raw)
+								: NaN;
+					if (Number.isNaN(parsed)) {
+						throw new Error(
+							`Node ${node.id}: "Delay until" needs a valid date`
+						);
+					}
+				}
+				break;
+			}
 			case "end":
 				break;
 		}
@@ -422,6 +466,80 @@ function validateWorkflowDefinition(
 		state.set(id, "done");
 	};
 	for (const node of nodes) visit(node.id);
+
+	validateLoopBodies(nodes, byId);
+}
+
+/**
+ * Structural rules for loop bodies (walked from bodyStartNodeId via
+ * nextNodeId/elseNodeId):
+ * - no nested loops and no delay steps inside a body (the walk engine can't
+ *   checkpoint mid-loop);
+ * - a node can belong to at most one loop body and must not also be
+ *   reachable from the main chain (it would execute twice).
+ * Assumes the cycle check above already passed, so walks terminate.
+ */
+function validateLoopBodies(
+	nodes: NodeArg[],
+	byId: Map<string, NodeArg>
+): void {
+	const collectChain = (startId: string | undefined): Set<string> => {
+		const found = new Set<string>();
+		const stack = startId === undefined ? [] : [startId];
+		while (stack.length > 0) {
+			const id = stack.pop()!;
+			if (found.has(id)) continue;
+			const node = byId.get(id);
+			if (!node) continue;
+			found.add(id);
+			// Deliberately not descending into bodyStartNodeId: body membership
+			// is per-loop, and nested loops are rejected below anyway.
+			if (node.nextNodeId !== undefined) stack.push(node.nextNodeId);
+			if (node.elseNodeId !== undefined) stack.push(node.elseNodeId);
+		}
+		return found;
+	};
+
+	const loops = nodes.filter((n) => n.config.kind === "loop");
+	if (loops.length === 0) return;
+
+	const bodyOwner = new Map<string, string>();
+	for (const loop of loops) {
+		const body = collectChain(loop.bodyStartNodeId);
+		for (const id of body) {
+			const member = byId.get(id)!;
+			if (member.config.kind === "loop") {
+				throw new Error(
+					`Node ${loop.id}: loops cannot contain other loops`
+				);
+			}
+			if (
+				member.config.kind === "delay" ||
+				member.config.kind === "delay_until"
+			) {
+				throw new Error(
+					`Node ${loop.id}: delay steps aren't supported inside loops`
+				);
+			}
+			const owner = bodyOwner.get(id);
+			if (owner !== undefined && owner !== loop.id) {
+				throw new Error(
+					`Node ${id}: belongs to more than one loop body`
+				);
+			}
+			bodyOwner.set(id, loop.id);
+		}
+	}
+
+	// Main chain starts at the first node (the executor's entry point).
+	const mainChain = collectChain(nodes[0]?.id);
+	for (const id of bodyOwner.keys()) {
+		if (mainChain.has(id)) {
+			throw new Error(
+				`Node ${id}: is inside a loop but also reachable outside it`
+			);
+		}
+	}
 }
 
 function validateForActivation(

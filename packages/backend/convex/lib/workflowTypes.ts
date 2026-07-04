@@ -293,6 +293,18 @@ export const MAX_LOOP_ITERATIONS = 200;
 export const MAX_CONDITION_GROUPS = 10;
 export const MAX_RULES_PER_GROUP = 10;
 
+/** Delay steps are capped so a run can't park forever. */
+export const MAX_DELAY_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+export const DELAY_UNIT_MS: Record<"minutes" | "hours" | "days", number> = {
+	minutes: 60_000,
+	hours: 3_600_000,
+	days: 86_400_000,
+};
+
+/** Upper bound for create_task dueInDays. */
+export const MAX_DUE_IN_DAYS = 365;
+
 // ---------------------------------------------------------------------------
 // Trigger model (v2)
 // ---------------------------------------------------------------------------

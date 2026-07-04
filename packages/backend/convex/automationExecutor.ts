@@ -7,11 +7,15 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
+import { ActivityHelpers } from "./lib/activities";
 import { systemMutation } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
 import { orgHasPremiumPlan } from "./lib/permissions";
+import { getMembership, listMembershipsByOrg } from "./lib/memberships";
+import { enqueuePush } from "./push";
 import {
 	evaluateConditionGroups,
+	interpolateTemplate,
 	resolveValueRef,
 	type VariableScope,
 } from "./lib/conditionEval";
@@ -22,6 +26,11 @@ import {
 	type FieldDefinition,
 } from "./lib/fieldRegistry";
 import {
+	DEFAULT_FETCH_LIMIT,
+	DELAY_UNIT_MS,
+	MAX_DELAY_MS,
+	MAX_FETCH_LIMIT,
+	MAX_LOOP_ITERATIONS,
 	type ActionTarget,
 	type AutomationAction,
 	type AutomationObjectType,
@@ -326,6 +335,9 @@ async function matchAndScheduleAutomations(
 				automationId: automation._id,
 				objectType: params.entityType,
 				objectId: params.entityId,
+				// trigger.event.oldValue/newValue variable paths (status_changed).
+				eventOldValue: params.fromStatus,
+				eventNewValue: params.toStatus,
 				executionChain: newChain,
 				recursionDepth: params.recursionDepth + 1,
 			}
@@ -563,6 +575,67 @@ export const dispatchScheduledAutomations = internalMutation({
 	},
 });
 
+// ---------------------------------------------------------------------------
+// Walk engine — shared by the initial run and delay resumes. A "walk" follows
+// nextNodeId/elseNodeId links; loop bodies run as nested walks per item via
+// bodyStartNodeId; delay nodes checkpoint the walk into resumeState and
+// schedule resumeExecution.
+// ---------------------------------------------------------------------------
+
+/** The record a node operates on: the trigger record, or a loop item. */
+type ScopeRecord = {
+	type: ObjectType;
+	id: string;
+	record: Record<string, unknown>;
+};
+
+type FetchOutput = {
+	objectType: ObjectType;
+	records: Record<string, unknown>[];
+	count: number;
+};
+
+type ExecEntry = Doc<"workflowExecutions">["nodesExecuted"][number];
+
+type WalkEnv = {
+	executionId: Id<"workflowExecutions">;
+	automation: AutomationDoc;
+	nodesById: Map<string, AutomationNode>;
+	orgId: Id<"organizations">;
+	executionChain: Id<"workflowAutomations">[];
+	recursionDepth: number;
+	scope: VariableScope;
+	fetchOutputs: Record<string, FetchOutput>;
+	nodesExecuted: ExecEntry[];
+	logTruncated: boolean;
+	/** Original trigger reference, persisted into resumeState for delays. */
+	trigger: { objectType?: ObjectType; objectId?: string };
+};
+
+type WalkOutcome =
+	| { kind: "chain_done" } // ran off the end of a chain
+	| { kind: "ended" } // end node — terminate the whole run successfully
+	| { kind: "waiting" } // delay checkpointed the run and scheduled a resume
+	| { kind: "failed"; error: string };
+
+/** Cap on stored per-node log entries (loops multiply them). */
+const MAX_EXECUTED_ENTRIES = 400;
+
+function pushEntry(env: WalkEnv, entry: ExecEntry): void {
+	if (env.nodesExecuted.length >= MAX_EXECUTED_ENTRIES) {
+		if (!env.logTruncated) {
+			env.logTruncated = true;
+			env.nodesExecuted.push({
+				nodeId: entry.nodeId,
+				result: "skipped",
+				error: `Execution log truncated after ${MAX_EXECUTED_ENTRIES} entries`,
+			});
+		}
+		return;
+	}
+	env.nodesExecuted.push(entry);
+}
+
 /**
  * Execute a single automation workflow
  */
@@ -570,8 +643,8 @@ export const executeAutomation = systemMutation({
 	args: {
 		executionId: v.id("workflowExecutions"),
 		automationId: v.id("workflowAutomations"),
-		// Omitted for scheduled runs, which have no trigger record until
-		// fetch_records lands (Slice 3).
+		// Omitted for scheduled runs, which have no trigger record; record
+		// scope comes from fetch_records + loop steps instead.
 		objectType: v.optional(
 			v.union(
 				v.literal("client"),
@@ -582,6 +655,10 @@ export const executeAutomation = systemMutation({
 			)
 		),
 		objectId: v.optional(v.string()),
+		// trigger.event.oldValue/newValue for variable resolution
+		// (status_changed triggers).
+		eventOldValue: v.optional(v.string()),
+		eventNewValue: v.optional(v.string()),
 		// Execution context for recursion tracking (passed to child automations)
 		executionChain: v.optional(v.array(v.id("workflowAutomations"))),
 		recursionDepth: v.optional(v.number()),
@@ -603,20 +680,14 @@ export const executeAutomation = systemMutation({
 				automationId: args.automationId,
 				executionId: args.executionId,
 				totalNodes: automation.nodes.length,
-				nodes: automation.nodes.map((n) => ({
-					id: n.id,
-					type: n.type,
-					action: n.action,
-					nextNodeId: n.nextNodeId,
-				})),
 				recursionDepth: args.recursionDepth,
 			}
 		);
 
 		// Get the triggering object. Scheduled runs have none: conditions
-		// evaluate against an empty record and record-targeting actions
-		// error clearly until fetch_records lands.
+		// evaluate against an empty record until a fetch/loop provides scope.
 		let triggerObject: Record<string, unknown> = {};
+		let scopeRecord: ScopeRecord | undefined;
 		if (args.objectType && args.objectId) {
 			const object = await getObject(
 				ctx,
@@ -633,12 +704,40 @@ export const executeAutomation = systemMutation({
 				return;
 			}
 			triggerObject = object;
+			scopeRecord = {
+				type: args.objectType,
+				id: args.objectId,
+				record: object,
+			};
 		}
 
-		const nodesExecuted: Doc<"workflowExecutions">["nodesExecuted"] = [];
+		const env: WalkEnv = {
+			executionId: args.executionId,
+			automation,
+			nodesById: new Map(automation.nodes.map((n) => [n.id, n])),
+			orgId: automation.orgId,
+			executionChain: args.executionChain ?? [],
+			recursionDepth: args.recursionDepth ?? 0,
+			scope: {
+				trigger: {
+					record: triggerObject,
+					event:
+						args.eventOldValue !== undefined ||
+						args.eventNewValue !== undefined
+							? {
+									oldValue: args.eventOldValue,
+									newValue: args.eventNewValue,
+								}
+							: undefined,
+				},
+			},
+			fetchOutputs: {},
+			nodesExecuted: [],
+			logTruncated: false,
+			trigger: { objectType: args.objectType, objectId: args.objectId },
+		};
 
 		try {
-			// Start with the first node
 			if (automation.nodes.length === 0) {
 				await ctx.db.patch(args.executionId, {
 					status: "completed",
@@ -648,114 +747,558 @@ export const executeAutomation = systemMutation({
 				return;
 			}
 
-			let currentNodeId: string | undefined = automation.nodes[0].id;
-
-			// Guard against cyclic node graphs (writes reject them, but stored
-			// rows may predate that validation) — the walk must terminate.
-			const visitedNodeIds = new Set<string>();
-
-			// Execute nodes in sequence
-			while (currentNodeId) {
-				if (visitedNodeIds.has(currentNodeId)) {
-					await ctx.db.patch(args.executionId, {
-						status: "failed",
-						completedAt: Date.now(),
-						nodesExecuted,
-						error: `Workflow contains a cycle through node "${currentNodeId}"`,
-					});
-					return;
-				}
-				visitedNodeIds.add(currentNodeId);
-
-				const node = automation.nodes.find((n) => n.id === currentNodeId);
-				if (!node) {
-					console.warn(
-						`[AutomationExecutor] Node ${currentNodeId} not found in automation ${args.automationId}`
-					);
-					break;
-				}
-
-				console.log(
-					`[AutomationExecutor] Processing node ${node.id} (${node.type})`,
-					{
-						automationId: args.automationId,
-						action: node.action,
-						condition: node.condition,
-					}
-				);
-
-				const result = await executeNode(
-					ctx,
-					node,
-					args.objectType,
-					args.objectId,
-					triggerObject,
-					automation.orgId,
-					args.executionChain ?? [],
-					args.recursionDepth ?? 0
-				);
-
-				console.log(`[AutomationExecutor] Node ${node.id} result:`, {
-					success: result.success,
-					skipped: result.skipped,
-					error: result.error,
-				});
-
-				nodesExecuted.push({
-					nodeId: node.id,
-					result: result.success
-						? "success"
-						: result.skipped
-						? "skipped"
-						: "failed",
-					error: result.error,
-				});
-
-				if (!result.success && !result.skipped) {
-					// Node failed, stop execution
-					await ctx.db.patch(args.executionId, {
-						status: "failed",
-						completedAt: Date.now(),
-						nodesExecuted,
-						error: result.error,
-					});
-					return;
-				}
-
-				// Determine next node
-				if (node.type === "condition") {
-					// Condition node: follow yes or no branch
-					currentNodeId = result.conditionMet
-						? node.nextNodeId
-						: node.elseNodeId;
-				} else {
-					// Action node: follow next
-					currentNodeId = node.nextNodeId;
-				}
-			}
-
-			// Update automation trigger stats
-			await ctx.db.patch(args.automationId, {
-				lastTriggeredAt: Date.now(),
-				triggerCount: (automation.triggerCount || 0) + 1,
-			});
-
-			// Execution completed successfully
-			await ctx.db.patch(args.executionId, {
-				status: "completed",
-				completedAt: Date.now(),
-				nodesExecuted,
-			});
+			const outcome = await runWalk(
+				ctx,
+				env,
+				automation.nodes[0].id,
+				scopeRecord
+			);
+			await finishWalk(ctx, env, outcome);
 		} catch (error) {
 			await ctx.db.patch(args.executionId, {
 				status: "failed",
 				completedAt: Date.now(),
-				nodesExecuted,
+				nodesExecuted: env.nodesExecuted,
 				error: error instanceof Error ? error.message : "Unknown error",
 			});
 		}
 	},
 });
+
+/**
+ * Resume a run parked by a delay/delay_until node. Scheduled by the walk
+ * engine at checkpoint time; rebuilds scope from resumeState (fetch outputs
+ * re-resolved by id, deleted records skipped) and continues the walk.
+ */
+export const resumeExecution = systemMutation({
+	args: {
+		executionId: v.id("workflowExecutions"),
+		automationId: v.id("workflowAutomations"),
+	},
+	handler: async (ctx, args) => {
+		const execution = await ctx.db.get(args.executionId);
+		if (!execution || execution.orgId !== ctx.orgId) return;
+		// Cancelled/completed while waiting, or already resumed.
+		if (execution.status !== "running" || !execution.resumeState) return;
+
+		const automation = await ctx.db.get(args.automationId);
+		if (!automation || automation.orgId !== ctx.orgId) {
+			await ctx.db.patch(args.executionId, {
+				status: "failed",
+				completedAt: Date.now(),
+				error: "Automation was deleted while the run was waiting",
+				resumeState: undefined,
+				currentNodeId: undefined,
+			});
+			return;
+		}
+
+		const resume = execution.resumeState;
+
+		let triggerObject: Record<string, unknown> = {};
+		let scopeRecord: ScopeRecord | undefined;
+		if (resume.objectType && resume.objectId) {
+			const object = await getObject(
+				ctx,
+				resume.objectType,
+				resume.objectId,
+				automation.orgId
+			);
+			if (!object) {
+				await ctx.db.patch(args.executionId, {
+					status: "failed",
+					completedAt: Date.now(),
+					error: "Trigger record was deleted while the run was waiting",
+					resumeState: undefined,
+					currentNodeId: undefined,
+				});
+				return;
+			}
+			triggerObject = object;
+			scopeRecord = {
+				type: resume.objectType,
+				id: resume.objectId,
+				record: object,
+			};
+		}
+
+		const env: WalkEnv = {
+			executionId: args.executionId,
+			automation,
+			nodesById: new Map(automation.nodes.map((n) => [n.id, n])),
+			orgId: automation.orgId,
+			executionChain: execution.executionChain ?? [],
+			recursionDepth: execution.recursionDepth ?? 0,
+			scope: {
+				trigger: {
+					record: triggerObject,
+					event:
+						resume.eventOldValue !== undefined ||
+						resume.eventNewValue !== undefined
+							? {
+									oldValue: resume.eventOldValue,
+									newValue: resume.eventNewValue,
+								}
+							: undefined,
+				},
+				nodes: {},
+			},
+			fetchOutputs: {},
+			nodesExecuted: [...execution.nodesExecuted],
+			logTruncated: false,
+			trigger: { objectType: resume.objectType, objectId: resume.objectId },
+		};
+
+		for (const output of resume.fetchOutputs) {
+			const records: Record<string, unknown>[] = [];
+			for (const recordId of output.recordIds) {
+				const doc = await getObject(
+					ctx,
+					output.objectType,
+					recordId,
+					automation.orgId
+				);
+				if (doc) records.push(doc);
+			}
+			env.fetchOutputs[output.nodeId] = {
+				objectType: output.objectType,
+				records,
+				// Preserve the count observed at fetch time — it's what
+				// node.<id>.count variables already resolved against.
+				count: output.count,
+			};
+			env.scope.nodes![output.nodeId] = { count: output.count };
+		}
+
+		if (!env.nodesById.has(resume.resumeNodeId)) {
+			await ctx.db.patch(args.executionId, {
+				status: "failed",
+				completedAt: Date.now(),
+				nodesExecuted: env.nodesExecuted,
+				error: "Automation was edited while the run was waiting; the next step no longer exists",
+				resumeState: undefined,
+				currentNodeId: undefined,
+			});
+			return;
+		}
+
+		try {
+			const outcome = await runWalk(ctx, env, resume.resumeNodeId, scopeRecord);
+			await finishWalk(ctx, env, outcome);
+		} catch (error) {
+			await ctx.db.patch(args.executionId, {
+				status: "failed",
+				completedAt: Date.now(),
+				nodesExecuted: env.nodesExecuted,
+				error: error instanceof Error ? error.message : "Unknown error",
+				resumeState: undefined,
+				currentNodeId: undefined,
+			});
+		}
+	},
+});
+
+/** Apply a finished walk's outcome to the execution row. */
+async function finishWalk(
+	ctx: MutationCtx,
+	env: WalkEnv,
+	outcome: WalkOutcome
+): Promise<void> {
+	if (outcome.kind === "waiting") {
+		// The delay handler already checkpointed the row.
+		return;
+	}
+	if (outcome.kind === "failed") {
+		await ctx.db.patch(env.executionId, {
+			status: "failed",
+			completedAt: Date.now(),
+			nodesExecuted: env.nodesExecuted,
+			error: outcome.error,
+			resumeState: undefined,
+			currentNodeId: undefined,
+		});
+		return;
+	}
+
+	await ctx.db.patch(env.automation._id, {
+		lastTriggeredAt: Date.now(),
+		triggerCount: (env.automation.triggerCount || 0) + 1,
+	});
+	await ctx.db.patch(env.executionId, {
+		status: "completed",
+		completedAt: Date.now(),
+		nodesExecuted: env.nodesExecuted,
+		resumeState: undefined,
+		currentNodeId: undefined,
+	});
+}
+
+/**
+ * Walk a node chain from startNodeId. Loop bodies recurse with the loop item
+ * as the scope record; delays checkpoint and return "waiting".
+ */
+async function runWalk(
+	ctx: MutationCtx,
+	env: WalkEnv,
+	startNodeId: string | undefined,
+	scopeRecord: ScopeRecord | undefined,
+	inLoopNodeId?: string
+): Promise<WalkOutcome> {
+	let currentNodeId = startNodeId;
+	// Guard against cyclic node graphs (writes reject them, but stored rows
+	// may predate that validation) — the walk must terminate.
+	const visitedNodeIds = new Set<string>();
+
+	while (currentNodeId) {
+		if (visitedNodeIds.has(currentNodeId)) {
+			return {
+				kind: "failed",
+				error: `Workflow contains a cycle through node "${currentNodeId}"`,
+			};
+		}
+		visitedNodeIds.add(currentNodeId);
+
+		const node = env.nodesById.get(currentNodeId);
+		if (!node) {
+			console.warn(
+				`[AutomationExecutor] Node ${currentNodeId} not found in automation ${env.automation._id}`
+			);
+			return { kind: "chain_done" };
+		}
+
+		const config = node.config;
+
+		if (config?.kind === "fetch_records") {
+			const fetched = await runFetchNode(ctx, env, node.id, config);
+			if (!fetched.ok) {
+				pushEntry(env, {
+					nodeId: node.id,
+					result: "failed",
+					error: fetched.error,
+				});
+				return { kind: "failed", error: fetched.error };
+			}
+			pushEntry(env, {
+				nodeId: node.id,
+				result: "success",
+				recordsProcessed: fetched.output.count,
+			});
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "loop") {
+			if (inLoopNodeId) {
+				const error = "Nested loops are not supported";
+				pushEntry(env, { nodeId: node.id, result: "failed", error });
+				return { kind: "failed", error };
+			}
+			const outcome = await runLoopNode(ctx, env, node, config);
+			if (outcome.kind !== "chain_done") return outcome;
+			currentNodeId = node.nextNodeId;
+			continue;
+		}
+
+		if (config?.kind === "delay" || config?.kind === "delay_until") {
+			if (inLoopNodeId) {
+				const error = "Delay steps are not supported inside loops";
+				pushEntry(env, { nodeId: node.id, result: "failed", error });
+				return { kind: "failed", error };
+			}
+			const resume = computeDelayResume(config, env.scope);
+			if (!resume.ok) {
+				pushEntry(env, {
+					nodeId: node.id,
+					result: "failed",
+					error: resume.error,
+				});
+				return { kind: "failed", error: resume.error };
+			}
+			pushEntry(env, {
+				nodeId: node.id,
+				result: "success",
+				output: { resumeAt: resume.resumeAt },
+			});
+			// Nothing to wait for: already due, or no downstream steps.
+			if (resume.resumeAt <= Date.now() || !node.nextNodeId) {
+				currentNodeId = node.nextNodeId;
+				continue;
+			}
+			await ctx.db.patch(env.executionId, {
+				nodesExecuted: env.nodesExecuted,
+				currentNodeId: node.nextNodeId,
+				resumeState: {
+					resumeNodeId: node.nextNodeId,
+					resumeAt: resume.resumeAt,
+					eventOldValue: env.scope.trigger?.event?.oldValue as
+						| string
+						| undefined,
+					eventNewValue: env.scope.trigger?.event?.newValue as
+						| string
+						| undefined,
+					objectType: env.trigger.objectType,
+					objectId: env.trigger.objectId,
+					fetchOutputs: Object.entries(env.fetchOutputs).map(
+						([nodeId, output]) => ({
+							nodeId,
+							objectType: output.objectType,
+							recordIds: output.records.map((r) => String(r._id)),
+							count: output.count,
+						})
+					),
+				},
+			});
+			await ctx.scheduler.runAt(
+				resume.resumeAt,
+				internal.automationExecutor.resumeExecution,
+				{
+					orgId: env.orgId,
+					executionId: env.executionId,
+					automationId: env.automation._id,
+				}
+			);
+			return { kind: "waiting" };
+		}
+
+		if (config?.kind === "end") {
+			pushEntry(env, { nodeId: node.id, result: "success" });
+			return { kind: "ended" };
+		}
+
+		// Per-record kinds: condition/action (v2 + legacy).
+		const result = await executeNode(ctx, node, scopeRecord, env);
+
+		pushEntry(env, {
+			nodeId: node.id,
+			result: result.success
+				? "success"
+				: result.skipped
+					? "skipped"
+					: "failed",
+			error: result.error,
+		});
+
+		if (!result.success && !result.skipped) {
+			return { kind: "failed", error: result.error ?? "Step failed" };
+		}
+
+		currentNodeId =
+			node.type === "condition"
+				? result.conditionMet
+					? node.nextNodeId
+					: node.elseNodeId
+				: node.nextNodeId;
+	}
+
+	return { kind: "chain_done" };
+}
+
+/**
+ * Run a loop node: iterate the source fetch output, walking the body chain
+ * once per item with that item as the scope record and loop.<id>.item/.index
+ * variables in scope.
+ */
+async function runLoopNode(
+	ctx: MutationCtx,
+	env: WalkEnv,
+	node: AutomationNode,
+	config: Extract<WorkflowNodeConfig, { kind: "loop" }>
+): Promise<WalkOutcome> {
+	const source = env.fetchOutputs[config.sourceNodeId];
+	if (!source) {
+		const error =
+			'Loops need a "Find records" step to run earlier in the workflow';
+		pushEntry(env, { nodeId: node.id, result: "failed", error });
+		return { kind: "failed", error };
+	}
+
+	const cap = Math.min(
+		config.maxIterations ?? MAX_LOOP_ITERATIONS,
+		MAX_LOOP_ITERATIONS
+	);
+	const items = source.records.slice(0, Math.max(cap, 0));
+	pushEntry(env, {
+		nodeId: node.id,
+		result: "success",
+		recordsProcessed: items.length,
+	});
+
+	if (!node.bodyStartNodeId || items.length === 0) {
+		return { kind: "chain_done" };
+	}
+
+	env.scope.loops ??= {};
+	try {
+		for (let index = 0; index < items.length; index++) {
+			const item = items[index];
+			env.scope.loops[node.id] = { item, index };
+			const itemScope: ScopeRecord = {
+				type: source.objectType,
+				id: String(item._id),
+				record: item,
+			};
+			const outcome = await runWalk(
+				ctx,
+				env,
+				node.bodyStartNodeId,
+				itemScope,
+				node.id
+			);
+			if (outcome.kind === "failed" || outcome.kind === "ended") {
+				return outcome;
+			}
+			if (outcome.kind === "waiting") {
+				// Unreachable: delays are rejected inside loop bodies.
+				return {
+					kind: "failed",
+					error: "Delay steps are not supported inside loops",
+				};
+			}
+		}
+	} finally {
+		// Loop variables are only valid inside the body.
+		delete env.scope.loops[node.id];
+	}
+
+	return { kind: "chain_done" };
+}
+
+/** Bounded scan applied before in-memory filtering in fetch_records. */
+const FETCH_SCAN_CAP = 1000;
+
+async function fetchOrgRows(
+	ctx: MutationCtx,
+	objectType: ObjectType,
+	orgId: Id<"organizations">
+): Promise<Record<string, unknown>[]> {
+	switch (objectType) {
+		case "client":
+			return await ctx.db
+				.query("clients")
+				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
+				.take(FETCH_SCAN_CAP);
+		case "project":
+			return await ctx.db
+				.query("projects")
+				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
+				.take(FETCH_SCAN_CAP);
+		case "quote":
+			return await ctx.db
+				.query("quotes")
+				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
+				.take(FETCH_SCAN_CAP);
+		case "invoice":
+			return await ctx.db
+				.query("invoices")
+				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
+				.take(FETCH_SCAN_CAP);
+		case "task":
+			return await ctx.db
+				.query("tasks")
+				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
+				.take(FETCH_SCAN_CAP);
+		default: {
+			const _exhaustive: never = objectType;
+			return _exhaustive;
+		}
+	}
+}
+
+/**
+ * Run a fetch_records node: org-scoped index scan (newest first, bounded),
+ * filter groups combined with AND, optional sort, then limit. Output is
+ * stored for downstream loops and exposed as node.<id>.count.
+ */
+async function runFetchNode(
+	ctx: MutationCtx,
+	env: WalkEnv,
+	nodeId: string,
+	config: Extract<WorkflowNodeConfig, { kind: "fetch_records" }>
+): Promise<{ ok: true; output: FetchOutput } | { ok: false; error: string }> {
+	try {
+		const rows = await fetchOrgRows(ctx, config.objectType, env.orgId);
+		let records = rows.filter((row) =>
+			evaluateConditionGroups("and", config.filters, row, env.scope)
+		);
+
+		if (config.sortBy) {
+			const { field, direction } = config.sortBy;
+			const dir = direction === "asc" ? 1 : -1;
+			records = [...records].sort((a, b) => {
+				const av = a[field];
+				const bv = b[field];
+				if (av == null && bv == null) return 0;
+				if (av == null) return 1; // nulls last regardless of direction
+				if (bv == null) return -1;
+				if (typeof av === "number" && typeof bv === "number") {
+					return (av - bv) * dir;
+				}
+				return String(av).localeCompare(String(bv)) * dir;
+			});
+		}
+
+		const limit = Math.min(
+			Math.max(config.limit ?? DEFAULT_FETCH_LIMIT, 1),
+			MAX_FETCH_LIMIT
+		);
+		records = records.slice(0, limit);
+
+		const output: FetchOutput = {
+			objectType: config.objectType,
+			records,
+			count: records.length,
+		};
+		env.fetchOutputs[nodeId] = output;
+		env.scope.nodes ??= {};
+		env.scope.nodes[nodeId] = { count: output.count };
+		return { ok: true, output };
+	} catch (error) {
+		return {
+			ok: false,
+			error:
+				error instanceof Error ? error.message : "Failed to fetch records",
+		};
+	}
+}
+
+function computeDelayResume(
+	config: Extract<WorkflowNodeConfig, { kind: "delay" | "delay_until" }>,
+	scope: VariableScope
+): { ok: true; resumeAt: number } | { ok: false; error: string } {
+	if (config.kind === "delay") {
+		const ms = config.amount * DELAY_UNIT_MS[config.unit];
+		if (!Number.isFinite(ms) || ms < 0) {
+			return { ok: false, error: "Delay amount is invalid" };
+		}
+		if (ms > MAX_DELAY_MS) {
+			return { ok: false, error: "Delays are capped at 90 days" };
+		}
+		return { ok: true, resumeAt: Date.now() + ms };
+	}
+
+	const raw = resolveValueRef(config.until, scope);
+	const resumeAt =
+		typeof raw === "number"
+			? raw
+			: typeof raw === "string"
+				? Date.parse(raw)
+				: NaN;
+	if (Number.isNaN(resumeAt)) {
+		return {
+			ok: false,
+			error: '"Delay until" did not resolve to a valid date',
+		};
+	}
+	if (resumeAt - Date.now() > MAX_DELAY_MS) {
+		return { ok: false, error: "Delays are capped at 90 days" };
+	}
+	return { ok: true, resumeAt };
+}
 
 /**
  * Get an object by type and ID, asserting it belongs to the given org.
@@ -809,17 +1352,15 @@ async function getObject(
 }
 
 /**
- * Execute a single node
+ * Execute a per-record node (condition/action, v2 + legacy). Structural
+ * kinds (fetch/loop/delay/end) are handled by the walk engine before this
+ * is reached.
  */
 async function executeNode(
 	ctx: MutationCtx,
 	node: AutomationNode,
-	objectType: ObjectType | undefined,
-	objectId: string | undefined,
-	triggerObject: Record<string, unknown>,
-	orgId: Id<"organizations">,
-	executionChain: Id<"workflowAutomations">[],
-	recursionDepth: number
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
 ): Promise<{
 	success: boolean;
 	skipped?: boolean;
@@ -829,56 +1370,40 @@ async function executeNode(
 	// v2 nodes carry a discriminated `config`; legacy rows (pre-migration)
 	// only have `condition`/`action` and fall through below.
 	if (node.config) {
-		return executeNodeV2(
-			ctx,
-			node.config,
-			objectType,
-			objectId,
-			triggerObject,
-			orgId,
-			executionChain,
-			recursionDepth
-		);
+		return executeNodeV2(ctx, node.config, scopeRecord, env);
 	}
 
 	if (node.type === "condition") {
-		return executeConditionNode(node, triggerObject);
+		return executeConditionNode(node, scopeRecord?.record ?? {});
 	} else if (node.type === "action") {
-		if (!objectType || !objectId) {
-			return { success: false, error: NO_TRIGGER_RECORD_ERROR };
+		if (!scopeRecord) {
+			return { success: false, error: NO_SCOPE_RECORD_ERROR };
 		}
 		return executeActionNode(
 			ctx,
 			node,
-			objectType,
-			objectId,
-			triggerObject,
-			orgId,
-			executionChain,
-			recursionDepth
+			scopeRecord.type,
+			scopeRecord.id,
+			scopeRecord.record,
+			env.orgId,
+			env.executionChain,
+			env.recursionDepth
 		);
 	}
 
 	return { success: false, error: "Unknown node type" };
 }
 
-const NO_TRIGGER_RECORD_ERROR =
-	"This action needs a trigger record. Scheduled automations can act on " +
-	"records once the fetch-records step is available.";
+const NO_SCOPE_RECORD_ERROR =
+	"This step needs a record to act on. Use a record trigger, or add " +
+	'"Find records" and "Loop" steps before it.';
 
-/**
- * Execute a v2 node from its discriminated `config`. Only `condition` and
- * `action` (update_field) are implemented; the rest land in Slice 3.
- */
+/** Execute a v2 node from its discriminated `config`. */
 async function executeNodeV2(
 	ctx: MutationCtx,
 	config: WorkflowNodeConfig,
-	objectType: ObjectType | undefined,
-	objectId: string | undefined,
-	triggerObject: Record<string, unknown>,
-	orgId: Id<"organizations">,
-	executionChain: Id<"workflowAutomations">[],
-	recursionDepth: number
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
 ): Promise<{
 	success: boolean;
 	skipped?: boolean;
@@ -887,46 +1412,38 @@ async function executeNodeV2(
 }> {
 	switch (config.kind) {
 		case "condition": {
+			let record: Record<string, unknown>;
 			if (config.source && typeof config.source === "object") {
-				// Loop-scoped conditions need a loop node's item scope, which
-				// doesn't exist until loop nodes are implemented.
-				return {
-					success: false,
-					error:
-						"Loop-scoped conditions are not yet enabled (lands in Slice 3).",
-				};
+				const loopScope = env.scope.loops?.[config.source.loopNodeId];
+				if (!loopScope) {
+					return {
+						success: false,
+						error: "This condition reads a loop item but no loop is running",
+					};
+				}
+				record = loopScope.item;
+			} else {
+				record = scopeRecord?.record ?? {};
 			}
-			const scope: VariableScope = { trigger: { record: triggerObject } };
 			const conditionMet = evaluateConditionGroups(
 				config.logic,
 				config.groups,
-				triggerObject,
-				scope
+				record,
+				env.scope
 			);
 			return { success: true, conditionMet };
 		}
 		case "action":
-			if (!objectType || !objectId) {
-				return { success: false, error: NO_TRIGGER_RECORD_ERROR };
-			}
-			return executeActionNodeV2(
-				ctx,
-				config.action,
-				objectType,
-				objectId,
-				triggerObject,
-				orgId,
-				executionChain,
-				recursionDepth
-			);
+			return executeActionNodeV2(ctx, config.action, scopeRecord, env);
 		case "fetch_records":
 		case "loop":
 		case "delay":
 		case "delay_until":
 		case "end":
+			// Structural kinds are consumed by runWalk before executeNode.
 			return {
 				success: false,
-				error: `Node kind "${config.kind}" is not yet enabled (lands in Slice 3).`,
+				error: `Internal error: "${config.kind}" node reached the per-record executor`,
 			};
 		default: {
 			const _exhaustive: never = config;
@@ -1374,27 +1891,33 @@ function coerceFieldValue(
 	}
 }
 
-/**
- * Execute a v2 action config. Only `update_field` is implemented; the other
- * action types (create_task / send_notification / send_team_message) land
- * in Slice 3.
- */
+/** Execute a v2 action config. */
 async function executeActionNodeV2(
 	ctx: MutationCtx,
 	action: AutomationAction,
-	objectType: ObjectType,
-	objectId: string,
-	triggerObject: Record<string, unknown>,
-	orgId: Id<"organizations">,
-	executionChain: Id<"workflowAutomations">[],
-	recursionDepth: number
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-	if (action.type !== "update_field") {
-		return {
-			success: false,
-			error: `Action type "${action.type}" is not yet enabled (lands in Slice 3).`,
-		};
+	switch (action.type) {
+		case "update_field":
+			break; // handled below
+		case "create_task":
+			return executeCreateTaskAction(ctx, action, scopeRecord, env);
+		case "send_notification":
+			return executeSendNotificationAction(ctx, action, scopeRecord, env);
+		case "send_team_message":
+			return executeSendTeamMessageAction(ctx, action, scopeRecord, env);
+		default: {
+			const _exhaustive: never = action;
+			return _exhaustive;
+		}
 	}
+
+	if (!scopeRecord) {
+		return { success: false, error: NO_SCOPE_RECORD_ERROR };
+	}
+	const { type: objectType, id: objectId, record: triggerObject } = scopeRecord;
+	const { orgId, executionChain, recursionDepth } = env;
 
 	const targetInfo = await resolveTargetV2(
 		ctx,
@@ -1429,8 +1952,7 @@ async function executeActionNodeV2(
 		};
 	}
 
-	const scope: VariableScope = { trigger: { record: triggerObject } };
-	const rawValue = resolveValueRef(action.value, scope);
+	const rawValue = resolveValueRef(action.value, env.scope);
 	const coerced = coerceFieldValue(fieldDef, rawValue);
 	if (!coerced.ok) {
 		return { success: false, error: coerced.error };
@@ -1584,6 +2106,344 @@ async function resolveTargetV2(
 			| Id<"invoices">
 			| Id<"tasks">,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Slice 3 actions: create_task / send_notification / send_team_message
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a ValueRef to display text: variable refs resolve against the
+ * scope, and static strings additionally support {{path}} interpolation.
+ */
+function resolveTextValue(
+	ref: Extract<AutomationAction, { type: "create_task" }>["title"],
+	scope: VariableScope
+): string {
+	const raw = resolveValueRef(ref, scope);
+	if (raw === undefined || raw === null) return "";
+	const text = typeof raw === "string" ? raw : String(raw);
+	return interpolateTemplate(text, scope).trim();
+}
+
+async function executeCreateTaskAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_task" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const title = resolveTextValue(action.title, env.scope);
+	if (!title) {
+		return { success: false, error: "Task title resolved to an empty value" };
+	}
+	const description = action.description
+		? resolveTextValue(action.description, env.scope) || undefined
+		: undefined;
+
+	// Task dates are UTC-midnight normalized (see tasks.ts conventions).
+	const dueInDays = action.dueInDays ?? 0;
+	const base = new Date(Date.now() + dueInDays * 86_400_000);
+	const date = Date.UTC(
+		base.getUTCFullYear(),
+		base.getUTCMonth(),
+		base.getUTCDate()
+	);
+
+	let assigneeUserId: Id<"users"> | undefined;
+	if (action.assigneeUserId) {
+		const membership = await getMembership(
+			ctx,
+			action.assigneeUserId as Id<"users">,
+			env.orgId
+		);
+		if (!membership) {
+			return {
+				success: false,
+				error: "Task assignee is not a member of this organization",
+			};
+		}
+		assigneeUserId = action.assigneeUserId as Id<"users">;
+	}
+
+	let projectId: Id<"projects"> | undefined;
+	let clientId: Id<"clients"> | undefined;
+	if (action.linkToRecord && scopeRecord) {
+		const link = await resolveTaskLink(ctx, scopeRecord, env.orgId);
+		projectId = link.projectId;
+		clientId = link.clientId;
+	}
+
+	try {
+		const taskId = await ctx.db.insert("tasks", {
+			orgId: env.orgId,
+			title,
+			description,
+			date,
+			status: "pending",
+			type: "internal",
+			assigneeUserId,
+			projectId,
+			clientId,
+		});
+
+		const task = await ctx.db.get(taskId);
+		if (task) {
+			await ActivityHelpers.taskCreated(ctx, task);
+
+			// Emit record_created with the execution chain in metadata so
+			// cascading automations keep recursion protection (the plain
+			// emitRecordCreatedEvent helper would drop the chain).
+			await ctx.db.insert("domainEvents", {
+				orgId: env.orgId,
+				eventType: "entity.record_created",
+				eventSource: "automationExecutor.executeCreateTaskAction",
+				payload: {
+					entityType: "task",
+					entityId: taskId,
+					metadata: {
+						executionChain: env.executionChain,
+						recursionDepth: env.recursionDepth,
+						isCascade: true,
+					},
+				},
+				status: "pending",
+				correlationId: `cascade-${env.executionChain.join("-")}-${Date.now()}`,
+				createdAt: Date.now(),
+				attemptCount: 0,
+			});
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		}
+
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Failed to create task",
+		};
+	}
+}
+
+/**
+ * Derive the project/client links for a created task from the record in
+ * scope, verifying org ownership before linking.
+ */
+async function resolveTaskLink(
+	ctx: MutationCtx,
+	scopeRecord: ScopeRecord,
+	orgId: Id<"organizations">
+): Promise<{ projectId?: Id<"projects">; clientId?: Id<"clients"> }> {
+	let projectId: Id<"projects"> | undefined;
+	let clientId: Id<"clients"> | undefined;
+
+	if (scopeRecord.type === "project") {
+		projectId = scopeRecord.id as Id<"projects">;
+		clientId = scopeRecord.record.clientId as Id<"clients"> | undefined;
+	} else if (scopeRecord.type === "client") {
+		clientId = scopeRecord.id as Id<"clients">;
+	} else {
+		const projectFk = RELATION_FIELD[scopeRecord.type]?.project;
+		const clientFk = RELATION_FIELD[scopeRecord.type]?.client;
+		projectId = projectFk
+			? (scopeRecord.record[projectFk] as Id<"projects"> | undefined)
+			: undefined;
+		clientId = clientFk
+			? (scopeRecord.record[clientFk] as Id<"clients"> | undefined)
+			: undefined;
+	}
+
+	// Fill the client via the project when only the project is known.
+	if (projectId && !clientId) {
+		const project = await ctx.db.get(projectId);
+		if (project && project.orgId === orgId) {
+			clientId = project.clientId;
+		}
+	}
+
+	// Verify org ownership; drop links that don't check out.
+	if (projectId) {
+		const project = await ctx.db.get(projectId);
+		if (!project || project.orgId !== orgId) projectId = undefined;
+	}
+	if (clientId) {
+		const client = await ctx.db.get(clientId);
+		if (!client || client.orgId !== orgId) clientId = undefined;
+	}
+
+	return { projectId, clientId };
+}
+
+/** List org member user ids, optionally restricted to admins. */
+async function resolveMemberUserIds(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	adminsOnly: boolean
+): Promise<Id<"users">[]> {
+	const memberships = await listMembershipsByOrg(ctx, orgId);
+	return memberships
+		.filter((m) => (adminsOnly ? m.role === "admin" : true))
+		.map((m) => m.userId);
+}
+
+/**
+ * The user who "owns" the record in scope: a task's assignee, else the org
+ * owner (no other entity carries an owner field).
+ */
+async function resolveRecordOwner(
+	ctx: MutationCtx,
+	scopeRecord: ScopeRecord | undefined,
+	orgId: Id<"organizations">
+): Promise<Id<"users"> | null> {
+	if (scopeRecord?.type === "task") {
+		const assignee = scopeRecord.record.assigneeUserId as
+			| Id<"users">
+			| undefined;
+		if (assignee) return assignee;
+	}
+	const org = await ctx.db.get(orgId);
+	return org?.ownerUserId ?? null;
+}
+
+function automationActionUrl(scopeRecord: ScopeRecord | undefined): string {
+	return scopeRecord ? `/${scopeRecord.type}s/${scopeRecord.id}` : "/home";
+}
+
+async function executeSendNotificationAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "send_notification" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	let userIds: Id<"users">[];
+	if (action.recipient === "org_admins") {
+		userIds = await resolveMemberUserIds(ctx, env.orgId, true);
+		if (userIds.length === 0) {
+			return { success: true, skipped: true, error: "No admins to notify" };
+		}
+	} else if (action.recipient === "record_owner") {
+		const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
+		if (!owner) {
+			return {
+				success: true,
+				skipped: true,
+				error: "No owner found for the record in scope",
+			};
+		}
+		userIds = [owner];
+	} else {
+		const userId = action.recipient.userId as Id<"users">;
+		const membership = await getMembership(ctx, userId, env.orgId);
+		if (!membership) {
+			return {
+				success: false,
+				error: "Notification recipient is not a member of this organization",
+			};
+		}
+		userIds = [userId];
+	}
+
+	const message = interpolateTemplate(action.message, env.scope).trim();
+	if (!message) {
+		return {
+			success: false,
+			error: "Notification message resolved to an empty value",
+		};
+	}
+
+	try {
+		for (const userId of userIds) {
+			await ctx.db.insert("notifications", {
+				orgId: env.orgId,
+				userId,
+				notificationType: "automation_message",
+				title: env.automation.name,
+				message,
+				entityType: scopeRecord?.type,
+				entityId: scopeRecord?.id,
+				actionUrl: scopeRecord ? automationActionUrl(scopeRecord) : undefined,
+				isRead: false,
+				sentVia: "in_app",
+				sentAt: Date.now(),
+			});
+		}
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to send notification",
+		};
+	}
+}
+
+async function executeSendTeamMessageAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "send_team_message" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	let userIds: Id<"users">[];
+	if (action.recipients === "all_members") {
+		userIds = await resolveMemberUserIds(ctx, env.orgId, false);
+	} else if (action.recipients === "admins") {
+		userIds = await resolveMemberUserIds(ctx, env.orgId, true);
+	} else {
+		const valid: Id<"users">[] = [];
+		for (const raw of action.recipients.userIds) {
+			const userId = raw as Id<"users">;
+			const membership = await getMembership(ctx, userId, env.orgId);
+			if (membership) valid.push(userId);
+		}
+		userIds = valid;
+	}
+	if (userIds.length === 0) {
+		return { success: true, skipped: true, error: "No recipients to message" };
+	}
+
+	const title =
+		interpolateTemplate(action.title, env.scope).trim() ||
+		env.automation.name;
+	const message = interpolateTemplate(action.message, env.scope).trim();
+	if (!message) {
+		return { success: false, error: "Message resolved to an empty value" };
+	}
+
+	const org = await ctx.db.get(env.orgId);
+	const clerkOrgId = org?.clerkOrganizationId ?? "";
+	const actionUrl = automationActionUrl(scopeRecord);
+
+	try {
+		for (const userId of userIds) {
+			const notificationId = await ctx.db.insert("notifications", {
+				orgId: env.orgId,
+				userId,
+				notificationType: "automation_message",
+				title,
+				message,
+				entityType: scopeRecord?.type,
+				entityId: scopeRecord?.id,
+				actionUrl,
+				isRead: false,
+				sentVia: "in_app",
+				sentAt: Date.now(),
+			});
+			await enqueuePush(ctx, {
+				notificationType: "automation_message",
+				taggedUserId: userId,
+				title,
+				body: message,
+				url: actionUrl,
+				notificationId,
+				orgId: clerkOrgId,
+			});
+		}
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to send team message",
+		};
+	}
 }
 
 // Cleanup configuration

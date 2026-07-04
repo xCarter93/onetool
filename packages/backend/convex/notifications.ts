@@ -105,6 +105,8 @@ interface NotificationStats {
 		payout_failed: number;
 		capability_degraded: number;
 		bank_account_changed: number;
+		// Workflow-automation messages.
+		automation_message: number;
 	};
 	today: number;
 	pending: number; // scheduled but not sent yet
@@ -131,6 +133,7 @@ function createEmptyNotificationStats(): NotificationStats {
 			payout_failed: 0,
 			capability_degraded: 0,
 			bank_account_changed: 0,
+			automation_message: 0,
 		},
 		today: 0,
 		pending: 0,
