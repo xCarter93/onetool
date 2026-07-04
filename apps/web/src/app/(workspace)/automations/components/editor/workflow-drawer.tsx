@@ -1,9 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PanelLeft, PanelLeftClose, Zap, Copy, Check, Plus } from "lucide-react";
+import {
+	PanelLeft,
+	PanelLeftClose,
+	Zap,
+	Copy,
+	Check,
+	Plus,
+	AlertTriangle,
+} from "lucide-react";
 import type { Node, Edge } from "@xyflow/react";
 import { Button } from "@/components/ui/button";
+import Modal from "@/components/ui/modal";
 import { NextStepTree } from "../sidebar/next-step-tree";
 import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
 import { getAvailableVariables, type VariableOption } from "../../lib/variables";
@@ -11,6 +20,7 @@ import {
 	MAX_FORMULAS,
 	type FormulaResource,
 	type WorkflowNode,
+	type WorkflowNodeType,
 	type TriggerConfig,
 } from "../../lib/node-types";
 import { FormulaEditorModal, type SampleRecord } from "./formula-editor-modal";
@@ -49,6 +59,41 @@ function groupVariables(vars: VariableOption[]): [string, VariableOption[]][] {
 	return groups;
 }
 
+const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
+	condition: "Condition",
+	action: "Update record",
+	fetch_records: "Fetch records",
+	loop: "Loop",
+	aggregate: "Aggregate",
+	adjust_time: "Adjust time",
+	delay: "Delay",
+	delay_until: "Delay until",
+	end: "End",
+};
+
+/** Nodes and other formulas that reference a formula id. */
+type FormulaReferences = { nodes: WorkflowNode[]; formulas: FormulaResource[] };
+
+/**
+ * Everything referencing `formula.<id>`. Node configs store the path verbatim
+ * in `var` value-refs and interpolate `{{formula.<id>}}` inside message
+ * strings, so a serialized-config substring scan catches both; formula ids are
+ * fixed-length and unique, so there are no false prefix matches.
+ */
+function findFormulaReferences(
+	id: string,
+	nodes: WorkflowNode[],
+	formulas: FormulaResource[]
+): FormulaReferences {
+	const token = `formula.${id}`;
+	return {
+		nodes: nodes.filter(
+			(n) => n.config != null && JSON.stringify(n.config).includes(token)
+		),
+		formulas: formulas.filter((f) => f.id !== id && f.expression.includes(token)),
+	};
+}
+
 export function WorkflowDrawer({
 	trigger,
 	nodes,
@@ -67,6 +112,11 @@ export function WorkflowDrawer({
 	const [formulaModal, setFormulaModal] = useState<{ formula: FormulaResource | null } | null>(
 		null
 	);
+	// Pending formula deletion, awaiting confirmation.
+	const [deleteTarget, setDeleteTarget] = useState<{
+		formula: FormulaResource;
+		references: FormulaReferences;
+	} | null>(null);
 
 	const workflowNodes = useMemo(
 		() => nodes.filter((n): n is WorkflowNode => n.type !== "placeholder"),
@@ -91,6 +141,24 @@ export function WorkflowDrawer({
 		onFormulasChange(formulas.filter((f) => f.id !== id));
 	};
 
+	// Gate deletion behind a confirm + reference scan. Both the drawer and the
+	// editor modal's Delete route through requestDeleteFormula (onDelete), so
+	// neither reaches handleDeleteFormula without confirmation.
+	const requestDeleteFormula = (id: string) => {
+		const formula = formulas.find((f) => f.id === id);
+		if (!formula) return;
+		setDeleteTarget({
+			formula,
+			references: findFormulaReferences(id, workflowNodes, formulas),
+		});
+	};
+
+	const confirmDeleteFormula = () => {
+		if (!deleteTarget) return;
+		handleDeleteFormula(deleteTarget.formula.id);
+		setDeleteTarget(null);
+	};
+
 	const formulaModalElement = (
 		<FormulaEditorModal
 			open={formulaModal !== null}
@@ -103,8 +171,72 @@ export function WorkflowDrawer({
 			trigger={trigger ?? null}
 			sampleRecords={sampleRecords}
 			onSave={handleSaveFormula}
-			onDelete={handleDeleteFormula}
+			onDelete={requestDeleteFormula}
 		/>
+	);
+
+	const hasReferences =
+		deleteTarget !== null &&
+		(deleteTarget.references.nodes.length > 0 ||
+			deleteTarget.references.formulas.length > 0);
+
+	const deleteConfirmElement = deleteTarget && (
+		<Modal
+			isOpen
+			onClose={() => setDeleteTarget(null)}
+			title="Delete formula"
+			size="sm"
+		>
+			<div className="space-y-4">
+				<div className="flex items-start gap-3">
+					<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 dark:bg-red-950/40 dark:text-red-400">
+						<AlertTriangle className="h-5 w-5" />
+					</div>
+					<div className="space-y-1">
+						<p className="text-sm font-medium text-foreground">
+							Delete{" "}
+							<span className="font-semibold">{deleteTarget.formula.name}</span>?
+						</p>
+						<p className="text-sm text-muted-foreground">
+							This cannot be undone once you save the workflow.
+						</p>
+					</div>
+				</div>
+
+				{hasReferences && (
+					<div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+						<p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+							These reference it and will resolve to empty:
+						</p>
+						<ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs text-amber-700 dark:text-amber-400">
+							{deleteTarget.references.nodes.map((n) => (
+								<li key={n.id}>{NODE_TYPE_LABELS[n.type]} step</li>
+							))}
+							{deleteTarget.references.formulas.map((f) => (
+								<li key={f.id}>Formula — {f.name}</li>
+							))}
+						</ul>
+					</div>
+				)}
+
+				<div className="flex justify-end gap-2">
+					<Button
+						intent="outline"
+						size="sm"
+						onPress={() => setDeleteTarget(null)}
+					>
+						Cancel
+					</Button>
+					<Button
+						intent="destructive"
+						size="sm"
+						onPress={confirmDeleteFormula}
+					>
+						Delete formula
+					</Button>
+				</div>
+			</div>
+		</Modal>
 	);
 
 	if (!open) {
@@ -119,13 +251,20 @@ export function WorkflowDrawer({
 					<PanelLeft className="h-4 w-4" />
 				</Button>
 				{formulaModalElement}
+				{deleteConfirmElement}
 			</div>
 		);
 	}
 
-	const copyPath = (path: string) => {
+	const copyPath = async (path: string) => {
+		const clipboard = navigator.clipboard;
+		if (!clipboard) return; // no clipboard API (insecure context) — nothing copied
 		const token = `{{${path}}}`;
-		void navigator.clipboard?.writeText(token);
+		try {
+			await clipboard.writeText(token);
+		} catch {
+			return; // write rejected — don't show the copied state
+		}
 		setCopiedPath(path);
 		window.setTimeout(() => setCopiedPath((p) => (p === path ? null : p)), 1200);
 	};
@@ -195,7 +334,7 @@ export function WorkflowDrawer({
 										<button
 											key={v.path}
 											type="button"
-											onClick={() => copyPath(v.path)}
+											onClick={() => void copyPath(v.path)}
 											title={`Copy {{${v.path}}}`}
 											className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 										>
@@ -261,6 +400,7 @@ export function WorkflowDrawer({
 			</div>
 
 			{formulaModalElement}
+			{deleteConfirmElement}
 		</div>
 	);
 }

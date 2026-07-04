@@ -33,6 +33,8 @@ export function useKeyboardShortcuts({
 }: KeyboardShortcutOptions) {
 	useEffect(() => {
 		function handleKeyDown(event: KeyboardEvent) {
+			// Suppress all canvas shortcuts (incl. Escape) while a modal/dialog is open.
+			if (document.querySelector('[role="dialog"]')) return;
 			if (isTypingTarget(event.target)) return;
 
 			if ((event.key === "Delete" || event.key === "Backspace") && selectedNode) {

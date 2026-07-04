@@ -270,6 +270,16 @@ export function useAutomationEditor(automationId: string | null) {
 	// The automation id may be minted mid-session when a brand-new automation
 	// is first saved; from then on we operate on that id.
 	const [currentId, setCurrentId] = useState<string | null>(automationId);
+	// Reseed currentId if the automationId prop changes to a different id (e.g.
+	// navigating between automations without a remount). Render-time prev-prop
+	// guard so the unchanged-prop path is a no-op.
+	const [prevAutomationId, setPrevAutomationId] = useState<string | null>(
+		automationId
+	);
+	if (automationId !== prevAutomationId) {
+		setPrevAutomationId(automationId);
+		setCurrentId(automationId);
+	}
 	const effectiveId = currentId ?? automationId;
 
 	const existingAutomation = useQuery(
@@ -563,6 +573,10 @@ export function useAutomationEditor(automationId: string | null) {
 				setShowClearConfirm(true);
 				return;
 			}
+
+			// Deleting changes the graph; drop any stale run overlay. Note: NOT
+			// clearUndoState() — that would wipe the undo snapshot set below.
+			setActiveExecutionId(null);
 
 			if (nodeToDelete.type === "condition") {
 				const subtreeIds = collectSubtree(nodeId, nodes);

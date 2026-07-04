@@ -489,7 +489,11 @@ export function FormulaEditorModal({
 							intent="primary"
 							size="sm"
 							onPress={handleSave}
-							isDisabled={!name.trim() || !!parseError}
+							// parseError is debounced (250ms) and only drives the inline
+							// message; handleSave re-parses synchronously and blocks an
+							// invalid save, so gating disabled on it would spuriously
+							// disable Save right after a syntax error is fixed.
+							isDisabled={!name.trim()}
 						>
 							Save
 						</Button>

@@ -21,6 +21,7 @@ import {
 	MAX_FETCH_LIMIT,
 	MAX_LOOP_ITERATIONS,
 	VALUELESS_OPERATORS,
+	getFieldDefinition,
 	getWritableFields,
 	operatorsForField,
 	validateSchedule,
@@ -408,8 +409,10 @@ function validateAggregateNode(
 		return;
 	}
 	const source = rfNodes.find((n) => n.id === config.sourceNodeId);
-	const sourceType = (source?.data as Record<string, unknown> | undefined)?.nodeType;
-	if (!source || sourceType !== "fetch_records") {
+	const sourceData = source?.data as
+		| { nodeType?: string; config?: FetchNodeConfig }
+		| undefined;
+	if (!source || sourceData?.nodeType !== "fetch_records") {
 		errors.push({
 			type: "missing_required_config",
 			message: 'Aggregates need a "Find records" step to run earlier in the workflow',
@@ -433,6 +436,23 @@ function validateAggregateNode(
 			message: "Choose an aggregate operation",
 			nodeId,
 		});
+		return;
+	}
+
+	// Mirror the backend (automations.ts): aggregates only run over numeric
+	// fields. Resolve the field on the SOURCE fetch node's object type and
+	// reject anything else inline, else the backend fails with a generic toast.
+	// Skip when the source has no object type yet — validateFetchNode flags that.
+	const sourceObjectType = sourceData.config?.objectType;
+	if (sourceObjectType) {
+		const def = getFieldDefinition(sourceObjectType, config.field);
+		if (!def || (def.type !== "number" && def.type !== "currency")) {
+			errors.push({
+				type: "missing_required_config",
+				message: "Aggregate needs a number or currency field",
+				nodeId,
+			});
+		}
 	}
 }
 

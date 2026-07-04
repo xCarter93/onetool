@@ -54,6 +54,8 @@ export function ManualRunButton({
 		open && needsRecord ? { automationId } : "skip"
 	);
 	const records = useMemo(() => sampleRecords ?? [], [sampleRecords]);
+	// Query in flight (enabled but unresolved) — distinct from "resolved empty".
+	const recordsLoading = needsRecord && open && sampleRecords === undefined;
 
 	// Default to the most recent record until the user picks one.
 	const effectiveRecordId = recordId ?? records[0]?.entityId;
@@ -108,7 +110,12 @@ export function ManualRunButton({
 						>
 							Record
 						</label>
-						{records.length > 0 ? (
+						{recordsLoading ? (
+							<div className="flex items-center gap-2 text-xs text-muted-foreground">
+								<Loader2 className="size-3.5 animate-spin" />
+								Loading records…
+							</div>
+						) : records.length > 0 ? (
 							<Select value={effectiveRecordId} onValueChange={setRecordId}>
 								<SelectTrigger id="manual-run-record" className="w-full">
 									<SelectValue placeholder="Pick a record" />

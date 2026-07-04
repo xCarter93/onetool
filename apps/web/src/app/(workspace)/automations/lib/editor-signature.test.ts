@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { definitionSignature } from "./editor-signature";
-import type { TriggerConfig, WorkflowNode } from "./node-types";
+import {
+	automationToReactFlow,
+	reactFlowToFlatArray,
+} from "./flow-adapter";
+import type {
+	ConditionNodeConfig,
+	FetchNodeConfig,
+	TriggerConfig,
+	WorkflowNode,
+} from "./node-types";
 
 const trigger: TriggerConfig = {
 	type: "record_created",
@@ -97,5 +106,126 @@ describe("definitionSignature", () => {
 		const a = definitionSignature({ objectType: "client", type: "record_created" } as TriggerConfig, [node("n1")]);
 		const b = definitionSignature({ type: "record_created", objectType: "client" } as TriggerConfig, [node("n1")]);
 		expect(a).toBe(b);
+	});
+});
+
+// #16 — the editor computes isDirty by comparing the load-time signature to the
+// signature of the working definition, which round-trips through
+// automationToReactFlow -> reactFlowToFlatArray before being re-signed (see
+// use-automation-editor.ts). Nested arrays (fetch filters, condition
+// groups/rules) must survive that round-trip in the same order, or a freshly
+// loaded automation would falsely report unpublished changes.
+describe("definitionSignature — load round-trip stability", () => {
+	const invoiceTrigger: TriggerConfig = {
+		type: "status_changed",
+		objectType: "invoice",
+		toStatus: "overdue",
+	};
+
+	// A fetch with multiple filter groups (multiple rules each) and a condition
+	// with multiple groups — the array-order-sensitive shapes #16 is about.
+	const fetchConfig: FetchNodeConfig = {
+		kind: "fetch_records",
+		objectType: "invoice",
+		filters: [
+			{
+				logic: "and",
+				rules: [
+					{
+						field: "status",
+						operator: "equals",
+						value: { kind: "static", value: "overdue" },
+					},
+					{
+						field: "total",
+						operator: "gte",
+						value: { kind: "static", value: 100 },
+					},
+				],
+			},
+			{
+				logic: "or",
+				rules: [
+					{
+						field: "dueDate",
+						operator: "before",
+						value: { kind: "static", value: "2026-01-01" },
+					},
+				],
+			},
+		],
+	};
+
+	const conditionConfig: ConditionNodeConfig = {
+		kind: "condition",
+		logic: "and",
+		groups: [
+			{
+				logic: "and",
+				rules: [
+					{
+						field: "status",
+						operator: "equals",
+						value: { kind: "static", value: "overdue" },
+					},
+					{
+						field: "total",
+						operator: "greater_than",
+						value: { kind: "static", value: 50 },
+					},
+				],
+			},
+			{
+				logic: "or",
+				rules: [{ field: "invoiceNumber", operator: "is_not_empty" }],
+			},
+		],
+	};
+
+	const nodes: WorkflowNode[] = [
+		{
+			id: "fetch1",
+			type: "fetch_records",
+			config: fetchConfig,
+			nextNodeId: "cond1",
+		},
+		{
+			id: "cond1",
+			type: "condition",
+			config: conditionConfig,
+			nextNodeId: "action1",
+		},
+		{
+			id: "action1",
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "update_field",
+					target: "self",
+					field: "status",
+					value: { kind: "static", value: "cancelled" },
+				},
+			},
+		},
+	];
+
+	it("keeps the signature stable across automationToReactFlow -> reactFlowToFlatArray", () => {
+		// Load-time signature (editor state right after the row loads).
+		const loadedSig = definitionSignature(invoiceTrigger, nodes);
+
+		// Working signature: what the editor re-signs after the RF round-trip.
+		const { nodes: rfNodes, edges: rfEdges } = automationToReactFlow(
+			invoiceTrigger,
+			nodes
+		);
+		const serialized = reactFlowToFlatArray(rfNodes, rfEdges);
+		const workingSig = definitionSignature(
+			serialized.trigger,
+			serialized.nodes
+		);
+
+		// Stable => isDirty would be false immediately after load.
+		expect(workingSig).toBe(loadedSig);
 	});
 });
