@@ -37,23 +37,25 @@ function getSummary(config: ActionNodeConfig | undefined): {
 				isConfigured: true,
 			};
 		}
+		case "create_task": {
+			const title = action.title.kind === "static" ? action.title.value : undefined;
+			return {
+				title: "Create Task",
+				description: title ? String(title) : "Choose a task title...",
+				isConfigured: action.title.kind === "var" || !!title,
+			};
+		}
 		case "send_notification":
 			return {
 				title: "Send Notification",
-				description: "Available soon — this step won't run yet",
-				isConfigured: false,
-			};
-		case "create_task":
-			return {
-				title: "Create Task",
-				description: "Available soon — this step won't run yet",
-				isConfigured: false,
+				description: action.message || "Write a message...",
+				isConfigured: !!action.message,
 			};
 		case "send_team_message":
 			return {
 				title: "Send Team Message",
-				description: "Available soon — this step won't run yet",
-				isConfigured: false,
+				description: action.title || action.message || "Write a message...",
+				isConfigured: !!(action.title && action.message),
 			};
 		default:
 			return { title: "Configure action", description: "Select an action type...", isConfigured: false };

@@ -7,6 +7,8 @@ export type GraphNode = {
 	type: string;
 	nextNodeId?: string;
 	elseNodeId?: string;
+	/** Loop body entry point. */
+	bodyStartNodeId?: string;
 };
 
 /**
@@ -47,7 +49,7 @@ export function collectSubtree(
 
 /**
  * Collect the loop node and its "For Each" body subtree.
- * Only follows nextNodeId (the body path), NOT elseNodeId (the "After Last" path).
+ * Walks from bodyStartNodeId (the body path), NOT nextNodeId (the "After Last" path).
  * Always includes the loop node itself.
  */
 export function collectLoopBody(
@@ -65,13 +67,13 @@ export function collectLoopBody(
 	// Always include the loop node itself
 	visited.add(loopNodeId);
 
-	if (!loopNode || !loopNode.nextNodeId) {
+	if (!loopNode || !loopNode.bodyStartNodeId) {
 		return visited;
 	}
 
-	// BFS only following nextNodeId and elseNodeId from body nodes
-	// (but NOT the loop node's elseNodeId which is the "After Last" path)
-	const queue: string[] = [loopNode.nextNodeId];
+	// BFS following nextNodeId and elseNodeId from body nodes (the loop
+	// node's own nextNodeId -- the "After Last" path -- is never queued).
+	const queue: string[] = [loopNode.bodyStartNodeId];
 
 	while (queue.length > 0) {
 		const current = queue.shift()!;
@@ -94,19 +96,23 @@ export function collectLoopBody(
 
 /**
  * Find the parent node that points to the given nodeId.
- * Returns the parent's ID and which branch ("next" or "else") points to nodeId.
+ * Returns the parent's ID and which pointer ("next", "else", or "body" --
+ * a loop's bodyStartNodeId) points to nodeId.
  * Returns null/null if no parent found (root node case).
  */
 export function findParent(
 	nodeId: string,
 	nodes: GraphNode[]
-): { parentId: string | null; branch: "next" | "else" | null } {
+): { parentId: string | null; branch: "next" | "else" | "body" | null } {
 	for (const node of nodes) {
 		if (node.nextNodeId === nodeId) {
 			return { parentId: node.id, branch: "next" };
 		}
 		if (node.elseNodeId === nodeId) {
 			return { parentId: node.id, branch: "else" };
+		}
+		if (node.bodyStartNodeId === nodeId) {
+			return { parentId: node.id, branch: "body" };
 		}
 	}
 

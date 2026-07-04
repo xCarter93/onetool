@@ -17,6 +17,7 @@ import {
 	type ConditionNodeConfig,
 	type ConditionRule,
 	type FetchNodeConfig,
+	type LoopNodeConfig,
 	type TriggerConfig,
 } from "./node-types";
 import { UNSUPPORTED_TRIGGER_TYPE } from "./legacy-load";
@@ -28,8 +29,7 @@ export type ValidationResult = {
 			| "placeholder_present"
 			| "missing_required_config"
 			| "no_trigger"
-			| "unsupported_trigger"
-			| "loop_unavailable";
+			| "unsupported_trigger";
 		message: string;
 		nodeId?: string;
 	}>;
@@ -213,6 +213,31 @@ function validateFetchNode(
 	}
 }
 
+function validateLoopNode(
+	nodeId: string,
+	config: LoopNodeConfig | undefined,
+	rfNodes: Node[],
+	errors: ValidationResult["errors"]
+): void {
+	if (!config?.sourceNodeId) {
+		errors.push({
+			type: "missing_required_config",
+			message: 'Loops need a "Find records" step to run earlier in the workflow',
+			nodeId,
+		});
+		return;
+	}
+	const source = rfNodes.find((n) => n.id === config.sourceNodeId);
+	const sourceType = (source?.data as Record<string, unknown> | undefined)?.nodeType;
+	if (!source || sourceType !== "fetch_records") {
+		errors.push({
+			type: "missing_required_config",
+			message: 'Loops need a "Find records" step to run earlier in the workflow',
+			nodeId,
+		});
+	}
+}
+
 export function validateWorkflowForSave(
 	trigger: TriggerConfig | null,
 	rfNodes: Node[]
@@ -278,11 +303,12 @@ export function validateWorkflowForSave(
 				);
 				break;
 			case "loop":
-				errors.push({
-					type: "loop_unavailable",
-					message: "Loop steps aren't available yet",
-					nodeId: node.id,
-				});
+				validateLoopNode(
+					node.id,
+					data.config as LoopNodeConfig | undefined,
+					rfNodes,
+					errors
+				);
 				break;
 			default:
 				break;
@@ -301,7 +327,6 @@ export function getValidationToastMessage(
 	const priorities: ValidationResult["errors"][number]["type"][] = [
 		"no_trigger",
 		"unsupported_trigger",
-		"loop_unavailable",
 		"placeholder_present",
 		"missing_required_config",
 	];

@@ -276,6 +276,40 @@ function validateUpdateFieldAction(
  * Full structural validation of a workflow definition. Used on every write;
  * activation additionally requires at least one node (see validateForActivation).
  */
+/**
+ * Map loop-body node ids to the object type their loop iterates (the source
+ * fetch node's objectType, or undefined when unresolvable). Bounded by a
+ * visited set so it terminates even on cyclic input (cycles are rejected
+ * separately).
+ */
+function computeLoopBodyScopeTypes(
+	nodes: NodeArg[]
+): Map<string, AutomationObjectType | undefined> {
+	const byId = new Map(nodes.map((n) => [n.id, n]));
+	const bodyScopeType = new Map<string, AutomationObjectType | undefined>();
+	for (const loop of nodes) {
+		if (loop.config.kind !== "loop") continue;
+		const fetchNode = byId.get(loop.config.sourceNodeId);
+		const fetchType =
+			fetchNode?.config.kind === "fetch_records"
+				? fetchNode.config.objectType
+				: undefined;
+		const stack =
+			loop.bodyStartNodeId === undefined ? [] : [loop.bodyStartNodeId];
+		const seen = new Set<string>();
+		while (stack.length > 0) {
+			const id = stack.pop()!;
+			if (seen.has(id)) continue;
+			seen.add(id);
+			bodyScopeType.set(id, fetchType);
+			const member = byId.get(id);
+			if (member?.nextNodeId !== undefined) stack.push(member.nextNodeId);
+			if (member?.elseNodeId !== undefined) stack.push(member.elseNodeId);
+		}
+	}
+	return bodyScopeType;
+}
+
 function validateWorkflowDefinition(
 	trigger: AutomationTrigger,
 	nodes: NodeArg[]
@@ -287,6 +321,10 @@ function validateWorkflowDefinition(
 	if (nodeIds.size !== nodes.length) {
 		throw new Error("Node ids must be unique");
 	}
+
+	// Loop-body nodes act on the loop's fetched records, not the trigger
+	// record — validate their update_field configs against that object type.
+	const bodyScopeType = computeLoopBodyScopeTypes(nodes);
 
 	for (const node of nodes) {
 		const config = node.config;
@@ -341,7 +379,10 @@ function validateWorkflowDefinition(
 			}
 			case "action": {
 				if (config.action.type === "update_field") {
-					validateUpdateFieldAction(node.id, config.action, objectType);
+					const scopeType = bodyScopeType.has(node.id)
+						? bodyScopeType.get(node.id)
+						: objectType;
+					validateUpdateFieldAction(node.id, config.action, scopeType);
 				}
 				if (config.action.type === "create_task") {
 					const title = config.action.title;

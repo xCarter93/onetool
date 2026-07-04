@@ -317,8 +317,8 @@ describe("flow-adapter", () => {
 			{
 				id: "loop1",
 				type: "loop",
-				nextNodeId: "b1",
-				elseNodeId: "a1",
+				bodyStartNodeId: "b1",
+				nextNodeId: "a1",
 			},
 			{ id: "b1", type: "action", config: updateStatusAction("done") },
 			{ id: "a1", type: "action", config: updateClientStatusAction("inactive") },
@@ -412,8 +412,9 @@ describe("flow-adapter", () => {
 			{
 				id: "loop1",
 				type: "loop",
-				nextNodeId: "b1",
-				elseNodeId: "a1",
+				config: { kind: "loop", sourceNodeId: "fetch1" },
+				bodyStartNodeId: "b1",
+				nextNodeId: "a1",
 			},
 			{ id: "b1", type: "action", config: updateStatusAction("done") },
 			{ id: "a1", type: "action", config: updateClientStatusAction("inactive") },
@@ -424,8 +425,57 @@ describe("flow-adapter", () => {
 
 		expect(result.nodes).toHaveLength(3);
 		const loop = result.nodes.find((n) => n.id === "loop1");
-		expect(loop!.nextNodeId).toBe("b1");
-		expect(loop!.elseNodeId).toBe("a1");
+		expect(loop!.bodyStartNodeId).toBe("b1");
+		expect(loop!.nextNodeId).toBe("a1");
+		expect(loop!.elseNodeId).toBeUndefined();
+	});
+
+	it("round-trips a loop with a 2-step body and an after-loop step", () => {
+		const trigger = makeTrigger();
+		const originalNodes: EditorNode[] = [
+			{
+				id: "fetch1",
+				type: "fetch_records",
+				config: { kind: "fetch_records", objectType: "client", filters: [] },
+				nextNodeId: "loop1",
+			},
+			{
+				id: "loop1",
+				type: "loop",
+				config: { kind: "loop", sourceNodeId: "fetch1" },
+				bodyStartNodeId: "b1",
+				nextNodeId: "after1",
+			},
+			{
+				id: "b1",
+				type: "action",
+				config: updateStatusAction("done"),
+				nextNodeId: "b2",
+			},
+			{ id: "b2", type: "action", config: updateClientStatusAction("active") },
+			{ id: "after1", type: "action", config: updateClientStatusAction("inactive") },
+		];
+
+		const rf = automationToReactFlow(trigger, originalNodes);
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+
+		expect(result.nodes).toHaveLength(5);
+
+		const fetch1 = result.nodes.find((n) => n.id === "fetch1");
+		expect(fetch1!.nextNodeId).toBe("loop1");
+
+		const loop = result.nodes.find((n) => n.id === "loop1");
+		expect(loop!.bodyStartNodeId).toBe("b1");
+		expect(loop!.nextNodeId).toBe("after1");
+
+		const b1 = result.nodes.find((n) => n.id === "b1");
+		expect(b1!.nextNodeId).toBe("b2");
+
+		const b2 = result.nodes.find((n) => n.id === "b2");
+		expect(b2!.nextNodeId).toBeUndefined();
+
+		const after1 = result.nodes.find((n) => n.id === "after1");
+		expect(after1).toBeDefined();
 	});
 
 	it("routes loop-back from a condition's yes terminal when the loop body ends at a condition", () => {
@@ -434,7 +484,7 @@ describe("flow-adapter", () => {
 			{
 				id: "loop1",
 				type: "loop",
-				nextNodeId: "cond1",
+				bodyStartNodeId: "cond1",
 			},
 			{
 				id: "cond1",
@@ -469,5 +519,44 @@ describe("flow-adapter", () => {
 		const rf = automationToReactFlow(trigger, nodes);
 		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
 		expect(result.nodes).toHaveLength(0);
+	});
+
+	it("round-trips a delay node's config without data loss", () => {
+		const trigger = makeTrigger();
+		const nodes: EditorNode[] = [
+			{
+				id: "d1",
+				type: "delay",
+				config: { kind: "delay", amount: 2, unit: "hours" },
+			},
+		];
+
+		const rf = automationToReactFlow(trigger, nodes);
+		expect(rf.nodes.find((n) => n.id === "d1")!.type).toBe(RF_NODE_TYPES.delay);
+
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+		expect(result.nodes).toHaveLength(1);
+		expect(result.nodes[0].config).toEqual({ kind: "delay", amount: 2, unit: "hours" });
+	});
+
+	it("round-trips a delay_until node's config without data loss", () => {
+		const trigger = makeTrigger();
+		const nodes: EditorNode[] = [
+			{
+				id: "du1",
+				type: "delay_until",
+				config: { kind: "delay_until", until: { kind: "static", value: "2026-01-01" } },
+			},
+		];
+
+		const rf = automationToReactFlow(trigger, nodes);
+		expect(rf.nodes.find((n) => n.id === "du1")!.type).toBe(RF_NODE_TYPES.delay_until);
+
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+		expect(result.nodes).toHaveLength(1);
+		expect(result.nodes[0].config).toEqual({
+			kind: "delay_until",
+			until: { kind: "static", value: "2026-01-01" },
+		});
 	});
 });

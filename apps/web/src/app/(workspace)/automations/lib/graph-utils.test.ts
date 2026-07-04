@@ -89,8 +89,8 @@ describe("graph-utils", () => {
 				{
 					id: "loop1",
 					type: "loop",
-					nextNodeId: "b1",
-					elseNodeId: "a1",
+					bodyStartNodeId: "b1",
+					nextNodeId: "a1",
 				},
 				{
 					id: "b1",
@@ -115,7 +115,7 @@ describe("graph-utils", () => {
 			expect(result.has("a1")).toBe(false);
 		});
 
-		it("returns only the loop node if it has no nextNodeId", () => {
+		it("returns only the loop node if it has no bodyStartNodeId", () => {
 			const nodes: WorkflowNode[] = [
 				{
 					id: "loop1",
@@ -132,8 +132,8 @@ describe("graph-utils", () => {
 				{
 					id: "loop1",
 					type: "loop",
-					nextNodeId: "c1",
-					elseNodeId: "after1",
+					bodyStartNodeId: "c1",
+					nextNodeId: "after1",
 				},
 				{
 					id: "c1",
@@ -221,6 +221,25 @@ describe("graph-utils", () => {
 
 			const result = findParent("a2", nodes);
 			expect(result).toEqual({ parentId: "c1", branch: "else" });
+		});
+
+		it("finds parent via bodyStartNodeId and returns branch 'body'", () => {
+			const nodes: WorkflowNode[] = [
+				{
+					id: "loop1",
+					type: "loop",
+					bodyStartNodeId: "b1",
+					nextNodeId: "a1",
+				},
+				{
+					id: "b1",
+					type: "action",
+					config: action("done"),
+				},
+			];
+
+			const result = findParent("b1", nodes);
+			expect(result).toEqual({ parentId: "loop1", branch: "body" });
 		});
 
 		it("returns null parentId and null branch for root node", () => {

@@ -263,6 +263,20 @@ export type LoopNodeData = {
 	_dbNode: WorkflowNode;
 };
 
+export type DelayNodeData = {
+	nodeType: "delay";
+	config?: DelayNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
+	_dbNode: WorkflowNode;
+};
+
+export type DelayUntilNodeData = {
+	nodeType: "delay_until";
+	config?: DelayUntilNodeConfig;
+	triggerObjectType: AutomationObjectType | null;
+	_dbNode: WorkflowNode;
+};
+
 export type EndNodeData = {
 	nodeType: "end";
 	_dbNode: WorkflowNode;
@@ -289,6 +303,8 @@ export type ConditionRFNode = Node<ConditionNodeData, "conditionNode">;
 export type ActionRFNode = Node<ActionNodeData, "actionNode">;
 export type FetchRFNode = Node<FetchNodeData, "fetchNode">;
 export type LoopRFNode = Node<LoopNodeData, "loopNode">;
+export type DelayRFNode = Node<DelayNodeData, "delayNode">;
+export type DelayUntilRFNode = Node<DelayUntilNodeData, "delayUntilNode">;
 export type EndRFNode = Node<EndNodeData, "endNode">;
 export type PlaceholderRFNode = Node<PlaceholderNodeData, "placeholderNode">;
 export type TerminalRFNode = Node<TerminalNodeData, "terminalNode">;
@@ -300,6 +316,8 @@ export type AppNode =
 	| ActionRFNode
 	| FetchRFNode
 	| LoopRFNode
+	| DelayRFNode
+	| DelayUntilRFNode
 	| EndRFNode
 	| PlaceholderRFNode
 	| TerminalRFNode;
@@ -315,7 +333,8 @@ export type EdgeData = {
 	label?: string;
 	variant?: string;
 	isTerminal?: boolean;
-	onInsertNode?: (edgeId: string, nodeType: string) => void;
+	/** actionType selects the action variant when nodeType is "action". */
+	onInsertNode?: (edgeId: string, nodeType: string, actionType?: string) => void;
 };
 
 export type AppEdge = Edge<EdgeData>;

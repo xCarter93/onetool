@@ -16,7 +16,14 @@ import { EditorTopBar } from "./editor-top-bar";
 import { UndoBanner } from "./undo-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
 
-type NodeConfigType = "condition" | "action" | "fetch_records" | "loop" | "end";
+type NodeConfigType =
+	| "condition"
+	| "action"
+	| "fetch_records"
+	| "loop"
+	| "delay"
+	| "delay_until"
+	| "end";
 
 /** Map sub-action types to their sidebar config type */
 function toSidebarType(t: string): NodeConfigType {
@@ -46,8 +53,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	// Wrap edge insert to wire sidebar transitions
 	const handleEdgeInsert = useCallback(
-		(edgeId: string, nodeType: string) => {
-			const insertedId = editor.handleInsertNode(edgeId, nodeType);
+		(edgeId: string, nodeType: string, actionType?: string) => {
+			const insertedId = editor.handleInsertNode(edgeId, nodeType, actionType);
 			if (!insertedId) return;
 			if (nodeType === "placeholder") {
 				sidebar.openStepPicker(insertedId);
@@ -92,8 +99,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	);
 
 	const handleStepTypeSelect = useCallback(
-		(stepType: string, placeholderNodeId: string) => {
-			editor.handleSelectStepType(placeholderNodeId, stepType);
+		(stepType: string, placeholderNodeId: string, actionType?: string) => {
+			editor.handleSelectStepType(placeholderNodeId, stepType, actionType);
 			sidebar.handleStepTypeSelect(toSidebarType(stepType) as NodeConfigType, placeholderNodeId);
 		},
 		[editor, sidebar]

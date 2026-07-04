@@ -34,6 +34,88 @@ function conditionNode(id: string, nextNodeId?: string) {
 	};
 }
 
+function fetchNode(
+	id: string,
+	objectType: "client" | "project" | "quote" | "invoice" | "task",
+	opts: { nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "fetch_records" as const,
+		config: {
+			kind: "fetch_records" as const,
+			objectType,
+			filters: [],
+		},
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function loopNode(
+	id: string,
+	sourceNodeId: string,
+	opts: { bodyStartNodeId?: string; nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "loop" as const,
+		config: { kind: "loop" as const, sourceNodeId },
+		bodyStartNodeId: opts.bodyStartNodeId,
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function endNode(id: string) {
+	return { id, type: "end" as const, config: { kind: "end" as const } };
+}
+
+function delayNode(
+	id: string,
+	amount: number,
+	unit: "minutes" | "hours" | "days",
+	opts: { nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "delay" as const,
+		config: { kind: "delay" as const, amount, unit },
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function delayUntilNode(
+	id: string,
+	until: { kind: "static"; value: string | number },
+	opts: { nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "delay_until" as const,
+		config: { kind: "delay_until" as const, until },
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
+function createTaskNode(
+	id: string,
+	title: string | null,
+	opts: { dueInDays?: number; nextNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "create_task" as const,
+				title: { kind: "static" as const, value: title },
+				dueInDays: opts.dueInDays,
+			},
+		},
+		nextNodeId: opts.nextNodeId,
+	};
+}
+
 function actionNode(id: string, statusValue = "inactive") {
 	return {
 		id,
@@ -288,6 +370,229 @@ describe("Automations", () => {
 			});
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("draft");
+		});
+	});
+
+	describe("Slice 3 — walk-engine node validation", () => {
+		it("rejects a loop body that contains another loop", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Nested loop",
+					trigger: clientTrigger,
+					nodes: [
+						fetchNode("fetch-1", "project", { nextNodeId: "loop-outer" }),
+						loopNode("loop-outer", "fetch-1", { bodyStartNodeId: "loop-inner" }),
+						loopNode("loop-inner", "fetch-1"),
+					],
+				})
+			).rejects.toThrow(/loops cannot contain other loops/i);
+		});
+
+		it("rejects a delay step inside a loop body", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Delay in loop",
+					trigger: clientTrigger,
+					nodes: [
+						fetchNode("fetch-1", "project", { nextNodeId: "loop-1" }),
+						loopNode("loop-1", "fetch-1", { bodyStartNodeId: "delay-1" }),
+						delayNode("delay-1", 1, "hours"),
+					],
+				})
+			).rejects.toThrow(/delay steps aren't supported inside loops/i);
+		});
+
+		it("rejects a loop body node that's also reachable from the main chain", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Shared body node",
+					trigger: clientTrigger,
+					nodes: [
+						fetchNode("fetch-1", "project", { nextNodeId: "loop-1" }),
+						loopNode("loop-1", "fetch-1", {
+							bodyStartNodeId: "shared-act",
+							nextNodeId: "shared-act",
+						}),
+						// Field-agnostic action so the structural check is what fires
+						// (update_field would fail type-scoped field validation first).
+						{
+							id: "shared-act",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "send_notification" as const,
+									recipient: "org_admins" as const,
+									message: "Shared step",
+								},
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/is inside a loop but also reachable outside it/i);
+		});
+
+		it("rejects a delay over the 90-day cap", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Too-long delay",
+					trigger: clientTrigger,
+					// 2161 hours ≈ 90.04 days > MAX_DELAY_MS (90 days).
+					nodes: [delayNode("delay-1", 2161, "hours")],
+				})
+			).rejects.toThrow(/capped at 90 days/i);
+		});
+
+		it("rejects a delay amount of zero", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Zero delay",
+					trigger: clientTrigger,
+					nodes: [delayNode("delay-1", 0, "minutes")],
+				})
+			).rejects.toThrow(/delay must be a whole number/i);
+		});
+
+		it("rejects a delay_until static value that isn't a valid date", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad delay-until",
+					trigger: clientTrigger,
+					nodes: [
+						delayUntilNode("du-1", { kind: "static", value: "not-a-date" }),
+					],
+				})
+			).rejects.toThrow(/needs a valid date/i);
+		});
+
+		it("rejects create_task with an empty static title", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Empty task title",
+					trigger: clientTrigger,
+					nodes: [createTaskNode("task-1", "")],
+				})
+			).rejects.toThrow(/task title is required/i);
+		});
+
+		it("rejects a create_task dueInDays outside 0-365", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Due too far out",
+					trigger: clientTrigger,
+					nodes: [createTaskNode("task-1", "Follow up", { dueInDays: 400 })],
+				})
+			).rejects.toThrow(/due date must be/i);
+		});
+
+		it("accepts a valid fetch → loop(update_field) → end workflow", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Valid walk",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					fetchNode("fetch-1", "project", { nextNodeId: "loop-1" }),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "end-1",
+					}),
+					{
+						id: "body-act",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "update_field" as const,
+								target: "self" as const,
+								field: "status",
+								value: { kind: "static" as const, value: "in-progress" },
+							},
+						},
+					},
+					endNode("end-1"),
+				],
+			});
+
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.status).toBe("draft");
+			expect(automation?.nodes).toHaveLength(4);
+		});
+
+		it("validates loop-body update_field against the loop's fetched type, not the trigger's", async () => {
+			const { asUser } = await setupUser();
+
+			// Trigger is a client; loop iterates projects. "in-progress" is a
+			// valid project status but not a client status — this must save.
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Cross-type loop body",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					fetchNode("fetch-1", "project", { nextNodeId: "loop-1" }),
+					loopNode("loop-1", "fetch-1", { bodyStartNodeId: "body-act" }),
+					{
+						id: "body-act",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "update_field" as const,
+								target: "self" as const,
+								field: "status",
+								value: { kind: "static" as const, value: "in-progress" },
+							},
+						},
+					},
+				],
+			});
+
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.nodes).toHaveLength(3);
+
+			// And an invalid status for the fetched type is still rejected.
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad loop-body status",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						fetchNode("fetch-1", "project", { nextNodeId: "loop-1" }),
+						loopNode("loop-1", "fetch-1", { bodyStartNodeId: "body-act" }),
+						{
+							id: "body-act",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "update_field" as const,
+									target: "self" as const,
+									field: "status",
+									// A client status, invalid for projects.
+									value: { kind: "static" as const, value: "lead" },
+								},
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/not a valid value/i);
 		});
 	});
 

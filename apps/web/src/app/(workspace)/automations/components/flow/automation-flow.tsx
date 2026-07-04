@@ -22,6 +22,8 @@ import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
 import { FetchNodeRF } from "./fetch-node-rf";
 import { LoopNodeRF } from "./loop-node-rf";
+import { DelayNodeRF } from "./delay-node-rf";
+import { DelayUntilNodeRF } from "./delay-until-node-rf";
 import { EndNodeRF } from "./end-node-rf";
 import { TerminalNodeRF } from "./add-step-node-rf";
 import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
@@ -38,6 +40,8 @@ const nodeTypes = {
 	actionNode: ActionNodeRF,
 	fetchNode: FetchNodeRF,
 	loopNode: LoopNodeRF,
+	delayNode: DelayNodeRF,
+	delayUntilNode: DelayUntilNodeRF,
 	endNode: EndNodeRF,
 	terminalNode: TerminalNodeRF,
 	triggerPlaceholderNode: TriggerPlaceholderNodeRF,

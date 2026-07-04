@@ -8,6 +8,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import {
 	getStatusOptions,
+	type AutomationAction,
 	type AutomationTrigger,
 	type TriggerConfig,
 	type TriggerType,
@@ -36,7 +37,7 @@ import {
 type DeletedState = {
 	deletedNodes: EditorNode[];
 	parentId: string | null;
-	branch: "next" | "else" | null;
+	branch: "next" | "else" | "body" | null;
 	reconnectedChildId?: string;
 	previousParentPointer?: string;
 	toastMessage: string;
@@ -90,19 +91,39 @@ function buildConditionNode(id: string): WorkflowNode {
 	};
 }
 
-function buildActionNode(id: string, downstreamId?: string): WorkflowNode {
-	return {
-		id,
-		type: "action",
-		config: {
-			kind: "action",
-			action: {
+function buildAction(actionType?: string): AutomationAction {
+	switch (actionType) {
+		case "create_task":
+			return { type: "create_task", title: { kind: "static", value: "" } };
+		case "send_notification":
+			return { type: "send_notification", recipient: "org_admins", message: "" };
+		case "send_team_message":
+			return {
+				type: "send_team_message",
+				recipients: "all_members",
+				title: "",
+				message: "",
+			};
+		case "update_field":
+		default:
+			return {
 				type: "update_field",
 				target: "self",
 				field: "",
 				value: { kind: "static", value: null },
-			},
-		},
+			};
+	}
+}
+
+function buildActionNode(
+	id: string,
+	downstreamId?: string,
+	actionType?: string
+): WorkflowNode {
+	return {
+		id,
+		type: "action",
+		config: { kind: "action", action: buildAction(actionType) },
 		nextNodeId: downstreamId,
 	};
 }
@@ -124,9 +145,27 @@ function buildFetchNode(
 	};
 }
 
-/** Loop steps aren't saveable yet (Slice 1) -- config stays unset until Slice 3. */
+/** Config (sourceNodeId) is set once the user picks a fetch_records step in the panel. */
 function buildLoopNode(id: string): WorkflowNode {
 	return { id, type: "loop" };
+}
+
+function buildDelayNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "delay",
+		config: { kind: "delay", amount: 1, unit: "hours" },
+		nextNodeId: downstreamId,
+	};
+}
+
+function buildDelayUntilNode(id: string, downstreamId?: string): WorkflowNode {
+	return {
+		id,
+		type: "delay_until",
+		config: { kind: "delay_until", until: { kind: "static", value: "" } },
+		nextNodeId: downstreamId,
+	};
 }
 
 function buildEndNode(id: string): WorkflowNode {
@@ -245,7 +284,7 @@ export function useAutomationEditor(automationId: string | null) {
 	const rawFlow = useMemo(() => automationToReactFlow(trigger, nodes), [nodes, trigger]);
 
 	const handleInsertNode = useCallback(
-		(edgeId: string, nodeType: string) => {
+		(edgeId: string, nodeType: string, actionType?: string) => {
 			clearUndoState();
 			if (!trigger) return null;
 
@@ -255,7 +294,10 @@ export function useAutomationEditor(automationId: string | null) {
 			const sourceId = edge.source;
 			const targetId = edge.target;
 			const branchType = (edge.data?.branchType as string) || "next";
-			const isElseBranch = branchType === "no" || branchType === "after";
+			// "no" (condition) -> elseNodeId; "each" (loop body entry) -> bodyStartNodeId;
+			// everything else (incl. loop's "after") is a plain nextNodeId continuation.
+			const isElseBranch = branchType === "no";
+			const isBodyBranch = branchType === "each";
 			const isTerminalTarget = isTerminalId(targetId);
 			const realTargetId =
 				!isTerminalTarget &&
@@ -291,23 +333,23 @@ export function useAutomationEditor(automationId: string | null) {
 					newNodes = [buildFetchNode(newId, trigger, downstreamId)];
 					break;
 				case "loop": {
-					const eachPlaceholderId = generateId();
-					const afterPlaceholderId = generateId();
+					const bodyStartId = generateId();
 					const loopNode = buildLoopNode(newId);
-					loopNode.nextNodeId = eachPlaceholderId;
-					loopNode.elseNodeId = afterPlaceholderId;
-					const eachPlaceholder: PlaceholderEntry = {
-						id: eachPlaceholderId,
+					loopNode.bodyStartNodeId = bodyStartId;
+					loopNode.nextNodeId = downstreamId;
+					const bodyStartPlaceholder: PlaceholderEntry = {
+						id: bodyStartId,
 						type: "placeholder",
 					};
-					const afterPlaceholder: PlaceholderEntry = {
-						id: afterPlaceholderId,
-						type: "placeholder",
-						nextNodeId: downstreamId,
-					};
-					newNodes = [loopNode, eachPlaceholder, afterPlaceholder];
+					newNodes = [loopNode, bodyStartPlaceholder];
 					break;
 				}
+				case "delay":
+					newNodes = [buildDelayNode(newId, downstreamId)];
+					break;
+				case "delay_until":
+					newNodes = [buildDelayUntilNode(newId, downstreamId)];
+					break;
 				case "end":
 					newNodes = [buildEndNode(newId)];
 					break;
@@ -318,7 +360,7 @@ export function useAutomationEditor(automationId: string | null) {
 					break;
 				case "action":
 				default:
-					newNodes = [buildActionNode(newId, downstreamId)];
+					newNodes = [buildActionNode(newId, downstreamId, actionType)];
 					break;
 			}
 
@@ -330,6 +372,9 @@ export function useAutomationEditor(automationId: string | null) {
 					}
 					if (node.id !== sourceId) {
 						return node;
+					}
+					if (isBodyBranch) {
+						return { ...node, bodyStartNodeId: newId };
 					}
 					if (isElseBranch) {
 						return { ...node, elseNodeId: newId };
@@ -344,7 +389,7 @@ export function useAutomationEditor(automationId: string | null) {
 	);
 
 	const handleSelectStepType = useCallback(
-		(nodeId: string, stepType: string) => {
+		(nodeId: string, stepType: string, actionType?: string) => {
 			clearUndoState();
 			if (!trigger) return;
 
@@ -370,24 +415,24 @@ export function useAutomationEditor(automationId: string | null) {
 							return condNode;
 						}
 						case "loop": {
-							const eachPlaceholderId = generateId();
-							const afterPlaceholderId = generateId();
+							const bodyStartId = generateId();
 							const loopNode = buildLoopNode(nodeId);
-							loopNode.nextNodeId = eachPlaceholderId;
-							loopNode.elseNodeId = afterPlaceholderId;
-							extraNodes.push(
-								{ id: eachPlaceholderId, type: "placeholder" },
-								{ id: afterPlaceholderId, type: "placeholder", nextNodeId: downstreamId }
-							);
+							loopNode.bodyStartNodeId = bodyStartId;
+							loopNode.nextNodeId = downstreamId;
+							extraNodes.push({ id: bodyStartId, type: "placeholder" });
 							return loopNode;
 						}
 						case "fetch_records":
 							return buildFetchNode(nodeId, trigger, downstreamId);
+						case "delay":
+							return buildDelayNode(nodeId, downstreamId);
+						case "delay_until":
+							return buildDelayUntilNode(nodeId, downstreamId);
 						case "end":
 							return buildEndNode(nodeId);
 						case "action":
 						default:
-							return buildActionNode(nodeId, downstreamId);
+							return buildActionNode(nodeId, downstreamId, actionType);
 					}
 				});
 				return [...mapped, ...extraNodes];
@@ -453,9 +498,9 @@ export function useAutomationEditor(automationId: string | null) {
 					const remaining = prev.filter((node) => !subtreeIds.has(node.id));
 					return remaining.map((node) => {
 						if (node.id !== parentId) return node;
-						return branch === "else"
-							? { ...node, elseNodeId: undefined }
-							: { ...node, nextNodeId: undefined };
+						if (branch === "else") return { ...node, elseNodeId: undefined };
+						if (branch === "body") return { ...node, bodyStartNodeId: undefined };
+						return { ...node, nextNodeId: undefined };
 					});
 				});
 
@@ -474,15 +519,15 @@ export function useAutomationEditor(automationId: string | null) {
 			if (nodeToDelete.type === "loop") {
 				const bodyIds = collectLoopBody(nodeId, nodes);
 				const deletedNodes = nodes.filter((node) => bodyIds.has(node.id));
-				const afterLastChildId = nodeToDelete.elseNodeId;
+				const afterLastChildId = nodeToDelete.nextNodeId;
 
 				setNodes((prev) => {
 					const remaining = prev.filter((node) => !bodyIds.has(node.id));
 					return remaining.map((node) => {
 						if (node.id !== parentId) return node;
-						return branch === "else"
-							? { ...node, elseNodeId: afterLastChildId }
-							: { ...node, nextNodeId: afterLastChildId };
+						if (branch === "else") return { ...node, elseNodeId: afterLastChildId };
+						if (branch === "body") return { ...node, bodyStartNodeId: afterLastChildId };
+						return { ...node, nextNodeId: afterLastChildId };
 					});
 				});
 
@@ -504,9 +549,9 @@ export function useAutomationEditor(automationId: string | null) {
 				const remaining = prev.filter((node) => node.id !== nodeId);
 				return remaining.map((node) => {
 					if (node.id !== parentId) return node;
-					return branch === "else"
-						? { ...node, elseNodeId: childNodeId }
-						: { ...node, nextNodeId: childNodeId };
+					if (branch === "else") return { ...node, elseNodeId: childNodeId };
+					if (branch === "body") return { ...node, bodyStartNodeId: childNodeId };
+					return { ...node, nextNodeId: childNodeId };
 				});
 			});
 
@@ -560,9 +605,10 @@ export function useAutomationEditor(automationId: string | null) {
 			if (parentId && previousParentPointer) {
 				updated = updated.map((node) => {
 					if (node.id !== parentId) return node;
-					return branch === "else"
-						? { ...node, elseNodeId: previousParentPointer }
-						: { ...node, nextNodeId: previousParentPointer };
+					if (branch === "else") return { ...node, elseNodeId: previousParentPointer };
+					if (branch === "body")
+						return { ...node, bodyStartNodeId: previousParentPointer };
+					return { ...node, nextNodeId: previousParentPointer };
 				});
 			}
 			return updated;

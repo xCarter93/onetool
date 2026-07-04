@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
-import { createTestOrg, createTestIdentity } from "./test.helpers";
+import { createTestOrg, createTestIdentity, addMemberToOrg } from "./test.helpers";
 import { api, internal } from "./_generated/api";
 import { projectCountsAggregate } from "./aggregates";
 import type { Id } from "./_generated/dataModel";
@@ -634,6 +634,595 @@ describe("automationExecutor (v2 engine)", () => {
 				ctx.db.query("workflowExecutions").collect()
 			);
 			expect(executions).toHaveLength(0);
+		});
+	});
+
+	describe("Slice 3 — full block set", () => {
+		function filterGroup(
+			field: string,
+			operator: string,
+			value: string | number | boolean
+		) {
+			return {
+				logic: "and" as const,
+				rules: [
+					{
+						field,
+						// eslint-disable-next-line @typescript-eslint/no-explicit-any
+						operator: operator as any,
+						value: { kind: "static" as const, value },
+					},
+				],
+			};
+		}
+
+		function fetchNode(
+			id: string,
+			objectType: "client" | "project" | "quote" | "invoice" | "task",
+			filters: ReturnType<typeof filterGroup>[] = [],
+			opts: { nextNodeId?: string; limit?: number } = {}
+		) {
+			return {
+				id,
+				type: "fetch_records" as const,
+				config: {
+					kind: "fetch_records" as const,
+					objectType,
+					filters,
+					limit: opts.limit,
+				},
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		function loopNode(
+			id: string,
+			sourceNodeId: string,
+			opts: { bodyStartNodeId?: string; nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "loop" as const,
+				config: { kind: "loop" as const, sourceNodeId },
+				bodyStartNodeId: opts.bodyStartNodeId,
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		function endNode(id: string) {
+			return { id, type: "end" as const, config: { kind: "end" as const } };
+		}
+
+		function loopConditionNode(
+			id: string,
+			loopNodeId: string,
+			field: string,
+			operator: string,
+			value: string | number | boolean,
+			opts: { nextNodeId?: string; elseNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "condition" as const,
+				config: {
+					kind: "condition" as const,
+					logic: "and" as const,
+					source: { loopNodeId },
+					groups: [filterGroup(field, operator, value)],
+				},
+				nextNodeId: opts.nextNodeId,
+				elseNodeId: opts.elseNodeId,
+			};
+		}
+
+		function createTaskActionNode(
+			id: string,
+			opts: {
+				title: string;
+				dueInDays?: number;
+				linkToRecord?: boolean;
+				nextNodeId?: string;
+			}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "create_task" as const,
+						title: { kind: "static" as const, value: opts.title },
+						dueInDays: opts.dueInDays,
+						linkToRecord: opts.linkToRecord,
+					},
+				},
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		function sendNotificationActionNode(
+			id: string,
+			recipient: "org_admins" | "record_owner" | { userId: string },
+			message: string,
+			opts: { nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "send_notification" as const,
+						recipient,
+						message,
+					},
+				},
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		function sendTeamMessageActionNode(
+			id: string,
+			recipients: "all_members" | "admins" | { userIds: string[] },
+			title: string,
+			message: string,
+			opts: { nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "send_team_message" as const,
+						recipients,
+						title,
+						message,
+					},
+				},
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		/** Marks the org as premium so scheduled dispatch isn't gated. */
+		async function makeOrgPremium(orgId: Id<"organizations">) {
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, {
+					clerkPlanSlug: "onetool_business_plan_org",
+					subscriptionStatus: "active",
+				})
+			);
+		}
+
+		async function drainScheduled() {
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		}
+
+		/**
+		 * Fires a scheduled (no-objectType) automation exactly once: sets
+		 * nextRunAt into the past, dispatches, and drains to completion.
+		 */
+		async function runScheduledOnce(automationId: Id<"workflowAutomations">) {
+			await t.run(async (ctx) =>
+				ctx.db.patch(automationId, { nextRunAt: Date.now() - 1000 })
+			);
+			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
+			await drainScheduled();
+		}
+
+		it("fetch + loop + update_field e2e: updates only records matching the fetch filter", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const p1 = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "P1",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const p2 = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "P2",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const p3 = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "P3",
+				status: "completed",
+				projectType: "one-off",
+			});
+
+			// Scheduled trigger with no objectType: runs once, no trigger record —
+			// the loop supplies its own per-item scope. This also sidesteps a
+			// validation gap (see final report) where update_field actions inside
+			// a loop body are checked against the *trigger's* object type instead
+			// of the loop's fetched type.
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Bulk-progress planned projects",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1" }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "end-1",
+					}),
+					updateFieldActionNode("body-act", "status", "in-progress", {
+						target: "self",
+					}),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const [pp1, pp2, pp3] = await t.run(async (ctx) =>
+				Promise.all([ctx.db.get(p1), ctx.db.get(p2), ctx.db.get(p3)])
+			);
+			expect(pp1?.status).toBe("in-progress");
+			expect(pp2?.status).toBe("in-progress");
+			expect(pp3?.status).toBe("completed");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const loopEntry = executions[0].nodesExecuted.find(
+				(n) => n.nodeId === "loop-1"
+			);
+			expect(loopEntry?.recordsProcessed).toBe(2);
+		});
+
+		it("loop-scoped condition: only items passing the condition get the body action", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const keepId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Keep me",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const skipId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Skip me",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Progress matching projects only",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1" }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "cond-1",
+						nextNodeId: "end-1",
+					}),
+					loopConditionNode("cond-1", "loop-1", "title", "contains", "Keep", {
+						nextNodeId: "body-act",
+						// No elseNodeId: a failing condition simply ends the iteration.
+					}),
+					updateFieldActionNode("body-act", "status", "in-progress", {
+						target: "self",
+					}),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const [keep, skip] = await t.run(async (ctx) =>
+				Promise.all([ctx.db.get(keepId), ctx.db.get(skipId)])
+			);
+			expect(keep?.status).toBe("in-progress");
+			expect(skip?.status).toBe("planned");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const loopEntry = executions[0].nodesExecuted.find(
+				(n) => n.nodeId === "loop-1"
+			);
+			expect(loopEntry?.recordsProcessed).toBe(2);
+		});
+
+		it("create_task: interpolates title, links project/client, computes a UTC-midnight due date", async () => {
+			const { asUser } = await setupUser();
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Task on new project",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					createTaskActionNode("task-1", {
+						title: "Follow up: {{trigger.record.title}}",
+						dueInDays: 3,
+						linkToRecord: true,
+					}),
+				],
+				isActive: true,
+			});
+
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			await drainEvents();
+
+			const tasks = await t.run(async (ctx) => ctx.db.query("tasks").collect());
+			expect(tasks).toHaveLength(1);
+			const task = tasks[0];
+			expect(task.title).toBe("Follow up: Kitchen remodel");
+			expect(task.projectId).toBe(projectId);
+			expect(task.clientId).toBe(clientId);
+			expect(task.status).toBe("pending");
+			expect(task.type).toBe("internal");
+			expect(task.date % 86_400_000).toBe(0);
+			expect(task.date).toBeGreaterThan(Date.now() + 2 * 86_400_000);
+			expect(task.date).toBeLessThan(Date.now() + 4 * 86_400_000);
+		});
+
+		it("send_notification recipient org_admins: creates an automation_message notification per admin", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Notify admins on new client",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					sendNotificationActionNode(
+						"notify-1",
+						"org_admins",
+						"New client: {{trigger.record.companyName}}"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const notifications = await t.run(async (ctx) =>
+				ctx.db
+					.query("notifications")
+					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.collect()
+			);
+			const autoNotifs = notifications.filter(
+				(n) => n.notificationType === "automation_message"
+			);
+			expect(autoNotifs).toHaveLength(1);
+			expect(autoNotifs[0].title).toBe("Notify admins on new client");
+			expect(autoNotifs[0].message).toBe("New client: Acme Co");
+		});
+
+		it("send_team_message with recipients.userIds: only in-org members are notified", async () => {
+			const { asUser, orgId } = await setupUser();
+			const { userId: memberId } = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { role: "member" })
+			);
+			const otherOrg = await t.run(async (ctx) =>
+				createTestOrg(ctx, {
+					clerkUserId: "user_other_org_msg",
+					clerkOrgId: "org_other_org_msg",
+				})
+			);
+			const nonMemberId = otherOrg.userId;
+
+			await asUser.mutation(api.automations.create, {
+				name: "Team ping",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					sendTeamMessageActionNode(
+						"msg-1",
+						{ userIds: [memberId, nonMemberId] },
+						"New client",
+						"New client: {{trigger.record.companyName}}"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const memberNotifs = await t.run(async (ctx) =>
+				ctx.db
+					.query("notifications")
+					.filter((q) => q.eq(q.field("userId"), memberId))
+					.collect()
+			);
+			const nonMemberNotifs = await t.run(async (ctx) =>
+				ctx.db
+					.query("notifications")
+					.filter((q) => q.eq(q.field("userId"), nonMemberId))
+					.collect()
+			);
+			expect(memberNotifs).toHaveLength(1);
+			expect(memberNotifs[0].notificationType).toBe("automation_message");
+			expect(memberNotifs[0].title).toBe("New client");
+			expect(memberNotifs[0].message).toBe("New client: Acme Co");
+			expect(nonMemberNotifs).toHaveLength(0);
+		});
+
+		describe("delay checkpoint + resume", () => {
+			it("checkpoints into resumeState mid-run, then resumeExecution completes the post-delay step", async () => {
+				const { orgId, asUser } = await setupUser();
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Delay then follow up",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						updateFieldActionNode("act-1", "notes", "before delay", {
+							nextNodeId: "delay-1",
+						}),
+						{
+							id: "delay-1",
+							type: "delay" as const,
+							config: {
+								kind: "delay" as const,
+								amount: 1,
+								unit: "hours" as const,
+							},
+							nextNodeId: "act-2",
+						},
+						updateFieldActionNode("act-2", "notes", "after delay"),
+					],
+					isActive: true,
+				});
+
+				// Drive executeAutomation directly (systemMutation: consumes orgId,
+				// no scheduler hop needed to reach it) so the mid-run state can be
+				// observed deterministically. Going through the normal trigger path
+				// and draining with finishAllScheduledFunctions(vi.runAllTimers)
+				// does NOT stop at the checkpoint: vi.runAllTimers advances fake
+				// time past the future-dated resumeExecution schedule too, so the
+				// whole run (both hops) completes within a single drain call.
+				const executionId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: clientId,
+						triggeredAt: Date.now(),
+						status: "running",
+						nodesExecuted: [],
+						executionChain: [automationId],
+						recursionDepth: 0,
+					})
+				);
+
+				await t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					objectType: "client",
+					objectId: clientId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+				// Mid-run: parked at the delay, only pre-delay entries logged.
+				const midClient = await t.run(async (ctx) => ctx.db.get(clientId));
+				expect(midClient?.notes).toBe("before delay");
+
+				const midExecution = await t.run(async (ctx) =>
+					ctx.db.get(executionId)
+				);
+				expect(midExecution?.status).toBe("running");
+				expect(midExecution?.resumeState?.resumeNodeId).toBe("act-2");
+				expect(
+					midExecution?.nodesExecuted.map((n) => n.nodeId)
+				).toEqual(["act-1", "delay-1"]);
+
+				// Resume directly (bypassing the scheduled runAt hop).
+				await t.mutation(internal.automationExecutor.resumeExecution, {
+					orgId,
+					executionId,
+					automationId,
+				});
+
+				const finalClient = await t.run(async (ctx) => ctx.db.get(clientId));
+				expect(finalClient?.notes).toBe("after delay");
+
+				const finalExecution = await t.run(async (ctx) =>
+					ctx.db.get(executionId)
+				);
+				expect(finalExecution?.status).toBe("completed");
+				expect(finalExecution?.resumeState).toBeUndefined();
+			});
+		});
+
+		it("end node: the true branch terminates the run and the false-branch action never runs", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Branch to end",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					conditionNode("cond-1", "companyName", "equals", "Acme Co", {
+						nextNodeId: "end-1",
+						elseNodeId: "act-false",
+					}),
+					endNode("end-1"),
+					updateFieldActionNode("act-false", "notes", "should not run"),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const nodeIds = executions[0].nodesExecuted.map((n) => n.nodeId);
+			expect(nodeIds).toContain("end-1");
+			expect(nodeIds).not.toContain("act-false");
 		});
 	});
 });

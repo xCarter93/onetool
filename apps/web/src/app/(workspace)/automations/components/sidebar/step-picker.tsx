@@ -9,15 +9,22 @@ import {
 	CircleStop,
 	Search,
 	X,
+	ListTodo,
+	Bell,
+	MessagesSquare,
+	Timer,
+	CalendarClock,
 	type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type StepGroupItem = {
+export type StepGroupItem = {
 	type: string;
 	label: string;
 	icon: LucideIcon;
 	color: string;
+	/** Selects the action variant when type is "action". */
+	actionType?: string;
 	comingSoon?: boolean;
 };
 
@@ -26,7 +33,7 @@ type StepGroup = {
 	items: StepGroupItem[];
 };
 
-const STEP_GROUPS: StepGroup[] = [
+export const STEP_GROUPS: StepGroup[] = [
 	{
 		label: "Logic",
 		items: [
@@ -48,11 +55,36 @@ const STEP_GROUPS: StepGroup[] = [
 				color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
 			},
 			{
+				type: "action",
+				actionType: "create_task",
+				label: "Create Task",
+				icon: ListTodo,
+				color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
+			},
+			{
 				type: "fetch_records",
-				label: "Fetch Records",
+				label: "Find Records",
 				icon: Database,
 				color: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
-				comingSoon: true,
+			},
+		],
+	},
+	{
+		label: "Communication",
+		items: [
+			{
+				type: "action",
+				actionType: "send_notification",
+				label: "Send Notification",
+				icon: Bell,
+				color: "bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400",
+			},
+			{
+				type: "action",
+				actionType: "send_team_message",
+				label: "Send Team Message",
+				icon: MessagesSquare,
+				color: "bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400",
 			},
 		],
 	},
@@ -64,7 +96,18 @@ const STEP_GROUPS: StepGroup[] = [
 				label: "Loop",
 				icon: Repeat,
 				color: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
-				comingSoon: true,
+			},
+			{
+				type: "delay",
+				label: "Delay",
+				icon: Timer,
+				color: "bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400",
+			},
+			{
+				type: "delay_until",
+				label: "Delay until",
+				icon: CalendarClock,
+				color: "bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400",
 			},
 		],
 	},
@@ -81,8 +124,11 @@ const STEP_GROUPS: StepGroup[] = [
 	},
 ];
 
+/** Flattened, grouping-agnostic list for surfaces like the edge insert menu. */
+export const ALL_STEP_ITEMS: StepGroupItem[] = STEP_GROUPS.flatMap((g) => g.items);
+
 interface StepPickerProps {
-	onSelect: (stepType: string) => void;
+	onSelect: (stepType: string, actionType?: string) => void;
 	onClose?: () => void;
 }
 
@@ -141,10 +187,10 @@ export function StepPicker({ onSelect, onClose }: StepPickerProps) {
 								const Icon = item.icon;
 								return (
 									<button
-										key={item.type}
+										key={`${item.type}-${item.actionType ?? ""}-${item.label}`}
 										type="button"
 										disabled={item.comingSoon}
-										onClick={() => !item.comingSoon && onSelect(item.type)}
+										onClick={() => !item.comingSoon && onSelect(item.type, item.actionType)}
 										className={cn(
 											"w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-left",
 											item.comingSoon

@@ -11,6 +11,7 @@ import { ConditionConfigPanel } from "./panels/condition-config";
 import { ActionConfigPanel } from "./panels/action-config";
 import { FetchConfigPanel } from "./panels/fetch-config";
 import { LoopConfigPanel } from "./panels/loop-config";
+import { DelayConfig, DelayUntilConfig } from "./panels/delay-config";
 
 // ---------------------------------------------------------------------------
 // SidebarMode discriminated union
@@ -24,6 +25,8 @@ export type SidebarMode =
 	| { mode: "node-config"; nodeType: "action"; nodeId: string }
 	| { mode: "node-config"; nodeType: "fetch_records"; nodeId: string }
 	| { mode: "node-config"; nodeType: "loop"; nodeId: string }
+	| { mode: "node-config"; nodeType: "delay"; nodeId: string }
+	| { mode: "node-config"; nodeType: "delay_until"; nodeId: string }
 	| { mode: "node-config"; nodeType: "end"; nodeId: string };
 
 // ---------------------------------------------------------------------------
@@ -53,6 +56,8 @@ const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
 	action: ActionConfigPanel,
 	fetch_records: FetchConfigPanel,
 	loop: LoopConfigPanel,
+	delay: DelayConfig,
+	delay_until: DelayUntilConfig,
 };
 
 // ---------------------------------------------------------------------------
@@ -74,6 +79,10 @@ function getSidebarTitle(mode: SidebarMode): string {
 			return "Configure Fetch";
 		case "loop":
 			return "Configure Loop";
+		case "delay":
+			return "Configure Delay";
+		case "delay_until":
+			return "Configure Delay Until";
 		case "end":
 			return "End";
 		default:
@@ -92,7 +101,11 @@ interface AutomationSidebarProps {
 	nodes: EditorNode[];
 	onClose: () => void;
 	onTriggerTypeSelect: (triggerType: string) => void;
-	onStepTypeSelect: (stepType: string, placeholderNodeId: string) => void;
+	onStepTypeSelect: (
+		stepType: string,
+		placeholderNodeId: string,
+		actionType?: string
+	) => void;
 	onTriggerChange: (trigger: TriggerConfig) => void;
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
@@ -177,8 +190,8 @@ export function AutomationSidebar({
 			case "step-picker":
 				return (
 					<StepPicker
-						onSelect={(type) =>
-							onStepTypeSelect(type, mode.placeholderNodeId)
+						onSelect={(type, actionType) =>
+							onStepTypeSelect(type, mode.placeholderNodeId, actionType)
 						}
 					/>
 				);

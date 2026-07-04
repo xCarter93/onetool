@@ -27,7 +27,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 	} = props;
 	const isTerminal = data?.isTerminal === true;
 	const onInsertNode = data?.onInsertNode as
-		| ((edgeId: string, nodeType: string) => void)
+		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
 
 	// Terminal edges: fixed-length stub below source (ignore target position to prevent flip on drag)

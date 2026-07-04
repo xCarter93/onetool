@@ -4,6 +4,8 @@ import type {
 	AppEdge,
 	AppNode,
 	ConditionNodeConfig,
+	DelayNodeConfig,
+	DelayUntilNodeConfig,
 	FetchNodeConfig,
 	LoopNodeConfig,
 	TriggerConfig,
@@ -25,6 +27,8 @@ export const RF_NODE_TYPES = {
 	action: "actionNode",
 	fetch_records: "fetchNode",
 	loop: "loopNode",
+	delay: "delayNode",
+	delay_until: "delayUntilNode",
 	end: "endNode",
 	placeholder: "placeholderNode",
 	terminal: "terminalNode",
@@ -48,6 +52,8 @@ export type PlaceholderEntry = {
 	type: "placeholder";
 	nextNodeId?: string;
 	elseNodeId?: string;
+	/** Never set on placeholders (only loop nodes have a body); present for GraphNode-shape compatibility. */
+	bodyStartNodeId?: string;
 	position?: { x: number; y: number };
 };
 
@@ -153,10 +159,23 @@ function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
 				triggerObjectType,
 				_dbNode: node,
 			};
+		case "delay":
+			return {
+				nodeType: "delay" as const,
+				config: node.config as DelayNodeConfig | undefined,
+				triggerObjectType,
+				_dbNode: node,
+			};
+		case "delay_until":
+			return {
+				nodeType: "delay_until" as const,
+				config: node.config as DelayUntilNodeConfig | undefined,
+				triggerObjectType,
+				_dbNode: node,
+			};
 		case "end":
 			return { nodeType: "end" as const, _dbNode: node };
 		default:
-			// delay / delay_until: not yet offered in the editor UI (Slice 2+).
 			return {
 				nodeType: "action" as const,
 				config: undefined,
@@ -216,6 +235,7 @@ export function automationToReactFlow(
 	for (const node of nodes) {
 		if (node.nextNodeId) referencedIds.add(node.nextNodeId);
 		if (node.elseNodeId) referencedIds.add(node.elseNodeId);
+		if (node.bodyStartNodeId) referencedIds.add(node.bodyStartNodeId);
 	}
 	const rootNode = nodes.find((n) => !referencedIds.has(n.id));
 
@@ -288,12 +308,12 @@ export function automationToReactFlow(
 
 			// No merge point -- branches stay independent
 		} else if (node.type === "loop") {
-			// Loop: "each" branch (nextNodeId = loop body)
-			if (node.nextNodeId) {
+			// Loop: "each" branch (bodyStartNodeId = loop body entry)
+			if (node.bodyStartNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-each-${node.nextNodeId}`,
+					id: `e-${node.id}-each-${node.bodyStartNodeId}`,
 					source: node.id,
-					target: node.nextNodeId,
+					target: node.bodyStartNodeId,
 					sourceHandle: "each",
 					type: RF_EDGE_TYPES.branchLabel,
 					data: { label: "For Each", variant: "yes", branchType: "each" as const },
@@ -306,12 +326,12 @@ export function automationToReactFlow(
 				});
 			}
 
-			// Loop: "after" branch (elseNodeId = after last iteration)
-			if (node.elseNodeId) {
+			// Loop: "after" branch (nextNodeId = after the loop, like any linear node)
+			if (node.nextNodeId) {
 				rfEdges.push({
-					id: `e-${node.id}-after-${node.elseNodeId}`,
+					id: `e-${node.id}-after-${node.nextNodeId}`,
 					source: node.id,
-					target: node.elseNodeId,
+					target: node.nextNodeId,
 					sourceHandle: "after",
 					type: RF_EDGE_TYPES.afterLast,
 					data: { label: "After Last", variant: "no", branchType: "after" as const },
@@ -326,8 +346,8 @@ export function automationToReactFlow(
 
 			// Loop-back edge: from last body node (or empty terminal) back to loop header
 			{
-				const loopBackSourceId = node.nextNodeId
-					? resolveLoopBackSourceId(node.nextNodeId, nodes)
+				const loopBackSourceId = node.bodyStartNodeId
+					? resolveLoopBackSourceId(node.bodyStartNodeId, nodes)
 					: `${TERMINAL_PREFIX}${node.id}-each`;
 
 				rfEdges.push({
@@ -420,19 +440,29 @@ export function reactFlowToFlatArray(
 		const outEdges = rfEdges.filter((e) => e.source === rfNode.id);
 		let nextNodeId: string | undefined;
 		let elseNodeId: string | undefined;
+		let bodyStartNodeId: string | undefined;
 
 		for (const edge of outEdges) {
 			if (isTerminalId(edge.target)) continue;
 			if (edge.data?.branchType === "loop_back") continue;
 
-			// Use branchType as primary check, fall back to variant/sourceHandle
 			const branchType = edge.data?.branchType as string | undefined;
+
+			if (dbNode.type === "loop") {
+				// Loop: "each" -> bodyStartNodeId, "after" -> plain nextNodeId.
+				if (branchType === "each" || edge.sourceHandle === "each") {
+					bodyStartNodeId = edge.target;
+				} else {
+					nextNodeId = edge.target;
+				}
+				continue;
+			}
+
+			// Use branchType as primary check, fall back to variant/sourceHandle
 			if (
 				branchType === "no" ||
-				branchType === "after" ||
 				edge.data?.variant === "no" ||
-				edge.sourceHandle === "no" ||
-				edge.sourceHandle === "after"
+				edge.sourceHandle === "no"
 			) {
 				elseNodeId = edge.target;
 			} else {
@@ -454,7 +484,7 @@ export function reactFlowToFlatArray(
 			config,
 			nextNodeId,
 			elseNodeId,
-			bodyStartNodeId: dbNode.bodyStartNodeId,
+			bodyStartNodeId,
 			position: pos,
 		});
 	}
