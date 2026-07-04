@@ -1258,12 +1258,16 @@ export const getRunMetrics = userQuery({
 				)
 			: 0;
 
-		const activeAutomations = await ctx.db
+		// `status` is optional and legacy rows may carry only the deprecated
+		// `isActive` mirror until migrateAutomationsV2 backfills `status`, so count
+		// effective-active across both to avoid undercounting pre-migration.
+		const orgAutomations = await ctx.db
 			.query("workflowAutomations")
-			.withIndex("by_org_status", (q) =>
-				q.eq("orgId", orgId).eq("status", "active")
-			)
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		const activeAutomationCount = orgAutomations.filter(
+			(a) => a.status === "active" || (a.status == null && a.isActive === true)
+		).length;
 
 		return {
 			totalRuns,
@@ -1274,7 +1278,7 @@ export const getRunMetrics = userQuery({
 			avgActiveMs,
 			p50ActiveMs: percentile(activeDurations, 50),
 			p95ActiveMs: percentile(activeDurations, 95),
-			activeAutomationCount: activeAutomations.length,
+			activeAutomationCount,
 		};
 	},
 });

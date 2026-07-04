@@ -458,6 +458,146 @@ describe("automation runs (test + manual)", () => {
 		});
 	});
 
+	describe("startTestRun (dry run) — per-node input snapshots", () => {
+		it("stamps a bounded input for condition and action nodes", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser, "Globex");
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Input capture",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					conditionNode("cond-1", "companyName", "equals", "Globex", {
+						nextNodeId: "yes-act",
+						elseNodeId: "no-act",
+					}),
+					notesActionNode("yes-act", "yes"),
+					notesActionNode("no-act", "no"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			const entries = done?.nodesExecuted ?? [];
+
+			const condInput = entries.find((e) => e.nodeId === "cond-1")?.input as {
+				record?: Record<string, unknown>;
+				logic?: string;
+				groups?: unknown[];
+			};
+			expect(condInput?.record?.companyName).toBe("Globex");
+			expect(condInput?.logic).toBe("and");
+			expect(Array.isArray(condInput?.groups)).toBe(true);
+
+			const act = entries.find((e) => e.nodeId === "yes-act");
+			expect(act?.input).toMatchObject({
+				target: "self",
+				field: "notes",
+				value: "yes",
+			});
+		});
+
+		it("omits input for an end node", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Ends cleanly",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					statusActionNode("act-1", "inactive", "end-1"),
+					endNode("end-1"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			const endEntry = done?.nodesExecuted.find((e) => e.nodeId === "end-1");
+			expect(endEntry?.result).toBe("success");
+			expect(endEntry?.input).toBeUndefined();
+		});
+
+		it("stamps input for a fetch_records node", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Fetch input",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					fetchNode("fetch-1", "client", { nextNodeId: "end-1" }),
+					endNode("end-1"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			const fetchEntry = done?.nodesExecuted.find((e) => e.nodeId === "fetch-1");
+			expect(fetchEntry?.input).toMatchObject({ objectType: "client" });
+			expect(
+				Array.isArray((fetchEntry?.input as { filters?: unknown })?.filters)
+			).toBe(true);
+		});
+
+		it("truncates an oversized input snapshot to a ~4KB marker", async () => {
+			const { asUser } = await setupUser();
+			// A notes field far larger than the ~4KB snapshot ceiling.
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Bulky",
+				status: "lead",
+				notes: "x".repeat(5000),
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Oversized input",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					conditionNode("cond-1", "companyName", "equals", "Bulky", {
+						nextNodeId: "yes-act",
+					}),
+					notesActionNode("yes-act", "seen"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			const input = done?.nodesExecuted.find((e) => e.nodeId === "cond-1")
+				?.input as { _truncated?: boolean; preview?: string };
+			expect(input?._truncated).toBe(true);
+			expect(typeof input?.preview).toBe("string");
+			expect((input?.preview ?? "").length).toBeLessThanOrEqual(4096);
+		});
+	});
+
 	describe("cancelTestRun", () => {
 		it("stops the reveal chain", async () => {
 			const { asUser } = await setupUser();

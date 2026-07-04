@@ -9,10 +9,13 @@ import {
 	Check,
 	Plus,
 	AlertTriangle,
+	FlaskConical,
 } from "lucide-react";
 import type { Node, Edge } from "@xyflow/react";
+import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NextStepTree } from "../sidebar/next-step-tree";
 import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
 import { getAvailableVariables, type VariableOption } from "../../lib/variables";
@@ -23,7 +26,9 @@ import {
 	type WorkflowNodeType,
 	type TriggerConfig,
 } from "../../lib/node-types";
+import type { RunRecordRef } from "../../hooks/use-automation-editor";
 import { FormulaEditorModal, type SampleRecord } from "./formula-editor-modal";
+import { DebugPanel } from "./debug-panel";
 
 interface WorkflowDrawerProps {
 	trigger: TriggerConfig | null | undefined;
@@ -38,6 +43,13 @@ interface WorkflowDrawerProps {
 	formulas: FormulaResource[];
 	onFormulasChange: (next: FormulaResource[]) => void;
 	sampleRecords: SampleRecord[];
+	// Debug tab — dry-run lifecycle (owns what the top bar used to).
+	execution: Doc<"workflowExecutions"> | null | undefined;
+	isRunning: boolean;
+	isStartingTest: boolean;
+	hasActiveRun: boolean;
+	onStartTest: (record?: RunRecordRef) => void;
+	onCancelTest: () => void;
 }
 
 const RETURN_TYPE_BADGE_LABELS: Record<FormulaResource["returnType"], string> = {
@@ -106,6 +118,12 @@ export function WorkflowDrawer({
 	formulas,
 	onFormulasChange,
 	sampleRecords,
+	execution,
+	isRunning,
+	isStartingTest,
+	hasActiveRun,
+	onStartTest,
+	onCancelTest,
 }: WorkflowDrawerProps) {
 	const [copiedPath, setCopiedPath] = useState<string | null>(null);
 	// null = closed; { formula: null } = create; { formula: F } = edit F.
@@ -155,7 +173,13 @@ export function WorkflowDrawer({
 
 	const confirmDeleteFormula = () => {
 		if (!deleteTarget) return;
-		handleDeleteFormula(deleteTarget.formula.id);
+		const deletedId = deleteTarget.formula.id;
+		handleDeleteFormula(deletedId);
+		// Close the editor if it's still open on the just-deleted formula, else
+		// its Save would re-append (restore) it.
+		setFormulaModal((current) =>
+			current?.formula?.id === deletedId ? null : current
+		);
 		setDeleteTarget(null);
 	};
 
@@ -270,7 +294,7 @@ export function WorkflowDrawer({
 	};
 
 	return (
-		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[280px] flex-col overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
+		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[280px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
 			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
 				<span className="text-sm font-semibold">Workflow</span>
 				<Button
@@ -283,121 +307,160 @@ export function WorkflowDrawer({
 				</Button>
 			</div>
 
-			{/* Outline */}
-			<div className="border-b border-border p-3">
-				<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-					Outline
+			<Tabs
+				defaultValue="resources"
+				className="flex min-h-0 flex-1 flex-col gap-0"
+			>
+				<div className="border-b border-border px-3 py-2">
+					<TabsList className="w-full">
+						<TabsTrigger value="resources">Resources</TabsTrigger>
+						<TabsTrigger value="debug">
+							<FlaskConical className="size-3.5" />
+							Debug
+						</TabsTrigger>
+					</TabsList>
 				</div>
-				<div className="space-y-0.5">
-					<button
-						type="button"
-						onClick={() => onNavigateToNode(TRIGGER_NODE_ID)}
-						className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-					>
-						<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-							<Zap className="h-3 w-3" />
+
+				<TabsContent
+					value="resources"
+					className="min-h-0 flex-1 overflow-y-auto"
+				>
+					{/* Outline */}
+					<div className="border-b border-border p-3">
+						<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+							Outline
 						</div>
-						<span className="truncate text-sm">Trigger</span>
-					</button>
-					<NextStepTree
-						currentNodeId={TRIGGER_NODE_ID}
-						nodes={rfNodes}
-						edges={rfEdges}
-						onNavigateToNode={onNavigateToNode}
-						hideHeader
-					/>
-				</div>
-			</div>
-
-			{/* Variable reference */}
-			<div className="p-3">
-				<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-					Variables
-				</div>
-				{!trigger ? (
-					<p className="text-sm text-muted-foreground">
-						Choose a trigger to see available variables.
-					</p>
-				) : variableGroups.length === 0 ? (
-					<p className="text-sm text-muted-foreground">
-						No variables available yet.
-					</p>
-				) : (
-					<div className="space-y-3">
-						{variableGroups.map(([group, vars]) => (
-							<div key={group}>
-								<div className="mb-1 text-[11px] font-medium text-muted-foreground">
-									{group}
-								</div>
-								<div className="space-y-0.5">
-									{vars.map((v) => (
-										<button
-											key={v.path}
-											type="button"
-											onClick={() => void copyPath(v.path)}
-											title={`Copy {{${v.path}}}`}
-											className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-										>
-											<span className="flex-1 truncate text-sm">{v.label}</span>
-											{v.fieldType && (
-												<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-													{v.fieldType}
-												</span>
-											)}
-											{copiedPath === v.path ? (
-												<Check className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
-											) : (
-												<Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-											)}
-										</button>
-									))}
-								</div>
-							</div>
-						))}
-					</div>
-				)}
-			</div>
-
-			{/* Formula resources */}
-			<div className="border-t border-border p-3">
-				<div className="mb-2 flex items-center justify-between">
-					<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-						Resources
-					</span>
-					<Button
-						intent="plain"
-						size="xs"
-						onPress={() => setFormulaModal({ formula: null })}
-						isDisabled={formulas.length >= MAX_FORMULAS}
-						className="text-muted-foreground"
-					>
-						<Plus className="h-3 w-3" />
-						New formula
-					</Button>
-				</div>
-				{formulas.length === 0 ? (
-					<p className="text-sm text-muted-foreground">
-						No formulas yet — reusable expressions you can reference anywhere.
-					</p>
-				) : (
-					<div className="space-y-0.5">
-						{formulas.map((f) => (
+						<div className="space-y-0.5">
 							<button
-								key={f.id}
 								type="button"
-								onClick={() => setFormulaModal({ formula: f })}
-								title={`Edit "${f.name}"`}
-								className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								onClick={() => onNavigateToNode(TRIGGER_NODE_ID)}
+								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 							>
-								<span className="flex-1 truncate text-sm">{f.name}</span>
-								<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-									{RETURN_TYPE_BADGE_LABELS[f.returnType]}
-								</span>
+								<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+									<Zap className="h-3 w-3" />
+								</div>
+								<span className="truncate text-sm">Trigger</span>
 							</button>
-						))}
+							<NextStepTree
+								currentNodeId={TRIGGER_NODE_ID}
+								nodes={rfNodes}
+								edges={rfEdges}
+								onNavigateToNode={onNavigateToNode}
+								hideHeader
+							/>
+						</div>
 					</div>
-				)}
-			</div>
+
+					{/* Variable reference */}
+					<div className="p-3">
+						<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+							Variables
+						</div>
+						{!trigger ? (
+							<p className="text-sm text-muted-foreground">
+								Choose a trigger to see available variables.
+							</p>
+						) : variableGroups.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								No variables available yet.
+							</p>
+						) : (
+							<div className="space-y-3">
+								{variableGroups.map(([group, vars]) => (
+									<div key={group}>
+										<div className="mb-1 text-[11px] font-medium text-muted-foreground">
+											{group}
+										</div>
+										<div className="space-y-0.5">
+											{vars.map((v) => (
+												<button
+													key={v.path}
+													type="button"
+													onClick={() => void copyPath(v.path)}
+													title={`Copy {{${v.path}}}`}
+													className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												>
+													<span className="flex-1 truncate text-sm">{v.label}</span>
+													{v.fieldType && (
+														<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+															{v.fieldType}
+														</span>
+													)}
+													{copiedPath === v.path ? (
+														<Check className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
+													) : (
+														<Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+													)}
+												</button>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
+
+					{/* Formula resources */}
+					<div className="border-t border-border p-3">
+						<div className="mb-2 flex items-center justify-between">
+							<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+								Resources
+							</span>
+							<Button
+								intent="plain"
+								size="xs"
+								onPress={() => setFormulaModal({ formula: null })}
+								isDisabled={formulas.length >= MAX_FORMULAS}
+								className="text-muted-foreground"
+							>
+								<Plus className="h-3 w-3" />
+								New formula
+							</Button>
+						</div>
+						{formulas.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								No formulas yet — reusable expressions you can reference anywhere.
+							</p>
+						) : (
+							<div className="space-y-0.5">
+								{formulas.map((f) => (
+									<button
+										key={f.id}
+										type="button"
+										onClick={() => setFormulaModal({ formula: f })}
+										title={`Edit "${f.name}"`}
+										className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									>
+										<span className="flex-1 truncate text-sm">{f.name}</span>
+										<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+											{RETURN_TYPE_BADGE_LABELS[f.returnType]}
+										</span>
+									</button>
+								))}
+							</div>
+						)}
+					</div>
+				</TabsContent>
+
+				<TabsContent
+					value="debug"
+					className="min-h-0 flex-1 overflow-y-auto"
+				>
+					<DebugPanel
+						objectType={trigger?.objectType}
+						triggerType={trigger?.type}
+						sampleRecords={sampleRecords}
+						execution={execution}
+						isRunning={isRunning}
+						isStartingTest={isStartingTest}
+						hasActiveRun={hasActiveRun}
+						onStartTest={onStartTest}
+						onCancel={onCancelTest}
+						rfNodes={rfNodes}
+						onNavigateToNode={onNavigateToNode}
+					/>
+				</TabsContent>
+			</Tabs>
 
 			{formulaModalElement}
 			{deleteConfirmElement}

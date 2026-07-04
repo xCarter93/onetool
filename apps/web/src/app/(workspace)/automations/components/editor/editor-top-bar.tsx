@@ -3,36 +3,12 @@
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TestRunControl } from "./test-run-control";
-import type { RunRecordRef } from "../../hooks/use-automation-editor";
-
-type SampleRecord = {
-	entityType: "client" | "project" | "quote" | "invoice" | "task";
-	entityId: string;
-	label: string;
-};
-
-type ExecutionLike = {
-	status: "running" | "completed" | "failed" | "skipped" | "cancelled";
-	error?: string;
-	nodesExecuted: { nodeId: string; result?: string }[];
-} | null | undefined;
 
 interface EditorTopBarProps {
 	name: string;
 	description: string;
 	status: "draft" | "active" | "paused";
 	isSaving: boolean;
-	// Test-run controller
-	objectType?: "client" | "project" | "quote" | "invoice" | "task";
-	triggerType?: string;
-	sampleRecords: SampleRecord[];
-	execution: ExecutionLike;
-	isRunning: boolean;
-	isStartingTest: boolean;
-	hasActiveRun: boolean;
-	onStartTest: (record?: RunRecordRef) => void;
-	onCancelTest: () => void;
 	onBack: () => void;
 	onNameChange: (value: string) => void;
 	onDescriptionChange: (value: string) => void;
@@ -53,15 +29,6 @@ export function EditorTopBar({
 	description,
 	status,
 	isSaving,
-	objectType,
-	triggerType,
-	sampleRecords,
-	execution,
-	isRunning,
-	isStartingTest,
-	hasActiveRun,
-	onStartTest,
-	onCancelTest,
 	onBack,
 	onNameChange,
 	onDescriptionChange,
@@ -102,17 +69,6 @@ export function EditorTopBar({
 			</Badge>
 
 			<div className="ml-auto flex items-center gap-2">
-				<TestRunControl
-					objectType={objectType}
-					triggerType={triggerType}
-					sampleRecords={sampleRecords}
-					execution={execution}
-					isRunning={isRunning}
-					isStartingTest={isStartingTest}
-					hasActiveRun={hasActiveRun}
-					onStartTest={onStartTest}
-					onCancel={onCancelTest}
-				/>
 				<Button intent="outline" onPress={onSave} isPending={isSaving}>
 					<Save className="h-4 w-4" />
 					Save

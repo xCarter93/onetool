@@ -3010,9 +3010,30 @@ type DryEnv = {
 	nodeStartedAt: number;
 };
 
+/** Char ceiling (~4KB) for a stored input/output snapshot. */
+const SNAPSHOT_MAX_CHARS = 4096;
+
+/**
+ * Bound an input/output snapshot to ~4KB for the runs viewer. Oversized or
+ * unserializable values collapse to a truncated marker. Never throws.
+ */
+function boundSnapshot(value: unknown): unknown {
+	if (value === undefined) return undefined;
+	try {
+		const json = JSON.stringify(value);
+		if (json === undefined) return undefined; // bare function/symbol/etc.
+		if (json.length <= SNAPSHOT_MAX_CHARS) return value;
+		return { _truncated: true, preview: json.slice(0, SNAPSHOT_MAX_CHARS) };
+	} catch {
+		return { _truncated: true, preview: "[unserializable]" };
+	}
+}
+
 function pushDry(env: DryEnv, entry: ExecutedNode): void {
 	const stamped: ExecutedNode = {
 		...entry,
+		input: boundSnapshot(entry.input),
+		output: boundSnapshot(entry.output),
 		startedAt: entry.startedAt ?? env.nodeStartedAt,
 		completedAt: entry.completedAt ?? Date.now(),
 	};
@@ -3065,6 +3086,8 @@ type DryNodeResult = {
 	conditionMet?: boolean;
 	error?: string;
 	output?: unknown;
+	/** Best-effort snapshot of what the node consumed (bounded by pushDry). */
+	input?: unknown;
 };
 
 /**
@@ -3135,6 +3158,11 @@ async function dryExecuteAction(
 				output: {
 					summary: `Would set ${action.field} to ${JSON.stringify(coerced.value)} on the ${targetInfo.type}`,
 				},
+				input: {
+					target: action.target,
+					field: action.field,
+					value: coerced.value,
+				},
 			};
 		}
 		case "create_task": {
@@ -3155,7 +3183,11 @@ async function dryExecuteAction(
 					};
 				}
 			}
-			return { success: true, output: { summary: `Would create task "${title}"` } };
+			return {
+				success: true,
+				output: { summary: `Would create task "${title}"` },
+				input: { title, assigneeUserId: action.assigneeUserId },
+			};
 		}
 		case "send_notification": {
 			let count: number;
@@ -3199,6 +3231,7 @@ async function dryExecuteAction(
 			return {
 				success: true,
 				output: { summary: `Would notify ${count} recipient(s): "${message}"` },
+				input: { recipient: action.recipient, message, recipientCount: count },
 			};
 		}
 		case "send_team_message": {
@@ -3229,6 +3262,11 @@ async function dryExecuteAction(
 			return {
 				success: true,
 				output: { summary: `Would send team message to ${userIds.length} member(s)` },
+				input: {
+					recipients: action.recipients,
+					message,
+					recipientCount: userIds.length,
+				},
 			};
 		}
 		default: {
@@ -3266,7 +3304,12 @@ async function dryExecuteNode(
 			record,
 			env.scope
 		);
-		return { success: true, conditionMet, output: { conditionMet } };
+		return {
+			success: true,
+			conditionMet,
+			output: { conditionMet },
+			input: { record, logic: config.logic, groups: config.groups },
+		};
 	}
 	if (config?.kind === "action") {
 		return dryExecuteAction(ctx, config.action, scopeRecord, env);
@@ -3304,6 +3347,12 @@ async function dryRunLoopNode(
 		nodeId: node.id,
 		result: "success",
 		recordsProcessed: total,
+		input: {
+			sourceNodeId: config.sourceNodeId,
+			maxIterations: config.maxIterations,
+			total,
+			sampled,
+		},
 		output:
 			total > sampled
 				? { total, sampled, note: `Previewing first ${sampled} of ${total}` }
@@ -3382,6 +3431,12 @@ async function dryRunWalk(
 				nodeId: node.id,
 				result: "success",
 				recordsProcessed: fetched.output.count,
+				input: {
+					objectType: config.objectType,
+					filters: config.filters,
+					limit: config.limit,
+					sortBy: config.sortBy,
+				},
 				output: { count: fetched.output.count },
 			});
 			currentNodeId = node.nextNodeId;
@@ -3401,6 +3456,12 @@ async function dryRunWalk(
 			pushDry(env, {
 				nodeId: node.id,
 				result: "success",
+				input: {
+					sourceNodeId: config.sourceNodeId,
+					field: config.field,
+					op: config.op,
+					sourceCount: env.fetchOutputs[config.sourceNodeId]?.count,
+				},
 				output: { result: result.value },
 			});
 			currentNodeId = node.nextNodeId;
@@ -3420,6 +3481,12 @@ async function dryRunWalk(
 			pushDry(env, {
 				nodeId: node.id,
 				result: "success",
+				input: {
+					base: config.base,
+					amount: config.amount,
+					unit: config.unit,
+					direction: config.direction,
+				},
 				output: { result: result.value },
 			});
 			currentNodeId = node.nextNodeId;
@@ -3453,6 +3520,10 @@ async function dryRunWalk(
 			pushDry(env, {
 				nodeId: node.id,
 				result: "success",
+				input:
+					config.kind === "delay"
+						? { amount: config.amount, unit: config.unit }
+						: { until: config.until },
 				output: { wouldWaitUntil: resume.resumeAt, dryRunSkipped: true },
 			});
 			currentNodeId = node.nextNodeId;
@@ -3473,6 +3544,7 @@ async function dryRunWalk(
 					? "skipped"
 					: "failed",
 			error: result.error,
+			input: result.input,
 			output: result.output,
 		});
 		if (!result.success && !result.skipped) return "failed";

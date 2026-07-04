@@ -191,15 +191,6 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				description={editor.description}
 				status={editor.status}
 				isSaving={editor.isSaving}
-				objectType={editor.trigger?.objectType}
-				triggerType={editor.trigger?.type}
-				sampleRecords={editor.sampleRecords}
-				execution={editor.execution}
-				isRunning={editor.isRunning}
-				isStartingTest={editor.isStartingTest}
-				hasActiveRun={editor.hasActiveRun}
-				onStartTest={editor.handleStartTest}
-				onCancelTest={editor.handleCancelTest}
 				onBack={() => router.push("/automations")}
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
@@ -233,6 +224,12 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						formulas={editor.formulas}
 						onFormulasChange={editor.onFormulasChange}
 						sampleRecords={editor.sampleRecords}
+						execution={editor.execution}
+						isRunning={editor.isRunning}
+						isStartingTest={editor.isStartingTest}
+						hasActiveRun={editor.hasActiveRun}
+						onStartTest={editor.handleStartTest}
+						onCancelTest={editor.handleCancelTest}
 					/>
 					{editor.needsPublish && (
 						<UnpublishedBanner
