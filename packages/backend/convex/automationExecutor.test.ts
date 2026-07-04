@@ -1125,6 +1125,64 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(result("max")).toBe(100);
 		});
 
+		it("aggregate over zero matching records: sum is 0, min/max/avg are null", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			// No invoices exist, so the fetch returns an empty set and every
+			// aggregate runs over zero records.
+			const aggNode = (
+				id: string,
+				op: "sum" | "avg" | "min" | "max",
+				next: string
+			) => ({
+				id,
+				type: "aggregate" as const,
+				config: {
+					kind: "aggregate" as const,
+					sourceNodeId: "fetch-1",
+					field: "total",
+					op,
+				},
+				nextNodeId: next,
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Empty invoice totals",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					fetchNode("fetch-1", "invoice", [], { nextNodeId: "sum" }),
+					aggNode("sum", "sum", "avg"),
+					aggNode("avg", "avg", "min"),
+					aggNode("min", "min", "max"),
+					aggNode("max", "max", "end-1"),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const result = (nodeId: string) =>
+				(
+					executions[0].nodesExecuted.find((n) => n.nodeId === nodeId)
+						?.output as { result: number | null } | undefined
+				)?.result;
+			// Empty sum is genuinely 0; min/max/avg have no value → null (not 0).
+			expect(result("sum")).toBe(0);
+			expect(result("avg")).toBeNull();
+			expect(result("min")).toBeNull();
+			expect(result("max")).toBeNull();
+		});
+
 		it("adjust_time: shifts a base timestamp by a fixed offset (add and subtract)", async () => {
 			const { asUser, orgId } = await setupUser();
 			await makeOrgPremium(orgId);
@@ -1363,6 +1421,118 @@ describe("automationExecutor (v2 engine)", () => {
 				expect(finalExecution?.resumeState).toBeUndefined();
 			});
 
+			it("resumeState.nodeResults: a pre-delay compute result survives the delay and feeds a post-delay step", async () => {
+				const { orgId, asUser } = await setupUser();
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+
+				const base = 1_700_000_000_000;
+				const expected = base + 5 * 24 * 60 * 60 * 1000; // +5 days
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Compute, delay, then consume the result",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						{
+							id: "adjust-1",
+							type: "adjust_time" as const,
+							config: {
+								kind: "adjust_time" as const,
+								base: { kind: "static" as const, value: base },
+								amount: 5,
+								unit: "days" as const,
+								direction: "add" as const,
+							},
+							nextNodeId: "delay-1",
+						},
+						{
+							id: "delay-1",
+							type: "delay" as const,
+							config: {
+								kind: "delay" as const,
+								amount: 1,
+								unit: "hours" as const,
+							},
+							nextNodeId: "act-2",
+						},
+						// Writes the pre-delay adjust_time result via node.<id>.result.
+						{
+							id: "act-2",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "update_field" as const,
+									target: "self" as const,
+									field: "notes",
+									value: {
+										kind: "var" as const,
+										path: "node.adjust-1.result",
+									},
+								},
+							},
+						},
+					],
+					isActive: true,
+				});
+
+				const executionId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: clientId,
+						triggeredAt: Date.now(),
+						status: "running",
+						nodesExecuted: [],
+						executionChain: [automationId],
+						recursionDepth: 0,
+					})
+				);
+
+				await t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					objectType: "client",
+					objectId: clientId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+				// Parked at the delay: the pre-delay adjust_time result is
+				// checkpointed into resumeState.nodeResults so it survives the wait.
+				const midExecution = await t.run(async (ctx) => ctx.db.get(executionId));
+				expect(midExecution?.status).toBe("running");
+				expect(midExecution?.resumeState?.resumeNodeId).toBe("act-2");
+				expect(midExecution?.resumeState?.nodeResults).toEqual([
+					{ nodeId: "adjust-1", result: expected },
+				]);
+				// Post-delay step hasn't run yet.
+				const midClient = await t.run(async (ctx) => ctx.db.get(clientId));
+				expect(midClient?.notes).toBeUndefined();
+
+				await t.mutation(internal.automationExecutor.resumeExecution, {
+					orgId,
+					executionId,
+					automationId,
+				});
+
+				// After resume node.adjust-1.result still resolves, so the post-delay
+				// update_field writes it (coerced to the text field).
+				const finalClient = await t.run(async (ctx) => ctx.db.get(clientId));
+				expect(finalClient?.notes).toBe(String(expected));
+
+				const finalExecution = await t.run(async (ctx) =>
+					ctx.db.get(executionId)
+				);
+				expect(finalExecution?.status).toBe("completed");
+				expect(finalExecution?.resumeState).toBeUndefined();
+			});
+
 			it("fails clearly when the resume node no longer exists in a republished snapshot", async () => {
 				const { orgId, asUser } = await setupUser();
 
@@ -1456,6 +1626,90 @@ describe("automationExecutor (v2 engine)", () => {
 				const client = await t.run(async (ctx) => ctx.db.get(clientId));
 				expect(client?.notes).toBe("before delay");
 			});
+		});
+
+		it("a formula referencing an out-of-scope path at runtime fails the run clearly", async () => {
+			const { orgId, asUser } = await setupUser();
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+
+			// The formula references node.ghost.result — a node that never runs, so
+			// the path is out of scope. It parses (create/publish allow it; use-site
+			// scope is a builder concern), but at runtime resolves to null and the
+			// arithmetic throws, which must fail the run rather than silently skip.
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Out-of-scope formula",
+				trigger: { type: "record_created", objectType: "client" },
+				formulas: [
+					{
+						id: "oos",
+						name: "Ghost math",
+						returnType: "number",
+						expression: "{node.ghost.result} + 1",
+					},
+				],
+				nodes: [
+					{
+						id: "cond-1",
+						type: "condition" as const,
+						config: {
+							kind: "condition" as const,
+							logic: "and" as const,
+							groups: [
+								{
+									logic: "and" as const,
+									rules: [
+										{
+											field: "companyName",
+											operator: "equals" as const,
+											value: { kind: "var" as const, path: "formula.oos" },
+										},
+									],
+								},
+							],
+						},
+						nextNodeId: "act-1",
+					},
+					updateFieldActionNode("act-1", "notes", "should not run"),
+				],
+				isActive: true,
+			});
+
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: clientId,
+					triggeredAt: Date.now(),
+					status: "running",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+
+			await t.mutation(internal.automationExecutor.executeAutomation, {
+				orgId,
+				executionId,
+				automationId,
+				objectType: "client",
+				objectId: clientId,
+				executionChain: [automationId],
+				recursionDepth: 1,
+			});
+
+			const execution = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(execution?.status).toBe("failed");
+			expect(execution?.error).toBeTruthy();
+			expect(execution?.error).toMatch(/number|null/i);
+
+			// The downstream action must not have run.
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
 		});
 
 		it("end node: the true branch terminates the run and the false-branch action never runs", async () => {

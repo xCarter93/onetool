@@ -9,6 +9,7 @@ import {
 	evaluateFormula,
 	parseFormula,
 	FormulaError,
+	type FormulaAst,
 	type FormulaContext,
 	type Val,
 } from "./formula";
@@ -38,6 +39,13 @@ export type VariableScope = {
 	user?: { id?: string; name?: string; email?: string };
 	/** Formula resource definitions, resolved lazily via `formula.<id>` paths. */
 	formulas?: FormulaResource[];
+	/**
+	 * Per-run memo of parsed formula ASTs, keyed by formula id. Formula
+	 * expressions are immutable within a run, so a formula referenced N times
+	 * (e.g. inside a loop body) parses once. Internal; populated lazily by
+	 * resolveFormula.
+	 */
+	formulaAstCache?: Map<string, FormulaAst>;
 };
 
 /**
@@ -155,7 +163,14 @@ function resolveFormula(
 	}
 	resolving.add(id);
 	try {
-		const ast = parseFormula(def.expression);
+		// Memoize the parsed AST on the (per-run) scope so a formula referenced
+		// many times parses once. Keyed by id; the expression is immutable in a run.
+		const cache = (scope.formulaAstCache ??= new Map());
+		let ast = cache.get(id);
+		if (!ast) {
+			ast = parseFormula(def.expression);
+			cache.set(id, ast);
+		}
 		const ctx: FormulaContext = {
 			resolve: (p) => toFormulaVal(resolvePath(p, scope, resolving)),
 			now: scope.workflow?.now ?? 0,

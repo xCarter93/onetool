@@ -1,4 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Wrap parseFormula with a spy (delegating to the real parser) so the AST-cache
+// test can assert it runs once per formula across many references.
+const { parseSpy } = vi.hoisted(() => ({ parseSpy: vi.fn() }));
+vi.mock("./formula", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./formula")>();
+	parseSpy.mockImplementation(actual.parseFormula);
+	return { ...actual, parseFormula: parseSpy };
+});
+
 import {
 	evaluateConditionGroups,
 	evaluateGroup,
@@ -762,5 +772,28 @@ describe("formula resolution (formula.<id>)", () => {
 		expect(() =>
 			resolveValueRef({ kind: "var", path: "formula.a" }, cyclic)
 		).toThrow(/cycle/i);
+	});
+
+	it("parses each formula once across many references (AST cache)", () => {
+		parseSpy.mockClear();
+		const memoScope: VariableScope = {
+			trigger: { record: { amount: 5 } },
+			formulas: [
+				{
+					id: "dbl",
+					name: "Double",
+					returnType: "number",
+					expression: "{trigger.record.amount} * 2",
+				},
+			],
+		};
+		// Simulate a loop body resolving the same formula on every iteration.
+		for (let i = 0; i < 50; i++) {
+			expect(
+				resolveValueRef({ kind: "var", path: "formula.dbl" }, memoScope)
+			).toBe(10);
+		}
+		// The AST is memoized on the scope, so the expression parses exactly once.
+		expect(parseSpy).toHaveBeenCalledTimes(1);
 	});
 });

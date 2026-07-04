@@ -1452,7 +1452,7 @@ function runAggregateNode(
 	env: Pick<WalkEnv, "scope" | "fetchOutputs">,
 	nodeId: string,
 	config: Extract<WorkflowNodeConfig, { kind: "aggregate" }>
-): { ok: true; value: number } | { ok: false; error: string } {
+): { ok: true; value: number | null } | { ok: false; error: string } {
 	const source = env.fetchOutputs[config.sourceNodeId];
 	if (!source) {
 		return {
@@ -1465,9 +1465,12 @@ function runAggregateNode(
 		const n = Number(record[config.field]);
 		if (!Number.isNaN(n)) nums.push(n);
 	}
-	let value: number;
+	let value: number | null;
 	if (nums.length === 0) {
-		value = 0;
+		// No matching records: an empty sum is genuinely 0, but min/max/avg have
+		// no value to report — return null ("no data") so it stays distinct from
+		// a real 0.
+		value = config.op === "sum" ? 0 : null;
 	} else if (config.op === "sum" || config.op === "avg") {
 		const cents = nums.reduce((acc, n) => acc + Math.round(n * 100), 0);
 		value =
