@@ -11,6 +11,7 @@
 
 import type { Node, Edge } from "@xyflow/react";
 import type {
+	AutomationAction,
 	AutomationObjectType,
 	WorkflowNodeConfig,
 	WorkflowNodeType,
@@ -32,6 +33,9 @@ export {
 	MAX_LOOP_ITERATIONS,
 	MAX_CONDITION_GROUPS,
 	MAX_RULES_PER_GROUP,
+	MAX_DELAY_MS,
+	DELAY_UNIT_MS,
+	MAX_DUE_IN_DAYS,
 } from "@onetool/backend/convex/lib/workflowTypes";
 
 export type {
@@ -112,6 +116,18 @@ export type DelayNodeConfig = Extract<WorkflowNodeConfig, { kind: "delay" }>;
 export type DelayUntilNodeConfig = Extract<
 	WorkflowNodeConfig,
 	{ kind: "delay_until" }
+>;
+
+/** Per-action-type aliases (narrowed from the shared action union). */
+export type UpdateFieldAction = Extract<AutomationAction, { type: "update_field" }>;
+export type CreateTaskAction = Extract<AutomationAction, { type: "create_task" }>;
+export type SendNotificationAction = Extract<
+	AutomationAction,
+	{ type: "send_notification" }
+>;
+export type SendTeamMessageAction = Extract<
+	AutomationAction,
+	{ type: "send_team_message" }
 >;
 
 // ---------------------------------------------------------------------------

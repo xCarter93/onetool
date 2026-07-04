@@ -82,6 +82,9 @@ export function TriggerConfigPanel({
 	rfNodes,
 	rfEdges,
 }: ConfigPanelProps) {
+	// Captured once per mount: describeSchedule only needs a reference instant
+	// for the timezone label, and render-time Date.now() violates purity rules.
+	const [nowMs] = React.useState(() => Date.now());
 	const currentTrigger: TriggerConfig = trigger || {
 		type: "status_changed",
 		objectType: "quote",
@@ -379,7 +382,7 @@ export function TriggerConfigPanel({
 
 							{schedule && validateSchedule(schedule) === null && (
 								<p className="text-xs text-muted-foreground">
-									{describeSchedule(schedule, Date.now())}
+									{describeSchedule(schedule, nowMs)}
 								</p>
 							)}
 						</>

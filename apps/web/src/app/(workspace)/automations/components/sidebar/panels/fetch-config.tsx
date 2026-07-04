@@ -26,6 +26,7 @@ import {
 	PanelField,
 	PanelSection,
 } from "./panel-primitives";
+import { FilterGroupsEditor } from "./filter-groups-editor";
 
 export function FetchConfigPanel({
 	nodeId,
@@ -52,6 +53,7 @@ export function FetchConfigPanel({
 		objectType: trigger?.objectType || "client",
 		filters: [],
 	};
+	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
 
 	const commit = (next: FetchNodeConfig) => {
 		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
@@ -64,7 +66,7 @@ export function FetchConfigPanel({
 				iconBgColor="bg-blue-50 dark:bg-blue-950/40"
 				iconFgColor="text-blue-600 dark:text-blue-400"
 				categoryBadge="Records"
-				nodeTypeName="Fetch Records"
+				nodeTypeName="Find Records"
 			/>
 
 			<div className="flex-1">
@@ -73,7 +75,11 @@ export function FetchConfigPanel({
 						<Select
 							value={currentConfig.objectType}
 							onValueChange={(value) =>
-								commit({ ...currentConfig, objectType: value as AutomationObjectType })
+								commit({
+									...currentConfig,
+									objectType: value as AutomationObjectType,
+									filters: [],
+								})
 							}
 						>
 							<SelectTrigger>
@@ -91,7 +97,7 @@ export function FetchConfigPanel({
 
 					<PanelField
 						label="Limit"
-						helper={`Maximum number of records to fetch (up to ${MAX_FETCH_LIMIT}).`}
+						helper={`Up to ${MAX_FETCH_LIMIT} records, newest first.`}
 					>
 						<Input
 							type="number"
@@ -106,10 +112,18 @@ export function FetchConfigPanel({
 							}
 						/>
 					</PanelField>
+				</PanelSection>
 
-					<div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-						Filters coming soon.
-					</div>
+				<PanelSection title="Filters">
+					<FilterGroupsEditor
+						objectType={currentConfig.objectType}
+						groups={currentConfig.filters}
+						onChange={(filters) => commit({ ...currentConfig, filters })}
+						helperText="All groups must match."
+						nodes={workflowNodes}
+						trigger={trigger}
+						targetNodeId={nodeId}
+					/>
 				</PanelSection>
 			</div>
 

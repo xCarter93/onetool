@@ -3,13 +3,33 @@
 import React from "react";
 import { Repeat } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
+import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
+	MAX_LOOP_ITERATIONS,
+	OBJECT_TYPE_LABELS,
+	type LoopNodeConfig,
+	type WorkflowNode,
+} from "../../../lib/node-types";
+import { getUpstreamFetchNodes } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-import { DeleteStepButton } from "./panel-primitives";
+import {
+	DeleteStepButton,
+	PanelField,
+	PanelSection,
+} from "./panel-primitives";
 
 export function LoopConfigPanel({
 	nodeId,
 	nodes,
+	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
 	rfNodes,
@@ -25,6 +45,17 @@ export function LoopConfigPanel({
 		);
 	}
 
+	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
+	const upstreamFetchNodes = getUpstreamFetchNodes(workflowNodes, nodeId);
+	const config: LoopNodeConfig = (node.config as LoopNodeConfig | undefined) ?? {
+		kind: "loop",
+		sourceNodeId: "",
+	};
+
+	const commit = (next: LoopNodeConfig) => {
+		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
+	};
+
 	return (
 		<div className="flex flex-col h-full">
 			<ConfigPanelHeader
@@ -36,10 +67,56 @@ export function LoopConfigPanel({
 			/>
 
 			<div className="flex-1">
-				<div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-					Loops are arriving in an upcoming update. Remove this step to save
-					your workflow.
-				</div>
+				<PanelSection title="Inputs">
+					{upstreamFetchNodes.length === 0 ? (
+						<div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+							Add a Find records step before this loop.
+						</div>
+					) : (
+						<>
+							<PanelField label="Records to loop over">
+								<Select
+									value={config.sourceNodeId}
+									onValueChange={(sourceNodeId) => commit({ ...config, sourceNodeId })}
+								>
+									<SelectTrigger>
+										<SelectValue placeholder="Choose a Find records step" />
+									</SelectTrigger>
+									<SelectContent>
+										{upstreamFetchNodes.map((fetchNode) => (
+											<SelectItem key={fetchNode.id} value={fetchNode.id}>
+												Find records
+												{fetchNode.objectType
+													? ` — ${OBJECT_TYPE_LABELS[fetchNode.objectType]}`
+													: ""}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</PanelField>
+
+							<PanelField
+								label="Max iterations"
+								helper={`Optional cap on the number of records processed (up to ${MAX_LOOP_ITERATIONS}).`}
+							>
+								<Input
+									type="number"
+									min={1}
+									max={MAX_LOOP_ITERATIONS}
+									value={config.maxIterations ?? ""}
+									placeholder="No cap"
+									onChange={(e) =>
+										commit({
+											...config,
+											maxIterations:
+												e.target.value === "" ? undefined : Number(e.target.value),
+										})
+									}
+								/>
+							</PanelField>
+						</>
+					)}
+				</PanelSection>
 			</div>
 
 			{/* Next steps tree */}
