@@ -20,7 +20,7 @@ function getSummary(config: AggregateNodeConfig | undefined): {
 	description: string;
 	isConfigured: boolean;
 } {
-	if (!config || !config.sourceNodeId || !config.field) {
+	if (!config || !config.sourceNodeId || !config.field || !OP_LABELS[config.op]) {
 		return { title: "Aggregate", description: "Not configured", isConfigured: false };
 	}
 	return {

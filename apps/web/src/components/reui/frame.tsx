@@ -66,7 +66,9 @@ const frameVariants = cva(
 function Frame({
 	className,
 	variant,
-	spacing,
+	// Default here (not just via cva defaultVariants) so data-spacing carries the
+	// resolved value — the non-stacked inter-panel gap rules key off it.
+	spacing = "default",
 	stacked,
 	dense,
 	...props
