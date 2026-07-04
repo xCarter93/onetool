@@ -1462,7 +1462,11 @@ function runAggregateNode(
 	}
 	const nums: number[] = [];
 	for (const record of source.records) {
-		const n = Number(record[config.field]);
+		// Exclude missing data uniformly: Number(null)/Number("") are 0, which
+		// would skew min/avg/max — treat null/"" like an absent field.
+		const raw = record[config.field];
+		if (raw == null || raw === "") continue;
+		const n = Number(raw);
 		if (!Number.isNaN(n)) nums.push(n);
 	}
 	let value: number | null;
