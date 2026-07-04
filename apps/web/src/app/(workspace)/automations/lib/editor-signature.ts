@@ -1,4 +1,4 @@
-import type { TriggerConfig, WorkflowNode } from "./node-types";
+import type { FormulaResource, TriggerConfig, WorkflowNode } from "./node-types";
 
 /**
  * Content signatures for the editor's dirty / needs-publish state.
@@ -39,7 +39,8 @@ type DefinitionNode = Pick<
  */
 export function definitionSignature(
 	trigger: TriggerConfig | null | undefined,
-	nodes: DefinitionNode[]
+	nodes: DefinitionNode[],
+	formulas?: FormulaResource[]
 ): string {
 	return stableStringify({
 		trigger: trigger ?? null,
@@ -51,6 +52,14 @@ export function definitionSignature(
 				nextNodeId: n.nextNodeId ?? null,
 				elseNodeId: n.elseNodeId ?? null,
 				bodyStartNodeId: n.bodyStartNodeId ?? null,
+			}))
+			.sort((a, b) => a.id.localeCompare(b.id)),
+		formulas: [...(formulas ?? [])]
+			.map((f) => ({
+				id: f.id,
+				name: f.name,
+				returnType: f.returnType,
+				expression: f.expression,
 			}))
 			.sort((a, b) => a.id.localeCompare(b.id)),
 	});

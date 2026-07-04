@@ -1,3 +1,7 @@
+import {
+	collectReferencedPaths,
+	parseFormula,
+} from "@onetool/backend/convex/lib/formula";
 import { collectLoopBody } from "./graph-utils";
 import {
 	OBJECT_TYPE_LABELS,
@@ -6,6 +10,7 @@ import {
 	type AutomationTrigger,
 	type FetchNodeConfig,
 	type FieldType,
+	type FormulaResource,
 	type LoopNodeConfig,
 	type TriggerConfig,
 	type WorkflowNode,
@@ -123,10 +128,48 @@ function effectiveTriggerType(
 	return explicit ?? "status_changed";
 }
 
+/**
+ * Non-formula variable paths a formula (transitively) depends on. Returns null
+ * on a parse error, a missing referenced formula, or a reference cycle — in
+ * which case the formula is not offered anywhere.
+ */
+function formulaDependencyPaths(
+	formula: FormulaResource,
+	formulasById: Map<string, FormulaResource>,
+	visiting: Set<string>
+): Set<string> | null {
+	if (visiting.has(formula.id)) return null; // cycle
+	visiting.add(formula.id);
+
+	let referenced: string[];
+	try {
+		referenced = collectReferencedPaths(parseFormula(formula.expression));
+	} catch {
+		return null;
+	}
+
+	const paths = new Set<string>();
+	for (const p of referenced) {
+		if (p.startsWith("formula.")) {
+			const dep = formulasById.get(p.slice("formula.".length));
+			if (!dep) return null;
+			const depPaths = formulaDependencyPaths(dep, formulasById, visiting);
+			if (!depPaths) return null;
+			for (const dp of depPaths) paths.add(dp);
+		} else {
+			paths.add(p);
+		}
+	}
+
+	visiting.delete(formula.id);
+	return paths;
+}
+
 export function getAvailableVariables(
 	nodes: WorkflowNode[],
 	trigger: TriggerConfig | AutomationTrigger,
-	targetNodeId: string
+	targetNodeId: string,
+	formulas?: FormulaResource[]
 ): VariableOption[] {
 	const options: VariableOption[] = [];
 	const triggerObjectType = trigger.objectType as
@@ -247,6 +290,25 @@ export function getAvailableVariables(
 		{ path: "user.name", label: "Your name", group: "Globals", fieldType: "text" },
 		{ path: "user.email", label: "Your email", group: "Globals", fieldType: "text" }
 	);
+
+	// 6. formula.<id> — offered only where every path the formula (transitively)
+	// references is in scope at this node. Authors define formulas against the
+	// union of all variables; this enforces scope at the reference site.
+	if (formulas && formulas.length > 0) {
+		const availablePaths = new Set(options.map((o) => o.path));
+		const formulasById = new Map(formulas.map((f) => [f.id, f]));
+		for (const formula of formulas) {
+			const deps = formulaDependencyPaths(formula, formulasById, new Set());
+			if (!deps) continue;
+			if (![...deps].every((p) => availablePaths.has(p))) continue;
+			options.push({
+				path: `formula.${formula.id}`,
+				label: formula.name,
+				group: "Formulas",
+				fieldType: formula.returnType as FieldType,
+			});
+		}
+	}
 
 	return options;
 }

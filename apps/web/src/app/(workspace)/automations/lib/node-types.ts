@@ -39,6 +39,8 @@ export {
 	AGGREGATE_OPERATIONS,
 	ADJUST_TIME_UNITS,
 	ADJUST_TIME_UNIT_MS,
+	FORMULA_RETURN_TYPES,
+	MAX_FORMULAS,
 } from "@onetool/backend/convex/lib/workflowTypes";
 
 export type {
@@ -56,6 +58,8 @@ export type {
 	WorkflowNodeType,
 	AggregateOperation,
 	AdjustTimeUnit,
+	FormulaResource,
+	FormulaReturnType,
 } from "@onetool/backend/convex/lib/workflowTypes";
 
 export {

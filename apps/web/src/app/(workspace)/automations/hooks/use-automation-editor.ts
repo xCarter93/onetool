@@ -10,6 +10,7 @@ import {
 	getStatusOptions,
 	type AutomationAction,
 	type AutomationTrigger,
+	type FormulaResource,
 	type TriggerConfig,
 	type TriggerType,
 	type WorkflowNode,
@@ -287,6 +288,7 @@ export function useAutomationEditor(automationId: string | null) {
 	const [description, setDescription] = useState("");
 	const [trigger, setTrigger] = useState<TriggerConfig | null>(null);
 	const [nodes, setNodes] = useState<EditorNode[]>([]);
+	const [formulas, setFormulas] = useState<FormulaResource[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isPublishing, setIsPublishing] = useState(false);
 	const [isStartingTest, setIsStartingTest] = useState(false);
@@ -313,10 +315,14 @@ export function useAutomationEditor(automationId: string | null) {
 		setNodes(
 			(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2)
 		);
+		const loadedFormulas =
+			(existingAutomation.formulas as FormulaResource[] | undefined) ?? [];
+		setFormulas(loadedFormulas);
 		setSavedSignature(
 			definitionSignature(
 				legacyTriggerToDraft(existingAutomation.trigger as AutomationTrigger),
-				(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2)
+				(existingAutomation.nodes as DbWorkflowNode[]).map(legacyNodeToV2),
+				loadedFormulas
 			)
 		);
 	}
@@ -710,8 +716,8 @@ export function useAutomationEditor(automationId: string | null) {
 		[layoutedNodes, layoutedEdges]
 	);
 	const workingSignature = useMemo(
-		() => definitionSignature(serialized.trigger, serialized.nodes),
-		[serialized]
+		() => definitionSignature(serialized.trigger, serialized.nodes, formulas),
+		[serialized, formulas]
 	);
 
 	// Lifecycle + publish state derived from the loaded row and the working copy.
@@ -729,7 +735,10 @@ export function useAutomationEditor(automationId: string | null) {
 				),
 				(existingAutomation.publishedSnapshot.nodes as DbWorkflowNode[]).map(
 					legacyNodeToV2
-				)
+				),
+				(existingAutomation.publishedSnapshot.formulas as
+					| FormulaResource[]
+					| undefined) ?? []
 			)
 		: null;
 	const needsPublish =
@@ -786,6 +795,7 @@ export function useAutomationEditor(automationId: string | null) {
 				description: description.trim() || undefined,
 				trigger: triggerArg,
 				nodes: nodesArg,
+				formulas,
 			});
 		} else {
 			id = await createAutomation({
@@ -793,6 +803,7 @@ export function useAutomationEditor(automationId: string | null) {
 				description: description.trim() || undefined,
 				trigger: triggerArg,
 				nodes: nodesArg,
+				formulas,
 			});
 			setCurrentId(id);
 			// Local state IS the just-created doc; don't re-hydrate (and clobber
@@ -802,12 +813,13 @@ export function useAutomationEditor(automationId: string | null) {
 			router.replace(`/automations/editor?id=${id}`);
 		}
 
-		setSavedSignature(definitionSignature(flat.trigger, flat.nodes));
+		setSavedSignature(definitionSignature(flat.trigger, flat.nodes, formulas));
 		return id;
 	}, [
 		createAutomation,
 		description,
 		effectiveId,
+		formulas,
 		layoutedEdges,
 		layoutedNodes,
 		name,
@@ -887,6 +899,14 @@ export function useAutomationEditor(automationId: string | null) {
 		}
 	}, [activeExecutionId, cancelTestRun, toast]);
 
+	const handleFormulasChange = useCallback(
+		(next: FormulaResource[]) => {
+			clearUndoState();
+			setFormulas(next);
+		},
+		[clearUndoState]
+	);
+
 	return {
 		automation: existingAutomation,
 		isLoading:
@@ -898,6 +918,8 @@ export function useAutomationEditor(automationId: string | null) {
 		setDescription,
 		trigger,
 		nodes,
+		formulas,
+		onFormulasChange: handleFormulasChange,
 		isSaving,
 		// Lifecycle + publish state
 		status,
