@@ -37,6 +37,10 @@
       "types": "./convex/lib/schedule.ts",
       "default": "./convex/lib/schedule.ts"
     },
+    "./convex/lib/formula": {
+      "types": "./convex/lib/formula/index.ts",
+      "default": "./convex/lib/formula/index.ts"
+    },
     "./convex/lib/assistantShared": {
       "types": "./convex/lib/assistantShared.ts",
       "default": "./convex/lib/assistantShared.ts"
