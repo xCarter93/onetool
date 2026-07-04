@@ -1048,10 +1048,13 @@ export const getAutomationRuns = createTool({
 	}),
 	execute: async (ctx, input): Promise<Capped<AutomationRunItem>> => {
 		const limit = input.limit ?? ACTIVITY_CAP;
-		const runs = await ctx.runQuery(api.automations.getExecutions, {
+		const result = await ctx.runQuery(api.automations.getExecutions, {
 			automationId: input.automationId as Id<"workflowAutomations">,
 			limit,
 		});
+		// getExecutions returns an array with no paginationOpts (this call), a
+		// PaginationResult otherwise — narrow for the array-only mapping below.
+		const runs = Array.isArray(result) ? result : result.page;
 		return capped(
 			runs.map((r) => ({
 				status: r.status,

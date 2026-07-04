@@ -1,5 +1,6 @@
 import { QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { userMutation, userQuery } from "./lib/factories";
@@ -1030,26 +1031,350 @@ export const remove = userMutation({
 	},
 });
 
+// ---------------------------------------------------------------------------
+// Slice 5: runs & latency ops-console queries.
+//
+// Latency model: activeMs = (completedAt - triggeredAt) - (pausedMs ?? 0) —
+// wall-clock minus parked delay time; wallMs = completedAt - triggeredAt. Both
+// are null until the run completes. Derived here, never stored (avoids drift).
+// "Production" runs = mode !== "test": record-triggered runs leave `mode` unset;
+// scheduled/manual set "production". Test/dry runs are excluded from every
+// ops-console metric.
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const executionStatusValidator = v.union(
+	v.literal("running"),
+	v.literal("completed"),
+	v.literal("failed"),
+	v.literal("skipped"),
+	v.literal("cancelled")
+);
+
+type ExecutionDoc = Doc<"workflowExecutions">;
+
+type RunRow = ExecutionDoc & {
+	automationName: string;
+	/** (completedAt - triggeredAt) - pausedMs; null until completed. */
+	activeMs: number | null;
+	/** completedAt - triggeredAt; null until completed. */
+	wallMs: number | null;
+};
+
+/** Wall & active durations; null until the run has a completedAt. */
+function deriveDurations(execution: ExecutionDoc): {
+	activeMs: number | null;
+	wallMs: number | null;
+} {
+	if (execution.completedAt == null) return { activeMs: null, wallMs: null };
+	const wallMs = Math.max(0, execution.completedAt - execution.triggeredAt);
+	const activeMs = Math.max(0, wallMs - (execution.pausedMs ?? 0));
+	return { activeMs, wallMs };
+}
+
+function clampInt(value: number, min: number, max: number): number {
+	if (!Number.isFinite(value)) return min;
+	return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+/** Nearest-rank percentile over an ASCENDING-sorted array; 0 when empty. */
+function percentile(sortedAsc: number[], p: number): number {
+	if (sortedAsc.length === 0) return 0;
+	const rank = Math.ceil((p / 100) * sortedAsc.length);
+	const idx = Math.min(sortedAsc.length - 1, Math.max(0, rank - 1));
+	return sortedAsc[idx];
+}
+
+/** Cached automationId → name resolver (org-scoped; deleted rows labeled). */
+function makeAutomationNameResolver(ctx: QueryCtx, orgId: Id<"organizations">) {
+	const cache = new Map<string, string>();
+	return async (automationId: Id<"workflowAutomations">): Promise<string> => {
+		const key = automationId as string;
+		const cached = cache.get(key);
+		if (cached !== undefined) return cached;
+		const automation = await ctx.db.get(automationId);
+		const name =
+			automation && automation.orgId === orgId
+				? automation.name
+				: "(deleted automation)";
+		cache.set(key, name);
+		return name;
+	};
+}
+
 /**
- * Get execution logs for an automation
+ * Get execution logs for an automation.
+ *
+ * Backward-compatible: with no paginationOpts, returns the classic newest-first
+ * array (limit default 50) — the shape assistantTools.ts consumes. With
+ * paginationOpts, returns a standard Convex PaginationResult for the (deferred)
+ * editor Runs tab. Optional status filter applies to both.
  */
 export const getExecutions = userQuery({
 	args: {
 		automationId: v.id("workflowAutomations"),
 		limit: v.optional(v.number()),
+		status: v.optional(executionStatusValidator),
+		paginationOpts: v.optional(paginationOptsValidator),
 	},
-	handler: async (ctx, args) => {
-		// Validate access to the automation
+	handler: async (
+		ctx,
+		args
+	): Promise<ExecutionDoc[] | PaginationResult<ExecutionDoc>> => {
+		// Validate access to the automation (org-scoped).
 		await getAutomationOrThrow(ctx, args.automationId);
 
-		const limit = args.limit ?? 50;
+		const status = args.status;
+		const base = ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_automation", (q) =>
+				q.eq("automationId", args.automationId)
+			);
+		const ordered = (
+			status ? base.filter((q) => q.eq(q.field("status"), status)) : base
+		).order("desc");
+
+		if (args.paginationOpts) {
+			return await ordered.paginate(args.paginationOpts);
+		}
+		return await ordered.take(args.limit ?? 50);
+	},
+});
+
+/**
+ * Paginated, org-wide run history for the runs table. Uses the status-scoped
+ * index when a status filter is set, else the org+triggeredAt index; both
+ * newest-first. Each row joins the automation name and the derived durations.
+ */
+export const listRuns = userQuery({
+	args: {
+		status: v.optional(executionStatusValidator),
+		automationId: v.optional(v.id("workflowAutomations")),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, args): Promise<PaginationResult<RunRow>> => {
+		const orgId = ctx.orgId;
+		const status = args.status;
+		const automationId = args.automationId;
+
+		const indexed = status
+			? ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_org_status_triggeredAt", (q) =>
+						q.eq("orgId", orgId).eq("status", status)
+					)
+			: ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_org_triggeredAt", (q) => q.eq("orgId", orgId));
+
+		const ordered = (
+			automationId
+				? indexed.filter((q) =>
+						q.eq(q.field("automationId"), automationId)
+					)
+				: indexed
+		).order("desc");
+
+		const page = await ordered.paginate(args.paginationOpts);
+
+		const resolveName = makeAutomationNameResolver(ctx, orgId);
+		const rows: RunRow[] = [];
+		for (const execution of page.page) {
+			const { activeMs, wallMs } = deriveDurations(execution);
+			rows.push({
+				...execution,
+				automationName: await resolveName(execution.automationId),
+				activeMs,
+				wallMs,
+			});
+		}
+
+		return { ...page, page: rows };
+	},
+});
+
+/**
+ * Windowed cumulative run metrics for the KPI tiles (production runs only).
+ * successRate is over decided runs (completed + failed); skipped/running are
+ * excluded from the denominator. Latency stats are over completed runs' active
+ * time. `activeAutomationCount` is the count of currently-active automations.
+ */
+export const getRunMetrics = userQuery({
+	args: { windowDays: v.optional(v.number()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		totalRuns: number;
+		successCount: number;
+		failedCount: number;
+		skippedCount: number;
+		successRate: number;
+		avgActiveMs: number;
+		p50ActiveMs: number;
+		p95ActiveMs: number;
+		activeAutomationCount: number;
+	}> => {
+		const orgId = ctx.orgId;
+		const windowDays = clampInt(args.windowDays ?? 30, 1, 365);
+		const windowStart = Date.now() - windowDays * DAY_MS;
 
 		const executions = await ctx.db
 			.query("workflowExecutions")
-			.withIndex("by_automation", (q) => q.eq("automationId", args.automationId))
+			.withIndex("by_org_triggeredAt", (q) =>
+				q.eq("orgId", orgId).gte("triggeredAt", windowStart)
+			)
+			.collect();
+
+		let totalRuns = 0;
+		let successCount = 0;
+		let failedCount = 0;
+		let skippedCount = 0;
+		const activeDurations: number[] = [];
+
+		for (const e of executions) {
+			if (e.mode === "test") continue; // production runs only
+			totalRuns++;
+			if (e.status === "completed") {
+				successCount++;
+				const { activeMs } = deriveDurations(e);
+				if (activeMs != null) activeDurations.push(activeMs);
+			} else if (e.status === "failed") {
+				failedCount++;
+			} else if (e.status === "skipped") {
+				skippedCount++;
+			}
+		}
+
+		const decided = successCount + failedCount;
+		const successRate = decided > 0 ? successCount / decided : 0;
+
+		activeDurations.sort((a, b) => a - b);
+		const avgActiveMs = activeDurations.length
+			? Math.round(
+					activeDurations.reduce((sum, v) => sum + v, 0) /
+						activeDurations.length
+				)
+			: 0;
+
+		const activeAutomations = await ctx.db
+			.query("workflowAutomations")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", orgId).eq("status", "active")
+			)
+			.collect();
+
+		return {
+			totalRuns,
+			successCount,
+			failedCount,
+			skippedCount,
+			successRate,
+			avgActiveMs,
+			p50ActiveMs: percentile(activeDurations, 50),
+			p95ActiveMs: percentile(activeDurations, 95),
+			activeAutomationCount: activeAutomations.length,
+		};
+	},
+});
+
+/**
+ * Windowed daily run throughput for the stacked chart (production runs only).
+ * UTC day boundaries for v1. Returns every day in the window in chronological
+ * order, including zero-count days.
+ */
+export const getRunThroughput = userQuery({
+	args: { windowDays: v.optional(v.number()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		Array<{ day: number; success: number; failed: number; skipped: number }>
+	> => {
+		const orgId = ctx.orgId;
+		const windowDays = clampInt(args.windowDays ?? 30, 1, 365);
+		const now = Date.now();
+		const todayMidnight = Math.floor(now / DAY_MS) * DAY_MS;
+		const firstDay = todayMidnight - (windowDays - 1) * DAY_MS;
+
+		const executions = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_triggeredAt", (q) =>
+				q.eq("orgId", orgId).gte("triggeredAt", firstDay)
+			)
+			.collect();
+
+		// Seed every UTC day (incl. zero-count) in chronological order.
+		const buckets = new Map<
+			number,
+			{ day: number; success: number; failed: number; skipped: number }
+		>();
+		for (let day = firstDay; day <= todayMidnight; day += DAY_MS) {
+			buckets.set(day, { day, success: 0, failed: 0, skipped: 0 });
+		}
+
+		for (const e of executions) {
+			if (e.mode === "test") continue; // production runs only
+			const day = Math.floor(e.triggeredAt / DAY_MS) * DAY_MS;
+			const bucket = buckets.get(day);
+			if (!bucket) continue; // outside the seeded window
+			if (e.status === "completed") bucket.success++;
+			else if (e.status === "failed") bucket.failed++;
+			else if (e.status === "skipped") bucket.skipped++;
+		}
+
+		return Array.from(buckets.values());
+	},
+});
+
+/**
+ * The most recent failed PRODUCTION runs (org-scoped, newest first) for the
+ * recent-failures timeline. failedNodeId = the last nodesExecuted entry whose
+ * result is "failed" (undefined for pre-walk failures like a missing record).
+ */
+export const getRecentFailures = userQuery({
+	args: { limit: v.optional(v.number()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		Array<{
+			executionId: Id<"workflowExecutions">;
+			automationId: Id<"workflowAutomations">;
+			automationName: string;
+			error: string;
+			failedNodeId?: string;
+			triggeredAt: number;
+		}>
+	> => {
+		const orgId = ctx.orgId;
+		const limit = clampInt(args.limit ?? 10, 1, 50);
+
+		const failures = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_status_triggeredAt", (q) =>
+				q.eq("orgId", orgId).eq("status", "failed")
+			)
 			.order("desc")
+			.filter((q) => q.neq(q.field("mode"), "test"))
 			.take(limit);
 
-		return executions;
+		const resolveName = makeAutomationNameResolver(ctx, orgId);
+		const rows = [];
+		for (const e of failures) {
+			const failedNode = [...e.nodesExecuted]
+				.reverse()
+				.find((n) => n.result === "failed");
+			rows.push({
+				executionId: e._id,
+				automationId: e.automationId,
+				automationName: await resolveName(e.automationId),
+				error: e.error ?? "Unknown error",
+				failedNodeId: failedNode?.nodeId,
+				triggeredAt: e.triggeredAt,
+			});
+		}
+		return rows;
 	},
 });

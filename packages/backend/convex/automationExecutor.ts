@@ -350,12 +350,14 @@ async function matchAndScheduleAutomations(
 			console.warn(
 				`Automation loop detected: ${automation._id} already in chain. Skipping.`
 			);
-			// Log as skipped
+			// Log as skipped (zero-duration: completedAt == triggeredAt).
+			const skippedAt = Date.now();
 			await ctx.db.insert("workflowExecutions", {
 				orgId,
 				automationId: automation._id,
 				triggeredBy: params.entityId,
-				triggeredAt: Date.now(),
+				triggeredAt: skippedAt,
+				completedAt: skippedAt,
 				status: "skipped",
 				nodesExecuted: [],
 				error: "Skipped: Automation loop detected",
@@ -587,6 +589,7 @@ export const dispatchScheduledAutomations = internalMutation({
 						automationId: automation._id,
 						triggeredBy: "schedule",
 						triggeredAt: now,
+						completedAt: now,
 						status: "skipped",
 						mode: "production",
 						nodesExecuted: [],
@@ -608,6 +611,7 @@ export const dispatchScheduledAutomations = internalMutation({
 						automationId: automation._id,
 						triggeredBy: "schedule",
 						triggeredAt: now,
+						completedAt: now,
 						status: "skipped",
 						mode: "production",
 						nodesExecuted: [],
@@ -688,6 +692,10 @@ type WalkEnv = {
 	logTruncated: boolean;
 	/** Original trigger reference, persisted into resumeState for delays. */
 	trigger: { objectType?: ObjectType; objectId?: string };
+	/** Wall-clock start of the node currently executing; stamped onto each entry. */
+	nodeStartedAt: number;
+	/** True for real runs (not test/dry); gates failure notifications. */
+	isProduction: boolean;
 };
 
 type WalkOutcome =
@@ -700,18 +708,27 @@ type WalkOutcome =
 const MAX_EXECUTED_ENTRIES = 400;
 
 function pushEntry(env: WalkEnv, entry: ExecEntry): void {
+	// Stamp per-node timing: startedAt = when the walk began this node,
+	// completedAt = now. Both feed the runs viewer's per-step durations.
+	const stamped: ExecEntry = {
+		...entry,
+		startedAt: entry.startedAt ?? env.nodeStartedAt,
+		completedAt: entry.completedAt ?? Date.now(),
+	};
 	if (env.nodesExecuted.length >= MAX_EXECUTED_ENTRIES) {
 		if (!env.logTruncated) {
 			env.logTruncated = true;
 			env.nodesExecuted.push({
-				nodeId: entry.nodeId,
+				nodeId: stamped.nodeId,
 				result: "skipped",
+				startedAt: stamped.startedAt,
+				completedAt: stamped.completedAt,
 				error: `Execution log truncated after ${MAX_EXECUTED_ENTRIES} entries`,
 			});
 		}
 		return;
 	}
-	env.nodesExecuted.push(entry);
+	env.nodesExecuted.push(stamped);
 }
 
 /**
@@ -747,6 +764,11 @@ export const executeAutomation = systemMutation({
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) return;
 
+		// executeAutomation only ever runs real production/manual/scheduled runs
+		// (test runs go through executeTestStep). Derived defensively so failure
+		// alerts never fire on a test/dry row that somehow reached here.
+		const isProduction = execution.mode !== "test" && !execution.dryRun;
+
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation || automation.orgId !== ctx.orgId) {
 			await ctx.db.patch(args.executionId, {
@@ -754,6 +776,7 @@ export const executeAutomation = systemMutation({
 				completedAt: Date.now(),
 				error: "Automation not found",
 			});
+			// No automation doc to name the alert; skip notifyAutomationFailure.
 			return;
 		}
 
@@ -790,6 +813,14 @@ export const executeAutomation = systemMutation({
 					completedAt: Date.now(),
 					error: "Triggering object not found",
 				});
+				if (isProduction) {
+					await notifyAutomationFailure(
+						ctx,
+						automation,
+						"Triggering object not found",
+						args.executionId
+					);
+				}
 				return;
 			}
 			triggerObject = object;
@@ -834,6 +865,8 @@ export const executeAutomation = systemMutation({
 			nodesExecuted: [],
 			logTruncated: false,
 			trigger: { objectType: args.objectType, objectId: args.objectId },
+			nodeStartedAt: Date.now(),
+			isProduction,
 		};
 
 		try {
@@ -854,12 +887,21 @@ export const executeAutomation = systemMutation({
 			);
 			await finishWalk(ctx, env, outcome);
 		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
 			await ctx.db.patch(args.executionId, {
 				status: "failed",
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
-				error: error instanceof Error ? error.message : "Unknown error",
+				error: message,
 			});
+			if (isProduction) {
+				await notifyAutomationFailure(
+					ctx,
+					automation,
+					message,
+					args.executionId
+				);
+			}
 		}
 	},
 });
@@ -880,6 +922,19 @@ export const resumeExecution = systemMutation({
 		// Cancelled/completed while waiting, or already resumed.
 		if (execution.status !== "running" || !execution.resumeState) return;
 
+		// Accumulate the parked (delay) wall time BEFORE anything else, so every
+		// terminal below preserves it and the derived activeMs stays honest.
+		// Multiple sequential delays accumulate: each resume adds its own gap.
+		const resumedAt = Date.now();
+		const accumulatedPausedMs =
+			(execution.pausedMs ?? 0) +
+			(resumedAt - (execution.resumeState.checkpointAt ?? resumedAt));
+		await ctx.db.patch(args.executionId, { pausedMs: accumulatedPausedMs });
+
+		// Resumes only ever continue real production runs (test runs never park
+		// at a delay). Derived for the failure-alert gate on the terminals below.
+		const isProduction = execution.mode !== "test" && !execution.dryRun;
+
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation || automation.orgId !== ctx.orgId) {
 			await ctx.db.patch(args.executionId, {
@@ -889,6 +944,7 @@ export const resumeExecution = systemMutation({
 				resumeState: undefined,
 				currentNodeId: undefined,
 			});
+			// No automation doc to name the alert; skip notifyAutomationFailure.
 			return;
 		}
 
@@ -911,6 +967,14 @@ export const resumeExecution = systemMutation({
 					resumeState: undefined,
 					currentNodeId: undefined,
 				});
+				if (isProduction) {
+					await notifyAutomationFailure(
+						ctx,
+						automation,
+						"Trigger record was deleted while the run was waiting",
+						args.executionId
+					);
+				}
 				return;
 			}
 			triggerObject = object;
@@ -964,6 +1028,8 @@ export const resumeExecution = systemMutation({
 			nodesExecuted: [...execution.nodesExecuted],
 			logTruncated: false,
 			trigger: { objectType: resume.objectType, objectId: resume.objectId },
+			nodeStartedAt: Date.now(),
+			isProduction,
 		};
 
 		for (const output of resume.fetchOutputs) {
@@ -993,14 +1059,24 @@ export const resumeExecution = systemMutation({
 		}
 
 		if (!env.nodesById.has(resume.resumeNodeId)) {
+			const message =
+				"Automation was edited while the run was waiting; the next step no longer exists";
 			await ctx.db.patch(args.executionId, {
 				status: "failed",
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
-				error: "Automation was edited while the run was waiting; the next step no longer exists",
+				error: message,
 				resumeState: undefined,
 				currentNodeId: undefined,
 			});
+			if (isProduction) {
+				await notifyAutomationFailure(
+					ctx,
+					automation,
+					message,
+					args.executionId
+				);
+			}
 			return;
 		}
 
@@ -1008,14 +1084,23 @@ export const resumeExecution = systemMutation({
 			const outcome = await runWalk(ctx, env, resume.resumeNodeId, scopeRecord);
 			await finishWalk(ctx, env, outcome);
 		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
 			await ctx.db.patch(args.executionId, {
 				status: "failed",
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
-				error: error instanceof Error ? error.message : "Unknown error",
+				error: message,
 				resumeState: undefined,
 				currentNodeId: undefined,
 			});
+			if (isProduction) {
+				await notifyAutomationFailure(
+					ctx,
+					automation,
+					message,
+					args.executionId
+				);
+			}
 		}
 	},
 });
@@ -1039,6 +1124,16 @@ async function finishWalk(
 			resumeState: undefined,
 			currentNodeId: undefined,
 		});
+		// finishWalk is reached by production runs only (test runs stream via
+		// executeTestStep), but gate defensively so a test/dry row never alerts.
+		if (env.isProduction) {
+			await notifyAutomationFailure(
+				ctx,
+				env.automation,
+				outcome.error,
+				env.executionId
+			);
+		}
 		return;
 	}
 
@@ -1088,6 +1183,8 @@ async function runWalk(
 			return { kind: "chain_done" };
 		}
 
+		// Mark the start of this node so pushEntry can stamp its duration.
+		env.nodeStartedAt = Date.now();
 		const config = node.config;
 
 		if (config?.kind === "fetch_records") {
@@ -1190,6 +1287,8 @@ async function runWalk(
 				resumeState: {
 					resumeNodeId: node.nextNodeId,
 					resumeAt: resume.resumeAt,
+					// Parked-at timestamp; resume adds (now - checkpointAt) to pausedMs.
+					checkpointAt: Date.now(),
 					eventOldValue: env.scope.trigger?.event?.oldValue as
 						| string
 						| undefined,
@@ -2546,6 +2645,82 @@ async function resolveMemberUserIds(
 		.map((m) => m.userId);
 }
 
+/** Window in which an unread failure alert suppresses a duplicate (per admin). */
+const AUTOMATION_FAILURE_DEDUPE_MS = 60 * 60 * 1000; // 1 hour
+/** Cap on the error text surfaced in a failure notification. */
+const FAILURE_MESSAGE_CAP = 1000;
+
+/**
+ * Notify each org admin (in-app only) that a PRODUCTION automation run failed.
+ * Callers MUST gate on isProduction (mode !== "test" && !dryRun) — this helper
+ * does not re-check mode. Never fires for test/dry/skipped/cancelled runs.
+ *
+ * Light per-recipient dedupe: skip inserting if the admin already has an UNREAD
+ * automation_failed alert for this automation within the recent window, so a
+ * flapping automation can't spam admins. The automationId rides in entityId as
+ * the dedupe key (entityType is left unset — automation isn't an entity-union
+ * member — so clicks fall back to actionUrl).
+ *
+ * Never throws: a notification hiccup must not roll back the caller's terminal
+ * failure patch (Convex mutations are all-or-nothing).
+ */
+async function notifyAutomationFailure(
+	ctx: MutationCtx,
+	automation: AutomationDoc,
+	error: string,
+	// Reserved for future per-run deep-linking; the alert links to /automations.
+	executionId: Id<"workflowExecutions">
+): Promise<void> {
+	void executionId;
+	try {
+		const adminIds = await resolveMemberUserIds(ctx, automation.orgId, true);
+		if (adminIds.length === 0) return;
+
+		const body = ((error && error.trim()) || "The automation run failed.").slice(
+			0,
+			FAILURE_MESSAGE_CAP
+		);
+		const windowStart = Date.now() - AUTOMATION_FAILURE_DEDUPE_MS;
+		const automationIdStr = automation._id as string;
+
+		for (const userId of adminIds) {
+			const recentDup = await ctx.db
+				.query("notifications")
+				.withIndex("by_user_read", (q) =>
+					q.eq("userId", userId).eq("isRead", false)
+				)
+				.order("desc")
+				.filter((q) =>
+					q.and(
+						q.eq(q.field("notificationType"), "automation_failed"),
+						q.eq(q.field("entityId"), automationIdStr)
+					)
+				)
+				.first();
+			if (recentDup && recentDup._creationTime >= windowStart) continue;
+
+			await ctx.db.insert("notifications", {
+				orgId: automation.orgId,
+				userId,
+				notificationType: "automation_failed",
+				title: automation.name,
+				message: body,
+				entityId: automationIdStr,
+				actionUrl: "/automations",
+				isRead: false,
+				sentVia: "in_app",
+				sentAt: Date.now(),
+				priority: "high",
+			});
+		}
+	} catch (err) {
+		console.error(
+			`[AutomationExecutor] notifyAutomationFailure failed for automation ${automation._id}`,
+			err
+		);
+	}
+}
+
 /**
  * The user who "owns" the record in scope: a task's assignee, else the org
  * owner (no other entity carries an owner field).
@@ -2831,21 +3006,30 @@ type DryEnv = {
 	fetchOutputs: Record<string, FetchOutput>;
 	entries: ExecutedNode[];
 	truncated: boolean;
+	/** Wall-clock start of the node currently executing; stamped onto each entry. */
+	nodeStartedAt: number;
 };
 
 function pushDry(env: DryEnv, entry: ExecutedNode): void {
+	const stamped: ExecutedNode = {
+		...entry,
+		startedAt: entry.startedAt ?? env.nodeStartedAt,
+		completedAt: entry.completedAt ?? Date.now(),
+	};
 	if (env.entries.length >= MAX_EXECUTED_ENTRIES) {
 		if (!env.truncated) {
 			env.truncated = true;
 			env.entries.push({
-				nodeId: entry.nodeId,
+				nodeId: stamped.nodeId,
 				result: "skipped",
+				startedAt: stamped.startedAt,
+				completedAt: stamped.completedAt,
 				error: `Preview truncated after ${MAX_EXECUTED_ENTRIES} steps`,
 			});
 		}
 		return;
 	}
-	env.entries.push(entry);
+	env.entries.push(stamped);
 }
 
 /** Human label for a record, used in the run's triggerRecord + sample picker. */
@@ -3184,6 +3368,8 @@ async function dryRunWalk(
 
 		const node = env.nodesById.get(currentNodeId);
 		if (!node) return "chain_done";
+		// Mark the start of this node so pushDry can stamp its duration.
+		env.nodeStartedAt = Date.now();
 		const config = node.config;
 
 		if (config?.kind === "fetch_records") {
@@ -3333,6 +3519,7 @@ async function buildDryPlan(
 		fetchOutputs: {},
 		entries: [],
 		truncated: false,
+		nodeStartedAt: Date.now(),
 	};
 
 	if (automation.nodes.length > 0) {

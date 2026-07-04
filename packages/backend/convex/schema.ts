@@ -796,7 +796,10 @@ export default defineSchema({
 			v.literal("capability_degraded"),
 			v.literal("bank_account_changed"),
 			// Workflow-automation messages (send_notification / send_team_message).
-			v.literal("automation_message")
+			v.literal("automation_message"),
+			// Workflow-automation production failure alert (admins, in-app only —
+			// deliberately NOT in PUSHABLE_TYPES so failures don't push at 3am).
+			v.literal("automation_failed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -1335,6 +1338,9 @@ export default defineSchema({
 			v.literal("cancelled")
 		),
 		completedAt: v.optional(v.number()),
+		// Accumulated parked (delay) wall time, excluded from the derived
+		// activeMs latency metric. activeMs = (completedAt - triggeredAt) - pausedMs.
+		pausedMs: v.optional(v.number()),
 		// production = fired by a real trigger; test = editor test run
 		mode: v.optional(v.union(v.literal("production"), v.literal("test"))),
 		// Test runs are dry runs: actions are simulated, nothing is written.
@@ -1373,6 +1379,9 @@ export default defineSchema({
 			v.object({
 				resumeNodeId: v.string(),
 				resumeAt: v.number(),
+				// Wall-clock time the run was parked at this delay; on resume the
+				// elapsed (now - checkpointAt) is added to pausedMs.
+				checkpointAt: v.optional(v.number()),
 				eventOldValue: v.optional(v.string()),
 				eventNewValue: v.optional(v.string()),
 				objectType: v.optional(
@@ -1410,6 +1419,7 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_automation", ["automationId"])
 		.index("by_org_triggeredAt", ["orgId", "triggeredAt"])
+		.index("by_org_status_triggeredAt", ["orgId", "status", "triggeredAt"])
 		.index("by_triggeredAt", ["triggeredAt"]),
 
 	// Client Documents - files uploaded directly to client records
