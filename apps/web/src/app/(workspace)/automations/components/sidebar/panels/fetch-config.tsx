@@ -32,6 +32,7 @@ export function FetchConfigPanel({
 	nodeId,
 	trigger,
 	nodes,
+	formulas,
 	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
@@ -123,6 +124,7 @@ export function FetchConfigPanel({
 						nodes={workflowNodes}
 						trigger={trigger}
 						targetNodeId={nodeId}
+						formulas={formulas}
 					/>
 				</PanelSection>
 			</div>

@@ -21,6 +21,7 @@ import {
 	type AutomationTrigger,
 	type ConditionGroup,
 	type ConditionRule,
+	type FormulaResource,
 	type TriggerConfig,
 	type WorkflowNode,
 } from "../../../lib/node-types";
@@ -77,6 +78,7 @@ export interface FilterGroupsEditorProps {
 	nodes: WorkflowNode[];
 	trigger: TriggerConfig | AutomationTrigger | null;
 	targetNodeId: string;
+	formulas?: FormulaResource[];
 }
 
 export function FilterGroupsEditor({
@@ -88,6 +90,7 @@ export function FilterGroupsEditor({
 	nodes,
 	trigger,
 	targetNodeId,
+	formulas,
 }: FilterGroupsEditorProps) {
 	const fields = getFilterableFields(objectType);
 
@@ -266,6 +269,7 @@ export function FilterGroupsEditor({
 											nodes={nodes}
 											trigger={trigger}
 											targetNodeId={targetNodeId}
+											formulas={formulas}
 										/>
 									)}
 								</div>

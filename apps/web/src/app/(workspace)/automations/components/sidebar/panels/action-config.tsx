@@ -25,6 +25,7 @@ import {
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type CreateTaskAction,
+	type FormulaResource,
 	type SendNotificationAction,
 	type SendTeamMessageAction,
 	type TriggerConfig,
@@ -85,6 +86,7 @@ interface ActionFieldsProps<TAction> {
 	nodes: WorkflowNode[];
 	trigger: TriggerConfig | AutomationTrigger | null;
 	nodeId: string;
+	formulas?: FormulaResource[];
 	commit: (next: ActionNodeConfig) => void;
 }
 
@@ -95,6 +97,7 @@ function UpdateFieldFields({
 	nodes,
 	trigger,
 	nodeId,
+	formulas,
 	commit,
 }: ActionFieldsProps<UpdateFieldAction> & { triggerObjectType: AutomationObjectType }) {
 	// Inside a loop body, `target: "self"` (and its related FKs) resolve against
@@ -193,6 +196,7 @@ function UpdateFieldFields({
 						nodes={nodes}
 						trigger={trigger}
 						targetNodeId={nodeId}
+						formulas={formulas}
 					/>
 				</PanelField>
 			)}
@@ -206,6 +210,7 @@ function CreateTaskFields({
 	nodes,
 	trigger,
 	nodeId,
+	formulas,
 	commit,
 }: ActionFieldsProps<CreateTaskAction>) {
 	// api.users.listByOrg — the same org-member query the task sheet's
@@ -226,6 +231,7 @@ function CreateTaskFields({
 					nodes={nodes}
 					trigger={trigger}
 					targetNodeId={nodeId}
+					formulas={formulas}
 					placeholder="Task title"
 				/>
 			</PanelField>
@@ -238,6 +244,7 @@ function CreateTaskFields({
 					nodes={nodes}
 					trigger={trigger}
 					targetNodeId={nodeId}
+					formulas={formulas}
 					placeholder="Add more detail"
 				/>
 			</PanelField>
@@ -306,6 +313,7 @@ function SendNotificationFields({
 	nodes,
 	trigger,
 	nodeId,
+	formulas,
 	commit,
 }: ActionFieldsProps<SendNotificationAction>) {
 	const members = useQuery(api.users.listByOrg);
@@ -378,6 +386,7 @@ function SendNotificationFields({
 						nodes={nodes}
 						trigger={trigger}
 						targetNodeId={nodeId}
+						formulas={formulas}
 						onInsert={insert}
 					/>
 				</div>
@@ -392,6 +401,7 @@ function SendTeamMessageFields({
 	nodes,
 	trigger,
 	nodeId,
+	formulas,
 	commit,
 }: ActionFieldsProps<SendTeamMessageAction>) {
 	const members = useQuery(api.users.listByOrg);
@@ -467,6 +477,7 @@ function SendTeamMessageFields({
 						nodes={nodes}
 						trigger={trigger}
 						targetNodeId={nodeId}
+						formulas={formulas}
 						onInsert={insert}
 					/>
 				</div>
@@ -479,6 +490,7 @@ export function ActionConfigPanel({
 	nodeId,
 	trigger,
 	nodes,
+	formulas,
 	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
@@ -525,6 +537,7 @@ export function ActionConfigPanel({
 						nodes={workflowNodes}
 						trigger={trigger}
 						nodeId={nodeId}
+						formulas={formulas}
 						commit={commit}
 					/>
 				)}
@@ -535,6 +548,7 @@ export function ActionConfigPanel({
 						nodes={workflowNodes}
 						trigger={trigger}
 						nodeId={nodeId}
+						formulas={formulas}
 						commit={commit}
 					/>
 				)}
@@ -545,6 +559,7 @@ export function ActionConfigPanel({
 						nodes={workflowNodes}
 						trigger={trigger}
 						nodeId={nodeId}
+						formulas={formulas}
 						commit={commit}
 					/>
 				)}
@@ -555,6 +570,7 @@ export function ActionConfigPanel({
 						nodes={workflowNodes}
 						trigger={trigger}
 						nodeId={nodeId}
+						formulas={formulas}
 						commit={commit}
 					/>
 				)}

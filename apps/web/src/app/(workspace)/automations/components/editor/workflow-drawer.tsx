@@ -1,13 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PanelLeft, PanelLeftClose, Zap, Copy, Check } from "lucide-react";
+import { PanelLeft, PanelLeftClose, Zap, Copy, Check, Plus } from "lucide-react";
 import type { Node, Edge } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { NextStepTree } from "../sidebar/next-step-tree";
 import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
 import { getAvailableVariables, type VariableOption } from "../../lib/variables";
-import type { WorkflowNode, TriggerConfig } from "../../lib/node-types";
+import {
+	MAX_FORMULAS,
+	type FormulaResource,
+	type WorkflowNode,
+	type TriggerConfig,
+} from "../../lib/node-types";
+import { FormulaEditorModal, type SampleRecord } from "./formula-editor-modal";
 
 interface WorkflowDrawerProps {
 	trigger: TriggerConfig | null | undefined;
@@ -19,7 +25,18 @@ interface WorkflowDrawerProps {
 	selectedNodeId?: string;
 	open: boolean;
 	onToggle: () => void;
+	formulas: FormulaResource[];
+	onFormulasChange: (next: FormulaResource[]) => void;
+	sampleRecords: SampleRecord[];
 }
+
+const RETURN_TYPE_BADGE_LABELS: Record<FormulaResource["returnType"], string> = {
+	number: "NUM",
+	currency: "$",
+	text: "TXT",
+	date: "DATE",
+	boolean: "BOOL",
+};
 
 /** Order-preserving group of variable options by their `group` label. */
 function groupVariables(vars: VariableOption[]): [string, VariableOption[]][] {
@@ -41,22 +58,58 @@ export function WorkflowDrawer({
 	selectedNodeId,
 	open,
 	onToggle,
+	formulas,
+	onFormulasChange,
+	sampleRecords,
 }: WorkflowDrawerProps) {
 	const [copiedPath, setCopiedPath] = useState<string | null>(null);
+	// null = closed; { formula: null } = create; { formula: F } = edit F.
+	const [formulaModal, setFormulaModal] = useState<{ formula: FormulaResource | null } | null>(
+		null
+	);
+
+	const workflowNodes = useMemo(
+		() => nodes.filter((n): n is WorkflowNode => n.type !== "placeholder"),
+		[nodes]
+	);
 
 	const variableGroups = useMemo(() => {
 		if (!trigger) return [];
-		const workflowNodes = nodes.filter(
-			(n): n is WorkflowNode => n.type !== "placeholder"
-		);
 		return groupVariables(
-			getAvailableVariables(workflowNodes, trigger, selectedNodeId ?? "")
+			getAvailableVariables(workflowNodes, trigger, selectedNodeId ?? "", formulas)
 		);
-	}, [trigger, nodes, selectedNodeId]);
+	}, [trigger, workflowNodes, selectedNodeId, formulas]);
+
+	const handleSaveFormula = (next: FormulaResource) => {
+		const exists = formulas.some((f) => f.id === next.id);
+		onFormulasChange(
+			exists ? formulas.map((f) => (f.id === next.id ? next : f)) : [...formulas, next]
+		);
+	};
+
+	const handleDeleteFormula = (id: string) => {
+		onFormulasChange(formulas.filter((f) => f.id !== id));
+	};
+
+	const formulaModalElement = (
+		<FormulaEditorModal
+			open={formulaModal !== null}
+			onOpenChange={(next) => {
+				if (!next) setFormulaModal(null);
+			}}
+			formula={formulaModal?.formula ?? null}
+			formulas={formulas}
+			nodes={workflowNodes}
+			trigger={trigger ?? null}
+			sampleRecords={sampleRecords}
+			onSave={handleSaveFormula}
+			onDelete={handleDeleteFormula}
+		/>
+	);
 
 	if (!open) {
 		return (
-			<div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-3">
+			<div className="my-3 ml-3 flex w-10 shrink-0 flex-col items-center rounded-xl border border-border bg-card pt-2 shadow-sm">
 				<button
 					type="button"
 					onClick={onToggle}
@@ -66,6 +119,7 @@ export function WorkflowDrawer({
 				>
 					<PanelLeft className="h-4 w-4" />
 				</button>
+				{formulaModalElement}
 			</div>
 		);
 	}
@@ -78,7 +132,7 @@ export function WorkflowDrawer({
 	};
 
 	return (
-		<div className="flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar">
+		<div className="my-3 ml-3 flex w-[280px] shrink-0 flex-col overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
 			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
 				<span className="text-sm font-semibold">Workflow</span>
 				<button
@@ -166,6 +220,53 @@ export function WorkflowDrawer({
 					</div>
 				)}
 			</div>
+
+			{/* Formula resources */}
+			<div className="border-t border-border p-3">
+				<div className="mb-2 flex items-center justify-between">
+					<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+						Resources
+					</span>
+					<button
+						type="button"
+						onClick={() => setFormulaModal({ formula: null })}
+						disabled={formulas.length >= MAX_FORMULAS}
+						title={
+							formulas.length >= MAX_FORMULAS
+								? `Up to ${MAX_FORMULAS} formulas per automation.`
+								: "New formula"
+						}
+						className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+					>
+						<Plus className="h-3 w-3" />
+						New formula
+					</button>
+				</div>
+				{formulas.length === 0 ? (
+					<p className="text-sm text-muted-foreground">
+						No formulas yet — reusable expressions you can reference anywhere.
+					</p>
+				) : (
+					<div className="space-y-0.5">
+						{formulas.map((f) => (
+							<button
+								key={f.id}
+								type="button"
+								onClick={() => setFormulaModal({ formula: f })}
+								title={`Edit "${f.name}"`}
+								className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							>
+								<span className="flex-1 truncate text-sm">{f.name}</span>
+								<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+									{RETURN_TYPE_BADGE_LABELS[f.returnType]}
+								</span>
+							</button>
+						))}
+					</div>
+				)}
+			</div>
+
+			{formulaModalElement}
 		</div>
 	);
 }

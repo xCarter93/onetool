@@ -128,6 +128,54 @@ function effectiveTriggerType(
 	return explicit ?? "status_changed";
 }
 
+/** Built-in globals, resolved on every run — shared by both variable-listing functions. */
+const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
+	{ path: "workflow.now", label: "Current time", group: "Globals", fieldType: "date" },
+	{ path: "org.id", label: "Organization ID", group: "Globals", fieldType: "text" },
+	{ path: "org.name", label: "Organization name", group: "Globals", fieldType: "text" },
+	{ path: "user.id", label: "Your user ID", group: "Globals", fieldType: "text" },
+	{ path: "user.name", label: "Your name", group: "Globals", fieldType: "text" },
+	{ path: "user.email", label: "Your email", group: "Globals", fieldType: "text" },
+];
+
+/** trigger.record.<field> + trigger.event.oldValue/newValue — shared by both functions. */
+function triggerVariableOptions(
+	trigger: TriggerConfig | AutomationTrigger
+): VariableOption[] {
+	const options: VariableOption[] = [];
+	const triggerObjectType = trigger.objectType as AutomationObjectType | undefined;
+
+	if (triggerObjectType) {
+		for (const field of getFilterableFields(triggerObjectType)) {
+			options.push({
+				path: `trigger.record.${field.key}`,
+				label: `Trigger → ${field.label}`,
+				group: "Trigger",
+				fieldType: field.type,
+			});
+		}
+	}
+
+	if (effectiveTriggerType(trigger) === "status_changed") {
+		options.push(
+			{
+				path: "trigger.event.oldValue",
+				label: "Trigger → Previous status",
+				group: "Trigger",
+				fieldType: "select",
+			},
+			{
+				path: "trigger.event.newValue",
+				label: "Trigger → New status",
+				group: "Trigger",
+				fieldType: "select",
+			}
+		);
+	}
+
+	return options;
+}
+
 /**
  * Non-formula variable paths a formula (transitively) depends on. Returns null
  * on a parse error, a missing referenced formula, or a reference cycle — in
@@ -171,40 +219,8 @@ export function getAvailableVariables(
 	targetNodeId: string,
 	formulas?: FormulaResource[]
 ): VariableOption[] {
-	const options: VariableOption[] = [];
-	const triggerObjectType = trigger.objectType as
-		| AutomationObjectType
-		| undefined;
-
-	// 1. trigger.record.<field>
-	if (triggerObjectType) {
-		for (const field of getFilterableFields(triggerObjectType)) {
-			options.push({
-				path: `trigger.record.${field.key}`,
-				label: `Trigger → ${field.label}`,
-				group: "Trigger",
-				fieldType: field.type,
-			});
-		}
-	}
-
-	// 2. trigger.event.oldValue / newValue — status_changed only.
-	if (effectiveTriggerType(trigger) === "status_changed") {
-		options.push(
-			{
-				path: "trigger.event.oldValue",
-				label: "Trigger → Previous status",
-				group: "Trigger",
-				fieldType: "select",
-			},
-			{
-				path: "trigger.event.newValue",
-				label: "Trigger → New status",
-				group: "Trigger",
-				fieldType: "select",
-			}
-		);
-	}
+	// 1 + 2. trigger.record.<field>, trigger.event.oldValue/newValue.
+	const options: VariableOption[] = triggerVariableOptions(trigger);
 
 	const byId = new Map(nodes.map((n) => [n.id, n]));
 
@@ -272,24 +288,7 @@ export function getAvailableVariables(
 
 	// 5. Built-in globals — resolved on every run (user.* is empty on scheduled
 	// runs, but still offered). No graph dependency.
-	options.push(
-		{
-			path: "workflow.now",
-			label: "Current time",
-			group: "Globals",
-			fieldType: "date",
-		},
-		{ path: "org.id", label: "Organization ID", group: "Globals", fieldType: "text" },
-		{
-			path: "org.name",
-			label: "Organization name",
-			group: "Globals",
-			fieldType: "text",
-		},
-		{ path: "user.id", label: "Your user ID", group: "Globals", fieldType: "text" },
-		{ path: "user.name", label: "Your name", group: "Globals", fieldType: "text" },
-		{ path: "user.email", label: "Your email", group: "Globals", fieldType: "text" }
-	);
+	options.push(...GLOBAL_VARIABLE_OPTIONS);
 
 	// 6. formula.<id> — offered only where every path the formula (transitively)
 	// references is in scope at this node. Authors define formulas against the
@@ -301,6 +300,92 @@ export function getAvailableVariables(
 			const deps = formulaDependencyPaths(formula, formulasById, new Set());
 			if (!deps) continue;
 			if (![...deps].every((p) => availablePaths.has(p))) continue;
+			options.push({
+				path: `formula.${formula.id}`,
+				label: formula.name,
+				group: "Formulas",
+				fieldType: formula.returnType as FieldType,
+			});
+		}
+	}
+
+	return options;
+}
+
+/**
+ * The union of every variable a formula could ever reference, ignoring graph
+ * position (no reachability/scope filter). Used by the formula editor's
+ * reference pane: authors write against the full catalog, and
+ * getAvailableVariables enforces scope wherever the resulting formula.<id> is
+ * actually used.
+ */
+export function getAllVariableOptions(
+	nodes: WorkflowNode[],
+	trigger: TriggerConfig | AutomationTrigger,
+	formulas?: FormulaResource[]
+): VariableOption[] {
+	const options: VariableOption[] = triggerVariableOptions(trigger);
+
+	// Every fetch node's count, regardless of position.
+	for (const node of nodes) {
+		if (node.type !== "fetch_records") continue;
+		const config = node.config as FetchNodeConfig | undefined;
+		const objectLabel = config?.objectType
+			? OBJECT_TYPE_LABELS[config.objectType]
+			: "records";
+		options.push({
+			path: `node.${node.id}.count`,
+			label: `Found records (${objectLabel}) → Count`,
+			group: "Found records",
+			fieldType: "number",
+		});
+	}
+
+	// Every aggregate/adjust_time node's result, regardless of position.
+	for (const node of nodes) {
+		if (node.type !== "aggregate" && node.type !== "adjust_time") continue;
+		options.push({
+			path: `node.${node.id}.result`,
+			label:
+				node.type === "aggregate"
+					? "Aggregate result"
+					: "Adjusted time result",
+			group: "Computed",
+			fieldType: node.type === "aggregate" ? "number" : "date",
+		});
+	}
+
+	// Every loop's item fields + index, regardless of position.
+	for (const node of nodes) {
+		if (node.type !== "loop") continue;
+		const config = node.config as LoopNodeConfig | undefined;
+		if (!config?.sourceNodeId) continue;
+		const sourceNode = nodes.find((n) => n.id === config.sourceNodeId);
+		const sourceObjectType = (sourceNode?.config as FetchNodeConfig | undefined)
+			?.objectType;
+		if (!sourceObjectType) continue;
+
+		for (const field of getFilterableFields(sourceObjectType)) {
+			options.push({
+				path: `loop.${node.id}.item.${field.key}`,
+				label: `Loop item → ${field.label}`,
+				group: "Loop item",
+				fieldType: field.type,
+			});
+		}
+		options.push({
+			path: `loop.${node.id}.index`,
+			label: "Loop item → Index",
+			group: "Loop item",
+			fieldType: "number",
+		});
+	}
+
+	options.push(...GLOBAL_VARIABLE_OPTIONS);
+
+	// formula.<id> — every formula, unfiltered (this catalog has no scope to check).
+	if (formulas) {
+		for (const formula of formulas) {
 			options.push({
 				path: `formula.${formula.id}`,
 				label: formula.name,

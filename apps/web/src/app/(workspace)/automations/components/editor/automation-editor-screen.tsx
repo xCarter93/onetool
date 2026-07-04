@@ -212,7 +212,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 					onPublish={editor.handlePublish}
 				/>
 			)}
-			<div className="flex flex-1 overflow-hidden">
+			<div className="flex flex-1 overflow-hidden bg-muted/40">
 				<WorkflowDrawer
 					trigger={editor.trigger}
 					nodes={editor.nodes}
@@ -226,8 +226,11 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 					}
 					open={drawerOpen}
 					onToggle={() => setDrawerOpen((o) => !o)}
+					formulas={editor.formulas}
+					onFormulasChange={editor.onFormulasChange}
+					sampleRecords={editor.sampleRecords}
 				/>
-				<div className="relative flex-1">
+				<div className="relative flex-1 bg-background">
 					<AutomationFlow
 						nodes={flowNodes}
 						edges={flowEdges}
@@ -250,6 +253,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						mode={sidebar.mode}
 						trigger={editor.trigger}
 						nodes={editor.nodes}
+						formulas={editor.formulas}
 						onClose={sidebar.closeSidebar}
 						onTriggerTypeSelect={handleTriggerTypeSelect}
 						onStepTypeSelect={handleStepTypeSelect}

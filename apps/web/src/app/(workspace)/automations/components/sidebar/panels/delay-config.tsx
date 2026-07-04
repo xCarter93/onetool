@@ -136,6 +136,7 @@ export function DelayUntilConfig({
 	nodeId,
 	trigger,
 	nodes,
+	formulas,
 	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
@@ -183,6 +184,7 @@ export function DelayUntilConfig({
 							nodes={workflowNodes}
 							trigger={trigger}
 							targetNodeId={nodeId}
+							formulas={formulas}
 						/>
 					</PanelField>
 				</PanelSection>

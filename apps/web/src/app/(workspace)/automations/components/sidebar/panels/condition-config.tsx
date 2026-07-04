@@ -21,6 +21,7 @@ export function ConditionConfigPanel({
 	nodeId,
 	trigger,
 	nodes,
+	formulas,
 	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
@@ -68,6 +69,7 @@ export function ConditionConfigPanel({
 						nodes={workflowNodes}
 						trigger={trigger}
 						targetNodeId={nodeId}
+						formulas={formulas}
 					/>
 				</PanelSection>
 			</div>

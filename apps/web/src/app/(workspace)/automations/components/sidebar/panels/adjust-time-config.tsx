@@ -55,6 +55,7 @@ export function AdjustTimeConfigPanel({
 	nodeId,
 	trigger,
 	nodes,
+	formulas,
 	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
@@ -102,6 +103,7 @@ export function AdjustTimeConfigPanel({
 							nodes={workflowNodes}
 							trigger={trigger}
 							targetNodeId={nodeId}
+							formulas={formulas}
 						/>
 					</PanelField>
 

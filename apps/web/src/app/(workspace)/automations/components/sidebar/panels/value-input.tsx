@@ -28,6 +28,7 @@ import { getAvailableVariables, type VariableOption } from "../../../lib/variabl
 import type {
 	AutomationTrigger,
 	FieldType,
+	FormulaResource,
 	TriggerConfig,
 	ValueRef,
 	WorkflowNode,
@@ -37,11 +38,12 @@ import type {
 function useGroupedVariables(
 	nodes: WorkflowNode[],
 	trigger: TriggerConfig | AutomationTrigger | null,
-	targetNodeId: string
+	targetNodeId: string,
+	formulas?: FormulaResource[]
 ): { variables: VariableOption[]; groups: [string, VariableOption[]][] } {
 	const variables = useMemo(
-		() => (trigger ? getAvailableVariables(nodes, trigger, targetNodeId) : []),
-		[nodes, trigger, targetNodeId]
+		() => (trigger ? getAvailableVariables(nodes, trigger, targetNodeId, formulas) : []),
+		[nodes, trigger, targetNodeId, formulas]
 	);
 
 	const groups = useMemo(() => {
@@ -170,6 +172,7 @@ export interface ValueInputProps {
 	nodes: WorkflowNode[];
 	trigger: TriggerConfig | AutomationTrigger | null;
 	targetNodeId: string;
+	formulas?: FormulaResource[];
 	placeholder?: string;
 	className?: string;
 }
@@ -187,11 +190,12 @@ export function ValueInput({
 	nodes,
 	trigger,
 	targetNodeId,
+	formulas,
 	placeholder,
 	className,
 }: ValueInputProps) {
 	const [open, setOpen] = useState(false);
-	const { variables, groups } = useGroupedVariables(nodes, trigger, targetNodeId);
+	const { variables, groups } = useGroupedVariables(nodes, trigger, targetNodeId, formulas);
 
 	if (value?.kind === "var") {
 		const selected = variables.find((v) => v.path === value.path);
@@ -285,17 +289,19 @@ export function VariableInsertButton({
 	nodes,
 	trigger,
 	targetNodeId,
+	formulas,
 	onInsert,
 	className,
 }: {
 	nodes: WorkflowNode[];
 	trigger: TriggerConfig | AutomationTrigger | null;
 	targetNodeId: string;
+	formulas?: FormulaResource[];
 	onInsert: (path: string) => void;
 	className?: string;
 }) {
 	const [open, setOpen] = useState(false);
-	const { groups } = useGroupedVariables(nodes, trigger, targetNodeId);
+	const { groups } = useGroupedVariables(nodes, trigger, targetNodeId, formulas);
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>

@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+	getAllVariableOptions,
 	getAvailableVariables,
 	getScopeObjectType,
 	getUpstreamFetchNodes,
 } from "./variables";
 import type {
 	FetchNodeConfig,
+	FormulaResource,
 	LoopNodeConfig,
 	TriggerConfig,
 	WorkflowNode,
@@ -136,6 +138,84 @@ describe("getAvailableVariables", () => {
 
 		const atLoopItself = getAvailableVariables(nodes, statusChangedTrigger, "loop1");
 		expect(atLoopItself.some((o) => o.path.startsWith("loop.loop1."))).toBe(false);
+	});
+
+	it("offers a formula referencing only trigger fields anywhere, but not one referencing a loop item outside the loop", () => {
+		const fetch = fetchNode("f1", "project");
+		const loop = loopNode("loop1", "f1", { bodyStartNodeId: "body1" });
+		const bodyAction = actionNode("body1");
+		const afterAction = actionNode("after1");
+		const nodes = [fetch, loop, bodyAction, afterAction];
+
+		const formulas: FormulaResource[] = [
+			{
+				id: "triggerOnly",
+				name: "Trigger only",
+				returnType: "text",
+				expression: "{trigger.record.companyName}",
+			},
+			{
+				id: "loopItem",
+				name: "Loop item",
+				returnType: "text",
+				expression: "{loop.loop1.item.title}",
+			},
+		];
+
+		const outsideLoop = getAvailableVariables(
+			nodes,
+			statusChangedTrigger,
+			"after1",
+			formulas
+		);
+		expect(outsideLoop.some((o) => o.path === "formula.triggerOnly")).toBe(true);
+		expect(outsideLoop.some((o) => o.path === "formula.loopItem")).toBe(false);
+
+		const insideLoop = getAvailableVariables(
+			nodes,
+			statusChangedTrigger,
+			"body1",
+			formulas
+		);
+		expect(insideLoop.some((o) => o.path === "formula.triggerOnly")).toBe(true);
+		expect(insideLoop.some((o) => o.path === "formula.loopItem")).toBe(true);
+	});
+});
+
+describe("getAllVariableOptions", () => {
+	it("offers fetch/loop/computed variables regardless of graph position", () => {
+		const fetch = fetchNode("f1", "project", { nextNodeId: "loop1" });
+		const loop = loopNode("loop1", "f1", { bodyStartNodeId: "body1", nextNodeId: "after1" });
+		const bodyAction = actionNode("body1");
+		const afterAction = actionNode("after1");
+		const nodes = [fetch, loop, bodyAction, afterAction];
+
+		// Node.count is normally scoped to nodes downstream of the fetch; the
+		// union catalog offers it everywhere, including "before" the fetch node.
+		const options = getAllVariableOptions(nodes, statusChangedTrigger);
+		expect(options.some((o) => o.path === "node.f1.count")).toBe(true);
+		expect(options.some((o) => o.path === "loop.loop1.item.title")).toBe(true);
+		expect(options.some((o) => o.path === "loop.loop1.index")).toBe(true);
+		expect(options.some((o) => o.path === "trigger.record.companyName")).toBe(true);
+		expect(options.some((o) => o.path === "workflow.now")).toBe(true);
+	});
+
+	it("includes every formula unfiltered, unlike getAvailableVariables", () => {
+		const target = actionNode("a1");
+		const formulas: FormulaResource[] = [
+			{
+				id: "loopItem",
+				name: "Loop item",
+				returnType: "text",
+				expression: "{loop.someLoop.item.title}",
+			},
+		];
+
+		const scoped = getAvailableVariables([target], statusChangedTrigger, "a1", formulas);
+		expect(scoped.some((o) => o.path === "formula.loopItem")).toBe(false);
+
+		const all = getAllVariableOptions([target], statusChangedTrigger, formulas);
+		expect(all.some((o) => o.path === "formula.loopItem")).toBe(true);
 	});
 });
 
