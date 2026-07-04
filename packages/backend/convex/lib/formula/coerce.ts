@@ -90,6 +90,13 @@ export function guardStr(s: string): string {
 
 /* ------------------------- equality & comparison -------------------------- */
 
+/** An invalid date (NaN epoch) must error, not silently mis-compare. */
+function assertValidDate(d: Date): void {
+	if (Number.isNaN(d.getTime())) {
+		throw new FormulaError("TYPE", "Cannot compare an invalid date");
+	}
+}
+
 /** Value equality for == / !=. See module notes for the exact rules. */
 export function valuesEqual(a: Val, b: Val): boolean {
 	if (a === null || b === null) return a === null && b === null;
@@ -97,6 +104,8 @@ export function valuesEqual(a: Val, b: Val): boolean {
 	const aDate = a instanceof Date;
 	const bDate = b instanceof Date;
 	if (aDate || bDate) {
+		if (aDate) assertValidDate(a);
+		if (bDate) assertValidDate(b);
 		return aDate && bDate && a.getTime() === b.getTime();
 	}
 
@@ -128,6 +137,8 @@ export function compareValues(a: Val, b: Val): number {
 	const aDate = a instanceof Date;
 	const bDate = b instanceof Date;
 	if (aDate && bDate) {
+		assertValidDate(a);
+		assertValidDate(b);
 		return a.getTime() - b.getTime();
 	}
 	if (aDate || bDate) {
@@ -164,7 +175,11 @@ export function toDate(v: Val, label: string): Date {
 		if (!Number.isFinite(v)) {
 			throw new FormulaError("TYPE", `${label} is not a valid epoch timestamp`);
 		}
-		return new Date(v);
+		const date = new Date(v);
+		if (Number.isNaN(date.getTime())) {
+			throw new FormulaError("TYPE", `${label} is an invalid date`);
+		}
+		return date;
 	}
 	if (typeof v === "string") {
 		const ms = Date.parse(v);

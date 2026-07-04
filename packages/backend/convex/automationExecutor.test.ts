@@ -73,6 +73,39 @@ function conditionNode(
 	};
 }
 
+/** Condition comparing a record field against the trigger's event newValue. */
+function eventNewValueConditionNode(
+	id: string,
+	field: string,
+	opts: { nextNodeId?: string; elseNodeId?: string } = {}
+) {
+	return {
+		id,
+		type: "condition" as const,
+		config: {
+			kind: "condition" as const,
+			logic: "and" as const,
+			groups: [
+				{
+					logic: "and" as const,
+					rules: [
+						{
+							field,
+							operator: "equals" as const,
+							value: {
+								kind: "var" as const,
+								path: "trigger.event.newValue",
+							},
+						},
+					],
+				},
+			],
+		},
+		nextNodeId: opts.nextNodeId,
+		elseNodeId: opts.elseNodeId,
+	};
+}
+
 describe("automationExecutor (v2 engine)", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
@@ -1461,6 +1494,201 @@ describe("automationExecutor (v2 engine)", () => {
 			const nodeIds = executions[0].nodesExecuted.map((n) => n.nodeId);
 			expect(nodeIds).toContain("end-1");
 			expect(nodeIds).not.toContain("act-false");
+		});
+	});
+
+	describe("interactive runs — event threading + org isolation", () => {
+		// Fix 5: startManualRun must thread the trigger's simulated event values
+		// (status_changed from/to) so a condition on trigger.event.newValue
+		// resolves — matching startTestRun's behavior.
+		it("startManualRun threads status_changed event values so a condition on trigger.event.newValue proceeds", async () => {
+			const { asUser } = await setupUser();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Manual run event threading",
+				trigger: {
+					type: "status_changed",
+					objectType: "client",
+					fromStatus: "lead",
+					toStatus: "active",
+				},
+				nodes: [
+					eventNewValueConditionNode("cond-1", "status", {
+						nextNodeId: "act-1",
+					}),
+					updateFieldActionNode("act-1", "notes", "condition passed"),
+				],
+				// isActive publishes a snapshot (startManualRun requires one).
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+
+			await asUser.mutation(api.automationExecutor.startManualRun, {
+				automationId,
+				record: { entityType: "client", entityId: clientId },
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			// event.newValue ("active") === record.status → condition true → act-1
+			// runs. Without threading, event.newValue is undefined and the run
+			// silently skips the true branch.
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("condition passed");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			expect(executions[0].nodesExecuted.map((n) => n.nodeId)).toContain(
+				"act-1"
+			);
+		});
+
+		// Fix 6: executeAutomation and its siblings must reject rows from a
+		// different org than the caller passed.
+		it("startManualRun rejects an automation from another org", async () => {
+			const orgA = await setupUser({
+				clerkUserId: "user_a_manual_xorg",
+				clerkOrgId: "org_a_manual_xorg",
+			});
+			const orgB = await setupUser({
+				clerkUserId: "user_b_manual_xorg",
+				clerkOrgId: "org_b_manual_xorg",
+			});
+
+			const automationId = await orgA.asUser.mutation(api.automations.create, {
+				name: "Org A manual",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "org A")],
+				isActive: true,
+			});
+
+			await expect(
+				orgB.asUser.mutation(api.automationExecutor.startManualRun, {
+					automationId,
+				})
+			).rejects.toThrow(/Automation not found/);
+		});
+
+		it("startTestRun rejects an automation from another org", async () => {
+			const orgA = await setupUser({
+				clerkUserId: "user_a_test_xorg",
+				clerkOrgId: "org_a_test_xorg",
+			});
+			const orgB = await setupUser({
+				clerkUserId: "user_b_test_xorg",
+				clerkOrgId: "org_b_test_xorg",
+			});
+
+			const automationId = await orgA.asUser.mutation(api.automations.create, {
+				name: "Org A test",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [conditionNode("cond-1", "companyName", "equals", "Acme Co")],
+				isActive: true,
+			});
+
+			await expect(
+				orgB.asUser.mutation(api.automationExecutor.startTestRun, {
+					automationId,
+				})
+			).rejects.toThrow(/Automation not found/);
+		});
+
+		it("executeTestStep: a mismatched org cannot advance another org's test run", async () => {
+			const orgA = await setupUser({
+				clerkUserId: "user_a_step_xorg",
+				clerkOrgId: "org_a_step_xorg",
+			});
+			const orgB = await setupUser({
+				clerkUserId: "user_b_step_xorg",
+				clerkOrgId: "org_b_step_xorg",
+			});
+
+			const automationId = await orgA.asUser.mutation(api.automations.create, {
+				name: "Org A streaming test",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [conditionNode("cond-1", "companyName", "equals", "Acme Co")],
+				isActive: true,
+			});
+
+			const executionId = await orgA.asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId }
+			);
+
+			const before = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(before?.status).toBe("running");
+			expect(before?.testCursor).toBeDefined();
+
+			// Org B tries to advance org A's run: the guard makes it a no-op.
+			await t.mutation(internal.automationExecutor.executeTestStep, {
+				orgId: orgB.orgId,
+				executionId,
+			});
+
+			const after = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(after?.status).toBe("running");
+			expect(after?.nodesExecuted.length).toBe(before?.nodesExecuted.length);
+			expect(after?.testCursor).toBeDefined();
+		});
+
+		it("executeAutomation: a mismatched org cannot run another org's execution", async () => {
+			const orgA = await setupUser({
+				clerkUserId: "user_a_exec_xorg",
+				clerkOrgId: "org_a_exec_xorg",
+			});
+			const orgB = await setupUser({
+				clerkUserId: "user_b_exec_xorg",
+				clerkOrgId: "org_b_exec_xorg",
+			});
+
+			const automationId = await orgA.asUser.mutation(api.automations.create, {
+				name: "Org A automation",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "should not run")],
+				isActive: true,
+			});
+
+			const clientId = await orgA.asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId: orgA.orgId,
+					automationId,
+					triggeredBy: clientId,
+					triggeredAt: Date.now(),
+					status: "running",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+
+			// Org B drives execution of org A's run: the org guard makes it a no-op.
+			await t.mutation(internal.automationExecutor.executeAutomation, {
+				orgId: orgB.orgId,
+				executionId,
+				automationId,
+				objectType: "client",
+				objectId: clientId,
+				executionChain: [automationId],
+				recursionDepth: 1,
+			});
+
+			const execution = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(execution?.status).toBe("running");
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
 		});
 	});
 });

@@ -277,6 +277,14 @@ describe("number functions", () => {
 		expect(run("POWER(2, 10)")).toBe(1024);
 		expect(code(() => run("MOD(7, 0)"))).toBe("DIV_ZERO");
 	});
+
+	it("MOD uses floored (sign-of-divisor) semantics", () => {
+		// Result takes the sign of the divisor, not JS's truncated remainder.
+		expect(run("MOD(-7, 3)")).toBe(2); // JS % would give -1
+		expect(run("MOD(7, -3)")).toBe(-2);
+		expect(run("MOD(-7, -3)")).toBe(-1);
+		expect(run("MOD(7, 3)")).toBe(1);
+	});
 });
 
 /* ------------------------------ logic functions --------------------------- */
@@ -390,6 +398,31 @@ describe("date functions (deterministic)", () => {
 		// TODAY in NY is midnight of Jul 3 NY = 2026-07-03T04:00:00Z.
 		const todayNY = run("TODAY()", {}, { now: nearBoundary, tz: "America/New_York" }) as Date;
 		expect(todayNY.toISOString()).toBe("2026-07-03T04:00:00.000Z");
+	});
+});
+
+/* ------------------------ date range / invalid dates ---------------------- */
+
+describe("date range and invalid-date guards", () => {
+	it("out-of-range DATE throws a FormulaError, not a raw RangeError", () => {
+		expect(code(() => run("DATE(999999999, 1, 1)"))).toBe("TYPE");
+	});
+
+	it("out-of-range ADDDAYS throws a FormulaError, not a raw RangeError", () => {
+		expect(code(() => run("ADDDAYS(DATE(2026,7,4), 100000000000)"))).toBe("TYPE");
+	});
+
+	it("toDate rejects a numeric epoch outside the representable date range", () => {
+		expect(code(() => run("YEAR({d})", { d: 1e17 }))).toBe("TYPE");
+	});
+
+	it("comparison / equality against an invalid date errors (not silent)", () => {
+		const invalid = new Date(NaN);
+		// valuesEqual path
+		expect(code(() => run("{a} == {b}", { a: invalid, b: invalid }))).toBe("TYPE");
+		expect(code(() => run("{a} == 1", { a: invalid }))).toBe("TYPE");
+		// compareValues path
+		expect(code(() => run("{a} < {b}", { a: invalid, b: invalid }))).toBe("TYPE");
 	});
 });
 

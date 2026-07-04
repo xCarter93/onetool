@@ -52,6 +52,16 @@ function roundHalfUp(x: number, digits: number): number {
 	return scaled / factor;
 }
 
+const MAX_EPOCH_MS = 8.64e15; // ECMAScript maximum absolute time value.
+
+/** Reject a computed epoch that is NaN or outside the representable date range. */
+function guardEpoch(ms: number, label: string): number {
+	if (Number.isNaN(ms) || Math.abs(ms) > MAX_EPOCH_MS) {
+		throw new FormulaError("TYPE", `${label} is outside the supported date range`);
+	}
+	return ms;
+}
+
 const SPECS: FunctionSpec[] = [
 	/* ------------------------------- number -------------------------------- */
 	{
@@ -151,13 +161,15 @@ const SPECS: FunctionSpec[] = [
 			const a = toNumber(args[0], "MOD(a)");
 			const b = toNumber(args[1], "MOD(b)");
 			if (b === 0) throw new FormulaError("DIV_ZERO", "MOD by zero");
-			return guardNumber(a % b, "MOD");
+			// Floored modulo: result takes the sign of the divisor (spreadsheet
+			// semantics), e.g. MOD(-7, 3) === 2, not JS's -1.
+			return guardNumber(((a % b) + b) % b, "MOD");
 		},
 		doc: {
 			name: "MOD",
 			category: "number",
 			signature: "MOD(a, b)",
-			description: "Remainder of a divided by b.",
+			description: "Remainder of a divided by b (result takes the sign of the divisor).",
 			example: "MOD(7, 3) → 1",
 		},
 	},
@@ -408,6 +420,8 @@ const SPECS: FunctionSpec[] = [
 			const year = toInt(args[0], "DATE(year)");
 			const month = toInt(args[1], "DATE(month)");
 			const day = toInt(args[2], "DATE(day)");
+			// Bounds-check before the epoch can reach getZonedParts (raw RangeError guard).
+			guardEpoch(Date.UTC(year, month - 1, day, 0, 0, 0), "DATE(year, month, day)");
 			const epoch = zonedPartsToEpoch(
 				{ year, month, day, hour: 0, minute: 0, second: 0 },
 				ctx.tz
@@ -431,7 +445,13 @@ const SPECS: FunctionSpec[] = [
 			const date = toDate(args[0], "ADDDAYS(date)");
 			const n = toInt(args[1], "ADDDAYS(n)");
 			const p = getZonedParts(date.getTime(), ctx.tz);
-			const epoch = zonedPartsToEpoch({ ...p, day: p.day + n }, ctx.tz);
+			const parts = { ...p, day: p.day + n };
+			// Bounds-check before the epoch can reach getZonedParts (raw RangeError guard).
+			guardEpoch(
+				Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second),
+				"ADDDAYS result"
+			);
+			const epoch = zonedPartsToEpoch(parts, ctx.tz);
 			return new Date(epoch);
 		},
 		doc: {

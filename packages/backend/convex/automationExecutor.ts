@@ -113,6 +113,24 @@ function parseActorUserId(
 }
 
 /**
+ * Event values a status_changed trigger simulates: from/to statuses become
+ * trigger.event.oldValue/newValue so conditions on the transition resolve.
+ * Other trigger types carry no event values.
+ */
+function deriveTriggerEventValues(trigger: AutomationTrigger): {
+	eventOldValue: string | undefined;
+	eventNewValue: string | undefined;
+} {
+	if ("type" in trigger && trigger.type === "status_changed") {
+		return {
+			eventOldValue: trigger.fromStatus,
+			eventNewValue: trigger.toStatus,
+		};
+	}
+	return { eventOldValue: undefined, eventNewValue: undefined };
+}
+
+/**
  * Built-in globals available to every run: workflow.now (execution start),
  * org.id/name, and the triggering user. The user is parsed from triggeredBy
  * for manual/test runs and is empty for scheduled/event runs (no actor).
@@ -724,11 +742,13 @@ export const executeAutomation = systemMutation({
 		recursionDepth: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		// Org isolation: reject rows belonging to a different org than the
+		// caller passed (mirrors resumeExecution/executeTestStep).
 		const execution = await ctx.db.get(args.executionId);
-		if (!execution) return;
+		if (!execution || execution.orgId !== ctx.orgId) return;
 
 		const automation = await ctx.db.get(args.automationId);
-		if (!automation) {
+		if (!automation || automation.orgId !== ctx.orgId) {
 			await ctx.db.patch(args.executionId, {
 				status: "failed",
 				completedAt: Date.now(),
@@ -3326,6 +3346,9 @@ export const startTestRun = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		// No server-side premium check by design: the automations editor is behind
+		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
+		// interactive test runs stay ungated.
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation || automation.orgId !== ctx.orgId) {
 			throw new Error("Automation not found");
@@ -3378,12 +3401,7 @@ export const startTestRun = userMutation({
 			};
 		}
 
-		let eventOldValue: string | undefined;
-		let eventNewValue: string | undefined;
-		if ("type" in trigger && trigger.type === "status_changed") {
-			eventOldValue = trigger.fromStatus;
-			eventNewValue = trigger.toStatus;
-		}
+		const { eventOldValue, eventNewValue } = deriveTriggerEventValues(trigger);
 
 		const now = Date.now();
 		// The tester is always the actor for a dry run.
@@ -3524,6 +3542,9 @@ export const startManualRun = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		// No server-side premium check by design: the automations editor is behind
+		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
+		// interactive manual runs stay ungated.
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation || automation.orgId !== ctx.orgId) {
 			throw new Error("Automation not found");
@@ -3598,6 +3619,10 @@ export const startManualRun = userMutation({
 			recursionDepth: 0,
 		});
 
+		// Thread the trigger's simulated event values (status_changed from/to) so
+		// conditions on trigger.event.* resolve, matching startTestRun.
+		const { eventOldValue, eventNewValue } = deriveTriggerEventValues(trigger);
+
 		await ctx.scheduler.runAfter(
 			0,
 			internal.automationExecutor.executeAutomation,
@@ -3607,6 +3632,8 @@ export const startManualRun = userMutation({
 				automationId: args.automationId,
 				objectType: objType,
 				objectId,
+				eventOldValue,
+				eventNewValue,
 				executionChain: [args.automationId],
 				recursionDepth: 1,
 			}
