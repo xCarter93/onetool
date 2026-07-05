@@ -21,6 +21,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { MetricFrame } from "@/components/metric-frame";
 import {
 	ColumnDef,
 	ColumnFiltersState,
@@ -459,62 +460,37 @@ export default function QuotesPage() {
 				</button>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<FileText className="size-4" /> Total Quotes
-						</CardTitle>
-						<CardDescription>All quotes in your workspace</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								data.length
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Clock className="size-4" /> Pending Approval
-						</CardTitle>
-						<CardDescription>Quotes awaiting client response</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								totalPending
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<DollarSign className="size-4" /> Approved Value
-						</CardTitle>
-						<CardDescription>Total value of approved quotes</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								formatCurrency(totalValue)
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+			<MetricFrame
+				loading={isLoading}
+				metrics={[
+					{
+						label: "Total Quotes",
+						value: data.length,
+						hint: "All quotes in your workspace",
+						icon: <FileText />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "Pending Approval",
+						value: totalPending,
+						hint: "Quotes awaiting client response",
+						icon: <Clock />,
+						accent: "var(--color-amber-500)",
+					},
+					{
+						label: "Approved Value",
+						value: formatCurrency(totalValue),
+						hint: "Total value of approved quotes",
+						icon: <DollarSign />,
+						accent: "var(--color-emerald-500)",
+					},
+				]}
+				summary={
+					isLoading
+						? undefined
+						: `${data.filter((q) => q.status === "draft").length} in draft · ${data.filter((q) => q.status === "approved").length} approved · ${formatCurrency(data.reduce((sum, q) => sum + q.total, 0))} total value`
+				}
+			/>
 
 			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
 				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />

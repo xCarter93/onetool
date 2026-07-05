@@ -39,6 +39,8 @@ import {
 	Trash2,
 	TableProperties,
 	LayoutGrid,
+	CircleDashed,
+	CircleCheck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
@@ -48,6 +50,7 @@ import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import { MetricFrame } from "@/components/metric-frame";
 import {
 	KanbanBoard,
 	KanbanCard,
@@ -408,67 +411,41 @@ export default function ProjectsPage() {
 				/>
 			</div>
 
-			{isLoading ? (
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-					{[...Array(3)].map((_, i) => (
-						<StyledCard key={i}>
-							<StyledCardHeader>
-								<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-24" />
-								<div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-32" />
-							</StyledCardHeader>
-							<StyledCardContent>
-								<div className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-16" />
-							</StyledCardContent>
-						</StyledCard>
-					))}
-				</div>
-			) : (
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-					<StyledCard>
-						<StyledCardHeader>
-							<StyledCardTitle className="flex items-center gap-2 text-base">
-								<FolderKanban className="size-4" /> Total Projects
-							</StyledCardTitle>
-							<StyledCardDescription>
-								All projects in your workspace
-							</StyledCardDescription>
-						</StyledCardHeader>
-						<StyledCardContent>
-							<div className="text-3xl font-semibold">
-								{projectStats?.total || data.length}
-							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardHeader>
-							<StyledCardTitle className="text-base">
-								In Progress
-							</StyledCardTitle>
-							<StyledCardDescription>
-								Currently active projects
-							</StyledCardDescription>
-						</StyledCardHeader>
-						<StyledCardContent>
-							<div className="text-3xl font-semibold">
-								{projectStats?.byStatus["in-progress"] ||
-									data.filter((p) => p.status === "in-progress").length}
-							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardHeader>
-							<StyledCardTitle className="text-base">Completed</StyledCardTitle>
-							<StyledCardDescription>Finished projects</StyledCardDescription>
-						</StyledCardHeader>
-						<StyledCardContent>
-							<div className="text-3xl font-semibold">
-								{projectStats?.byStatus.completed ||
-									data.filter((p) => p.status === "completed").length}
-							</div>
-						</StyledCardContent>
-					</StyledCard>
-				</div>
-			)}
+			<MetricFrame
+				loading={isLoading}
+				metrics={[
+					{
+						label: "Total Projects",
+						value: projectStats?.total ?? data.length,
+						hint: "All projects in your workspace",
+						icon: <FolderKanban />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "In Progress",
+						value:
+							projectStats?.byStatus["in-progress"] ??
+							data.filter((p) => p.status === "in-progress").length,
+						hint: "Currently active projects",
+						icon: <CircleDashed />,
+						accent: "var(--color-amber-500)",
+					},
+					{
+						label: "Completed",
+						value:
+							projectStats?.byStatus.completed ??
+							data.filter((p) => p.status === "completed").length,
+						hint: "Finished projects",
+						icon: <CircleCheck />,
+						accent: "var(--color-emerald-500)",
+					},
+				]}
+				summary={
+					projectStats
+						? `${projectStats.byStatus.planned} planned · ${projectStats.upcomingDeadlines} due this week · ${projectStats.overdue} overdue`
+						: undefined
+				}
+			/>
 
 			<StyledCard>
 				<StyledCardHeader className="flex flex-col gap-3 border-b">

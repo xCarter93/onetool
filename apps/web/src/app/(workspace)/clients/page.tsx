@@ -36,6 +36,8 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Users,
+	UserCheck,
+	UserX,
 	ExternalLink,
 	Plus,
 	Trash2,
@@ -77,6 +79,7 @@ import {
 	KanbanProvider,
 } from "../projects/components/kanban";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { MetricFrame } from "@/components/metric-frame";
 import { cn } from "@/lib/utils";
 
 type Client = {
@@ -662,50 +665,37 @@ export default function ClientsPage() {
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Users className="size-4" /> Prospective Clients
-						</CardTitle>
-						<CardDescription>
-							Clients currently marked as prospects
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{clientsStats?.groupedByStatus?.prospective ?? 0}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="text-base">Active Clients</CardTitle>
-						<CardDescription>Clients engaged in work right now</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{clientsStats?.groupedByStatus?.active ?? 0}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="text-base">Inactive Clients</CardTitle>
-						<CardDescription>
-							Clients marked inactive or archived
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{clientsStats?.groupedByStatus?.inactive ?? 0}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+			<MetricFrame
+				loading={clientsStats === undefined}
+				metrics={[
+					{
+						label: "Prospective Clients",
+						value: clientsStats?.groupedByStatus?.prospective ?? 0,
+						hint: "Clients currently marked as prospects",
+						icon: <Users />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "Active Clients",
+						value: clientsStats?.groupedByStatus?.active ?? 0,
+						hint: "Clients engaged in work right now",
+						icon: <UserCheck />,
+						accent: "var(--color-emerald-500)",
+					},
+					{
+						label: "Inactive Clients",
+						value: clientsStats?.groupedByStatus?.inactive ?? 0,
+						hint: "Clients marked inactive or archived",
+						icon: <UserX />,
+						accent: "var(--color-zinc-400)",
+					},
+				]}
+				summary={
+					clientsStats
+						? `${clientsStats.total} total clients · ${clientsStats.recentlyCreated} added in the last 30 days`
+						: undefined
+				}
+			/>
 
 			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
 				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />

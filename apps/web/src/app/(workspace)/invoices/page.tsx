@@ -58,6 +58,7 @@ import {
 	KanbanProvider,
 } from "../projects/components/kanban";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { MetricFrame } from "@/components/metric-frame";
 import { cn } from "@/lib/utils";
 
 type InvoiceWithClient = Doc<"invoices"> & {
@@ -482,62 +483,37 @@ export default function InvoicesPage() {
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Receipt className="size-4" /> Total Invoices
-						</CardTitle>
-						<CardDescription>All invoices in your workspace</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								data.length
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Clock className="size-4" /> Open Invoices
-						</CardTitle>
-						<CardDescription>Unpaid and draft invoices</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								totalOpen
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<CheckCircle className="size-4" /> Paid Value
-						</CardTitle>
-						<CardDescription>Total value of paid invoices</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								formatCurrency(totalPaidValue)
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+			<MetricFrame
+				loading={isLoading}
+				metrics={[
+					{
+						label: "Total Invoices",
+						value: data.length,
+						hint: "All invoices in your workspace",
+						icon: <Receipt />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "Open Invoices",
+						value: totalOpen,
+						hint: "Unpaid and draft invoices",
+						icon: <Clock />,
+						accent: "var(--color-amber-500)",
+					},
+					{
+						label: "Paid Value",
+						value: formatCurrency(totalPaidValue),
+						hint: "Total value of paid invoices",
+						icon: <CheckCircle />,
+						accent: "var(--color-emerald-500)",
+					},
+				]}
+				summary={
+					isLoading
+						? undefined
+						: `${data.filter((inv) => inv.status === "sent" && inv.dueDate < Date.now()).length} overdue · ${formatCurrency(data.filter((inv) => inv.status === "draft" || inv.status === "sent").reduce((sum, inv) => sum + inv.total, 0))} outstanding`
+				}
+			/>
 
 			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
 				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
