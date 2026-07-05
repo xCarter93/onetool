@@ -15,7 +15,12 @@ import type { Node, Edge } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+	StyledTabs,
+	StyledTabsContent,
+	StyledTabsList,
+	StyledTabsTrigger,
+} from "@/components/ui/styled";
 import { NextStepTree } from "../sidebar/next-step-tree";
 import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
 import { getAvailableVariables, type VariableOption } from "../../lib/variables";
@@ -307,23 +312,23 @@ export function WorkflowDrawer({
 				</Button>
 			</div>
 
-			<Tabs
+			<StyledTabs
 				defaultValue="resources"
 				className="flex min-h-0 flex-1 flex-col gap-0"
 			>
 				<div className="border-b border-border px-3 py-2">
-					<TabsList className="w-full">
-						<TabsTrigger value="resources">Resources</TabsTrigger>
-						<TabsTrigger value="debug">
+					<StyledTabsList className="overflow-x-auto">
+						<StyledTabsTrigger value="resources">Resources</StyledTabsTrigger>
+						<StyledTabsTrigger value="debug">
 							<FlaskConical className="size-3.5" />
 							Debug
-						</TabsTrigger>
-					</TabsList>
+						</StyledTabsTrigger>
+					</StyledTabsList>
 				</div>
 
-				<TabsContent
+				<StyledTabsContent
 					value="resources"
-					className="min-h-0 flex-1 overflow-y-auto"
+					className="mt-0 min-h-0 flex-1 overflow-y-auto"
 				>
 					{/* Outline */}
 					<div className="border-b border-border p-3">
@@ -440,11 +445,11 @@ export function WorkflowDrawer({
 							</div>
 						)}
 					</div>
-				</TabsContent>
+				</StyledTabsContent>
 
-				<TabsContent
+				<StyledTabsContent
 					value="debug"
-					className="min-h-0 flex-1 overflow-y-auto"
+					className="mt-0 min-h-0 flex-1 overflow-y-auto"
 				>
 					<DebugPanel
 						objectType={trigger?.objectType}
@@ -459,8 +464,8 @@ export function WorkflowDrawer({
 						rfNodes={rfNodes}
 						onNavigateToNode={onNavigateToNode}
 					/>
-				</TabsContent>
-			</Tabs>
+				</StyledTabsContent>
+			</StyledTabs>
 
 			{formulaModalElement}
 			{deleteConfirmElement}

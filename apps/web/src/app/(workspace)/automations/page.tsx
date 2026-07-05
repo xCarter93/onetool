@@ -4,7 +4,12 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Lock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+	StyledTabs,
+	StyledTabsList,
+	StyledTabsTrigger,
+	StyledTabsContent,
+} from "@/components/ui/styled";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
@@ -116,18 +121,18 @@ function AutomationsContent() {
 				<RecentFailuresTimeline className="h-full lg:col-span-1" />
 			</div>
 
-			<Tabs defaultValue="automations" className="w-full">
-				<TabsList>
-					<TabsTrigger value="automations">Automations</TabsTrigger>
-					<TabsTrigger value="runs">Runs</TabsTrigger>
-				</TabsList>
-				<TabsContent value="automations" className="mt-4">
+			<StyledTabs defaultValue="automations" className="w-full">
+				<StyledTabsList className="overflow-x-auto">
+					<StyledTabsTrigger value="automations">Automations</StyledTabsTrigger>
+					<StyledTabsTrigger value="runs">Runs</StyledTabsTrigger>
+				</StyledTabsList>
+				<StyledTabsContent value="automations" className="mt-4">
 					<AutomationsTable />
-				</TabsContent>
-				<TabsContent value="runs" className="mt-4">
+				</StyledTabsContent>
+				<StyledTabsContent value="runs" className="mt-4">
 					<RunsTable />
-				</TabsContent>
-			</Tabs>
+				</StyledTabsContent>
+			</StyledTabs>
 		</div>
 	);
 }

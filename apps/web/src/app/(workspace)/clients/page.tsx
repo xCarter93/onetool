@@ -21,7 +21,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
 	ColumnDef,
 	ColumnFiltersState,
@@ -53,7 +52,13 @@ import { useState } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledBadge } from "@/components/ui/styled";
+import {
+	StyledBadge,
+	StyledTabs,
+	StyledTabsList,
+	StyledTabsTrigger,
+	StyledTabsContent,
+} from "@/components/ui/styled";
 
 import {
 	useCanPerformAction,
@@ -848,18 +853,18 @@ export default function ClientsPage() {
 							</KanbanProvider>
 						</div>
 					) : (
-						<Tabs
+						<StyledTabs
 							value={activeTab}
 							onValueChange={setActiveTab}
 							className="w-full"
 						>
 							<div className="px-6 pt-4">
-								<TabsList className="grid w-full grid-cols-2">
-									<TabsTrigger value="active">Active Clients</TabsTrigger>
-									<TabsTrigger value="archived">Archived Clients</TabsTrigger>
-								</TabsList>
+								<StyledTabsList className="overflow-x-auto">
+									<StyledTabsTrigger value="active">Active Clients</StyledTabsTrigger>
+									<StyledTabsTrigger value="archived">Archived Clients</StyledTabsTrigger>
+								</StyledTabsList>
 							</div>
-							<TabsContent value="active" className="mt-0">
+							<StyledTabsContent value="active" className="mt-0">
 								{isActiveEmpty ? (
 									<div className="px-6 py-12 text-center">
 										<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
@@ -987,8 +992,8 @@ export default function ClientsPage() {
 										</div>
 									</div>
 								)}
-							</TabsContent>
-							<TabsContent value="archived" className="mt-0">
+							</StyledTabsContent>
+							<StyledTabsContent value="archived" className="mt-0">
 								{isArchivedEmpty ? (
 									<div className="px-6 py-12 text-center">
 										<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
@@ -1084,8 +1089,8 @@ export default function ClientsPage() {
 										</div>
 									</div>
 								)}
-							</TabsContent>
-						</Tabs>
+							</StyledTabsContent>
+						</StyledTabs>
 					)}
 				</CardContent>
 			</Card>
