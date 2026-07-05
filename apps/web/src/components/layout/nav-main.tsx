@@ -69,6 +69,45 @@ type NavGroup = {
 	items: NavItem[];
 };
 
+// Shared row styling for every "Create new" quick action so hover and keyboard
+// focus highlight identically. `focus:bg-muted/60` on the wrapping menu item
+// matches the hover color for the item Radix focuses on pointer-over.
+const quickActionRowClass =
+	"group/qa-item flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted/60";
+
+function QuickActionContent({
+	icon: Icon,
+	iconClassName,
+	title,
+	description,
+}: {
+	icon: LucideIcon;
+	iconClassName: string;
+	title: string;
+	description: string;
+}) {
+	return (
+		<>
+			<span
+				className={cn(
+					"flex size-9 shrink-0 items-center justify-center rounded-lg",
+					iconClassName
+				)}
+			>
+				<Icon className="size-[18px]" />
+			</span>
+			<span className="min-w-0">
+				<span className="block text-sm font-medium text-foreground">
+					{title}
+				</span>
+				<span className="block text-xs text-muted-foreground">
+					{description}
+				</span>
+			</span>
+		</>
+	);
+}
+
 export function NavMain({
 	groups,
 	showQuickActions = true,
@@ -218,40 +257,53 @@ export function NavMain({
 										Create new
 									</p>
 									<div className="flex flex-col gap-0.5">
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<DropdownMenuItem
-													className="p-0 focus:bg-transparent"
-													onSelect={(e) => {
-														e.preventDefault();
-														handleNewClientClick(e as unknown as React.MouseEvent);
-													}}
-												>
-													<button
-														type="button"
-														disabled={!canCreateClient}
-														className={cn(
-															"group/qa-item flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors",
-															canCreateClient
-																? "cursor-pointer hover:bg-muted/60"
-																: "cursor-not-allowed opacity-50"
-														)}
+										{/* New Client is gated by plan limits. When allowed it's a
+										    plain navigation row like the others; when gated it becomes
+										    a disabled button hosting the upgrade tooltip — a disabled
+										    control can't act as the menu item / tooltip trigger, so it
+										    needs the extra wrapper. */}
+										{canCreateClient ? (
+											<DropdownMenuItem
+												asChild
+												className="p-0 focus:bg-muted/60"
+												onSelect={() => setOpenQuickActions(false)}
+											>
+												<Link href="/clients/new" className={quickActionRowClass}>
+													<QuickActionContent
+														icon={UserPlus}
+														iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+														title="New Client"
+														description="Add a new client to your workspace"
+													/>
+												</Link>
+											</DropdownMenuItem>
+										) : (
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<DropdownMenuItem
+														className="p-0 focus:bg-transparent"
+														onSelect={(e) => {
+															e.preventDefault();
+															handleNewClientClick(e as unknown as React.MouseEvent);
+														}}
 													>
-														<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
-															<UserPlus className="size-[18px]" />
-														</span>
-														<span className="min-w-0">
-															<span className="block text-sm font-medium text-foreground">
-																New Client
-															</span>
-															<span className="block text-xs text-muted-foreground">
-																Add a new client to your workspace
-															</span>
-														</span>
-													</button>
-												</DropdownMenuItem>
-											</TooltipTrigger>
-											{!canCreateClient && (
+														<button
+															type="button"
+															disabled
+															className={cn(
+																quickActionRowClass,
+																"cursor-not-allowed opacity-50 hover:bg-transparent"
+															)}
+														>
+															<QuickActionContent
+																icon={UserPlus}
+																iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+																title="New Client"
+																description="Add a new client to your workspace"
+															/>
+														</button>
+													</DropdownMenuItem>
+												</TooltipTrigger>
 												<TooltipContent>
 													<div className="space-y-1">
 														<p className="font-semibold">Upgrade Required</p>
@@ -265,52 +317,39 @@ export function NavMain({
 														)}
 													</div>
 												</TooltipContent>
-											)}
-										</Tooltip>
+											</Tooltip>
+										)}
 										<DropdownMenuItem
 											asChild
-											className="p-0 focus:bg-transparent"
+											className="p-0 focus:bg-muted/60"
 											onSelect={() => setOpenQuickActions(false)}
 										>
-											<Link
-												href="/projects/new"
-												className="group/qa-item flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/60"
-											>
-												<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400">
-													<FolderPlus className="size-[18px]" />
-												</span>
-												<span className="min-w-0">
-													<span className="block text-sm font-medium text-foreground">
-														New Project
-													</span>
-													<span className="block text-xs text-muted-foreground">
-														Start a new project for a client
-													</span>
-												</span>
+											<Link href="/projects/new" className={quickActionRowClass}>
+												<QuickActionContent
+													icon={FolderPlus}
+													iconClassName="bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
+													title="New Project"
+													description="Start a new project for a client"
+												/>
 											</Link>
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											asChild
-											className="p-0 focus:bg-transparent"
+											className="p-0 focus:bg-muted/60"
 											onSelect={() => setOpenQuickActions(false)}
 										>
-											<Link
-												href="/quotes/new"
-												className="group/qa-item flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/60"
-											>
-												<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
-													<FilePlus className="size-[18px]" />
-												</span>
-												<span className="min-w-0">
-													<span className="block text-sm font-medium text-foreground">New Quote</span>
-													<span className="block text-xs text-muted-foreground">
-														Create a quote for a project
-													</span>
-												</span>
+											<Link href="/quotes/new" className={quickActionRowClass}>
+												<QuickActionContent
+													icon={FilePlus}
+													iconClassName="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+													title="New Quote"
+													description="Create a quote for a project"
+												/>
 											</Link>
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											className="p-0 focus:bg-transparent"
+											asChild
+											className="p-0 focus:bg-muted/60"
 											onSelect={(e) => {
 												e.preventDefault();
 												setTaskSheetOpen(true);
@@ -319,17 +358,14 @@ export function NavMain({
 										>
 											<button
 												type="button"
-												className="group/qa-item flex w-full cursor-pointer items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted/60"
+												className={cn(quickActionRowClass, "cursor-pointer")}
 											>
-												<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400">
-													<CheckSquare className="size-[18px]" />
-												</span>
-												<span className="min-w-0">
-													<span className="block text-sm font-medium text-foreground">New Task</span>
-													<span className="block text-xs text-muted-foreground">
-														Add a task to your schedule
-													</span>
-												</span>
+												<QuickActionContent
+													icon={CheckSquare}
+													iconClassName="bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+													title="New Task"
+													description="Add a task to your schedule"
+												/>
 											</button>
 										</DropdownMenuItem>
 									</div>
