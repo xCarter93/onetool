@@ -24,7 +24,6 @@ import {
  */
 async function fetchEntityOrThrow<T extends TableNames>(
 	ctx: MutationCtx,
-	table: T,
 	id: Id<T>,
 	entityName: string
 ): Promise<Doc<T>> {
@@ -207,11 +206,10 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 	handler: async (ctx, args): Promise<void> => {
 		const document = await fetchEntityOrThrow(
 			ctx,
-			"documents",
 			args.documentId,
 			"Document"
 		);
-		const quote = await fetchEntityOrThrow(ctx, "quotes", args.quoteId, "Quote");
+		const quote = await fetchEntityOrThrow(ctx, args.quoteId, "Quote");
 
 		// Defensive: the caller derives both IDs together, but reject a mismatch
 		// so a future caller can't cross-wire latestDocumentId between quotes/orgs.
@@ -443,7 +441,7 @@ export const updateDocumentWithSignedPdf = internalMutation({
 		signedStorageId: v.id("_storage"),
 	},
 	handler: async (ctx, args) => {
-		await fetchEntityOrThrow(ctx, "documents", args.documentId, "Document");
+		await fetchEntityOrThrow(ctx, args.documentId, "Document");
 
 		await ctx.db.patch(args.documentId, {
 			signedStorageId: args.signedStorageId,
