@@ -61,65 +61,6 @@ const BOLDSIGN_TIMESTAMP_FIELDS: Record<BoldSignStatus, string> = {
 };
 
 // ============================================================================
-// Internal Mutations
-// ============================================================================
-
-/**
- * Update document with BoldSign document ID and initial status.
- * Called after successfully sending a document to BoldSign for signature.
- */
-export const updateDocumentWithBoldSign = internalMutation({
-	args: {
-		documentId: v.id("documents"),
-		boldsignDocumentId: v.string(),
-		recipients: v.array(
-			v.object({
-				id: v.optional(v.string()),
-				name: v.string(),
-				email: v.string(),
-				signerType: v.union(v.literal("Signer"), v.literal("CC")),
-				signerOrder: v.optional(v.number()),
-			})
-		),
-		viewUrl: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		await fetchEntityOrThrow(ctx, "documents", args.documentId, "Document");
-
-		await ctx.db.patch(args.documentId, {
-			boldsignDocumentId: args.boldsignDocumentId,
-			boldsign: {
-				documentId: args.boldsignDocumentId,
-				status: "Sent",
-				sentTo: args.recipients,
-				sentAt: Date.now(),
-				viewUrl: args.viewUrl,
-			},
-		});
-	},
-});
-
-/**
- * Update quote with the latest document ID and mark as sent.
- * Called after a quote document is sent for signature.
- */
-export const updateQuoteLatestDocument = internalMutation({
-	args: {
-		quoteId: v.id("quotes"),
-		documentId: v.id("documents"),
-	},
-	handler: async (ctx, args) => {
-		await fetchEntityOrThrow(ctx, "quotes", args.quoteId, "Quote");
-
-		await ctx.db.patch(args.quoteId, {
-			latestDocumentId: args.documentId,
-			status: "sent",
-			sentAt: Date.now(),
-		});
-	},
-});
-
-// ============================================================================
 // Embedded Sending (in-app BoldSign editor)
 // ============================================================================
 
