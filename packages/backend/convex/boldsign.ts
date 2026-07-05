@@ -375,8 +375,10 @@ export const handleWebhook = internalMutation({
 			[timestampField]: timestamp,
 		};
 
-		// Track e-signature usage for plan limits on Sent event
-		if (typedEventType === "Sent") {
+		// Count usage only on the genuine Draft→Sent transition. BoldSign
+		// redelivers webhooks (at-least-once), so guarding on the current status
+		// stops a replayed "Sent" from double-counting and wrongly tripping the cap.
+		if (typedEventType === "Sent" && document.boldsign.status === "Draft") {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.usage.incrementEsignatureCount,
@@ -481,7 +483,7 @@ async function handleQuoteStatusUpdate(
 			break;
 
 		default:
-			// Other events (Sent, Viewed, Signed) don't update quote status
+			// Viewed, Signed, and Revoked don't change quote status
 			return;
 	}
 

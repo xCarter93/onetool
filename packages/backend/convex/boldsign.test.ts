@@ -532,6 +532,37 @@ describe("BoldSign embedded sending", () => {
 			expect(quote?.sentAt).toBeGreaterThan(0);
 		});
 
+		it("counts usage once when a Sent webhook is redelivered (replay)", async () => {
+			const { orgId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId, {
+					status: "draft",
+				});
+				await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_wh_replay",
+					status: "Draft",
+					sentTo: [],
+				});
+				return { orgId: org.orgId };
+			});
+
+			// BoldSign delivers at-least-once; the same Sent event arrives twice.
+			await t.mutation(internal.boldsign.handleWebhook, {
+				boldsignDocumentId: "bs_wh_replay",
+				eventType: "Sent",
+			});
+			await t.mutation(internal.boldsign.handleWebhook, {
+				boldsignDocumentId: "bs_wh_replay",
+				eventType: "Sent",
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const org = await t.run((ctx) => ctx.db.get(orgId));
+			// Only the genuine Draft→Sent transition counts; the replay is ignored.
+			expect(org?.usageTracking?.esignaturesSentThisMonth).toBe(1);
+		});
+
 		it("marks the document Completed and transitions the quote to approved on a Completed event", async () => {
 			const { quoteId, documentId } = await t.run(async (ctx) => {
 				const org = await createTestOrg(ctx);
