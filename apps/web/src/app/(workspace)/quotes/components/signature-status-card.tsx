@@ -7,6 +7,7 @@ import Accordion from "@/components/ui/accordion";
 import { SignatureProgressBar } from "@/app/(workspace)/quotes/components/signature-progress-bar";
 
 type SignatureStatus =
+	| "Draft"
 	| "Sent"
 	| "Viewed"
 	| "Signed"
@@ -91,7 +92,7 @@ export function SignatureStatusCard({
 								);
 
 								return {
-									title: `Version ${doc.version} - ${doc.boldsign.status} - ${formattedDate}`,
+									title: `Version ${doc.version} - ${doc.boldsign.status === "Draft" ? "Preparing" : doc.boldsign.status} - ${formattedDate}`,
 									content: (
 										<div className="space-y-4">
 											{/* Status badges at top of content */}
@@ -100,7 +101,9 @@ export function SignatureStatusCard({
 													v{doc.version}
 												</Badge>
 												<Badge variant={statusVariant} className="text-xs">
-													{doc.boldsign.status}
+													{doc.boldsign.status === "Draft"
+														? "Preparing"
+														: doc.boldsign.status}
 												</Badge>
 												<span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
 													Last updated: {formattedDate}
