@@ -608,6 +608,7 @@ export default defineSchema({
 			v.object({
 				documentId: v.string(), // BoldSign document ID
 				status: v.union(
+					v.literal("Draft"), // Embedded request created, awaiting in-editor Send
 					v.literal("Sent"),
 					v.literal("Viewed"),
 					v.literal("Signed"),
@@ -632,7 +633,8 @@ export default defineSchema({
 				declinedAt: v.optional(v.number()),
 				revokedAt: v.optional(v.number()),
 				expiredAt: v.optional(v.number()),
-				viewUrl: v.optional(v.string()), // Link to view document in BoldSign
+				viewUrl: v.optional(v.string()), // Embedded sendUrl (Draft) or view link
+				sendUrlExpiresAt: v.optional(v.number()), // Expiry for idempotent Draft reuse
 			})
 		),
 	})

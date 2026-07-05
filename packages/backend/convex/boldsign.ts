@@ -1,8 +1,18 @@
 import { v } from "convex/values";
-import { internalMutation, MutationCtx } from "./_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	MutationCtx,
+} from "./_generated/server";
 import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { internal, api } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
+import { getCurrentUserOrgId } from "./lib/auth";
+import { hasPremiumAccess } from "./lib/permissions";
+import {
+	computeEsignaturesSentThisMonth,
+	FREE_ESIGNATURES_PER_MONTH,
+} from "./usage";
 
 // ============================================================================
 // Internal Helper Functions
@@ -105,6 +115,186 @@ export const updateQuoteLatestDocument = internalMutation({
 			latestDocumentId: args.documentId,
 			status: "sent",
 			sentAt: Date.now(),
+		});
+	},
+});
+
+// ============================================================================
+// Embedded Sending (in-app BoldSign editor)
+// ============================================================================
+
+/**
+ * A signer derived server-side from OneTool quote data. The user can still
+ * edit/add/remove signers inside the BoldSign editor before sending.
+ */
+type DerivedSigner = { name: string; email: string; signerOrder: number };
+
+type EmbeddedRequestContext = {
+	quoteTitle: string;
+	message: string;
+	filename: string;
+	pdfStorageId: Id<"_storage">;
+	documentId: Id<"documents">;
+	signers: DerivedSigner[];
+	enableSigningOrder: boolean;
+	usage: { used: number; limit: number | null; overCap: boolean };
+	// A non-expired embedded Draft to reuse instead of minting a new one.
+	existing: { sendUrl: string; boldsignDocumentId: string } | null;
+};
+
+/**
+ * Gather everything the embedded-request action needs, org-scoped to the
+ * caller. Resolves the latest quote PDF, derives default signers (client
+ * primary contact + optional org countersigner, mirroring the retired send
+ * drawer), computes the monthly e-sig cap verdict, and surfaces a reusable
+ * non-expired Draft for idempotency. Runs in query context (no BoldSign call).
+ */
+export const getEmbeddedRequestContext = internalQuery({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, args): Promise<EmbeddedRequestContext> => {
+		const orgId = await getCurrentUserOrgId(ctx);
+
+		const quote = await ctx.db.get(args.quoteId);
+		if (!quote || quote.orgId !== orgId) {
+			throw new Error("Quote does not belong to your organization");
+		}
+
+		// Latest quote PDF (highest version) — mirrors documents.getLatest.
+		const documents = await ctx.db
+			.query("documents")
+			.withIndex("by_document", (q) =>
+				q.eq("documentType", "quote").eq("documentId", quote._id)
+			)
+			.collect();
+		const orgDocuments = documents.filter((doc) => doc.orgId === orgId);
+		if (orgDocuments.length === 0) {
+			throw new Error("No PDF has been generated for this quote yet");
+		}
+		const latest = orgDocuments.reduce((a, b) => {
+			if (a.version && b.version) return b.version > a.version ? b : a;
+			return b.generatedAt > a.generatedAt ? b : a;
+		});
+
+		// Reuse a non-expired embedded Draft (idempotent /sign visits).
+		const now = Date.now();
+		const existing =
+			latest.boldsign?.status === "Draft" &&
+			latest.boldsign.viewUrl &&
+			latest.boldsign.sendUrlExpiresAt &&
+			latest.boldsign.sendUrlExpiresAt > now
+				? {
+						sendUrl: latest.boldsign.viewUrl,
+						boldsignDocumentId: latest.boldsign.documentId,
+					}
+				: null;
+
+		// Derive default signers (mirrors send-email-sheet.tsx recipient build).
+		const signers: DerivedSigner[] = [];
+		const countersigner =
+			quote.requiresCountersignature && quote.countersignerId
+				? await ctx.db.get(quote.countersignerId)
+				: null;
+		const clientSignerOrder = quote.signingOrder === "org_first" ? 2 : 1;
+		const orgSignerOrder = quote.signingOrder === "org_first" ? 1 : 2;
+
+		const primaryContact = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q) =>
+				q.eq("clientId", quote.clientId).eq("isPrimary", true)
+			)
+			.first();
+		if (primaryContact?.email) {
+			signers.push({
+				name: `${primaryContact.firstName} ${primaryContact.lastName}`.trim(),
+				email: primaryContact.email,
+				signerOrder: countersigner ? clientSignerOrder : 1,
+			});
+		}
+		if (countersigner?.email) {
+			signers.push({
+				name: countersigner.name || countersigner.email,
+				email: countersigner.email,
+				signerOrder: orgSignerOrder,
+			});
+		}
+
+		// Server-side monthly e-sig cap (the real enforcement boundary).
+		const organization = await ctx.db.get(orgId);
+		if (!organization) throw new Error("Organization not found");
+		const limit = (await hasPremiumAccess(ctx))
+			? null
+			: FREE_ESIGNATURES_PER_MONTH;
+		const used = await computeEsignaturesSentThisMonth(ctx, organization, orgId);
+
+		const quoteLabel = quote.quoteNumber || quote._id.slice(-6);
+		return {
+			quoteTitle: `Quote ${quoteLabel}`,
+			message: quote.clientMessage || "Please review and sign this quote.",
+			filename: `Quote-${quoteLabel}.pdf`,
+			pdfStorageId: latest.storageId,
+			documentId: latest._id,
+			signers,
+			enableSigningOrder: signers.length > 1,
+			usage: { used, limit, overCap: limit !== null && used >= limit },
+			existing,
+		};
+	},
+});
+
+/**
+ * Persist a freshly created embedded request (BoldSign Draft) onto the document
+ * and point the quote at it. The quote is NOT marked "sent" here — that happens
+ * on the Sent webhook once the user actually sends from inside the editor.
+ * Overwrites any prior boldsign state on this row (v1 re-prepare; see PRD §14.8).
+ */
+export const updateDocumentWithEmbeddedRequest = internalMutation({
+	args: {
+		quoteId: v.id("quotes"),
+		documentId: v.id("documents"),
+		boldsignDocumentId: v.string(),
+		sendUrl: v.string(),
+		sendUrlExpiresAt: v.number(),
+		sentTo: v.array(
+			v.object({
+				name: v.string(),
+				email: v.string(),
+				signerType: v.string(),
+				signerOrder: v.optional(v.number()),
+			})
+		),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const document = await fetchEntityOrThrow(
+			ctx,
+			"documents",
+			args.documentId,
+			"Document"
+		);
+		const quote = await fetchEntityOrThrow(ctx, "quotes", args.quoteId, "Quote");
+
+		// Defensive: the caller derives both IDs together, but reject a mismatch
+		// so a future caller can't cross-wire latestDocumentId between quotes/orgs.
+		if (
+			document.orgId !== quote.orgId ||
+			document.documentType !== "quote" ||
+			document.documentId !== (quote._id as string)
+		) {
+			throw new Error("Document does not belong to this quote");
+		}
+
+		await ctx.db.patch(args.documentId, {
+			boldsignDocumentId: args.boldsignDocumentId,
+			boldsign: {
+				documentId: args.boldsignDocumentId,
+				status: "Draft",
+				sentTo: args.sentTo,
+				viewUrl: args.sendUrl,
+				sendUrlExpiresAt: args.sendUrlExpiresAt,
+			},
+		});
+
+		await ctx.db.patch(args.quoteId, {
+			latestDocumentId: args.documentId,
 		});
 	},
 });
@@ -235,12 +425,28 @@ async function handleQuoteStatusUpdate(
 	}
 
 	const quoteUpdates: {
-		status?: "approved" | "declined" | "expired";
+		status?: "sent" | "approved" | "declined" | "expired";
+		sentAt?: number;
 		approvedAt?: number;
 		declinedAt?: number;
 	} = {};
 
 	switch (eventType) {
+		case "Sent":
+			// Authoritative "quote sent" transition — the embedded flow only
+			// sends once the user clicks Send inside the BoldSign editor. Guard
+			// against a duplicate/out-of-order Sent regressing a terminal state.
+			if (
+				quote.status === "approved" ||
+				quote.status === "declined" ||
+				quote.status === "expired"
+			) {
+				return;
+			}
+			quoteUpdates.status = "sent";
+			if (!quote.sentAt) quoteUpdates.sentAt = timestamp;
+			break;
+
 		case "Completed":
 			quoteUpdates.status = "approved";
 			quoteUpdates.approvedAt = timestamp;

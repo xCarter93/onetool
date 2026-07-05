@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Users, User, Mail, FileSignature } from "lucide-react";
 
 type SignatureStatus =
+	| "Draft"
 	| "Sent"
 	| "Viewed"
 	| "Signed"
@@ -394,7 +395,7 @@ export function SignaturesTab({
 							});
 
 							return {
-								title: `Version ${doc.version} - ${doc.boldsign.status} - ${formattedDate}`,
+								title: `Version ${doc.version} - ${doc.boldsign.status === "Draft" ? "Preparing" : doc.boldsign.status} - ${formattedDate}`,
 								content: (
 									<div className="space-y-4">
 										<div className="flex items-center gap-3 pb-3 border-b border-border">
@@ -408,7 +409,9 @@ export function SignaturesTab({
 												variant={statusVariant}
 												className="text-xs"
 											>
-												{doc.boldsign.status}
+												{doc.boldsign.status === "Draft"
+													? "Preparing"
+													: doc.boldsign.status}
 											</Badge>
 											<span className="text-xs text-muted-foreground ml-auto">
 												Last updated: {formattedDate}

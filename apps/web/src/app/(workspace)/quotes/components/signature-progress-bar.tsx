@@ -6,6 +6,7 @@ import {
 } from "@/components/shared/status-progress-bar";
 
 type SignatureStatus =
+	| "Draft"
 	| "Sent"
 	| "Viewed"
 	| "Signed"

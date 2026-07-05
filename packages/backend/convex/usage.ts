@@ -1,5 +1,11 @@
-import { query, mutation, internalMutation } from "./_generated/server";
+import {
+	query,
+	mutation,
+	internalMutation,
+	type QueryCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
 import { optionalUserQuery, systemMutation, userMutation } from "./lib/factories";
@@ -12,6 +18,46 @@ export interface UsageStats {
 	clientsCount: number;
 	activeProjectsPerClient: Record<string, number>; // clientId -> count
 	esignaturesSentThisMonth: number;
+}
+
+/** Free-plan monthly e-signature send cap. Mirrors apps/web plan-limits.ts. */
+export const FREE_ESIGNATURES_PER_MONTH = 5;
+
+/** Start-of-month timestamp (local server time), used for the monthly rollover. */
+function startOfCurrentMonth(): number {
+	const startOfMonth = new Date(Date.now());
+	startOfMonth.setDate(1);
+	startOfMonth.setHours(0, 0, 0, 0);
+	return startOfMonth.getTime();
+}
+
+/**
+ * E-signatures sent by an org in the current month. Uses the cached counter
+ * when it is current, else recounts from the documents table (monthly rollover).
+ * Shared by getCurrentUsage and the server-side send-cap gate so both agree.
+ */
+export async function computeEsignaturesSentThisMonth(
+	ctx: QueryCtx,
+	organization: Doc<"organizations">,
+	orgId: Id<"organizations">
+): Promise<number> {
+	const monthStart = startOfCurrentMonth();
+	const needsReset =
+		!organization.usageTracking ||
+		!organization.usageTracking.lastEsignatureReset ||
+		organization.usageTracking.lastEsignatureReset < monthStart;
+
+	if (needsReset) {
+		const documents = await ctx.db
+			.query("documents")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+		return documents.filter(
+			(doc) => doc.boldsign?.sentAt && doc.boldsign.sentAt >= monthStart
+		).length;
+	}
+
+	return organization.usageTracking?.esignaturesSentThisMonth ?? 0;
 }
 
 /**
@@ -67,40 +113,12 @@ export const getCurrentUsage = optionalUserQuery({
 			activeProjectsPerClient[client._id] = activeProjects.length;
 		}
 
-		// Count e-signatures sent this month
-		const now = Date.now();
-		const startOfMonth = new Date(now);
-		startOfMonth.setDate(1);
-		startOfMonth.setHours(0, 0, 0, 0);
-		const monthStart = startOfMonth.getTime();
-
-		// Check if we need to reset the counter
-		const needsReset =
-			!organization.usageTracking ||
-			!organization.usageTracking.lastEsignatureReset ||
-			organization.usageTracking.lastEsignatureReset < monthStart;
-
-		let esignaturesSentThisMonth = 0;
-
-		if (needsReset) {
-			// Count from documents table
-			const documents = await ctx.db
-				.query("documents")
-				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-				.collect();
-
-			esignaturesSentThisMonth = documents.filter((doc) => {
-				return (
-					doc.boldsign &&
-					doc.boldsign.sentAt &&
-					doc.boldsign.sentAt >= monthStart
-				);
-			}).length;
-		} else {
-			// Use cached count
-			esignaturesSentThisMonth =
-				organization.usageTracking?.esignaturesSentThisMonth || 0;
-		}
+		// Count e-signatures sent this month (shared monthly-rollover logic)
+		const esignaturesSentThisMonth = await computeEsignaturesSentThisMonth(
+			ctx,
+			organization,
+			userOrgId
+		);
 
 		return {
 			clientsCount,
