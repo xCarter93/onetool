@@ -9,6 +9,7 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { Progress } from "@/components/ui/progress";
 import { Check, ArrowRight, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -134,7 +135,8 @@ export default function OnboardingBanner() {
 
 	return (
 		<Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-			<div className="bg-muted/50 border border-border rounded-lg px-4 py-3">
+			<Frame className="w-full">
+				<FramePanel className="px-4! py-3!">
 				<div className="flex items-center justify-between">
 					<span className="text-sm text-muted-foreground">
 						{completedCount} of {totalSteps} steps complete
@@ -191,7 +193,8 @@ export default function OnboardingBanner() {
 						})}
 					</div>
 				</CollapsibleContent>
-			</div>
+				</FramePanel>
+			</Frame>
 		</Collapsible>
 	);
 }

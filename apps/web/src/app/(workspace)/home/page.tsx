@@ -6,8 +6,9 @@ import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
 import OnboardingBanner from "@/app/(workspace)/home/components/onboarding-banner";
 import { CalendarContainer } from "@/app/(workspace)/home/components/calendar/calendar-container";
-import { WeeklyAgenda } from "@/app/(workspace)/home/components/weekly-agenda";
+import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
 import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
@@ -245,8 +246,8 @@ export default function Page() {
 							transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
 						>
 							<div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-								{/* This Week — 8 cols */}
-								<div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:col-span-8">
+								{/* Schedule — 7 cols */}
+								<div className="lg:col-span-7">
 									<TourElement<HomeTour>
 										TourContext={HomeTourContext}
 										stepId={HomeTour.WEEKLY_CALENDAR}
@@ -254,58 +255,53 @@ export default function Page() {
 										description={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].description}
 										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].tooltipPosition}
 									>
-										<WeeklyAgenda
+										<SchedulePanel
 											onEventClick={() => {
 												handleViewChange("calendar");
 											}}
 										/>
 									</TourElement>
 								</div>
-								{/* Client Locations map — 4 cols */}
-								<div className="flex flex-col rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:col-span-4">
-									<div className="mb-3 flex items-center justify-between">
-										<h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-											Client Locations
-										</h3>
-									</div>
-									<div className="h-[280px] flex-1 lg:min-h-[280px] [&>.tour-element-wrapper]:h-full">
-										<TourElement<HomeTour>
-											TourContext={HomeTourContext}
-											stepId={HomeTour.CLIENT_MAP}
-											title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
-											description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
-											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
-										>
-											<div className="relative h-full overflow-hidden rounded-xl border border-border/60">
-												<ClientPropertiesMap />
-											</div>
-										</TourElement>
-									</div>
+								{/* Client Locations map — 5 cols (Frame owned by component) */}
+								<div className="lg:col-span-5 [&>.tour-element-wrapper]:h-full">
+									<TourElement<HomeTour>
+										TourContext={HomeTourContext}
+										stepId={HomeTour.CLIENT_MAP}
+										title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
+										description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
+										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
+									>
+										<ClientPropertiesMap />
+									</TourElement>
 								</div>
 								{/* Needs Attention — 7 cols */}
-								<div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:col-span-7">
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.TASKS}
-										title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
-										description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
-									>
-										<NeedsAttention />
-									</TourElement>
-								</div>
+								<Frame className="w-full lg:col-span-7">
+									<FramePanel className="grow">
+										<TourElement<HomeTour>
+											TourContext={HomeTourContext}
+											stepId={HomeTour.TASKS}
+											title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
+											description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
+											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
+										>
+											<NeedsAttention />
+										</TourElement>
+									</FramePanel>
+								</Frame>
 								{/* Activity Feed — 5 cols */}
-								<div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:col-span-5">
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.ACTIVITY_FEED}
-										title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
-										description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
-									>
-										<ActivityFeed />
-									</TourElement>
-								</div>
+								<Frame className="w-full lg:col-span-5">
+									<FramePanel className="grow">
+										<TourElement<HomeTour>
+											TourContext={HomeTourContext}
+											stepId={HomeTour.ACTIVITY_FEED}
+											title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
+											description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
+											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
+										>
+											<ActivityFeed />
+										</TourElement>
+									</FramePanel>
+								</Frame>
 							</div>
 						</motion.div>
 					</>

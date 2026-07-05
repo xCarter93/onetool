@@ -145,6 +145,11 @@
 	--frame: #ffffff;
 	--card-primary: oklch(0.82 0.12 230);
 	--card-secondary: oklch(0.94 0.04 230);
+	--destructive-foreground: var(--color-red-800);
+	--success-foreground: var(--color-emerald-900);
+	--info-foreground: var(--color-violet-900);
+	--warning-foreground: var(--color-yellow-900);
+	--invert-foreground: var(--color-zinc-50);
 }
 
 .dark {
@@ -220,6 +225,11 @@
 	--frame: #000000;
 	--card-primary: oklch(0.45 0.12 230);
 	--card-secondary: oklch(0.22 0.05 230);
+	--destructive-foreground: var(--color-red-600);
+	--success-foreground: var(--color-emerald-600);
+	--info-foreground: var(--color-violet-600);
+	--warning-foreground: var(--color-yellow-600);
+	--invert-foreground: var(--color-zinc-950);
 }
 
 @layer base {
