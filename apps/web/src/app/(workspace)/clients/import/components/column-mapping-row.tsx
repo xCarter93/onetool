@@ -10,6 +10,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/reui/badge";
 import { CLIENT_SCHEMA_FIELDS, getFieldsByGroup } from "@/types/csv-import";
 import { cn } from "@/lib/utils";
 import { getConfidenceState, type ConfidenceState } from "../utils/mapping-utils";
@@ -49,28 +50,26 @@ function ConfidenceIndicator({ state }: { state: ConfidenceState }) {
 
 	if (state === "manual") {
 		return (
-			<div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
-				<Check className="w-3 h-3" />
-				<span>Manual</span>
-			</div>
+			<Badge variant="info-light" size="sm">
+				<Check className="size-3" />
+				Manual
+			</Badge>
 		);
 	}
 
 	if (state === "high") {
 		return (
-			<div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-				<span className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-400" />
-				<span>High</span>
-			</div>
+			<Badge variant="success-light" size="sm">
+				High
+			</Badge>
 		);
 	}
 
 	// low
 	return (
-		<div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-			<span className="w-1.5 h-1.5 rounded-full bg-amber-600 dark:bg-amber-400" />
-			<span>Low</span>
-		</div>
+		<Badge variant="warning-light" size="sm">
+			Low
+		</Badge>
 	);
 }
 
@@ -157,7 +156,7 @@ export function ColumnMappingRow({
 												</span>
 												{displayFieldName(name)}
 												{info.required && (
-													<span className="text-red-500 ml-0.5">*</span>
+													<span className="text-destructive ml-0.5">*</span>
 												)}
 												{isUsedElsewhere && (
 													<span className="text-xs text-muted-foreground ml-1">
@@ -177,9 +176,9 @@ export function ColumnMappingRow({
 			{/* Confidence indicator or Required badge */}
 			<div className="w-16 shrink-0 flex justify-end">
 				{showRequiredBadge ? (
-					<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-semibold uppercase leading-none">
+					<Badge variant="destructive-light" size="sm" className="uppercase">
 						Required
-					</span>
+					</Badge>
 				) : (
 					<ConfidenceIndicator state={confidenceState} />
 				)}

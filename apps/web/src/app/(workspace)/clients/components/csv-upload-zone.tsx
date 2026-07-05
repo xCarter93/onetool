@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useCallback, useState } from "react";
-import { Upload, FileText, X } from "lucide-react";
+import { Upload, FileText, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertTitle } from "@/components/reui/alert";
 
 interface CsvUploadZoneProps {
 	onFileSelect: (file: File, content: string) => void;
@@ -167,9 +168,10 @@ export function CsvUploadZone({
 			</div>
 
 			{error && (
-				<div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
-					<p className="text-sm text-red-800 dark:text-red-200">{error}</p>
-				</div>
+				<Alert variant="destructive">
+					<AlertCircle />
+					<AlertTitle>{error}</AlertTitle>
+				</Alert>
 			)}
 		</div>
 	);

@@ -5,9 +5,8 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CheckCircle2, AlertTriangle, XCircle, MinusCircle } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Badge } from "@/components/reui/badge";
 import {
 	Tooltip,
 	TooltipTrigger,
@@ -47,18 +46,23 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
 	const hasWarnings = (item.warnings?.length ?? 0) > 0;
 
 	let icon: React.ReactNode;
+	let label: string;
 	let tooltipText: string | undefined;
 
 	if (item.skipped) {
-		icon = <MinusCircle className="w-4 h-4 text-muted-foreground" />;
+		icon = <Badge variant="outline" size="sm" radius="full" className="text-muted-foreground"><MinusCircle /></Badge>;
+		label = "Skipped";
 		tooltipText = "Skipped (duplicate)";
 	} else if (item.success && !hasWarnings) {
-		icon = <CheckCircle2 className="w-4 h-4 text-green-500" />;
+		icon = <Badge variant="success-light" size="sm" radius="full"><CheckCircle2 /></Badge>;
+		label = "Imported";
 	} else if (item.success && hasWarnings) {
-		icon = <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+		icon = <Badge variant="warning-light" size="sm" radius="full"><AlertTriangle /></Badge>;
+		label = "Imported with warnings";
 		tooltipText = item.warnings!.join("\n");
 	} else {
-		icon = <XCircle className="w-4 h-4 text-red-500" />;
+		icon = <Badge variant="destructive-light" size="sm" radius="full"><XCircle /></Badge>;
+		label = "Failed";
 		tooltipText = item.error || "Import failed";
 	}
 
@@ -66,7 +70,9 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
 		return (
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<span className="inline-flex">{icon}</span>
+					<span className="inline-flex" role="img" aria-label={label} tabIndex={0}>
+						{icon}
+					</span>
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs whitespace-pre-wrap">
 					{tooltipText}
@@ -75,7 +81,24 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
 		);
 	}
 
-	return <span className="inline-flex">{icon}</span>;
+	return (
+		<span className="inline-flex" role="img" aria-label={label}>
+			{icon}
+		</span>
+	);
+}
+
+/**
+ * Snapshot of the review step's primary action, reported up so the wizard can
+ * render the import / results button inside the framed footer.
+ */
+export interface ReviewActionState {
+	importableCount: number;
+	hasValidationErrors: boolean;
+	validationErrorCount: number;
+	isImporting: boolean;
+	isResultsMode: boolean;
+	triggerImport: () => void;
 }
 
 interface StepReviewValuesProps {
@@ -88,6 +111,7 @@ interface StepReviewValuesProps {
 	importResult: ImportResult | null;
 	importProgress?: { current: number; total: number; succeeded: number; failed: number };
 	onImport: (records: ImportRecord[], reviewRows: ReviewRow[]) => void;
+	onActionStateChange?: (state: ReviewActionState | null) => void;
 }
 
 export function StepReviewValues({
@@ -100,6 +124,7 @@ export function StepReviewValues({
 	importResult,
 	importProgress,
 	onImport,
+	onActionStateChange,
 }: StepReviewValuesProps) {
 	const parentRef = useRef<HTMLDivElement>(null);
 	const [activeTab, setActiveTab] = useState<FilterTab>("all");
@@ -148,8 +173,14 @@ export function StepReviewValues({
 		return rebuildRecordsFromCells(cellValues, activeMappings, initialRecords.length);
 	}, [cellValues, activeMappings, initialRecords]);
 
-	// Query existing clients for duplicate detection
-	const existingClients = useQuery(api.clients.listNamesForOrg) ?? [];
+	// Query existing clients for duplicate detection. The `?? []` fallback must be
+	// memoized — otherwise a new array each render churns duplicateMap → reviewRows
+	// → handleImportClick, which the footer-action effect depends on (infinite loop).
+	const existingClientsQuery = useQuery(api.clients.listNamesForOrg);
+	const existingClients = useMemo(
+		() => existingClientsQuery ?? [],
+		[existingClientsQuery]
+	);
 
 	// Run validation
 	const validationErrors = useMemo(
@@ -243,6 +274,40 @@ export function StepReviewValues({
 		});
 		onImport(importableRecords, reviewRows);
 	}, [cellValues, activeMappings, records.length, reviewRows, onImport]);
+
+	// Stable trigger identity: handleImportClick's identity changes as review data
+	// recomputes, so route it through a ref. This keeps the report effect below
+	// keyed only on primitive values — never on a churning function/array identity.
+	const importTriggerRef = useRef(handleImportClick);
+	useEffect(() => {
+		importTriggerRef.current = handleImportClick;
+	}, [handleImportClick]);
+	const triggerImport = useCallback(() => importTriggerRef.current(), []);
+
+	// Report the primary-action snapshot up so the wizard renders it in the footer.
+	useEffect(() => {
+		onActionStateChange?.({
+			importableCount,
+			hasValidationErrors,
+			validationErrorCount: validationErrors.length,
+			isImporting,
+			isResultsMode,
+			triggerImport,
+		});
+	}, [
+		onActionStateChange,
+		importableCount,
+		hasValidationErrors,
+		validationErrors.length,
+		isImporting,
+		isResultsMode,
+		triggerImport,
+	]);
+
+	// Clear the footer action when this step unmounts.
+	useEffect(() => {
+		return () => onActionStateChange?.(null);
+	}, [onActionStateChange]);
 
 	// Filter rows based on active tab
 	const filteredRows = useMemo(() => {
@@ -430,12 +495,12 @@ export function StepReviewValues({
 										) : (
 											<>
 												{row.status === "valid" && (
-													<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+													<Badge variant="success-light" size="sm" radius="full" role="img" aria-label="Valid"><CheckCircle2 /></Badge>
 												)}
 												{row.status === "error" && (
 													<Tooltip>
 														<TooltipTrigger asChild>
-															<XCircle className="h-4 w-4 text-red-600 dark:text-red-400 cursor-help" />
+															<span className="inline-flex cursor-help" role="img" aria-label="Error" tabIndex={0}><Badge variant="destructive-light" size="sm" radius="full"><XCircle /></Badge></span>
 														</TooltipTrigger>
 														<TooltipContent>
 															<div className="space-y-1">
@@ -449,7 +514,7 @@ export function StepReviewValues({
 													</Tooltip>
 												)}
 												{row.status === "duplicate" && (
-													<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+													<Badge variant="warning-light" size="sm" radius="full" role="img" aria-label="Duplicate"><AlertTriangle /></Badge>
 												)}
 											</>
 										)}
@@ -589,70 +654,23 @@ export function StepReviewValues({
 				</div>
 			</div>
 
-			{/* Import button / results footer */}
-			{!isResultsMode && !isImporting && (
-				<div className="flex justify-center pt-2">
-					{hasValidationErrors ? (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<span>
-									<StyledButton
-										intent="primary"
-										size="lg"
-										disabled
-										label={`Import ${importableCount} Client${importableCount !== 1 ? "s" : ""}`}
-									/>
-								</span>
-							</TooltipTrigger>
-							<TooltipContent>
-								{validationErrors.length} validation error{validationErrors.length !== 1 ? "s" : ""} found. Fix errors before importing.
-							</TooltipContent>
-						</Tooltip>
-					) : (
-						<StyledButton
-							intent="primary"
-							size="lg"
-							onClick={handleImportClick}
-							label={`Import ${importableCount} Client${importableCount !== 1 ? "s" : ""}`}
-						/>
-					)}
-				</div>
-			)}
-
-			{isImporting && (
+			{/* Import progress — the import / results button lives in the wizard footer */}
+			{isImporting && importProgress && (
 				<div className="flex flex-col items-center pt-4">
-					{importProgress ? (
-						<div className="space-y-2 w-full max-w-md mx-auto">
-							<div className="h-2 bg-muted rounded-full overflow-hidden">
-								<div
-									className="h-full bg-primary rounded-full transition-all duration-300"
-									style={{ width: `${importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0}%` }}
-								/>
-							</div>
-							<p className="text-sm text-center text-muted-foreground">
-								Importing {importProgress.current} of {importProgress.total} clients...
-							</p>
-							<p className="text-xs text-center text-muted-foreground">
-								{importProgress.succeeded} succeeded{" "}&middot;{" "}{importProgress.failed} failed
-							</p>
+					<div className="space-y-2 w-full max-w-md mx-auto">
+						<div className="h-2 bg-muted rounded-full overflow-hidden">
+							<div
+								className="h-full bg-primary rounded-full transition-all duration-300"
+								style={{ width: `${importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0}%` }}
+							/>
 						</div>
-					) : (
-						<StyledButton
-							intent="primary"
-							size="lg"
-							isLoading={true}
-							disabled
-							label="Importing..."
-						/>
-					)}
-				</div>
-			)}
-
-			{isResultsMode && (
-				<div className="flex justify-center pt-2">
-					<Link href="/clients">
-						<StyledButton intent="primary" label="Go to Clients" />
-					</Link>
+						<p className="text-sm text-center text-muted-foreground">
+							Importing {importProgress.current} of {importProgress.total} clients...
+						</p>
+						<p className="text-xs text-center text-muted-foreground">
+							{importProgress.succeeded} succeeded{" "}&middot;{" "}{importProgress.failed} failed
+						</p>
+					</div>
 				</div>
 			)}
 		</div>

@@ -3,7 +3,7 @@
 import { Eye, AlertTriangle } from "lucide-react";
 import type { FieldMapping, CsvAnalysisResult } from "@/types/csv-import";
 import { CLIENT_SCHEMA_FIELDS } from "@/types/csv-import";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { detectTypeMismatches } from "../utils/mapping-utils";
 
 interface DataPreviewPanelProps {
@@ -47,8 +47,8 @@ function MappingSummaryStats({ mappings }: { mappings: FieldMapping[] }) {
 						<div key={field} className="flex items-center justify-between text-xs">
 							<span className="text-foreground">{field}</span>
 							<Badge
-								variant={isMapped ? "default" : "outline"}
-								className="text-xs"
+								variant={isMapped ? "success-light" : "destructive-light"}
+								size="sm"
 							>
 								{isMapped ? "Mapped" : "Unmapped"}
 							</Badge>
@@ -114,7 +114,7 @@ export function DataPreviewPanel({
 					</div>
 					{fieldDef && (
 						<div className="flex items-center gap-2">
-							<Badge variant={fieldDef.required ? "default" : "outline"} className="text-xs">
+							<Badge variant={fieldDef.required ? "primary-light" : "outline"} size="sm">
 								{fieldDef.required ? "Required" : "Optional"}
 							</Badge>
 							<span className="text-xs text-muted-foreground">{fieldDef.type}</span>
@@ -141,7 +141,7 @@ export function DataPreviewPanel({
 					{typeMismatches.map((msg, i) => (
 						<div
 							key={i}
-							className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+							className="flex items-start gap-1.5 text-xs text-warning"
 						>
 							<AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
 							<span>{msg}</span>

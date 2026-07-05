@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import type { FilterTab } from "../utils/review-types";
 
 interface ReviewFilterTabsProps {
@@ -31,6 +31,14 @@ export function ReviewFilterTabs({
 			{TABS.map((tab) => {
 				const count = counts[tab.key];
 				const isActive = activeTab === tab.key;
+				const badgeVariant =
+					tab.key === "errors"
+						? "destructive-light"
+						: tab.key === "duplicates"
+							? "warning-light"
+							: tab.key === "valid"
+								? "success-light"
+								: "secondary";
 
 				return (
 					<button
@@ -45,10 +53,7 @@ export function ReviewFilterTabs({
 					>
 						<span className="inline-flex items-center gap-1.5">
 							{tab.label}
-							<Badge
-								variant={isActive ? "default" : "secondary"}
-								className="text-xs px-1.5 py-0 min-w-[1.25rem] justify-center"
-							>
+							<Badge variant={badgeVariant} size="default" radius="full">
 								{count}
 							</Badge>
 						</span>

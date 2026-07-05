@@ -1,15 +1,33 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
+import { ArrowLeft, Download, Flag } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+	Frame,
+	FrameDescription,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
+import { Badge } from "@/components/reui/badge";
+import { Separator } from "@/components/ui/separator";
 import { StyledButton } from "@/components/ui/styled/styled-button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { CsvSchemaGuideDrawer } from "@/app/(workspace)/clients/components/csv-schema-guide";
 import { CLIENT_SCHEMA_FIELDS } from "@/types/csv-import";
 import { useImportWizard } from "../hooks/use-import-wizard";
+import { downloadTemplateCsv } from "../utils/template-csv";
 import { ImportStepNav } from "./import-step-nav";
 import { StepUpload } from "./step-upload";
 import { StepMapColumns } from "./step-map-columns";
-import { StepReviewValues } from "./step-review-values";
+import { StepReviewValues, type ReviewActionState } from "./step-review-values";
 
 interface ImportWizardProps {
 	embedded?: boolean;
@@ -18,6 +36,7 @@ interface ImportWizardProps {
 
 export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps = {}) {
 	const router = useRouter();
+	const [reviewAction, setReviewAction] = useState<ReviewActionState | null>(null);
 	const {
 		state,
 		currentStep,
@@ -88,86 +107,53 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 		}
 	}, [currentStep, state, unmappedRequiredFields]);
 
-	// --- Footer buttons ---
-	const footerButtons = useMemo(() => {
+	// --- Secondary footer buttons (Start over / Back), grouped left of the primary ---
+	const secondaryButtons = useMemo(() => {
 		const buttons: Array<{
 			label: string;
 			onClick: () => void;
-			intent: "primary" | "outline" | "secondary" | "warning" | "plain" | "success" | "destructive";
-			position: "left" | "right";
+			intent: "outline" | "plain";
 			disabled?: boolean;
-			isLoading?: boolean;
+			icon?: ReactNode;
 		}> = [];
 
-		// Left side: Start over
 		if (currentStep !== "upload" || state.analysisResult) {
 			buttons.push({
 				label: "Start over",
 				onClick: startOver,
-				intent: "outline",
-				position: "left",
+				intent: "plain",
 				disabled: state.isImporting,
 			});
 		}
 
-		// Left side: Back (hidden on step 1)
 		if (currentStep !== "upload") {
 			buttons.push({
 				label: "Back",
 				onClick: goBack,
 				intent: "outline",
-				position: "left",
 				disabled: state.isImporting,
-			});
-		}
-
-		// Right side: Continue (review step uses its own inline import button)
-		if (currentStep !== "review") {
-			buttons.push({
-				label: "Continue",
-				onClick: goNext,
-				intent: "primary",
-				position: "right",
-				disabled: !canContinue,
+				icon: <ArrowLeft className="size-4" />,
 			});
 		}
 
 		return buttons;
-	}, [
-		currentStep,
-		state.analysisResult,
-		state.isImporting,
-		canContinue,
-		startOver,
-		goBack,
-		goNext,
-	]);
+	}, [currentStep, state.analysisResult, state.isImporting, startOver, goBack]);
 
-	// --- Step heading info ---
-	const stepHeading = useMemo(() => {
-		// Hide heading when showing import result
-		if (currentStep === "review" && state.importResult) return null;
-
+	// --- Contextual footer hint (left side, like the ReUI block) ---
+	const footerHint = useMemo(() => {
 		switch (currentStep) {
 			case "upload":
-				return {
-					title: "Upload your CSV file",
-					subtitle: "Upload a CSV file with your client data. Our AI will automatically detect columns and map them to the correct fields.",
-				};
+				return "Upload a CSV file to get started.";
 			case "map":
-				return {
-					title: "Map columns",
-					subtitle: `Match your CSV columns to client fields. ${state.file?.name ?? "CSV file"}`,
-				};
+				return "Match your columns, then continue.";
 			case "review":
-				return {
-					title: "Review & import",
-					subtitle: "Review your data, fix errors, and import when ready.",
-				};
+				if (reviewAction?.isResultsMode) return "Import complete.";
+				if (reviewAction?.isImporting) return "Importing your clients…";
+				return "Review your rows and fix any errors before importing.";
 			default:
-				return null;
+				return "";
 		}
-	}, [currentStep, state.file?.name, state.importResult]);
+	}, [currentStep, reviewAction]);
 
 	// --- Render step content ---
 	const renderStep = () => {
@@ -188,7 +174,6 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 				if (!state.analysisResult) return null;
 				return (
 					<StepMapColumns
-						fileName={state.file?.name ?? "CSV file"}
 						mappings={state.mappings || []}
 						analysisResult={state.analysisResult}
 						selectedColumn={selectedMappingColumn}
@@ -211,6 +196,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 						importResult={state.importResult ?? null}
 						importProgress={state.importProgress}
 						onImport={handleImportData}
+						onActionStateChange={setReviewAction}
 					/>
 				);
 			default:
@@ -218,94 +204,160 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 		}
 	};
 
-	// --- Render inline footer for embedded mode ---
-	const renderInlineFooter = () => {
-		if (currentStep === "review") return null;
+	// --- Right-side footer action ---
+	const renderRightAction = () => {
+		// Steps 1-2: a simple Continue button.
+		if (currentStep !== "review") {
+			return (
+				<StyledButton
+					label="Continue"
+					onClick={goNext}
+					intent="primary"
+					disabled={!canContinue}
+				/>
+			);
+		}
 
-		const leftButtons = footerButtons.filter((b) => b.position === "left");
-		const rightButtons = footerButtons.filter((b) => b.position === "right");
+		// Review step: import / results button (state lifted from StepReviewValues).
+		if (!reviewAction) {
+			return <StyledButton label="Import clients" intent="primary" disabled />;
+		}
+		if (reviewAction.isResultsMode) {
+			// Embedded onboarding swaps the wizard out via onComplete — no button needed.
+			if (embedded) return null;
+			return (
+				<StyledButton
+					label="Go to Clients"
+					intent="primary"
+					onClick={() => router.push("/clients")}
+				/>
+			);
+		}
+		if (reviewAction.isImporting) {
+			return (
+				<StyledButton label="Importing..." intent="primary" isLoading disabled />
+			);
+		}
 
-		if (leftButtons.length === 0 && rightButtons.length === 0) return null;
-
+		const count = reviewAction.importableCount;
+		const label = `Import ${count} client${count !== 1 ? "s" : ""}`;
+		if (reviewAction.hasValidationErrors) {
+			return (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span className="inline-flex">
+							<StyledButton label={label} intent="primary" disabled />
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>
+						{reviewAction.validationErrorCount} validation error
+						{reviewAction.validationErrorCount !== 1 ? "s" : ""} found. Fix errors
+						before importing.
+					</TooltipContent>
+				</Tooltip>
+			);
+		}
 		return (
-			<div className="flex items-center justify-between gap-x-3 py-4 border-t border-border mt-4">
-				<div className="flex items-center gap-x-3">
-					{leftButtons.map((button) => (
-						<StyledButton
-							key={button.label}
-							label={button.label}
-							onClick={button.onClick}
-							intent={button.intent}
-							disabled={button.disabled}
-							isLoading={button.isLoading}
-						/>
-					))}
-				</div>
-				<div className="flex items-center gap-x-3">
-					{rightButtons.map((button) => (
-						<StyledButton
-							key={button.label}
-							label={button.label}
-							onClick={button.onClick}
-							intent={button.intent}
-							disabled={button.disabled}
-							isLoading={button.isLoading}
-						/>
-					))}
-				</div>
-			</div>
+			<StyledButton
+				label={label}
+				intent="primary"
+				onClick={reviewAction.triggerImport}
+				disabled={count === 0}
+			/>
 		);
 	};
 
-	if (embedded) {
-		return (
-			<div className="flex flex-col">
-				{/* Step content - no fixed height, no breadcrumbs */}
-				<div className="px-6 py-6">
-					{/* Step heading - consistent position across all steps */}
-					{stepHeading && (
-						<div className="space-y-1 mb-6">
-							<h2 className="text-xl font-semibold text-foreground">{stepHeading.title}</h2>
-							<p className="text-sm text-muted-foreground">{stepHeading.subtitle}</p>
-						</div>
+	const rightAction = renderRightAction();
+
+	// Header description: the file once uploaded, otherwise a short hint.
+	const headerDescription = state.file?.name ?? "Bulk-import your clients from a CSV file";
+	// Step number for tab/panel ARIA wiring (matches the stepper trigger ids).
+	const activeStepNumber = { upload: 1, map: 2, review: 3 }[currentStep];
+
+	const wizard = (
+		<Frame variant="default" className={cn("w-full", !embedded && "h-full")}>
+			{/* Header sits on the frame (chrome), like the /automations pattern */}
+			<FrameHeader className="shrink-0 flex-row items-start justify-between gap-3">
+				<div className="flex min-w-0 flex-col gap-px">
+					<FrameTitle>Import clients</FrameTitle>
+					<FrameDescription className="truncate text-xs">
+						{headerDescription}
+					</FrameDescription>
+				</div>
+				<div className="flex shrink-0 items-center gap-2">
+					{currentStep === "upload" && (
+						<>
+							<StyledButton
+								intent="plain"
+								size="sm"
+								showArrow={false}
+								icon={<Download className="size-4" />}
+								label="Template"
+								onClick={() => void downloadTemplateCsv()}
+							/>
+							<CsvSchemaGuideDrawer entityType="clients" />
+						</>
 					)}
+					<Badge variant="primary-light" size="lg" radius="full">
+						Clients
+					</Badge>
+				</div>
+			</FrameHeader>
+
+			{/* White content panel: step timeline (fixed) + scrollable step body */}
+			<FramePanel className={cn("flex flex-col p-0 shadow-none!", !embedded && "min-h-0")}>
+				<div className="shrink-0 px-5 py-5 sm:px-6">
+					<ImportStepNav
+						currentStep={currentStep}
+						onStepClick={navigateTo}
+						disabled={state.isImporting}
+					/>
+				</div>
+				<Separator />
+				<div
+					id={`stepper-panel-${activeStepNumber}`}
+					role="tabpanel"
+					aria-labelledby={`stepper-tab-${activeStepNumber}`}
+					className={cn(
+						"px-5 py-6 sm:px-6",
+						!embedded && "flex-1 min-h-0 overflow-y-auto"
+					)}
+				>
 					{renderStep()}
 				</div>
+			</FramePanel>
 
-				{/* Inline footer - not sticky, not fixed */}
-				<div className="px-6">
-					{renderInlineFooter()}
+			{/* Footer sits on the frame: hint on the left, actions on the right */}
+			<FrameFooter className="shrink-0 flex-row items-center justify-between gap-3">
+				<div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+					<Flag className="size-4 shrink-0" />
+					<span className="truncate">{footerHint}</span>
 				</div>
-			</div>
-		);
+				<div className="flex shrink-0 items-center gap-2">
+					{secondaryButtons.map((button) => (
+						<StyledButton
+							key={button.label}
+							label={button.label}
+							onClick={button.onClick}
+							intent={button.intent}
+							disabled={button.disabled}
+							showArrow={false}
+							icon={button.icon}
+						/>
+					))}
+					{rightAction}
+				</div>
+			</FrameFooter>
+		</Frame>
+	);
+
+	if (embedded) {
+		return wizard;
 	}
 
 	return (
-		<div className="flex flex-col h-[calc(100dvh-3.5rem)]">
-			{/* Step navigation */}
-			<div className="border-b border-border px-6 py-4 bg-background shrink-0">
-				<ImportStepNav
-					currentStep={currentStep}
-					onStepClick={navigateTo}
-				/>
-			</div>
-
-			{/* Step content */}
-			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 pb-24">
-				{/* Step heading - consistent position across all steps */}
-				{stepHeading && (
-					<div className="space-y-1 mb-6">
-						<h2 className="text-xl font-semibold text-foreground">{stepHeading.title}</h2>
-						<p className="text-sm text-muted-foreground">{stepHeading.subtitle}</p>
-					</div>
-				)}
-				{renderStep()}
-			</div>
-
-			{/* Sticky footer - hidden on review step (it has its own import button) */}
-			{currentStep !== "review" && (
-				<StickyFormFooter buttons={footerButtons} />
-			)}
+		<div className="h-[calc(100dvh-7rem)] px-4 py-4 sm:px-6 sm:py-6">
+			<div className="mx-auto h-full w-full max-w-7xl">{wizard}</div>
 		</div>
 	);
 }
