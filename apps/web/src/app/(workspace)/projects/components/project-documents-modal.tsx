@@ -37,6 +37,27 @@ function formatDate(timestamp: number): string {
 const isImage = (mimeType: string) => mimeType.startsWith("image/");
 const isPdf = (mimeType: string) => mimeType === "application/pdf";
 
+const SOURCE_BADGE: Record<
+	UnifiedProjectDocument["source"],
+	{ label: string; className: string }
+> = {
+	uploaded: {
+		label: "Uploaded",
+		className:
+			"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+	},
+	communication: {
+		label: "From Chat",
+		className:
+			"bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800",
+	},
+	"signed-quote": {
+		label: "Signed Quote",
+		className:
+			"bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800",
+	},
+};
+
 interface ProjectDocumentsModalProps {
 	isOpen: boolean;
 	onClose: () => void;
@@ -117,23 +138,31 @@ export function ProjectDocumentsModal({
 									</p>
 									<Badge
 										variant="outline"
-										className={
-											doc.source === "uploaded"
-												? "shrink-0 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800"
-												: "shrink-0 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800"
-										}
+										className={`shrink-0 ${SOURCE_BADGE[doc.source].className}`}
 									>
-										{doc.source === "uploaded" ? "Uploaded" : "From Chat"}
+										{SOURCE_BADGE[doc.source].label}
 									</Badge>
 								</div>
 								<div className="flex items-center gap-2">
-									<p className="text-xs text-gray-500 dark:text-gray-400">
-										{formatFileSize(doc.fileSize)}
-									</p>
-									<span className="text-xs text-gray-400">&middot;</span>
+									{doc.fileSize > 0 && (
+										<>
+											<p className="text-xs text-gray-500 dark:text-gray-400">
+												{formatFileSize(doc.fileSize)}
+											</p>
+											<span className="text-xs text-gray-400">&middot;</span>
+										</>
+									)}
 									<p className="text-xs text-gray-500 dark:text-gray-400">
 										{formatDate(doc.uploadedAt)}
 									</p>
+									{doc.quoteNumber && (
+										<>
+											<span className="text-xs text-gray-400">&middot;</span>
+											<p className="text-xs text-gray-500 dark:text-gray-400">
+												Quote #{doc.quoteNumber}
+											</p>
+										</>
+									)}
 								</div>
 							</div>
 
