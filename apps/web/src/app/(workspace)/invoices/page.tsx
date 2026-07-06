@@ -60,6 +60,7 @@ import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
@@ -552,6 +553,8 @@ export default function InvoicesPage() {
 		];
 	}, [clients, projects]);
 
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: InvoiceKanbanItem[]) => {
 			// Overdue is a computed lane. Dropping a card there stores "sent"; a
@@ -564,26 +567,29 @@ export default function InvoicesPage() {
 				return { ...item, column: effective, status: effective };
 			});
 			setKanbanData(normalized);
+		},
+		[]
+	);
 
-			const changedItem = normalized.find((item) => {
-				const originalStatus = invoiceStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = invoiceStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				// Overdue is computed from a past-due "sent" invoice, so dropping into
 				// either the sent or overdue lane writes the stored status "sent".
 				const nextStatus: InvoiceStatus =
-					changedItem.column === "overdue" ? "sent" : changedItem.column;
+					item.column === "overdue" ? "sent" : item.column;
 				updateInvoiceStatus({
-					id: changedItem.id as Id<"invoices">,
+					id: item.id as Id<"invoices">,
 					status: nextStatus,
 				}).catch((error) => {
 					console.error("Failed to update invoice status:", error);
 				});
 			}
 		},
-		[invoiceStatusMap, updateInvoiceStatus]
+		[kanbanData, invoiceStatusMap, updateInvoiceStatus]
 	);
 
 	return (
@@ -793,6 +799,7 @@ export default function InvoicesPage() {
 								columns={kanbanColumns}
 								data={kanbanData}
 								onDataChange={handleKanbanDataChange}
+								onDragEnd={handleKanbanDragEnd}
 							>
 								{(column) => {
 									const columnItems = kanbanData.filter(

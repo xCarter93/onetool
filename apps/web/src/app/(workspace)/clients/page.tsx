@@ -76,6 +76,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
@@ -573,19 +574,24 @@ export default function ClientsPage() {
 		);
 	}, [activeSearched]);
 
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ClientKanbanItem[]) => {
 			setKanbanData(nextData);
+		},
+		[]
+	);
 
-			const changedItem = nextData.find((item) => {
-				const originalStatus = clientStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = clientStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				updateClient({
-					id: changedItem.id as Id<"clients">,
-					status: changedItem.column,
+					id: item.id as Id<"clients">,
+					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update client status:", error);
 					toast.error(
@@ -595,7 +601,7 @@ export default function ClientsPage() {
 				});
 			}
 		},
-		[clientStatusMap, updateClient, toast]
+		[kanbanData, clientStatusMap, updateClient, toast]
 	);
 
 	const isArchivedTab = activeTab === "archived";
@@ -680,6 +686,7 @@ export default function ClientsPage() {
 				columns={kanbanColumns}
 				data={kanbanData}
 				onDataChange={handleKanbanDataChange}
+				onDragEnd={handleKanbanDragEnd}
 			>
 				{(column) => {
 					const columnItems = kanbanData.filter(

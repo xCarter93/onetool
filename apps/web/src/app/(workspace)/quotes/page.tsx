@@ -61,6 +61,7 @@ import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
@@ -520,25 +521,30 @@ export default function QuotesPage() {
 		];
 	}, [clients, projects]);
 
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: QuoteKanbanItem[]) => {
 			setKanbanData(nextData);
+		},
+		[]
+	);
 
-			const changedItem = nextData.find((item) => {
-				const originalStatus = quoteStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = quoteStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				updateQuoteStatus({
-					id: changedItem.id as Id<"quotes">,
-					status: changedItem.column,
+					id: item.id as Id<"quotes">,
+					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update quote status:", error);
 				});
 			}
 		},
-		[quoteStatusMap, updateQuoteStatus]
+		[kanbanData, quoteStatusMap, updateQuoteStatus]
 	);
 
 	const totalPending = React.useMemo(
@@ -757,6 +763,7 @@ export default function QuotesPage() {
 								columns={kanbanColumns}
 								data={kanbanData}
 								onDataChange={handleKanbanDataChange}
+								onDragEnd={handleKanbanDragEnd}
 							>
 								{(column) => {
 									const columnItems = kanbanData.filter(

@@ -63,6 +63,7 @@ import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
@@ -483,25 +484,30 @@ export default function ProjectsPage() {
 		];
 	}, [clients]);
 
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ProjectKanbanItem[]) => {
 			setKanbanData(nextData);
+		},
+		[]
+	);
 
-			const changedItem = nextData.find((item) => {
-				const originalStatus = projectStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = projectStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				updateProjectStatus({
-					id: changedItem.id as Id<"projects">,
-					status: changedItem.column,
+					id: item.id as Id<"projects">,
+					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
 				});
 			}
 		},
-		[projectStatusMap, updateProjectStatus]
+		[kanbanData, projectStatusMap, updateProjectStatus]
 	);
 
 	return (
@@ -711,6 +717,7 @@ export default function ProjectsPage() {
 								columns={kanbanColumns}
 								data={kanbanData}
 								onDataChange={handleKanbanDataChange}
+								onDragEnd={handleKanbanDragEnd}
 							>
 								{(column) => {
 									const columnItems = kanbanData.filter(
