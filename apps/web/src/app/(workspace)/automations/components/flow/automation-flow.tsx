@@ -22,6 +22,10 @@ import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";
 import { FetchNodeRF } from "./fetch-node-rf";
 import { LoopNodeRF } from "./loop-node-rf";
+import { AggregateNodeRF } from "./aggregate-node-rf";
+import { AdjustTimeNodeRF } from "./adjust-time-node-rf";
+import { DelayNodeRF } from "./delay-node-rf";
+import { DelayUntilNodeRF } from "./delay-until-node-rf";
 import { EndNodeRF } from "./end-node-rf";
 import { TerminalNodeRF } from "./add-step-node-rf";
 import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
@@ -38,6 +42,10 @@ const nodeTypes = {
 	actionNode: ActionNodeRF,
 	fetchNode: FetchNodeRF,
 	loopNode: LoopNodeRF,
+	aggregateNode: AggregateNodeRF,
+	adjustTimeNode: AdjustTimeNodeRF,
+	delayNode: DelayNodeRF,
+	delayUntilNode: DelayUntilNodeRF,
 	endNode: EndNodeRF,
 	terminalNode: TerminalNodeRF,
 	triggerPlaceholderNode: TriggerPlaceholderNodeRF,
@@ -90,7 +98,7 @@ function AutomationFlowInner({
 		if (incomingNodes.length !== prevCountRef.current) {
 			prevCountRef.current = incomingNodes.length;
 			requestAnimationFrame(() => {
-				fitView({ padding: 0.2, duration: 200 });
+				fitView({ padding: 0.2, duration: 200, maxZoom: 1 });
 			});
 		}
 	}, [fitView, incomingEdges, incomingNodes, setEdges, setNodes]);
@@ -178,7 +186,7 @@ function AutomationFlowInner({
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				fitView
-				fitViewOptions={{ padding: 0.2, duration: 300 }}
+				fitViewOptions={{ padding: 0.2, duration: 300, maxZoom: 1 }}
 				nodesDraggable={true}
 				nodesConnectable={false}
 				elementsSelectable={true}
@@ -195,7 +203,8 @@ function AutomationFlowInner({
 					size={1}
 					className="text-muted-foreground/15! dark:text-muted-foreground/10!"
 				/>
-				<ZoomSlider position="bottom-left" orientation="vertical" />
+				{/* bottom-right: the workflow drawer overlays the bottom-left corner */}
+				<ZoomSlider position="bottom-right" orientation="vertical" />
 			</ReactFlow>
 			{contextMenu && (
 				<div

@@ -408,6 +408,26 @@ http.route({
 				organization_id?: string;
 				user_id?: string;
 			};
+			// subscription.* events carry plans per item, not at the top level.
+			items?: Array<{
+				status?: string;
+				plan?: { id?: string; slug?: string };
+			}>;
+		}
+
+		// The plan slug to persist for a subscription event. Paid items win
+		// (Clerk default slugs free_user/free_org ride along as items too);
+		// falls back to the first active item, which may be a free plan —
+		// a non-null return does NOT imply premium access.
+		function getPreferredActivePlan(data: BillingWebhookData) {
+			const activeItems = (data.items ?? []).filter(
+				(item) => item.status === "active"
+			);
+			return (
+				activeItems.find(
+					(item) => item.plan?.slug && !item.plan.slug.startsWith("free_")
+				)?.plan ?? activeItems[0]?.plan
+			);
 		}
 
 		switch (event.type) {
@@ -452,12 +472,14 @@ http.route({
 					console.error("No organization_id in subscription.created event");
 					break;
 				}
+				const activePlan = getPreferredActivePlan(data);
 				await ctx.runMutation(
 					internal.billingWebhook.handleSubscriptionCreated,
 					{
 						subscriptionId: data.id,
 						organizationId: organizationId,
-						planId: data.plan_id || data.plan?.id || "",
+						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
+						planSlug: activePlan?.slug,
 						status: data.status || "active",
 						currentPeriodStart: data.current_period_start
 							? secondsToMilliseconds(data.current_period_start)
@@ -476,12 +498,14 @@ http.route({
 					console.error("No organization_id in subscription.active event");
 					break;
 				}
+				const activePlan = getPreferredActivePlan(data);
 				await ctx.runMutation(
 					internal.billingWebhook.handleSubscriptionActive,
 					{
 						subscriptionId: data.id,
 						organizationId: organizationId,
-						planId: data.plan_id || data.plan?.id || "",
+						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
+						planSlug: activePlan?.slug,
 						currentPeriodStart: data.current_period_start
 							? secondsToMilliseconds(data.current_period_start)
 							: undefined,
@@ -501,12 +525,14 @@ http.route({
 					console.error("No organization_id in subscription.updated event");
 					break;
 				}
+				const activePlan = getPreferredActivePlan(data);
 				await ctx.runMutation(
 					internal.billingWebhook.handleSubscriptionUpdated,
 					{
 						subscriptionId: data.id,
 						organizationId: organizationId,
-						planId: data.plan_id || data.plan?.id || "",
+						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
+						planSlug: activePlan?.slug,
 						status: data.status || "active",
 						currentPeriodStart: data.current_period_start
 							? secondsToMilliseconds(data.current_period_start)

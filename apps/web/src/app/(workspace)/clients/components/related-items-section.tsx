@@ -57,7 +57,7 @@ export function RelatedItemsSection({
 			</StyledCardHeader>
 			<StyledCardContent>
 				<StyledTabs defaultValue="projects" className="w-full">
-					<StyledTabsList className="grid w-full grid-cols-4">
+					<StyledTabsList className="overflow-x-auto">
 						<StyledTabsTrigger value="projects">
 							Projects ({projects?.length || 0})
 						</StyledTabsTrigger>

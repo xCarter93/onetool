@@ -96,6 +96,13 @@
       "expo-secure-store",
       "expo-font",
       "expo-document-picker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "OneTool needs access to your photos so you can upload images to projects and team chat.",
+          "cameraPermission": "OneTool needs access to your camera so you can capture photos to upload to projects and team chat."
+        }
+      ],
       ["@clerk/expo", { "theme": "./clerk-theme.json" }],
       "expo-apple-authentication",
       "expo-notifications",

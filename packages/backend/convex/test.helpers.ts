@@ -254,6 +254,20 @@ export function createTestIdentity(clerkUserId: string, clerkOrgId: string) {
 }
 
 /**
+ * Identity carrying the premium metadata flag — passes hasPremiumAccess
+ * (lib/permissions.ts), e.g. the AI assistant plan gate.
+ */
+export function createPremiumTestIdentity(
+	clerkUserId: string,
+	clerkOrgId: string
+) {
+	return {
+		...createTestIdentity(clerkUserId, clerkOrgId),
+		publicMetadata: { has_premium_feature_access: true },
+	};
+}
+
+/**
  * Creates a client contact
  */
 export async function createTestClientContact(

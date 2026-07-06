@@ -13,6 +13,7 @@ export interface PlanLimits {
 	canCreateCustomSkus: boolean;
 	canSaveOrganizationDocuments: boolean;
 	canUseAiImport: boolean;
+	canUseAiAssistant: boolean;
 	supportSla: string;
 }
 
@@ -26,6 +27,8 @@ export const FREE_PLAN_LIMITS: PlanLimits = {
 	canCreateCustomSkus: false,
 	canSaveOrganizationDocuments: false,
 	canUseAiImport: false,
+	// Enforced server-side too: hasPremiumAccess in convex/lib/permissions.ts.
+	canUseAiAssistant: false,
 	supportSla: "Best effort",
 };
 
@@ -39,6 +42,7 @@ export const PREMIUM_PLAN_LIMITS: PlanLimits = {
 	canCreateCustomSkus: true,
 	canSaveOrganizationDocuments: true,
 	canUseAiImport: true,
+	canUseAiAssistant: true,
 	supportSla: "24 hours",
 };
 

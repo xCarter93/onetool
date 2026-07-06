@@ -6,35 +6,35 @@ import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import {
+	OBJECT_TYPE_LABELS,
+	describeSchedule,
+	getStatusOptions,
+	validateSchedule,
+	type TriggerConfig,
+} from "../../lib/node-types";
 
-function getSummary(data: Record<string, unknown>): {
+function getSummary(trigger: TriggerConfig | undefined): {
 	title: string;
 	description: string;
 } {
-	const trigger = data.trigger as
-		| {
-				type?: string;
-				objectType?: string;
-				toStatus?: string;
-				fromStatus?: string;
-				field?: string;
-				schedule?: { frequency?: string };
-		  }
-		| undefined;
 	if (!trigger) return { title: "Configure trigger", description: "Select a trigger type..." };
 
-	const objectLabel = trigger.objectType
-		? trigger.objectType.charAt(0).toUpperCase() + trigger.objectType.slice(1)
-		: "";
+	const objectLabel = trigger.objectType ? OBJECT_TYPE_LABELS[trigger.objectType] : "";
 	const triggerType = trigger.type || "status_changed";
 
 	switch (triggerType) {
 		case "status_changed": {
 			const title = "Status Changed";
-			if (trigger.fromStatus && trigger.toStatus)
-				return { title, description: `${objectLabel} ${trigger.fromStatus} \u2192 ${trigger.toStatus}` };
-			if (trigger.toStatus)
-				return { title, description: `${objectLabel} \u2192 ${trigger.toStatus}` };
+			const statusOptions = trigger.objectType ? getStatusOptions(trigger.objectType) : [];
+			const toLabel =
+				statusOptions.find((s) => s.value === trigger.toStatus)?.label || trigger.toStatus;
+			if (trigger.fromStatus && toLabel) {
+				const fromLabel =
+					statusOptions.find((s) => s.value === trigger.fromStatus)?.label || trigger.fromStatus;
+				return { title, description: `${objectLabel} ${fromLabel} → ${toLabel}` };
+			}
+			if (toLabel) return { title, description: `${objectLabel} → ${toLabel}` };
 			return { title, description: objectLabel || "Configure trigger..." };
 		}
 		case "record_created":
@@ -42,21 +42,30 @@ function getSummary(data: Record<string, unknown>): {
 		case "record_updated":
 			return {
 				title: "Record Updated",
-				description: trigger.field
-					? `${objectLabel}.${trigger.field} changes`
-					: `${objectLabel} updated`,
+				description:
+					trigger.fields && trigger.fields.length > 0
+						? `${objectLabel}.${trigger.fields.join(", ")} changes`
+						: `${objectLabel} updated`,
 			};
-		case "email_received":
-			return { title: "Email Received", description: "Incoming email triggers flow" };
-		case "scheduled":
-			return { title: "Scheduled", description: `Runs ${trigger.schedule?.frequency || "daily"}` };
+		case "scheduled": {
+			const schedule = trigger.schedule;
+			// describeSchedule throws on malformed drafts; only summarize valid ones.
+			if (schedule && validateSchedule(schedule) === null) {
+				return {
+					title: "Scheduled",
+					description: describeSchedule(schedule, Date.now()),
+				};
+			}
+			return { title: "Scheduled", description: "Configure the schedule..." };
+		}
 		default:
-			return { title: triggerType, description: objectLabel || "Configure trigger..." };
+			return { title: "Unsupported trigger", description: "Choose a different trigger" };
 	}
 }
 
 export const TriggerNodeRF = memo(({ data, selected }: NodeProps) => {
-	const { title, description } = getSummary(data);
+	const trigger = (data as Record<string, unknown>)?.trigger as TriggerConfig | undefined;
+	const { title, description } = getSummary(trigger);
 
 	return (
 		<div className="relative mt-4">

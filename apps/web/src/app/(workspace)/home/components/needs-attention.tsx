@@ -5,7 +5,8 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
+import { StyledEmpty, StyledStatusBadge } from "@/components/ui/styled";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Collapsible,
@@ -120,7 +121,7 @@ function TaskRow({
 				)}
 			>
 				{isCompleted ? (
-					<CheckCircle2 className="h-5 w-5 text-green-600" />
+					<CheckCircle2 className="h-5 w-5 text-success" />
 				) : (
 					<Circle className="h-5 w-5 text-muted-foreground hover:text-foreground" />
 				)}
@@ -141,7 +142,7 @@ function TaskRow({
 						className={cn(
 							"text-xs shrink-0",
 							isOverdue
-								? "text-red-600 font-medium dark:text-red-400"
+								? "text-destructive font-medium"
 								: "text-muted-foreground",
 						)}
 					>
@@ -202,8 +203,8 @@ function InvoiceRow({ invoice, clientName, isLast }: InvoiceRowProps) {
 				className={cn(
 					"text-xs mt-0.5",
 					isOverdue
-						? "text-red-600 dark:text-red-400"
-						: "text-amber-600 dark:text-amber-400",
+						? "text-destructive"
+						: "text-warning",
 				)}
 			>
 				{timeLabel}
@@ -260,8 +261,8 @@ function QuoteRow({ quote, clientName, isLast }: QuoteRowProps) {
 				className={cn(
 					"text-xs mt-0.5",
 					isExpired
-						? "text-red-600 dark:text-red-400"
-						: "text-amber-600 dark:text-amber-400",
+						? "text-destructive"
+						: "text-warning",
 				)}
 			>
 				{timeLabel}
@@ -312,7 +313,7 @@ function AttentionSection({
 				/>
 				<span className="ml-2 mr-2 shrink-0">{icon}</span>
 				<span className="text-[13px] font-semibold">{title}</span>
-				<Badge variant="secondary" className="ml-2 text-[11px] px-1.5 py-0">
+				<Badge variant="secondary" size="sm" className="ml-2">
 					{count}
 				</Badge>
 				<span className="ml-auto text-xs text-muted-foreground">
@@ -506,20 +507,14 @@ export function NeedsAttention() {
 						Needs Attention (0)
 					</p>
 				</div>
-				<div
-					role="status"
-					className="flex flex-col items-center justify-center min-h-[200px] py-12"
-				>
-					<div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full">
-						<CheckCircle2 className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<h3 className="text-lg font-semibold mt-4">
-						You&apos;re all caught up
-					</h3>
-					<p className="text-sm text-muted-foreground mt-1 max-w-sm text-center">
-						No overdue items, tasks, or pending signatures need your
-						attention right now.
-					</p>
+				<div role="status">
+					<StyledEmpty
+						icon={<CheckCircle2 />}
+						title="You're all caught up"
+						description="No overdue items, tasks, or pending signatures need your attention right now."
+						size="md"
+						className="min-h-[200px] justify-center"
+					/>
 				</div>
 			</div>
 		);
@@ -609,12 +604,13 @@ export function NeedsAttention() {
 						Needs Attention ({totalCount})
 					</p>
 					{totalOverdue > 0 && (
-						<Badge
-							className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+						<StyledStatusBadge
+							status="overdue"
+							size="sm"
 							aria-label={`${totalOverdue} overdue items`}
 						>
 							{totalOverdue} overdue
-						</Badge>
+						</StyledStatusBadge>
 					)}
 				</div>
 			</div>

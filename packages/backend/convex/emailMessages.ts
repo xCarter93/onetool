@@ -61,7 +61,7 @@ export const getRecentEmails = optionalUserQuery({
 	},
 	handler: async (ctx, args) => {
 		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!orgId) return emptyListResult<Doc<"emailMessages">>();
 
 		return await ctx.db
 			.query("emailMessages")

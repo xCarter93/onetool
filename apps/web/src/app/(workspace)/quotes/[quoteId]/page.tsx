@@ -1,22 +1,21 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation, useAction, useConvex } from "convex/react";
+import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
+import { useCanPerformAction } from "@/hooks/use-feature-access";
 import { pdf } from "@react-pdf/renderer";
 import QuotePDF from "@/app/(workspace)/quotes/components/QuotePDF";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
 import { useState, useMemo } from "react";
 import { DocumentSelectionModal } from "@/app/(workspace)/quotes/components/document-selection-modal";
-import { SendEmailSheet } from "@/app/(workspace)/quotes/components/send-email-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
-import { Recipient } from "@/types/quote";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -59,7 +58,6 @@ export default function QuoteDetailPage() {
 		useState<Id<"documents"> | null>(null);
 	const [showVersionHistory, setShowVersionHistory] = useState(false);
 	const [showDocumentModal, setShowDocumentModal] = useState(false);
-	const [sendEmailSheetOpen, setSendEmailSheetOpen] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 
@@ -113,10 +111,14 @@ export default function QuoteDetailPage() {
 	const createDocument = useMutation(api.documents.create);
 	const createInvoiceFromQuote = useMutation(api.invoices.createFromQuote);
 
-	// Actions
-	const sendForSignature = useAction(
-		api.boldsignActions.sendDocumentForSignature
-	);
+	// Plan gate for e-signature sends (server-enforced; this drives button UX).
+	const esignAccess = useCanPerformAction("send_esignature");
+	// Only treat as blocked once the check has resolved (limit is known),
+	// so the button doesn't flash disabled while usage is loading.
+	const sendBlocked =
+		!esignAccess.canPerform && esignAccess.limit !== undefined;
+	// undefined = the latest-document query is still resolving; null = no PDF.
+	const isLatestDocumentLoading = latestDocument === undefined;
 
 	// Derived state
 	const selectedDocument = useMemo(() => {
@@ -346,35 +348,13 @@ export default function QuoteDetailPage() {
 		}
 	};
 
-	const handleSendForSignature = async (
-		recipients: Recipient[],
-		message?: string
-	) => {
-		if (!selectedDocumentUrl || !latestDocument) {
+	const handleSendToClient = () => {
+		if (isLatestDocumentLoading) return; // still resolving — ignore the click
+		if (latestDocument === null) {
 			toast.error("No PDF", "Generate a PDF first");
 			return;
 		}
-
-		try {
-			const validRecipients = recipients.filter(
-				(r): r is Recipient & { signerType: "Signer" | "CC" } =>
-					r.signerType === "Signer" || r.signerType === "CC"
-			);
-
-			await sendForSignature({
-				quoteId,
-				documentId: latestDocument._id,
-				recipients: validRecipients,
-				documentUrl: selectedDocumentUrl,
-				message,
-			});
-			toast.success("Sent!", "Quote sent for signature via BoldSign");
-			setSendEmailSheetOpen(false);
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
-			toast.error("Send failed", message);
-		}
+		router.push(`/quotes/${quoteId}/sign`);
 	};
 
 	// Loading state
@@ -425,7 +405,13 @@ export default function QuoteDetailPage() {
 					quote={quote}
 					currentStatus={currentStatus}
 					onStatusChange={handleStatusChange}
-					onSendToClient={() => setSendEmailSheetOpen(true)}
+					onSendToClient={handleSendToClient}
+					sendDisabled={sendBlocked || isLatestDocumentLoading}
+					sendDisabledReason={
+						isLatestDocumentLoading
+							? "Checking for a generated PDF…"
+							: esignAccess.reason
+					}
 					onGeneratePdf={() => setShowDocumentModal(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 					onConvertToInvoice={handleConvertToInvoice}
@@ -476,24 +462,6 @@ export default function QuoteDetailPage() {
 				isOpen={showDocumentModal}
 				onClose={() => setShowDocumentModal(false)}
 				onConfirm={(selectedIds) => handleGeneratePdf(selectedIds)}
-			/>
-			<SendEmailSheet
-				isOpen={sendEmailSheetOpen}
-				onOpenChange={setSendEmailSheetOpen}
-				onConfirm={handleSendForSignature}
-				primaryContact={primaryContact}
-				quoteNumber={quote?.quoteNumber || quote?._id.slice(-6)}
-				documentVersion={latestDocument?.version}
-				countersigner={
-					quote?.requiresCountersignature && countersigner
-						? {
-								name:
-									countersigner.name || countersigner.email,
-								email: countersigner.email,
-							}
-						: null
-				}
-				signingOrder={quote?.signingOrder}
 			/>
 		</>
 	);

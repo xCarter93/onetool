@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/map";
 import { MapDetailSidebar } from "./map-detail-sidebar";
 import type { PropertyDetails } from "./map-detail-sidebar";
+import { StyledEmpty } from "@/components/ui/styled";
+import { Frame, FramePanel } from "@/components/reui/frame";
+import { Badge } from "@/components/reui/badge";
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
@@ -80,7 +83,10 @@ export default function ClientPropertiesMap({
 		useState<PropertyDetails | null>(null);
 
 	const isLoading = isOrgSwitching || propertiesData === undefined;
-	const properties = propertiesData?.properties ?? [];
+	const properties = useMemo(
+		() => propertiesData?.properties ?? [],
+		[propertiesData]
+	);
 	const totalCount = propertiesData?.totalCount ?? 0;
 	const geocodedCount = propertiesData?.geocodedCount ?? 0;
 
@@ -120,93 +126,87 @@ export default function ClientPropertiesMap({
 		[properties]
 	);
 
-	if (isLoading) {
-		return (
-			<div
-				className={cn(
-					"absolute inset-0 rounded-none overflow-hidden flex items-center justify-center",
-					className
-				)}
-			>
-				<div className="flex gap-1">
-					<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
-					<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:150ms]" />
-					<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:300ms]" />
-				</div>
-			</div>
-		);
-	}
-
 	return (
-		<div
-			className={cn(
-				"absolute inset-0 rounded-none overflow-hidden",
-				className
-			)}
-		>
-			<Map
-				center={[defaultCenter.lng, defaultCenter.lat]}
-				zoom={properties.length === 0 ? 4 : 6}
-				scrollZoom={false}
-			>
-				<MapBoundsHandler properties={properties} />
-				<MapControls position="bottom-right" showZoom />
-
-				<MapClusterLayer
-					data={geojsonData}
-					clusterMaxZoom={14}
-					clusterRadius={50}
-					clusterColors={[
-						"#38bdf8",
-						"#0ea5e9",
-						"#0284c7",
-					]}
-					clusterThresholds={[10, 50]}
-					pointColor="#0ea5e9"
-					onPointClick={(feature) => {
-						setSelectedProperty({
-							id: feature.properties.id,
-							clientId: feature.properties.clientId,
-							clientCompanyName: feature.properties.clientCompanyName,
-							address: feature.properties.address,
-							propertyName: feature.properties.propertyName,
-						});
-					}}
-				/>
-			</Map>
-
-			{/* Detail Sidebar */}
-			<MapDetailSidebar
-				property={selectedProperty}
-				onClose={() => setSelectedProperty(null)}
-			/>
-
-			{/* Stats Overlay */}
-			<div className="absolute top-3 left-3 z-10">
-				<div className="bg-background/90 backdrop-blur-sm border border-border rounded-md px-3 py-2 shadow-sm">
-					<div className="flex items-center gap-2">
-						<MapPin className="h-4 w-4 text-primary" />
-						<span className="text-sm font-medium">
-							{geocodedCount} of {totalCount} properties mapped
-						</span>
-					</div>
+		<Frame className={cn("h-full w-full", className)}>
+			<FramePanel className="flex h-full flex-col gap-3">
+				{/* Header */}
+				<div className="flex items-center justify-between gap-2">
+					<h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						Client Locations
+					</h3>
+					{!isLoading && totalCount > 0 && (
+						<Badge variant="primary-light" size="sm" className="gap-1">
+							<MapPin className="size-3" aria-hidden />
+							{geocodedCount} of {totalCount} mapped
+						</Badge>
+					)}
 				</div>
-			</div>
 
-			{/* Empty State */}
-			{properties.length === 0 && (
-				<div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-					<div className="text-center space-y-2">
-						<MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
-						<p className="text-sm text-muted-foreground font-medium">
-							No properties mapped
-						</p>
-						<p className="text-xs text-muted-foreground/70">
-							Add addresses to client properties to see them here.
-						</p>
-					</div>
+				{/* Map surface */}
+				<div className="relative min-h-[300px] flex-1 overflow-hidden rounded-lg border border-border bg-muted/30">
+					{isLoading ? (
+						<div
+							className="absolute inset-0 flex items-center justify-center"
+							role="status"
+							aria-live="polite"
+							aria-label="Loading client locations"
+						>
+							<div className="flex gap-1">
+								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
+								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:150ms]" />
+								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:300ms]" />
+							</div>
+						</div>
+					) : (
+						<>
+							<Map
+								center={[defaultCenter.lng, defaultCenter.lat]}
+								zoom={properties.length === 0 ? 4 : 6}
+								scrollZoom={false}
+							>
+								<MapBoundsHandler properties={properties} />
+								<MapControls position="bottom-right" showZoom />
+
+								<MapClusterLayer
+									data={geojsonData}
+									clusterMaxZoom={14}
+									clusterRadius={50}
+									clusterColors={["#38bdf8", "#0ea5e9", "#0284c7"]}
+									clusterThresholds={[10, 50]}
+									pointColor="#0ea5e9"
+									onPointClick={(feature) => {
+										setSelectedProperty({
+											id: feature.properties.id,
+											clientId: feature.properties.clientId,
+											clientCompanyName: feature.properties.clientCompanyName,
+											address: feature.properties.address,
+											propertyName: feature.properties.propertyName,
+										});
+									}}
+								/>
+							</Map>
+
+							{/* Detail Sidebar */}
+							<MapDetailSidebar
+								property={selectedProperty}
+								onClose={() => setSelectedProperty(null)}
+							/>
+
+							{/* Empty State */}
+							{properties.length === 0 && (
+								<div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+									<StyledEmpty
+										icon={<MapPin />}
+										title="No properties mapped"
+										description="Add addresses to client properties to see them here."
+										size="sm"
+									/>
+								</div>
+							)}
+						</>
+					)}
 				</div>
-			)}
-		</div>
+			</FramePanel>
+		</Frame>
 	);
 }

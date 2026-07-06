@@ -131,7 +131,7 @@ CRITICAL: For time-based/date reports, use these groupBy values:
 - For clients/projects created over time: creationDate_day, creationDate_week, or creationDate_month
 - For tasks over time: date_day, date_week, or date_month
 - For invoice revenue over time: month`,
-	model: openai("gpt-4o"),
+	model: openai("gpt-5-nano"),
 	tools: {
 		getSchemaInfo: schemaInfoTool,
 		buildReportConfig: reportConfigTool,

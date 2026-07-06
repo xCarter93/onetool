@@ -1312,7 +1312,7 @@ export default function CompleteOrganizationMetadata() {
 			)}
 
 			{hasPremiumAccess && importState === "expanded" && (
-				<div className="border border-border/60 rounded-xl p-4 bg-muted/10">
+				<div className="mt-1">
 					<ImportWizard
 						embedded
 						onComplete={(result) => {

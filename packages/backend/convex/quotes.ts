@@ -12,7 +12,11 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
-import { emitStatusChangeEvent } from "./eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	optionalUserQuery,
@@ -329,6 +333,218 @@ export const get = optionalUserQuery({
 	},
 });
 
+// Self-contained payload for the list-page detail drawer: the quote with
+// ACCURATE totals (recomputed from line items via calculateQuoteTotals), its
+// resolved client (+ primary address), project, line items, and the quote's
+// activity from the last 7 days.
+interface QuotePreview {
+	quote: {
+		_id: Id<"quotes">;
+		quoteNumber: string | null;
+		title: string | null;
+		status: QuoteDocument["status"];
+		validUntil: number | null;
+		sentAt: number | null;
+		approvedAt: number | null;
+		declinedAt: number | null;
+		createdAt: number;
+	};
+	totals: {
+		subtotal: number;
+		taxAmount: number;
+		total: number;
+	};
+	client: {
+		_id: Id<"clients">;
+		companyName: string;
+		address: string | null;
+	} | null;
+	project: {
+		_id: Id<"projects">;
+		title: string;
+	} | null;
+	lineItems: Array<{
+		_id: Id<"quoteLineItems">;
+		description: string;
+		quantity: number;
+		unit: string;
+		rate: number;
+		amount: number;
+	}>;
+	activities: Array<{
+		_id: Id<"activities">;
+		description: string;
+		activityType: string;
+		timestamp: number;
+		userName: string;
+	}>;
+	/** True when an invoice has already been created from this quote. */
+	hasInvoice: boolean;
+}
+
+/**
+ * Get a compact, self-contained preview of a quote for the detail drawer.
+ * Recomputes totals from current line items (stored values can be stale),
+ * resolves the client (+ primary address) and project, returns all line items
+ * (ordered by sortOrder; the drawer slices to the top few), and the quote's
+ * activity from the last 7 days.
+ */
+export const getPreview = optionalUserQuery({
+	args: { id: v.id("quotes") },
+	handler: async (ctx, args: any): Promise<QuotePreview | null> => {
+		const orgId = ctx.orgId;
+		if (!orgId) return null;
+
+		let quote: QuoteDocument;
+		try {
+			quote = await ctx.orgEntity("quotes", args.id);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in quotes:")
+			) {
+				return null;
+			}
+			throw error;
+		}
+
+		// Recompute totals from current line items (stored values can be stale)
+		const totals = await calculateQuoteTotals(ctx, args.id, {
+			discountEnabled: quote.discountEnabled,
+			discountAmount: quote.discountAmount,
+			discountType: quote.discountType,
+			taxEnabled: quote.taxEnabled,
+			taxRate: quote.taxRate,
+		});
+
+		// Resolve client + its primary address. Guard the raw get() against a
+		// cross-org reference so a bad ref can't leak another org's data.
+		const clientDoc = await ctx.db.get(quote.clientId);
+		const ownedClient =
+			clientDoc && clientDoc.orgId === orgId ? clientDoc : null;
+		let clientAddress: string | null = null;
+		if (ownedClient) {
+			const primaryProperty = await ctx.db
+				.query("clientProperties")
+				.withIndex("by_primary", (q: any) =>
+					q.eq("clientId", ownedClient._id).eq("isPrimary", true)
+				)
+				.first();
+			if (primaryProperty) {
+				clientAddress =
+					[
+						primaryProperty.streetAddress,
+						primaryProperty.city,
+						[primaryProperty.state, primaryProperty.zipCode]
+							.filter(Boolean)
+							.join(" "),
+					]
+						.filter(Boolean)
+						.join(", ") || null;
+			}
+		}
+		const client = ownedClient
+			? {
+					_id: ownedClient._id,
+					companyName: ownedClient.companyName,
+					address: clientAddress,
+				}
+			: null;
+
+		// Project (optional, org-guarded)
+		let project: QuotePreview["project"] = null;
+		if (quote.projectId) {
+			const projectDoc = await ctx.db.get(quote.projectId);
+			if (projectDoc && projectDoc.orgId === orgId) {
+				project = { _id: projectDoc._id, title: projectDoc.title };
+			}
+		}
+
+		// Line items, ordered by sortOrder
+		const lineItemRows = await ctx.db
+			.query("quoteLineItems")
+			.withIndex("by_quote", (q: any) => q.eq("quoteId", args.id))
+			.collect();
+		const lineItems: QuotePreview["lineItems"] = lineItemRows
+			.sort(
+				(a: Doc<"quoteLineItems">, b: Doc<"quoteLineItems">) =>
+					a.sortOrder - b.sortOrder
+			)
+			.map((li: Doc<"quoteLineItems">) => ({
+				_id: li._id,
+				description: li.description,
+				quantity: li.quantity,
+				unit: li.unit,
+				rate: li.rate,
+				amount: li.amount,
+			}));
+
+		// Whether an invoice already exists from this quote — the drawer uses
+		// this to block creating a second invoice from the same quote.
+		const existingInvoice = await ctx.db
+			.query("invoices")
+			.withIndex("by_quote", (q: any) => q.eq("quoteId", args.id))
+			.first();
+		const hasInvoice = existingInvoice !== null;
+
+		// Recent activity for this quote (last 7 days). Activities are keyed
+		// generically by entityType/entityId, so query by_entity then filter.
+		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const activityRows = await ctx.db
+			.query("activities")
+			.withIndex("by_entity", (q: any) =>
+				q.eq("entityType", "quote").eq("entityId", args.id as string)
+			)
+			.filter((q: any) =>
+				q.and(
+					q.eq(q.field("orgId"), orgId),
+					q.eq(q.field("isVisible"), true),
+					q.gte(q.field("timestamp"), cutoff)
+				)
+			)
+			.order("desc")
+			.take(20);
+
+		const userNameCache = new Map<string, string>();
+		const activities: QuotePreview["activities"] = [];
+		for (const activity of activityRows) {
+			let userName = userNameCache.get(activity.userId);
+			if (userName === undefined) {
+				const actor = await ctx.db.get(activity.userId);
+				userName = actor ? actor.name || actor.email : "Someone";
+				userNameCache.set(activity.userId, userName);
+			}
+			activities.push({
+				_id: activity._id,
+				description: activity.description,
+				activityType: activity.activityType,
+				timestamp: activity.timestamp,
+				userName,
+			});
+		}
+
+		return {
+			quote: {
+				_id: quote._id,
+				quoteNumber: quote.quoteNumber ?? null,
+				title: quote.title ?? null,
+				status: quote.status,
+				validUntil: quote.validUntil ?? null,
+				sentAt: quote.sentAt ?? null,
+				approvedAt: quote.approvedAt ?? null,
+				declinedAt: quote.declinedAt ?? null,
+				createdAt: quote._creationTime,
+			},
+			totals,
+			client,
+			project,
+			lineItems,
+			activities,
+			hasInvoice,
+		};
+	},
+});
+
 /**
  * Create a new quote
  */
@@ -408,6 +624,13 @@ export const create = userMutation({
 				client?.companyName || "Unknown Client"
 			);
 			await AggregateHelpers.addQuote(ctx, quote as QuoteDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				quote.orgId,
+				"quote",
+				quote._id,
+				"quotes.create"
+			);
 		}
 
 		return quoteId;
@@ -601,6 +824,15 @@ export const update = userMutation({
 					"quotes.update"
 				);
 			}
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				updatedQuote.orgId,
+				"quote",
+				updatedQuote._id,
+				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				"quotes.update"
+			);
 		}
 
 		return id;

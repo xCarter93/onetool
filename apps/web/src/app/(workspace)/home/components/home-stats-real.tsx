@@ -1,20 +1,20 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useCallback, useMemo, useState } from "react";
 import { StatCardSkeleton } from "@/components/stat-card-skeleton";
 import { ChartSkeleton } from "@/components/chart-skeleton";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
-import LineChart6, {
-	type MetricDatum,
-	type MetricDataMap,
-	type MetricDefinition,
+import type {
+	MetricDatum,
+	MetricDataMap,
+	MetricDefinition,
 } from "@/components/line-chart-6";
-import type { ChartConfig } from "@/components/ui/chart";
 import { DateRange } from "react-day-picker";
-import { endOfDay, format, startOfDay, startOfMonth } from "date-fns";
+import { endOfDay, startOfDay, startOfMonth } from "date-fns";
+import { OverviewPanel } from "./overview/overview-panel";
+import { OVERVIEW_METRIC_ORDER } from "./overview/metric-visuals";
 
 type ChartInput = Array<{
 	date: string;
@@ -101,17 +101,6 @@ const filterByRange = (data: MetricDatum[], range?: DateRange) => {
 	});
 };
 
-const formatRangeLabel = (range?: DateRange) => {
-	if (!range?.from && !range?.to) return "All time";
-	if (range?.from && range?.to) {
-		return `${format(range.from, "LLL d, yyyy")} - ${format(range.to, "LLL d, yyyy")}`;
-	}
-	if (range?.from) {
-		return format(range.from, "LLL d, yyyy");
-	}
-	return "Pick a range";
-};
-
 const sumCounts = (data: ChartInput) =>
 	(data || []).reduce((sum, item) => sum + (item.count ?? 0), 0);
 
@@ -158,7 +147,7 @@ export default function HomeStatsReal() {
 	const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(
 		defaultRange
 	);
-	const [activeMetric, setActiveMetric] = useState<string>("clients");
+	const [activeMetric, setActiveMetric] = useState<string>("revenue");
 
 	const isLoading = isOrgSwitching || homeStats === undefined;
 
@@ -250,12 +239,7 @@ export default function HomeStatsReal() {
 	);
 	const revenueChartData = useMemo(
 		() =>
-			processDataForChart(
-				revenueThisMonth || [],
-				"revenue",
-				true,
-				selectedRange
-			),
+			processDataForChart(revenueThisMonth || [], "revenue", true, selectedRange),
 		[revenueThisMonth, selectedRange]
 	);
 	const tasksChartData = useMemo(
@@ -284,9 +268,6 @@ export default function HomeStatsReal() {
 		]
 	);
 
-	// Sparklines use the same full-range data as the main chart
-	const sparklineData = dataByMetric;
-
 	const isAnyMetricLoading =
 		isClientsLoading ||
 		isProjectsLoading ||
@@ -294,18 +275,6 @@ export default function HomeStatsReal() {
 		isInvoicesLoading ||
 		isRevenueLoading ||
 		isTasksLoading;
-
-	const chartConfig: ChartConfig = useMemo(
-		() => ({
-			clients: { label: "Clients", color: "var(--chart-1)" },
-			projects: { label: "Projects", color: "var(--chart-2)" },
-			quotes: { label: "Quotes", color: "var(--chart-3)" },
-			invoices: { label: "Invoices", color: "var(--chart-4)" },
-			revenue: { label: "Revenue", color: "var(--chart-5)" },
-			tasks: { label: "Tasks", color: "var(--chart-6)" },
-		}),
-		[]
-	);
 
 	const revenueTotal = useMemo(
 		() =>
@@ -400,8 +369,9 @@ export default function HomeStatsReal() {
 							: homeStats.revenueGoal.changePercentage < 0
 								? "decrease"
 								: "neutral",
+				changePercent: Math.abs(homeStats?.revenueGoal.changePercentage ?? 0),
 				subtitle: homeStats
-					? `Progress: ${homeStats.revenueGoal.percentage}% of target`
+					? `${homeStats.revenueGoal.percentage}% of target`
 					: undefined,
 				isLoading: isRevenueLoading,
 			},
@@ -440,48 +410,44 @@ export default function HomeStatsReal() {
 		[setSelectedRange]
 	);
 
-	const rangeLabel = useMemo(
-		() => formatRangeLabel(selectedRange),
-		[selectedRange]
+	// Revenue-first ordering; the selected card drives the big chart above.
+	const orderedMetrics = useMemo(
+		() =>
+			OVERVIEW_METRIC_ORDER.map((key) =>
+				metrics.find((m) => m.key === key)
+			).filter((m): m is MetricDefinition => Boolean(m)),
+		[metrics]
+	);
+
+	const activeMetricDef = useMemo(
+		() => metrics.find((m) => m.key === activeMetric) ?? metrics[0],
+		[metrics, activeMetric]
 	);
 
 	return (
-		<div className="mb-8 space-y-4">
+		<div className="mb-8">
 			{isAnyMetricLoading && !homeStats ? (
 				<div className="space-y-4">
-					{/* Skeleton header matching LineChart6 header */}
-					<div className="space-y-3 pb-4">
-						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-							<div className="space-y-1">
-								<Skeleton className="h-3 w-16" />
-								<Skeleton className="h-5 w-40" />
-							</div>
-							<Skeleton className="h-9 w-56" />
-						</div>
-						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-							{Array.from({ length: 6 }).map((_, i) => (
-								<StatCardSkeleton key={i} />
-							))}
-						</div>
+					<div className="grid grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-6">
+						{Array.from({ length: 6 }).map((_, i) => (
+							<StatCardSkeleton key={i} />
+						))}
 					</div>
-					<ChartSkeleton />
-					<hr className="border-border/60" />
+					<div className="rounded-xl border border-border/60 bg-card p-5 shadow-sm">
+						<ChartSkeleton />
+					</div>
 				</div>
-			) : (
-				<LineChart6
-					metrics={metrics}
-					chartConfig={chartConfig}
+			) : activeMetricDef ? (
+				<OverviewPanel
+					metrics={orderedMetrics}
 					dataByMetric={dataByMetric}
-					sparklineData={sparklineData}
-					selectedMetric={activeMetric}
-					onMetricChange={setActiveMetric}
-					title="Business Overview"
-					description={rangeLabel}
-					height={360}
+					activeMetric={activeMetric}
+					activeMetricDef={activeMetricDef}
+					onSelect={setActiveMetric}
 					dateRange={selectedRange}
 					onDateRangeChange={handleDateChange}
 				/>
-			)}
+			) : null}
 		</div>
 	);
 }

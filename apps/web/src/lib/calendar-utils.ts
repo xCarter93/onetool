@@ -186,77 +186,47 @@ export function getEventColor(
 	text: string;
 	hover: string;
 } {
-	if (type === "project") {
-		switch (status) {
-			case "planned":
-				return {
-					bg: "bg-blue-100 dark:bg-blue-900/30",
-					border: "border-blue-300 dark:border-blue-700",
-					text: "text-blue-900 dark:text-blue-100",
-					hover: "hover:bg-blue-200 dark:hover:bg-blue-900/50",
-				};
-			case "in-progress":
-				return {
-					bg: "bg-blue-500 dark:bg-blue-600",
-					border: "border-blue-600 dark:border-blue-500",
-					text: "text-white dark:text-white",
-					hover: "hover:bg-blue-600 dark:hover:bg-blue-700",
-				};
-			case "completed":
-				return {
-					bg: "bg-green-100 dark:bg-green-900/30",
-					border: "border-green-300 dark:border-green-700",
-					text: "text-green-900 dark:text-green-100",
-					hover: "hover:bg-green-200 dark:hover:bg-green-900/50",
-				};
-			case "cancelled":
-				return {
-					bg: "bg-gray-100 dark:bg-gray-800/30",
-					border: "border-gray-300 dark:border-gray-700",
-					text: "text-gray-600 dark:text-gray-400",
-					hover: "hover:bg-gray-200 dark:hover:bg-gray-800/50",
-				};
-			default:
-				return {
-					bg: "bg-blue-100 dark:bg-blue-900/30",
-					border: "border-blue-300 dark:border-blue-700",
-					text: "text-blue-900 dark:text-blue-100",
-					hover: "hover:bg-blue-200 dark:hover:bg-blue-900/50",
-				};
-		}
-	} else {
-		// Tasks - use purple shades with status variations
-		switch (status) {
-			case "completed":
-				return {
-					bg: "bg-green-100 dark:bg-green-900/30",
-					border: "border-green-300 dark:border-green-700",
-					text: "text-green-900 dark:text-green-100",
-					hover: "hover:bg-green-200 dark:hover:bg-green-900/50",
-				};
-			case "in-progress":
-				return {
-					bg: "bg-purple-500 dark:bg-purple-600",
-					border: "border-purple-600 dark:border-purple-500",
-					text: "text-white dark:text-white",
-					hover: "hover:bg-purple-600 dark:hover:bg-purple-700",
-				};
-			case "cancelled":
-				return {
-					bg: "bg-gray-100 dark:bg-gray-800/30",
-					border: "border-gray-300 dark:border-gray-700",
-					text: "text-gray-600 dark:text-gray-400",
-					hover: "hover:bg-gray-200 dark:hover:bg-gray-800/50",
-				};
-			case "pending":
-			default:
-				return {
-					bg: "bg-purple-200 dark:bg-purple-800",
-					border: "border-purple-300 dark:border-purple-700",
-					text: "text-purple-900 dark:text-purple-100",
-					hover: "hover:bg-purple-300 dark:hover:bg-purple-900",
-				};
-		}
+	switch (status) {
+		case "completed":
+		case "approved":
+			return {
+				bg: "bg-success/10",
+				border: "border-success/25",
+				text: "text-success-foreground",
+				hover: "hover:bg-success/15",
+			};
+		case "in-progress":
+		case "pending":
+			return {
+				bg: "bg-warning/10",
+				border: "border-warning/25",
+				text: "text-warning-foreground",
+				hover: "hover:bg-warning/15",
+			};
+		case "planned":
+		case "scheduled":
+		case "upcoming":
+			return {
+				bg: "bg-info/10",
+				border: "border-info/25",
+				text: "text-info-foreground",
+				hover: "hover:bg-info/15",
+			};
+		case "cancelled":
+		case "overdue":
+			return {
+				bg: "bg-destructive/10",
+				border: "border-destructive/25",
+				text: "text-destructive-foreground",
+				hover: "hover:bg-destructive/15",
+			};
+		default:
+			return {
+				bg: "bg-muted",
+				border: "border-border",
+				text: "text-muted-foreground",
+				hover: "hover:bg-muted/70",
+			};
 	}
 }
 

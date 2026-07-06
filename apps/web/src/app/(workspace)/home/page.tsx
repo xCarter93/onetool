@@ -6,15 +6,16 @@ import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
 import OnboardingBanner from "@/app/(workspace)/home/components/onboarding-banner";
 import { CalendarContainer } from "@/app/(workspace)/home/components/calendar/calendar-container";
-import { WeeklyAgenda } from "@/app/(workspace)/home/components/weekly-agenda";
+import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
 import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
+import { StyledSegmentedControl } from "@/components/ui/styled";
 import { LayoutDashboard, CalendarDays } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
 	TourElement,
 	TourStartModal,
@@ -41,6 +42,9 @@ export default function Page() {
 
 	// Automatically detect and save timezone if not set
 	useAutoTimezone();
+
+	// Let the assistant see which home view is active ("what am I looking at?")
+	usePublishScreenContext(() => ({ homeView: viewMode }));
 
 	// True only after client hydration; gates localStorage reads to avoid mismatch
 	const hydrated = React.useSyncExternalStore(
@@ -151,10 +155,10 @@ export default function Page() {
 				{/* Header */}
 				<div className="mb-8 sm:mb-10 flex items-start justify-between">
 					<div>
-						<h1 className="text-2xl sm:text-3xl font-semibold text-foreground leading-tight tracking-tight">
+						<h1 className="text-3xl sm:text-4xl font-bold text-foreground leading-tight tracking-tight">
 							{getGreeting()}
 						</h1>
-						<p className="text-sm text-muted-foreground mt-1">
+						<p className="text-sm text-muted-foreground mt-1.5">
 							{formatDate()}
 						</p>
 					</div>
@@ -169,36 +173,26 @@ export default function Page() {
 							HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].tooltipPosition
 						}
 					>
-						<ButtonGroup>
-							<button
-								onClick={() => handleViewChange("dashboard")}
-								aria-pressed={viewMode === "dashboard"}
-								aria-label="Dashboard view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "dashboard"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border",
-								)}
-							>
-								<LayoutDashboard className="w-4 h-4" />
-								<span className="hidden sm:inline">Dashboard</span>
-							</button>
-							<button
-								onClick={() => handleViewChange("calendar")}
-								aria-pressed={viewMode === "calendar"}
-								aria-label="Calendar view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "calendar"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border",
-								)}
-							>
-								<CalendarDays className="w-4 h-4" />
-								<span className="hidden sm:inline">Calendar</span>
-							</button>
-						</ButtonGroup>
+						<StyledSegmentedControl
+							value={viewMode}
+							onValueChange={handleViewChange}
+							options={[
+								{
+									value: "dashboard",
+									label: "Dashboard",
+									icon: <LayoutDashboard className="w-4 h-4" />,
+									ariaLabel: "Dashboard view",
+									hideLabelOnMobile: true,
+								},
+								{
+									value: "calendar",
+									label: "Calendar",
+									icon: <CalendarDays className="w-4 h-4" />,
+									ariaLabel: "Calendar view",
+									hideLabelOnMobile: true,
+								},
+							]}
+						/>
 					</TourElement>
 				</div>
 
@@ -244,16 +238,16 @@ export default function Page() {
 							</div>
 						</motion.div>
 
-						{/* Animation Group 1.5: Weekly Calendar + Map - 50ms delay */}
+						{/* Animation Group 2: Content bento — asymmetric tiles */}
 						<motion.div
-							className="border-t border-border pt-6 mt-6"
+							className="mt-8"
 							initial={{ opacity: 0, y: 10 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
 						>
-							<div className="flex flex-col lg:flex-row lg:items-stretch lg:gap-8">
-								{/* Weekly Calendar - 65% */}
-								<div className="lg:basis-[65%] flex-1 min-w-0">
+							<div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+								{/* Schedule — 7 cols */}
+								<div className="lg:col-span-7">
 									<TourElement<HomeTour>
 										TourContext={HomeTourContext}
 										stepId={HomeTour.WEEKLY_CALENDAR}
@@ -261,84 +255,53 @@ export default function Page() {
 										description={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].description}
 										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].tooltipPosition}
 									>
-										<WeeklyAgenda
+										<SchedulePanel
 											onEventClick={() => {
 												handleViewChange("calendar");
 											}}
 										/>
 									</TourElement>
 								</div>
-
-								{/* Map - 35% */}
-								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0 flex flex-col">
-									<div className="flex items-center justify-between mb-3 min-h-[2.75rem]">
-										<h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-											Client Locations
-										</h3>
-									</div>
-									<div className="h-[300px] lg:flex-1 lg:h-auto lg:min-h-[300px] [&>.tour-element-wrapper]:h-full">
-										<TourElement<HomeTour>
-											TourContext={HomeTourContext}
-											stepId={HomeTour.CLIENT_MAP}
-											title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
-											description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
-											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
-										>
-											<div className="relative rounded-lg border border-border overflow-hidden h-full">
-												<ClientPropertiesMap />
-											</div>
-										</TourElement>
-									</div>
+								{/* Client Locations map — 5 cols (Frame owned by component) */}
+								<div className="lg:col-span-5 [&>.tour-element-wrapper]:h-full">
+									<TourElement<HomeTour>
+										TourContext={HomeTourContext}
+										stepId={HomeTour.CLIENT_MAP}
+										title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
+										description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
+										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
+									>
+										<ClientPropertiesMap />
+									</TourElement>
 								</div>
-							</div>
-						</motion.div>
-
-						{/* Animation Group 2: Needs Attention + Activity Feed - 100ms delay */}
-						<motion.div
-							className="border-t border-border pt-6 mt-6"
-							initial={{ opacity: 0, y: 10 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.3, ease: "easeOut", delay: 0.1 }}
-						>
-							<div className="flex flex-col lg:flex-row lg:items-stretch lg:gap-8">
-								{/* Needs Attention - 65% */}
-								<div className="lg:basis-[65%] flex-1 min-w-0">
-									<div className="rounded-lg border border-border p-4">
+								{/* Needs Attention — 7 cols */}
+								<Frame className="w-full lg:col-span-7">
+									<FramePanel className="grow">
 										<TourElement<HomeTour>
 											TourContext={HomeTourContext}
 											stepId={HomeTour.TASKS}
 											title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
-											description={
-												HOME_TOUR_CONTENT[HomeTour.TASKS].description
-											}
-											tooltipPosition={
-												HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition
-											}
+											description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
+											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
 										>
 											<NeedsAttention />
 										</TourElement>
-									</div>
-								</div>
-
-								{/* Activity Feed - 35% */}
-								<div className="lg:basis-[35%] lg:max-w-[35%] mt-6 lg:mt-0 flex flex-col">
-									<div className="rounded-lg border border-border p-4 flex-1">
+									</FramePanel>
+								</Frame>
+								{/* Activity Feed — 5 cols */}
+								<Frame className="w-full lg:col-span-5">
+									<FramePanel className="grow">
 										<TourElement<HomeTour>
 											TourContext={HomeTourContext}
 											stepId={HomeTour.ACTIVITY_FEED}
 											title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
-											description={
-												HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description
-											}
-											tooltipPosition={
-												HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED]
-													.tooltipPosition
-											}
+											description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
+											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
 										>
 											<ActivityFeed />
 										</TourElement>
-									</div>
-								</div>
+									</FramePanel>
+								</Frame>
 							</div>
 						</motion.div>
 					</>

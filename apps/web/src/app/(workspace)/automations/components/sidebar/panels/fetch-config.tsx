@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { Trash2, Database } from "lucide-react";
+import { Database } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -11,22 +11,28 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import type { FetchConfig } from "../../../lib/node-types";
+import {
+	DEFAULT_FETCH_LIMIT,
+	MAX_FETCH_LIMIT,
+	OBJECT_TYPE_OPTIONS,
+	type AutomationObjectType,
+	type FetchNodeConfig,
+	type WorkflowNode,
+} from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-
-const ENTITY_TYPES = [
-	{ value: "client", label: "Client" },
-	{ value: "project", label: "Project" },
-	{ value: "quote", label: "Quote" },
-	{ value: "invoice", label: "Invoice" },
-	{ value: "task", label: "Task" },
-] as const;
+import {
+	DeleteStepButton,
+	PanelField,
+	PanelSection,
+} from "./panel-primitives";
+import { FilterGroupsEditor } from "./filter-groups-editor";
 
 export function FetchConfigPanel({
 	nodeId,
 	trigger,
 	nodes,
+	formulas,
 	onNodeChange,
 	onDeleteNode,
 	onNavigateToNode,
@@ -43,11 +49,16 @@ export function FetchConfigPanel({
 		);
 	}
 
-	const currentConfig =
-		(node.config as FetchConfig | undefined) ||
-		(node as unknown as { fetchConfig?: FetchConfig }).fetchConfig || {
-			entityType: trigger?.objectType || "client",
-		};
+	const currentConfig: FetchNodeConfig = (node.config as FetchNodeConfig | undefined) ?? {
+		kind: "fetch_records",
+		objectType: trigger?.objectType || "client",
+		filters: [],
+	};
+	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
+
+	const commit = (next: FetchNodeConfig) => {
+		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
+	};
 
 	return (
 		<div className="flex flex-col h-full">
@@ -56,41 +67,66 @@ export function FetchConfigPanel({
 				iconBgColor="bg-blue-50 dark:bg-blue-950/40"
 				iconFgColor="text-blue-600 dark:text-blue-400"
 				categoryBadge="Records"
-				nodeTypeName="Fetch Records"
+				nodeTypeName="Find Records"
 			/>
 
 			<div className="flex-1">
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Entity type</Label>
-					<Select
-						value={currentConfig.entityType}
-						onValueChange={(value) =>
-							onNodeChange(nodeId, {
-								config: {
+				<PanelSection title="Inputs">
+					<PanelField label="Object type">
+						<Select
+							value={currentConfig.objectType}
+							onValueChange={(value) =>
+								commit({
 									...currentConfig,
-									entityType: value as FetchConfig["entityType"],
-								},
-							})
-						}
-					>
-						<SelectTrigger className="mt-2">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{ENTITY_TYPES.map((entity) => (
-								<SelectItem key={entity.value} value={entity.value}>
-									{entity.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+									objectType: value as AutomationObjectType,
+									filters: [],
+								})
+							}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{OBJECT_TYPE_OPTIONS.map((entity) => (
+									<SelectItem key={entity.value} value={entity.value}>
+										{entity.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</PanelField>
 
-				<div className="py-4">
-					<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-						Filter configuration coming in a future update.
-					</div>
-				</div>
+					<PanelField
+						label="Limit"
+						helper={`Up to ${MAX_FETCH_LIMIT} records, newest first.`}
+					>
+						<Input
+							type="number"
+							min={1}
+							max={MAX_FETCH_LIMIT}
+							value={currentConfig.limit ?? DEFAULT_FETCH_LIMIT}
+							onChange={(e) =>
+								commit({
+									...currentConfig,
+									limit: e.target.value === "" ? undefined : Number(e.target.value),
+								})
+							}
+						/>
+					</PanelField>
+				</PanelSection>
+
+				<PanelSection title="Filters">
+					<FilterGroupsEditor
+						objectType={currentConfig.objectType}
+						groups={currentConfig.filters}
+						onChange={(filters) => commit({ ...currentConfig, filters })}
+						helperText="All groups must match."
+						nodes={workflowNodes}
+						trigger={trigger}
+						targetNodeId={nodeId}
+						formulas={formulas}
+					/>
+				</PanelSection>
 			</div>
 
 			{/* Next steps tree */}
@@ -105,19 +141,8 @@ export function FetchConfigPanel({
 				</div>
 			)}
 
-			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-4 border-t border-border mt-2">
-					<button
-						type="button"
-						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-						onClick={() => onDeleteNode(nodeId)}
-						aria-label="Delete step"
-					>
-						<Trash2 className="h-4 w-4" />
-						<span className="text-sm font-medium">Delete Node</span>
-					</button>
-				</div>
+				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 			)}
 		</div>
 	);

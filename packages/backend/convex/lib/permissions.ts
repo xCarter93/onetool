@@ -1,5 +1,6 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { query } from "../_generated/server";
+import { getCurrentUserOrgIdOrNull } from "./auth";
 
 /**
  * Server-side permission checking utilities
@@ -75,6 +76,70 @@ export const debugAuthToken = query({
 		};
 	},
 });
+
+export const PREMIUM_PLAN_SLUG = "onetool_business_plan_org";
+
+// Statuses under which a subscription grants access (free trials arrive as
+// "active" with is_free_trial on the item, so "trialing" rarely appears).
+const PREMIUM_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+
+/**
+ * Plan check from the org doc alone, for system/cron contexts with no request
+ * identity. Cannot see the has_premium_feature_access metadata overrides
+ * (those live in the JWT) — identity-scoped callers use hasPremiumAccess.
+ */
+export function orgHasPremiumPlan(
+	org: {
+		clerkPlanSlug?: string;
+		subscriptionStatus?: string;
+	} | null
+): boolean {
+	return (
+		org?.clerkPlanSlug === PREMIUM_PLAN_SLUG &&
+		PREMIUM_SUBSCRIPTION_STATUSES.has(org.subscriptionStatus ?? "")
+	);
+}
+
+/**
+ * Server-side mirror of the web app's useFeatureAccess() premium check
+ * (apps/web/src/hooks/use-feature-access.ts): premium if the user OR org has
+ * the has_premium_feature_access metadata flag (present in the "convex" JWT
+ * template), or the org's billing-webhook-synced subscription is on the paid
+ * plan. Clerk's `pla` billing claim is NOT in custom JWT templates and reading
+ * plans from session claims is unsupported — the org doc (kept current by
+ * billingWebhook.ts) is the plan source of truth here.
+ * Secure-by-default: unauthenticated callers are not premium.
+ */
+export async function hasPremiumAccess(
+	ctx: QueryCtx | MutationCtx
+): Promise<boolean> {
+	const identity = await ctx.auth.getUserIdentity();
+	if (!identity) {
+		return false;
+	}
+	const token = identity as ClerkIdentityWithClaims;
+
+	const userMetadata =
+		token.publicMetadata ??
+		(token.public_metadata as ClerkIdentityWithClaims["publicMetadata"]);
+	if (userMetadata?.has_premium_feature_access === true) {
+		return true;
+	}
+
+	const orgMetadata =
+		token.orgPublicMetadata ??
+		(token.org_public_metadata as ClerkIdentityWithClaims["orgPublicMetadata"]);
+	if (orgMetadata?.has_premium_feature_access === true) {
+		return true;
+	}
+
+	const orgId = await getCurrentUserOrgIdOrNull(ctx);
+	if (!orgId) {
+		return false;
+	}
+	const org = await ctx.db.get(orgId);
+	return orgHasPremiumPlan(org);
+}
 
 /**
  * Role-based permission utilities

@@ -34,6 +34,7 @@ interface QuoteDetailTabsProps {
 				generatedAt: number;
 				boldsign: {
 					status:
+						| "Draft"
 						| "Sent"
 						| "Viewed"
 						| "Signed"

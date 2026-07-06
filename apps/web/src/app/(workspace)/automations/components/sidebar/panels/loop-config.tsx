@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { Trash2, Repeat } from "lucide-react";
+import { Repeat } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -11,21 +11,23 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import type { FetchConfig } from "../../../lib/node-types";
+import {
+	MAX_LOOP_ITERATIONS,
+	OBJECT_TYPE_LABELS,
+	type LoopNodeConfig,
+	type WorkflowNode,
+} from "../../../lib/node-types";
+import { getUpstreamFetchNodes } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-
-const ENTITY_TYPES = [
-	{ value: "client", label: "Client" },
-	{ value: "project", label: "Project" },
-	{ value: "quote", label: "Quote" },
-	{ value: "invoice", label: "Invoice" },
-	{ value: "task", label: "Task" },
-] as const;
+import {
+	DeleteStepButton,
+	PanelField,
+	PanelSection,
+} from "./panel-primitives";
 
 export function LoopConfigPanel({
 	nodeId,
-	trigger,
 	nodes,
 	onNodeChange,
 	onDeleteNode,
@@ -43,8 +45,15 @@ export function LoopConfigPanel({
 		);
 	}
 
-	const currentConfig = (node.config as FetchConfig | undefined) || {
-		entityType: trigger?.objectType || "client",
+	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
+	const upstreamFetchNodes = getUpstreamFetchNodes(workflowNodes, nodeId);
+	const config: LoopNodeConfig = (node.config as LoopNodeConfig | undefined) ?? {
+		kind: "loop",
+		sourceNodeId: "",
+	};
+
+	const commit = (next: LoopNodeConfig) => {
+		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
 	};
 
 	return (
@@ -58,37 +67,64 @@ export function LoopConfigPanel({
 			/>
 
 			<div className="flex-1">
-				<div className="border-b border-border py-4">
-					<Label className="text-sm font-medium">Loop source</Label>
-					<Select
-						value={currentConfig.entityType}
-						onValueChange={(value) =>
-							onNodeChange(nodeId, {
-								config: {
-									...currentConfig,
-									entityType: value as FetchConfig["entityType"],
-								},
-							})
-						}
-					>
-						<SelectTrigger className="mt-2">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{ENTITY_TYPES.map((entity) => (
-								<SelectItem key={entity.value} value={entity.value}>
-									{entity.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+				<PanelSection title="Inputs">
+					{upstreamFetchNodes.length === 0 ? (
+						<div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+							Add a Find records step before this loop.
+						</div>
+					) : (
+						<>
+							<PanelField label="Records to loop over">
+								<Select
+									value={config.sourceNodeId}
+									onValueChange={(sourceNodeId) => commit({ ...config, sourceNodeId })}
+								>
+									<SelectTrigger>
+										<SelectValue placeholder="Choose a Find records step" />
+									</SelectTrigger>
+									<SelectContent>
+										{upstreamFetchNodes.map((fetchNode) => (
+											<SelectItem key={fetchNode.id} value={fetchNode.id}>
+												Find records
+												{fetchNode.objectType
+													? ` — ${OBJECT_TYPE_LABELS[fetchNode.objectType]}`
+													: ""}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</PanelField>
 
-				<div className="py-4">
-					<div className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-						Loop configuration coming in a future update.
-					</div>
-				</div>
+							<PanelField
+								label="Max iterations"
+								helper={`Optional cap on the number of records processed (up to ${MAX_LOOP_ITERATIONS}).`}
+							>
+								<Input
+									type="number"
+									min={1}
+									max={MAX_LOOP_ITERATIONS}
+									value={config.maxIterations ?? ""}
+									placeholder="No cap"
+									onChange={(e) =>
+										commit({
+											...config,
+											maxIterations:
+												e.target.value === ""
+													? undefined
+													: Math.min(
+															MAX_LOOP_ITERATIONS,
+															Math.max(
+																1,
+																Math.round(Number(e.target.value)) || 1
+															)
+														),
+										})
+									}
+								/>
+							</PanelField>
+						</>
+					)}
+				</PanelSection>
 			</div>
 
 			{/* Next steps tree */}
@@ -103,19 +139,8 @@ export function LoopConfigPanel({
 				</div>
 			)}
 
-			{/* Delete button */}
 			{onDeleteNode && (
-				<div className="pt-4 border-t border-border mt-2">
-					<button
-						type="button"
-						className="text-destructive hover:bg-destructive/10 flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full"
-						onClick={() => onDeleteNode(nodeId)}
-						aria-label="Delete step"
-					>
-						<Trash2 className="h-4 w-4" />
-						<span className="text-sm font-medium">Delete Node</span>
-					</button>
-				</div>
+				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 			)}
 		</div>
 	);

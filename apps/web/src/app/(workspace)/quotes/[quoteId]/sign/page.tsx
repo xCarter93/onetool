@@ -1,0 +1,294 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useAction } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useToast } from "@/hooks/use-toast";
+import { StyledButton } from "@/components/ui/styled/styled-button";
+import {
+	AlertTriangle,
+	ArrowLeft,
+	Loader2,
+	RefreshCw,
+	Sparkles,
+	UserPlus,
+} from "lucide-react";
+
+// BoldSign only posts messages from this origin; hard-guard every event.
+const BOLDSIGN_ORIGIN = "https://app.boldsign.com";
+
+type ViewState =
+	| { kind: "creating" }
+	| { kind: "ready"; sendUrl: string }
+	| { kind: "limit"; used: number; limit: number }
+	| { kind: "no_signer" }
+	| { kind: "error"; message: string };
+
+/**
+ * In-app BoldSign embedded sending. Creates an embedded request for the quote's
+ * latest PDF, then renders BoldSign's editor in an iframe so the user places
+ * fields, edits recipients, and sends themselves. The Sent webhook remains the
+ * source of truth for the quote's status regardless of what this page observes.
+ */
+export default function QuoteSignPage() {
+	const params = useParams<{ quoteId: string }>();
+	const quoteId = params.quoteId as Id<"quotes">;
+	const router = useRouter();
+	const toast = useToast();
+	const createRequest = useAction(
+		api.boldsignActions.createEmbeddedSignatureRequest
+	);
+
+	const [view, setView] = useState<ViewState>({ kind: "creating" });
+	// True until BoldSign's iframe finishes its own async load (onLoadComplete).
+	const [iframeLoading, setIframeLoading] = useState(true);
+
+	const backToQuote = useCallback(
+		() => router.push(`/quotes/${quoteId}`),
+		[router, quoteId]
+	);
+
+	const runCreate = useCallback(async () => {
+		setView({ kind: "creating" });
+		setIframeLoading(true);
+		try {
+			const result = await createRequest({
+				quoteId,
+				origin: window.location.origin,
+			});
+			if (result.ok) {
+				setView({ kind: "ready", sendUrl: result.sendUrl });
+			} else if (result.reason === "limit") {
+				setView({ kind: "limit", used: result.used, limit: result.limit });
+			} else {
+				setView({ kind: "no_signer" });
+			}
+		} catch (err) {
+			setView({
+				kind: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "We couldn't prepare this document. Please try again.",
+			});
+		}
+	}, [createRequest, quoteId]);
+
+	// Create the embedded request exactly once on mount (ref-guarded so React's
+	// dev double-invoke and re-renders don't mint duplicate drafts).
+	const startedRef = useRef(false);
+	useEffect(() => {
+		if (startedRef.current) return;
+		startedRef.current = true;
+		void runCreate();
+	}, [runCreate]);
+
+	// Listen for BoldSign iframe events while the editor is mounted. Re-subscribes
+	// only if the (stable) callbacks change; the origin guard rejects everything else.
+	const isReady = view.kind === "ready";
+	useEffect(() => {
+		if (!isReady) return;
+		function onMessage(event: MessageEvent) {
+			if (event.origin !== BOLDSIGN_ORIGIN) return;
+			const type =
+				typeof event.data === "string" ? event.data : event.data?.action;
+			switch (type) {
+				case "onLoadComplete":
+					setIframeLoading(false);
+					break;
+				case "onCreateSuccess":
+					toast.success(
+						"Sent for signature",
+						"Your client will receive an email to sign."
+					);
+					backToQuote();
+					break;
+				case "onCreateFailed":
+					setIframeLoading(false);
+					toast.error(
+						"Couldn't send",
+						"Something went wrong in the editor. Please try again."
+					);
+					break;
+				default:
+					break;
+			}
+		}
+		window.addEventListener("message", onMessage);
+		return () => window.removeEventListener("message", onMessage);
+	}, [isReady, toast, backToQuote]);
+
+	// ---- Ready: the embedded editor ----------------------------------------
+	if (view.kind === "ready") {
+		return (
+			<div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2 md:px-6">
+				<div className="flex items-center justify-between py-3">
+					<button
+						type="button"
+						onClick={backToQuote}
+						className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+					>
+						<ArrowLeft className="h-4 w-4" aria-hidden="true" />
+						Back to quote
+					</button>
+					<p className="text-sm text-muted-foreground">
+						Place fields and recipients, then send from the editor.
+					</p>
+				</div>
+
+				<div className="relative min-h-[600px] flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+					{iframeLoading && (
+						<div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/70 backdrop-blur-sm">
+							<Loader2
+								className="h-6 w-6 animate-spin text-primary"
+								aria-hidden="true"
+							/>
+							<p className="text-sm text-muted-foreground">
+								Loading the document editor…
+							</p>
+						</div>
+					)}
+					<iframe
+						src={view.sendUrl}
+						title="Prepare document for signature"
+						allow="clipboard-write"
+						className="h-full w-full border-0"
+					/>
+				</div>
+			</div>
+		);
+	}
+
+	// ---- All non-ready states share a centered layout ----------------------
+	return (
+		<div className="flex min-h-[70vh] flex-1 flex-col px-4 md:px-6">
+			<div className="py-3">
+				<button
+					type="button"
+					onClick={backToQuote}
+					className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+				>
+					<ArrowLeft className="h-4 w-4" aria-hidden="true" />
+					Back to quote
+				</button>
+			</div>
+
+			<div className="flex flex-1 items-center justify-center">
+				{view.kind === "creating" && (
+					<div className="flex flex-col items-center gap-4 text-center">
+						<Loader2
+							className="h-7 w-7 animate-spin text-primary"
+							aria-hidden="true"
+						/>
+						<div>
+							<h1 className="text-base font-semibold text-foreground">
+								Preparing your document
+							</h1>
+							<p className="mt-1 text-sm text-muted-foreground">
+								Setting up the signature editor…
+							</p>
+						</div>
+					</div>
+				)}
+
+				{view.kind === "limit" && (
+					<div className="flex max-w-md flex-col items-center gap-4 text-center">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+							<Sparkles className="h-7 w-7 text-primary" aria-hidden="true" />
+						</div>
+						<div>
+							<h1 className="text-lg font-semibold text-foreground">
+								You&apos;ve hit your monthly e-signature limit
+							</h1>
+							<p className="mt-2 text-sm text-muted-foreground">
+								You&apos;ve sent {view.used} of {view.limit} e-signatures this
+								month on the free plan. Upgrade for unlimited signature sends.
+							</p>
+						</div>
+						<div className="mt-1 flex items-center gap-3">
+							<StyledButton
+								intent="primary"
+								size="md"
+								showArrow={false}
+								label="View plans"
+								onClick={() => router.push("/subscription")}
+							/>
+							<StyledButton
+								intent="plain"
+								size="md"
+								showArrow={false}
+								label="Back to quote"
+								onClick={backToQuote}
+							/>
+						</div>
+					</div>
+				)}
+
+				{view.kind === "no_signer" && (
+					<div className="flex max-w-md flex-col items-center gap-4 text-center">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30">
+							<UserPlus
+								className="h-7 w-7 text-amber-600 dark:text-amber-400"
+								aria-hidden="true"
+							/>
+						</div>
+						<div>
+							<h1 className="text-lg font-semibold text-foreground">
+								Add a client contact first
+							</h1>
+							<p className="mt-2 text-sm text-muted-foreground">
+								This quote&apos;s client needs a primary contact with an email
+								address before you can send it for signature.
+							</p>
+						</div>
+						<StyledButton
+							intent="outline"
+							size="md"
+							showArrow={false}
+							label="Back to quote"
+							onClick={backToQuote}
+						/>
+					</div>
+				)}
+
+				{view.kind === "error" && (
+					<div className="flex max-w-md flex-col items-center gap-4 text-center">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 dark:bg-red-900/30">
+							<AlertTriangle
+								className="h-7 w-7 text-red-600 dark:text-red-400"
+								aria-hidden="true"
+							/>
+						</div>
+						<div>
+							<h1 className="text-lg font-semibold text-foreground">
+								Couldn&apos;t prepare the document
+							</h1>
+							<p className="mt-2 text-sm text-muted-foreground">
+								{view.message}
+							</p>
+						</div>
+						<div className="mt-1 flex items-center gap-3">
+							<StyledButton
+								intent="primary"
+								size="md"
+								showArrow={false}
+								icon={<RefreshCw className="h-4 w-4" />}
+								label="Try again"
+								onClick={() => void runCreate()}
+							/>
+							<StyledButton
+								intent="plain"
+								size="md"
+								showArrow={false}
+								label="Back to quote"
+								onClick={backToQuote}
+							/>
+						</div>
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}

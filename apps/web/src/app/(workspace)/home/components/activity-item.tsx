@@ -11,6 +11,13 @@ import {
 	EnvelopeIcon,
 } from "@heroicons/react/24/solid";
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import {
+	TimelineItem,
+	TimelineIndicator,
+	TimelineSeparator,
+	TimelineContent,
+} from "@/components/reui/timeline";
+import { StyledStatusBadge } from "@/components/ui/styled";
 import ActivityChangesTooltip, {
 	type FieldChange,
 } from "./activity-changes-tooltip";
@@ -213,14 +220,15 @@ function getActivityAmount(activity: ActivityWithUser): string | null {
 	return null;
 }
 
-// Get icon and color scheme for each activity type
+// Get icon and color scheme for each activity type — mapped onto semantic
+// status tokens (success/warning/info) instead of raw Tailwind colors.
 function getActivityStyle(activityType: string): {
 	icon: typeof UserIcon | null;
 	iconColor: string;
 	bgColor: string;
 	ringColor: string;
 } {
-	// Success states — green
+	// Success states
 	if (
 		activityType === "invoice_paid" ||
 		activityType === "project_completed" ||
@@ -238,13 +246,13 @@ function getActivityStyle(activityType: string): {
 						: DocumentTextIcon;
 		return {
 			icon,
-			iconColor: "text-green-600 dark:text-green-400",
-			bgColor: "bg-green-100 dark:bg-green-900/30",
-			ringColor: "ring-green-200 dark:ring-green-800/50",
+			iconColor: "text-success-foreground",
+			bgColor: "bg-success/10",
+			ringColor: "ring-success/20",
 		};
 	}
 
-	// Financial — amber/orange
+	// Financial (non-success)
 	if (
 		activityType === "invoice_created" ||
 		activityType === "invoice_sent" ||
@@ -255,9 +263,9 @@ function getActivityStyle(activityType: string): {
 	) {
 		return {
 			icon: CurrencyDollarIcon,
-			iconColor: "text-amber-600 dark:text-amber-400",
-			bgColor: "bg-amber-100 dark:bg-amber-900/30",
-			ringColor: "ring-amber-200 dark:ring-amber-800/50",
+			iconColor: "text-warning-foreground",
+			bgColor: "bg-warning/10",
+			ringColor: "ring-warning/20",
 		};
 	}
 
@@ -276,16 +284,16 @@ function getActivityStyle(activityType: string): {
 		};
 	}
 
-	// Projects — blue
+	// Projects
 	if (
 		activityType === "project_created" ||
 		activityType === "project_updated"
 	) {
 		return {
 			icon: BriefcaseIcon,
-			iconColor: "text-blue-600 dark:text-blue-400",
-			bgColor: "bg-blue-100 dark:bg-blue-900/30",
-			ringColor: "ring-blue-200 dark:ring-blue-800/50",
+			iconColor: "text-info-foreground",
+			bgColor: "bg-info/10",
+			ringColor: "ring-info/20",
 		};
 	}
 
@@ -343,7 +351,7 @@ function getActivityStyle(activityType: string): {
 		};
 	}
 
-	// Default fallback
+	// Default fallback — neutral
 	return {
 		icon: null,
 		iconColor: "text-muted-foreground",
@@ -421,18 +429,21 @@ function describeEvent(activity: ActivityItemType): string {
 	}
 }
 
-export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
+// Shared render pieces for a single activity row — reused by both the
+// legacy <li> layout (ActivityItem, used by client/project/quote activity
+// tabs) and the ReUI Timeline layout (ActivityTimelineItem, used by the
+// dashboard feed). Kept as one source of truth for status-color mapping.
+function getActivityRenderParts(activity: ActivityItemType) {
 	const isConvex = isConvexActivity(activity);
 	const activityType = isConvex ? activity.activityType : activity.type;
 	const style = getActivityStyle(activityType);
+	const isComment = activityType === "comment" && !isConvex;
 
-	// Extract common data based on activity type
 	const userName = isConvex ? activity.user.name : activity.person.name;
 	const activityDate = isConvex
 		? formatDate(activity.timestamp)
 		: activity.date;
 
-	// Success states get special treatment
 	const isSuccess =
 		activityType === "invoice_paid" ||
 		activityType === "project_completed" ||
@@ -440,8 +451,10 @@ export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
 		activityType === "payment_paid" ||
 		activityType === "task_completed";
 
-	// For Convex activities, build inline badge + amount
 	const label = isConvex ? getActivityLabel(activityType) : null;
+	const isFinancialStatus =
+		isConvex &&
+		(activityType.includes("invoice") || activityType.includes("payment"));
 	const amount =
 		isConvex &&
 		(activityType.includes("quote") ||
@@ -449,6 +462,119 @@ export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
 			activityType.includes("payment"))
 			? getActivityAmount(activity)
 			: null;
+
+	const indicatorContent = isComment ? (
+		<Avatar className="size-8">
+			<AvatarImage
+				src={(activity as CommentActivity).imageUrl}
+				alt={(activity as CommentActivity).person.name}
+			/>
+			<AvatarFallback className="bg-primary/10 text-primary text-xs">
+				{getInitials((activity as CommentActivity).person.name)}
+			</AvatarFallback>
+		</Avatar>
+	) : isSuccess ? (
+		<CheckCircleIcon aria-hidden="true" className="size-4 text-success-foreground" />
+	) : style.icon ? (
+		<style.icon
+			aria-hidden="true"
+			className={classNames("size-3.5", style.iconColor)}
+		/>
+	) : (
+		<div className="size-1.5 rounded-full bg-primary/40" />
+	);
+
+	const indicatorClassName = isComment ? "" : style.bgColor;
+
+	const bodyContent = isComment ? (
+		<>
+			<div className="flex justify-between gap-x-4">
+				<div className="text-sm text-muted-foreground">
+					<span className="font-medium text-foreground">
+						{(activity as CommentActivity).person.name}
+					</span>{" "}
+					commented
+				</div>
+				<span className="flex-none text-xs text-muted-foreground">
+					{(activity as CommentActivity).date}
+				</span>
+			</div>
+			<p className="text-sm text-foreground/80 mt-1">
+				{(activity as CommentActivity).comment}
+			</p>
+		</>
+	) : (
+		<>
+			{(() => {
+				const changes =
+					isConvex &&
+					activity.metadata &&
+					typeof activity.metadata === "object" &&
+					"changes" in activity.metadata
+						? (activity.metadata as { changes?: FieldChange[] }).changes
+						: undefined;
+
+				if (changes && changes.length > 0) {
+					return (
+						<ActivityChangesTooltip changes={changes}>
+							<p className="text-sm text-muted-foreground leading-snug min-w-0 cursor-help border-b border-dashed border-muted-foreground/30">
+								<span className="font-medium text-foreground">
+									{userName}
+								</span>{" "}
+								{describeEvent(activity)}
+							</p>
+						</ActivityChangesTooltip>
+					);
+				}
+
+				return (
+					<p className="text-sm text-muted-foreground leading-snug min-w-0">
+						<span className="font-medium text-foreground">{userName}</span>{" "}
+						{describeEvent(activity)}
+					</p>
+				);
+			})()}
+
+			{/* Inline badge */}
+			{label &&
+				(isSuccess || isFinancialStatus ? (
+					<StyledStatusBadge
+						role={isSuccess ? "success" : "warning"}
+						className="shrink-0"
+					>
+						{label}
+					</StyledStatusBadge>
+				) : (
+					<span className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded shrink-0 bg-primary/10 text-primary">
+						{label}
+					</span>
+				))}
+
+			{/* Inline amount */}
+			{amount && (
+				<span className="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded shrink-0 bg-foreground/5 text-foreground">
+					{amount}
+				</span>
+			)}
+
+			<span className="flex-none text-xs text-muted-foreground whitespace-nowrap ml-auto">
+				{activityDate}
+			</span>
+		</>
+	);
+
+	const bodyClassName = isComment
+		? "flex-auto rounded-lg border border-border bg-muted/30 p-3"
+		: "flex-auto flex flex-wrap items-start gap-x-2 gap-y-1 min-w-0 py-1";
+
+	return { indicatorContent, indicatorClassName, bodyContent, bodyClassName };
+}
+
+// Legacy row layout used by the client/project/quote "Activity" tabs, which
+// render ActivityItem inside a plain <ul> with no Timeline ancestor.
+export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
+	const { indicatorContent, indicatorClassName, bodyContent, bodyClassName } =
+		getActivityRenderParts(activity);
 
 	return (
 		<li className="relative flex gap-x-3 items-start">
@@ -462,121 +588,50 @@ export default function ActivityItem({ activity, isLast }: ActivityItemProps) {
 				<div className="w-px bg-primary/15" />
 			</div>
 
-			{activityType === "comment" && !isConvex ? (
-				<>
-					<Avatar className="relative size-8 flex-none ring-4 ring-background">
-						<AvatarImage
-							src={(activity as CommentActivity).imageUrl}
-							alt={(activity as CommentActivity).person.name}
-						/>
-						<AvatarFallback className="bg-primary/10 text-primary text-xs">
-							{getInitials((activity as CommentActivity).person.name)}
-						</AvatarFallback>
-					</Avatar>
-					<div className="flex-auto rounded-lg border border-border bg-muted/30 p-3">
-						<div className="flex justify-between gap-x-4">
-							<div className="text-sm text-muted-foreground">
-								<span className="font-medium text-foreground">
-									{(activity as CommentActivity).person.name}
-								</span>{" "}
-								commented
-							</div>
-							<span className="flex-none text-xs text-muted-foreground">
-								{(activity as CommentActivity).date}
-							</span>
-						</div>
-						<p className="text-sm text-foreground/80 mt-1">
-							{(activity as CommentActivity).comment}
-						</p>
-					</div>
-				</>
-			) : (
-				<>
-					{/* Icon with colored background + opaque ring to cover the timeline line */}
-					<div
-						className={classNames(
-							"relative flex size-8 flex-none items-center justify-center rounded-full ring-4 ring-background",
-							style.bgColor
-						)}
-					>
-						{isSuccess ? (
-							<CheckCircleIcon
-								aria-hidden="true"
-								className="size-4 text-green-600 dark:text-green-400"
-							/>
-						) : style.icon ? (
-							<style.icon
-								aria-hidden="true"
-								className={classNames("size-3.5", style.iconColor)}
-							/>
-						) : (
-							<div className="size-1.5 rounded-full bg-primary/40" />
-						)}
-					</div>
+			{/* Icon with colored background + opaque ring to cover the timeline line */}
+			<div
+				className={classNames(
+					"relative flex size-8 flex-none items-center justify-center rounded-full ring-4 ring-background",
+					indicatorClassName
+				)}
+			>
+				{indicatorContent}
+			</div>
 
-					{/* Content — description + badge + amount + timestamp */}
-					<div className="flex-auto flex flex-wrap items-start gap-x-2 gap-y-1 min-w-0 py-1">
-						{(() => {
-							const changes =
-								isConvex &&
-								activity.metadata &&
-								typeof activity.metadata === "object" &&
-								"changes" in activity.metadata
-									? (activity.metadata as { changes?: FieldChange[] }).changes
-									: undefined;
-
-							if (changes && changes.length > 0) {
-								return (
-									<ActivityChangesTooltip changes={changes}>
-										<p className="text-sm text-muted-foreground leading-snug min-w-0 cursor-help border-b border-dashed border-muted-foreground/30">
-											<span className="font-medium text-foreground">
-												{userName}
-											</span>{" "}
-											{describeEvent(activity)}
-										</p>
-									</ActivityChangesTooltip>
-								);
-							}
-
-							return (
-								<p className="text-sm text-muted-foreground leading-snug min-w-0">
-									<span className="font-medium text-foreground">
-										{userName}
-									</span>{" "}
-									{describeEvent(activity)}
-								</p>
-							);
-						})()}
-
-						{/* Inline badge */}
-						{label && (
-							<span
-								className={classNames(
-									"inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded shrink-0",
-									isSuccess
-										? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-										: activityType.includes("invoice") || activityType.includes("payment")
-											? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-											: "bg-primary/10 text-primary"
-								)}
-							>
-								{label}
-							</span>
-						)}
-
-						{/* Inline amount */}
-						{amount && (
-							<span className="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded shrink-0 bg-foreground/5 text-foreground">
-								{amount}
-							</span>
-						)}
-
-						<span className="flex-none text-xs text-muted-foreground whitespace-nowrap ml-auto">
-							{activityDate}
-						</span>
-					</div>
-				</>
-			)}
+			<div className={bodyClassName}>{bodyContent}</div>
 		</li>
+	);
+}
+
+// Dashboard feed row — same visual language as ActivityItem, but composed
+// from the ReUI Timeline primitives. Must be rendered as a direct child of
+// a <Timeline> so the connector line/indicator context is available.
+export function ActivityTimelineItem({
+	activity,
+	step,
+}: {
+	activity: ActivityItemType;
+	step: number;
+}) {
+	const { indicatorContent, indicatorClassName, bodyContent, bodyClassName } =
+		getActivityRenderParts(activity);
+
+	return (
+		<TimelineItem step={step} role="listitem">
+			<TimelineSeparator />
+			{/* Opaque bg-card base + inner tint layer: the translucent status tints
+			    would otherwise let the connector line show through the circle. */}
+			<TimelineIndicator className="flex size-8 items-center justify-center rounded-full border-0 bg-card ring-4 ring-background">
+				<span
+					className={classNames(
+						"flex size-full items-center justify-center rounded-full",
+						indicatorClassName
+					)}
+				>
+					{indicatorContent}
+				</span>
+			</TimelineIndicator>
+			<TimelineContent className={bodyClassName}>{bodyContent}</TimelineContent>
+		</TimelineItem>
 	);
 }

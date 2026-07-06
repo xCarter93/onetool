@@ -23,6 +23,9 @@ interface QuoteDetailHeaderProps {
 	currentStatus: QuoteStatus;
 	onStatusChange: (status: QuoteStatus) => void;
 	onSendToClient: () => void;
+	/** Disable "Send to Client" when the monthly e-signature cap is reached. */
+	sendDisabled?: boolean;
+	sendDisabledReason?: string;
 	onGeneratePdf: () => void;
 	onDelete: () => void;
 	onConvertToInvoice: () => void;
@@ -33,6 +36,8 @@ export function QuoteDetailHeader({
 	currentStatus,
 	onStatusChange,
 	onSendToClient,
+	sendDisabled = false,
+	sendDisabledReason,
 	onGeneratePdf,
 	onDelete,
 	onConvertToInvoice,
@@ -157,14 +162,22 @@ export function QuoteDetailHeader({
 					</AnimatePresence>
 					<div className="flex items-center gap-2 shrink-0">
 						{renderStatusActions()}
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onSendToClient}
-							icon={<Mail className="h-4 w-4" />}
-							label="Send to Client"
-							showArrow={false}
-						/>
+						{/* Tooltip lives on the wrapper: a disabled button won't
+						    reliably surface a native title on hover. */}
+						<span
+							className="inline-flex"
+							title={sendDisabled ? sendDisabledReason : undefined}
+						>
+							<StyledButton
+								intent="outline"
+								size="sm"
+								onClick={onSendToClient}
+								disabled={sendDisabled}
+								icon={<Mail className="h-4 w-4" />}
+								label="Send to Client"
+								showArrow={false}
+							/>
+						</span>
 						<StyledButton
 							intent="outline"
 							size="sm"

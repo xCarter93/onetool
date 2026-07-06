@@ -47,7 +47,7 @@ For array fields (tags, assignedUserIds):
 - They will be automatically split into arrays during import
 
 Be helpful and provide actionable feedback to users about their data quality.`,
-	model: openai("gpt-4o"),
+	model: openai("gpt-5-nano"),
 	tools: {
 		parseCsv: parseCsvTool,
 		mapSchema: mapSchemaTool,

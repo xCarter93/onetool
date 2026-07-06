@@ -3,12 +3,13 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import ActivityItem from "./activity-item";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { ActivityTimelineItem } from "./activity-item";
+import { Timeline } from "@/components/reui/timeline";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaginationControls } from "@/components/ui/pagination";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StyledSegmentedControl, StyledEmpty } from "@/components/ui/styled";
 import { Activity } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 type TimeFilter = "1d" | "3d" | "7d" | "2w";
@@ -83,84 +84,54 @@ export default function ActivityFeed({
 						<h3 className="text-base font-semibold text-foreground">
 							Recent Activity
 						</h3>
-						<ButtonGroup>
-							<button
-								type="button"
-								onClick={() => handleFilterChange("1d")}
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									selectedFilter === "1d"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-								)}
-							>
-								1d
-							</button>
-							<button
-								type="button"
-								onClick={() => handleFilterChange("3d")}
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									selectedFilter === "3d"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-								)}
-							>
-								3d
-							</button>
-							<button
-								type="button"
-								onClick={() => handleFilterChange("7d")}
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									selectedFilter === "7d"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-								)}
-							>
-								7d
-							</button>
-							<button
-								type="button"
-								onClick={() => handleFilterChange("2w")}
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									selectedFilter === "2w"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-								)}
-							>
-								2w
-							</button>
-						</ButtonGroup>
+						<StyledSegmentedControl
+							value={selectedFilter}
+							onValueChange={handleFilterChange}
+							options={[
+								{ value: "1d", label: "1d" },
+								{ value: "3d", label: "3d" },
+								{ value: "7d", label: "7d" },
+								{ value: "2w", label: "2w" },
+							]}
+						/>
 					</div>
 
 					{/* Compact List */}
 					<ScrollArea className="h-96">
 						{isLoading ? (
-							<div className="flex items-center justify-center h-32">
-								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+							<div className="h-32 space-y-4 py-1">
+								{Array.from({ length: 3 }).map((_, rowIdx) => (
+									<div key={rowIdx} className="flex items-start gap-3">
+										<Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+										<div className="flex-1 space-y-2">
+											<Skeleton className="h-3 w-3/4" />
+											<Skeleton className="h-3 w-1/2" />
+										</div>
+									</div>
+								))}
 							</div>
 						) : currentPageActivities.length === 0 ? (
-							<div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-								<Activity className="h-6 w-6 mb-2 text-muted-foreground" />
-								<p className="text-sm font-semibold">No recent activity</p>
-								<p className="text-xs mt-1">
-									Activity will appear here as you work
-								</p>
-							</div>
+							<StyledEmpty
+								icon={<Activity />}
+								title="No recent activity"
+								description="Activity will appear here as you work"
+								className="h-32"
+							/>
 						) : (
-							<ul role="list" className="space-y-3 pl-1 pr-4 py-1">
+							<Timeline
+								role="list"
+								// value 0 = no "completed" steps: keeps the connector at the subtle primary/10 tint
+								value={0}
+								className="pl-4 pr-4 py-1"
+							>
 								{currentPageActivities.map((activityItem, activityItemIdx) => (
-									<ActivityItem
+									<ActivityTimelineItem
 										key={activityItem._id}
 										activity={activityItem}
-										isLast={
-											activityItemIdx === currentPageActivities.length - 1
-										}
+										step={activityItemIdx + 1}
 									/>
 								))}
-							</ul>
+							</Timeline>
 						)}
 					</ScrollArea>
 

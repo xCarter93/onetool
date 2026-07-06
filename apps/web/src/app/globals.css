@@ -32,6 +32,14 @@
 	--color-success-foreground: var(--success-fg);
 	--color-warning: var(--warning);
 	--color-warning-foreground: var(--warning-fg);
+	--color-info: var(--info);
+	--color-info-foreground: var(--info-fg);
+	--color-invert: var(--invert);
+	--color-invert-foreground: var(--invert-fg);
+	--color-destructive-foreground: var(--danger-fg);
+	/* ReUI "focus" accent role — aliased to primary for OneTool */
+	--color-focus: var(--primary);
+	--color-focus-foreground: var(--primary-fg);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -77,14 +85,22 @@
 	--muted: oklch(0.967 0.001 286.375);
 	--muted-fg: oklch(0.552 0.016 285.938);
 
+	/* Semantic status roles; -fg = readable on tinted bg (ReUI convention), solids use text-white */
 	--success: oklch(0.596 0.145 163.225);
-	--success-fg: oklch(1 0 0);
+	--success-fg: oklch(0.262 0.051 172.552);
 
 	--warning: oklch(0.828 0.189 84.429);
 	--warning-fg: oklch(0.279 0.077 45.635);
 
 	--danger: oklch(0.577 0.245 27.325);
-	--danger-fg: oklch(0.971 0.013 17.38);
+	--danger-fg: oklch(0.396 0.141 25.723);
+	--destructive: var(--danger);
+
+	--info: oklch(0.685 0.169 237.323);
+	--info-fg: oklch(0.391 0.09 240.876);
+
+	--invert: oklch(0.21 0.006 285.885);
+	--invert-fg: oklch(0.985 0 0);
 
 	--border: oklch(0.911 0.006 286.286);
 	--input: oklch(0.871 0.006 286.286);
@@ -129,6 +145,11 @@
 	--frame: #ffffff;
 	--card-primary: oklch(0.82 0.12 230);
 	--card-secondary: oklch(0.94 0.04 230);
+	--destructive-foreground: var(--color-red-800);
+	--success-foreground: var(--color-emerald-900);
+	--info-foreground: var(--color-violet-900);
+	--warning-foreground: var(--color-yellow-900);
+	--invert-foreground: var(--color-zinc-50);
 }
 
 .dark {
@@ -155,13 +176,20 @@
 	--overlay-fg: oklch(0.985 0 0);
 
 	--success: oklch(0.596 0.145 163.225);
-	--success-fg: oklch(1 0 0);
+	--success-fg: oklch(0.696 0.17 162.48);
 
 	--warning: oklch(0.828 0.189 84.429);
-	--warning-fg: oklch(0.279 0.077 45.635);
+	--warning-fg: oklch(0.769 0.188 70.08);
 
 	--danger: oklch(0.577 0.245 27.325);
-	--danger-fg: oklch(0.971 0.013 17.38);
+	--danger-fg: oklch(0.704 0.191 22.216);
+	--destructive: var(--danger);
+
+	--info: oklch(0.685 0.169 237.323);
+	--info-fg: oklch(0.746 0.16 232.661);
+
+	--invert: oklch(0.985 0 0);
+	--invert-fg: oklch(0.21 0.006 285.885);
 
 	--border: oklch(0.27 0.013 285.805);
 	--input: oklch(0.32 0.013 285.805);
@@ -197,6 +225,11 @@
 	--frame: #000000;
 	--card-primary: oklch(0.45 0.12 230);
 	--card-secondary: oklch(0.22 0.05 230);
+	--destructive-foreground: var(--color-red-600);
+	--success-foreground: var(--color-emerald-600);
+	--info-foreground: var(--color-violet-600);
+	--warning-foreground: var(--color-yellow-600);
+	--invert-foreground: var(--color-zinc-950);
 }
 
 @layer base {
@@ -512,86 +545,94 @@
 	}
 
 	/* ========================================================================
-	   Header border-shape notches & sidebar connector (Chrome 147+)
+	   Header border-shape notches (Chrome 147+)
 	   Each notch outline is a single shape() path, so the sidebar-colored
 	   background follows the geometry. The sides are ogee (S-curve) sweeps —
-	   a cubic with both control points horizontal — that stay tangent to the
-	   rail where they emerge, so the thin rail flows smoothly into the notch
-	   with no kink. Unsupported browsers drop border-shape and fall back to a
-	   plain rounded-b tab / no connector.
+	   a cubic with both control points horizontal. The notches hang from the
+	   picture-frame band above the content card (see SidebarWithHeader):
+	   their top edge fuses with the same-colored frame, so the sweeps start
+	   right at the top corners. Unsupported browsers drop border-shape and
+	   fall back to a plain rounded-b tab.
 
-	   Geometry: sweep 36 (x), depth 40 (y floor), half-sweep 18 (control x).
-	   The notch top sits ~12px above the rail's bottom edge (rail h-5 minus
-	   pt-2), so the outer edges drop straight to y=12 and the ogee is
-	   horizontal there — matching the rail's flat bottom for a seamless join.
-	   36px side padding reserves the sweep region for content.
+	   Geometry: sweep 56 (x), depth 40 (y floor), half-sweep 28 (control x).
+	   The wide sweep keeps the S-curve gentle. 56px side padding (px-14)
+	   reserves the sweep region for content.
 	   ======================================================================== */
-	.header-notch,
-	.header-notch--flush-right {
+	.header-notch {
 		background-color: var(--sidebar);
 		/* Must cover the 40px notch depth so border-shape isn't clipped. */
 		min-height: 40px;
 	}
 
-	/* Header background strip. Without border-shape it's just a 20px bar (no
-	   scoop); with it, the box grows to 44px and the scoop is carved in. */
-	.header-bg {
-		background-color: var(--sidebar);
-		height: 20px;
-	}
-
 	@supports (border-shape: shape(from 0 0, close)) {
-		/* Ogee sweep on both sides. Outer edges drop to y=12 (rail bottom)
-		   where the sweep is tangent-horizontal; sweep→floor is tangent too,
-		   so the whole bottom edge is smooth with no walls or corners. */
+		/* Ogee sweep on both sides, starting at the very top edge — the notch
+		   hangs directly from the picture-frame band above the card (same
+		   color, no strip inside the card), so there are no straight
+		   shoulders: top corners flow immediately into the S-curves, which
+		   land tangent on the floor. */
 		.header-notch {
 			border-shape: shape(
 				from 0 0,
 				hline to 100%,
-				vline to 12px,
-				curve to calc(100% - 36px) 40px with
-					calc(100% - 18px) 12px / calc(100% - 18px) 40px,
-				hline to 36px,
-				curve to 0 12px with 18px 40px / 18px 12px,
+				curve to calc(100% - 56px) 100% with
+					calc(100% - 28px) 0 / calc(100% - 28px) 100%,
+				hline to 56px,
+				curve to 0 0 with 28px 100% / 28px 0,
 				close
 			);
 		}
 
-		/* Ogee sweep on the left only; right edge runs flush to the rail end. */
-		.header-notch--flush-right {
-			border-shape: shape(
-				from 0 0,
-				hline to 100%,
-				vline to 26px,
-				arc to calc(100% - 14px) 40px of 14px 14px cw,
-				hline to 36px,
-				curve to 0 12px with 18px 40px / 18px 12px,
-				close
-			);
-		}
+	}
 
-		/* One continuous header background: a 20px strip across the full width
-		   with a concave quarter-round scoop carved into the bottom-left, so
-		   the sidebar flows into the header as a single solid piece (no
-		   separate connector element, no seam). The element bleeds 2px left
-		   under the sidebar to cover the sidebar↔inset hairline, but the scoop
-		   lands its vertical tangent at x=2px — the real content edge — so the
-		   curve still joins flush (the 2px sliver below stays hidden behind the
-		   sidebar). The 44px box height gives the scoop room; the notches are
-		   siblings on top, so the shape doesn't clip them. */
-		.header-bg {
-			height: 44px;
+	/* ========================================================================
+	   Assistant notch — the header notch mirrored vertically: a tab that
+	   bulges UP from the bottom frame band. Flat floor on top, ogee sweeps
+	   down both sides to the bottom edge (same 56px sweep / 28px half-sweep
+	   geometry). Sits flush on the viewport bottom; the frame behind it is
+	   the same color, so the hover lift stays visually fused. 56px side
+	   padding (px-14) reserves the sweeps. Fallback without border-shape:
+	   plain rounded-t tab.
+	   ======================================================================== */
+	.assistant-notch {
+		background-color: var(--sidebar);
+		min-height: 40px;
+	}
+
+	@supports (border-shape: shape(from 0 0, close)) {
+		/* Exact vertical mirror of .header-notch — same sweep 56 / half-sweep
+		   28 / depth 40, so top and bottom notches read as twins. */
+		.assistant-notch {
 			border-shape: shape(
-				from 0 0,
-				hline to 100%,
-				vline to 20px,
-				hline to 26px,
-				curve to 2px 44px with 12.75px 20px / 2px 30.75px,
-				hline to 0,
-				vline to 0,
+				from 0 100%,
+				curve to 56px 0 with 28px 100% / 28px 0,
+				hline to calc(100% - 56px),
+				curve to 100% 100% with calc(100% - 28px) 0 / calc(100% - 28px) 100%,
 				close
 			);
 		}
+	}
+}
+
+@layer utilities {
+	/* ========================================================================
+	   Workspace canvas texture
+	   Reusable fine dot-grid for the main content area across every workspace
+	   page. The dot color is derived from --foreground via color-mix, so it
+	   adapts to light/dark automatically and stays subtle (6% tint). The base
+	   stays transparent so the underlying --background shows through.
+	   ======================================================================== */
+	.workspace-canvas {
+		background-image: radial-gradient(
+			color-mix(in oklch, var(--foreground) 6%, transparent) 1px,
+			transparent 1px
+		);
+		background-size: 22px 22px;
+		background-position: -1px -1px;
+		/* Canvas scrolls inside the picture-frame card — keep its scrollbar
+		   thin and quiet so the frame stays the visual boundary. */
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
+			transparent;
 	}
 }
 

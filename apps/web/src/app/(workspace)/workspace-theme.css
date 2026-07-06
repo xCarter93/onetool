@@ -36,3 +36,52 @@ html.dark .workspace-zone {
 	/* Muted: raised slightly so right-sidebar tint is more legible */
 	--muted: oklch(0.23 0.008 270);
 }
+
+/* ── Sidebar nav: section labels ────────────────────────────── */
+/* Quieter, smaller, tracked-out uppercase eyebrows so the nav items
+   themselves carry the weight. */
+.workspace-zone [data-sidebar="group-label"] {
+	font-size: 0.65rem;
+	font-weight: 600;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: color-mix(in oklch, var(--sidebar-foreground) 52%, transparent);
+}
+
+/* ── Sidebar nav: active item (slim left-accent bar) ────────── */
+/* A primary-colored bar pinned to the left edge plus a soft primary tint,
+   replacing the default full-fill accent. More specific than the shadcn
+   data-[active] / hover utilities so it wins cleanly. */
+.workspace-zone [data-sidebar="menu-button"][data-active="true"] {
+	position: relative;
+	font-weight: 600;
+	background-color: color-mix(in oklch, var(--primary) 11%, transparent);
+}
+
+.workspace-zone [data-sidebar="menu-button"][data-active="true"]:hover {
+	background-color: color-mix(in oklch, var(--primary) 16%, transparent);
+}
+
+/* Icon picks up the accent; the label keeps its readable foreground color. */
+.workspace-zone [data-sidebar="menu-button"][data-active="true"] > svg {
+	color: var(--primary);
+}
+
+.workspace-zone [data-sidebar="menu-button"][data-active="true"]::before {
+	content: "";
+	position: absolute;
+	left: 0.125rem;
+	top: 50%;
+	height: 1.1rem;
+	width: 3px;
+	transform: translateY(-50%);
+	border-radius: 9999px;
+	background-color: var(--primary);
+}
+
+/* Active submenu item (Settings → tabs): subtle primary tint, no bar
+   (the sub-list already sits on its own left rail). */
+.workspace-zone [data-sidebar="menu-sub-button"][data-active="true"] {
+	font-weight: 600;
+	background-color: color-mix(in oklch, var(--primary) 10%, transparent);
+}

@@ -6,11 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
 	StyledBadge,
 	StyledButton,
-	StyledCard,
-	StyledCardContent,
-	StyledCardDescription,
-	StyledCardHeader,
-	StyledCardTitle,
 	StyledTable,
 	StyledTableBody,
 	StyledTableCell,
@@ -18,44 +13,64 @@ import {
 	StyledTableHeader,
 	StyledTableRow,
 } from "@/components/ui/styled";
+import { StyledFilters } from "@/components/ui/styled/styled-filters";
+import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
+import {
+	Frame,
+	FrameDescription,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
 import {
 	ColumnDef,
-	ColumnFiltersState,
 	SortingState,
 	flexRender,
 	getCoreRowModel,
-	getFilteredRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
 import {
+	Building2,
+	Calendar,
+	CheckCircle2,
 	ChevronLeft,
 	ChevronRight,
-	FolderKanban,
+	CircleCheck,
+	CircleDashed,
 	ExternalLink,
-	Plus,
+	Eye,
+	Filter as FilterIcon,
+	FolderKanban,
 	FolderOpen,
-	Trash2,
-	TableProperties,
 	LayoutGrid,
+	Plus,
+	Repeat,
+	Search,
+	TableProperties,
+	Trash2,
+	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
-import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import { MetricFrame } from "@/components/metric-frame";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
 	KanbanHeader,
 	KanbanProvider,
 } from "./components/kanban";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { ProjectDetailDrawer } from "./components/project-detail-drawer";
 import { cn } from "@/lib/utils";
 
 // Enhanced project type that includes client information for display
@@ -94,6 +109,14 @@ const statusVariant = (status: Doc<"projects">["status"]) => {
 		default:
 			return "outline" as const;
 	}
+};
+
+// Per-lane accent dot (kanban-board-4 style); status → colored dot only.
+const statusDot: Record<Doc<"projects">["status"], string> = {
+	planned: "bg-muted-foreground/50",
+	"in-progress": "bg-amber-500",
+	completed: "bg-emerald-500",
+	cancelled: "bg-rose-500",
 };
 
 const kanbanColumns: ProjectKanbanColumn[] = [
@@ -144,20 +167,23 @@ const formatProjectDate = (timestamp?: number) => {
 
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
-	onDelete: (id: string, name: string) => void
+	onDelete: (id: string, name: string) => void,
+	onPreview: (id: string) => void
 ): ColumnDef<ProjectWithClient>[] => [
 	{
 		accessorKey: "title",
 		header: "Project",
 		cell: ({ row }) => (
-			<div className="flex flex-col">
-				<span className="font-medium text-foreground">
-					{row.original.title}
-				</span>
-				<span className="text-muted-foreground text-xs">
-					Client: {row.original.client?.companyName || "Unknown Client"}
-				</span>
-			</div>
+			<span className="font-medium text-foreground">{row.original.title}</span>
+		),
+	},
+	{
+		id: "client",
+		header: "Client",
+		cell: ({ row }) => (
+			<span className="text-foreground">
+				{row.original.client?.companyName || "Unknown Client"}
+			</span>
 		),
 	},
 	{
@@ -201,12 +227,24 @@ const createColumns = (
 		id: "actions",
 		header: "",
 		cell: ({ row }) => (
-			<div className="flex items-center gap-2">
+			// Stop row-click preview from firing when using the explicit actions.
+			<div
+				className="flex items-center justify-end gap-2"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<Button
+					intent="outline"
+					size="sq-sm"
+					onPress={() => onPreview(row.original._id)}
+					aria-label={`Preview project ${row.original.title}`}
+				>
+					<Eye className="size-4" />
+				</Button>
 				<Button
 					intent="outline"
 					size="sq-sm"
 					onPress={() => router.push(`/projects/${row.original._id}`)}
-					aria-label={`View project ${row.original.title}`}
+					aria-label={`Open project ${row.original.title}`}
 				>
 					<ExternalLink className="size-4" />
 				</Button>
@@ -228,10 +266,8 @@ export default function ProjectsPage() {
 	const router = useRouter();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
-	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-		[]
-	);
 	const [query, setQuery] = React.useState("");
+	const [filters, setFilters] = React.useState<Filter<unknown>[]>([]);
 	const [pagination, setPagination] = React.useState({
 		pageIndex: 0,
 		pageSize: 10,
@@ -241,6 +277,8 @@ export default function ProjectsPage() {
 		id: string;
 		name: string;
 	} | null>(null);
+	const [previewId, setPreviewId] = useState<Id<"projects"> | null>(null);
+	const [previewOpen, setPreviewOpen] = useState(false);
 	const deleteProject = useMutation(api.projects.remove);
 	const updateProjectStatus = useMutation(api.projects.update);
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
@@ -261,6 +299,64 @@ export default function ProjectsPage() {
 		}));
 	}, [projects, clients]);
 
+	// Advanced filters (status / type / client / start-date) applied to the set.
+	const filteredData = React.useMemo(() => {
+		let result = data;
+		filters.forEach((filter) => {
+			if (filter.values.length === 0) return;
+			switch (filter.field) {
+				case "status":
+					result = result.filter((p) =>
+						filter.values.includes(p.status as unknown)
+					);
+					break;
+				case "type":
+					result = result.filter((p) =>
+						filter.values.includes(p.projectType as unknown)
+					);
+					break;
+				case "client":
+					result = result.filter((p) =>
+						filter.values.includes(p.clientId as unknown)
+					);
+					break;
+				case "date":
+					if (filter.operator === "between" && filter.values.length === 2) {
+						const [startDate, endDate] = filter.values as [string, string];
+						if (startDate) {
+							const startTs = new Date(startDate).getTime();
+							result = result.filter(
+								(p) => p.startDate != null && p.startDate >= startTs
+							);
+						}
+						if (endDate) {
+							const end = new Date(endDate);
+							end.setHours(23, 59, 59, 999);
+							const endTs = end.getTime();
+							result = result.filter(
+								(p) => p.startDate != null && p.startDate <= endTs
+							);
+						}
+					}
+					break;
+			}
+		});
+		return result;
+	}, [data, filters]);
+
+	// Free-text search on top of the advanced filters; drives table + kanban.
+	const searchedData = React.useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return filteredData;
+		return filteredData.filter(
+			(p) =>
+				p.title?.toLowerCase().includes(q) ||
+				p.projectType?.toLowerCase().includes(q) ||
+				p.status?.toLowerCase().includes(q) ||
+				p.client?.companyName?.toLowerCase().includes(q)
+		);
+	}, [filteredData, query]);
+
 	const projectStatusMap = React.useMemo(() => {
 		const statusMap = new Map<string, Doc<"projects">["status"]>();
 		data.forEach((project) => statusMap.set(project._id, project.status));
@@ -268,13 +364,8 @@ export default function ProjectsPage() {
 	}, [data]);
 
 	React.useEffect(() => {
-		if (!data || data.length === 0) {
-			setKanbanData([]);
-			return;
-		}
-
 		setKanbanData(
-			data.map((project) => ({
+			searchedData.map((project) => ({
 				id: project._id,
 				name: project.title,
 				column: project.status,
@@ -286,7 +377,7 @@ export default function ProjectsPage() {
 				projectNumber: project.projectNumber ?? null,
 			}))
 		);
-	}, [data]);
+	}, [searchedData]);
 
 	// Loading state
 	const isLoading =
@@ -295,10 +386,15 @@ export default function ProjectsPage() {
 	// Empty state
 	const isEmpty = !isLoading && data.length === 0;
 
-	const handleDelete = (id: string, name: string) => {
+	const handleDelete = React.useCallback((id: string, name: string) => {
 		setProjectToDelete({ id, name });
 		setDeleteModalOpen(true);
-	};
+	}, []);
+
+	const openPreview = React.useCallback((id: string) => {
+		setPreviewId(id as Id<"projects">);
+		setPreviewOpen(true);
+	}, []);
 
 	const confirmDelete = async () => {
 		if (projectToDelete) {
@@ -312,80 +408,106 @@ export default function ProjectsPage() {
 		}
 	};
 
+	const columns = React.useMemo(
+		() => createColumns(router, handleDelete, openPreview),
+		[router, handleDelete, openPreview]
+	);
+
 	const table = useReactTable({
-		data,
-		columns: createColumns(router, handleDelete),
+		data: searchedData,
+		columns,
 		state: {
 			sorting,
-			columnFilters,
-			globalFilter: query,
 			pagination,
 		},
 		onSortingChange: setSorting,
-		onColumnFiltersChange: setColumnFilters,
-		onGlobalFilterChange: setQuery,
 		onPaginationChange: setPagination,
-		globalFilterFn: (row, columnId, value) => {
-			// If no search value, show all rows
-			if (!value || value.trim() === "") return true;
-
-			const search = value.toLowerCase().trim();
-			const project = row.original;
-
-			// Search in project title
-			if (project.title && project.title.toLowerCase().includes(search))
-				return true;
-
-			// Search in project type
-			if (
-				project.projectType &&
-				project.projectType.toLowerCase().includes(search)
-			)
-				return true;
-
-			// Search in project status
-			if (project.status && project.status.toLowerCase().includes(search))
-				return true;
-
-			// Search in client company name
-			if (
-				project.client?.companyName &&
-				project.client.companyName.toLowerCase().includes(search)
-			)
-				return true;
-
-			return false;
-		},
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 	});
 
-	// Reset to first page when search changes
+	// Reset to first page when the filtered/searched set changes
 	React.useEffect(() => {
-		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [query]);
+		setPagination((prev) =>
+			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
+		);
+	}, [query, filters, searchedData.length]);
 
+	// Filter field configuration for the advanced filter builder
+	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
+		const statusOptions = [
+			{ value: "planned", label: "Planned" },
+			{ value: "in-progress", label: "In Progress" },
+			{ value: "completed", label: "Completed" },
+			{ value: "cancelled", label: "Cancelled" },
+		];
+		const typeOptions = [
+			{ value: "one-off", label: "One-off" },
+			{ value: "recurring", label: "Recurring" },
+		];
+		const clientOptions =
+			clients?.map((client) => ({
+				value: client._id,
+				label: client.companyName,
+			})) || [];
+
+		return [
+			{
+				key: "status",
+				label: "Status",
+				icon: <CheckCircle2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: statusOptions,
+			},
+			{
+				key: "type",
+				label: "Type",
+				icon: <Repeat className="h-3 w-3" />,
+				type: "multiselect",
+				options: typeOptions,
+			},
+			{
+				key: "client",
+				label: "Client",
+				icon: <Building2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: clientOptions,
+				searchable: true,
+			},
+			{
+				key: "date",
+				label: "Start Date",
+				icon: <Calendar className="h-3 w-3" />,
+				type: "daterange",
+			},
+		];
+	}, [clients]);
+
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ProjectKanbanItem[]) => {
 			setKanbanData(nextData);
+		},
+		[]
+	);
 
-			const changedItem = nextData.find((item) => {
-				const originalStatus = projectStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = projectStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				updateProjectStatus({
-					id: changedItem.id as Id<"projects">,
-					status: changedItem.column,
+					id: item.id as Id<"projects">,
+					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
 				});
 			}
 		},
-		[projectStatusMap, updateProjectStatus]
+		[kanbanData, projectStatusMap, updateProjectStatus]
 	);
 
 	return (
@@ -408,129 +530,114 @@ export default function ProjectsPage() {
 				/>
 			</div>
 
-			{isLoading ? (
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-					{[...Array(3)].map((_, i) => (
-						<StyledCard key={i}>
-							<StyledCardHeader>
-								<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-24" />
-								<div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-32" />
-							</StyledCardHeader>
-							<StyledCardContent>
-								<div className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-16" />
-							</StyledCardContent>
-						</StyledCard>
-					))}
-				</div>
-			) : (
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-					<StyledCard>
-						<StyledCardHeader>
-							<StyledCardTitle className="flex items-center gap-2 text-base">
-								<FolderKanban className="size-4" /> Total Projects
-							</StyledCardTitle>
-							<StyledCardDescription>
-								All projects in your workspace
-							</StyledCardDescription>
-						</StyledCardHeader>
-						<StyledCardContent>
-							<div className="text-3xl font-semibold">
-								{projectStats?.total || data.length}
-							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardHeader>
-							<StyledCardTitle className="text-base">
-								In Progress
-							</StyledCardTitle>
-							<StyledCardDescription>
-								Currently active projects
-							</StyledCardDescription>
-						</StyledCardHeader>
-						<StyledCardContent>
-							<div className="text-3xl font-semibold">
-								{projectStats?.byStatus["in-progress"] ||
-									data.filter((p) => p.status === "in-progress").length}
-							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardHeader>
-							<StyledCardTitle className="text-base">Completed</StyledCardTitle>
-							<StyledCardDescription>Finished projects</StyledCardDescription>
-						</StyledCardHeader>
-						<StyledCardContent>
-							<div className="text-3xl font-semibold">
-								{projectStats?.byStatus.completed ||
-									data.filter((p) => p.status === "completed").length}
-							</div>
-						</StyledCardContent>
-					</StyledCard>
-				</div>
-			)}
+			<MetricFrame
+				loading={isLoading}
+				metrics={[
+					{
+						label: "Total Projects",
+						value: projectStats?.total ?? data.length,
+						hint: "All projects in your workspace",
+						icon: <FolderKanban />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "In Progress",
+						value:
+							projectStats?.byStatus["in-progress"] ??
+							data.filter((p) => p.status === "in-progress").length,
+						hint: "Currently active projects",
+						icon: <CircleDashed />,
+						accent: "var(--color-amber-500)",
+					},
+					{
+						label: "Completed",
+						value:
+							projectStats?.byStatus.completed ??
+							data.filter((p) => p.status === "completed").length,
+						hint: "Finished projects",
+						icon: <CircleCheck />,
+						accent: "var(--color-emerald-500)",
+					},
+				]}
+				summary={
+					projectStats
+						? `${projectStats.byStatus.planned} planned · ${projectStats.upcomingDeadlines} due this week · ${projectStats.overdue} overdue`
+						: undefined
+				}
+			/>
 
-			<StyledCard>
-				<StyledCardHeader className="flex flex-col gap-3 border-b">
-					<div>
-						<StyledCardTitle>Projects</StyledCardTitle>
-						<StyledCardDescription>
-							Search, sort, and browse your projects
-						</StyledCardDescription>
+			<Frame>
+				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+					<div className="flex flex-col gap-0.5">
+						<FrameTitle className="text-base">Projects</FrameTitle>
+						<FrameDescription>
+							Search, filter, and browse your projects
+						</FrameDescription>
 					</div>
-					<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-						<Input
-							placeholder="Search projects, clients, or status..."
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							className="w-full md:w-96"
+					<div className="flex w-full items-center gap-2 sm:w-auto">
+						<div className="relative flex-1 sm:w-64 sm:flex-none">
+							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+							<Input
+								placeholder="Search projects..."
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								className="pl-9"
+							/>
+						</div>
+						<StyledSegmentedControl
+							className="shrink-0"
+							value={viewMode}
+							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+							options={[
+								{
+									value: "table",
+									label: "Table",
+									icon: <TableProperties className="size-4" />,
+									ariaLabel: "Table view",
+									hideLabelOnMobile: true,
+								},
+								{
+									value: "kanban",
+									label: "Kanban",
+									icon: <LayoutGrid className="size-4" />,
+									ariaLabel: "Kanban view",
+									hideLabelOnMobile: true,
+								},
+							]}
 						/>
-						<ButtonGroup>
-							<button
-								onClick={() => setViewMode("table")}
-								aria-pressed={viewMode === "table"}
-								aria-label="Table view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "table"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<TableProperties className="w-4 h-4" />
-								<span className="hidden sm:inline">Table</span>
-							</button>
-							<button
-								onClick={() => setViewMode("kanban")}
-								aria-pressed={viewMode === "kanban"}
-								aria-label="Kanban view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "kanban"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<LayoutGrid className="w-4 h-4" />
-								<span className="hidden sm:inline">Kanban</span>
-							</button>
-						</ButtonGroup>
 					</div>
-				</StyledCardHeader>
-				<StyledCardContent className="relative px-0">
+				</FrameHeader>
+
+				<FramePanel className="p-0">
+					{!isLoading && !isEmpty && (
+						<div className="border-b px-4 py-3">
+							<StyledFilters
+								filters={filters}
+								fields={filterFields}
+								onChange={setFilters}
+								addButtonText="Filter"
+								addButtonIcon={<FilterIcon className="h-4 w-4" />}
+								size="md"
+								variant="outline"
+								showClearButton={true}
+								clearButtonText="Clear"
+								clearButtonIcon={<X className="h-4 w-4" />}
+							/>
+						</div>
+					)}
+
 					{isLoading ? (
-						<div className="px-6">
+						<div className="p-4">
 							<div className="space-y-4">
 								{[...Array(5)].map((_, i) => (
 									<div key={i} className="flex items-center space-x-4 p-4">
 										<div className="flex-1 space-y-2">
-											<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-2/3" />
-											<div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/2" />
+											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
 										</div>
-										<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-16" />
-										<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-20" />
-										<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-24" />
-										<div className="h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+										<div className="h-4 bg-muted rounded animate-pulse w-16" />
+										<div className="h-4 bg-muted rounded animate-pulse w-20" />
+										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
 									</div>
 								))}
 							</div>
@@ -555,92 +662,62 @@ export default function ProjectsPage() {
 							/>
 						</div>
 					) : viewMode === "table" ? (
-						<div className="px-6">
-							<div className="overflow-hidden rounded-lg border">
-								<StyledTable>
-									<StyledTableHeader>
-										{table.getHeaderGroups().map((headerGroup) => (
-											<StyledTableRow key={headerGroup.id}>
-												{headerGroup.headers.map((header) => (
-													<StyledTableHead key={header.id}>
-														{header.isPlaceholder
-															? null
-															: flexRender(
-																	header.column.columnDef.header,
-																	header.getContext()
-																)}
-													</StyledTableHead>
+						<div className="overflow-x-auto">
+							<StyledTable>
+								<StyledTableHeader>
+									{table.getHeaderGroups().map((headerGroup) => (
+										<StyledTableRow key={headerGroup.id}>
+											{headerGroup.headers.map((header) => (
+												<StyledTableHead key={header.id}>
+													{header.isPlaceholder
+														? null
+														: flexRender(
+																header.column.columnDef.header,
+																header.getContext()
+															)}
+												</StyledTableHead>
+											))}
+										</StyledTableRow>
+									))}
+								</StyledTableHeader>
+								<StyledTableBody>
+									{table.getRowModel().rows?.length ? (
+										table.getRowModel().rows.map((row) => (
+											<StyledTableRow
+												key={row.id}
+												className="cursor-pointer"
+												onClick={() => openPreview(row.original._id)}
+											>
+												{row.getVisibleCells().map((cell) => (
+													<StyledTableCell key={cell.id}>
+														{flexRender(
+															cell.column.columnDef.cell,
+															cell.getContext()
+														)}
+													</StyledTableCell>
 												))}
 											</StyledTableRow>
-										))}
-									</StyledTableHeader>
-									<StyledTableBody>
-										{table.getRowModel().rows?.length ? (
-											table.getRowModel().rows.map((row) => (
-												<StyledTableRow
-													key={row.id}
-													data-state={row.getIsSelected() && "selected"}
-												>
-													{row.getVisibleCells().map((cell) => (
-														<StyledTableCell key={cell.id}>
-															{flexRender(
-																cell.column.columnDef.cell,
-																cell.getContext()
-															)}
-														</StyledTableCell>
-													))}
-												</StyledTableRow>
-											))
-										) : (
-											<StyledTableRow>
-												<StyledTableCell
-													colSpan={createColumns(router, handleDelete).length}
-													className="h-24 text-center"
-												>
-													No projects match your search.
-												</StyledTableCell>
-											</StyledTableRow>
-										)}
-									</StyledTableBody>
-								</StyledTable>
-							</div>
-							<div className="flex items-center justify-between py-4">
-								<div className="text-muted-foreground text-sm">
-									{table.getFilteredRowModel().rows.length} of {data.length}{" "}
-									projects
-								</div>
-								<div className="flex items-center gap-2">
-									<Button
-										intent="outline"
-										size="sq-sm"
-										onPress={() => table.previousPage()}
-										isDisabled={!table.getCanPreviousPage()}
-										aria-label="Previous page"
-									>
-										<ChevronLeft className="size-4" />
-									</Button>
-									<div className="text-sm font-medium">
-										Page {table.getState().pagination?.pageIndex + 1} of{" "}
-										{table.getPageCount()}
-									</div>
-									<Button
-										intent="outline"
-										size="sq-sm"
-										onPress={() => table.nextPage()}
-										isDisabled={!table.getCanNextPage()}
-										aria-label="Next page"
-									>
-										<ChevronRight className="size-4" />
-									</Button>
-								</div>
-							</div>
+										))
+									) : (
+										<StyledTableRow>
+											<StyledTableCell
+												colSpan={columns.length}
+												className="h-24 text-center"
+											>
+												No projects match your filters.
+											</StyledTableCell>
+										</StyledTableRow>
+									)}
+								</StyledTableBody>
+							</StyledTable>
 						</div>
 					) : (
-						<div className="px-2 py-6 h-[calc(100vh-28rem)]">
+						<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
 							<KanbanProvider
 								columns={kanbanColumns}
 								data={kanbanData}
 								onDataChange={handleKanbanDataChange}
+								onDragEnd={handleKanbanDragEnd}
 							>
 								{(column) => {
 									const columnItems = kanbanData.filter(
@@ -653,14 +730,22 @@ export default function ProjectsPage() {
 											id={column.id}
 											className="bg-card/60 flex flex-col"
 										>
-											<KanbanHeader className="flex items-center justify-between border-b bg-muted/30 shrink-0">
-												<div>
-													<p className="font-semibold text-sm text-foreground">
-														{column.name}
-													</p>
-													<p className="text-xs text-muted-foreground">
-														{column.description}
-													</p>
+											<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+												<div className="flex min-w-0 items-center gap-2">
+													<span
+														className={cn(
+															"size-2.5 shrink-0 rounded-full",
+															statusDot[column.id]
+														)}
+													/>
+													<div className="min-w-0">
+														<p className="text-foreground truncate text-sm font-semibold">
+															{column.name}
+														</p>
+														<p className="text-muted-foreground truncate text-xs">
+															{column.description}
+														</p>
+													</div>
 												</div>
 												<StyledBadge variant="outline">
 													{columnItems.length}
@@ -674,56 +759,61 @@ export default function ProjectsPage() {
 														name={item.name}
 														column={item.column}
 													>
-														<div className="space-y-3">
-															<div className="flex items-center justify-between gap-2">
-																<p className="text-sm font-semibold text-foreground">
+														<div
+															role="button"
+															tabIndex={0}
+															onClick={() => openPreview(item.id)}
+															onKeyDown={(e) => {
+																if (e.key === "Enter" || e.key === " ") {
+																	e.preventDefault();
+																	openPreview(item.id);
+																}
+															}}
+															className="flex cursor-pointer flex-col gap-2 outline-none"
+														>
+															<div className="flex items-start justify-between gap-2">
+																<p className="text-foreground line-clamp-2 text-sm font-medium">
 																	{item.name}
 																</p>
+																<StyledBadge
+																	variant={statusVariant(item.column)}
+																	className="shrink-0"
+																>
+																	{formatStatus(item.column)}
+																</StyledBadge>
+															</div>
+															<p className="text-muted-foreground truncate text-xs">
+																{item.clientName || "Unknown Client"}
+															</p>
+															<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
+																<span>{formatProjectDate(item.startDate)}</span>
+																<span aria-hidden>·</span>
+																<span>{formatProjectDate(item.endDate)}</span>
+																{item.projectNumber ? (
+																	<>
+																		<span aria-hidden>·</span>
+																		<span>#{item.projectNumber}</span>
+																	</>
+																) : null}
+															</div>
+															<div className="flex items-center justify-between pt-1">
 																<StyledBadge
 																	variant="outline"
 																	className="capitalize"
 																>
 																	{item.projectType}
 																</StyledBadge>
-															</div>
-															<div className="text-xs text-muted-foreground">
-																Client: {item.clientName || "Unknown Client"}
-															</div>
-															<div className="flex items-center justify-between text-xs text-muted-foreground">
-																<span>
-																	Start: {formatProjectDate(item.startDate)}
-																</span>
-																<span>
-																	Due: {formatProjectDate(item.endDate)}
-																</span>
-															</div>
-															<div className="flex items-center justify-between text-xs">
-																<span className="text-muted-foreground">
-																	{item.projectNumber
-																		? `Project #${item.projectNumber}`
-																		: "No project number"}
-																</span>
-																<StyledBadge
-																	variant={statusVariant(item.column)}
-																>
-																	{formatStatus(item.column)}
-																</StyledBadge>
-															</div>
-															<div className="pt-2 border-t border-border/50">
-																<StyledButton
-																	intent="outline"
-																	size="sm"
-																	icon={
-																		<ExternalLink className="h-3.5 w-3.5" />
-																	}
-																	label="View Project"
-																	showArrow={false}
+																<button
+																	type="button"
 																	onClick={(e) => {
-																		e?.stopPropagation();
+																		e.stopPropagation();
 																		router.push(`/projects/${item.id}`);
 																	}}
-																	className="w-full justify-center"
-																/>
+																	onKeyDown={(e) => e.stopPropagation()}
+																	className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																>
+																	Open <ExternalLink className="size-3" />
+																</button>
 															</div>
 														</div>
 													</KanbanCard>
@@ -735,8 +825,49 @@ export default function ProjectsPage() {
 							</KanbanProvider>
 						</div>
 					)}
-				</StyledCardContent>
-			</StyledCard>
+				</FramePanel>
+
+				{!isLoading && !isEmpty && (
+					<FrameFooter className="flex-row items-center justify-between">
+						<div className="text-muted-foreground text-sm">
+							{searchedData.length} of {data.length} projects
+						</div>
+						{viewMode === "table" ? (
+							<div className="flex items-center gap-2">
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.previousPage()}
+									isDisabled={!table.getCanPreviousPage()}
+									aria-label="Previous page"
+								>
+									<ChevronLeft className="size-4" />
+								</Button>
+								<div className="text-sm font-medium">
+									Page {table.getState().pagination?.pageIndex + 1} of{" "}
+									{Math.max(table.getPageCount(), 1)}
+								</div>
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.nextPage()}
+									isDisabled={!table.getCanNextPage()}
+									aria-label="Next page"
+								>
+									<ChevronRight className="size-4" />
+								</Button>
+							</div>
+						) : null}
+					</FrameFooter>
+				)}
+			</Frame>
+
+			{/* Detail preview drawer */}
+			<ProjectDetailDrawer
+				projectId={previewId}
+				open={previewOpen}
+				onOpenChange={setPreviewOpen}
+			/>
 
 			{/* Delete Confirmation Modal */}
 			{projectToDelete && (

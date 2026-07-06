@@ -78,7 +78,7 @@ export default function CreateOrganizationScreen() {
 	// Step-1
 	const [firstName, setFirstName] = useState("");
 	const [lastName, setLastName] = useState("");
-	const [nameSeeded, setNameSeeded] = useState(false);
+	const [identitySeeded, setIdentitySeeded] = useState(false);
 	const [orgName, setOrgName] = useState("");
 	// Step-2
 	const [address, setAddress] = useState<AddressValue>(EMPTY_ADDRESS);
@@ -110,14 +110,17 @@ export default function CreateOrganizationScreen() {
 	// read inside handlers, never during render).
 	const metadataReady = canWriteMetadata(convexOrg, activeOrg?.id ?? null);
 
-	// Seed the name inputs once from Clerk (Google / email sign-ups arrive with a
-	// name; Apple returning-auth sign-ups do not). Render-time derivation, guarded
-	// by a flag — the apps/mobile lint forbids setState in an effect.
-	if (!nameSeeded && user) {
-		setNameSeeded(true);
+	// Seed name + email once from Clerk. Sign in with Apple provides both on first
+	// auth (Clerk persists the email on the user record), so pre-fill instead of
+	// asking the user to re-enter. Render-time derivation, flag-guarded — the
+	// apps/mobile lint forbids setState in an effect.
+	if (!identitySeeded && user) {
+		setIdentitySeeded(true);
 		// Only fill empty fields — never clobber input typed before Clerk hydrated.
 		if (user.firstName && !firstName) setFirstName(user.firstName);
 		if (user.lastName && !lastName) setLastName(user.lastName);
+		const appleEmail = user.primaryEmailAddress?.emailAddress;
+		if (appleEmail && !email) setEmail(appleEmail);
 	}
 
 	// Once an active org exists, the create step is done. setActive() remounts this
@@ -443,7 +446,7 @@ export default function CreateOrganizationScreen() {
 						<TextInput
 							value={email}
 							onChangeText={setEmail}
-							placeholder="Email"
+							placeholder="Business email"
 							placeholderTextColor={tokens.faint}
 							editable={!submitting}
 							style={styles.input}

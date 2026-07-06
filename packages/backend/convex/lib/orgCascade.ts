@@ -1,5 +1,6 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { assistantAgent } from "../assistantAgent";
 import { AggregateHelpers } from "./aggregates";
 import { StorageHelpers } from "./storage";
 
@@ -56,6 +57,9 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"userFavorites",
 	"portalSessions",
 	"portalOtpCodes",
+	// AI assistant metadata (component-side thread data deleted async per row).
+	"agentThreadMeta",
+	"agentUsage",
 ] as const;
 
 /**
@@ -473,6 +477,33 @@ export async function cascadeDeleteOrgDataPage(
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query("portalOtpCodes")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// agentThreadMeta — also schedules component-side thread/message deletion.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("agentThreadMeta")
+			.withIndex("by_org_user", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await assistantAgent.deleteThreadAsync(ctx, { threadId: row.threadId });
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// agentUsage
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("agentUsage")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {

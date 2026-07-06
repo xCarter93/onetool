@@ -24,6 +24,26 @@
     "./convex/emailMessages": {
       "types": "./convex/emailMessages.ts",
       "default": "./convex/emailMessages.ts"
+    },
+    "./convex/lib/workflowTypes": {
+      "types": "./convex/lib/workflowTypes.ts",
+      "default": "./convex/lib/workflowTypes.ts"
+    },
+    "./convex/lib/fieldRegistry": {
+      "types": "./convex/lib/fieldRegistry.ts",
+      "default": "./convex/lib/fieldRegistry.ts"
+    },
+    "./convex/lib/schedule": {
+      "types": "./convex/lib/schedule.ts",
+      "default": "./convex/lib/schedule.ts"
+    },
+    "./convex/lib/formula": {
+      "types": "./convex/lib/formula/index.ts",
+      "default": "./convex/lib/formula/index.ts"
+    },
+    "./convex/lib/assistantShared": {
+      "types": "./convex/lib/assistantShared.ts",
+      "default": "./convex/lib/assistantShared.ts"
     }
   },
   "scripts": {
@@ -36,13 +56,16 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@ai-sdk/openai": "3.0.80",
     "@clerk/backend": "^2.19.1",
+    "@convex-dev/agent": "0.6.4",
     "@convex-dev/aggregate": "^0.1.25",
     "@convex-dev/migrations": "^0.2.9",
     "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/resend": "^0.2.0",
     "@react-email/components": "^1.0.3",
     "@react-email/render": "^2.0.1",
+    "ai": "6.0.218",
     "boldsign": "^2.0.1",
     "convex": "~1.40.0",
     "convex-helpers": "0.1.113",

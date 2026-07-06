@@ -1,6 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
+import { AssistantNotch } from "@/components/assistant/assistant-notch";
+import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
@@ -22,25 +24,23 @@ interface SidebarWithHeaderProps {
 }
 
 /**
- * A notch that bulges downward from the navbar. The whole outline — the ogee
- * (S-curve) side sweeps and the floor — is a single `border-shape` path
- * (see .header-notch in globals.css), so the sidebar-colored background
- * follows the geometry. The 36px side padding reserves the sweep region so
- * content sits on the flat floor; `border-shape`-unaware browsers fall back
- * to a plain rounded-b tab.
+ * A notch that bulges downward from the picture-frame band above the content
+ * card. The whole outline — the ogee (S-curve) side sweeps and the floor — is
+ * a single `border-shape` path (see .header-notch in globals.css), so the
+ * sidebar-colored background follows the geometry. The 56px side padding
+ * reserves the sweep region so content sits on the flat floor;
+ * `border-shape`-unaware browsers fall back to a plain rounded-b tab.
  */
 function NotchedItem({
 	children,
 	contentClassName,
-	showRightEar = true,
 }: {
 	children: ReactNode;
 	contentClassName?: string;
-	showRightEar?: boolean;
 }) {
 	return (
 		<div
-			className={`${showRightEar ? "header-notch px-9" : "header-notch--flush-right pl-9 pr-4"} rounded-b-xl flex items-center ${contentClassName ?? ""}`}
+			className={`header-notch px-14 rounded-b-xl flex items-center ${contentClassName ?? ""}`}
 		>
 			{children}
 		</div>
@@ -50,7 +50,8 @@ function NotchedItem({
 /**
  * Floating pill-shaped header for mobile viewports.
  * Two pill groups: left (sidebar toggle) and right (notifications, settings).
- * Only visible below the md breakpoint.
+ * Only visible below the md breakpoint. The assistant opens from the bottom
+ * notch instead.
  */
 function MobileFloatingHeader() {
 	return (
@@ -70,29 +71,30 @@ function MobileFloatingHeader() {
 }
 
 export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
+	const [assistantOpen, setAssistantOpen] = useState(false);
+
 	return (
 		<TourContextProvider<HomeTour>
 			TourContext={HomeTourContext}
 			orderedStepIds={ORDERED_HOME_TOUR}
 		>
 			<SidebarProvider>
-				<AppSidebar />
-				<SidebarInset className="min-w-0">
+				{/* variant="inset" picture-frames the content: the wrapper turns
+				    sidebar-colored and SidebarInset becomes a rounded card floating
+				    inside it, so the assistant notch below has a frame to rise from. */}
+				<AppSidebar variant="inset" />
+				<SidebarInset className="min-w-0 md:h-[calc(100svh-1rem)] md:overflow-hidden">
 					{/* Thin navbar with notched items */}
 					<header className="sticky top-0 z-30">
 						{/* Mobile floating pill header */}
 						<MobileFloatingHeader />
 
-						{/* One solid header background: full-width strip with the
-						    sidebar→header scoop carved into its bottom-left. Sits
-						    behind the rail and bleeds 2px under the sidebar to hide
-						    the sidebar↔inset hairline (the scoop still lands flush
-						    at the content edge). Notches are siblings on top so
-						    they aren't clipped. */}
-						<div className="header-bg absolute -left-0.5 right-0 top-0 z-0 hidden md:block" />
-
-						{/* Thin navbar rail — notched items hang below (desktop only) */}
-						<div className="relative z-10 hidden md:flex items-start justify-between pt-2 h-5">
+						{/* Notch rail (desktop only). The frame band above the card IS
+						    the navbar — no strip inside the card. Notches start at y=0,
+						    fusing with the same-colored frame through the card's top
+						    edge, and their elements hang down from it. pr-6 keeps the
+						    right notch clear of the card's rounded corner. */}
+						<div className="relative z-10 hidden md:flex items-start justify-between h-5 pr-6">
 							{/* Left spacer */}
 							<div className="flex-1" />
 
@@ -104,16 +106,31 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 							{/* Right spacer */}
 							<div className="flex-1" />
 
-							{/* Right side controls notch */}
-							<NotchedItem contentClassName="gap-1" showRightEar={false}>
+							{/* Right side controls notch — both ears now that it no
+							    longer runs flush to the screen edge */}
+							<NotchedItem contentClassName="gap-1">
 								<NotificationBell />
 								<SettingsPopover />
 							</NotchedItem>
 						</div>
 					</header>
 
-					<div className="flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0">{children}</div>
+					{/* Card interior scrolls; the frame and notch stay put. */}
+					<div className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0 md:min-h-0 md:overflow-y-auto">
+						{children}
+					</div>
 				</SidebarInset>
+
+				{/* Always visible — free-plan users get an upgrade prompt inside the
+				    panel (and the backend enforces the plan gate regardless). */}
+				<AssistantNotch
+					open={assistantOpen}
+					onOpen={() => setAssistantOpen(true)}
+				/>
+				<AssistantPanel
+					open={assistantOpen}
+					onOpenChange={setAssistantOpen}
+				/>
 			</SidebarProvider>
 		</TourContextProvider>
 	);

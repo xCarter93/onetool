@@ -44,14 +44,14 @@ export function computeAfterLastRouteRightX(
 	workflowNodes: WorkflowNode[]
 ): number | undefined {
 	const loopNode = workflowNodes.find(
-		(node): node is Extract<WorkflowNode, { type: "loop" }> =>
-			node.id === loopNodeId && node.type === "loop"
+		(node) => node.id === loopNodeId && node.type === "loop"
 	);
 	if (!loopNode) return undefined;
 
 	const bodyIds = collectLoopBody(loopNodeId, workflowNodes);
-	const afterIds = loopNode.elseNodeId
-		? collectSubtree(loopNode.elseNodeId, workflowNodes)
+	// loop.nextNodeId is the after-loop continuation (elseNodeId is unused on loops).
+	const afterIds = loopNode.nextNodeId
+		? collectSubtree(loopNode.nextNodeId, workflowNodes)
 		: new Set<string>();
 	const bodyIdList = [...bodyIds];
 

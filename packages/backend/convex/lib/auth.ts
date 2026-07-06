@@ -106,6 +106,13 @@ export async function getCurrentUserOrgId(
 	return (await resolveCurrentUserOrgId(ctx, true))!;
 }
 
+/** Non-throwing variant: null when unauthenticated or no active org. */
+export async function getCurrentUserOrgIdOrNull(
+	ctx: QueryCtx | MutationCtx
+): Promise<Id<"organizations"> | null> {
+	return resolveCurrentUserOrgId(ctx, false);
+}
+
 /**
  * Ensure the current user has access to the specified organization
  */

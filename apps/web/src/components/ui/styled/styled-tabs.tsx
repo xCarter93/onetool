@@ -26,7 +26,8 @@ export function StyledTabsList({
 				"ring-1 ring-border/40 dark:ring-border/30",
 				"backdrop-blur-sm",
 				"shadow-sm",
-				"p-0 gap-0 rounded-lg",
+				// Pill shape per ReUI maia tabs recipe (rounded-4xl list / rounded-xl triggers)
+				"p-[3px] gap-0 rounded-full",
 				className
 			)}
 			{...props}
@@ -53,7 +54,7 @@ export function StyledTabsTrigger({
 				// Font styling
 				"font-medium",
 				// Tighter padding for button group feel
-				"px-3 py-1.5",
+				"px-3 py-1.5 rounded-full",
 				className
 			)}
 			{...props}

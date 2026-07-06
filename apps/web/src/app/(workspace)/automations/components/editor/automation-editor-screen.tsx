@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AutomationFlow } from "../flow/automation-flow";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
+import { WorkflowDrawer } from "./workflow-drawer";
 import { useAutomationEditor } from "../../hooks/use-automation-editor";
 import { useKeyboardShortcuts } from "../../hooks/use-keyboard-shortcuts";
 import { useSidebarState } from "../../hooks/use-sidebar-state";
@@ -14,9 +15,22 @@ import {
 } from "../../lib/flow-adapter";
 import { EditorTopBar } from "./editor-top-bar";
 import { UndoBanner } from "./undo-banner";
+import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
+import { runStatusRingClass } from "../../lib/run-status";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
-type NodeConfigType = "condition" | "action" | "fetch_records" | "loop" | "end";
+type NodeConfigType =
+	| "condition"
+	| "action"
+	| "fetch_records"
+	| "loop"
+	| "aggregate"
+	| "adjust_time"
+	| "delay"
+	| "delay_until"
+	| "end";
 
 /** Map sub-action types to their sidebar config type */
 function toSidebarType(t: string): NodeConfigType {
@@ -27,6 +41,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const router = useRouter();
 	const editor = useAutomationEditor(automationId);
 	const sidebar = useSidebarState();
+	const [drawerOpen, setDrawerOpen] = useState(true);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
 
 	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
@@ -46,8 +61,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	// Wrap edge insert to wire sidebar transitions
 	const handleEdgeInsert = useCallback(
-		(edgeId: string, nodeType: string) => {
-			const insertedId = editor.handleInsertNode(edgeId, nodeType);
+		(edgeId: string, nodeType: string, actionType?: string) => {
+			const insertedId = editor.handleInsertNode(edgeId, nodeType, actionType);
 			if (!insertedId) return;
 			if (nodeType === "placeholder") {
 				sidebar.openStepPicker(insertedId);
@@ -62,6 +77,18 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const flowEdges = useMemo(
 		() => editor.layoutedEdges.map((e) => ({ ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } })),
 		[editor.layoutedEdges, handleEdgeInsert]
+	);
+
+	// Paint each node's live run status onto its React Flow wrapper (ring/pulse).
+	const flowNodes = useMemo(
+		() =>
+			editor.layoutedNodes.map((node) => {
+				const ring = runStatusRingClass(editor.runStatuses[node.id]);
+				return ring
+					? { ...node, className: cn(node.className, ring) }
+					: node;
+			}),
+		[editor.layoutedNodes, editor.runStatuses]
 	);
 
 	const handleNodeClick = useCallback(
@@ -92,8 +119,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	);
 
 	const handleStepTypeSelect = useCallback(
-		(stepType: string, placeholderNodeId: string) => {
-			editor.handleSelectStepType(placeholderNodeId, stepType);
+		(stepType: string, placeholderNodeId: string, actionType?: string) => {
+			editor.handleSelectStepType(placeholderNodeId, stepType, actionType);
 			sidebar.handleStepTypeSelect(toSidebarType(stepType) as NodeConfigType, placeholderNodeId);
 		},
 		[editor, sidebar]
@@ -146,34 +173,33 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				<p className="mt-2 text-sm text-muted-foreground">
 					This automation may have been deleted or you don&apos;t have access to it.
 				</p>
-				<button
-					type="button"
-					onClick={() => router.push("/automations")}
-					className="mt-6 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+				<Button
+					intent="primary"
+					className="mt-6"
+					onPress={() => router.push("/automations")}
 				>
 					Back to Automations
-				</button>
+				</Button>
 			</div>
 		);
 	}
 
 	return (
-		<div className="flex h-screen flex-col">
+		<div className="flex h-svh flex-col md:h-auto md:min-h-0 md:flex-1">
 			<EditorTopBar
 				name={editor.name}
 				description={editor.description}
-				isActive={editor.isActive}
+				status={editor.status}
 				isSaving={editor.isSaving}
 				onBack={() => router.push("/automations")}
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
-				onActiveChange={editor.setIsActive}
 				onSave={editor.handleSave}
 			/>
-			<div className="flex flex-1 overflow-hidden">
-				<div className="relative flex-1">
+			<div className="flex flex-1 overflow-hidden bg-muted/40">
+				<div className="relative flex-1 bg-background">
 					<AutomationFlow
-						nodes={editor.layoutedNodes}
+						nodes={flowNodes}
 						edges={flowEdges}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
@@ -181,6 +207,38 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 					/>
+					{/* Floats over the canvas so the dotted background runs behind it. */}
+					<WorkflowDrawer
+						trigger={editor.trigger}
+						nodes={editor.nodes}
+						rfNodes={editor.layoutedNodes}
+						rfEdges={editor.layoutedEdges}
+						onNavigateToNode={handleNavigateToNode}
+						selectedNodeId={
+							selectedNode && "id" in selectedNode && selectedNode.type !== "placeholder"
+								? selectedNode.id
+								: undefined
+						}
+						open={drawerOpen}
+						onToggle={() => setDrawerOpen((o) => !o)}
+						formulas={editor.formulas}
+						onFormulasChange={editor.onFormulasChange}
+						sampleRecords={editor.sampleRecords}
+						execution={editor.execution}
+						isRunning={editor.isRunning}
+						isStartingTest={editor.isStartingTest}
+						hasActiveRun={editor.hasActiveRun}
+						onStartTest={editor.handleStartTest}
+						onCancelTest={editor.handleCancelTest}
+					/>
+					{editor.needsPublish && (
+						<UnpublishedBanner
+							isPublished={editor.isPublished}
+							publishLabel={editor.publishLabel}
+							isPublishing={editor.isPublishing}
+							onPublish={editor.handlePublish}
+						/>
+					)}
 					{editor.undoBanner && (
 						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
 					)}
@@ -194,6 +252,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						mode={sidebar.mode}
 						trigger={editor.trigger}
 						nodes={editor.nodes}
+						formulas={editor.formulas}
 						onClose={sidebar.closeSidebar}
 						onTriggerTypeSelect={handleTriggerTypeSelect}
 						onStepTypeSelect={handleStepTypeSelect}

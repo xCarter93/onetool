@@ -1,60 +1,71 @@
 "use client";
 
 import React from "react";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+	StyledBadge,
+	StyledButton,
+	StyledTable,
+	StyledTableBody,
+	StyledTableCell,
+	StyledTableHead,
+	StyledTableHeader,
+	StyledTableRow,
+	StyledTabs,
+	StyledTabsList,
+	StyledTabsTrigger,
+} from "@/components/ui/styled";
+import { StyledFilters } from "@/components/ui/styled/styled-filters";
+import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
+import {
+	Frame,
+	FrameDescription,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
 import {
 	ColumnDef,
-	ColumnFiltersState,
 	SortingState,
 	flexRender,
 	getCoreRowModel,
-	getFilteredRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
 import {
+	Archive,
+	CheckCircle2,
 	ChevronLeft,
 	ChevronRight,
-	Users,
 	ExternalLink,
-	Plus,
-	Trash2,
-	RotateCcw,
-	Archive,
-	Upload,
-	TableProperties,
+	Eye,
+	Filter as FilterIcon,
 	LayoutGrid,
+	Plus,
+	RotateCcw,
+	Search,
+	TableProperties,
+	Trash2,
+	Upload,
+	UserCheck,
+	Users,
+	UserX,
+	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "convex/react";
-import { useState } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledBadge } from "@/components/ui/styled";
-
+import { MetricFrame } from "@/components/metric-frame";
 import {
 	useCanPerformAction,
 	useFeatureAccess,
@@ -65,13 +76,14 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
 	KanbanHeader,
 	KanbanProvider,
 } from "../projects/components/kanban";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { ClientDetailDrawer } from "./components/client-detail-drawer";
 import { cn } from "@/lib/utils";
 
 type Client = {
@@ -88,11 +100,12 @@ type Client = {
 	} | null;
 };
 
+type ClientKanbanStatus = "lead" | "active" | "inactive";
+
 type ClientKanbanItem = {
 	id: string;
 	name: string;
-	column: "lead" | "active" | "inactive";
-	status: "lead" | "active" | "inactive";
+	column: ClientKanbanStatus;
 	activeProjects: number;
 	primaryContact: {
 		name: string;
@@ -101,28 +114,25 @@ type ClientKanbanItem = {
 };
 
 type ClientKanbanColumn = {
-	id: "lead" | "active" | "inactive";
+	id: ClientKanbanStatus;
 	name: string;
 	description: string;
 };
 
+type ClientActionGate = ReturnType<typeof useCanPerformAction>;
+
 const kanbanColumns: ClientKanbanColumn[] = [
-	{
-		id: "lead",
-		name: "Leads",
-		description: "Potential new clients",
-	},
-	{
-		id: "active",
-		name: "Active",
-		description: "Current clients",
-	},
-	{
-		id: "inactive",
-		name: "Inactive",
-		description: "Paused or dormant",
-	},
+	{ id: "lead", name: "Leads", description: "Potential new clients" },
+	{ id: "active", name: "Active", description: "Current clients" },
+	{ id: "inactive", name: "Inactive", description: "Paused or dormant" },
 ];
+
+// Per-lane accent dot (kanban-board-4 style); status → colored dot only.
+const statusDot: Record<ClientKanbanStatus, string> = {
+	lead: "bg-amber-500",
+	active: "bg-emerald-500",
+	inactive: "bg-muted-foreground/50",
+};
 
 const statusToBadgeVariant = (status: Client["status"]) => {
 	switch (status) {
@@ -139,9 +149,7 @@ const statusToBadgeVariant = (status: Client["status"]) => {
 	}
 };
 
-const kanbanStatusToBadgeVariant = (
-	status: "lead" | "active" | "inactive"
-) => {
+const kanbanStatusToBadgeVariant = (status: ClientKanbanStatus) => {
 	switch (status) {
 		case "active":
 			return "default" as const;
@@ -154,9 +162,7 @@ const kanbanStatusToBadgeVariant = (
 	}
 };
 
-const formatKanbanStatus = (
-	status: "lead" | "active" | "inactive"
-) => {
+const formatKanbanStatus = (status: ClientKanbanStatus) => {
 	switch (status) {
 		case "lead":
 			return "Lead";
@@ -169,16 +175,56 @@ const formatKanbanStatus = (
 	}
 };
 
+// Map a display status to the kanban lane it belongs in.
+const toKanbanStatus = (status: Client["status"]): ClientKanbanStatus => {
+	if (status === "Active") return "active";
+	if (status === "Prospect") return "lead"; // legacy "Prospect" → Lead lane
+	return "inactive";
+};
+
+// Advanced filters (status / active-projects) applied to a client set.
+const applyClientFilters = (
+	rows: Client[],
+	filters: Filter<unknown>[]
+): Client[] => {
+	let result = rows;
+	filters.forEach((filter) => {
+		if (filter.values.length === 0) return;
+		switch (filter.field) {
+			case "status":
+				result = result.filter((c) =>
+					filter.values.includes(c.status as unknown)
+				);
+				break;
+		}
+	});
+	return result;
+};
+
+// Free-text search on client name + primary contact name/email.
+const searchClients = (rows: Client[], query: string): Client[] => {
+	const q = query.trim().toLowerCase();
+	if (!q) return rows;
+	return rows.filter((c) => {
+		if (c.name?.toLowerCase().includes(q)) return true;
+		if (c.primaryContact) {
+			if (c.primaryContact.name?.toLowerCase().includes(q)) return true;
+			if (c.primaryContact.email?.toLowerCase().includes(q)) return true;
+		}
+		return false;
+	});
+};
+
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
-	toast: ReturnType<typeof useToast>,
+	onPreview: (id: string) => void,
 	onDelete: (id: string, name: string) => void,
-	onRestore?: (id: string, name: string) => void,
-	isArchivedTab?: boolean
+	onRestore: (id: string, name: string) => void,
+	isArchivedTab: boolean
 ): ColumnDef<Client>[] => [
 	{
 		accessorKey: "name",
-		header: () => <div className="flex items-center gap-1">Name</div>,
+		header: "Name",
 		cell: ({ row }) => (
 			<div className="flex flex-col">
 				<span className="font-medium text-foreground">{row.original.name}</span>
@@ -191,22 +237,19 @@ const createColumns = (
 	{
 		accessorKey: "primaryContact",
 		header: "Primary Contact",
-		cell: ({ row }) => (
-			<div className="flex flex-col">
-				{row.original.primaryContact ? (
-					<>
-						<span className="font-medium text-foreground">
-							{row.original.primaryContact.name}
-						</span>
-						<span className="text-muted-foreground text-xs">
-							{row.original.primaryContact.email}
-						</span>
-					</>
-				) : (
-					<span className="text-muted-foreground text-sm">No contact</span>
-				)}
-			</div>
-		),
+		cell: ({ row }) =>
+			row.original.primaryContact ? (
+				<div className="flex flex-col">
+					<span className="font-medium text-foreground">
+						{row.original.primaryContact.name}
+					</span>
+					<span className="text-muted-foreground text-xs">
+						{row.original.primaryContact.email}
+					</span>
+				</div>
+			) : (
+				<span className="text-muted-foreground text-sm">No contact</span>
+			),
 	},
 	{
 		accessorKey: "activeProjects",
@@ -233,28 +276,37 @@ const createColumns = (
 		accessorKey: "status",
 		header: "Status",
 		cell: ({ row }) => (
-			<Badge variant={statusToBadgeVariant(row.original.status)}>
+			<StyledBadge variant={statusToBadgeVariant(row.original.status)}>
 				{row.original.status}
-			</Badge>
+			</StyledBadge>
 		),
 	},
 	{
 		id: "actions",
 		header: "",
 		cell: ({ row }) => (
-			<div className="flex items-center gap-2">
+			// Stop row-click preview from firing when using the explicit actions.
+			<div
+				className="flex items-center justify-end gap-2"
+				onClick={(e) => e.stopPropagation()}
+			>
 				<Button
 					intent="outline"
 					size="sq-sm"
-					onPress={() => {
-						router.push(`/clients/${row.original.id}`);
-					}}
-					aria-label={`View client ${row.original.name}`}
+					onPress={() => onPreview(row.original.id)}
+					aria-label={`Preview client ${row.original.name}`}
+				>
+					<Eye className="size-4" />
+				</Button>
+				<Button
+					intent="outline"
+					size="sq-sm"
+					onPress={() => router.push(`/clients/${row.original.id}`)}
+					aria-label={`Open client ${row.original.name}`}
 				>
 					<ExternalLink className="size-4" />
 				</Button>
-
-				{isArchivedTab && onRestore ? (
+				{isArchivedTab ? (
 					<Button
 						intent="outline"
 						size="sq-sm"
@@ -280,27 +332,156 @@ const createColumns = (
 	},
 ];
 
+function ActiveEmptyState({
+	gate,
+	onAdd,
+}: {
+	gate: ClientActionGate;
+	onAdd: () => void;
+}) {
+	const { canPerform, reason, currentUsage, limit } = gate;
+	return (
+		<div className="px-6 py-12 text-center">
+			<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
+				<Users className="h-12 w-12 text-muted-foreground" />
+			</div>
+			<h3 className="mb-2 text-lg font-semibold text-foreground">
+				No clients yet
+			</h3>
+			<p className="mx-auto mb-6 max-w-sm text-muted-foreground">
+				Create your first client to start organizing relationships and tracking
+				activity.
+			</p>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<span className="inline-block">
+						<StyledButton
+							intent="primary"
+							size="md"
+							onClick={onAdd}
+							disabled={!canPerform}
+							icon={<Plus className="h-4 w-4" />}
+						>
+							Add Your First Client
+						</StyledButton>
+					</span>
+				</TooltipTrigger>
+				{!canPerform && (
+					<TooltipContent>
+						<div className="space-y-1">
+							<p className="font-semibold">Upgrade Required</p>
+							<p>{reason || "You've reached your client limit"}</p>
+							{limit && limit !== "unlimited" && currentUsage !== undefined && (
+								<p className="text-muted-foreground">
+									{currentUsage}/{limit} clients
+								</p>
+							)}
+						</div>
+					</TooltipContent>
+				)}
+			</Tooltip>
+		</div>
+	);
+}
+
+function ArchivedEmptyState() {
+	return (
+		<div className="px-6 py-12 text-center">
+			<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
+				<Archive className="h-12 w-12 text-muted-foreground" />
+			</div>
+			<h3 className="mb-2 text-lg font-semibold text-foreground">
+				No archived clients
+			</h3>
+			<p className="mx-auto max-w-sm text-muted-foreground">
+				Clients you archive will appear here for seven days before being
+				permanently deleted.
+			</p>
+		</div>
+	);
+}
+
 export default function ClientsPage() {
 	const router = useRouter();
 	const toast = useToast();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+	const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
+	const [sorting, setSorting] = React.useState<SortingState>([]);
+	const [query, setQuery] = React.useState("");
+	const [filters, setFilters] = React.useState<Filter<unknown>[]>([]);
+	const [pagination, setPagination] = React.useState({
+		pageIndex: 0,
+		pageSize: 10,
+	});
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-
 	const [clientToDelete, setClientToDelete] = useState<{
 		id: string;
 		name: string;
 	} | null>(null);
-	const [activeTab, setActiveTab] = useState("active");
+	const [previewId, setPreviewId] = useState<Id<"clients"> | null>(null);
+	const [previewOpen, setPreviewOpen] = useState(false);
 	const [kanbanData, setKanbanData] = useState<ClientKanbanItem[]>([]);
+	const isOrgSwitching = useIsOrgSwitching();
 
-	// Check if user can create new clients
-	const { canPerform, reason, currentUsage, limit } =
-		useCanPerformAction("create_client");
-
-	// Check if user has premium access for import feature
+	// Usage gate for creating clients + premium gate for import.
+	const gate = useCanPerformAction("create_client");
+	const { canPerform, reason } = gate;
 	const { hasPremiumAccess } = useFeatureAccess();
 
-	const handleAddClient = () => {
+	const archiveClient = useMutation(api.clients.archive);
+	const restoreClient = useMutation(api.clients.restore);
+	const updateClient = useMutation(api.clients.update);
+
+	// Two datasets: active clients and archived clients.
+	const convexClients = useQuery(api.clients.listWithProjectCounts, {});
+	const archivedClients = useQuery(api.clients.listWithProjectCounts, {
+		status: "archived" as const,
+		includeArchived: true,
+	});
+	const clientsStats = useQuery(api.clients.getStats, {});
+
+	const activeData = React.useMemo<Client[]>(
+		() => convexClients ?? [],
+		[convexClients]
+	);
+	const archivedData = React.useMemo<Client[]>(
+		() => archivedClients ?? [],
+		[archivedClients]
+	);
+
+	// Advanced filters + free-text search, computed per dataset.
+	const activeFiltered = React.useMemo(
+		() => applyClientFilters(activeData, filters),
+		[activeData, filters]
+	);
+	const activeSearched = React.useMemo(
+		() => searchClients(activeFiltered, query),
+		[activeFiltered, query]
+	);
+	const archivedFiltered = React.useMemo(
+		() => applyClientFilters(archivedData, filters),
+		[archivedData, filters]
+	);
+	const archivedSearched = React.useMemo(
+		() => searchClients(archivedFiltered, query),
+		[archivedFiltered, query]
+	);
+
+	const searchedData =
+		activeTab === "active" ? activeSearched : archivedSearched;
+	const currentDataset = activeTab === "active" ? activeData : archivedData;
+
+	const isActiveEmpty = activeData.length === 0;
+	const isArchivedEmpty = archivedData.length === 0;
+	const currentTabEmpty =
+		activeTab === "active" ? isActiveEmpty : isArchivedEmpty;
+
+	const isLoading =
+		isOrgSwitching ||
+		convexClients === undefined ||
+		archivedClients === undefined;
+
+	const handleAddClient = React.useCallback(() => {
 		if (!canPerform) {
 			toast.error(
 				"Upgrade Required",
@@ -309,169 +490,108 @@ export default function ClientsPage() {
 			return;
 		}
 		router.push("/clients/new");
+	}, [canPerform, reason, router, toast]);
+
+	const openPreview = React.useCallback((id: string) => {
+		setPreviewId(id as Id<"clients">);
+		setPreviewOpen(true);
+	}, []);
+
+	const handleDelete = React.useCallback((id: string, name: string) => {
+		setClientToDelete({ id, name });
+		setDeleteModalOpen(true);
+	}, []);
+
+	const handleRestore = React.useCallback(
+		async (id: string, name: string) => {
+			try {
+				await restoreClient({ id: id as Id<"clients"> });
+				toast.success(
+					"Client Restored",
+					`${name} has been restored and is now active.`
+				);
+			} catch (error) {
+				console.error("Failed to restore client:", error);
+				toast.error(
+					"Restore Failed",
+					"Failed to restore the client. Please try again."
+				);
+			}
+		},
+		[restoreClient, toast]
+	);
+
+	const confirmDelete = async () => {
+		if (!clientToDelete) return;
+		try {
+			await archiveClient({ id: clientToDelete.id as Id<"clients"> });
+			setDeleteModalOpen(false);
+			setClientToDelete(null);
+			toast.success(
+				"Client Archived",
+				`${clientToDelete.name} has been archived. It will be permanently deleted in 7 days.`
+			);
+		} catch (error) {
+			console.error("Failed to archive client:", error);
+			toast.error(
+				"Archive Failed",
+				"Failed to archive the client. Please try again."
+			);
+		}
 	};
 
-	const archiveClient = useMutation(api.clients.archive);
-	const restoreClient = useMutation(api.clients.restore);
-	const updateClient = useMutation(api.clients.update);
+	// Switching dataset resets the dataset-scoped filters (their status options
+	// differ between the active and archived tabs).
+	const handleTabChange = (value: string) => {
+		setActiveTab(value as "active" | "archived");
+		setFilters([]);
+	};
 
-	// Fetch clients with project counts from Convex
-	const convexClients = useQuery(api.clients.listWithProjectCounts, {});
-	const archivedClients = useQuery(api.clients.listWithProjectCounts, {
-		status: "archived" as const,
-		includeArchived: true,
-	});
-	const clientsStats = useQuery(api.clients.getStats, {});
-
-	// Transform the data to match our Client type
-	const activeData = React.useMemo(() => {
-		if (!convexClients) return [];
-		return convexClients;
-	}, [convexClients]);
-
-	const archivedData = React.useMemo(() => {
-		if (!archivedClients) return [];
-		return archivedClients;
-	}, [archivedClients]);
-
-	const isActiveEmpty = activeData.length === 0;
-	const isArchivedEmpty = archivedData.length === 0;
-	const currentData = activeTab === "active" ? activeData : archivedData;
-	const [sorting, setSorting] = React.useState<SortingState>([]);
-	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-		[]
-	);
-	const [globalQuery, setGlobalQuery] = React.useState("");
-	const [pagination, setPagination] = React.useState({
-		pageIndex: 0,
-		pageSize: 10,
-	});
-
-	// Create kanban data from active clients
+	// Stable status map (from the full active set) for drag-to-update detection.
 	const clientStatusMap = React.useMemo(() => {
-		const statusMap = new Map<
-			string,
-			"lead" | "active" | "inactive"
-		>();
-		// Map client statuses to kanban columns
-		activeData.forEach((client) => {
-			let kanbanStatus: "lead" | "active" | "inactive";
-			if (client.status === "Active") {
-				kanbanStatus = "active";
-			} else if (client.status === "Prospect") {
-				kanbanStatus = "lead"; // Map deprecated Prospect to Lead
-			} else {
-				kanbanStatus = "inactive";
-			}
-			statusMap.set(client.id, kanbanStatus);
-		});
-		return statusMap;
+		const map = new Map<string, ClientKanbanStatus>();
+		activeData.forEach((client) => map.set(client.id, toKanbanStatus(client.status)));
+		return map;
 	}, [activeData]);
 
+	// Kanban always reflects the (filtered + searched) active clients.
 	React.useEffect(() => {
-		if (!activeData || activeData.length === 0) {
-			setKanbanData([]);
-			return;
-		}
-
 		setKanbanData(
-			activeData
-				.filter((client) => client.status !== "Archived") // Only show non-archived in kanban
-				.map((client) => {
-					let kanbanStatus: "lead" | "active" | "inactive";
-					if (client.status === "Active") {
-						kanbanStatus = "active";
-					} else if (client.status === "Prospect") {
-						kanbanStatus = "lead"; // Map deprecated Prospect to Lead
-					} else {
-						kanbanStatus = "inactive";
-					}
-
-				return {
+			activeSearched
+				.filter((client) => client.status !== "Archived")
+				.map((client) => ({
 					id: client.id,
 					name: client.name,
-					column: kanbanStatus,
-					status: kanbanStatus,
+					column: toKanbanStatus(client.status),
 					activeProjects: client.activeProjects,
 					primaryContact: client.primaryContact
 						? {
 								name: client.primaryContact.name,
 								email: client.primaryContact.email,
-						  }
+							}
 						: null,
-				};
-				})
+				}))
 		);
-	}, [activeData]);
+	}, [activeSearched]);
 
-	const handleDelete = (id: string, name: string) => {
-		setClientToDelete({ id, name });
-		setDeleteModalOpen(true);
-	};
-
-	const handleRestore = async (id: string, name: string) => {
-		try {
-			await restoreClient({ id: id as Id<"clients"> });
-			toast.success(
-				"Client Restored",
-				`${name} has been restored and is now active.`
-			);
-		} catch (error) {
-			console.error("Failed to restore client:", error);
-			toast.error(
-				"Restore Failed",
-				"Failed to restore the client. Please try again."
-			);
-		}
-	};
-
-	const confirmDelete = async () => {
-		if (clientToDelete) {
-			try {
-				await archiveClient({ id: clientToDelete.id as Id<"clients"> });
-				setDeleteModalOpen(false);
-				setClientToDelete(null);
-				toast.success(
-					"Client Archived",
-					`${clientToDelete.name} has been archived. It will be permanently deleted in 7 days.`
-				);
-			} catch (error) {
-				console.error("Failed to archive client:", error);
-				toast.error(
-					"Archive Failed",
-					"Failed to archive the client. Please try again."
-				);
-			}
-		}
-	};
-
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ClientKanbanItem[]) => {
 			setKanbanData(nextData);
+		},
+		[]
+	);
 
-			const changedItem = nextData.find((item) => {
-				const originalStatus = clientStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
-				// Map kanban status back to client status
-				let clientStatus:
-					| "lead"
-					| "active"
-					| "inactive"
-					| "archived";
-				if (changedItem.column === "active") {
-					clientStatus = "active";
-				} else if (changedItem.column === "lead") {
-					clientStatus = "lead";
-				} else {
-					clientStatus = "inactive";
-				}
-
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = clientStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				updateClient({
-					id: changedItem.id as Id<"clients">,
-					status: clientStatus,
+					id: item.id as Id<"clients">,
+					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update client status:", error);
 					toast.error(
@@ -481,103 +601,243 @@ export default function ClientsPage() {
 				});
 			}
 		},
-		[clientStatusMap, updateClient, toast]
+		[kanbanData, clientStatusMap, updateClient, toast]
 	);
 
 	const isArchivedTab = activeTab === "archived";
-	const columns = createColumns(
-		router,
-		toast,
-		handleDelete,
-		handleRestore,
-		isArchivedTab
+	const columns = React.useMemo(
+		() => createColumns(router, openPreview, handleDelete, handleRestore, isArchivedTab),
+		[router, openPreview, handleDelete, handleRestore, isArchivedTab]
 	);
 
 	const table = useReactTable({
-		data: currentData,
+		data: searchedData,
 		columns,
 		state: {
 			sorting,
-			columnFilters,
-			globalFilter: globalQuery,
 			pagination,
 		},
 		onSortingChange: setSorting,
-		onColumnFiltersChange: setColumnFilters,
-		onGlobalFilterChange: setGlobalQuery,
 		onPaginationChange: setPagination,
-		globalFilterFn: (row, columnId, value) => {
-			// If no search value, show all rows
-			if (!value || value.trim() === "") return true;
-
-			const search = value.toLowerCase().trim();
-			const client = row.original;
-
-			// Search in client name
-			if (client.name && client.name.toLowerCase().includes(search))
-				return true;
-
-			// Search in primary contact name and email
-			if (client.primaryContact) {
-				if (
-					client.primaryContact.name &&
-					client.primaryContact.name.toLowerCase().includes(search)
-				)
-					return true;
-				if (
-					client.primaryContact.email &&
-					client.primaryContact.email.toLowerCase().includes(search)
-				)
-					return true;
-			}
-
-			return false;
-		},
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 	});
 
-	// Reset to first page when switching tabs or when search changes
+	// Reset to the first page whenever the visible set changes (incl. after a
+	// delete/refetch shrinks it, which could otherwise strand pageIndex past
+	// the last page).
 	React.useEffect(() => {
-		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [activeTab, globalQuery]);
-
-	// Loading state
-	if (
-		convexClients === undefined ||
-		archivedClients === undefined ||
-		clientsStats === undefined
-	) {
-		return (
-			<div className="relative px-6 pt-8 pb-6 space-y-6">
-				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-3">
-						<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-						<div>
-							<h1 className="text-2xl font-bold text-foreground">Clients</h1>
-							<p className="text-muted-foreground text-sm">
-								Loading clients...
-							</p>
-						</div>
-					</div>
-				</div>
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-					{[1, 2, 3].map((i) => (
-						<Card key={i}>
-							<CardHeader>
-								<div className="h-4 bg-muted rounded animate-pulse" />
-							</CardHeader>
-							<CardContent>
-								<div className="h-8 bg-muted rounded animate-pulse" />
-							</CardContent>
-						</Card>
-					))}
-				</div>
-			</div>
+		setPagination((prev) =>
+			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
 		);
-	}
+	}, [activeTab, query, filters, searchedData.length]);
+
+	// Status options track the visible dataset; active-context lanes are
+	// lead/active/inactive, the archived tab is a single "Archived" bucket.
+	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
+		const statusOptions =
+			isArchivedTab && viewMode === "table"
+				? [{ value: "Archived", label: "Archived" }]
+				: [
+						{ value: "Active", label: "Active" },
+						{ value: "Prospect", label: "Prospect" },
+						{ value: "Paused", label: "Paused" },
+					];
+		return [
+			{
+				key: "status",
+				label: "Status",
+				icon: <CheckCircle2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: statusOptions,
+			},
+		];
+	}, [isArchivedTab, viewMode]);
+
+	// Kanban footer counts the active set; table footer counts the current tab.
+	const footerShown =
+		viewMode === "table" ? searchedData.length : activeSearched.length;
+	const footerTotal =
+		viewMode === "table" ? currentDataset.length : activeData.length;
+	const showFooter =
+		!isLoading && (viewMode === "table" ? !currentTabEmpty : !isActiveEmpty);
+
+	const filtersBar = (
+		<div className="border-b px-4 py-3">
+			<StyledFilters
+				filters={filters}
+				fields={filterFields}
+				onChange={setFilters}
+				addButtonText="Filter"
+				addButtonIcon={<FilterIcon className="h-4 w-4" />}
+				size="md"
+				variant="outline"
+				showClearButton={true}
+				clearButtonText="Clear"
+				clearButtonIcon={<X className="h-4 w-4" />}
+			/>
+		</div>
+	);
+
+	const kanbanBoard = (
+		<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
+			<KanbanProvider
+				columns={kanbanColumns}
+				data={kanbanData}
+				onDataChange={handleKanbanDataChange}
+				onDragEnd={handleKanbanDragEnd}
+			>
+				{(column) => {
+					const columnItems = kanbanData.filter(
+						(item) => item.column === column.id
+					);
+
+					return (
+						<KanbanBoard
+							key={column.id}
+							id={column.id}
+							className="bg-card/60 flex flex-col"
+						>
+							<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+								<div className="flex min-w-0 items-center gap-2">
+									<span
+										className={cn(
+											"size-2.5 shrink-0 rounded-full",
+											statusDot[column.id]
+										)}
+									/>
+									<div className="min-w-0">
+										<p className="text-foreground truncate text-sm font-semibold">
+											{column.name}
+										</p>
+										<p className="text-muted-foreground truncate text-xs">
+											{column.description}
+										</p>
+									</div>
+								</div>
+								<StyledBadge variant="outline">{columnItems.length}</StyledBadge>
+							</KanbanHeader>
+							<KanbanCards id={column.id}>
+								{(item: ClientKanbanItem) => (
+									<KanbanCard
+										key={item.id}
+										id={item.id}
+										name={item.name}
+										column={item.column}
+									>
+										<div
+											role="button"
+											tabIndex={0}
+											onClick={() => openPreview(item.id)}
+											onKeyDown={(e) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													openPreview(item.id);
+												}
+											}}
+											className="flex cursor-pointer flex-col gap-2 outline-none"
+										>
+											<div className="flex items-start justify-between gap-2">
+												<p className="text-foreground line-clamp-2 text-sm font-medium">
+													{item.name}
+												</p>
+												<StyledBadge
+													variant={kanbanStatusToBadgeVariant(item.column)}
+													className="shrink-0"
+												>
+													{formatKanbanStatus(item.column)}
+												</StyledBadge>
+											</div>
+											<p className="text-muted-foreground truncate text-xs">
+												{item.activeProjects === 0
+													? "No active projects"
+													: `${item.activeProjects} active ${
+															item.activeProjects === 1 ? "project" : "projects"
+														}`}
+											</p>
+											{item.primaryContact ? (
+												<div className="text-muted-foreground text-xs">
+													<p className="text-foreground font-medium">
+														{item.primaryContact.name}
+													</p>
+													<p className="truncate">{item.primaryContact.email}</p>
+												</div>
+											) : null}
+											<div className="flex items-center justify-end pt-1">
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														router.push(`/clients/${item.id}`);
+													}}
+													onKeyDown={(e) => e.stopPropagation()}
+													className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+												>
+													Open <ExternalLink className="size-3" />
+												</button>
+											</div>
+										</div>
+									</KanbanCard>
+								)}
+							</KanbanCards>
+						</KanbanBoard>
+					);
+				}}
+			</KanbanProvider>
+		</div>
+	);
+
+	const clientsTable = (
+		<div className="overflow-x-auto">
+			<StyledTable>
+				<StyledTableHeader>
+					{table.getHeaderGroups().map((headerGroup) => (
+						<StyledTableRow key={headerGroup.id}>
+							{headerGroup.headers.map((header) => (
+								<StyledTableHead key={header.id}>
+									{header.isPlaceholder
+										? null
+										: flexRender(
+												header.column.columnDef.header,
+												header.getContext()
+											)}
+								</StyledTableHead>
+							))}
+						</StyledTableRow>
+					))}
+				</StyledTableHeader>
+				<StyledTableBody>
+					{table.getRowModel().rows?.length ? (
+						table.getRowModel().rows.map((row) => (
+							<StyledTableRow
+								key={row.id}
+								className="cursor-pointer"
+								onClick={() => openPreview(row.original.id)}
+							>
+								{row.getVisibleCells().map((cell) => (
+									<StyledTableCell key={cell.id}>
+										{flexRender(cell.column.columnDef.cell, cell.getContext())}
+									</StyledTableCell>
+								))}
+							</StyledTableRow>
+						))
+					) : (
+						<StyledTableRow>
+							<StyledTableCell
+								colSpan={columns.length}
+								className="h-24 text-center"
+							>
+								{isArchivedTab
+									? "No archived clients match your filters."
+									: "No clients match your filters."}
+							</StyledTableCell>
+						</StyledTableRow>
+					)}
+				</StyledTableBody>
+			</StyledTable>
+		</div>
+	);
 
 	return (
 		<div className="relative px-6 pt-8 pb-6 space-y-6">
@@ -628,11 +888,11 @@ export default function ClientsPage() {
 								>
 									Add Client
 									{!canPerform &&
-										limit &&
-										limit !== "unlimited" &&
-										currentUsage !== undefined && (
+										gate.limit &&
+										gate.limit !== "unlimited" &&
+										gate.currentUsage !== undefined && (
 											<Badge variant="secondary" className="ml-1 text-xs">
-												{currentUsage}/{limit}
+												{gate.currentUsage}/{gate.limit}
 											</Badge>
 										)}
 								</StyledButton>
@@ -643,11 +903,11 @@ export default function ClientsPage() {
 								<div className="space-y-1">
 									<p className="font-semibold">Upgrade Required</p>
 									<p>{reason || "You've reached your client limit"}</p>
-									{limit &&
-										limit !== "unlimited" &&
-										currentUsage !== undefined && (
+									{gate.limit &&
+										gate.limit !== "unlimited" &&
+										gate.currentUsage !== undefined && (
 											<p className="text-muted-foreground">
-												{currentUsage}/{limit} clients
+												{gate.currentUsage}/{gate.limit} clients
 											</p>
 										)}
 								</div>
@@ -657,438 +917,184 @@ export default function ClientsPage() {
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Users className="size-4" /> Prospective Clients
-						</CardTitle>
-						<CardDescription>
-							Clients currently marked as prospects
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{clientsStats?.groupedByStatus?.prospective ?? 0}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="text-base">Active Clients</CardTitle>
-						<CardDescription>Clients engaged in work right now</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{clientsStats?.groupedByStatus?.active ?? 0}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="text-base">Inactive Clients</CardTitle>
-						<CardDescription>
-							Clients marked inactive or archived
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{clientsStats?.groupedByStatus?.inactive ?? 0}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+			<MetricFrame
+				loading={clientsStats === undefined}
+				metrics={[
+					{
+						label: "Prospective Clients",
+						value: clientsStats?.groupedByStatus?.prospective ?? 0,
+						hint: "Clients currently marked as prospects",
+						icon: <Users />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "Active Clients",
+						value: clientsStats?.groupedByStatus?.active ?? 0,
+						hint: "Clients engaged in work right now",
+						icon: <UserCheck />,
+						accent: "var(--color-emerald-500)",
+					},
+					{
+						label: "Inactive Clients",
+						value: clientsStats?.groupedByStatus?.inactive ?? 0,
+						hint: "Clients marked inactive or archived",
+						icon: <UserX />,
+						accent: "var(--color-zinc-400)",
+					},
+				]}
+				summary={
+					clientsStats
+						? `${clientsStats.total} total clients · ${clientsStats.recentlyCreated} added in the last 30 days`
+						: undefined
+				}
+			/>
 
-			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-				<CardHeader className="relative z-10 flex flex-col gap-2 border-b">
-					<div>
-						<CardTitle>Clients</CardTitle>
-						<CardDescription>
-							Search, sort, and browse your client list
-						</CardDescription>
+			<Frame>
+				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+					<div className="flex flex-col gap-0.5">
+						<FrameTitle className="text-base">Clients</FrameTitle>
+						<FrameDescription>
+							Search, filter, and browse your client list
+						</FrameDescription>
 					</div>
-					<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-						<Input
-							placeholder="Search clients or contacts..."
-							value={globalQuery}
-							onChange={(e) => setGlobalQuery(e.target.value)}
-							className="w-full md:w-96"
+					<div className="flex w-full items-center gap-2 sm:w-auto">
+						<div className="relative flex-1 sm:w-64 sm:flex-none">
+							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+							<Input
+								placeholder="Search clients or contacts..."
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								className="pl-9"
+							/>
+						</div>
+						<StyledSegmentedControl
+							className="shrink-0"
+							value={viewMode}
+							onValueChange={(v) => {
+								const next = v as "table" | "kanban";
+								setViewMode(next);
+								// Kanban only shows active clients; leaving the Archived tab
+								// (or its filters) applied would render an empty board.
+								if (next === "kanban" && activeTab === "archived") {
+									setActiveTab("active");
+									setFilters([]);
+								}
+							}}
+							options={[
+								{
+									value: "table",
+									label: "Table",
+									icon: <TableProperties className="size-4" />,
+									ariaLabel: "Table view",
+									hideLabelOnMobile: true,
+								},
+								{
+									value: "kanban",
+									label: "Kanban",
+									icon: <LayoutGrid className="size-4" />,
+									ariaLabel: "Kanban view",
+									hideLabelOnMobile: true,
+								},
+							]}
 						/>
-						<ButtonGroup>
-							<button
-								onClick={() => setViewMode("table")}
-								aria-pressed={viewMode === "table"}
-								aria-label="Table view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "table"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<TableProperties className="w-4 h-4" />
-								<span className="hidden sm:inline">Table</span>
-							</button>
-							<button
-								onClick={() => setViewMode("kanban")}
-								aria-pressed={viewMode === "kanban"}
-								aria-label="Kanban view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "kanban"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<LayoutGrid className="w-4 h-4" />
-								<span className="hidden sm:inline">Kanban</span>
-							</button>
-						</ButtonGroup>
 					</div>
-				</CardHeader>
-				<CardContent className="relative z-10 px-0">
-					{viewMode === "kanban" ? (
-						<div className="px-2 py-6 h-[calc(100vh-28rem)]">
-							<KanbanProvider
-								columns={kanbanColumns}
-								data={kanbanData}
-								onDataChange={handleKanbanDataChange}
-							>
-								{(column) => {
-									const columnItems = kanbanData.filter(
-										(item) => item.column === column.id
-									);
+				</FrameHeader>
 
-									return (
-										<KanbanBoard
-											key={column.id}
-											id={column.id}
-											className="bg-card/60 flex flex-col"
-										>
-											<KanbanHeader className="flex items-center justify-between border-b bg-muted/30 shrink-0">
-												<div>
-													<p className="font-semibold text-sm text-foreground">
-														{column.name}
-													</p>
-													<p className="text-xs text-muted-foreground">
-														{column.description}
-													</p>
-												</div>
-												<StyledBadge variant="outline">
-													{columnItems.length}
-												</StyledBadge>
-											</KanbanHeader>
-											<KanbanCards id={column.id}>
-												{(item: ClientKanbanItem) => (
-													<KanbanCard
-														key={item.id}
-														id={item.id}
-														name={item.name}
-														column={item.column}
-													>
-														<div className="space-y-3">
-															<div className="flex items-center justify-between gap-2">
-																<p className="text-sm font-semibold text-foreground">
-																	{item.name}
-																</p>
-																<StyledBadge
-																	variant={kanbanStatusToBadgeVariant(
-																		item.status
-																	)}
-															>
-																{formatKanbanStatus(item.status)}
-															</StyledBadge>
-														</div>
-														<div className="flex items-center justify-between text-xs">
-																<span className="text-muted-foreground">
-																	{item.activeProjects === 0
-																		? "No active projects"
-																		: `${item.activeProjects} active ${
-																				item.activeProjects === 1
-																					? "project"
-																					: "projects"
-																		  }`}
-																</span>
-															</div>
-															{item.primaryContact && (
-																<div className="text-xs text-muted-foreground border-t border-border/50 pt-2">
-																	<p className="font-medium text-foreground">
-																		{item.primaryContact.name}
-																	</p>
-																	<p>{item.primaryContact.email}</p>
-																</div>
-															)}
-															<div className="pt-2 border-t border-border/50">
-																<StyledButton
-																	intent="outline"
-																	size="sm"
-																	icon={
-																		<ExternalLink className="h-3.5 w-3.5" />
-																	}
-																	label="View Client"
-																	showArrow={false}
-																	onClick={(e) => {
-																		e?.stopPropagation();
-																		router.push(`/clients/${item.id}`);
-																	}}
-																	className="w-full justify-center"
-																/>
-															</div>
-														</div>
-													</KanbanCard>
-												)}
-											</KanbanCards>
-										</KanbanBoard>
-									);
-								}}
-							</KanbanProvider>
-						</div>
-					) : (
-						<Tabs
-							value={activeTab}
-							onValueChange={setActiveTab}
-							className="w-full"
-						>
-							<div className="px-6 pt-4">
-								<TabsList className="grid w-full grid-cols-2">
-									<TabsTrigger value="active">Active Clients</TabsTrigger>
-									<TabsTrigger value="archived">Archived Clients</TabsTrigger>
-								</TabsList>
+				<FramePanel className="p-0">
+					{isLoading ? (
+						<div className="p-4">
+							<div className="space-y-4">
+								{[...Array(5)].map((_, i) => (
+									<div key={i} className="flex items-center space-x-4 p-4">
+										<div className="flex-1 space-y-2">
+											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+										</div>
+										<div className="h-4 bg-muted rounded animate-pulse w-16" />
+										<div className="h-4 bg-muted rounded animate-pulse w-20" />
+										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+									</div>
+								))}
 							</div>
-							<TabsContent value="active" className="mt-0">
-								{isActiveEmpty ? (
-									<div className="px-6 py-12 text-center">
-										<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-											<Users className="h-12 w-12 text-muted-foreground" />
-										</div>
-										<h3 className="mb-2 text-lg font-semibold text-foreground">
-											No clients yet
-										</h3>
-										<p className="mx-auto mb-6 max-w-sm text-muted-foreground">
-											Create your first client to start organizing relationships
-											and tracking activity.
-										</p>
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<span className="inline-block">
-													<StyledButton
-														intent="primary"
-														size="md"
-														onClick={handleAddClient}
-														disabled={!canPerform}
-														icon={<Plus className="h-4 w-4" />}
-													>
-														Add Your First Client
-													</StyledButton>
-												</span>
-											</TooltipTrigger>
-											{!canPerform && (
-												<TooltipContent>
-													<div className="space-y-1">
-														<p className="font-semibold">Upgrade Required</p>
-														<p>
-															{reason || "You've reached your client limit"}
-														</p>
-														{limit &&
-															limit !== "unlimited" &&
-															currentUsage !== undefined && (
-																<p className="text-muted-foreground">
-																	{currentUsage}/{limit} clients
-																</p>
-															)}
-													</div>
-												</TooltipContent>
-											)}
-										</Tooltip>
-									</div>
+						</div>
+					) : viewMode === "kanban" ? (
+						isActiveEmpty ? (
+							<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
+						) : (
+							<>
+								{filtersBar}
+								{kanbanBoard}
+							</>
+						)
+					) : (
+						<StyledTabs value={activeTab} onValueChange={handleTabChange}>
+							<div className="px-4 pt-4">
+								<StyledTabsList className="overflow-x-auto">
+									<StyledTabsTrigger value="active">
+										Active Clients
+									</StyledTabsTrigger>
+									<StyledTabsTrigger value="archived">
+										Archived Clients
+									</StyledTabsTrigger>
+								</StyledTabsList>
+							</div>
+							{currentTabEmpty ? (
+								isArchivedTab ? (
+									<ArchivedEmptyState />
 								) : (
-									<div className="px-6">
-										<div className="overflow-hidden rounded-lg border">
-											<Table>
-												<TableHeader className="bg-muted sticky top-0 z-10">
-													{table.getHeaderGroups().map((headerGroup) => (
-														<TableRow key={headerGroup.id}>
-															{headerGroup.headers.map((header) => (
-																<TableHead key={header.id}>
-																	{header.isPlaceholder
-																		? null
-																		: flexRender(
-																				header.column.columnDef.header,
-																				header.getContext()
-																		  )}
-																</TableHead>
-															))}
-														</TableRow>
-													))}
-												</TableHeader>
-												<TableBody>
-													{table.getRowModel().rows?.length ? (
-														table.getRowModel().rows.map((row) => (
-															<TableRow
-																key={row.id}
-																data-state={row.getIsSelected() && "selected"}
-															>
-																{row.getVisibleCells().map((cell) => (
-																	<TableCell key={cell.id}>
-																		{flexRender(
-																			cell.column.columnDef.cell,
-																			cell.getContext()
-																		)}
-																	</TableCell>
-																))}
-															</TableRow>
-														))
-													) : (
-														<TableRow>
-															<TableCell
-																colSpan={columns.length}
-																className="h-24 text-center"
-															>
-																No clients match your search.
-															</TableCell>
-														</TableRow>
-													)}
-												</TableBody>
-											</Table>
-										</div>
-										<div className="flex items-center justify-between py-4">
-											<div className="text-sm text-muted-foreground">
-												{table.getFilteredRowModel().rows.length} of{" "}
-												{activeData.length} active clients
-											</div>
-											<div className="flex items-center gap-2">
-												<Button
-													intent="outline"
-													size="sq-sm"
-													onPress={() => table.previousPage()}
-													isDisabled={!table.getCanPreviousPage()}
-													aria-label="Previous page"
-												>
-													<ChevronLeft className="size-4" />
-												</Button>
-												<div className="text-sm font-medium">
-													Page {table.getState().pagination?.pageIndex + 1} of{" "}
-													{table.getPageCount()}
-												</div>
-												<Button
-													intent="outline"
-													size="sq-sm"
-													onPress={() => table.nextPage()}
-													isDisabled={!table.getCanNextPage()}
-													aria-label="Next page"
-												>
-													<ChevronRight className="size-4" />
-												</Button>
-											</div>
-										</div>
-									</div>
-								)}
-							</TabsContent>
-							<TabsContent value="archived" className="mt-0">
-								{isArchivedEmpty ? (
-									<div className="px-6 py-12 text-center">
-										<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-											<Archive className="h-12 w-12 text-muted-foreground" />
-										</div>
-										<h3 className="mb-2 text-lg font-semibold text-foreground">
-											No archived clients
-										</h3>
-										<p className="mx-auto max-w-sm text-muted-foreground">
-											Clients you archive will appear here for seven days before
-											being permanently deleted.
-										</p>
-									</div>
-								) : (
-									<div className="px-6">
-										<div className="overflow-hidden rounded-lg border">
-											<Table>
-												<TableHeader className="bg-muted sticky top-0 z-10">
-													{table.getHeaderGroups().map((headerGroup) => (
-														<TableRow key={headerGroup.id}>
-															{headerGroup.headers.map((header) => (
-																<TableHead key={header.id}>
-																	{header.isPlaceholder
-																		? null
-																		: flexRender(
-																				header.column.columnDef.header,
-																				header.getContext()
-																		  )}
-																</TableHead>
-															))}
-														</TableRow>
-													))}
-												</TableHeader>
-												<TableBody>
-													{table.getRowModel().rows?.length ? (
-														table.getRowModel().rows.map((row) => (
-															<TableRow
-																key={row.id}
-																data-state={row.getIsSelected() && "selected"}
-															>
-																{row.getVisibleCells().map((cell) => (
-																	<TableCell key={cell.id}>
-																		{flexRender(
-																			cell.column.columnDef.cell,
-																			cell.getContext()
-																		)}
-																	</TableCell>
-																))}
-															</TableRow>
-														))
-													) : (
-														<TableRow>
-															<TableCell
-																colSpan={columns.length}
-																className="h-24 text-center"
-															>
-																No archived clients match your search.
-															</TableCell>
-														</TableRow>
-													)}
-												</TableBody>
-											</Table>
-										</div>
-										<div className="flex items-center justify-between py-4">
-											<div className="text-sm text-muted-foreground">
-												{table.getFilteredRowModel().rows.length} of{" "}
-												{archivedData.length} archived clients
-											</div>
-											<div className="flex items-center gap-2">
-												<Button
-													intent="outline"
-													size="sq-sm"
-													onPress={() => table.previousPage()}
-													isDisabled={!table.getCanPreviousPage()}
-													aria-label="Previous page"
-												>
-													<ChevronLeft className="size-4" />
-												</Button>
-												<div className="text-sm font-medium">
-													Page {table.getState().pagination?.pageIndex + 1} of{" "}
-													{table.getPageCount()}
-												</div>
-												<Button
-													intent="outline"
-													size="sq-sm"
-													onPress={() => table.nextPage()}
-													isDisabled={!table.getCanNextPage()}
-													aria-label="Next page"
-												>
-													<ChevronRight className="size-4" />
-												</Button>
-											</div>
-										</div>
-									</div>
-								)}
-							</TabsContent>
-						</Tabs>
+									<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
+								)
+							) : (
+								<>
+									{filtersBar}
+									{clientsTable}
+								</>
+							)}
+						</StyledTabs>
 					)}
-				</CardContent>
-			</Card>
+				</FramePanel>
+
+				{showFooter && (
+					<FrameFooter className="flex-row items-center justify-between">
+						<div className="text-muted-foreground text-sm">
+							{footerShown} of {footerTotal} clients
+						</div>
+						{viewMode === "table" ? (
+							<div className="flex items-center gap-2">
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.previousPage()}
+									isDisabled={!table.getCanPreviousPage()}
+									aria-label="Previous page"
+								>
+									<ChevronLeft className="size-4" />
+								</Button>
+								<div className="text-sm font-medium">
+									Page {table.getState().pagination?.pageIndex + 1} of{" "}
+									{Math.max(table.getPageCount(), 1)}
+								</div>
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.nextPage()}
+									isDisabled={!table.getCanNextPage()}
+									aria-label="Next page"
+								>
+									<ChevronRight className="size-4" />
+								</Button>
+							</div>
+						) : null}
+					</FrameFooter>
+				)}
+			</Frame>
+
+			{/* Detail preview drawer */}
+			<ClientDetailDrawer
+				clientId={previewId}
+				open={previewOpen}
+				onOpenChange={setPreviewOpen}
+			/>
 
 			{/* Archive Confirmation Modal */}
 			{clientToDelete && (
@@ -1102,7 +1108,6 @@ export default function ClientsPage() {
 					isArchive={true}
 				/>
 			)}
-
 		</div>
 	);
 }

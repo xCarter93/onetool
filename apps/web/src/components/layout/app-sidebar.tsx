@@ -178,16 +178,31 @@ function SidebarBrandHeader() {
 
 	return (
 		<div className="flex flex-col gap-2">
+			{/* Collapsed: icon mark sits first, above the toggle */}
+			{isCollapsed && (
+				<div className="flex justify-center">
+					<Image
+						src="/OneTool-mark.png"
+						alt="OneTool"
+						width={296}
+						height={296}
+						sizes="32px"
+						className="size-8 dark:invert dark:brightness-0"
+						priority
+					/>
+				</div>
+			)}
 			{/* Toggle + Logo row */}
-			<div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-2"}`}>
+			<div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-4"}`}>
 				<SidebarTrigger className="size-8 shrink-0" />
 				{!isCollapsed && (
 					<Image
-						src="/OneTool.png"
+						src="/OneTool-wordmark.png"
 						alt="OneTool"
-						width={420}
-						height={108}
-						className="dark:invert dark:brightness-0 h-20 w-auto"
+						width={908}
+						height={237}
+						sizes="128px"
+						className="dark:invert dark:brightness-0 h-8 w-auto"
 						priority
 					/>
 				)}

@@ -7,6 +7,7 @@ import { CalendarMonthView } from "./calendar-month-view";
 import { CalendarWeekView } from "./calendar-week-view";
 import { CalendarDayView } from "./calendar-day-view";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { StyledSegmentedControl } from "@/components/ui/styled";
 import {
 	ChevronLeft,
 	ChevronRight,
@@ -19,6 +20,7 @@ import { format, addMonths, addWeeks, addDays } from "date-fns";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
+import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 
 export function CalendarContainer() {
 	const [currentDate, setCurrentDate] = useState(new Date());
@@ -30,6 +32,16 @@ export function CalendarContainer() {
 		() => getViewDateRange(currentDate, view),
 		[currentDate, view]
 	);
+
+	// Assistant screen context: calendar view + visible range (IDs/params only)
+	usePublishScreenContext(() => ({
+		calendarView: view,
+		visibleRange: {
+			start: format(dateRange.start, "yyyy-MM-dd"),
+			end: format(dateRange.end, "yyyy-MM-dd"),
+		},
+		selectedEventId: selectedEventId ?? undefined,
+	}));
 
 	// Convert date range to UTC midnight timestamps to match how tasks are stored
 	const startDateUTC = useMemo(() => {
@@ -211,44 +223,27 @@ export function CalendarContainer() {
 					</div>
 
 					{/* View Switcher */}
-					<ButtonGroup>
-						<button
-							onClick={() => setView("month")}
-							className={cn(
-								navButtonClass,
-								view === "month"
-									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-							)}
-						>
-							<CalendarRange className="w-4 h-4" />
-							Month
-						</button>
-						<button
-							onClick={() => setView("week")}
-							className={cn(
-								navButtonClass,
-								view === "week"
-									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-							)}
-						>
-							<CalendarDays className="w-4 h-4" />
-							Week
-						</button>
-						<button
-							onClick={() => setView("day")}
-							className={cn(
-								navButtonClass,
-								view === "day"
-									? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-									: "text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border"
-							)}
-						>
-							<Calendar className="w-4 h-4" />
-							Day
-						</button>
-					</ButtonGroup>
+					<StyledSegmentedControl
+						value={view}
+						onValueChange={setView}
+						options={[
+							{
+								value: "month",
+								label: "Month",
+								icon: <CalendarRange className="w-4 h-4" />,
+							},
+							{
+								value: "week",
+								label: "Week",
+								icon: <CalendarDays className="w-4 h-4" />,
+							},
+							{
+								value: "day",
+								label: "Day",
+								icon: <Calendar className="w-4 h-4" />,
+							},
+						]}
+					/>
 				</div>
 
 				{/* Stats */}

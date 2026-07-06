@@ -1,8 +1,8 @@
 "use node";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { internal, api } from "./_generated/api";
-import { DocumentApi, DocumentSigner, DocumentCC, SendForSign } from "boldsign";
+import { internal } from "./_generated/api";
+import { DocumentApi, DocumentSigner, EmbeddedDocumentRequest } from "boldsign";
 
 // ============================================================================
 // BoldSign API Configuration
@@ -37,125 +37,149 @@ function createDocumentApi(): InstanceType<typeof DocumentApi> {
 // Actions
 // ============================================================================
 
-// Action to send document via BoldSign
-export const sendDocumentForSignature = action({
+/**
+ * Result of creating an embedded BoldSign send request.
+ * Annotated explicitly to avoid the _generated/api type cycle.
+ */
+type CreateEmbeddedResult =
+	| { ok: true; sendUrl: string; boldsignDocumentId: string }
+	| { ok: false; reason: "limit"; used: number; limit: number }
+	| { ok: false; reason: "no_signer" };
+
+/**
+ * Create an embedded BoldSign sending request for a quote's latest PDF and
+ * return a sendUrl to render in an iframe. The user places/confirms fields and
+ * edits recipients inside BoldSign's editor, then clicks Send themselves.
+ *
+ * Replaces the old one-shot `sendDocumentForSignature`. The quote is not marked
+ * "sent" here — that transition happens on the Sent webhook once the user
+ * actually sends. Enforces the free-plan monthly e-sig cap server-side.
+ */
+export const createEmbeddedSignatureRequest = action({
 	args: {
 		quoteId: v.id("quotes"),
-		documentId: v.id("documents"),
-		recipients: v.array(
-			v.object({
-				id: v.optional(v.string()),
-				name: v.string(),
-				email: v.string(),
-				signerType: v.union(v.literal("Signer"), v.literal("CC")),
-				signerOrder: v.optional(v.number()), // Explicit signing order (1-based)
-			})
-		),
-		documentUrl: v.string(), // URL to the generated PDF
-		message: v.optional(v.string()),
+		// The caller's window origin, used only to build the in-iframe
+		// post-send redirect fallback (postMessage is the primary signal).
+		origin: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		// Initialize BoldSign client
-		const documentApi = createDocumentApi();
-
-		// Fetch quote details
-		const quote = await ctx.runQuery(api.quotes.get, { id: args.quoteId });
-		if (!quote) throw new Error("Quote not found");
-
-		// Download PDF
-		const pdfResponse = await fetch(args.documentUrl);
-		if (!pdfResponse.ok) {
-			throw new Error(
-				`Failed to download document ${args.documentUrl}: ${pdfResponse.status} ${pdfResponse.statusText}`
-			);
-		}
-		const pdfBuffer = await pdfResponse.arrayBuffer();
-		const pdfBufferNode = Buffer.from(pdfBuffer);
-
-		// Prepare signers and CCs
-		const signers: InstanceType<typeof DocumentSigner>[] = [];
-		const ccs: InstanceType<typeof DocumentCC>[] = [];
-
-		// Track if any recipient has explicit signing order
-		const hasExplicitOrder = args.recipients.some(
-			(r) => r.signerType === "Signer" && r.signerOrder !== undefined
+	handler: async (ctx, args): Promise<CreateEmbeddedResult> => {
+		// Org-scoped context: latest PDF, derived signers, cap verdict, reusable Draft.
+		const context = await ctx.runQuery(
+			internal.boldsign.getEmbeddedRequestContext,
+			{ quoteId: args.quoteId }
 		);
 
-		let signerIndex = 1;
-		args.recipients.forEach((recipient) => {
-			if (recipient.signerType === "Signer") {
-				const signer = new DocumentSigner();
-				signer.name = recipient.name;
-				signer.emailAddress = recipient.email;
-				// Use explicit order if provided, otherwise fall back to sequential
-				signer.signerOrder = recipient.signerOrder ?? signerIndex;
-				signers.push(signer);
-				signerIndex++;
-			} else if (recipient.signerType === "CC") {
-				const cc = new DocumentCC();
-				cc.emailAddress = recipient.email;
-				ccs.push(cc);
-			}
-		});
+		// Enforce the monthly cap before creating any BoldSign draft.
+		if (context.usage.overCap) {
+			return {
+				ok: false,
+				reason: "limit",
+				used: context.usage.used,
+				limit: context.usage.limit ?? 0,
+			};
+		}
 
-		// Prepare file
-		const file = {
-			value: pdfBufferNode,
-			options: {
-				filename: `Quote-${quote.quoteNumber || quote._id.slice(-6)}.pdf`,
-				contentType: "application/pdf",
+		// Reuse a still-valid embedded Draft (idempotent /sign revisits).
+		if (context.existing) {
+			return {
+				ok: true,
+				sendUrl: context.existing.sendUrl,
+				boldsignDocumentId: context.existing.boldsignDocumentId,
+			};
+		}
+
+		// Need at least one signer with an email to send.
+		if (context.signers.length === 0) {
+			return { ok: false, reason: "no_signer" };
+		}
+
+		// Download the stored quote PDF into a Node buffer.
+		const blob = await ctx.storage.get(context.pdfStorageId);
+		if (!blob) {
+			throw new Error("Stored quote PDF not found");
+		}
+		const pdfBuffer = Buffer.from(await blob.arrayBuffer());
+
+		// Build the embedded request. Invisible text tags in the PDF pre-place
+		// the signature/date fields; land on FillingPage (edit recipients) with
+		// navigation to PreparePage (adjust fields) before sending.
+		const request = new EmbeddedDocumentRequest();
+		request.title = context.quoteTitle;
+		request.message = context.message;
+		request.files = [
+			{
+				value: pdfBuffer,
+				options: {
+					filename: context.filename,
+					contentType: "application/pdf",
+				},
 			},
-		};
+		];
+		request.signers = context.signers.map((s) => {
+			const signer = new DocumentSigner();
+			signer.name = s.name;
+			signer.emailAddress = s.email;
+			signer.signerOrder = s.signerOrder;
+			signer.signerType = DocumentSigner.SignerTypeEnum.Signer;
+			return signer;
+		});
+		request.useTextTags = true;
+		request.enableSigningOrder = context.enableSigningOrder;
+		request.sendViewOption =
+			EmbeddedDocumentRequest.SendViewOptionEnum.FillingPage;
+		request.showNavigationButtons = true;
+		request.showSendButton = true;
+		request.showToolbar = true;
+		request.showSaveButton = true;
+		request.disableEmails = false;
 
-		// Prepare send request
-		const sendForSign = new SendForSign();
-		sendForSign.title = `Quote ${quote.quoteNumber || quote._id.slice(-6)}`;
-		sendForSign.message =
-			args.message ||
-			quote.clientMessage ||
-			"Please review and sign this quote.";
-		sendForSign.signers = signers;
-		if (ccs.length > 0) {
-			sendForSign.cc = ccs;
+		const sendUrlExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+		request.sendLinkValidTill = new Date(sendUrlExpiresAt);
+		// Post-send redirect fallback (postMessage is the primary signal). The
+		// redirect fires in the sender's own session, so we normalize via URL()
+		// and require http(s) rather than reflect a raw caller string.
+		if (args.origin) {
+			try {
+				const parsed = new URL(args.origin);
+				if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+					request.redirectUrl = `${parsed.origin}/quotes/${args.quoteId}`;
+				}
+			} catch {
+				// Ignore a malformed caller-provided origin.
+			}
 		}
-		sendForSign.files = [file];
-		sendForSign.useTextTags = true; // Enable text tag detection with correct format
-		// Enable signing order when there are multiple signers with explicit ordering
-		sendForSign.enableSigningOrder = hasExplicitOrder && signers.length > 1;
-		sendForSign.reminderSettings = {
-			enableAutoReminder: true,
-			reminderDays: 3,
-		};
 
-		// Send document
+		const documentApi = createDocumentApi();
 		console.log(
-			`${LOG_PREFIX} Sending document with ${signers.length} signers and ${ccs.length} CCs`
+			`${LOG_PREFIX} Creating embedded request with ${context.signers.length} signer(s)`
 		);
-		const response = await documentApi.sendDocument(sendForSign);
+		const response =
+			await documentApi.createEmbeddedRequestUrlDocument(request);
 
-		console.log(`${LOG_PREFIX} Document sent`, {
-			boldsignDocumentId: response.documentId,
-			success: !!response.documentId,
-		});
+		if (!response.sendUrl || !response.documentId) {
+			throw new Error("BoldSign did not return an embedded send URL");
+		}
 
-		// Update document with BoldSign info
-		await ctx.runMutation(internal.boldsign.updateDocumentWithBoldSign, {
-			documentId: args.documentId,
-			boldsignDocumentId: response.documentId || "",
-			recipients: args.recipients,
-			viewUrl: undefined, // BoldSign doesn't return a view URL in the response
-		});
-
-		// Update quote's latestDocumentId reference
-		await ctx.runMutation(internal.boldsign.updateQuoteLatestDocument, {
+		// Persist the Draft (boldsignDocumentId is required for webhook correlation).
+		await ctx.runMutation(internal.boldsign.updateDocumentWithEmbeddedRequest, {
 			quoteId: args.quoteId,
-			documentId: args.documentId,
+			documentId: context.documentId,
+			boldsignDocumentId: response.documentId,
+			sendUrl: response.sendUrl,
+			sendUrlExpiresAt,
+			sentTo: context.signers.map((s) => ({
+				name: s.name,
+				email: s.email,
+				signerType: "Signer",
+				signerOrder: s.signerOrder,
+			})),
 		});
 
-		console.log(`${LOG_PREFIX} Document and quote records updated`, {
+		return {
+			ok: true,
+			sendUrl: response.sendUrl,
 			boldsignDocumentId: response.documentId,
-		});
-		return { success: true, documentId: response.documentId || "" };
+		};
 	},
 });
 

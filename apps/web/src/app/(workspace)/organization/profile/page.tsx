@@ -31,7 +31,12 @@ import {
 	ConnectComponentsProvider,
 } from "@stripe/react-connect-js";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+	StyledTabs,
+	StyledTabsContent,
+	StyledTabsList,
+	StyledTabsTrigger,
+} from "@/components/ui/styled";
 import { Input } from "@/components/ui/input";
 import {
 	AddressAutocomplete,
@@ -794,42 +799,42 @@ export default function OrganizationProfilePage() {
 					</p>
 				</div>
 
-				<Tabs
+				<StyledTabs
 					value={activeTab}
 					onValueChange={handleTabChange}
 					className="flex-1"
 				>
-					<TabsList>
-						<TabsTrigger value="overview">Overview</TabsTrigger>
-						<TabsTrigger value="business">Business Info</TabsTrigger>
-						<TabsTrigger
+					<StyledTabsList className="overflow-x-auto">
+						<StyledTabsTrigger value="overview">Overview</StyledTabsTrigger>
+						<StyledTabsTrigger value="business">Business Info</StyledTabsTrigger>
+						<StyledTabsTrigger
 							value="payments"
 							disabled={!hasPremiumAccess}
 							className={!hasPremiumAccess ? "cursor-not-allowed" : ""}
 						>
 							{!hasPremiumAccess && <Lock className="h-3 w-3 mr-1" />}
 							Payments
-						</TabsTrigger>
-						<TabsTrigger
+						</StyledTabsTrigger>
+						<StyledTabsTrigger
 							value="documents"
 							disabled={!hasPremiumAccess}
 							className={!hasPremiumAccess ? "cursor-not-allowed" : ""}
 						>
 							{!hasPremiumAccess && <Lock className="h-3 w-3 mr-1" />}
 							Documents
-						</TabsTrigger>
-						<TabsTrigger
+						</StyledTabsTrigger>
+						<StyledTabsTrigger
 							value="skus"
 							disabled={!hasPremiumAccess}
 							className={!hasPremiumAccess ? "cursor-not-allowed" : ""}
 						>
 							{!hasPremiumAccess && <Lock className="h-3 w-3 mr-1" />}
 							SKUs
-						</TabsTrigger>
-					</TabsList>
+						</StyledTabsTrigger>
+					</StyledTabsList>
 
 					<div className="mt-8 space-y-8">
-						<TabsContent value="overview">
+						<StyledTabsContent value="overview" className="mt-0">
 							<div className="space-y-8">
 								<OrganizationProfile
 									routing="hash"
@@ -837,9 +842,9 @@ export default function OrganizationProfilePage() {
 									afterLeaveOrganizationUrl="/organization/complete"
 								/>
 							</div>
-						</TabsContent>
+						</StyledTabsContent>
 
-						<TabsContent value="business">
+						<StyledTabsContent value="business" className="mt-0">
 							<div className="space-y-8">
 								{!isOwner && (
 									<div className="border border-border/60 dark:border-border/40 rounded-xl p-4 flex items-start gap-3 bg-muted/40 text-muted-foreground">
@@ -1134,9 +1139,9 @@ export default function OrganizationProfilePage() {
 									</button>
 								</div>
 							</div>
-						</TabsContent>
+						</StyledTabsContent>
 
-						<TabsContent value="payments">
+						<StyledTabsContent value="payments" className="mt-0">
 							<div className="space-y-8">
 								{/* Header */}
 								<section className="space-y-4">
@@ -1334,41 +1339,45 @@ export default function OrganizationProfilePage() {
 											</section>
 										)}
 
-										{/* Interactive money-flow — full width */}
-										<section className="border-t border-border/40 pt-8">
-											<PaymentsFlow
-												bankName={organization.stripeExternalAccountBankName}
-												last4={organization.stripeExternalAccountLast4}
-											/>
-										</section>
-
-										{/* Reference row: fees (wide) + requirements / learn-more rail */}
-										<div className="grid grid-cols-1 gap-x-10 gap-y-8 border-t border-border/40 pt-8 lg:grid-cols-[1.55fr_1fr] lg:items-start">
-											<FeeDisclosureTable />
-											<div className="space-y-8">
-												<RequirementsSummary
-													loaded={Boolean(stripeStatus)}
-													currentlyDue={
-														stripeStatus?.requirements?.currently_due ?? []
-													}
-												/>
-												<StripeDocLinks />
-											</div>
-										</div>
 									</>
 								)}
+
+								{/* Informational content — shown regardless of onboarding state */}
+								<section className="border-t border-border/40 pt-8">
+									<PaymentsFlow
+										bankName={organization?.stripeExternalAccountBankName}
+										last4={organization?.stripeExternalAccountLast4}
+									/>
+								</section>
+
+								{/* Reference row: fees (wide) + requirements / learn-more rail */}
+								<div className="grid grid-cols-1 gap-x-10 gap-y-8 border-t border-border/40 pt-8 lg:grid-cols-[1.55fr_1fr] lg:items-start">
+									<FeeDisclosureTable />
+									<div className="space-y-8">
+										{/* Account-specific: only meaningful once a Stripe account exists */}
+										{organization?.stripeConnectAccountId && (
+											<RequirementsSummary
+												loaded={Boolean(stripeStatus)}
+												currentlyDue={
+													stripeStatus?.requirements?.currently_due ?? []
+												}
+											/>
+										)}
+										<StripeDocLinks />
+									</div>
+								</div>
 							</div>
-						</TabsContent>
+						</StyledTabsContent>
 
-						<TabsContent value="documents">
+						<StyledTabsContent value="documents" className="mt-0">
 							<DocumentsTab />
-						</TabsContent>
+						</StyledTabsContent>
 
-						<TabsContent value="skus">
+						<StyledTabsContent value="skus" className="mt-0">
 							<SKUsTab />
-						</TabsContent>
+						</StyledTabsContent>
 					</div>
-				</Tabs>
+				</StyledTabs>
 			</div>
 		</div>
 	);

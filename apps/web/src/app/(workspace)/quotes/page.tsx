@@ -1,64 +1,74 @@
 "use client";
 
 import React from "react";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+	StyledBadge,
+	StyledButton,
+	StyledTable,
+	StyledTableBody,
+	StyledTableCell,
+	StyledTableHead,
+	StyledTableHeader,
+	StyledTableRow,
+} from "@/components/ui/styled";
+import { StyledFilters } from "@/components/ui/styled/styled-filters";
+import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+	Frame,
+	FrameDescription,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
 import {
 	ColumnDef,
-	ColumnFiltersState,
 	SortingState,
 	flexRender,
 	getCoreRowModel,
-	getFilteredRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
 import {
+	Building2,
+	Calendar,
+	CheckCircle2,
 	ChevronLeft,
 	ChevronRight,
-	FileText,
-	DollarSign,
 	Clock,
+	DollarSign,
 	ExternalLink,
-	Plus,
-	Trash2,
-	TableProperties,
+	Eye,
+	FileText,
+	Filter as FilterIcon,
+	FolderKanban,
 	LayoutGrid,
+	Plus,
+	Search,
+	TableProperties,
+	Trash2,
+	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
-import { useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import { StyledButton, StyledBadge } from "@/components/ui/styled";
+import { MetricFrame } from "@/components/metric-frame";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
 	KanbanHeader,
 	KanbanProvider,
 } from "../projects/components/kanban";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { QuoteDetailDrawer } from "./components/quote-detail-drawer";
 import { cn } from "@/lib/utils";
 
 type QuoteWithClient = Doc<"quotes"> & {
@@ -83,35 +93,7 @@ type QuoteKanbanColumn = {
 	description: string;
 };
 
-const kanbanColumns: QuoteKanbanColumn[] = [
-	{
-		id: "draft",
-		name: "Draft",
-		description: "Being prepared",
-	},
-	{
-		id: "sent",
-		name: "Sent",
-		description: "Awaiting response",
-	},
-	{
-		id: "approved",
-		name: "Approved",
-		description: "Accepted by client",
-	},
-	{
-		id: "declined",
-		name: "Declined",
-		description: "Rejected by client",
-	},
-	{
-		id: "expired",
-		name: "Expired",
-		description: "Past valid date",
-	},
-];
-
-const statusVariant = (status: string) => {
+const statusVariant = (status: Doc<"quotes">["status"]) => {
 	switch (status) {
 		case "approved":
 			return "default" as const;
@@ -126,7 +108,24 @@ const statusVariant = (status: string) => {
 	}
 };
 
-const formatStatus = (status: string) => {
+// Per-lane accent dot (kanban-board-4 style); status → colored dot only.
+const statusDot: Record<Doc<"quotes">["status"], string> = {
+	draft: "bg-muted-foreground/50",
+	sent: "bg-amber-500",
+	approved: "bg-emerald-500",
+	declined: "bg-rose-500",
+	expired: "bg-muted-foreground/40",
+};
+
+const kanbanColumns: QuoteKanbanColumn[] = [
+	{ id: "draft", name: "Draft", description: "Being prepared" },
+	{ id: "sent", name: "Sent", description: "Awaiting response" },
+	{ id: "approved", name: "Approved", description: "Accepted by client" },
+	{ id: "declined", name: "Declined", description: "Rejected by client" },
+	{ id: "expired", name: "Expired", description: "Past valid date" },
+];
+
+const formatStatus = (status: Doc<"quotes">["status"]) => {
 	switch (status) {
 		case "draft":
 			return "Draft";
@@ -152,9 +151,15 @@ const formatCurrency = (amount: number) => {
 	}).format(amount);
 };
 
+const formatQuoteDate = (timestamp?: number) => {
+	if (!timestamp) return "Not set";
+	return new Date(timestamp).toLocaleDateString();
+};
+
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
-	onDelete: (id: string, name: string) => void
+	onDelete: (id: string, name: string) => void,
+	onPreview: (id: string) => void
 ): ColumnDef<QuoteWithClient>[] => [
 	{
 		accessorKey: "quoteNumber",
@@ -190,10 +195,26 @@ const createColumns = (
 		accessorKey: "status",
 		header: "Status",
 		cell: ({ row }) => (
-			<Badge variant={statusVariant(row.original.status)}>
+			<StyledBadge variant={statusVariant(row.original.status)}>
 				{formatStatus(row.original.status)}
-			</Badge>
+			</StyledBadge>
 		),
+	},
+	{
+		accessorKey: "validUntil",
+		header: "Valid Until",
+		cell: ({ row }) => {
+			if (!row.original.validUntil) {
+				return <span className="text-muted-foreground">Not set</span>;
+			}
+			const d = new Date(row.original.validUntil);
+			const isExpired = d < new Date();
+			return (
+				<span className={cn("text-foreground", isExpired && "text-destructive")}>
+					{d.toLocaleDateString()}
+				</span>
+			);
+		},
 	},
 	{
 		accessorKey: "_creationTime",
@@ -204,63 +225,65 @@ const createColumns = (
 		},
 	},
 	{
-		accessorKey: "validUntil",
-		header: "Valid Until",
-		cell: ({ row }) => {
-			if (!row.original.validUntil) {
-				return <span className="text-muted-foreground">-</span>;
-			}
-			const d = new Date(row.original.validUntil);
-			const isExpired = d < new Date();
-			return (
-				<span
-					className={`text-foreground ${isExpired ? "text-destructive" : ""}`}
-				>
-					{d.toLocaleDateString()}
-				</span>
-			);
-		},
-	},
-	{
 		id: "actions",
 		header: "",
-		cell: ({ row }) => (
-			<div className="flex items-center gap-2">
-				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() => router.push(`/quotes/${row.original._id}`)}
-					aria-label={`View quote ${row.original.quoteNumber || row.original._id.slice(-6)}`}
+		cell: ({ row }) => {
+			const label =
+				row.original.quoteNumber || `#${row.original._id.slice(-6)}`;
+			return (
+				// Stop row-click preview from firing when using the explicit actions.
+				<div
+					className="flex items-center justify-end gap-2"
+					onClick={(e) => e.stopPropagation()}
 				>
-					<ExternalLink className="size-4" />
-				</Button>
-				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() =>
-						onDelete(
-							row.original._id,
-							row.original.quoteNumber || row.original._id.slice(-6)
-						)
-					}
-					className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-					aria-label={`Delete quote ${row.original.quoteNumber || row.original._id.slice(-6)}`}
-				>
-					<Trash2 className="size-4" />
-				</Button>
-			</div>
-		),
+					<Button
+						intent="outline"
+						size="sq-sm"
+						onPress={() => onPreview(row.original._id)}
+						aria-label={`Preview quote ${label}`}
+					>
+						<Eye className="size-4" />
+					</Button>
+					<Button
+						intent="outline"
+						size="sq-sm"
+						onPress={() => router.push(`/quotes/${row.original._id}`)}
+						aria-label={`Open quote ${label}`}
+					>
+						<ExternalLink className="size-4" />
+					</Button>
+					<Button
+						intent="outline"
+						size="sq-sm"
+						onPress={() => onDelete(row.original._id, label)}
+						className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+						aria-label={`Delete quote ${label}`}
+					>
+						<Trash2 className="size-4" />
+					</Button>
+				</div>
+			);
+		},
 	},
 ];
 
 export default function QuotesPage() {
 	const router = useRouter();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+	const [sorting, setSorting] = React.useState<SortingState>([]);
+	const [query, setQuery] = React.useState("");
+	const [filters, setFilters] = React.useState<Filter<unknown>[]>([]);
+	const [pagination, setPagination] = React.useState({
+		pageIndex: 0,
+		pageSize: 10,
+	});
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [quoteToDelete, setQuoteToDelete] = useState<{
 		id: string;
 		name: string;
 	} | null>(null);
+	const [previewId, setPreviewId] = useState<Id<"quotes"> | null>(null);
+	const [previewOpen, setPreviewOpen] = useState(false);
 	const deleteQuote = useMutation(api.quotes.remove);
 	const updateQuoteStatus = useMutation(api.quotes.update);
 	const [kanbanData, setKanbanData] = useState<QuoteKanbanItem[]>([]);
@@ -270,16 +293,13 @@ export default function QuotesPage() {
 	const clients = useQuery(api.clients.list, {});
 	const projects = useQuery(api.projects.list, {});
 
-	// Memoize the arrays to avoid dependency changes on every render
-	const quotesArray = React.useMemo(() => quotes || [], [quotes]);
-	const clientsArray = React.useMemo(() => clients || [], [clients]);
-	const projectsArray = React.useMemo(() => projects || [], [projects]);
-
 	// Combine quotes with client and project data
 	const data = React.useMemo((): QuoteWithClient[] => {
-		return quotesArray.map((quote) => {
-			const client = clientsArray.find((c) => c._id === quote.clientId);
-			const project = projectsArray.find((p) => p._id === quote.projectId);
+		if (!quotes || !clients || !projects) return [];
+
+		return quotes.map((quote) => {
+			const client = clients.find((c) => c._id === quote.clientId);
+			const project = projects.find((p) => p._id === quote.projectId);
 
 			return {
 				...quote,
@@ -287,17 +307,83 @@ export default function QuotesPage() {
 				projectName: project?.title,
 			};
 		});
-	}, [quotesArray, clientsArray, projectsArray]);
+	}, [quotes, clients, projects]);
 
-	const [sorting, setSorting] = React.useState<SortingState>([]);
-	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-		[]
-	);
-	const [query, setQuery] = React.useState("");
-	const [pagination, setPagination] = React.useState({
-		pageIndex: 0,
-		pageSize: 10,
-	});
+	// Advanced filters (status / client / project / valid-until / amount).
+	const filteredData = React.useMemo(() => {
+		let result = data;
+		filters.forEach((filter) => {
+			if (filter.values.length === 0) return;
+			switch (filter.field) {
+				case "status":
+					result = result.filter((q) =>
+						filter.values.includes(q.status as unknown)
+					);
+					break;
+				case "client":
+					result = result.filter((q) =>
+						filter.values.includes(q.clientId as unknown)
+					);
+					break;
+				case "project":
+					result = result.filter(
+						(q) =>
+							q.projectId != null &&
+							filter.values.includes(q.projectId as unknown)
+					);
+					break;
+				case "validUntil":
+					if (filter.operator === "between" && filter.values.length === 2) {
+						const [startDate, endDate] = filter.values as [string, string];
+						if (startDate) {
+							const startTs = new Date(startDate).getTime();
+							result = result.filter(
+								(q) => q.validUntil != null && q.validUntil >= startTs
+							);
+						}
+						if (endDate) {
+							const end = new Date(endDate);
+							end.setHours(23, 59, 59, 999);
+							const endTs = end.getTime();
+							result = result.filter(
+								(q) => q.validUntil != null && q.validUntil <= endTs
+							);
+						}
+					}
+					break;
+				case "amount":
+					if (filter.operator === "between" && filter.values.length === 2) {
+						const [minVal, maxVal] = filter.values as [string, string];
+						if (minVal !== "" && minVal != null) {
+							const min = Number(minVal);
+							if (!Number.isNaN(min))
+								result = result.filter((q) => q.total >= min);
+						}
+						if (maxVal !== "" && maxVal != null) {
+							const max = Number(maxVal);
+							if (!Number.isNaN(max))
+								result = result.filter((q) => q.total <= max);
+						}
+					}
+					break;
+			}
+		});
+		return result;
+	}, [data, filters]);
+
+	// Free-text search on top of the advanced filters; drives table + kanban.
+	const searchedData = React.useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return filteredData;
+		return filteredData.filter(
+			(quote) =>
+				quote.quoteNumber?.toLowerCase().includes(q) ||
+				quote.title?.toLowerCase().includes(q) ||
+				quote.projectName?.toLowerCase().includes(q) ||
+				quote.clientName?.toLowerCase().includes(q) ||
+				quote.status?.toLowerCase().includes(q)
+		);
+	}, [filteredData, query]);
 
 	const quoteStatusMap = React.useMemo(() => {
 		const statusMap = new Map<string, Doc<"quotes">["status"]>();
@@ -306,13 +392,8 @@ export default function QuotesPage() {
 	}, [data]);
 
 	React.useEffect(() => {
-		if (!data || data.length === 0) {
-			setKanbanData([]);
-			return;
-		}
-
 		setKanbanData(
-			data.map((quote) => ({
+			searchedData.map((quote) => ({
 				id: quote._id,
 				name: quote.title || quote.projectName || "Untitled Quote",
 				column: quote.status,
@@ -323,12 +404,24 @@ export default function QuotesPage() {
 				validUntil: quote.validUntil,
 			}))
 		);
-	}, [data]);
+	}, [searchedData]);
 
-	const handleDelete = (id: string, name: string) => {
+	// Loading state
+	const isLoading =
+		quotes === undefined || clients === undefined || projects === undefined;
+
+	// Empty state
+	const isEmpty = !isLoading && data.length === 0;
+
+	const handleDelete = React.useCallback((id: string, name: string) => {
 		setQuoteToDelete({ id, name });
 		setDeleteModalOpen(true);
-	};
+	}, []);
+
+	const openPreview = React.useCallback((id: string) => {
+		setPreviewId(id as Id<"quotes">);
+		setPreviewOpen(true);
+	}, []);
 
 	const confirmDelete = async () => {
 		if (quoteToDelete) {
@@ -342,77 +435,117 @@ export default function QuotesPage() {
 		}
 	};
 
+	const columns = React.useMemo(
+		() => createColumns(router, handleDelete, openPreview),
+		[router, handleDelete, openPreview]
+	);
+
+	const table = useReactTable({
+		data: searchedData,
+		columns,
+		state: {
+			sorting,
+			pagination,
+		},
+		onSortingChange: setSorting,
+		onPaginationChange: setPagination,
+		getCoreRowModel: getCoreRowModel(),
+		getSortedRowModel: getSortedRowModel(),
+		getPaginationRowModel: getPaginationRowModel(),
+	});
+
+	// Reset to first page when the filtered/searched set changes
+	React.useEffect(() => {
+		setPagination((prev) =>
+			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
+		);
+	}, [query, filters, searchedData.length]);
+
+	// Filter field configuration for the advanced filter builder
+	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
+		const statusOptions = [
+			{ value: "draft", label: "Draft" },
+			{ value: "sent", label: "Sent" },
+			{ value: "approved", label: "Approved" },
+			{ value: "declined", label: "Declined" },
+			{ value: "expired", label: "Expired" },
+		];
+		const clientOptions =
+			clients?.map((client) => ({
+				value: client._id,
+				label: client.companyName,
+			})) || [];
+		const projectOptions =
+			projects?.map((project) => ({
+				value: project._id,
+				label: project.title,
+			})) || [];
+
+		return [
+			{
+				key: "status",
+				label: "Status",
+				icon: <CheckCircle2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: statusOptions,
+			},
+			{
+				key: "client",
+				label: "Client",
+				icon: <Building2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: clientOptions,
+				searchable: true,
+			},
+			{
+				key: "project",
+				label: "Project",
+				icon: <FolderKanban className="h-3 w-3" />,
+				type: "multiselect",
+				options: projectOptions,
+				searchable: true,
+			},
+			{
+				key: "validUntil",
+				label: "Valid Until",
+				icon: <Calendar className="h-3 w-3" />,
+				type: "daterange",
+			},
+			{
+				key: "amount",
+				label: "Amount",
+				icon: <DollarSign className="h-3 w-3" />,
+				type: "number",
+				defaultOperator: "between",
+			},
+		];
+	}, [clients, projects]);
+
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: QuoteKanbanItem[]) => {
 			setKanbanData(nextData);
+		},
+		[]
+	);
 
-			const changedItem = nextData.find((item) => {
-				const originalStatus = quoteStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = quoteStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
 				updateQuoteStatus({
-					id: changedItem.id as Id<"quotes">,
-					status: changedItem.column,
+					id: item.id as Id<"quotes">,
+					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update quote status:", error);
 				});
 			}
 		},
-		[quoteStatusMap, updateQuoteStatus]
+		[kanbanData, quoteStatusMap, updateQuoteStatus]
 	);
-
-	const table = useReactTable({
-		data,
-		columns: createColumns(router, handleDelete),
-		state: {
-			sorting,
-			columnFilters,
-			globalFilter: query,
-			pagination,
-		},
-		onSortingChange: setSorting,
-		onColumnFiltersChange: setColumnFilters,
-		onGlobalFilterChange: setQuery,
-		onPaginationChange: setPagination,
-		globalFilterFn: (row, columnId, value) => {
-			// If no search value, show all rows
-			if (!value || value.trim() === "") return true;
-
-			const search = value.toLowerCase().trim();
-			const quote = row.original;
-
-			// Search in quote number
-			if (quote.quoteNumber && quote.quoteNumber.toLowerCase().includes(search))
-				return true;
-
-			// Search in title or project name
-			if (quote.title && quote.title.toLowerCase().includes(search))
-				return true;
-			if (quote.projectName && quote.projectName.toLowerCase().includes(search))
-				return true;
-
-			// Search in client name
-			if (quote.clientName && quote.clientName.toLowerCase().includes(search))
-				return true;
-
-			// Search in status
-			if (quote.status && quote.status.toLowerCase().includes(search))
-				return true;
-
-			return false;
-		},
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
-	});
-
-	// Reset to first page when search changes
-	React.useEffect(() => {
-		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [query]);
 
 	const totalPending = React.useMemo(
 		() => data.filter((q) => q.status === "sent").length,
@@ -427,11 +560,6 @@ export default function QuotesPage() {
 		[data]
 	);
 
-	// Loading state
-	const isLoading =
-		quotes === undefined || clients === undefined || projects === undefined;
-	const isEmpty = !isLoading && data.length === 0;
-
 	return (
 		<div className="relative px-6 pt-8 pb-6 space-y-6">
 			<div className="flex items-center justify-between">
@@ -444,130 +572,125 @@ export default function QuotesPage() {
 						</p>
 					</div>
 				</div>
-				<button
+				<StyledButton
+					intent="primary"
+					icon={<Plus className="h-4 w-4" />}
+					label="Create Quote"
 					onClick={() => router.push("/quotes/new")}
-					className="group inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/80 transition-all duration-200 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/15 ring-1 ring-primary/30 hover:ring-primary/40 shadow-sm hover:shadow-md backdrop-blur-sm"
-				>
-					<Plus className="h-4 w-4" />
-					Create Quote
-					<span
-						aria-hidden="true"
-						className="group-hover:translate-x-1 transition-transform duration-200"
-					>
-						→
-					</span>
-				</button>
+				/>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<FileText className="size-4" /> Total Quotes
-						</CardTitle>
-						<CardDescription>All quotes in your workspace</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								data.length
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Clock className="size-4" /> Pending Approval
-						</CardTitle>
-						<CardDescription>Quotes awaiting client response</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								totalPending
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<DollarSign className="size-4" /> Approved Value
-						</CardTitle>
-						<CardDescription>Total value of approved quotes</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								formatCurrency(totalValue)
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+			<MetricFrame
+				loading={isLoading}
+				metrics={[
+					{
+						label: "Total Quotes",
+						value: data.length,
+						hint: "All quotes in your workspace",
+						icon: <FileText />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "Pending Approval",
+						value: totalPending,
+						hint: "Quotes awaiting client response",
+						icon: <Clock />,
+						accent: "var(--color-amber-500)",
+					},
+					{
+						label: "Approved Value",
+						value: formatCurrency(totalValue),
+						hint: "Total value of approved quotes",
+						icon: <DollarSign />,
+						accent: "var(--color-emerald-500)",
+					},
+				]}
+				summary={
+					isLoading
+						? undefined
+						: `${data.filter((q) => q.status === "draft").length} in draft · ${data.filter((q) => q.status === "approved").length} approved · ${formatCurrency(data.reduce((sum, q) => sum + q.total, 0))} total value`
+				}
+			/>
 
-			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-				<CardHeader className="relative z-10 flex flex-col gap-2 border-b">
-					<div>
-						<CardTitle>Quotes</CardTitle>
-						<CardDescription>
-							Search, sort, and browse your quotes
-						</CardDescription>
+			<Frame>
+				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+					<div className="flex flex-col gap-0.5">
+						<FrameTitle className="text-base">Quotes</FrameTitle>
+						<FrameDescription>
+							Search, filter, and browse your quotes
+						</FrameDescription>
 					</div>
-					<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-						<Input
-							placeholder="Search quotes..."
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							className="w-full md:w-96"
+					<div className="flex w-full items-center gap-2 sm:w-auto">
+						<div className="relative flex-1 sm:w-64 sm:flex-none">
+							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+							<Input
+								placeholder="Search quotes..."
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								className="pl-9"
+							/>
+						</div>
+						<StyledSegmentedControl
+							className="shrink-0"
+							value={viewMode}
+							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+							options={[
+								{
+									value: "table",
+									label: "Table",
+									icon: <TableProperties className="size-4" />,
+									ariaLabel: "Table view",
+									hideLabelOnMobile: true,
+								},
+								{
+									value: "kanban",
+									label: "Kanban",
+									icon: <LayoutGrid className="size-4" />,
+									ariaLabel: "Kanban view",
+									hideLabelOnMobile: true,
+								},
+							]}
 						/>
-						<ButtonGroup>
-							<button
-								onClick={() => setViewMode("table")}
-								aria-pressed={viewMode === "table"}
-								aria-label="Table view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "table"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<TableProperties className="w-4 h-4" />
-								<span className="hidden sm:inline">Table</span>
-							</button>
-							<button
-								onClick={() => setViewMode("kanban")}
-								aria-pressed={viewMode === "kanban"}
-								aria-label="Kanban view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "kanban"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<LayoutGrid className="w-4 h-4" />
-								<span className="hidden sm:inline">Kanban</span>
-							</button>
-						</ButtonGroup>
 					</div>
-				</CardHeader>
-				<CardContent className="relative z-10 px-0">
-					{isEmpty ? (
+				</FrameHeader>
+
+				<FramePanel className="p-0">
+					{!isLoading && !isEmpty && (
+						<div className="border-b px-4 py-3">
+							<StyledFilters
+								filters={filters}
+								fields={filterFields}
+								onChange={setFilters}
+								addButtonText="Filter"
+								addButtonIcon={<FilterIcon className="h-4 w-4" />}
+								size="md"
+								variant="outline"
+								showClearButton={true}
+								clearButtonText="Clear"
+								clearButtonIcon={<X className="h-4 w-4" />}
+							/>
+						</div>
+					)}
+
+					{isLoading ? (
+						<div className="p-4">
+							<div className="space-y-4">
+								{[...Array(5)].map((_, i) => (
+									<div key={i} className="flex items-center space-x-4 p-4">
+										<div className="flex-1 space-y-2">
+											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+										</div>
+										<div className="h-4 bg-muted rounded animate-pulse w-16" />
+										<div className="h-4 bg-muted rounded animate-pulse w-20" />
+										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+									</div>
+								))}
+							</div>
+						</div>
+					) : isEmpty ? (
 						<div className="px-6 py-12 text-center">
-							<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
+							<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
 								<FileText className="h-12 w-12 text-muted-foreground" />
 							</div>
 							<h3 className="text-lg font-semibold text-foreground mb-2">
@@ -577,26 +700,70 @@ export default function QuotesPage() {
 								Create your first quote to get started and track proposals in
 								one place.
 							</p>
-							<button
+							<StyledButton
+								intent="primary"
+								icon={<Plus className="h-4 w-4" />}
+								label="Create Your First Quote"
 								onClick={() => router.push("/quotes/new")}
-								className="group inline-flex items-center gap-2 rounded-lg bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-sm transition-all duration-200 hover:bg-primary/15 hover:text-primary/80 hover:shadow-md ring-1 ring-primary/30 hover:ring-primary/40 backdrop-blur-sm"
-							>
-								<Plus className="h-4 w-4" />
-								Create Your First Quote
-								<span
-									aria-hidden="true"
-									className="transition-transform duration-200 group-hover:translate-x-1"
-								>
-									→
-								</span>
-							</button>
+							/>
 						</div>
-					) : viewMode === "kanban" ? (
-						<div className="px-2 py-6 h-[calc(100vh-28rem)]">
+					) : viewMode === "table" ? (
+						<div className="overflow-x-auto">
+							<StyledTable>
+								<StyledTableHeader>
+									{table.getHeaderGroups().map((headerGroup) => (
+										<StyledTableRow key={headerGroup.id}>
+											{headerGroup.headers.map((header) => (
+												<StyledTableHead key={header.id}>
+													{header.isPlaceholder
+														? null
+														: flexRender(
+																header.column.columnDef.header,
+																header.getContext()
+															)}
+												</StyledTableHead>
+											))}
+										</StyledTableRow>
+									))}
+								</StyledTableHeader>
+								<StyledTableBody>
+									{table.getRowModel().rows?.length ? (
+										table.getRowModel().rows.map((row) => (
+											<StyledTableRow
+												key={row.id}
+												className="cursor-pointer"
+												onClick={() => openPreview(row.original._id)}
+											>
+												{row.getVisibleCells().map((cell) => (
+													<StyledTableCell key={cell.id}>
+														{flexRender(
+															cell.column.columnDef.cell,
+															cell.getContext()
+														)}
+													</StyledTableCell>
+												))}
+											</StyledTableRow>
+										))
+									) : (
+										<StyledTableRow>
+											<StyledTableCell
+												colSpan={columns.length}
+												className="h-24 text-center"
+											>
+												No quotes match your filters.
+											</StyledTableCell>
+										</StyledTableRow>
+									)}
+								</StyledTableBody>
+							</StyledTable>
+						</div>
+					) : (
+						<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
 							<KanbanProvider
 								columns={kanbanColumns}
 								data={kanbanData}
 								onDataChange={handleKanbanDataChange}
+								onDragEnd={handleKanbanDragEnd}
 							>
 								{(column) => {
 									const columnItems = kanbanData.filter(
@@ -609,14 +776,22 @@ export default function QuotesPage() {
 											id={column.id}
 											className="bg-card/60 flex flex-col"
 										>
-											<KanbanHeader className="flex items-center justify-between border-b bg-muted/30 shrink-0">
-												<div>
-													<p className="font-semibold text-sm text-foreground">
-														{column.name}
-													</p>
-													<p className="text-xs text-muted-foreground">
-														{column.description}
-													</p>
+											<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+												<div className="flex min-w-0 items-center gap-2">
+													<span
+														className={cn(
+															"size-2.5 shrink-0 rounded-full",
+															statusDot[column.id]
+														)}
+													/>
+													<div className="min-w-0">
+														<p className="text-foreground truncate text-sm font-semibold">
+															{column.name}
+														</p>
+														<p className="text-muted-foreground truncate text-xs">
+															{column.description}
+														</p>
+													</div>
 												</div>
 												<StyledBadge variant="outline">
 													{columnItems.length}
@@ -630,53 +805,55 @@ export default function QuotesPage() {
 														name={item.name}
 														column={item.column}
 													>
-														<div className="space-y-3">
-															<div className="flex items-center justify-between gap-2">
-																<p className="text-sm font-semibold text-foreground">
+														<div
+															role="button"
+															tabIndex={0}
+															onClick={() => openPreview(item.id)}
+															onKeyDown={(e) => {
+																if (e.key === "Enter" || e.key === " ") {
+																	e.preventDefault();
+																	openPreview(item.id);
+																}
+															}}
+															className="flex cursor-pointer flex-col gap-2 outline-none"
+														>
+															<div className="flex items-start justify-between gap-2">
+																<p className="text-foreground text-sm font-semibold">
 																	{item.quoteNumber}
 																</p>
 																<StyledBadge
 																	variant={statusVariant(item.status)}
+																	className="shrink-0"
 																>
 																	{formatStatus(item.status)}
 																</StyledBadge>
 															</div>
-															<div className="text-xs text-muted-foreground">
+															<p className="text-muted-foreground truncate text-xs">
 																{item.name}
-															</div>
-															<div className="flex items-center justify-between text-xs">
-																<span className="text-muted-foreground">
-																	Client: {item.clientName}
-																</span>
-															</div>
-															<div className="flex items-center justify-between text-xs border-t border-border/50 pt-2">
-																<span className="font-semibold text-foreground text-base">
+															</p>
+															<p className="text-muted-foreground truncate text-xs">
+																{item.clientName}
+															</p>
+															<div className="flex items-center justify-between gap-2 border-t border-border/50 pt-2">
+																<span className="text-foreground text-base font-semibold tabular-nums">
 																	{formatCurrency(item.total)}
 																</span>
-																{item.validUntil && (
-																	<span className="text-muted-foreground">
-																		Valid until:{" "}
-																		{new Date(
-																			item.validUntil
-																		).toLocaleDateString()}
-																	</span>
-																)}
+																<span className="text-muted-foreground text-xs">
+																	{formatQuoteDate(item.validUntil)}
+																</span>
 															</div>
-															<div className="pt-2 border-t border-border/50">
-																<StyledButton
-																	intent="outline"
-																	size="sm"
-																	icon={
-																		<ExternalLink className="h-3.5 w-3.5" />
-																	}
-																	label="View Quote"
-																	showArrow={false}
+															<div className="flex items-center justify-end pt-1">
+																<button
+																	type="button"
 																	onClick={(e) => {
-																		e?.stopPropagation();
+																		e.stopPropagation();
 																		router.push(`/quotes/${item.id}`);
 																	}}
-																	className="w-full justify-center"
-																/>
+																	onKeyDown={(e) => e.stopPropagation()}
+																	className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																>
+																	Open <ExternalLink className="size-3" />
+																</button>
 															</div>
 														</div>
 													</KanbanCard>
@@ -687,102 +864,50 @@ export default function QuotesPage() {
 								}}
 							</KanbanProvider>
 						</div>
-					) : (
-						<div className="px-6">
-							<div className="overflow-hidden rounded-lg border">
-								<Table>
-									<TableHeader className="bg-muted sticky top-0 z-10">
-										{table.getHeaderGroups().map((headerGroup) => (
-											<TableRow key={headerGroup.id}>
-												{headerGroup.headers.map((header) => (
-													<TableHead key={header.id}>
-														{header.isPlaceholder
-															? null
-															: flexRender(
-																	header.column.columnDef.header,
-																	header.getContext()
-																)}
-													</TableHead>
-												))}
-											</TableRow>
-										))}
-									</TableHeader>
-									<TableBody>
-										{isLoading ? (
-											Array.from({ length: 5 }).map((_, i) => (
-												<TableRow key={i}>
-													{Array.from({
-														length: createColumns(router, handleDelete).length,
-													}).map((_, j) => (
-														<TableCell key={j}>
-															<div className="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-														</TableCell>
-													))}
-												</TableRow>
-											))
-										) : table.getRowModel().rows?.length ? (
-											table.getRowModel().rows.map((row) => (
-												<TableRow
-													key={row.id}
-													data-state={row.getIsSelected() && "selected"}
-												>
-													{row.getVisibleCells().map((cell) => (
-														<TableCell key={cell.id}>
-															{flexRender(
-																cell.column.columnDef.cell,
-																cell.getContext()
-															)}
-														</TableCell>
-													))}
-												</TableRow>
-											))
-										) : (
-											<TableRow>
-												<TableCell
-													colSpan={createColumns(router, handleDelete).length}
-													className="h-24 text-center"
-												>
-													No quotes match your search.
-												</TableCell>
-											</TableRow>
-										)}
-									</TableBody>
-								</Table>
-							</div>
-							<div className="flex items-center justify-between py-4">
-								<div className="text-muted-foreground text-sm">
-									{table.getFilteredRowModel().rows.length} of {data.length}{" "}
-									quotes
-								</div>
-								<div className="flex items-center gap-2">
-									<Button
-										intent="outline"
-										size="sq-sm"
-										onPress={() => table.previousPage()}
-										isDisabled={!table.getCanPreviousPage()}
-										aria-label="Previous page"
-									>
-										<ChevronLeft className="size-4" />
-									</Button>
-									<div className="text-sm font-medium">
-										Page {table.getState().pagination?.pageIndex + 1} of{" "}
-										{table.getPageCount()}
-									</div>
-									<Button
-										intent="outline"
-										size="sq-sm"
-										onPress={() => table.nextPage()}
-										isDisabled={!table.getCanNextPage()}
-										aria-label="Next page"
-									>
-										<ChevronRight className="size-4" />
-									</Button>
-								</div>
-							</div>
-						</div>
 					)}
-				</CardContent>
-			</Card>
+				</FramePanel>
+
+				{!isLoading && !isEmpty && (
+					<FrameFooter className="flex-row items-center justify-between">
+						<div className="text-muted-foreground text-sm">
+							{searchedData.length} of {data.length} quotes
+						</div>
+						{viewMode === "table" ? (
+							<div className="flex items-center gap-2">
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.previousPage()}
+									isDisabled={!table.getCanPreviousPage()}
+									aria-label="Previous page"
+								>
+									<ChevronLeft className="size-4" />
+								</Button>
+								<div className="text-sm font-medium">
+									Page {table.getState().pagination?.pageIndex + 1} of{" "}
+									{Math.max(table.getPageCount(), 1)}
+								</div>
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.nextPage()}
+									isDisabled={!table.getCanNextPage()}
+									aria-label="Next page"
+								>
+									<ChevronRight className="size-4" />
+								</Button>
+							</div>
+						) : null}
+					</FrameFooter>
+				)}
+			</Frame>
+
+			{/* Detail preview drawer */}
+			<QuoteDetailDrawer
+				quoteId={previewId}
+				open={previewOpen}
+				onOpenChange={setPreviewOpen}
+			/>
 
 			{/* Delete Confirmation Modal */}
 			{quoteToDelete && (

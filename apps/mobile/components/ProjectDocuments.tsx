@@ -12,7 +12,8 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Card, Button } from "@/components/ui";
 import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { FileText, Download, Upload } from "lucide-react-native";
-import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { pickUpload } from "@/lib/upload";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface ProjectDocumentsProps {
@@ -30,37 +31,6 @@ type ProjectDocument = {
 };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-// Generic fallback MIME the picker emits when it cannot identify a type. It is
-// NOT in the server's allowed list, so we never forward it to create() —
-// resolve from the file extension instead (unknown extensions abort upload).
-const GENERIC_MIME = "application/" + "octet-stream";
-
-// extension -> MIME, drawn from ALLOWED_MESSAGE_ATTACHMENT_TYPES (lib/storage.ts).
-const EXTENSION_MIME: Record<string, string> = {
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	png: "image/png",
-	gif: "image/gif",
-	webp: "image/webp",
-	svg: "image/svg+xml",
-	pdf: "application/pdf",
-	doc: "application/msword",
-	docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-	xls: "application/vnd.ms-excel",
-	xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-	ppt: "application/vnd.ms-powerpoint",
-	pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-	txt: "text/plain",
-	csv: "text/csv",
-	zip: "application/zip",
-};
-
-const mimeFromExtension = (fileName: string): string | null => {
-	const ext = fileName.split(".").pop()?.toLowerCase();
-	if (!ext) return null;
-	return EXTENSION_MIME[ext] ?? null;
-};
 
 const formatFileSize = (bytes: number): string => {
 	if (bytes <= 0) return "0 Bytes";
@@ -96,53 +66,42 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 	const handleUpload = async () => {
 		setUploadError(null);
 		try {
-			const result = await DocumentPicker.getDocumentAsync({
-				type: "*/*",
-				copyToCacheDirectory: true,
-			});
-			if (result.canceled) return;
-			const asset = result.assets[0];
-			if (!asset) return;
+			// Photo Library / Take Photo / Choose File — all normalized to one shape.
+			const [file] = await pickUpload({ multiple: false });
+			if (!file) return;
 
 			setUploading(true);
 
-			// Build the blob first so its size is known when the picker omits one.
-			const blob = await (await fetch(asset.uri)).blob();
-
-			// Server rejects fileSize <= 0 — derive from blob.size when missing.
-			const fileSize = asset.size && asset.size > 0 ? asset.size : blob.size;
+			// Server rejects fileSize <= 0 — derive from disk when the source omits it.
+			let fileSize = file.size > 0 ? file.size : 0;
+			if (fileSize <= 0) {
+				const info = await FileSystem.getInfoAsync(file.uri);
+				fileSize = info.exists ? info.size : 0;
+			}
 			if (fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
 				setUploadError("Upload failed. Try again.");
 				return;
 			}
 
-			// Generic fallback is not server-allowed — resolve from extension.
-			const resolvedMime =
-				asset.mimeType && asset.mimeType !== GENERIC_MIME
-					? asset.mimeType
-					: mimeFromExtension(asset.name);
-			if (!resolvedMime) {
-				setUploadError("Upload failed. Try again.");
-				return;
-			}
-
 			const uploadUrl = await generateUploadUrl();
-			const up = await fetch(uploadUrl, {
-				method: "POST",
-				headers: { "Content-Type": resolvedMime },
-				body: blob,
+			// Stream the file URI natively. RN's bridgeless fetch() can't read a
+			// local file:// blob, so a Blob body uploads empty / throws.
+			const up = await FileSystem.uploadAsync(uploadUrl, file.uri, {
+				httpMethod: "POST",
+				uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+				headers: { "Content-Type": file.mimeType },
 			});
-			if (!up.ok) throw new Error("Upload failed");
-			const { storageId } = (await up.json()) as {
+			if (up.status !== 200) throw new Error("Upload failed");
+			const { storageId } = JSON.parse(up.body) as {
 				storageId: Id<"_storage">;
 			};
 
 			await createDoc({
 				projectId,
-				name: asset.name,
-				fileName: asset.name,
+				name: file.name,
+				fileName: file.name,
 				fileSize,
-				mimeType: resolvedMime,
+				mimeType: file.mimeType,
 				storageId,
 			});
 			// listByProject is reactive — it auto-refreshes after create.

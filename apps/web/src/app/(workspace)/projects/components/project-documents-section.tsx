@@ -20,7 +20,8 @@ export type UnifiedProjectDocument = {
 	mimeType: string;
 	uploadedAt: number;
 	downloadUrl: string | null;
-	source: "uploaded" | "communication";
+	source: "uploaded" | "communication" | "signed-quote";
+	quoteNumber?: string | null;
 };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -77,13 +78,22 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 		entityType: "project",
 		entityId: projectId,
 	});
+	// Completed BoldSign quotes, derived from documents.signedStorageId + quote.projectId.
+	const signedDocuments = useQuery(api.documents.listSignedByProject, {
+		projectId,
+	});
 
 	const generateUploadUrl = useMutation(api.projectDocuments.generateUploadUrl);
 	const createDocument = useMutation(api.projectDocuments.create);
 
 	// Merge and sort documents
 	const allDocuments = useMemo<UnifiedProjectDocument[] | undefined>(() => {
-		if (uploadedDocs === undefined || communicationDocs === undefined) return undefined;
+		if (
+			uploadedDocs === undefined ||
+			communicationDocs === undefined ||
+			signedDocuments === undefined
+		)
+			return undefined;
 
 		const unified: UnifiedProjectDocument[] = [
 			...uploadedDocs.map((doc) => ({
@@ -104,10 +114,20 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 				downloadUrl: att.downloadUrl,
 				source: "communication" as const,
 			})),
+			...signedDocuments.map((doc) => ({
+				_id: doc._id,
+				fileName: doc.fileName,
+				fileSize: doc.fileSize,
+				mimeType: doc.mimeType,
+				uploadedAt: doc.uploadedAt,
+				downloadUrl: doc.downloadUrl,
+				source: "signed-quote" as const,
+				quoteNumber: doc.quoteNumber,
+			})),
 		];
 
 		return unified.sort((a, b) => b.uploadedAt - a.uploadedAt);
-	}, [uploadedDocs, communicationDocs]);
+	}, [uploadedDocs, communicationDocs, signedDocuments]);
 
 	const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
@@ -229,7 +249,10 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 							<div className="flex-1 min-w-0">
 								<p className="text-sm text-foreground truncate">{mostRecent.fileName}</p>
 								<p className="text-xs text-muted-foreground">
-									{formatFileSize(mostRecent.fileSize)} &middot; {formatDate(mostRecent.uploadedAt)}
+									{mostRecent.fileSize > 0 && (
+										<>{formatFileSize(mostRecent.fileSize)} &middot; </>
+									)}
+									{formatDate(mostRecent.uploadedAt)}
 								</p>
 							</div>
 						</a>
