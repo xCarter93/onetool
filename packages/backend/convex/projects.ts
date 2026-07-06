@@ -23,6 +23,7 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import { calculateQuoteTotals } from "./lib/quoteTotals";
 
 /**
  * Project operations
@@ -225,6 +226,253 @@ export const get = optionalUserQuery({
 		if (visibleProjects.length === 0) return null;
 
 		return project;
+	},
+});
+
+// Self-contained payload for the list-page detail drawer: the project plus its
+// resolved client (with primary address), assignee names, related
+// quote/invoice/task rollups, and recent activity.
+interface ProjectPreview {
+	project: {
+		_id: Id<"projects">;
+		title: string;
+		status: ProjectDocument["status"];
+		projectType: ProjectDocument["projectType"];
+		projectNumber: string | null;
+		description: string | null;
+		startDate: number | null;
+		endDate: number | null;
+		completedAt: number | null;
+		createdAt: number;
+	};
+	client: {
+		_id: Id<"clients">;
+		companyName: string;
+		address: string | null;
+	} | null;
+	assignees: Array<{ _id: Id<"users">; name: string }>;
+	related: {
+		quotes: { count: number; total: number };
+		invoices: {
+			count: number;
+			total: number;
+			outstanding: number;
+			paid: number;
+		};
+		tasks: { count: number; open: number };
+	};
+	activities: Array<{
+		_id: Id<"activities">;
+		description: string;
+		activityType: string;
+		timestamp: number;
+		userName: string;
+	}>;
+}
+
+/**
+ * Get a compact, self-contained preview of a project for the detail drawer.
+ * Resolves the client (with primary address) + assignee names, rolls up related
+ * quotes/invoices/tasks with ACCURATE totals recomputed from line items (stored
+ * totals can be stale), and returns the project's activity from the last 7 days.
+ */
+export const getPreview = optionalUserQuery({
+	args: { id: v.id("projects") },
+	handler: async (ctx, args: any): Promise<ProjectPreview | null> => {
+		const orgId = ctx.orgId;
+		if (!orgId) return null;
+
+		let project: ProjectDocument;
+		try {
+			project = await ctx.orgEntity("projects", args.id);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in projects:")
+			) {
+				return null;
+			}
+			throw error;
+		}
+
+		const visible = await ctx.scopedToActor(
+			[project],
+			(item) => item.assignedUserIds
+		);
+		if (visible.length === 0) return null;
+
+		// Resolve client + its primary address (one-line composed string)
+		const clientDoc = await ctx.db.get(project.clientId);
+		let clientAddress: string | null = null;
+		if (clientDoc) {
+			const primaryProperty = await ctx.db
+				.query("clientProperties")
+				.withIndex("by_primary", (q: any) =>
+					q.eq("clientId", clientDoc._id).eq("isPrimary", true)
+				)
+				.first();
+			if (primaryProperty) {
+				clientAddress =
+					[
+						primaryProperty.streetAddress,
+						primaryProperty.city,
+						[primaryProperty.state, primaryProperty.zipCode]
+							.filter(Boolean)
+							.join(" "),
+					]
+						.filter(Boolean)
+						.join(", ") || null;
+			}
+		}
+		const client = clientDoc
+			? {
+					_id: clientDoc._id,
+					companyName: clientDoc.companyName,
+					address: clientAddress,
+				}
+			: null;
+
+		// Resolve assignee names
+		const assignees: Array<{ _id: Id<"users">; name: string }> = [];
+		for (const userId of project.assignedUserIds ?? []) {
+			const userDoc = await ctx.db.get(userId);
+			if (userDoc) {
+				assignees.push({
+					_id: userDoc._id,
+					name: userDoc.name || userDoc.email,
+				});
+			}
+		}
+
+		// Related records (project-scoped; the project itself is already org-scoped)
+		const quotes = await ctx.db
+			.query("quotes")
+			.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
+			.collect();
+		const invoices = await ctx.db
+			.query("invoices")
+			.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
+			.collect();
+		const tasks = await ctx.db
+			.query("tasks")
+			.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
+			.collect();
+
+		// Quote totals: recompute from line items (stored quote.total can be stale)
+		// Recompute totals concurrently; each call reads its quote's line items,
+		// so a sequential loop would serialize one DB round-trip per quote.
+		const quoteTotals = await Promise.all(
+			quotes.map((quote) =>
+				calculateQuoteTotals(ctx, quote._id, {
+					discountEnabled: quote.discountEnabled,
+					discountAmount: quote.discountAmount,
+					discountType: quote.discountType,
+					taxEnabled: quote.taxEnabled,
+					taxRate: quote.taxRate,
+				})
+			)
+		);
+		const quotesTotal = quoteTotals.reduce((sum, { total }) => sum + total, 0);
+
+		// Invoice totals: recompute subtotal from line items, apply stored
+		// discount/tax amounts (mirrors invoices.list / getWithPayments).
+		// Fetch each invoice's line items concurrently to avoid a serial DB
+		// waterfall (one round-trip per invoice).
+		const invoiceTotals = await Promise.all(
+			invoices.map(async (invoice) => {
+				const lineItems = await ctx.db
+					.query("invoiceLineItems")
+					.withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
+					.collect();
+				const subtotal = lineItems.reduce(
+					(sum: number, li: Doc<"invoiceLineItems">) => sum + li.total,
+					0
+				);
+				let total = subtotal;
+				if (invoice.discountAmount) total -= invoice.discountAmount;
+				if (invoice.taxAmount) total += invoice.taxAmount;
+				return { total, status: invoice.status };
+			})
+		);
+		let invoicesTotal = 0;
+		let invoicesOutstanding = 0;
+		let invoicesPaid = 0;
+		for (const { total, status } of invoiceTotals) {
+			invoicesTotal += total;
+			if (status === "paid") {
+				invoicesPaid++;
+			} else if (status !== "cancelled") {
+				invoicesOutstanding += total;
+			}
+		}
+
+		const tasksOpen = tasks.filter(
+			(t: Doc<"tasks">) => t.status !== "completed" && t.status !== "cancelled"
+		).length;
+
+		// Recent activity for this project (last 7 days). Activities are keyed
+		// generically by entityType/entityId, so query by_entity then filter.
+		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const activityRows = await ctx.db
+			.query("activities")
+			.withIndex("by_entity", (q: any) =>
+				q.eq("entityType", "project").eq("entityId", args.id as string)
+			)
+			.filter((q: any) =>
+				q.and(
+					q.eq(q.field("orgId"), orgId),
+					q.eq(q.field("isVisible"), true),
+					q.gte(q.field("timestamp"), cutoff)
+				)
+			)
+			.order("desc")
+			.take(20);
+
+		const userNameCache = new Map<string, string>();
+		const activities: ProjectPreview["activities"] = [];
+		for (const activity of activityRows) {
+			let userName = userNameCache.get(activity.userId);
+			if (userName === undefined) {
+				const actor = await ctx.db.get(activity.userId);
+				userName = actor ? actor.name || actor.email : "Someone";
+				userNameCache.set(activity.userId, userName);
+			}
+			activities.push({
+				_id: activity._id,
+				description: activity.description,
+				activityType: activity.activityType,
+				timestamp: activity.timestamp,
+				userName,
+			});
+		}
+
+		return {
+			project: {
+				_id: project._id,
+				title: project.title,
+				status: project.status,
+				projectType: project.projectType,
+				projectNumber: project.projectNumber ?? null,
+				description: project.description ?? null,
+				startDate: project.startDate ?? null,
+				endDate: project.endDate ?? null,
+				completedAt: project.completedAt ?? null,
+				createdAt: project._creationTime,
+			},
+			client,
+			assignees,
+			related: {
+				quotes: { count: quotes.length, total: quotesTotal },
+				invoices: {
+					count: invoices.length,
+					total: invoicesTotal,
+					outstanding: invoicesOutstanding,
+					paid: invoicesPaid,
+				},
+				tasks: { count: tasks.length, open: tasksOpen },
+			},
+			activities,
+		};
 	},
 });
 

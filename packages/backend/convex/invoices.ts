@@ -990,3 +990,241 @@ export const getWithPayments = optionalUserQuery({
 		};
 	},
 });
+
+// Self-contained payload for the list-page detail drawer: the invoice with an
+// ACCURATE total (recomputed from line items — stored total can be stale), its
+// resolved client (+ primary address), project, source quote, payment schedule
+// (+ summary), and the invoice's activity from the last 7 days.
+interface InvoicePreview {
+	invoice: {
+		_id: Id<"invoices">;
+		invoiceNumber: string;
+		status: InvoiceDocument["status"];
+		total: number;
+		issuedDate: number;
+		dueDate: number;
+		paidAt: number | null;
+		createdAt: number;
+	};
+	client: {
+		_id: Id<"clients">;
+		companyName: string;
+		address: string | null;
+	} | null;
+	project: {
+		_id: Id<"projects">;
+		title: string;
+	} | null;
+	sourceQuote: {
+		_id: Id<"quotes">;
+		quoteNumber: string | null;
+	} | null;
+	paymentSummary: {
+		totalPayments: number;
+		paidCount: number;
+		pendingCount: number;
+		paidAmount: number;
+		remainingAmount: number;
+		percentPaid: number;
+	};
+	payments: Array<{
+		_id: Id<"payments">;
+		paymentAmount: number;
+		status: Doc<"payments">["status"];
+		dueDate: number;
+		paidAt: number | null;
+		description: string | null;
+	}>;
+	activities: Array<{
+		_id: Id<"activities">;
+		description: string;
+		activityType: string;
+		timestamp: number;
+		userName: string;
+	}>;
+}
+
+/**
+ * Get a compact, self-contained preview of an invoice for the detail drawer.
+ * Recomputes the total from line items (stored totals can be stale), resolves
+ * the client (+ primary address), project, and source quote, rolls up the
+ * payment schedule with a summary, and returns the last 7 days of activity.
+ */
+export const getPreview = optionalUserQuery({
+	args: { id: v.id("invoices") },
+	handler: async (ctx, args: any): Promise<InvoicePreview | null> => {
+		const orgId = ctx.orgId;
+		if (!orgId) return null;
+
+		let invoice: InvoiceDocument;
+		try {
+			invoice = await ctx.orgEntity("invoices", args.id);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in invoices:")
+			) {
+				return null;
+			}
+			throw error;
+		}
+
+		// Recompute total from line items (source of truth; stored total can be
+		// stale). Reuse the shared helper so discount/tax logic can't diverge.
+		const { total } = await calculateInvoiceTotals(ctx, args.id);
+
+		// Resolve client + its primary address. Guard the raw get() against a
+		// cross-org reference — projectId/quoteId aren't org-checked on write, so
+		// a bad ref must not leak another org's data through this preview.
+		const clientDoc = await ctx.db.get(invoice.clientId);
+		const ownedClient =
+			clientDoc && clientDoc.orgId === orgId ? clientDoc : null;
+		let clientAddress: string | null = null;
+		if (ownedClient) {
+			const primaryProperty = await ctx.db
+				.query("clientProperties")
+				.withIndex("by_primary", (q: any) =>
+					q.eq("clientId", ownedClient._id).eq("isPrimary", true)
+				)
+				.first();
+			if (primaryProperty) {
+				clientAddress =
+					[
+						primaryProperty.streetAddress,
+						primaryProperty.city,
+						[primaryProperty.state, primaryProperty.zipCode]
+							.filter(Boolean)
+							.join(" "),
+					]
+						.filter(Boolean)
+						.join(", ") || null;
+			}
+		}
+		const client = ownedClient
+			? {
+					_id: ownedClient._id,
+					companyName: ownedClient.companyName,
+					address: clientAddress,
+				}
+			: null;
+
+		// Project (optional, org-guarded)
+		let project: InvoicePreview["project"] = null;
+		if (invoice.projectId) {
+			const projectDoc = await ctx.db.get(invoice.projectId);
+			if (projectDoc && projectDoc.orgId === orgId) {
+				project = { _id: projectDoc._id, title: projectDoc.title };
+			}
+		}
+
+		// Source quote (optional, org-guarded; the quote this invoice came from)
+		let sourceQuote: InvoicePreview["sourceQuote"] = null;
+		if (invoice.quoteId) {
+			const quoteDoc = await ctx.db.get(invoice.quoteId);
+			if (quoteDoc && quoteDoc.orgId === orgId) {
+				sourceQuote = {
+					_id: quoteDoc._id,
+					quoteNumber: quoteDoc.quoteNumber ?? null,
+				};
+			}
+		}
+
+		// Payment schedule for this invoice, ordered by sortOrder
+		const paymentRows = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice", (q: any) => q.eq("invoiceId", args.id))
+			.collect();
+		const sortedPayments = paymentRows.sort(
+			(a: Doc<"payments">, b: Doc<"payments">) => a.sortOrder - b.sortOrder
+		);
+
+		// Payment summary (mirrors getWithPayments)
+		const paidPayments = sortedPayments.filter(
+			(p: Doc<"payments">) => p.status === "paid"
+		);
+		const pendingPayments = sortedPayments.filter(
+			(p: Doc<"payments">) =>
+				p.status === "pending" ||
+				p.status === "sent" ||
+				p.status === "overdue"
+		);
+		const paidAmount = paidPayments.reduce(
+			(sum: number, p: Doc<"payments">) => sum + p.paymentAmount,
+			0
+		);
+		const remainingAmount = total - paidAmount;
+
+		const payments: InvoicePreview["payments"] = sortedPayments.map(
+			(p: Doc<"payments">) => ({
+				_id: p._id,
+				paymentAmount: p.paymentAmount,
+				status: p.status,
+				dueDate: p.dueDate,
+				paidAt: p.paidAt ?? null,
+				description: p.description ?? null,
+			})
+		);
+
+		// Recent activity for this invoice (last 7 days). Activities are keyed
+		// generically by entityType/entityId, so query by_entity then filter.
+		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const activityRows = await ctx.db
+			.query("activities")
+			.withIndex("by_entity", (q: any) =>
+				q.eq("entityType", "invoice").eq("entityId", args.id as string)
+			)
+			.filter((q: any) =>
+				q.and(
+					q.eq(q.field("orgId"), orgId),
+					q.eq(q.field("isVisible"), true),
+					q.gte(q.field("timestamp"), cutoff)
+				)
+			)
+			.order("desc")
+			.take(20);
+
+		const userNameCache = new Map<string, string>();
+		const activities: InvoicePreview["activities"] = [];
+		for (const activity of activityRows) {
+			let userName = userNameCache.get(activity.userId);
+			if (userName === undefined) {
+				const actor = await ctx.db.get(activity.userId);
+				userName = actor ? actor.name || actor.email : "Someone";
+				userNameCache.set(activity.userId, userName);
+			}
+			activities.push({
+				_id: activity._id,
+				description: activity.description,
+				activityType: activity.activityType,
+				timestamp: activity.timestamp,
+				userName,
+			});
+		}
+
+		return {
+			invoice: {
+				_id: invoice._id,
+				invoiceNumber: invoice.invoiceNumber,
+				status: invoice.status,
+				total,
+				issuedDate: invoice.issuedDate,
+				dueDate: invoice.dueDate,
+				paidAt: invoice.paidAt ?? null,
+				createdAt: invoice._creationTime,
+			},
+			client,
+			project,
+			sourceQuote,
+			paymentSummary: {
+				totalPayments: sortedPayments.length,
+				paidCount: paidPayments.length,
+				pendingCount: pendingPayments.length,
+				paidAmount,
+				remainingAmount,
+				percentPaid: total > 0 ? Math.round((paidAmount / total) * 100) : 0,
+			},
+			payments,
+			activities,
+		};
+	},
+});

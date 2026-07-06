@@ -1,65 +1,78 @@
 "use client";
 
 import React from "react";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+	StyledBadge,
+	StyledTable,
+	StyledTableBody,
+	StyledTableCell,
+	StyledTableHead,
+	StyledTableHeader,
+	StyledTableRow,
+} from "@/components/ui/styled";
+import { StyledFilters } from "@/components/ui/styled/styled-filters";
+import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+	Frame,
+	FrameDescription,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
 import {
 	ColumnDef,
-	ColumnFiltersState,
 	SortingState,
 	flexRender,
 	getCoreRowModel,
-	getFilteredRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
 import {
+	Building2,
+	Calendar,
+	CheckCircle2,
 	ChevronLeft,
 	ChevronRight,
-	Receipt,
 	Clock,
+	DollarSign,
 	ExternalLink,
-	Trash2,
-	CheckCircle,
-	TableProperties,
+	Eye,
+	Filter as FilterIcon,
+	FolderKanban,
 	LayoutGrid,
+	Receipt,
+	Search,
+	TableProperties,
+	Trash2,
+	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
-import { useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import { StyledButton, StyledBadge } from "@/components/ui/styled";
+import { MetricFrame } from "@/components/metric-frame";
 import {
+	type DragEndEvent,
 	KanbanBoard,
 	KanbanCard,
 	KanbanCards,
 	KanbanHeader,
 	KanbanProvider,
 } from "../projects/components/kanban";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { InvoiceDetailDrawer } from "./components/invoice-detail-drawer";
 import { cn } from "@/lib/utils";
 
+type InvoiceStatus = Doc<"invoices">["status"];
+
+// Enhanced invoice type that includes resolved client/project names for display
 type InvoiceWithClient = Doc<"invoices"> & {
 	clientName: string;
 	projectName?: string;
@@ -68,9 +81,10 @@ type InvoiceWithClient = Doc<"invoices"> & {
 type InvoiceKanbanItem = {
 	id: string;
 	name: string;
-	column: Doc<"invoices">["status"];
-	status: Doc<"invoices">["status"];
+	column: InvoiceStatus;
+	status: InvoiceStatus;
 	clientName: string;
+	projectName?: string;
 	total: number;
 	invoiceNumber: string;
 	dueDate: number;
@@ -78,50 +92,27 @@ type InvoiceKanbanItem = {
 };
 
 type InvoiceKanbanColumn = {
-	id: Doc<"invoices">["status"];
+	id: InvoiceStatus;
 	name: string;
 	description: string;
 };
 
-const kanbanColumns: InvoiceKanbanColumn[] = [
-	{
-		id: "draft",
-		name: "Draft",
-		description: "Being prepared",
-	},
-	{
-		id: "sent",
-		name: "Sent",
-		description: "Awaiting payment",
-	},
-	{
-		id: "paid",
-		name: "Paid",
-		description: "Payment received",
-	},
-	{
-		id: "overdue",
-		name: "Overdue",
-		description: "Past due date",
-	},
-	{
-		id: "cancelled",
-		name: "Cancelled",
-		description: "Voided invoices",
-	},
-];
+// Overdue is a computed state: a sent invoice past its due date. Reads the clock
+// inside this module-level helper so component render stays pure.
+const getEffectiveStatus = (
+	status: InvoiceStatus,
+	dueDate: number
+): InvoiceStatus =>
+	status === "sent" && dueDate < Date.now() ? "overdue" : status;
 
-const statusVariant = (status: string, dueDate: number) => {
-	// Check if overdue
-	if (status === "sent" && dueDate < Date.now()) {
-		return "destructive" as const;
-	}
-
+const statusVariant = (status: InvoiceStatus) => {
 	switch (status) {
 		case "paid":
 			return "default" as const;
 		case "sent":
 			return "secondary" as const;
+		case "overdue":
+			return "destructive" as const;
 		case "cancelled":
 			return "destructive" as const;
 		case "draft":
@@ -130,12 +121,24 @@ const statusVariant = (status: string, dueDate: number) => {
 	}
 };
 
-const formatStatus = (status: string, dueDate: number) => {
-	// Check if overdue
-	if (status === "sent" && dueDate < Date.now()) {
-		return "Overdue";
-	}
+// Per-lane accent dot (kanban-board-4 style); status → colored dot only.
+const statusDot: Record<InvoiceStatus, string> = {
+	draft: "bg-muted-foreground/50",
+	sent: "bg-amber-500",
+	paid: "bg-emerald-500",
+	overdue: "bg-rose-500",
+	cancelled: "bg-muted-foreground/40",
+};
 
+const kanbanColumns: InvoiceKanbanColumn[] = [
+	{ id: "draft", name: "Draft", description: "Being prepared" },
+	{ id: "sent", name: "Sent", description: "Awaiting payment" },
+	{ id: "paid", name: "Paid", description: "Payment received" },
+	{ id: "overdue", name: "Overdue", description: "Past due date" },
+	{ id: "cancelled", name: "Cancelled", description: "Voided invoices" },
+];
+
+const formatStatus = (status: InvoiceStatus) => {
 	switch (status) {
 		case "draft":
 			return "Draft";
@@ -161,9 +164,15 @@ const formatCurrency = (amount: number) => {
 	}).format(amount);
 };
 
+const formatInvoiceDate = (timestamp?: number) => {
+	if (!timestamp) return "Not set";
+	return new Date(timestamp).toLocaleDateString();
+};
+
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
-	onDelete: (id: string, name: string) => void
+	onDelete: (id: string, name: string) => void,
+	onPreview: (id: string) => void
 ): ColumnDef<InvoiceWithClient>[] => [
 	{
 		accessorKey: "invoiceNumber",
@@ -190,7 +199,7 @@ const createColumns = (
 		accessorKey: "total",
 		header: "Amount",
 		cell: ({ row }) => (
-			<span className="text-foreground font-medium">
+			<span className="text-foreground font-medium tabular-nums">
 				{formatCurrency(row.original.total)}
 			</span>
 		),
@@ -198,19 +207,26 @@ const createColumns = (
 	{
 		accessorKey: "status",
 		header: "Status",
-		cell: ({ row }) => (
-			<Badge variant={statusVariant(row.original.status, row.original.dueDate)}>
-				{formatStatus(row.original.status, row.original.dueDate)}
-			</Badge>
-		),
+		cell: ({ row }) => {
+			const effective = getEffectiveStatus(
+				row.original.status,
+				row.original.dueDate
+			);
+			return (
+				<StyledBadge variant={statusVariant(effective)}>
+					{formatStatus(effective)}
+				</StyledBadge>
+			);
+		},
 	},
 	{
 		accessorKey: "issuedDate",
 		header: "Issued",
-		cell: ({ row }) => {
-			const d = new Date(row.original.issuedDate);
-			return <span className="text-foreground">{d.toLocaleDateString()}</span>;
-		},
+		cell: ({ row }) => (
+			<span className="text-foreground">
+				{new Date(row.original.issuedDate).toLocaleDateString()}
+			</span>
+		),
 	},
 	{
 		accessorKey: "dueDate",
@@ -220,7 +236,10 @@ const createColumns = (
 			const isOverdue = d < new Date() && row.original.status !== "paid";
 			return (
 				<span
-					className={`text-foreground ${isOverdue ? "text-destructive font-medium" : ""}`}
+					className={cn(
+						"text-foreground",
+						isOverdue && "text-destructive font-medium"
+					)}
 				>
 					{d.toLocaleDateString()}
 				</span>
@@ -231,12 +250,24 @@ const createColumns = (
 		id: "actions",
 		header: "",
 		cell: ({ row }) => (
-			<div className="flex items-center gap-2">
+			// Stop row-click preview from firing when using the explicit actions.
+			<div
+				className="flex items-center justify-end gap-2"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<Button
+					intent="outline"
+					size="sq-sm"
+					onPress={() => onPreview(row.original._id)}
+					aria-label={`Preview invoice ${row.original.invoiceNumber}`}
+				>
+					<Eye className="size-4" />
+				</Button>
 				<Button
 					intent="outline"
 					size="sq-sm"
 					onPress={() => router.push(`/invoices/${row.original._id}`)}
-					aria-label={`View invoice ${row.original.invoiceNumber}`}
+					aria-label={`Open invoice ${row.original.invoiceNumber}`}
 				>
 					<ExternalLink className="size-4" />
 				</Button>
@@ -257,80 +288,144 @@ const createColumns = (
 export default function InvoicesPage() {
 	const router = useRouter();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+	const [sorting, setSorting] = React.useState<SortingState>([]);
+	const [query, setQuery] = React.useState("");
+	const [filters, setFilters] = React.useState<Filter<unknown>[]>([]);
+	const [pagination, setPagination] = React.useState({
+		pageIndex: 0,
+		pageSize: 10,
+	});
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [invoiceToDelete, setInvoiceToDelete] = useState<{
 		id: string;
 		name: string;
 	} | null>(null);
+	const [previewId, setPreviewId] = useState<Id<"invoices"> | null>(null);
+	const [previewOpen, setPreviewOpen] = useState(false);
 	const deleteInvoice = useMutation(api.invoices.remove);
 	const updateInvoiceStatus = useMutation(api.invoices.update);
 	const [kanbanData, setKanbanData] = useState<InvoiceKanbanItem[]>([]);
+	const isOrgSwitching = useIsOrgSwitching();
 
-	// Fetch data from Convex
+	// Fetch invoices, clients, and projects from Convex
 	const invoices = useQuery(api.invoices.list, {});
 	const clients = useQuery(api.clients.list, {});
 	const projects = useQuery(api.projects.list, {});
 
-	// Memoize the arrays to avoid dependency changes on every render
-	const invoicesArray = React.useMemo(() => invoices || [], [invoices]);
-	const clientsArray = React.useMemo(() => clients || [], [clients]);
-	const projectsArray = React.useMemo(() => projects || [], [projects]);
-
-	// Combine invoices with client and project data
+	// Combine invoices with resolved client and project names
 	const data = React.useMemo((): InvoiceWithClient[] => {
-		return invoicesArray.map((invoice) => {
-			const client = clientsArray.find((c) => c._id === invoice.clientId);
-			const project = projectsArray.find((p) => p._id === invoice.projectId);
-
+		if (!invoices || !clients || !projects) return [];
+		return invoices.map((invoice) => {
+			const client = clients.find((c) => c._id === invoice.clientId);
+			const project = projects.find((p) => p._id === invoice.projectId);
 			return {
 				...invoice,
 				clientName: client?.companyName || "Unknown Client",
 				projectName: project?.title,
 			};
 		});
-	}, [invoicesArray, clientsArray, projectsArray]);
+	}, [invoices, clients, projects]);
 
-	const [sorting, setSorting] = React.useState<SortingState>([]);
-	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-		[]
-	);
-	const [query, setQuery] = React.useState("");
-	const [pagination, setPagination] = React.useState({
-		pageIndex: 0,
-		pageSize: 10,
-	});
-
-	const invoiceStatusMap = React.useMemo(() => {
-		const statusMap = new Map<string, Doc<"invoices">["status"]>();
-		data.forEach((invoice) => {
-			// Check if overdue
-			const isOverdue =
-				invoice.status === "sent" && invoice.dueDate < Date.now();
-			const effectiveStatus = isOverdue ? "overdue" : invoice.status;
-			statusMap.set(invoice._id, effectiveStatus as Doc<"invoices">["status"]);
+	// Advanced filters (status / client / project / due-date / amount).
+	// Status compares against the EFFECTIVE status so "overdue" filtering works.
+	const filteredData = React.useMemo(() => {
+		let result = data;
+		filters.forEach((filter) => {
+			if (filter.values.length === 0) return;
+			switch (filter.field) {
+				case "status":
+					result = result.filter((inv) =>
+						filter.values.includes(
+							getEffectiveStatus(inv.status, inv.dueDate) as unknown
+						)
+					);
+					break;
+				case "client":
+					result = result.filter((inv) =>
+						filter.values.includes(inv.clientId as unknown)
+					);
+					break;
+				case "project":
+					result = result.filter(
+						(inv) =>
+							inv.projectId != null &&
+							filter.values.includes(inv.projectId as unknown)
+					);
+					break;
+				case "dueDate":
+					if (filter.operator === "between" && filter.values.length === 2) {
+						const [startDate, endDate] = filter.values as [string, string];
+						if (startDate) {
+							const startTs = new Date(startDate).getTime();
+							result = result.filter((inv) => inv.dueDate >= startTs);
+						}
+						if (endDate) {
+							const end = new Date(endDate);
+							end.setHours(23, 59, 59, 999);
+							result = result.filter((inv) => inv.dueDate <= end.getTime());
+						}
+					}
+					break;
+				case "amount":
+					if (filter.operator === "between" && filter.values.length === 2) {
+						const [minVal, maxVal] = filter.values as [string, string];
+						if (minVal !== "" && minVal != null) {
+							const min = Number(minVal);
+							if (!Number.isNaN(min))
+								result = result.filter((inv) => inv.total >= min);
+						}
+						if (maxVal !== "" && maxVal != null) {
+							const max = Number(maxVal);
+							if (!Number.isNaN(max))
+								result = result.filter((inv) => inv.total <= max);
+						}
+					}
+					break;
+			}
 		});
+		return result;
+	}, [data, filters]);
+
+	// Free-text search on top of the advanced filters; drives table + kanban.
+	const searchedData = React.useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return filteredData;
+		return filteredData.filter((inv) => {
+			const effectiveStatus = getEffectiveStatus(inv.status, inv.dueDate);
+			return (
+				inv.invoiceNumber?.toLowerCase().includes(q) ||
+				inv.clientName?.toLowerCase().includes(q) ||
+				inv.projectName?.toLowerCase().includes(q) ||
+				inv.status?.toLowerCase().includes(q) ||
+				effectiveStatus.toLowerCase().includes(q) ||
+				formatStatus(effectiveStatus).toLowerCase().includes(q)
+			);
+		});
+	}, [filteredData, query]);
+
+	// Effective-status map keyed by invoice id, used to detect kanban drag changes.
+	const invoiceStatusMap = React.useMemo(() => {
+		const statusMap = new Map<string, InvoiceStatus>();
+		data.forEach((invoice) =>
+			statusMap.set(
+				invoice._id,
+				getEffectiveStatus(invoice.status, invoice.dueDate)
+			)
+		);
 		return statusMap;
 	}, [data]);
 
 	React.useEffect(() => {
-		if (!data || data.length === 0) {
-			setKanbanData([]);
-			return;
-		}
-
 		setKanbanData(
-			data.map((invoice) => {
-				// Check if overdue
-				const isOverdue =
-					invoice.status === "sent" && invoice.dueDate < Date.now();
-				const effectiveStatus = isOverdue ? "overdue" : invoice.status;
-
+			searchedData.map((invoice) => {
+				const effective = getEffectiveStatus(invoice.status, invoice.dueDate);
 				return {
 					id: invoice._id,
-					name: invoice.projectName || "No project",
-					column: effectiveStatus as Doc<"invoices">["status"],
-					status: effectiveStatus as Doc<"invoices">["status"],
+					name: invoice.invoiceNumber,
+					column: effective,
+					status: effective,
 					clientName: invoice.clientName,
+					projectName: invoice.projectName,
 					total: invoice.total,
 					invoiceNumber: invoice.invoiceNumber,
 					dueDate: invoice.dueDate,
@@ -338,12 +433,27 @@ export default function InvoicesPage() {
 				};
 			})
 		);
-	}, [data]);
+	}, [searchedData]);
 
-	const handleDelete = (id: string, name: string) => {
+	// Loading state
+	const isLoading =
+		isOrgSwitching ||
+		invoices === undefined ||
+		clients === undefined ||
+		projects === undefined;
+
+	// Empty state
+	const isEmpty = !isLoading && data.length === 0;
+
+	const handleDelete = React.useCallback((id: string, name: string) => {
 		setInvoiceToDelete({ id, name });
 		setDeleteModalOpen(true);
-	};
+	}, []);
+
+	const openPreview = React.useCallback((id: string) => {
+		setPreviewId(id as Id<"invoices">);
+		setPreviewOpen(true);
+	}, []);
 
 	const confirmDelete = async () => {
 		if (invoiceToDelete) {
@@ -357,116 +467,130 @@ export default function InvoicesPage() {
 		}
 	};
 
-	const handleKanbanDataChange = React.useCallback(
-		(nextData: InvoiceKanbanItem[]) => {
-			setKanbanData(nextData);
-
-			const changedItem = nextData.find((item) => {
-				const originalStatus = invoiceStatusMap.get(item.id);
-				return originalStatus && originalStatus !== item.column;
-			});
-
-			if (changedItem) {
-				// Don't allow moving from overdue to sent - that's computed
-				if (changedItem.column === "sent" || changedItem.column === "overdue") {
-					// If trying to move from/to overdue, just update to "sent"
-					updateInvoiceStatus({
-						id: changedItem.id as Id<"invoices">,
-						status: "sent",
-					}).catch((error) => {
-						console.error("Failed to update invoice status:", error);
-					});
-				} else {
-					updateInvoiceStatus({
-						id: changedItem.id as Id<"invoices">,
-						status: changedItem.column,
-					}).catch((error) => {
-						console.error("Failed to update invoice status:", error);
-					});
-				}
-			}
-		},
-		[invoiceStatusMap, updateInvoiceStatus]
+	const columns = React.useMemo(
+		() => createColumns(router, handleDelete, openPreview),
+		[router, handleDelete, openPreview]
 	);
 
 	const table = useReactTable({
-		data,
-		columns: createColumns(router, handleDelete),
+		data: searchedData,
+		columns,
 		state: {
 			sorting,
-			columnFilters,
-			globalFilter: query,
 			pagination,
 		},
 		onSortingChange: setSorting,
-		onColumnFiltersChange: setColumnFilters,
-		onGlobalFilterChange: setQuery,
 		onPaginationChange: setPagination,
-		globalFilterFn: (row, columnId, value) => {
-			// If no search value, show all rows
-			if (!value || value.trim() === "") return true;
-
-			const search = value.toLowerCase().trim();
-			const invoice = row.original;
-
-			// Search in invoice number
-			if (
-				invoice.invoiceNumber &&
-				invoice.invoiceNumber.toLowerCase().includes(search)
-			)
-				return true;
-
-			// Search in client name
-			if (
-				invoice.clientName &&
-				invoice.clientName.toLowerCase().includes(search)
-			)
-				return true;
-
-			// Search in project name
-			if (
-				invoice.projectName &&
-				invoice.projectName.toLowerCase().includes(search)
-			)
-				return true;
-
-			// Search in status
-			if (invoice.status && invoice.status.toLowerCase().includes(search))
-				return true;
-
-			return false;
-		},
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 	});
 
-	// Reset to first page when search changes
+	// Reset to first page when the filtered/searched set changes
 	React.useEffect(() => {
-		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [query]);
+		setPagination((prev) =>
+			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
+		);
+	}, [query, filters, searchedData.length]);
 
-	// Calculate stats
-	const totalOpen = React.useMemo(
-		() =>
-			data.filter((inv) => inv.status === "draft" || inv.status === "sent")
-				.length,
-		[data]
+	// Filter field configuration for the advanced filter builder
+	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
+		const statusOptions = [
+			{ value: "draft", label: "Draft" },
+			{ value: "sent", label: "Sent" },
+			{ value: "paid", label: "Paid" },
+			{ value: "overdue", label: "Overdue" },
+			{ value: "cancelled", label: "Cancelled" },
+		];
+		const clientOptions =
+			clients?.map((client) => ({
+				value: client._id,
+				label: client.companyName,
+			})) || [];
+		const projectOptions =
+			projects?.map((project) => ({
+				value: project._id,
+				label: project.title,
+			})) || [];
+
+		return [
+			{
+				key: "status",
+				label: "Status",
+				icon: <CheckCircle2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: statusOptions,
+			},
+			{
+				key: "client",
+				label: "Client",
+				icon: <Building2 className="h-3 w-3" />,
+				type: "multiselect",
+				options: clientOptions,
+				searchable: true,
+			},
+			{
+				key: "project",
+				label: "Project",
+				icon: <FolderKanban className="h-3 w-3" />,
+				type: "multiselect",
+				options: projectOptions,
+				searchable: true,
+			},
+			{
+				key: "dueDate",
+				label: "Due Date",
+				icon: <Calendar className="h-3 w-3" />,
+				type: "daterange",
+			},
+			{
+				key: "amount",
+				label: "Amount",
+				icon: <DollarSign className="h-3 w-3" />,
+				type: "number",
+				defaultOperator: "between",
+			},
+		];
+	}, [clients, projects]);
+
+	// onDataChange fires on every drag-over (column crossing), so keep it purely
+	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
+	const handleKanbanDataChange = React.useCallback(
+		(nextData: InvoiceKanbanItem[]) => {
+			// Overdue is a computed lane. Dropping a card there stores "sent"; a
+			// future-due invoice then normalizes back to "sent" instead of sticking
+			// in Overdue. Renormalize each card to its effective status first.
+			const normalized = nextData.map((item) => {
+				const storedStatus: InvoiceStatus =
+					item.column === "overdue" ? "sent" : item.column;
+				const effective = getEffectiveStatus(storedStatus, item.dueDate);
+				return { ...item, column: effective, status: effective };
+			});
+			setKanbanData(normalized);
+		},
+		[]
 	);
 
-	const totalPaidValue = React.useMemo(
-		() =>
-			data
-				.filter((inv) => inv.status === "paid")
-				.reduce((sum, inv) => sum + inv.total, 0),
-		[data]
+	const handleKanbanDragEnd = React.useCallback(
+		(event: DragEndEvent) => {
+			const item = kanbanData.find((i) => i.id === event.active.id);
+			if (!item) return;
+			const originalStatus = invoiceStatusMap.get(item.id);
+			if (originalStatus && originalStatus !== item.column) {
+				// Overdue is computed from a past-due "sent" invoice, so dropping into
+				// either the sent or overdue lane writes the stored status "sent".
+				const nextStatus: InvoiceStatus =
+					item.column === "overdue" ? "sent" : item.column;
+				updateInvoiceStatus({
+					id: item.id as Id<"invoices">,
+					status: nextStatus,
+				}).catch((error) => {
+					console.error("Failed to update invoice status:", error);
+				});
+			}
+		},
+		[kanbanData, invoiceStatusMap, updateInvoiceStatus]
 	);
-
-	// Loading state
-	const isLoading =
-		invoices === undefined || clients === undefined || projects === undefined;
-	const isEmpty = !isLoading && data.length === 0;
 
 	return (
 		<div className="relative px-6 pt-8 pb-6 space-y-6">
@@ -482,115 +606,133 @@ export default function InvoicesPage() {
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Receipt className="size-4" /> Total Invoices
-						</CardTitle>
-						<CardDescription>All invoices in your workspace</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								data.length
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Clock className="size-4" /> Open Invoices
-						</CardTitle>
-						<CardDescription>Unpaid and draft invoices</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								totalOpen
-							)}
-						</div>
-					</CardContent>
-				</Card>
-				<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-					<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-					<CardHeader className="relative z-10">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<CheckCircle className="size-4" /> Paid Value
-						</CardTitle>
-						<CardDescription>Total value of paid invoices</CardDescription>
-					</CardHeader>
-					<CardContent className="relative z-10">
-						<div className="text-3xl font-semibold">
-							{isLoading ? (
-								<div className="h-9 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-							) : (
-								formatCurrency(totalPaidValue)
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+			<MetricFrame
+				loading={isLoading}
+				metrics={[
+					{
+						label: "Total Invoices",
+						value: data.length,
+						hint: "All invoices in your workspace",
+						icon: <Receipt />,
+						accent: "var(--color-blue-500)",
+					},
+					{
+						label: "Open Invoices",
+						value: data.filter(
+							(inv) => inv.status === "draft" || inv.status === "sent"
+						).length,
+						hint: "Unpaid and draft invoices",
+						icon: <Clock />,
+						accent: "var(--color-amber-500)",
+					},
+					{
+						label: "Paid Value",
+						value: formatCurrency(
+							data
+								.filter((inv) => inv.status === "paid")
+								.reduce((sum, inv) => sum + inv.total, 0)
+						),
+						hint: "Total value of paid invoices",
+						icon: <CheckCircle2 />,
+						accent: "var(--color-emerald-500)",
+					},
+				]}
+				summary={
+					isLoading
+						? undefined
+						: `${
+								data.filter(
+									(inv) => inv.status === "sent" && inv.dueDate < Date.now()
+								).length
+							} overdue · ${formatCurrency(
+								data
+									.filter(
+										(inv) => inv.status === "draft" || inv.status === "sent"
+									)
+									.reduce((sum, inv) => sum + inv.total, 0)
+							)} outstanding`
+				}
+			/>
 
-			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
-				<div className="absolute inset-0 bg-linear-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/2 dark:to-transparent rounded-2xl" />
-				<CardHeader className="relative z-10 flex flex-col gap-2 border-b">
-					<div>
-						<CardTitle>Invoices</CardTitle>
-						<CardDescription>
-							Search, sort, and browse your invoices
-						</CardDescription>
+			<Frame>
+				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+					<div className="flex flex-col gap-0.5">
+						<FrameTitle className="text-base">Invoices</FrameTitle>
+						<FrameDescription>
+							Search, filter, and browse your invoices
+						</FrameDescription>
 					</div>
-					<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-						<Input
-							placeholder="Search invoices..."
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							className="w-full md:w-96"
+					<div className="flex w-full items-center gap-2 sm:w-auto">
+						<div className="relative flex-1 sm:w-64 sm:flex-none">
+							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+							<Input
+								placeholder="Search invoices..."
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								className="pl-9"
+							/>
+						</div>
+						<StyledSegmentedControl
+							className="shrink-0"
+							value={viewMode}
+							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+							options={[
+								{
+									value: "table",
+									label: "Table",
+									icon: <TableProperties className="size-4" />,
+									ariaLabel: "Table view",
+									hideLabelOnMobile: true,
+								},
+								{
+									value: "kanban",
+									label: "Kanban",
+									icon: <LayoutGrid className="size-4" />,
+									ariaLabel: "Kanban view",
+									hideLabelOnMobile: true,
+								},
+							]}
 						/>
-						<ButtonGroup>
-							<button
-								onClick={() => setViewMode("table")}
-								aria-pressed={viewMode === "table"}
-								aria-label="Table view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "table"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<TableProperties className="w-4 h-4" />
-								<span className="hidden sm:inline">Table</span>
-							</button>
-							<button
-								onClick={() => setViewMode("kanban")}
-								aria-pressed={viewMode === "kanban"}
-								aria-label="Kanban view"
-								className={cn(
-									"inline-flex items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 ring-1 shadow-sm hover:shadow-md backdrop-blur-sm",
-									viewMode === "kanban"
-										? "text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-										: "text-gray-600 hover:text-gray-700 bg-transparent hover:bg-gray-50 ring-transparent hover:ring-gray-200 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 dark:hover:ring-gray-700"
-								)}
-							>
-								<LayoutGrid className="w-4 h-4" />
-								<span className="hidden sm:inline">Kanban</span>
-							</button>
-						</ButtonGroup>
 					</div>
-				</CardHeader>
-				<CardContent className="relative z-10 px-0">
-					{isEmpty ? (
+				</FrameHeader>
+
+				<FramePanel className="p-0">
+					{!isLoading && !isEmpty && (
+						<div className="border-b px-4 py-3">
+							<StyledFilters
+								filters={filters}
+								fields={filterFields}
+								onChange={setFilters}
+								addButtonText="Filter"
+								addButtonIcon={<FilterIcon className="h-4 w-4" />}
+								size="md"
+								variant="outline"
+								showClearButton={true}
+								clearButtonText="Clear"
+								clearButtonIcon={<X className="h-4 w-4" />}
+							/>
+						</div>
+					)}
+
+					{isLoading ? (
+						<div className="p-4">
+							<div className="space-y-4">
+								{[...Array(5)].map((_, i) => (
+									<div key={i} className="flex items-center space-x-4 p-4">
+										<div className="flex-1 space-y-2">
+											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+										</div>
+										<div className="h-4 bg-muted rounded animate-pulse w-16" />
+										<div className="h-4 bg-muted rounded animate-pulse w-20" />
+										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+									</div>
+								))}
+							</div>
+						</div>
+					) : isEmpty ? (
 						<div className="px-6 py-12 text-center">
-							<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
+							<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
 								<Receipt className="h-12 w-12 text-muted-foreground" />
 							</div>
 							<h3 className="text-lg font-semibold text-foreground mb-2">
@@ -601,12 +743,63 @@ export default function InvoicesPage() {
 								started tracking payments and revenue.
 							</p>
 						</div>
-					) : viewMode === "kanban" ? (
-						<div className="px-2 py-6 h-[calc(100vh-28rem)]">
+					) : viewMode === "table" ? (
+						<div className="overflow-x-auto">
+							<StyledTable>
+								<StyledTableHeader>
+									{table.getHeaderGroups().map((headerGroup) => (
+										<StyledTableRow key={headerGroup.id}>
+											{headerGroup.headers.map((header) => (
+												<StyledTableHead key={header.id}>
+													{header.isPlaceholder
+														? null
+														: flexRender(
+																header.column.columnDef.header,
+																header.getContext()
+															)}
+												</StyledTableHead>
+											))}
+										</StyledTableRow>
+									))}
+								</StyledTableHeader>
+								<StyledTableBody>
+									{table.getRowModel().rows?.length ? (
+										table.getRowModel().rows.map((row) => (
+											<StyledTableRow
+												key={row.id}
+												className="cursor-pointer"
+												onClick={() => openPreview(row.original._id)}
+											>
+												{row.getVisibleCells().map((cell) => (
+													<StyledTableCell key={cell.id}>
+														{flexRender(
+															cell.column.columnDef.cell,
+															cell.getContext()
+														)}
+													</StyledTableCell>
+												))}
+											</StyledTableRow>
+										))
+									) : (
+										<StyledTableRow>
+											<StyledTableCell
+												colSpan={columns.length}
+												className="h-24 text-center"
+											>
+												No invoices match your filters.
+											</StyledTableCell>
+										</StyledTableRow>
+									)}
+								</StyledTableBody>
+							</StyledTable>
+						</div>
+					) : (
+						<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
 							<KanbanProvider
 								columns={kanbanColumns}
 								data={kanbanData}
 								onDataChange={handleKanbanDataChange}
+								onDragEnd={handleKanbanDragEnd}
 							>
 								{(column) => {
 									const columnItems = kanbanData.filter(
@@ -619,14 +812,22 @@ export default function InvoicesPage() {
 											id={column.id}
 											className="bg-card/60 flex flex-col"
 										>
-											<KanbanHeader className="flex items-center justify-between border-b bg-muted/30 shrink-0">
-												<div>
-													<p className="font-semibold text-sm text-foreground">
-														{column.name}
-													</p>
-													<p className="text-xs text-muted-foreground">
-														{column.description}
-													</p>
+											<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+												<div className="flex min-w-0 items-center gap-2">
+													<span
+														className={cn(
+															"size-2.5 shrink-0 rounded-full",
+															statusDot[column.id]
+														)}
+													/>
+													<div className="min-w-0">
+														<p className="text-foreground truncate text-sm font-semibold">
+															{column.name}
+														</p>
+														<p className="text-muted-foreground truncate text-xs">
+															{column.description}
+														</p>
+													</div>
 												</div>
 												<StyledBadge variant="outline">
 													{columnItems.length}
@@ -640,77 +841,60 @@ export default function InvoicesPage() {
 														name={item.name}
 														column={item.column}
 													>
-														<div className="space-y-3">
-															<div className="flex items-center justify-between gap-2">
-																<p className="text-sm font-semibold text-foreground">
+														<div
+															role="button"
+															tabIndex={0}
+															onClick={() => openPreview(item.id)}
+															onKeyDown={(e) => {
+																if (e.currentTarget !== e.target) return;
+																if (e.key === "Enter" || e.key === " ") {
+																	e.preventDefault();
+																	openPreview(item.id);
+																}
+															}}
+															className="flex cursor-pointer flex-col gap-2 outline-none"
+														>
+															<div className="flex items-start justify-between gap-2">
+																<p className="text-foreground line-clamp-2 text-sm font-medium">
 																	{item.invoiceNumber}
 																</p>
 																<StyledBadge
-																	variant={statusVariant(
-																		item.status,
-																		item.dueDate
-																	)}
+																	variant={statusVariant(item.status)}
+																	className="shrink-0"
 																>
-																	{formatStatus(item.status, item.dueDate)}
+																	{formatStatus(item.status)}
 																</StyledBadge>
 															</div>
-															<div className="text-xs text-muted-foreground">
-																{item.name}
-															</div>
-															<div className="flex items-center justify-between text-xs">
-																<span className="text-muted-foreground">
-																	Client: {item.clientName}
+															<p className="text-muted-foreground truncate text-xs">
+																{item.clientName}
+															</p>
+															<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
+																<span>{formatInvoiceDate(item.issuedDate)}</span>
+																<span aria-hidden>·</span>
+																<span
+																	className={cn(
+																		item.dueDate < Date.now() &&
+																			item.status !== "paid" &&
+																			"text-destructive font-medium"
+																	)}
+																>
+																	Due {formatInvoiceDate(item.dueDate)}
 																</span>
 															</div>
-															<div className="flex flex-col gap-1 text-xs border-t border-border/50 pt-2">
-																<div className="flex items-center justify-between">
-																	<span className="text-muted-foreground">
-																		Issued:
-																	</span>
-																	<span className="text-foreground">
-																		{new Date(
-																			item.issuedDate
-																		).toLocaleDateString()}
-																	</span>
-																</div>
-																<div className="flex items-center justify-between">
-																	<span className="text-muted-foreground">
-																		Due:
-																	</span>
-																	<span
-																		className={cn(
-																			"text-foreground",
-																			item.dueDate < Date.now() &&
-																				item.status !== "paid" &&
-																				"text-red-600 font-medium"
-																		)}
-																	>
-																		{new Date(
-																			item.dueDate
-																		).toLocaleDateString()}
-																	</span>
-																</div>
-															</div>
-															<div className="flex items-center justify-between text-xs border-t border-border/50 pt-2">
-																<span className="font-semibold text-foreground text-base">
+															<div className="flex items-center justify-between pt-1">
+																<span className="text-foreground text-sm font-semibold tabular-nums">
 																	{formatCurrency(item.total)}
 																</span>
-															</div>
-															<div className="pt-2 border-t border-border/50">
-																<StyledButton
-																	intent="outline"
-																	size="sm"
-																	icon={
-																		<ExternalLink className="h-3.5 w-3.5" />
-																	}
-																	label="View Invoice"
-																	showArrow={false}
+																<button
+																	type="button"
 																	onClick={(e) => {
-																		e?.stopPropagation();
+																		e.stopPropagation();
 																		router.push(`/invoices/${item.id}`);
 																	}}
-																	className="w-full justify-center"
-																/>
+																	className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																>
+																	Open <ExternalLink className="size-3" />
+																</button>
 															</div>
 														</div>
 													</KanbanCard>
@@ -721,102 +905,50 @@ export default function InvoicesPage() {
 								}}
 							</KanbanProvider>
 						</div>
-					) : (
-						<div className="px-6">
-							<div className="overflow-hidden rounded-lg border">
-								<Table>
-									<TableHeader className="bg-muted sticky top-0 z-10">
-										{table.getHeaderGroups().map((headerGroup) => (
-											<TableRow key={headerGroup.id}>
-												{headerGroup.headers.map((header) => (
-													<TableHead key={header.id}>
-														{header.isPlaceholder
-															? null
-															: flexRender(
-																	header.column.columnDef.header,
-																	header.getContext()
-																)}
-													</TableHead>
-												))}
-											</TableRow>
-										))}
-									</TableHeader>
-									<TableBody>
-										{isLoading ? (
-											Array.from({ length: 5 }).map((_, i) => (
-												<TableRow key={i}>
-													{Array.from({
-														length: createColumns(router, handleDelete).length,
-													}).map((_, j) => (
-														<TableCell key={j}>
-															<div className="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-														</TableCell>
-													))}
-												</TableRow>
-											))
-										) : table.getRowModel().rows?.length ? (
-											table.getRowModel().rows.map((row) => (
-												<TableRow
-													key={row.id}
-													data-state={row.getIsSelected() && "selected"}
-												>
-													{row.getVisibleCells().map((cell) => (
-														<TableCell key={cell.id}>
-															{flexRender(
-																cell.column.columnDef.cell,
-																cell.getContext()
-															)}
-														</TableCell>
-													))}
-												</TableRow>
-											))
-										) : (
-											<TableRow>
-												<TableCell
-													colSpan={createColumns(router, handleDelete).length}
-													className="h-24 text-center"
-												>
-													No invoices match your search.
-												</TableCell>
-											</TableRow>
-										)}
-									</TableBody>
-								</Table>
-							</div>
-							<div className="flex items-center justify-between py-4">
-								<div className="text-muted-foreground text-sm">
-									{table.getFilteredRowModel().rows.length} of {data.length}{" "}
-									invoices
-								</div>
-								<div className="flex items-center gap-2">
-									<Button
-										intent="outline"
-										size="sq-sm"
-										onPress={() => table.previousPage()}
-										isDisabled={!table.getCanPreviousPage()}
-										aria-label="Previous page"
-									>
-										<ChevronLeft className="size-4" />
-									</Button>
-									<div className="text-sm font-medium">
-										Page {table.getState().pagination?.pageIndex + 1} of{" "}
-										{table.getPageCount()}
-									</div>
-									<Button
-										intent="outline"
-										size="sq-sm"
-										onPress={() => table.nextPage()}
-										isDisabled={!table.getCanNextPage()}
-										aria-label="Next page"
-									>
-										<ChevronRight className="size-4" />
-									</Button>
-								</div>
-							</div>
-						</div>
 					)}
-				</CardContent>
-			</Card>
+				</FramePanel>
+
+				{!isLoading && !isEmpty && (
+					<FrameFooter className="flex-row items-center justify-between">
+						<div className="text-muted-foreground text-sm">
+							{searchedData.length} of {data.length} invoices
+						</div>
+						{viewMode === "table" ? (
+							<div className="flex items-center gap-2">
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.previousPage()}
+									isDisabled={!table.getCanPreviousPage()}
+									aria-label="Previous page"
+								>
+									<ChevronLeft className="size-4" />
+								</Button>
+								<div className="text-sm font-medium">
+									Page {table.getState().pagination?.pageIndex + 1} of{" "}
+									{Math.max(table.getPageCount(), 1)}
+								</div>
+								<Button
+									intent="outline"
+									size="sq-sm"
+									onPress={() => table.nextPage()}
+									isDisabled={!table.getCanNextPage()}
+									aria-label="Next page"
+								>
+									<ChevronRight className="size-4" />
+								</Button>
+							</div>
+						) : null}
+					</FrameFooter>
+				)}
+			</Frame>
+
+			{/* Detail preview drawer */}
+			<InvoiceDetailDrawer
+				invoiceId={previewId}
+				open={previewOpen}
+				onOpenChange={setPreviewOpen}
+			/>
 
 			{/* Delete Confirmation Modal */}
 			{invoiceToDelete && (

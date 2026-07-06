@@ -32,7 +32,7 @@ import tunnel from "tunnel-rat";
 import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { GripVertical } from "lucide-react";
+import { GripHorizontal } from "lucide-react";
 
 const t = tunnel();
 
@@ -122,25 +122,22 @@ export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
 			<div style={style} ref={setNodeRef}>
 				<Card
 					className={cn(
-						"rounded-md shadow-sm overflow-hidden p-0",
+						"group/card relative overflow-hidden rounded-lg border p-0 shadow-sm transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-md",
 						isDragging && "pointer-events-none cursor-grabbing opacity-30",
 						className
 					)}
 				>
-					{/* Drag handle - positioned at the top with clear visual indicator */}
+					{/* Slim, always-visible grip so drag stays reachable on touch */}
 					<div
 						{...listeners}
 						{...attributes}
-						className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/30 cursor-grab active:cursor-grabbing hover:bg-muted/50 transition-colors group"
-						aria-label="Drag to reorder"
+						className="bg-muted/20 hover:bg-muted/40 border-border/50 flex cursor-grab items-center justify-center border-b py-1 transition-colors active:cursor-grabbing"
+						aria-label="Drag to move"
 					>
-						<GripVertical className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-						<span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors font-medium">
-							Drag to move
-						</span>
+						<GripHorizontal className="text-muted-foreground/50 size-4" />
 					</div>
 					<div className="p-3">
-						{children ?? <p className="m-0 font-medium text-sm">{name}</p>}
+						{children ?? <p className="m-0 text-sm font-medium">{name}</p>}
 					</div>
 				</Card>
 			</div>
@@ -148,22 +145,19 @@ export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
 				<t.In>
 					<Card
 						className={cn(
-							"rounded-md shadow-sm ring-2 ring-primary overflow-hidden p-0",
+							"group/card ring-primary relative overflow-hidden rounded-lg border p-0 shadow-lg ring-2",
 							isDragging && "cursor-grabbing",
 							className
 						)}
 					>
 						<div
-							className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/30 cursor-grab active:cursor-grabbing hover:bg-muted/50 transition-colors group"
-							aria-label="Drag to reorder"
+							className="bg-muted/20 border-border/50 flex items-center justify-center border-b py-1"
+							aria-label="Drag to move"
 						>
-							<GripVertical className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-							<span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors font-medium">
-								Drag to move
-							</span>
+							<GripHorizontal className="text-muted-foreground/50 size-4" />
 						</div>
 						<div className="p-3">
-							{children ?? <p className="m-0 font-medium text-sm">{name}</p>}
+							{children ?? <p className="m-0 text-sm font-medium">{name}</p>}
 						</div>
 					</Card>
 				</t.In>
