@@ -251,6 +251,32 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
 	}, [messageCount, isResponding]);
 
+	// The assistant runs multi-step (reason → call tools → answer) and
+	// streamResponse stays open for the whole run, so isResponding is true
+	// start-to-finish. Show a generic "Thinking…" line whenever it's working but
+	// nothing else already signals activity — i.e. not while a tool chip shows
+	// its own spinner and not while answer text is streaming in. Without this,
+	// the indicator vanished the instant the first assistant part arrived and the
+	// UI looked idle through the (often long) tool-calling phase.
+	const results = messages.results ?? [];
+	const lastMessage = results[results.length - 1];
+	const runningToolPart =
+		lastMessage?.role === "assistant"
+			? (lastMessage.parts as unknown as AssistantToolPart[]).find(
+					(p) =>
+						p.type.startsWith("tool-") &&
+						p.state !== "output-available" &&
+						p.state !== "output-error"
+				)
+			: undefined;
+	const isStreamingText =
+		lastMessage?.role === "assistant" &&
+		lastMessage.status === "streaming" &&
+		lastMessage.parts.some(
+			(p) => p.type === "text" && (p as { text: string }).text.length > 0
+		);
+	const showThinking = isResponding && !runningToolPart && !isStreamingText;
+
 	useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -462,14 +488,12 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 									{messages.results.map((message) => (
 										<MessageItem key={message.key} message={message} />
 									))}
-									{isResponding &&
-										messages.results[messages.results.length - 1]?.role ===
-											"user" && (
-											<div className="flex items-center gap-2 text-sm text-muted-foreground">
-												<Loader2 className="size-3.5 animate-spin" />
-												Thinking…
-											</div>
-										)}
+									{showThinking && (
+										<div className="flex items-center gap-2 text-sm text-muted-foreground">
+											<Loader2 className="size-3.5 animate-spin" />
+											Thinking…
+										</div>
+									)}
 									<div ref={bottomRef} />
 								</div>
 							)}

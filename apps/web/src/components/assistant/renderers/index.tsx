@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, type ComponentType, type ReactNode } from "react";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { EmailsRenderer } from "./emails-renderer";
 import { NavigateRenderer } from "./navigate-renderer";
 import { ReportRenderer } from "./report-renderer";
@@ -33,38 +33,57 @@ const TOOL_RENDERERS: Record<string, ComponentType<ToolRendererProps>> = {
 	navigate: NavigateRenderer,
 };
 
-export const TOOL_LABELS: Record<string, string> = {
-	getSchedule: "Checked the schedule",
-	getTasks: "Looked up tasks",
-	getBusinessStats: "Pulled business stats",
-	runReport: "Ran a report",
-	listClients: "Looked up clients",
-	getClient: "Fetched client details",
-	listProjects: "Looked up projects",
-	getProject: "Fetched project details",
-	listQuotes: "Looked up quotes",
-	getQuote: "Fetched quote details",
-	listInvoices: "Looked up invoices",
-	getInvoice: "Fetched invoice details",
-	searchClientEmails: "Searched emails",
-	getEmailThread: "Read an email thread",
-	getDocuments: "Looked up documents",
-	getActivity: "Checked recent activity",
-	navigate: "Opened a page",
+// One entry per tool holds both label forms so the two can never drift:
+// `active` shows while the tool is executing (state input-streaming /
+// input-available), `done` once it has finished.
+export const TOOL_LABELS: Record<string, { done: string; active: string }> = {
+	getSchedule: { done: "Checked the schedule", active: "Checking the schedule…" },
+	getTasks: { done: "Looked up tasks", active: "Looking up tasks…" },
+	getBusinessStats: {
+		done: "Pulled business stats",
+		active: "Pulling business stats…",
+	},
+	runReport: { done: "Ran a report", active: "Running a report…" },
+	listClients: { done: "Looked up clients", active: "Looking up clients…" },
+	getClient: { done: "Fetched client details", active: "Fetching client details…" },
+	listProjects: { done: "Looked up projects", active: "Looking up projects…" },
+	getProject: {
+		done: "Fetched project details",
+		active: "Fetching project details…",
+	},
+	listQuotes: { done: "Looked up quotes", active: "Looking up quotes…" },
+	getQuote: { done: "Fetched quote details", active: "Fetching quote details…" },
+	listInvoices: { done: "Looked up invoices", active: "Looking up invoices…" },
+	getInvoice: { done: "Fetched invoice details", active: "Fetching invoice details…" },
+	searchClientEmails: { done: "Searched emails", active: "Searching emails…" },
+	getEmailThread: {
+		done: "Read an email thread",
+		active: "Reading an email thread…",
+	},
+	getDocuments: { done: "Looked up documents", active: "Looking up documents…" },
+	getActivity: { done: "Checked recent activity", active: "Checking recent activity…" },
+	navigate: { done: "Opened a page", active: "Opening a page…" },
 };
 
 function ToolChip({ name, state }: { name: string; state?: string }) {
 	const failed = state === "output-error";
+	// Anything that isn't a terminal state is still executing.
+	const running = state !== "output-available" && state !== "output-error";
+	const label = TOOL_LABELS[name];
 	return (
 		<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
 			{failed ? (
 				<AlertCircle className="size-3" />
+			) : running ? (
+				<Loader2 className="size-3 animate-spin" />
 			) : (
 				<Sparkles className="size-3" />
 			)}
 			{failed
-				? `Hit a snag: ${(TOOL_LABELS[name] ?? name).toLowerCase()}`
-				: (TOOL_LABELS[name] ?? `Used ${name}`)}
+				? `Hit a snag: ${(label?.done ?? name).toLowerCase()}`
+				: running
+					? (label?.active ?? `Working on ${name}…`)
+					: (label?.done ?? `Used ${name}`)}
 		</div>
 	);
 }
