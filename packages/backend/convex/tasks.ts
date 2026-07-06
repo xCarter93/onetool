@@ -634,15 +634,37 @@ export const complete = userMutation({
 			throw new Error("Task is already completed");
 		}
 
+		const oldStatus = task.status;
+
 		await ctx.db.patch(args.id, {
 			status: "completed",
 			completedAt: Date.now(),
 		});
 
-		// Log activity
+		// Log activity and emit events (mirror tasks.update so completion via
+		// the quick-complete checkbox also triggers automations)
 		const updatedTask = await ctx.db.get(args.id);
 		if (updatedTask) {
 			await ActivityHelpers.taskCompleted(ctx, updatedTask as TaskDocument);
+
+			await emitStatusChangeEvent(
+				ctx,
+				updatedTask.orgId,
+				"task",
+				updatedTask._id,
+				oldStatus,
+				"completed",
+				"tasks.complete"
+			);
+
+			await emitRecordUpdatedEvent(
+				ctx,
+				updatedTask.orgId,
+				"task",
+				updatedTask._id,
+				["status", "completedAt"],
+				"tasks.complete"
+			);
 		}
 
 		return args.id;
