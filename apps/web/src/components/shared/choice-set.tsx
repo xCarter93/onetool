@@ -13,15 +13,21 @@ type SelectServiceProps = {
 	options: Option[];
 	selected: string;
 	onChange: (value: string) => void;
+	disabled?: boolean;
 };
 
 const SelectService: React.FC<SelectServiceProps> = ({
 	options,
 	selected,
 	onChange,
+	disabled = false,
 }) => {
 	return (
-		<div className="flex flex-wrap justify-center gap-6 max-w-lg mx-auto select-none p-2">
+		<div
+			className={`flex flex-wrap justify-center gap-6 max-w-lg mx-auto select-none p-2 ${
+				disabled ? "opacity-60" : ""
+			}`}
+		>
 			{options.map((option) => {
 				const IconComponent = option.icon;
 				const isChecked = selected === option.value;
@@ -29,7 +35,9 @@ const SelectService: React.FC<SelectServiceProps> = ({
 				return (
 					<label
 						key={option.value}
-						className="relative cursor-pointer w-28 sm:w-32"
+						className={`relative w-28 sm:w-32 ${
+							disabled ? "cursor-not-allowed" : "cursor-pointer"
+						}`}
 					>
 						<input
 							type="radio"
@@ -37,6 +45,7 @@ const SelectService: React.FC<SelectServiceProps> = ({
 							name="vehicle"
 							value={option.value}
 							checked={isChecked}
+							disabled={disabled}
 							onChange={() => onChange(option.value)}
 						/>
 
