@@ -13,6 +13,8 @@ describe("schema introspection", () => {
 		for (const t of tables) {
 			expect(t.fieldCount).toBeGreaterThan(0);
 			expect(t.description).toBeTruthy();
+			// Summary count must match the detail's field count (incl. system fields).
+			expect(t.fieldCount).toBe(Object.keys(describeTable(t.table)!.fields).length);
 		}
 	});
 

@@ -189,9 +189,11 @@ function describeFields(
 }
 
 // schema.tables[table].validator is the documented introspection entry point;
-// it is a VObject for object tables and excludes system fields.
-function tableValidator(table: DescribableTable): RawValidator {
-	return schema.tables[table].validator as unknown as RawValidator;
+// it is a VObject for object tables and excludes system fields. The optional
+// chain guards the (type-impossible) case of an allowlist entry with no schema
+// table, so the tool degrades to null instead of throwing inside the agent.
+function tableValidator(table: DescribableTable): RawValidator | undefined {
+	return schema.tables[table]?.validator as unknown as RawValidator | undefined;
 }
 
 export function isDescribableTable(table: string): table is DescribableTable {
@@ -200,16 +202,21 @@ export function isDescribableTable(table: string): table is DescribableTable {
 
 export function listDescribableTables(): TableSummary[] {
 	return DESCRIBABLE_TABLES.map((table) => {
-		const root = tableValidator(table);
-		const fieldCount =
-			root.kind === "object" && root.fields ? Object.keys(root.fields).length : 0;
-		return { table, description: TABLE_DESCRIPTIONS[table], fieldCount };
+		// Count from describeTable so the summary can never disagree with the
+		// detail — which also includes the injected _id/_creationTime fields.
+		const described = describeTable(table);
+		return {
+			table,
+			description: TABLE_DESCRIPTIONS[table],
+			fieldCount: described ? Object.keys(described.fields).length : 0,
+		};
 	});
 }
 
 export function describeTable(table: string): TableSchema | null {
 	if (!isDescribableTable(table)) return null;
 	const root = tableValidator(table);
+	if (!root) return null;
 	// The validator omits system fields, so add them explicitly.
 	const fields: Record<string, SchemaFieldInfo> = {
 		_id: { type: "id", optional: false, of: table },
