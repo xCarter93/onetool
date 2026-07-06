@@ -37,6 +37,9 @@ import {
 	DrawerField,
 	DrawerFieldGrid,
 	DrawerSection,
+	DrawerSkeleton,
+	formatActivityTime,
+	formatCurrency,
 } from "@/components/shared/detail-drawer";
 
 type QuoteStatus = Doc<"quotes">["status"];
@@ -74,23 +77,6 @@ function formatDate(ts: number | null | undefined): string {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
-	});
-}
-
-function formatCurrency(n: number): string {
-	return new Intl.NumberFormat(undefined, {
-		style: "currency",
-		currency: "USD",
-		maximumFractionDigits: 0,
-	}).format(n);
-}
-
-function formatActivityTime(ts: number): string {
-	return new Date(ts).toLocaleString(undefined, {
-		month: "short",
-		day: "numeric",
-		hour: "numeric",
-		minute: "2-digit",
 	});
 }
 
@@ -457,18 +443,5 @@ function StatusControl({
 				<p className="text-warning text-xs">Unsaved status change</p>
 			) : null}
 		</>
-	);
-}
-
-function DrawerSkeleton() {
-	return (
-		<div className="flex flex-col gap-5 p-5">
-			{[0, 1, 2, 3].map((i) => (
-				<div key={i} className="flex flex-col gap-2">
-					<div className="bg-muted h-3 w-24 animate-pulse rounded" />
-					<div className="bg-muted h-8 w-full animate-pulse rounded" />
-				</div>
-			))}
-		</div>
 	);
 }

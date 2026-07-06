@@ -162,3 +162,69 @@ export function DrawerField({
 		</>
 	);
 }
+
+export function formatCurrency(n: number): string {
+	return new Intl.NumberFormat(undefined, {
+		style: "currency",
+		currency: "USD",
+		maximumFractionDigits: 0,
+	}).format(n);
+}
+
+export function formatActivityTime(ts: number): string {
+	return new Date(ts).toLocaleString(undefined, {
+		month: "short",
+		day: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	});
+}
+
+export function DrawerSkeleton() {
+	return (
+		<div className="flex flex-col gap-5 p-5">
+			{[0, 1, 2, 3].map((i) => (
+				<div key={i} className="flex flex-col gap-2">
+					<div className="bg-muted h-3 w-24 animate-pulse rounded" />
+					<div className="bg-muted h-8 w-full animate-pulse rounded" />
+				</div>
+			))}
+		</div>
+	);
+}
+
+export function RelatedRow({
+	icon,
+	label,
+	count,
+	value,
+	valueLabel,
+}: {
+	icon: React.ReactNode;
+	label: string;
+	count: number;
+	value: string;
+	valueLabel?: string;
+}) {
+	return (
+		<div className="flex items-center justify-between gap-3">
+			<div className="flex items-center gap-2.5">
+				<span className="bg-muted text-muted-foreground flex size-8 items-center justify-center rounded-md">
+					{icon}
+				</span>
+				<div className="flex flex-col">
+					<span className="text-foreground text-sm font-medium">{label}</span>
+					<span className="text-muted-foreground text-xs">{count} total</span>
+				</div>
+			</div>
+			<div className="flex flex-col items-end">
+				<span className="text-foreground text-sm font-medium tabular-nums">
+					{value}
+				</span>
+				{valueLabel ? (
+					<span className="text-muted-foreground text-xs">{valueLabel}</span>
+				) : null}
+			</div>
+		</div>
+	);
+}

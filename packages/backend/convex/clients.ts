@@ -66,7 +66,7 @@ async function listClientsForOrg(
 
 	const clients = await ctx.db
 		.query("clients")
-		.filter((q) => q.eq(q.field("orgId"), orgId))
+		.withIndex("by_org", (q) => q.eq("orgId", orgId))
 		.collect();
 
 	// Filter out archived clients unless explicitly requested
@@ -329,17 +329,20 @@ export const getPreview = optionalUserQuery({
 			.query("quotes")
 			.withIndex("by_client", (q: any) => q.eq("clientId", args.id))
 			.collect();
-		let quotesTotal = 0;
-		for (const quote of quotes) {
-			const { total } = await calculateQuoteTotals(ctx, quote._id, {
-				discountEnabled: quote.discountEnabled,
-				discountAmount: quote.discountAmount,
-				discountType: quote.discountType,
-				taxEnabled: quote.taxEnabled,
-				taxRate: quote.taxRate,
-			});
-			quotesTotal += total;
-		}
+		// Recompute quote totals concurrently; a serial await loop would issue
+		// one DB round-trip per quote (each reads its line items).
+		const quoteTotals = await Promise.all(
+			quotes.map((quote) =>
+				calculateQuoteTotals(ctx, quote._id, {
+					discountEnabled: quote.discountEnabled,
+					discountAmount: quote.discountAmount,
+					discountType: quote.discountType,
+					taxEnabled: quote.taxEnabled,
+					taxRate: quote.taxRate,
+				})
+			)
+		);
+		const quotesTotal = quoteTotals.reduce((sum, { total }) => sum + total, 0);
 
 		// Related invoices: recompute each total inline (subtotal Σ line-item
 		// total, minus discount, plus tax); outstanding excludes paid/cancelled.
@@ -347,22 +350,29 @@ export const getPreview = optionalUserQuery({
 			.query("invoices")
 			.withIndex("by_client", (q: any) => q.eq("clientId", args.id))
 			.collect();
+		// Fetch invoice line items concurrently to avoid a serial DB waterfall
+		// (one round-trip per invoice).
+		const invoiceTotals = await Promise.all(
+			invoices.map(async (invoice) => {
+				const lineItems = await ctx.db
+					.query("invoiceLineItems")
+					.withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
+					.collect();
+				const subtotal = lineItems.reduce(
+					(sum: number, li: Doc<"invoiceLineItems">) => sum + li.total,
+					0
+				);
+				let total = subtotal;
+				if (invoice.discountAmount) total -= invoice.discountAmount;
+				if (invoice.taxAmount) total += invoice.taxAmount;
+				return { total, status: invoice.status };
+			})
+		);
 		let invoicesTotal = 0;
 		let invoicesOutstanding = 0;
-		for (const invoice of invoices) {
-			const lineItems = await ctx.db
-				.query("invoiceLineItems")
-				.withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
-				.collect();
-			const subtotal = lineItems.reduce(
-				(sum: number, li: Doc<"invoiceLineItems">) => sum + li.total,
-				0
-			);
-			let total = subtotal;
-			if (invoice.discountAmount) total -= invoice.discountAmount;
-			if (invoice.taxAmount) total += invoice.taxAmount;
+		for (const { total, status } of invoiceTotals) {
 			invoicesTotal += total;
-			if (invoice.status !== "paid" && invoice.status !== "cancelled") {
+			if (status !== "paid" && status !== "cancelled") {
 				invoicesOutstanding += total;
 			}
 		}

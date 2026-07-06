@@ -359,39 +359,49 @@ export const getPreview = optionalUserQuery({
 			.collect();
 
 		// Quote totals: recompute from line items (stored quote.total can be stale)
-		let quotesTotal = 0;
-		for (const quote of quotes) {
-			const { total } = await calculateQuoteTotals(ctx, quote._id, {
-				discountEnabled: quote.discountEnabled,
-				discountAmount: quote.discountAmount,
-				discountType: quote.discountType,
-				taxEnabled: quote.taxEnabled,
-				taxRate: quote.taxRate,
-			});
-			quotesTotal += total;
-		}
+		// Recompute totals concurrently; each call reads its quote's line items,
+		// so a sequential loop would serialize one DB round-trip per quote.
+		const quoteTotals = await Promise.all(
+			quotes.map((quote) =>
+				calculateQuoteTotals(ctx, quote._id, {
+					discountEnabled: quote.discountEnabled,
+					discountAmount: quote.discountAmount,
+					discountType: quote.discountType,
+					taxEnabled: quote.taxEnabled,
+					taxRate: quote.taxRate,
+				})
+			)
+		);
+		const quotesTotal = quoteTotals.reduce((sum, { total }) => sum + total, 0);
 
 		// Invoice totals: recompute subtotal from line items, apply stored
 		// discount/tax amounts (mirrors invoices.list / getWithPayments).
+		// Fetch each invoice's line items concurrently to avoid a serial DB
+		// waterfall (one round-trip per invoice).
+		const invoiceTotals = await Promise.all(
+			invoices.map(async (invoice) => {
+				const lineItems = await ctx.db
+					.query("invoiceLineItems")
+					.withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
+					.collect();
+				const subtotal = lineItems.reduce(
+					(sum: number, li: Doc<"invoiceLineItems">) => sum + li.total,
+					0
+				);
+				let total = subtotal;
+				if (invoice.discountAmount) total -= invoice.discountAmount;
+				if (invoice.taxAmount) total += invoice.taxAmount;
+				return { total, status: invoice.status };
+			})
+		);
 		let invoicesTotal = 0;
 		let invoicesOutstanding = 0;
 		let invoicesPaid = 0;
-		for (const invoice of invoices) {
-			const lineItems = await ctx.db
-				.query("invoiceLineItems")
-				.withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
-				.collect();
-			const subtotal = lineItems.reduce(
-				(sum: number, li: Doc<"invoiceLineItems">) => sum + li.total,
-				0
-			);
-			let total = subtotal;
-			if (invoice.discountAmount) total -= invoice.discountAmount;
-			if (invoice.taxAmount) total += invoice.taxAmount;
+		for (const { total, status } of invoiceTotals) {
 			invoicesTotal += total;
-			if (invoice.status === "paid") {
+			if (status === "paid") {
 				invoicesPaid++;
-			} else if (invoice.status !== "cancelled") {
+			} else if (status !== "cancelled") {
 				invoicesOutstanding += total;
 			}
 		}

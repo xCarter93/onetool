@@ -186,6 +186,7 @@ function SidebarBrandHeader() {
 						alt="OneTool"
 						width={296}
 						height={296}
+						sizes="32px"
 						className="size-8 dark:invert dark:brightness-0"
 						priority
 					/>
@@ -200,6 +201,7 @@ function SidebarBrandHeader() {
 						alt="OneTool"
 						width={908}
 						height={237}
+						sizes="128px"
 						className="dark:invert dark:brightness-0 h-8 w-auto"
 						priority
 					/>
