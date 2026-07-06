@@ -248,6 +248,34 @@ describe("interpolateTemplate", () => {
 			"no tokens here"
 		);
 	});
+
+	it("renders workflow.now as a readable date/time, not a raw timestamp", () => {
+		// 1_700_000_000_000 = 2023-11-14T22:13:20Z
+		const out = interpolateTemplate("Completed at {{workflow.now}}", {
+			workflow: { now: 1_700_000_000_000, tz: "UTC" },
+		});
+		expect(out).not.toContain("1700000000000");
+		expect(out).toContain("Nov");
+		expect(out).toContain("2023");
+	});
+
+	it("formats date globals in the run timezone", () => {
+		const utc = interpolateTemplate("{{workflow.now}}", {
+			workflow: { now: 1_700_000_000_000, tz: "UTC" },
+		});
+		const la = interpolateTemplate("{{workflow.now}}", {
+			workflow: { now: 1_700_000_000_000, tz: "America/Los_Angeles" },
+		});
+		expect(utc).not.toBe(la);
+	});
+
+	it("does not date-format non-date numeric fields (e.g. large amounts)", () => {
+		expect(
+			interpolateTemplate("Total: {{trigger.record.total}}", {
+				trigger: { record: { total: 1_700_000_000_000 } },
+			})
+		).toBe("Total: 1700000000000");
+	});
 });
 
 describe("evaluateRule", () => {

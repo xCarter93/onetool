@@ -220,17 +220,46 @@ function applyFormulaReturnType(
 }
 
 /**
+ * Built-in global paths whose resolved value is an epoch-ms timestamp and
+ * should render as a readable date/time (not the raw number) in templates.
+ */
+const DATE_GLOBAL_PATHS = new Set(["workflow.now"]);
+
+/** Format an epoch-ms timestamp as a readable date/time in the given IANA tz. */
+function formatTimestampForDisplay(ms: number, tz: string): string {
+	try {
+		return new Intl.DateTimeFormat("en-US", {
+			timeZone: tz,
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+			hour: "numeric",
+			minute: "2-digit",
+		}).format(new Date(ms));
+	} catch {
+		// Invalid tz or ms — fall back to a stable ISO string rather than throw.
+		return new Date(ms).toISOString();
+	}
+}
+
+/**
  * Replace `{{path}}` tokens with values resolved from the scope.
- * Missing values (undefined/null) render as an empty string; other
- * non-string values are String()-ified.
+ * Missing values (undefined/null) render as an empty string. Date values and
+ * epoch-ms date globals (e.g. `workflow.now`) render as a readable date/time in
+ * the run's timezone; other non-string values are String()-ified.
  */
 export function interpolateTemplate(
 	template: string,
 	scope: VariableScope
 ): string {
+	const tz = scope.workflow?.tz ?? "UTC";
 	return template.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_match, path: string) => {
 		const value = resolvePath(path, scope);
 		if (value === undefined || value === null) return "";
+		if (value instanceof Date) return formatTimestampForDisplay(value.getTime(), tz);
+		if (typeof value === "number" && DATE_GLOBAL_PATHS.has(path)) {
+			return formatTimestampForDisplay(value, tz);
+		}
 		return typeof value === "string" ? value : String(value);
 	});
 }

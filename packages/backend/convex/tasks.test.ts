@@ -1,11 +1,10 @@
-import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
 
 describe("Tasks", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -1110,6 +1109,80 @@ describe("Tasks", () => {
 			const task = await asUser.query(api.tasks.get, { id: taskId });
 			expect(task?.status).toBe("completed");
 			expect(task?.completedAt).toBeDefined();
+		});
+
+		it("emits status_changed and record_updated events so checkbox completion triggers automations", async () => {
+			const { orgId, taskId } = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "test@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_123",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_123",
+					name: "Test Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+
+				const taskId = await ctx.db.insert("tasks", {
+					orgId,
+					clientId,
+					title: "Task to Complete",
+					date: Date.now(),
+					status: "pending",
+					type: "external",
+				});
+
+				return { orgId, taskId };
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_123",
+				activeOrgId: "org_123",
+			});
+
+			await asUser.mutation(api.tasks.complete, { id: taskId });
+
+			const events = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("domainEvents")
+					.withIndex("by_org_status", (q) =>
+						q.eq("orgId", orgId).eq("status", "pending")
+					)
+					.collect();
+			});
+
+			const statusChanged = events.filter(
+				(e) => e.eventType === "entity.status_changed"
+			);
+			expect(statusChanged).toHaveLength(1);
+			expect(statusChanged[0].eventSource).toBe("tasks.complete");
+			expect(statusChanged[0].payload.entityType).toBe("task");
+			expect(statusChanged[0].payload.entityId).toBe(taskId);
+			expect(statusChanged[0].payload.newValue).toBe("completed");
+
+			const recordUpdated = events.filter(
+				(e) => e.eventType === "entity.record_updated"
+			);
+			expect(recordUpdated).toHaveLength(1);
+			expect(recordUpdated[0].eventSource).toBe("tasks.complete");
+			expect(recordUpdated[0].payload.metadata).toEqual({
+				changedFields: ["status", "completedAt"],
+			});
 		});
 
 		it("should throw error when completing already completed task", async () => {
