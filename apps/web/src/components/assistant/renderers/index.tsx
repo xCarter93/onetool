@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, type ComponentType, type ReactNode } from "react";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { EmailsRenderer } from "./emails-renderer";
 import { NavigateRenderer } from "./navigate-renderer";
 import { ReportRenderer } from "./report-renderer";
@@ -53,18 +53,46 @@ export const TOOL_LABELS: Record<string, string> = {
 	navigate: "Opened a page",
 };
 
+// Present-tense labels shown while a tool is still executing (state is
+// input-streaming / input-available). Falls back to a generic label below.
+const TOOL_LABELS_ACTIVE: Record<string, string> = {
+	getSchedule: "Checking the schedule…",
+	getTasks: "Looking up tasks…",
+	getBusinessStats: "Pulling business stats…",
+	runReport: "Running a report…",
+	listClients: "Looking up clients…",
+	getClient: "Fetching client details…",
+	listProjects: "Looking up projects…",
+	getProject: "Fetching project details…",
+	listQuotes: "Looking up quotes…",
+	getQuote: "Fetching quote details…",
+	listInvoices: "Looking up invoices…",
+	getInvoice: "Fetching invoice details…",
+	searchClientEmails: "Searching emails…",
+	getEmailThread: "Reading an email thread…",
+	getDocuments: "Looking up documents…",
+	getActivity: "Checking recent activity…",
+	navigate: "Opening a page…",
+};
+
 function ToolChip({ name, state }: { name: string; state?: string }) {
 	const failed = state === "output-error";
+	// Anything that isn't a terminal state is still executing.
+	const running = state !== "output-available" && state !== "output-error";
 	return (
 		<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
 			{failed ? (
 				<AlertCircle className="size-3" />
+			) : running ? (
+				<Loader2 className="size-3 animate-spin" />
 			) : (
 				<Sparkles className="size-3" />
 			)}
 			{failed
 				? `Hit a snag: ${(TOOL_LABELS[name] ?? name).toLowerCase()}`
-				: (TOOL_LABELS[name] ?? `Used ${name}`)}
+				: running
+					? (TOOL_LABELS_ACTIVE[name] ?? `Working on ${name}…`)
+					: (TOOL_LABELS[name] ?? `Used ${name}`)}
 		</div>
 	);
 }
