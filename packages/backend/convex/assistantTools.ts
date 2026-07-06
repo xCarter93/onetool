@@ -3,6 +3,13 @@ import { z } from "zod";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { HomeStats } from "./homeStats";
+import {
+	DESCRIBABLE_TABLES,
+	describeTable,
+	listDescribableTables,
+	type TableSchema,
+	type TableSummary,
+} from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
 
 /**
@@ -1340,11 +1347,43 @@ export const navigate = createTool({
 	},
 });
 
+export const describeSchema = createTool({
+	description:
+		"Look up the fields, types, and valid enum values for a business-data table (clients, projects, tasks, quotes, invoices, payments, etc.). Call with no arguments to list the describable tables; call with a table name to get that table's fields. Use it to learn exact field names and allowed status/enum values before interpreting or filtering record data. Derived live from the schema, so it is always current. Returns only the data model — never any organization's actual records.",
+	inputSchema: z.object({
+		table: z
+			.enum([...DESCRIBABLE_TABLES] as [string, ...string[]])
+			.optional()
+			.describe("The table to describe. Omit to list all describable tables."),
+	}),
+	execute: async (
+		_ctx,
+		input
+	): Promise<
+		| { tables: TableSummary[] }
+		| TableSchema
+		| { error: string; availableTables: string[] }
+	> => {
+		if (!input.table) {
+			return { tables: listDescribableTables() };
+		}
+		const described = describeTable(input.table);
+		if (!described) {
+			return {
+				error: `Unknown table "${input.table}".`,
+				availableTables: [...DESCRIBABLE_TABLES],
+			};
+		}
+		return described;
+	},
+});
+
 export const assistantTools = {
 	getSchedule,
 	getTasks,
 	getBusinessStats,
 	runReport,
+	describeSchema,
 	listClients,
 	getClient,
 	listProjects,
