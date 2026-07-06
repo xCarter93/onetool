@@ -10,6 +10,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
+import { calculateQuoteTotals } from "./lib/quoteTotals";
 import {
 	filterUndefined,
 	requireUpdates,
@@ -213,6 +214,218 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+	},
+});
+
+// Self-contained payload for the list-page detail drawer: the client with its
+// primary contact + primary address (one-line composed strings), related
+// project/quote/invoice rollups with ACCURATE totals (recomputed from line
+// items), and the client's activity from the last 7 days.
+interface ClientPreview {
+	client: {
+		_id: Id<"clients">;
+		companyName: string;
+		status: ClientDocument["status"];
+		leadSource: string | null;
+		communicationPreference: string | null;
+		tags: string[];
+		createdAt: number;
+	};
+	primaryContact: {
+		name: string;
+		email: string | null;
+		phone: string | null;
+		jobTitle: string | null;
+	} | null;
+	address: string | null;
+	related: {
+		projects: { count: number; active: number };
+		quotes: { count: number; total: number };
+		invoices: { count: number; total: number; outstanding: number };
+	};
+	activities: Array<{
+		_id: Id<"activities">;
+		description: string;
+		activityType: string;
+		timestamp: number;
+		userName: string;
+	}>;
+}
+
+/**
+ * Get a compact, self-contained preview of a client for the detail drawer.
+ * Resolves the primary contact + primary address, rolls up related
+ * projects/quotes/invoices with ACCURATE totals recomputed from line items
+ * (stored totals can be stale), and returns the last 7 days of activity.
+ */
+export const getPreview = optionalUserQuery({
+	args: { id: v.id("clients") },
+	handler: async (ctx, args: any): Promise<ClientPreview | null> => {
+		const orgId = ctx.orgId;
+		if (!orgId) return null;
+
+		let client: ClientDocument;
+		try {
+			client = await ctx.orgEntity("clients", args.id);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in clients:")
+			) {
+				return null;
+			}
+			throw error;
+		}
+
+		// Primary contact (from clientContacts, not the client doc)
+		const primaryContactDoc = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q: any) =>
+				q.eq("clientId", args.id).eq("isPrimary", true)
+			)
+			.first();
+		const primaryContact: ClientPreview["primaryContact"] = primaryContactDoc
+			? {
+					name: `${primaryContactDoc.firstName} ${primaryContactDoc.lastName}`.trim(),
+					email: primaryContactDoc.email ?? null,
+					phone: primaryContactDoc.phone ?? null,
+					jobTitle: primaryContactDoc.jobTitle ?? null,
+				}
+			: null;
+
+		// Primary address (one-line composed string)
+		let address: string | null = null;
+		const primaryProperty = await ctx.db
+			.query("clientProperties")
+			.withIndex("by_primary", (q: any) =>
+				q.eq("clientId", args.id).eq("isPrimary", true)
+			)
+			.first();
+		if (primaryProperty) {
+			address =
+				[
+					primaryProperty.streetAddress,
+					primaryProperty.city,
+					[primaryProperty.state, primaryProperty.zipCode]
+						.filter(Boolean)
+						.join(" "),
+				]
+					.filter(Boolean)
+					.join(", ") || null;
+		}
+
+		// Related projects (active = planned | in-progress)
+		const projects = await ctx.db
+			.query("projects")
+			.withIndex("by_client", (q: any) => q.eq("clientId", args.id))
+			.collect();
+		const activeProjects = projects.filter(
+			(p: Doc<"projects">) =>
+				p.status === "planned" || p.status === "in-progress"
+		).length;
+
+		// Related quotes: recompute each total from current line items
+		const quotes = await ctx.db
+			.query("quotes")
+			.withIndex("by_client", (q: any) => q.eq("clientId", args.id))
+			.collect();
+		let quotesTotal = 0;
+		for (const quote of quotes) {
+			const { total } = await calculateQuoteTotals(ctx, quote._id, {
+				discountEnabled: quote.discountEnabled,
+				discountAmount: quote.discountAmount,
+				discountType: quote.discountType,
+				taxEnabled: quote.taxEnabled,
+				taxRate: quote.taxRate,
+			});
+			quotesTotal += total;
+		}
+
+		// Related invoices: recompute each total inline (subtotal Σ line-item
+		// total, minus discount, plus tax); outstanding excludes paid/cancelled.
+		const invoices = await ctx.db
+			.query("invoices")
+			.withIndex("by_client", (q: any) => q.eq("clientId", args.id))
+			.collect();
+		let invoicesTotal = 0;
+		let invoicesOutstanding = 0;
+		for (const invoice of invoices) {
+			const lineItems = await ctx.db
+				.query("invoiceLineItems")
+				.withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
+				.collect();
+			const subtotal = lineItems.reduce(
+				(sum: number, li: Doc<"invoiceLineItems">) => sum + li.total,
+				0
+			);
+			let total = subtotal;
+			if (invoice.discountAmount) total -= invoice.discountAmount;
+			if (invoice.taxAmount) total += invoice.taxAmount;
+			invoicesTotal += total;
+			if (invoice.status !== "paid" && invoice.status !== "cancelled") {
+				invoicesOutstanding += total;
+			}
+		}
+
+		// Recent activity for this client (last 7 days). Activities are keyed
+		// generically by entityType/entityId, so query by_entity then filter.
+		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const activityRows = await ctx.db
+			.query("activities")
+			.withIndex("by_entity", (q: any) =>
+				q.eq("entityType", "client").eq("entityId", args.id as string)
+			)
+			.filter((q: any) =>
+				q.and(
+					q.eq(q.field("orgId"), orgId),
+					q.eq(q.field("isVisible"), true),
+					q.gte(q.field("timestamp"), cutoff)
+				)
+			)
+			.order("desc")
+			.take(20);
+
+		const userNameCache = new Map<string, string>();
+		const activities: ClientPreview["activities"] = [];
+		for (const activity of activityRows) {
+			let userName = userNameCache.get(activity.userId);
+			if (userName === undefined) {
+				const actor = await ctx.db.get(activity.userId);
+				userName = actor ? actor.name || actor.email : "Someone";
+				userNameCache.set(activity.userId, userName);
+			}
+			activities.push({
+				_id: activity._id,
+				description: activity.description,
+				activityType: activity.activityType,
+				timestamp: activity.timestamp,
+				userName,
+			});
+		}
+
+		return {
+			client: {
+				_id: client._id,
+				companyName: client.companyName,
+				status: client.status,
+				leadSource: client.leadSource ?? null,
+				communicationPreference: client.communicationPreference ?? null,
+				tags: client.tags ?? [],
+				createdAt: client._creationTime,
+			},
+			primaryContact,
+			address,
+			related: {
+				projects: { count: projects.length, active: activeProjects },
+				quotes: { count: quotes.length, total: quotesTotal },
+				invoices: {
+					count: invoices.length,
+					total: invoicesTotal,
+					outstanding: invoicesOutstanding,
+				},
+			},
+			activities,
+		};
 	},
 });
 
