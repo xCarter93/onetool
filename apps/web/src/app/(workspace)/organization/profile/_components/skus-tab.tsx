@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Building2, Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+	Building2,
+	Check,
+	Pencil,
+	Plus,
+	RotateCcw,
+	Trash2,
+	X,
+} from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,7 +65,7 @@ export function SKUsTab() {
 	const skus = useQuery(api.skus.listAll);
 	const createSKU = useMutation(api.skus.create);
 	const updateSKU = useMutation(api.skus.update);
-	const removeSKU = useMutation(api.skus.remove);
+	const permanentlyDeleteSKU = useMutation(api.skus.permanentlyDelete);
 
 	const resetForm = () => {
 		setSKUForm({
@@ -155,7 +163,7 @@ export function SKUsTab() {
 		const confirmed = await confirmDialog({
 			title: "Delete SKU",
 			message:
-				"Are you sure you want to delete this SKU? It will be marked as inactive and won't appear in new quotes.",
+				"Permanently delete this SKU from your library? This can't be undone. Quotes that already use it are unaffected.",
 			confirmLabel: "Delete SKU",
 			cancelLabel: "Cancel",
 			variant: "destructive",
@@ -164,8 +172,8 @@ export function SKUsTab() {
 		if (!confirmed) return;
 
 		try {
-			await removeSKU({ id });
-			toast.success("SKU deleted", "The SKU has been removed");
+			await permanentlyDeleteSKU({ id });
+			toast.success("SKU deleted", "The SKU has been permanently removed");
 		} catch (error) {
 			logError(error, {
 				action: "delete_sku",
@@ -173,6 +181,20 @@ export function SKUsTab() {
 			});
 			const userMessage = getUserFriendlyErrorMessage(error);
 			toast.error("Delete failed", userMessage);
+		}
+	};
+
+	const handleReactivate = async (id: Id<"skus">) => {
+		try {
+			await updateSKU({ id, isActive: true });
+			toast.success("SKU reactivated", "It will appear in new quotes again");
+		} catch (error) {
+			logError(error, {
+				action: "reactivate_sku",
+				metadata: { skuId: id },
+			});
+			const userMessage = getUserFriendlyErrorMessage(error);
+			toast.error("Reactivate failed", userMessage);
 		}
 	};
 
@@ -192,6 +214,107 @@ export function SKUsTab() {
 
 	const activeCount = skus?.filter((s: SKUDoc) => s.isActive).length ?? 0;
 	const hasSKUs = Boolean(skus && skus.length > 0);
+
+	// The inline editor row, reused in-place for edits and appended at the bottom
+	// for a new SKU so new rows land where users expect them.
+	const renderEditingRow = (rowKey: string) => (
+		<tr
+			key={rowKey}
+			className="border-t border-l-4 border-border border-l-primary bg-primary/5"
+		>
+			<td className="px-4 py-3">
+				<Input
+					value={skuForm.name}
+					onChange={(e) =>
+						setSKUForm((prev) => ({
+							...prev,
+							name: e.target.value,
+						}))
+					}
+					placeholder="Enter SKU name..."
+					className="w-full"
+					autoFocus
+				/>
+			</td>
+			<td className="px-4 py-3">
+				<Input
+					value={skuForm.unit}
+					onChange={(e) =>
+						setSKUForm((prev) => ({
+							...prev,
+							unit: e.target.value,
+						}))
+					}
+					placeholder="hour, day, item"
+					className="w-full"
+				/>
+			</td>
+			<td className="px-4 py-3">
+				<Input
+					type="number"
+					value={skuForm.rate}
+					onChange={(e) =>
+						setSKUForm((prev) => ({
+							...prev,
+							rate: e.target.value,
+						}))
+					}
+					placeholder="0.00"
+					min="0"
+					step="0.01"
+					className="w-full text-right"
+				/>
+			</td>
+			<td className="px-4 py-3">
+				<Input
+					type="number"
+					value={skuForm.cost}
+					onChange={(e) =>
+						setSKUForm((prev) => ({
+							...prev,
+							cost: e.target.value,
+						}))
+					}
+					placeholder="0.00"
+					min="0"
+					step="0.01"
+					className="w-full text-right"
+				/>
+			</td>
+			<td className="px-4 py-3 text-center">
+				<span className="text-sm text-muted-foreground">-</span>
+			</td>
+			<td className="px-4 py-3 text-center">
+				<Badge variant="primary-light" radius="full" size="sm">
+					{editingSKU ? "Editing" : "New"}
+				</Badge>
+			</td>
+			<td className="px-4 py-3">
+				<div className="flex justify-end gap-1">
+					<Button
+						intent="outline"
+						size="sq-sm"
+						onPress={handleSave}
+						isDisabled={isSaving}
+						aria-label={isSaving ? "Saving..." : "Save SKU"}
+						className="border-emerald-500/25 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500/40 hover:bg-emerald-500/15 dark:text-emerald-400"
+					>
+						<Check className="h-3 w-3" />
+					</Button>
+					<Button
+						intent="outline"
+						size="sq-sm"
+						onPress={closeForm}
+						isDisabled={isSaving}
+						aria-label="Cancel"
+						className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+					>
+						<X className="h-3 w-3" />
+					</Button>
+				</div>
+			</td>
+		</tr>
+	);
 
 	return (
 		<div className="space-y-6">
@@ -261,108 +384,11 @@ export function SKUsTab() {
 									</tr>
 								</thead>
 								<tbody>
-									{/* Editing Row */}
-									{isEditing && (
-										<tr className="border-t border-l-4 border-border border-l-primary bg-primary/5">
-											<td className="px-4 py-3">
-												<Input
-													value={skuForm.name}
-													onChange={(e) =>
-														setSKUForm((prev) => ({
-															...prev,
-															name: e.target.value,
-														}))
-													}
-													placeholder="Enter SKU name..."
-													className="w-full"
-													autoFocus
-												/>
-											</td>
-											<td className="px-4 py-3">
-												<Input
-													value={skuForm.unit}
-													onChange={(e) =>
-														setSKUForm((prev) => ({
-															...prev,
-															unit: e.target.value,
-														}))
-													}
-													placeholder="hour, day, item"
-													className="w-full"
-												/>
-											</td>
-											<td className="px-4 py-3">
-												<Input
-													type="number"
-													value={skuForm.rate}
-													onChange={(e) =>
-														setSKUForm((prev) => ({
-															...prev,
-															rate: e.target.value,
-														}))
-													}
-													placeholder="0.00"
-													min="0"
-													step="0.01"
-													className="w-full text-right"
-												/>
-											</td>
-											<td className="px-4 py-3">
-												<Input
-													type="number"
-													value={skuForm.cost}
-													onChange={(e) =>
-														setSKUForm((prev) => ({
-															...prev,
-															cost: e.target.value,
-														}))
-													}
-													placeholder="0.00"
-													min="0"
-													step="0.01"
-													className="w-full text-right"
-												/>
-											</td>
-											<td className="px-4 py-3 text-center">
-												<span className="text-sm text-muted-foreground">-</span>
-											</td>
-											<td className="px-4 py-3 text-center">
-												<Badge variant="primary-light" radius="full" size="sm">
-													{editingSKU ? "Editing" : "New"}
-												</Badge>
-											</td>
-											<td className="px-4 py-3">
-												<div className="flex justify-end gap-1">
-													<Button
-														intent="outline"
-														size="sq-sm"
-														onPress={handleSave}
-														isDisabled={isSaving}
-														aria-label={isSaving ? "Saving..." : "Save SKU"}
-														className="border-emerald-500/25 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500/40 hover:bg-emerald-500/15 dark:text-emerald-400"
-													>
-														<Check className="h-3 w-3" />
-													</Button>
-													<Button
-														intent="outline"
-														size="sq-sm"
-														onPress={closeForm}
-														isDisabled={isSaving}
-														aria-label="Cancel"
-														className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-													>
-														<X className="h-3 w-3" />
-													</Button>
-												</div>
-											</td>
-										</tr>
-									)}
-	
-									{/* Existing SKUs — skip the row being edited; it
-									    already shows as the edit row above. */}
-									{skus
-										.filter((sku: SKUDoc) => sku._id !== editingSKU)
-										.map((sku: SKUDoc) => {
+									{skus.map((sku: SKUDoc) => {
+										// Edit in place: the editor replaces this row while editing it.
+										if (isEditing && editingSKU === sku._id) {
+											return renderEditingRow(sku._id);
+										}
 										const margin = calculateMargin(sku.rate, sku.cost);
 										return (
 											<tr
@@ -426,6 +452,17 @@ export function SKUsTab() {
 												</td>
 												<td className="px-4 py-3">
 													<div className="flex justify-end gap-1">
+														{!sku.isActive && (
+															<Button
+																intent="outline"
+																size="sq-sm"
+																onPress={() => handleReactivate(sku._id)}
+																aria-label="Reactivate SKU"
+																className="hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+															>
+																<RotateCcw className="h-3 w-3" />
+															</Button>
+														)}
 														<Button
 															intent="outline"
 															size="sq-sm"
@@ -435,22 +472,25 @@ export function SKUsTab() {
 														>
 															<Pencil className="h-3 w-3" />
 														</Button>
-														{sku.isActive && (
-															<Button
-																intent="outline"
-																size="sq-sm"
-																onPress={() => handleDelete(sku._id)}
-																aria-label="Delete SKU"
-																className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-															>
-																<Trash2 className="h-3 w-3" />
-															</Button>
-														)}
+														<Button
+															intent="outline"
+															size="sq-sm"
+															onPress={() => handleDelete(sku._id)}
+															aria-label="Delete SKU"
+															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+														>
+															<Trash2 className="h-3 w-3" />
+														</Button>
 													</div>
 												</td>
 											</tr>
 										);
 									})}
+
+									{/* New SKU: append the editor at the bottom of the table. */}
+									{isEditing &&
+										editingSKU === null &&
+										renderEditingRow("__new__")}
 								</tbody>
 							</table>
 						</div>
