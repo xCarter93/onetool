@@ -6,23 +6,22 @@ import { FileText, Upload, Trash2, Download, Eye, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-	Item,
-	ItemMedia,
-	ItemContent,
-	ItemTitle,
-	ItemDescription,
-	ItemActions,
-} from "@/components/ui/item";
+import { DotField } from "@/components/ui/dot-field";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { SettingsSection } from "./settings-section";
+import {
+	Frame,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
+import { SectionHeading } from "./settings-card";
 
-const eyebrowClass =
-	"text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
+const DROPZONE_TEXTURE =
+	"text-primary opacity-90 [mask-image:radial-gradient(150%_150%_at_50%_0%,black,transparent_88%)] [-webkit-mask-image:radial-gradient(150%_150%_at_50%_0%,black,transparent_88%)]";
 
 function formatFileSize(bytes?: number) {
 	if (!bytes) return "";
@@ -167,94 +166,100 @@ export function DocumentsTab() {
 	};
 
 	return (
-		<SettingsSection
-			title="Documents"
-			description="Upload custom documents that can be appended to quotes and invoices."
-			texture
-		>
-			<div className="flex flex-col gap-6">
-				{/* Upload dropzone */}
+		<div className="space-y-6">
+			<SectionHeading
+				title="Documents"
+				description="Upload custom documents that can be appended to quotes and invoices."
+			/>
+
+			{/* Upload dropzone */}
+			<div
+				onClick={handleClick}
+				onKeyDown={handleKeyDown}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={handleDrop}
+				tabIndex={isUploading ? -1 : 0}
+				role="button"
+				aria-disabled={isUploading}
+				className={cn(
+					"relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl border-[1.5px] border-dashed px-5 py-11 text-center transition-all duration-200 ease-in-out",
+					"cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+					isDragging
+						? "border-primary bg-primary/5"
+						: "border-input bg-card hover:border-primary/50 hover:bg-muted/40",
+					isUploading && "cursor-not-allowed opacity-60",
+				)}
+			>
+				<DotField className={DROPZONE_TEXTURE} />
+				<input
+					ref={fileInputRef}
+					type="file"
+					accept="application/pdf"
+					onChange={handleUpload}
+					disabled={isUploading}
+					className="hidden"
+				/>
+
 				<div
-					onClick={handleClick}
-					onKeyDown={handleKeyDown}
-					onDragOver={handleDragOver}
-					onDragLeave={handleDragLeave}
-					onDrop={handleDrop}
-					tabIndex={isUploading ? -1 : 0}
-					role="button"
-					aria-disabled={isUploading}
 					className={cn(
-						"relative flex items-center gap-4 rounded-xl border-2 border-dashed px-6 py-4 transition-all duration-200 ease-in-out",
-						"cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+						"relative flex size-12 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200",
 						isDragging
-							? "border-primary bg-primary/5"
-							: "border-border bg-muted/30 hover:border-primary/50 hover:bg-muted/50",
-						isUploading && "cursor-not-allowed opacity-50",
+							? "border-primary/30 bg-primary/15 text-primary"
+							: "border-border bg-muted text-muted-foreground",
 					)}
 				>
-					<input
-						ref={fileInputRef}
-						type="file"
-						accept="application/pdf"
-						onChange={handleUpload}
-						disabled={isUploading}
-						className="hidden"
-					/>
-
-					<div
-						className={cn(
-							"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors duration-200",
-							isDragging
-								? "bg-primary/15 text-primary"
-								: "bg-muted text-muted-foreground",
-						)}
-					>
-						{isUploading ? (
-							<Loader2 className="h-5 w-5 animate-spin" />
-						) : (
-							<Upload className="h-5 w-5" />
-						)}
-					</div>
-
-					<div className="min-w-0 flex-1">
-						{isUploading ? (
-							<span className="font-medium text-foreground">
-								Uploading document…
-							</span>
-						) : (
-							<>
-								<p className="font-medium text-foreground">
-									<span className="text-primary">Click to upload</span> or
-									drag and drop
-								</p>
-								<p className="text-sm text-muted-foreground">
-									PDF files only (max 10MB)
-								</p>
-							</>
-						)}
-					</div>
+					{isUploading ? (
+						<Loader2 className="size-[22px] animate-spin" />
+					) : (
+						<Upload className="size-[22px]" />
+					)}
 				</div>
 
-				{/* Documents list */}
-				{documents === undefined ? (
-					<div className="flex flex-col gap-2">
-						<div className="h-14 animate-pulse rounded-lg bg-muted/50" />
-						<div className="h-14 animate-pulse rounded-lg bg-muted/50" />
-					</div>
-				) : documents.length === 0 ? (
-					<div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 py-10 text-center">
-						<FileText className="h-8 w-8 text-muted-foreground/60" />
-						<p className="text-sm font-medium text-foreground">
-							No documents uploaded yet
-						</p>
-						<p className="text-xs text-muted-foreground">
-							Upload your first document to get started.
-						</p>
-					</div>
-				) : (
-					<div className="flex flex-col gap-3">
-						<h3 className={eyebrowClass}>Uploaded ({documents.length})</h3>
-						<div className="flex flex-col gap-2">
+				<div className="relative min-w-0">
+					{isUploading ? (
+						<span className="font-medium text-foreground">
+							Uploading document…
+						</span>
+					) : (
+						<>
+							<p className="text-[15px] text-muted-foreground">
+								<span className="font-semibold text-primary">
+									Click to upload
+								</span>{" "}
+								or drag and drop
+							</p>
+							<p className="mt-1 text-xs text-muted-foreground">
+								PDF files only (max 10MB)
+							</p>
+						</>
+					)}
+				</div>
+			</div>
+
+			{/* Documents list */}
+			{documents === undefined ? (
+				<div className="flex flex-col gap-2">
+					<div className="h-16 animate-pulse rounded-xl bg-muted/50" />
+					<div className="h-16 animate-pulse rounded-xl bg-muted/50" />
+				</div>
+			) : documents.length === 0 ? (
+				<div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 py-12 text-center">
+					<FileText className="size-8 text-muted-foreground/60" />
+					<p className="text-sm font-medium text-foreground">
+						No documents uploaded yet
+					</p>
+					<p className="text-xs text-muted-foreground">
+						Upload your first document to get started.
+					</p>
+				</div>
+			) : (
+				<Frame>
+					<FrameHeader>
+						<FrameTitle>Uploaded ({documents.length})</FrameTitle>
+					</FrameHeader>
+					<FramePanel className="p-0">
+						<div className="divide-y divide-border">
 							{documents.map((doc) => (
 								<DocumentRow
 									key={doc._id}
@@ -263,10 +268,10 @@ export function DocumentsTab() {
 								/>
 							))}
 						</div>
-					</div>
-				)}
-			</div>
-		</SettingsSection>
+					</FramePanel>
+				</Frame>
+			)}
+		</div>
 	);
 }
 
@@ -294,15 +299,19 @@ function DocumentRow({ document, onDelete }: DocumentRowProps) {
 		.join(" · ");
 
 	return (
-		<Item variant="muted" size="sm" className="rounded-lg">
-			<ItemMedia variant="icon">
-				<FileText className="h-4 w-4" />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>{document.name}</ItemTitle>
-				{meta && <ItemDescription>{meta}</ItemDescription>}
-			</ItemContent>
-			<ItemActions>
+		<div className="flex items-center gap-3.5 px-4 py-3.5">
+			<span className="flex size-[38px] shrink-0 items-center justify-center rounded-[9px] border border-destructive/20 bg-destructive/10 text-destructive/80">
+				<FileText className="size-[18px]" />
+			</span>
+			<div className="min-w-0 flex-1">
+				<p className="truncate text-sm font-semibold text-foreground">
+					{document.name}
+				</p>
+				{meta && (
+					<p className="mt-0.5 text-xs text-muted-foreground">{meta}</p>
+				)}
+			</div>
+			<div className="flex shrink-0 gap-2">
 				{documentUrl && (
 					<>
 						<a href={documentUrl} target="_blank" rel="noopener noreferrer">
@@ -330,7 +339,7 @@ function DocumentRow({ document, onDelete }: DocumentRowProps) {
 				>
 					<Trash2 className="h-4 w-4" />
 				</Button>
-			</ItemActions>
-		</Item>
+			</div>
+		</div>
 	);
 }

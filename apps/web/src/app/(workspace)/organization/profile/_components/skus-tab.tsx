@@ -2,17 +2,26 @@
 
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Building2, Check, Edit, Plus, Trash2, X } from "lucide-react";
+import { Building2, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/reui/badge";
+import {
+	Frame,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { SettingsSection } from "./settings-section";
+import { SectionHeading } from "./settings-card";
 
 // SKU Type - will be generated after Convex schema update
 type SKUDoc = {
@@ -29,7 +38,7 @@ type SKUDoc = {
 };
 
 const headCellClass =
-	"px-4 py-3 text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
+	"px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
 
 // SKUs Tab Component
 export function SKUsTab() {
@@ -185,28 +194,12 @@ export function SKUsTab() {
 	const hasSKUs = Boolean(skus && skus.length > 0);
 
 	return (
-		<SettingsSection
-			title="SKUs"
-			description="Create reusable SKUs with predefined rates and costs to quickly add line items to quotes."
-			texture
-			headerAside={
-				!isEditing && hasSKUs ? (
-					<Button intent="outline" size="sm" onPress={handleCreate}>
-						<Plus className="h-4 w-4" />
-						Add SKU
-					</Button>
-				) : undefined
-			}
-			panelClassName="p-0"
-			footer={
-				hasSKUs && !isEditing ? (
-					<p className="text-sm text-muted-foreground">
-						{activeCount} active SKU{activeCount !== 1 ? "s" : ""} ·{" "}
-						{skus!.length} total
-					</p>
-				) : undefined
-			}
-		>
+		<div className="space-y-6">
+			<SectionHeading
+				title="SKUs"
+				description="Create reusable SKUs with predefined rates and costs to quickly add line items to quotes."
+			/>
+
 			{skus === undefined ? (
 				<div className="py-16 text-center">
 					<div className="mx-auto animate-pulse space-y-4">
@@ -215,7 +208,7 @@ export function SKUsTab() {
 					</div>
 				</div>
 			) : skus.length === 0 && !isEditing ? (
-				<div className="px-6 py-16 text-center">
+				<div className="rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
 					<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
 						<Building2 className="h-8 w-8 text-muted-foreground" />
 					</div>
@@ -226,202 +219,253 @@ export function SKUsTab() {
 						Create your first SKU to streamline your quote creation process
 						with reusable line items.
 					</p>
-					<Button intent="primary" size="lg" onPress={handleCreate}>
-						<Plus className="h-5 w-5" />
+					<StyledButton
+						intent="primary"
+						size="lg"
+						showArrow={false}
+						onClick={handleCreate}
+						icon={<Plus className="h-5 w-5" />}
+					>
 						Create Your First SKU
-					</Button>
+					</StyledButton>
 				</div>
 			) : (
-				<div className="overflow-x-auto">
-					<table className="w-full">
-						<thead className="border-b border-border bg-muted/40">
-							<tr>
-								<th className={`${headCellClass} text-left`}>Name</th>
-								<th className={`${headCellClass} text-left`}>Unit</th>
-								<th className={`${headCellClass} text-right`}>Rate</th>
-								<th className={`${headCellClass} text-right`}>Cost</th>
-								<th className={`${headCellClass} text-center`}>Margin</th>
-								<th className={`${headCellClass} text-center`}>Status</th>
-								<th className={`${headCellClass} text-right`}>Actions</th>
-							</tr>
-						</thead>
-						<tbody className="divide-y divide-border">
-							{/* Editing Row */}
-							{isEditing && (
-								<tr className="border-l-4 border-l-primary bg-primary/5 dark:bg-primary/10">
-									<td className="px-4 py-3">
-										<Input
-											value={skuForm.name}
-											onChange={(e) =>
-												setSKUForm((prev) => ({
-													...prev,
-													name: e.target.value,
-												}))
-											}
-											placeholder="Enter SKU name..."
-											className="w-full"
-											autoFocus
-										/>
-									</td>
-									<td className="px-4 py-3">
-										<Input
-											value={skuForm.unit}
-											onChange={(e) =>
-												setSKUForm((prev) => ({
-													...prev,
-													unit: e.target.value,
-												}))
-											}
-											placeholder="hour, day, item"
-											className="w-full"
-										/>
-									</td>
-									<td className="px-4 py-3">
-										<Input
-											type="number"
-											value={skuForm.rate}
-											onChange={(e) =>
-												setSKUForm((prev) => ({
-													...prev,
-													rate: e.target.value,
-												}))
-											}
-											placeholder="0.00"
-											min="0"
-											step="0.01"
-											className="w-full text-right"
-										/>
-									</td>
-									<td className="px-4 py-3">
-										<Input
-											type="number"
-											value={skuForm.cost}
-											onChange={(e) =>
-												setSKUForm((prev) => ({
-													...prev,
-													cost: e.target.value,
-												}))
-											}
-											placeholder="0.00"
-											min="0"
-											step="0.01"
-											className="w-full text-right"
-										/>
-									</td>
-									<td className="px-4 py-3 text-center">
-										<span className="text-xs text-muted-foreground">-</span>
-									</td>
-									<td className="px-4 py-3 text-center">
-										<Badge variant="primary-light" radius="full" size="sm">
-											{editingSKU ? "Editing" : "New"}
-										</Badge>
-									</td>
-									<td className="px-4 py-3">
-										<div className="flex justify-end gap-1">
-											<Button
-												intent="outline"
-												size="sq-sm"
-												onPress={handleSave}
-												isDisabled={isSaving}
-												aria-label={isSaving ? "Saving..." : "Save SKU"}
-												className="border-success/25 bg-success/10 text-success hover:border-success/40 hover:bg-success/15"
-											>
-												<Check className="h-3 w-3" />
-											</Button>
-											<Button
-												intent="outline"
-												size="sq-sm"
-												onPress={closeForm}
-												isDisabled={isSaving}
-												aria-label="Cancel"
-												className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-											>
-												<X className="h-3 w-3" />
-											</Button>
-										</div>
-									</td>
-								</tr>
-							)}
+				<Frame variant="default" className="w-full">
+					<FrameHeader className="flex-row items-center justify-between gap-3">
+						<FrameTitle>Line items</FrameTitle>
+						{!isEditing && hasSKUs && (
+							<StyledButton
+								intent="primary"
+								size="sm"
+								showArrow={false}
+								onClick={handleCreate}
+								icon={<Plus className="h-4 w-4" />}
+							>
+								Add SKU
+							</StyledButton>
+						)}
+					</FrameHeader>
 
-							{/* Existing SKUs */}
-							{skus.map((sku: SKUDoc) => {
-								const margin = calculateMargin(sku.rate, sku.cost);
-								return (
-									<tr
-										key={sku._id}
-										className={`transition-colors hover:bg-muted/30 ${
-											!sku.isActive ? "opacity-50" : ""
-										}`}
-									>
-										<td className="px-4 py-3 text-sm font-medium text-foreground">
-											{sku.name}
-										</td>
-										<td className="px-4 py-3 text-sm text-muted-foreground">
-											{sku.unit}
-										</td>
-										<td className="px-4 py-3 text-right text-sm font-medium text-foreground">
-											{formatCurrency(sku.rate)}
-										</td>
-										<td className="px-4 py-3 text-right text-sm text-muted-foreground">
-											{sku.cost !== undefined
-												? formatCurrency(sku.cost)
-												: "-"}
-										</td>
-										<td className="px-4 py-3 text-center">
-											{margin !== null ? (
-												<Badge
-													variant={
-														margin >= 0 ? "success-light" : "destructive-light"
+					<FramePanel className="p-0">
+						<div className="overflow-x-auto">
+							<table className="w-full">
+								<thead className="bg-muted">
+									<tr>
+										<th className={`${headCellClass} text-left`}>Name</th>
+										<th className={`${headCellClass} text-left`}>Unit</th>
+										<th className={`${headCellClass} text-right`}>Rate</th>
+										<th className={`${headCellClass} text-right`}>Cost</th>
+										<th className={`${headCellClass} text-center`}>Margin</th>
+										<th className={`${headCellClass} text-center`}>Status</th>
+										<th className={`${headCellClass} text-right`}>Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{/* Editing Row */}
+									{isEditing && (
+										<tr className="border-t border-l-4 border-border border-l-primary bg-primary/5">
+											<td className="px-4 py-3">
+												<Input
+													value={skuForm.name}
+													onChange={(e) =>
+														setSKUForm((prev) => ({
+															...prev,
+															name: e.target.value,
+														}))
 													}
-													radius="full"
-													size="sm"
-												>
-													{margin.toFixed(1)}%
-												</Badge>
-											) : (
+													placeholder="Enter SKU name..."
+													className="w-full"
+													autoFocus
+												/>
+											</td>
+											<td className="px-4 py-3">
+												<Input
+													value={skuForm.unit}
+													onChange={(e) =>
+														setSKUForm((prev) => ({
+															...prev,
+															unit: e.target.value,
+														}))
+													}
+													placeholder="hour, day, item"
+													className="w-full"
+												/>
+											</td>
+											<td className="px-4 py-3">
+												<Input
+													type="number"
+													value={skuForm.rate}
+													onChange={(e) =>
+														setSKUForm((prev) => ({
+															...prev,
+															rate: e.target.value,
+														}))
+													}
+													placeholder="0.00"
+													min="0"
+													step="0.01"
+													className="w-full text-right"
+												/>
+											</td>
+											<td className="px-4 py-3">
+												<Input
+													type="number"
+													value={skuForm.cost}
+													onChange={(e) =>
+														setSKUForm((prev) => ({
+															...prev,
+															cost: e.target.value,
+														}))
+													}
+													placeholder="0.00"
+													min="0"
+													step="0.01"
+													className="w-full text-right"
+												/>
+											</td>
+											<td className="px-4 py-3 text-center">
 												<span className="text-sm text-muted-foreground">-</span>
-											)}
-										</td>
-										<td className="px-4 py-3 text-center">
-											<Badge
-												variant={sku.isActive ? "success-light" : "secondary"}
-												radius="full"
-												size="sm"
-											>
-												{sku.isActive ? "Active" : "Inactive"}
-											</Badge>
-										</td>
-										<td className="px-4 py-3">
-											<div className="flex justify-end gap-1">
-												<Button
-													intent="outline"
-													size="sq-sm"
-													onPress={() => handleEdit(sku)}
-													aria-label="Edit SKU"
-													className="hover:bg-primary/10 hover:text-primary"
-												>
-													<Edit className="h-3 w-3" />
-												</Button>
-												{sku.isActive && (
+											</td>
+											<td className="px-4 py-3 text-center">
+												<Badge variant="primary-light" radius="full" size="sm">
+													{editingSKU ? "Editing" : "New"}
+												</Badge>
+											</td>
+											<td className="px-4 py-3">
+												<div className="flex justify-end gap-1">
 													<Button
 														intent="outline"
 														size="sq-sm"
-														onPress={() => handleDelete(sku._id)}
-														aria-label="Delete SKU"
+														onPress={handleSave}
+														isDisabled={isSaving}
+														aria-label={isSaving ? "Saving..." : "Save SKU"}
+														className="border-emerald-500/25 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500/40 hover:bg-emerald-500/15 dark:text-emerald-400"
+													>
+														<Check className="h-3 w-3" />
+													</Button>
+													<Button
+														intent="outline"
+														size="sq-sm"
+														onPress={closeForm}
+														isDisabled={isSaving}
+														aria-label="Cancel"
 														className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 													>
-														<Trash2 className="h-3 w-3" />
+														<X className="h-3 w-3" />
 													</Button>
-												)}
-											</div>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-				</div>
+												</div>
+											</td>
+										</tr>
+									)}
+	
+									{/* Existing SKUs — skip the row being edited; it
+									    already shows as the edit row above. */}
+									{skus
+										.filter((sku: SKUDoc) => sku._id !== editingSKU)
+										.map((sku: SKUDoc) => {
+										const margin = calculateMargin(sku.rate, sku.cost);
+										return (
+											<tr
+												key={sku._id}
+												className={`border-t border-border transition-colors hover:bg-muted/30 ${
+													!sku.isActive ? "opacity-50" : ""
+												}`}
+											>
+												<td className="px-4 py-3 text-sm font-semibold text-foreground">
+													{sku.name}
+												</td>
+												<td className="px-4 py-3 text-sm text-muted-foreground">
+													{sku.unit}
+												</td>
+												<td className="px-4 py-3 text-right text-sm font-semibold text-foreground">
+													{formatCurrency(sku.rate)}
+												</td>
+												<td className="px-4 py-3 text-right text-sm text-muted-foreground">
+													{sku.cost !== undefined
+														? formatCurrency(sku.cost)
+														: "-"}
+												</td>
+												<td className="px-4 py-3 text-center">
+													{margin !== null ? (
+														<Badge
+															variant="outline"
+															radius="full"
+															size="sm"
+															className={
+																margin >= 0
+																	? "border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+																	: "border-transparent bg-destructive/10 text-destructive"
+															}
+														>
+															{margin.toFixed(1)}%
+														</Badge>
+													) : (
+														<span className="text-sm text-muted-foreground">-</span>
+													)}
+												</td>
+												<td className="px-4 py-3 text-center">
+													<Badge
+														variant="outline"
+														radius="full"
+														size="sm"
+														className={
+															sku.isActive
+																? "border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+																: "border-transparent bg-muted text-muted-foreground"
+														}
+													>
+														<span
+															className={`h-1.5 w-1.5 rounded-full ${
+																sku.isActive
+																	? "bg-emerald-500"
+																	: "bg-muted-foreground/50"
+															}`}
+														/>
+														{sku.isActive ? "Active" : "Inactive"}
+													</Badge>
+												</td>
+												<td className="px-4 py-3">
+													<div className="flex justify-end gap-1">
+														<Button
+															intent="outline"
+															size="sq-sm"
+															onPress={() => handleEdit(sku)}
+															aria-label="Edit SKU"
+															className="hover:bg-primary/10 hover:text-primary"
+														>
+															<Pencil className="h-3 w-3" />
+														</Button>
+														{sku.isActive && (
+															<Button
+																intent="outline"
+																size="sq-sm"
+																onPress={() => handleDelete(sku._id)}
+																aria-label="Delete SKU"
+																className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+															>
+																<Trash2 className="h-3 w-3" />
+															</Button>
+														)}
+													</div>
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+						{hasSKUs && !isEditing && (
+							<>
+								<Separator />
+								<FrameFooter className="bg-muted text-xs text-muted-foreground">
+									{activeCount} active SKU{activeCount !== 1 ? "s" : ""} ·{" "}
+									{skus!.length} total
+								</FrameFooter>
+							</>
+						)}
+					</FramePanel>
+				</Frame>
 			)}
-		</SettingsSection>
+		</div>
 	);
 }

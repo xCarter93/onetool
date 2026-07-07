@@ -1,460 +1,374 @@
 "use client";
 
 import React from "react";
+import { CreditCard, Receipt, Sparkles, Wallet, Landmark } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
-	CreditCard,
-	Wallet,
-	Landmark,
-	ChevronRight,
-	ChevronDown,
-} from "lucide-react";
+	Frame,
+	FrameHeader,
+	FrameTitle,
+	FrameDescription,
+	FramePanel,
+} from "@/components/reui/frame";
+import {
+	Timeline,
+	TimelineContent,
+	TimelineIndicator,
+	TimelineItem,
+	TimelineDate,
+	TimelineTitle,
+} from "@/components/reui/timeline";
 
 interface PaymentsFlowProps {
 	platformFeeDollars?: number;
-	bankName?: string;
-	last4?: string;
 }
 
-const PRESETS = [100, 500, 2500, 10000];
+const AMOUNT_PRESETS = [100, 500, 2500, 10000];
 
 const fmt = (n: number) =>
-	"$" +
-	n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	n.toLocaleString("en-US", {
+		style: "currency",
+		currency: "USD",
+	});
+
 const fmt0 = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 
-type Tone = "primary" | "success" | "muted";
+type Tone = "neutral" | "primary" | "amber" | "emerald";
 
-const NODE_TONE: Record<Tone, string> = {
-	primary: "border-primary/25 bg-primary/10 text-primary",
-	success: "border-success/25 bg-success/10 text-success",
-	muted: "border-border bg-muted text-muted-foreground",
+const TILE_TONE: Record<Tone, string> = {
+	neutral: "bg-muted text-muted-foreground",
+	primary: "bg-primary/10 text-primary",
+	amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+	emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
 };
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
-	return (
-		<p className="m-0 whitespace-nowrap text-[11px] font-semibold uppercase leading-tight tracking-[0.07em] text-muted-foreground">
-			{children}
-		</p>
-	);
-}
+const BAR_TONE: Record<Tone, string> = {
+	neutral: "bg-foreground/70",
+	primary: "bg-primary",
+	amber: "bg-amber-500",
+	emerald: "bg-emerald-500",
+};
 
-function FlowNode({
-	icon: Icon,
-	eyebrow,
-	value,
-	note,
-	tone,
-	highlight,
+const AMOUNT_TONE: Record<Tone, string> = {
+	neutral: "text-foreground",
+	primary: "text-foreground",
+	amber: "text-foreground",
+	emerald: "text-emerald-600 dark:text-emerald-400",
+};
+
+function LegendRow({
+	dotClass,
+	label,
+	amount,
 }: {
-	icon: typeof CreditCard;
-	eyebrow: string;
-	value: string;
-	note: string;
-	tone: Tone;
-	highlight?: boolean;
+	dotClass: string;
+	label: string;
+	amount: string;
 }) {
 	return (
-		<div
-			className={[
-				"relative min-w-0 flex-1 rounded-2xl p-4",
-				highlight
-					? "border-[1.5px] border-dashed border-success/50 bg-success/[0.08]"
-					: "border border-border bg-card shadow-xs",
-			].join(" ")}
-		>
-			<div className="mb-2.5 flex items-center gap-2">
-				<span
-					className={`grid h-[30px] w-[30px] place-content-center rounded-lg border ${NODE_TONE[tone]}`}
-				>
-					<Icon className="h-4 w-4" aria-hidden="true" />
-				</span>
-				<Eyebrow>{eyebrow}</Eyebrow>
-			</div>
-			<div
-				className={`text-[26px] font-semibold tracking-tight tabular-nums ${
-					highlight ? "text-success" : "text-foreground"
-				}`}
-			>
-				{value}
-			</div>
-			<div className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
-				{note}
-			</div>
-		</div>
-	);
-}
-
-type Deduction = { label: string; amt: number; tone: "chart" | "warning" };
-
-const CHIP_TONE = {
-	chart: "border-chart-1/25 bg-chart-1/10 text-chart-1",
-	warning: "border-warning/30 bg-warning/15 text-warning",
-} as const;
-
-const CHIP_DOT = {
-	chart: "bg-chart-1",
-	warning: "bg-warning",
-} as const;
-
-function DeductionChip({ label, amt, tone }: Deduction) {
-	return (
-		<div
-			className={`flex items-center justify-between gap-1.5 rounded-lg border px-2 py-1 ${CHIP_TONE[tone]}`}
-		>
-			<span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold leading-tight">
-				<span
-					aria-hidden="true"
-					className={`h-[7px] w-[7px] shrink-0 rounded-sm ${CHIP_DOT[tone]}`}
-				/>
+		<div className="flex items-center justify-between gap-2 text-xs">
+			<span className="flex items-center gap-2 text-muted-foreground">
+				<span aria-hidden="true" className={cn("size-2 rounded-full", dotClass)} />
 				{label}
 			</span>
-			<span className="whitespace-nowrap text-[11.5px] font-bold leading-tight tabular-nums">
-				−{fmt(amt)}
+			<span className="font-semibold tabular-nums text-foreground">
+				{amount}
 			</span>
 		</div>
 	);
 }
 
-function Connector({
-	deductions,
-	label,
-}: {
-	deductions?: Deduction[];
-	label?: string;
-}) {
-	return (
-		<div className="relative flex shrink-0 basis-[154px] flex-col items-center justify-center self-stretch px-0.5">
-			{deductions && (
-				<div className="mb-2 flex w-full flex-col gap-1.5">
-					{deductions.map((d) => (
-						<DeductionChip key={d.label} {...d} />
-					))}
-				</div>
-			)}
-			<div className="flex w-full items-center text-border">
-				<span className="h-0.5 flex-1 rounded-full bg-current" />
-				<ChevronRight
-					className="-ml-1 h-4 w-4 text-muted-foreground/90"
-					aria-hidden="true"
-				/>
-			</div>
-			{label && (
-				<div className="mt-2 text-center text-[11px] font-medium leading-tight text-muted-foreground">
-					{label}
-				</div>
-			)}
-		</div>
-	);
-}
-
-export function PaymentsFlow({
-	platformFeeDollars = 1,
-	bankName,
-	last4,
-}: PaymentsFlowProps) {
+export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 	const [amount, setAmount] = React.useState(100);
 
 	// Derived during render — no effects (vercel-react-best-practices).
 	const stripeFee = amount * 0.029 + 0.3;
-	const net = Math.max(0, amount - stripeFee - platformFeeDollars);
-	const pct = (a: number) => (amount > 0 ? (a / amount) * 100 : 0);
+	const balance = Math.max(0, amount - stripeFee - platformFeeDollars);
+	const stripePct = amount > 0 ? (stripeFee / amount) * 100 : 0;
+	const otPct = amount > 0 ? (platformFeeDollars / amount) * 100 : 0;
+	const keepPct = amount > 0 ? (balance / amount) * 100 : 0;
 
-	const bankLabel = last4 ? `${bankName ?? "Bank"} ••••${last4}` : "Your bank";
+	// Donut geometry: three arcs that sum to exactly 100% of the circle.
+	const r = 52;
+	const circumference = 2 * Math.PI * r;
+	const keepLen = (keepPct / 100) * circumference;
+	const stripeLen = (stripePct / 100) * circumference;
+	const otLen = (otPct / 100) * circumference;
 
-	const allocation = [
-		{ label: "Your payout", amt: net, bar: "bg-success", note: "Lands in your bank" },
+	const moneyFlow: {
+		icon: typeof CreditCard;
+		label: string;
+		amount: string;
+		sublabel: string;
+		pct: number;
+		tone: Tone;
+		large?: boolean;
+	}[] = [
 		{
-			label: "Stripe processing",
-			amt: stripeFee,
-			bar: "bg-chart-1",
-			note: "2.9% + $0.30",
+			icon: CreditCard,
+			label: "Customer pays",
+			amount: fmt(amount),
+			sublabel: "Full invoice amount, charged at checkout",
+			pct: 100,
+			tone: "neutral",
 		},
 		{
+			icon: Receipt,
+			label: "Stripe processing",
+			amount: `−${fmt(stripeFee)}`,
+			sublabel: "2.9% + $0.30 per charge",
+			pct: stripePct,
+			tone: "primary",
+		},
+		{
+			icon: Sparkles,
 			label: "OneTool fee",
-			amt: platformFeeDollars,
-			bar: "bg-warning",
-			note: `${fmt(platformFeeDollars)} per charge`,
+			amount: `−${fmt(platformFeeDollars)}`,
+			sublabel: `${fmt(platformFeeDollars)} per charge`,
+			pct: otPct,
+			tone: "amber",
+		},
+		{
+			icon: Wallet,
+			label: "Your balance",
+			amount: fmt(balance),
+			sublabel: "Available in your OneTool balance right away",
+			pct: keepPct,
+			tone: "emerald",
+			large: true,
+		},
+		{
+			icon: Landmark,
+			label: "Bank payout",
+			amount: fmt(balance),
+			sublabel: "+2 business days (US)",
+			pct: keepPct,
+			tone: "emerald",
 		},
 	];
 
-	const dot = {
-		"Your payout": "bg-success",
-		"Stripe processing": "bg-chart-1",
-		"OneTool fee": "bg-warning",
-	} as const;
-
-	const timeline = [
+	const settlementSteps = [
 		{
-			t: "Today",
-			d: "Customer's card is charged",
+			date: "Today",
+			desc: "Customer's card is charged",
 			icon: CreditCard,
 			done: true,
 		},
 		{
-			t: "Today",
-			d: "Funds land in your OneTool balance",
+			date: "Today",
+			desc: "Funds land in your OneTool balance",
 			icon: Wallet,
 			done: true,
 		},
 		{
-			t: "+2 business days",
-			d: `Paid out to ${bankLabel}`,
+			date: "+2 business days",
+			desc: "Paid out to your bank",
 			icon: Landmark,
 			done: false,
 		},
 	];
 
-	const deductions: Deduction[] = [
-		{ label: "Stripe fee", amt: stripeFee, tone: "chart" },
-		{ label: "OneTool fee", amt: platformFeeDollars, tone: "warning" },
-	];
-
 	return (
 		<section
 			aria-label="How a payment flows from your customer to your bank"
-			className="space-y-6"
+			className="space-y-4"
 		>
-			{/* Header + amount control */}
-			<div className="flex flex-wrap items-end justify-between gap-5">
-				<div className="min-w-[260px]">
-					<h3 className="text-lg font-semibold tracking-tight text-foreground">
-						How payments work
-					</h3>
-					<p className="mt-1.5 max-w-md text-[13.5px] leading-relaxed text-muted-foreground">
-						Follow a single invoice from your customer&apos;s card to your bank
-						account. Drag to see how any amount splits.
-					</p>
-				</div>
-				<div className="max-w-md flex-[1_1_320px]">
-					<div className="mb-2 flex items-baseline justify-between">
-						<Eyebrow>Example invoice</Eyebrow>
-						<div className="flex items-baseline gap-px">
-							<span className="text-base font-semibold text-muted-foreground">
-								$
-							</span>
-							<input
-								type="number"
-								value={Math.round(amount)}
-								min={5}
-								max={25000}
-								aria-label="Example invoice amount"
-								onChange={(e) =>
-									setAmount(
-										Math.min(25000, Math.max(5, Number(e.target.value) || 0))
-									)
-								}
-								className="w-[92px] border-none bg-transparent p-0 text-right text-[22px] font-bold tracking-tight tabular-nums text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-							/>
+			<div className="grid items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
+				{/* Money flow timeline */}
+				<Frame>
+					<FrameHeader className="flex flex-wrap items-center justify-between gap-4">
+						<div>
+							<FrameTitle className="text-base">
+								Follow your money
+							</FrameTitle>
+							<FrameDescription className="mt-1 text-xs">
+								See exactly where each dollar of an invoice goes.
+							</FrameDescription>
 						</div>
-					</div>
-					<input
-						type="range"
-						min={5}
-						max={25000}
-						step={5}
-						value={amount}
-						aria-label="Example invoice amount slider"
-						onChange={(e) => setAmount(Number(e.target.value))}
-						className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-					/>
-					<div className="mt-3 flex gap-1.5">
-						{PRESETS.map((p) => {
-							const on = Math.round(amount) === p;
-							return (
-								<button
-									key={p}
-									type="button"
-									onClick={() => setAmount(p)}
-									aria-pressed={on}
-									className={[
-										"flex-1 rounded-lg border px-1 py-1.5 text-xs font-semibold transition-colors",
-										on
-											? "border-primary/35 bg-primary/10 text-primary"
-											: "border-border bg-card text-muted-foreground hover:border-input hover:text-foreground",
-									].join(" ")}
-								>
-									{fmt0(p)}
-								</button>
-							);
-						})}
-					</div>
-				</div>
-			</div>
-
-			{/* Pipeline — desktop */}
-			<div className="hidden items-stretch gap-1 md:flex">
-				<FlowNode
-					icon={CreditCard}
-					eyebrow="Customer pays"
-					value={fmt(amount)}
-					note="Card charged at checkout"
-					tone="primary"
-				/>
-				<Connector deductions={deductions} label="Fees deducted instantly" />
-				<FlowNode
-					icon={Wallet}
-					eyebrow="Your balance"
-					value={fmt(net)}
-					note="Available right away"
-					tone="success"
-					highlight
-				/>
-				<Connector label="Paid out on your schedule — T+2 in the US" />
-				<FlowNode
-					icon={Landmark}
-					eyebrow="Bank payout"
-					value={fmt(net)}
-					note={bankLabel}
-					tone="muted"
-				/>
-			</div>
-
-			{/* Pipeline — mobile (vertical) */}
-			<div className="space-y-2 md:hidden">
-				<FlowNode
-					icon={CreditCard}
-					eyebrow="Customer pays"
-					value={fmt(amount)}
-					note="Card charged at checkout"
-					tone="primary"
-				/>
-				<div className="flex flex-col items-center gap-1.5 py-1">
-					<ChevronDown
-						className="h-4 w-4 text-muted-foreground/70"
-						aria-hidden="true"
-					/>
-					<div className="flex w-full max-w-xs flex-col gap-1.5">
-						{deductions.map((d) => (
-							<DeductionChip key={d.label} {...d} />
-						))}
-					</div>
-					<ChevronDown
-						className="h-4 w-4 text-muted-foreground/70"
-						aria-hidden="true"
-					/>
-				</div>
-				<FlowNode
-					icon={Wallet}
-					eyebrow="Your balance"
-					value={fmt(net)}
-					note="Available right away"
-					tone="success"
-					highlight
-				/>
-				<div className="flex justify-center py-1">
-					<ChevronDown
-						className="h-4 w-4 text-muted-foreground/70"
-						aria-hidden="true"
-					/>
-				</div>
-				<FlowNode
-					icon={Landmark}
-					eyebrow="Bank payout"
-					value={fmt(net)}
-					note={`${bankLabel} · T+2 in the US`}
-					tone="muted"
-				/>
-			</div>
-
-			{/* Allocation bar */}
-			<div>
-				<div className="mb-2.5 flex items-center justify-between">
-					<Eyebrow>Where your {fmt0(amount)} goes</Eyebrow>
-					<span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-						You keep{" "}
-						<strong className="font-bold text-success">
-							{pct(net).toFixed(1)}%
-						</strong>
-					</span>
-				</div>
-				<div className="flex h-9 overflow-hidden rounded-lg border border-border bg-muted">
-					{allocation.map((a, i) => (
-						<div
-							key={a.label}
-							title={`${a.label}: ${fmt(a.amt)}`}
-							style={{ width: pct(a.amt) + "%", minWidth: a.amt > 0 ? 3 : 0 }}
-							className={[
-								"flex items-center justify-center transition-[width] duration-200 ease-out motion-reduce:transition-none",
-								a.bar,
-								i < allocation.length - 1 ? "border-r-2 border-card" : "",
-							].join(" ")}
-						>
-							{pct(a.amt) > 9 && (
-								<span className="whitespace-nowrap text-[11.5px] font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.18)]">
-									{pct(a.amt).toFixed(0)}%
-								</span>
-							)}
-						</div>
-					))}
-				</div>
-				<div className="mt-3.5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-					{allocation.map((a) => (
-						<div key={a.label} className="flex gap-2">
-							<span
-								aria-hidden="true"
-								className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm ${dot[a.label as keyof typeof dot]}`}
-							/>
-							<div className="min-w-0">
-								<div className="text-sm font-bold leading-tight tabular-nums text-foreground">
-									{fmt(a.amt)}
-								</div>
-								<div className="mt-0.5 whitespace-nowrap text-[12.5px] font-semibold leading-tight text-foreground">
-									{a.label}
-								</div>
-								<div className="mt-px whitespace-nowrap text-[11.5px] leading-tight text-muted-foreground">
-									{a.note}
-								</div>
-							</div>
-						</div>
-					))}
-				</div>
-			</div>
-
-			{/* Settlement timeline */}
-			<div className="rounded-xl border border-border bg-primary/[0.03] p-5">
-				<Eyebrow>Settlement timeline</Eyebrow>
-				<div className="mt-3.5 flex items-start">
-					{timeline.map((m, i) => (
-						<React.Fragment key={i}>
-							<div className="relative flex flex-1 flex-col items-center gap-2 text-center">
-								<span
-									className={[
-										"grid h-8 w-8 place-content-center rounded-full border-[1.5px]",
-										m.done
-											? "border-success/40 bg-success/[0.13] text-success"
-											: "border-primary/40 bg-primary/[0.13] text-primary",
-									].join(" ")}
-								>
-									<m.icon className="h-[15px] w-[15px]" aria-hidden="true" />
-								</span>
-								<div>
-									<div
-										className={`text-[12.5px] font-bold ${
-											m.done ? "text-success" : "text-primary"
-										}`}
+						<div className="inline-flex shrink-0 rounded-lg bg-muted p-1">
+							{AMOUNT_PRESETS.map((p) => {
+								const active = amount === p;
+								return (
+									<button
+										key={p}
+										type="button"
+										onClick={() => setAmount(p)}
+										aria-pressed={active}
+										className={cn(
+											"rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+											active
+												? "bg-card text-foreground shadow-sm"
+												: "text-muted-foreground hover:text-foreground",
+										)}
 									>
-										{m.t}
-									</div>
-									<div className="mt-0.5 max-w-[180px] text-xs leading-snug text-muted-foreground">
-										{m.d}
+										{fmt0(p)}
+									</button>
+								);
+							})}
+						</div>
+					</FrameHeader>
+
+					<FramePanel>
+						<Timeline defaultValue={moneyFlow.length}>
+							{moneyFlow.map((row, index) => (
+								<TimelineItem key={row.label} step={index + 1}>
+									<TimelineIndicator
+										className={cn(
+											"flex size-7 items-center justify-center border-none",
+											TILE_TONE[row.tone],
+										)}
+									>
+										<row.icon className="size-3.5" aria-hidden="true" />
+									</TimelineIndicator>
+									<TimelineTitle className="flex items-baseline justify-between gap-3 text-sm font-medium text-foreground">
+										<span>{row.label}</span>
+										<span
+											className={cn(
+												"shrink-0 font-semibold tabular-nums",
+												row.large ? "text-base" : "text-sm",
+												AMOUNT_TONE[row.tone],
+											)}
+										>
+											{row.amount}
+										</span>
+									</TimelineTitle>
+									<TimelineContent className="mt-1">
+										<p className="text-xs text-muted-foreground">
+											{row.sublabel}
+										</p>
+										<div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+											<div
+												className={cn(
+													"h-full rounded-full transition-[width] duration-300 ease-out motion-reduce:transition-none",
+													BAR_TONE[row.tone],
+												)}
+												style={{
+													width: `${Math.min(100, Math.max(0, row.pct))}%`,
+												}}
+											/>
+										</div>
+									</TimelineContent>
+								</TimelineItem>
+							))}
+						</Timeline>
+					</FramePanel>
+				</Frame>
+
+				{/* Right column: donut + settlement timeline */}
+				<div className="flex flex-col gap-6">
+					<Frame>
+						<FramePanel>
+							<div className="flex flex-col items-center">
+								<div className="relative grid size-[132px] shrink-0 place-content-center">
+									<svg width={132} height={132} viewBox="0 0 132 132">
+										<circle
+											cx={66}
+											cy={66}
+											r={r}
+											fill="none"
+											strokeWidth={15}
+											strokeDasharray={`${keepLen} ${circumference - keepLen}`}
+											transform="rotate(-90 66 66)"
+											className="stroke-emerald-500"
+										/>
+										<circle
+											cx={66}
+											cy={66}
+											r={r}
+											fill="none"
+											strokeWidth={15}
+											strokeDasharray={`${stripeLen} ${circumference - stripeLen}`}
+											strokeDashoffset={-keepLen}
+											transform="rotate(-90 66 66)"
+											className="stroke-primary"
+										/>
+										<circle
+											cx={66}
+											cy={66}
+											r={r}
+											fill="none"
+											strokeWidth={15}
+											strokeDasharray={`${otLen} ${circumference - otLen}`}
+											strokeDashoffset={-(keepLen + stripeLen)}
+											transform="rotate(-90 66 66)"
+											className="stroke-amber-500"
+										/>
+									</svg>
+									<div className="absolute inset-0 flex flex-col items-center justify-center">
+										<span className="text-xl font-bold tabular-nums text-foreground">
+											{keepPct.toFixed(0)}%
+										</span>
+										<span className="text-[11px] text-muted-foreground">
+											you keep
+										</span>
 									</div>
 								</div>
+								<div className="mt-5 w-full space-y-2.5">
+									<LegendRow
+										dotClass="bg-emerald-500"
+										label="Your payout"
+										amount={fmt(balance)}
+									/>
+									<LegendRow
+										dotClass="bg-primary"
+										label="Stripe processing"
+										amount={`−${fmt(stripeFee)}`}
+									/>
+									<LegendRow
+										dotClass="bg-amber-500"
+										label="OneTool fee"
+										amount={`−${fmt(platformFeeDollars)}`}
+									/>
+								</div>
 							</div>
-							{i < timeline.length - 1 && (
-								<span
-									aria-hidden="true"
-									className="mt-4 h-0.5 shrink-0 basis-6 bg-border"
-								/>
-							)}
-						</React.Fragment>
-					))}
+						</FramePanel>
+					</Frame>
+
+					<Frame>
+						<FrameHeader>
+							<FrameTitle className="text-base">
+								Settlement timeline
+							</FrameTitle>
+						</FrameHeader>
+						<FramePanel>
+							<Timeline defaultValue={settlementSteps.length}>
+								{settlementSteps.map((step, index) => (
+									<TimelineItem key={step.desc} step={index + 1}>
+										<TimelineIndicator
+											className={cn(
+												"flex size-7 items-center justify-center border-none",
+												step.done
+													? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+													: "bg-primary/10 text-primary",
+											)}
+										>
+											<step.icon className="size-3.5" aria-hidden="true" />
+										</TimelineIndicator>
+										<TimelineDate
+											className={cn(
+												"mb-0.5 text-xs font-bold",
+												step.done
+													? "text-emerald-600 dark:text-emerald-400"
+													: "text-primary",
+											)}
+										>
+											{step.date}
+										</TimelineDate>
+										<TimelineTitle className="text-xs font-medium leading-snug text-muted-foreground">
+											{step.desc}
+										</TimelineTitle>
+									</TimelineItem>
+								))}
+							</Timeline>
+						</FramePanel>
+					</Frame>
 				</div>
 			</div>
 
 			<p className="text-xs leading-relaxed text-muted-foreground">
-				Example based on a {fmt(amount)} invoice with a {fmt(platformFeeDollars)}{" "}
-				platform fee. Actual Stripe fees vary by card type and region — see Stripe
-				pricing for current rates.
+				Example based on a {fmt(amount)} invoice with a{" "}
+				{fmt(platformFeeDollars)} platform fee. Actual Stripe fees vary by
+				card type and region — see Stripe pricing for current rates.
 			</p>
 		</section>
 	);

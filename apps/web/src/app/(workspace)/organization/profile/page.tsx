@@ -2,18 +2,30 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Lock } from "lucide-react";
-
 import {
-	StyledTabs,
-	StyledTabsContent,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled";
-import { DotField } from "@/components/ui/dot-field";
+	AlertTriangle,
+	Briefcase,
+	CreditCard,
+	FileText,
+	LayoutGrid,
+	ShieldCheck,
+	Tags,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useOrgOwner } from "./_hooks/use-org-owner";
+import {
+	SettingsSaveProvider,
+	useSettingsSaveFooter,
+} from "./_hooks/use-settings-save";
+import {
+	SettingsNavChips,
+	SettingsNavRail,
+	type SettingsNavItem,
+} from "./_components/settings-nav";
 import { OverviewTab } from "./_components/overview-tab";
 import { BusinessInfoTab } from "./_components/business-info-tab";
 import { PaymentsTab } from "./_components/payments-tab";
@@ -29,8 +41,68 @@ const TAB_VALUES = [
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
+const PREMIUM_TABS: readonly TabValue[] = ["payments", "documents", "skus"];
+
 const isTabValue = (value: string): value is TabValue =>
 	TAB_VALUES.includes(value as TabValue);
+
+/**
+ * Unified footer for the whole settings container: an "unsaved changes"
+ * indicator + Save/Discard, wired to whichever tab registered a save handle.
+ * Tabs without an editable form fall back to the sync hint.
+ */
+function SettingsSaveFooter() {
+	const handle = useSettingsSaveFooter();
+
+	if (!handle) {
+		return (
+			<div className="flex items-center gap-2 text-xs text-muted-foreground">
+				<ShieldCheck className="size-3.5 shrink-0" aria-hidden="true" />
+				Changes sync across your workspace.
+			</div>
+		);
+	}
+
+	const { dirty, saving, canSave, save, discard, saveLabel } = handle;
+
+	return (
+		<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+			<div className="flex min-h-7 items-center">
+				{dirty ? (
+					<span className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+						<span
+							aria-hidden="true"
+							className="size-2 rounded-full bg-amber-500 motion-safe:animate-pulse"
+						/>
+						Unsaved changes
+					</span>
+				) : (
+					<span className="text-xs text-muted-foreground">
+						All changes saved
+					</span>
+				)}
+			</div>
+			<div className="flex items-center gap-2">
+				<Button
+					intent="outline"
+					size="sm"
+					onPress={discard}
+					isDisabled={!dirty || saving}
+				>
+					Discard
+				</Button>
+				<StyledButton
+					size="sm"
+					intent="primary"
+					onClick={save}
+					disabled={!dirty || saving || !canSave}
+				>
+					{saving ? "Saving…" : (saveLabel ?? "Save changes")}
+				</StyledButton>
+			</div>
+		</div>
+	);
+}
 
 export default function OrganizationProfilePage() {
 	const router = useRouter();
@@ -50,11 +122,8 @@ export default function OrganizationProfilePage() {
 				return;
 			}
 
-			// Check if trying to access premium feature without premium access
-			if (
-				(value === "documents" || value === "skus" || value === "payments") &&
-				!hasPremiumAccess
-			) {
+			// Block premium features without premium access
+			if (PREMIUM_TABS.includes(value) && !hasPremiumAccess) {
 				toast.error("Premium Feature", "Upgrade to access this feature");
 				return;
 			}
@@ -71,6 +140,45 @@ export default function OrganizationProfilePage() {
 			router.push(newUrl);
 		},
 		[router, hasPremiumAccess, toast],
+	);
+
+	const navItems: SettingsNavItem[] = React.useMemo(
+		() => [
+			{
+				value: "overview",
+				label: "Overview",
+				sublabel: "Profile & team",
+				icon: LayoutGrid,
+			},
+			{
+				value: "business",
+				label: "Business Info",
+				sublabel: "Contact & address",
+				icon: Briefcase,
+			},
+			{
+				value: "payments",
+				label: "Payments",
+				sublabel: "Stripe & payouts",
+				icon: CreditCard,
+				locked: !hasPremiumAccess,
+			},
+			{
+				value: "documents",
+				label: "Documents",
+				sublabel: "Quote & invoice files",
+				icon: FileText,
+				locked: !hasPremiumAccess,
+			},
+			{
+				value: "skus",
+				label: "SKUs",
+				sublabel: "Reusable line items",
+				icon: Tags,
+				locked: !hasPremiumAccess,
+			},
+		],
+		[hasPremiumAccess],
 	);
 
 	if (isLoading) {
@@ -107,81 +215,57 @@ export default function OrganizationProfilePage() {
 	}
 
 	return (
-		<div className="relative p-4 sm:p-6 lg:p-8 min-h-screen flex flex-col">
-			<div className="flex-1 flex flex-col py-8">
-				<div className="relative mb-10 overflow-hidden">
-					<DotField className="text-muted-foreground opacity-[0.55] [mask-image:radial-gradient(55%_170%_at_100%_-20%,black,transparent_68%)] [-webkit-mask-image:radial-gradient(55%_170%_at_100%_-20%,black,transparent_68%)]" />
-					<div className="relative">
-						<div className="flex items-center gap-3 mb-3">
-							<div className="w-2 h-8 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-							<h1 className="text-3xl font-bold bg-linear-to-r from-foreground to-foreground/70 bg-clip-text text-transparent tracking-tight">
-								Organization Settings
-							</h1>
-						</div>
-						<p className="text-muted-foreground ml-5 leading-relaxed max-w-2xl">
-							Manage the active organization&apos;s profile, team, and
-							operational preferences from one cohesive workspace.
-						</p>
-					</div>
+		<SettingsSaveProvider>
+			{/* Fills the fixed-height card interior on desktop; the content pane
+			    scrolls internally while the rail + footer stay pinned. Extra bottom
+			    padding clears the floating assistant tab. */}
+			<div className="relative flex flex-col p-4 sm:p-6 lg:h-full lg:min-h-0 lg:p-8 lg:pb-10">
+				{/* Page header */}
+				<div className="mb-6 shrink-0">
+					<p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+						Settings
+					</p>
+					<h1 className="text-3xl font-bold tracking-tight">
+						Organization Settings
+					</h1>
+					<p className="mt-2 max-w-2xl leading-relaxed text-muted-foreground">
+						Manage the active organization&apos;s profile, team, and
+						operational preferences from one cohesive workspace.
+					</p>
 				</div>
 
-				<StyledTabs
-					value={activeTab}
-					onValueChange={handleTabChange}
-					className="flex-1"
-				>
-					<StyledTabsList className="overflow-x-auto">
-						<StyledTabsTrigger value="overview">Overview</StyledTabsTrigger>
-						<StyledTabsTrigger value="business">Business Info</StyledTabsTrigger>
-						<StyledTabsTrigger
-							value="payments"
-							disabled={!hasPremiumAccess}
-							className={!hasPremiumAccess ? "cursor-not-allowed" : ""}
-						>
-							{!hasPremiumAccess && <Lock className="h-3 w-3 mr-1" />}
-							Payments
-						</StyledTabsTrigger>
-						<StyledTabsTrigger
-							value="documents"
-							disabled={!hasPremiumAccess}
-							className={!hasPremiumAccess ? "cursor-not-allowed" : ""}
-						>
-							{!hasPremiumAccess && <Lock className="h-3 w-3 mr-1" />}
-							Documents
-						</StyledTabsTrigger>
-						<StyledTabsTrigger
-							value="skus"
-							disabled={!hasPremiumAccess}
-							className={!hasPremiumAccess ? "cursor-not-allowed" : ""}
-						>
-							{!hasPremiumAccess && <Lock className="h-3 w-3 mr-1" />}
-							SKUs
-						</StyledTabsTrigger>
-					</StyledTabsList>
-
-					<div className="mt-8 space-y-8">
-						<StyledTabsContent value="overview" className="mt-0">
-							<OverviewTab />
-						</StyledTabsContent>
-
-						<StyledTabsContent value="business" className="mt-0">
-							<BusinessInfoTab />
-						</StyledTabsContent>
-
-						<StyledTabsContent value="payments" className="mt-0">
-							<PaymentsTab />
-						</StyledTabsContent>
-
-						<StyledTabsContent value="documents" className="mt-0">
-							<DocumentsTab />
-						</StyledTabsContent>
-
-						<StyledTabsContent value="skus" className="mt-0">
-							<SKUsTab />
-						</StyledTabsContent>
+				{/* Unified settings container: nav rail + scrolling content + footer */}
+				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+					<div className="grid min-h-0 flex-1 lg:grid-cols-[262px_1fr] lg:overflow-hidden">
+						<SettingsNavRail
+							items={navItems}
+							activeValue={activeTab}
+							onSelect={handleTabChange}
+						/>
+						<div className="relative flex min-w-0 flex-col lg:overflow-hidden">
+							<div className="px-5 pt-5 sm:px-6 lg:hidden">
+								<SettingsNavChips
+									items={navItems}
+									activeValue={activeTab}
+									onSelect={handleTabChange}
+								/>
+							</div>
+							<div className="min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8">
+								{activeTab === "overview" && <OverviewTab />}
+								{activeTab === "business" && <BusinessInfoTab />}
+								{activeTab === "payments" && <PaymentsTab />}
+								{activeTab === "documents" && <DocumentsTab />}
+								{activeTab === "skus" && <SKUsTab />}
+							</div>
+						</div>
 					</div>
-				</StyledTabs>
+
+					{/* Unified save footer spanning the whole container */}
+					<div className="shrink-0 border-t border-border bg-muted/40 px-5 py-3 sm:px-6">
+						<SettingsSaveFooter />
+					</div>
+				</div>
 			</div>
-		</div>
+		</SettingsSaveProvider>
 	);
 }

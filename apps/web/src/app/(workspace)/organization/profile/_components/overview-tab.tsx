@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
 	useOrganization,
 	useClerk,
@@ -31,12 +31,21 @@ import {
 } from "@/components/ui/input-group";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	Avatar,
 	AvatarImage,
 	AvatarFallback,
 } from "@/components/ui/avatar";
 import { Badge } from "@/components/reui/badge";
+import {
+	Frame,
+	FrameHeader,
+	FrameTitle,
+	FrameDescription,
+	FramePanel,
+	FrameFooter,
+} from "@/components/reui/frame";
 import {
 	Select,
 	SelectTrigger,
@@ -57,7 +66,8 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useOrgOwner } from "../_hooks/use-org-owner";
 import { useSaveValidation } from "../_hooks/use-save-validation";
-import { SettingsSection } from "./settings-section";
+import { useRegisterSettingsSave } from "../_hooks/use-settings-save";
+import { Eyebrow, SectionHeading } from "./settings-card";
 
 // Clerk role keys round-trip verbatim through the org webhook. The instance uses
 // only the two Clerk defaults; gate on Clerk's live membership.role (NOT the
@@ -74,9 +84,6 @@ const ORGANIZATION_PARAMS = {
 	memberships: { pageSize: 20 },
 	invitations: { pageSize: 20 },
 };
-
-const eyebrowClass =
-	"text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
 function roleLabel(role: string | undefined | null) {
 	if (role === ADMIN_ROLE) return "Admin";
@@ -161,16 +168,14 @@ export function OverviewTab() {
 	const nameInvalid = nameShowErrors && !orgName.trim();
 	const inviteInvalid = inviteShowErrors && !inviteEmail.trim();
 
-	if (!isLoaded || !organization) {
-		return (
-			<div className="flex items-center justify-center py-16">
-				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
-
-	const handleSaveName = async () => {
-		if (!isAdmin) return;
+	// Org-name save/discard, registered with the container's unified footer.
+	// Both callbacks — and the registration hook itself — must run on every
+	// render (before the loading early-return below) to satisfy Rules of Hooks.
+	// `organization` isn't narrowed non-null yet at this point, so each guards
+	// on it directly; that's a no-op in practice since `dirty` can't be true
+	// until the form is seeded from a loaded organization.
+	const handleSaveName = useCallback(async () => {
+		if (!organization || !isAdmin) return;
 		markNameAttempt();
 		const trimmed = orgName.trim();
 		if (!trimmed) return;
@@ -190,7 +195,31 @@ export function OverviewTab() {
 		} finally {
 			setSavingName(false);
 		}
-	};
+	}, [organization, isAdmin, orgName, markNameAttempt, clearNameErrors, toast]);
+
+	const handleDiscardName = useCallback(() => {
+		if (!organization) return;
+		setOrgName(organization.name);
+		setNameDirty(false);
+		clearNameErrors();
+	}, [organization, clearNameErrors]);
+
+	useRegisterSettingsSave({
+		dirty: nameDirty,
+		saving: savingName,
+		canSave: true,
+		save: handleSaveName,
+		discard: handleDiscardName,
+		saveLabel: "Save changes",
+	});
+
+	if (!isLoaded || !organization) {
+		return (
+			<div className="flex items-center justify-center py-16">
+				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+			</div>
+		);
+	}
 
 	const handleLogoSelect = async (
 		event: React.ChangeEvent<HTMLInputElement>,
@@ -370,35 +399,26 @@ export function OverviewTab() {
 	) : undefined;
 
 	return (
-		<div className="space-y-6">
-			{/* Organization identity */}
-			<SettingsSection
+		<div className="space-y-8">
+			<SectionHeading
 				title="Organization"
-				description="Your organization's name and logo appear across the app and on client-facing documents."
-				texture
-				headerAside={viewOnlyBadge}
-				footer={
-					isAdmin ? (
-						<>
-							<p className="text-xs text-muted-foreground">
-								Changes sync across your workspace.
-							</p>
-							<Button
-								intent="primary"
-								size="sm"
-								onPress={handleSaveName}
-								isDisabled={savingName || !nameDirty}
-								isPending={savingName}
-							>
-								{savingName ? "Saving…" : "Save changes"}
-							</Button>
-						</>
-					) : undefined
-				}
-			>
-				<div className="flex flex-col gap-6">
+				description="Manage your organization's profile, team, and invitations."
+				aside={viewOnlyBadge}
+			/>
+
+			{/* Identity */}
+			<Frame>
+				<FrameHeader>
+					<FrameTitle>Organization</FrameTitle>
+					<FrameDescription>
+						Your logo and name appear across the app and on client-facing
+						documents.
+					</FrameDescription>
+				</FrameHeader>
+
+				<FramePanel>
 					<div className="flex items-center gap-4">
-						<Avatar className="size-16 rounded-xl ring-1 ring-border/60">
+						<Avatar className="size-[60px] rounded-xl ring-1 ring-border/60">
 							{orgImageUrl ? (
 								<AvatarImage
 									src={orgImageUrl}
@@ -439,146 +459,170 @@ export function OverviewTab() {
 						</div>
 					</div>
 
-					<Field data-invalid={nameInvalid || undefined}>
-						<FieldLabel htmlFor="org-name">
-							Organization name
-							<span aria-hidden="true" className="ml-0.5 text-destructive">
-								*
-							</span>
-						</FieldLabel>
-						<Input
-							id="org-name"
-							value={orgName}
-							onChange={(event) => {
-								setNameDirty(true);
-								setOrgName(event.target.value);
-							}}
-							disabled={!isAdmin || savingName}
-							aria-invalid={nameInvalid || undefined}
-							placeholder="Acme Cleaning Co."
-							autoComplete="organization"
-						/>
-						{nameInvalid && (
-							<FieldError>Organization name is required.</FieldError>
-						)}
-					</Field>
-				</div>
-			</SettingsSection>
+					<div className="mt-6 border-t border-border pt-6">
+						<Field data-invalid={nameInvalid || undefined}>
+							<FieldLabel htmlFor="org-name">
+								Organization name
+								<span aria-hidden="true" className="ml-0.5 text-destructive">
+									*
+								</span>
+							</FieldLabel>
+							<Input
+								id="org-name"
+								value={orgName}
+								onChange={(event) => {
+									setNameDirty(true);
+									setOrgName(event.target.value);
+								}}
+								disabled={!isAdmin || savingName}
+								aria-invalid={nameInvalid || undefined}
+								placeholder="Acme Cleaning Co."
+								autoComplete="organization"
+							/>
+							{nameInvalid && (
+								<FieldError>Organization name is required.</FieldError>
+							)}
+						</Field>
+					</div>
+				</FramePanel>
 
-			{/* Members */}
-			<SettingsSection
-				title="Team members"
-				description="People with access to this organization."
-				headerAside={
-					<Badge variant="secondary" radius="full" size="lg">
-						{memberships?.count ?? members.length}
-					</Badge>
-				}
+				<FrameFooter>
+					<p className="text-xs text-muted-foreground">
+						Changes sync across your workspace.
+					</p>
+				</FrameFooter>
+			</Frame>
+
+			{/* Members + invitations */}
+			<div
+				className={cn(
+					"grid items-start gap-6",
+					isAdmin && "lg:grid-cols-2",
+				)}
 			>
-				{members.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No members yet.</p>
-				) : (
-					<div className="flex flex-col gap-2">
-						{members.map((member) => {
-							const info = member.publicUserData;
-							const name =
-								`${info?.firstName ?? ""} ${info?.lastName ?? ""}`.trim();
-							const email = info?.identifier ?? "";
-							const isSelf = member.id === membership?.id;
-							const rowBusy = pendingMemberId === member.id;
-							return (
-								<Item
-									key={member.id}
-									variant="muted"
-									size="sm"
-									className="rounded-lg"
-								>
-									<ItemMedia>
-										<Avatar className="size-9">
-											{info?.imageUrl ? (
-												<AvatarImage src={info.imageUrl} alt="" />
-											) : null}
-											<AvatarFallback className="text-xs font-medium">
-												{getInitials(name, email)}
-											</AvatarFallback>
-										</Avatar>
-									</ItemMedia>
-									<ItemContent>
-										<ItemTitle>
-											{name || email}
-											{isSelf && (
-												<span className="font-normal text-muted-foreground">
-													{" "}
-													(you)
-												</span>
-											)}
-										</ItemTitle>
-										{email && name && (
-											<ItemDescription>{email}</ItemDescription>
-										)}
-									</ItemContent>
-									<ItemActions>
-										{isAdmin && !isSelf ? (
-											<>
-												<Select
-													value={member.role}
-													onValueChange={(value) =>
-														handleRoleChange(member, value)
-													}
-													disabled={rowBusy}
-												>
-													<SelectTrigger size="sm" className="w-28">
-														<SelectValue />
-													</SelectTrigger>
-													<SelectContent>
-														{ROLE_OPTIONS.map((option) => (
-															<SelectItem
-																key={option.value}
-																value={option.value}
-															>
-																{option.label}
-															</SelectItem>
-														))}
-													</SelectContent>
-												</Select>
-												<Button
-													intent="outline"
-													size="sq-sm"
-													aria-label="Remove member"
-													isDisabled={rowBusy}
-													onPress={() => handleRemoveMember(member)}
-													className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-												>
-													{rowBusy ? (
-														<Loader2 className="h-4 w-4 animate-spin" />
-													) : (
-														<Trash2 className="h-4 w-4" />
-													)}
-												</Button>
-											</>
-										) : (
-											<Badge
-												variant={
-													member.role === ADMIN_ROLE
-														? "primary-light"
-														: "secondary"
-												}
-												radius="full"
-												size="lg"
-											>
-												{roleLabel(member.role)}
-											</Badge>
-										)}
-									</ItemActions>
-								</Item>
-							);
-						})}
+				<Frame>
+					<FrameHeader className="flex-row items-center justify-between gap-3">
+						<div className="flex flex-col gap-0.5">
+							<FrameTitle>Team members</FrameTitle>
+							<FrameDescription>
+								People with access to this organization.
+							</FrameDescription>
+						</div>
+						<Badge
+							variant="secondary"
+							radius="full"
+							size="lg"
+							className="shrink-0"
+						>
+							{memberships?.count ?? members.length}
+						</Badge>
+					</FrameHeader>
 
-						{memberships?.hasNextPage && (
+					<FramePanel className="p-0">
+						{members.length === 0 ? (
+							<p className="px-4 py-5 text-sm text-muted-foreground">
+								No members yet.
+							</p>
+						) : (
+							<div className="divide-y divide-border">
+								{members.map((member) => {
+									const info = member.publicUserData;
+									const name =
+										`${info?.firstName ?? ""} ${info?.lastName ?? ""}`.trim();
+									const email = info?.identifier ?? "";
+									const isSelf = member.id === membership?.id;
+									const rowBusy = pendingMemberId === member.id;
+									return (
+										<Item key={member.id} size="sm" className="px-4 py-3.5">
+											<ItemMedia>
+												<Avatar className="size-9">
+													{info?.imageUrl ? (
+														<AvatarImage src={info.imageUrl} alt="" />
+													) : null}
+													<AvatarFallback className="text-xs font-medium">
+														{getInitials(name, email)}
+													</AvatarFallback>
+												</Avatar>
+											</ItemMedia>
+											<ItemContent>
+												<ItemTitle>
+													{name || email}
+													{isSelf && (
+														<span className="font-normal text-muted-foreground">
+															{" "}
+															(you)
+														</span>
+													)}
+												</ItemTitle>
+												{email && name && (
+													<ItemDescription>{email}</ItemDescription>
+												)}
+											</ItemContent>
+											<ItemActions>
+												{isAdmin && !isSelf ? (
+													<>
+														<Select
+															value={member.role}
+															onValueChange={(value) =>
+																handleRoleChange(member, value)
+															}
+															disabled={rowBusy}
+														>
+															<SelectTrigger size="sm" className="w-28">
+																<SelectValue />
+															</SelectTrigger>
+															<SelectContent>
+																{ROLE_OPTIONS.map((option) => (
+																	<SelectItem
+																		key={option.value}
+																		value={option.value}
+																	>
+																		{option.label}
+																	</SelectItem>
+																))}
+															</SelectContent>
+														</Select>
+														<Button
+															intent="outline"
+															size="sq-sm"
+															aria-label="Remove member"
+															isDisabled={rowBusy}
+															onPress={() => handleRemoveMember(member)}
+															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+														>
+															{rowBusy ? (
+																<Loader2 className="h-4 w-4 animate-spin" />
+															) : (
+																<Trash2 className="h-4 w-4" />
+															)}
+														</Button>
+													</>
+												) : (
+													<Badge
+														variant={
+															member.role === ADMIN_ROLE
+																? "primary-light"
+																: "secondary"
+														}
+														radius="full"
+														size="lg"
+													>
+														{roleLabel(member.role)}
+													</Badge>
+												)}
+											</ItemActions>
+										</Item>
+									);
+								})}
+							</div>
+						)}
+					</FramePanel>
+
+					{memberships?.hasNextPage && (
+						<FrameFooter className="items-center">
 							<Button
 								intent="plain"
 								size="sm"
-								className="self-start"
 								onPress={() => memberships.fetchNext?.()}
 								isDisabled={memberships.isFetching}
 							>
@@ -587,142 +631,158 @@ export function OverviewTab() {
 								)}
 								Load more
 							</Button>
-						)}
-					</div>
-				)}
-			</SettingsSection>
+						</FrameFooter>
+					)}
+				</Frame>
 
-			{/* Invitations (admins only) */}
-			{isAdmin && (
-				<SettingsSection
-					title="Invitations"
-					description="Invite teammates by email. They'll get a link to join this organization."
-				>
-					<div className="flex flex-col gap-5">
-						<div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-							<Field
-								className="flex-1"
-								data-invalid={inviteInvalid || undefined}
-							>
-								<FieldLabel htmlFor="invite-email" className="sr-only">
-									Email address
-								</FieldLabel>
-								<InputGroup className={cn(inviting && "opacity-70")}>
-									<InputGroupAddon>
-										<Mail />
-									</InputGroupAddon>
-									<InputGroupInput
-										id="invite-email"
-										type="email"
-										inputMode="email"
-										placeholder="teammate@business.com"
-										value={inviteEmail}
-										disabled={inviting}
-										aria-invalid={inviteInvalid || undefined}
-										onChange={(event) => setInviteEmail(event.target.value)}
-									/>
-								</InputGroup>
-								{inviteInvalid && (
-									<FieldError>Enter an email address to invite.</FieldError>
-								)}
-							</Field>
-							<Select
-								value={inviteRole}
-								onValueChange={setInviteRole}
-								disabled={inviting}
-							>
-								<SelectTrigger className="sm:w-32">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{ROLE_OPTIONS.map((option) => (
-										<SelectItem key={option.value} value={option.value}>
-											{option.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<Button
-								intent="primary"
-								onPress={handleInvite}
-								isDisabled={inviting}
-								isPending={inviting}
-							>
-								{inviting ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<UserPlus className="h-4 w-4" />
-								)}
-								Send invite
-							</Button>
-						</div>
+				{/* Invitations (admins only) */}
+				{isAdmin && (
+					<Frame>
+						<FrameHeader>
+							<FrameTitle>Invitations</FrameTitle>
+							<FrameDescription>
+								Invite teammates by email. They&apos;ll get a link to join this
+								organization.
+							</FrameDescription>
+						</FrameHeader>
 
-						{pendingInvites.length > 0 ? (
-							<div className="flex flex-col gap-2">
-								<h3 className={eyebrowClass}>Pending</h3>
-								{pendingInvites.map((invitation) => {
-									const rowBusy = pendingInviteId === invitation.id;
-									return (
-										<Item
-											key={invitation.id}
-											variant="muted"
-											size="sm"
-											className="rounded-lg"
-										>
-											<ItemMedia variant="icon">
-												<Mail className="h-4 w-4" />
-											</ItemMedia>
-											<ItemContent>
-												<ItemTitle>{invitation.emailAddress}</ItemTitle>
-											</ItemContent>
-											<ItemActions>
-												<Badge
-													variant={
-														invitation.role === ADMIN_ROLE
-															? "primary-light"
-															: "secondary"
-													}
-													radius="full"
-													size="lg"
-												>
-													{roleLabel(invitation.role)}
-												</Badge>
-												<Button
-													intent="outline"
-													size="sq-sm"
-													aria-label="Revoke invitation"
-													isDisabled={rowBusy}
-													onPress={() => handleRevoke(invitation)}
-													className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-												>
-													{rowBusy ? (
-														<Loader2 className="h-4 w-4 animate-spin" />
-													) : (
-														<Trash2 className="h-4 w-4" />
-													)}
-												</Button>
-											</ItemActions>
-										</Item>
-									);
-								})}
+						<FramePanel className="p-0">
+							<div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:p-5">
+								<Field
+									className="flex-1"
+									data-invalid={inviteInvalid || undefined}
+								>
+									<FieldLabel htmlFor="invite-email" className="sr-only">
+										Email address
+									</FieldLabel>
+									<InputGroup className={cn(inviting && "opacity-70")}>
+										<InputGroupAddon>
+											<Mail />
+										</InputGroupAddon>
+										<InputGroupInput
+											id="invite-email"
+											type="email"
+											inputMode="email"
+											placeholder="teammate@business.com"
+											value={inviteEmail}
+											disabled={inviting}
+											aria-invalid={inviteInvalid || undefined}
+											onChange={(event) => setInviteEmail(event.target.value)}
+										/>
+									</InputGroup>
+									{inviteInvalid && (
+										<FieldError>Enter an email address to invite.</FieldError>
+									)}
+								</Field>
+								<Select
+									value={inviteRole}
+									onValueChange={setInviteRole}
+									disabled={inviting}
+								>
+									<SelectTrigger className="sm:w-32">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{ROLE_OPTIONS.map((option) => (
+											<SelectItem key={option.value} value={option.value}>
+												{option.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<StyledButton
+									intent="primary"
+									size="md"
+									showArrow={false}
+									onClick={handleInvite}
+									disabled={inviting}
+									icon={
+										inviting ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<UserPlus className="h-4 w-4" />
+										)
+									}
+								>
+									Send invite
+								</StyledButton>
 							</div>
-						) : (
-							<p className="text-sm text-muted-foreground">
-								No pending invitations.
-							</p>
-						)}
-					</div>
-				</SettingsSection>
-			)}
+
+							{pendingInvites.length > 0 ? (
+								<div className="border-t border-border">
+									<div className="px-4 pt-3.5">
+										<Eyebrow>Pending</Eyebrow>
+									</div>
+									<div className="divide-y divide-border">
+										{pendingInvites.map((invitation) => {
+											const rowBusy = pendingInviteId === invitation.id;
+											return (
+												<Item
+													key={invitation.id}
+													size="sm"
+													className="px-4 py-3.5"
+												>
+													<ItemMedia variant="icon">
+														<Mail className="h-4 w-4" />
+													</ItemMedia>
+													<ItemContent>
+														<ItemTitle>{invitation.emailAddress}</ItemTitle>
+													</ItemContent>
+													<ItemActions>
+														<Badge
+															variant={
+																invitation.role === ADMIN_ROLE
+																	? "primary-light"
+																	: "secondary"
+															}
+															radius="full"
+															size="lg"
+														>
+															{roleLabel(invitation.role)}
+														</Badge>
+														<Button
+															intent="outline"
+															size="sq-sm"
+															aria-label="Revoke invitation"
+															isDisabled={rowBusy}
+															onPress={() => handleRevoke(invitation)}
+															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+														>
+															{rowBusy ? (
+																<Loader2 className="h-4 w-4 animate-spin" />
+															) : (
+																<Trash2 className="h-4 w-4" />
+															)}
+														</Button>
+													</ItemActions>
+												</Item>
+											);
+										})}
+									</div>
+								</div>
+							) : (
+								<div className="border-t border-border px-4 py-3.5">
+									<p className="text-sm text-muted-foreground">
+										No pending invitations.
+									</p>
+								</div>
+							)}
+						</FramePanel>
+					</Frame>
+				)}
+			</div>
 
 			{/* Danger zone */}
-			<SettingsSection
-				title="Danger zone"
-				description="Irreversible actions for this organization."
-				panelClassName="border-destructive/30"
-			>
-				<div className="flex flex-col gap-3">
-					<Item variant="outline" size="sm" className="rounded-lg">
+			<Frame className="border-destructive/30">
+				<FrameHeader>
+					<FrameTitle className="text-destructive">Danger zone</FrameTitle>
+					<FrameDescription>
+						Irreversible actions for this organization.
+					</FrameDescription>
+				</FrameHeader>
+
+				<FramePanel className="divide-y divide-destructive/20 border-destructive/20 bg-destructive/[0.03] p-0">
+					<Item size="sm" className="px-[22px] py-4">
 						<ItemContent>
 							<ItemTitle>Leave organization</ItemTitle>
 							<ItemDescription>
@@ -750,11 +810,7 @@ export function OverviewTab() {
 					</Item>
 
 					{isAdmin && (
-						<Item
-							variant="outline"
-							size="sm"
-							className="rounded-lg border-destructive/30"
-						>
+						<Item size="sm" className="px-[22px] py-4">
 							<ItemContent>
 								<ItemTitle className="text-destructive">
 									Delete organization
@@ -765,25 +821,27 @@ export function OverviewTab() {
 								</ItemDescription>
 							</ItemContent>
 							<ItemActions>
-								<Button
+								<StyledButton
 									intent="destructive"
 									size="sm"
-									onPress={handleDelete}
-									isDisabled={deleting}
-									isPending={deleting}
+									showArrow={false}
+									onClick={handleDelete}
+									disabled={deleting}
+									icon={
+										deleting ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<Trash2 className="h-4 w-4" />
+										)
+									}
 								>
-									{deleting ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
-									) : (
-										<Trash2 className="h-4 w-4" />
-									)}
 									Delete
-								</Button>
+								</StyledButton>
 							</ItemActions>
 						</Item>
 					)}
-				</div>
-			</SettingsSection>
+				</FramePanel>
+			</Frame>
 		</div>
 	);
 }
