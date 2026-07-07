@@ -7,6 +7,7 @@ import {
 	Check,
 	Pencil,
 	Plus,
+	PowerOff,
 	RotateCcw,
 	Trash2,
 	X,
@@ -195,6 +196,20 @@ export function SKUsTab() {
 			});
 			const userMessage = getUserFriendlyErrorMessage(error);
 			toast.error("Reactivate failed", userMessage);
+		}
+	};
+
+	const handleDeactivate = async (id: Id<"skus">) => {
+		try {
+			await updateSKU({ id, isActive: false });
+			toast.success("SKU deactivated", "It won't appear in new quotes");
+		} catch (error) {
+			logError(error, {
+				action: "deactivate_sku",
+				metadata: { skuId: id },
+			});
+			const userMessage = getUserFriendlyErrorMessage(error);
+			toast.error("Deactivate failed", userMessage);
 		}
 	};
 
@@ -452,7 +467,17 @@ export function SKUsTab() {
 												</td>
 												<td className="px-4 py-3">
 													<div className="flex justify-end gap-1">
-														{!sku.isActive && (
+														{sku.isActive ? (
+															<Button
+																intent="outline"
+																size="sq-sm"
+																onPress={() => handleDeactivate(sku._id)}
+																aria-label="Deactivate SKU"
+																className="hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400"
+															>
+																<PowerOff className="h-3 w-3" />
+															</Button>
+														) : (
 															<Button
 																intent="outline"
 																size="sq-sm"
