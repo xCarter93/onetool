@@ -21,20 +21,14 @@ const LINKS: { href: string; label: string }[] = [
 export function StripeDocLinks() {
 	return (
 		<section aria-label="Stripe documentation" className="space-y-1">
-			<div className="pb-1">
-				<h3 className="text-lg font-semibold text-foreground">Learn more</h3>
-				<p className="text-[12.5px] text-muted-foreground">
-					Stripe documentation, opens in a new tab.
-				</p>
-			</div>
-			<ul>
+			<ul className="divide-y divide-border/60">
 				{LINKS.map((link) => (
 					<li key={link.href}>
 						<a
 							href={link.href}
 							target="_blank"
 							rel="noopener noreferrer"
-							className="group flex items-center justify-between gap-2.5 border-t border-border/60 py-2.5 text-[13.5px] font-medium text-foreground transition-colors hover:text-primary"
+							className="group flex items-center justify-between gap-2.5 py-2.5 text-[13.5px] font-medium text-foreground transition-colors hover:text-primary"
 						>
 							<span>{link.label}</span>
 							<ExternalLink

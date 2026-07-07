@@ -13,15 +13,26 @@ type SelectServiceProps = {
 	options: Option[];
 	selected: string;
 	onChange: (value: string) => void;
+	disabled?: boolean;
+	/** Radio-group name; defaults to a unique id so multiple instances don't collide. */
+	name?: string;
 };
 
 const SelectService: React.FC<SelectServiceProps> = ({
 	options,
 	selected,
 	onChange,
+	disabled = false,
+	name,
 }) => {
+	const generatedName = React.useId();
+	const groupName = name ?? generatedName;
 	return (
-		<div className="flex flex-wrap justify-center gap-6 max-w-lg mx-auto select-none p-2">
+		<div
+			className={`flex flex-wrap justify-center gap-6 max-w-lg mx-auto select-none p-2 ${
+				disabled ? "opacity-60" : ""
+			}`}
+		>
 			{options.map((option) => {
 				const IconComponent = option.icon;
 				const isChecked = selected === option.value;
@@ -29,14 +40,17 @@ const SelectService: React.FC<SelectServiceProps> = ({
 				return (
 					<label
 						key={option.value}
-						className="relative cursor-pointer w-28 sm:w-32"
+						className={`relative w-28 sm:w-32 ${
+							disabled ? "cursor-not-allowed" : "cursor-pointer"
+						}`}
 					>
 						<input
 							type="radio"
 							className="sr-only peer"
-							name="vehicle"
+							name={groupName}
 							value={option.value}
 							checked={isChecked}
+							disabled={disabled}
 							onChange={() => onChange(option.value)}
 						/>
 

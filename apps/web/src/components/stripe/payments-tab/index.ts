@@ -1,4 +1,3 @@
-export { ConnectionStatusStrip } from "./ConnectionStatusStrip";
 export { PaymentsFlow } from "./PaymentsFlow";
 export { RequirementsSummary } from "./RequirementsSummary";
 export { FeeDisclosureTable } from "./FeeDisclosureTable";
