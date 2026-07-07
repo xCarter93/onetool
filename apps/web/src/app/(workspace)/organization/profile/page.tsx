@@ -108,13 +108,28 @@ export default function OrganizationProfilePage() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
-	const { hasPremiumAccess } = useFeatureAccess();
+	const { hasPremiumAccess, isLoading: featureLoading } = useFeatureAccess();
 	const { organization, isLoading } = useOrgOwner();
 
 	// Get active tab from search params
 	const tabParam = searchParams.get("tab");
 	const activeTab: TabValue =
 		tabParam && isTabValue(tabParam) ? tabParam : "overview";
+
+	// The nav rail locks premium tabs, but typing ?tab=payments directly bypasses
+	// handleTabChange. Once access resolves, deny premium tabs to non-premium users:
+	// render the overview and replace the URL to match. (This is UI gating only —
+	// the durable boundary must live in the backend.)
+	const deniedPremium =
+		!featureLoading && PREMIUM_TABS.includes(activeTab) && !hasPremiumAccess;
+	const renderTab: TabValue = deniedPremium ? "overview" : activeTab;
+
+	React.useEffect(() => {
+		if (deniedPremium) {
+			toast.error("Premium Feature", "Upgrade to access this feature");
+			router.replace("/organization/profile");
+		}
+	}, [deniedPremium, router, toast]);
 
 	const handleTabChange = React.useCallback(
 		(value: string) => {
@@ -239,23 +254,23 @@ export default function OrganizationProfilePage() {
 					<div className="grid min-h-0 flex-1 lg:grid-cols-[262px_1fr] lg:overflow-hidden">
 						<SettingsNavRail
 							items={navItems}
-							activeValue={activeTab}
+							activeValue={renderTab}
 							onSelect={handleTabChange}
 						/>
 						<div className="relative flex min-w-0 flex-col lg:overflow-hidden">
 							<div className="px-5 pt-5 sm:px-6 lg:hidden">
 								<SettingsNavChips
 									items={navItems}
-									activeValue={activeTab}
+									activeValue={renderTab}
 									onSelect={handleTabChange}
 								/>
 							</div>
 							<div className="min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8">
-								{activeTab === "overview" && <OverviewTab />}
-								{activeTab === "business" && <BusinessInfoTab />}
-								{activeTab === "payments" && <PaymentsTab />}
-								{activeTab === "documents" && <DocumentsTab />}
-								{activeTab === "skus" && <SKUsTab />}
+								{renderTab === "overview" && <OverviewTab />}
+								{renderTab === "business" && <BusinessInfoTab />}
+								{renderTab === "payments" && <PaymentsTab />}
+								{renderTab === "documents" && <DocumentsTab />}
+								{renderTab === "skus" && <SKUsTab />}
 							</div>
 						</div>
 					</div>

@@ -14,6 +14,8 @@ type SelectServiceProps = {
 	selected: string;
 	onChange: (value: string) => void;
 	disabled?: boolean;
+	/** Radio-group name; defaults to a unique id so multiple instances don't collide. */
+	name?: string;
 };
 
 const SelectService: React.FC<SelectServiceProps> = ({
@@ -21,7 +23,10 @@ const SelectService: React.FC<SelectServiceProps> = ({
 	selected,
 	onChange,
 	disabled = false,
+	name,
 }) => {
+	const generatedName = React.useId();
+	const groupName = name ?? generatedName;
 	return (
 		<div
 			className={`flex flex-wrap justify-center gap-6 max-w-lg mx-auto select-none p-2 ${
@@ -42,7 +47,7 @@ const SelectService: React.FC<SelectServiceProps> = ({
 						<input
 							type="radio"
 							className="sr-only peer"
-							name="vehicle"
+							name={groupName}
 							value={option.value}
 							checked={isChecked}
 							disabled={disabled}

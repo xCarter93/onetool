@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import Image from "next/image";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
@@ -110,11 +110,21 @@ function parseAddress(address?: string) {
 	}
 
 	const parts = address.split(",").map((part) => part.trim());
+	let state = parts[2] ?? "";
+	let zip = parts[3] ?? "";
+	// Legacy values often pack "STATE ZIP" into the final segment (e.g. "IL 62704").
+	if (!zip && state) {
+		const match = state.match(/^(.*?)\s+(\S+)$/);
+		if (match) {
+			state = match[1];
+			zip = match[2];
+		}
+	}
 	return {
 		street: parts[0] ?? "",
 		city: parts[1] ?? "",
-		state: parts[2] ?? "",
-		zip: parts[3] ?? "",
+		state,
+		zip,
 	};
 }
 
@@ -133,15 +143,6 @@ export function BusinessInfoTab() {
 
 	const controlsDisabled = !isOwner || savingBusiness;
 
-	const lastOrganizationId = useRef<string | null>(null);
-	useEffect(() => {
-		const currentOrgId = organization?._id ?? null;
-		if (lastOrganizationId.current !== currentOrgId) {
-			lastOrganizationId.current = currentOrgId;
-			setBusinessDirty(false);
-		}
-	}, [organization?._id]);
-
 	// Re-sync the form from org data during render whenever org data changes
 	// (unless the user has unsaved edits). Seeded with `undefined` so the first
 	// render — where the shell has already resolved `organization` — still counts
@@ -149,8 +150,13 @@ export function BusinessInfoTab() {
 	const [prevOrganization, setPrevOrganization] =
 		useState<typeof organization>(undefined);
 	if (organization !== prevOrganization) {
+		// Re-seed on org switch (discard stale edits) or when the same org's data
+		// changes with no unsaved edits to clobber. Keying off the org id fixes a
+		// stale-form bug when switching orgs while dirty.
+		const orgIdChanged = organization?._id !== prevOrganization?._id;
 		setPrevOrganization(organization);
-		if (organization !== undefined && !businessDirty) {
+		if (organization !== undefined && (orgIdChanged || !businessDirty)) {
+			if (orgIdChanged) setBusinessDirty(false);
 			// Use structured fields if available, otherwise parse from legacy address
 			const { street, city, state, zip } = parseAddress(organization?.address);
 			setBusinessForm({

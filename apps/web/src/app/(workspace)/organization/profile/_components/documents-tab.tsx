@@ -105,17 +105,24 @@ export function DocumentsTab() {
 
 	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
 		e.preventDefault();
+		if (isUploading) return;
 		setIsDragging(true);
 	};
 
 	const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
 		e.preventDefault();
+		// Moving between the dropzone's own children fires dragleave on the parent;
+		// only clear the highlight when the pointer actually leaves the dropzone.
+		if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
 		setIsDragging(false);
 	};
 
 	const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
 		e.preventDefault();
 		setIsDragging(false);
+		// The dropzone is visually disabled mid-upload; ignore drops too so a
+		// second concurrent upload can't start.
+		if (isUploading) return;
 
 		const file = e.dataTransfer.files?.[0];
 		if (!file) return;

@@ -36,6 +36,7 @@ export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavPro
 						type="button"
 						onClick={() => onSelect(item.value)}
 						aria-current={active ? "page" : undefined}
+						aria-disabled={item.locked || undefined}
 						className={cn(
 							"relative flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-colors",
 							active
@@ -65,7 +66,10 @@ export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavPro
 							</span>
 						</span>
 						{item.locked && (
-							<Lock className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+							<Lock
+								aria-hidden="true"
+								className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+							/>
 						)}
 					</button>
 				);
@@ -95,6 +99,7 @@ export function SettingsNavChips({ items, activeValue, onSelect }: SettingsNavPr
 						type="button"
 						onClick={() => onSelect(item.value)}
 						aria-current={active ? "page" : undefined}
+						aria-disabled={item.locked || undefined}
 						className={cn(
 							"flex shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors",
 							active
@@ -104,7 +109,9 @@ export function SettingsNavChips({ items, activeValue, onSelect }: SettingsNavPr
 					>
 						<Icon className="size-4" />
 						{item.label}
-						{item.locked && <Lock className="size-3 text-muted-foreground" />}
+						{item.locked && (
+							<Lock aria-hidden="true" className="size-3 text-muted-foreground" />
+						)}
 					</button>
 				);
 			})}
