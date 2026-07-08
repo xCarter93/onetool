@@ -160,6 +160,11 @@ const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
 	},
 ];
 
+/** " ID" suffix for id-type fields (e.g. "Client" -> "Client ID") disambiguates FK references. */
+function fieldOptionLabel(prefix: string, field: { label: string; type: FieldType }): string {
+	return `${prefix} → ${field.label}${field.type === "id" ? " ID" : ""}`;
+}
+
 /** trigger.record.<field> + trigger.event.oldValue/newValue — shared by both functions. */
 function triggerVariableOptions(
 	trigger: TriggerConfig | AutomationTrigger
@@ -168,10 +173,17 @@ function triggerVariableOptions(
 	const triggerObjectType = trigger.objectType as AutomationObjectType | undefined;
 
 	if (triggerObjectType) {
+		// Runtime resolves _id by raw property lookup on the record; offer it explicitly.
+		options.push({
+			path: "trigger.record._id",
+			label: `Trigger → ${OBJECT_TYPE_LABELS[triggerObjectType]} ID`,
+			group: "Trigger",
+			fieldType: "id",
+		});
 		for (const field of getFilterableFields(triggerObjectType)) {
 			options.push({
 				path: `trigger.record.${field.key}`,
-				label: `Trigger → ${field.label}`,
+				label: fieldOptionLabel("Trigger", field),
 				group: "Trigger",
 				fieldType: field.type,
 			});
@@ -292,10 +304,17 @@ export function getAvailableVariables(
 			?.objectType;
 		if (!sourceObjectType) continue;
 
+		// Runtime resolves _id by raw property lookup on the loop item; offer it explicitly.
+		options.push({
+			path: `loop.${node.id}.item._id`,
+			label: `Loop item → ${OBJECT_TYPE_LABELS[sourceObjectType]} ID`,
+			group: "Loop item",
+			fieldType: "id",
+		});
 		for (const field of getFilterableFields(sourceObjectType)) {
 			options.push({
 				path: `loop.${node.id}.item.${field.key}`,
-				label: `Loop item → ${field.label}`,
+				label: fieldOptionLabel("Loop item", field),
 				group: "Loop item",
 				fieldType: field.type,
 			});
@@ -387,10 +406,16 @@ export function getAllVariableOptions(
 			?.objectType;
 		if (!sourceObjectType) continue;
 
+		options.push({
+			path: `loop.${node.id}.item._id`,
+			label: `Loop item → ${OBJECT_TYPE_LABELS[sourceObjectType]} ID`,
+			group: "Loop item",
+			fieldType: "id",
+		});
 		for (const field of getFilterableFields(sourceObjectType)) {
 			options.push({
 				path: `loop.${node.id}.item.${field.key}`,
-				label: `Loop item → ${field.label}`,
+				label: fieldOptionLabel("Loop item", field),
 				group: "Loop item",
 				fieldType: field.type,
 			});

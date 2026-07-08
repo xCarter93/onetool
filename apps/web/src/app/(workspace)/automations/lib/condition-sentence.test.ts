@@ -70,6 +70,24 @@ describe("conditionSentence", () => {
 		);
 	});
 
+	it("renders trigger.record._id as a plain-English record ID reference", () => {
+		const groups: ConditionGroup[] = [
+			{
+				logic: "and",
+				rules: [
+					{
+						field: "clientId",
+						operator: "equals" as const,
+						value: { kind: "var", path: "trigger.record._id" },
+					},
+				],
+			},
+		];
+		expect(conditionSentence("and", groups, "task")).toBe(
+			"Client equals Trigger record ID"
+		);
+	});
+
 	it("skips incomplete rules and empty groups", () => {
 		const groups: ConditionGroup[] = [
 			{ logic: "and", rules: [rule("", "equals", "x")] },

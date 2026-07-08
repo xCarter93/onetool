@@ -1287,10 +1287,25 @@ describe("automationExecutor (v2 engine)", () => {
 			};
 		}
 
+		/** Like filterGroup, but the value resolves from scope (e.g. trigger.record._id). */
+		function varFilterGroup(field: string, operator: string, path: string) {
+			return {
+				logic: "and" as const,
+				rules: [
+					{
+						field,
+						// eslint-disable-next-line @typescript-eslint/no-explicit-any
+						operator: operator as any,
+						value: { kind: "var" as const, path },
+					},
+				],
+			};
+		}
+
 		function fetchNode(
 			id: string,
 			objectType: "client" | "project" | "quote" | "invoice" | "task",
-			filters: ReturnType<typeof filterGroup>[] = [],
+			filters: (ReturnType<typeof filterGroup> | ReturnType<typeof varFilterGroup>)[] = [],
 			opts: { nextNodeId?: string; limit?: number } = {}
 		) {
 			return {
@@ -1577,6 +1592,95 @@ describe("automationExecutor (v2 engine)", () => {
 			);
 			expect(keep?.status).toBe("in-progress");
 			expect(skip?.status).toBe("planned");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const loopEntry = executions[0].nodesExecuted.find(
+				(n) => n.nodeId === "loop-1"
+			);
+			expect(loopEntry?.recordsProcessed).toBe(2);
+		});
+
+		it("var-kind fetch filter: cancel client cascades to only its own tasks", async () => {
+			const { asUser } = await setupUser();
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const otherClientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Other Co",
+				status: "active",
+			});
+
+			const task1 = await asUser.mutation(api.tasks.create, {
+				clientId,
+				title: "Task 1",
+				date: Date.now(),
+				status: "pending",
+			});
+			const task2 = await asUser.mutation(api.tasks.create, {
+				clientId,
+				title: "Task 2",
+				date: Date.now(),
+				status: "pending",
+			});
+			const otherTask = await asUser.mutation(api.tasks.create, {
+				clientId: otherClientId,
+				title: "Other client's task",
+				date: Date.now(),
+				status: "pending",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Cancel client's tasks on archive",
+				trigger: {
+					type: "status_changed",
+					objectType: "client",
+					toStatus: "archived",
+				},
+				nodes: [
+					// clientId resolves via a var-kind value against trigger.record._id,
+					// not a static id — the case under test.
+					fetchNode(
+						"fetch-1",
+						"task",
+						[varFilterGroup("clientId", "equals", "trigger.record._id")],
+						{ nextNodeId: "loop-1" }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "end-1",
+					}),
+					updateFieldActionNode("body-act", "status", "cancelled", {
+						target: "self",
+					}),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.update, {
+				id: clientId,
+				status: "archived",
+			});
+			await drainEvents();
+
+			const [t1, t2, t3] = await t.run(async (ctx) =>
+				Promise.all([
+					ctx.db.get(task1),
+					ctx.db.get(task2),
+					ctx.db.get(otherTask),
+				])
+			);
+			expect(t1?.status).toBe("cancelled");
+			expect(t2?.status).toBe("cancelled");
+			expect(t3?.status).toBe("pending");
 
 			const executions = await t.run(async (ctx) =>
 				ctx.db.query("workflowExecutions").collect()
