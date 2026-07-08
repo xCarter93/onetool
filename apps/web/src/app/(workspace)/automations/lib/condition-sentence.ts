@@ -57,6 +57,7 @@ function describeVarPath(
 	const prefix = "trigger.record.";
 	if (path.startsWith(prefix)) {
 		const field = path.slice(prefix.length);
+		if (field === "_id") return "Trigger record ID"; // not in the field registry
 		const label = objectType ? getFieldDefinition(objectType, field)?.label : undefined;
 		return label ?? field;
 	}

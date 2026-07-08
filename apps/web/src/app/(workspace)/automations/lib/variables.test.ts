@@ -71,6 +71,27 @@ describe("getAvailableVariables", () => {
 		expect(companyName?.group).toBe("Trigger");
 	});
 
+	it("offers trigger.record._id first, labeled with the trigger's entity type", () => {
+		const target = actionNode("a1");
+		const options = getAvailableVariables([target], statusChangedTrigger, "a1");
+		const triggerOptions = options.filter((o) => o.group === "Trigger");
+		expect(triggerOptions[0]).toEqual({
+			path: "trigger.record._id",
+			label: "Trigger → Client ID",
+			group: "Trigger",
+			fieldType: "id",
+		});
+	});
+
+	it("suffixes id-type FK field labels with ' ID' to disambiguate from the related record", () => {
+		const target = actionNode("a1");
+		const taskTrigger: TriggerConfig = { type: "record_created", objectType: "task" };
+		const options = getAvailableVariables([target], taskTrigger, "a1");
+		const clientId = options.find((o) => o.path === "trigger.record.clientId");
+		expect(clientId?.label).toBe("Trigger → Client ID");
+		expect(clientId?.fieldType).toBe("id");
+	});
+
 	it("includes trigger.event.oldValue/newValue only for status_changed triggers", () => {
 		const target = actionNode("a1");
 		const statusChangedOptions = getAvailableVariables(
@@ -132,6 +153,14 @@ describe("getAvailableVariables", () => {
 		expect(item).toBeDefined();
 		expect(item?.label).toBe("Loop item → Title");
 		expect(insideBody.some((o) => o.path === "loop.loop1.index")).toBe(true);
+
+		const loopItemId = insideBody.find((o) => o.path === "loop.loop1.item._id");
+		expect(loopItemId).toEqual({
+			path: "loop.loop1.item._id",
+			label: "Loop item → Project ID",
+			group: "Loop item",
+			fieldType: "id",
+		});
 
 		const outsideBody = getAvailableVariables(nodes, statusChangedTrigger, "after1");
 		expect(outsideBody.some((o) => o.path.startsWith("loop.loop1."))).toBe(false);
