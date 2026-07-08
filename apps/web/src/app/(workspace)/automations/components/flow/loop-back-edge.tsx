@@ -7,12 +7,16 @@ export function LoopBackEdge({
 	sourceY,
 	targetX,
 	targetY,
+	data,
 	markerEnd,
 	style,
 }: EdgeProps) {
 	const offsetX = 50;
-	// Route to the LEFT side of the loop (min X minus offset)
-	const leftX = Math.min(sourceX, targetX) - offsetX;
+	// Vertical run: hug the loop container's left lane when the derived layout
+	// provides it; otherwise fall back to min X minus a fixed offset.
+	const routeLeftX =
+		typeof data?.routeLeftX === "number" ? (data.routeLeftX as number) : undefined;
+	const leftX = routeLeftX ?? Math.min(sourceX, targetX) - offsetX;
 	const cornerRadius = 16;
 	// Extend below source to clear the terminal "+" stub button (50px below source)
 	const extendBelow = 70;

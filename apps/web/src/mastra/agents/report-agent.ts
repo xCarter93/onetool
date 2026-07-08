@@ -97,6 +97,7 @@ Guidelines:
 - Suggest visualization types that best represent the data
 - Consider date ranges that make sense for the metric
 - Provide both the report configuration and a human-readable explanation
+- CAPABILITY LIMIT: Reports only support entityType, groupBy, and dateRange. There is no support for custom filters (e.g. "status=paid only") or custom aggregations (e.g. "average invoice value"). Never claim a report applies a filter or computes a custom aggregation — if the user asks for one, tell them it isn't supported yet and offer the closest available groupBy instead.
 
 Example interactions and correct responses:
 - "Show me revenue by month" → entityType: "invoices", groupBy: "month", visualization: "line"

@@ -8,10 +8,12 @@ import type {
 	ConditionNodeConfig,
 	WorkflowNode,
 } from "../../../lib/node-types";
+import { getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 import { DeleteStepButton, PanelSection } from "./panel-primitives";
 import { FilterGroupsEditor } from "./filter-groups-editor";
+import { ConditionSentenceSummary } from "./condition-sentence-summary";
 
 function defaultConfig(): ConditionNodeConfig {
 	return { kind: "condition", logic: "and", groups: [{ logic: "and", rules: [] }] };
@@ -38,12 +40,19 @@ export function ConditionConfigPanel({
 		);
 	}
 
-	const objectType: AutomationObjectType = trigger?.objectType || "quote";
+	const triggerObjectType: AutomationObjectType = trigger?.objectType || "quote";
 	const config = (node.config as ConditionNodeConfig | undefined) ?? defaultConfig();
 	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
 
+	// Inside a loop body, conditions read the loop's fetched item, not the
+	// trigger record — mirror the engine (automationExecutor.ts executeNodeV2).
+	const scope = getScopeObjectType(workflowNodes, nodeId, triggerObjectType);
+	const objectType: AutomationObjectType = scope.objectType ?? triggerObjectType;
+
 	const commit = (next: ConditionNodeConfig) => {
-		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
+		const source: ConditionNodeConfig["source"] =
+			scope.inLoop && scope.loopNodeId ? { loopNodeId: scope.loopNodeId } : "trigger";
+		onNodeChange(nodeId, { config: { ...next, source } } as Partial<WorkflowNode>);
 	};
 
 	return (
@@ -70,6 +79,12 @@ export function ConditionConfigPanel({
 						trigger={trigger}
 						targetNodeId={nodeId}
 						formulas={formulas}
+					/>
+					<ConditionSentenceSummary
+						prefix="Runs when"
+						logic={config.logic}
+						groups={config.groups}
+						objectType={objectType}
 					/>
 				</PanelSection>
 			</div>

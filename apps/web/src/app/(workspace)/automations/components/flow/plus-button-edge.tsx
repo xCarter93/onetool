@@ -9,6 +9,7 @@ import {
 import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NextItemMarker } from "./next-item-marker";
 
 const EDGE_STYLE = {
 	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
@@ -26,6 +27,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 		style,
 	} = props;
 	const isTerminal = data?.isTerminal === true;
+	const impliedNextItem = data?.impliedNextItem === true;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
@@ -65,6 +67,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 							<Plus className="h-3.5 w-3.5 text-muted-foreground" />
 						</button>
 					</div>
+					{impliedNextItem && <NextItemMarker x={plusX} y={plusY + 18} />}
 				</EdgeLabelRenderer>
 			</>
 		);

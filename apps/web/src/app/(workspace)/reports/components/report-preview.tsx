@@ -8,6 +8,7 @@ import { ReportBarChart } from "./report-bar-chart";
 import { ReportLineChart } from "./report-line-chart";
 import { ReportPieChart } from "./report-pie-chart";
 import { ReportTable } from "./report-table";
+import { getReportValueTypes } from "../report-config";
 
 type ReportConfig = {
 	entityType: "clients" | "projects" | "tasks" | "quotes" | "invoices" | "activities";
@@ -60,6 +61,11 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 	}));
 
 	const total = reportData.total;
+	const groupBy = config.groupBy?.[0];
+	const { totalIsCurrency, itemValueIsCurrency } = getReportValueTypes(
+		config.entityType,
+		groupBy
+	);
 
 	// Render the appropriate visualization
 	switch (visualization.type) {
@@ -68,8 +74,10 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				<ReportBarChart
 					data={chartData}
 					total={total}
-					groupBy={config.groupBy?.[0]}
+					groupBy={groupBy}
 					entityType={config.entityType}
+					totalIsCurrency={totalIsCurrency}
+					itemValueIsCurrency={itemValueIsCurrency}
 				/>
 			);
 		case "line":
@@ -77,7 +85,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				<ReportLineChart
 					data={chartData}
 					total={total}
-					groupBy={config.groupBy?.[0]}
+					groupBy={groupBy}
 					entityType={config.entityType}
 				/>
 			);
@@ -86,7 +94,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				<ReportPieChart
 					data={chartData}
 					total={total}
-					groupBy={config.groupBy?.[0]}
+					groupBy={groupBy}
 					entityType={config.entityType}
 				/>
 			);
@@ -96,8 +104,9 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				<ReportTable
 					data={chartData}
 					total={total}
-					groupBy={config.groupBy?.[0]}
+					groupBy={groupBy}
 					entityType={config.entityType}
+					totalIsCurrency={totalIsCurrency}
 				/>
 			);
 	}

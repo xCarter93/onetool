@@ -4,6 +4,7 @@ import { ReportBarChart } from "@/app/(workspace)/reports/components/report-bar-
 import { ReportLineChart } from "@/app/(workspace)/reports/components/report-line-chart";
 import { ReportPieChart } from "@/app/(workspace)/reports/components/report-pie-chart";
 import { ReportTable } from "@/app/(workspace)/reports/components/report-table";
+import { getReportValueTypes } from "@/app/(workspace)/reports/report-config";
 import type { ToolRendererProps } from "./index";
 
 // Mirrors ReportDataResult (+ visualization) from convex/assistantTools.ts.
@@ -42,11 +43,18 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 		value: point.value,
 	}));
 
+	const { totalIsCurrency, itemValueIsCurrency } = getReportValueTypes(
+		entityType,
+		groupBy
+	);
+
 	const chartProps = {
 		data: chartData,
 		total: report.total,
 		groupBy,
 		entityType,
+		totalIsCurrency,
+		itemValueIsCurrency,
 	};
 
 	return (

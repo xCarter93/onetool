@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity, addMemberToOrg } from "./test.helpers";
 import { api, internal } from "./_generated/api";
+import { scanOrgRows } from "./automationExecutor";
 import { projectCountsAggregate } from "./aggregates";
 import type { Id } from "./_generated/dataModel";
 
@@ -243,6 +244,593 @@ describe("automationExecutor (v2 engine)", () => {
 
 			const project = await t.run(async (ctx) => ctx.db.get(projectId));
 			expect(project?.description).toBe("Manually edited");
+		});
+	});
+
+	describe("actor threading (Phase 1.4)", () => {
+		const stampActorNode = {
+			id: "act-1",
+			type: "action" as const,
+			config: {
+				kind: "action" as const,
+				action: {
+					type: "update_field" as const,
+					target: "self" as const,
+					field: "notes",
+					value: { kind: "var" as const, path: "user.email" },
+				},
+			},
+		};
+
+		it("record_created runs caused by a user resolve user.* globals", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Stamp the actor",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [stampActorNode],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("test@example.com");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].triggeredBy).toMatch(/^actor:/);
+		});
+
+		it("status_changed runs caused by a user resolve user.* globals", async () => {
+			const { asUser } = await setupUser();
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "active",
+			});
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Stamp actor on start",
+				trigger: {
+					type: "status_changed",
+					objectType: "project",
+					toStatus: "in-progress",
+				},
+				nodes: [
+					{
+						...stampActorNode,
+						config: {
+							kind: "action" as const,
+							action: {
+								...stampActorNode.config.action,
+								field: "description",
+							},
+						},
+					},
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.projects.update, {
+				id: projectId,
+				status: "in-progress",
+			});
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.description).toBe("test@example.com");
+		});
+	});
+
+	describe("snapshot pinning (Phase 1.5)", () => {
+		function delayedNodes() {
+			return [
+				updateFieldActionNode("act-1", "notes", "before delay", {
+					nextNodeId: "delay-1",
+				}),
+				{
+					id: "delay-1",
+					type: "delay" as const,
+					config: {
+						kind: "delay" as const,
+						amount: 1,
+						unit: "hours" as const,
+					},
+					nextNodeId: "act-2",
+				},
+				updateFieldActionNode("act-2", "notes", "after delay"),
+			];
+		}
+
+		async function parkAtDelay() {
+			const { orgId, asUser } = await setupUser();
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Delay then follow up (pinned)",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: delayedNodes(),
+				isActive: true, // publishes snapshot v1
+			});
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: clientId,
+					triggeredAt: Date.now(),
+					status: "running",
+					snapshotVersion: 1,
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+			await t.mutation(internal.automationExecutor.executeAutomation, {
+				orgId,
+				executionId,
+				automationId,
+				objectType: "client",
+				objectId: clientId,
+				executionChain: [automationId],
+				recursionDepth: 1,
+			});
+			const mid = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(mid?.resumeState?.resumeNodeId).toBe("act-2");
+			return { orgId, asUser, clientId, automationId, executionId };
+		}
+
+		it("a republish while parked fails the resume instead of drifting to the new version", async () => {
+			const { orgId, asUser, clientId, automationId, executionId } =
+				await parkAtDelay();
+
+			// Republish an unchanged definition — only the version bumps.
+			await asUser.mutation(api.automations.update, {
+				id: automationId,
+				nodes: delayedNodes(),
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+
+			await t.mutation(internal.automationExecutor.resumeExecution, {
+				orgId,
+				executionId,
+				automationId,
+			});
+
+			const final = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(final?.status).toBe("failed");
+			expect(final?.error).toMatch(/republished/);
+			expect(final?.resumeState).toBeUndefined();
+
+			// The post-delay step never ran.
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("before delay");
+		});
+
+		it("a same-version resume completes normally", async () => {
+			const { orgId, clientId, automationId, executionId } =
+				await parkAtDelay();
+
+			await t.mutation(internal.automationExecutor.resumeExecution, {
+				orgId,
+				executionId,
+				automationId,
+			});
+
+			const final = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(final?.status).toBe("completed");
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("after delay");
+		});
+
+		it("event-triggered runs record the snapshot version they started on", async () => {
+			const { asUser } = await setupUser();
+			await asUser.mutation(api.automations.create, {
+				name: "Stamp notes",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "hello")],
+				isActive: true,
+			});
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].snapshotVersion).toBe(1);
+		});
+	});
+
+	describe("idempotency + dispatch observability (Phase 1.6)", () => {
+		it("a duplicate executeAutomation invocation never restarts a finished walk", async () => {
+			const { orgId, asUser } = await setupUser();
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Stamp once",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "stamped")],
+				isActive: true,
+			});
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: clientId,
+					triggeredAt: Date.now(),
+					status: "running",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+			const invoke = () =>
+				t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					objectType: "client",
+					objectId: clientId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+			await invoke();
+			const first = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(first?.status).toBe("completed");
+			expect(first?.nodesExecuted).toHaveLength(1);
+
+			await invoke(); // duplicate — must no-op
+			const second = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(second?.status).toBe("completed");
+			expect(second?.nodesExecuted).toHaveLength(1);
+		});
+
+		it("a duplicate invocation while parked at a delay leaves the checkpoint intact", async () => {
+			const { orgId, asUser } = await setupUser();
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Delay guard",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					updateFieldActionNode("act-1", "notes", "before delay", {
+						nextNodeId: "delay-1",
+					}),
+					{
+						id: "delay-1",
+						type: "delay" as const,
+						config: {
+							kind: "delay" as const,
+							amount: 1,
+							unit: "hours" as const,
+						},
+						nextNodeId: "act-2",
+					},
+					updateFieldActionNode("act-2", "notes", "after delay"),
+				],
+				isActive: true,
+			});
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: clientId,
+					triggeredAt: Date.now(),
+					status: "running",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+			const invoke = () =>
+				t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					objectType: "client",
+					objectId: clientId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+			await invoke();
+			const parked = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(parked?.resumeState?.resumeNodeId).toBe("act-2");
+			expect(parked?.nodesExecuted).toHaveLength(2);
+
+			await invoke(); // duplicate while parked — must not restart the walk
+			const still = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(still?.resumeState?.resumeNodeId).toBe("act-2");
+			expect(still?.nodesExecuted).toHaveLength(2);
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("before delay");
+
+			// The real resume still works after the duplicate no-op.
+			await t.mutation(internal.automationExecutor.resumeExecution, {
+				orgId,
+				executionId,
+				automationId,
+			});
+			const final = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(final?.status).toBe("completed");
+		});
+
+		it("a per-row dispatch failure inserts a failed run and stops re-dispatch", async () => {
+			const { orgId, userId } = await setupUser();
+
+			// Invalid timezone slips past schema validation (plain string) and
+			// makes computeNextRunAt throw inside the dispatch try block.
+			const badTrigger = {
+				type: "scheduled" as const,
+				schedule: {
+					frequency: "daily" as const,
+					timezone: "Not/AZone",
+					time: "09:00",
+				},
+			};
+			const automationId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowAutomations", {
+					orgId,
+					name: "Corrupt schedule",
+					status: "active" as const,
+					trigger: badTrigger,
+					nodes: [],
+					publishedSnapshot: {
+						trigger: badTrigger,
+						nodes: [],
+						version: 1,
+						publishedAt: Date.now(),
+					},
+					nextRunAt: Date.now() - 1000,
+					createdBy: userId,
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.dispatchScheduledAutomations,
+				{}
+			);
+			expect(result.due).toBe(1);
+			expect(result.dispatched).toBe(0);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("failed");
+			expect(executions[0].automationId).toBe(automationId);
+			expect(executions[0].error).toBeTruthy();
+
+			// nextRunAt cleared so the corrupt row doesn't fail every tick.
+			const automation = await t.run(async (ctx) => ctx.db.get(automationId));
+			expect(automation?.nextRunAt).toBeUndefined();
+		});
+	});
+
+	describe("trigger entry criteria (Phase 1.7 / A5-2)", () => {
+		function criteria(field: string, operator: string, value: string) {
+			return {
+				logic: "and" as const,
+				groups: [
+					{
+						logic: "and" as const,
+						rules: [
+							{
+								field,
+								// eslint-disable-next-line @typescript-eslint/no-explicit-any
+								operator: operator as any,
+								value: { kind: "static" as const, value },
+							},
+						],
+					},
+				],
+			};
+		}
+
+		const stampNode = updateFieldActionNode("act-1", "notes", "fired");
+
+		it("a record_created event matching the entry criteria fires the run", async () => {
+			const { asUser } = await setupUser();
+			await asUser.mutation(api.automations.create, {
+				name: "Only Acme clients",
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Acme"),
+				},
+				nodes: [stampNode],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("fired");
+		});
+
+		it("a non-matching event produces no execution row at all", async () => {
+			const { asUser } = await setupUser();
+			await asUser.mutation(api.automations.create, {
+				name: "Only Acme clients",
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Acme"),
+				},
+				nodes: [stampNode],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Other Co",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(0);
+		});
+
+		it("record_updated: the fields watch and entry criteria are ANDed", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const matchId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const missId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Bathroom refresh",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await drainEvents(); // flush creation events before the automation exists
+
+			await asUser.mutation(api.automations.create, {
+				name: "Kitchen title changes only",
+				trigger: {
+					type: "record_updated",
+					objectType: "project",
+					fields: ["title"],
+					entryCriteria: criteria("title", "contains", "Kitchen"),
+				},
+				nodes: [updateFieldActionNode("act-1", "description", "fired")],
+				isActive: true,
+			});
+
+			// Watched field + criteria match → fires.
+			await asUser.mutation(api.projects.update, {
+				id: matchId,
+				title: "Kitchen remodel v2",
+			});
+			await drainEvents();
+			const match = await t.run(async (ctx) => ctx.db.get(matchId));
+			expect(match?.description).toBe("fired");
+
+			// Watched field changes but criteria don't match → no run.
+			await asUser.mutation(api.projects.update, {
+				id: missId,
+				title: "Bathroom refresh v2",
+			});
+			await drainEvents();
+			const miss = await t.run(async (ctx) => ctx.db.get(missId));
+			expect(miss?.description).toBeUndefined();
+
+			// Criteria match but the changed field isn't watched → no run.
+			await asUser.mutation(api.projects.update, {
+				id: matchId,
+				description: "manual edit",
+			});
+			await drainEvents();
+			const after = await t.run(async (ctx) => ctx.db.get(matchId));
+			expect(after?.description).toBe("manual edit");
+		});
+
+		it("matching runs against the published snapshot's criteria, not working-copy edits", async () => {
+			const { asUser } = await setupUser();
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Snapshot criteria",
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Acme"),
+				},
+				nodes: [stampNode],
+				isActive: true, // publishes v1 with the Acme criteria
+			});
+
+			// Unpublished working-copy edit loosens the criteria to "Other".
+			await asUser.mutation(api.automations.update, {
+				id: automationId,
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Other"),
+				},
+			});
+
+			const otherId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Other Co",
+				status: "lead",
+			});
+			await drainEvents();
+			const other = await t.run(async (ctx) => ctx.db.get(otherId));
+			// Published (v1) criteria still govern: "Other Co" must NOT fire.
+			expect(other?.notes).toBeUndefined();
+
+			const acmeId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme LLC",
+				status: "lead",
+			});
+			await drainEvents();
+			const acme = await t.run(async (ctx) => ctx.db.get(acmeId));
+			expect(acme?.notes).toBe("fired");
+		});
+
+		it("save-time validation rejects entry criteria on unknown fields", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad criteria",
+					trigger: {
+						type: "record_created",
+						objectType: "client",
+						entryCriteria: criteria("noSuchField", "equals", "x"),
+					},
+					nodes: [stampNode],
+					isActive: false,
+				})
+			).rejects.toThrow(/unknown field/i);
 		});
 	});
 
@@ -1748,6 +2336,608 @@ describe("automationExecutor (v2 engine)", () => {
 			const nodeIds = executions[0].nodesExecuted.map((n) => n.nodeId);
 			expect(nodeIds).toContain("end-1");
 			expect(nodeIds).not.toContain("act-false");
+		});
+
+		describe("fetch scan pagination + truncation (Phase 1.1)", () => {
+			async function insertTasks(
+				orgId: Id<"organizations">,
+				count: number,
+				titlePrefix = "Task"
+			) {
+				await t.run(async (ctx) => {
+					for (let i = 0; i < count; i++) {
+						await ctx.db.insert("tasks", {
+							orgId,
+							title: `${titlePrefix} ${i}`,
+							date: Date.now(),
+							status: "pending" as const,
+						});
+					}
+				});
+			}
+
+			it("scanOrgRows pages the whole index newest-first with no dupes or skips", async () => {
+				const { orgId } = await setupUser();
+				await insertTasks(orgId, 7);
+
+				const result = await t.run(async (ctx) =>
+					scanOrgRows(ctx, "task", orgId, { batchSize: 2, maxScan: 100 })
+				);
+
+				expect(result.scanned).toBe(7);
+				expect(result.truncated).toBe(false);
+				expect(result.matches.map((r) => r.title)).toEqual([
+					"Task 6",
+					"Task 5",
+					"Task 4",
+					"Task 3",
+					"Task 2",
+					"Task 1",
+					"Task 0",
+				]);
+			});
+
+			it("scanOrgRows early-exits at stopAfterMatches without flagging truncation", async () => {
+				const { orgId } = await setupUser();
+				await insertTasks(orgId, 10);
+
+				const result = await t.run(async (ctx) =>
+					scanOrgRows(ctx, "task", orgId, {
+						batchSize: 2,
+						stopAfterMatches: 3,
+						maxScan: 100,
+					})
+				);
+
+				expect(result.matches).toHaveLength(3);
+				expect(result.scanned).toBeLessThanOrEqual(4);
+				expect(result.truncated).toBe(false);
+			});
+
+			it("an org with exactly maxScan rows is not flagged truncated (0.2 false positive)", async () => {
+				const { orgId } = await setupUser();
+				await insertTasks(orgId, 5);
+
+				const result = await t.run(async (ctx) =>
+					scanOrgRows(ctx, "task", orgId, { batchSize: 2, maxScan: 5 })
+				);
+
+				expect(result.scanned).toBe(5);
+				expect(result.matches).toHaveLength(5);
+				expect(result.truncated).toBe(false);
+			});
+
+			it("stopping at maxScan with rows remaining flags truncated", async () => {
+				const { orgId } = await setupUser();
+				await insertTasks(orgId, 7);
+
+				const result = await t.run(async (ctx) =>
+					scanOrgRows(ctx, "task", orgId, { batchSize: 2, maxScan: 5 })
+				);
+
+				expect(result.scanned).toBe(5);
+				expect(result.matches).toHaveLength(5);
+				expect(result.truncated).toBe(true);
+			});
+
+			it("fetch finds matching records older than the previous 1,000-row cap", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				// The matches are the OLDEST rows: buried past the old cap by 1,100
+				// newer rows, so the pre-1.1 single-page scan never saw them.
+				await insertTasks(orgId, 3, "Ancient");
+				await insertTasks(orgId, 1100, "Recent");
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Find ancient tasks",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "task", [
+							filterGroup("title", "contains", "Ancient"),
+						], { nextNodeId: "end-1" }),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				expect(execution.dataTruncated).toBeFalsy();
+				const fetchEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				expect(fetchEntry?.recordsProcessed).toBe(3);
+				expect(fetchEntry?.truncated).toBeFalsy();
+			});
+
+			it("a >5,000-row org flags truncated on the node entry and the execution", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				// Filter matches nothing, so the scan runs to the ceiling with rows
+				// still remaining — the genuine truncation case.
+				await insertTasks(orgId, 5050);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Scan a huge org",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "task", [
+							filterGroup("title", "contains", "no-such-needle"),
+						], { nextNodeId: "end-1" }),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				expect(execution.dataTruncated).toBe(true);
+				const fetchEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				expect(fetchEntry?.truncated).toBe(true);
+				expect(fetchEntry?.recordsProcessed).toBe(0);
+			});
+
+			it("fetch_records under the cap leaves truncated/dataTruncated unset", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+				await insertTasks(orgId, 5);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Scan a few tasks",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "task", [], { nextNodeId: "end-1" }),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				expect(execution.dataTruncated).toBeFalsy();
+				const fetchEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				expect(fetchEntry?.truncated).toBeFalsy();
+			});
+		});
+
+		describe("end vs next_item inside loops (Phase 1.3)", () => {
+			function nextItemNode(id: string) {
+				return {
+					id,
+					type: "next_item" as const,
+					config: { kind: "next_item" as const },
+				};
+			}
+
+			const dailyTrigger = {
+				type: "scheduled" as const,
+				schedule: {
+					frequency: "daily" as const,
+					timezone: "UTC",
+					time: "09:00",
+				},
+			};
+
+			it("next_item skips the current record only; the loop and post-loop steps continue", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const keepId = await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "Keep me",
+					status: "planned",
+					projectType: "one-off",
+				});
+				const skipId = await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "Skip me",
+					status: "planned",
+					projectType: "one-off",
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Skip via next_item",
+					trigger: dailyTrigger,
+					nodes: [
+						fetchNode(
+							"fetch-1",
+							"project",
+							[filterGroup("status", "equals", "planned")],
+							{ nextNodeId: "loop-1" }
+						),
+						loopNode("loop-1", "fetch-1", {
+							bodyStartNodeId: "cond-1",
+							nextNodeId: "end-1",
+						}),
+						loopConditionNode("cond-1", "loop-1", "title", "contains", "Skip", {
+							nextNodeId: "skip-1",
+							elseNodeId: "act-1",
+						}),
+						nextItemNode("skip-1"),
+						updateFieldActionNode("act-1", "status", "in-progress", {
+							target: "self",
+						}),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const [keep, skip] = await t.run(async (ctx) =>
+					Promise.all([ctx.db.get(keepId), ctx.db.get(skipId)])
+				);
+				expect(keep?.status).toBe("in-progress");
+				expect(skip?.status).toBe("planned");
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				const loopEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "loop-1"
+				);
+				expect(loopEntry?.recordsProcessed).toBe(2);
+				// next_item logged once for the skipped record, and post-loop ran.
+				expect(
+					execution.nodesExecuted.filter((n) => n.nodeId === "skip-1")
+				).toHaveLength(1);
+				expect(
+					execution.nodesExecuted.some((n) => n.nodeId === "end-1")
+				).toBe(true);
+			});
+
+			it("legacy published end-in-loop still halts the entire run (pinned semantics)", async () => {
+				const { asUser, orgId, userId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "P1",
+					status: "planned",
+					projectType: "one-off",
+				});
+				await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "P2",
+					status: "planned",
+					projectType: "one-off",
+				});
+
+				// Direct insert: save-time validation now rejects this shape, but
+				// automations published before 1.3 may still contain it.
+				const nodes = [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1" }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "end-body",
+						nextNodeId: "end-2",
+					}),
+					endNode("end-body"),
+					endNode("end-2"),
+				];
+				const automationId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowAutomations", {
+						orgId,
+						name: "Legacy end-in-loop",
+						status: "active" as const,
+						trigger: dailyTrigger,
+						nodes,
+						publishedSnapshot: {
+							trigger: dailyTrigger,
+							nodes,
+							version: 1,
+							publishedAt: Date.now(),
+						},
+						createdBy: userId,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					})
+				);
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				// `end` in the body ends the whole run on the FIRST record: one
+				// end-body entry, and the post-loop end-2 never runs.
+				expect(execution.status).toBe("completed");
+				expect(
+					execution.nodesExecuted.filter((n) => n.nodeId === "end-body")
+				).toHaveLength(1);
+				expect(
+					execution.nodesExecuted.some((n) => n.nodeId === "end-2")
+				).toBe(false);
+			});
+
+			it("save-time validation rejects an End step inside a loop", async () => {
+				const { asUser } = await setupUser();
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "End in loop",
+						trigger: dailyTrigger,
+						nodes: [
+							fetchNode("fetch-1", "project", [], { nextNodeId: "loop-1" }),
+							loopNode("loop-1", "fetch-1", { bodyStartNodeId: "end-body" }),
+							endNode("end-body"),
+						],
+						isActive: false,
+					})
+				).rejects.toThrow(/End step inside a loop/);
+			});
+
+			it('save-time validation rejects "Next item" outside a loop', async () => {
+				const { asUser } = await setupUser();
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "Stray next item",
+						trigger: dailyTrigger,
+						nodes: [nextItemNode("skip-1")],
+						isActive: false,
+					})
+				).rejects.toThrow(/only works inside a loop/);
+			});
+		});
+
+		describe("chunked loop execution (Phase 1.2)", () => {
+			const CHUNK = 25; // mirrors LOOP_CHUNK_SIZE in automationExecutor.ts
+
+			async function createPlannedProjects(
+				asUser: ReturnType<typeof t.withIdentity>,
+				count: number
+			) {
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const ids: Id<"projects">[] = [];
+				for (let i = 0; i < count; i++) {
+					ids.push(
+						await asUser.mutation(api.projects.create, {
+							clientId,
+							title: `P${i}`,
+							status: "planned",
+							projectType: "one-off",
+						})
+					);
+				}
+				return ids;
+			}
+
+			function chunkedLoopNodes() {
+				return [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1", limit: 50 }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "end-1",
+					}),
+					updateFieldActionNode("body-act", "status", "in-progress", {
+						target: "self",
+					}),
+					endNode("end-1"),
+				];
+			}
+
+			async function countInProgress() {
+				return await t.run(async (ctx) => {
+					const projects = await ctx.db.query("projects").collect();
+					return projects.filter((p) => p.status === "in-progress").length;
+				});
+			}
+
+			it("a loop past the chunk size completes across scheduled continuations", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+				await createPlannedProjects(asUser, CHUNK + 5);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Bulk update many projects",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: chunkedLoopNodes(),
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				expect(await countInProgress()).toBe(CHUNK + 5);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				expect(execution.resumeState).toBeUndefined();
+				const loopEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "loop-1"
+				);
+				expect(loopEntry?.recordsProcessed).toBe(CHUNK + 5);
+				expect(
+					execution.nodesExecuted.filter((n) => n.nodeId === "body-act")
+				).toHaveLength(CHUNK + 5);
+				expect(
+					execution.nodesExecuted.some((n) => n.nodeId === "end-1")
+				).toBe(true);
+			});
+
+			it("checkpoints at the chunk boundary with earlier iterations committed (commit-per-chunk)", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+				await createPlannedProjects(asUser, CHUNK + 5);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Bulk update many projects",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: chunkedLoopNodes(),
+					isActive: true,
+				});
+
+				// Drive executeAutomation directly (see the delay checkpoint test):
+				// draining the scheduler would run the continuation too, hiding the
+				// mid-run state this test is about.
+				const executionId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: "schedule",
+						triggeredAt: Date.now(),
+						status: "running",
+						mode: "production" as const,
+						nodesExecuted: [],
+						executionChain: [automationId],
+						recursionDepth: 0,
+					})
+				);
+				await t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+				// Chunk 1 committed durably; the rest is parked in resumeState.
+				expect(await countInProgress()).toBe(CHUNK);
+				const mid = await t.run(async (ctx) => ctx.db.get(executionId));
+				expect(mid?.status).toBe("running");
+				expect(mid?.resumeState?.loop?.nodeId).toBe("loop-1");
+				expect(mid?.resumeState?.loop?.nextIndex).toBe(CHUNK);
+				expect(mid?.resumeState?.loop?.remainingItemIds).toHaveLength(5);
+
+				await t.mutation(internal.automationExecutor.resumeExecution, {
+					orgId,
+					executionId,
+					automationId,
+				});
+
+				expect(await countInProgress()).toBe(CHUNK + 5);
+				const final = await t.run(async (ctx) => ctx.db.get(executionId));
+				expect(final?.status).toBe("completed");
+				expect(final?.resumeState).toBeUndefined();
+			});
+
+			it("records deleted between chunks are skipped without derailing the rest", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+				await createPlannedProjects(asUser, CHUNK + 5);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Bulk update many projects",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: chunkedLoopNodes(),
+					isActive: true,
+				});
+
+				const executionId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: "schedule",
+						triggeredAt: Date.now(),
+						status: "running",
+						mode: "production" as const,
+						nodesExecuted: [],
+						executionChain: [automationId],
+						recursionDepth: 0,
+					})
+				);
+				await t.mutation(internal.automationExecutor.executeAutomation, {
+					orgId,
+					executionId,
+					automationId,
+					executionChain: [automationId],
+					recursionDepth: 1,
+				});
+
+				// Delete one not-yet-processed record while the run is parked.
+				await t.run(async (ctx) => {
+					const mid = await ctx.db.get(executionId);
+					const goneId = ctx.db.normalizeId(
+						"projects",
+						mid!.resumeState!.loop!.remainingItemIds[0]
+					);
+					await ctx.db.delete(goneId!);
+				});
+
+				await t.mutation(internal.automationExecutor.resumeExecution, {
+					orgId,
+					executionId,
+					automationId,
+				});
+
+				// 25 from chunk 1 + 4 survivors from chunk 2; no failure.
+				expect(await countInProgress()).toBe(CHUNK + 4);
+				const final = await t.run(async (ctx) => ctx.db.get(executionId));
+				expect(final?.status).toBe("completed");
+				expect(final?.resumeState).toBeUndefined();
+			});
 		});
 	});
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	automationToReactFlow,
 	reactFlowToFlatArray,
+	serializeEditorNodes,
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
 	RF_NODE_TYPES,
@@ -558,5 +559,179 @@ describe("flow-adapter", () => {
 			kind: "delay_until",
 			until: { kind: "static", value: "2026-01-01" },
 		});
+	});
+});
+
+describe("serializeEditorNodes (production save path)", () => {
+	it("drops placeholders and strips stale positions, preserving pointers", () => {
+		const nodes: EditorNode[] = [
+			{
+				id: "a1",
+				type: "action",
+				config: updateStatusAction("done"),
+				nextNodeId: "p1",
+				position: { x: 123, y: 456 },
+			},
+			{ id: "p1", type: "placeholder", nextNodeId: "a2" },
+			{ id: "a2", type: "action", config: updateStatusAction("active") },
+		];
+
+		const out = serializeEditorNodes(nodes);
+		expect(out.map((n) => n.id)).toEqual(["a1", "a2"]);
+		// Pointer preserved as-is (validation blocks saves while placeholders remain)
+		expect(out[0].nextNodeId).toBe("p1");
+		expect(out[0]).not.toHaveProperty("position");
+		expect(out[1].config).toEqual(updateStatusAction("active"));
+	});
+});
+
+describe("derived layout integration", () => {
+	const loopFixture = (): EditorNode[] => [
+		{
+			id: "loop1",
+			type: "loop",
+			config: { kind: "loop", sourceNodeId: "fetch1" },
+			bodyStartNodeId: "b1",
+			nextNodeId: "after1",
+		},
+		{ id: "b1", type: "action", config: updateStatusAction("done") },
+		{ id: "after1", type: "action", config: updateClientStatusAction("active") },
+	];
+
+	it("emits a loop container node behind each loop and stamps edge route hints", () => {
+		const rf = automationToReactFlow(makeTrigger(), loopFixture());
+
+		const container = rf.nodes.find((n) => n.id === "__container__loop1");
+		expect(container).toBeDefined();
+		expect(container!.type).toBe("loopContainerNode");
+		const data = container!.data as {
+			loopId: string;
+			width: number;
+			height: number;
+		};
+		expect(data.loopId).toBe("loop1");
+		expect(data.width).toBeGreaterThan(0);
+		expect(data.height).toBeGreaterThan(0);
+
+		// Container encloses the loop header and body node positions.
+		const loopPos = rf.nodes.find((n) => n.id === "loop1")!.position;
+		const bodyPos = rf.nodes.find((n) => n.id === "b1")!.position;
+		expect(loopPos.y).toBeGreaterThanOrEqual(container!.position.y);
+		expect(bodyPos.y).toBeGreaterThan(loopPos.y);
+		expect(bodyPos.y).toBeLessThan(container!.position.y + data.height);
+
+		// Route hints: After-Last hugs the container's right, loop-back its left.
+		const afterEdge = rf.edges.find((e) => e.data?.branchType === "after");
+		expect(afterEdge?.data?.routeRightX).toBeGreaterThan(
+			container!.position.x + data.width
+		);
+		const loopBackEdge = rf.edges.find((e) => e.data?.branchType === "loop_back");
+		expect(loopBackEdge?.data?.routeLeftX).toBeGreaterThanOrEqual(
+			container!.position.x
+		);
+
+		// Containers are frontend-only: filtered from the save path.
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+		expect(
+			result.nodes.find((n) => n.id.startsWith("__container__"))
+		).toBeUndefined();
+		expect(result.nodes).toHaveLength(3);
+	});
+
+	it("ignores persisted positions and never writes position back on save", () => {
+		const nodes: EditorNode[] = [
+			{
+				id: "a1",
+				type: "action",
+				config: updateStatusAction("done"),
+				position: { x: 999, y: 999 },
+			},
+		];
+		const rf = automationToReactFlow(makeTrigger(), nodes);
+
+		// Layout is fully derived — the stale dragged position is ignored.
+		const a1 = rf.nodes.find((n) => n.id === "a1")!;
+		expect(a1.position).not.toEqual({ x: 999, y: 999 });
+
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+		expect(result.nodes[0].position).toBeUndefined();
+	});
+
+	it("marks dangling condition branches inside a loop with impliedNextItem", () => {
+		const nodes: EditorNode[] = [
+			{
+				id: "loop1",
+				type: "loop",
+				config: { kind: "loop", sourceNodeId: "fetch1" },
+				bodyStartNodeId: "cond1",
+			},
+			{ id: "cond1", type: "condition", config: statusEqualsCondition("active") },
+		];
+		const rf = automationToReactFlow(makeTrigger(), nodes);
+
+		// The yes-terminal carries the loop-back edge (return already visible);
+		// the no-terminal is the invisible dead-end that gets the marker.
+		const yesEdge = rf.edges.find(
+			(e) => e.data?.branchType === "yes" && e.data?.isTerminal
+		);
+		const noEdge = rf.edges.find(
+			(e) => e.data?.branchType === "no" && e.data?.isTerminal
+		);
+		expect(yesEdge?.data?.impliedNextItem).toBeUndefined();
+		expect(noEdge?.data?.impliedNextItem).toBe(true);
+
+		// Outside a loop, a dangling branch just ends the run — no marker.
+		const rf2 = automationToReactFlow(makeTrigger(), [
+			{ id: "condTop", type: "condition", config: statusEqualsCondition("active") },
+		]);
+		const topNo = rf2.edges.find(
+			(e) => e.data?.branchType === "no" && e.data?.isTerminal
+		);
+		expect(topNo?.data?.impliedNextItem).toBeUndefined();
+	});
+
+	it("marks dangling LEAF stubs inside a loop (e.g. steps under a branched condition)", () => {
+		// The realistic shape: condition in a body with a step on each branch.
+		// a1 carries the loop-back edge (return visible); b1 dead-ends silently
+		// and must get the marker on its plain next-stub.
+		const nodes: EditorNode[] = [
+			{
+				id: "loop1",
+				type: "loop",
+				config: { kind: "loop", sourceNodeId: "fetch1" },
+				bodyStartNodeId: "cond1",
+			},
+			{
+				id: "cond1",
+				type: "condition",
+				config: statusEqualsCondition("active"),
+				nextNodeId: "a1",
+				elseNodeId: "b1",
+			},
+			{ id: "a1", type: "action", config: updateStatusAction("done") },
+			{ id: "b1", type: "action", config: updateStatusAction("cancelled") },
+		];
+		const rf = automationToReactFlow(makeTrigger(), nodes);
+
+		const stubFor = (sourceId: string) =>
+			rf.edges.find((e) => e.source === sourceId && e.data?.isTerminal);
+		expect(stubFor("a1")?.data?.impliedNextItem).toBeUndefined();
+		expect(stubFor("b1")?.data?.impliedNextItem).toBe(true);
+
+		// A top-level (non-nested) loop's dangling After-Last gets no marker.
+		const afterStub = rf.edges.find(
+			(e) => e.data?.branchType === "after" && e.data?.isTerminal
+		);
+		expect(afterStub?.data?.impliedNextItem).toBeUndefined();
+	});
+
+	it("places the After-Last target below every loop body node", () => {
+		const rf = automationToReactFlow(makeTrigger(), loopFixture());
+		const bodyPos = rf.nodes.find((n) => n.id === "b1")!.position;
+		const afterPos = rf.nodes.find((n) => n.id === "after1")!.position;
+		const loopPos = rf.nodes.find((n) => n.id === "loop1")!.position;
+		expect(afterPos.y).toBeGreaterThan(bodyPos.y);
+		// After-Last returns to the loop's spine (same x for same-width nodes).
+		expect(afterPos.x).toBeCloseTo(loopPos.x);
 	});
 });

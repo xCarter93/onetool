@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { mastra } from "@/mastra";
 
 /**
@@ -6,6 +7,12 @@ import { mastra } from "@/mastra";
  * Handles natural language requests to generate report configurations
  */
 export async function POST(request: NextRequest) {
+	// Auth guard — unauthenticated requests get 401
+	const { userId } = await auth();
+	if (!userId) {
+		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+	}
+
 	try {
 		const body = await request.json();
 		const { prompt } = body;
@@ -45,7 +52,7 @@ Respond with a JSON object containing:
 
 		// Parse the response to extract configuration
 		const textContent = response.text;
-		
+
 		// Try to extract JSON from the response
 		let result;
 		try {
@@ -60,6 +67,13 @@ Respond with a JSON object containing:
 		} catch {
 			// If parsing fails, infer configuration from the prompt
 			result = inferConfigFromPrompt(prompt);
+		}
+
+		// This JSON is free-text from the model, not schema-validated tool output —
+		// strip filters/aggregations since executeReport doesn't support them.
+		if (result?.config && typeof result.config === "object") {
+			delete result.config.filters;
+			delete result.config.aggregations;
 		}
 
 		return NextResponse.json(result);

@@ -9,6 +9,13 @@ import { internal } from "./_generated/api";
 import { systemMutation } from "./lib/factories";
 
 /**
+ * Emitters accept any MutationCtx; when called from a userMutation the
+ * enriched ctx carries the acting user, which is threaded into the event so
+ * automations can resolve user.* globals on event-triggered runs.
+ */
+type EmitterCtx = MutationCtx & { user?: { _id: Id<"users"> } };
+
+/**
  * Event Bus - Event-Driven Architecture for Convex
  *
  * This module implements an event-driven architecture pattern that:
@@ -94,7 +101,7 @@ export const publishEvent = systemMutation({
  * Use this in your entity update mutations
  */
 export async function emitStatusChangeEvent(
-	ctx: MutationCtx,
+	ctx: EmitterCtx,
 	orgId: Id<"organizations">,
 	entityType: EntityType,
 	entityId: string,
@@ -113,6 +120,7 @@ export async function emitStatusChangeEvent(
 			field: "status",
 			oldValue: oldStatus,
 			newValue: newStatus,
+			metadata: ctx.user ? { actorUserId: ctx.user._id } : undefined,
 		},
 		status: "pending",
 		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
@@ -139,7 +147,7 @@ export async function emitStatusChangeEvent(
  * Helper function to publish record-created events from create mutations
  */
 export async function emitRecordCreatedEvent(
-	ctx: MutationCtx,
+	ctx: EmitterCtx,
 	orgId: Id<"organizations">,
 	entityType: EntityType,
 	entityId: string,
@@ -153,6 +161,7 @@ export async function emitRecordCreatedEvent(
 		payload: {
 			entityType,
 			entityId,
+			metadata: ctx.user ? { actorUserId: ctx.user._id } : undefined,
 		},
 		status: "pending",
 		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
@@ -173,7 +182,7 @@ export async function emitRecordCreatedEvent(
  * changedFields lists the patch keys actually applied.
  */
 export async function emitRecordUpdatedEvent(
-	ctx: MutationCtx,
+	ctx: EmitterCtx,
 	orgId: Id<"organizations">,
 	entityType: EntityType,
 	entityId: string,
@@ -188,7 +197,10 @@ export async function emitRecordUpdatedEvent(
 		payload: {
 			entityType,
 			entityId,
-			metadata: { changedFields },
+			metadata: {
+				changedFields,
+				...(ctx.user ? { actorUserId: ctx.user._id } : {}),
+			},
 		},
 		status: "pending",
 		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
@@ -301,6 +313,7 @@ async function dispatchEvent(
 						executionChain?: string[];
 						recursionDepth?: number;
 						isCascade?: boolean;
+						actorUserId?: string;
 				  }
 				| undefined;
 
@@ -319,6 +332,7 @@ async function dispatchEvent(
 					// Pass execution chain for cascading automations
 					executionChain: metadata?.executionChain,
 					recursionDepth: metadata?.recursionDepth,
+					actorUserId: metadata?.actorUserId,
 				}
 			);
 			break;

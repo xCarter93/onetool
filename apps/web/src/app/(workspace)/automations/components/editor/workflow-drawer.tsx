@@ -6,6 +6,7 @@ import {
 	PanelLeftClose,
 	Zap,
 	Copy,
+	Braces,
 	Check,
 	Plus,
 	AlertTriangle,
@@ -65,6 +66,14 @@ const RETURN_TYPE_BADGE_LABELS: Record<FormulaResource["returnType"], string> = 
 	boolean: "BOOL",
 };
 
+/**
+ * Text fields interpolate {{path}}; formula expressions parse {path} — see
+ * packages/backend/convex/lib/formula/tokenizer.ts. Exported for testing.
+ */
+export function formatVariableToken(path: string, format: "text" | "formula"): string {
+	return format === "formula" ? `{${path}}` : `{{${path}}}`;
+}
+
 /** Order-preserving group of variable options by their `group` label. */
 function groupVariables(vars: VariableOption[]): [string, VariableOption[]][] {
 	const groups: [string, VariableOption[]][] = [];
@@ -86,6 +95,7 @@ const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
 	delay: "Delay",
 	delay_until: "Delay until",
 	end: "End",
+	next_item: "Next item",
 };
 
 /** Nodes and other formulas that reference a formula id. */
@@ -130,7 +140,10 @@ export function WorkflowDrawer({
 	onStartTest,
 	onCancelTest,
 }: WorkflowDrawerProps) {
-	const [copiedPath, setCopiedPath] = useState<string | null>(null);
+	// Which variable + syntax was last copied — drives the row's check-mark.
+	const [copiedPath, setCopiedPath] = useState<
+		{ path: string; format: "text" | "formula" } | null
+	>(null);
 	// null = closed; { formula: null } = create; { formula: F } = edit F.
 	const [formulaModal, setFormulaModal] = useState<{ formula: FormulaResource | null } | null>(
 		null
@@ -285,17 +298,22 @@ export function WorkflowDrawer({
 		);
 	}
 
-	const copyPath = async (path: string) => {
+	// Two syntaxes (see formatVariableToken), so two copy affordances per
+	// variable rather than guessing which context the user will paste into.
+	const copyPath = async (path: string, format: "text" | "formula") => {
 		const clipboard = navigator.clipboard;
 		if (!clipboard) return; // no clipboard API (insecure context) — nothing copied
-		const token = `{{${path}}}`;
+		const token = formatVariableToken(path, format);
 		try {
 			await clipboard.writeText(token);
 		} catch {
 			return; // write rejected — don't show the copied state
 		}
-		setCopiedPath(path);
-		window.setTimeout(() => setCopiedPath((p) => (p === path ? null : p)), 1200);
+		setCopiedPath({ path, format });
+		window.setTimeout(
+			() => setCopiedPath((p) => (p?.path === path && p.format === format ? null : p)),
+			1200
+		);
 	};
 
 	return (
@@ -378,25 +396,42 @@ export function WorkflowDrawer({
 										</div>
 										<div className="space-y-0.5">
 											{vars.map((v) => (
-												<button
+												<div
 													key={v.path}
-													type="button"
-													onClick={() => void copyPath(v.path)}
-													title={`Copy {{${v.path}}}`}
-													className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+													className="group flex w-full items-center gap-0.5 rounded-md py-0.5 pl-2 pr-0.5"
 												>
-													<span className="flex-1 truncate text-sm">{v.label}</span>
-													{v.fieldType && (
-														<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-															{v.fieldType}
-														</span>
-													)}
-													{copiedPath === v.path ? (
-														<Check className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
-													) : (
-														<Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-													)}
-												</button>
+													<button
+														type="button"
+														onClick={() => void copyPath(v.path, "text")}
+														title={`Copy {{${v.path}}} — for text fields`}
+														className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-0 py-0.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+													>
+														<span className="flex-1 truncate text-sm">{v.label}</span>
+														{v.fieldType && (
+															<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+																{v.fieldType}
+															</span>
+														)}
+														{copiedPath?.path === v.path && copiedPath.format === "text" ? (
+															<Check className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
+														) : (
+															<Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+														)}
+													</button>
+													<button
+														type="button"
+														onClick={() => void copyPath(v.path, "formula")}
+														title={`Copy {${v.path}} — for formulas`}
+														aria-label={`Copy ${v.label} for formulas`}
+														className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+													>
+														{copiedPath?.path === v.path && copiedPath.format === "formula" ? (
+															<Check className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+														) : (
+															<Braces className="h-3.5 w-3.5" />
+														)}
+													</button>
+												</div>
 											))}
 										</div>
 									</div>

@@ -15,7 +15,18 @@ import {
 } from "@xyflow/react";
 import { Trash2 } from "lucide-react";
 import { ZoomSlider } from "@/components/zoom-slider";
-import { isTerminalId } from "../../lib/flow-adapter";
+import {
+	applyDerivedLayout,
+	isContainerId,
+	isTerminalId,
+	TRIGGER_NODE_ID,
+	TRIGGER_PLACEHOLDER_ID,
+} from "../../lib/flow-adapter";
+import {
+	computeDerivedLayout,
+	getDefaultNodeSize,
+} from "../../lib/derived-layout";
+import type { AppEdge, AppNode } from "../../lib/node-types";
 import "@xyflow/react/dist/style.css";
 import { TriggerNodeRF } from "./trigger-node-rf";
 import { ConditionNodeRF } from "./condition-node-rf";
@@ -27,9 +38,11 @@ import { AdjustTimeNodeRF } from "./adjust-time-node-rf";
 import { DelayNodeRF } from "./delay-node-rf";
 import { DelayUntilNodeRF } from "./delay-until-node-rf";
 import { EndNodeRF } from "./end-node-rf";
+import { NextItemNodeRF } from "./next-item-node-rf";
 import { TerminalNodeRF } from "./add-step-node-rf";
 import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
 import { PlaceholderNodeRF } from "./placeholder-node-rf";
+import { LoopContainerNodeRF } from "./loop-container-node-rf";
 import { PlusButtonEdge } from "./plus-button-edge";
 import { BranchLabelEdge } from "./branch-label-edge";
 import { LoopBackEdge } from "./loop-back-edge";
@@ -47,9 +60,11 @@ const nodeTypes = {
 	delayNode: DelayNodeRF,
 	delayUntilNode: DelayUntilNodeRF,
 	endNode: EndNodeRF,
+	nextItemNode: NextItemNodeRF,
 	terminalNode: TerminalNodeRF,
 	triggerPlaceholderNode: TriggerPlaceholderNodeRF,
 	placeholderNode: PlaceholderNodeRF,
+	loopContainerNode: LoopContainerNodeRF,
 };
 
 const edgeTypes = {
@@ -59,12 +74,13 @@ const edgeTypes = {
 	afterLastEdge: AfterLastEdge,
 };
 
+const LAYOUT_ANIMATION_MS = 220;
+
 interface AutomationFlowProps {
 	nodes: Node[];
 	edges: Edge[];
 	onNodeClick?: (nodeId: string) => void;
 	onPaneClick?: () => void;
-	onNodeDragStop?: (nodeId: string, position: { x: number; y: number }) => void;
 	onDeleteNode?: (nodeId: string) => void;
 	/** Callback ref that receives a navigate function once React Flow is ready */
 	onNavigateReady?: (navigateFn: (nodeId: string) => void) => void;
@@ -81,42 +97,178 @@ function AutomationFlowInner({
 	edges: incomingEdges,
 	onNodeClick,
 	onPaneClick,
-	onNodeDragStop,
 	onDeleteNode,
 	onNavigateReady,
 }: AutomationFlowProps) {
 	const { fitView, setCenter } = useReactFlow();
-	const prevCountRef = useRef(incomingNodes.length);
 	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(incomingEdges);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+	const nodesRef = useRef(nodes);
+	nodesRef.current = nodes;
+	const animRef = useRef<number | null>(null);
+	const layoutSigRef = useRef("");
+	const idsSigRef = useRef(incomingNodes.map((n) => n.id).join(","));
+	// True at mount so the first measured layout refits (estimate heights may be off).
+	const pendingFitRef = useRef(true);
+
+	useEffect(() => {
+		return () => {
+			if (animRef.current !== null) cancelAnimationFrame(animRef.current);
+		};
+	}, []);
 
 	useEffect(() => {
 		setNodes(incomingNodes);
 		setEdges(incomingEdges);
 
-		if (incomingNodes.length !== prevCountRef.current) {
-			prevCountRef.current = incomingNodes.length;
-			requestAnimationFrame(() => {
-				fitView({ padding: 0.2, duration: 200, maxZoom: 1 });
-			});
+		// Structural change (insert/delete/replace) -> refit once the measured
+		// re-layout lands. Measurement-only changes never move the viewport.
+		const idsSig = incomingNodes.map((n) => n.id).join(",");
+		if (idsSig !== idsSigRef.current) {
+			idsSigRef.current = idsSig;
+			pendingFitRef.current = true;
 		}
-	}, [fitView, incomingEdges, incomingNodes, setEdges, setNodes]);
+	}, [incomingEdges, incomingNodes, setEdges, setNodes]);
+
+	/**
+	 * Tween node positions to the new layout so edges (which derive from node
+	 * positions each frame) follow smoothly. Container dimensions interpolate
+	 * alongside so the frame keeps enclosing its body mid-animation.
+	 */
+	const applyLayoutAnimated = useCallback(
+		(targetNodes: Node[], targetEdges: Edge[]) => {
+			if (animRef.current !== null) cancelAnimationFrame(animRef.current);
+			setEdges(targetEdges);
+
+			const prevById = new Map(nodesRef.current.map((n) => [n.id, n]));
+			const reduced =
+				typeof window !== "undefined" &&
+				window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+			const moved = targetNodes.some((n) => {
+				const prev = prevById.get(n.id);
+				if (!prev) return false; // new nodes appear in place
+				return (
+					Math.abs(prev.position.x - n.position.x) > 0.5 ||
+					Math.abs(prev.position.y - n.position.y) > 0.5
+				);
+			});
+
+			const finishFit = () => {
+				if (pendingFitRef.current) {
+					pendingFitRef.current = false;
+					requestAnimationFrame(() => {
+						fitView({ padding: 0.2, duration: 300, maxZoom: 1 });
+					});
+				}
+			};
+
+			if (reduced || !moved) {
+				setNodes(targetNodes);
+				finishFit();
+				return;
+			}
+
+			const start = performance.now();
+			const step = (now: number) => {
+				const t = Math.min(1, (now - start) / LAYOUT_ANIMATION_MS);
+				const ease = 1 - Math.pow(1 - t, 3);
+				setNodes(
+					targetNodes.map((n) => {
+						const prev = prevById.get(n.id);
+						if (!prev) return n;
+						const next = {
+							...n,
+							position: {
+								x: prev.position.x + (n.position.x - prev.position.x) * ease,
+								y: prev.position.y + (n.position.y - prev.position.y) * ease,
+							},
+						};
+						if (isContainerId(n.id)) {
+							const prevData = prev.data as { width?: number; height?: number };
+							const targetData = n.data as { width?: number; height?: number };
+							next.data = {
+								...n.data,
+								width:
+									(prevData?.width ?? targetData.width ?? 0) +
+									((targetData.width ?? 0) - (prevData?.width ?? targetData.width ?? 0)) *
+										ease,
+								height:
+									(prevData?.height ?? targetData.height ?? 0) +
+									((targetData.height ?? 0) -
+										(prevData?.height ?? targetData.height ?? 0)) *
+										ease,
+							};
+						}
+						return next;
+					})
+				);
+				if (t < 1) {
+					animRef.current = requestAnimationFrame(step);
+				} else {
+					animRef.current = null;
+					finishFit();
+				}
+			};
+			animRef.current = requestAnimationFrame(step);
+		},
+		[fitView, setEdges, setNodes]
+	);
+
+	// Re-run layout whenever real DOM measurements land or change. The
+	// signature guards against loops: identical sizes -> identical layout.
+	useEffect(() => {
+		const sizeSig = nodes
+			.filter((n) => !isContainerId(n.id))
+			.map((n) => `${n.id}:${n.measured?.width ?? 0}x${n.measured?.height ?? 0}`)
+			.join("|");
+		const sig = `${sizeSig}||${edges.map((e) => e.id).join(",")}`;
+		if (sig === layoutSigRef.current) return;
+
+		const hasMeasurements = nodes.some(
+			(n) =>
+				!isContainerId(n.id) &&
+				!isTerminalId(n.id) &&
+				n.measured?.width &&
+				n.measured?.height
+		);
+		if (!hasMeasurements) return;
+		layoutSigRef.current = sig;
+
+		const byId = new Map(nodes.map((n) => [n.id, n]));
+		const rootId = byId.has(TRIGGER_NODE_ID)
+			? TRIGGER_NODE_ID
+			: TRIGGER_PLACEHOLDER_ID;
+		const layout = computeDerivedLayout(nodes, edges, rootId, (id, type) => {
+			const n = byId.get(id);
+			return n?.measured?.width && n?.measured?.height
+				? { width: n.measured.width, height: n.measured.height }
+				: getDefaultNodeSize(type);
+		});
+		const applied = applyDerivedLayout(
+			nodes as AppNode[],
+			edges as AppEdge[],
+			layout
+		);
+		applyLayoutAnimated(applied.nodes, applied.edges);
+	}, [applyLayoutAnimated, edges, nodes]);
 
 	// Expose a navigate-to-node function to the parent via callback ref
 	const navigateToNode = useCallback(
 		(nodeId: string) => {
-			const targetNode = nodes.find((n) => n.id === nodeId);
+			const targetNode = nodesRef.current.find((n) => n.id === nodeId);
 			if (!targetNode) return;
-			// Center on the node (offset by half the 280px node width and ~30px height)
+			const width = targetNode.measured?.width ?? 280;
+			const height = targetNode.measured?.height ?? 60;
 			setCenter(
-				targetNode.position.x + 140,
-				targetNode.position.y + 30,
+				targetNode.position.x + width / 2,
+				targetNode.position.y + height / 2,
 				{ zoom: 1, duration: 300 }
 			);
 			onNodeClick?.(nodeId);
 		},
-		[nodes, setCenter, onNodeClick]
+		[setCenter, onNodeClick]
 	);
 
 	useEffect(() => {
@@ -125,16 +277,10 @@ function AutomationFlowInner({
 
 	const handleNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {
+			if (isContainerId(node.id)) return;
 			onNodeClick?.(node.id);
 		},
 		[onNodeClick]
-	);
-
-	const handleNodeDragStop: NodeMouseHandler = useCallback(
-		(_event, node) => {
-			onNodeDragStop?.(node.id, node.position);
-		},
-		[onNodeDragStop]
 	);
 
 	// Close context menu on any click outside or scroll
@@ -153,8 +299,8 @@ function AutomationFlowInner({
 	const handleNodeContextMenu = useCallback(
 		(event: React.MouseEvent, node: Node) => {
 			event.preventDefault();
-			// Don't show context menu for terminal stubs
-			if (isTerminalId(node.id)) return;
+			// Don't show context menu for terminal stubs or container frames
+			if (isTerminalId(node.id) || isContainerId(node.id)) return;
 			setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
 		},
 		[]
@@ -180,14 +326,15 @@ function AutomationFlowInner({
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onNodeClick={handleNodeClick}
-				onNodeDragStop={handleNodeDragStop}
 				onPaneClick={handlePaneClickInternal}
 				onNodeContextMenu={handleNodeContextMenu}
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				fitView
 				fitViewOptions={{ padding: 0.2, duration: 300, maxZoom: 1 }}
-				nodesDraggable={true}
+				nodesDraggable={false}
+				nodesFocusable={true}
+				edgesFocusable={true}
 				nodesConnectable={false}
 				elementsSelectable={true}
 				panOnDrag={true}

@@ -16,6 +16,7 @@ import {
 	CalendarClock,
 	Sigma,
 	Clock3,
+	SkipForward,
 	type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -135,27 +136,34 @@ export const STEP_GROUPS: StepGroup[] = [
 				icon: CircleStop,
 				color: "bg-muted text-muted-foreground",
 			},
+			{
+				type: "next_item",
+				label: "Next item",
+				icon: SkipForward,
+				color: "bg-muted text-muted-foreground",
+			},
 		],
 	},
 ];
 
-/** Flattened, grouping-agnostic list for surfaces like the edge insert menu. */
-export const ALL_STEP_ITEMS: StepGroupItem[] = STEP_GROUPS.flatMap((g) => g.items);
-
 interface StepPickerProps {
 	onSelect: (stepType: string, actionType?: string) => void;
 	onClose?: () => void;
+	/** True when inserting inside a loop body — offers "Next item" and hides "End" (invalid there). */
+	inLoop?: boolean;
 }
 
-export function StepPicker({ onSelect, onClose }: StepPickerProps) {
+export function StepPicker({ onSelect, onClose, inLoop = false }: StepPickerProps) {
 	const [search, setSearch] = useState("");
 	const lowerSearch = search.toLowerCase();
 
 	const filteredGroups = STEP_GROUPS.map((group) => ({
 		...group,
-		items: group.items.filter((item) =>
-			item.label.toLowerCase().includes(lowerSearch)
-		),
+		items: group.items.filter((item) => {
+			if (item.type === "next_item" && !inLoop) return false;
+			if (item.type === "end" && inLoop) return false;
+			return item.label.toLowerCase().includes(lowerSearch);
+		}),
 	})).filter((group) => group.items.length > 0);
 
 	return (

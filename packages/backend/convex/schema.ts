@@ -1281,6 +1281,9 @@ export default defineSchema({
 			})
 		),
 		nodesExecuted: v.array(executedNodeValidator),
+		// True when any node in this run consumed a fetch scan that stopped at
+		// its scan cap with org rows still unscanned — results may be partial.
+		dataTruncated: v.optional(v.boolean()),
 		// Test runs (dry-run) precompute the full walk, then reveal one entry
 		// per transaction so the getExecution subscription streams per-node
 		// status live. `plan` holds the remaining-and-revealed ordered entries;
@@ -1335,6 +1338,19 @@ export default defineSchema({
 				// node.<id>.result still resolves after the run resumes.
 				nodeResults: v.optional(
 					v.array(v.object({ nodeId: v.string(), result: v.number() }))
+				),
+				// Present when parked at a loop chunk boundary (long loops run
+				// LOOP_CHUNK_SIZE iterations per mutation, commit-per-chunk).
+				loop: v.optional(
+					v.object({
+						nodeId: v.string(),
+						// Original position of the first remaining item, so
+						// loop.<id>.index stays stable across chunks.
+						nextIndex: v.number(),
+						// Items not yet processed; ids deleted between chunks are
+						// skipped on resume without shifting the rest.
+						remainingItemIds: v.array(v.string()),
+					})
 				),
 			})
 		),

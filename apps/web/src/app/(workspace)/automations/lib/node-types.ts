@@ -15,6 +15,7 @@ import type {
 	AutomationObjectType,
 	WorkflowNodeConfig,
 	WorkflowNodeType,
+	ConditionGroup,
 } from "@onetool/backend/convex/lib/workflowTypes";
 import { AUTOMATION_OBJECT_TYPES } from "@onetool/backend/convex/lib/workflowTypes";
 import { RELATED_OBJECTS } from "@onetool/backend/convex/lib/fieldRegistry";
@@ -215,6 +216,8 @@ export type TriggerConfig = {
 	toStatus?: string;
 	/** record_updated — fire only when one of these fields changed. */
 	fields?: string[];
+	/** Event triggers — only run when the record matches (A5-2). */
+	entryCriteria?: { logic: "and" | "or"; groups: ConditionGroup[] };
 	/** scheduled (Slice 2) */
 	schedule?: {
 		frequency: "daily" | "weekly" | "monthly";
@@ -272,61 +275,56 @@ export type ConditionNodeData = {
 	nodeType: "condition";
 	config?: ConditionNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type ActionNodeData = {
 	nodeType: "action";
 	config?: ActionNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type FetchNodeData = {
 	nodeType: "fetch_records";
 	config?: FetchNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type LoopNodeData = {
 	nodeType: "loop";
 	config?: LoopNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type AggregateNodeData = {
 	nodeType: "aggregate";
 	config?: AggregateNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type AdjustTimeNodeData = {
 	nodeType: "adjust_time";
 	config?: AdjustTimeNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type DelayNodeData = {
 	nodeType: "delay";
 	config?: DelayNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type DelayUntilNodeData = {
 	nodeType: "delay_until";
 	config?: DelayUntilNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type EndNodeData = {
 	nodeType: "end";
-	_dbNode: WorkflowNode;
+};
+
+export type NextItemNodeData = {
+	nodeType: "next_item";
 };
 
 export type PlaceholderNodeData = {
@@ -335,6 +333,14 @@ export type PlaceholderNodeData = {
 
 export type TerminalNodeData = {
 	nodeType: "terminal";
+};
+
+/** Non-interactive dotted frame rendered behind a loop's body (derived layout). */
+export type LoopContainerNodeData = {
+	nodeType: "loopContainer";
+	loopId: string;
+	width: number;
+	height: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -355,8 +361,10 @@ export type AdjustTimeRFNode = Node<AdjustTimeNodeData, "adjustTimeNode">;
 export type DelayRFNode = Node<DelayNodeData, "delayNode">;
 export type DelayUntilRFNode = Node<DelayUntilNodeData, "delayUntilNode">;
 export type EndRFNode = Node<EndNodeData, "endNode">;
+export type NextItemRFNode = Node<NextItemNodeData, "nextItemNode">;
 export type PlaceholderRFNode = Node<PlaceholderNodeData, "placeholderNode">;
 export type TerminalRFNode = Node<TerminalNodeData, "terminalNode">;
+export type LoopContainerRFNode = Node<LoopContainerNodeData, "loopContainerNode">;
 
 export type AppNode =
 	| TriggerRFNode
@@ -370,8 +378,10 @@ export type AppNode =
 	| DelayRFNode
 	| DelayUntilRFNode
 	| EndRFNode
+	| NextItemRFNode
 	| PlaceholderRFNode
-	| TerminalRFNode;
+	| TerminalRFNode
+	| LoopContainerRFNode;
 
 // ---------------------------------------------------------------------------
 // 9. AppEdge type
@@ -384,6 +394,16 @@ export type EdgeData = {
 	label?: string;
 	variant?: string;
 	isTerminal?: boolean;
+	/**
+	 * Dangling condition branch inside a loop body: falling off the end skips
+	 * to the next item. Renders an explicit "↩ Next item" marker so the
+	 * engine's skip-item semantics are visible on the canvas.
+	 */
+	impliedNextItem?: boolean;
+	/** X of the After-Last edge's vertical run (derived layout, loop edges only). */
+	routeRightX?: number;
+	/** X of the loop-back edge's vertical run (derived layout, loop edges only). */
+	routeLeftX?: number;
 	/** actionType selects the action variant when nodeType is "action". */
 	onInsertNode?: (edgeId: string, nodeType: string, actionType?: string) => void;
 };

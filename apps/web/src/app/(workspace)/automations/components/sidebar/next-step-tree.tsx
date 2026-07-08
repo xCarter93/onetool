@@ -10,6 +10,7 @@ import {
 	Sigma,
 	Clock3,
 	CircleStop,
+	SkipForward,
 	Circle,
 	type LucideIcon,
 } from "lucide-react";
@@ -74,6 +75,10 @@ const NODE_TYPE_MAP: Record<
 	},
 	end: {
 		icon: CircleStop,
+		color: "bg-muted text-muted-foreground",
+	},
+	next_item: {
+		icon: SkipForward,
 		color: "bg-muted text-muted-foreground",
 	},
 };
@@ -154,6 +159,8 @@ function getNodeLabel(node: Node, nodeType?: string): string {
 			return "Adjust time";
 		case "end":
 			return "End";
+		case "next_item":
+			return "Next item";
 		default:
 			return (data?.label as string) || "Step";
 	}

@@ -30,7 +30,8 @@ type NodeConfigType =
 	| "adjust_time"
 	| "delay"
 	| "delay_until"
-	| "end";
+	| "end"
+	| "next_item";
 
 /** Map sub-action types to their sidebar config type */
 function toSidebarType(t: string): NodeConfigType {
@@ -154,8 +155,10 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		onDeleteNode: handleDeleteNode,
 		onDeleteTrigger: handleDeleteTrigger,
 		onUndo: editor.handleUndo,
+		onRedo: editor.handleRedo,
 		onCloseSidebar: sidebar.closeSidebar,
 		canUndo: editor.canUndo,
+		canRedo: editor.canRedo,
 	});
 
 	if (editor.isLoading) {
@@ -203,8 +206,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						edges={flowEdges}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
-						onNodeDragStop={editor.handleNodeDragStop}
-						onNavigateReady={handleNavigateReady}
+							onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 					/>
 					{/* Floats over the canvas so the dotted background runs behind it. */}

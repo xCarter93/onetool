@@ -177,6 +177,22 @@ function validateTrigger(trigger: AutomationTrigger): void {
 		default:
 			throw new Error("Unsupported trigger type");
 	}
+
+	// Entry criteria (A5-2): same validation as condition-node groups, scoped
+	// to the trigger's object type (no loop scope exists at trigger time).
+	if (
+		(trigger.type === "status_changed" ||
+			trigger.type === "record_created" ||
+			trigger.type === "record_updated") &&
+		trigger.entryCriteria
+	) {
+		validateConditionGroups(
+			"trigger",
+			trigger.entryCriteria.groups,
+			trigger.objectType,
+			"entry criteria"
+		);
+	}
 }
 
 function triggerObjectType(
@@ -529,8 +545,22 @@ function validateWorkflowDefinition(
 				}
 				break;
 			}
-			case "end":
+			case "end": {
+				if (bodyScopeType.has(node.id)) {
+					throw new Error(
+						`Node ${node.id}: an End step inside a loop stops the entire run — use "Next item" to skip to the next record`
+					);
+				}
 				break;
+			}
+			case "next_item": {
+				if (!bodyScopeType.has(node.id)) {
+					throw new Error(
+						`Node ${node.id}: "Next item" only works inside a loop`
+					);
+				}
+				break;
+			}
 		}
 	}
 

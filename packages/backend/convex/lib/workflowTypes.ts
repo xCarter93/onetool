@@ -14,6 +14,16 @@ import { v, type Infer } from "convex/values";
  */
 
 // ---------------------------------------------------------------------------
+// Execution limits
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-fetch ceiling on rows scanned (newest first) in automationExecutor.
+ * Exported so the web debug UI's truncation copy stays in sync.
+ */
+export const FETCH_SCAN_CEILING = 5000;
+
+// ---------------------------------------------------------------------------
 // Object types
 // ---------------------------------------------------------------------------
 
@@ -250,6 +260,15 @@ export const endNodeConfigValidator = v.object({
 	kind: v.literal("end"),
 });
 
+/**
+ * Terminal only valid inside a loop body: ends the current iteration and
+ * continues with the loop's next record (an `end` node there would stop the
+ * entire run, and is rejected at save time).
+ */
+export const nextItemNodeConfigValidator = v.object({
+	kind: v.literal("next_item"),
+});
+
 // Compute nodes: read from scope, write a value into node.<id>.result. They
 // perform no DB writes, so the dry test run executes them for real.
 
@@ -296,7 +315,8 @@ export const nodeConfigValidator = v.union(
 	adjustTimeNodeConfigValidator,
 	delayNodeConfigValidator,
 	delayUntilNodeConfigValidator,
-	endNodeConfigValidator
+	endNodeConfigValidator,
+	nextItemNodeConfigValidator
 );
 
 export type WorkflowNodeConfig = Infer<typeof nodeConfigValidator>;
@@ -311,6 +331,7 @@ export const NODE_TYPES = [
 	"delay",
 	"delay_until",
 	"end",
+	"next_item",
 ] as const;
 
 export type WorkflowNodeType = (typeof NODE_TYPES)[number];
@@ -324,7 +345,8 @@ export const nodeTypeValidator = v.union(
 	v.literal("adjust_time"),
 	v.literal("delay"),
 	v.literal("delay_until"),
-	v.literal("end")
+	v.literal("end"),
+	v.literal("next_item")
 );
 
 // ---------------------------------------------------------------------------
@@ -379,16 +401,29 @@ export const scheduleValidator = v.object({
 
 export type AutomationSchedule = Infer<typeof scheduleValidator>;
 
+/**
+ * Optional declarative trigger filter (A5-2): the run is only scheduled when
+ * the triggering record passes these condition groups, evaluated at event
+ * dispatch against the actual record — a non-matching event produces no
+ * execution row. Same shape the condition node uses.
+ */
+export const entryCriteriaValidator = v.object({
+	logic: v.union(v.literal("and"), v.literal("or")),
+	groups: v.array(conditionGroupValidator),
+});
+
 export const statusChangedTriggerValidator = v.object({
 	type: v.literal("status_changed"),
 	objectType: objectTypeValidator,
 	fromStatus: v.optional(v.string()),
 	toStatus: v.string(),
+	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const recordCreatedTriggerValidator = v.object({
 	type: v.literal("record_created"),
 	objectType: objectTypeValidator,
+	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const recordUpdatedTriggerValidator = v.object({
@@ -396,6 +431,7 @@ export const recordUpdatedTriggerValidator = v.object({
 	objectType: objectTypeValidator,
 	/** Fire only when one of these fields changed; any field if omitted/empty. */
 	fields: v.optional(v.array(v.string())),
+	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const scheduledTriggerValidator = v.object({
@@ -497,6 +533,9 @@ export const executedNodeValidator = v.object({
 	startedAt: v.optional(v.number()),
 	completedAt: v.optional(v.number()),
 	recordsProcessed: v.optional(v.number()),
+	// True when this node consumed a fetch_records scan that stopped at its
+	// scan cap with rows still unscanned (fetch_records/loop/aggregate nodes).
+	truncated: v.optional(v.boolean()),
 	// Bounded (~4KB) input/output snapshots for the runs viewer.
 	input: v.optional(v.any()),
 	output: v.optional(v.any()),

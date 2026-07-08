@@ -91,12 +91,14 @@ export function formatPercent(rate: number | null | undefined): string {
 
 /**
  * Turn the raw `triggeredBy` string into a friendly source label.
- * Values: "schedule", "manual:<userId>", "status_changed", "record_created",
- * "record_updated", "automation" (cascade), etc.
+ * Values: "schedule", "manual:<userId>", "actor:<userId>" (user-caused record/
+ * status event), a bare entity id (system-caused event), "automation"
+ * (cascade), etc.
  */
 export function formatTriggerSource(triggeredBy: string | undefined): string {
 	if (!triggeredBy) return "—";
 	if (triggeredBy.startsWith("manual")) return "Manual run";
+	if (triggeredBy.startsWith("actor:")) return "Record change";
 	switch (triggeredBy) {
 		case "schedule":
 			return "Schedule";

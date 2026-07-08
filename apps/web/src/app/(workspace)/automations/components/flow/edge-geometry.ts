@@ -1,13 +1,4 @@
-import type { Node } from "@xyflow/react";
-import type { WorkflowNode } from "../../lib/node-types";
-
-const NODE_WIDTH = 260;
-const LOOP_NODE_WIDTH = 300;
-import { collectLoopBody, collectSubtree } from "../../lib/graph-utils";
-
 const AFTER_LAST_MIN_OFFSET_X = 56;
-const AFTER_LAST_CLEARANCE_X = 48;
-const TERMINAL_VISUAL_WIDTH = 28;
 
 export function getNoBranchGeometry(
 	sourceX: number,
@@ -36,47 +27,6 @@ export function getNoBranchGeometry(
 			`L ${targetX} ${effectiveTargetY}`,
 		].join(" "),
 	};
-}
-
-export function computeAfterLastRouteRightX(
-	loopNodeId: string,
-	layoutedNodes: Node[],
-	workflowNodes: WorkflowNode[]
-): number | undefined {
-	const loopNode = workflowNodes.find(
-		(node) => node.id === loopNodeId && node.type === "loop"
-	);
-	if (!loopNode) return undefined;
-
-	const bodyIds = collectLoopBody(loopNodeId, workflowNodes);
-	// loop.nextNodeId is the after-loop continuation (elseNodeId is unused on loops).
-	const afterIds = loopNode.nextNodeId
-		? collectSubtree(loopNode.nextNodeId, workflowNodes)
-		: new Set<string>();
-	const bodyIdList = [...bodyIds];
-
-	let maxRightX = -Infinity;
-
-	for (const node of layoutedNodes) {
-		if (node.type === "terminalNode") {
-			const parentId = bodyIdList.find((bodyId) =>
-				node.id.startsWith(`__terminal__${bodyId}`)
-			);
-			if (!parentId) continue;
-			if (afterIds.has(parentId) && parentId !== loopNodeId) continue;
-
-			maxRightX = Math.max(maxRightX, node.position.x + TERMINAL_VISUAL_WIDTH);
-			continue;
-		}
-
-		if (!bodyIds.has(node.id)) continue;
-		if (afterIds.has(node.id) && node.id !== loopNodeId) continue;
-
-		const width = node.type === "loopNode" ? LOOP_NODE_WIDTH : NODE_WIDTH;
-		maxRightX = Math.max(maxRightX, node.position.x + width);
-	}
-
-	return Number.isFinite(maxRightX) ? maxRightX + AFTER_LAST_CLEARANCE_X : undefined;
 }
 
 export function getAfterLastGeometry(

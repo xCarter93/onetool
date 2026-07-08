@@ -10,8 +10,8 @@
  * surfaces the same errors before the user hits Save.
  */
 
-import type { Node } from "@xyflow/react";
 import { collectLoopBody } from "./graph-utils";
+import type { EditorNode } from "./flow-adapter";
 import {
 	ADJUST_TIME_UNITS,
 	AGGREGATE_OPERATIONS,
@@ -46,7 +46,15 @@ export type ValidationResult = {
 		type:
 			| "placeholder_present"
 			| "missing_required_config"
-			| "no_trigger";
+			| "no_trigger"
+			| "end_inside_loop"
+			| "next_item_outside_loop";
+		message: string;
+		nodeId?: string;
+	}>;
+	/** Non-blocking — doesn't affect `valid` or gate save/publish. */
+	warnings: Array<{
+		type: "loop_condition_dangling_false_branch";
 		message: string;
 		nodeId?: string;
 	}>;
@@ -124,13 +132,34 @@ function validateTrigger(
 			break;
 		}
 	}
+
+	// Entry criteria (A5-2): absent/empty is fine; started-but-incomplete
+	// rules block save, mirroring condition-node completeness.
+	if (trigger.entryCriteria) {
+		const objectType = trigger.objectType ?? null;
+		const incomplete = trigger.entryCriteria.groups.some((group) =>
+			group.rules.some((rule) => !isRuleComplete(objectType, rule))
+		);
+		if (incomplete) {
+			errors.push({
+				type: "missing_required_config",
+				message:
+					"Finish the trigger's entry criteria or remove the empty condition",
+			});
+		}
+	}
 }
 
 function validateConditionNode(
 	nodeId: string,
 	config: ConditionNodeConfig | undefined,
+	// The object type the condition's fields read from — the loop item inside
+	// a loop body, else the trigger record (see getScopeObjectType).
 	objectType: AutomationObjectType | null,
-	errors: ValidationResult["errors"]
+	// Node sits inside a loop body and has no configured false (No) branch.
+	inLoopWithDanglingFalseBranch: boolean,
+	errors: ValidationResult["errors"],
+	warnings: ValidationResult["warnings"]
 ): void {
 	if (!config || config.groups.length === 0) {
 		errors.push({
@@ -147,6 +176,17 @@ function validateConditionNode(
 		errors.push({
 			type: "missing_required_config",
 			message: "Finish configuring the condition",
+			nodeId,
+		});
+	}
+
+	// The walk engine (automationExecutor.ts) treats a missing elseNodeId as
+	// "end this iteration" inside a loop body — not an error, but easy to miss.
+	if (inLoopWithDanglingFalseBranch) {
+		warnings.push({
+			type: "loop_condition_dangling_false_branch",
+			message:
+				"The No branch ends this loop iteration for the current item. Add a step to the No branch if that's not intended.",
 			nodeId,
 		});
 	}
@@ -319,7 +359,7 @@ function validateFetchNode(
 function validateLoopNode(
 	nodeId: string,
 	config: LoopNodeConfig | undefined,
-	rfNodes: Node[],
+	nodes: EditorNode[],
 	workflowNodes: WorkflowNode[],
 	errors: ValidationResult["errors"]
 ): void {
@@ -331,9 +371,8 @@ function validateLoopNode(
 		});
 		return;
 	}
-	const source = rfNodes.find((n) => n.id === config.sourceNodeId);
-	const sourceType = (source?.data as Record<string, unknown> | undefined)?.nodeType;
-	if (!source || sourceType !== "fetch_records") {
+	const source = nodes.find((n) => n.id === config.sourceNodeId);
+	if (!source || source.type !== "fetch_records") {
 		errors.push({
 			type: "missing_required_config",
 			message: 'Loops need a "Find records" step to run earlier in the workflow',
@@ -386,7 +425,7 @@ function validateLoopNode(
 function validateAggregateNode(
 	nodeId: string,
 	config: AggregateNodeConfig | undefined,
-	rfNodes: Node[],
+	nodes: EditorNode[],
 	errors: ValidationResult["errors"]
 ): void {
 	if (!config?.sourceNodeId) {
@@ -397,11 +436,8 @@ function validateAggregateNode(
 		});
 		return;
 	}
-	const source = rfNodes.find((n) => n.id === config.sourceNodeId);
-	const sourceData = source?.data as
-		| { nodeType?: string; config?: FetchNodeConfig }
-		| undefined;
-	if (!source || sourceData?.nodeType !== "fetch_records") {
+	const source = nodes.find((n) => n.id === config.sourceNodeId);
+	if (!source || source.type !== "fetch_records") {
 		errors.push({
 			type: "missing_required_config",
 			message: 'Aggregates need a "Find records" step to run earlier in the workflow',
@@ -432,7 +468,9 @@ function validateAggregateNode(
 	// fields. Resolve the field on the SOURCE fetch node's object type and
 	// reject anything else inline, else the backend fails with a generic toast.
 	// Skip when the source has no object type yet — validateFetchNode flags that.
-	const sourceObjectType = sourceData.config?.objectType;
+	const sourceObjectType = (
+		(source as WorkflowNode).config as FetchNodeConfig | undefined
+	)?.objectType;
 	if (sourceObjectType) {
 		const def = getFieldDefinition(sourceObjectType, config.field);
 		if (!def || (def.type !== "number" && def.type !== "currency")) {
@@ -575,44 +613,33 @@ function validateDelayUntilNode(
 
 export function validateWorkflowForSave(
 	trigger: TriggerConfig | null,
-	rfNodes: Node[]
+	nodes: EditorNode[]
 ): ValidationResult {
 	const errors: ValidationResult["errors"] = [];
+	const warnings: ValidationResult["warnings"] = [];
 
 	validateTrigger(trigger, errors);
-	const fallbackObjectType = trigger?.objectType ?? null;
+	const objectType = trigger?.objectType ?? null;
 
 	// Check for empty workflow (no real steps)
-	const hasWorkflowNodes = rfNodes.some((node) => {
-		const nt = (node.data as Record<string, unknown>)?.nodeType;
-		return (
-			nt !== undefined &&
-			nt !== "trigger" &&
-			nt !== "triggerPlaceholder" &&
-			nt !== "terminal"
-		);
-	});
-	if (!hasWorkflowNodes) {
+	if (nodes.length === 0) {
 		errors.push({
 			type: "missing_required_config",
 			message: "Add at least one step before saving",
 		});
 	}
 
-	// Real workflow nodes (with their persisted next/else/bodyStart pointers)
-	// for graph walks — loop-body membership needs these, not the RF nodes.
-	const workflowNodes: WorkflowNode[] = rfNodes
-		.map((n) => (n.data as { _dbNode?: WorkflowNode } | undefined)?._dbNode)
-		.filter((n): n is WorkflowNode => n !== undefined);
+	// Real workflow nodes (with their next/else/bodyStart pointers) for graph
+	// walks — loop-body membership excludes placeholders, matching the
+	// scope logic in the panels/sidebar.
+	const workflowNodes: WorkflowNode[] = nodes.filter(
+		(n): n is WorkflowNode => n.type !== "placeholder"
+	);
 
-	for (const node of rfNodes) {
-		const data = node.data as Record<string, unknown>;
-		const nodeType = data?.nodeType as string | undefined;
-		const objectType =
-			(data?.triggerObjectType as AutomationObjectType | null | undefined) ??
-			fallbackObjectType;
+	for (const node of nodes) {
+		const config = (node as WorkflowNode).config;
 
-		switch (nodeType) {
+		switch (node.type) {
 			case "placeholder":
 				errors.push({
 					type: "placeholder_present",
@@ -620,18 +647,22 @@ export function validateWorkflowForSave(
 					nodeId: node.id,
 				});
 				break;
-			case "condition":
+			case "condition": {
+				const scope = getScopeObjectType(workflowNodes, node.id, objectType);
 				validateConditionNode(
 					node.id,
-					data.config as ConditionNodeConfig | undefined,
-					objectType,
-					errors
+					config as ConditionNodeConfig | undefined,
+					scope.objectType,
+					scope.inLoop && !node.elseNodeId,
+					errors,
+					warnings
 				);
 				break;
+			}
 			case "action":
 				validateActionNode(
 					node.id,
-					data.config as ActionNodeConfig | undefined,
+					config as ActionNodeConfig | undefined,
 					getScopeObjectType(workflowNodes, node.id, objectType).objectType,
 					errors
 				);
@@ -639,15 +670,15 @@ export function validateWorkflowForSave(
 			case "fetch_records":
 				validateFetchNode(
 					node.id,
-					data.config as FetchNodeConfig | undefined,
+					config as FetchNodeConfig | undefined,
 					errors
 				);
 				break;
 			case "loop":
 				validateLoopNode(
 					node.id,
-					data.config as LoopNodeConfig | undefined,
-					rfNodes,
+					config as LoopNodeConfig | undefined,
+					nodes,
 					workflowNodes,
 					errors
 				);
@@ -655,38 +686,68 @@ export function validateWorkflowForSave(
 			case "aggregate":
 				validateAggregateNode(
 					node.id,
-					data.config as AggregateNodeConfig | undefined,
-					rfNodes,
+					config as AggregateNodeConfig | undefined,
+					nodes,
 					errors
 				);
 				break;
 			case "adjust_time":
 				validateAdjustTimeNode(
 					node.id,
-					data.config as AdjustTimeNodeConfig | undefined,
+					config as AdjustTimeNodeConfig | undefined,
 					errors
 				);
 				break;
 			case "delay":
 				validateDelayNode(
 					node.id,
-					data.config as DelayNodeConfig | undefined,
+					config as DelayNodeConfig | undefined,
 					errors
 				);
 				break;
 			case "delay_until":
 				validateDelayUntilNode(
 					node.id,
-					data.config as DelayUntilNodeConfig | undefined,
+					config as DelayUntilNodeConfig | undefined,
 					errors
 				);
 				break;
+			case "end": {
+				const inLoop = getScopeObjectType(workflowNodes, node.id, objectType).inLoop;
+				if (inLoop) {
+					errors.push({
+						type: "end_inside_loop",
+						message:
+							'An End step inside a loop stops the entire run — use "Next item" to skip to the next record',
+						nodeId: node.id,
+					});
+				}
+				break;
+			}
+			case "next_item": {
+				const inLoop = getScopeObjectType(workflowNodes, node.id, objectType).inLoop;
+				if (!inLoop) {
+					errors.push({
+						type: "next_item_outside_loop",
+						message: '"Next item" only works inside a loop',
+						nodeId: node.id,
+					});
+				}
+				break;
+			}
 			default:
 				break;
 		}
 	}
 
-	return { valid: errors.length === 0, errors };
+	return { valid: errors.length === 0, errors, warnings };
+}
+
+/** First warning message, if any — for a non-blocking toast after save/publish. */
+export function getValidationWarningMessage(
+	result: ValidationResult
+): string | null {
+	return result.warnings[0]?.message ?? null;
 }
 
 export function getValidationToastMessage(
@@ -699,6 +760,8 @@ export function getValidationToastMessage(
 		"no_trigger",
 		"placeholder_present",
 		"missing_required_config",
+		"end_inside_loop",
+		"next_item_outside_loop",
 	];
 
 	for (const type of priorities) {

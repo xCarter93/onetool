@@ -13,6 +13,18 @@ import {
 	validateSchedule,
 	type TriggerConfig,
 } from "../../lib/node-types";
+import { conditionSentence } from "../../lib/condition-sentence";
+
+/** " · when <sentence>" suffix for triggers with entry criteria (A5-2). */
+function entryCriteriaSuffix(trigger: TriggerConfig): string {
+	if (!trigger.entryCriteria) return "";
+	const sentence = conditionSentence(
+		trigger.entryCriteria.logic,
+		trigger.entryCriteria.groups,
+		trigger.objectType ?? null
+	);
+	return sentence ? ` · when ${sentence}` : "";
+}
 
 function getSummary(trigger: TriggerConfig | undefined): {
 	title: string;
@@ -22,6 +34,7 @@ function getSummary(trigger: TriggerConfig | undefined): {
 
 	const objectLabel = trigger.objectType ? OBJECT_TYPE_LABELS[trigger.objectType] : "";
 	const triggerType = trigger.type || "status_changed";
+	const whenSuffix = entryCriteriaSuffix(trigger);
 
 	switch (triggerType) {
 		case "status_changed": {
@@ -32,20 +45,20 @@ function getSummary(trigger: TriggerConfig | undefined): {
 			if (trigger.fromStatus && toLabel) {
 				const fromLabel =
 					statusOptions.find((s) => s.value === trigger.fromStatus)?.label || trigger.fromStatus;
-				return { title, description: `${objectLabel} ${fromLabel} → ${toLabel}` };
+				return { title, description: `${objectLabel} ${fromLabel} → ${toLabel}${whenSuffix}` };
 			}
-			if (toLabel) return { title, description: `${objectLabel} → ${toLabel}` };
+			if (toLabel) return { title, description: `${objectLabel} → ${toLabel}${whenSuffix}` };
 			return { title, description: objectLabel || "Configure trigger..." };
 		}
 		case "record_created":
-			return { title: "Record Created", description: `${objectLabel} created` };
+			return { title: "Record Created", description: `${objectLabel} created${whenSuffix}` };
 		case "record_updated":
 			return {
 				title: "Record Updated",
 				description:
-					trigger.fields && trigger.fields.length > 0
+					(trigger.fields && trigger.fields.length > 0
 						? `${objectLabel}.${trigger.fields.join(", ")} changes`
-						: `${objectLabel} updated`,
+						: `${objectLabel} updated`) + whenSuffix,
 			};
 		case "scheduled": {
 			const schedule = trigger.schedule;

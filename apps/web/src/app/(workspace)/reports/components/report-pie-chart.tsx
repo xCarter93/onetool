@@ -27,7 +27,6 @@ export function ReportPieChart({
 	data,
 	total,
 	groupBy,
-	entityType,
 }: ReportPieChartProps) {
 	const [activeIndex, setActiveIndex] = React.useState<number | undefined>();
 
@@ -41,20 +40,6 @@ export function ReportPieChart({
 	}, {} as ChartConfig);
 
 	const totalCount = data.reduce((sum, d) => sum + d.value, 0);
-
-	const formatValue = (value: number) => {
-		if (entityType === "invoices" || entityType === "quotes") {
-			if (value > 1000) {
-				return new Intl.NumberFormat("en-US", {
-					style: "currency",
-					currency: "USD",
-					notation: "compact",
-					maximumFractionDigits: 1,
-				}).format(value);
-			}
-		}
-		return value.toString();
-	};
 
 	const onPieEnter = (_: unknown, index: number) => {
 		setActiveIndex(index);

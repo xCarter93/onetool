@@ -10,6 +10,7 @@ import {
 	getStatusOptions,
 	type AutomationAction,
 	type AutomationTrigger,
+	type ConditionNodeConfig,
 	type FormulaResource,
 	type TriggerConfig,
 	type TriggerType,
@@ -20,7 +21,7 @@ import {
 	TRIGGER_PLACEHOLDER_ID,
 	automationToReactFlow,
 	isTerminalId,
-	reactFlowToFlatArray,
+	serializeEditorNodes,
 	type EditorNode,
 	type PlaceholderEntry,
 } from "../lib/flow-adapter";
@@ -32,10 +33,12 @@ import {
 } from "../lib/legacy-load";
 import {
 	getValidationToastMessage,
+	getValidationWarningMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
 import { definitionSignature } from "../lib/editor-signature";
 import { computeNodeStatuses } from "../lib/run-status";
+import { getScopeObjectType } from "../lib/variables";
 
 /** A record the test/manual runner can target. */
 export type RunRecordRef = {
@@ -43,14 +46,22 @@ export type RunRecordRef = {
 	entityId: string;
 };
 
-type DeletedState = {
-	deletedNodes: EditorNode[];
-	parentId: string | null;
-	branch: "next" | "else" | "body" | null;
-	reconnectedChildId?: string;
-	previousParentPointer?: string;
-	toastMessage: string;
-	nodeTypeLabel: string;
+/** One undoable moment of the graph-shape state (name/description excluded —
+ * text inputs keep their native undo). */
+type EditorSnapshot = {
+	trigger: TriggerConfig | null;
+	nodes: EditorNode[];
+	formulas: FormulaResource[];
+};
+
+const HISTORY_LIMIT = 50;
+/** Consecutive edits sharing a coalesce key within this window collapse into one undo step. */
+const HISTORY_COALESCE_MS = 1500;
+
+/** Transient "X deleted — undo" banner shown for 5s after a delete. */
+type UndoBannerState = {
+	title: string;
+	message: string;
 };
 
 function generateId(): string {
@@ -208,13 +219,22 @@ function buildEndNode(id: string): WorkflowNode {
 	return { id, type: "end", config: { kind: "end" } };
 }
 
+function buildNextItemNode(id: string): WorkflowNode {
+	return { id, type: "next_item", config: { kind: "next_item" } };
+}
+
 /** Build the v2 trigger arg accepted by automations.create/update. */
 function buildTriggerForSave(trigger: TriggerConfig) {
 	const objectType = trigger.objectType ?? "client";
+	// Empty criteria are dropped so unused editors don't dirty the doc.
+	const entryCriteria =
+		trigger.entryCriteria && trigger.entryCriteria.groups.length > 0
+			? { entryCriteria: trigger.entryCriteria }
+			: {};
 
 	switch (trigger.type) {
 		case "record_created":
-			return { type: "record_created" as const, objectType };
+			return { type: "record_created" as const, objectType, ...entryCriteria };
 		case "record_updated":
 			return {
 				type: "record_updated" as const,
@@ -222,6 +242,7 @@ function buildTriggerForSave(trigger: TriggerConfig) {
 				...(trigger.fields && trigger.fields.length > 0
 					? { fields: trigger.fields }
 					: {}),
+				...entryCriteria,
 			};
 		case "scheduled":
 			return {
@@ -239,26 +260,38 @@ function buildTriggerForSave(trigger: TriggerConfig) {
 				objectType,
 				...(trigger.fromStatus ? { fromStatus: trigger.fromStatus } : {}),
 				toStatus: trigger.toStatus ?? "",
+				...entryCriteria,
 			};
 	}
 }
 
 /** Narrow serialized nodes to the backend's config-required shape. Save validation guarantees every node is complete before this runs. */
-function toSavableNodes(nodes: WorkflowNode[]) {
+export function toSavableNodes(nodes: WorkflowNode[]) {
 	return nodes.map((node) => {
 		if (!node.config) {
 			throw new Error(`Step "${node.id}" is not fully configured`);
 		}
+		let config = node.config;
+		if (node.type === "condition") {
+			// Derive source from graph position on every save — a value stamped
+			// only at config-time would drift if the node later moves in/out of
+			// a loop, and legacy nodes (source unset) backfill on next save.
+			const scope = getScopeObjectType(nodes, node.id, null);
+			const source: ConditionNodeConfig["source"] =
+				scope.inLoop && scope.loopNodeId
+					? { loopNodeId: scope.loopNodeId }
+					: "trigger";
+			config = { ...(config as ConditionNodeConfig), source };
+		}
 		return {
 			id: node.id,
 			type: node.type,
-			config: node.config,
+			config,
 			...(node.nextNodeId !== undefined ? { nextNodeId: node.nextNodeId } : {}),
 			...(node.elseNodeId !== undefined ? { elseNodeId: node.elseNodeId } : {}),
 			...(node.bodyStartNodeId !== undefined
 				? { bodyStartNodeId: node.bodyStartNodeId }
 				: {}),
-			...(node.position !== undefined ? { position: node.position } : {}),
 		};
 	});
 }
@@ -305,11 +338,29 @@ export function useAutomationEditor(automationId: string | null) {
 	const [activeExecutionId, setActiveExecutionId] =
 		useState<Id<"workflowExecutions"> | null>(null);
 	const [hasInitialized, setHasInitialized] = useState(false);
-	const [deletedNodeState, setDeletedNodeState] = useState<DeletedState | null>(null);
+	const [undoBanner, setUndoBanner] = useState<UndoBannerState | null>(null);
 	const [showClearConfirm, setShowClearConfirm] = useState(false);
 	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	// Signature of the last saved definition, for dirty detection.
 	const [savedSignature, setSavedSignature] = useState<string | null>(null);
+
+	// --- Multi-level undo/redo -------------------------------------------
+	// Snapshots live in a ref (no re-render per push); stack sizes are
+	// mirrored into state on every change so canUndo/canRedo stay fresh
+	// without reading the ref during render.
+	const historyRef = useRef<{ past: EditorSnapshot[]; future: EditorSnapshot[] }>({
+		past: [],
+		future: [],
+	});
+	const [historyDepth, setHistoryDepth] = useState({ past: 0, future: 0 });
+	const lastPushRef = useRef<{ key: string; at: number } | null>(null);
+	// Mirror of the undoable state so pushHistory can snapshot without every
+	// handler depending on trigger/nodes/formulas.
+	const presentRef = useRef<EditorSnapshot>({
+		trigger: null,
+		nodes: [],
+		formulas: [],
+	});
 
 	// Initialize form state once the automation loads. Runs during render via
 	// the prev-value pattern; hasInitialized ensures it fires only once so later
@@ -346,7 +397,7 @@ export function useAutomationEditor(automationId: string | null) {
 	}, []);
 
 	const clearUndoState = useCallback(() => {
-		setDeletedNodeState(null);
+		setUndoBanner(null);
 		// Editing invalidates any run currently painted on the canvas.
 		setActiveExecutionId(null);
 		if (undoTimeoutRef.current) {
@@ -354,6 +405,67 @@ export function useAutomationEditor(automationId: string | null) {
 			undoTimeoutRef.current = null;
 		}
 	}, []);
+
+	// Keep the snapshot mirror current after every render (incl. load-init
+	// above). pushHistory only runs from event handlers, which fire post-commit.
+	useEffect(() => {
+		presentRef.current = { trigger, nodes, formulas };
+	});
+
+	/**
+	 * Capture the current state as an undo step. Call BEFORE mutating.
+	 * A coalesceKey collapses rapid same-key edits (e.g. per-keystroke config
+	 * changes on one node) into a single step; any push clears the redo stack.
+	 */
+	const pushHistory = useCallback((coalesceKey?: string) => {
+		const now = Date.now();
+		if (
+			coalesceKey &&
+			lastPushRef.current?.key === coalesceKey &&
+			now - lastPushRef.current.at < HISTORY_COALESCE_MS
+		) {
+			lastPushRef.current.at = now;
+			return;
+		}
+		lastPushRef.current = coalesceKey ? { key: coalesceKey, at: now } : null;
+		const history = historyRef.current;
+		history.past.push(structuredClone(presentRef.current));
+		if (history.past.length > HISTORY_LIMIT) history.past.shift();
+		history.future = [];
+		setHistoryDepth({ past: history.past.length, future: 0 });
+	}, []);
+
+	const applySnapshot = useCallback(
+		(snapshot: EditorSnapshot) => {
+			setTrigger(snapshot.trigger);
+			setNodes(snapshot.nodes);
+			setFormulas(snapshot.formulas);
+			lastPushRef.current = null;
+			clearUndoState();
+			const history = historyRef.current;
+			setHistoryDepth({
+				past: history.past.length,
+				future: history.future.length,
+			});
+		},
+		[clearUndoState]
+	);
+
+	const handleUndo = useCallback(() => {
+		const history = historyRef.current;
+		const previous = history.past.pop();
+		if (!previous) return;
+		history.future.push(structuredClone(presentRef.current));
+		applySnapshot(previous);
+	}, [applySnapshot]);
+
+	const handleRedo = useCallback(() => {
+		const history = historyRef.current;
+		const next = history.future.pop();
+		if (!next) return;
+		history.past.push(structuredClone(presentRef.current));
+		applySnapshot(next);
+	}, [applySnapshot]);
 
 	const rawFlow = useMemo(() => automationToReactFlow(trigger, nodes), [nodes, trigger]);
 
@@ -381,7 +493,8 @@ export function useAutomationEditor(automationId: string | null) {
 					: undefined;
 
 			const newId = generateId();
-			const downstreamId = nodeType === "end" ? undefined : realTargetId;
+			const downstreamId =
+				nodeType === "end" || nodeType === "next_item" ? undefined : realTargetId;
 
 			let newNodes: EditorNode[];
 			switch (nodeType) {
@@ -433,6 +546,9 @@ export function useAutomationEditor(automationId: string | null) {
 				case "end":
 					newNodes = [buildEndNode(newId)];
 					break;
+				case "next_item":
+					newNodes = [buildNextItemNode(newId)];
+					break;
 				case "placeholder":
 					newNodes = [
 						{ id: newId, type: "placeholder", nextNodeId: downstreamId },
@@ -444,6 +560,7 @@ export function useAutomationEditor(automationId: string | null) {
 					break;
 			}
 
+			pushHistory();
 			setNodes((prev) => {
 				const updated = [...prev, ...newNodes];
 				return updated.map((node) => {
@@ -465,7 +582,7 @@ export function useAutomationEditor(automationId: string | null) {
 
 			return newId;
 		},
-		[clearUndoState, rawFlow.edges, trigger]
+		[clearUndoState, pushHistory, rawFlow.edges, trigger]
 	);
 
 	const handleSelectStepType = useCallback(
@@ -473,6 +590,7 @@ export function useAutomationEditor(automationId: string | null) {
 			clearUndoState();
 			if (!trigger) return;
 
+			pushHistory();
 			setNodes((prev) => {
 				const extraNodes: EditorNode[] = [];
 				const mapped = prev.map((node): EditorNode => {
@@ -514,6 +632,8 @@ export function useAutomationEditor(automationId: string | null) {
 							return buildDelayUntilNode(nodeId, downstreamId);
 						case "end":
 							return buildEndNode(nodeId);
+						case "next_item":
+							return buildNextItemNode(nodeId);
 						case "action":
 						default:
 							return buildActionNode(nodeId, downstreamId, actionType);
@@ -522,12 +642,14 @@ export function useAutomationEditor(automationId: string | null) {
 				return [...mapped, ...extraNodes];
 			});
 		},
-		[clearUndoState, trigger]
+		[clearUndoState, pushHistory, trigger]
 	);
 
 	const handleNodeChange = useCallback(
 		(nodeId: string, updates: Partial<WorkflowNode>) => {
 			clearUndoState();
+			// Coalesced: rapid config edits on one node form a single undo step.
+			pushHistory(`node:${nodeId}`);
 			setNodes((prev) =>
 				prev.map((node) => {
 					if (node.id !== nodeId || node.type === "placeholder") return node;
@@ -535,23 +657,25 @@ export function useAutomationEditor(automationId: string | null) {
 				})
 			);
 		},
-		[clearUndoState]
+		[clearUndoState, pushHistory]
 	);
 
 	const handleTriggerChange = useCallback(
 		(nextTrigger: TriggerConfig) => {
 			clearUndoState();
+			pushHistory("trigger");
 			setTrigger(nextTrigger);
 		},
-		[clearUndoState]
+		[clearUndoState, pushHistory]
 	);
 
 	const handleTriggerTypeSelect = useCallback(
 		(triggerType: string) => {
 			clearUndoState();
+			pushHistory();
 			setTrigger((currentTrigger) => buildTriggerFromType(triggerType, currentTrigger));
 		},
-		[clearUndoState]
+		[clearUndoState, pushHistory]
 	);
 
 	const showUndoToast = useCallback(() => {
@@ -559,7 +683,7 @@ export function useAutomationEditor(automationId: string | null) {
 			clearTimeout(undoTimeoutRef.current);
 		}
 		undoTimeoutRef.current = setTimeout(() => {
-			setDeletedNodeState(null);
+			setUndoBanner(null);
 		}, 5000);
 	}, []);
 
@@ -575,12 +699,12 @@ export function useAutomationEditor(automationId: string | null) {
 			}
 
 			// Deleting changes the graph; drop any stale run overlay. Note: NOT
-			// clearUndoState() — that would wipe the undo snapshot set below.
+			// clearUndoState() — that would wipe the banner set below.
 			setActiveExecutionId(null);
+			pushHistory();
 
 			if (nodeToDelete.type === "condition") {
 				const subtreeIds = collectSubtree(nodeId, nodes);
-				const deletedNodes = nodes.filter((node) => subtreeIds.has(node.id));
 
 				setNodes((prev) => {
 					const remaining = prev.filter((node) => !subtreeIds.has(node.id));
@@ -592,13 +716,9 @@ export function useAutomationEditor(automationId: string | null) {
 					});
 				});
 
-				setDeletedNodeState({
-					deletedNodes,
-					parentId,
-					branch,
-					previousParentPointer: nodeId,
-					toastMessage: "This step and its branches have been removed.",
-					nodeTypeLabel: "Condition deleted",
+				setUndoBanner({
+					title: "Condition deleted",
+					message: "This step and its branches have been removed.",
 				});
 				showUndoToast();
 				return;
@@ -606,7 +726,6 @@ export function useAutomationEditor(automationId: string | null) {
 
 			if (nodeToDelete.type === "loop") {
 				const bodyIds = collectLoopBody(nodeId, nodes);
-				const deletedNodes = nodes.filter((node) => bodyIds.has(node.id));
 				const afterLastChildId = nodeToDelete.nextNodeId;
 
 				setNodes((prev) => {
@@ -619,14 +738,9 @@ export function useAutomationEditor(automationId: string | null) {
 					});
 				});
 
-				setDeletedNodeState({
-					deletedNodes,
-					parentId,
-					branch,
-					reconnectedChildId: afterLastChildId,
-					previousParentPointer: nodeId,
-					toastMessage: "This loop and its body steps have been removed.",
-					nodeTypeLabel: "Loop deleted",
+				setUndoBanner({
+					title: "Loop deleted",
+					message: "This loop and its body steps have been removed.",
 				});
 				showUndoToast();
 				return;
@@ -650,84 +764,55 @@ export function useAutomationEditor(automationId: string | null) {
 						? "Step"
 						: nodeToDelete.type.charAt(0).toUpperCase() + nodeToDelete.type.slice(1);
 
-			setDeletedNodeState({
-				deletedNodes: [nodeToDelete],
-				parentId,
-				branch,
-				previousParentPointer: nodeId,
-				toastMessage: "This step has been removed.",
-				nodeTypeLabel: `${label} deleted`,
+			setUndoBanner({
+				title: `${label} deleted`,
+				message: "This step has been removed.",
 			});
 			showUndoToast();
 		},
-		[nodes, showUndoToast]
+		[nodes, pushHistory, showUndoToast]
 	);
 
 	const handleDeleteTrigger = useCallback(() => {
+		// Deleting changes the graph; drop any stale run overlay. Note: NOT
+		// clearUndoState() — that would wipe the banner set below.
+		setActiveExecutionId(null);
+		pushHistory();
 		setTrigger(null);
 		setNodes([]);
 		setShowClearConfirm(false);
-		clearUndoState();
-		toast.success(
-			"Trigger removed",
-			"Set a new trigger to continue building this automation."
-		);
-	}, [clearUndoState, toast]);
+		setUndoBanner({
+			title: "Trigger deleted",
+			message: "The trigger and all steps have been removed.",
+		});
+		showUndoToast();
+	}, [pushHistory, showUndoToast]);
 
 	const handleConfirmClear = useCallback(() => {
+		pushHistory();
 		setNodes([]);
 		setShowClearConfirm(false);
 		clearUndoState();
-	}, [clearUndoState]);
+	}, [clearUndoState, pushHistory]);
 
 	const handleCancelClear = useCallback(() => {
 		setShowClearConfirm(false);
 	}, []);
 
-	const handleUndo = useCallback(() => {
-		if (!deletedNodeState) return;
-
-		const { deletedNodes, parentId, branch, previousParentPointer } = deletedNodeState;
-		setNodes((prev) => {
-			let updated = [...prev, ...deletedNodes];
-			if (parentId && previousParentPointer) {
-				updated = updated.map((node) => {
-					if (node.id !== parentId) return node;
-					if (branch === "else") return { ...node, elseNodeId: previousParentPointer };
-					if (branch === "body")
-						return { ...node, bodyStartNodeId: previousParentPointer };
-					return { ...node, nextNodeId: previousParentPointer };
-				});
-			}
-			return updated;
-		});
-
-		clearUndoState();
-		toast.success("Restored", "The deleted nodes have been restored");
-	}, [clearUndoState, deletedNodeState, toast]);
-
-	const handleNodeDragStop = useCallback(
-		(nodeId: string, position: { x: number; y: number }) => {
-			// Update internal workflow nodes with new drag position for persistence
-			setNodes((prev) =>
-				prev.map((n) => (n.id === nodeId ? { ...n, position } : n))
-			);
-		},
-		[]
-	);
-
 	const handlePaneClick = useCallback(() => {
 		clearUndoState();
 	}, [clearUndoState]);
 
-	// Positions are now computed inside automationToReactFlow (initial-placement.ts)
+	// Positions are fully derived inside automationToReactFlow (derived-layout.ts)
 	const layoutedNodes = rawFlow.nodes;
 	const layoutedEdges = rawFlow.edges;
 
-	// Backend-shape serialization of the current working copy (drops placeholders).
+	// Backend-shape serialization of the current working copy (drops
+	// placeholders). Reads the editor's EditorNode[] state DIRECTLY — the
+	// single source of truth; the RF arrays above are render-only derivations.
 	const serialized = useMemo(
-		() => reactFlowToFlatArray(layoutedNodes, layoutedEdges),
-		[layoutedNodes, layoutedEdges]
+		() => ({ trigger, nodes: serializeEditorNodes(nodes) }),
+		[trigger, nodes]
 	);
 	const workingSignature = useMemo(
 		() => definitionSignature(serialized.trigger, serialized.nodes, formulas),
@@ -779,13 +864,17 @@ export function useAutomationEditor(automationId: string | null) {
 	 * or null if validation blocked the save. Shared by Save / Publish / Test.
 	 */
 	const persistWorkingCopy = useCallback(async (): Promise<string | null> => {
-		const validation = validateWorkflowForSave(trigger, layoutedNodes);
+		const validation = validateWorkflowForSave(trigger, nodes);
 		if (!validation.valid) {
 			toast.error(
 				"Validation Error",
 				getValidationToastMessage(validation) || "Please review your workflow."
 			);
 			return null;
+		}
+		const warningMessage = getValidationWarningMessage(validation);
+		if (warningMessage) {
+			toast.warning("Review before publishing", warningMessage);
 		}
 		if (!name.trim()) {
 			toast.error("Validation Error", "Please enter an automation name");
@@ -796,7 +885,7 @@ export function useAutomationEditor(automationId: string | null) {
 			return null;
 		}
 
-		const flat = reactFlowToFlatArray(layoutedNodes, layoutedEdges);
+		const flat = { trigger, nodes: serializeEditorNodes(nodes) };
 		const triggerArg = buildTriggerForSave(trigger);
 		const nodesArg = toSavableNodes(flat.nodes);
 
@@ -833,9 +922,8 @@ export function useAutomationEditor(automationId: string | null) {
 		description,
 		effectiveId,
 		formulas,
-		layoutedEdges,
-		layoutedNodes,
 		name,
+		nodes,
 		router,
 		toast,
 		trigger,
@@ -915,9 +1003,10 @@ export function useAutomationEditor(automationId: string | null) {
 	const handleFormulasChange = useCallback(
 		(next: FormulaResource[]) => {
 			clearUndoState();
+			pushHistory("formulas");
 			setFormulas(next);
 		},
-		[clearUndoState]
+		[clearUndoState, pushHistory]
 	);
 
 	return {
@@ -960,19 +1049,16 @@ export function useAutomationEditor(automationId: string | null) {
 		handleTriggerTypeSelect,
 		handleDeleteNode,
 		handleDeleteTrigger,
-		handleNodeDragStop,
 		handleUndo,
+		handleRedo,
 		handleSave,
 		handlePaneClick,
 		handleConfirmClear,
 		handleCancelClear,
 		showClearConfirm,
-		canUndo: !!deletedNodeState,
-		undoBanner: deletedNodeState
-			? {
-					title: deletedNodeState.nodeTypeLabel,
-					message: deletedNodeState.toastMessage,
-				}
-			: null,
+		// State mirror of the ref-held stacks (see historyDepth above).
+		canUndo: historyDepth.past > 0,
+		canRedo: historyDepth.future > 0,
+		undoBanner,
 	};
 }
