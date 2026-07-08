@@ -1,11 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { Node } from "@xyflow/react";
 import { validateWorkflowForSave } from "./validation";
 import type {
 	AggregateNodeConfig,
-	AutomationObjectType,
 	ConditionNodeConfig,
-	DelayNodeConfig,
 	FetchNodeConfig,
 	LoopNodeConfig,
 	TriggerConfig,
@@ -19,77 +16,39 @@ const invoiceTrigger: TriggerConfig = {
 	objectType: "invoice",
 };
 
-function fetchRfNode(
+function fetchNode(
 	id: string,
 	objectType: FetchNodeConfig["objectType"]
-): Node {
+): WorkflowNode {
 	return {
 		id,
-		type: "fetchNode",
-		position: { x: 0, y: 0 },
-		data: {
-			nodeType: "fetch_records",
-			config: {
-				kind: "fetch_records",
-				objectType,
-				filters: [],
-			} satisfies FetchNodeConfig,
-			triggerObjectType: objectType,
-		},
-	} as Node;
+		type: "fetch_records",
+		config: {
+			kind: "fetch_records",
+			objectType,
+			filters: [],
+		} satisfies FetchNodeConfig,
+	};
 }
 
-function aggregateRfNode(id: string, config: AggregateNodeConfig): Node {
+function aggregateNode(id: string, config: AggregateNodeConfig): WorkflowNode {
 	return {
 		id,
-		type: "aggregateNode",
-		position: { x: 0, y: 0 },
-		data: {
-			nodeType: "aggregate",
-			config,
-			triggerObjectType: null,
-		},
-	} as Node;
+		type: "aggregate",
+		config,
+	};
 }
 
-function delayRfNode(id: string): Node {
+function delayNode(id: string): WorkflowNode {
 	return {
 		id,
-		type: "delayNode",
-		position: { x: 0, y: 0 },
-		data: {
-			nodeType: "delay",
-			config: {
-				kind: "delay",
-				amount: 5,
-				unit: "minutes",
-			} satisfies DelayNodeConfig,
-			triggerObjectType: null,
+		type: "delay",
+		config: {
+			kind: "delay",
+			amount: 5,
+			unit: "minutes",
 		},
-	} as Node;
-}
-
-/**
- * RF node carrying `_dbNode` (the persisted next/else/bodyStart pointers) —
- * required for loop-body membership checks (collectLoopBody/getScopeObjectType)
- * inside validateWorkflowForSave. Plain fixtures above omit this because they
- * don't exercise loop scoping.
- */
-function dbRfNode(
-	dbNode: WorkflowNode,
-	triggerObjectType: AutomationObjectType | null = null
-): Node {
-	return {
-		id: dbNode.id,
-		type: `${dbNode.type}Node`,
-		position: { x: 0, y: 0 },
-		data: {
-			nodeType: dbNode.type,
-			config: dbNode.config,
-			triggerObjectType,
-			_dbNode: dbNode,
-		},
-	} as Node;
+	};
 }
 
 function conditionRule(
@@ -113,8 +72,8 @@ const AGG_FIELD_TYPE_MESSAGE = "Aggregate needs a number or currency field";
 describe("validateWorkflowForSave — aggregate node", () => {
 	it("passes when aggregating a currency field", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "invoice"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "total", // invoice.total is currency
@@ -128,8 +87,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("passes when aggregating a number field", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "quote"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "quote"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "taxRate", // quote.taxRate is number
@@ -146,8 +105,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("fails inline when aggregating a text field", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "invoice"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "invoiceNumber", // invoice.invoiceNumber is text
@@ -165,8 +124,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("fails inline when aggregating a date field", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "invoice"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "issuedDate", // invoice.issuedDate is date
@@ -184,8 +143,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("fails inline for a field the object type does not define", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "invoice"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "nonexistentField",
@@ -203,7 +162,7 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("flags a missing source before checking the field type", () => {
 		const nodes = [
-			aggregateRfNode("agg1", {
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "",
 				field: "total",
@@ -224,8 +183,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("flags a source that is not a fetch_records node", () => {
 		const nodes = [
-			delayRfNode("delay1"),
-			aggregateRfNode("agg1", {
+			delayNode("delay1"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "delay1",
 				field: "total",
@@ -246,8 +205,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("flags an empty field before checking its type", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "invoice"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "",
@@ -265,8 +224,8 @@ describe("validateWorkflowForSave — aggregate node", () => {
 
 	it("flags an invalid aggregate operation", () => {
 		const nodes = [
-			fetchRfNode("fetch1", "invoice"),
-			aggregateRfNode("agg1", {
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
 				kind: "aggregate",
 				sourceNodeId: "fetch1",
 				field: "total",
@@ -296,7 +255,7 @@ describe("validateWorkflowForSave — condition node loop scope", () => {
 		schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
 	};
 
-	function loopOverTasksNodes(config: ConditionNodeConfig): Node[] {
+	function loopOverTasksNodes(config: ConditionNodeConfig): WorkflowNode[] {
 		const fetch: WorkflowNode = {
 			id: "fetch1",
 			type: "fetch_records",
@@ -309,7 +268,7 @@ describe("validateWorkflowForSave — condition node loop scope", () => {
 			bodyStartNodeId: "cond1",
 		};
 		const condition: WorkflowNode = { id: "cond1", type: "condition", config };
-		return [dbRfNode(fetch), dbRfNode(loop), dbRfNode(condition)];
+		return [fetch, loop, condition];
 	}
 
 	it("passes when the condition's operator is valid for the loop's fetched (task) object type", () => {
@@ -353,7 +312,7 @@ describe("validateWorkflowForSave — dangling false branch inside a loop", () =
 			config: conditionRule("status", "equals"),
 			// No elseNodeId — the dangling case.
 		};
-		const nodes = [dbRfNode(fetch), dbRfNode(loop), dbRfNode(condition)];
+		const nodes = [fetch, loop, condition];
 		const result = validateWorkflowForSave(
 			{ type: "scheduled", schedule: { frequency: "daily", timezone: "UTC", time: "09:00" } },
 			nodes
@@ -395,7 +354,7 @@ describe("validateWorkflowForSave — dangling false branch inside a loop", () =
 				},
 			},
 		};
-		const nodes = [dbRfNode(fetch), dbRfNode(loop), dbRfNode(condition), dbRfNode(handleNo)];
+		const nodes = [fetch, loop, condition, handleNo];
 		const result = validateWorkflowForSave(
 			{ type: "scheduled", schedule: { frequency: "daily", timezone: "UTC", time: "09:00" } },
 			nodes
@@ -410,7 +369,7 @@ describe("validateWorkflowForSave — dangling false branch inside a loop", () =
 			config: conditionRule("status", "equals"),
 			// No elseNodeId, but not inside a loop body.
 		};
-		const nodes = [dbRfNode(condition, "invoice")];
+		const nodes = [condition];
 		const result = validateWorkflowForSave(invoiceTrigger, nodes);
 		expect(result.warnings.some((w) => w.nodeId === "cond1")).toBe(false);
 	});
@@ -421,7 +380,7 @@ describe("validateWorkflowForSave — end / next_item loop placement", () => {
 		'An End step inside a loop stops the entire run — use "Next item" to skip to the next record';
 	const NEXT_ITEM_OUTSIDE_LOOP_MESSAGE = '"Next item" only works inside a loop';
 
-	function loopOverTasksNodes(bodyNode: WorkflowNode): Node[] {
+	function loopOverTasksNodes(bodyNode: WorkflowNode): WorkflowNode[] {
 		const fetch: WorkflowNode = {
 			id: "fetch1",
 			type: "fetch_records",
@@ -433,7 +392,7 @@ describe("validateWorkflowForSave — end / next_item loop placement", () => {
 			config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
 			bodyStartNodeId: bodyNode.id,
 		};
-		return [dbRfNode(fetch), dbRfNode(loop), dbRfNode(bodyNode)];
+		return [fetch, loop, bodyNode];
 	}
 
 	it("flags an End step inside a loop body as an error", () => {
@@ -457,7 +416,7 @@ describe("validateWorkflowForSave — end / next_item loop placement", () => {
 			type: "next_item",
 			config: { kind: "next_item" },
 		};
-		const nodes = [dbRfNode(nextItem, "invoice")];
+		const nodes = [nextItem];
 		const result = validateWorkflowForSave(invoiceTrigger, nodes);
 		expect(result.valid).toBe(false);
 		expect(
@@ -490,8 +449,8 @@ describe("validateWorkflowForSave — trigger entry criteria", () => {
 	}
 
 	// A minimal valid workflow so trigger validation is the only variable.
-	const endNodes = [
-		dbRfNode({ id: "end1", type: "end", config: { kind: "end" } }, "invoice"),
+	const endNodes: WorkflowNode[] = [
+		{ id: "end1", type: "end", config: { kind: "end" } },
 	];
 
 	it("absent entry criteria is valid", () => {

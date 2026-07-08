@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	automationToReactFlow,
 	reactFlowToFlatArray,
+	serializeEditorNodes,
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
 	RF_NODE_TYPES,
@@ -558,6 +559,29 @@ describe("flow-adapter", () => {
 			kind: "delay_until",
 			until: { kind: "static", value: "2026-01-01" },
 		});
+	});
+});
+
+describe("serializeEditorNodes (production save path)", () => {
+	it("drops placeholders and strips stale positions, preserving pointers", () => {
+		const nodes: EditorNode[] = [
+			{
+				id: "a1",
+				type: "action",
+				config: updateStatusAction("done"),
+				nextNodeId: "p1",
+				position: { x: 123, y: 456 },
+			},
+			{ id: "p1", type: "placeholder", nextNodeId: "a2" },
+			{ id: "a2", type: "action", config: updateStatusAction("active") },
+		];
+
+		const out = serializeEditorNodes(nodes);
+		expect(out.map((n) => n.id)).toEqual(["a1", "a2"]);
+		// Pointer preserved as-is (validation blocks saves while placeholders remain)
+		expect(out[0].nextNodeId).toBe("p1");
+		expect(out[0]).not.toHaveProperty("position");
+		expect(out[1].config).toEqual(updateStatusAction("active"));
 	});
 });
 

@@ -275,66 +275,56 @@ export type ConditionNodeData = {
 	nodeType: "condition";
 	config?: ConditionNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type ActionNodeData = {
 	nodeType: "action";
 	config?: ActionNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type FetchNodeData = {
 	nodeType: "fetch_records";
 	config?: FetchNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type LoopNodeData = {
 	nodeType: "loop";
 	config?: LoopNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type AggregateNodeData = {
 	nodeType: "aggregate";
 	config?: AggregateNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type AdjustTimeNodeData = {
 	nodeType: "adjust_time";
 	config?: AdjustTimeNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type DelayNodeData = {
 	nodeType: "delay";
 	config?: DelayNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type DelayUntilNodeData = {
 	nodeType: "delay_until";
 	config?: DelayUntilNodeConfig;
 	triggerObjectType: AutomationObjectType | null;
-	_dbNode: WorkflowNode;
 };
 
 export type EndNodeData = {
 	nodeType: "end";
-	_dbNode: WorkflowNode;
 };
 
 export type NextItemNodeData = {
 	nodeType: "next_item";
-	_dbNode: WorkflowNode;
 };
 
 export type PlaceholderNodeData = {

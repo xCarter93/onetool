@@ -12,8 +12,10 @@ interface KeyboardShortcutOptions {
 	onDeleteNode: (nodeId: string) => void;
 	onDeleteTrigger: () => void;
 	onUndo: () => void;
+	onRedo: () => void;
 	onCloseSidebar: () => void;
 	canUndo: boolean;
+	canRedo: boolean;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -28,8 +30,10 @@ export function useKeyboardShortcuts({
 	onDeleteNode,
 	onDeleteTrigger,
 	onUndo,
+	onRedo,
 	onCloseSidebar,
 	canUndo,
+	canRedo,
 }: KeyboardShortcutOptions) {
 	useEffect(() => {
 		function handleKeyDown(event: KeyboardEvent) {
@@ -49,7 +53,24 @@ export function useKeyboardShortcuts({
 				return;
 			}
 
-			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && canUndo) {
+			// Redo: Cmd/Ctrl+Shift+Z, or Ctrl+Y (Windows convention)
+			if (
+				canRedo &&
+				((event.metaKey || event.ctrlKey) &&
+					((event.key.toLowerCase() === "z" && event.shiftKey) ||
+						event.key.toLowerCase() === "y"))
+			) {
+				event.preventDefault();
+				onRedo();
+				return;
+			}
+
+			if (
+				(event.metaKey || event.ctrlKey) &&
+				event.key.toLowerCase() === "z" &&
+				!event.shiftKey &&
+				canUndo
+			) {
 				event.preventDefault();
 				onUndo();
 				return;
@@ -64,10 +85,12 @@ export function useKeyboardShortcuts({
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [
+		canRedo,
 		canUndo,
 		onCloseSidebar,
 		onDeleteNode,
 		onDeleteTrigger,
+		onRedo,
 		onUndo,
 		selectedNode,
 	]);

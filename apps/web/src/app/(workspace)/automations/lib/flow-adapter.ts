@@ -198,67 +198,58 @@ function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
 				nodeType: "condition" as const,
 				config: node.config as ConditionNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "action":
 			return {
 				nodeType: "action" as const,
 				config: node.config as ActionNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "fetch_records":
 			return {
 				nodeType: "fetch_records" as const,
 				config: node.config as FetchNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "loop":
 			return {
 				nodeType: "loop" as const,
 				config: node.config as LoopNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "aggregate":
 			return {
 				nodeType: "aggregate" as const,
 				config: node.config as AggregateNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "adjust_time":
 			return {
 				nodeType: "adjust_time" as const,
 				config: node.config as AdjustTimeNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "delay":
 			return {
 				nodeType: "delay" as const,
 				config: node.config as DelayNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "delay_until":
 			return {
 				nodeType: "delay_until" as const,
 				config: node.config as DelayUntilNodeConfig | undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 		case "end":
-			return { nodeType: "end" as const, _dbNode: node };
+			return { nodeType: "end" as const };
 		case "next_item":
-			return { nodeType: "next_item" as const, _dbNode: node };
+			return { nodeType: "next_item" as const };
 		default:
 			return {
 				nodeType: "action" as const,
 				config: undefined,
 				triggerObjectType,
-				_dbNode: node,
 			};
 	}
 }
@@ -526,8 +517,35 @@ export function automationToReactFlow(
 }
 
 /**
+ * Serialize editor working state to the backend node shape: placeholders
+ * dropped, stale persisted positions stripped. This is the PRODUCTION save
+ * path — the editor's EditorNode[] is the single source of truth, and the
+ * React Flow arrays are render-only derivations of it.
+ */
+export function serializeEditorNodes(nodes: EditorNode[]): WorkflowNode[] {
+	return nodes
+		.filter((n) => !isPlaceholderEntry(n))
+		.map((n) => {
+			const node = n as WorkflowNode;
+			return {
+				id: node.id,
+				type: node.type,
+				config: node.config,
+				nextNodeId: node.nextNodeId,
+				elseNodeId: node.elseNodeId,
+				bodyStartNodeId: node.bodyStartNodeId,
+			};
+		});
+}
+
+/**
  * Convert React Flow nodes and edges back to database format.
- * Terminal stub nodes, placeholder nodes, and trigger nodes are filtered out.
+ * Terminal stub nodes, container frames, placeholder nodes, and trigger
+ * nodes are filtered out.
+ *
+ * Not used by the save path (see serializeEditorNodes) — retained as the
+ * adapter's round-trip contract: it proves the emitted edges faithfully
+ * encode the graph pointers, which insertion (handleInsertNode) relies on.
  */
 export function reactFlowToFlatArray(
 	rfNodes: AppNode[],
@@ -549,9 +567,11 @@ export function reactFlowToFlatArray(
 		if ((rfNode.data as { nodeType?: string })?.nodeType === "placeholder")
 			continue;
 
-		const dbNode = (rfNode.data as { _dbNode?: WorkflowNode } | undefined)
-			?._dbNode;
-		if (!dbNode) continue;
+		const nodeData = rfNode.data as
+			| { nodeType?: string; config?: WorkflowNodeConfig }
+			| undefined;
+		const dbType = nodeData?.nodeType as WorkflowNode["type"] | undefined;
+		if (!dbType) continue;
 
 		const outEdges = rfEdges.filter((e) => e.source === rfNode.id);
 		let nextNodeId: string | undefined;
@@ -564,7 +584,7 @@ export function reactFlowToFlatArray(
 
 			const branchType = edge.data?.branchType as string | undefined;
 
-			if (dbNode.type === "loop") {
+			if (dbType === "loop") {
 				// Loop: "each" -> bodyStartNodeId, "after" -> plain nextNodeId.
 				if (branchType === "each" || edge.sourceHandle === "each") {
 					bodyStartNodeId = edge.target;
@@ -586,17 +606,11 @@ export function reactFlowToFlatArray(
 			}
 		}
 
-		// v2-only: config always comes from the RF node's live edit state,
-		// falling back to the last-known db config. Legacy field names are
-		// never written.
-		const nodeData = rfNode.data as { config?: WorkflowNodeConfig } | undefined;
-		const config = nodeData?.config ?? dbNode.config;
-
 		// Positions are fully derived (Phase 2) — never persisted.
 		workflowNodes.push({
-			id: dbNode.id,
-			type: dbNode.type,
-			config,
+			id: rfNode.id,
+			type: dbType,
+			config: nodeData?.config,
 			nextNodeId,
 			elseNodeId,
 			bodyStartNodeId,

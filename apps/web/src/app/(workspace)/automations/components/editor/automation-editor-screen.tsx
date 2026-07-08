@@ -155,8 +155,10 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		onDeleteNode: handleDeleteNode,
 		onDeleteTrigger: handleDeleteTrigger,
 		onUndo: editor.handleUndo,
+		onRedo: editor.handleRedo,
 		onCloseSidebar: sidebar.closeSidebar,
 		canUndo: editor.canUndo,
+		canRedo: editor.canRedo,
 	});
 
 	if (editor.isLoading) {
