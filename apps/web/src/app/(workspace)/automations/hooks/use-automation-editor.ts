@@ -10,6 +10,7 @@ import {
 	getStatusOptions,
 	type AutomationAction,
 	type AutomationTrigger,
+	type ConditionNodeConfig,
 	type FormulaResource,
 	type TriggerConfig,
 	type TriggerType,
@@ -32,10 +33,12 @@ import {
 } from "../lib/legacy-load";
 import {
 	getValidationToastMessage,
+	getValidationWarningMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
 import { definitionSignature } from "../lib/editor-signature";
 import { computeNodeStatuses } from "../lib/run-status";
+import { getScopeObjectType } from "../lib/variables";
 
 /** A record the test/manual runner can target. */
 export type RunRecordRef = {
@@ -244,15 +247,27 @@ function buildTriggerForSave(trigger: TriggerConfig) {
 }
 
 /** Narrow serialized nodes to the backend's config-required shape. Save validation guarantees every node is complete before this runs. */
-function toSavableNodes(nodes: WorkflowNode[]) {
+export function toSavableNodes(nodes: WorkflowNode[]) {
 	return nodes.map((node) => {
 		if (!node.config) {
 			throw new Error(`Step "${node.id}" is not fully configured`);
 		}
+		let config = node.config;
+		if (node.type === "condition") {
+			// Derive source from graph position on every save — a value stamped
+			// only at config-time would drift if the node later moves in/out of
+			// a loop, and legacy nodes (source unset) backfill on next save.
+			const scope = getScopeObjectType(nodes, node.id, null);
+			const source: ConditionNodeConfig["source"] =
+				scope.inLoop && scope.loopNodeId
+					? { loopNodeId: scope.loopNodeId }
+					: "trigger";
+			config = { ...(config as ConditionNodeConfig), source };
+		}
 		return {
 			id: node.id,
 			type: node.type,
-			config: node.config,
+			config,
 			...(node.nextNodeId !== undefined ? { nextNodeId: node.nextNodeId } : {}),
 			...(node.elseNodeId !== undefined ? { elseNodeId: node.elseNodeId } : {}),
 			...(node.bodyStartNodeId !== undefined
@@ -786,6 +801,10 @@ export function useAutomationEditor(automationId: string | null) {
 				getValidationToastMessage(validation) || "Please review your workflow."
 			);
 			return null;
+		}
+		const warningMessage = getValidationWarningMessage(validation);
+		if (warningMessage) {
+			toast.warning("Review before publishing", warningMessage);
 		}
 		if (!name.trim()) {
 			toast.error("Validation Error", "Please enter an automation name");

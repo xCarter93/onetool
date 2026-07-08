@@ -17,6 +17,7 @@ import {
 	ChartTooltipContent,
 } from "@/components/ui/chart";
 import { CHART_COLORS, getChartColor } from "@/lib/chart-colors";
+import { formatReportValue } from "../report-config";
 
 interface DataPoint {
 	name: string;
@@ -30,13 +31,17 @@ interface ReportBarChartProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
+	totalIsCurrency?: boolean;
+	/** Is each item's `value` a dollar amount (vs. a count)? */
+	itemValueIsCurrency?: boolean;
 }
 
 export function ReportBarChart({
 	data,
 	total,
-	groupBy,
-	entityType,
+	totalIsCurrency = false,
+	itemValueIsCurrency = false,
 }: ReportBarChartProps) {
 	// Build chart config dynamically
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
@@ -52,20 +57,8 @@ export function ReportBarChart({
 		color: getChartColor(0, CHART_COLORS.primary),
 	};
 
-	const formatValue = (value: number) => {
-		// If the total looks like a monetary value, format as currency
-		if (entityType === "invoices" || entityType === "quotes") {
-			if (total > 1000) {
-				return new Intl.NumberFormat("en-US", {
-					style: "currency",
-					currency: "USD",
-					notation: "compact",
-					maximumFractionDigits: 1,
-				}).format(value);
-			}
-		}
-		return value.toString();
-	};
+	const formatValue = (value: number) =>
+		formatReportValue(value, itemValueIsCurrency, { compact: true });
 
 	return (
 		<div className="space-y-4">
@@ -75,7 +68,7 @@ export function ReportBarChart({
 					{data.length} categories
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {formatValue(data.reduce((sum, d) => sum + d.value, 0))}
+					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
 				</span>
 			</div>
 
@@ -126,7 +119,9 @@ export function ReportBarChart({
 							style={{ backgroundColor: getChartColor(index, CHART_COLORS.primary) }}
 						/>
 						<span className="text-muted-foreground">{item.name}</span>
-						<span className="font-medium text-foreground">({item.value})</span>
+						<span className="font-medium text-foreground">
+							({formatValue(item.value)})
+						</span>
 					</div>
 				))}
 			</div>

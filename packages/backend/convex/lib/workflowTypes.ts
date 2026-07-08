@@ -497,6 +497,9 @@ export const executedNodeValidator = v.object({
 	startedAt: v.optional(v.number()),
 	completedAt: v.optional(v.number()),
 	recordsProcessed: v.optional(v.number()),
+	// True when this node consumed a fetch_records scan that hit the
+	// FETCH_SCAN_CAP row limit (fetch_records/loop/aggregate nodes).
+	truncated: v.optional(v.boolean()),
 	// Bounded (~4KB) input/output snapshots for the runs viewer.
 	input: v.optional(v.any()),
 	output: v.optional(v.any()),

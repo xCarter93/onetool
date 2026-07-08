@@ -10,6 +10,8 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 
+import { AlertTriangle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -19,6 +21,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
 	Frame,
 	FrameDescription,
@@ -82,9 +85,25 @@ export function RunsTable() {
 			{
 				id: "status",
 				header: "Status",
-				size: 130,
+				size: 170,
 				cell: ({ row }) => (
-					<RunStatusBadge status={row.original.status as RunStatus} />
+					<div className="flex items-center gap-1.5">
+						<RunStatusBadge status={row.original.status as RunStatus} />
+						{row.original.dataTruncated && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Badge variant="warning" className="gap-1">
+										<AlertTriangle className="size-3" aria-hidden />
+										Truncated
+									</Badge>
+								</TooltipTrigger>
+								<TooltipContent side="top" className="max-w-xs">
+									This run scanned the 1,000 most recent records for at least
+									one step; older records were not considered.
+								</TooltipContent>
+							</Tooltip>
+						)}
+					</div>
 				),
 			},
 			{

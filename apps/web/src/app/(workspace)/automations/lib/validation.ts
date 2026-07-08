@@ -50,6 +50,12 @@ export type ValidationResult = {
 		message: string;
 		nodeId?: string;
 	}>;
+	/** Non-blocking — doesn't affect `valid` or gate save/publish. */
+	warnings: Array<{
+		type: "loop_condition_dangling_false_branch";
+		message: string;
+		nodeId?: string;
+	}>;
 };
 
 function isRuleComplete(
@@ -129,8 +135,13 @@ function validateTrigger(
 function validateConditionNode(
 	nodeId: string,
 	config: ConditionNodeConfig | undefined,
+	// The object type the condition's fields read from — the loop item inside
+	// a loop body, else the trigger record (see getScopeObjectType).
 	objectType: AutomationObjectType | null,
-	errors: ValidationResult["errors"]
+	// Node sits inside a loop body and has no configured false (No) branch.
+	inLoopWithDanglingFalseBranch: boolean,
+	errors: ValidationResult["errors"],
+	warnings: ValidationResult["warnings"]
 ): void {
 	if (!config || config.groups.length === 0) {
 		errors.push({
@@ -147,6 +158,17 @@ function validateConditionNode(
 		errors.push({
 			type: "missing_required_config",
 			message: "Finish configuring the condition",
+			nodeId,
+		});
+	}
+
+	// The walk engine (automationExecutor.ts) treats a missing elseNodeId as
+	// "end this iteration" inside a loop body — not an error, but easy to miss.
+	if (inLoopWithDanglingFalseBranch) {
+		warnings.push({
+			type: "loop_condition_dangling_false_branch",
+			message:
+				"The No branch ends this loop iteration for the current item. Add a step to the No branch if that's not intended.",
 			nodeId,
 		});
 	}
@@ -578,6 +600,7 @@ export function validateWorkflowForSave(
 	rfNodes: Node[]
 ): ValidationResult {
 	const errors: ValidationResult["errors"] = [];
+	const warnings: ValidationResult["warnings"] = [];
 
 	validateTrigger(trigger, errors);
 	const fallbackObjectType = trigger?.objectType ?? null;
@@ -620,14 +643,19 @@ export function validateWorkflowForSave(
 					nodeId: node.id,
 				});
 				break;
-			case "condition":
+			case "condition": {
+				const scope = getScopeObjectType(workflowNodes, node.id, objectType);
+				const dbNode = workflowNodes.find((n) => n.id === node.id);
 				validateConditionNode(
 					node.id,
 					data.config as ConditionNodeConfig | undefined,
-					objectType,
-					errors
+					scope.objectType,
+					scope.inLoop && !dbNode?.elseNodeId,
+					errors,
+					warnings
 				);
 				break;
+			}
 			case "action":
 				validateActionNode(
 					node.id,
@@ -686,7 +714,14 @@ export function validateWorkflowForSave(
 		}
 	}
 
-	return { valid: errors.length === 0, errors };
+	return { valid: errors.length === 0, errors, warnings };
+}
+
+/** First warning message, if any — for a non-blocking toast after save/publish. */
+export function getValidationWarningMessage(
+	result: ValidationResult
+): string | null {
+	return result.warnings[0]?.message ?? null;
 }
 
 export function getValidationToastMessage(

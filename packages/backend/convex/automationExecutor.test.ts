@@ -1749,6 +1749,95 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(nodeIds).toContain("end-1");
 			expect(nodeIds).not.toContain("act-false");
 		});
+
+		describe("fetch scan cap truncation (Phase 0 hotfix)", () => {
+			it("fetch_records scanning >1000 rows flags truncated on the node entry and the execution", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				// One row over FETCH_SCAN_CAP so the org-scoped scan hits the cap.
+				await t.run(async (ctx) => {
+					for (let i = 0; i < 1001; i++) {
+						await ctx.db.insert("tasks", {
+							orgId,
+							title: `Task ${i}`,
+							date: Date.now(),
+							status: "pending" as const,
+						});
+					}
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Scan all tasks",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "task", [], { nextNodeId: "end-1" }),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				expect(execution.dataTruncated).toBe(true);
+				const fetchEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				expect(fetchEntry?.truncated).toBe(true);
+			});
+
+			it("fetch_records under the cap leaves truncated/dataTruncated unset", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				await t.run(async (ctx) => {
+					for (let i = 0; i < 5; i++) {
+						await ctx.db.insert("tasks", {
+							orgId,
+							title: `Task ${i}`,
+							date: Date.now(),
+							status: "pending" as const,
+						});
+					}
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Scan a few tasks",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "task", [], { nextNodeId: "end-1" }),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				const execution = executions[0];
+				expect(execution.status).toBe("completed");
+				expect(execution.dataTruncated).toBeFalsy();
+				const fetchEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				expect(fetchEntry?.truncated).toBeFalsy();
+			});
+		});
 	});
 
 	describe("interactive runs — event threading + org isolation", () => {

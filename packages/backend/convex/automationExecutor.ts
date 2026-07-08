@@ -662,6 +662,8 @@ type FetchOutput = {
 	objectType: ObjectType;
 	records: Record<string, unknown>[];
 	count: number;
+	/** True when the underlying scan hit FETCH_SCAN_CAP before filtering. */
+	truncated: boolean;
 };
 
 type ExecEntry = Doc<"workflowExecutions">["nodesExecuted"][number];
@@ -677,6 +679,8 @@ type WalkEnv = {
 	fetchOutputs: Record<string, FetchOutput>;
 	nodesExecuted: ExecEntry[];
 	logTruncated: boolean;
+	/** True once any node in this run has hit fetchOrgRows' scan cap. */
+	dataTruncated: boolean;
 	/** Original trigger reference, persisted into resumeState for delays. */
 	trigger: { objectType?: ObjectType; objectId?: string };
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
@@ -851,6 +855,7 @@ export const executeAutomation = systemMutation({
 			fetchOutputs: {},
 			nodesExecuted: [],
 			logTruncated: false,
+			dataTruncated: false,
 			trigger: { objectType: args.objectType, objectId: args.objectId },
 			nodeStartedAt: Date.now(),
 			isProduction,
@@ -879,6 +884,7 @@ export const executeAutomation = systemMutation({
 				status: "failed",
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
+				dataTruncated: env.dataTruncated,
 				error: message,
 			});
 			if (isProduction) {
@@ -1014,6 +1020,7 @@ export const resumeExecution = systemMutation({
 			fetchOutputs: {},
 			nodesExecuted: [...execution.nodesExecuted],
 			logTruncated: false,
+			dataTruncated: execution.dataTruncated ?? false,
 			trigger: { objectType: resume.objectType, objectId: resume.objectId },
 			nodeStartedAt: Date.now(),
 			isProduction,
@@ -1036,6 +1043,10 @@ export const resumeExecution = systemMutation({
 				// Preserve the count observed at fetch time — it's what
 				// node.<id>.count variables already resolved against.
 				count: output.count,
+				// resumeState doesn't persist per-fetch truncation; the top-level
+				// env.dataTruncated (restored from execution.dataTruncated above)
+				// already carries any pre-delay truncation forward.
+				truncated: false,
 			};
 			env.scope.nodes![output.nodeId] = { count: output.count };
 		}
@@ -1076,6 +1087,7 @@ export const resumeExecution = systemMutation({
 				status: "failed",
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
+				dataTruncated: env.dataTruncated,
 				error: message,
 				resumeState: undefined,
 				currentNodeId: undefined,
@@ -1107,6 +1119,7 @@ async function finishWalk(
 			status: "failed",
 			completedAt: Date.now(),
 			nodesExecuted: env.nodesExecuted,
+			dataTruncated: env.dataTruncated,
 			error: outcome.error,
 			resumeState: undefined,
 			currentNodeId: undefined,
@@ -1132,6 +1145,7 @@ async function finishWalk(
 		status: "completed",
 		completedAt: Date.now(),
 		nodesExecuted: env.nodesExecuted,
+		dataTruncated: env.dataTruncated,
 		resumeState: undefined,
 		currentNodeId: undefined,
 	});
@@ -1184,10 +1198,12 @@ async function runWalk(
 				});
 				return { kind: "failed", error: fetched.error };
 			}
+			if (fetched.output.truncated) env.dataTruncated = true;
 			pushEntry(env, {
 				nodeId: node.id,
 				result: "success",
 				recordsProcessed: fetched.output.count,
+				truncated: fetched.output.truncated,
 			});
 			currentNodeId = node.nextNodeId;
 			continue;
@@ -1203,10 +1219,12 @@ async function runWalk(
 				});
 				return { kind: "failed", error: result.error };
 			}
+			if (result.truncated) env.dataTruncated = true;
 			pushEntry(env, {
 				nodeId: node.id,
 				result: "success",
 				output: { result: result.value },
+				truncated: result.truncated,
 			});
 			currentNodeId = node.nextNodeId;
 			continue;
@@ -1270,6 +1288,7 @@ async function runWalk(
 			}
 			await ctx.db.patch(env.executionId, {
 				nodesExecuted: env.nodesExecuted,
+				dataTruncated: env.dataTruncated,
 				currentNodeId: node.nextNodeId,
 				resumeState: {
 					resumeNodeId: node.nextNodeId,
@@ -1364,10 +1383,12 @@ async function runLoopNode(
 		MAX_LOOP_ITERATIONS
 	);
 	const items = source.records.slice(0, Math.max(cap, 0));
+	if (source.truncated) env.dataTruncated = true;
 	pushEntry(env, {
 		nodeId: node.id,
 		result: "success",
 		recordsProcessed: items.length,
+		truncated: source.truncated,
 	});
 
 	if (!node.bodyStartNodeId || items.length === 0) {
@@ -1413,48 +1434,60 @@ async function runLoopNode(
 /** Bounded scan applied before in-memory filtering in fetch_records. */
 const FETCH_SCAN_CAP = 1000;
 
+/**
+ * Org-scoped index scan (newest first), bounded to `limit`. `truncated` is
+ * true when the scan hit the cap -- i.e. more rows may exist beyond it that
+ * were never considered by downstream filters/sort/aggregation.
+ */
 async function fetchOrgRows(
 	ctx: QueryCtx | MutationCtx,
 	objectType: ObjectType,
 	orgId: Id<"organizations">,
 	limit: number = FETCH_SCAN_CAP
-): Promise<Record<string, unknown>[]> {
+): Promise<{ rows: Record<string, unknown>[]; truncated: boolean }> {
+	let rows: Record<string, unknown>[];
 	switch (objectType) {
 		case "client":
-			return await ctx.db
+			rows = await ctx.db
 				.query("clients")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
 				.take(limit);
+			break;
 		case "project":
-			return await ctx.db
+			rows = await ctx.db
 				.query("projects")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
 				.take(limit);
+			break;
 		case "quote":
-			return await ctx.db
+			rows = await ctx.db
 				.query("quotes")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
 				.take(limit);
+			break;
 		case "invoice":
-			return await ctx.db
+			rows = await ctx.db
 				.query("invoices")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
 				.take(limit);
+			break;
 		case "task":
-			return await ctx.db
+			rows = await ctx.db
 				.query("tasks")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.order("desc")
 				.take(limit);
+			break;
 		default: {
 			const _exhaustive: never = objectType;
 			return _exhaustive;
 		}
 	}
+	return { rows, truncated: rows.length >= limit };
 }
 
 /** The subset of walk state fetch_records needs; shared by real + dry walks. */
@@ -1472,7 +1505,11 @@ async function runFetchNode(
 	config: Extract<WorkflowNodeConfig, { kind: "fetch_records" }>
 ): Promise<{ ok: true; output: FetchOutput } | { ok: false; error: string }> {
 	try {
-		const rows = await fetchOrgRows(ctx, config.objectType, env.orgId);
+		const { rows, truncated } = await fetchOrgRows(
+			ctx,
+			config.objectType,
+			env.orgId
+		);
 		let records = rows.filter((row) =>
 			evaluateConditionGroups("and", config.filters, row, env.scope)
 		);
@@ -1503,6 +1540,7 @@ async function runFetchNode(
 			objectType: config.objectType,
 			records,
 			count: records.length,
+			truncated,
 		};
 		env.fetchOutputs[nodeId] = output;
 		env.scope.nodes ??= {};
@@ -1538,7 +1576,9 @@ function runAggregateNode(
 	env: Pick<WalkEnv, "scope" | "fetchOutputs">,
 	nodeId: string,
 	config: Extract<WorkflowNodeConfig, { kind: "aggregate" }>
-): { ok: true; value: number | null } | { ok: false; error: string } {
+):
+	| { ok: true; value: number | null; truncated: boolean }
+	| { ok: false; error: string } {
 	const source = env.fetchOutputs[config.sourceNodeId];
 	if (!source) {
 		return {
@@ -1572,7 +1612,7 @@ function runAggregateNode(
 	}
 	env.scope.nodes ??= {};
 	env.scope.nodes[nodeId] = { ...env.scope.nodes[nodeId], result: value };
-	return { ok: true, value };
+	return { ok: true, value, truncated: source.truncated };
 }
 
 /**
@@ -2753,6 +2793,8 @@ type DryEnv = {
 	fetchOutputs: Record<string, FetchOutput>;
 	entries: ExecutedNode[];
 	truncated: boolean;
+	/** True once any node in this dry run has hit fetchOrgRows' scan cap. */
+	dataTruncated: boolean;
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
 	nodeStartedAt: number;
 };
@@ -3090,10 +3132,12 @@ async function dryRunLoopNode(
 		MAX_LOOP_ITERATIONS
 	);
 	const sampled = Math.min(total, DRY_LOOP_SAMPLE);
+	if (source.truncated) env.dataTruncated = true;
 	pushDry(env, {
 		nodeId: node.id,
 		result: "success",
 		recordsProcessed: total,
+		truncated: source.truncated,
 		input: {
 			sourceNodeId: config.sourceNodeId,
 			maxIterations: config.maxIterations,
@@ -3174,10 +3218,12 @@ async function dryRunWalk(
 				pushDry(env, { nodeId: node.id, result: "failed", error: fetched.error });
 				return "failed";
 			}
+			if (fetched.output.truncated) env.dataTruncated = true;
 			pushDry(env, {
 				nodeId: node.id,
 				result: "success",
 				recordsProcessed: fetched.output.count,
+				truncated: fetched.output.truncated,
 				input: {
 					objectType: config.objectType,
 					filters: config.filters,
@@ -3200,9 +3246,11 @@ async function dryRunWalk(
 				});
 				return "failed";
 			}
+			if (result.truncated) env.dataTruncated = true;
 			pushDry(env, {
 				nodeId: node.id,
 				result: "success",
+				truncated: result.truncated,
 				input: {
 					sourceNodeId: config.sourceNodeId,
 					field: config.field,
@@ -3338,6 +3386,7 @@ async function buildDryPlan(
 		fetchOutputs: {},
 		entries: [],
 		truncated: false,
+		dataTruncated: false,
 		nodeStartedAt: Date.now(),
 	};
 
@@ -3437,6 +3486,7 @@ export const startTestRun = userMutation({
 
 		const failed = plan.some((e) => e.result === "failed");
 		const done = plan.length === 0;
+		const dataTruncated = plan.some((e) => e.truncated);
 
 		const executionId = await ctx.db.insert("workflowExecutions", {
 			orgId: ctx.orgId,
@@ -3450,6 +3500,7 @@ export const startTestRun = userMutation({
 			currentNodeId: done ? undefined : plan[0].nodeId,
 			triggerRecord,
 			nodesExecuted: [],
+			dataTruncated,
 			testCursor: done ? undefined : { plan },
 			error:
 				done && failed
@@ -3693,7 +3744,7 @@ export const getSampleRecords = userQuery({
 		}
 		if (!objectType) return [];
 
-		const rows = await fetchOrgRows(ctx, objectType, ctx.orgId, 10);
+		const { rows } = await fetchOrgRows(ctx, objectType, ctx.orgId, 10);
 		return rows.map((row) => ({
 			entityType: objectType as ObjectType,
 			entityId: String(row._id),

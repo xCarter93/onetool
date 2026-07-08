@@ -6,7 +6,9 @@ import { z } from "zod";
  * Translates natural language requests into structured report configurations
  */
 
-// Report configuration schema matching the Convex schema
+// Report configuration schema matching what executeReport (Convex) actually
+// supports: entityType, groupBy, dateRange. filters/aggregations are NOT
+// implemented by the backend, so they're excluded here to avoid over-promising.
 const reportConfigSchema = z.object({
 	entityType: z.enum([
 		"clients",
@@ -16,18 +18,6 @@ const reportConfigSchema = z.object({
 		"invoices",
 		"activities",
 	]),
-	filters: z
-		.record(z.string(), z.unknown())
-		.optional()
-		.describe("Filter conditions to apply"),
-	aggregations: z
-		.array(
-			z.object({
-				field: z.string(),
-				operation: z.enum(["count", "sum", "avg", "min", "max"]),
-			})
-		)
-		.optional(),
 	groupBy: z.array(z.string()).optional(),
 	dateRange: z
 		.object({
@@ -193,12 +183,8 @@ export const reportConfigTool = createTool({
 			.enum(["count", "sum", "avg", "min", "max"])
 			.optional()
 			.default("count")
-			.describe("Aggregation operation to perform"),
-		aggregationField: z
-			.string()
-			.optional()
 			.describe(
-				"Field to aggregate (for sum/avg/min/max), e.g., 'total' for invoices"
+				"Aggregation operation, used only to pick a visualization type — the backend does not run custom aggregations"
 			),
 		dateRangeType: z
 			.enum(["today", "this_week", "this_month", "this_quarter", "this_year", "custom", "all_time"])
@@ -218,10 +204,6 @@ export const reportConfigTool = createTool({
 			.optional()
 			.default("bar")
 			.describe("How to visualize the report"),
-		filters: z
-			.record(z.string(), z.unknown())
-			.optional()
-			.describe("Additional filter conditions"),
 	}),
 	outputSchema: z.object({
 		config: reportConfigSchema,
@@ -235,12 +217,10 @@ export const reportConfigTool = createTool({
 			entityType,
 			groupBy: rawGroupBy,
 			aggregation,
-			aggregationField,
 			dateRangeType,
 			customStartDate,
 			customEndDate,
 			visualizationType,
-			filters,
 		} = input;
 
 		// Normalize the groupBy value to a valid one
@@ -303,16 +283,9 @@ export const reportConfigTool = createTool({
 				dateRange = undefined;
 		}
 
-		// Build aggregations array
-		const aggregations = aggregationField
-			? [{ field: aggregationField, operation: aggregation || "count" as const }]
-			: [{ field: "_id", operation: "count" as const }];
-
-		// Build the report configuration
+		// Build the report configuration — matches executeReport's supported args
 		const config = {
 			entityType,
-			filters: filters || undefined,
-			aggregations,
 			groupBy: groupBy ? [groupBy] : undefined,
 			dateRange,
 		};

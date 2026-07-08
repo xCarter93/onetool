@@ -10,6 +10,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { formatReportValue } from "../report-config";
 
 interface DataPoint {
 	name: string;
@@ -23,29 +24,25 @@ interface ReportTableProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
+	totalIsCurrency?: boolean;
 }
 
 export function ReportTable({
 	data,
 	total,
 	groupBy,
-	entityType,
+	totalIsCurrency = false,
 }: ReportTableProps) {
-	const totalCount = data.reduce((sum, d) => sum + d.value, 0);
+	// Sum of item `value`s — always a count (per-status/category record count),
+	// used only for the %-of-category and average calcs below. Never the
+	// headline "Total:" figure — that must come from the `total` prop.
+	const itemValueSum = data.reduce((sum, d) => sum + d.value, 0);
 
-	const formatValue = (value: number) => {
-		if (entityType === "invoices" || entityType === "quotes") {
-			if (value > 100) {
-				return new Intl.NumberFormat("en-US", {
-					style: "currency",
-					currency: "USD",
-					minimumFractionDigits: 0,
-					maximumFractionDigits: 0,
-				}).format(value);
-			}
-		}
-		return value.toString();
-	};
+	// item.totalValue (the optional "Value" column) is only ever populated for
+	// status-grouped quotes/invoices reports, where it's always a dollar sum —
+	// so it's always formatted as currency, no magnitude guessing needed.
+	const formatValue = (value: number) => formatReportValue(value, true);
 
 	// Sort by value descending
 	const sortedData = [...data].sort((a, b) => b.value - a.value);
@@ -58,7 +55,7 @@ export function ReportTable({
 					{data.length} rows
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {formatValue(totalCount)}
+					Total: {formatReportValue(total, totalIsCurrency)}
 				</span>
 			</div>
 
@@ -83,8 +80,8 @@ export function ReportTable({
 					<TableBody>
 						{sortedData.map((item, index) => {
 							const percentage =
-								totalCount > 0
-									? ((item.value / totalCount) * 100).toFixed(1)
+								itemValueSum > 0
+									? ((item.value / itemValueSum) * 100).toFixed(1)
 									: "0";
 
 							return (
@@ -138,7 +135,7 @@ export function ReportTable({
 			<div className="flex items-center justify-between pt-2 text-sm text-muted-foreground border-t">
 				<span>Showing all {data.length} items</span>
 				<span>
-					Average: {(totalCount / (data.length || 1)).toFixed(1)} per category
+					Average: {(itemValueSum / (data.length || 1)).toFixed(1)} per category
 				</span>
 			</div>
 		</div>

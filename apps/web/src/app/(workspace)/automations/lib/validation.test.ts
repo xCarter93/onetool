@@ -3,9 +3,13 @@ import type { Node } from "@xyflow/react";
 import { validateWorkflowForSave } from "./validation";
 import type {
 	AggregateNodeConfig,
+	AutomationObjectType,
+	ConditionNodeConfig,
 	DelayNodeConfig,
 	FetchNodeConfig,
+	LoopNodeConfig,
 	TriggerConfig,
+	WorkflowNode,
 } from "./node-types";
 
 // Record-scoped trigger so the workflow itself validates; the aggregate/fetch
@@ -63,6 +67,45 @@ function delayRfNode(id: string): Node {
 			triggerObjectType: null,
 		},
 	} as Node;
+}
+
+/**
+ * RF node carrying `_dbNode` (the persisted next/else/bodyStart pointers) —
+ * required for loop-body membership checks (collectLoopBody/getScopeObjectType)
+ * inside validateWorkflowForSave. Plain fixtures above omit this because they
+ * don't exercise loop scoping.
+ */
+function dbRfNode(
+	dbNode: WorkflowNode,
+	triggerObjectType: AutomationObjectType | null = null
+): Node {
+	return {
+		id: dbNode.id,
+		type: `${dbNode.type}Node`,
+		position: { x: 0, y: 0 },
+		data: {
+			nodeType: dbNode.type,
+			config: dbNode.config,
+			triggerObjectType,
+			_dbNode: dbNode,
+		},
+	} as Node;
+}
+
+function conditionRule(
+	field: string,
+	operator: ConditionNodeConfig["groups"][number]["rules"][number]["operator"]
+): ConditionNodeConfig {
+	return {
+		kind: "condition",
+		logic: "and",
+		groups: [
+			{
+				logic: "and",
+				rules: [{ field, operator, value: { kind: "static", value: "pending" } }],
+			},
+		],
+	};
 }
 
 const AGG_FIELD_TYPE_MESSAGE = "Aggregate needs a number or currency field";
@@ -238,5 +281,137 @@ describe("validateWorkflowForSave — aggregate node", () => {
 					e.nodeId === "agg1" && e.message === "Choose an aggregate operation"
 			)
 		).toBe(true);
+	});
+});
+
+describe("validateWorkflowForSave — condition node loop scope", () => {
+	// Trigger has no resolvable object type (scheduled trigger — see
+	// validateTrigger's "scheduled" branch) so the loop's fetched object type
+	// ("task") is the *only* correct source of field/operator validation.
+	// Pre-fix, validateConditionNode was handed the trigger's (null) object
+	// type here, which made isRuleComplete skip the operator check entirely
+	// and let invalid operators through.
+	const scheduledTrigger: TriggerConfig = {
+		type: "scheduled",
+		schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+	};
+
+	function loopOverTasksNodes(config: ConditionNodeConfig): Node[] {
+		const fetch: WorkflowNode = {
+			id: "fetch1",
+			type: "fetch_records",
+			config: { kind: "fetch_records", objectType: "task", filters: [] },
+		};
+		const loop: WorkflowNode = {
+			id: "loop1",
+			type: "loop",
+			config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
+			bodyStartNodeId: "cond1",
+		};
+		const condition: WorkflowNode = { id: "cond1", type: "condition", config };
+		return [dbRfNode(fetch), dbRfNode(loop), dbRfNode(condition)];
+	}
+
+	it("passes when the condition's operator is valid for the loop's fetched (task) object type", () => {
+		// task.status is a select field — "equals" is a valid select operator.
+		const nodes = loopOverTasksNodes(conditionRule("status", "equals"));
+		const result = validateWorkflowForSave(scheduledTrigger, nodes);
+		expect(result.errors.some((e) => e.nodeId === "cond1")).toBe(false);
+	});
+
+	it("fails when the operator is invalid for the loop object type's field, now that scope resolves correctly", () => {
+		// "greater_than" isn't a valid operator for task.status (select).
+		const nodes = loopOverTasksNodes(conditionRule("status", "greater_than"));
+		const result = validateWorkflowForSave(scheduledTrigger, nodes);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "cond1" && e.message === "Finish configuring the condition"
+			)
+		).toBe(true);
+	});
+});
+
+describe("validateWorkflowForSave — dangling false branch inside a loop", () => {
+	const DANGLING_WARNING =
+		"The No branch ends this loop iteration for the current item. Add a step to the No branch if that's not intended.";
+
+	it("warns when a condition inside a loop body has no else (No) branch", () => {
+		const fetch: WorkflowNode = {
+			id: "fetch1",
+			type: "fetch_records",
+			config: { kind: "fetch_records", objectType: "task", filters: [] },
+		};
+		const loop: WorkflowNode = {
+			id: "loop1",
+			type: "loop",
+			config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
+			bodyStartNodeId: "cond1",
+		};
+		const condition: WorkflowNode = {
+			id: "cond1",
+			type: "condition",
+			config: conditionRule("status", "equals"),
+			// No elseNodeId — the dangling case.
+		};
+		const nodes = [dbRfNode(fetch), dbRfNode(loop), dbRfNode(condition)];
+		const result = validateWorkflowForSave(
+			{ type: "scheduled", schedule: { frequency: "daily", timezone: "UTC", time: "09:00" } },
+			nodes
+		);
+		expect(result.valid).toBe(true); // warning only — must not block publish
+		expect(
+			result.warnings.some((w) => w.nodeId === "cond1" && w.message === DANGLING_WARNING)
+		).toBe(true);
+	});
+
+	it("does not warn when the loop condition has a configured else (No) branch", () => {
+		const fetch: WorkflowNode = {
+			id: "fetch1",
+			type: "fetch_records",
+			config: { kind: "fetch_records", objectType: "task", filters: [] },
+		};
+		const loop: WorkflowNode = {
+			id: "loop1",
+			type: "loop",
+			config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
+			bodyStartNodeId: "cond1",
+		};
+		const condition: WorkflowNode = {
+			id: "cond1",
+			type: "condition",
+			config: conditionRule("status", "equals"),
+			elseNodeId: "handleNo",
+		};
+		const handleNo: WorkflowNode = {
+			id: "handleNo",
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "update_field",
+					target: "self",
+					field: "status",
+					value: { kind: "static", value: "cancelled" },
+				},
+			},
+		};
+		const nodes = [dbRfNode(fetch), dbRfNode(loop), dbRfNode(condition), dbRfNode(handleNo)];
+		const result = validateWorkflowForSave(
+			{ type: "scheduled", schedule: { frequency: "daily", timezone: "UTC", time: "09:00" } },
+			nodes
+		);
+		expect(result.warnings.some((w) => w.nodeId === "cond1")).toBe(false);
+	});
+
+	it("does not warn about a dangling No branch outside any loop", () => {
+		const condition: WorkflowNode = {
+			id: "cond1",
+			type: "condition",
+			config: conditionRule("status", "equals"),
+			// No elseNodeId, but not inside a loop body.
+		};
+		const nodes = [dbRfNode(condition, "invoice")];
+		const result = validateWorkflowForSave(invoiceTrigger, nodes);
+		expect(result.warnings.some((w) => w.nodeId === "cond1")).toBe(false);
 	});
 });

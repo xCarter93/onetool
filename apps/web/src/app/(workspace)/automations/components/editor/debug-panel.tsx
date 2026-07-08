@@ -8,10 +8,13 @@ import {
 	CircleSlash,
 	Play,
 	Square,
+	AlertTriangle,
 } from "lucide-react";
 import type { Node } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
 	Select,
 	SelectContent,
@@ -221,6 +224,21 @@ export function DebugPanel({
 			</div>
 
 			{hasActiveRun && <StatusLine execution={execution} />}
+
+			{hasActiveRun && execution?.dataTruncated && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Badge variant="warning" className="w-fit gap-1">
+							<AlertTriangle className="size-3" aria-hidden />
+							Results truncated
+						</Badge>
+					</TooltipTrigger>
+					<TooltipContent side="top" className="max-w-xs">
+						At least one step scanned the 1,000 most recent records; older
+						records were not considered.
+					</TooltipContent>
+				</Tooltip>
+			)}
 
 			{hasActiveRun && execution?.triggerRecord && (
 				<div className="text-[11px] text-muted-foreground">

@@ -140,6 +140,13 @@ describe("getAvailableVariables", () => {
 		expect(atLoopItself.some((o) => o.path.startsWith("loop.loop1."))).toBe(false);
 	});
 
+	it("caveats user.* globals as manual-run-only, since they're empty on scheduled/automatic runs", () => {
+		const target = actionNode("a1");
+		const options = getAvailableVariables([target], statusChangedTrigger, "a1");
+		const userName = options.find((o) => o.path === "user.name");
+		expect(userName?.label).toContain("(empty unless run manually)");
+	});
+
 	it("offers a formula referencing only trigger fields anywhere, but not one referencing a loop item outside the loop", () => {
 		const fetch = fetchNode("f1", "project");
 		const loop = loopNode("loop1", "f1", { bodyStartNodeId: "body1" });
@@ -231,10 +238,12 @@ describe("getScopeObjectType", () => {
 		expect(getScopeObjectType(nodes, "body1", "client")).toEqual({
 			objectType: "project",
 			inLoop: true,
+			loopNodeId: "loop1",
 		});
 		expect(getScopeObjectType(nodes, "body2", "client")).toEqual({
 			objectType: "project",
 			inLoop: true,
+			loopNodeId: "loop1",
 		});
 	});
 
@@ -242,6 +251,7 @@ describe("getScopeObjectType", () => {
 		expect(getScopeObjectType(nodes, "after1", "client")).toEqual({
 			objectType: "client",
 			inLoop: false,
+			loopNodeId: null,
 		});
 	});
 
@@ -249,6 +259,7 @@ describe("getScopeObjectType", () => {
 		expect(getScopeObjectType(nodes, "loop1", "client")).toEqual({
 			objectType: "client",
 			inLoop: false,
+			loopNodeId: null,
 		});
 	});
 
@@ -258,7 +269,26 @@ describe("getScopeObjectType", () => {
 		expect(getScopeObjectType([looseLoop, body], "b1", "client")).toEqual({
 			objectType: "client",
 			inLoop: true,
+			loopNodeId: "loop2",
 		});
+	});
+
+	// condition-config.tsx builds ConditionNodeConfig.source from this result:
+	// { loopNodeId } inside a loop body, "trigger" everywhere else.
+	it("loopNodeId is the shape condition-config.tsx needs for ConditionNodeConfig.source", () => {
+		const insideLoop = getScopeObjectType(nodes, "body1", "client");
+		const sourceInLoop =
+			insideLoop.inLoop && insideLoop.loopNodeId
+				? { loopNodeId: insideLoop.loopNodeId }
+				: "trigger";
+		expect(sourceInLoop).toEqual({ loopNodeId: "loop1" });
+
+		const outsideLoop = getScopeObjectType(nodes, "after1", "client");
+		const sourceOutsideLoop =
+			outsideLoop.inLoop && outsideLoop.loopNodeId
+				? { loopNodeId: outsideLoop.loopNodeId }
+				: "trigger";
+		expect(sourceOutsideLoop).toBe("trigger");
 	});
 });
 

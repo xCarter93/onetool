@@ -8,10 +8,13 @@ import {
 	Loader2,
 	ChevronRight,
 	Crosshair,
+	AlertTriangle,
 } from "lucide-react";
 import type { Node } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "../../lib/run-format";
 import { TRIGGER_NODE_ID } from "../../lib/flow-adapter";
@@ -152,6 +155,23 @@ export function DebugTimeline({
 										</span>{" "}
 										{label}
 									</span>
+									{entry.truncated && (
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Badge
+													variant="warning"
+													className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
+												>
+													<AlertTriangle className="size-2.5" aria-hidden />
+													Truncated
+												</Badge>
+											</TooltipTrigger>
+											<TooltipContent side="top" className="max-w-xs">
+												This step scanned the 1,000 most recent records; older
+												records were not considered.
+											</TooltipContent>
+										</Tooltip>
+									)}
 									{duration && (
 										<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
 											{duration}

@@ -1281,6 +1281,9 @@ export default defineSchema({
 			})
 		),
 		nodesExecuted: v.array(executedNodeValidator),
+		// True when any node in this run consumed a fetch scan that hit the
+		// FETCH_SCAN_CAP row limit — the run's results may be silently partial.
+		dataTruncated: v.optional(v.boolean()),
 		// Test runs (dry-run) precompute the full walk, then reveal one entry
 		// per transaction so the getExecution subscription streams per-node
 		// status live. `plan` holds the remaining-and-revealed ordered entries;
