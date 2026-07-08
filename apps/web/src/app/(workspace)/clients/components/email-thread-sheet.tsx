@@ -378,6 +378,7 @@ interface EmailMessageBubbleProps {
 		messageBody: string;
 		htmlBody?: string;
 		textBody?: string;
+		visibleText?: string;
 		sentAt: number;
 		status: string;
 		senderName?: string;
@@ -437,19 +438,23 @@ function EmailMessageBubble({ message }: EmailMessageBubbleProps) {
 							: "bg-primary/10 text-primary ring-1 ring-primary/20 backdrop-blur-sm shadow-sm"
 					)}
 				>
-					{/* Render HTML content if available, otherwise plain text */}
-					{message.htmlBody ? (
+					{/* Prefer the server-stripped visibleText (quotes/signature removed
+					    on ingest); fall back to sanitized HTML for legacy messages,
+					    else plain body. */}
+					{message.visibleText ? (
+						<div className="whitespace-pre-wrap [&>*:last-child]:mb-0">
+							{message.visibleText}
+						</div>
+					) : message.htmlBody ? (
 						<div
 							className="prose prose-sm max-w-none dark:prose-invert [&>*:last-child]:mb-0"
 							dangerouslySetInnerHTML={{
-								__html: sanitizeHtml(
-									extractNewMessageContent(message.htmlBody, true)
-								),
+								__html: sanitizeHtml(message.htmlBody),
 							}}
 						/>
 					) : (
 						<div className="whitespace-pre-wrap [&>*:last-child]:mb-0">
-							{extractNewMessageContent(message.messageBody, false)}
+							{message.messageBody}
 						</div>
 					)}
 
@@ -536,72 +541,6 @@ function sanitizeHtml(html: string): string {
 		],
 		ALLOWED_ATTR: ["href", "target", "rel", "class"],
 	});
-}
-
-/**
- * Extract the new message content from an email body, removing quoted text
- * Handles both plain text (>) and Gmail-style quotes
- */
-function extractNewMessageContent(
-	body: string,
-	isHtml: boolean = false
-): string {
-	if (isHtml) {
-		// For HTML, remove Gmail quote blocks
-		let cleaned = body;
-
-		// Remove Gmail quote blocks (everything after and including the quote)
-		cleaned = cleaned.replace(
-			/<div class="gmail_quote[^>]*">[\s\S]*?<\/div>/gi,
-			""
-		);
-		cleaned = cleaned.replace(
-			/<blockquote[^>]*class="gmail_quote"[^>]*>[\s\S]*?<\/blockquote>/gi,
-			""
-		);
-
-		// Remove "On ... wrote:" lines
-		cleaned = cleaned.replace(
-			/<div[^>]*class="gmail_attr"[^>]*>[\s\S]*?<\/div>/gi,
-			""
-		);
-
-		// Remove signature divs
-		cleaned = cleaned.replace(
-			/<div[^>]*class="gmail_signature"[^>]*>[\s\S]*?<\/div>/gi,
-			""
-		);
-
-		return cleaned.trim();
-	} else {
-		// For plain text, split by common quote indicators
-		const lines = body.split("\n");
-		const newContent: string[] = [];
-		let inQuote = false;
-
-		for (const line of lines) {
-			// Check if this line starts a quote section
-			if (
-				line.trim().startsWith(">") ||
-				line.match(/^On .+? wrote:$/i) ||
-				line.match(/^-{3,}/) // Separator lines
-			) {
-				inQuote = true;
-				break; // Stop collecting lines once we hit the quote
-			}
-
-			// Skip signature markers
-			if (line.trim() === "--" || line.match(/^[-_]{2,}$/)) {
-				break;
-			}
-
-			if (!inQuote) {
-				newContent.push(line);
-			}
-		}
-
-		return newContent.join("\n").trim();
-	}
 }
 
 function formatBytes(bytes: number): string {

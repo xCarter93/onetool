@@ -69,3 +69,128 @@ export async function bumpThread(
 		participantEmails,
 	});
 }
+
+/**
+ * Parse a plus-addressed inbound recipient: `org-slug+t<token>@domain` →
+ * `{ base: "org-slug@domain", token: "<token>" }`. The token is the
+ * threadDocId we stamped on the outbound Reply-To (validated: Resend inbound
+ * preserves the +tag in received_for).
+ */
+export function stripPlusTag(address: string): {
+	base: string;
+	token: string | null;
+} {
+	const at = address.indexOf("@");
+	if (at < 0) return { base: address, token: null };
+	const local = address.slice(0, at);
+	const domain = address.slice(at);
+	const plus = local.indexOf("+");
+	if (plus < 0) return { base: address, token: null };
+	const tag = local.slice(plus + 1);
+	const base = local.slice(0, plus) + domain;
+	const token = tag.startsWith("t") && tag.length > 1 ? tag.slice(1) : null;
+	return { base, token };
+}
+
+/**
+ * Resolve the thread an inbound message belongs to (PRD §3.4), provider-agnostic:
+ * (1) plus-token from the recipient address (deterministic for mail we sent),
+ * (2) In-Reply-To via by_rfc_message_id, (3) References newest-first,
+ * (4) subject-normalized + same participant fallback (never cross-participant),
+ * else (5) create a new thread.
+ */
+/**
+ * Find the thread of a message with this RFC Message-ID, constrained to the org.
+ * A Message-ID could (rarely) collide across orgs, so we must match on orgId
+ * before selecting — never `.first()` then post-filter.
+ */
+async function findThreadByRfcId(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	rfcMessageId: string
+): Promise<Id<"emailThreads"> | null> {
+	const matches = await ctx.db
+		.query("emailMessages")
+		.withIndex("by_rfc_message_id", (q) => q.eq("rfcMessageId", rfcMessageId))
+		.collect();
+	const m = matches.find((x) => x.orgId === orgId && x.threadDocId);
+	return m?.threadDocId ?? null;
+}
+
+export async function resolveInboundThread(
+	ctx: MutationCtx,
+	args: {
+		orgId: Id<"organizations">;
+		clientId: Id<"clients"> | null;
+		plusToken: string | null;
+		inReplyTo: string | null;
+		references: string[];
+		subject: string;
+		rfcMessageId: string;
+		fromEmail: string;
+		receivedAt: number;
+	}
+): Promise<Id<"emailThreads">> {
+	// (1) plus-token
+	if (args.plusToken) {
+		const tid = ctx.db.normalizeId("emailThreads", args.plusToken);
+		if (tid) {
+			const t = await ctx.db.get(tid);
+			if (t && t.orgId === args.orgId) return t._id;
+		}
+	}
+
+	// (2) In-Reply-To exact match on a stored RFC Message-ID (org-scoped)
+	const inReplyTo = args.inReplyTo;
+	if (inReplyTo) {
+		const t = await findThreadByRfcId(ctx, args.orgId, inReplyTo);
+		if (t) return t;
+	}
+
+	// (3) References chain, newest first (org-scoped)
+	for (let i = args.references.length - 1; i >= 0; i--) {
+		const t = await findThreadByRfcId(ctx, args.orgId, args.references[i]);
+		if (t) return t;
+	}
+
+	// (4) subject-normalized + same participant, recent (never cross-participant)
+	const normSubject = normalizeSubject(args.subject);
+	const recent = await ctx.db
+		.query("emailThreads")
+		.withIndex("by_org_last_message", (q) => q.eq("orgId", args.orgId))
+		.order("desc")
+		.take(50);
+	const match = recent.find(
+		(t) =>
+			t.subjectNormalized === normSubject &&
+			t.participantEmails.includes(args.fromEmail)
+	);
+	if (match) return match._id;
+
+	// (5) new thread
+	return await ctx.db.insert("emailThreads", {
+		orgId: args.orgId,
+		clientId: args.clientId,
+		subjectNormalized: normSubject,
+		rootRfcMessageId: args.rfcMessageId,
+		lastMessageAt: args.receivedAt,
+		messageCount: 0,
+		unreadCount: 0,
+		status: "open",
+		participantEmails: [],
+	});
+}
+
+/**
+ * Build a plus-addressed Reply-To that carries the thread id, so replies route
+ * back deterministically: `org-slug@domain` -> `org-slug+t<threadDocId>@domain`.
+ * (Validated: Resend inbound preserves the +tag in received_for.)
+ */
+export function plusTagAddress(
+	baseAddress: string,
+	threadDocId: string
+): string {
+	const at = baseAddress.indexOf("@");
+	if (at < 0) return baseAddress;
+	return `${baseAddress.slice(0, at)}+t${threadDocId}${baseAddress.slice(at)}`;
+}

@@ -3,7 +3,11 @@ import { getCurrentUserOrThrow, getCurrentUserOrgId } from "./lib/auth";
 import { userMutation } from "./lib/factories";
 import { sendOutbound } from "./email/outbound";
 import type { OutboundMessage } from "./email/types";
-import { getOrCreateOutboundThread, bumpThread } from "./email/threads";
+import {
+	getOrCreateOutboundThread,
+	bumpThread,
+	plusTagAddress,
+} from "./email/threads";
 
 // Re-export the durable component instance so existing callers (portal/email.ts)
 // keep importing `resend` from here; the instance itself lives in the seam.
@@ -90,7 +94,7 @@ export const sendClientEmail = userMutation({
 		const message: OutboundMessage = {
 			from: `${fromName} <${fromEmail}>`,
 			to: [recipient.email],
-			replyTo: [resolveFromEmail(organization)],
+			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
 			subject: args.subject,
 			html: emailHtml,
 		};
@@ -109,8 +113,9 @@ export const sendClientEmail = userMutation({
 		// Create message preview (first 100 chars)
 		const messagePreview = args.messageBody.substring(0, 100);
 
-		// Legacy string threadId retained through the dual-write migration.
-		const threadId = args.threadId || emailId;
+		// Legacy string threadId now mirrors threadDocId through the migration,
+		// so client-tab grouping (by_thread) stays consistent with the new model.
+		const threadId = threadDocId;
 
 		// Store email record
 		const emailMessageId = await ctx.db.insert("emailMessages", {
@@ -256,7 +261,7 @@ export const replyToEmail = userMutation({
 		const message: OutboundMessage = {
 			from: `${fromName} <${fromEmail}>`,
 			to: [primaryContact.email],
-			replyTo: [resolveFromEmail(organization)],
+			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
 			subject,
 			html: emailHtml,
 			// RFC threading headers so the recipient's client threads our reply.
@@ -284,7 +289,7 @@ export const replyToEmail = userMutation({
 			clientId,
 			resendEmailId: emailId,
 			direction: "outbound",
-			threadId: originalEmail.threadId || originalEmail.resendEmailId,
+			threadId: threadDocId,
 			threadDocId,
 			inReplyTo: parentRfcId,
 			references,

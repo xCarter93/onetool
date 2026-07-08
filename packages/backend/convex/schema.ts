@@ -880,8 +880,9 @@ export default defineSchema({
 		subject: v.string(),
 		messageBody: v.string(), // Plain text body or HTML for outbound
 		messagePreview: v.optional(v.string()), // First 100 chars for display
-		htmlBody: v.optional(v.string()), // HTML body for received emails
-		textBody: v.optional(v.string()), // Plain text body for received emails
+		htmlBody: v.optional(v.string()), // HTML body for received emails (raw, retained for re-parse)
+		textBody: v.optional(v.string()), // Plain text body for received emails (raw, retained for re-parse)
+		visibleText: v.optional(v.string()), // Derived new-content-only body (quotes/signature stripped on ingest)
 
 		// Sender (for inbound emails)
 		fromEmail: v.string(),

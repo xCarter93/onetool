@@ -29,6 +29,7 @@ import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as email_durableResend from "../email/durableResend.js";
 import type * as email_outbound from "../email/outbound.js";
+import type * as email_replyParser from "../email/replyParser.js";
 import type * as email_suppressions from "../email/suppressions.js";
 import type * as email_threads from "../email/threads.js";
 import type * as email_types from "../email/types.js";
@@ -149,6 +150,7 @@ declare const fullApi: ApiFromModules<{
   documents: typeof documents;
   "email/durableResend": typeof email_durableResend;
   "email/outbound": typeof email_outbound;
+  "email/replyParser": typeof email_replyParser;
   "email/suppressions": typeof email_suppressions;
   "email/threads": typeof email_threads;
   "email/types": typeof email_types;
