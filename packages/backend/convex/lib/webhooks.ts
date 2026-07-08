@@ -18,6 +18,8 @@ import { Webhook } from "svix";
 export interface WebhookVerificationResult<T = unknown> {
 	valid: boolean;
 	payload?: T;
+	/** The raw request body, for handlers that need to re-forward the request. */
+	rawBody?: string;
 	error?: string;
 }
 
@@ -58,7 +60,7 @@ export async function verifySvixWebhook(
 
 	try {
 		const payload = wh.verify(payloadString, svixHeaders) as unknown as WebhookEvent;
-		return { valid: true, payload };
+		return { valid: true, payload, rawBody: payloadString };
 	} catch (error) {
 		console.error("Svix webhook verification failed:", error);
 		return {

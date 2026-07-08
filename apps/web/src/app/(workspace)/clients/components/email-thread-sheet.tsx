@@ -109,7 +109,10 @@ export function EmailThreadSheet({
 			return;
 		}
 
-		const isNewEmail = mode === "new" || !thread || thread.length === 0;
+		// While the thread query is loading (undefined), a reply sheet must not
+		// flash the new-email fields.
+		const isNewEmail =
+			mode === "new" || (thread !== undefined && (!thread || thread.length === 0));
 
 		if (isNewEmail && !subject.trim()) {
 			toast.error("Subject Required", "Please enter a subject for the email");
@@ -136,7 +139,12 @@ export function EmailThreadSheet({
 				});
 				toast.success("Email Sent", "Your email has been sent successfully");
 			} else {
-				// Reply to existing thread
+				// Reply to existing thread (unreachable while the query is still
+				// loading, but the type needs the guard)
+				if (!thread || thread.length === 0) {
+					toast.error("Thread Loading", "Please wait for the thread to load");
+					return;
+				}
 				const latestMessage = thread[thread.length - 1];
 				await replyToEmail({
 					emailMessageId: latestMessage._id,
@@ -167,7 +175,10 @@ export function EmailThreadSheet({
 		onOpenChange(false);
 	};
 
-	const isNewEmail = mode === "new" || !thread || thread.length === 0;
+	// While the thread query is loading (undefined), a reply sheet must not
+	// flash the new-email fields.
+	const isNewEmail =
+		mode === "new" || (thread !== undefined && (!thread || thread.length === 0));
 	const showSubjectField = isNewEmail;
 
 	// Build email preview with auto-added content

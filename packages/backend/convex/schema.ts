@@ -901,7 +901,8 @@ export default defineSchema({
 			v.literal("delivered"),
 			v.literal("opened"),
 			v.literal("bounced"),
-			v.literal("complained")
+			v.literal("complained"),
+			v.literal("failed") // permanent send failure (Resend email.failed)
 		),
 
 		// Timestamps
@@ -910,6 +911,7 @@ export default defineSchema({
 		openedAt: v.optional(v.number()),
 		bouncedAt: v.optional(v.number()),
 		complainedAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()),
 
 		// Tracking
 		sentBy: v.optional(v.id("users")), // User who sent the email (optional for inbound)

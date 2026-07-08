@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -41,21 +41,42 @@ export function InboxScreen() {
 		});
 	}, []);
 
-	// Drop a stale selection when the active filter no longer contains it.
-	useEffect(() => {
-		if (
-			selectedThreadId &&
-			threads &&
-			!threads.some((t) => t.threadDocId === selectedThreadId)
-		) {
-			setSelectedThreadId(null);
-		}
-	}, [threads, selectedThreadId]);
-
-	const selectedThread = useMemo(
+	const selectedFromList = useMemo(
 		() => threads?.find((t) => t.threadDocId === selectedThreadId) ?? null,
 		[threads, selectedThreadId]
 	);
+
+	// Keep the open thread rendered even when a mutation drops it out of the
+	// active filter (mark-read evicts it from "Unread", linking from
+	// "Unlinked") — the thread the user just opened must not close itself.
+	const fallbackThread = useQuery(
+		api.emailThreads.getThread,
+		selectedThreadId && threads && !selectedFromList
+			? { threadDocId: selectedThreadId }
+			: "skip"
+	);
+	// Hold the last resolved thread so the pane doesn't flash empty for the
+	// frames while the fallback query loads right after a filter eviction.
+	const lastSelectedRef = useRef<typeof selectedFromList>(null);
+	const resolvedThread = selectedFromList ?? fallbackThread ?? null;
+	if (resolvedThread && resolvedThread.threadDocId === selectedThreadId) {
+		lastSelectedRef.current = resolvedThread;
+	}
+	const selectedThread =
+		resolvedThread ??
+		(fallbackThread === undefined &&
+		lastSelectedRef.current?.threadDocId === selectedThreadId
+			? lastSelectedRef.current
+			: null);
+
+	// A completed fallback returning null means the thread is genuinely gone
+	// (deleted / inaccessible) — clear the selection so mobile isn't stuck on
+	// an empty pane with the list hidden.
+	useEffect(() => {
+		if (selectedThreadId && !selectedFromList && fallbackThread === null) {
+			setSelectedThreadId(null);
+		}
+	}, [selectedThreadId, selectedFromList, fallbackThread]);
 
 	const handleKeyDown = useCallback(
 		(e: React.KeyboardEvent<HTMLDivElement>) => {

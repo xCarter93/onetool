@@ -60,10 +60,15 @@ export const backfillEmailThreads = internalMutation({
 			)?.threadDocId;
 
 			if (!threadDocId) {
+				// External counterparty addresses only (inbound sender / outbound
+				// recipient) — the live paths never record the org's own address,
+				// and the inbox resolves the counterparty from participantEmails[0].
 				const participantEmails = Array.from(
 					new Set(
 						group
-							.flatMap((m) => [m.fromEmail, m.toEmail])
+							.map((m) =>
+								m.direction === "inbound" ? m.fromEmail : m.toEmail
+							)
 							.filter((e): e is string => Boolean(e))
 					)
 				);
@@ -74,6 +79,9 @@ export const backfillEmailThreads = internalMutation({
 					orgId: first.orgId,
 					clientId,
 					subjectNormalized: normalizeSubject(first.subject),
+					subject: last.subject,
+					lastMessagePreview: last.messagePreview,
+					lastMessageDirection: last.direction,
 					rootRfcMessageId: first.rfcMessageId ?? first.resendEmailId,
 					lastMessageAt: last.sentAt,
 					messageCount: group.length,

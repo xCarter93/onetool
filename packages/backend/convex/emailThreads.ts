@@ -202,12 +202,16 @@ export const countUnreadThreads = optionalUserQuery({
     const orgId = await getOptionalOrgId(ctx);
     if (!orgId) return 0;
 
+    // Bounded to the same recency window the inbox list renders, so the badge
+    // (a) never exceeds what the list can actually show and (b) stays cheap on
+    // this globally-mounted sidebar subscription.
     const openThreads = await ctx.db
       .query("emailThreads")
       .withIndex("by_org_status", (q) =>
         q.eq("orgId", orgId).eq("status", "open"),
       )
-      .collect();
+      .order("desc")
+      .take(INBOX_LIST_LIMIT);
 
     return openThreads.filter((t) => t.unreadCount > 0).length;
   },

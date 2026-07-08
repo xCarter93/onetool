@@ -2,7 +2,7 @@ import { internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { resendClient } from "./lib/resendClient";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { systemMutation } from "./lib/factories";
 import { deriveVisibleText } from "./email/replyParser";
 import {
@@ -100,8 +100,15 @@ export const handleInboundEmail = internalAction({
 			visibleText,
 		});
 
-		// Step 3: Download attachments if present (requires network access)
-		if (result.success && args.attachments && args.attachments.length > 0) {
+		// Step 3: Download attachments if present (requires network access).
+		// emailMessageId is absent when the mutation skipped (duplicate delivery,
+		// general-inbox mail) — nothing to attach to in that case.
+		if (
+			result.success &&
+			result.emailMessageId &&
+			args.attachments &&
+			args.attachments.length > 0
+		) {
 			for (const attachment of args.attachments) {
 				await ctx.runAction(internal.resendReceiving.downloadAttachmentAction, {
 					emailId: args.emailId,
@@ -159,30 +166,62 @@ export const processInboundEmail = internalMutation({
 			throw new Error("Email must have at least one recipient in 'to' field");
 		}
 
+		// Dedup: Resend/Svix can redeliver the same event (retries, dashboard
+		// redelivery). One inbound email must produce exactly one row — a second
+		// insert would also double-bump the thread's message/unread counts.
+		const alreadyIngested = await ctx.db
+			.query("emailMessages")
+			.withIndex("by_resend_id", (q) => q.eq("resendEmailId", args.emailId))
+			.first();
+		if (alreadyIngested) {
+			return {
+				success: true,
+				skipped: true,
+				reason: "Duplicate delivery - already ingested",
+			};
+		}
+
 		// Resolve recipient + any plus-addressed thread token, then the base
 		// address that identifies the org.
 		const recipientRaw = args.receivedForAddress ?? args.to[0];
 		const { base: baseAddress, token: plusToken } = stripPlusTag(recipientRaw);
 
-		// support@onetool.biz is a general inbox, not org-specific.
-		if (baseAddress === "support@onetool.biz") {
-			console.log(
-				`Skipping inbound email for support@onetool.biz. From: ${args.from}, Subject: ${args.subject}`
-			);
-			return {
-				success: true,
-				skipped: true,
-				reason: "General support email - not organization-specific",
-			};
+		// A plus-token deterministically identifies a thread (and thus its org)
+		// for mail we originated — resolve it BEFORE any generic-inbox
+		// short-circuit, so replies to orgs sending from the shared fallback
+		// address (no receivingAddress configured) still route.
+		let organization: Doc<"organizations"> | null = null;
+		if (plusToken) {
+			const tokenThreadId = ctx.db.normalizeId("emailThreads", plusToken);
+			if (tokenThreadId) {
+				const tokenThread = await ctx.db.get(tokenThreadId);
+				if (tokenThread) {
+					organization = await ctx.db.get(tokenThread.orgId);
+				}
+			}
 		}
 
-		// Find the org by receiving address via the index (not a table scan).
-		const organization = await ctx.db
-			.query("organizations")
-			.withIndex("by_receiving_address", (q) =>
-				q.eq("receivingAddress", baseAddress)
-			)
-			.first();
+		if (!organization) {
+			// support@onetool.biz is a general inbox, not org-specific.
+			if (baseAddress === "support@onetool.biz") {
+				console.log(
+					`Skipping inbound email for support@onetool.biz. From: ${args.from}, Subject: ${args.subject}`
+				);
+				return {
+					success: true,
+					skipped: true,
+					reason: "General support email - not organization-specific",
+				};
+			}
+
+			// Find the org by receiving address via the index (not a table scan).
+			organization = await ctx.db
+				.query("organizations")
+				.withIndex("by_receiving_address", (q) =>
+					q.eq("receivingAddress", baseAddress)
+				)
+				.first();
+		}
 
 		if (!organization) {
 			console.error(
@@ -198,7 +237,7 @@ export const processInboundEmail = internalMutation({
 			.withIndex("by_org", (q) => q.eq("orgId", organization._id))
 			.filter((q) => q.eq(q.field("email"), fromEmail))
 			.first();
-		const clientId: Id<"clients"> | null = clientContact?.clientId ?? null;
+		let clientId: Id<"clients"> | null = clientContact?.clientId ?? null;
 
 		const receivedAt = Date.now();
 
@@ -215,6 +254,14 @@ export const processInboundEmail = internalMutation({
 			fromEmail,
 			receivedAt,
 		});
+
+		// Adopt the thread's linked client when the sender isn't a recognized
+		// contact (e.g. the thread was manually linked from the inbox), so new
+		// messages on a linked thread don't regress to unlinked.
+		const threadDoc = await ctx.db.get(threadDocId);
+		if (!clientId && threadDoc?.clientId) {
+			clientId = threadDoc.clientId;
+		}
 
 		const visibleText = args.visibleText ?? "";
 		const messagePreview = (
@@ -259,22 +306,23 @@ export const processInboundEmail = internalMutation({
 			preview: messagePreview,
 			direction: "inbound",
 		});
-		if (clientId) {
-			const thread = await ctx.db.get(threadDocId);
-			if (thread && thread.clientId === null) {
-				await ctx.db.patch(threadDocId, { clientId });
-			}
+		if (clientId && threadDoc && threadDoc.clientId === null) {
+			await ctx.db.patch(threadDocId, { clientId });
 		}
 
-		// Activity row: client-scoped when known, else an unknown-sender note.
-		if (clientContact && clientId) {
+		// Activity row: client-scoped when known (via contact match or thread
+		// link), else an unknown-sender note.
+		if (clientId) {
+			const entityName = clientContact
+				? clientContact.firstName + " " + clientContact.lastName
+				: ((await ctx.db.get(clientId))?.companyName ?? fromEmail);
 			await ctx.db.insert("activities", {
 				orgId: organization._id,
 				userId: organization.ownerUserId,
 				activityType: "email_delivered",
 				entityType: "client",
 				entityId: clientId,
-				entityName: clientContact.firstName + " " + clientContact.lastName,
+				entityName,
 				description: `Received email: ${args.subject}`,
 				metadata: {
 					emailId: emailMessageId,

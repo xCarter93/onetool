@@ -29,11 +29,82 @@ export async function getOrCreateOutboundThread(
 
 	const legacyThreadId = args.legacyThreadId;
 	if (legacyThreadId) {
-		const msg = await ctx.db
-			.query("emailMessages")
-			.withIndex("by_thread", (q) => q.eq("threadId", legacyThreadId))
-			.first();
-		if (msg?.threadDocId) return msg.threadDocId;
+		// A legacy group can mix linked and pre-migration (unlinked) messages;
+		// find ANY linked one — the index-first message may predate the backfill.
+		// Then heal the whole group so a later reply to a different old message
+		// can't fork the conversation into a second thread row.
+		const group = (
+			await ctx.db
+				.query("emailMessages")
+				.withIndex("by_thread", (q) => q.eq("threadId", legacyThreadId))
+				.collect()
+		).filter((m) => m.orgId === args.orgId);
+		const linked = group.find((m) => m.threadDocId)?.threadDocId;
+		if (linked) {
+			const orphans = group.filter((m) => !m.threadDocId);
+			for (const m of orphans) {
+				await ctx.db.patch(m._id, { threadDocId: linked });
+			}
+			// Fold the newly-adopted messages into the thread's aggregates so
+			// counts/recency/display fields don't go stale after the heal.
+			if (orphans.length > 0) {
+				const thread = await ctx.db.get(linked);
+				if (thread) {
+					const newestOrphan = orphans.reduce((a, b) =>
+						a.sentAt >= b.sentAt ? a : b
+					);
+					const orphanEmails = orphans
+						.map((m) => (m.direction === "inbound" ? m.fromEmail : m.toEmail))
+						.filter((e): e is string => Boolean(e));
+					const isNewest = newestOrphan.sentAt > thread.lastMessageAt;
+					await ctx.db.patch(linked, {
+						messageCount: thread.messageCount + orphans.length,
+						lastMessageAt: Math.max(thread.lastMessageAt, newestOrphan.sentAt),
+						participantEmails: Array.from(
+							new Set([...thread.participantEmails, ...orphanEmails])
+						),
+						...(isNewest
+							? {
+									subject: newestOrphan.subject,
+									lastMessagePreview: newestOrphan.messagePreview,
+									lastMessageDirection: newestOrphan.direction,
+								}
+							: {}),
+					});
+				}
+			}
+			return linked;
+		}
+		if (group.length > 0) {
+			group.sort((a, b) => a.sentAt - b.sentAt);
+			const last = group[group.length - 1];
+			const participantEmails = Array.from(
+				new Set(
+					group
+						// external counterparty only — never the org's own address
+						.map((m) => (m.direction === "inbound" ? m.fromEmail : m.toEmail))
+						.filter((e): e is string => Boolean(e))
+				)
+			);
+			const threadDocId = await ctx.db.insert("emailThreads", {
+				orgId: args.orgId,
+				clientId: args.clientId,
+				subjectNormalized: normalizeSubject(args.subject),
+				subject: last.subject,
+				lastMessagePreview: last.messagePreview,
+				lastMessageDirection: last.direction,
+				rootRfcMessageId: group[0].rfcMessageId,
+				lastMessageAt: last.sentAt,
+				messageCount: group.length,
+				unreadCount: 0,
+				status: "open",
+				participantEmails,
+			});
+			for (const m of group) {
+				await ctx.db.patch(m._id, { threadDocId });
+			}
+			return threadDocId;
+		}
 	}
 
 	return await ctx.db.insert("emailThreads", {
