@@ -9,14 +9,22 @@
 // Lines that begin a quoted original / forwarded block. First hit ends the message.
 const QUOTE_STARTERS: RegExp[] = [
 	/^\s*>/, // a quoted line
-	/^\s*On\b.*\bwrote:\s*$/i, // Gmail / Apple "On <date> <name> wrote:"
 	/^\s*-{2,}\s*Original Message\s*-{2,}/i, // Outlook "----- Original Message -----"
 	/^\s*_{10,}\s*$/, // Outlook underscore divider above the quoted header block
 	/^\s*From:\s.*(<[^>]+>|@).*$/i, // Outlook quoted-header block ("From: Name <addr>")
-	/^\s*Le\b.*\ba\s+écrit\s*:\s*$/i, // fr "Le <date>, <name> a écrit :"
-	/^\s*Am\b.*\bschrieb\b.*:\s*$/i, // de "Am <date> schrieb <name>:"
-	/^\s*El\b.*\bescribió:\s*$/i, // es "El <date>, <name> escribió:"
 ];
+
+// Reply attribution ("On <date> <name> wrote:" and localized forms). Gmail wraps
+// it across lines when the address is long, so the anchor and the verb are matched
+// separately over a small look-ahead window. The anchor line must carry a digit
+// (a date/time) to avoid cutting on prose that merely starts with "On".
+const ATTRIBUTION_ANCHOR = /^\s*(On|Le|El|Am)\b/i;
+const ATTRIBUTION_VERB = /\b(wrote|a\s+écrit|schrieb|escribió)\s*:/i;
+
+// Gmail renders a bold signature name as "*Name*" on its own line in text/plain;
+// treat it as a signature start when contact info follows.
+const SIG_NAME = /^\s*\*[^*]+\*\s*$/;
+const CONTACT_LINE = /^\s*(phone|tel|mobile|cell|fax|e-?mail)\b/i;
 
 // Standard signature delimiter ("-- " on its own line).
 const SIGNATURE_DELIMITER = /^\s*--\s*$/;
@@ -53,8 +61,21 @@ export function extractVisibleText(body: string): string {
 	if (!body) return "";
 	const lines = body.replace(/\r\n/g, "\n").split("\n");
 	const kept: string[] = [];
-	for (const line of lines) {
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
 		if (SIGNATURE_DELIMITER.test(line)) break;
+		// Attribution line, which Gmail may wrap across up to ~3 lines.
+		if (ATTRIBUTION_ANCHOR.test(line) && /\d/.test(line)) {
+			const window = lines.slice(i, i + 3).join(" ");
+			if (ATTRIBUTION_VERB.test(window)) break;
+		}
+		// Signature block: a bold-only name line with contact info just after it.
+		if (
+			SIG_NAME.test(line) &&
+			lines.slice(i + 1, i + 4).some((l) => CONTACT_LINE.test(l))
+		) {
+			break;
+		}
 		if (QUOTE_STARTERS.some((re) => re.test(line))) break;
 		kept.push(line);
 	}

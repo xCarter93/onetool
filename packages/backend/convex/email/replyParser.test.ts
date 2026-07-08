@@ -13,6 +13,34 @@ describe("extractVisibleText", () => {
 		expect(extractVisibleText(body)).toBe("Thanks, that works for me.");
 	});
 
+	it("strips a Gmail attribution that wraps across lines (long address)", () => {
+		// Reproduces the real leak: Gmail splits "On … <\n<addr>> wrote:".
+		const body = [
+			"Thanks!",
+			"",
+			"On Wed, Jul 8, 2026 at 3:13 PM Patrick Carter <",
+			"org-3f7ee08e@inbound.onetool.biz> wrote:",
+			"",
+			"> quoted original",
+		].join("\n");
+		expect(extractVisibleText(body)).toBe("Thanks!");
+	});
+
+	it("strips a Gmail bold-name signature block (no '-- ' delimiter)", () => {
+		const body = [
+			"Reply Reply Reply",
+			"",
+			"Thank you for your service.",
+			"",
+			"*Patrick Carter*",
+			"Phone: (617) 217-1785",
+			"Email: xCarter93@gmail.com",
+		].join("\n");
+		expect(extractVisibleText(body)).toBe(
+			"Reply Reply Reply\n\nThank you for your service."
+		);
+	});
+
 	it("strips a leading '>' quoted block", () => {
 		const body = ["Sounds good.", "", "> quoted original"].join("\n");
 		expect(extractVisibleText(body)).toBe("Sounds good.");
@@ -79,7 +107,7 @@ describe("htmlToText", () => {
 describe("deriveVisibleText", () => {
 	it("prefers the text/plain part and strips its quote", () => {
 		const result = deriveVisibleText({
-			text: "New reply.\n\nOn Wed wrote:\n> old",
+			text: "New reply.\n\nOn Wed, Jul 8 at 1:15 PM x wrote:\n> old",
 			html: "<div>ignored</div>",
 		});
 		expect(result).toBe("New reply.");
