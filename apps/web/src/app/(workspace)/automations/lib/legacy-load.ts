@@ -48,14 +48,20 @@ export function legacyTriggerToDraft(trigger: AutomationTrigger): TriggerConfig 
 				objectType: trigger.objectType,
 				fromStatus: trigger.fromStatus,
 				toStatus: trigger.toStatus,
+				entryCriteria: trigger.entryCriteria,
 			};
 		case "record_created":
-			return { type: "record_created", objectType: trigger.objectType };
+			return {
+				type: "record_created",
+				objectType: trigger.objectType,
+				entryCriteria: trigger.entryCriteria,
+			};
 		case "record_updated":
 			return {
 				type: "record_updated",
 				objectType: trigger.objectType,
 				fields: trigger.fields,
+				entryCriteria: trigger.entryCriteria,
 			};
 		case "scheduled":
 			return {

@@ -28,12 +28,15 @@ import {
 	type TriggerType,
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
+import type { WorkflowNode } from "../../../lib/node-types";
 import { ConfigPanelHeader } from "./config-panel-header";
 import {
 	DeleteStepButton,
 	PanelField,
 	PanelSection,
 } from "./panel-primitives";
+import { FilterGroupsEditor } from "./filter-groups-editor";
+import { ConditionSentenceSummary } from "./condition-sentence-summary";
 
 const WEEKDAY_OPTIONS = [
 	{ value: "0", label: "Sunday" },
@@ -75,6 +78,8 @@ function defaultSchedule(): AutomationSchedule {
 
 export function TriggerConfigPanel({
 	trigger,
+	nodes,
+	formulas,
 	onTriggerChange,
 	onDeleteTrigger,
 	onNavigateToNode,
@@ -151,6 +156,9 @@ export function TriggerConfigPanel({
 					? newStatusOptions[0]?.value || ""
 					: undefined,
 			fields: undefined,
+			// Criteria reference the old object's fields — stale ones would
+			// hard-block save with an unknown-field error.
+			entryCriteria: undefined,
 		});
 	};
 
@@ -407,6 +415,58 @@ export function TriggerConfigPanel({
 						</PanelField>
 					)}
 				</PanelSection>
+
+				{(triggerType === "status_changed" ||
+					triggerType === "record_created" ||
+					triggerType === "record_updated") && (
+					<PanelSection title="Entry criteria">
+						<p className="text-xs text-muted-foreground">
+							Optional — only run when the record matches these conditions.
+						</p>
+						<FilterGroupsEditor
+							objectType={objectType}
+							groups={currentTrigger.entryCriteria?.groups ?? []}
+							onChange={(groups) =>
+								onTriggerChange({
+									...currentTrigger,
+									entryCriteria:
+										groups.length > 0
+											? {
+													logic:
+														currentTrigger.entryCriteria?.logic ?? "and",
+													groups,
+												}
+											: undefined,
+								})
+							}
+							topLevelLogic={{
+								value: currentTrigger.entryCriteria?.logic ?? "and",
+								onChange: (logic) =>
+									onTriggerChange({
+										...currentTrigger,
+										entryCriteria: {
+											logic,
+											groups: currentTrigger.entryCriteria?.groups ?? [],
+										},
+									}),
+							}}
+							nodes={nodes.filter(
+								(n): n is WorkflowNode => n.type !== "placeholder"
+							)}
+							trigger={currentTrigger}
+							targetNodeId={TRIGGER_NODE_ID}
+							formulas={formulas}
+						/>
+						{currentTrigger.entryCriteria && (
+							<ConditionSentenceSummary
+								prefix="Only runs when"
+								logic={currentTrigger.entryCriteria.logic}
+								groups={currentTrigger.entryCriteria.groups}
+								objectType={objectType}
+							/>
+						)}
+					</PanelSection>
+				)}
 
 				<div className="py-4 text-xs text-muted-foreground">
 					Changes are saved automatically

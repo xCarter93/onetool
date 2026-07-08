@@ -218,10 +218,15 @@ function buildNextItemNode(id: string): WorkflowNode {
 /** Build the v2 trigger arg accepted by automations.create/update. */
 function buildTriggerForSave(trigger: TriggerConfig) {
 	const objectType = trigger.objectType ?? "client";
+	// Empty criteria are dropped so unused editors don't dirty the doc.
+	const entryCriteria =
+		trigger.entryCriteria && trigger.entryCriteria.groups.length > 0
+			? { entryCriteria: trigger.entryCriteria }
+			: {};
 
 	switch (trigger.type) {
 		case "record_created":
-			return { type: "record_created" as const, objectType };
+			return { type: "record_created" as const, objectType, ...entryCriteria };
 		case "record_updated":
 			return {
 				type: "record_updated" as const,
@@ -229,6 +234,7 @@ function buildTriggerForSave(trigger: TriggerConfig) {
 				...(trigger.fields && trigger.fields.length > 0
 					? { fields: trigger.fields }
 					: {}),
+				...entryCriteria,
 			};
 		case "scheduled":
 			return {
@@ -246,6 +252,7 @@ function buildTriggerForSave(trigger: TriggerConfig) {
 				objectType,
 				...(trigger.fromStatus ? { fromStatus: trigger.fromStatus } : {}),
 				toStatus: trigger.toStatus ?? "",
+				...entryCriteria,
 			};
 	}
 }

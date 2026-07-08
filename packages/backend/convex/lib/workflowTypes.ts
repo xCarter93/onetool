@@ -391,16 +391,29 @@ export const scheduleValidator = v.object({
 
 export type AutomationSchedule = Infer<typeof scheduleValidator>;
 
+/**
+ * Optional declarative trigger filter (A5-2): the run is only scheduled when
+ * the triggering record passes these condition groups, evaluated at event
+ * dispatch against the actual record — a non-matching event produces no
+ * execution row. Same shape the condition node uses.
+ */
+export const entryCriteriaValidator = v.object({
+	logic: v.union(v.literal("and"), v.literal("or")),
+	groups: v.array(conditionGroupValidator),
+});
+
 export const statusChangedTriggerValidator = v.object({
 	type: v.literal("status_changed"),
 	objectType: objectTypeValidator,
 	fromStatus: v.optional(v.string()),
 	toStatus: v.string(),
+	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const recordCreatedTriggerValidator = v.object({
 	type: v.literal("record_created"),
 	objectType: objectTypeValidator,
+	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const recordUpdatedTriggerValidator = v.object({
@@ -408,6 +421,7 @@ export const recordUpdatedTriggerValidator = v.object({
 	objectType: objectTypeValidator,
 	/** Fire only when one of these fields changed; any field if omitted/empty. */
 	fields: v.optional(v.array(v.string())),
+	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const scheduledTriggerValidator = v.object({

@@ -15,6 +15,7 @@ import type {
 	AutomationObjectType,
 	WorkflowNodeConfig,
 	WorkflowNodeType,
+	ConditionGroup,
 } from "@onetool/backend/convex/lib/workflowTypes";
 import { AUTOMATION_OBJECT_TYPES } from "@onetool/backend/convex/lib/workflowTypes";
 import { RELATED_OBJECTS } from "@onetool/backend/convex/lib/fieldRegistry";
@@ -215,6 +216,8 @@ export type TriggerConfig = {
 	toStatus?: string;
 	/** record_updated — fire only when one of these fields changed. */
 	fields?: string[];
+	/** Event triggers — only run when the record matches (A5-2). */
+	entryCriteria?: { logic: "and" | "or"; groups: ConditionGroup[] };
 	/** scheduled (Slice 2) */
 	schedule?: {
 		frequency: "daily" | "weekly" | "monthly";

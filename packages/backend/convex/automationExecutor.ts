@@ -182,6 +182,10 @@ export const findMatchingAutomations = internalQuery({
 		fromStatus: v.optional(v.string()),
 		toStatus: v.optional(v.string()),
 		changedFields: v.optional(v.array(v.string())),
+		// For entry-criteria evaluation (A5-2): the triggering record's id and
+		// the acting user, resolved once and shared by every candidate.
+		entityId: v.optional(v.string()),
+		actorUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<AutomationDoc[]> => {
 		// Org-scoped active automations; org isolation is enforced by the
@@ -193,8 +197,21 @@ export const findMatchingAutomations = internalQuery({
 			)
 			.collect();
 
+		// Entry-criteria inputs, fetched once per event: the actual triggering
+		// record, plus org/actor for globals. A non-matching event produces no
+		// execution row at all (quiet and cheap).
+		const record = args.entityId
+			? await getObject(ctx, args.objectType, args.entityId, args.orgId)
+			: null;
+		const org = await ctx.db.get(args.orgId);
+		const actorId = args.actorUserId
+			? ctx.db.normalizeId("users", args.actorUserId)
+			: null;
+		const actor = actorId ? await ctx.db.get(actorId) : null;
+
 		return automations.filter((automation) => {
-			const { trigger } = executableDefinition(automation);
+			const definition = executableDefinition(automation);
+			const trigger = definition.trigger;
 			const triggerType =
 				"type" in trigger ? trigger.type : "status_changed";
 
@@ -208,41 +225,74 @@ export const findMatchingAutomations = internalQuery({
 				return false;
 			}
 
-			switch (args.triggerType) {
-				case "status_changed": {
-					if (
-						"toStatus" in trigger &&
-						trigger.toStatus !== args.toStatus
-					) {
-						return false;
-					}
-					if (
-						"fromStatus" in trigger &&
-						trigger.fromStatus &&
-						trigger.fromStatus !== args.fromStatus
-					) {
-						return false;
-					}
-					return true;
-				}
-				case "record_created":
-					return true;
-				case "record_updated": {
-					// Field filter via v2 `fields`; no filter means any field
-					// change matches.
-					const watched: string[] = [];
-					if ("fields" in trigger && trigger.fields) {
-						watched.push(...trigger.fields);
-					}
-					if (watched.length === 0) {
+			const shapeMatches = ((): boolean => {
+				switch (args.triggerType) {
+					case "status_changed": {
+						if (
+							"toStatus" in trigger &&
+							trigger.toStatus !== args.toStatus
+						) {
+							return false;
+						}
+						if (
+							"fromStatus" in trigger &&
+							trigger.fromStatus &&
+							trigger.fromStatus !== args.fromStatus
+						) {
+							return false;
+						}
 						return true;
 					}
-					const changed = args.changedFields ?? [];
-					return watched.some((f) => changed.includes(f));
+					case "record_created":
+						return true;
+					case "record_updated": {
+						// Field filter via v2 `fields`; no filter means any field
+						// change matches. Kept alongside entryCriteria for
+						// back-compat.
+						const watched: string[] = [];
+						if ("fields" in trigger && trigger.fields) {
+							watched.push(...trigger.fields);
+						}
+						if (watched.length === 0) {
+							return true;
+						}
+						const changed = args.changedFields ?? [];
+						return watched.some((f) => changed.includes(f));
+					}
+					default:
+						return false;
 				}
-				default:
-					return false;
-			}
+			})();
+			if (!shapeMatches) return false;
+
+			// Entry criteria (A5-2): evaluated against the actual record before
+			// anything is scheduled, with condition-node semantics
+			// (evaluateConditionGroups) scoped to trigger + globals.
+			const criteria =
+				"entryCriteria" in trigger ? trigger.entryCriteria : undefined;
+			if (!criteria || criteria.groups.length === 0) return true;
+			if (!record) return false;
+			const scope: VariableScope = {
+				trigger: {
+					record,
+					event:
+						args.fromStatus !== undefined || args.toStatus !== undefined
+							? { oldValue: args.fromStatus, newValue: args.toStatus }
+							: undefined,
+				},
+				workflow: { now: Date.now(), tz: automationFormulaTz(trigger) },
+				org: org ? { id: args.orgId, name: org.name } : undefined,
+				user: actor
+					? { id: actor._id, name: actor.name, email: actor.email }
+					: undefined,
+				formulas: definition.formulas,
+			};
+			return evaluateConditionGroups(
+				criteria.logic,
+				criteria.groups,
+				record,
+				scope
+			);
 		});
 	},
 });
@@ -306,6 +356,8 @@ async function matchAndScheduleAutomations(
 			fromStatus: params.fromStatus,
 			toStatus: params.toStatus,
 			changedFields: params.changedFields,
+			entityId: params.entityId,
+			actorUserId: params.actorUserId,
 		}
 	);
 
@@ -1992,7 +2044,7 @@ function computeDelayResume(
  * Get an object by type and ID, asserting it belongs to the given org.
  */
 async function getObject(
-	ctx: MutationCtx,
+	ctx: { db: QueryCtx["db"] },
 	objectType: ObjectType,
 	objectId: string,
 	orgId: Id<"organizations">

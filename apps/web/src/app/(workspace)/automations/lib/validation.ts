@@ -132,6 +132,22 @@ function validateTrigger(
 			break;
 		}
 	}
+
+	// Entry criteria (A5-2): absent/empty is fine; started-but-incomplete
+	// rules block save, mirroring condition-node completeness.
+	if (trigger.entryCriteria) {
+		const objectType = trigger.objectType ?? null;
+		const incomplete = trigger.entryCriteria.groups.some((group) =>
+			group.rules.some((rule) => !isRuleComplete(objectType, rule))
+		);
+		if (incomplete) {
+			errors.push({
+				type: "missing_required_config",
+				message:
+					"Finish the trigger's entry criteria or remove the empty condition",
+			});
+		}
+	}
 }
 
 function validateConditionNode(

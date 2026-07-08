@@ -639,6 +639,201 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("trigger entry criteria (Phase 1.7 / A5-2)", () => {
+		function criteria(field: string, operator: string, value: string) {
+			return {
+				logic: "and" as const,
+				groups: [
+					{
+						logic: "and" as const,
+						rules: [
+							{
+								field,
+								// eslint-disable-next-line @typescript-eslint/no-explicit-any
+								operator: operator as any,
+								value: { kind: "static" as const, value },
+							},
+						],
+					},
+				],
+			};
+		}
+
+		const stampNode = updateFieldActionNode("act-1", "notes", "fired");
+
+		it("a record_created event matching the entry criteria fires the run", async () => {
+			const { asUser } = await setupUser();
+			await asUser.mutation(api.automations.create, {
+				name: "Only Acme clients",
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Acme"),
+				},
+				nodes: [stampNode],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("fired");
+		});
+
+		it("a non-matching event produces no execution row at all", async () => {
+			const { asUser } = await setupUser();
+			await asUser.mutation(api.automations.create, {
+				name: "Only Acme clients",
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Acme"),
+				},
+				nodes: [stampNode],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Other Co",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(0);
+		});
+
+		it("record_updated: the fields watch and entry criteria are ANDed", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const matchId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const missId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Bathroom refresh",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await drainEvents(); // flush creation events before the automation exists
+
+			await asUser.mutation(api.automations.create, {
+				name: "Kitchen title changes only",
+				trigger: {
+					type: "record_updated",
+					objectType: "project",
+					fields: ["title"],
+					entryCriteria: criteria("title", "contains", "Kitchen"),
+				},
+				nodes: [updateFieldActionNode("act-1", "description", "fired")],
+				isActive: true,
+			});
+
+			// Watched field + criteria match → fires.
+			await asUser.mutation(api.projects.update, {
+				id: matchId,
+				title: "Kitchen remodel v2",
+			});
+			await drainEvents();
+			const match = await t.run(async (ctx) => ctx.db.get(matchId));
+			expect(match?.description).toBe("fired");
+
+			// Watched field changes but criteria don't match → no run.
+			await asUser.mutation(api.projects.update, {
+				id: missId,
+				title: "Bathroom refresh v2",
+			});
+			await drainEvents();
+			const miss = await t.run(async (ctx) => ctx.db.get(missId));
+			expect(miss?.description).toBeUndefined();
+
+			// Criteria match but the changed field isn't watched → no run.
+			await asUser.mutation(api.projects.update, {
+				id: matchId,
+				description: "manual edit",
+			});
+			await drainEvents();
+			const after = await t.run(async (ctx) => ctx.db.get(matchId));
+			expect(after?.description).toBe("manual edit");
+		});
+
+		it("matching runs against the published snapshot's criteria, not working-copy edits", async () => {
+			const { asUser } = await setupUser();
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Snapshot criteria",
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Acme"),
+				},
+				nodes: [stampNode],
+				isActive: true, // publishes v1 with the Acme criteria
+			});
+
+			// Unpublished working-copy edit loosens the criteria to "Other".
+			await asUser.mutation(api.automations.update, {
+				id: automationId,
+				trigger: {
+					type: "record_created",
+					objectType: "client",
+					entryCriteria: criteria("companyName", "contains", "Other"),
+				},
+			});
+
+			const otherId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Other Co",
+				status: "lead",
+			});
+			await drainEvents();
+			const other = await t.run(async (ctx) => ctx.db.get(otherId));
+			// Published (v1) criteria still govern: "Other Co" must NOT fire.
+			expect(other?.notes).toBeUndefined();
+
+			const acmeId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme LLC",
+				status: "lead",
+			});
+			await drainEvents();
+			const acme = await t.run(async (ctx) => ctx.db.get(acmeId));
+			expect(acme?.notes).toBe("fired");
+		});
+
+		it("save-time validation rejects entry criteria on unknown fields", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad criteria",
+					trigger: {
+						type: "record_created",
+						objectType: "client",
+						entryCriteria: criteria("noSuchField", "equals", "x"),
+					},
+					nodes: [stampNode],
+					isActive: false,
+				})
+			).rejects.toThrow(/unknown field/i);
+		});
+	});
+
 	describe("condition nodes", () => {
 		it("follows nextNodeId when true and elseNodeId when false", async () => {
 			const { asUser } = await setupUser();

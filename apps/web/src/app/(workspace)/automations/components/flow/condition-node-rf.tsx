@@ -7,40 +7,17 @@ import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
 import {
-	VALUELESS_OPERATORS,
+	getFieldDefinition,
 	getFilterableFields,
 	type AutomationObjectType,
 	type ConditionNodeConfig,
-	type ConditionRule,
 } from "../../lib/node-types";
+import { conditionSentence } from "../../lib/condition-sentence";
 
-const OPERATOR_LABELS: Record<string, string> = {
-	equals: "equals",
-	not_equals: "does not equal",
-	contains: "contains",
-	not_contains: "does not contain",
-	is_empty: "is empty",
-	is_not_empty: "is not empty",
-	greater_than: "is greater than",
-	less_than: "is less than",
-	gte: "is at least",
-	lte: "is at most",
-	is_true: "is true",
-	is_false: "is false",
-	before: "is before",
-	after: "is after",
-};
-
-function describeRule(rule: ConditionRule): string {
-	const opLabel = OPERATOR_LABELS[rule.operator] ?? rule.operator;
-	if ((VALUELESS_OPERATORS as readonly string[]).includes(rule.operator)) {
-		return `${rule.field} ${opLabel}`;
-	}
-	const value = rule.value?.kind === "static" ? rule.value.value : "...";
-	return `${rule.field} ${opLabel} "${value ?? "..."}"`;
-}
-
-function getSummary(config: ConditionNodeConfig | undefined): {
+function getSummary(
+	config: ConditionNodeConfig | undefined,
+	objectType: AutomationObjectType | null
+): {
 	title: string;
 	description: string;
 	isConfigured: boolean;
@@ -50,17 +27,22 @@ function getSummary(config: ConditionNodeConfig | undefined): {
 		return { title: "Set a condition", description: "Configure condition...", isConfigured: false };
 	}
 
-	const [first, ...rest] = allRules;
+	const firstField = allRules[0].field;
+	const title =
+		(objectType ? getFieldDefinition(objectType, firstField)?.label : undefined) ??
+		firstField;
+	// Full plain-English readback (A5-1); the card truncates to one line.
 	const description =
-		rest.length > 0 ? `${describeRule(first)} +${rest.length} more` : describeRule(first);
+		conditionSentence(config.logic, config.groups, objectType) ||
+		"Configure condition...";
 
-	return { title: first.field, description, isConfigured: true };
+	return { title, description, isConfigured: true };
 }
 
 export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as ConditionNodeConfig | undefined;
-	const { title, description, isConfigured } = getSummary(config);
 	const triggerObjectType = data?.triggerObjectType as AutomationObjectType | null;
+	const { title, description, isConfigured } = getSummary(config, triggerObjectType ?? null);
 
 	const isFieldInvalid = useMemo(() => {
 		const allRules = (config?.groups ?? []).flatMap((g) => g.rules);

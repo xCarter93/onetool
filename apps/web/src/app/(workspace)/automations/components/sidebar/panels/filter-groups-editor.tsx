@@ -26,6 +26,7 @@ import {
 	type WorkflowNode,
 } from "../../../lib/node-types";
 import { ValueInput } from "./value-input";
+import { OPERATOR_LABELS } from "../../../lib/condition-sentence";
 
 /**
  * Shared group/rule builder for condition-config.tsx (with a top-level
@@ -33,22 +34,6 @@ import { ValueInput } from "./value-input";
  * ANDed — pass topLevelLogic undefined and a helperText instead).
  */
 
-const OPERATOR_LABELS: Record<string, string> = {
-	equals: "equals",
-	not_equals: "does not equal",
-	contains: "contains",
-	not_contains: "does not contain",
-	is_empty: "is empty",
-	is_not_empty: "is not empty",
-	greater_than: "is greater than",
-	less_than: "is less than",
-	gte: "is at least",
-	lte: "is at most",
-	is_true: "is true",
-	is_false: "is false",
-	before: "is before",
-	after: "is after",
-};
 
 function isValueless(operator: string): boolean {
 	return (VALUELESS_OPERATORS as readonly string[]).includes(operator);

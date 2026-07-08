@@ -13,6 +13,7 @@ import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 import { DeleteStepButton, PanelSection } from "./panel-primitives";
 import { FilterGroupsEditor } from "./filter-groups-editor";
+import { ConditionSentenceSummary } from "./condition-sentence-summary";
 
 function defaultConfig(): ConditionNodeConfig {
 	return { kind: "condition", logic: "and", groups: [{ logic: "and", rules: [] }] };
@@ -78,6 +79,12 @@ export function ConditionConfigPanel({
 						trigger={trigger}
 						targetNodeId={nodeId}
 						formulas={formulas}
+					/>
+					<ConditionSentenceSummary
+						prefix="Runs when"
+						logic={config.logic}
+						groups={config.groups}
+						objectType={objectType}
 					/>
 				</PanelSection>
 			</div>

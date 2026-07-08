@@ -481,3 +481,70 @@ describe("validateWorkflowForSave — end / next_item loop placement", () => {
 		expect(result.errors.some((e) => e.nodeId === "next1")).toBe(false);
 	});
 });
+
+describe("validateWorkflowForSave — trigger entry criteria", () => {
+	function triggerWith(
+		entryCriteria: TriggerConfig["entryCriteria"]
+	): TriggerConfig {
+		return { type: "record_created", objectType: "invoice", entryCriteria };
+	}
+
+	// A minimal valid workflow so trigger validation is the only variable.
+	const endNodes = [
+		dbRfNode({ id: "end1", type: "end", config: { kind: "end" } }, "invoice"),
+	];
+
+	it("absent entry criteria is valid", () => {
+		const result = validateWorkflowForSave(triggerWith(undefined), endNodes);
+		expect(result.valid).toBe(true);
+	});
+
+	it("complete entry criteria are valid", () => {
+		const result = validateWorkflowForSave(
+			triggerWith({
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [
+							{
+								field: "status",
+								operator: "equals",
+								value: { kind: "static", value: "draft" },
+							},
+						],
+					},
+				],
+			}),
+			endNodes
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	it("an incomplete entry-criteria rule blocks save", () => {
+		const result = validateWorkflowForSave(
+			triggerWith({
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [
+							{
+								field: "status",
+								operator: "equals",
+								value: { kind: "static", value: "" },
+							},
+						],
+					},
+				],
+			}),
+			endNodes
+		);
+		expect(result.valid).toBe(false);
+		expect(
+			result.errors.some((e) =>
+				e.message.includes("entry criteria")
+			)
+		).toBe(true);
+	});
+});
