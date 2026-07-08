@@ -1,5 +1,6 @@
 import { internalMutation, MutationCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import { normalizeSubject } from "../email/threads";
 
 /**
  * Phase 1 backfill: create first-class `emailThreads` rows from existing
@@ -21,15 +22,6 @@ import { Doc, Id } from "../_generated/dataModel";
  * Assumes email volume fits one mutation's read/write budget (early-stage table).
  * If the table grows large, chunk by orgId before re-running.
  */
-
-function normalizeSubject(subject: string): string {
-	// strip all leading Re:/Fwd:/Fw: prefixes, collapse whitespace, lowercase
-	return subject
-		.replace(/^(\s*(re|fwd|fw)\s*:\s*)+/i, "")
-		.replace(/\s+/g, " ")
-		.trim()
-		.toLowerCase();
-}
 
 export const backfillEmailThreads = internalMutation({
 	args: {},

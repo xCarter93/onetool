@@ -123,6 +123,11 @@ export const handleEmailEvent = internalMutation({
 			}
 
 			case "email.bounced":
+				// Idempotent against webhook redelivery; never regress another
+				// terminal verdict.
+				if (isTerminal) {
+					break;
+				}
 				await ctx.db.patch(emailMessage._id, {
 					status: "bounced",
 					bouncedAt: eventTimestamp,
@@ -139,6 +144,9 @@ export const handleEmailEvent = internalMutation({
 				break;
 
 			case "email.complained":
+				if (isTerminal) {
+					break;
+				}
 				await ctx.db.patch(emailMessage._id, {
 					status: "complained",
 					complainedAt: eventTimestamp,
