@@ -862,14 +862,19 @@ export default defineSchema({
 	// Email Messages - track sent and received client emails via Resend
 	emailMessages: defineTable({
 		orgId: v.id("organizations"),
-		clientId: v.id("clients"),
+		// Nullable: inbound mail from an unrecognized sender persists on an
+		// unlinked thread instead of being dropped. Existing rows keep their id.
+		clientId: v.union(v.id("clients"), v.null()),
 		resendEmailId: v.string(), // Resend's email ID for tracking
 
 		// Direction and threading
 		direction: v.union(v.literal("outbound"), v.literal("inbound")),
-		threadId: v.optional(v.string()), // Thread identifier for grouping related emails
+		threadId: v.optional(v.string()), // LEGACY string grouping key — being replaced by threadDocId; kept through the dual-write migration
+		threadDocId: v.optional(v.id("emailThreads")), // Canonical thread grouping key
+		rfcMessageId: v.optional(v.string()), // This message's own RFC 5322 Message-ID; canonical thread-match key
 		inReplyTo: v.optional(v.string()), // Message-ID this email is replying to (RFC 5322)
 		references: v.optional(v.array(v.string())), // Full chain of message IDs in thread
+		idempotencyKey: v.optional(v.string()), // Per-logical-message send key (audit; also passed to provider)
 
 		// Email content
 		subject: v.string(),
@@ -913,7 +918,9 @@ export default defineSchema({
 		.index("by_resend_id", ["resendEmailId"])
 		.index("by_org_status", ["orgId", "status"])
 		.index("by_client_status", ["clientId", "status"])
-		.index("by_thread", ["threadId", "sentAt"]),
+		.index("by_thread", ["threadId", "sentAt"])
+		.index("by_rfc_message_id", ["rfcMessageId"])
+		.index("by_thread_doc", ["threadDocId", "sentAt"]),
 
 	// Email Attachments - files attached to emails
 	emailAttachments: defineTable({
@@ -934,6 +941,39 @@ export default defineSchema({
 	})
 		.index("by_email", ["emailMessageId"])
 		.index("by_org", ["orgId"]),
+
+	// Email Threads - first-class conversations keyed on the RFC Message-ID chain
+	emailThreads: defineTable({
+		orgId: v.id("organizations"),
+		// Nullable: unknown-sender threads have no linked client until triaged
+		clientId: v.union(v.id("clients"), v.null()),
+		subjectNormalized: v.string(), // subject with all leading Re:/Fwd: stripped, lowercased
+		rootRfcMessageId: v.optional(v.string()), // Message-ID of the thread's root message (best-effort for backfilled threads)
+		lastMessageAt: v.number(), // timestamp of the most recent message (sort key for the inbox)
+		messageCount: v.number(),
+		unreadCount: v.number(),
+		status: v.union(v.literal("open"), v.literal("archived")),
+		participantEmails: v.array(v.string()), // distinct addresses seen on the thread
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_last_message", ["orgId", "lastMessageAt"])
+		.index("by_client", ["clientId"])
+		.index("by_root_message_id", ["rootRfcMessageId"]),
+
+	// Email Suppressions - addresses that must not be sent to (hard bounce / complaint / manual)
+	emailSuppressions: defineTable({
+		orgId: v.optional(v.id("organizations")), // org-scoped when set; a global suppression when absent
+		email: v.string(),
+		reason: v.union(
+			v.literal("hard_bounce"),
+			v.literal("complaint"),
+			v.literal("manual")
+		),
+		source: v.string(), // where the suppression came from (e.g. "resend_webhook", "admin")
+		createdAt: v.number(),
+	})
+		.index("by_email", ["email"])
+		.index("by_org_email", ["orgId", "email"]),
 
 	// Community Pages - public mini-websites for organizations
 	communityPages: defineTable({

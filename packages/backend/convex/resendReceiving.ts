@@ -456,6 +456,28 @@ async function fetchEmailContent(
 			return null;
 		}
 
+		// TEMP DIAGNOSTIC (P0 live-header test) — OFF by default to avoid logging
+		// PII. Set Convex env EMAIL_HEADER_DEBUG=true to confirm whether the SDK's
+		// receiving.get() actually surfaces In-Reply-To/References (decides the P3
+		// build path), read the logs, then unset it. Remove once P3 lands.
+		if (process.env.EMAIL_HEADER_DEBUG === "true") {
+			try {
+				const { html: _h, text: _t, ...nonBody } = data as unknown as Record<
+					string,
+					unknown
+				>;
+				console.log(
+					"[HEADER-TEST] receiving.get() non-body fields:",
+					JSON.stringify(nonBody, null, 2)
+				);
+			} catch (diagErr) {
+				console.log(
+					"[HEADER-TEST] failed to serialize receiving.get() payload",
+					diagErr
+				);
+			}
+		}
+
 		return {
 			html: data.html || undefined,
 			text: data.text || undefined,

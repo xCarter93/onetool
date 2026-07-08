@@ -186,8 +186,15 @@ export const replyToEmail = userMutation({
 			throw new Error("Organization not found");
 		}
 
+		// Reply requires a client-linked original; unknown-sender threads
+		// (clientId === null) can't be replied to through this path.
+		const clientId = originalEmail.clientId;
+		if (!clientId) {
+			throw new Error("Cannot reply to an email with no linked client");
+		}
+
 		// Get client details
-		const client = await ctx.db.get(originalEmail.clientId);
+		const client = await ctx.db.get(clientId);
 		if (!client) {
 			throw new Error("Client not found");
 		}
@@ -196,7 +203,7 @@ export const replyToEmail = userMutation({
 		const primaryContact = await ctx.db
 			.query("clientContacts")
 			.withIndex("by_primary", (q) =>
-				q.eq("clientId", originalEmail.clientId).eq("isPrimary", true)
+				q.eq("clientId", clientId).eq("isPrimary", true)
 			)
 			.first();
 
@@ -264,7 +271,7 @@ export const replyToEmail = userMutation({
 		// Store email record with threading information
 		const emailMessageId = await ctx.db.insert("emailMessages", {
 			orgId,
-			clientId: originalEmail.clientId,
+			clientId,
 			resendEmailId: emailId,
 			direction: "outbound",
 			threadId: originalEmail.threadId || originalEmail.resendEmailId,
@@ -288,7 +295,7 @@ export const replyToEmail = userMutation({
 			userId: user._id,
 			activityType: "email_sent",
 			entityType: "client",
-			entityId: originalEmail.clientId,
+			entityId: clientId,
 			entityName: client.companyName,
 			description: `Replied to email: ${subject}`,
 			metadata: {

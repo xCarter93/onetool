@@ -168,11 +168,14 @@ export const getEmailThread = optionalUserQuery({
 
 		let allMessages = messagesByThreadId;
 
-		// If we found a message, also search by subject to catch related messages
-		if (firstMessage) {
+		// Widen by subject to catch related messages — but only for client-linked
+		// threads. Unknown-sender threads (clientId === null) group by threadId
+		// alone; widening by a null clientId would cross-link every unlinked
+		// message in the org.
+		if (firstMessage && firstMessage.clientId) {
 			const cleanSubject = firstMessage.subject.replace(/^Re:\s*/i, "").trim();
 
-			// Get client ID from first message
+			// Get client ID from first message (narrowed non-null by the guard)
 			const clientId = firstMessage.clientId;
 
 			// Find all messages for this client

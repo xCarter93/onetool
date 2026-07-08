@@ -257,7 +257,7 @@ interface EmailItem {
 	to: string;
 	status: string;
 	sentAt?: string;
-	clientId: string;
+	clientId: string | null; // null for unknown-sender inbound (no linked client)
 	threadId?: string;
 }
 

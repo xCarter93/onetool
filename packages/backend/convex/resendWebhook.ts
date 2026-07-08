@@ -51,8 +51,8 @@ export const handleWebhookEvent = internalMutation({
 					deliveredAt: eventTimestamp,
 				});
 
-				// Create activity for delivery (only if sentBy is defined)
-				if (emailMessage.sentBy) {
+				// Create activity for delivery (only if sentBy + client are defined)
+				if (emailMessage.sentBy && emailMessage.clientId) {
 					await ctx.db.insert("activities", {
 						orgId: emailMessage.orgId,
 						userId: emailMessage.sentBy,
@@ -106,8 +106,8 @@ export const handleWebhookEvent = internalMutation({
 						openedAt: eventTimestamp,
 					});
 
-					// Create activity only after successful patch (only if sentBy is defined)
-					if (emailMessage.sentBy) {
+					// Create activity only after successful patch (only if sentBy + client are defined)
+					if (emailMessage.sentBy && emailMessage.clientId) {
 						await ctx.db.insert("activities", {
 							orgId: emailMessage.orgId,
 							userId: emailMessage.sentBy,

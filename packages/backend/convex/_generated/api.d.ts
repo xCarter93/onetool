@@ -72,6 +72,7 @@ import type * as lib_webhooks from "../lib/webhooks.js";
 import type * as lib_workflowTypes from "../lib/workflowTypes.js";
 import type * as messageAttachments from "../messageAttachments.js";
 import type * as migrations_addReceivingAddresses from "../migrations/addReceivingAddresses.js";
+import type * as migrations_backfillEmailThreads from "../migrations/backfillEmailThreads.js";
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
 import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
@@ -185,6 +186,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workflowTypes": typeof lib_workflowTypes;
   messageAttachments: typeof messageAttachments;
   "migrations/addReceivingAddresses": typeof migrations_addReceivingAddresses;
+  "migrations/backfillEmailThreads": typeof migrations_backfillEmailThreads;
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;
   "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
