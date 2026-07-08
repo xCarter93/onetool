@@ -22,7 +22,7 @@ function getSummary(config: DelayUntilNodeConfig | undefined): {
 	return { title: "Wait until a date", description, isConfigured: true };
 }
 
-export const DelayUntilNodeRF = memo(({ data, selected }: NodeProps) => {
+export const DelayUntilNodeRF = memo(({ data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as DelayUntilNodeConfig | undefined;
 	const { title, description, isConfigured } = getSummary(config);
 
@@ -31,17 +31,15 @@ export const DelayUntilNodeRF = memo(({ data, selected }: NodeProps) => {
 			className={cn(
 				"w-[280px]",
 				isConfigured
-					? "border-border shadow-sm"
+					? "border-l-4 border-l-cyan-500 dark:border-l-cyan-400"
 					: "border-dashed border-muted-foreground/30",
-				"hover:border-primary/30 transition-colors",
-				selected && "ring-2 ring-primary/50",
 			)}
 			aria-label={`Delay until: ${title} - ${description}`}
 		>
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center shrink-0">
+					<div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300 flex items-center justify-center shrink-0">
 						<CalendarClock className="h-4 w-4" />
 					</div>
 					<div className="min-w-0 flex-1">

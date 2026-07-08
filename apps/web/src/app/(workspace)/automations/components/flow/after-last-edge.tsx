@@ -9,6 +9,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAfterLastGeometry } from "./edge-geometry";
 import { NextItemMarker } from "./next-item-marker";
+import { LOOP_EDGE_STYLE } from "./edge-style";
 
 /**
  * Custom edge for the "After Last" branch of loop nodes.
@@ -44,7 +45,7 @@ export function AfterLastEdge({
 		<>
 			<BaseEdge
 				path={geometry.edgePath}
-				style={{ ...style, strokeWidth: 1.5, stroke: "var(--color-orange-300)", strokeDasharray: "6 3" }}
+				style={{ ...style, ...LOOP_EDGE_STYLE }}
 			/>
 			<EdgeLabelRenderer>
 				<div

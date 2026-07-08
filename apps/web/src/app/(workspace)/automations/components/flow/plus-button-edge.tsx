@@ -10,11 +10,7 @@ import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NextItemMarker } from "./next-item-marker";
-
-const EDGE_STYLE = {
-	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
-	strokeWidth: 1.5,
-};
+import { EDGE_STYLE } from "./edge-style";
 
 export function PlusButtonEdge(props: EdgeProps) {
 	const {

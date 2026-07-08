@@ -16,8 +16,12 @@ export const ACTION_META: Record<
 	ActionNodeConfig["action"]["type"],
 	{
 		icon: LucideIcon;
+		/** Icon-chip background (dual-mode). */
 		bg: string;
+		/** Icon-chip foreground (dual-mode). */
 		fg: string;
+		/** Left-accent border classes (dual-mode) for the node card. */
+		accent: string;
 		badge: string;
 		name: string;
 		description: string;
@@ -25,32 +29,36 @@ export const ACTION_META: Record<
 > = {
 	update_field: {
 		icon: Play,
-		bg: "bg-green-50 dark:bg-green-950/40",
-		fg: "text-green-600 dark:text-green-400",
+		bg: "bg-green-100 dark:bg-green-400/15",
+		fg: "text-green-700 dark:text-green-300",
+		accent: "border-l-green-500 dark:border-l-green-400",
 		badge: "Actions",
 		name: "Update Record",
 		description: "Set a field on the record in scope.",
 	},
 	create_task: {
 		icon: ListTodo,
-		bg: "bg-green-50 dark:bg-green-950/40",
-		fg: "text-green-600 dark:text-green-400",
+		bg: "bg-green-100 dark:bg-green-400/15",
+		fg: "text-green-700 dark:text-green-300",
+		accent: "border-l-green-500 dark:border-l-green-400",
 		badge: "Actions",
 		name: "Create Task",
 		description: "Add a task to your workspace.",
 	},
 	send_notification: {
 		icon: Bell,
-		bg: "bg-pink-50 dark:bg-pink-950/40",
-		fg: "text-pink-600 dark:text-pink-400",
+		bg: "bg-pink-100 dark:bg-pink-400/15",
+		fg: "text-pink-700 dark:text-pink-300",
+		accent: "border-l-pink-500 dark:border-l-pink-400",
 		badge: "Communication",
 		name: "Send Notification",
 		description: "Notify an admin, the record owner, or a teammate.",
 	},
 	send_team_message: {
 		icon: MessagesSquare,
-		bg: "bg-pink-50 dark:bg-pink-950/40",
-		fg: "text-pink-600 dark:text-pink-400",
+		bg: "bg-pink-100 dark:bg-pink-400/15",
+		fg: "text-pink-700 dark:text-pink-300",
+		accent: "border-l-pink-500 dark:border-l-pink-400",
 		badge: "Communication",
 		name: "Send Team Message",
 		description: "Broadcast a message to your team.",

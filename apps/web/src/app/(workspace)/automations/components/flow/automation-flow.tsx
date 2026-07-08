@@ -28,6 +28,7 @@ import {
 } from "../../lib/derived-layout";
 import type { AppEdge, AppNode } from "../../lib/node-types";
 import "@xyflow/react/dist/style.css";
+import "./flow-theme.css";
 import { TriggerNodeRF } from "./trigger-node-rf";
 import { ConditionNodeRF } from "./condition-node-rf";
 import { ActionNodeRF } from "./action-node-rf";

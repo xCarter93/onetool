@@ -63,7 +63,7 @@ function getSummary(config: ActionNodeConfig | undefined): {
 	}
 }
 
-export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
+export const ActionNodeRF = memo(({ data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as ActionNodeConfig | undefined;
 	const { title, description, isConfigured } = getSummary(config);
 	const meta = config ? ACTION_META[config.action.type] : undefined;
@@ -74,10 +74,8 @@ export const ActionNodeRF = memo(({ data, selected }: NodeProps) => {
 			className={cn(
 				"w-[280px]",
 				isConfigured
-					? "border-border shadow-sm"
+					? meta && `border-l-4 ${meta.accent}`
 					: "border-dashed border-muted-foreground/30",
-				"hover:border-primary/30 transition-colors",
-				selected && "ring-2 ring-primary/50",
 			)}
 			aria-label={`Action: ${title} - ${description}`}
 		>

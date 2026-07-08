@@ -76,26 +76,24 @@ function getSummary(trigger: TriggerConfig | undefined): {
 	}
 }
 
-export const TriggerNodeRF = memo(({ data, selected }: NodeProps) => {
+export const TriggerNodeRF = memo(({ data }: NodeProps) => {
 	const trigger = (data as Record<string, unknown>)?.trigger as TriggerConfig | undefined;
 	const { title, description } = getSummary(trigger);
 
 	return (
 		<div className="relative mt-4">
-			<span className="absolute -top-2.5 left-3 bg-background px-2 text-[10px] font-semibold uppercase tracking-wider text-amber-600 z-10">
+			<span className="absolute -top-2.5 left-3 bg-background px-2 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300 z-10">
 				Trigger
 			</span>
 			<BaseNode
 				className={cn(
-					"w-[280px] border-amber-200 shadow-sm",
-					"hover:border-primary/30 transition-colors",
-					selected && "ring-2 ring-primary/50",
+					"w-[280px] border-l-4 border-l-amber-500 dark:border-l-amber-400",
 				)}
 				aria-label={`Trigger: ${title} - ${description}`}
 			>
 				<BaseNodeContent className="p-3">
 					<div className="flex items-center gap-3">
-						<div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+						<div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300 flex items-center justify-center shrink-0">
 							<Zap className="h-4 w-4" />
 						</div>
 						<div className="min-w-0 flex-1">
