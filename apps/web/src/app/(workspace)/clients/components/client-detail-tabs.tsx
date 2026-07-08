@@ -1,6 +1,7 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import type { ActivityWithUser } from "@/app/(workspace)/home/components/activity-item";
 import {
 	StyledTabs,
@@ -27,7 +28,7 @@ interface ClientDetailTabsProps {
 	quotes: Doc<"quotes">[] | undefined;
 	invoices: Doc<"invoices">[] | undefined;
 	activities: ActivityWithUser[] | undefined;
-	emails: Doc<"emailMessages">[] | undefined;
+	threads: EmailThreadSummary[] | undefined;
 	tasks: Doc<"tasks">[] | undefined;
 	clientProperties: Doc<"clientProperties">[];
 	clientContacts: Doc<"clientContacts">[];
@@ -48,7 +49,7 @@ export function ClientDetailTabs({
 	quotes,
 	invoices,
 	activities,
-	emails,
+	threads,
 	tasks,
 	clientProperties,
 	clientContacts,
@@ -68,7 +69,8 @@ export function ClientDetailTabs({
 						<StyledTabsTrigger value="overview">Overview</StyledTabsTrigger>
 						<StyledTabsTrigger value="activity">Activity</StyledTabsTrigger>
 						<StyledTabsTrigger value="emails">
-							Emails{emails && emails.length > 0 ? ` (${emails.length})` : ""}
+							Email Threads
+							{threads && threads.length > 0 ? ` (${threads.length})` : ""}
 						</StyledTabsTrigger>
 						<StyledTabsTrigger value="tasks">
 							Tasks{tasks && tasks.length > 0 ? ` (${tasks.length})` : ""}
@@ -95,7 +97,7 @@ export function ClientDetailTabs({
 
 					<StyledTabsContent value="emails" className="mt-0 pt-5">
 						<EmailsTab
-							emails={emails}
+							threads={threads}
 							onComposeEmail={onComposeEmail}
 							onThreadClick={onThreadClick}
 						/>

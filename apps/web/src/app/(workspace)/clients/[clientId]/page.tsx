@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import { EmailThreadSheet } from "@/app/(workspace)/clients/components/email-thread-sheet";
+import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import { ClientDetailHeader } from "@/app/(workspace)/clients/components/client-detail-header";
 import { ClientDetailTabs } from "@/app/(workspace)/clients/components/client-detail-tabs";
 import { useState } from "react";
@@ -53,10 +54,10 @@ export default function ClientDetailPage() {
 		clientId: clientId as Id<"clients">,
 	});
 
-	// Fetch email messages for this client
-	const clientEmails = useQuery(api.emailMessages.listByClient, {
+	// Fetch email threads (grouped conversations) for this client
+	const clientThreads = useQuery(api.emailMessages.listThreadsByClient, {
 		clientId: clientId as Id<"clients">,
-	});
+	}) as EmailThreadSummary[] | undefined;
 
 	// Fetch activities for this client
 	const activities = useQuery(api.activities.getByEntity, {
@@ -79,7 +80,7 @@ export default function ClientDetailPage() {
 		projects === undefined ||
 		invoices === undefined ||
 		clientTasks === undefined ||
-		clientEmails === undefined
+		clientThreads === undefined
 	) {
 		return (
 			<div className="relative pl-6 pt-8 pb-20">
@@ -146,7 +147,7 @@ export default function ClientDetailPage() {
 						quotes={quotes}
 						invoices={invoices}
 						activities={activities}
-						emails={clientEmails}
+						threads={clientThreads}
 						tasks={clientTasks}
 						clientProperties={clientProperties || []}
 						clientContacts={clientContacts || []}
