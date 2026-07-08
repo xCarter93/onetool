@@ -529,8 +529,22 @@ function validateWorkflowDefinition(
 				}
 				break;
 			}
-			case "end":
+			case "end": {
+				if (bodyScopeType.has(node.id)) {
+					throw new Error(
+						`Node ${node.id}: an End step inside a loop stops the entire run — use "Next item" to skip to the next record`
+					);
+				}
 				break;
+			}
+			case "next_item": {
+				if (!bodyScopeType.has(node.id)) {
+					throw new Error(
+						`Node ${node.id}: "Next item" only works inside a loop`
+					);
+				}
+				break;
+			}
 		}
 	}
 

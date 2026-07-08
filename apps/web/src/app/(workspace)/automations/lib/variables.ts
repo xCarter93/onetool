@@ -142,19 +142,19 @@ const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
 	{ path: "org.name", label: "Organization name", group: "Globals", fieldType: "text" },
 	{
 		path: "user.id",
-		label: "Your user ID (empty unless run manually)",
+		label: "Your user ID (empty on scheduled runs)",
 		group: "Globals",
 		fieldType: "text",
 	},
 	{
 		path: "user.name",
-		label: "Your name (empty unless run manually)",
+		label: "Your name (empty on scheduled runs)",
 		group: "Globals",
 		fieldType: "text",
 	},
 	{
 		path: "user.email",
-		label: "Your email (empty unless run manually)",
+		label: "Your email (empty on scheduled runs)",
 		group: "Globals",
 		fieldType: "text",
 	},

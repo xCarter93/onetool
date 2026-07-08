@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FormulaResource, TriggerConfig, WorkflowNode } from "../../lib/node-types";
 import type { EditorNode } from "../../lib/flow-adapter";
+import { getScopeObjectType } from "../../lib/variables";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
 import { TriggerConfigPanel } from "./panels/trigger-config";
@@ -32,7 +33,8 @@ export type SidebarMode =
 	| { mode: "node-config"; nodeType: "adjust_time"; nodeId: string }
 	| { mode: "node-config"; nodeType: "delay"; nodeId: string }
 	| { mode: "node-config"; nodeType: "delay_until"; nodeId: string }
-	| { mode: "node-config"; nodeType: "end"; nodeId: string };
+	| { mode: "node-config"; nodeType: "end"; nodeId: string }
+	| { mode: "node-config"; nodeType: "next_item"; nodeId: string };
 
 // ---------------------------------------------------------------------------
 // Standardized config panel props
@@ -97,6 +99,8 @@ function getSidebarTitle(mode: SidebarMode): string {
 			return "Configure Delay Until";
 		case "end":
 			return "End";
+		case "next_item":
+			return "Next item";
 		default:
 			return "Configure";
 	}
@@ -202,21 +206,35 @@ export function AutomationSidebar({
 			case "trigger-picker":
 				return <TriggerPicker onSelect={onTriggerTypeSelect} />;
 
-			case "step-picker":
+			case "step-picker": {
+				// "Next item" is only valid inside a loop body — scope it the same
+				// way validation.ts/panels do (see getScopeObjectType).
+				const workflowNodes = nodes.filter(
+					(n): n is WorkflowNode => n.type !== "placeholder"
+				);
+				const inLoop = getScopeObjectType(
+					workflowNodes,
+					mode.placeholderNodeId,
+					null
+				).inLoop;
 				return (
 					<StepPicker
+						inLoop={inLoop}
 						onSelect={(type, actionType) =>
 							onStepTypeSelect(type, mode.placeholderNodeId, actionType)
 						}
 					/>
 				);
+			}
 
 			case "node-config": {
-				if (mode.nodeType === "end") {
+				if (mode.nodeType === "end" || mode.nodeType === "next_item") {
 					return (
 						<div className="space-y-6">
 							<div className="text-sm text-muted-foreground">
-								This step ends the automation flow.
+								{mode.nodeType === "end"
+									? "This step ends the automation flow."
+									: "Skips to the loop's next record."}
 							</div>
 							{onDeleteNode && "nodeId" in mode && (
 								<div className="pt-6 border-t border-border">

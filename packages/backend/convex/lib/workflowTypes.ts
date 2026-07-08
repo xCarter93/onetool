@@ -250,6 +250,15 @@ export const endNodeConfigValidator = v.object({
 	kind: v.literal("end"),
 });
 
+/**
+ * Terminal only valid inside a loop body: ends the current iteration and
+ * continues with the loop's next record (an `end` node there would stop the
+ * entire run, and is rejected at save time).
+ */
+export const nextItemNodeConfigValidator = v.object({
+	kind: v.literal("next_item"),
+});
+
 // Compute nodes: read from scope, write a value into node.<id>.result. They
 // perform no DB writes, so the dry test run executes them for real.
 
@@ -296,7 +305,8 @@ export const nodeConfigValidator = v.union(
 	adjustTimeNodeConfigValidator,
 	delayNodeConfigValidator,
 	delayUntilNodeConfigValidator,
-	endNodeConfigValidator
+	endNodeConfigValidator,
+	nextItemNodeConfigValidator
 );
 
 export type WorkflowNodeConfig = Infer<typeof nodeConfigValidator>;
@@ -311,6 +321,7 @@ export const NODE_TYPES = [
 	"delay",
 	"delay_until",
 	"end",
+	"next_item",
 ] as const;
 
 export type WorkflowNodeType = (typeof NODE_TYPES)[number];
@@ -324,7 +335,8 @@ export const nodeTypeValidator = v.union(
 	v.literal("adjust_time"),
 	v.literal("delay"),
 	v.literal("delay_until"),
-	v.literal("end")
+	v.literal("end"),
+	v.literal("next_item")
 );
 
 // ---------------------------------------------------------------------------
@@ -497,8 +509,8 @@ export const executedNodeValidator = v.object({
 	startedAt: v.optional(v.number()),
 	completedAt: v.optional(v.number()),
 	recordsProcessed: v.optional(v.number()),
-	// True when this node consumed a fetch_records scan that hit the
-	// FETCH_SCAN_CAP row limit (fetch_records/loop/aggregate nodes).
+	// True when this node consumed a fetch_records scan that stopped at its
+	// scan cap with rows still unscanned (fetch_records/loop/aggregate nodes).
 	truncated: v.optional(v.boolean()),
 	// Bounded (~4KB) input/output snapshots for the runs viewer.
 	input: v.optional(v.any()),

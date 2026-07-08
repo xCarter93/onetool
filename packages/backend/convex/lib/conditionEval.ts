@@ -35,7 +35,7 @@ export type VariableScope = {
 	workflow?: { now?: number; tz?: string };
 	/** Always populated (the executor loads the org). */
 	org?: { id?: string; name?: string };
-	/** Triggering actor; empty on scheduled/system/event runs with no actor. */
+	/** Actor: set on manual/test runs and user-caused record/status events; empty on scheduled runs and system-caused events (webhooks, portal). */
 	user?: { id?: string; name?: string; email?: string };
 	/** Formula resource definitions, resolved lazily via `formula.<id>` paths. */
 	formulas?: FormulaResource[];

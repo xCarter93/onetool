@@ -46,7 +46,9 @@ export type ValidationResult = {
 		type:
 			| "placeholder_present"
 			| "missing_required_config"
-			| "no_trigger";
+			| "no_trigger"
+			| "end_inside_loop"
+			| "next_item_outside_loop";
 		message: string;
 		nodeId?: string;
 	}>;
@@ -709,6 +711,29 @@ export function validateWorkflowForSave(
 					errors
 				);
 				break;
+			case "end": {
+				const inLoop = getScopeObjectType(workflowNodes, node.id, objectType).inLoop;
+				if (inLoop) {
+					errors.push({
+						type: "end_inside_loop",
+						message:
+							'An End step inside a loop stops the entire run — use "Next item" to skip to the next record',
+						nodeId: node.id,
+					});
+				}
+				break;
+			}
+			case "next_item": {
+				const inLoop = getScopeObjectType(workflowNodes, node.id, objectType).inLoop;
+				if (!inLoop) {
+					errors.push({
+						type: "next_item_outside_loop",
+						message: '"Next item" only works inside a loop',
+						nodeId: node.id,
+					});
+				}
+				break;
+			}
 			default:
 				break;
 		}
@@ -734,6 +759,8 @@ export function getValidationToastMessage(
 		"no_trigger",
 		"placeholder_present",
 		"missing_required_config",
+		"end_inside_loop",
+		"next_item_outside_loop",
 	];
 
 	for (const type of priorities) {

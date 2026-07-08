@@ -95,6 +95,7 @@ const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
 	delay: "Delay",
 	delay_until: "Delay until",
 	end: "End",
+	next_item: "Next item",
 };
 
 /** Nodes and other formulas that reference a formula id. */

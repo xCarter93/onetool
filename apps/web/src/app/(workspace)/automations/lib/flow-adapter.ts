@@ -34,6 +34,7 @@ export const RF_NODE_TYPES = {
 	delay: "delayNode",
 	delay_until: "delayUntilNode",
 	end: "endNode",
+	next_item: "nextItemNode",
 	placeholder: "placeholderNode",
 	terminal: "terminalNode",
 } as const;
@@ -193,6 +194,8 @@ function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
 			};
 		case "end":
 			return { nodeType: "end" as const, _dbNode: node };
+		case "next_item":
+			return { nodeType: "next_item" as const, _dbNode: node };
 		default:
 			return {
 				nodeType: "action" as const,
@@ -285,8 +288,8 @@ export function automationToReactFlow(
 			position: { x: 0, y: 0 },
 		} as AppNode);
 
-		if (node.type === "end") {
-			// End nodes produce no outgoing edges — flow stops here
+		if (node.type === "end" || node.type === "next_item") {
+			// Terminal nodes produce no outgoing edges — flow stops here
 		} else if (node.type === "condition") {
 			// Condition: Yes branch (nextNodeId) -- from center handle
 			if (node.nextNodeId) {

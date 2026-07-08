@@ -329,6 +329,11 @@ export type EndNodeData = {
 	_dbNode: WorkflowNode;
 };
 
+export type NextItemNodeData = {
+	nodeType: "next_item";
+	_dbNode: WorkflowNode;
+};
+
 export type PlaceholderNodeData = {
 	nodeType: "placeholder";
 };
@@ -355,6 +360,7 @@ export type AdjustTimeRFNode = Node<AdjustTimeNodeData, "adjustTimeNode">;
 export type DelayRFNode = Node<DelayNodeData, "delayNode">;
 export type DelayUntilRFNode = Node<DelayUntilNodeData, "delayUntilNode">;
 export type EndRFNode = Node<EndNodeData, "endNode">;
+export type NextItemRFNode = Node<NextItemNodeData, "nextItemNode">;
 export type PlaceholderRFNode = Node<PlaceholderNodeData, "placeholderNode">;
 export type TerminalRFNode = Node<TerminalNodeData, "terminalNode">;
 
@@ -370,6 +376,7 @@ export type AppNode =
 	| DelayRFNode
 	| DelayUntilRFNode
 	| EndRFNode
+	| NextItemRFNode
 	| PlaceholderRFNode
 	| TerminalRFNode;
 

@@ -415,3 +415,69 @@ describe("validateWorkflowForSave — dangling false branch inside a loop", () =
 		expect(result.warnings.some((w) => w.nodeId === "cond1")).toBe(false);
 	});
 });
+
+describe("validateWorkflowForSave — end / next_item loop placement", () => {
+	const END_INSIDE_LOOP_MESSAGE =
+		'An End step inside a loop stops the entire run — use "Next item" to skip to the next record';
+	const NEXT_ITEM_OUTSIDE_LOOP_MESSAGE = '"Next item" only works inside a loop';
+
+	function loopOverTasksNodes(bodyNode: WorkflowNode): Node[] {
+		const fetch: WorkflowNode = {
+			id: "fetch1",
+			type: "fetch_records",
+			config: { kind: "fetch_records", objectType: "task", filters: [] },
+		};
+		const loop: WorkflowNode = {
+			id: "loop1",
+			type: "loop",
+			config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
+			bodyStartNodeId: bodyNode.id,
+		};
+		return [dbRfNode(fetch), dbRfNode(loop), dbRfNode(bodyNode)];
+	}
+
+	it("flags an End step inside a loop body as an error", () => {
+		const end: WorkflowNode = { id: "end1", type: "end", config: { kind: "end" } };
+		const nodes = loopOverTasksNodes(end);
+		const result = validateWorkflowForSave(invoiceTrigger, nodes);
+		expect(result.valid).toBe(false);
+		expect(
+			result.errors.some(
+				(e) =>
+					e.nodeId === "end1" &&
+					e.type === "end_inside_loop" &&
+					e.message === END_INSIDE_LOOP_MESSAGE
+			)
+		).toBe(true);
+	});
+
+	it("flags a Next item step outside any loop as an error", () => {
+		const nextItem: WorkflowNode = {
+			id: "next1",
+			type: "next_item",
+			config: { kind: "next_item" },
+		};
+		const nodes = [dbRfNode(nextItem, "invoice")];
+		const result = validateWorkflowForSave(invoiceTrigger, nodes);
+		expect(result.valid).toBe(false);
+		expect(
+			result.errors.some(
+				(e) =>
+					e.nodeId === "next1" &&
+					e.type === "next_item_outside_loop" &&
+					e.message === NEXT_ITEM_OUTSIDE_LOOP_MESSAGE
+			)
+		).toBe(true);
+	});
+
+	it("does not error on a Next item step inside a loop body", () => {
+		const nextItem: WorkflowNode = {
+			id: "next1",
+			type: "next_item",
+			config: { kind: "next_item" },
+		};
+		const nodes = loopOverTasksNodes(nextItem);
+		const result = validateWorkflowForSave(invoiceTrigger, nodes);
+		expect(result.errors.some((e) => e.nodeId === "next1")).toBe(false);
+	});
+});

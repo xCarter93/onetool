@@ -167,8 +167,8 @@ export function DebugTimeline({
 												</Badge>
 											</TooltipTrigger>
 											<TooltipContent side="top" className="max-w-xs">
-												This step scanned the 1,000 most recent records; older
-												records were not considered.
+												This step stopped scanning at the 5,000 most recent
+												records; older records were not considered.
 											</TooltipContent>
 										</Tooltip>
 									)}

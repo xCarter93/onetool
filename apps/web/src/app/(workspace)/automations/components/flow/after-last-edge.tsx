@@ -16,6 +16,9 @@ import {
 import { getAfterLastGeometry } from "./edge-geometry";
 import { ALL_STEP_ITEMS } from "../sidebar/step-picker";
 
+// "After Last" is always outside the loop body — "Next item" is invalid here.
+const AFTER_LAST_STEP_ITEMS = ALL_STEP_ITEMS.filter((item) => item.type !== "next_item");
+
 /**
  * Custom edge for the "After Last" branch of loop nodes.
  * Routes from the loop's right-side handle: right → curve down → straight
@@ -85,7 +88,7 @@ export function AfterLastEdge({
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="center" sideOffset={8}>
-							{ALL_STEP_ITEMS.map((item) => {
+							{AFTER_LAST_STEP_ITEMS.map((item) => {
 								const Icon = item.icon;
 								return (
 									<DropdownMenuItem

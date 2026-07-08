@@ -98,8 +98,8 @@ export function RunsTable() {
 									</Badge>
 								</TooltipTrigger>
 								<TooltipContent side="top" className="max-w-xs">
-									This run scanned the 1,000 most recent records for at least
-									one step; older records were not considered.
+									At least one step stopped scanning at the 5,000 most recent
+									records; older records were not considered.
 								</TooltipContent>
 							</Tooltip>
 						)}

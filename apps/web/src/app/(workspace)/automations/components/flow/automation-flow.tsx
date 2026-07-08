@@ -27,6 +27,7 @@ import { AdjustTimeNodeRF } from "./adjust-time-node-rf";
 import { DelayNodeRF } from "./delay-node-rf";
 import { DelayUntilNodeRF } from "./delay-until-node-rf";
 import { EndNodeRF } from "./end-node-rf";
+import { NextItemNodeRF } from "./next-item-node-rf";
 import { TerminalNodeRF } from "./add-step-node-rf";
 import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
 import { PlaceholderNodeRF } from "./placeholder-node-rf";
@@ -47,6 +48,7 @@ const nodeTypes = {
 	delayNode: DelayNodeRF,
 	delayUntilNode: DelayUntilNodeRF,
 	endNode: EndNodeRF,
+	nextItemNode: NextItemNodeRF,
 	terminalNode: TerminalNodeRF,
 	triggerPlaceholderNode: TriggerPlaceholderNodeRF,
 	placeholderNode: PlaceholderNodeRF,

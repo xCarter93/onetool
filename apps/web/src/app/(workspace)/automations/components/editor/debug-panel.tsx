@@ -234,8 +234,8 @@ export function DebugPanel({
 						</Badge>
 					</TooltipTrigger>
 					<TooltipContent side="top" className="max-w-xs">
-						At least one step scanned the 1,000 most recent records; older
-						records were not considered.
+						At least one step stopped scanning at the 5,000 most recent
+						records; older records were not considered.
 					</TooltipContent>
 				</Tooltip>
 			)}

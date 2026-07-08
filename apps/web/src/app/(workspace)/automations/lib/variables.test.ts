@@ -140,11 +140,11 @@ describe("getAvailableVariables", () => {
 		expect(atLoopItself.some((o) => o.path.startsWith("loop.loop1."))).toBe(false);
 	});
 
-	it("caveats user.* globals as manual-run-only, since they're empty on scheduled/automatic runs", () => {
+	it("caveats user.* globals as empty on scheduled runs (populated on manual + user-caused event runs since Phase 1.4)", () => {
 		const target = actionNode("a1");
 		const options = getAvailableVariables([target], statusChangedTrigger, "a1");
 		const userName = options.find((o) => o.path === "user.name");
-		expect(userName?.label).toContain("(empty unless run manually)");
+		expect(userName?.label).toContain("(empty on scheduled runs)");
 	});
 
 	it("offers a formula referencing only trigger fields anywhere, but not one referencing a loop item outside the loop", () => {

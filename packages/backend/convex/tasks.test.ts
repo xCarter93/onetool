@@ -1182,6 +1182,8 @@ describe("Tasks", () => {
 			expect(recordUpdated[0].eventSource).toBe("tasks.complete");
 			expect(recordUpdated[0].payload.metadata).toEqual({
 				changedFields: ["status", "completedAt"],
+				// Phase 1.4: user-caused events carry the actor for user.* globals.
+				actorUserId: expect.any(String),
 			});
 		});
 

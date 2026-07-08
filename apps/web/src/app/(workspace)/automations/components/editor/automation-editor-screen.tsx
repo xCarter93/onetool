@@ -30,7 +30,8 @@ type NodeConfigType =
 	| "adjust_time"
 	| "delay"
 	| "delay_until"
-	| "end";
+	| "end"
+	| "next_item";
 
 /** Map sub-action types to their sidebar config type */
 function toSidebarType(t: string): NodeConfigType {

@@ -96,12 +96,12 @@ function automationFormulaTz(trigger: AutomationTrigger): string {
 	return "UTC";
 }
 
-/** Extract a user id from a "manual:<id>" / "test:<id>" triggeredBy marker. */
+/** Extract a user id from a "manual:"/"test:"/"actor:" triggeredBy marker. */
 function parseActorUserId(
 	ctx: MutationCtx,
 	triggeredBy: string
 ): Id<"users"> | null {
-	const match = /^(?:manual|test):(.+)$/.exec(triggeredBy);
+	const match = /^(?:manual|test|actor):(.+)$/.exec(triggeredBy);
 	if (!match) return null;
 	return ctx.db.normalizeId("users", match[1]);
 }
@@ -271,6 +271,8 @@ type MatchAndScheduleParams = {
 	recursionDepth: number;
 	/** Preserves the original event-source label on the automation.triggered log. */
 	eventSource: string;
+	/** Internal user who caused the event; threads user.* globals into the run. */
+	actorUserId?: string;
 };
 
 /**
@@ -330,6 +332,13 @@ async function matchAndScheduleAutomations(
 
 	let triggered = 0;
 
+	// "actor:<userId>" lets buildGlobalsScope resolve user.* globals on
+	// event-triggered runs; falls back to the entity id when no internal user
+	// caused the event (webhooks, portal actions).
+	const triggeredBy = params.actorUserId
+		? `actor:${params.actorUserId}`
+		: params.entityId;
+
 	// Schedule execution for each matching automation
 	for (const automation of automations) {
 		// Check if this automation is already in the chain (prevent loops)
@@ -342,7 +351,7 @@ async function matchAndScheduleAutomations(
 			await ctx.db.insert("workflowExecutions", {
 				orgId,
 				automationId: automation._id,
-				triggeredBy: params.entityId,
+				triggeredBy,
 				triggeredAt: skippedAt,
 				completedAt: skippedAt,
 				status: "skipped",
@@ -361,9 +370,10 @@ async function matchAndScheduleAutomations(
 		const executionId = await ctx.db.insert("workflowExecutions", {
 			orgId,
 			automationId: automation._id,
-			triggeredBy: params.entityId,
+			triggeredBy,
 			triggeredAt: Date.now(),
 			status: "running",
+			snapshotVersion: automation.publishedSnapshot?.version,
 			nodesExecuted: [],
 			executionChain: newChain,
 			recursionDepth: params.recursionDepth,
@@ -444,6 +454,7 @@ export const handleStatusChangeEvent = systemMutation({
 		// Execution chain context for cascading automations
 		executionChain: v.optional(v.array(v.string())),
 		recursionDepth: v.optional(v.number()),
+		actorUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<MatchAndScheduleResult> => {
 		return matchAndScheduleAutomations(ctx, {
@@ -458,6 +469,7 @@ export const handleStatusChangeEvent = systemMutation({
 				[]) as Id<"workflowAutomations">[],
 			recursionDepth: args.recursionDepth ?? 0,
 			eventSource: "automationExecutor.handleStatusChangeEvent",
+			actorUserId: args.actorUserId,
 		});
 	},
 });
@@ -508,6 +520,7 @@ export const handleRecordEvent = systemMutation({
 					changedFields?: string[];
 					executionChain?: string[];
 					recursionDepth?: number;
+					actorUserId?: string;
 			  }
 			| undefined;
 
@@ -522,6 +535,7 @@ export const handleRecordEvent = systemMutation({
 				[]) as Id<"workflowAutomations">[],
 			recursionDepth: metadata?.recursionDepth ?? 0,
 			eventSource: "automationExecutor.handleRecordEvent",
+			actorUserId: metadata?.actorUserId,
 		});
 	},
 });
@@ -637,6 +651,29 @@ export const dispatchScheduledAutomations = internalMutation({
 					`[AutomationExecutor] Scheduled dispatch failed for automation ${automation._id}`,
 					error
 				);
+				// Surface the failure as a visible run row, and clear nextRunAt:
+				// a row that fails before its claim patch would otherwise come
+				// due again every tick, failing forever.
+				try {
+					await ctx.db.patch(automation._id, { nextRunAt: undefined });
+					await ctx.db.insert("workflowExecutions", {
+						orgId: automation.orgId,
+						automationId: automation._id,
+						triggeredBy: "schedule",
+						triggeredAt: now,
+						completedAt: now,
+						status: "failed",
+						mode: "production",
+						snapshotVersion: automation.publishedSnapshot?.version,
+						nodesExecuted: [],
+						error:
+							error instanceof Error
+								? error.message
+								: "Scheduled dispatch failed",
+					});
+				} catch {
+					// Even the failure bookkeeping failed; the console error stands.
+				}
 			}
 		}
 
@@ -662,7 +699,7 @@ type FetchOutput = {
 	objectType: ObjectType;
 	records: Record<string, unknown>[];
 	count: number;
-	/** True when the underlying scan hit FETCH_SCAN_CAP before filtering. */
+	/** True when the scan stopped at its cap with org rows still unscanned. */
 	truncated: boolean;
 };
 
@@ -679,8 +716,10 @@ type WalkEnv = {
 	fetchOutputs: Record<string, FetchOutput>;
 	nodesExecuted: ExecEntry[];
 	logTruncated: boolean;
-	/** True once any node in this run has hit fetchOrgRows' scan cap. */
+	/** True once any fetch in this run stopped before considering every row. */
 	dataTruncated: boolean;
+	/** Rows this walk may still scan across all its fetches (WALK_SCAN_BUDGET). */
+	fetchScanBudget: number;
 	/** Original trigger reference, persisted into resumeState for delays. */
 	trigger: { objectType?: ObjectType; objectId?: string };
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
@@ -692,6 +731,7 @@ type WalkEnv = {
 type WalkOutcome =
 	| { kind: "chain_done" } // ran off the end of a chain
 	| { kind: "ended" } // end node — terminate the whole run successfully
+	| { kind: "next_item" } // next_item node — continue with the loop's next record
 	| { kind: "waiting" } // delay checkpointed the run and scheduled a resume
 	| { kind: "failed"; error: string };
 
@@ -754,6 +794,20 @@ export const executeAutomation = systemMutation({
 		// caller passed (mirrors resumeExecution/executeTestStep).
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) return;
+
+		// Claim guard: scheduled mutations are exactly-once, but a duplicate or
+		// misdirected invocation must never restart a walk — only a fresh,
+		// still-running row may start one (resumes go through resumeExecution).
+		if (
+			execution.status !== "running" ||
+			execution.resumeState !== undefined ||
+			execution.nodesExecuted.length > 0
+		) {
+			console.warn(
+				`[AutomationExecutor] executeAutomation skipped: execution ${args.executionId} already started or finished`
+			);
+			return;
+		}
 
 		// executeAutomation only ever runs real production/manual/scheduled runs
 		// (test runs go through executeTestStep). Derived defensively so failure
@@ -856,6 +910,7 @@ export const executeAutomation = systemMutation({
 			nodesExecuted: [],
 			logTruncated: false,
 			dataTruncated: false,
+			fetchScanBudget: WALK_SCAN_BUDGET,
 			trigger: { objectType: args.objectType, objectId: args.objectId },
 			nodeStartedAt: Date.now(),
 			isProduction,
@@ -900,9 +955,10 @@ export const executeAutomation = systemMutation({
 });
 
 /**
- * Resume a run parked by a delay/delay_until node. Scheduled by the walk
- * engine at checkpoint time; rebuilds scope from resumeState (fetch outputs
- * re-resolved by id, deleted records skipped) and continues the walk.
+ * Resume a run parked by a delay/delay_until node or a loop chunk boundary.
+ * Scheduled by the walk engine at checkpoint time; rebuilds scope from
+ * resumeState (fetch outputs re-resolved by id, deleted records skipped) and
+ * continues the walk.
  */
 export const resumeExecution = systemMutation({
 	args: {
@@ -943,6 +999,34 @@ export const resumeExecution = systemMutation({
 
 		const resume = execution.resumeState;
 
+		// Runs are pinned to the snapshot version they started on: resuming on
+		// a republished definition would silently apply new node semantics to a
+		// walk checkpointed under old assumptions. Legacy rows without a
+		// snapshotVersion keep the old resume-on-current behavior.
+		if (
+			execution.snapshotVersion !== undefined &&
+			automation.publishedSnapshot?.version !== execution.snapshotVersion
+		) {
+			const message =
+				"Automation was republished while the run was waiting; the parked run cannot continue on the new version";
+			await ctx.db.patch(args.executionId, {
+				status: "failed",
+				completedAt: Date.now(),
+				error: message,
+				resumeState: undefined,
+				currentNodeId: undefined,
+			});
+			if (isProduction) {
+				await notifyAutomationFailure(
+					ctx,
+					automation,
+					message,
+					args.executionId
+				);
+			}
+			return;
+		}
+
 		let triggerObject: Record<string, unknown> = {};
 		let scopeRecord: ScopeRecord | undefined;
 		if (resume.objectType && resume.objectId) {
@@ -978,10 +1062,9 @@ export const resumeExecution = systemMutation({
 			};
 		}
 
-		// Resume on the currently published snapshot (matching executeAutomation).
-		// A republish while a run is parked at a delay therefore continues on the
-		// new version; resumeNodeId is validated below and the run fails clearly
-		// if that node no longer exists.
+		// The snapshotVersion guard above pins this to the version the run
+		// started on; legacy rows (no snapshotVersion) still resume on the
+		// current snapshot, protected only by the missing-node check below.
 		const definition = executableDefinition(automation);
 
 		// workflow.now stays pinned to the original start time so date math is
@@ -1021,6 +1104,7 @@ export const resumeExecution = systemMutation({
 			nodesExecuted: [...execution.nodesExecuted],
 			logTruncated: false,
 			dataTruncated: execution.dataTruncated ?? false,
+			fetchScanBudget: WALK_SCAN_BUDGET,
 			trigger: { objectType: resume.objectType, objectId: resume.objectId },
 			nodeStartedAt: Date.now(),
 			isProduction,
@@ -1079,7 +1163,42 @@ export const resumeExecution = systemMutation({
 		}
 
 		try {
-			const outcome = await runWalk(ctx, env, resume.resumeNodeId, scopeRecord);
+			let outcome: WalkOutcome;
+			if (resume.loop) {
+				// Parked at a loop chunk boundary: finish the remaining
+				// iterations, then continue the walk after the loop.
+				const loopNode = env.nodesById.get(resume.loop.nodeId);
+				if (!loopNode || loopNode.config?.kind !== "loop") {
+					const message =
+						"Automation was edited while the run was waiting; the loop step no longer exists";
+					await ctx.db.patch(args.executionId, {
+						status: "failed",
+						completedAt: Date.now(),
+						nodesExecuted: env.nodesExecuted,
+						error: message,
+						resumeState: undefined,
+						currentNodeId: undefined,
+					});
+					if (isProduction) {
+						await notifyAutomationFailure(
+							ctx,
+							automation,
+							message,
+							args.executionId
+						);
+					}
+					return;
+				}
+				outcome = await runLoopNode(ctx, env, loopNode, loopNode.config, {
+					nextIndex: resume.loop.nextIndex,
+					remainingItemIds: resume.loop.remainingItemIds,
+				});
+				if (outcome.kind === "chain_done") {
+					outcome = await runWalk(ctx, env, loopNode.nextNodeId, scopeRecord);
+				}
+			} else {
+				outcome = await runWalk(ctx, env, resume.resumeNodeId, scopeRecord);
+			}
 			await finishWalk(ctx, env, outcome);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
@@ -1326,6 +1445,18 @@ async function runWalk(
 			return { kind: "waiting" };
 		}
 
+		if (config?.kind === "next_item") {
+			// Save-time validation rejects next_item outside loops; guard anyway
+			// for legacy/direct-API rows.
+			if (!inLoopNodeId) {
+				const error = '"Next item" only works inside a loop';
+				pushEntry(env, { nodeId: node.id, result: "failed", error });
+				return { kind: "failed", error };
+			}
+			pushEntry(env, { nodeId: node.id, result: "success" });
+			return { kind: "next_item" };
+		}
+
 		if (config?.kind === "end") {
 			pushEntry(env, { nodeId: node.id, result: "success" });
 			return { kind: "ended" };
@@ -1364,11 +1495,22 @@ async function runWalk(
  * once per item with that item as the scope record and loop.<id>.item/.index
  * variables in scope.
  */
+/**
+ * Iterations executed per mutation. Longer loops checkpoint into resumeState
+ * and continue in a scheduled follow-up mutation: each chunk's writes commit
+ * with its own transaction (commit-per-chunk), so a failure in a later chunk
+ * keeps earlier chunks' effects.
+ */
+const LOOP_CHUNK_SIZE = 25;
+
+type LoopResumeState = { nextIndex: number; remainingItemIds: string[] };
+
 async function runLoopNode(
 	ctx: MutationCtx,
 	env: WalkEnv,
 	node: AutomationNode,
-	config: Extract<WorkflowNodeConfig, { kind: "loop" }>
+	config: Extract<WorkflowNodeConfig, { kind: "loop" }>,
+	resumeFrom?: LoopResumeState
 ): Promise<WalkOutcome> {
 	const source = env.fetchOutputs[config.sourceNodeId];
 	if (!source) {
@@ -1378,27 +1520,49 @@ async function runLoopNode(
 		return { kind: "failed", error };
 	}
 
-	const cap = Math.min(
-		config.maxIterations ?? MAX_LOOP_ITERATIONS,
-		MAX_LOOP_ITERATIONS
-	);
-	const items = source.records.slice(0, Math.max(cap, 0));
-	if (source.truncated) env.dataTruncated = true;
-	pushEntry(env, {
-		nodeId: node.id,
-		result: "success",
-		recordsProcessed: items.length,
-		truncated: source.truncated,
-	});
+	let queue: { item: Record<string, unknown>; index: number }[];
+	if (resumeFrom) {
+		// Continue a chunked run. Items are matched by id so records deleted
+		// between chunks are skipped without shifting which items remain, and
+		// indexes keep their original positions so loop.<id>.index is stable.
+		const byId = new Map(source.records.map((r) => [String(r._id), r]));
+		queue = resumeFrom.remainingItemIds.flatMap((id, offset) => {
+			const item = byId.get(id);
+			return item ? [{ item, index: resumeFrom.nextIndex + offset }] : [];
+		});
+	} else {
+		const cap = Math.min(
+			config.maxIterations ?? MAX_LOOP_ITERATIONS,
+			MAX_LOOP_ITERATIONS
+		);
+		const items = source.records.slice(0, Math.max(cap, 0));
+		if (source.truncated) env.dataTruncated = true;
+		// Logged once for the whole loop; continuation chunks don't re-log it.
+		pushEntry(env, {
+			nodeId: node.id,
+			result: "success",
+			recordsProcessed: items.length,
+			truncated: source.truncated,
+		});
+		queue = items.map((item, index) => ({ item, index }));
+	}
 
-	if (!node.bodyStartNodeId || items.length === 0) {
+	if (!node.bodyStartNodeId || queue.length === 0) {
 		return { kind: "chain_done" };
 	}
 
 	env.scope.loops ??= {};
 	try {
-		for (let index = 0; index < items.length; index++) {
-			const item = items[index];
+		for (let qi = 0; qi < queue.length; qi++) {
+			if (qi >= LOOP_CHUNK_SIZE) {
+				const remaining = queue.slice(qi);
+				await checkpointLoopChunk(ctx, env, node, {
+					nextIndex: remaining[0].index,
+					remainingItemIds: remaining.map((q) => String(q.item._id)),
+				});
+				return { kind: "waiting" };
+			}
+			const { item, index } = queue[qi];
 			env.scope.loops[node.id] = { item, index };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -1412,6 +1576,7 @@ async function runLoopNode(
 				itemScope,
 				node.id
 			);
+			// "next_item" and "chain_done" both continue with the next record.
 			if (outcome.kind === "failed" || outcome.kind === "ended") {
 				return outcome;
 			}
@@ -1431,72 +1596,202 @@ async function runLoopNode(
 	return { kind: "chain_done" };
 }
 
-/** Bounded scan applied before in-memory filtering in fetch_records. */
-const FETCH_SCAN_CAP = 1000;
+/**
+ * Park a chunked loop mid-run and schedule the next chunk immediately.
+ * Mirrors the delay checkpoint: fetch outputs persist as record ids and are
+ * re-resolved on resume.
+ */
+async function checkpointLoopChunk(
+	ctx: MutationCtx,
+	env: WalkEnv,
+	node: AutomationNode,
+	loop: LoopResumeState
+): Promise<void> {
+	const now = Date.now();
+	await ctx.db.patch(env.executionId, {
+		nodesExecuted: env.nodesExecuted,
+		dataTruncated: env.dataTruncated,
+		currentNodeId: node.id,
+		resumeState: {
+			resumeNodeId: node.id,
+			resumeAt: now,
+			checkpointAt: now,
+			eventOldValue: env.scope.trigger?.event?.oldValue as string | undefined,
+			eventNewValue: env.scope.trigger?.event?.newValue as string | undefined,
+			objectType: env.trigger.objectType,
+			objectId: env.trigger.objectId,
+			fetchOutputs: Object.entries(env.fetchOutputs).map(
+				([nodeId, output]) => ({
+					nodeId,
+					objectType: output.objectType,
+					recordIds: output.records.map((r) => String(r._id)),
+					count: output.count,
+				})
+			),
+			nodeResults: collectNodeResults(env.scope),
+			loop: { nodeId: node.id, ...loop },
+		},
+	});
+	await ctx.scheduler.runAfter(
+		0,
+		internal.automationExecutor.resumeExecution,
+		{
+			orgId: env.orgId,
+			executionId: env.executionId,
+			automationId: env.automation._id,
+		}
+	);
+}
+
+/** Rows fetched per index page while scanning for matches. */
+const FETCH_SCAN_BATCH = 500;
+/**
+ * Per-fetch ceiling on rows scanned (newest first). A fetch that stops here
+ * with org rows still unscanned reports truncated=true.
+ */
+const FETCH_SCAN_CEILING = 5000;
+/**
+ * Shared scan budget across every fetch in one walk, so multi-fetch workflows
+ * stay under Convex's per-transaction read limits (32k docs / 16 MiB).
+ */
+const WALK_SCAN_BUDGET = 10_000;
+
+type OrgRow = Record<string, unknown> & { _creationTime: number };
 
 /**
- * Org-scoped index scan (newest first), bounded to `limit`. `truncated` is
- * true when the scan hit the cap -- i.e. more rows may exist beyond it that
- * were never considered by downstream filters/sort/aggregation.
+ * One page of an org's rows from the by_org index, newest first, starting
+ * strictly after the `before` cursor (a _creationTime; Convex appends
+ * _creationTime to every index as the unique final tiebreaker, so it is a
+ * stable pagination cursor).
  */
-async function fetchOrgRows(
-	ctx: QueryCtx | MutationCtx,
+async function takeOrgPage(
+	ctx: { db: QueryCtx["db"] },
 	objectType: ObjectType,
 	orgId: Id<"organizations">,
-	limit: number = FETCH_SCAN_CAP
-): Promise<{ rows: Record<string, unknown>[]; truncated: boolean }> {
-	let rows: Record<string, unknown>[];
+	before: number | undefined,
+	count: number
+): Promise<OrgRow[]> {
 	switch (objectType) {
 		case "client":
-			rows = await ctx.db
+			return await ctx.db
 				.query("clients")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
 				.order("desc")
-				.take(limit);
-			break;
+				.take(count);
 		case "project":
-			rows = await ctx.db
+			return await ctx.db
 				.query("projects")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
 				.order("desc")
-				.take(limit);
-			break;
+				.take(count);
 		case "quote":
-			rows = await ctx.db
+			return await ctx.db
 				.query("quotes")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
 				.order("desc")
-				.take(limit);
-			break;
+				.take(count);
 		case "invoice":
-			rows = await ctx.db
+			return await ctx.db
 				.query("invoices")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
 				.order("desc")
-				.take(limit);
-			break;
+				.take(count);
 		case "task":
-			rows = await ctx.db
+			return await ctx.db
 				.query("tasks")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
 				.order("desc")
-				.take(limit);
-			break;
+				.take(count);
 		default: {
 			const _exhaustive: never = objectType;
 			return _exhaustive;
 		}
 	}
-	return { rows, truncated: rows.length >= limit };
+}
+
+/**
+ * Paginated org-scoped index scan (newest first) with in-scan filtering.
+ * Stops when `stopAfterMatches` rows pass `predicate` (early exit, not
+ * truncation), when the index is exhausted (not truncation), or at `maxScan`
+ * scanned rows. `truncated` is true only in the last case and only when rows
+ * genuinely remain past the cursor — an org with exactly `maxScan` rows is
+ * not truncated.
+ *
+ * Exported for tests.
+ */
+export async function scanOrgRows(
+	ctx: { db: QueryCtx["db"] },
+	objectType: ObjectType,
+	orgId: Id<"organizations">,
+	opts: {
+		predicate?: (row: Record<string, unknown>) => boolean;
+		stopAfterMatches?: number;
+		maxScan?: number;
+		batchSize?: number;
+	} = {}
+): Promise<{
+	matches: Record<string, unknown>[];
+	scanned: number;
+	truncated: boolean;
+}> {
+	const predicate = opts.predicate ?? (() => true);
+	const maxScan = opts.maxScan ?? FETCH_SCAN_CEILING;
+	const batchSize = Math.max(opts.batchSize ?? FETCH_SCAN_BATCH, 1);
+	const matches: Record<string, unknown>[] = [];
+	let scanned = 0;
+	let cursor: number | undefined;
+
+	while (scanned < maxScan) {
+		const pageSize = Math.min(batchSize, maxScan - scanned);
+		const page = await takeOrgPage(ctx, objectType, orgId, cursor, pageSize);
+		if (page.length > 0) cursor = page[page.length - 1]._creationTime;
+		scanned += page.length;
+		for (const row of page) {
+			if (!predicate(row)) continue;
+			matches.push(row);
+			if (
+				opts.stopAfterMatches !== undefined &&
+				matches.length >= opts.stopAfterMatches
+			) {
+				return { matches, scanned, truncated: false };
+			}
+		}
+		if (page.length < pageSize) {
+			// Index exhausted — every org row was considered.
+			return { matches, scanned, truncated: false };
+		}
+	}
+
+	// Hit the scan cap. Truncated only if rows actually remain past it.
+	const probe = await takeOrgPage(ctx, objectType, orgId, cursor, 1);
+	return { matches, scanned, truncated: probe.length > 0 };
 }
 
 /** The subset of walk state fetch_records needs; shared by real + dry walks. */
-type FetchEnv = Pick<WalkEnv, "orgId" | "scope" | "fetchOutputs">;
+type FetchEnv = Pick<
+	WalkEnv,
+	"orgId" | "scope" | "fetchOutputs" | "fetchScanBudget"
+>;
 
 /**
- * Run a fetch_records node: org-scoped index scan (newest first, bounded),
- * filter groups combined with AND, optional sort, then limit. Output is
- * stored for downstream loops and exposed as node.<id>.count.
+ * Run a fetch_records node: paginated org-scoped index scan (newest first),
+ * filter groups combined with AND applied per page, optional sort, then
+ * limit. Output is stored for downstream loops and exposed as node.<id>.count.
  */
 async function runFetchNode(
 	ctx: MutationCtx,
@@ -1505,14 +1800,25 @@ async function runFetchNode(
 	config: Extract<WorkflowNodeConfig, { kind: "fetch_records" }>
 ): Promise<{ ok: true; output: FetchOutput } | { ok: false; error: string }> {
 	try {
-		const { rows, truncated } = await fetchOrgRows(
+		const limit = Math.min(
+			Math.max(config.limit ?? DEFAULT_FETCH_LIMIT, 1),
+			MAX_FETCH_LIMIT
+		);
+		const { matches, scanned, truncated } = await scanOrgRows(
 			ctx,
 			config.objectType,
-			env.orgId
+			env.orgId,
+			{
+				predicate: (row) =>
+					evaluateConditionGroups("and", config.filters, row, env.scope),
+				// Sorting needs every match in range; without one, rows already
+				// arrive newest-first so the scan can stop at the node's limit.
+				stopAfterMatches: config.sortBy ? undefined : limit,
+				maxScan: Math.min(FETCH_SCAN_CEILING, Math.max(env.fetchScanBudget, 0)),
+			}
 		);
-		let records = rows.filter((row) =>
-			evaluateConditionGroups("and", config.filters, row, env.scope)
-		);
+		env.fetchScanBudget -= scanned;
+		let records = matches;
 
 		if (config.sortBy) {
 			const { field, direction } = config.sortBy;
@@ -1530,10 +1836,6 @@ async function runFetchNode(
 			});
 		}
 
-		const limit = Math.min(
-			Math.max(config.limit ?? DEFAULT_FETCH_LIMIT, 1),
-			MAX_FETCH_LIMIT
-		);
 		records = records.slice(0, limit);
 
 		const output: FetchOutput = {
@@ -1804,6 +2106,7 @@ async function executeNodeV2(
 		case "delay":
 		case "delay_until":
 		case "end":
+		case "next_item":
 			// Structural/compute kinds are consumed by runWalk before executeNode.
 			return {
 				success: false,
@@ -2793,8 +3096,10 @@ type DryEnv = {
 	fetchOutputs: Record<string, FetchOutput>;
 	entries: ExecutedNode[];
 	truncated: boolean;
-	/** True once any node in this dry run has hit fetchOrgRows' scan cap. */
+	/** True once any fetch in this dry run stopped before considering every row. */
 	dataTruncated: boolean;
+	/** Rows this dry run may still scan across all its fetches. */
+	fetchScanBudget: number;
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
 	nodeStartedAt: number;
 };
@@ -3171,6 +3476,7 @@ async function dryRunLoopNode(
 				itemScope,
 				true
 			);
+			// "next_item"/"chain_done" continue with the next sampled record.
 			if (outcome === "failed" || outcome === "ended") return outcome;
 		}
 	} finally {
@@ -3191,7 +3497,7 @@ async function dryRunWalk(
 	startNodeId: string | undefined,
 	scopeRecord: ScopeRecord | undefined,
 	inLoop: boolean
-): Promise<"chain_done" | "ended" | "failed"> {
+): Promise<"chain_done" | "ended" | "next_item" | "failed"> {
 	let currentNodeId = startNodeId;
 	const visited = new Set<string>();
 
@@ -3325,6 +3631,16 @@ async function dryRunWalk(
 			continue;
 		}
 
+		if (config?.kind === "next_item") {
+			if (!inLoop) {
+				const error = '"Next item" only works inside a loop';
+				pushDry(env, { nodeId: node.id, result: "failed", error });
+				return "failed";
+			}
+			pushDry(env, { nodeId: node.id, result: "success" });
+			return "next_item";
+		}
+
 		if (config?.kind === "end") {
 			pushDry(env, { nodeId: node.id, result: "success" });
 			return "ended";
@@ -3387,6 +3703,7 @@ async function buildDryPlan(
 		entries: [],
 		truncated: false,
 		dataTruncated: false,
+		fetchScanBudget: WALK_SCAN_BUDGET,
 		nodeStartedAt: Date.now(),
 	};
 
@@ -3744,7 +4061,7 @@ export const getSampleRecords = userQuery({
 		}
 		if (!objectType) return [];
 
-		const { rows } = await fetchOrgRows(ctx, objectType, ctx.orgId, 10);
+		const rows = await takeOrgPage(ctx, objectType, ctx.orgId, undefined, 10);
 		return rows.map((row) => ({
 			entityType: objectType as ObjectType,
 			entityId: String(row._id),

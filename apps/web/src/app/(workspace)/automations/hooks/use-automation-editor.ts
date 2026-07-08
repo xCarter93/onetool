@@ -211,6 +211,10 @@ function buildEndNode(id: string): WorkflowNode {
 	return { id, type: "end", config: { kind: "end" } };
 }
 
+function buildNextItemNode(id: string): WorkflowNode {
+	return { id, type: "next_item", config: { kind: "next_item" } };
+}
+
 /** Build the v2 trigger arg accepted by automations.create/update. */
 function buildTriggerForSave(trigger: TriggerConfig) {
 	const objectType = trigger.objectType ?? "client";
@@ -396,7 +400,8 @@ export function useAutomationEditor(automationId: string | null) {
 					: undefined;
 
 			const newId = generateId();
-			const downstreamId = nodeType === "end" ? undefined : realTargetId;
+			const downstreamId =
+				nodeType === "end" || nodeType === "next_item" ? undefined : realTargetId;
 
 			let newNodes: EditorNode[];
 			switch (nodeType) {
@@ -447,6 +452,9 @@ export function useAutomationEditor(automationId: string | null) {
 					break;
 				case "end":
 					newNodes = [buildEndNode(newId)];
+					break;
+				case "next_item":
+					newNodes = [buildNextItemNode(newId)];
 					break;
 				case "placeholder":
 					newNodes = [
@@ -529,6 +537,8 @@ export function useAutomationEditor(automationId: string | null) {
 							return buildDelayUntilNode(nodeId, downstreamId);
 						case "end":
 							return buildEndNode(nodeId);
+						case "next_item":
+							return buildNextItemNode(nodeId);
 						case "action":
 						default:
 							return buildActionNode(nodeId, downstreamId, actionType);
