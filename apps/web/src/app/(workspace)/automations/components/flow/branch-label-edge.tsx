@@ -10,17 +10,7 @@ import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NextItemMarker } from "./next-item-marker";
-
-const EDGE_STYLE = {
-	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
-	strokeWidth: 1.5,
-};
-
-const LOOP_EDGE_STYLE = {
-	stroke: "var(--color-orange-300)",
-	strokeWidth: 1.5,
-	strokeDasharray: "6 3",
-};
+import { EDGE_STYLE, LOOP_EDGE_STYLE } from "./edge-style";
 
 /** Map raw branch labels to user-friendly text */
 function displayLabel(label: string | undefined, branchType: string): string {

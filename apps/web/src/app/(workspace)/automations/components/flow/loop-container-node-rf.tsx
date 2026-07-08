@@ -14,7 +14,7 @@ export const LoopContainerNodeRF = memo(({ data }: NodeProps) => {
 	return (
 		<div
 			aria-hidden
-			className="pointer-events-none rounded-2xl border-2 border-dashed border-orange-300/60 bg-orange-50/25 dark:border-orange-700/40 dark:bg-orange-950/10"
+			className="pointer-events-none rounded-2xl border-2 border-dashed border-orange-300/60 bg-orange-50/25 dark:border-orange-400/35 dark:bg-orange-400/5"
 			style={{ width, height }}
 		/>
 	);

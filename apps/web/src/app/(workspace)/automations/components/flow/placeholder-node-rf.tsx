@@ -9,13 +9,11 @@ import { BaseHandle } from "@/components/base-handle";
 import type { PlaceholderRFNode } from "../../lib/node-types";
 
 export const PlaceholderNodeRF = memo(
-	({ selected }: NodeProps<PlaceholderRFNode>) => {
+	(_props: NodeProps<PlaceholderRFNode>) => {
 		return (
 			<BaseNode
 				className={cn(
 					"w-[280px] border-dashed border-muted-foreground/30",
-					"hover:border-primary/30 transition-colors",
-					selected && "ring-2 ring-primary/50",
 				)}
 				aria-label="Empty step -- click to configure"
 			>

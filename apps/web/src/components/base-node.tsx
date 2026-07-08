@@ -6,15 +6,17 @@ export function BaseNode({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "bg-card text-card-foreground relative rounded-md border",
-        "hover:ring-1",
-        // React Flow displays node elements inside of a `NodeWrapper`
-        // component, which compiles down to a div with the class
-        // `react-flow__node`. When a node is selected, the class `selected` is
-        // added to the `react-flow__node` element. This allows us to style the
-        // node when it is selected.
-        "in-[.selected]:border-muted-foreground",
-        "in-[.selected]:shadow-lg",
+        "bg-card text-card-foreground relative rounded-md border border-border",
+        // Resting elevation so cards lift off the canvas in both themes.
+        "shadow-sm transition-[border-color,box-shadow] duration-150",
+        // Tint top/right/bottom only — the full `border-color` shorthand would
+        // override the per-type `border-l-*` accent bar on hover.
+        "hover:border-t-primary/30 hover:border-r-primary/30 hover:border-b-primary/30 hover:shadow-md",
+        // React Flow wraps every node in a `.react-flow__node` div and adds the
+        // class `selected` to it when selected, so `in-[.selected]` targets the
+        // selected state from inside. This is the single selection treatment —
+        // a brand-colored ring — so individual node cards must not add their own.
+        "in-[.selected]:ring-2 in-[.selected]:ring-primary/60 in-[.selected]:shadow-md",
         className,
       )}
       tabIndex={0}

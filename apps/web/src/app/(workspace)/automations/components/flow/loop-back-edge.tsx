@@ -1,6 +1,7 @@
 "use client";
 
 import { BaseEdge, type EdgeProps } from "@xyflow/react";
+import { LOOP_EDGE_STYLE } from "./edge-style";
 
 export function LoopBackEdge({
 	sourceX,
@@ -39,12 +40,7 @@ export function LoopBackEdge({
 		<BaseEdge
 			path={edgePath}
 			markerEnd={markerEnd}
-			style={{
-				...style,
-				strokeWidth: 1.5,
-				stroke: "var(--color-orange-300)",
-				strokeDasharray: "6 3",
-			}}
+			style={{ ...style, ...LOOP_EDGE_STYLE }}
 		/>
 	);
 }

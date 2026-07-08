@@ -1,19 +1,17 @@
 "use client";
 
 import { memo } from "react";
-import { Position, type NodeProps } from "@xyflow/react";
+import { Position } from "@xyflow/react";
 import { SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
 
-export const NextItemNodeRF = memo(({ selected }: NodeProps) => {
+export const NextItemNodeRF = memo(() => {
 	return (
 		<BaseNode
 			className={cn(
-				"w-[280px] border-border shadow-sm",
-				"hover:border-primary/30 transition-colors",
-				selected && "ring-2 ring-primary/50",
+				"w-[280px] border-l-4 border-l-muted-foreground/40",
 			)}
 			aria-label="Next item: skips to the loop's next record"
 		>

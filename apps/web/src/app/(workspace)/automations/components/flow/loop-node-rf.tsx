@@ -23,7 +23,7 @@ function getSummary(config: LoopNodeConfig | undefined): {
 	};
 }
 
-export const LoopNodeRF = memo(({ data, selected }: NodeProps) => {
+export const LoopNodeRF = memo(({ data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as LoopNodeConfig | undefined;
 	const { title, description, isConfigured } = getSummary(config);
 
@@ -32,17 +32,15 @@ export const LoopNodeRF = memo(({ data, selected }: NodeProps) => {
 			className={cn(
 				"w-[280px]",
 				isConfigured
-					? "border-border shadow-sm"
+					? "border-l-4 border-l-orange-500 dark:border-l-orange-400"
 					: "border-dashed border-muted-foreground/30",
-				"hover:border-primary/30 transition-colors",
-				selected && "ring-2 ring-primary/50",
 			)}
 			aria-label={`Loop: ${title} - ${description}`}
 		>
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+					<div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300 flex items-center justify-center shrink-0">
 						<Repeat className="h-4 w-4" />
 					</div>
 					<div className="min-w-0 flex-1">

@@ -1,0 +1,60 @@
+/*
+ * React Flow theme overrides for the automations editor.
+ * Imported after `@xyflow/react/dist/style.css` in automation-flow.tsx so these
+ * win the cascade. Every value resolves from the app's design tokens (or
+ * Tailwind color vars), so the canvas, edges, handles and selection all flip
+ * automatically between light and dark.
+ */
+
+.react-flow {
+	/* Canvas paint. In light this matches the workspace paper; nodes lift via
+	   their own lighter card + border. */
+	background-color: var(--background);
+
+	/* Edges managed by React Flow. Custom edges set their own inline stroke
+	   (see edge-style.ts); this covers anything that falls through. */
+	--xy-edge-stroke-default: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
+	--xy-edge-stroke-width-default: 1.5;
+	--xy-edge-stroke-selected-default: var(--primary);
+
+	/* Drag-to-connect line (unused today — connections are derived — themed for
+	   consistency in case it is ever enabled). */
+	--xy-connectionline-stroke-default: var(--primary);
+	--xy-connectionline-stroke-width-default: 1.5;
+
+	/* Handles: BaseHandle paints the visible dot; these theme any default. */
+	--xy-handle-background-color-default: var(--secondary);
+	--xy-handle-border-color-default: var(--border);
+
+	/* Marquee / box selection. */
+	--xy-selection-background-color-default: color-mix(in oklch, var(--primary) 8%, transparent);
+	--xy-selection-border-default: 1px dashed color-mix(in oklch, var(--primary) 55%, transparent);
+
+	/* Dot grid color is set via className on <Background /> in
+	   automation-flow.tsx (dual-mode there), not via --xy-* vars. */
+
+	/* Node hover/selected treatment is owned by BaseNode (a single brand ring);
+	   neutralize React Flow's built-in node shadows so they don't compete. */
+	--xy-node-boxshadow-hover-default: none;
+	--xy-node-boxshadow-selected-default: none;
+}
+
+/* Light: a slightly darker hairline than the workspace default so cards read
+   cleanly against the near-white paper. */
+html:not(.dark) .react-flow {
+	--border: oklch(0.85 0.007 265);
+}
+
+/* Dark: the default card and canvas are near-identical in lightness, so nodes
+   vanish into the background. Deepen the canvas AND raise the card to a clearly
+   lighter "raised surface", with a crisper border — scoped to the flow so the
+   rest of the workspace is untouched. `bg-card` / `border-border` on the node
+   cards resolve these overrides (Tailwind v4 `@theme inline`). */
+.dark .react-flow {
+	/* Override the token itself (not just background-color) so on-canvas
+	   maskers using bg-background (trigger eyebrow, branch-label pills,
+	   plus buttons) keep matching the deepened canvas. */
+	--background: oklch(0.125 0.022 264);
+	--card: oklch(0.205 0.009 264);
+	--border: oklch(0.32 0.012 270);
+}
