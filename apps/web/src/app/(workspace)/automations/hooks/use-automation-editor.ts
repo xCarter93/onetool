@@ -345,13 +345,14 @@ export function useAutomationEditor(automationId: string | null) {
 	const [savedSignature, setSavedSignature] = useState<string | null>(null);
 
 	// --- Multi-level undo/redo -------------------------------------------
-	// Snapshots live in a ref (no re-render per push); historyVersion is
-	// bumped on every stack change so canUndo/canRedo stay fresh.
+	// Snapshots live in a ref (no re-render per push); stack sizes are
+	// mirrored into state on every change so canUndo/canRedo stay fresh
+	// without reading the ref during render.
 	const historyRef = useRef<{ past: EditorSnapshot[]; future: EditorSnapshot[] }>({
 		past: [],
 		future: [],
 	});
-	const [historyVersion, setHistoryVersion] = useState(0);
+	const [historyDepth, setHistoryDepth] = useState({ past: 0, future: 0 });
 	const lastPushRef = useRef<{ key: string; at: number } | null>(null);
 	// Mirror of the undoable state so pushHistory can snapshot without every
 	// handler depending on trigger/nodes/formulas.
@@ -405,8 +406,11 @@ export function useAutomationEditor(automationId: string | null) {
 		}
 	}, []);
 
-	// Keep the snapshot mirror current every render (after load-init above).
-	presentRef.current = { trigger, nodes, formulas };
+	// Keep the snapshot mirror current after every render (incl. load-init
+	// above). pushHistory only runs from event handlers, which fire post-commit.
+	useEffect(() => {
+		presentRef.current = { trigger, nodes, formulas };
+	});
 
 	/**
 	 * Capture the current state as an undo step. Call BEFORE mutating.
@@ -428,7 +432,7 @@ export function useAutomationEditor(automationId: string | null) {
 		history.past.push(structuredClone(presentRef.current));
 		if (history.past.length > HISTORY_LIMIT) history.past.shift();
 		history.future = [];
-		setHistoryVersion((v) => v + 1);
+		setHistoryDepth({ past: history.past.length, future: 0 });
 	}, []);
 
 	const applySnapshot = useCallback(
@@ -438,7 +442,11 @@ export function useAutomationEditor(automationId: string | null) {
 			setFormulas(snapshot.formulas);
 			lastPushRef.current = null;
 			clearUndoState();
-			setHistoryVersion((v) => v + 1);
+			const history = historyRef.current;
+			setHistoryDepth({
+				past: history.past.length,
+				future: history.future.length,
+			});
 		},
 		[clearUndoState]
 	);
@@ -766,16 +774,19 @@ export function useAutomationEditor(automationId: string | null) {
 	);
 
 	const handleDeleteTrigger = useCallback(() => {
+		// Deleting changes the graph; drop any stale run overlay. Note: NOT
+		// clearUndoState() — that would wipe the banner set below.
+		setActiveExecutionId(null);
 		pushHistory();
 		setTrigger(null);
 		setNodes([]);
 		setShowClearConfirm(false);
-		clearUndoState();
-		toast.success(
-			"Trigger removed",
-			"Set a new trigger to continue building this automation."
-		);
-	}, [clearUndoState, pushHistory, toast]);
+		setUndoBanner({
+			title: "Trigger deleted",
+			message: "The trigger and all steps have been removed.",
+		});
+		showUndoToast();
+	}, [pushHistory, showUndoToast]);
 
 	const handleConfirmClear = useCallback(() => {
 		pushHistory();
@@ -1045,9 +1056,9 @@ export function useAutomationEditor(automationId: string | null) {
 		handleConfirmClear,
 		handleCancelClear,
 		showClearConfirm,
-		// historyVersion keeps these fresh — the stacks themselves live in a ref.
-		canUndo: historyVersion >= 0 && historyRef.current.past.length > 0,
-		canRedo: historyVersion >= 0 && historyRef.current.future.length > 0,
+		// State mirror of the ref-held stacks (see historyDepth above).
+		canUndo: historyDepth.past > 0,
+		canRedo: historyDepth.future > 0,
 		undoBanner,
 	};
 }

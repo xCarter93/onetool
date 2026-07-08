@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { Node } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { FETCH_SCAN_CEILING } from "@onetool/backend/convex/lib/workflowTypes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -234,8 +235,9 @@ export function DebugPanel({
 						</Badge>
 					</TooltipTrigger>
 					<TooltipContent side="top" className="max-w-xs">
-						At least one step stopped scanning at the 5,000 most recent
-						records; older records were not considered.
+						At least one step stopped scanning at the{" "}
+						{FETCH_SCAN_CEILING.toLocaleString()} most recent records; older
+						records were not considered.
 					</TooltipContent>
 				</Tooltip>
 			)}

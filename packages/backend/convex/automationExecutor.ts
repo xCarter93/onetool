@@ -30,6 +30,7 @@ import {
 	ADJUST_TIME_UNIT_MS,
 	DEFAULT_FETCH_LIMIT,
 	DELAY_UNIT_MS,
+	FETCH_SCAN_CEILING,
 	MAX_DELAY_MS,
 	MAX_FETCH_LIMIT,
 	MAX_LOOP_ITERATIONS,
@@ -198,15 +199,26 @@ export const findMatchingAutomations = internalQuery({
 			.collect();
 
 		// Entry-criteria inputs, fetched once per event: the actual triggering
-		// record, plus org/actor for globals. A non-matching event produces no
-		// execution row at all (quiet and cheap).
-		const record = args.entityId
-			? await getObject(ctx, args.objectType, args.entityId, args.orgId)
-			: null;
-		const org = await ctx.db.get(args.orgId);
-		const actorId = args.actorUserId
-			? ctx.db.normalizeId("users", args.actorUserId)
-			: null;
+		// record, plus org/actor for globals. Skipped entirely when no candidate
+		// defines entry criteria. A non-matching event produces no execution row
+		// at all (quiet and cheap).
+		const anyEntryCriteria = automations.some((automation) => {
+			const trigger = executableDefinition(automation).trigger;
+			return (
+				"entryCriteria" in trigger &&
+				trigger.entryCriteria !== undefined &&
+				trigger.entryCriteria.groups.length > 0
+			);
+		});
+		const record =
+			anyEntryCriteria && args.entityId
+				? await getObject(ctx, args.objectType, args.entityId, args.orgId)
+				: null;
+		const org = anyEntryCriteria ? await ctx.db.get(args.orgId) : null;
+		const actorId =
+			anyEntryCriteria && args.actorUserId
+				? ctx.db.normalizeId("users", args.actorUserId)
+				: null;
 		const actor = actorId ? await ctx.db.get(actorId) : null;
 
 		return automations.filter((automation) => {
@@ -1697,11 +1709,6 @@ async function checkpointLoopChunk(
 
 /** Rows fetched per index page while scanning for matches. */
 const FETCH_SCAN_BATCH = 500;
-/**
- * Per-fetch ceiling on rows scanned (newest first). A fetch that stops here
- * with org rows still unscanned reports truncated=true.
- */
-const FETCH_SCAN_CEILING = 5000;
 /**
  * Shared scan budget across every fetch in one walk, so multi-fetch workflows
  * stay under Convex's per-transaction read limits (32k docs / 16 MiB).

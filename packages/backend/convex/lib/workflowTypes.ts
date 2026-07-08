@@ -14,6 +14,16 @@ import { v, type Infer } from "convex/values";
  */
 
 // ---------------------------------------------------------------------------
+// Execution limits
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-fetch ceiling on rows scanned (newest first) in automationExecutor.
+ * Exported so the web debug UI's truncation copy stays in sync.
+ */
+export const FETCH_SCAN_CEILING = 5000;
+
+// ---------------------------------------------------------------------------
 // Object types
 // ---------------------------------------------------------------------------
 
