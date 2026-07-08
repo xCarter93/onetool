@@ -1,15 +1,13 @@
-import { mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { components } from "./_generated/api";
-import { Resend } from "@convex-dev/resend";
 import { getCurrentUserOrThrow, getCurrentUserOrgId } from "./lib/auth";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+import { userMutation } from "./lib/factories";
+import { sendOutbound } from "./email/outbound";
+import type { OutboundMessage } from "./email/types";
+import { getOrCreateOutboundThread, bumpThread } from "./email/threads";
 
-// Initialize Resend component
-export const resend = new Resend(components.resend, {
-	testMode: false, // Allow sending to real addresses
-	apiKey: process.env.RESEND_API_KEY, // Explicitly pass API key
-});
+// Re-export the durable component instance so existing callers (portal/email.ts)
+// keep importing `resend` from here; the instance itself lives in the seam.
+export { resend } from "./email/durableResend";
 
 /**
  * Send an email to a client with organization branding
@@ -81,36 +79,37 @@ export const sendClientEmail = userMutation({
 		const fromEmail = resolveFromEmail(organization);
 		const fromName = user.name || organization.name || "OneTool"; // Fallback to org name or "OneTool"
 
-		// Ensure organization has a receiving address for replies
-		if (!organization.receivingAddress) {
-			throw new Error(
-				"Organization does not have a receiving email address configured. Please contact support."
-			);
-		}
+		// Resolve/lookup the conversation thread this send belongs to.
+		const threadDocId = await getOrCreateOutboundThread(ctx, {
+			orgId,
+			clientId: args.clientId,
+			subject: args.subject,
+			legacyThreadId: args.threadId,
+		});
 
-		// Prepare email options
-		const emailOptions: {
-			from: string;
-			to: string;
-			subject: string;
-			html: string;
-			replyTo: string[];
-		} = {
+		const message: OutboundMessage = {
 			from: `${fromName} <${fromEmail}>`,
-			to: recipient.email,
+			to: [recipient.email],
+			replyTo: [resolveFromEmail(organization)],
 			subject: args.subject,
 			html: emailHtml,
-			// Use organization's receiving address for replies
-			replyTo: [organization.receivingAddress],
 		};
 
-		// Send email via Resend
-		const emailId = await resend.sendEmail(ctx, emailOptions);
+		const result = await sendOutbound(ctx, orgId, message);
+		if (result.skipped === "suppressed") {
+			throw new Error(
+				"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam)."
+			);
+		}
+		const emailId = result.resendEmailId;
+		if (!emailId) {
+			throw new Error("Email could not be sent.");
+		}
 
 		// Create message preview (first 100 chars)
 		const messagePreview = args.messageBody.substring(0, 100);
 
-		// Use provided threadId or create new one from emailId
+		// Legacy string threadId retained through the dual-write migration.
 		const threadId = args.threadId || emailId;
 
 		// Store email record
@@ -120,6 +119,7 @@ export const sendClientEmail = userMutation({
 			resendEmailId: emailId,
 			direction: "outbound",
 			threadId,
+			threadDocId,
 			subject: args.subject,
 			messageBody: args.messageBody,
 			messagePreview,
@@ -130,6 +130,11 @@ export const sendClientEmail = userMutation({
 			status: "sent",
 			sentAt: Date.now(),
 			sentBy: user._id,
+		});
+
+		await bumpThread(ctx, threadDocId, {
+			sentAt: Date.now(),
+			participantEmail: recipient.email,
 		});
 
 		// Log activity
@@ -211,11 +216,13 @@ export const replyToEmail = userMutation({
 			throw new Error("Client does not have a valid primary contact email");
 		}
 
-		// Build references chain
-		const references = originalEmail.references || [];
-		if (!references.includes(originalEmail.resendEmailId)) {
-			references.push(originalEmail.resendEmailId);
-		}
+		// Build the RFC References chain (best-effort — real Message-IDs arrive
+		// with inbound in P3; pre-P3 originals may lack rfcMessageId).
+		const parentRfcId = originalEmail.rfcMessageId;
+		const references = [
+			...(originalEmail.references ?? []),
+			...(parentRfcId ? [parentRfcId] : []),
+		];
 
 		// Build email HTML with organization branding
 		const emailHtml = buildEmailHtml({
@@ -233,37 +240,40 @@ export const replyToEmail = userMutation({
 		const fromEmail = resolveFromEmail(organization);
 		const fromName = user.name || organization.name || "OneTool";
 
-		// Ensure organization has a receiving address for replies
-		if (!organization.receivingAddress) {
-			throw new Error(
-				"Organization does not have a receiving email address configured. Please contact support."
-			);
-		}
-
 		// Add "Re: " prefix if not already present
 		const subject = originalEmail.subject.startsWith("Re:")
 			? originalEmail.subject
 			: `Re: ${originalEmail.subject}`;
 
-		// Prepare email options
-		const emailOptions: {
-			from: string;
-			to: string;
-			subject: string;
-			html: string;
-			replyTo: string[];
-		} = {
+		const threadDocId = await getOrCreateOutboundThread(ctx, {
+			orgId,
+			clientId,
+			subject,
+			existingThreadDocId: originalEmail.threadDocId,
+			legacyThreadId: originalEmail.threadId,
+		});
+
+		const message: OutboundMessage = {
 			from: `${fromName} <${fromEmail}>`,
-			to: primaryContact.email,
+			to: [primaryContact.email],
+			replyTo: [resolveFromEmail(organization)],
 			subject,
 			html: emailHtml,
-			replyTo: [organization.receivingAddress],
+			// RFC threading headers so the recipient's client threads our reply.
+			...(parentRfcId ? { inReplyTo: parentRfcId } : {}),
+			...(references.length > 0 ? { references } : {}),
 		};
 
-		// Send email with threading headers
-		// Note: Resend doesn't directly support custom headers like In-Reply-To,
-		// but we track threading in our database
-		const emailId = await resend.sendEmail(ctx, emailOptions);
+		const result = await sendOutbound(ctx, orgId, message);
+		if (result.skipped === "suppressed") {
+			throw new Error(
+				"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam)."
+			);
+		}
+		const emailId = result.resendEmailId;
+		if (!emailId) {
+			throw new Error("Email could not be sent.");
+		}
 
 		// Create message preview
 		const messagePreview = args.messageBody.substring(0, 100);
@@ -275,7 +285,8 @@ export const replyToEmail = userMutation({
 			resendEmailId: emailId,
 			direction: "outbound",
 			threadId: originalEmail.threadId || originalEmail.resendEmailId,
-			inReplyTo: originalEmail.resendEmailId,
+			threadDocId,
+			inReplyTo: parentRfcId,
 			references,
 			subject,
 			messageBody: args.messageBody,
@@ -287,6 +298,11 @@ export const replyToEmail = userMutation({
 			status: "sent",
 			sentAt: Date.now(),
 			sentBy: user._id,
+		});
+
+		await bumpThread(ctx, threadDocId, {
+			sentAt: Date.now(),
+			participantEmail: primaryContact.email,
 		});
 
 		// Log activity
@@ -317,16 +333,13 @@ export const replyToEmail = userMutation({
 /**
  * Resolve the from email address with proper fallback chain
  */
+// Canonical fallback when an org has no receiving address configured (rare
+// post-migration). Never throws — a missing address must not block sends.
+const FALLBACK_FROM_EMAIL = "support@onetool.biz";
+
 function resolveFromEmail(organization: { receivingAddress?: string }): string {
-	// Priority: organization.receivingAddress -> env var -> default
-	const fromEmail = organization.receivingAddress || "support@onetool.biz";
-
-	// Validate that we have a non-empty string
-	if (!fromEmail || fromEmail.trim().length === 0) {
-		throw new Error("Unable to resolve a valid from email address");
-	}
-
-	return fromEmail;
+	const addr = organization.receivingAddress?.trim();
+	return addr && addr.length > 0 ? addr : FALLBACK_FROM_EMAIL;
 }
 
 /**

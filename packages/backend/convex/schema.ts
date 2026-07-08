@@ -920,7 +920,8 @@ export default defineSchema({
 		.index("by_client_status", ["clientId", "status"])
 		.index("by_thread", ["threadId", "sentAt"])
 		.index("by_rfc_message_id", ["rfcMessageId"])
-		.index("by_thread_doc", ["threadDocId", "sentAt"]),
+		.index("by_thread_doc", ["threadDocId", "sentAt"])
+		.index("by_idempotency_key", ["idempotencyKey"]),
 
 	// Email Attachments - files attached to emails
 	emailAttachments: defineTable({

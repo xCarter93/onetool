@@ -1,6 +1,7 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { logWebhookError, logWebhookSuccess } from "./lib/webhooks";
+import { recordSuppression } from "./email/suppressions";
 
 const WEBHOOK_SERVICE = "Resend";
 
@@ -132,12 +133,27 @@ export const handleWebhookEvent = internalMutation({
 					status: "bounced",
 					bouncedAt: eventTimestamp,
 				});
+				// Suppress the recipient so we never send to it again.
+				// (Resend surfaces hard bounces here; soft bounces are retried
+				// internally and generally don't fire this event.)
+				await recordSuppression(ctx, {
+					orgId: emailMessage.orgId,
+					email: emailMessage.toEmail,
+					reason: "hard_bounce",
+					source: "resend_webhook",
+				});
 				break;
 
 			case "email.complained":
 				await ctx.db.patch(emailMessage._id, {
 					status: "complained",
 					complainedAt: eventTimestamp,
+				});
+				await recordSuppression(ctx, {
+					orgId: emailMessage.orgId,
+					email: emailMessage.toEmail,
+					reason: "complaint",
+					source: "resend_webhook",
 				});
 				break;
 

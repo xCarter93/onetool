@@ -45,7 +45,7 @@ async function generateUniqueReceivingAddress(
 		// Use 16 characters for much lower collision probability
 		// 16 hex chars = 64 bits = ~18 quintillion possible values
 		const identifier = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-		const receivingAddress = `org-${identifier}@onetool.biz`;
+		const receivingAddress = `org-${identifier}@inbound.onetool.biz`;
 
 		// Check if this address already exists in the database
 		const existing = await ctx.db

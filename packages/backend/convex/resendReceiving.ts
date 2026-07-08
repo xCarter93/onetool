@@ -1,7 +1,7 @@
 import { internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { Resend } from "resend";
+import { resendClient } from "./lib/resendClient";
 import type { Id } from "./_generated/dataModel";
 import { systemMutation } from "./lib/factories";
 
@@ -13,8 +13,6 @@ if (!process.env.RESEND_API_KEY) {
 	);
 }
 
-// Initialize Resend client for API calls
-const resendClient = new Resend(process.env.RESEND_API_KEY);
 
 /**
  * Handle inbound email from Resend webhook (Action)
