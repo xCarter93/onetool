@@ -75,7 +75,7 @@ export function EmailActivityList({
 						key={email._id}
 						type="button"
 						onClick={() => {
-							const id = email.threadId || email._id;
+							const id = email.threadDocId ?? email._id;
 							onThreadClick?.(id);
 						}}
 						className={cn(

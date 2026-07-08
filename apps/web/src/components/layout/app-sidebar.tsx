@@ -8,6 +8,7 @@ import {
 	Command,
 	GalleryVerticalEnd,
 	Home,
+	Inbox,
 	Settings,
 	Users,
 	FileText,
@@ -82,6 +83,11 @@ const data = {
 					title: "Home",
 					url: "/home",
 					icon: Home,
+				},
+				{
+					title: "Inbox",
+					url: "/inbox",
+					icon: Inbox,
 				},
 				{
 					title: "Clients",
@@ -223,6 +229,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		isOrgSwitching || taskStats === undefined
 			? 0
 			: (taskStats.todayTasks ?? 0) + (taskStats.overdue ?? 0);
+	// Org-wide count of email threads with unread inbound messages (Inbox badge).
+	const inboxUnread = useQuery(api.emailThreads.countUnreadThreads, {});
+	const inboxBadgeCount =
+		isOrgSwitching || inboxUnread === undefined ? 0 : inboxUnread;
 	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
@@ -360,7 +370,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			badgeCount:
 				item.title === "Tasks" && tasksBadgeCount > 0
 					? tasksBadgeCount
-					: undefined,
+					: item.title === "Inbox" && inboxBadgeCount > 0
+						? inboxBadgeCount
+						: undefined,
 			badgeVariant: item.title === "Tasks" ? ("alert" as const) : undefined,
 		};
 	};

@@ -32,7 +32,7 @@ interface EmailThreadSheetProps {
 	isOpen: boolean;
 	onOpenChange: (open: boolean) => void;
 	clientId: Id<"clients">;
-	threadId?: string;
+	threadDocId?: Id<"emailThreads">;
 	onComplete?: () => void;
 	mode?: "new" | "reply"; // New prop to determine if composing new or replying
 }
@@ -41,7 +41,7 @@ export function EmailThreadSheet({
 	isOpen,
 	onOpenChange,
 	clientId,
-	threadId,
+	threadDocId,
 	onComplete,
 	mode = "reply",
 }: EmailThreadSheetProps) {
@@ -53,10 +53,10 @@ export function EmailThreadSheet({
 		useState<Id<"clientContacts"> | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 
-	// Fetch thread messages (only if threadId provided)
+	// Fetch thread messages (only if threadDocId provided)
 	const thread = useQuery(
 		api.emailMessages.getEmailThread,
-		threadId ? { threadId } : "skip"
+		threadDocId ? { threadDocId } : "skip"
 	);
 
 	// Fetch client info

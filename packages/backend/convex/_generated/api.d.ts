@@ -35,6 +35,7 @@ import type * as email_threads from "../email/threads.js";
 import type * as email_types from "../email/types.js";
 import type * as emailAttachments from "../emailAttachments.js";
 import type * as emailMessages from "../emailMessages.js";
+import type * as emailThreads from "../emailThreads.js";
 import type * as emails_portalOtp from "../emails/portalOtp.js";
 import type * as eventBus from "../eventBus.js";
 import type * as favorites from "../favorites.js";
@@ -156,6 +157,7 @@ declare const fullApi: ApiFromModules<{
   "email/types": typeof email_types;
   emailAttachments: typeof emailAttachments;
   emailMessages: typeof emailMessages;
+  emailThreads: typeof emailThreads;
   "emails/portalOtp": typeof emails_portalOtp;
   eventBus: typeof eventBus;
   favorites: typeof favorites;

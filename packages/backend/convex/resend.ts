@@ -140,6 +140,9 @@ export const sendClientEmail = userMutation({
 		await bumpThread(ctx, threadDocId, {
 			sentAt: Date.now(),
 			participantEmail: recipient.email,
+			subject: args.subject,
+			preview: messagePreview,
+			direction: "outbound",
 		});
 
 		// Log activity
@@ -308,6 +311,9 @@ export const replyToEmail = userMutation({
 		await bumpThread(ctx, threadDocId, {
 			sentAt: Date.now(),
 			participantEmail: primaryContact.email,
+			subject,
+			preview: messagePreview,
+			direction: "outbound",
 		});
 
 		// Log activity

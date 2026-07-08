@@ -1,6 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
@@ -146,61 +146,32 @@ export const getClientEmailStats = optionalUserQuery({
 });
 
 /**
- * Get a single email thread with all messages
- * Matches by threadId OR by subject (for when threadIds don't match due to batch ID issues)
+ * Get a single email thread with all its messages, oldest-first.
+ * Keyed on the first-class `emailThreads` row (`threadDocId`) via `by_thread_doc`
+ * — the legacy string-`threadId` subject-widening hack is gone now that threads
+ * are a real table.
  */
 export const getEmailThread = optionalUserQuery({
 	args: {
-		threadId: v.string(),
+		threadDocId: v.id("emailThreads"),
 	},
 	handler: async (ctx, args) => {
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return null;
 
-		// Get all messages in this thread by threadId
-		const messagesByThreadId = await ctx.db
+		// The thread must belong to this org before returning any of its messages.
+		const thread = await ctx.db.get(args.threadDocId);
+		if (!thread || thread.orgId !== orgId) return null;
+
+		// by_thread_doc is [threadDocId, sentAt] → already oldest-first.
+		const messages = await ctx.db
 			.query("emailMessages")
-			.withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+			.withIndex("by_thread_doc", (q) =>
+				q.eq("threadDocId", args.threadDocId)
+			)
 			.collect();
 
-		// Also get the first message to extract its subject
-		const firstMessage = messagesByThreadId[0];
-
-		let allMessages = messagesByThreadId;
-
-		// Widen by subject to catch related messages — but only for client-linked
-		// threads. Unknown-sender threads (clientId === null) group by threadId
-		// alone; widening by a null clientId would cross-link every unlinked
-		// message in the org.
-		if (firstMessage && firstMessage.clientId) {
-			const cleanSubject = firstMessage.subject.replace(/^Re:\s*/i, "").trim();
-
-			// Get client ID from first message (narrowed non-null by the guard)
-			const clientId = firstMessage.clientId;
-
-			// Find all messages for this client
-			const clientMessages = await ctx.db
-				.query("emailMessages")
-				.withIndex("by_client", (q) => q.eq("clientId", clientId))
-				.collect();
-
-			// Filter by matching subject (with or without "Re:")
-			const messagesBySubject = clientMessages.filter((msg) => {
-				const msgCleanSubject = msg.subject.replace(/^Re:\s*/i, "").trim();
-				return msgCleanSubject === cleanSubject;
-			});
-
-			// Combine and deduplicate
-			const messageMap = new Map<string, Doc<"emailMessages">>();
-			[...messagesByThreadId, ...messagesBySubject].forEach((msg) => {
-				messageMap.set(msg._id, msg);
-			});
-
-			allMessages = Array.from(messageMap.values());
-		}
-
-		// Filter to only messages from the user's organization
-		const orgMessages = allMessages
+		const orgMessages = messages
 			.filter((msg) => msg.orgId === orgId)
 			.sort((a, b) => a.sentAt - b.sentAt);
 
@@ -232,10 +203,11 @@ export const getEmailThread = optionalUserQuery({
 });
 
 /**
- * Thread summary type for grouped email conversations
+ * Thread summary type for grouped email conversations.
+ * Keyed on the first-class `emailThreads` row.
  */
 export interface EmailThreadSummary {
-	threadId: string;
+	threadDocId: Id<"emailThreads">;
 	subject: string;
 	latestMessage: string;
 	latestMessageAt: number;
@@ -245,64 +217,35 @@ export interface EmailThreadSummary {
 }
 
 /**
- * List email threads for a client (grouped conversations)
+ * List email threads for a client (grouped conversations), newest-first.
+ * Reads the first-class `emailThreads` table directly (no per-message grouping)
+ * via `by_client`, using the denormalized display fields.
  */
 export const listThreadsByClient = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<EmailThreadSummary[]> => {
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult<EmailThreadSummary>();
 
-		// Get all emails for this client
-		const emails = await ctx.db
-			.query("emailMessages")
+		const threads = await ctx.db
+			.query("emailThreads")
 			.withIndex("by_client", (q) => q.eq("clientId", args.clientId))
 			.collect();
 
-		// Filter to only emails from the user's organization
-		const orgEmails = emails.filter((email) => email.orgId === orgId);
-
-		// Group by thread
-		const threadMap = new Map<string, EmailThreadSummary>();
-
-		for (const email of orgEmails) {
-			const threadId = email.threadId || email._id;
-			const existing = threadMap.get(threadId);
-
-			if (!existing) {
-				threadMap.set(threadId, {
-					threadId,
-					subject: email.subject,
-					latestMessage:
-						email.messagePreview || email.messageBody.substring(0, 100),
-					latestMessageAt: email.sentAt,
-					messageCount: 1,
-					hasUnread: email.direction === "inbound" && !email.openedAt,
-					participants: [email.fromName],
-				});
-			} else {
-				// Update if this is a later message
-				if (email.sentAt > existing.latestMessageAt) {
-					existing.latestMessage =
-						email.messagePreview || email.messageBody.substring(0, 100);
-					existing.latestMessageAt = email.sentAt;
-				}
-				existing.messageCount++;
-				if (email.direction === "inbound" && !email.openedAt) {
-					existing.hasUnread = true;
-				}
-				if (!existing.participants.includes(email.fromName)) {
-					existing.participants.push(email.fromName);
-				}
-			}
-		}
-
-		// Convert to array and sort by latest message
-		return Array.from(threadMap.values()).sort(
-			(a, b) => b.latestMessageAt - a.latestMessageAt
-		);
+		return threads
+			.filter((t) => t.orgId === orgId && t.status !== "archived")
+			.sort((a, b) => b.lastMessageAt - a.lastMessageAt)
+			.map((t) => ({
+				threadDocId: t._id,
+				subject: t.subject ?? t.subjectNormalized,
+				latestMessage: t.lastMessagePreview ?? "",
+				latestMessageAt: t.lastMessageAt,
+				messageCount: t.messageCount,
+				hasUnread: t.unreadCount > 0,
+				participants: t.participantEmails,
+			}));
 	},
 });
 

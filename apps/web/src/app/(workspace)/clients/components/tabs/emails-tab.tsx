@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Separator } from "@/components/ui/separator";
@@ -20,7 +21,7 @@ const THREADS_PER_PAGE = 5;
 interface EmailsTabProps {
 	threads: EmailThreadSummary[] | undefined;
 	onComposeEmail: () => void;
-	onThreadClick?: (threadId: string) => void;
+	onThreadClick?: (threadDocId: Id<"emailThreads">) => void;
 }
 
 export function EmailsTab({
@@ -65,8 +66,8 @@ export function EmailsTab({
 				<div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
 					{paginated.map((thread) => (
 						<button
-							key={thread.threadId}
-							onClick={() => onThreadClick?.(thread.threadId)}
+							key={thread.threadDocId}
+							onClick={() => onThreadClick?.(thread.threadDocId)}
 							className="w-full px-4 py-3 text-left hover:bg-accent transition-colors"
 						>
 							<div className="flex items-start gap-3">

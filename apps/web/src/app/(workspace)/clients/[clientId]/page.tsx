@@ -20,9 +20,9 @@ export default function ClientDetailPage() {
 	const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 	const [isEmailSheetOpen, setIsEmailSheetOpen] = useState(false);
 	const [emailSheetMode, setEmailSheetMode] = useState<"new" | "reply">("new");
-	const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>(
-		undefined
-	);
+	const [selectedThreadDocId, setSelectedThreadDocId] = useState<
+		Id<"emailThreads"> | undefined
+	>(undefined);
 	const [activeTab, setActiveTab] = useState("overview");
 
 	// Fetch client data
@@ -155,8 +155,8 @@ export default function ClientDetailPage() {
 						primaryProperty={primaryProperty}
 						onComposeEmail={handleComposeEmail}
 						onAddTask={() => setIsTaskSheetOpen(true)}
-						onThreadClick={(threadId) => {
-							setSelectedThreadId(threadId);
+						onThreadClick={(threadDocId) => {
+							setSelectedThreadDocId(threadDocId);
 							setEmailSheetMode("reply");
 							setIsEmailSheetOpen(true);
 						}}
@@ -169,14 +169,14 @@ export default function ClientDetailPage() {
 				isOpen={isEmailSheetOpen}
 				onOpenChange={(open) => {
 					setIsEmailSheetOpen(open);
-					if (!open) setSelectedThreadId(undefined);
+					if (!open) setSelectedThreadDocId(undefined);
 				}}
 				clientId={clientId as Id<"clients">}
-				threadId={selectedThreadId}
+				threadDocId={selectedThreadDocId}
 				mode={emailSheetMode}
 				onComplete={() => {
 					setIsEmailSheetOpen(false);
-					setSelectedThreadId(undefined);
+					setSelectedThreadDocId(undefined);
 				}}
 			/>
 

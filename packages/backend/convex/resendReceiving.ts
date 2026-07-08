@@ -255,6 +255,9 @@ export const processInboundEmail = internalMutation({
 			sentAt: receivedAt,
 			participantEmail: fromEmail,
 			incUnread: true,
+			subject: args.subject,
+			preview: messagePreview,
+			direction: "inbound",
 		});
 		if (clientId) {
 			const thread = await ctx.db.get(threadDocId);

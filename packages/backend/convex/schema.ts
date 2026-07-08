@@ -950,6 +950,11 @@ export default defineSchema({
 		// Nullable: unknown-sender threads have no linked client until triaged
 		clientId: v.union(v.id("clients"), v.null()),
 		subjectNormalized: v.string(), // subject with all leading Re:/Fwd: stripped, lowercased
+		subject: v.optional(v.string()), // human display subject (latest message; denormalized for the inbox list)
+		lastMessagePreview: v.optional(v.string()), // snippet of the latest message (denormalized for the inbox list)
+		lastMessageDirection: v.optional(
+			v.union(v.literal("inbound"), v.literal("outbound"))
+		), // direction of the latest message (inbox row affordance)
 		rootRfcMessageId: v.optional(v.string()), // Message-ID of the thread's root message (best-effort for backfilled threads)
 		lastMessageAt: v.number(), // timestamp of the most recent message (sort key for the inbox)
 		messageCount: v.number(),
@@ -959,6 +964,7 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_org_last_message", ["orgId", "lastMessageAt"])
+		.index("by_org_status", ["orgId", "status", "lastMessageAt"])
 		.index("by_client", ["clientId"])
 		.index("by_root_message_id", ["rootRfcMessageId"]),
 

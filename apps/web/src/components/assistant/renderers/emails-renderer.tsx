@@ -14,7 +14,7 @@ interface EmailsOutput {
 		status: string;
 		// ISO string today; epoch ms in outputs replayed from older threads.
 		sentAt?: string | number;
-		threadId?: string;
+		threadDocId?: string;
 	}>;
 	totalCount: number;
 	truncated: boolean;

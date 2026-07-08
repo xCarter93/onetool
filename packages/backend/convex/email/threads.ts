@@ -40,6 +40,7 @@ export async function getOrCreateOutboundThread(
 		orgId: args.orgId,
 		clientId: args.clientId,
 		subjectNormalized: normalizeSubject(args.subject),
+		subject: args.subject,
 		rootRfcMessageId: undefined,
 		lastMessageAt: Date.now(),
 		messageCount: 0,
@@ -49,11 +50,24 @@ export async function getOrCreateOutboundThread(
 	});
 }
 
-/** Update thread aggregates after a message is added to it. */
+/**
+ * Update thread aggregates after a message is added to it. When this message is
+ * the newest in the thread, the denormalized display fields (subject, preview,
+ * direction) are refreshed so the inbox list renders without a per-thread
+ * message fetch. An out-of-order (older) message bumps counts but never clobbers
+ * the latest-message display fields.
+ */
 export async function bumpThread(
 	ctx: MutationCtx,
 	threadDocId: Id<"emailThreads">,
-	args: { sentAt: number; participantEmail?: string; incUnread?: boolean }
+	args: {
+		sentAt: number;
+		participantEmail?: string;
+		incUnread?: boolean;
+		subject?: string;
+		preview?: string;
+		direction?: "inbound" | "outbound";
+	}
 ): Promise<void> {
 	const thread = await ctx.db.get(threadDocId);
 	if (!thread) return;
@@ -62,11 +76,21 @@ export async function bumpThread(
 		!thread.participantEmails.includes(args.participantEmail)
 			? [...thread.participantEmails, args.participantEmail]
 			: thread.participantEmails;
+	const isNewest = args.sentAt >= thread.lastMessageAt;
 	await ctx.db.patch(threadDocId, {
 		lastMessageAt: Math.max(thread.lastMessageAt, args.sentAt),
 		messageCount: thread.messageCount + 1,
 		unreadCount: thread.unreadCount + (args.incUnread ? 1 : 0),
 		participantEmails,
+		...(isNewest && args.subject !== undefined
+			? { subject: args.subject }
+			: {}),
+		...(isNewest && args.preview !== undefined
+			? { lastMessagePreview: args.preview }
+			: {}),
+		...(isNewest && args.direction !== undefined
+			? { lastMessageDirection: args.direction }
+			: {}),
 	});
 }
 
@@ -172,6 +196,7 @@ export async function resolveInboundThread(
 		orgId: args.orgId,
 		clientId: args.clientId,
 		subjectNormalized: normSubject,
+		subject: args.subject,
 		rootRfcMessageId: args.rfcMessageId,
 		lastMessageAt: args.receivedAt,
 		messageCount: 0,

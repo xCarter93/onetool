@@ -37,7 +37,7 @@ interface ClientDetailTabsProps {
 	// Actions
 	onComposeEmail: () => void;
 	onAddTask: () => void;
-	onThreadClick: (threadId: string) => void;
+	onThreadClick: (threadDocId: Id<"emailThreads">) => void;
 }
 
 export function ClientDetailTabs({
