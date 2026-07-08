@@ -15,11 +15,17 @@ import type {
 	WorkflowNodeConfig,
 } from "./node-types";
 import { legacyNodeToV2 } from "./legacy-load";
-import { computeAllPositions } from "./initial-placement";
+import { collectLoopBody } from "./graph-utils";
+import {
+	computeDerivedLayout,
+	getDefaultNodeSize,
+	type DerivedLayoutResult,
+} from "./derived-layout";
 
 export const TRIGGER_NODE_ID = "__trigger__";
 export const TRIGGER_PLACEHOLDER_ID = "__trigger_placeholder__";
 export const TERMINAL_PREFIX = "__terminal__";
+export const CONTAINER_PREFIX = "__container__";
 
 /** React Flow node type names (must match nodeTypes object keys) */
 export const RF_NODE_TYPES = {
@@ -72,6 +78,57 @@ function isPlaceholderEntry(node: EditorNode): node is PlaceholderEntry {
 /** Check if a node ID is a terminal stub (not a real workflow node) */
 export function isTerminalId(id: string): boolean {
 	return id.startsWith(TERMINAL_PREFIX);
+}
+
+/** Check if a node ID is a loop-container frame (not a real workflow node) */
+export function isContainerId(id: string): boolean {
+	return id.startsWith(CONTAINER_PREFIX);
+}
+
+export function containerIdForLoop(loopId: string): string {
+	return `${CONTAINER_PREFIX}${loopId}`;
+}
+
+/**
+ * Apply a computed layout to React Flow arrays: node positions, loop-container
+ * geometry, and the route hints the loop edges need (After-Last hugs the
+ * container's right edge, loop-back its left). Returns new arrays; inputs are
+ * not mutated.
+ */
+export function applyDerivedLayout(
+	rfNodes: AppNode[],
+	rfEdges: AppEdge[],
+	layout: DerivedLayoutResult
+): { nodes: AppNode[]; edges: AppEdge[] } {
+	const nodes = rfNodes.map((n) => {
+		if (isContainerId(n.id)) {
+			const rect = layout.containers.get(n.id.slice(CONTAINER_PREFIX.length));
+			if (!rect) return n;
+			return {
+				...n,
+				position: { x: rect.x, y: rect.y },
+				data: { ...n.data, width: rect.width, height: rect.height },
+			} as AppNode;
+		}
+		const pos = layout.positions.get(n.id);
+		return pos ? ({ ...n, position: pos } as AppNode) : n;
+	});
+
+	const edges = rfEdges.map((e) => {
+		const branchType = e.data?.branchType;
+		if (branchType === "after") {
+			const x = layout.afterLastRouteRightX.get(e.source);
+			if (x !== undefined)
+				return { ...e, data: { ...e.data, routeRightX: x } } as AppEdge;
+		} else if (branchType === "loop_back") {
+			const x = layout.loopBackRouteLeftX.get(e.target);
+			if (x !== undefined)
+				return { ...e, data: { ...e.data, routeLeftX: x } } as AppEdge;
+		}
+		return e;
+	});
+
+	return { nodes, edges };
 }
 
 /** Create a terminal stub node + edge for a leaf output */
@@ -251,6 +308,30 @@ export function automationToReactFlow(
 		isPlaceholderEntry(n) ? n : legacyNodeToV2(n)
 	);
 
+	// Which nodes live inside a loop body, and which node/terminal carries the
+	// loop-back edge. ANY dangling leaf inside a body (bare next, condition
+	// branch, nested loop's After-Last) skips to the next item — mark it so
+	// the canvas says so, except where the loop-back edge already makes the
+	// return visible.
+	const bodyNodeIds = new Set<string>();
+	const loopBackSourceIds = new Set<string>();
+	for (const node of nodes) {
+		if (node.type === "loop" && node.bodyStartNodeId) {
+			for (const id of collectLoopBody(node.id, nodes)) {
+				// The loop header itself is not body — only nodes nested in SOME
+				// outer loop's body count (a top-level loop's After-Last just ends).
+				if (id !== node.id) bodyNodeIds.add(id);
+			}
+			loopBackSourceIds.add(resolveLoopBackSourceId(node.bodyStartNodeId, nodes));
+		}
+	}
+	const impliedNextItemData = (sourceId: string, terminalId: string) =>
+		bodyNodeIds.has(sourceId) &&
+		!loopBackSourceIds.has(sourceId) &&
+		!loopBackSourceIds.has(terminalId)
+			? { impliedNextItem: true }
+			: {};
+
 	// 2. Find root node (not referenced by any other node's nextNodeId or elseNodeId)
 	const referencedIds = new Set<string>();
 	for (const node of nodes) {
@@ -306,6 +387,7 @@ export function automationToReactFlow(
 					label: "Yes",
 					variant: "yes",
 					branchType: "yes" as const,
+					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}-yes`),
 				});
 			}
 
@@ -324,6 +406,7 @@ export function automationToReactFlow(
 					label: "No",
 					variant: "no",
 					branchType: "no" as const,
+					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}-no`),
 				});
 			}
 
@@ -362,6 +445,9 @@ export function automationToReactFlow(
 					label: "After Last",
 					variant: "no",
 					branchType: "after" as const,
+					// A nested loop's dangling After-Last falls through to the
+					// OUTER loop's next item.
+					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}-after`),
 				});
 			}
 
@@ -403,32 +489,40 @@ export function automationToReactFlow(
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, undefined, RF_EDGE_TYPES.straight, {
 					branchType: "next" as const,
+					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}`),
 				});
 			}
 		}
 	}
 
-	// Collect persisted positions (from drag or DB) so computeAllPositions
-	// places children relative to actual parent positions, not computed ones
-	const persistedPositions = new Map<string, { x: number; y: number }>();
-	for (const rfNode of rfNodes) {
-		const dbNode = (rfNode.data as { _dbNode?: WorkflowNode })?._dbNode;
-		if (dbNode?.position) {
-			persistedPositions.set(rfNode.id, dbNode.position);
-		}
+	// Derived layout, estimate pass: default per-type sizes position the first
+	// paint; the flow component re-runs layout with real DOM measurements and
+	// animates the delta. Persisted node positions are deliberately ignored.
+	const layout = computeDerivedLayout(rfNodes, rfEdges, TRIGGER_NODE_ID, (_id, type) =>
+		getDefaultNodeSize(type)
+	);
+
+	// Loop containers render behind everything (zIndex -1, prepended for paint order).
+	const containerNodes: AppNode[] = [];
+	for (const [loopId, rect] of layout.containers) {
+		containerNodes.push({
+			id: containerIdForLoop(loopId),
+			type: "loopContainerNode",
+			position: { x: rect.x, y: rect.y },
+			data: {
+				nodeType: "loopContainer",
+				loopId,
+				width: rect.width,
+				height: rect.height,
+			},
+			draggable: false,
+			selectable: false,
+			focusable: false,
+			zIndex: -1,
+		} as AppNode);
 	}
 
-	const triggerId = trigger ? TRIGGER_NODE_ID : TRIGGER_PLACEHOLDER_ID;
-	const computedPositions = computeAllPositions(rfNodes, rfEdges, triggerId, persistedPositions);
-
-	for (const rfNode of rfNodes) {
-		const pos = computedPositions.get(rfNode.id);
-		if (pos) {
-			rfNode.position = pos;
-		}
-	}
-
-	return { nodes: rfNodes, edges: rfEdges };
+	return applyDerivedLayout([...containerNodes, ...rfNodes], rfEdges, layout);
 }
 
 /**
@@ -450,6 +544,7 @@ export function reactFlowToFlatArray(
 		if (rfNode.id === TRIGGER_NODE_ID) continue;
 		if (rfNode.id === TRIGGER_PLACEHOLDER_ID) continue;
 		if (isTerminalId(rfNode.id)) continue;
+		if (isContainerId(rfNode.id)) continue;
 		// Filter out placeholder nodes -- they are frontend-only transient state
 		if ((rfNode.data as { nodeType?: string })?.nodeType === "placeholder")
 			continue;
@@ -497,8 +592,7 @@ export function reactFlowToFlatArray(
 		const nodeData = rfNode.data as { config?: WorkflowNodeConfig } | undefined;
 		const config = nodeData?.config ?? dbNode.config;
 
-		const pos = { x: rfNode.position.x, y: rfNode.position.y };
-
+		// Positions are fully derived (Phase 2) — never persisted.
 		workflowNodes.push({
 			id: dbNode.id,
 			type: dbNode.type,
@@ -506,7 +600,6 @@ export function reactFlowToFlatArray(
 			nextNodeId,
 			elseNodeId,
 			bodyStartNodeId,
-			position: pos,
 		});
 	}
 

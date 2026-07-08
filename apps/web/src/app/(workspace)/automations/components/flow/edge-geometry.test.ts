@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Node } from "@xyflow/react";
-import type { WorkflowNode } from "../../lib/node-types";
-import {
-	computeAfterLastRouteRightX,
-	getNoBranchGeometry,
-	getAfterLastGeometry,
-} from "./edge-geometry";
+import { getNoBranchGeometry, getAfterLastGeometry } from "./edge-geometry";
 
 describe("edge geometry", () => {
 	it("draws the No branch with a direct final segment into the target", () => {
@@ -32,28 +26,6 @@ describe("edge geometry", () => {
 		});
 
 		expect(afterLast.rightX).toBeGreaterThan(noPlaceholderRightX);
-	});
-
-	it("computes an After Last corridor beyond the widest loop body branch", () => {
-		const workflowNodes: WorkflowNode[] = [
-			{ id: "loop1", type: "loop", bodyStartNodeId: "cond1", nextNodeId: "after1" },
-			{ id: "cond1", type: "condition", nextNodeId: "yes1", elseNodeId: "no1" },
-			{ id: "yes1", type: "action" },
-			{ id: "no1", type: "action" },
-			{ id: "after1", type: "action" },
-		];
-
-		const layoutedNodes: Node[] = [
-			{ id: "loop1", type: "loopNode", data: {}, position: { x: 240, y: 200 } },
-			{ id: "cond1", type: "conditionNode", data: {}, position: { x: 260, y: 352 } },
-			{ id: "yes1", type: "actionNode", data: {}, position: { x: 260, y: 504 } },
-			{ id: "no1", type: "actionNode", data: {}, position: { x: 760, y: 504 } },
-			{ id: "after1", type: "actionNode", data: {}, position: { x: 260, y: 656 } },
-		];
-
-		const routeRightX = computeAfterLastRouteRightX("loop1", layoutedNodes, workflowNodes);
-
-		expect(routeRightX).toBeGreaterThan(1020);
 	});
 
 	it("honors an explicit After Last corridor override", () => {

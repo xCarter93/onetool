@@ -284,7 +284,6 @@ export function toSavableNodes(nodes: WorkflowNode[]) {
 			...(node.bodyStartNodeId !== undefined
 				? { bodyStartNodeId: node.bodyStartNodeId }
 				: {}),
-			...(node.position !== undefined ? { position: node.position } : {}),
 		};
 	});
 }
@@ -738,21 +737,11 @@ export function useAutomationEditor(automationId: string | null) {
 		toast.success("Restored", "The deleted nodes have been restored");
 	}, [clearUndoState, deletedNodeState, toast]);
 
-	const handleNodeDragStop = useCallback(
-		(nodeId: string, position: { x: number; y: number }) => {
-			// Update internal workflow nodes with new drag position for persistence
-			setNodes((prev) =>
-				prev.map((n) => (n.id === nodeId ? { ...n, position } : n))
-			);
-		},
-		[]
-	);
-
 	const handlePaneClick = useCallback(() => {
 		clearUndoState();
 	}, [clearUndoState]);
 
-	// Positions are now computed inside automationToReactFlow (initial-placement.ts)
+	// Positions are fully derived inside automationToReactFlow (derived-layout.ts)
 	const layoutedNodes = rawFlow.nodes;
 	const layoutedEdges = rawFlow.edges;
 
@@ -996,7 +985,6 @@ export function useAutomationEditor(automationId: string | null) {
 		handleTriggerTypeSelect,
 		handleDeleteNode,
 		handleDeleteTrigger,
-		handleNodeDragStop,
 		handleUndo,
 		handleSave,
 		handlePaneClick,

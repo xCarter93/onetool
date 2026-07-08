@@ -75,7 +75,8 @@ export const ConditionNodeRF = memo(({ data, selected }: NodeProps) => {
 					</div>
 					<div className="min-w-0 flex-1">
 						<div className="text-sm font-semibold truncate">{title}</div>
-						<div className="text-xs text-muted-foreground truncate">
+						{/* Full sentence readback (A5-1); derived layout measures real heights, so multi-line is safe. */}
+						<div className="text-xs text-muted-foreground line-clamp-3">
 							{description}
 						</div>
 					</div>

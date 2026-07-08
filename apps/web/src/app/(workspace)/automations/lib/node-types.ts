@@ -345,6 +345,14 @@ export type TerminalNodeData = {
 	nodeType: "terminal";
 };
 
+/** Non-interactive dotted frame rendered behind a loop's body (derived layout). */
+export type LoopContainerNodeData = {
+	nodeType: "loopContainer";
+	loopId: string;
+	width: number;
+	height: number;
+};
+
 // ---------------------------------------------------------------------------
 // 8. AppNode union (typed RF nodes)
 // ---------------------------------------------------------------------------
@@ -366,6 +374,7 @@ export type EndRFNode = Node<EndNodeData, "endNode">;
 export type NextItemRFNode = Node<NextItemNodeData, "nextItemNode">;
 export type PlaceholderRFNode = Node<PlaceholderNodeData, "placeholderNode">;
 export type TerminalRFNode = Node<TerminalNodeData, "terminalNode">;
+export type LoopContainerRFNode = Node<LoopContainerNodeData, "loopContainerNode">;
 
 export type AppNode =
 	| TriggerRFNode
@@ -381,7 +390,8 @@ export type AppNode =
 	| EndRFNode
 	| NextItemRFNode
 	| PlaceholderRFNode
-	| TerminalRFNode;
+	| TerminalRFNode
+	| LoopContainerRFNode;
 
 // ---------------------------------------------------------------------------
 // 9. AppEdge type
@@ -394,6 +404,16 @@ export type EdgeData = {
 	label?: string;
 	variant?: string;
 	isTerminal?: boolean;
+	/**
+	 * Dangling condition branch inside a loop body: falling off the end skips
+	 * to the next item. Renders an explicit "↩ Next item" marker so the
+	 * engine's skip-item semantics are visible on the canvas.
+	 */
+	impliedNextItem?: boolean;
+	/** X of the After-Last edge's vertical run (derived layout, loop edges only). */
+	routeRightX?: number;
+	/** X of the loop-back edge's vertical run (derived layout, loop edges only). */
+	routeLeftX?: number;
 	/** actionType selects the action variant when nodeType is "action". */
 	onInsertNode?: (edgeId: string, nodeType: string, actionType?: string) => void;
 };

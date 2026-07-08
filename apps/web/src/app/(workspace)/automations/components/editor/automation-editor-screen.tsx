@@ -204,8 +204,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						edges={flowEdges}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
-						onNodeDragStop={editor.handleNodeDragStop}
-						onNavigateReady={handleNavigateReady}
+							onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 					/>
 					{/* Floats over the canvas so the dotted background runs behind it. */}

@@ -9,6 +9,7 @@ import {
 import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NextItemMarker } from "./next-item-marker";
 
 const EDGE_STYLE = {
 	stroke: "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
@@ -45,6 +46,7 @@ export function BranchLabelEdge(props: EdgeProps) {
 	const rawLabel = data?.label as string | undefined;
 	const label = displayLabel(rawLabel, branchType);
 	const isTerminal = data?.isTerminal === true;
+	const impliedNextItem = data?.impliedNextItem === true;
 	const isLoopBranch = branchType === "each";
 	const edgeStyle = isLoopBranch ? LOOP_EDGE_STYLE : EDGE_STYLE;
 	const onInsertNode = data?.onInsertNode as
@@ -107,6 +109,7 @@ export function BranchLabelEdge(props: EdgeProps) {
 							<Plus className="h-3.5 w-3.5 text-muted-foreground" />
 						</button>
 					</div>
+					{impliedNextItem && <NextItemMarker x={plusX} y={plusY + 18} />}
 				</EdgeLabelRenderer>
 			</>
 		);

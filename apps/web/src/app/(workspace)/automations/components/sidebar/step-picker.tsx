@@ -146,9 +146,6 @@ export const STEP_GROUPS: StepGroup[] = [
 	},
 ];
 
-/** Flattened, grouping-agnostic list for surfaces like the edge insert menu. */
-export const ALL_STEP_ITEMS: StepGroupItem[] = STEP_GROUPS.flatMap((g) => g.items);
-
 interface StepPickerProps {
 	onSelect: (stepType: string, actionType?: string) => void;
 	onClose?: () => void;
