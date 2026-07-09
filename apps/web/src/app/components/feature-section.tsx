@@ -3,15 +3,20 @@
 import { ReactNode } from "react";
 import { motion, MotionProps } from "motion/react";
 import {
+	Blocks,
 	Briefcase,
 	Calendar,
+	ChartColumn,
 	CreditCard,
 	FileText,
+	Globe,
+	Handshake,
 	Mail,
 	Shield,
 	Smartphone,
 	Users,
 	CheckCheck,
+	Zap,
 	type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -165,11 +170,17 @@ type HighlightProps = {
 	title: string;
 	subtitle: string;
 	comingSoon?: boolean;
+	wide?: boolean;
 };
 
-function HighlightBlock({ Icon, iconClassName, title, subtitle, comingSoon }: HighlightProps) {
+function HighlightBlock({ Icon, iconClassName, title, subtitle, comingSoon, wide }: HighlightProps) {
 	return (
-		<Block className="col-span-3 space-y-1.5 md:col-span-1">
+		<Block
+			className={cn(
+				"col-span-3 space-y-1.5",
+				wide ? "md:col-span-2" : "md:col-span-1"
+			)}
+		>
 			<div className="flex items-center gap-2">
 				<Icon className={cn("h-7 w-7", iconClassName)} />
 				{comingSoon && (
@@ -218,7 +229,7 @@ const highlights: HighlightProps[] = [
 		iconClassName: "text-orange-500",
 		title: "Email hub",
 		subtitle:
-			"Draft and respond to email threads directly within OneTool — no platform jumping.",
+			"A unified inbox for every client conversation — draft, reply, and track threads without leaving OneTool.",
 	},
 	{
 		Icon: Smartphone,
@@ -226,7 +237,14 @@ const highlights: HighlightProps[] = [
 		title: "Mobile access",
 		subtitle:
 			"Take your projects, tasks, and clients with you on the go with the iOS companion app.",
-		comingSoon: true,
+	},
+	{
+		Icon: Handshake,
+		iconClassName: "text-rose-500",
+		title: "Client portal",
+		subtitle:
+			"Give every client a branded, password-free portal to review and e-sign quotes, download PDFs, and pay invoices online.",
+		wide: true,
 	},
 	{
 		Icon: Shield,
@@ -236,11 +254,26 @@ const highlights: HighlightProps[] = [
 			"Distinct views for admins and employees ensure everyone sees only what they need.",
 	},
 	{
-		Icon: Briefcase,
+		Icon: Globe,
+		iconClassName: "text-green-600",
+		title: "Community pages",
+		subtitle:
+			"A free, SEO-friendly public page that showcases your services, pricing, and credentials — and turns visitor inquiries into follow-up tasks.",
+	},
+	{
+		Icon: Zap,
 		iconClassName: "text-teal-500",
-		title: "Workflow automation",
+		title: "Workflow automations",
 		subtitle:
 			"Trigger actions when statuses change — send emails, update projects, and more automatically.",
+		comingSoon: true,
+	},
+	{
+		Icon: Blocks,
+		iconClassName: "text-fuchsia-500",
+		title: "QuickBooks integration",
+		subtitle:
+			"Sync clients, invoices, and payments straight to QuickBooks Online — no more double entry.",
 		comingSoon: true,
 	},
 	{
@@ -249,6 +282,14 @@ const highlights: HighlightProps[] = [
 		title: "Real-time sync",
 		subtitle:
 			"Every change syncs instantly across all devices. No refresh needed, ever.",
+	},
+	{
+		Icon: ChartColumn,
+		iconClassName: "text-indigo-500",
+		title: "Custom report builder",
+		subtitle:
+			"Design the exact reports your business needs — pick your metrics, build the view, and export in seconds.",
+		wide: true,
 	},
 ];
 
