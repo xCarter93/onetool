@@ -45,6 +45,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"communityPages",
 	"skus",
 	"emailMessages",
+	"emailThreads",
+	"emailSuppressions",
 	"clientContacts",
 	"clientProperties",
 	"tasks",
@@ -340,6 +342,33 @@ export async function cascadeDeleteOrgDataPage(
 		const rows = await ctx.db
 			.query("emailMessages")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// emailThreads
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("emailThreads")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// emailSuppressions — org-scoped rows only; global rows (orgId undefined)
+	// are deliberately retained (they aren't owned by any org).
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("emailSuppressions")
+			.withIndex("by_org_email", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
 			await ctx.db.delete(row._id);

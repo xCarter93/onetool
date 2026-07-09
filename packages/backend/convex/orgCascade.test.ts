@@ -478,7 +478,15 @@ describe("orgCascade", () => {
 				const end =
 					i + 1 < matches.length ? matches[i + 1].start : schemaText.length;
 				const block = schemaText.slice(start, end);
-				if (/orgId:\s*v\.id\(\s*["']organizations["']\s*\)/.test(block)) {
+				// Both required and optional org links count — an optional orgId
+				// (e.g. emailSuppressions, agentUsage) still holds org-owned rows
+				// that must be drained on org delete.
+				if (
+					/orgId:\s*v\.id\(\s*["']organizations["']\s*\)/.test(block) ||
+					/orgId:\s*v\.optional\(\s*v\.id\(\s*["']organizations["']\s*\)\s*\)/.test(
+						block
+					)
+				) {
 					orgScoped.add(matches[i].name);
 				}
 			}

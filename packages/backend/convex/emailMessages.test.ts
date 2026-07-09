@@ -28,6 +28,7 @@ describe("EmailMessages", () => {
 			resendEmailId?: string;
 			direction?: "outbound" | "inbound";
 			threadId?: string;
+			threadDocId?: Id<"emailThreads">;
 			subject?: string;
 			messageBody?: string;
 			messagePreview?: string;
@@ -48,6 +49,7 @@ describe("EmailMessages", () => {
 			resendEmailId: overrides.resendEmailId ?? `resend_${Date.now()}_${Math.random()}`,
 			direction: overrides.direction ?? "outbound",
 			threadId: overrides.threadId,
+			threadDocId: overrides.threadDocId,
 			subject: overrides.subject ?? "Test Email Subject",
 			messageBody: overrides.messageBody ?? "Test email body content",
 			messagePreview: overrides.messagePreview,
@@ -60,6 +62,40 @@ describe("EmailMessages", () => {
 			openedAt: overrides.openedAt,
 			sentBy: overrides.sentBy,
 			hasAttachments: overrides.hasAttachments,
+		});
+	}
+
+	/**
+	 * Helper to create a test email thread (first-class emailThreads row)
+	 */
+	async function createTestEmailThread(
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		ctx: any,
+		orgId: Id<"organizations">,
+		clientId: Id<"clients"> | null,
+		overrides: {
+			subjectNormalized?: string;
+			subject?: string;
+			lastMessagePreview?: string;
+			lastMessageAt?: number;
+			messageCount?: number;
+			unreadCount?: number;
+			status?: "open" | "archived";
+			participantEmails?: string[];
+		} = {}
+	): Promise<Id<"emailThreads">> {
+		return await ctx.db.insert("emailThreads", {
+			orgId,
+			clientId,
+			subjectNormalized: overrides.subjectNormalized ?? "test subject",
+			subject: overrides.subject ?? "Test Subject",
+			lastMessagePreview: overrides.lastMessagePreview ?? "Latest preview",
+			lastMessageAt: overrides.lastMessageAt ?? Date.now(),
+			messageCount: overrides.messageCount ?? 1,
+			unreadCount: overrides.unreadCount ?? 0,
+			status: overrides.status ?? "open",
+			participantEmails:
+				overrides.participantEmails ?? ["sender@example.com"],
 		});
 	}
 
@@ -359,35 +395,54 @@ describe("EmailMessages", () => {
 	});
 
 	describe("listThreadsByClient", () => {
-		it("should group emails by thread and return thread summaries", async () => {
-			const { orgId, clerkUserId, clerkOrgId, clientId } = await t.run(
-				async (ctx) => {
+		it("should return thread summaries keyed by threadDocId, newest-first", async () => {
+			const { orgId, clerkUserId, clerkOrgId, clientId, mainThreadId, otherThreadId } =
+				await t.run(async (ctx) => {
 					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
 					const clientId = await createTestClient(ctx, orgId);
 
-					const threadId = "thread_123";
-
-					// Create emails in the same thread
-					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
+					// Older thread with 2 messages
+					const mainThreadId = await createTestEmailThread(ctx, orgId, clientId, {
 						subject: "Initial Message",
-						sentAt: Date.now() - 2000,
+						subjectNormalized: "initial message",
+						lastMessagePreview: "Re: Initial Message",
+						lastMessageAt: Date.now() - 2000,
+						messageCount: 2,
 					});
 					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
+						threadDocId: mainThreadId,
+						subject: "Initial Message",
+						sentAt: Date.now() - 3000,
+					});
+					await createTestEmailMessage(ctx, orgId, clientId, {
+						threadDocId: mainThreadId,
 						subject: "Re: Initial Message",
+						sentAt: Date.now() - 2000,
+					});
+
+					// Newer thread with 1 message
+					const otherThreadId = await createTestEmailThread(ctx, orgId, clientId, {
+						subject: "Different Topic",
+						subjectNormalized: "different topic",
+						lastMessagePreview: "Different Topic",
+						lastMessageAt: Date.now() - 1000,
+						messageCount: 1,
+					});
+					await createTestEmailMessage(ctx, orgId, clientId, {
+						threadDocId: otherThreadId,
+						subject: "Different Topic",
 						sentAt: Date.now() - 1000,
 					});
 
-					// Create email in a different thread
-					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId: "thread_456",
-						subject: "Different Topic",
-					});
-
-					return { orgId, clerkUserId, clerkOrgId, clientId };
-				}
-			);
+					return {
+						orgId,
+						clerkUserId,
+						clerkOrgId,
+						clientId,
+						mainThreadId,
+						otherThreadId,
+					};
+				});
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
@@ -397,36 +452,39 @@ describe("EmailMessages", () => {
 
 			expect(threads).toHaveLength(2);
 
-			// Find the thread with 2 messages
-			const mainThread = threads.find((t) => t.threadId === "thread_123");
+			// Sorted by latestMessageAt desc → newer thread first
+			expect(threads[0].threadDocId).toBe(otherThreadId);
+			expect(threads[1].threadDocId).toBe(mainThreadId);
+
+			const mainThread = threads.find((t) => t.threadDocId === mainThreadId);
 			expect(mainThread).toBeDefined();
 			expect(mainThread?.messageCount).toBe(2);
+			expect(mainThread?.subject).toBe("Initial Message");
+			expect(mainThread?.latestMessage).toBe("Re: Initial Message");
 
-			// Find the other thread
-			const otherThread = threads.find((t) => t.threadId === "thread_456");
+			const otherThread = threads.find((t) => t.threadDocId === otherThreadId);
 			expect(otherThread).toBeDefined();
 			expect(otherThread?.messageCount).toBe(1);
 		});
 
-		it("should mark threads with unread inbound emails", async () => {
-			const { orgId, clerkUserId, clerkOrgId, clientId } = await t.run(
-				async (ctx) => {
-					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
-					const clientId = await createTestClient(ctx, orgId);
+		it("should mark threads with unread messages via unreadCount", async () => {
+			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
 
-					const threadId = "thread_unread";
+				const threadId = await createTestEmailThread(ctx, orgId, clientId, {
+					subject: "Incoming Email",
+					subjectNormalized: "incoming email",
+					unreadCount: 1,
+				});
+				await createTestEmailMessage(ctx, orgId, clientId, {
+					threadDocId: threadId,
+					direction: "inbound",
+					subject: "Incoming Email",
+				});
 
-					// Create an inbound email without openedAt
-					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
-						direction: "inbound",
-						subject: "Incoming Email",
-						openedAt: undefined,
-					});
-
-					return { orgId, clerkUserId, clerkOrgId, clientId };
-				}
-			);
+				return { clerkUserId, clerkOrgId, clientId };
+			});
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
@@ -437,42 +495,122 @@ describe("EmailMessages", () => {
 			expect(threads).toHaveLength(1);
 			expect(threads[0].hasUnread).toBe(true);
 		});
-	});
 
-	describe("getEmailThread", () => {
-		it("should return all messages in a thread sorted by sent date", async () => {
-			const { orgId, clerkUserId, clerkOrgId, threadId } = await t.run(
+		it("should exclude archived threads", async () => {
+			const { clerkUserId, clerkOrgId, clientId, openThreadId } = await t.run(
 				async (ctx) => {
 					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
 					const clientId = await createTestClient(ctx, orgId);
 
-					const threadId = "thread_complete";
+					const openThreadId = await createTestEmailThread(ctx, orgId, clientId, {
+						subject: "Open Thread",
+						subjectNormalized: "open thread",
+						status: "open",
+					});
+					await createTestEmailThread(ctx, orgId, clientId, {
+						subject: "Archived Thread",
+						subjectNormalized: "archived thread",
+						status: "archived",
+					});
+
+					return { clerkUserId, clerkOrgId, clientId, openThreadId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const threads = await asUser.query(api.emailMessages.listThreadsByClient, {
+				clientId,
+			});
+
+			expect(threads).toHaveLength(1);
+			expect(threads[0].threadDocId).toBe(openThreadId);
+		});
+
+		it("should not return threads from other organizations", async () => {
+			const { clerkUserId1, clerkOrgId1, clientId1 } = await t.run(async (ctx) => {
+				const {
+					orgId: orgId1,
+					clerkUserId: clerkUserId1,
+					clerkOrgId: clerkOrgId1,
+				} = await createTestOrg(ctx, {
+					clerkUserId: "user_threads_org1",
+					clerkOrgId: "org_threads_1",
+					orgName: "Threads Org 1",
+				});
+				const clientId1 = await createTestClient(ctx, orgId1);
+				await createTestEmailThread(ctx, orgId1, clientId1, {
+					subject: "Org 1 Thread",
+					subjectNormalized: "org 1 thread",
+				});
+
+				// Second org, different client
+				const { orgId: orgId2 } = await createTestOrg(ctx, {
+					clerkUserId: "user_threads_org2",
+					clerkOrgId: "org_threads_2",
+					orgName: "Threads Org 2",
+				});
+				const clientId2 = await createTestClient(ctx, orgId2);
+				await createTestEmailThread(ctx, orgId2, clientId2, {
+					subject: "Org 2 Thread",
+					subjectNormalized: "org 2 thread",
+				});
+
+				return { clerkUserId1, clerkOrgId1, clientId1 };
+			});
+
+			const asUser1 = t.withIdentity(
+				createTestIdentity(clerkUserId1, clerkOrgId1)
+			);
+
+			const threads = await asUser1.query(
+				api.emailMessages.listThreadsByClient,
+				{ clientId: clientId1 }
+			);
+
+			expect(threads).toHaveLength(1);
+			expect(threads[0].subject).toBe("Org 1 Thread");
+		});
+	});
+
+	describe("getEmailThread", () => {
+		it("should return all messages in a thread sorted by sent date", async () => {
+			const { clerkUserId, clerkOrgId, threadDocId } = await t.run(
+				async (ctx) => {
+					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, orgId);
+
+					const threadDocId = await createTestEmailThread(ctx, orgId, clientId, {
+						subject: "Third Message",
+						subjectNormalized: "first message",
+						messageCount: 3,
+					});
 
 					// Create emails in the thread with different timestamps
 					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
+						threadDocId,
 						subject: "First Message",
 						sentAt: Date.now() - 3000,
 					});
 					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
+						threadDocId,
 						subject: "Second Message",
 						sentAt: Date.now() - 2000,
 					});
 					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
+						threadDocId,
 						subject: "Third Message",
 						sentAt: Date.now() - 1000,
 					});
 
-					return { orgId, clerkUserId, clerkOrgId, threadId };
+					return { clerkUserId, clerkOrgId, threadDocId };
 				}
 			);
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
 			const messages = await asUser.query(api.emailMessages.getEmailThread, {
-				threadId,
+				threadDocId,
 			});
 
 			expect(messages).toHaveLength(3);
@@ -483,31 +621,86 @@ describe("EmailMessages", () => {
 		});
 
 		it("should include sender information for outbound emails", async () => {
-			const { orgId, clerkUserId, clerkOrgId, userId, threadId } = await t.run(
+			const { clerkUserId, clerkOrgId, threadDocId } = await t.run(
 				async (ctx) => {
-					const { orgId, clerkUserId, clerkOrgId, userId } = await createTestOrg(ctx);
+					const { orgId, clerkUserId, clerkOrgId, userId } =
+						await createTestOrg(ctx);
 					const clientId = await createTestClient(ctx, orgId);
 
-					const threadId = "thread_with_sender";
+					const threadDocId = await createTestEmailThread(
+						ctx,
+						orgId,
+						clientId,
+						{ subject: "With Sender", subjectNormalized: "with sender" }
+					);
 
 					await createTestEmailMessage(ctx, orgId, clientId, {
-						threadId,
+						threadDocId,
 						direction: "outbound",
 						sentBy: userId,
 					});
 
-					return { orgId, clerkUserId, clerkOrgId, userId, threadId };
+					return { clerkUserId, clerkOrgId, threadDocId };
 				}
 			);
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
 			const messages = await asUser.query(api.emailMessages.getEmailThread, {
-				threadId,
+				threadDocId,
 			});
 
 			expect(messages).toHaveLength(1);
 			expect(messages?.[0].senderName).toBe("Test User");
+		});
+
+		it("should not return a thread that belongs to another organization", async () => {
+			const { clerkUserId1, clerkOrgId1, threadDocId2 } = await t.run(
+				async (ctx) => {
+					const {
+						orgId: orgId1,
+						clerkUserId: clerkUserId1,
+						clerkOrgId: clerkOrgId1,
+					} = await createTestOrg(ctx, {
+						clerkUserId: "user_thread_iso_1",
+						clerkOrgId: "org_thread_iso_1",
+						orgName: "Thread Iso Org 1",
+					});
+					void orgId1;
+
+					// Second org owns the thread
+					const { orgId: orgId2 } = await createTestOrg(ctx, {
+						clerkUserId: "user_thread_iso_2",
+						clerkOrgId: "org_thread_iso_2",
+						orgName: "Thread Iso Org 2",
+					});
+					const clientId2 = await createTestClient(ctx, orgId2);
+					const threadDocId2 = await createTestEmailThread(
+						ctx,
+						orgId2,
+						clientId2,
+						{ subject: "Org 2 Only", subjectNormalized: "org 2 only" }
+					);
+					await createTestEmailMessage(ctx, orgId2, clientId2, {
+						threadDocId: threadDocId2,
+						subject: "Org 2 Only",
+					});
+
+					return { clerkUserId1, clerkOrgId1, threadDocId2 };
+				}
+			);
+
+			const asUser1 = t.withIdentity(
+				createTestIdentity(clerkUserId1, clerkOrgId1)
+			);
+
+			// User in org 1 must not read org 2's thread
+			const messages = await asUser1.query(
+				api.emailMessages.getEmailThread,
+				{ threadDocId: threadDocId2 }
+			);
+
+			expect(messages).toBeNull();
 		});
 	});
 

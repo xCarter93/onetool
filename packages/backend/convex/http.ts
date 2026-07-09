@@ -14,8 +14,8 @@ import {
 	logWebhookSuccess,
 	logWebhookError,
 	secondsToMilliseconds,
-	isoToMilliseconds,
 } from "./lib/webhooks";
+import { resend } from "./email/durableResend";
 
 const http = httpRouter();
 
@@ -636,24 +636,29 @@ http.route({
 				return webhookBadRequest("Missing email_id");
 			}
 
-			// Resend timestamps are in ISO format, convert to milliseconds
-			const eventTimestamp = event.created_at
-				? isoToMilliseconds(event.created_at)
-				: Date.now();
-
 			// Handle email events
 			switch (eventType) {
 				case "email.sent":
 				case "email.delivered":
-				case "email.delivered_delayed":
+				case "email.delivery_delayed":
 				case "email.opened":
+				case "email.clicked":
 				case "email.bounced":
 				case "email.complained":
-					await ctx.runMutation(internal.resendWebhook.handleWebhookEvent, {
-						eventType,
-						emailId,
-						timestamp: eventTimestamp,
-					});
+				case "email.failed":
+					// Outbound lifecycle events carry Resend's email_id, but at send
+					// time we only ever see the component's internal EmailId — so
+					// correlation MUST go through the component: forward the raw
+					// webhook to it; it maps the id and invokes our onEmailEvent
+					// callback (resendWebhook.handleEmailEvent) with the component id.
+					await resend.handleResendEventWebhook(
+						ctx,
+						new Request(request.url, {
+							method: "POST",
+							headers: request.headers,
+							body: resendVerification.rawBody,
+						})
+					);
 					logWebhookSuccess("Resend", eventType, emailId);
 					break;
 

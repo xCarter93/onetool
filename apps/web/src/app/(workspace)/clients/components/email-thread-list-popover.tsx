@@ -26,8 +26,8 @@ export function EmailThreadListPopover({
 }: EmailThreadListPopoverProps) {
 	const [popoverOpen, setPopoverOpen] = useState(false);
 	const [sheetOpen, setSheetOpen] = useState(false);
-	const [selectedThreadId, setSelectedThreadId] = useState<
-		string | undefined
+	const [selectedThreadDocId, setSelectedThreadDocId] = useState<
+		Id<"emailThreads"> | undefined
 	>();
 
 	// Fetch all email threads for this client
@@ -35,8 +35,8 @@ export function EmailThreadListPopover({
 		| EmailThreadSummary[]
 		| undefined;
 
-	const handleThreadClick = (threadId: string) => {
-		setSelectedThreadId(threadId);
+	const handleThreadClick = (threadDocId: Id<"emailThreads">) => {
+		setSelectedThreadDocId(threadDocId);
 		setPopoverOpen(false);
 		setSheetOpen(true);
 	};
@@ -83,8 +83,8 @@ export function EmailThreadListPopover({
 								<div className="divide-y divide-border">
 									{threads.map((thread) => (
 										<button
-											key={thread.threadId}
-											onClick={() => handleThreadClick(thread.threadId)}
+											key={thread.threadDocId}
+											onClick={() => handleThreadClick(thread.threadDocId)}
 											className="w-full px-4 py-3 text-left hover:bg-accent transition-colors"
 										>
 											<div className="flex items-start gap-3">
@@ -158,8 +158,8 @@ export function EmailThreadListPopover({
 				isOpen={sheetOpen}
 				onOpenChange={setSheetOpen}
 				clientId={clientId}
-				threadId={selectedThreadId}
-				mode={selectedThreadId ? "reply" : "new"}
+				threadDocId={selectedThreadDocId}
+				mode={selectedThreadDocId ? "reply" : "new"}
 				onComplete={() => {
 					setSheetOpen(false);
 				}}

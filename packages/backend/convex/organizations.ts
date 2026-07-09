@@ -439,7 +439,7 @@ export const regenerateReceivingAddress = userMutation({
 		// Generate new receiving address
 		const newReceivingAddress = `org-${crypto
 			.randomUUID()
-			.slice(0, 8)}@onetool.biz`;
+			.slice(0, 8)}@inbound.onetool.biz`;
 
 		await ctx.db.patch(userOrgId, {
 			receivingAddress: newReceivingAddress,

@@ -257,8 +257,8 @@ interface EmailItem {
 	to: string;
 	status: string;
 	sentAt?: string;
-	clientId: string;
-	threadId?: string;
+	clientId: string | null; // null for unknown-sender inbound (no linked client)
+	threadDocId?: string;
 }
 
 interface EmailThreadResult {
@@ -880,7 +880,7 @@ export const searchClientEmails = createTool({
 				status: e.status,
 				sentAt: isoInstant(e.sentAt),
 				clientId: e.clientId,
-				threadId: e.threadId,
+				threadDocId: e.threadDocId ? String(e.threadDocId) : undefined,
 			})),
 			input.limit ?? EMAIL_CAP
 		);
@@ -889,11 +889,11 @@ export const searchClientEmails = createTool({
 
 export const getEmailThread = createTool({
 	description:
-		"Get the full messages of one email thread, oldest first. Use the threadId from searchClientEmails.",
-	inputSchema: z.object({ threadId: z.string() }),
+		"Get the full messages of one email thread, oldest first. Use the threadDocId from searchClientEmails.",
+	inputSchema: z.object({ threadDocId: z.string() }),
 	execute: async (ctx, input): Promise<EmailThreadResult | NotFound> => {
 		const thread = await ctx.runQuery(api.emailMessages.getEmailThread, {
-			threadId: input.threadId,
+			threadDocId: input.threadDocId as Id<"emailThreads">,
 		});
 		if (!thread) return { found: false };
 		return {
@@ -901,7 +901,12 @@ export const getEmailThread = createTool({
 			messages: thread.map((m) => ({
 				direction: m.direction,
 				subject: m.subject,
-				body: truncate(m.textBody ?? m.messageBody, BODY_CAP),
+				body: truncate(
+					(m.visibleText?.trim() ? m.visibleText : undefined) ??
+						m.textBody ??
+						m.messageBody,
+					BODY_CAP
+				),
 				from: `${m.fromName} <${m.fromEmail}>`,
 				to: `${m.toName} <${m.toEmail}>`,
 				status: m.status,
