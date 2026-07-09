@@ -19,6 +19,22 @@ const PARALLAX_INTENSITY = 20;
 const APP_STORE_URL =
 	"https://apps.apple.com/us/app/onetool-small-business-crm/id6757319255";
 
+const fanCards = [
+	{
+		name: "Clients",
+		alt: "OneTool client management",
+		rotate: -12,
+		translateY: 40,
+	},
+	{ name: "Dashboard", alt: "OneTool dashboard", rotate: 0, translateY: 0 },
+	{
+		name: "Automations",
+		alt: "OneTool workflow automations",
+		rotate: 12,
+		translateY: 40,
+	},
+];
+
 const emptySubscribe = () => () => {};
 
 export default function HeroSection() {
@@ -60,14 +76,13 @@ export default function HeroSection() {
 		mouseY.set(0);
 	};
 
-	const dashboardSrc = mounted && resolvedTheme === "dark"
-		? "/Dashboard-dark.png"
-		: "/Dashboard-light.png";
+	const themeSuffix = mounted && resolvedTheme === "dark" ? "dark" : "light";
 
 	// White badge reads on the dark overlay, black on the light one.
-	const appStoreBadgeSrc = mounted && resolvedTheme === "dark"
-		? "/app-store-badge-white.svg"
-		: "/app-store-badge-black.svg";
+	const appStoreBadgeSrc =
+		themeSuffix === "dark"
+			? "/app-store-badge-white.svg"
+			: "/app-store-badge-black.svg";
 
 	return (
 		<section
@@ -119,8 +134,8 @@ export default function HeroSection() {
 						transition={{ duration: 0.6, delay: 0.3 }}
 						className="mt-6 text-base sm:text-lg lg:text-xl text-muted-foreground max-w-2xl mx-auto"
 					>
-						OneTool brings together quotes, projects, clients, and invoices
-						— everything you need to keep work moving.
+						OneTool brings together quotes, projects, clients, and invoices —
+						everything you need to keep work moving.
 					</motion.p>
 
 					{/* CTAs */}
@@ -168,32 +183,43 @@ export default function HeroSection() {
 					</motion.div>
 				</div>
 
-				{/* Dashboard Mockup */}
-				<motion.div
-					initial={{ opacity: 0, y: 40 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 1, delay: 0.6, ease: [0.23, 1, 0.32, 1] }}
-					className="relative mt-16 sm:mt-24 px-6"
-				>
-					<div className="relative max-w-5xl mx-auto">
-						<div
-							className="relative rounded-2xl overflow-hidden border border-border shadow-2xl/5 dark:mix-blend-darken"
-							style={{
-								mask: "linear-gradient(to bottom, black 50%, transparent 100%)",
-								WebkitMaskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
-							}}
-						>
-							<Image
-								src={dashboardSrc}
-								alt="OneTool Dashboard"
-								width={1920}
-								height={1080}
-								className="w-full h-auto"
-								priority
-							/>
-						</div>
+				{/* Fanned app screenshots */}
+				<div className="relative mt-16 sm:mt-24 px-6 pb-12 sm:pb-16">
+					<div className="relative flex flex-row items-end justify-center -space-x-12 sm:-space-x-20 lg:-space-x-28">
+						{fanCards.map((card, index) => (
+							<motion.div
+								key={card.name}
+								className={`relative aspect-4/3 w-56 sm:w-96 md:w-120 lg:w-140 xl:w-160 origin-bottom overflow-hidden rounded-xl sm:rounded-2xl ${
+									card.rotate === 0 ? "z-10" : "z-0"
+								}`}
+								initial={{ opacity: 0, y: 80, rotate: 0 }}
+								animate={{
+									opacity: 1,
+									y: card.translateY,
+									rotate: card.rotate,
+								}}
+								whileHover={{
+									y: card.translateY - 12,
+									transition: { type: "spring", stiffness: 400, damping: 25 },
+								}}
+								transition={{
+									duration: 0.7,
+									delay: 0.5 + index * 0.12,
+									ease: [0.25, 0.46, 0.45, 0.94],
+								}}
+							>
+								<Image
+									src={`/${card.name}-${themeSuffix}.png`}
+									alt={card.alt}
+									fill
+									sizes="(max-width: 640px) 224px, (max-width: 1024px) 480px, (max-width: 1280px) 560px, 640px"
+									className="object-cover object-bottom"
+									priority={card.rotate === 0}
+								/>
+							</motion.div>
+						))}
 					</div>
-				</motion.div>
+				</div>
 			</div>
 
 			{/* Schedule Demo Modal */}
