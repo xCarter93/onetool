@@ -84,6 +84,11 @@ export default function HeroSection() {
 			? "/app-store-badge-white.svg"
 			: "/app-store-badge-black.svg";
 
+	// White badge reads on the dark overlay, black on the light one.
+	const appStoreBadgeSrc = mounted && resolvedTheme === "dark"
+		? "/app-store-badge-white.svg"
+		: "/app-store-badge-black.svg";
+
 	return (
 		<section
 			id="home"
