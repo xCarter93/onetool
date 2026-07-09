@@ -565,6 +565,127 @@ describe("reportData.executeReport", () => {
 			})
 		).rejects.toThrow();
 	});
+
+	// ==========================================================================
+	// detail mode (new additive capability — exclusive of groupBy/aggregation)
+	// ==========================================================================
+
+	it("detail: returns requested columns with labels/types, rows sorted date-desc, null for missing values", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			await createTestQuote(ctx, org.orgId, clientId, {
+				status: "sent",
+				total: 100,
+				quoteNumber: "Q-1",
+			});
+			// Insert directly (bypassing the helper's quoteNumber default) so this
+			// row has no quoteNumber — exercises the missing-value -> null path.
+			await ctx.db.insert("quotes", {
+				orgId: org.orgId,
+				clientId,
+				title: "No Number",
+				status: "draft",
+				subtotal: 200,
+				total: 200,
+			});
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			detail: { columns: ["quoteNumber", "status", "total"] },
+		});
+
+		expect(result.data).toEqual([]);
+		expect(result.detail?.columns).toEqual([
+			{ field: "quoteNumber", label: "Quote Number", type: "string" },
+			{ field: "status", label: "Status", type: "string" },
+			{ field: "total", label: "Total", type: "currency" },
+		]);
+		expect(result.detail?.rows).toHaveLength(2);
+		// Newest first (second-created quote sorts before the first by _creationTime).
+		expect(result.detail?.rows[0]).toEqual({
+			quoteNumber: null,
+			status: "draft",
+			total: 200,
+		});
+		expect(result.detail?.rows[1]).toEqual({
+			quoteNumber: "Q-1",
+			status: "sent",
+			total: 100,
+		});
+		expect(result.detail?.totalMatched).toBe(2);
+		expect(result.detail?.rowsTruncated).toBe(false);
+		expect(result.total).toBe(2);
+	});
+
+	it("detail: unknown column throws a ConvexError", async () => {
+		const { asOrg } = await seedOrg();
+
+		await expect(
+			asOrg.query(api.reportData.executeReport, {
+				entityType: "quotes",
+				detail: { columns: ["notARealColumn"] },
+			})
+		).rejects.toThrow();
+	});
+
+	it("detail: empty columns array throws a ConvexError", async () => {
+		const { asOrg } = await seedOrg();
+
+		await expect(
+			asOrg.query(api.reportData.executeReport, {
+				entityType: "quotes",
+				detail: { columns: [] },
+			})
+		).rejects.toThrow();
+	});
+
+	it("detail: limit caps rows and sets rowsTruncated/totalMatched", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 5; i++) {
+				await createTestQuote(ctx, org.orgId, clientId, { status: "sent", total: i });
+			}
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			detail: { columns: ["status"], limit: 3 },
+		});
+
+		expect(result.detail?.rows).toHaveLength(3);
+		expect(result.detail?.totalMatched).toBe(5);
+		expect(result.detail?.rowsTruncated).toBe(true);
+		expect(result.total).toBe(5);
+	});
+
+	it("detail: filters narrow the scan before rows are built", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			await createTestQuote(ctx, org.orgId, clientId, { status: "sent", total: 100 });
+			await createTestQuote(ctx, org.orgId, clientId, { status: "draft", total: 200 });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			detail: { columns: ["status"] },
+			filters: {
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [{ field: "status", operator: "equals", value: "sent" }],
+					},
+				],
+			},
+		});
+
+		expect(result.detail?.rows).toEqual([{ status: "sent" }]);
+		expect(result.detail?.totalMatched).toBe(1);
+	});
 });
 
 describe("evaluateReportFilters (pure function)", () => {

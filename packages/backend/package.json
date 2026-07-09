@@ -44,6 +44,18 @@
     "./convex/lib/assistantShared": {
       "types": "./convex/lib/assistantShared.ts",
       "default": "./convex/lib/assistantShared.ts"
+    },
+    "./convex/lib/reportFields": {
+      "types": "./convex/lib/reportFields.ts",
+      "default": "./convex/lib/reportFields.ts"
+    },
+    "./convex/lib/reportFilters": {
+      "types": "./convex/lib/reportFilters.ts",
+      "default": "./convex/lib/reportFilters.ts"
+    },
+    "./convex/lib/orgScan": {
+      "types": "./convex/lib/orgScan.ts",
+      "default": "./convex/lib/orgScan.ts"
     }
   },
   "scripts": {

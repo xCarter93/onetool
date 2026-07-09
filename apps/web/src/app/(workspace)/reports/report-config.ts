@@ -10,6 +10,8 @@ import {
 	Users,
 	type LucideIcon,
 } from "lucide-react";
+import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
+import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 
 export type EntityType =
 	| "clients"
@@ -21,10 +23,35 @@ export type EntityType =
 
 export type VizType = "table" | "bar" | "line" | "pie";
 
+export type MeasureOp = "count" | "sum" | "avg" | "min" | "max";
+export type ReportMeasure =
+	| { op: "count" }
+	| { op: Exclude<MeasureOp, "count">; field: string };
+
 export type ReportConfigShape = {
 	entityType: EntityType;
 	groupBy?: string[];
 	dateRange?: { start?: number; end?: number };
+	filters?: ReportFilters;
+	aggregation?: ReportMeasure;
+	/** Registry field names for detail-mode table columns; table viz only. */
+	columns?: string[];
+};
+
+/**
+ * Shape persisted to `reports.config` (matches packages/backend/convex/reports.ts
+ * `reportConfigValidator`) — distinct from ReportConfigShape because saved
+ * aggregations are a single-entry array keyed `operation`, not the `aggregation`
+ * object executeReport takes (`op`). Count is represented by omitting
+ * `aggregations` entirely (field is required for non-count operations).
+ */
+export type ReportSavedConfigShape = {
+	entityType: EntityType;
+	groupBy?: string[];
+	dateRange?: { start?: number; end?: number };
+	filters?: ReportFilters;
+	aggregations?: { field: string; operation: Exclude<MeasureOp, "count"> }[];
+	columns?: string[];
 };
 
 export const entityOptions: {
@@ -327,6 +354,87 @@ export function formatReportValue(
 		maximumFractionDigits: options.compact ? 1 : 0,
 	}).format(value);
 }
+
+/** Per-entity fallback columns for detail (raw-row) mode when nothing is checked. */
+export const DEFAULT_DETAIL_COLUMNS: Record<EntityType, string[]> = {
+	clients: ["companyName", "status", "leadSource", "_creationTime"],
+	projects: ["title", "status", "projectType"],
+	tasks: ["title", "status", "date"],
+	quotes: ["quoteNumber", "status", "total"],
+	invoices: ["invoiceNumber", "status", "total", "issuedDate"],
+	activities: ["activityType", "description", "timestamp"],
+};
+
+/**
+ * True when the table view should render raw rows instead of aggregated
+ * groups: either the user explicitly checked columns, or Group by is "None".
+ * Grouping only ever applies to the table view via aggregated rows — charts
+ * always use `aggregation` (see resolveReportQueryArgs).
+ */
+export function isDetailModeActive(
+	vizType: VizType,
+	groupBy: string | undefined,
+	columns: string[] | undefined
+): boolean {
+	return vizType === "table" && ((columns?.length ?? 0) > 0 || !groupBy);
+}
+
+/** Columns to actually query/display in detail mode — falls back to a sensible per-entity default so the table (and its Columns checklist) never looks empty. */
+export function effectiveDetailColumns(
+	entityType: EntityType,
+	columns: string[] | undefined
+): string[] {
+	return columns && columns.length > 0 ? columns : DEFAULT_DETAIL_COLUMNS[entityType];
+}
+
+export type ReportQueryArgs = {
+	entityType: EntityType;
+	groupBy?: string;
+	dateRange?: { start?: number; end?: number };
+	filters?: ReportFilters;
+	aggregation?: ReportMeasure;
+	detail?: { columns: string[] };
+};
+
+/**
+ * Single source of truth for turning a builder/saved config into
+ * executeReport args. Centralizes the two "Group by: None" behaviors:
+ * table view always falls back to raw-row detail mode (with default
+ * columns if none are checked), and chart views must send an explicit
+ * `aggregation` (count included) — the backend's legacy dispatch
+ * (runReportByConfig) silently re-groups by status when both `groupBy`
+ * and `aggregation` are omitted, which is wrong for an intentional
+ * "no grouping" chart.
+ */
+export function resolveReportQueryArgs(
+	config: ReportConfigShape,
+	vizType: VizType
+): ReportQueryArgs {
+	const groupBy = config.groupBy?.[0];
+	const base = {
+		entityType: config.entityType,
+		groupBy,
+		dateRange: config.dateRange,
+		filters: config.filters,
+	};
+
+	if (isDetailModeActive(vizType, groupBy, config.columns)) {
+		return {
+			...base,
+			detail: { columns: effectiveDetailColumns(config.entityType, config.columns) },
+		};
+	}
+
+	const aggregation =
+		!groupBy && vizType !== "table" ? (config.aggregation ?? { op: "count" }) : config.aggregation;
+
+	return { ...base, aggregation };
+}
+
+/** Shown when a report's underlying query hit the scan ceiling. */
+export const TRUNCATION_NOTICE = `Based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
+	"en-US"
+)} records — results may be incomplete.`;
 
 export function detectDateRangePreset(dateRange: {
 	start?: number;

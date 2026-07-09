@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { getReportValueTypes, formatReportValue } from "./report-config";
+import {
+	DEFAULT_DETAIL_COLUMNS,
+	getReportValueTypes,
+	formatReportValue,
+	resolveReportQueryArgs,
+	type ReportConfigShape,
+} from "./report-config";
 
 describe("getReportValueTypes", () => {
 	it("invoices status-grouped (or ungrouped): total is $, item values are counts", () => {
@@ -84,5 +90,68 @@ describe("formatReportValue", () => {
 		expect(rendered).toBe("$40,000");
 		expect(rendered).not.toBe("$12");
 		expect(rendered).not.toBe("12");
+	});
+});
+
+describe("resolveReportQueryArgs — Group by: None", () => {
+	const baseConfig: ReportConfigShape = {
+		entityType: "invoices",
+		groupBy: undefined,
+		dateRange: undefined,
+		filters: undefined,
+		aggregation: undefined,
+		columns: undefined,
+	};
+
+	it("table + groupBy None + no columns checked → detail mode with the per-entity default columns", () => {
+		const args = resolveReportQueryArgs(baseConfig, "table");
+		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
+		expect(args.aggregation).toBeUndefined();
+	});
+
+	it("table + groupBy None + explicit columns checked → detail mode with those columns", () => {
+		const args = resolveReportQueryArgs(
+			{ ...baseConfig, columns: ["invoiceNumber", "total"] },
+			"table"
+		);
+		expect(args.detail).toEqual({ columns: ["invoiceNumber", "total"] });
+	});
+
+	it("table + groupBy set + no columns checked → aggregated mode, no detail", () => {
+		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "table");
+		expect(args.detail).toBeUndefined();
+		expect(args.groupBy).toBe("status");
+	});
+
+	it("table + groupBy set + columns checked → detail mode wins regardless of groupBy", () => {
+		const args = resolveReportQueryArgs(
+			{ ...baseConfig, groupBy: ["status"], columns: ["invoiceNumber"] },
+			"table"
+		);
+		expect(args.detail).toEqual({ columns: ["invoiceNumber"] });
+	});
+
+	it("chart + groupBy None → explicit count aggregation is sent, not left undefined", () => {
+		// Regression: the backend's legacy dispatch (runReportByConfig) silently
+		// re-groups by status when both groupBy and aggregation are omitted —
+		// wrong for an intentional "no grouping" chart. Must send {op:"count"}.
+		const args = resolveReportQueryArgs(baseConfig, "bar");
+		expect(args.groupBy).toBeUndefined();
+		expect(args.aggregation).toEqual({ op: "count" });
+		expect(args.detail).toBeUndefined();
+	});
+
+	it("chart + groupBy None + a non-count measure → the configured aggregation is sent as-is", () => {
+		const args = resolveReportQueryArgs(
+			{ ...baseConfig, aggregation: { op: "sum", field: "total" } },
+			"pie"
+		);
+		expect(args.aggregation).toEqual({ op: "sum", field: "total" });
+	});
+
+	it("chart + groupBy set → aggregation passes through unchanged (legacy grouped-chart behavior)", () => {
+		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "bar");
+		expect(args.groupBy).toBe("status");
+		expect(args.aggregation).toBeUndefined();
 	});
 });

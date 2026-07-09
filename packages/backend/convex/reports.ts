@@ -39,6 +39,7 @@ const reportConfigValidator = v.object({
 		)
 	),
 	groupBy: v.optional(v.array(v.string())),
+	columns: v.optional(v.array(v.string())),
 	dateRange: v.optional(
 		v.object({
 			start: v.optional(v.number()),

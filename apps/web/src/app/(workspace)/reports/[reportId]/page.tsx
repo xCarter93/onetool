@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	ReportBuilder,
+	isValidReportFilters,
 	type ReportBuilderSavePayload,
 } from "../components/report-builder";
+import type { ReportMeasure } from "../report-config";
 import { ReportPreview } from "../components/report-preview";
 import {
 	dateRangeOptions,
@@ -59,6 +61,14 @@ export default function ReportViewPage() {
 	}
 
 	if (isEditing) {
+		const savedFilters = isValidReportFilters(report.config.filters)
+			? report.config.filters
+			: undefined;
+		const savedAggregation = report.config.aggregations?.[0];
+		const measure: ReportMeasure | undefined = savedAggregation
+			? { op: savedAggregation.operation, field: savedAggregation.field }
+			: undefined;
+
 		const handleSave = async (payload: ReportBuilderSavePayload) => {
 			setIsSaving(true);
 			try {
@@ -84,11 +94,14 @@ export default function ReportViewPage() {
 					name: report.name,
 					description: report.description || "",
 					entityType: report.config.entityType,
-					groupBy: report.config.groupBy?.[0] || "status",
+					groupBy: report.config.groupBy?.[0],
 					vizType: report.visualization.type,
 					dateRangePreset: report.config.dateRange
 						? detectDateRangePreset(report.config.dateRange)
 						: "all_time",
+					filters: savedFilters,
+					measure,
+					columns: report.config.columns,
 				}}
 				saving={isSaving}
 				onSave={handleSave}
@@ -193,6 +206,16 @@ export default function ReportViewPage() {
 						entityType: report.config.entityType,
 						groupBy: report.config.groupBy,
 						dateRange: report.config.dateRange,
+						filters: isValidReportFilters(report.config.filters)
+							? report.config.filters
+							: undefined,
+						aggregation: report.config.aggregations?.[0]
+							? {
+									op: report.config.aggregations[0].operation,
+									field: report.config.aggregations[0].field,
+								}
+							: undefined,
+						columns: report.config.columns,
 					}}
 					visualization={{ type: report.visualization.type }}
 				/>

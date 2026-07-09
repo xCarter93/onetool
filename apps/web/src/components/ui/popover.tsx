@@ -45,4 +45,32 @@ function PopoverAnchor({
 	return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />;
 }
 
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };
+/**
+ * Bordered-square nubbin (rotated 45°, half-tucked under the panel) matching
+ * the landing navbar flyout's arrow — the north-star nubbin style. Radix
+ * rotates the arrow container per side, so the exposed border-b/border-r
+ * corner always points at the anchor.
+ */
+function PopoverArrow({
+	className,
+	...props
+}: React.ComponentProps<typeof PopoverPrimitive.Arrow>) {
+	return (
+		<PopoverPrimitive.Arrow
+			data-slot="popover-arrow"
+			width={12}
+			height={6}
+			asChild
+			{...props}
+		>
+			<span
+				className={cn(
+					"block h-3 w-3 -translate-y-1/2 rotate-45 rounded-[2px] border-b border-r border-border bg-popover",
+					className
+				)}
+			/>
+		</PopoverPrimitive.Arrow>
+	);
+}
+
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor, PopoverArrow };

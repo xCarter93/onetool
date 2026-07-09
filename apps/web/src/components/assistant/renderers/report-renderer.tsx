@@ -1,10 +1,11 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import { ReportBarChart } from "@/app/(workspace)/reports/components/report-bar-chart";
 import { ReportLineChart } from "@/app/(workspace)/reports/components/report-line-chart";
 import { ReportPieChart } from "@/app/(workspace)/reports/components/report-pie-chart";
 import { ReportTable } from "@/app/(workspace)/reports/components/report-table";
-import { getReportValueTypes } from "@/app/(workspace)/reports/report-config";
+import { getReportValueTypes, TRUNCATION_NOTICE } from "@/app/(workspace)/reports/report-config";
 import type { ToolRendererProps } from "./index";
 
 // Mirrors ReportDataResult (+ visualization) from convex/assistantTools.ts.
@@ -16,7 +17,13 @@ interface ReportOutput {
 	}>;
 	total: number;
 	visualization?: "bar" | "line" | "pie" | "table";
-	metadata?: { entityType?: string; groupBy?: string };
+	metadata?: {
+		entityType?: string;
+		groupBy?: string;
+		truncated?: boolean;
+		totalIsCurrency?: boolean;
+		itemValueIsCurrency?: boolean;
+	};
 }
 
 export function ReportRenderer({ input, output }: ToolRendererProps) {
@@ -43,10 +50,15 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 		value: point.value,
 	}));
 
-	const { totalIsCurrency, itemValueIsCurrency } = getReportValueTypes(
-		entityType,
-		groupBy
-	);
+	const fallbackValueTypes = getReportValueTypes(entityType, groupBy);
+	const totalIsCurrency =
+		typeof report.metadata?.totalIsCurrency === "boolean"
+			? report.metadata.totalIsCurrency
+			: fallbackValueTypes.totalIsCurrency;
+	const itemValueIsCurrency =
+		typeof report.metadata?.itemValueIsCurrency === "boolean"
+			? report.metadata.itemValueIsCurrency
+			: fallbackValueTypes.itemValueIsCurrency;
 
 	const chartProps = {
 		data: chartData,
@@ -59,6 +71,12 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 
 	return (
 		<div className="overflow-hidden rounded-xl border border-border bg-card p-3">
+			{report.metadata?.truncated === true && (
+				<div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+					<TriangleAlert className="h-3 w-3 shrink-0" />
+					<span>{TRUNCATION_NOTICE}</span>
+				</div>
+			)}
 			{report.visualization === "line" ? (
 				<ReportLineChart {...chartProps} />
 			) : report.visualization === "pie" ? (

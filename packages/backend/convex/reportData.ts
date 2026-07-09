@@ -14,6 +14,7 @@ import {
 	getReportField,
 	getReportDateField,
 	type ReportEntityType,
+	type ReportFieldType,
 } from "./lib/reportFields";
 import {
 	reportFiltersValidator,
@@ -53,6 +54,12 @@ export interface ReportDataResult {
 		totalIsCurrency?: boolean;
 		itemValueIsCurrency?: boolean;
 	};
+	detail?: {
+		columns: { field: string; label: string; type: ReportFieldType }[];
+		rows: Record<string, string | number | boolean | null>[];
+		totalMatched: number;
+		rowsTruncated: boolean;
+	};
 }
 
 type Row = Record<string, unknown>;
@@ -87,6 +94,18 @@ type AggregationOp = "count" | "sum" | "avg" | "min" | "max";
 interface Aggregation {
 	op: AggregationOp;
 	field?: string;
+}
+
+const detailValidator = v.optional(
+	v.object({
+		columns: v.array(v.string()),
+		limit: v.optional(v.number()),
+	})
+);
+
+interface DetailArgs {
+	columns: string[];
+	limit?: number;
 }
 
 // ============================================================================
@@ -326,6 +345,21 @@ function validateGroupByField(entityType: ReportEntityType, field: string): void
 	}
 }
 
+function validateDetailColumns(entityType: ReportEntityType, columns: string[]): void {
+	if (columns.length === 0) {
+		throw new ConvexError(
+			`Detail report requires at least one column for entity "${entityType}"`
+		);
+	}
+	for (const column of columns) {
+		if (!getReportField(entityType, column)) {
+			throw new ConvexError(
+				`Unknown report detail column "${column}" for entity "${entityType}"`
+			);
+		}
+	}
+}
+
 // ============================================================================
 // Scanning helper
 // ============================================================================
@@ -442,6 +476,81 @@ async function runGenericAggregation(
 			truncated,
 			totalIsCurrency: isCurrency,
 			itemValueIsCurrency: isCurrency,
+		},
+	};
+}
+
+// ============================================================================
+// Detail pipeline (new capability — used only when args.detail is set;
+// exclusive of groupBy/aggregation, which are ignored in this mode)
+// ============================================================================
+
+function detailCellValue(value: unknown): string | number | boolean | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+		return value;
+	}
+	return String(value);
+}
+
+async function runDetailReport(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	entityType: ReportEntityType,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	detail: DetailArgs
+): Promise<ReportDataResult> {
+	validateDetailColumns(entityType, detail.columns);
+
+	const dateField = getReportDateField(entityType);
+	const { rows, truncated } = await scanFiltered(ctx, entityType, orgId, dateField, bounds, filters);
+
+	// Sort is exact over the scanned window; if the scan hit its ceiling
+	// (metadata.truncated), top-N by a non-creation date field is approximate —
+	// the truncation banner is the surface for that.
+	const sorted = [...rows].sort((a, b) => {
+		const aVal = a[dateField];
+		const bVal = b[dateField];
+		const aNum = typeof aVal === "number" ? aVal : undefined;
+		const bNum = typeof bVal === "number" ? bVal : undefined;
+		if (aNum === undefined && bNum === undefined) return 0;
+		if (aNum === undefined) return 1;
+		if (bNum === undefined) return -1;
+		return bNum - aNum;
+	});
+
+	const totalMatched = sorted.length;
+	const cap = Math.min(Math.max(detail.limit ?? 100, 1), 1000);
+	const cappedRows = sorted.slice(0, cap);
+
+	const columns = detail.columns.map((field) => {
+		const def = getReportField(entityType, field);
+		// Presence already validated by validateDetailColumns.
+		return { field, label: def!.label, type: def!.type };
+	});
+
+	const rowsOut = cappedRows.map((row) => {
+		const out: Record<string, string | number | boolean | null> = {};
+		for (const field of detail.columns) {
+			out[field] = detailCellValue(row[field]);
+		}
+		return out;
+	});
+
+	return {
+		data: [],
+		total: totalMatched,
+		metadata: {
+			entityType,
+			dateRange: metadataDateRange(bounds),
+			truncated,
+		},
+		detail: {
+			columns,
+			rows: rowsOut,
+			totalMatched,
+			rowsTruncated: totalMatched > cap,
 		},
 	};
 }
@@ -1030,6 +1139,7 @@ export const executeReport = optionalUserQuery({
 		dateRange: dateRangeValidator,
 		filters: v.optional(reportFiltersValidator),
 		aggregation: aggregationValidator,
+		detail: detailValidator,
 	},
 	handler: async (ctx, args): Promise<ReportDataResult> => {
 		const orgId = await getOptionalOrgId(ctx);
@@ -1038,8 +1148,15 @@ export const executeReport = optionalUserQuery({
 		const entityType = args.entityType as ReportEntityType;
 		const filters = args.filters as ReportFilters | undefined;
 		const aggregation = args.aggregation as Aggregation | undefined;
+		const detail = args.detail as DetailArgs | undefined;
 
 		validateFilters(entityType, filters);
+
+		if (detail) {
+			const bounds = resolveDateBounds(args.dateRange);
+			return await runDetailReport(ctx, orgId, entityType, bounds, filters, detail);
+		}
+
 		validateAggregation(entityType, aggregation);
 
 		if (aggregation) {

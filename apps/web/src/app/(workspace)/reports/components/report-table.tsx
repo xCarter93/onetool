@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { ReportFieldType } from "@onetool/backend/convex/lib/reportFields";
 import {
 	Table,
 	TableBody,
@@ -10,13 +11,20 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatReportValue } from "../report-config";
+import { formatDate, formatReportValue } from "../report-config";
 
 interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
 	[key: string]: unknown;
+}
+
+interface DetailResult {
+	columns: { field: string; label: string; type: ReportFieldType }[];
+	rows: Record<string, string | number | boolean | null>[];
+	totalMatched: number;
+	rowsTruncated: boolean;
 }
 
 interface ReportTableProps {
@@ -26,6 +34,52 @@ interface ReportTableProps {
 	entityType: string;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** When set, renders the flat detail-mode table instead of the aggregated one. */
+	detail?: DetailResult;
+}
+
+function formatDetailCell(value: string | number | boolean | null, type: ReportFieldType): string {
+	if (value === null) return "—";
+	if (type === "currency" && typeof value === "number") return formatReportValue(value, true);
+	if (type === "timestamp" && typeof value === "number") return formatDate(value);
+	if (type === "boolean") return value ? "Yes" : "No";
+	if (type === "number" && typeof value === "number") return value.toLocaleString("en-US");
+	return String(value);
+}
+
+function ReportDetailTable({ detail }: { detail: DetailResult }) {
+	return (
+		<div className="space-y-3">
+			<div className="rounded-lg border overflow-hidden">
+				<Table>
+					<TableHeader className="bg-muted/50">
+						<TableRow>
+							{detail.columns.map((col) => (
+								<TableHead key={col.field}>{col.label}</TableHead>
+							))}
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{detail.rows.map((row, index) => (
+							<TableRow key={index}>
+								{detail.columns.map((col) => (
+									<TableCell key={col.field}>
+										{formatDetailCell(row[col.field], col.type)}
+									</TableCell>
+								))}
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
+			</div>
+			{detail.rowsTruncated && (
+				<p className="text-xs text-muted-foreground">
+					Showing first {detail.rows.length.toLocaleString()} of{" "}
+					{detail.totalMatched.toLocaleString()} records.
+				</p>
+			)}
+		</div>
+	);
 }
 
 export function ReportTable({
@@ -33,7 +87,12 @@ export function ReportTable({
 	total,
 	groupBy,
 	totalIsCurrency = false,
+	detail,
 }: ReportTableProps) {
+	if (detail) {
+		return <ReportDetailTable detail={detail} />;
+	}
+
 	// Sum of item `value`s — always a count (per-status/category record count),
 	// used only for the %-of-category and average calcs below. Never the
 	// headline "Total:" figure — that must come from the `total` prop.
