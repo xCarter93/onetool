@@ -15,7 +15,6 @@ class ResizeObserverStub {
 }
 const originalResizeObserver = globalThis.ResizeObserver;
 beforeAll(() => {
-	// @ts-expect-error jsdom has no ResizeObserver
 	globalThis.ResizeObserver = ResizeObserverStub;
 });
 afterAll(() => {
