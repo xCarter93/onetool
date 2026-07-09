@@ -1,7 +1,7 @@
 import { internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { resendClient } from "./lib/resendClient";
+import { getResendClient } from "./lib/resendClient";
 import type { Doc, Id } from "./_generated/dataModel";
 import { systemMutation } from "./lib/factories";
 import { deriveVisibleText } from "./email/replyParser";
@@ -69,7 +69,12 @@ export const handleInboundEmail = internalAction({
 			return { success: false, error: "Failed to fetch email content" };
 		}
 
-		const rfcMessageId = content.rfcMessageId ?? args.messageId;
+		// Prefer real RFC Message-IDs (API headers, then webhook metadata) so
+		// future In-Reply-To/References lookups can match; the Resend emailId is
+		// a last-resort placeholder only (same lossy-by-design tradeoff as the
+		// thread backfill).
+		const rfcMessageId =
+			content.rfcMessageId ?? args.messageId ?? args.emailId;
 		const inReplyTo = content.inReplyTo ?? args.inReplyTo;
 		const references =
 			content.references.length > 0 ? content.references : args.references;
@@ -483,7 +488,7 @@ function stripHtml(html: string): string {
 interface NormalizedInboundContent {
 	html?: string;
 	text?: string;
-	rfcMessageId: string;
+	rfcMessageId: string | null;
 	inReplyTo: string | null;
 	references: string[];
 	receivedForAddress: string | null;
@@ -493,7 +498,9 @@ async function fetchInboundContent(
 	emailId: string
 ): Promise<NormalizedInboundContent | null> {
 	try {
-		const { data, error } = await resendClient.emails.receiving.get(emailId);
+		const { data, error } = await getResendClient().emails.receiving.get(
+			emailId
+		);
 
 		if (error) {
 			console.error(`Resend API error:`, error);
@@ -520,7 +527,7 @@ async function fetchInboundContent(
 		return {
 			html: d.html || undefined,
 			text: d.text || undefined,
-			rfcMessageId: d.message_id || headers["message-id"] || emailId,
+			rfcMessageId: d.message_id || headers["message-id"] || null,
 			inReplyTo: headers["in-reply-to"] ?? null,
 			references,
 			receivedForAddress: d.received_for?.[0] ?? null,

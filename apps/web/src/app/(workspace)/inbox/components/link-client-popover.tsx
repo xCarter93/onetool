@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Link2, Check } from "lucide-react";
+import { Link2 } from "lucide-react";
 import {
 	Popover,
 	PopoverContent,
@@ -34,7 +34,9 @@ export function LinkClientPopover({
 	disabled = false,
 }: LinkClientPopoverProps) {
 	const [open, setOpen] = useState(false);
-	const clients = useQuery(api.clients.list, {});
+	// Skip while closed: several instances render per thread view and none
+	// should subscribe to the client list until actually opened.
+	const clients = useQuery(api.clients.list, open ? {} : "skip");
 
 	const handleSelect = (clientId: Id<"clients">) => {
 		onSelect(clientId);
@@ -88,7 +90,6 @@ export function LinkClientPopover({
 										className="cursor-pointer"
 									>
 										<span className="truncate">{client.companyName}</span>
-										<Check className="ml-auto h-4 w-4 opacity-0" aria-hidden="true" />
 									</CommandItem>
 								))}
 							</CommandGroup>

@@ -83,7 +83,13 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 	};
 
 	const handleSend = async (body: string): Promise<boolean> => {
-		if (!lastMessageId) return false;
+		if (!lastMessageId) {
+			toast.error(
+				"Couldn't send reply",
+				"Thread isn't ready yet — try again in a moment."
+			);
+			return false;
+		}
 		setIsSending(true);
 		try {
 			await replyToEmail({ emailMessageId: lastMessageId, messageBody: body });

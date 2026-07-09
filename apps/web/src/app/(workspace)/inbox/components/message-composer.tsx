@@ -7,7 +7,7 @@ import { LinkClientPopover } from "./link-client-popover";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface MessageComposerProps {
-	/** When null, the thread is unlinked and replies are blocked. */
+	/** When false, the thread is unlinked and replies are blocked. */
 	canReply: boolean;
 	isSending: boolean;
 	/** Resolves true when the reply was sent; the draft is cleared only then. */

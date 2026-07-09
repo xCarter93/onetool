@@ -21,7 +21,11 @@ export interface ThreadGroup {
 
 /** Stable group key: contactId, else email, else a sentinel. */
 export function groupKey(thread: InboxThread): string {
-	return thread.contact?.contactId ?? thread.contact?.email ?? "unknown";
+	return (
+		thread.contact?.contactId ??
+		thread.contact?.email?.toLowerCase() ??
+		"unknown"
+	);
 }
 
 /**

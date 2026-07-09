@@ -149,6 +149,11 @@ export async function bumpThread(
 			: thread.participantEmails;
 	const isNewest = args.sentAt >= thread.lastMessageAt;
 	await ctx.db.patch(threadDocId, {
+		// An inbound reply reopens an archived thread — otherwise it accrues
+		// unread counts while staying hidden in the archived view.
+		...(args.direction === "inbound" && thread.status === "archived"
+			? { status: "open" as const }
+			: {}),
 		lastMessageAt: Math.max(thread.lastMessageAt, args.sentAt),
 		messageCount: thread.messageCount + 1,
 		unreadCount: thread.unreadCount + (args.incUnread ? 1 : 0),

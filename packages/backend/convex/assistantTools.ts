@@ -901,7 +901,12 @@ export const getEmailThread = createTool({
 			messages: thread.map((m) => ({
 				direction: m.direction,
 				subject: m.subject,
-				body: truncate(m.textBody ?? m.messageBody, BODY_CAP),
+				body: truncate(
+					(m.visibleText?.trim() ? m.visibleText : undefined) ??
+						m.textBody ??
+						m.messageBody,
+					BODY_CAP
+				),
 				from: `${m.fromName} <${m.fromEmail}>`,
 				to: `${m.toName} <${m.toEmail}>`,
 				status: m.status,
