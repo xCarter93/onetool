@@ -67,6 +67,11 @@ const DEFAULT_DURATION: Record<NotificationType, number | undefined> = {
 // toast flows through this adapter, so we track ids by type ourselves.
 const liveTransientIds = new Set<string>();
 
+// Sonner auto-generates NUMERIC ids; stringifying them for the legacy API
+// breaks dismiss (sonner matches ids strictly, "5" !== 5). Hand sonner our
+// own string ids instead so dismiss/update round-trip.
+let toastIdCounter = 0;
+
 function show(
 	type: NotificationType,
 	title: string,
@@ -74,20 +79,21 @@ function show(
 	options?: Partial<Toast>
 ): string {
 	const duration = options?.duration ?? DEFAULT_DURATION[type];
-	const id = sonnerToast[type](title, {
+	const id = `ot-toast-${++toastIdCounter}`;
+	sonnerToast[type](title, {
+		id,
 		description: options?.message ?? message,
 		// sonner treats undefined as "use Toaster default"; loading toasts get
 		// Infinity to persist like the old implementation.
 		duration: duration ?? (type === "loading" ? Infinity : undefined),
 	});
-	const stringId = String(id);
 	if (type === "info" || type === "success") {
-		liveTransientIds.add(stringId);
+		liveTransientIds.add(id);
 		if (duration) {
-			setTimeout(() => liveTransientIds.delete(stringId), duration + 1000);
+			setTimeout(() => liveTransientIds.delete(id), duration + 1000);
 		}
 	}
-	return stringId;
+	return id;
 }
 
 const api: ToastContextType = {
