@@ -5,9 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { motion, AnimatePresence } from "motion/react";
-import { createPortal } from "react-dom";
 import {
-	CalendarDays,
 	Plus,
 	Trash2,
 	CheckCircle2,
@@ -18,8 +16,8 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
+import Modal from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -100,8 +98,8 @@ const parseCurrencyInput = (value: string): number => {
 	return isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
 };
 
-const formatDateForDisplay = (timestamp: number): string => {
-	return new Date(timestamp).toLocaleDateString("en-US", {
+const formatDueDate = (date: Date): string => {
+	return date.toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
@@ -134,7 +132,6 @@ function PaymentRow({
 	const [amountInput, setAmountInput] = useState(
 		payment.paymentAmount > 0 ? payment.paymentAmount.toFixed(2) : ""
 	);
-	const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
 	// Sync amount input when payment changes externally
 	const [prevAmount, setPrevAmount] = useState(payment.paymentAmount);
@@ -154,13 +151,6 @@ function PaymentRow({
 		const amount = parseCurrencyInput(amountInput);
 		onUpdate(payment.id, { paymentAmount: amount });
 		setAmountInput(amount > 0 ? amount.toFixed(2) : "");
-	};
-
-	const handleDateSelect = (date: Date | undefined) => {
-		if (date) {
-			onUpdate(payment.id, { dueDate: date.getTime() });
-			setIsCalendarOpen(false);
-		}
 	};
 
 	const canDelete = !payment.isPaid && !isOnlyPayment;
@@ -253,45 +243,15 @@ function PaymentRow({
 							<label className="text-xs font-medium text-muted-foreground">
 								Due Date
 							</label>
-							<Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-								<PopoverTrigger
-									render={
-										<button
-											type="button"
-											disabled={payment.isPaid}
-											className={cn(
-												"flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors",
-												"focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-												"hover:bg-muted/50",
-												payment.isPaid && "cursor-not-allowed opacity-60"
-											)}
-										/>
-									}
-								>
-									<CalendarDays className="h-4 w-4 text-muted-foreground" />
-									<span
-										className={cn(
-											payment.dueDate
-												? "text-foreground"
-												: "text-muted-foreground"
-										)}
-									>
-										{payment.dueDate
-											? formatDateForDisplay(payment.dueDate)
-											: "Select date"}
-									</span>
-								</PopoverTrigger>
-								<PopoverContent className="w-auto p-0 z-[10000]" align="start">
-									<Calendar
-										mode="single"
-										selected={
-											payment.dueDate ? new Date(payment.dueDate) : undefined
-										}
-										onSelect={handleDateSelect}
-										initialFocus
-									/>
-								</PopoverContent>
-							</Popover>
+							<DatePicker
+								value={payment.dueDate ? new Date(payment.dueDate) : undefined}
+								onChange={(date) =>
+									date && onUpdate(payment.id, { dueDate: date.getTime() })
+								}
+								disabled={payment.isPaid}
+								formatDate={formatDueDate}
+								className="h-9"
+							/>
 						</div>
 
 						{/* Delete button */}
@@ -571,195 +531,87 @@ export function PaymentsConfigurationModal({
 		});
 	}, [payments]);
 
-	// Animation variants
-	const backdropVariants = {
-		hidden: { opacity: 0 },
-		visible: { opacity: 1 },
-		exit: { opacity: 0 },
-	};
+	return (
+		<Modal isOpen={isOpen} onClose={onClose} size="xl">
+			{/* Header */}
+			<div className="mb-4 border-b border-border pb-4">
+				<h2 className="text-lg font-semibold text-foreground">
+					Configure Payment Schedule
+				</h2>
+				<p className="mt-1 text-sm text-muted-foreground">
+					Split this invoice into multiple payments with individual due dates.
+				</p>
 
-	const modalVariants = {
-		hidden: { opacity: 0, scale: 0.96, y: 8 },
-		visible: {
-			opacity: 1,
-			scale: 1,
-			y: 0,
-			transition: {
-				type: "spring" as const,
-				damping: 25,
-				stiffness: 350,
-			},
-		},
-		exit: {
-			opacity: 0,
-			scale: 0.96,
-			y: 8,
-			transition: { duration: 0.15 },
-		},
-	};
+				{/* Invoice total display */}
+				<div className="mt-4 flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
+					<span className="text-sm font-medium text-muted-foreground">
+						Invoice Total
+					</span>
+					<span className="text-xl font-bold tabular-nums text-foreground">
+						{formatCurrency(invoiceTotal)}
+					</span>
+				</div>
+			</div>
 
-	if (!isOpen) return null;
+			{/* Body */}
+			<div className="space-y-3">
+				<AnimatePresence mode="popLayout">
+					{sortedPayments.map((payment, index) => (
+						<PaymentRow
+							key={payment.id}
+							payment={payment}
+							index={index}
+							onUpdate={handleUpdatePayment}
+							onDelete={handleDeletePayment}
+							isOnlyPayment={payments.filter((p) => !p.isPaid).length === 1}
+						/>
+					))}
+				</AnimatePresence>
+			</div>
 
-	return createPortal(
-		<AnimatePresence>
-			{isOpen && (
-				<motion.div
-					// TODO(reui-rebuild): last hand-rolled motion modal (private copy,
-					// never used ui/modal) — convert to ui/dialog and drop the paired
-					// z-[9999]/z-[10000] hacks in one pass (P6/P8 follow-up)
-					className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
-					initial="hidden"
-					animate="visible"
-					exit="exit"
-					variants={backdropVariants}
-					transition={{ duration: 0.15 }}
-				>
-					{/* Backdrop */}
-					<motion.div
-						className="absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/60"
-						onClick={onClose}
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-					/>
+			{/* Add Payment Button */}
+			<button
+				type="button"
+				onClick={handleAddPayment}
+				className={cn(
+					"mt-4 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-3",
+					"text-sm font-medium text-muted-foreground",
+					"transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+				)}
+			>
+				<Plus className="h-4 w-4" />
+				Add Payment
+			</button>
 
-					{/* Modal */}
-					<motion.div
-						className={cn(
-							"relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden",
-							"rounded-xl shadow-2xl",
-							"bg-background dark:bg-gray-900",
-							"border border-border"
-						)}
-						variants={modalVariants}
-						initial="hidden"
-						animate="visible"
-						exit="exit"
-						role="dialog"
-						aria-modal="true"
-						aria-labelledby="modal-title"
+			{/* Summary */}
+			<div className="mt-6">
+				<PaymentsSummary payments={payments} invoiceTotal={invoiceTotal} />
+			</div>
+
+			{/* Footer */}
+			<div className="mt-6 border-t border-border pt-4">
+				<div className="flex items-center justify-end gap-3">
+					<Button variant="outline" onClick={onClose} disabled={isSaving}>
+						Cancel
+					</Button>
+					<Button
+						onClick={handleSave}
+						disabled={!isValid || isSaving || !hasUnpaidPayments}
 					>
-						{/* Header */}
-						<div className="border-b border-border px-6 py-4">
-							<div className="flex items-start justify-between">
-								<div>
-									<h2
-										id="modal-title"
-										className="text-lg font-semibold text-foreground"
-									>
-										Configure Payment Schedule
-									</h2>
-									<p className="mt-1 text-sm text-muted-foreground">
-										Split this invoice into multiple payments with individual due
-										dates.
-									</p>
-								</div>
-								<button
-									type="button"
-									onClick={onClose}
-									className={cn(
-										"flex h-8 w-8 items-center justify-center rounded-md",
-										"text-muted-foreground transition-colors",
-										"hover:bg-muted hover:text-foreground"
-									)}
-									aria-label="Close"
-								>
-									<svg
-										className="h-4 w-4"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											strokeLinecap="round"
-											strokeLinejoin="round"
-											strokeWidth={2}
-											d="M6 18L18 6M6 6l12 12"
-										/>
-									</svg>
-								</button>
-							</div>
+						{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{isSaving ? "Saving..." : "Save Payment Schedule"}
+					</Button>
+				</div>
 
-							{/* Invoice total display */}
-							<div className="mt-4 flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
-								<span className="text-sm font-medium text-muted-foreground">
-									Invoice Total
-								</span>
-								<span className="text-xl font-bold tabular-nums text-foreground">
-									{formatCurrency(invoiceTotal)}
-								</span>
-							</div>
-						</div>
-
-						{/* Body - Scrollable */}
-						<div className="max-h-[calc(90vh-280px)] overflow-y-auto px-6 py-4">
-							<div className="space-y-3">
-								<AnimatePresence mode="popLayout">
-									{sortedPayments.map((payment, index) => (
-										<PaymentRow
-											key={payment.id}
-											payment={payment}
-											index={index}
-											onUpdate={handleUpdatePayment}
-											onDelete={handleDeletePayment}
-											isOnlyPayment={payments.filter((p) => !p.isPaid).length === 1}
-										/>
-									))}
-								</AnimatePresence>
-							</div>
-
-							{/* Add Payment Button */}
-							<button
-								type="button"
-								onClick={handleAddPayment}
-								className={cn(
-									"mt-4 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-3",
-									"text-sm font-medium text-muted-foreground",
-									"transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
-								)}
-							>
-								<Plus className="h-4 w-4" />
-								Add Payment
-							</button>
-
-							{/* Summary */}
-							<div className="mt-6">
-								<PaymentsSummary payments={payments} invoiceTotal={invoiceTotal} />
-							</div>
-						</div>
-
-						{/* Footer */}
-						<div className="border-t border-border px-6 py-4">
-							<div className="flex items-center justify-end gap-3">
-								<Button
-									variant="outline"
-									onClick={onClose}
-									disabled={isSaving}
-								>
-									Cancel
-								</Button>
-								<Button
-									onClick={handleSave}
-									disabled={!isValid || isSaving || !hasUnpaidPayments}
-								>
-									{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-									{isSaving ? "Saving..." : "Save Payment Schedule"}
-								</Button>
-							</div>
-
-							{!isValid && (
-								<p className="mt-3 text-center text-xs text-red-600 dark:text-red-400">
-									{difference > 0
-										? `Payments exceed invoice total by ${formatCurrency(Math.abs(difference))}`
-										: `Payments are ${formatCurrency(Math.abs(difference))} short of invoice total`}
-								</p>
-							)}
-						</div>
-					</motion.div>
-				</motion.div>
-			)}
-		</AnimatePresence>,
-		document.body
+				{!isValid && (
+					<p className="mt-3 text-center text-xs text-red-600 dark:text-red-400">
+						{difference > 0
+							? `Payments exceed invoice total by ${formatCurrency(Math.abs(difference))}`
+							: `Payments are ${formatCurrency(Math.abs(difference))} short of invoice total`}
+					</p>
+				)}
+			</div>
+		</Modal>
 	);
 }
 
