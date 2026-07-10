@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Calendar, Crown, Loader2, Building2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import {
 	Sheet,
 	SheetContent,
@@ -11,7 +11,7 @@ import {
 	SheetTitle,
 	SheetDescription,
 } from "@/components/ui/sheet";
-import { Switch, SwitchWrapper } from "@/components/ui/switch";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserData {
@@ -188,7 +188,7 @@ export function UserSheet({
 									Grant this user direct premium access (independent of org)
 								</p>
 							</div>
-							<SwitchWrapper>
+							<div className="relative inline-flex items-center">
 								<Switch
 									checked={user.hasDirectPremium}
 									onCheckedChange={handlePremiumToggle}
@@ -197,7 +197,7 @@ export function UserSheet({
 								{isUpdating && (
 									<Loader2 className="h-4 w-4 ml-2 animate-spin text-muted-foreground" />
 								)}
-							</SwitchWrapper>
+							</div>
 						</div>
 					</div>
 

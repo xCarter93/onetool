@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { DataGrid, DataGridContainer } from "@/components/ui/data-grid";
 import { DataGridColumnHeader } from "@/components/ui/data-grid-column-header";
@@ -237,8 +237,8 @@ export function StyledSubDataGrid({
 					return row.getCanExpand() ? (
 						<Button
 							onClick={row.getToggleExpandedHandler()}
-							size="sq-sm"
-							intent="plain"
+							size="icon-sm"
+							variant="ghost"
 						>
 							{row.getIsExpanded() ? <SquareMinus /> : <SquarePlus />}
 						</Button>

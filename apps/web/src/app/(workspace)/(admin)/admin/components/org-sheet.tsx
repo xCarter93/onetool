@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Crown, Users, Loader2, Building2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import {
 	Sheet,
 	SheetContent,
@@ -11,7 +11,7 @@ import {
 	SheetTitle,
 	SheetDescription,
 } from "@/components/ui/sheet";
-import { Switch, SwitchWrapper } from "@/components/ui/switch";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 
 interface OrgWithUsers {
@@ -161,7 +161,7 @@ export function OrgSheet({
 									All members will have premium access
 								</p>
 							</div>
-							<SwitchWrapper>
+							<div className="relative inline-flex items-center">
 								<Switch
 									checked={org.hasPremium}
 									onCheckedChange={handlePremiumToggle}
@@ -170,7 +170,7 @@ export function OrgSheet({
 								{isUpdating && (
 									<Loader2 className="h-4 w-4 ml-2 animate-spin text-muted-foreground" />
 								)}
-							</SwitchWrapper>
+							</div>
 						</div>
 					</div>
 
