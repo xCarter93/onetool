@@ -39,7 +39,7 @@ export function UnpublishedBanner({
 				className="pointer-events-auto w-full max-w-md shadow-lg"
 			>
 				<FramePanel className="overflow-hidden p-0!">
-					<Alert variant="violet" className="border-0 shadow-none">
+					<Alert variant="info" className="border-0 shadow-none">
 						<Rocket />
 						<AlertTitle>
 							{isPublished ? "Unpublished changes" : "Draft automation"}
