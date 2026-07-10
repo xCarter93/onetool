@@ -252,6 +252,85 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 	},
 };
 
+/**
+ * Canonical Group-by choices per entity — the builder's select, the AI
+ * config generator, and saved-config hydration all share this list.
+ * Values mix registry fields (status, leadSource…) with legacy specials
+ * the pre-registry dispatch understands (month, client, conversionRate,
+ * completionRate, creationDate_*) — see isGenericGroupBy for which of
+ * these the generic aggregation pipeline accepts.
+ */
+export const GROUP_BY_OPTIONS: Record<
+	ReportEntityType,
+	{ value: string; label: string }[]
+> = {
+	clients: [
+		{ value: "status", label: "Status" },
+		{ value: "leadSource", label: "Lead Source" },
+		{ value: "creationDate_month", label: "Created by Month" },
+		{ value: "creationDate_week", label: "Created by Week" },
+		{ value: "creationDate_day", label: "Created by Day" },
+	],
+	projects: [
+		{ value: "status", label: "Status" },
+		{ value: "projectType", label: "Project Type" },
+		{ value: "creationDate_month", label: "Created by Month" },
+		{ value: "creationDate_week", label: "Created by Week" },
+		{ value: "creationDate_day", label: "Created by Day" },
+	],
+	tasks: [
+		{ value: "status", label: "Status" },
+		{ value: "completionRate", label: "Completion Rate" },
+		{ value: "date_month", label: "By Month" },
+		{ value: "date_week", label: "By Week" },
+		{ value: "date_day", label: "By Day" },
+	],
+	quotes: [
+		{ value: "status", label: "Status" },
+		{ value: "conversionRate", label: "Conversion Rate" },
+	],
+	invoices: [
+		{ value: "status", label: "Status" },
+		{ value: "month", label: "Revenue by Month" },
+		{ value: "client", label: "Revenue by Client" },
+	],
+	activities: [
+		{ value: "activityType", label: "Activity Type" },
+		{ value: "timestamp_month", label: "By Month" },
+		{ value: "timestamp_week", label: "By Week" },
+		{ value: "timestamp_day", label: "By Day" },
+	],
+};
+
+/** Per-entity fallback columns for detail (raw-row) mode when nothing is checked. */
+export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {
+	clients: ["companyName", "status", "leadSource", "_creationTime"],
+	projects: ["title", "status", "projectType"],
+	tasks: ["title", "status", "date"],
+	quotes: ["quoteNumber", "status", "total"],
+	invoices: ["invoiceNumber", "status", "total", "issuedDate"],
+	activities: ["activityType", "description", "timestamp"],
+};
+
+/**
+ * True when the generic aggregation pipeline (executeReport with an explicit
+ * `aggregation`) accepts this groupBy: a non-timestamp registry field, or a
+ * `<timestamp-field>_day|week|month` bucket. Legacy specials (month, client,
+ * conversionRate, completionRate, creationDate_*) only work through the
+ * legacy dispatch, which ignores measures — so a non-count measure must
+ * pair with a generic-safe groupBy (or none).
+ */
+export function isGenericGroupBy(
+	entityType: ReportEntityType,
+	groupBy: string
+): boolean {
+	const direct = getReportField(entityType, groupBy);
+	if (direct) return direct.type !== "timestamp";
+	const timeMatch = groupBy.match(/^(.+)_(day|week|month)$/);
+	if (!timeMatch) return false;
+	return getReportField(entityType, timeMatch[1])?.type === "timestamp";
+}
+
 /** Look up a field def, or undefined if unknown for this entity. */
 export function getReportField(
 	entityType: ReportEntityType,

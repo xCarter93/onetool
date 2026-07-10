@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { mapSchemaTool } from "@/mastra/tools/map-schema-tool";
-import { validateDataTool } from "@/mastra/tools/validate-data-tool";
+import { mapCsvSchema, validateCsvData } from "@/lib/csv-analysis";
 import type { CsvAnalysisResult } from "@/types/csv-import";
 
 export const maxDuration = 60;
@@ -41,36 +40,21 @@ export async function POST(request: NextRequest) {
 
 		const resolvedEntityType = entityType || "clients";
 
-		// Call mapSchemaTool directly — uses LLM (GPT-5 nano) for column mapping
-		const mapRaw = await mapSchemaTool.execute({
+		// Call mapCsvSchema directly — uses LLM (GPT-5 nano) for column mapping.
+		// Never throws; LLM failures resolve to an empty-mappings/llmFailed result,
+		// unexpected errors are caught by the outer try/catch below.
+		const mapResult = await mapCsvSchema({
 			entityType: resolvedEntityType,
 			headers,
 			sampleRows,
 		});
 
-		// Mastra execute returns a union with ValidationError — check for error case
-		if ("error" in mapRaw && mapRaw.error === true) {
-			return NextResponse.json(
-				{ error: "Schema mapping failed", details: mapRaw.message },
-				{ status: 500 }
-			);
-		}
-		const mapResult = mapRaw;
-
-		// Call validateDataTool directly with mapping results
-		const validateRaw = await validateDataTool.execute({
+		// Call validateCsvData directly with mapping results
+		const validateResult = await validateCsvData({
 			entityType: resolvedEntityType,
 			mappings: mapResult.mappings,
 			sampleRows,
 		});
-
-		if ("error" in validateRaw && validateRaw.error === true) {
-			return NextResponse.json(
-				{ error: "Data validation failed", details: validateRaw.message },
-				{ status: 500 }
-			);
-		}
-		const validateResult = validateRaw;
 
 		// Compute overall confidence from actual mapping scores (not hardcoded)
 		const avgConfidence =
@@ -95,7 +79,7 @@ export async function POST(request: NextRequest) {
 			suggestedDefaults: validateResult.suggestedDefaults,
 			confidence: Math.round(avgConfidence * 100) / 100,
 			sampleData: sampleRows,
-			llmFailed: (mapResult as Record<string, unknown>).llmFailed === true,
+			llmFailed: mapResult.llmFailed === true,
 		};
 
 		return NextResponse.json(analysisResult);

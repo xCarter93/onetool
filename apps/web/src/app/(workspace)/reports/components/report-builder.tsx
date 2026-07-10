@@ -3,14 +3,17 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ArrowLeft, Filter, ListTree, Loader2, Save, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, Filter, ListTree, Loader2, Save, Sparkles } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { getReportDateField, REPORT_FIELDS } from "@onetool/backend/convex/lib/reportFields";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import { cn } from "@/lib/utils";
+import { useAssistantOpener } from "@/components/assistant/assistant-opener-context";
+import { useRegisterReportConfigApply } from "@/components/assistant/report-config-apply-context";
+import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
+import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
 	Select,
 	SelectContent,
@@ -35,7 +38,7 @@ import {
 } from "./report-filters-editor";
 import {
 	dateRangeOptions,
-	detectDateRangePreset,
+	dateRangeToBuilderState,
 	effectiveDetailColumns,
 	entityOptions,
 	getDateRange,
@@ -149,9 +152,7 @@ export function ReportBuilder({
 	const [columns, setColumns] = useState<string[]>(initial.columns ?? []);
 	const [configTab, setConfigTab] = useState<"outline" | "filters">("outline");
 
-	const [aiPrompt, setAiPrompt] = useState("");
-	const [aiLoading, setAiLoading] = useState(false);
-	const [aiResponse, setAiResponse] = useState("");
+	const openAssistant = useAssistantOpener();
 
 	const effectiveDateRange = () => {
 		if (dateRangePreset === "custom" && customDateRange) {
@@ -183,6 +184,43 @@ export function ReportBuilder({
 		columns: columns.length ? columns : undefined,
 	};
 
+	// Agent sees what the user sees: the assistant's configureReport tool
+	// relays this as currentConfig so a request modifies the open draft
+	// instead of starting over.
+	usePublishScreenContext(() => ({
+		reportBuilderConfig: {
+			entityType,
+			groupBy: groupBy ?? null,
+			visualization: vizType,
+			dateRange: effectiveDateRange() ?? null,
+			filters: sanitizedFilters ?? null,
+			measure,
+			columns: columns.length ? columns : null,
+			name: name || null,
+		},
+	}));
+
+	// Client-executed configureReport: the panel forwards the validated
+	// config here (navigate-tool pattern); the user reviews, then saves.
+	useRegisterReportConfigApply((applied: BuilderReportConfig) => {
+		setEntityType(applied.entityType);
+		setGroupBy(applied.groupBy ?? undefined);
+		setVizType(applied.visualization);
+		const { preset, customRange } = dateRangeToBuilderState(applied.dateRange);
+		setDateRangePreset(preset);
+		setCustomDateRange(customRange);
+		setFilters(applied.filters ?? undefined);
+		setMeasure(
+			applied.measure && applied.measure.op !== "count" && applied.measure.field
+				? { op: applied.measure.op, field: applied.measure.field }
+				: { op: "count" }
+		);
+		setColumns(applied.columns ?? []);
+		if (applied.name) setName(applied.name);
+		// null description = "unchanged" — the model omits rather than clears.
+		if (applied.description !== null) setDescription(applied.description);
+	});
+
 	// Drives the footer summary; Convex dedupes this against ReportPreview's
 	// identical subscription, so there's no extra fetch.
 	const queryArgs = useDebouncedValue(resolveReportQueryArgs(config, vizType), 300);
@@ -203,43 +241,6 @@ export function ReportBuilder({
 	})();
 	const rangeLabel =
 		dateRangeOptions.find((o) => o.value === dateRangePreset)?.label ?? "All Time";
-
-	const handleAiGenerate = async () => {
-		if (!aiPrompt.trim()) return;
-		setAiLoading(true);
-		setAiResponse("");
-		try {
-			const response = await fetch("/api/mastra/report", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt: aiPrompt }),
-			});
-			if (!response.ok) throw new Error("Failed to generate report");
-			const data = await response.json();
-
-			if (data.config?.entityType) {
-				const nextEntity = data.config.entityType as EntityType;
-				setEntityType(nextEntity);
-				const nextGroup =
-					data.config.groupBy?.[0] ?? groupByOptions[nextEntity]?.[0]?.value;
-				if (nextGroup) setGroupBy(nextGroup);
-			}
-			if (data.config?.dateRange) {
-				setDateRangePreset(detectDateRangePreset(data.config.dateRange));
-			}
-			if (data.visualization?.type) setVizType(data.visualization.type);
-			if (data.suggestedName && !name.trim()) setName(data.suggestedName);
-			if (data.suggestedDescription && !description.trim())
-				setDescription(data.suggestedDescription);
-
-			setAiResponse("Configuration applied — review and save when ready.");
-		} catch (error) {
-			console.error("AI generation error:", error);
-			setAiResponse("Couldn't generate that. Try rephrasing or set it up manually.");
-		} finally {
-			setAiLoading(false);
-		}
-	};
 
 	const handleSave = () => {
 		if (!name.trim()) return;
@@ -472,38 +473,24 @@ export function ReportBuilder({
 						</StyledTabsContent>
 					</StyledTabs>
 
-					{/* AI assist */}
-					<section className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-3">
-						<h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-							<Sparkles className="h-3.5 w-3.5 text-primary" />
-							AI assist
-						</h2>
-						<Textarea
-							aria-label="Describe the report you want"
-							placeholder="e.g. Revenue by client this quarter"
-							value={aiPrompt}
-							onChange={(e) => setAiPrompt(e.target.value)}
-							rows={3}
-							className="bg-background"
-						/>
-						<Button
-							intent="outline"
-							size="sm"
-							onPress={handleAiGenerate}
-							isDisabled={!aiPrompt.trim() || aiLoading}
-							className="w-full"
-						>
-							{aiLoading ? (
-								<Loader2 className="h-4 w-4 animate-spin" data-slot="icon" />
-							) : (
-								<Send className="h-4 w-4" data-slot="icon" />
-							)}
-							Generate
-						</Button>
-						{aiResponse && (
-							<p className="text-xs text-muted-foreground">{aiResponse}</p>
-						)}
-					</section>
+					{/* NL report building lives in the assistant panel (createReport tool). */}
+					{openAssistant && (
+						<section className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
+							<Button
+								intent="outline"
+								size="sm"
+								onPress={openAssistant}
+								className="w-full"
+							>
+								<Sparkles className="h-4 w-4 text-primary" data-slot="icon" />
+								Ask AI
+							</Button>
+							<p className="text-xs text-muted-foreground">
+								Describe the report you want — the assistant builds and
+								saves it for you.
+							</p>
+						</section>
+					)}
 				</aside>
 
 				{/* Chart canvas */}

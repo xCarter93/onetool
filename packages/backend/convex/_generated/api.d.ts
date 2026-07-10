@@ -110,6 +110,7 @@ import type * as push from "../push.js";
 import type * as quoteLineItems from "../quoteLineItems.js";
 import type * as quotes from "../quotes.js";
 import type * as rateLimits from "../rateLimits.js";
+import type * as reportConfigGeneration from "../reportConfigGeneration.js";
 import type * as reportData from "../reportData.js";
 import type * as reports from "../reports.js";
 import type * as resend from "../resend.js";
@@ -235,6 +236,7 @@ declare const fullApi: ApiFromModules<{
   quoteLineItems: typeof quoteLineItems;
   quotes: typeof quotes;
   rateLimits: typeof rateLimits;
+  reportConfigGeneration: typeof reportConfigGeneration;
   reportData: typeof reportData;
   reports: typeof reports;
   resend: typeof resend;

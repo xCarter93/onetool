@@ -11,6 +11,10 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
+import {
+	DEFAULT_DETAIL_COLUMNS,
+	GROUP_BY_OPTIONS,
+} from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 
 export type EntityType =
@@ -68,44 +72,10 @@ export const entityOptions: {
 	{ value: "activities", label: "Activities", description: "Activity log", icon: TrendingUp },
 ];
 
-export const groupByOptions: Record<string, { value: string; label: string }[]> = {
-	clients: [
-		{ value: "status", label: "Status" },
-		{ value: "leadSource", label: "Lead Source" },
-		{ value: "creationDate_month", label: "Created by Month" },
-		{ value: "creationDate_week", label: "Created by Week" },
-		{ value: "creationDate_day", label: "Created by Day" },
-	],
-	projects: [
-		{ value: "status", label: "Status" },
-		{ value: "projectType", label: "Project Type" },
-		{ value: "creationDate_month", label: "Created by Month" },
-		{ value: "creationDate_week", label: "Created by Week" },
-		{ value: "creationDate_day", label: "Created by Day" },
-	],
-	tasks: [
-		{ value: "status", label: "Status" },
-		{ value: "completionRate", label: "Completion Rate" },
-		{ value: "date_month", label: "By Month" },
-		{ value: "date_week", label: "By Week" },
-		{ value: "date_day", label: "By Day" },
-	],
-	quotes: [
-		{ value: "status", label: "Status" },
-		{ value: "conversionRate", label: "Conversion Rate" },
-	],
-	invoices: [
-		{ value: "status", label: "Status" },
-		{ value: "month", label: "Revenue by Month" },
-		{ value: "client", label: "Revenue by Client" },
-	],
-	activities: [
-		{ value: "activityType", label: "Activity Type" },
-		{ value: "timestamp_month", label: "By Month" },
-		{ value: "timestamp_week", label: "By Week" },
-		{ value: "timestamp_day", label: "By Day" },
-	],
-};
+// Canonical list lives in the backend field registry so the builder, the
+// assistant's report-config generator, and executeReport can't drift.
+export const groupByOptions: Record<string, { value: string; label: string }[]> =
+	GROUP_BY_OPTIONS;
 
 export const visualizationOptions: {
 	value: VizType;
@@ -355,15 +325,9 @@ export function formatReportValue(
 	}).format(value);
 }
 
-/** Per-entity fallback columns for detail (raw-row) mode when nothing is checked. */
-export const DEFAULT_DETAIL_COLUMNS: Record<EntityType, string[]> = {
-	clients: ["companyName", "status", "leadSource", "_creationTime"],
-	projects: ["title", "status", "projectType"],
-	tasks: ["title", "status", "date"],
-	quotes: ["quoteNumber", "status", "total"],
-	invoices: ["invoiceNumber", "status", "total", "issuedDate"],
-	activities: ["activityType", "description", "timestamp"],
-};
+// Canonical defaults live in the backend field registry (shared with the
+// assistant's report-config generator).
+export { DEFAULT_DETAIL_COLUMNS };
 
 /**
  * True when the table view should render raw rows instead of aggregated
@@ -468,4 +432,35 @@ export function detectDateRangePreset(dateRange: {
 	}
 
 	return "all_time";
+}
+
+/**
+ * Map a concrete ms date range (e.g. from the assistant's configureReport
+ * tool) onto builder state. detectDateRangePreset only recognizes a few
+ * current-period presets and never returns "custom", so any other real
+ * range must land on the custom preset — mapping it to "all_time" would
+ * silently drop the bound.
+ */
+export function dateRangeToBuilderState(
+	dateRange: { start?: number; end?: number } | null | undefined
+): {
+	preset: string;
+	customRange?: { from: Date | undefined; to: Date | undefined };
+} {
+	if (
+		!dateRange ||
+		(dateRange.start === undefined && dateRange.end === undefined)
+	) {
+		return { preset: "all_time" };
+	}
+	const preset = detectDateRangePreset(dateRange);
+	if (preset !== "all_time") return { preset };
+	return {
+		preset: "custom",
+		customRange: {
+			from:
+				dateRange.start !== undefined ? new Date(dateRange.start) : undefined,
+			to: dateRange.end !== undefined ? new Date(dateRange.end) : undefined,
+		},
+	};
 }

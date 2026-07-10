@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
 	DEFAULT_DETAIL_COLUMNS,
+	dateRangeToBuilderState,
 	getReportValueTypes,
 	formatReportValue,
 	resolveReportQueryArgs,
@@ -153,5 +154,44 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "bar");
 		expect(args.groupBy).toBe("status");
 		expect(args.aggregation).toBeUndefined();
+	});
+});
+
+describe("dateRangeToBuilderState", () => {
+	it("maps an empty range to All Time", () => {
+		expect(dateRangeToBuilderState(null)).toEqual({ preset: "all_time" });
+		expect(dateRangeToBuilderState(undefined)).toEqual({ preset: "all_time" });
+		expect(dateRangeToBuilderState({})).toEqual({ preset: "all_time" });
+	});
+
+	it("recognizes a current-period preset", () => {
+		const now = new Date();
+		const monthStart = new Date(
+			now.getFullYear(),
+			now.getMonth(),
+			1
+		).getTime();
+		expect(dateRangeToBuilderState({ start: monthStart })).toEqual({
+			preset: "this_month",
+		});
+	});
+
+	it("falls back to the custom preset for arbitrary ranges instead of All Time", () => {
+		// Regression: detectDateRangePreset returns "all_time" for anything it
+		// doesn't recognize, which would silently drop an AI-generated bound.
+		const start = Date.parse("2024-02-15T00:00:00.000Z");
+		const end = Date.parse("2024-03-15T23:59:59.999Z");
+		const state = dateRangeToBuilderState({ start, end });
+		expect(state.preset).toBe("custom");
+		expect(state.customRange?.from?.getTime()).toBe(start);
+		expect(state.customRange?.to?.getTime()).toBe(end);
+	});
+
+	it("handles a one-sided range as custom", () => {
+		const end = Date.parse("2024-03-15T23:59:59.999Z");
+		const state = dateRangeToBuilderState({ end });
+		expect(state.preset).toBe("custom");
+		expect(state.customRange?.from).toBeUndefined();
+		expect(state.customRange?.to?.getTime()).toBe(end);
 	});
 });
