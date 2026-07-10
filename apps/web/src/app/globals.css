@@ -671,3 +671,11 @@
 		font-size: 24pt;
 	}
 }
+/* OneTool exception: primary actions keep the pre-rebuild "frosted blue" look
+   (translucent sky tint + soft ring + blur) instead of nova's solid fill.
+   App `components` layer intentionally beats reui-nova.css (`base` layer). */
+@layer components {
+	.style-nova .cn-button-variant-default {
+		@apply bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-primary/15 hover:text-primary/80 hover:border-primary/40 hover:shadow-md;
+	}
+}
