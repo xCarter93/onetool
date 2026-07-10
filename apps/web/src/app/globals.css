@@ -680,6 +680,15 @@
 	}
 }
 
+/* Collapsed sidebar rail: the toggle's icon matches the enlarged (size-5)
+   collapsed menu icons set in reui-nova.css cn-sidebar-menu-button. */
+@layer components {
+	[data-slot="sidebar"][data-collapsible="icon"] [data-sidebar="trigger"] svg {
+		width: calc(var(--spacing) * 5);
+		height: calc(var(--spacing) * 5);
+	}
+}
+
 /* Toast variants: framed + tinted per type. Sonner's injected stylesheet is
    unlayered (it would beat layered property overrides), but it paints each
    toast from --normal-* vars, so we feed those per type instead. Tints are
