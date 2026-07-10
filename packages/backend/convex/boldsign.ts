@@ -3,6 +3,7 @@ import {
 	internalMutation,
 	internalQuery,
 	MutationCtx,
+	QueryCtx,
 } from "./_generated/server";
 import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { internal, api } from "./_generated/api";
@@ -89,6 +90,29 @@ type EmbeddedRequestContext = {
  * drawer), computes the monthly e-sig cap verdict, and surfaces a reusable
  * non-expired Draft for idempotency. Runs in query context (no BoldSign call).
  */
+/**
+ * Latest PDF document row for a quote (highest version), org-scoped.
+ * Mirrors documents.getLatest. Returns null if no PDF has been generated.
+ */
+async function getLatestQuoteDocument(
+	ctx: { db: QueryCtx["db"] },
+	quoteId: Id<"quotes">,
+	orgId: Id<"organizations">
+): Promise<Doc<"documents"> | null> {
+	const documents = await ctx.db
+		.query("documents")
+		.withIndex("by_document", (q) =>
+			q.eq("documentType", "quote").eq("documentId", quoteId)
+		)
+		.collect();
+	const orgDocuments = documents.filter((doc) => doc.orgId === orgId);
+	if (orgDocuments.length === 0) return null;
+	return orgDocuments.reduce((a, b) => {
+		if (a.version && b.version) return b.version > a.version ? b : a;
+		return b.generatedAt > a.generatedAt ? b : a;
+	});
+}
+
 export const getEmbeddedRequestContext = internalQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args): Promise<EmbeddedRequestContext> => {
@@ -99,21 +123,10 @@ export const getEmbeddedRequestContext = internalQuery({
 			throw new Error("Quote does not belong to your organization");
 		}
 
-		// Latest quote PDF (highest version) — mirrors documents.getLatest.
-		const documents = await ctx.db
-			.query("documents")
-			.withIndex("by_document", (q) =>
-				q.eq("documentType", "quote").eq("documentId", quote._id)
-			)
-			.collect();
-		const orgDocuments = documents.filter((doc) => doc.orgId === orgId);
-		if (orgDocuments.length === 0) {
+		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
+		if (!latest) {
 			throw new Error("No PDF has been generated for this quote yet");
 		}
-		const latest = orgDocuments.reduce((a, b) => {
-			if (a.version && b.version) return b.version > a.version ? b : a;
-			return b.generatedAt > a.generatedAt ? b : a;
-		});
 
 		// Reuse a non-expired embedded Draft (idempotent /sign visits).
 		const now = Date.now();
@@ -235,6 +248,69 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 		await ctx.db.patch(args.quoteId, {
 			latestDocumentId: args.documentId,
 		});
+	},
+});
+
+/**
+ * The latest quote document's embedded Draft, if one exists — org-scoped.
+ * Used by the discard action to decide whether there's anything to clean up.
+ */
+export const getEmbeddedDraft = internalQuery({
+	args: { quoteId: v.id("quotes") },
+	returns: v.union(
+		v.object({
+			documentId: v.id("documents"),
+			boldsignDocumentId: v.string(),
+		}),
+		v.null()
+	),
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		documentId: Id<"documents">;
+		boldsignDocumentId: string;
+	} | null> => {
+		const orgId = await getCurrentUserOrgId(ctx);
+
+		const quote = await ctx.db.get(args.quoteId);
+		if (!quote || quote.orgId !== orgId) {
+			throw new Error("Quote does not belong to your organization");
+		}
+
+		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
+		if (!latest || latest.boldsign?.status !== "Draft") return null;
+		return {
+			documentId: latest._id,
+			boldsignDocumentId: latest.boldsign.documentId,
+		};
+	},
+});
+
+/**
+ * Remove the embedded Draft state from a document after the BoldSign draft has
+ * been deleted remotely. Guarded on status + documentId so a Sent webhook that
+ * raced ahead of the user's back-navigation wins and the state is kept.
+ */
+export const clearEmbeddedDraft = internalMutation({
+	args: {
+		documentId: v.id("documents"),
+		boldsignDocumentId: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const document = await fetchEntityOrThrow(ctx, args.documentId, "Document");
+		if (
+			document.boldsign?.status !== "Draft" ||
+			document.boldsign.documentId !== args.boldsignDocumentId
+		) {
+			return null;
+		}
+		await ctx.db.patch(args.documentId, {
+			boldsign: undefined,
+			boldsignDocumentId: undefined,
+		});
+		return null;
 	},
 });
 

@@ -40,25 +40,53 @@ export default function QuoteSignPage() {
 	const createRequest = useAction(
 		api.boldsignActions.createEmbeddedSignatureRequest
 	);
+	const discardRequest = useAction(
+		api.boldsignActions.discardEmbeddedSignatureRequest
+	);
 
 	const [view, setView] = useState<ViewState>({ kind: "creating" });
 	// True until BoldSign's iframe finishes its own async load (onLoadComplete).
 	const [iframeLoading, setIframeLoading] = useState(true);
+	// True while the abandoned draft is being discarded before navigating back.
+	const [discarding, setDiscarding] = useState(false);
 
-	const backToQuote = useCallback(
-		() => router.push(`/quotes/${quoteId}`),
-		[router, quoteId]
-	);
+	// Set when the user resolved the editor themselves (sent, or Save & Close),
+	// in which case back-navigation must NOT discard the BoldSign document.
+	const keepDocumentRef = useRef(false);
+	// In-flight create, awaited before discarding so a draft persisted after an
+	// early back-click doesn't survive as an orphan.
+	const createPromiseRef = useRef<Promise<unknown> | null>(null);
+
+	const backToQuote = useCallback(async () => {
+		// Abandoning before send: delete the BoldSign draft (best-effort) and
+		// clear the local "Preparing" state so the Signatures tab stays truthful.
+		if (!keepDocumentRef.current) {
+			setDiscarding(true);
+			// A failed create still means no draft to keep; discard regardless.
+			await createPromiseRef.current?.catch(() => undefined);
+			try {
+				await discardRequest({ quoteId });
+			} catch (err) {
+				console.error("Failed to discard signature draft:", err);
+			}
+		}
+		router.push(`/quotes/${quoteId}`);
+	}, [discardRequest, router, quoteId]);
 
 	const runCreate = useCallback(async () => {
 		setView({ kind: "creating" });
 		setIframeLoading(true);
 		try {
-			const result = await createRequest({
+			const promise = createRequest({
 				quoteId,
 				origin: window.location.origin,
 			});
+			createPromiseRef.current = promise;
+			const result = await promise;
 			if (result.ok) {
+				// A resumed draft (earlier Save & Close) is the user's saved work —
+				// keep it on back-navigation; only fresh drafts are discardable.
+				keepDocumentRef.current = result.reused;
 				setView({ kind: "ready", sendUrl: result.sendUrl });
 			} else if (result.reason === "limit") {
 				setView({ kind: "limit", used: result.used, limit: result.limit });
@@ -99,11 +127,22 @@ export default function QuoteSignPage() {
 					setIframeLoading(false);
 					break;
 				case "onCreateSuccess":
+					keepDocumentRef.current = true;
 					toast.success(
 						"Sent for signature",
 						"Your client will receive an email to sign."
 					);
-					backToQuote();
+					void backToQuote();
+					break;
+				case "onDraftSuccess":
+					// User clicked Save & Close inside the editor: keep the draft so
+					// they can resume from the same place later.
+					keepDocumentRef.current = true;
+					toast.success(
+						"Draft saved",
+						"Resume anytime from Send for e-signature."
+					);
+					void backToQuote();
 					break;
 				case "onCreateFailed":
 					setIframeLoading(false);
@@ -127,11 +166,16 @@ export default function QuoteSignPage() {
 				<div className="flex items-center justify-between py-3">
 					<button
 						type="button"
-						onClick={backToQuote}
-						className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+						onClick={() => void backToQuote()}
+						disabled={discarding}
+						className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
 					>
-						<ArrowLeft className="h-4 w-4" aria-hidden="true" />
-						Back to quote
+						{discarding ? (
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+						) : (
+							<ArrowLeft className="h-4 w-4" aria-hidden="true" />
+						)}
+						{discarding ? "Discarding draft…" : "Back to quote"}
 					</button>
 					<p className="text-sm text-muted-foreground">
 						Place fields and recipients, then send from the editor.
@@ -167,11 +211,16 @@ export default function QuoteSignPage() {
 			<div className="py-3">
 				<button
 					type="button"
-					onClick={backToQuote}
-					className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+					onClick={() => void backToQuote()}
+					disabled={discarding}
+					className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
 				>
-					<ArrowLeft className="h-4 w-4" aria-hidden="true" />
-					Back to quote
+					{discarding ? (
+						<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+					) : (
+						<ArrowLeft className="h-4 w-4" aria-hidden="true" />
+					)}
+					{discarding ? "Discarding draft…" : "Back to quote"}
 				</button>
 			</div>
 
@@ -211,7 +260,7 @@ export default function QuoteSignPage() {
 							<Button onClick={() => router.push("/subscription")}>
 								View plans
 							</Button>
-							<Button variant="ghost" onClick={backToQuote}>
+							<Button variant="ghost" onClick={() => void backToQuote()} disabled={discarding}>
 								Back to quote
 							</Button>
 						</div>
@@ -235,7 +284,7 @@ export default function QuoteSignPage() {
 								address before you can send it for signature.
 							</p>
 						</div>
-						<Button variant="outline" onClick={backToQuote}>
+						<Button variant="outline" onClick={() => void backToQuote()} disabled={discarding}>
 							Back to quote
 						</Button>
 					</div>
@@ -262,7 +311,7 @@ export default function QuoteSignPage() {
 								<RefreshCw className="h-4 w-4" />
 								Try again
 							</Button>
-							<Button variant="ghost" onClick={backToQuote}>
+							<Button variant="ghost" onClick={() => void backToQuote()} disabled={discarding}>
 								Back to quote
 							</Button>
 						</div>

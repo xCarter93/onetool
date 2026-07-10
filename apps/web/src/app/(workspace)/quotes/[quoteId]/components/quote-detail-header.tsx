@@ -4,7 +4,7 @@ import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import {
-	Mail,
+	PenLine,
 	FileText,
 	Trash2,
 	Check,
@@ -23,7 +23,7 @@ interface QuoteDetailHeaderProps {
 	currentStatus: QuoteStatus;
 	onStatusChange: (status: QuoteStatus) => void;
 	onSendToClient: () => void;
-	/** Disable "Send to Client" when the monthly e-signature cap is reached. */
+	/** Disable "Send for e-signature" when the monthly e-signature cap is reached. */
 	sendDisabled?: boolean;
 	sendDisabledReason?: string;
 	onGeneratePdf: () => void;
@@ -163,8 +163,8 @@ export function QuoteDetailHeader({
 								onClick={onSendToClient}
 								disabled={sendDisabled}
 							>
-								<Mail className="h-4 w-4" />
-								Send to Client
+								<PenLine className="h-4 w-4" />
+								Send for e-signature
 							</Button>
 						</span>
 						<Button variant="outline" size="sm" onClick={onGeneratePdf}>

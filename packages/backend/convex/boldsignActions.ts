@@ -42,7 +42,9 @@ function createDocumentApi(): InstanceType<typeof DocumentApi> {
  * Annotated explicitly to avoid the _generated/api type cycle.
  */
 type CreateEmbeddedResult =
-	| { ok: true; sendUrl: string; boldsignDocumentId: string }
+	// `reused` = an existing draft (e.g. Save & Close) was resumed rather than
+	// minted; the client must not discard it on back-navigation.
+	| { ok: true; sendUrl: string; boldsignDocumentId: string; reused: boolean }
 	| { ok: false; reason: "limit"; used: number; limit: number }
 	| { ok: false; reason: "no_signer" };
 
@@ -85,6 +87,7 @@ export const createEmbeddedSignatureRequest = action({
 				ok: true,
 				sendUrl: context.existing.sendUrl,
 				boldsignDocumentId: context.existing.boldsignDocumentId,
+				reused: true,
 			};
 		}
 
@@ -179,7 +182,51 @@ export const createEmbeddedSignatureRequest = action({
 			ok: true,
 			sendUrl: response.sendUrl,
 			boldsignDocumentId: response.documentId,
+			reused: false,
 		};
+	},
+});
+
+/**
+ * Discard an abandoned embedded Draft: the user opened the BoldSign editor but
+ * navigated back without sending. Deletes the draft on BoldSign first and only
+ * clears our local state when that succeeds (a 404 counts — already gone), so
+ * a document the user actually sent moments earlier is never orphaned locally:
+ * the delete call fails for in-progress documents and the Sent webhook wins.
+ * Deleting a draft fires no BoldSign webhooks and no signer emails exist yet.
+ */
+export const discardEmbeddedSignatureRequest = action({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, args): Promise<{ discarded: boolean }> => {
+		const draft = await ctx.runQuery(internal.boldsign.getEmbeddedDraft, {
+			quoteId: args.quoteId,
+		});
+		if (!draft) return { discarded: false };
+
+		const documentApi = createDocumentApi();
+		try {
+			await documentApi.deleteDocument(draft.boldsignDocumentId, true);
+		} catch (error) {
+			const status = (error as { response?: { status?: number } }).response
+				?.status;
+			if (status !== 404) {
+				console.warn(`${LOG_PREFIX} Draft delete failed; keeping local state`, {
+					boldsignDocumentId: draft.boldsignDocumentId,
+					status,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				return { discarded: false };
+			}
+		}
+
+		await ctx.runMutation(internal.boldsign.clearEmbeddedDraft, {
+			documentId: draft.documentId,
+			boldsignDocumentId: draft.boldsignDocumentId,
+		});
+		console.log(`${LOG_PREFIX} Abandoned draft discarded`, {
+			boldsignDocumentId: draft.boldsignDocumentId,
+		});
+		return { discarded: true };
 	},
 });
 
