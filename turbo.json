@@ -43,18 +43,21 @@
 			"dependsOn": ["^build"]
 		},
 		"test": {
-			"dependsOn": ["^build"]
+			"dependsOn": ["^build"],
+			"env": ["SKIP_PORTAL_SMOKE", "NEXT_PUBLIC_CONVEX_URL"]
 		},
 		"test:once": {
 			"dependsOn": ["^build"],
 			"cache": false,
-			"outputLogs": "full"
+			"outputLogs": "full",
+			"env": ["SKIP_PORTAL_SMOKE", "NEXT_PUBLIC_CONVEX_URL"]
 		},
 		"test:coverage": {
 			"dependsOn": ["^build"],
 			"cache": false,
 			"outputLogs": "full",
-			"outputs": ["coverage/**"]
+			"outputs": ["coverage/**"],
+			"env": ["SKIP_PORTAL_SMOKE", "NEXT_PUBLIC_CONVEX_URL"]
 		}
 	}
 }

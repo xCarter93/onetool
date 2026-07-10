@@ -44,6 +44,11 @@ export const TOOL_LABELS: Record<string, { done: string; active: string }> = {
 		active: "Pulling business stats…",
 	},
 	runReport: { done: "Ran a report", active: "Running a report…" },
+	createReport: { done: "Created a report", active: "Creating a report…" },
+	configureReport: {
+		done: "Updated the report builder",
+		active: "Configuring the report…",
+	},
 	listClients: { done: "Looked up clients", active: "Looking up clients…" },
 	getClient: { done: "Fetched client details", active: "Fetching client details…" },
 	listProjects: { done: "Looked up projects", active: "Looking up projects…" },

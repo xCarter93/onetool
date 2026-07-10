@@ -25,6 +25,10 @@
       "types": "./convex/emailMessages.ts",
       "default": "./convex/emailMessages.ts"
     },
+    "./convex/reportConfigGeneration": {
+      "types": "./convex/reportConfigGeneration.ts",
+      "default": "./convex/reportConfigGeneration.ts"
+    },
     "./convex/lib/workflowTypes": {
       "types": "./convex/lib/workflowTypes.ts",
       "default": "./convex/lib/workflowTypes.ts"
@@ -44,6 +48,22 @@
     "./convex/lib/assistantShared": {
       "types": "./convex/lib/assistantShared.ts",
       "default": "./convex/lib/assistantShared.ts"
+    },
+    "./convex/lib/reportFields": {
+      "types": "./convex/lib/reportFields.ts",
+      "default": "./convex/lib/reportFields.ts"
+    },
+    "./convex/lib/reportPresets": {
+      "types": "./convex/lib/reportPresets.ts",
+      "default": "./convex/lib/reportPresets.ts"
+    },
+    "./convex/lib/reportFilters": {
+      "types": "./convex/lib/reportFilters.ts",
+      "default": "./convex/lib/reportFilters.ts"
+    },
+    "./convex/lib/orgScan": {
+      "types": "./convex/lib/orgScan.ts",
+      "default": "./convex/lib/orgScan.ts"
     }
   },
   "scripts": {
@@ -71,7 +91,8 @@
     "convex-helpers": "0.1.113",
     "resend": "^6.5.2",
     "stripe": "22.1.1",
-    "svix": "^1.76.1"
+    "svix": "^1.76.1",
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

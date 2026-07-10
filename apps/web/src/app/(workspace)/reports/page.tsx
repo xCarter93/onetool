@@ -3,31 +3,14 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import {
-	entityLabels,
-	formatRelativeTime,
-	groupByOptions,
-	reportTemplates,
-	visualizationIcons,
-} from "./report-config";
-
-function templateHref(t: (typeof reportTemplates)[number]) {
-	const qs = new URLSearchParams({
-		entity: t.entityType,
-		group: t.groupBy,
-		viz: t.viz,
-		range: t.dateRange,
-		name: t.name,
-	});
-	return `/reports/new?${qs.toString()}`;
-}
+import { PresetLibraryDialog } from "./components/preset-library-dialog";
+import { ReportCreatePanel } from "./components/report-create-panel";
+import { entityLabels, formatRelativeTime, groupByOptions, visualizationIcons } from "./report-config";
 
 function ReportRow({
 	report,
@@ -107,6 +90,7 @@ export default function ReportsPage() {
 	const duplicateReport = useMutation(api.reports.duplicate);
 
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+	const [presetDialogOpen, setPresetDialogOpen] = useState(false);
 	const [reportToDelete, setReportToDelete] = useState<{
 		id: string;
 		name: string;
@@ -137,54 +121,18 @@ export default function ReportsPage() {
 	return (
 		<div className="space-y-8 p-6">
 			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<div className="h-6 w-1.5 rounded-full bg-linear-to-b from-primary to-primary/60" />
-					<div>
-						<h1 className="text-2xl font-bold text-foreground">Reports</h1>
-						<p className="text-sm text-muted-foreground">
-							Build and view analytics for your organization
-						</p>
-					</div>
+			<div className="flex items-center gap-3">
+				<div className="h-6 w-1.5 rounded-full bg-linear-to-b from-primary to-primary/60" />
+				<div>
+					<h1 className="text-2xl font-bold text-foreground">Reports</h1>
+					<p className="text-sm text-muted-foreground">
+						Build and view analytics for your organization
+					</p>
 				</div>
-				<StyledButton
-					onClick={() => router.push("/reports/new")}
-					intent="primary"
-					size="md"
-					icon={<Plus className="h-4 w-4" />}
-				>
-					New Report
-				</StyledButton>
 			</div>
 
-			{/* Templates */}
-			<section className="space-y-3">
-				<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-					Start from a template
-				</h2>
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-					{reportTemplates.map((t) => {
-						const Icon = t.icon;
-						return (
-							<Link
-								key={t.id}
-								href={templateHref(t)}
-								className="group flex items-start gap-3 rounded-xl border border-border/60 bg-background/40 p-4 transition-colors hover:border-primary/40 hover:bg-muted/40"
-							>
-								<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-									<Icon className="h-4.5 w-4.5" />
-								</div>
-								<div className="min-w-0">
-									<p className="font-medium text-foreground">{t.name}</p>
-									<p className="text-xs text-muted-foreground">
-										{t.description}
-									</p>
-								</div>
-							</Link>
-						);
-					})}
-				</div>
-			</section>
+			{/* Create hero — persistent; doubles as the empty state. */}
+			<ReportCreatePanel onBrowsePresets={() => setPresetDialogOpen(true)} />
 
 			{/* Saved reports */}
 			<section className="space-y-3">
@@ -215,12 +163,9 @@ export default function ReportsPage() {
 						))}
 					</div>
 				) : !reports || reports.length === 0 ? (
-					<div className="rounded-xl border border-dashed border-border/70 px-6 py-12 text-center">
-						<p className="font-medium text-foreground">No reports yet</p>
-						<p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-							Pick a template above to get started, or build one from scratch.
-						</p>
-					</div>
+					<p className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
+						Reports you save will show up here.
+					</p>
 				) : (
 					<div className="overflow-x-auto rounded-xl border border-border/60">
 						<table className="w-full border-collapse">
@@ -265,6 +210,8 @@ export default function ReportsPage() {
 					itemType="Report"
 				/>
 			)}
+
+			<PresetLibraryDialog open={presetDialogOpen} onOpenChange={setPresetDialogOpen} />
 		</div>
 	);
 }

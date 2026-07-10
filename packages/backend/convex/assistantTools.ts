@@ -11,6 +11,12 @@ import {
 	type TableSummary,
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
+import {
+	generateAndSaveReport,
+	generateConfigForBuilder,
+	type ConfigureReportResult,
+	type CreateReportResult,
+} from "./reportConfigGeneration";
 
 /**
  * Tools for the AI assistant. Every tool wraps an existing public org-scoped
@@ -300,7 +306,7 @@ interface ActivityItem {
 
 type NotFound = { found: false };
 
-type ReportVisualization = "bar" | "line" | "pie" | "table";
+type ReportVisualization = "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table";
 
 interface TeamMemberItem {
 	id: string;
@@ -536,10 +542,10 @@ export const runReport = createTool({
 		startDate: isoDate.optional(),
 		endDate: isoDate.optional(),
 		visualization: z
-			.enum(["bar", "line", "pie", "table"])
+			.enum(["bar", "column", "line", "pie", "radar", "radial", "table"])
 			.optional()
 			.describe(
-				"How the result is shown to the user in chat. Pick 'line' for time series, 'pie' for share-of-total, 'table' for exact values. Defaults to bar."
+				"How the result is shown to the user in chat. Pick 'column' for time-bucketed groups, 'line' for time series, 'pie' for share-of-total, 'table' for exact values. Only pick 'radar'/'radial' if the user explicitly asks for that chart type. Defaults to bar."
 			),
 	}),
 	execute: async (
@@ -558,6 +564,51 @@ export const runReport = createTool({
 					: undefined,
 		});
 		return { ...result, visualization: input.visualization ?? "bar" };
+	},
+});
+
+export const createReport = createTool({
+	description: [
+		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (or raw-row tables with columns), sum/avg/min/max measures, field filters, date ranges, and chart type.",
+		"Pass the user's request verbatim, including names, amounts, and time phrases.",
+		"On success it returns the saved report's path — offer to open it with navigate.",
+		"Use this when the user wants a report they can keep, edit, or share; use runReport for a quick one-off answer in chat.",
+	].join("\n"),
+	inputSchema: z.object({
+		request: z
+			.string()
+			.describe("The report the user wants, in their own words"),
+	}),
+	execute: async (ctx, input): Promise<CreateReportResult> => {
+		return await generateAndSaveReport(ctx, input.request);
+	},
+});
+
+export const configureReport = createTool({
+	description: [
+		"Update the report the user currently has OPEN in the report builder. Builds a validated configuration from their request and applies it to their screen automatically — nothing is saved; the user reviews and saves it themselves.",
+		"Only use when the <current-screen> block shows the report builder (a reportBuilderConfig entry). Pass that block's reportBuilderConfig JSON as currentConfig VERBATIM so settings the request doesn't mention are preserved.",
+		"Use createReport instead when the user is not in the builder, or explicitly wants a separate new report.",
+		"On an ok:false result the request isn't supported as asked: relay the error's reason and valid options to the user and stop — do not retry with different settings or create a report instead.",
+	].join("\n"),
+	inputSchema: z.object({
+		request: z
+			.string()
+			.describe("The change or report the user wants, in their own words"),
+		currentConfig: z
+			.string()
+			.nullable()
+			.optional()
+			.describe(
+				"The reportBuilderConfig JSON from <current-screen>, copied verbatim; omit if not present"
+			),
+	}),
+	execute: async (ctx, input): Promise<ConfigureReportResult> => {
+		return await generateConfigForBuilder(
+			ctx,
+			input.request,
+			input.currentConfig ?? null
+		);
 	},
 });
 
@@ -1333,6 +1384,7 @@ export const navigate = createTool({
 		"Open a page in the app for the user. Use when they ask to go somewhere, or after resolving the record they want to see.",
 		"Valid paths: /home, /clients, /clients/{clientId}, /clients/new, /clients/import, /projects, /projects/{projectId}, /projects/new, /quotes, /quotes/{quoteId}, /quotes/new, /invoices, /invoices/{invoiceId}, /tasks, /reports, /reports/{reportId}, /reports/new, /automations, /subscription, /organization/profile.",
 		"IDs must come from lookup tools — never guess an ID.",
+		"Never navigate while the user has the report builder open (current-screen has reportBuilderConfig) unless they explicitly ask to go somewhere else.",
 	].join("\n"),
 	inputSchema: z.object({
 		path: z.string().describe("Workspace path starting with /"),
@@ -1388,6 +1440,8 @@ export const assistantTools = {
 	getTasks,
 	getBusinessStats,
 	runReport,
+	createReport,
+	configureReport,
 	describeSchema,
 	listClients,
 	getClient,

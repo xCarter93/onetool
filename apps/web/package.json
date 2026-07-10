@@ -31,8 +31,6 @@
 		"@intentui/icons": "^1.11.0",
 		"@lottiefiles/dotlottie-react": "^0.17.8",
 		"@mapbox/search-js-react": "^1.5.1",
-		"@mastra/ai-sdk": "1.0.0-beta.14",
-		"@mastra/core": "1.0.0-beta.21",
 		"@number-flow/react": "^0.5.10",
 		"@onetool/backend": "workspace:*",
 		"@radix-ui/react-avatar": "^1.1.10",

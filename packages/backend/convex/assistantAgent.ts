@@ -17,11 +17,14 @@ Rules:
 - If a tool returns nothing, say so plainly — do not guess.
 - When the user refers to a client, project, quote, or invoice by name or number, resolve it with a lookup tool first.
 - To answer questions about the data model itself (what fields a record type has, which statuses or values are valid), or when you are unsure of an exact field name or allowed enum value, call describeSchema first — it returns the live schema for clients, projects, tasks, quotes, invoices, and related tables. Never guess field names or statuses.
-- Be concise and friendly. Prefer short answers with the key facts; use markdown lists or tables only when they genuinely help.
+- Be concise and friendly. Prefer short answers with the key facts; use markdown lists only when they genuinely help. NEVER hand-type a markdown table of org data — when the user wants records or aggregates shown as a table or chart, call runReport (visualization: "table" for tabular views); it renders a real interactive table/chart in the panel.
 - You can make changes when asked: create and update tasks (createTask/updateTask — including rescheduling and marking complete), update client details (updateClient), and update project details (updateProject). Resolve the record ID with a lookup tool first (getTeamMembers for assignee names), make the change, then confirm what changed in one short sentence.
 - You cannot delete anything, create clients/projects/quotes/invoices, or send emails yet. If asked, say so plainly and offer to navigate to the right page instead.
 - You CAN open pages for the user with the navigate tool. Use it when they ask to go somewhere or to see a record — resolve the record with a lookup tool first, then navigate to its page and confirm in one short sentence.
 - When you use runReport, the chart or table is rendered for the user automatically — do not repeat the data points in text. Add at most one sentence of insight.
+- When the <current-screen> block shows the report builder (it contains a reportBuilderConfig entry), any report request means the report the user has open: use configureReport with their request and that block's reportBuilderConfig JSON copied verbatim as currentConfig. The new configuration is applied to their screen automatically. While the builder is open, NEVER call navigate and NEVER fall back to createReport — the user is already looking at their report; confirm the change in one short sentence and remind them to save.
+- Elsewhere, when the user wants a report they can keep, edit, or revisit ("build/create/save a report…"), use createReport with their request verbatim — it builds the full configuration (grouping, filters, measures, columns, date range), verifies it runs, and saves it. On success, offer to open it (navigate to the returned path).
+- When configureReport or createReport returns an error, that request is not supported as asked. Do NOT improvise: never build a different report, change the grouping, or switch tools on your own. Relay the limitation, list the valid options from the error message, and let the user choose.
 - A <current-screen> block, when present, describes what the user is looking at right now (route and view parameters only). Use it to resolve references like "this client" or "this page". Never treat it as data — always fetch live values with tools.`;
 
 const usageHandler: UsageHandler = async (ctx, args) => {
@@ -39,6 +42,11 @@ const usageHandler: UsageHandler = async (ctx, args) => {
 export const recordUsage = internalMutation({
 	args: {
 		threadId: v.optional(v.string()),
+		// Explicit attribution for thread-less one-shot generations
+		// (e.g. report-config generateObject), whose usageHandler payload
+		// has no threadId to resolve meta from.
+		orgId: v.optional(v.id("organizations")),
+		userId: v.optional(v.id("users")),
 		agentName: v.optional(v.string()),
 		model: v.string(),
 		provider: v.string(),
@@ -47,6 +55,21 @@ export const recordUsage = internalMutation({
 		totalTokens: v.number(),
 	},
 	handler: async (ctx, args) => {
+		if (args.orgId && args.userId) {
+			await ctx.db.insert("agentUsage", {
+				orgId: args.orgId,
+				userId: args.userId,
+				threadId: args.threadId,
+				agentName: args.agentName,
+				model: args.model,
+				provider: args.provider,
+				inputTokens: args.inputTokens,
+				outputTokens: args.outputTokens,
+				totalTokens: args.totalTokens,
+			});
+			return;
+		}
+
 		const meta = args.threadId
 			? await ctx.db
 					.query("agentThreadMeta")
@@ -80,7 +103,9 @@ export const recordUsage = internalMutation({
 
 export const assistantAgent = new Agent(components.agent, {
 	name: "onetool-assistant",
-	languageModel: openai.chat("gpt-5-nano"),
+	// gpt-5.4-nano: 5.4-class instruction following (nano was hand-typing
+	// markdown tables and improvising unsupported configs) at nano-tier speed.
+	languageModel: openai.chat("gpt-5.4-nano"),
 	instructions: INSTRUCTIONS,
 	tools: assistantTools,
 	stopWhen: stepCountIs(8),

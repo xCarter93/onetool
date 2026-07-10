@@ -1181,6 +1181,7 @@ export default defineSchema({
 				)
 			),
 			groupBy: v.optional(v.array(v.string())),
+			columns: v.optional(v.array(v.string())),
 			dateRange: v.optional(
 				v.object({
 					start: v.optional(v.number()),
@@ -1194,8 +1195,11 @@ export default defineSchema({
 			type: v.union(
 				v.literal("table"),
 				v.literal("bar"),
+				v.literal("column"),
 				v.literal("line"),
-				v.literal("pie")
+				v.literal("pie"),
+				v.literal("radar"),
+				v.literal("radial")
 			),
 			options: v.optional(v.any()),
 		}),

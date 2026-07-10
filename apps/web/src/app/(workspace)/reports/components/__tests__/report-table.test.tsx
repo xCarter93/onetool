@@ -15,7 +15,6 @@ class ResizeObserverStub {
 }
 const originalResizeObserver = globalThis.ResizeObserver;
 beforeAll(() => {
-	// @ts-expect-error jsdom has no ResizeObserver
 	globalThis.ResizeObserver = ResizeObserverStub;
 });
 afterAll(() => {
@@ -79,5 +78,75 @@ describe("ReportTable", () => {
 		// $50 is under the old ">100" heuristic threshold and would have
 		// rendered as the bare number "50" instead of "$50".
 		expect(screen.getByText("$50")).toBeInTheDocument();
+	});
+
+	describe("detail mode", () => {
+		it("renders column headers and formats cells by type (currency, timestamp, boolean, null)", () => {
+			render(
+				<ReportTable
+					data={[]}
+					total={2}
+					entityType="invoices"
+					detail={{
+						columns: [
+							{ field: "invoiceNumber", label: "Invoice Number", type: "string" },
+							{ field: "total", label: "Total", type: "currency" },
+							{ field: "issuedDate", label: "Issued Date", type: "timestamp" },
+							{ field: "isActive", label: "Active", type: "boolean" },
+						],
+						rows: [
+							{
+								invoiceNumber: "INV-001",
+								total: 1200,
+								issuedDate: new Date(2026, 0, 15).getTime(),
+								isActive: true,
+							},
+							{
+								invoiceNumber: "INV-002",
+								total: null,
+								issuedDate: null,
+								isActive: false,
+							},
+						],
+						totalMatched: 2,
+						rowsTruncated: false,
+					}}
+				/>
+			);
+
+			expect(screen.getByText("Invoice Number")).toBeInTheDocument();
+			expect(screen.getByText("Total")).toBeInTheDocument();
+			expect(screen.getByText("Issued Date")).toBeInTheDocument();
+			expect(screen.getByText("Active")).toBeInTheDocument();
+
+			expect(screen.getByText("INV-001")).toBeInTheDocument();
+			expect(screen.getByText("$1,200")).toBeInTheDocument();
+			expect(screen.getByText("Jan 15, 2026")).toBeInTheDocument();
+			expect(screen.getByText("Yes")).toBeInTheDocument();
+
+			expect(screen.getByText("INV-002")).toBeInTheDocument();
+			expect(screen.getByText("No")).toBeInTheDocument();
+			expect(screen.getAllByText("—").length).toBe(2);
+		});
+
+		it("shows the truncation line when rowsTruncated is true", () => {
+			render(
+				<ReportTable
+					data={[]}
+					total={500}
+					entityType="clients"
+					detail={{
+						columns: [{ field: "companyName", label: "Company Name", type: "string" }],
+						rows: [{ companyName: "Acme" }],
+						totalMatched: 500,
+						rowsTruncated: true,
+					}}
+				/>
+			);
+
+			expect(
+				screen.getByText("Showing first 1 of 500 records.")
+			).toBeInTheDocument();
+		});
 	});
 });

@@ -53,4 +53,14 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: HOUR,
 		capacity: 15,
 	},
+
+	// Each createReport/configureReport tool call costs an extra one-shot
+	// LLM generation on top of the assistant message that triggered it, and
+	// the model may retry a few times within one turn.
+	reportConfigGeneration: {
+		kind: "token bucket",
+		rate: 30,
+		period: HOUR,
+		capacity: 10,
+	},
 });

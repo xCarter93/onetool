@@ -15,6 +15,8 @@ import {
 	History,
 	Loader2,
 	MessageSquarePlus,
+	Pin,
+	PinOff,
 	Sparkles,
 	X,
 } from "lucide-react";
@@ -31,8 +33,14 @@ import {
 	ToolPartRenderer,
 	type AssistantToolPart,
 } from "./renderers";
-import { useCurrentRecord } from "./use-current-record";
+import { useCurrentRecord, type CurrentRecord } from "./use-current-record";
 import { useScreenContext } from "./use-screen-context";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+	useApplyReportConfig,
+	useReportBuilderMounted,
+} from "./report-config-apply-context";
+import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
 
 const SUGGESTIONS = [
 	"What's on the schedule this week?",
@@ -40,6 +48,33 @@ const SUGGESTIONS = [
 	"Which invoices are overdue?",
 	"Create a task for tomorrow morning",
 ];
+
+/** Empty-state prompts tailored to what's currently in context. */
+function suggestionsFor(
+	builderMounted: boolean,
+	record: CurrentRecord | null
+): string[] {
+	if (builderMounted) {
+		return [
+			"Show only this month",
+			"Group this by status",
+			"Switch to a pie chart",
+			"Show a table of the individual records",
+		];
+	}
+	if (record) {
+		const kind = record.kindLabel.toLowerCase();
+		return [
+			`Summarize this ${kind}`,
+			`What's the recent activity on this ${kind}?`,
+			record.kindLabel === "Client"
+				? "Show this client's open invoices"
+				: `What's the status of this ${kind}?`,
+			"What should I follow up on?",
+		];
+	}
+	return SUGGESTIONS;
+}
 
 // No typography plugin in this app — style markdown elements directly.
 const MARKDOWN_CLASS = [
@@ -107,9 +142,32 @@ function MessageItem({ message }: { message: UIMessage }) {
 	);
 }
 
-/** "The page you're on is shared with the assistant" strip for record pages. */
-function RecordContextBanner() {
-	const record = useCurrentRecord();
+/** "What you're looking at is shared with the assistant" strip — record
+ * pages and the report builder. */
+function ContextBanner({
+	record,
+	builderMounted,
+}: {
+	record: CurrentRecord | null;
+	builderMounted: boolean;
+}) {
+	if (builderMounted) {
+		return (
+			<div className="flex shrink-0 items-center gap-2 border-b border-border bg-primary/[0.04] px-4 py-2 text-xs">
+				<Eye className="size-3.5 shrink-0 text-primary" />
+				<span className="min-w-0 truncate">
+					<span className="font-medium text-foreground">Report builder</span>
+					<span className="text-muted-foreground">
+						{" "}
+						· ask me to configure the open report
+					</span>
+				</span>
+				<span className="ml-auto shrink-0 text-muted-foreground">
+					In context
+				</span>
+			</div>
+		);
+	}
 	if (!record) return null;
 	return (
 		<div className="flex shrink-0 items-center gap-2 border-b border-border bg-primary/[0.04] px-4 py-2 text-xs">
@@ -146,11 +204,13 @@ function HeaderButton({
 	onClick,
 	label,
 	active,
+	className,
 	children,
 }: {
 	onClick: () => void;
 	label: string;
 	active?: boolean;
+	className?: string;
 	children: React.ReactNode;
 }) {
 	return (
@@ -159,7 +219,8 @@ function HeaderButton({
 			onClick={onClick}
 			className={cn(
 				"inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground",
-				active && "bg-foreground/[0.08] text-foreground"
+				active && "bg-foreground/[0.08] text-foreground",
+				className
 			)}
 			aria-label={label}
 		>
@@ -198,9 +259,17 @@ function UpgradePrompt() {
 interface AssistantPanelProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** Docked to the workspace's right edge instead of floating (md+ only). */
+	pinned: boolean;
+	onTogglePin: () => void;
 }
 
-export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
+export function AssistantPanel({
+	open,
+	onOpenChange,
+	pinned,
+	onTogglePin,
+}: AssistantPanelProps) {
 	const [threadId, setThreadId] = useState<string | null>(null);
 	const [showHistory, setShowHistory] = useState(false);
 	const [input, setInput] = useState("");
@@ -216,15 +285,22 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 	const toast = useToast();
 	const router = useRouter();
 	const getScreenContext = useScreenContext();
+	const applyReportConfig = useApplyReportConfig();
+	const builderMounted = useReportBuilderMounted();
+	const currentRecord = useCurrentRecord();
+	const isMobile = useIsMobile();
+	// Pinning is a desktop layout mode; on mobile the panel always floats.
+	const docked = pinned && !isMobile;
 	// While access is loading, show the normal chat UI (no upgrade-prompt flash
 	// for premium users); the backend gate blocks any send that sneaks in.
 	const { planLimits, isLoading: accessLoading } = useFeatureAccess();
 	const locked = !accessLoading && !planLimits.canUseAiAssistant;
-	// navigate tool calls already executed. null = "seed from the next
-	// snapshot without navigating" (set when opening a historical thread);
-	// a fresh empty Set (set at thread creation) means navigate immediately —
-	// a brand-new thread has no history that could replay.
-	const seenNavigationsRef = useRef<Set<string> | null>(null);
+	// client-executed tool calls (navigate, configureReport) already run.
+	// null = "seed from the next snapshot without executing" (set when
+	// opening a historical thread); a fresh empty Set (set at thread
+	// creation) means execute immediately — a brand-new thread has no
+	// history that could replay.
+	const seenClientToolCallsRef = useRef<Set<string> | null>(null);
 
 	const threads = useQuery(
 		api.assistantChat.listThreads,
@@ -286,42 +362,66 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [open, onOpenChange]);
 
-	// Client-executed navigate tool: the server only validates the path; the
-	// actual routing happens here when a new tool result streams in.
+	// Client-executed tools: the server only validates/generates; the actual
+	// side effect happens here when a new tool result streams in — navigate
+	// pushes a route, configureReport applies a config to the open builder.
 	useEffect(() => {
 		if (messages.status === "LoadingFirstPage" || !messages.results) return;
-		const navParts = messages.results
+		const messageParts = messages.results
 			.filter((m) => m.role === "assistant")
-			.flatMap((m) => m.parts)
-			.map((p) => p as unknown as AssistantToolPart)
-			.filter(
-				(p) =>
-					p.type === "tool-navigate" &&
-					p.state === "output-available" &&
-					typeof p.toolCallId === "string"
+			.map((m) =>
+				m.parts
+					.map((p) => p as unknown as AssistantToolPart)
+					.filter(
+						(p) =>
+							(p.type === "tool-navigate" ||
+								p.type === "tool-configureReport") &&
+							p.state === "output-available" &&
+							typeof p.toolCallId === "string"
+					)
 			);
 		// First non-loading snapshot is thread history — record, don't replay.
-		if (seenNavigationsRef.current === null) {
-			seenNavigationsRef.current = new Set(
-				navParts.map((p) => p.toolCallId as string)
+		if (seenClientToolCallsRef.current === null) {
+			seenClientToolCallsRef.current = new Set(
+				messageParts.flat().map((p) => p.toolCallId as string)
 			);
 			return;
 		}
-		for (const part of navParts) {
-			const id = part.toolCallId as string;
-			if (seenNavigationsRef.current.has(id)) continue;
-			seenNavigationsRef.current.add(id);
-			const output = part.output as { ok?: boolean; path?: string };
-			if (
-				output?.ok &&
-				typeof output.path === "string" &&
-				output.path.startsWith("/") &&
-				!output.path.startsWith("//")
-			) {
-				router.push(output.path);
+		for (const parts of messageParts) {
+			// A turn that configured the open builder must never also yank the
+			// user off it — belt-and-braces on top of the instruction layer.
+			const configuredBuilder = parts.some(
+				(p) =>
+					p.type === "tool-configureReport" &&
+					(p.output as { ok?: boolean })?.ok === true
+			);
+			for (const part of parts) {
+				const id = part.toolCallId as string;
+				if (seenClientToolCallsRef.current.has(id)) continue;
+				seenClientToolCallsRef.current.add(id);
+				if (part.type === "tool-navigate") {
+					const output = part.output as { ok?: boolean; path?: string };
+					if (
+						!configuredBuilder &&
+						output?.ok &&
+						typeof output.path === "string" &&
+						output.path.startsWith("/") &&
+						!output.path.startsWith("//")
+					) {
+						router.push(output.path);
+					}
+				} else {
+					const output = part.output as {
+						ok?: boolean;
+						config?: BuilderReportConfig;
+					};
+					if (output?.ok && output.config) {
+						applyReportConfig(output.config);
+					}
+				}
 			}
 		}
-	}, [messages.results, messages.status, router]);
+	}, [messages.results, messages.status, router, applyReportConfig]);
 
 	const handleSend = async (promptOverride?: string) => {
 		const prompt = (promptOverride ?? input).trim();
@@ -334,8 +434,8 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 				const created = await createThread({});
 				tid = created.threadId;
 				setThreadId(tid);
-				// New thread has no history — navigate calls can run right away.
-				seenNavigationsRef.current = new Set();
+				// New thread has no history — client tool calls run right away.
+				seenClientToolCallsRef.current = new Set();
 			}
 			const pending = pendingRetryRef.current;
 			let messageId: string;
@@ -363,22 +463,11 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 	const startNewChat = () => {
 		setThreadId(null);
 		setShowHistory(false);
-		seenNavigationsRef.current = null;
+		seenClientToolCallsRef.current = null;
 	};
 
-	return (
-		<AnimatePresence>
-			{open && (
-				<motion.div
-					key="assistant-panel"
-					role="dialog"
-					aria-label="Assistant chat"
-					initial={{ y: "110%" }}
-					animate={{ y: 0 }}
-					exit={{ y: "110%" }}
-					transition={{ type: "tween", duration: 0.25, ease: "easeOut" }}
-					className="fixed inset-x-0 bottom-0 z-50 flex h-[min(85dvh,640px)] flex-col overflow-hidden rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-2 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-2xl"
-				>
+	const content = (
+		<>
 					<div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
 						<div>
 							<h2 className="flex items-center gap-2 text-base font-semibold">
@@ -408,6 +497,20 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 								</>
 							)}
 							<HeaderButton
+								onClick={onTogglePin}
+								label={
+									pinned ? "Unpin assistant" : "Pin assistant to the side"
+								}
+								active={pinned}
+								className="hidden md:inline-flex"
+							>
+								{pinned ? (
+									<PinOff className="size-4" />
+								) : (
+									<Pin className="size-4" />
+								)}
+							</HeaderButton>
+							<HeaderButton
 								onClick={() => onOpenChange(false)}
 								label="Close assistant"
 							>
@@ -418,7 +521,12 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 
 					{locked && <UpgradePrompt />}
 
-					{!locked && <RecordContextBanner />}
+					{!locked && (
+						<ContextBanner
+							record={currentRecord}
+							builderMounted={builderMounted}
+						/>
+					)}
 
 					{!locked && (showHistory ? (
 						<div className="flex-1 overflow-y-auto p-2">
@@ -439,8 +547,8 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 											setThreadId(t.threadId);
 											setShowHistory(false);
 											// Historical thread: seed the baseline from its first
-											// snapshot so past navigations never replay.
-											seenNavigationsRef.current = null;
+											// snapshot so past tool effects never replay.
+											seenClientToolCallsRef.current = null;
 										}}
 										className={cn(
 											"w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-foreground/[0.04]",
@@ -470,7 +578,7 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 										across your whole workspace.
 									</p>
 									<div className="flex w-full max-w-sm flex-col gap-2">
-										{SUGGESTIONS.map((s) => (
+										{suggestionsFor(builderMounted, currentRecord).map((s) => (
 											<button
 												key={s}
 												type="button"
@@ -538,6 +646,37 @@ export function AssistantPanel({ open, onOpenChange }: AssistantPanelProps) {
 							</p>
 						</div>
 					)}
+		</>
+	);
+
+	// Docked: an in-flow flex child of the sidebar wrapper — same tree slot
+	// as the floating variant, so thread state survives pin toggles.
+	if (docked) {
+		return open ? (
+			<div
+				role="dialog"
+				aria-label="Assistant chat"
+				className="relative z-40 my-2 mr-2 hidden w-[26rem] shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-sm md:flex md:h-[calc(100svh-1rem)]"
+			>
+				{content}
+			</div>
+		) : null;
+	}
+
+	return (
+		<AnimatePresence>
+			{open && (
+				<motion.div
+					key="assistant-panel"
+					role="dialog"
+					aria-label="Assistant chat"
+					initial={{ y: "110%" }}
+					animate={{ y: 0 }}
+					exit={{ y: "110%" }}
+					transition={{ type: "tween", duration: 0.25, ease: "easeOut" }}
+					className="fixed inset-x-0 bottom-0 z-50 flex h-[min(85dvh,640px)] flex-col overflow-hidden rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-2 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-2xl"
+				>
+					{content}
 				</motion.div>
 			)}
 		</AnimatePresence>

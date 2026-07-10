@@ -8,7 +8,10 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
-import { CHART_COLORS, getChartColor } from "@/lib/chart-colors";
+import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
+import { formatReportValue } from "../report-config";
+import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ChartStripeDefs, stripeId } from "./chart-stripe-defs";
 
 interface DataPoint {
 	name: string;
@@ -21,25 +24,30 @@ interface ReportPieChartProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
+	totalIsCurrency?: boolean;
 }
 
 export function ReportPieChart({
 	data,
 	total,
-	groupBy,
+	totalIsCurrency = false,
 }: ReportPieChartProps) {
 	const [activeIndex, setActiveIndex] = React.useState<number | undefined>();
+	const patternPrefix = React.useId();
 
 	// Build chart config dynamically
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
 		acc[item.name] = {
 			label: item.name,
-			color: getChartColor(index, CHART_COLORS.primary),
+			color: getChartColor(index, CHART_CATEGORICAL),
 		};
 		return acc;
 	}, {} as ChartConfig);
 
-	const totalCount = data.reduce((sum, d) => sum + d.value, 0);
+	if (isChartDataEmpty(data)) {
+		return <ChartNoData />;
+	}
 
 	const onPieEnter = (_: unknown, index: number) => {
 		setActiveIndex(index);
@@ -115,71 +123,50 @@ export function ReportPieChart({
 					{data.length} categories
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {totalCount}
+					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
 				</span>
 			</div>
 
 			{/* Chart */}
-			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+			<ChartContainer config={chartConfig} className="h-[420px] w-full">
 				<PieChart>
+					<ChartStripeDefs
+						idPrefix={patternPrefix}
+						colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))}
+					/>
 					<Pie
 						data={data}
 						cx="50%"
 						cy="50%"
-						innerRadius={60}
-						outerRadius={100}
+						innerRadius="55%"
+						outerRadius="85%"
 						paddingAngle={2}
 						dataKey="value"
 						nameKey="name"
 						activeShape={renderActiveShape}
 						onMouseEnter={onPieEnter}
 						onMouseLeave={onPieLeave}
+						// recharts 3.8.0 animated Pie paints no sectors on initial
+						// mount — keep animation off until a fixed release is verified.
+						isAnimationActive={false}
 					>
-						{data.map((entry, index) => (
-							<Cell
-								key={`cell-${index}`}
-								fill={getChartColor(index, CHART_COLORS.primary)}
-								stroke="var(--background)"
-								strokeWidth={2}
-							/>
-						))}
+						{data.map((entry, index) => {
+							const color = getChartColor(index, CHART_CATEGORICAL);
+							return (
+								<Cell
+									key={`cell-${index}`}
+									fill={`url(#${stripeId(patternPrefix, index)})`}
+									stroke={color}
+									strokeWidth={1}
+								/>
+							);
+						})}
 					</Pie>
 					<ChartTooltip
 						content={<ChartTooltipContent hideLabel />}
 					/>
 				</PieChart>
 			</ChartContainer>
-
-			{/* Legend */}
-			<div className="grid grid-cols-2 gap-2 pt-2">
-				{data.map((item, index) => {
-					const percentage = totalCount > 0 
-						? ((item.value / totalCount) * 100).toFixed(1)
-						: 0;
-					
-					return (
-						<div
-							key={item.name}
-							className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-muted/50 transition-colors"
-							onMouseEnter={() => setActiveIndex(index)}
-							onMouseLeave={() => setActiveIndex(undefined)}
-						>
-							<div
-								className="w-3 h-3 rounded-sm flex-shrink-0"
-								style={{ backgroundColor: getChartColor(index, CHART_COLORS.primary) }}
-							/>
-							<div className="flex-1 min-w-0">
-								<div className="font-medium text-foreground truncate">
-									{item.name}
-								</div>
-								<div className="text-xs text-muted-foreground">
-									{item.value} ({percentage}%)
-								</div>
-							</div>
-						</div>
-					);
-				})}
-			</div>
 		</div>
 	);
 }

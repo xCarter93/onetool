@@ -1,22 +1,38 @@
-import { query, QueryCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { QueryCtx } from "./_generated/server";
+import { v, ConvexError } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { getOrgTimezoneById } from "./lib/organization";
 import { DateUtils } from "./lib/shared";
+import { getOptionalOrgId } from "./lib/queries";
+import { optionalUserQuery } from "./lib/factories";
 import {
-	getOptionalOrgId,
-	filterByCreationTime,
-	filterByTimestamp,
-	countByField,
-	paginate,
-	getPaginationMeta,
-	DateRange,
-} from "./lib/queries";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+	scanOrgTable,
+	REPORT_SCAN_CEILING,
+	type ReportTable,
+} from "./lib/orgScan";
+import {
+	getReportField,
+	getReportDateField,
+	isGenericGroupBy,
+	usesLegacyDispatch,
+	type ReportEntityType,
+	type ReportFieldType,
+} from "./lib/reportFields";
+import {
+	reportFiltersValidator,
+	evaluateReportFilters,
+	type ReportFilters,
+} from "./lib/reportFilters";
 
 /**
  * Report Data Queries
- * Provides aggregated data for report visualizations and analytics
+ * Provides aggregated data for report visualizations and analytics.
+ *
+ * executeReport is the only public export — it dispatches to a bounded,
+ * org-scoped index scan (never `.collect()`s a whole org table) and groups
+ * in memory. Legacy groupBy string literals (status, leadSource, month, ...)
+ * keep their exact historical output shapes; `filters` and `aggregation` are
+ * additive new capabilities layered on top via a generic pipeline.
  */
 
 // ============================================================================
@@ -36,21 +52,21 @@ export interface ReportDataResult {
 		entityType: string;
 		dateRange?: { start: number; end: number };
 		groupBy?: string;
+		truncated?: boolean;
+		totalIsCurrency?: boolean;
+		itemValueIsCurrency?: boolean;
+	};
+	detail?: {
+		columns: { field: string; label: string; type: ReportFieldType }[];
+		rows: Record<string, string | number | boolean | null>[];
+		totalMatched: number;
+		rowsTruncated: boolean;
 	};
 }
 
-export interface PaginatedReportDataResult extends ReportDataResult {
-	nextCursor?: string;
-	hasMore: boolean;
-}
+type Row = Record<string, unknown>;
 
-// Empty result helpers for unauthenticated users
 const emptyReportResult = (): ReportDataResult => ({ data: [], total: 0 });
-const emptyPaginatedResult = (): PaginatedReportDataResult => ({
-	data: [],
-	total: 0,
-	hasMore: false,
-});
 
 // ============================================================================
 // Validators
@@ -63,20 +79,41 @@ const dateRangeValidator = v.optional(
 	})
 );
 
-const paginationValidator = {
-	limit: v.optional(v.number()),
-	cursor: v.optional(v.string()),
-};
+const aggregationValidator = v.optional(
+	v.object({
+		op: v.union(
+			v.literal("count"),
+			v.literal("sum"),
+			v.literal("avg"),
+			v.literal("min"),
+			v.literal("max")
+		),
+		field: v.optional(v.string()),
+	})
+);
+
+type AggregationOp = "count" | "sum" | "avg" | "min" | "max";
+interface Aggregation {
+	op: AggregationOp;
+	field?: string;
+}
+
+const detailValidator = v.optional(
+	v.object({
+		columns: v.array(v.string()),
+		limit: v.optional(v.number()),
+	})
+);
+
+interface DetailArgs {
+	columns: string[];
+	limit?: number;
+}
 
 // ============================================================================
-// Date Utilities (Report-Specific)
+// Date Bounds (exact millisecond bounds — no server-local re-clamping)
 // ============================================================================
 
-/**
- * Date bounds result with optional filter flag.
- * Different from lib/queries.ts getDateRangeBounds - this supports "all time" queries
- * when no date range is specified (returns hasDateFilter: false).
- */
 interface DateBoundsResult {
 	start?: number;
 	end?: number;
@@ -84,48 +121,38 @@ interface DateBoundsResult {
 }
 
 /**
- * Get normalized date bounds for a date range.
- * Returns undefined bounds if no date range is specified (meaning "all time").
+ * Resolve date bounds for a date range. The caller (frontend) computes any
+ * day-boundary clamping it wants before sending start/end — the backend
+ * treats these as exact millisecond bounds. Returns hasDateFilter: false for
+ * "all time" (no start or end supplied).
  */
-function getDateBounds(dateRange?: {
+function resolveDateBounds(dateRange?: {
 	start?: number;
 	end?: number;
 }): DateBoundsResult {
-	if (!dateRange || (!dateRange.start && !dateRange.end)) {
-		return { start: undefined, end: undefined, hasDateFilter: false };
+	if (!dateRange || (dateRange.start === undefined && dateRange.end === undefined)) {
+		return { hasDateFilter: false };
 	}
-
-	const now = Date.now();
-	const start = dateRange.start
-		? DateUtils.startOfDay(dateRange.start)
-		: undefined;
-	const end = dateRange.end
-		? DateUtils.endOfDay(dateRange.end)
-		: DateUtils.endOfDay(now);
-
-	return { start, end, hasDateFilter: true };
+	return {
+		start: dateRange.start,
+		end: dateRange.end ?? Date.now(),
+		hasDateFilter: true,
+	};
 }
 
-/**
- * Apply date filtering to items if a date range is provided.
- * Handles the "all time" case by returning all items when hasDateFilter is false.
- */
-function applyDateFilter<T extends { _creationTime: number }>(
-	items: T[],
-	bounds: DateBoundsResult,
-	timestampField: keyof T | "_creationTime" = "_creationTime"
-): T[] {
-	if (!bounds.hasDateFilter || !bounds.start || !bounds.end) {
-		return items;
+function inDateBounds(value: unknown, bounds: DateBoundsResult): boolean {
+	if (!bounds.hasDateFilter) return true;
+	if (typeof value !== "number") return false;
+	if (bounds.start !== undefined && value < bounds.start) return false;
+	if (bounds.end !== undefined && value > bounds.end) return false;
+	return true;
+}
+
+function metadataDateRange(bounds: DateBoundsResult): { start: number; end: number } | undefined {
+	if (!bounds.hasDateFilter || bounds.start === undefined || bounds.end === undefined) {
+		return undefined;
 	}
-
-	const range: DateRange = { start: bounds.start, end: bounds.end };
-
-	if (timestampField === "_creationTime") {
-		return filterByCreationTime(items, range);
-	}
-
-	return filterByTimestamp(items, timestampField, range);
+	return { start: bounds.start, end: bounds.end };
 }
 
 // ============================================================================
@@ -134,35 +161,27 @@ function applyDateFilter<T extends { _creationTime: number }>(
 
 type Granularity = "day" | "week" | "month";
 
-/**
- * Get a date key for grouping based on granularity
- */
-function getDateKey(
-	timestamp: number,
-	granularity: Granularity,
-	timezone?: string
-): string {
+/** Sunday week-start, computed in the given IANA timezone (not server-local). */
+function weekStartKey(timestamp: number, timezone?: string): string {
 	const dateStr = DateUtils.toLocalDateString(timestamp, timezone);
+	const d = new Date(dateStr + "T00:00:00Z");
+	const dayOfWeek = d.getUTCDay();
+	d.setUTCDate(d.getUTCDate() - dayOfWeek);
+	return d.toISOString().split("T")[0];
+}
 
+function getDateKey(timestamp: number, granularity: Granularity, timezone?: string): string {
 	switch (granularity) {
 		case "day":
-			return dateStr; // YYYY-MM-DD
-		case "week": {
-			const date = new Date(timestamp);
-			const dayOfWeek = date.getDay();
-			const weekStart = new Date(date);
-			weekStart.setDate(date.getDate() - dayOfWeek);
-			return DateUtils.toLocalDateString(weekStart.getTime(), timezone);
-		}
+			return DateUtils.toLocalDateString(timestamp, timezone);
+		case "week":
+			return weekStartKey(timestamp, timezone);
 		case "month":
 		default:
-			return dateStr.substring(0, 7); // YYYY-MM
+			return DateUtils.toLocalDateString(timestamp, timezone).substring(0, 7);
 	}
 }
 
-/**
- * Format a date key into a human-readable label
- */
 function formatDateLabel(dateKey: string, granularity: Granularity): string {
 	switch (granularity) {
 		case "day": {
@@ -192,26 +211,23 @@ function formatDateLabel(dateKey: string, granularity: Granularity): string {
 	}
 }
 
-/**
- * Group items by date and return aggregated data points
- */
-function groupByDate<T>(
-	items: T[],
-	getTimestamp: (item: T) => number,
+function groupByDate(
+	rows: Row[],
+	getTimestamp: (row: Row) => number,
 	granularity: Granularity,
-	timezone?: string
+	timezone: string | undefined,
+	aggregation?: Aggregation
 ): AggregatedDataPoint[] {
-	const dateCounts: Record<string, number> = {};
-
-	for (const item of items) {
-		const dateKey = getDateKey(getTimestamp(item), granularity, timezone);
-		dateCounts[dateKey] = (dateCounts[dateKey] || 0) + 1;
+	const buckets: Record<string, Row[]> = {};
+	for (const row of rows) {
+		const key = getDateKey(getTimestamp(row), granularity, timezone);
+		(buckets[key] ??= []).push(row);
 	}
 
-	return Object.entries(dateCounts)
-		.map(([dateKey, count]) => ({
+	return Object.entries(buckets)
+		.map(([dateKey, bucketRows]) => ({
 			label: formatDateLabel(dateKey, granularity),
-			value: count,
+			value: computeAggregateValue(bucketRows, aggregation),
 			metadata: { dateKey },
 		}))
 		.sort((a, b) => {
@@ -222,29 +238,9 @@ function groupByDate<T>(
 }
 
 // ============================================================================
-// Pagination Utilities
+// Label / Value Formatting Utilities
 // ============================================================================
 
-function encodeCursor(offset: number): string {
-	return Buffer.from(offset.toString()).toString("base64");
-}
-
-function decodeCursor(cursor?: string): number {
-	if (!cursor) return 0;
-	try {
-		return parseInt(Buffer.from(cursor, "base64").toString("utf-8"), 10);
-	} catch {
-		return 0;
-	}
-}
-
-// ============================================================================
-// Label Formatting Utilities
-// ============================================================================
-
-/**
- * Capitalize words split by a separator
- */
 function capitalizeWords(text: string, separator: string | RegExp): string {
 	return text
 		.split(separator)
@@ -252,554 +248,571 @@ function capitalizeWords(text: string, separator: string | RegExp): string {
 		.join(" ");
 }
 
-/**
- * Convert status counts to data points with formatted labels
- */
-function statusCountsToDataPoints(
+function num(value: unknown): number {
+	return typeof value === "number" ? value : 0;
+}
+
+function str(value: unknown): string {
+	return typeof value === "string" ? value : "";
+}
+
+function countsToDataPoints(
 	counts: Record<string, number>,
 	labelMap?: Record<string, string>,
 	filterZero = true
 ): AggregatedDataPoint[] {
 	const entries = Object.entries(counts);
 	const filtered = filterZero ? entries.filter(([, count]) => count > 0) : entries;
-
-	return filtered.map(([status, count]) => ({
-		label: labelMap?.[status] ?? capitalizeWords(status, "-"),
+	return filtered.map(([key, count]) => ({
+		label: labelMap?.[key] ?? capitalizeWords(key, "-"),
 		value: count,
 	}));
 }
 
-// ============================================================================
-// Public Query Exports
-// ============================================================================
-
-// Client Reports
-export const queryClientsByStatus = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryClientsByStatus(ctx, args),
-});
-
-export const queryClientsByLeadSource = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryClientsByLeadSource(ctx, args),
-});
-
-export const queryClientsByCreationDate = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		granularity: v.optional(
-			v.union(v.literal("day"), v.literal("week"), v.literal("month"))
-		),
-	},
-	handler: async (ctx, args) => _queryClientsByCreationDate(ctx, args),
-});
-
-// Project Reports
-export const queryProjectsByStatus = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryProjectsByStatus(ctx, args),
-});
-
-export const queryProjectsByType = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryProjectsByType(ctx, args),
-});
-
-export const queryProjectsByCreationDate = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		granularity: v.optional(
-			v.union(v.literal("day"), v.literal("week"), v.literal("month"))
-		),
-	},
-	handler: async (ctx, args) => _queryProjectsByCreationDate(ctx, args),
-});
-
-// Task Reports
-export const queryTasksByStatus = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryTasksByStatus(ctx, args),
-});
-
-export const queryTaskCompletionRate = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryTaskCompletionRate(ctx, args),
-});
-
-export const queryTasksByDate = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		granularity: v.optional(
-			v.union(v.literal("day"), v.literal("week"), v.literal("month"))
-		),
-	},
-	handler: async (ctx, args) => _queryTasksByDate(ctx, args),
-});
-
-// Quote Reports
-export const queryQuotesByStatus = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryQuotesByStatus(ctx, args),
-});
-
-export const queryQuoteConversionRate = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryQuoteConversionRate(ctx, args),
-});
-
-// Invoice Reports
-export const queryInvoicesByStatus = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryInvoicesByStatus(ctx, args),
-});
-
-export const queryRevenueByMonth = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryRevenueByMonth(ctx, args),
-});
-
-export const queryRevenueByClient = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		limit: v.optional(v.number()),
-		cursor: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => _queryRevenueByClient(ctx, args),
-});
-
-// Activity Reports
-export const queryActivitiesByType = optionalUserQuery({
-	args: { dateRange: dateRangeValidator },
-	handler: async (ctx, args) => _queryActivitiesByType(ctx, args),
-});
-
-export const queryActivitiesByDate = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		granularity: v.optional(
-			v.union(v.literal("day"), v.literal("week"), v.literal("month"))
-		),
-	},
-	handler: async (ctx, args) => _queryActivitiesByDate(ctx, args),
-});
+function countByField(rows: Row[], field: string): Record<string, number> {
+	const counts: Record<string, number> = {};
+	for (const row of rows) {
+		const value = String(row[field] ?? "unknown");
+		counts[value] = (counts[value] ?? 0) + 1;
+	}
+	return counts;
+}
 
 // ============================================================================
-// Internal Query Implementations
+// Generic Aggregation
 // ============================================================================
 
-async function _queryClientsByStatus(
+function computeAggregateValue(rows: Row[], aggregation?: Aggregation): number {
+	const op = aggregation?.op ?? "count";
+	if (op === "count") return rows.length;
+
+	const field = aggregation?.field;
+	const nums = field
+		? rows.map((r) => r[field]).filter((v): v is number => typeof v === "number")
+		: [];
+	if (nums.length === 0) return 0;
+
+	switch (op) {
+		case "sum":
+			return nums.reduce((a, b) => a + b, 0);
+		case "avg":
+			return nums.reduce((a, b) => a + b, 0) / nums.length;
+		case "min":
+			return Math.min(...nums);
+		case "max":
+			return Math.max(...nums);
+	}
+}
+
+// ============================================================================
+// Filter / Aggregation Validation
+// ============================================================================
+
+function validateFilters(entityType: ReportEntityType, filters?: ReportFilters): void {
+	if (!filters) return;
+	for (const group of filters.groups) {
+		for (const rule of group.rules) {
+			if (!getReportField(entityType, rule.field)) {
+				throw new ConvexError(
+					`Unknown report filter field "${rule.field}" for entity "${entityType}"`
+				);
+			}
+		}
+	}
+}
+
+function validateAggregation(entityType: ReportEntityType, aggregation?: Aggregation): void {
+	if (!aggregation || aggregation.op === "count") return;
+	if (!aggregation.field) {
+		throw new ConvexError(`Aggregation op "${aggregation.op}" requires a field`);
+	}
+	const def = getReportField(entityType, aggregation.field);
+	if (!def) {
+		throw new ConvexError(
+			`Unknown report aggregation field "${aggregation.field}" for entity "${entityType}"`
+		);
+	}
+	if (def.type !== "number" && def.type !== "currency") {
+		throw new ConvexError(
+			`Report aggregation field "${aggregation.field}" is not numeric for entity "${entityType}"`
+		);
+	}
+}
+
+function validateGroupByField(entityType: ReportEntityType, field: string): void {
+	if (!getReportField(entityType, field)) {
+		throw new ConvexError(
+			`Unknown report groupBy field "${field}" for entity "${entityType}"`
+		);
+	}
+}
+
+function validateDetailColumns(entityType: ReportEntityType, columns: string[]): void {
+	if (columns.length === 0) {
+		throw new ConvexError(
+			`Detail report requires at least one column for entity "${entityType}"`
+		);
+	}
+	for (const column of columns) {
+		if (!getReportField(entityType, column)) {
+			throw new ConvexError(
+				`Unknown report detail column "${column}" for entity "${entityType}"`
+			);
+		}
+	}
+}
+
+// ============================================================================
+// Scanning helper
+// ============================================================================
+
+async function scanFiltered(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
-): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allClients = await ctx.db
-		.query("clients")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const clients = applyDateFilter(allClients, bounds);
-
-	const statusCounts = countByField(clients, "status");
-	// Ensure all expected statuses are present
-	const normalizedCounts = {
-		lead: 0,
-		active: 0,
-		inactive: 0,
-		archived: 0,
-		...statusCounts,
+	table: ReportTable,
+	orgId: Id<"organizations">,
+	dateField: string,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
+): Promise<{ rows: Row[]; truncated: boolean }> {
+	const predicate = (row: Row) => {
+		if (!inDateBounds(row[dateField], bounds)) return false;
+		if (filters && !evaluateReportFilters(row, filters)) return false;
+		return true;
 	};
 
-	const statusLabels: Record<string, string> = {
+	// Early-exit only applies when the date filter is on _creationTime, since
+	// the scan is creation-desc — anything past the bound genuinely can't match.
+	const stopBelowCreationTime =
+		dateField === "_creationTime" && bounds.hasDateFilter && bounds.start !== undefined
+			? bounds.start
+			: undefined;
+
+	const { matches, truncated } = await scanOrgTable(ctx, table, orgId, {
+		predicate,
+		maxScan: REPORT_SCAN_CEILING,
+		stopBelowCreationTime,
+	});
+
+	return { rows: matches, truncated };
+}
+
+// ============================================================================
+// Generic aggregation pipeline (new capability — used only when args.aggregation is set)
+// ============================================================================
+
+const timeGroupingRegex = /^([a-zA-Z_]+)_(day|week|month)$/;
+
+async function runGenericAggregation(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	entityType: ReportEntityType,
+	groupBy: string | undefined,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	aggregation: Aggregation,
+	timezone: string | undefined
+): Promise<ReportDataResult> {
+	const dateField = getReportDateField(entityType);
+	const { rows, truncated } = await scanFiltered(
+		ctx,
+		entityType,
+		orgId,
+		dateField,
+		bounds,
+		filters
+	);
+
+	let data: AggregatedDataPoint[];
+
+	const timeMatch = groupBy?.match(timeGroupingRegex);
+	if (timeMatch) {
+		const field = timeMatch[1];
+		const granularity = timeMatch[2] as Granularity;
+		const fieldDef = getReportField(entityType, field);
+		if (!fieldDef) {
+			throw new ConvexError(
+				`Unknown report groupBy time field "${field}" for entity "${entityType}"`
+			);
+		}
+		if (fieldDef.type !== "timestamp") {
+			throw new ConvexError(
+				`Report groupBy time field "${field}" is not a timestamp for entity "${entityType}"`
+			);
+		}
+		data = groupByDate(rows, (r) => num(r[field]), granularity, timezone, aggregation);
+	} else if (groupBy) {
+		validateGroupByField(entityType, groupBy);
+		if (getReportField(entityType, groupBy)?.type === "timestamp") {
+			throw new ConvexError(
+				`Report groupBy field "${groupBy}" is a timestamp — use "${groupBy}_day", "${groupBy}_week", or "${groupBy}_month"`
+			);
+		}
+		const buckets: Record<string, Row[]> = {};
+		for (const row of rows) {
+			const raw = row[groupBy];
+			const key =
+				raw === undefined || raw === null || raw === "" ? "unknown" : String(raw);
+			(buckets[key] ??= []).push(row);
+		}
+
+		// Assignee buckets are user ids, not display strings — resolve to
+		// names (mirrors queryRevenueByClient's companyName resolution).
+		const isAssigneeGroupBy = entityType === "tasks" && groupBy === "assigneeUserId";
+		const resolveLabel = async (key: string): Promise<string> => {
+			if (!isAssigneeGroupBy) return capitalizeWords(key, "-");
+			if (key === "unknown") return "Unassigned";
+			const user = await ctx.db.get(key as Id<"users">);
+			return user?.name ?? key;
+		};
+
+		data = (
+			await Promise.all(
+				Object.entries(buckets).map(async ([key, bucketRows]) => ({
+					label: await resolveLabel(key),
+					value: computeAggregateValue(bucketRows, aggregation),
+				}))
+			)
+		).sort((a, b) => b.value - a.value);
+	} else {
+		data = [{ label: "Total", value: computeAggregateValue(rows, aggregation) }];
+	}
+
+	const total = computeAggregateValue(rows, aggregation);
+	const fieldDef = aggregation.field ? getReportField(entityType, aggregation.field) : undefined;
+	const isCurrency = aggregation.op !== "count" && fieldDef?.type === "currency";
+
+	return {
+		data,
+		total,
+		metadata: {
+			entityType,
+			dateRange: metadataDateRange(bounds),
+			groupBy,
+			truncated,
+			totalIsCurrency: isCurrency,
+			itemValueIsCurrency: isCurrency,
+		},
+	};
+}
+
+// ============================================================================
+// Detail pipeline (new capability — used only when args.detail is set;
+// exclusive of groupBy/aggregation, which are ignored in this mode)
+// ============================================================================
+
+function detailCellValue(value: unknown): string | number | boolean | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+		return value;
+	}
+	return String(value);
+}
+
+async function runDetailReport(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	entityType: ReportEntityType,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	detail: DetailArgs
+): Promise<ReportDataResult> {
+	validateDetailColumns(entityType, detail.columns);
+
+	const dateField = getReportDateField(entityType);
+	const { rows, truncated } = await scanFiltered(ctx, entityType, orgId, dateField, bounds, filters);
+
+	// Sort is exact over the scanned window; if the scan hit its ceiling
+	// (metadata.truncated), top-N by a non-creation date field is approximate —
+	// the truncation banner is the surface for that.
+	const sorted = [...rows].sort((a, b) => {
+		const aVal = a[dateField];
+		const bVal = b[dateField];
+		const aNum = typeof aVal === "number" ? aVal : undefined;
+		const bNum = typeof bVal === "number" ? bVal : undefined;
+		if (aNum === undefined && bNum === undefined) return 0;
+		if (aNum === undefined) return 1;
+		if (bNum === undefined) return -1;
+		return bNum - aNum;
+	});
+
+	const totalMatched = sorted.length;
+	const cap = Math.min(Math.max(detail.limit ?? 100, 1), 1000);
+	const cappedRows = sorted.slice(0, cap);
+
+	const columns = detail.columns.map((field) => {
+		const def = getReportField(entityType, field);
+		// Presence already validated by validateDetailColumns.
+		return { field, label: def!.label, type: def!.type };
+	});
+
+	const rowsOut = cappedRows.map((row) => {
+		const out: Record<string, string | number | boolean | null> = {};
+		for (const field of detail.columns) {
+			out[field] = detailCellValue(row[field]);
+		}
+		return out;
+	});
+
+	return {
+		data: [],
+		total: totalMatched,
+		metadata: {
+			entityType,
+			dateRange: metadataDateRange(bounds),
+			truncated,
+		},
+		detail: {
+			columns,
+			rows: rowsOut,
+			totalMatched,
+			rowsTruncated: totalMatched > cap,
+		},
+	};
+}
+
+// ============================================================================
+// Legacy per-entity implementations (exact historical output shapes)
+// ============================================================================
+
+async function scanEntity(
+	ctx: QueryCtx,
+	entityType: ReportEntityType,
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
+): Promise<{ rows: Row[]; truncated: boolean }> {
+	return scanFiltered(ctx, entityType, orgId, getReportDateField(entityType), bounds, filters);
+}
+
+async function queryClientsByStatus(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
+): Promise<ReportDataResult> {
+	const { rows, truncated } = await scanEntity(ctx, "clients", orgId, bounds, filters);
+	const counts = countByField(rows, "status");
+	const normalized = { lead: 0, active: 0, inactive: 0, archived: 0, ...counts };
+	const labels: Record<string, string> = {
 		lead: "Prospective",
 		active: "Active",
 		inactive: "Inactive",
 		archived: "Archived",
 	};
-
-	const data = statusCountsToDataPoints(normalizedCounts, statusLabels, true);
-
 	return {
-		data,
-		total: clients.length,
+		data: countsToDataPoints(normalized, labels, true),
+		total: rows.length,
 		metadata: {
 			entityType: "clients",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "status",
+			truncated,
 		},
 	};
 }
 
-async function _queryClientsByLeadSource(
+async function queryClientsByLeadSource(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allClients = await ctx.db
-		.query("clients")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const clients = applyDateFilter(allClients, bounds);
-
+	const { rows, truncated } = await scanEntity(ctx, "clients", orgId, bounds, filters);
 	const sourceCounts: Record<string, number> = {};
-	for (const client of clients) {
-		const source = client.leadSource || "unknown";
-		sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+	for (const row of rows) {
+		const source = str(row.leadSource) || "unknown";
+		sourceCounts[source] = (sourceCounts[source] ?? 0) + 1;
 	}
-
-	const data: AggregatedDataPoint[] = Object.entries(sourceCounts)
-		.map(([source, count]) => ({
-			label: capitalizeWords(source, "-"),
-			value: count,
-		}))
+	const data = Object.entries(sourceCounts)
+		.map(([source, count]) => ({ label: capitalizeWords(source, "-"), value: count }))
 		.sort((a, b) => b.value - a.value);
-
 	return {
 		data,
-		total: clients.length,
+		total: rows.length,
 		metadata: {
 			entityType: "clients",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "leadSource",
+			truncated,
 		},
 	};
 }
 
-async function _queryClientsByCreationDate(
+async function queryClientsByCreationDate(
 	ctx: QueryCtx,
-	args: {
-		dateRange?: { start?: number; end?: number };
-		granularity?: Granularity;
-	}
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	granularity: Granularity,
+	timezone: string | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-	const granularity = args.granularity || "month";
-	const timezone = await getOrgTimezoneById(ctx, orgId);
-
-	const allClients = await ctx.db
-		.query("clients")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const clients = applyDateFilter(allClients, bounds);
-
-	const data = groupByDate(
-		clients,
-		(c) => c._creationTime,
-		granularity,
-		timezone
-	);
-
+	const { rows, truncated } = await scanEntity(ctx, "clients", orgId, bounds, filters);
+	const data = groupByDate(rows, (r) => r._creationTime as number, granularity, timezone);
 	return {
 		data,
-		total: clients.length,
+		total: rows.length,
 		metadata: {
 			entityType: "clients",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: `creationDate_${granularity}`,
+			truncated,
 		},
 	};
 }
 
-async function _queryProjectsByStatus(
+async function queryProjectsByStatus(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allProjects = await ctx.db
-		.query("projects")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const projects = applyDateFilter(allProjects, bounds);
-
-	const statusCounts = countByField(projects, "status");
-	const normalizedCounts = {
-		planned: 0,
-		"in-progress": 0,
-		completed: 0,
-		cancelled: 0,
-		...statusCounts,
-	};
-
-	const data = statusCountsToDataPoints(normalizedCounts, undefined, true);
-
+	const { rows, truncated } = await scanEntity(ctx, "projects", orgId, bounds, filters);
+	const counts = countByField(rows, "status");
+	const normalized = { planned: 0, "in-progress": 0, completed: 0, cancelled: 0, ...counts };
 	return {
-		data,
-		total: projects.length,
+		data: countsToDataPoints(normalized, undefined, true),
+		total: rows.length,
 		metadata: {
 			entityType: "projects",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "status",
+			truncated,
 		},
 	};
 }
 
-async function _queryProjectsByType(
+async function queryProjectsByType(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allProjects = await ctx.db
-		.query("projects")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const projects = applyDateFilter(allProjects, bounds);
-
-	const typeCounts = countByField(projects, "projectType");
-	const normalizedCounts = {
-		"one-off": 0,
-		recurring: 0,
-		...typeCounts,
-	};
-
-	const typeLabels: Record<string, string> = {
-		"one-off": "One-off",
-		recurring: "Recurring",
-	};
-
-	const data = statusCountsToDataPoints(normalizedCounts, typeLabels, true);
-
+	const { rows, truncated } = await scanEntity(ctx, "projects", orgId, bounds, filters);
+	const counts = countByField(rows, "projectType");
+	const normalized = { "one-off": 0, recurring: 0, ...counts };
+	const labels: Record<string, string> = { "one-off": "One-off", recurring: "Recurring" };
 	return {
-		data,
-		total: projects.length,
+		data: countsToDataPoints(normalized, labels, true),
+		total: rows.length,
 		metadata: {
 			entityType: "projects",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "projectType",
+			truncated,
 		},
 	};
 }
 
-async function _queryProjectsByCreationDate(
+async function queryProjectsByCreationDate(
 	ctx: QueryCtx,
-	args: {
-		dateRange?: { start?: number; end?: number };
-		granularity?: Granularity;
-	}
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	granularity: Granularity,
+	timezone: string | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-	const granularity = args.granularity || "month";
-	const timezone = await getOrgTimezoneById(ctx, orgId);
-
-	const allProjects = await ctx.db
-		.query("projects")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const projects = applyDateFilter(allProjects, bounds);
-
-	const data = groupByDate(
-		projects,
-		(p) => p._creationTime,
-		granularity,
-		timezone
-	);
-
+	const { rows, truncated } = await scanEntity(ctx, "projects", orgId, bounds, filters);
+	const data = groupByDate(rows, (r) => r._creationTime as number, granularity, timezone);
 	return {
 		data,
-		total: projects.length,
+		total: rows.length,
 		metadata: {
 			entityType: "projects",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: `creationDate_${granularity}`,
+			truncated,
 		},
 	};
 }
 
-async function _queryTasksByStatus(
+async function queryTasksByStatus(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allTasks = await ctx.db
-		.query("tasks")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	// Tasks use 'date' field instead of _creationTime
-	const tasks = applyDateFilter(allTasks, bounds, "date" as keyof typeof allTasks[0]);
-
-	const statusCounts = countByField(tasks, "status");
-	const normalizedCounts = {
-		pending: 0,
-		"in-progress": 0,
-		completed: 0,
-		cancelled: 0,
-		...statusCounts,
-	};
-
-	// Include all statuses for tasks (no filtering of zero values)
-	const data = statusCountsToDataPoints(normalizedCounts, undefined, false);
-
+	const { rows, truncated } = await scanEntity(ctx, "tasks", orgId, bounds, filters);
+	const counts = countByField(rows, "status");
+	const normalized = { pending: 0, "in-progress": 0, completed: 0, cancelled: 0, ...counts };
 	return {
-		data,
-		total: tasks.length,
+		data: countsToDataPoints(normalized, undefined, false),
+		total: rows.length,
 		metadata: {
 			entityType: "tasks",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "status",
+			truncated,
 		},
 	};
 }
 
-async function _queryTaskCompletionRate(
+async function queryTaskCompletionRate(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allTasks = await ctx.db
-		.query("tasks")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const tasks = applyDateFilter(allTasks, bounds, "date" as keyof typeof allTasks[0]);
-
-	const totalTasks = tasks.length;
-	const completedTasks = tasks.filter((t) => t.status === "completed").length;
-	const pendingTasks = tasks.filter(
-		(t) => t.status === "pending" || t.status === "in-progress"
+	const { rows, truncated } = await scanEntity(ctx, "tasks", orgId, bounds, filters);
+	const totalTasks = rows.length;
+	const completedTasks = rows.filter((r) => r.status === "completed").length;
+	const pendingTasks = rows.filter(
+		(r) => r.status === "pending" || r.status === "in-progress"
 	).length;
-
-	const completionRate =
-		totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-	const data: AggregatedDataPoint[] = [
-		{ label: "Completed", value: completedTasks },
-		{ label: "Pending", value: pendingTasks },
-	];
-
+	const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 	return {
-		data,
+		data: [
+			{ label: "Completed", value: completedTasks },
+			{ label: "Pending", value: pendingTasks },
+		],
 		total: completionRate,
 		metadata: {
 			entityType: "tasks",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "completionRate",
+			truncated,
 		},
 	};
 }
 
-async function _queryTasksByDate(
+async function queryTasksByDate(
 	ctx: QueryCtx,
-	args: {
-		dateRange?: { start?: number; end?: number };
-		granularity?: Granularity;
-	}
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	granularity: Granularity,
+	timezone: string | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-	const granularity = args.granularity || "month";
-	const timezone = await getOrgTimezoneById(ctx, orgId);
-
-	const allTasks = await ctx.db
-		.query("tasks")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const tasks = applyDateFilter(allTasks, bounds, "date" as keyof typeof allTasks[0]);
-
-	const data = groupByDate(tasks, (t) => t.date, granularity, timezone);
-
+	const { rows, truncated } = await scanEntity(ctx, "tasks", orgId, bounds, filters);
+	const data = groupByDate(rows, (r) => num(r.date), granularity, timezone);
 	return {
 		data,
-		total: tasks.length,
+		total: rows.length,
 		metadata: {
 			entityType: "tasks",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: `date_${granularity}`,
+			truncated,
 		},
 	};
 }
 
-async function _queryQuotesByStatus(
+const QUOTE_STATUSES = ["draft", "sent", "approved", "declined", "expired"] as const;
+
+async function queryQuotesByStatus(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
+	const { rows, truncated } = await scanEntity(ctx, "quotes", orgId, bounds, filters);
+	const statusData: Record<string, { count: number; total: number }> = {};
+	for (const s of QUOTE_STATUSES) statusData[s] = { count: 0, total: 0 };
 
-	const bounds = getDateBounds(args.dateRange);
-
-	const allQuotes = await ctx.db
-		.query("quotes")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const quotes = applyDateFilter(allQuotes, bounds);
-
-	const statusData: Record<string, { count: number; total: number }> = {
-		draft: { count: 0, total: 0 },
-		sent: { count: 0, total: 0 },
-		approved: { count: 0, total: 0 },
-		declined: { count: 0, total: 0 },
-		expired: { count: 0, total: 0 },
-	};
-
-	for (const quote of quotes) {
-		if (statusData[quote.status]) {
-			statusData[quote.status].count++;
-			statusData[quote.status].total += quote.total;
+	for (const row of rows) {
+		const status = str(row.status);
+		if (statusData[status]) {
+			statusData[status].count++;
+			statusData[status].total += num(row.total);
 		}
 	}
 
@@ -811,96 +824,68 @@ async function _queryQuotesByStatus(
 			metadata: { totalValue: info.total },
 		}));
 
-	const totalValue = quotes.reduce((sum, q) => sum + q.total, 0);
+	const totalValue = rows.reduce((sum, r) => sum + num(r.total), 0);
 
 	return {
 		data,
 		total: totalValue,
 		metadata: {
 			entityType: "quotes",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "status",
+			truncated,
+			totalIsCurrency: true,
 		},
 	};
 }
 
-async function _queryQuoteConversionRate(
+async function queryQuoteConversionRate(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allQuotes = await ctx.db
-		.query("quotes")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const quotes = applyDateFilter(allQuotes, bounds);
-
-	const sentOrResolved = quotes.filter((q) =>
-		["sent", "approved", "declined", "expired"].includes(q.status)
+	const { rows, truncated } = await scanEntity(ctx, "quotes", orgId, bounds, filters);
+	const sentOrResolved = rows.filter((r) =>
+		["sent", "approved", "declined", "expired"].includes(str(r.status))
 	);
-	const approved = quotes.filter((q) => q.status === "approved");
-
+	const approved = rows.filter((r) => r.status === "approved");
 	const conversionRate =
 		sentOrResolved.length > 0
 			? Math.round((approved.length / sentOrResolved.length) * 100)
 			: 0;
-
-	const data: AggregatedDataPoint[] = [
-		{ label: "Approved", value: approved.length },
-		{ label: "Not Approved", value: sentOrResolved.length - approved.length },
-	];
-
 	return {
-		data,
+		data: [
+			{ label: "Approved", value: approved.length },
+			{ label: "Not Approved", value: sentOrResolved.length - approved.length },
+		],
 		total: conversionRate,
 		metadata: {
 			entityType: "quotes",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "conversionRate",
+			truncated,
 		},
 	};
 }
 
-async function _queryInvoicesByStatus(
+const INVOICE_STATUSES = ["draft", "sent", "paid", "overdue", "cancelled"] as const;
+
+async function queryInvoicesByStatus(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
+	const { rows, truncated } = await scanEntity(ctx, "invoices", orgId, bounds, filters);
+	const statusData: Record<string, { count: number; total: number }> = {};
+	for (const s of INVOICE_STATUSES) statusData[s] = { count: 0, total: 0 };
 
-	const bounds = getDateBounds(args.dateRange);
-
-	const allInvoices = await ctx.db
-		.query("invoices")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	// Invoices use issuedDate field
-	const invoices = applyDateFilter(allInvoices, bounds, "issuedDate" as keyof typeof allInvoices[0]);
-
-	const statusData: Record<string, { count: number; total: number }> = {
-		draft: { count: 0, total: 0 },
-		sent: { count: 0, total: 0 },
-		paid: { count: 0, total: 0 },
-		overdue: { count: 0, total: 0 },
-		cancelled: { count: 0, total: 0 },
-	};
-
-	for (const invoice of invoices) {
-		if (statusData[invoice.status]) {
-			statusData[invoice.status].count++;
-			statusData[invoice.status].total += invoice.total;
+	for (const row of rows) {
+		const status = str(row.status);
+		if (statusData[status]) {
+			statusData[status].count++;
+			statusData[status].total += num(row.total);
 		}
 	}
 
@@ -912,263 +897,197 @@ async function _queryInvoicesByStatus(
 			metadata: { totalValue: info.total },
 		}));
 
-	const totalValue = invoices.reduce((sum, inv) => sum + inv.total, 0);
+	const totalValue = rows.reduce((sum, r) => sum + num(r.total), 0);
 
 	return {
 		data,
 		total: totalValue,
 		metadata: {
 			entityType: "invoices",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "status",
+			truncated,
+			totalIsCurrency: true,
 		},
 	};
 }
 
-async function _queryRevenueByMonth(
+/** Revenue reports (month/client) key off paidAt, not the entity's default dateField (issuedDate). */
+async function scanPaidInvoices(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
+): Promise<{ rows: Row[]; truncated: boolean }> {
+	const predicate = (row: Row) => {
+		if (row.status !== "paid" || row.paidAt === undefined || row.paidAt === null) {
+			return false;
+		}
+		if (!inDateBounds(row.paidAt, bounds)) return false;
+		if (filters && !evaluateReportFilters(row, filters)) return false;
+		return true;
+	};
+	const { matches, truncated } = await scanOrgTable(ctx, "invoices", orgId, {
+		predicate,
+		maxScan: REPORT_SCAN_CEILING,
+	});
+	return { rows: matches, truncated };
+}
+
+async function queryRevenueByMonth(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	timezone: string | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-	const timezone = await getOrgTimezoneById(ctx, orgId);
-
-	const allInvoices = await ctx.db
-		.query("invoices")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.filter((q) =>
-			q.and(
-				q.eq(q.field("status"), "paid"),
-				q.neq(q.field("paidAt"), undefined)
-			)
-		)
-		.collect();
-
-	// Filter by paidAt for revenue queries
-	const invoices = applyDateFilter(allInvoices, bounds, "paidAt" as keyof typeof allInvoices[0]);
+	const { rows, truncated } = await scanPaidInvoices(ctx, orgId, bounds, filters);
 
 	const monthlyRevenue: Record<string, number> = {};
-	for (const invoice of invoices) {
-		if (invoice.paidAt) {
-			const dateStr = DateUtils.toLocalDateString(invoice.paidAt, timezone);
-			const monthKey = dateStr.substring(0, 7);
-			monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + invoice.total;
-		}
+	for (const row of rows) {
+		const dateStr = DateUtils.toLocalDateString(num(row.paidAt), timezone);
+		const monthKey = dateStr.substring(0, 7);
+		monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + num(row.total);
 	}
 
 	const data: AggregatedDataPoint[] = Object.entries(monthlyRevenue)
-		.map(([month, value]) => ({
-			label: month,
-			value,
-		}))
+		.map(([month, value]) => ({ label: month, value }))
 		.sort((a, b) => a.label.localeCompare(b.label));
 
-	const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total, 0);
+	const totalRevenue = rows.reduce((sum, r) => sum + num(r.total), 0);
 
 	return {
 		data,
 		total: totalRevenue,
 		metadata: {
 			entityType: "invoices",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "month",
+			truncated,
+			totalIsCurrency: true,
+			itemValueIsCurrency: true,
 		},
 	};
 }
 
-async function _queryRevenueByClient(
+async function queryRevenueByClient(
 	ctx: QueryCtx,
-	args: {
-		dateRange?: { start?: number; end?: number };
-		limit?: number;
-		cursor?: string;
-	}
-): Promise<PaginatedReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyPaginatedResult();
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
+): Promise<ReportDataResult> {
+	const { rows, truncated } = await scanPaidInvoices(ctx, orgId, bounds, filters);
 
-	const bounds = getDateBounds(args.dateRange);
-	const limit = args.limit || 50;
-	const offset = decodeCursor(args.cursor);
-
-	const allInvoices = await ctx.db
-		.query("invoices")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.filter((q) =>
-			q.and(
-				q.eq(q.field("status"), "paid"),
-				q.neq(q.field("paidAt"), undefined)
-			)
-		)
-		.collect();
-
-	const invoices = applyDateFilter(allInvoices, bounds, "paidAt" as keyof typeof allInvoices[0]);
-
-	// Aggregate revenue by client
 	const clientRevenue: Record<string, number> = {};
-	for (const invoice of invoices) {
-		const clientId = invoice.clientId.toString();
-		clientRevenue[clientId] = (clientRevenue[clientId] || 0) + invoice.total;
+	for (const row of rows) {
+		const clientId = String(row.clientId);
+		clientRevenue[clientId] = (clientRevenue[clientId] ?? 0) + num(row.total);
 	}
 
-	// Sort by revenue descending
-	const sortedClientIds = Object.entries(clientRevenue)
+	const top10 = Object.entries(clientRevenue)
 		.sort(([, a], [, b]) => b - a)
-		.map(([id]) => id);
+		.slice(0, 10);
 
-	// Apply pagination
-	const paginatedClientIds = paginate(sortedClientIds, offset, limit);
-	const paginationMeta = getPaginationMeta(sortedClientIds.length, offset, limit);
-
-	// Batch fetch client names
-	const clientIdsToFetch = paginatedClientIds.map((id) => id as Id<"clients">);
 	const clientDocs = await Promise.all(
-		clientIdsToFetch.map((id) => ctx.db.get(id))
+		top10.map(([id]) => ctx.db.get(id as Id<"clients">))
 	);
 
-	const clientNameMap = new Map<string, string>();
-	clientDocs.forEach((client, index) => {
-		const clientId = clientIdsToFetch[index];
-		clientNameMap.set(clientId, client?.companyName || "Unknown Client");
-	});
-
-	const data: AggregatedDataPoint[] = paginatedClientIds.map((clientId) => ({
-		label: clientNameMap.get(clientId) || "Unknown Client",
-		value: clientRevenue[clientId],
+	const data: AggregatedDataPoint[] = top10.map(([clientId, revenue], index) => ({
+		label: clientDocs[index]?.companyName || "Unknown Client",
+		value: revenue,
 		metadata: { clientId },
 	}));
 
-	const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total, 0);
+	const totalRevenue = rows.reduce((sum, r) => sum + num(r.total), 0);
 
 	return {
 		data,
 		total: totalRevenue,
-		hasMore: paginationMeta.hasMore,
-		nextCursor: paginationMeta.hasMore ? encodeCursor(offset + limit) : undefined,
 		metadata: {
 			entityType: "invoices",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "client",
+			truncated,
+			totalIsCurrency: true,
+			itemValueIsCurrency: true,
 		},
 	};
 }
 
-async function _queryActivitiesByType(
+async function queryActivitiesByType(
 	ctx: QueryCtx,
-	args: { dateRange?: { start?: number; end?: number } }
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-
-	const allActivities = await ctx.db
-		.query("activities")
-		.withIndex("by_org_timestamp", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const activities = applyDateFilter(allActivities, bounds, "timestamp" as keyof typeof allActivities[0]);
-
-	const typeCounts = countByField(activities, "activityType");
-
-	const data: AggregatedDataPoint[] = Object.entries(typeCounts)
-		.map(([type, count]) => ({
-			label: capitalizeWords(type, "_"),
-			value: count,
-		}))
+	const { rows, truncated } = await scanEntity(ctx, "activities", orgId, bounds, filters);
+	const typeCounts = countByField(rows, "activityType");
+	const data = Object.entries(typeCounts)
+		.map(([type, count]) => ({ label: capitalizeWords(type, "_"), value: count }))
 		.sort((a, b) => b.value - a.value);
-
 	return {
 		data,
-		total: activities.length,
+		total: rows.length,
 		metadata: {
 			entityType: "activities",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: "activityType",
+			truncated,
 		},
 	};
 }
 
-async function _queryActivitiesByDate(
+async function queryActivitiesByDate(
 	ctx: QueryCtx,
-	args: {
-		dateRange?: { start?: number; end?: number };
-		granularity?: Granularity;
-	}
+	orgId: Id<"organizations">,
+	bounds: DateBoundsResult,
+	filters: ReportFilters | undefined,
+	granularity: Granularity,
+	timezone: string | undefined
 ): Promise<ReportDataResult> {
-	const orgId = await getOptionalOrgId(ctx);
-	if (!orgId) return emptyReportResult();
-
-	const bounds = getDateBounds(args.dateRange);
-	const granularity = args.granularity || "month";
-	const timezone = await getOrgTimezoneById(ctx, orgId);
-
-	const allActivities = await ctx.db
-		.query("activities")
-		.withIndex("by_org_timestamp", (q) => q.eq("orgId", orgId))
-		.collect();
-
-	const activities = applyDateFilter(allActivities, bounds, "timestamp" as keyof typeof allActivities[0]);
-
-	const data = groupByDate(activities, (a) => a.timestamp, granularity, timezone);
-
+	const { rows, truncated } = await scanEntity(ctx, "activities", orgId, bounds, filters);
+	const data = groupByDate(rows, (r) => num(r.timestamp), granularity, timezone);
 	return {
 		data,
-		total: activities.length,
+		total: rows.length,
 		metadata: {
 			entityType: "activities",
-			dateRange:
-				bounds.hasDateFilter && bounds.start && bounds.end
-					? { start: bounds.start, end: bounds.end }
-					: undefined,
+			dateRange: metadataDateRange(bounds),
 			groupBy: `timestamp_${granularity}`,
+			truncated,
 		},
 	};
 }
 
 // ============================================================================
-// Generic Report Execution
+// Generic Report Execution (legacy dispatch — preserves exact historical shapes)
 // ============================================================================
 
-/**
- * Internal helper to run report queries by entity type and groupBy
- */
 async function runReportByConfig(
 	ctx: QueryCtx,
-	entityType: string,
+	orgId: Id<"organizations">,
+	entityType: ReportEntityType,
 	groupBy: string | undefined,
-	dateRange: { start?: number; end?: number } | undefined
+	dateRange: { start?: number; end?: number } | undefined,
+	filters: ReportFilters | undefined
 ): Promise<ReportDataResult> {
-	// Check for time-based groupings
+	const bounds = resolveDateBounds(dateRange);
 	const timeGroupingMatch = groupBy?.match(
 		/^(creationDate|date|timestamp)_(day|week|month)$/
 	);
 
 	if (timeGroupingMatch) {
 		const granularity = timeGroupingMatch[2] as Granularity;
+		const timezone = await getOrgTimezoneById(ctx, orgId);
 		switch (entityType) {
 			case "clients":
-				return await _queryClientsByCreationDate(ctx, { dateRange, granularity });
+				return await queryClientsByCreationDate(ctx, orgId, bounds, filters, granularity, timezone);
 			case "projects":
-				return await _queryProjectsByCreationDate(ctx, { dateRange, granularity });
+				return await queryProjectsByCreationDate(ctx, orgId, bounds, filters, granularity, timezone);
 			case "tasks":
-				return await _queryTasksByDate(ctx, { dateRange, granularity });
+				return await queryTasksByDate(ctx, orgId, bounds, filters, granularity, timezone);
 			case "activities":
-				return await _queryActivitiesByDate(ctx, { dateRange, granularity });
+				return await queryActivitiesByDate(ctx, orgId, bounds, filters, granularity, timezone);
 			default:
 				return emptyReportResult();
 		}
@@ -1177,53 +1096,50 @@ async function runReportByConfig(
 	switch (entityType) {
 		case "clients":
 			if (groupBy === "leadSource") {
-				return await _queryClientsByLeadSource(ctx, { dateRange });
+				return await queryClientsByLeadSource(ctx, orgId, bounds, filters);
 			}
-			return await _queryClientsByStatus(ctx, { dateRange });
+			return await queryClientsByStatus(ctx, orgId, bounds, filters);
 
 		case "projects":
 			if (groupBy === "projectType") {
-				return await _queryProjectsByType(ctx, { dateRange });
+				return await queryProjectsByType(ctx, orgId, bounds, filters);
 			}
-			return await _queryProjectsByStatus(ctx, { dateRange });
+			return await queryProjectsByStatus(ctx, orgId, bounds, filters);
 
 		case "tasks":
 			if (groupBy === "completionRate") {
-				return await _queryTaskCompletionRate(ctx, { dateRange });
+				return await queryTaskCompletionRate(ctx, orgId, bounds, filters);
 			}
-			return await _queryTasksByStatus(ctx, { dateRange });
+			return await queryTasksByStatus(ctx, orgId, bounds, filters);
 
 		case "quotes":
 			if (groupBy === "conversionRate") {
-				return await _queryQuoteConversionRate(ctx, { dateRange });
+				return await queryQuoteConversionRate(ctx, orgId, bounds, filters);
 			}
-			return await _queryQuotesByStatus(ctx, { dateRange });
+			return await queryQuotesByStatus(ctx, orgId, bounds, filters);
 
 		case "invoices":
 			if (groupBy === "month") {
-				return await _queryRevenueByMonth(ctx, { dateRange });
+				const timezone = await getOrgTimezoneById(ctx, orgId);
+				return await queryRevenueByMonth(ctx, orgId, bounds, filters, timezone);
 			}
 			if (groupBy === "client") {
-				const result = await _queryRevenueByClient(ctx, { dateRange, limit: 10 });
-				return {
-					data: result.data,
-					total: result.total,
-					metadata: result.metadata,
-				};
+				return await queryRevenueByClient(ctx, orgId, bounds, filters);
 			}
-			return await _queryInvoicesByStatus(ctx, { dateRange });
+			return await queryInvoicesByStatus(ctx, orgId, bounds, filters);
 
 		case "activities":
-			return await _queryActivitiesByType(ctx, { dateRange });
+			return await queryActivitiesByType(ctx, orgId, bounds, filters);
 
 		default:
 			return emptyReportResult();
 	}
 }
 
-/**
- * Execute a report based on saved configuration
- */
+// ============================================================================
+// Public export
+// ============================================================================
+
 export const executeReport = optionalUserQuery({
 	args: {
 		entityType: v.union(
@@ -1236,166 +1152,64 @@ export const executeReport = optionalUserQuery({
 		),
 		groupBy: v.optional(v.string()),
 		dateRange: dateRangeValidator,
+		filters: v.optional(reportFiltersValidator),
+		aggregation: aggregationValidator,
+		detail: detailValidator,
 	},
 	handler: async (ctx, args): Promise<ReportDataResult> => {
-		return await runReportByConfig(
-			ctx,
-			args.entityType,
-			args.groupBy,
-			args.dateRange
-		);
-	},
-});
-
-// ============================================================================
-// Paginated List Queries
-// ============================================================================
-
-export const queryClientsListPaginated = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		...paginationValidator,
-	},
-	handler: async (ctx, args): Promise<PaginatedReportDataResult> => {
 		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyPaginatedResult();
+		if (!orgId) return emptyReportResult();
 
-		const bounds = getDateBounds(args.dateRange);
-		const limit = args.limit || 50;
-		const offset = decodeCursor(args.cursor);
+		const entityType = args.entityType as ReportEntityType;
+		const filters = args.filters as ReportFilters | undefined;
+		const aggregation = args.aggregation as Aggregation | undefined;
+		const detail = args.detail as DetailArgs | undefined;
 
-		const allClients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
+		validateFilters(entityType, filters);
 
-		const clients = applyDateFilter(allClients, bounds);
+		if (detail) {
+			const bounds = resolveDateBounds(args.dateRange);
+			return await runDetailReport(ctx, orgId, entityType, bounds, filters, detail);
+		}
 
-		const paginatedClients = paginate(clients, offset, limit);
-		const paginationMeta = getPaginationMeta(clients.length, offset, limit);
+		validateAggregation(entityType, aggregation);
 
-		const data: AggregatedDataPoint[] = paginatedClients.map((client) => ({
-			label: client.companyName,
-			value: 1,
-			metadata: {
-				clientId: client._id,
-				status: client.status,
-				leadSource: client.leadSource,
-			},
-		}));
+		if (aggregation) {
+			const bounds = resolveDateBounds(args.dateRange);
+			const timezone = await getOrgTimezoneById(ctx, orgId);
+			return await runGenericAggregation(
+				ctx,
+				orgId,
+				entityType,
+				args.groupBy,
+				bounds,
+				filters,
+				aggregation,
+				timezone
+			);
+		}
 
-		return {
-			data,
-			total: clients.length,
-			hasMore: paginationMeta.hasMore,
-			nextCursor: paginationMeta.hasMore ? encodeCursor(offset + limit) : undefined,
-			metadata: {
-				entityType: "clients",
-				dateRange:
-					bounds.hasDateFilter && bounds.start && bounds.end
-						? { start: bounds.start, end: bounds.end }
-						: undefined,
-			},
-		};
+		// Without an aggregation, a generic-valid groupBy must not fall
+		// through to legacy dispatch — it would silently come back as the
+		// entity default, mislabeled with the requested groupBy. Real callers
+		// (web resolveReportQueryArgs, assistant toExecuteReportArgs) always
+		// send an explicit count for these. Unknown literals still fall back
+		// to the entity default (pinned legacy semantics).
+		if (
+			args.groupBy &&
+			isGenericGroupBy(entityType, args.groupBy) &&
+			!usesLegacyDispatch(entityType, args.groupBy)
+		) {
+			throw new ConvexError(
+				`groupBy "${args.groupBy}" requires an explicit aggregation (e.g. { op: "count" })`
+			);
+		}
+
+		return await runReportByConfig(ctx, orgId, entityType, args.groupBy, args.dateRange, filters);
 	},
 });
 
-export const queryProjectsListPaginated = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		...paginationValidator,
-	},
-	handler: async (ctx, args): Promise<PaginatedReportDataResult> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyPaginatedResult();
-
-		const bounds = getDateBounds(args.dateRange);
-		const limit = args.limit || 50;
-		const offset = decodeCursor(args.cursor);
-
-		const allProjects = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		const projects = applyDateFilter(allProjects, bounds);
-
-		const paginatedProjects = paginate(projects, offset, limit);
-		const paginationMeta = getPaginationMeta(projects.length, offset, limit);
-
-		const data: AggregatedDataPoint[] = paginatedProjects.map((project) => ({
-			label: project.title,
-			value: 1,
-			metadata: {
-				projectId: project._id,
-				status: project.status,
-				projectType: project.projectType,
-			},
-		}));
-
-		return {
-			data,
-			total: projects.length,
-			hasMore: paginationMeta.hasMore,
-			nextCursor: paginationMeta.hasMore ? encodeCursor(offset + limit) : undefined,
-			metadata: {
-				entityType: "projects",
-				dateRange:
-					bounds.hasDateFilter && bounds.start && bounds.end
-						? { start: bounds.start, end: bounds.end }
-						: undefined,
-			},
-		};
-	},
-});
-
-export const queryInvoicesListPaginated = optionalUserQuery({
-	args: {
-		dateRange: dateRangeValidator,
-		...paginationValidator,
-	},
-	handler: async (ctx, args): Promise<PaginatedReportDataResult> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyPaginatedResult();
-
-		const bounds = getDateBounds(args.dateRange);
-		const limit = args.limit || 50;
-		const offset = decodeCursor(args.cursor);
-
-		const allInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		const invoices = applyDateFilter(allInvoices, bounds, "issuedDate" as keyof typeof allInvoices[0]);
-
-		const paginatedInvoices = paginate(invoices, offset, limit);
-		const paginationMeta = getPaginationMeta(invoices.length, offset, limit);
-
-		const data: AggregatedDataPoint[] = paginatedInvoices.map((invoice) => ({
-			label: invoice.invoiceNumber || `Invoice ${invoice._id}`,
-			value: invoice.total,
-			metadata: {
-				invoiceId: invoice._id,
-				status: invoice.status,
-				clientId: invoice.clientId,
-			},
-		}));
-
-		const totalValue = invoices.reduce((sum, inv) => sum + inv.total, 0);
-
-		return {
-			data,
-			total: totalValue,
-			hasMore: paginationMeta.hasMore,
-			nextCursor: paginationMeta.hasMore ? encodeCursor(offset + limit) : undefined,
-			metadata: {
-				entityType: "invoices",
-				dateRange:
-					bounds.hasDateFilter && bounds.start && bounds.end
-						? { start: bounds.start, end: bounds.end }
-						: undefined,
-			},
-		};
-	},
-});
+// Re-export field registry types for internal reuse (e.g. by future callers
+// that want to introspect what a report can filter/group on).
+export type { ReportEntityType } from "./lib/reportFields";
+export { REPORT_FIELDS } from "./lib/reportFields";

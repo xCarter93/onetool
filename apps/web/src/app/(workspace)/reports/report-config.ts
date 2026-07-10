@@ -1,15 +1,26 @@
 import {
+	AreaChart,
 	BarChart3,
 	Briefcase,
+	ChartColumn,
 	DollarSign,
 	FileText,
 	ListChecks,
 	PieChart,
+	Radar,
 	Table as TableIcon,
+	Target,
 	TrendingUp,
 	Users,
 	type LucideIcon,
 } from "lucide-react";
+import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
+import {
+	DEFAULT_DETAIL_COLUMNS,
+	GROUP_BY_OPTIONS,
+	usesLegacyDispatch,
+} from "@onetool/backend/convex/lib/reportFields";
+import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 
 export type EntityType =
 	| "clients"
@@ -19,12 +30,37 @@ export type EntityType =
 	| "invoices"
 	| "activities";
 
-export type VizType = "table" | "bar" | "line" | "pie";
+export type VizType = "table" | "bar" | "column" | "line" | "pie" | "radar" | "radial";
+
+export type MeasureOp = "count" | "sum" | "avg" | "min" | "max";
+export type ReportMeasure =
+	| { op: "count" }
+	| { op: Exclude<MeasureOp, "count">; field: string };
 
 export type ReportConfigShape = {
 	entityType: EntityType;
 	groupBy?: string[];
 	dateRange?: { start?: number; end?: number };
+	filters?: ReportFilters;
+	aggregation?: ReportMeasure;
+	/** Registry field names for detail-mode table columns; table viz only. */
+	columns?: string[];
+};
+
+/**
+ * Shape persisted to `reports.config` (matches packages/backend/convex/reports.ts
+ * `reportConfigValidator`) — distinct from ReportConfigShape because saved
+ * aggregations are a single-entry array keyed `operation`, not the `aggregation`
+ * object executeReport takes (`op`). Count is represented by omitting
+ * `aggregations` entirely (field is required for non-count operations).
+ */
+export type ReportSavedConfigShape = {
+	entityType: EntityType;
+	groupBy?: string[];
+	dateRange?: { start?: number; end?: number };
+	filters?: ReportFilters;
+	aggregations?: { field: string; operation: Exclude<MeasureOp, "count"> }[];
+	columns?: string[];
 };
 
 export const entityOptions: {
@@ -41,44 +77,10 @@ export const entityOptions: {
 	{ value: "activities", label: "Activities", description: "Activity log", icon: TrendingUp },
 ];
 
-export const groupByOptions: Record<string, { value: string; label: string }[]> = {
-	clients: [
-		{ value: "status", label: "Status" },
-		{ value: "leadSource", label: "Lead Source" },
-		{ value: "creationDate_month", label: "Created by Month" },
-		{ value: "creationDate_week", label: "Created by Week" },
-		{ value: "creationDate_day", label: "Created by Day" },
-	],
-	projects: [
-		{ value: "status", label: "Status" },
-		{ value: "projectType", label: "Project Type" },
-		{ value: "creationDate_month", label: "Created by Month" },
-		{ value: "creationDate_week", label: "Created by Week" },
-		{ value: "creationDate_day", label: "Created by Day" },
-	],
-	tasks: [
-		{ value: "status", label: "Status" },
-		{ value: "completionRate", label: "Completion Rate" },
-		{ value: "date_month", label: "By Month" },
-		{ value: "date_week", label: "By Week" },
-		{ value: "date_day", label: "By Day" },
-	],
-	quotes: [
-		{ value: "status", label: "Status" },
-		{ value: "conversionRate", label: "Conversion Rate" },
-	],
-	invoices: [
-		{ value: "status", label: "Status" },
-		{ value: "month", label: "Revenue by Month" },
-		{ value: "client", label: "Revenue by Client" },
-	],
-	activities: [
-		{ value: "activityType", label: "Activity Type" },
-		{ value: "timestamp_month", label: "By Month" },
-		{ value: "timestamp_week", label: "By Week" },
-		{ value: "timestamp_day", label: "By Day" },
-	],
-};
+// Canonical list lives in the backend field registry so the builder, the
+// assistant's report-config generator, and executeReport can't drift.
+export const groupByOptions: Record<string, { value: string; label: string }[]> =
+	GROUP_BY_OPTIONS;
 
 export const visualizationOptions: {
 	value: VizType;
@@ -86,8 +88,13 @@ export const visualizationOptions: {
 	icon: LucideIcon;
 }[] = [
 	{ value: "bar", label: "Bar", icon: BarChart3 },
-	{ value: "line", label: "Line", icon: TrendingUp },
+	{ value: "column", label: "Column", icon: ChartColumn },
+	// Value stays "line" (schema/presets/saved reports unchanged) — user-facing
+	// label + icon reflect the area-chart rendering (see ReportLineChart).
+	{ value: "line", label: "Area", icon: AreaChart },
 	{ value: "pie", label: "Pie", icon: PieChart },
+	{ value: "radar", label: "Radar", icon: Radar },
+	{ value: "radial", label: "Radial", icon: Target },
 	{ value: "table", label: "Table", icon: TableIcon },
 ];
 
@@ -111,83 +118,13 @@ export const entityLabels: Record<string, string> = Object.fromEntries(
 
 export const visualizationIcons: Record<VizType, LucideIcon> = {
 	bar: BarChart3,
-	line: TrendingUp,
+	column: ChartColumn,
+	line: AreaChart,
 	pie: PieChart,
+	radar: Radar,
+	radial: Target,
 	table: TableIcon,
 };
-
-/** Pre-built starting points surfaced on the reports landing page. */
-export const reportTemplates: {
-	id: string;
-	name: string;
-	description: string;
-	entityType: EntityType;
-	groupBy: string;
-	viz: VizType;
-	dateRange: string;
-	icon: LucideIcon;
-}[] = [
-	{
-		id: "client-status",
-		name: "Client status breakdown",
-		description: "Where clients sit in your pipeline",
-		entityType: "clients",
-		groupBy: "status",
-		viz: "pie",
-		dateRange: "all_time",
-		icon: Users,
-	},
-	{
-		id: "revenue-month",
-		name: "Revenue by month",
-		description: "Paid invoice revenue over time",
-		entityType: "invoices",
-		groupBy: "month",
-		viz: "line",
-		dateRange: "this_year",
-		icon: DollarSign,
-	},
-	{
-		id: "quote-conversion",
-		name: "Quote conversion",
-		description: "Sent vs. approved quotes",
-		entityType: "quotes",
-		groupBy: "status",
-		viz: "bar",
-		dateRange: "this_quarter",
-		icon: FileText,
-	},
-	{
-		id: "task-workload",
-		name: "Task workload",
-		description: "Open vs. completed tasks",
-		entityType: "tasks",
-		groupBy: "status",
-		viz: "bar",
-		dateRange: "all_time",
-		icon: ListChecks,
-	},
-	{
-		id: "new-clients",
-		name: "New clients over time",
-		description: "Acquisition by month",
-		entityType: "clients",
-		groupBy: "creationDate_month",
-		viz: "line",
-		dateRange: "this_year",
-		icon: TrendingUp,
-	},
-	{
-		id: "projects-status",
-		name: "Projects by status",
-		description: "Project pipeline health",
-		entityType: "projects",
-		groupBy: "status",
-		viz: "bar",
-		dateRange: "all_time",
-		icon: Briefcase,
-	},
-];
 
 export function formatDate(timestamp: number) {
 	return new Date(timestamp).toLocaleDateString("en-US", {
@@ -328,6 +265,104 @@ export function formatReportValue(
 	}).format(value);
 }
 
+// Canonical defaults live in the backend field registry (shared with the
+// assistant's report-config generator).
+export { DEFAULT_DETAIL_COLUMNS };
+
+/**
+ * True when the report should render raw rows instead of aggregated groups.
+ * Charts require a Group by (Slice 3-D3: chart renders above the data table,
+ * fed by the same grouped query) — with no Group by, there's nothing to
+ * chart, so ANY viz type (table or chart) falls back to detail rows. Beyond
+ * that, only the table view has its own explicit-columns override.
+ */
+export function isDetailModeActive(
+	vizType: VizType,
+	groupBy: string | undefined,
+	columns: string[] | undefined
+): boolean {
+	if (!groupBy) return true;
+	return vizType === "table" && (columns?.length ?? 0) > 0;
+}
+
+/** Columns to actually query/display in detail mode — falls back to a sensible per-entity default so the table (and its Columns checklist) never looks empty. */
+export function effectiveDetailColumns(
+	entityType: EntityType,
+	columns: string[] | undefined
+): string[] {
+	return columns && columns.length > 0 ? columns : DEFAULT_DETAIL_COLUMNS[entityType];
+}
+
+export type ReportQueryArgs = {
+	entityType: EntityType;
+	groupBy?: string;
+	dateRange?: { start?: number; end?: number };
+	filters?: ReportFilters;
+	aggregation?: ReportMeasure;
+	detail?: { columns: string[] };
+};
+
+/**
+ * Single source of truth for turning a builder/saved config into
+ * executeReport args — must mirror the backend's toExecuteReportArgs
+ * (reportConfigGeneration.ts) exactly, since both feed the same
+ * executeReport query.
+ *
+ * "Group by: None" always means raw-row detail mode (with default columns
+ * if none are checked) — this applies to every viz type, not just table,
+ * since a chart with nothing to group on has nothing to chart above (see
+ * isDetailModeActive). Once a groupBy IS set, chart views must send an
+ * explicit `aggregation` (count included) when they don't already have a
+ * measure — the backend's legacy dispatch (runReportByConfig) silently
+ * re-groups by status when both `groupBy` and `aggregation` are omitted,
+ * which is wrong for an intentional grouping.
+ *
+ * For a count measure with a groupBy set, whether that omission is safe
+ * depends on the groupBy: legacy-dispatch values (status, leadSource,
+ * creationDate_*, etc.) must still omit `aggregation` to hit the legacy
+ * dispatch unchanged, but generic-only values (e.g. issuedDate_month,
+ * assigneeUserId) need an explicit `{ op: "count" }` so the generic
+ * pipeline runs instead of legacy dispatch silently falling back to the
+ * entity default.
+ */
+export function resolveReportQueryArgs(
+	config: ReportConfigShape,
+	vizType: VizType
+): ReportQueryArgs {
+	const groupBy = config.groupBy?.[0];
+	const base = {
+		entityType: config.entityType,
+		groupBy,
+		dateRange: config.dateRange,
+		filters: config.filters,
+	};
+
+	if (isDetailModeActive(vizType, groupBy, config.columns)) {
+		return {
+			...base,
+			detail: { columns: effectiveDetailColumns(config.entityType, config.columns) },
+		};
+	}
+
+	// isDetailModeActive already returned above whenever groupBy is unset, so
+	// groupBy is guaranteed defined past this point.
+	let aggregation: ReportMeasure | undefined;
+	if (config.aggregation) {
+		aggregation = config.aggregation;
+	} else if (usesLegacyDispatch(config.entityType, groupBy!)) {
+		aggregation = undefined;
+	} else {
+		aggregation = { op: "count" };
+	}
+
+	return { ...base, aggregation };
+}
+
+/** Shown when a report's underlying query hit the scan ceiling. */
+export const TRUNCATION_NOTICE = `Based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
+	"en-US"
+)} records — results may be incomplete.`;
+
 export function detectDateRangePreset(dateRange: {
 	start?: number;
 	end?: number;
@@ -360,4 +395,35 @@ export function detectDateRangePreset(dateRange: {
 	}
 
 	return "all_time";
+}
+
+/**
+ * Map a concrete ms date range (e.g. from the assistant's configureReport
+ * tool) onto builder state. detectDateRangePreset only recognizes a few
+ * current-period presets and never returns "custom", so any other real
+ * range must land on the custom preset — mapping it to "all_time" would
+ * silently drop the bound.
+ */
+export function dateRangeToBuilderState(
+	dateRange: { start?: number; end?: number } | null | undefined
+): {
+	preset: string;
+	customRange?: { from: Date | undefined; to: Date | undefined };
+} {
+	if (
+		!dateRange ||
+		(dateRange.start === undefined && dateRange.end === undefined)
+	) {
+		return { preset: "all_time" };
+	}
+	const preset = detectDateRangePreset(dateRange);
+	if (preset !== "all_time") return { preset };
+	return {
+		preset: "custom",
+		customRange: {
+			from:
+				dateRange.start !== undefined ? new Date(dateRange.start) : undefined,
+			to: dateRange.end !== undefined ? new Date(dateRange.end) : undefined,
+		},
+	};
 }

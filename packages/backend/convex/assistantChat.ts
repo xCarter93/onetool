@@ -146,6 +146,9 @@ export const streamResponse = action({
 			{
 				promptMessageId: args.promptMessageId,
 				system: `${INSTRUCTIONS}\n\nThe current date and time is ${today} (UTC).${screenBlock}`,
+				// No reasoningEffort here: gpt-5.4 chat-completions rejects
+				// reasoning_effort combined with function tools (400), and the
+				// 5.4 models already default to effort "none" — the fast path.
 			},
 			{ saveStreamDeltas: true }
 		);

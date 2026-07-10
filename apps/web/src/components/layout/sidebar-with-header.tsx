@@ -1,7 +1,9 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useCallback, useState } from "react";
 import { AssistantNotch } from "@/components/assistant/assistant-notch";
+import { AssistantOpenerContext } from "@/components/assistant/assistant-opener-context";
+import { ReportConfigApplyProvider } from "@/components/assistant/report-config-apply-context";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -70,14 +72,33 @@ function MobileFloatingHeader() {
 	);
 }
 
+const ASSISTANT_PINNED_KEY = "assistant-panel-pinned";
+
 export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 	const [assistantOpen, setAssistantOpen] = useState(false);
+	// Lazy localStorage read is hydration-safe here: nothing pin-dependent
+	// is in the HTML while the panel is closed (its initial state).
+	const [assistantPinned, setAssistantPinned] = useState(
+		() =>
+			typeof window !== "undefined" &&
+			localStorage.getItem(ASSISTANT_PINNED_KEY) === "true"
+	);
+	const toggleAssistantPinned = useCallback(() => {
+		setAssistantPinned((prev) => {
+			const next = !prev;
+			localStorage.setItem(ASSISTANT_PINNED_KEY, String(next));
+			return next;
+		});
+	}, []);
+	const openAssistant = useCallback(() => setAssistantOpen(true), []);
 
 	return (
 		<TourContextProvider<HomeTour>
 			TourContext={HomeTourContext}
 			orderedStepIds={ORDERED_HOME_TOUR}
 		>
+			<AssistantOpenerContext.Provider value={openAssistant}>
+			<ReportConfigApplyProvider>
 			<SidebarProvider>
 				{/* variant="inset" picture-frames the content: the wrapper turns
 				    sidebar-colored and SidebarInset becomes a rounded card floating
@@ -130,8 +151,12 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 				<AssistantPanel
 					open={assistantOpen}
 					onOpenChange={setAssistantOpen}
+					pinned={assistantPinned}
+					onTogglePin={toggleAssistantPinned}
 				/>
 			</SidebarProvider>
+			</ReportConfigApplyProvider>
+			</AssistantOpenerContext.Provider>
 		</TourContextProvider>
 	);
 }
