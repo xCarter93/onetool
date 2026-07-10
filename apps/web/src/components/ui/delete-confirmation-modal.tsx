@@ -1,7 +1,12 @@
 "use client";
 
 import React from "react";
-import Modal from "./modal";
+import {
+	AlertDialog,
+	AlertDialogContent,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -58,8 +63,17 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-			<div className="space-y-4">
+		<AlertDialog
+			open={isOpen}
+			onOpenChange={(open) => {
+				if (!open) onClose();
+			}}
+		>
+			<AlertDialogContent className="max-w-md">
+				<AlertDialogHeader>
+					<AlertDialogTitle>{title}</AlertDialogTitle>
+				</AlertDialogHeader>
+				<div className="space-y-4">
 				<div className="flex items-center space-x-3">
 					<div className="shrink-0">
 						<svg
@@ -163,8 +177,9 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 						{isArchive ? `Archive ${itemType}` : `Delete ${itemType}`}
 					</Button>
 				</div>
-			</div>
-		</Modal>
+				</div>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 };
 

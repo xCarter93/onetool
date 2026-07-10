@@ -1,20 +1,38 @@
 "use client";
 
 import React, {
+	ReactNode,
 	createContext,
 	useContext,
-	useState,
-	useCallback,
-	ReactNode,
+	useEffect,
+	useRef,
 } from "react";
 import { usePathname } from "next/navigation";
-import { AnimatePresence } from "motion/react";
-import Notification, {
-	NotificationType,
-	NotificationPosition,
-} from "@/components/ui/toast";
+import { toast as sonnerToast } from "sonner";
 
-interface Toast {
+import { Toaster } from "@/components/ui/sonner";
+
+/**
+ * Sonner-backed adapter preserving the legacy custom-toast API exactly —
+ * consumers (61 files) are untouched. The old ui/toast.tsx renderer is gone.
+ */
+
+export type NotificationType =
+	| "info"
+	| "success"
+	| "warning"
+	| "error"
+	| "loading";
+
+export type NotificationPosition =
+	| "top-left"
+	| "top-right"
+	| "bottom-left"
+	| "bottom-right"
+	| "top-center"
+	| "bottom-center";
+
+export interface Toast {
 	id: string;
 	type: NotificationType;
 	title: string;
@@ -27,27 +45,75 @@ interface ToastContextType {
 	toasts: Toast[];
 	addToast: (toast: Omit<Toast, "id">) => string;
 	removeToast: (id: string) => void;
-	success: (
-		title: string,
-		message?: string,
-		options?: Partial<Toast>
-	) => string;
+	success: (title: string, message?: string, options?: Partial<Toast>) => string;
 	error: (title: string, message?: string, options?: Partial<Toast>) => string;
-	warning: (
-		title: string,
-		message?: string,
-		options?: Partial<Toast>
-	) => string;
+	warning: (title: string, message?: string, options?: Partial<Toast>) => string;
 	info: (title: string, message?: string, options?: Partial<Toast>) => string;
-	loading: (
-		title: string,
-		message?: string,
-		options?: Partial<Toast>
-	) => string;
+	loading: (title: string, message?: string, options?: Partial<Toast>) => string;
 	updateToast: (id: string, updates: Partial<Toast>) => void;
 }
 
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
+// Per-type default durations carried over from the old implementation.
+const DEFAULT_DURATION: Record<NotificationType, number | undefined> = {
+	success: 4000,
+	error: 6000,
+	warning: 5000,
+	info: 4000,
+	loading: undefined, // loading toasts persist until dismissed
+};
+
+// The old provider dismissed transient (info/success) toasts on route change
+// while keeping error/warning/loading. Sonner has no query API, but every
+// toast flows through this adapter, so we track ids by type ourselves.
+const liveTransientIds = new Set<string>();
+
+function show(
+	type: NotificationType,
+	title: string,
+	message?: string,
+	options?: Partial<Toast>
+): string {
+	const duration = options?.duration ?? DEFAULT_DURATION[type];
+	const id = sonnerToast[type](title, {
+		description: options?.message ?? message,
+		// sonner treats undefined as "use Toaster default"; loading toasts get
+		// Infinity to persist like the old implementation.
+		duration: duration ?? (type === "loading" ? Infinity : undefined),
+	});
+	const stringId = String(id);
+	if (type === "info" || type === "success") {
+		liveTransientIds.add(stringId);
+		if (duration) {
+			setTimeout(() => liveTransientIds.delete(stringId), duration + 1000);
+		}
+	}
+	return stringId;
+}
+
+const api: ToastContextType = {
+	// No consumer reads the raw array (verified inventory 2026-07-10).
+	toasts: [],
+	addToast: ({ type, title, message, duration }) =>
+		show(type, title, message, { duration }),
+	removeToast: (id) => {
+		sonnerToast.dismiss(id);
+		liveTransientIds.delete(id);
+	},
+	success: (title, message, options) => show("success", title, message, options),
+	error: (title, message, options) => show("error", title, message, options),
+	warning: (title, message, options) => show("warning", title, message, options),
+	info: (title, message, options) => show("info", title, message, options),
+	loading: (title, message, options) => show("loading", title, message, options),
+	updateToast: (id, updates) => {
+		// Zero consumers today; best-effort re-render under the same id.
+		const type = updates.type ?? "info";
+		sonnerToast[type](updates.title ?? "", {
+			id,
+			description: updates.message,
+			duration: updates.duration ?? DEFAULT_DURATION[type],
+		});
+	},
+};
 
 interface ToastProviderProps {
 	children: ReactNode;
@@ -55,231 +121,86 @@ interface ToastProviderProps {
 	maxToasts?: number;
 }
 
+// Sonner's toast store is a global singleton: nested providers (root layout
+// AND portal layout both mount one) must not each render a Toaster, or every
+// toast appears twice. Only the outermost provider mounts it.
+const HasToasterContext = createContext(false);
+
 export const ToastProvider: React.FC<ToastProviderProps> = ({
 	children,
 	position = "top-right",
 	maxToasts = 5,
 }) => {
-	const [toasts, setToasts] = useState<Toast[]>([]);
+	const hasAncestorToaster = useContext(HasToasterContext);
 	const pathname = usePathname();
-	const [prevPathname, setPrevPathname] = useState(pathname);
+	const previousPathname = useRef(pathname);
 
-	// On navigation, keep only error/warning/loading toasts. Adjusted during
-	// render (prev-value pattern) rather than in an effect to avoid an extra commit.
-	if (pathname !== prevPathname) {
-		setPrevPathname(pathname);
-		setToasts((prevToasts) =>
-			prevToasts.filter(
-				(toast) =>
-					toast.type === "error" ||
-					toast.type === "warning" ||
-					toast.type === "loading"
-			)
-		);
-	}
-
-	const generateId = useCallback(() => {
-		return Math.random().toString(36).substring(2) + Date.now().toString(36);
-	}, []);
-
-	const removeToast = useCallback((id: string) => {
-		setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
-	}, []);
-
-	const addToast = useCallback(
-		(toast: Omit<Toast, "id">) => {
-			const id = generateId();
-			const newToast = { ...toast, id };
-
-			setToasts((prevToasts) => {
-				const updatedToasts = [newToast, ...prevToasts];
-				// Limit the number of toasts
-				return updatedToasts.slice(0, maxToasts);
-			});
-
-			// Auto-remove toast if duration is specified
-			if (toast.duration) {
-				setTimeout(() => {
-					removeToast(id);
-				}, toast.duration);
+	useEffect(() => {
+		if (hasAncestorToaster) return;
+		if (previousPathname.current !== pathname) {
+			previousPathname.current = pathname;
+			// Route change: drop transient toasts, keep error/warning/loading.
+			for (const id of liveTransientIds) {
+				sonnerToast.dismiss(id);
 			}
+			liveTransientIds.clear();
+		}
+	}, [pathname, hasAncestorToaster]);
 
-			return id;
-		},
-		[generateId, maxToasts, removeToast]
-	);
-
-	const updateToast = useCallback((id: string, updates: Partial<Toast>) => {
-		setToasts((prevToasts) =>
-			prevToasts.map((toast) =>
-				toast.id === id ? { ...toast, ...updates } : toast
-			)
-		);
-	}, []);
-
-	// Convenience methods for different toast types
-	const success = useCallback(
-		(title: string, message?: string, options?: Partial<Toast>) => {
-			return addToast({
-				type: "success",
-				title,
-				message,
-				duration: 4000,
-				...options,
-			});
-		},
-		[addToast]
-	);
-
-	const error = useCallback(
-		(title: string, message?: string, options?: Partial<Toast>) => {
-			return addToast({
-				type: "error",
-				title,
-				message,
-				duration: 6000,
-				...options,
-			});
-		},
-		[addToast]
-	);
-
-	const warning = useCallback(
-		(title: string, message?: string, options?: Partial<Toast>) => {
-			return addToast({
-				type: "warning",
-				title,
-				message,
-				duration: 5000,
-				...options,
-			});
-		},
-		[addToast]
-	);
-
-	const info = useCallback(
-		(title: string, message?: string, options?: Partial<Toast>) => {
-			return addToast({
-				type: "info",
-				title,
-				message,
-				duration: 4000,
-				...options,
-			});
-		},
-		[addToast]
-	);
-
-	const loading = useCallback(
-		(title: string, message?: string, options?: Partial<Toast>) => {
-			return addToast({
-				type: "loading",
-				title,
-				message,
-				// Loading toasts don't auto-dismiss by default
-				...options,
-			});
-		},
-		[addToast]
-	);
-
-	// Position classes for the toast container
-	const positionClasses = {
-		"top-left": "top-4 left-4",
-		"top-right": "top-4 right-4",
-		"top-center": "top-4 left-1/2 -translate-x-1/2",
-		"bottom-left": "bottom-4 left-4",
-		"bottom-right": "bottom-4 right-4",
-		"bottom-center": "bottom-4 left-1/2 -translate-x-1/2",
-	};
-
-	const contextValue: ToastContextType = {
-		toasts,
-		addToast,
-		removeToast,
-		success,
-		error,
-		warning,
-		info,
-		loading,
-		updateToast,
-	};
+	if (hasAncestorToaster) {
+		return <>{children}</>;
+	}
 
 	return (
-		<ToastContext.Provider value={contextValue}>
+		<HasToasterContext.Provider value={true}>
 			{children}
-			{/* Toast Container */}
-			<div
-				className={`fixed z-50 flex flex-col gap-2 w-full max-w-sm ${positionClasses[position]}`}
-			>
-				<AnimatePresence mode="popLayout">
-					{toasts.map((toast) => (
-						<Notification
-							key={toast.id}
-							type={toast.type}
-							title={toast.title}
-							message={toast.message}
-							showIcon={toast.showIcon}
-							duration={toast.duration}
-							onClose={() => removeToast(toast.id)}
-						/>
-					))}
-				</AnimatePresence>
-			</div>
-		</ToastContext.Provider>
+			<Toaster position={position} visibleToasts={maxToasts} />
+		</HasToasterContext.Provider>
 	);
 };
 
-export const useToast = (): ToastContextType => {
-	const context = useContext(ToastContext);
-	if (!context) {
-		throw new Error("useToast must be used within a ToastProvider");
-	}
-	return context;
-};
+export const useToast = (): ToastContextType => api;
 
-// Convenience hook for common patterns
 export const useToastOperations = () => {
-	const toast = useToast();
-
-	const showLoadingWithSuccess = useCallback(
-		async <T,>(
+	return {
+		...api,
+		showLoadingWithSuccess: async <T,>(
 			loadingMessage: string,
 			successMessage: string,
 			operation: () => Promise<T>
 		): Promise<T> => {
-			const loadingId = toast.loading("Loading", loadingMessage);
-
+			const id = api.loading(loadingMessage);
 			try {
 				const result = await operation();
-				toast.removeToast(loadingId);
-				toast.success("Success", successMessage);
+				api.removeToast(id);
+				api.success(successMessage);
 				return result;
-			} catch (error) {
-				toast.removeToast(loadingId);
-				toast.error(
-					"Error",
-					error instanceof Error ? error.message : "An error occurred"
+			} catch (err) {
+				api.removeToast(id);
+				api.error(
+					"Operation failed",
+					err instanceof Error ? err.message : "An unexpected error occurred"
 				);
-				throw error;
+				throw err;
 			}
 		},
-		[toast]
-	);
-
-	const confirmAction = useCallback(
-		(
+		confirmAction: async (
 			action: () => Promise<void>,
 			messages: { loading: string; success: string; error?: string }
-		) => {
-			return showLoadingWithSuccess(messages.loading, messages.success, action);
+		): Promise<void> => {
+			const id = api.loading(messages.loading);
+			try {
+				await action();
+				api.removeToast(id);
+				api.success(messages.success);
+			} catch (err) {
+				api.removeToast(id);
+				api.error(
+					messages.error ?? "Action failed",
+					err instanceof Error ? err.message : "An unexpected error occurred"
+				);
+				throw err;
+			}
 		},
-		[showLoadingWithSuccess]
-	);
-
-	return {
-		...toast,
-		showLoadingWithSuccess,
-		confirmAction,
 	};
 };

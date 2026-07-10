@@ -604,6 +604,9 @@ export function PaymentsConfigurationModal({
 		<AnimatePresence>
 			{isOpen && (
 				<motion.div
+					// TODO(reui-rebuild): last hand-rolled motion modal (private copy,
+					// never used ui/modal) — convert to ui/dialog and drop the paired
+					// z-[9999]/z-[10000] hacks in one pass (P6/P8 follow-up)
 					className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
 					initial="hidden"
 					animate="visible"
