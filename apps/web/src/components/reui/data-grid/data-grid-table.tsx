@@ -1089,7 +1089,8 @@ function DataGridTableBodyRow<TData>({
         pinnedBoundary === "top" && "[&>td]:shadow-[0_2px_0_rgba(0,0,0,0.03)]",
         pinnedBoundary === "bottom" &&
           "[&>td]:shadow-[0_2px_0_rgba(0,0,0,0.03)]",
-        props.tableClassNames?.bodyRow
+        props.tableClassNames?.bodyRow,
+        props.rowClassName?.(row.original)
       )}
     >
       {children}
