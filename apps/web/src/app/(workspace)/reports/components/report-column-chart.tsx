@@ -18,7 +18,7 @@ import {
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
-import { ChartStripeDefs, stripeId } from "./chart-stripe-defs";
+import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 
 interface DataPoint {
 	name: string;

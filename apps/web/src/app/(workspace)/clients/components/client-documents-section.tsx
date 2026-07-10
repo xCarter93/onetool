@@ -129,6 +129,7 @@ export function ClientDocumentsSection({ clientId }: ClientDocumentsSectionProps
 		}
 
 		setIsUploading(true);
+		const loadingToastId = toast.loading("Uploading document…", file.name);
 		try {
 			// Get upload URL
 			const uploadUrl = await generateUploadUrl();
@@ -156,8 +157,10 @@ export function ClientDocumentsSection({ clientId }: ClientDocumentsSectionProps
 				storageId,
 			});
 
+			toast.removeToast(loadingToastId);
 			toast.success("Uploaded", `${file.name} has been uploaded.`);
 		} catch (err) {
+			toast.removeToast(loadingToastId);
 			const message = err instanceof Error ? err.message : "Upload failed";
 			toast.error("Upload failed", message);
 		} finally {

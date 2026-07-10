@@ -6,7 +6,7 @@ import { useMutation } from "convex/react";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
-import { StyledCard, StyledCardContent } from "@/components/ui/styled";
+import { GlassCard, GlassCardContent } from "@/components/shared/glass-card";
 import { FolderOpen, DollarSign, TrendingUp, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
@@ -166,8 +166,8 @@ export function OverviewTab({
 					Highlights
 				</h3>
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-					<StyledCard>
-						<StyledCardContent className="flex items-center gap-3 p-4">
+					<GlassCard>
+						<GlassCardContent className="flex items-center gap-3 p-4">
 							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 								<FolderOpen className="h-5 w-5 text-primary" />
 							</div>
@@ -179,10 +179,10 @@ export function OverviewTab({
 									Active Projects
 								</p>
 							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardContent className="flex items-center gap-3 p-4">
+						</GlassCardContent>
+					</GlassCard>
+					<GlassCard>
+						<GlassCardContent className="flex items-center gap-3 p-4">
 							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 								<DollarSign className="h-5 w-5 text-primary" />
 							</div>
@@ -194,10 +194,10 @@ export function OverviewTab({
 									Outstanding
 								</p>
 							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardContent className="flex items-center gap-3 p-4">
+						</GlassCardContent>
+					</GlassCard>
+					<GlassCard>
+						<GlassCardContent className="flex items-center gap-3 p-4">
 							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 								<TrendingUp className="h-5 w-5 text-primary" />
 							</div>
@@ -209,8 +209,8 @@ export function OverviewTab({
 									Total Revenue
 								</p>
 							</div>
-						</StyledCardContent>
-					</StyledCard>
+						</GlassCardContent>
+					</GlassCard>
 				</div>
 			</div>
 

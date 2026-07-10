@@ -1,5 +1,4 @@
 import { format } from "date-fns";
-import type { BadgeProps } from "@/components/reui/badge";
 import type { CalendarEvent } from "@/types/calendar";
 import { formatTime } from "@/lib/calendar-utils";
 
@@ -14,24 +13,6 @@ export const FILTER_ITEMS: Array<{ label: string; value: ScheduleFilter }> = [
 
 export function matchesFilter(event: CalendarEvent, filter: ScheduleFilter) {
 	return filter === "all" || event.type === filter;
-}
-
-/** Status string -> ReUI Badge variant, mirroring getEventColor's semantics. */
-const STATUS_BADGE: Record<string, BadgeProps["variant"]> = {
-	completed: "success-light",
-	approved: "success-light",
-	paid: "success-light",
-	"in-progress": "warning-light",
-	pending: "warning-light",
-	planned: "info-light",
-	scheduled: "info-light",
-	upcoming: "info-light",
-	cancelled: "destructive-light",
-	overdue: "destructive-light",
-};
-
-export function statusBadgeVariant(status: string): BadgeProps["variant"] {
-	return STATUS_BADGE[status] ?? "secondary";
 }
 
 /** "in-progress" -> "In progress". */

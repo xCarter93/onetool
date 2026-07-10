@@ -1,14 +1,10 @@
 import { Briefcase, Building2, Clock, ListChecks } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Item, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item";
 import type { CalendarEvent } from "@/types/calendar";
-import {
-	formatEventWhen,
-	statusBadgeVariant,
-	statusLabel,
-} from "./schedule-data";
+import { formatEventWhen, statusLabel } from "./schedule-data";
 
 export function EventCard({
 	event,
@@ -50,9 +46,9 @@ export function EventCard({
 			<ItemContent className="gap-1.5">
 				<ItemTitle className="text-foreground">{event.title}</ItemTitle>
 				<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-					<Badge variant={statusBadgeVariant(event.status)} size="sm">
+					<StatusBadge status={event.status} size="sm">
 						{statusLabel(event.status)}
-					</Badge>
+					</StatusBadge>
 					{when ? (
 						<span className="flex items-center gap-1">
 							<Clock className="size-3 shrink-0" aria-hidden />

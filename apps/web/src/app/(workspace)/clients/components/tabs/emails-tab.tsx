@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
 	Plus,
@@ -43,14 +43,10 @@ export function EmailsTab({
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Email Threads ({totalThreads})
 				</h3>
-				<StyledButton
-					intent="outline"
-					size="sm"
-					onClick={onComposeEmail}
-					icon={<Plus className="h-4 w-4" />}
-					label="Compose"
-					showArrow={false}
-				/>
+				<Button variant="outline" size="sm" onClick={onComposeEmail}>
+					<Plus className="h-4 w-4" />
+					Compose
+				</Button>
 			</div>
 			<Separator className="mb-4" />
 

@@ -86,16 +86,14 @@ export function NavFavorites() {
 				{hasOverflow && favorites && (
 					<SidebarMenuItem>
 						<Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-							<PopoverTrigger asChild>
-								<SidebarMenuButton>
-									<ChevronRight
-										className={cn(
-											"transition-transform duration-200",
-											popoverOpen && "rotate-90"
-										)}
-									/>
-									<span>View all ({favorites.length})</span>
-								</SidebarMenuButton>
+							<PopoverTrigger render={<SidebarMenuButton />}>
+								<ChevronRight
+									className={cn(
+										"transition-transform duration-200",
+										popoverOpen && "rotate-90"
+									)}
+								/>
+								<span>View all ({favorites.length})</span>
 							</PopoverTrigger>
 							<PopoverContent
 								side="right"
@@ -125,10 +123,10 @@ export function NavFavorites() {
 													{favorite.companyName}
 												</Link>
 												<Button
-													intent="plain"
-													size="sq-xs"
+													variant="ghost"
+													size="icon-xs"
 													className="size-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-													onPress={() => handleUnfavorite(favorite.clientId)}
+													onClick={() => handleUnfavorite(favorite.clientId)}
 												>
 													<X className="size-3" />
 													<span className="sr-only">Remove from favorites</span>

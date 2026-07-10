@@ -11,8 +11,9 @@ import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/reui/badge";
 import {
 	Crown,
 	Users,
@@ -135,16 +136,15 @@ export default function SubscriptionPage() {
 			<div className="mx-auto py-8 px-4">
 				{/* Header */}
 				<div className="mb-8">
-					<StyledButton
+					<Button
 						onClick={() => router.push("/home")}
-						intent="outline"
+						variant="outline"
 						size="sm"
-						icon={<ArrowLeft className="w-4 h-4" />}
-						showArrow={false}
 						className="mb-6"
 					>
+						<ArrowLeft className="w-4 h-4" />
 						Back to Home
-					</StyledButton>
+					</Button>
 
 					<div className="flex items-center gap-4 mb-4">
 						{hasPremiumAccess ? (
@@ -178,13 +178,12 @@ export default function SubscriptionPage() {
 								You need to create an organization before managing
 								subscriptions.
 							</p>
-							<StyledButton
+							<Button
 								onClick={() => router.push("/organization/complete")}
-								intent="primary"
 								size="lg"
 							>
 								Create Organization
-							</StyledButton>
+							</Button>
 						</CardContent>
 					</Card>
 				) : (
@@ -220,11 +219,14 @@ export default function SubscriptionPage() {
 											</div>
 											<div className="flex items-center gap-3">
 												{hasPremiumAccess && (
-													<div className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30">
-														<span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-															ACTIVE
-														</span>
-													</div>
+													<Badge
+														variant="warning-light"
+														radius="full"
+														size="lg"
+														className="px-3 py-1"
+													>
+														ACTIVE
+													</Badge>
 												)}
 												{/* Subscription Details Button Inline */}
 												<SignedIn>
@@ -264,14 +266,10 @@ export default function SubscriptionPage() {
 															},
 														}}
 													>
-														<StyledButton
-															intent="outline"
-															size="sm"
-															icon={<Calendar className="h-3.5 w-3.5" />}
-															showArrow={false}
-														>
+														<Button variant="outline" size="sm">
+															<Calendar className="h-3.5 w-3.5" />
 															View Details
-														</StyledButton>
+														</Button>
 													</SubscriptionDetailsButton>
 												</SignedIn>
 											</div>
@@ -298,9 +296,9 @@ export default function SubscriptionPage() {
 													<div className="flex flex-col items-center gap-2">
 														<span>Free</span>
 														{!hasPremiumAccess && (
-															<span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+															<Badge variant="primary-light" radius="full">
 																Current
-															</span>
+															</Badge>
 														)}
 													</div>
 												</th>
@@ -309,9 +307,9 @@ export default function SubscriptionPage() {
 														<div className="flex items-center gap-1">
 															<span>Business</span>
 															{hasPremiumAccess && (
-																<span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+																<Badge variant="warning-light" radius="full">
 																	Current
-																</span>
+																</Badge>
 															)}
 														</div>
 														{!hasPremiumAccess && (
@@ -349,14 +347,10 @@ export default function SubscriptionPage() {
 																			},
 																		}}
 																	>
-																		<StyledButton
-																			intent="primary"
-																			size="sm"
-																			icon={<TrendingUp className="h-3 w-3" />}
-																			showArrow={false}
-																		>
+																		<Button size="sm">
+																			<TrendingUp className="h-3 w-3" />
 																			Buy Monthly Plan
-																		</StyledButton>
+																		</Button>
 																	</CheckoutButton>
 																</SignedIn>
 																<SignedIn>
@@ -392,14 +386,11 @@ export default function SubscriptionPage() {
 																			},
 																		}}
 																	>
-																		<StyledButton
-																			intent="warning"
-																			size="sm"
-																			icon={<Crown className="h-3 w-3" />}
-																			showArrow={false}
-																		>
+																		{/* TODO(reui-rebuild): warning button intent mapped to outline */}
+																		<Button variant="outline" size="sm">
+																			<Crown className="h-3 w-3" />
 																			Buy Annual Plan
-																		</StyledButton>
+																		</Button>
 																	</CheckoutButton>
 																</SignedIn>
 															</div>

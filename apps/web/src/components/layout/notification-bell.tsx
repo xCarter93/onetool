@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StyledEmpty } from "@/components/ui/styled";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	formatRelativeTime,
 	truncateText,
@@ -65,27 +65,29 @@ export function NotificationBell() {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					aria-label={
-						unreadCount > 0
-							? `Notifications, ${unreadCount} unread`
-							: "Notifications"
-					}
-					className="relative inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 data-[state=open]:bg-foreground/[0.08] data-[state=open]:text-foreground"
-				>
-					<Bell className="size-5" />
-					{unreadCount > 0 && (
-						<Badge
-							variant="destructive"
-							size="xs"
-							radius="full"
-							className="absolute right-1 top-1 ring-2 ring-sidebar"
-						>
-							{unreadCount > 9 ? "9+" : unreadCount}
-						</Badge>
-					)}
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						aria-label={
+							unreadCount > 0
+								? `Notifications, ${unreadCount} unread`
+								: "Notifications"
+						}
+						className="relative inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 data-[state=open]:bg-foreground/[0.08] data-[state=open]:text-foreground"
+					/>
+				}
+			>
+				<Bell className="size-5" />
+				{unreadCount > 0 && (
+					<Badge
+						variant="destructive"
+						size="xs"
+						radius="full"
+						className="absolute right-1 top-1 ring-2 ring-sidebar"
+					>
+						{unreadCount > 9 ? "9+" : unreadCount}
+					</Badge>
+				)}
 			</PopoverTrigger>
 			<PopoverContent
 				align="end"
@@ -126,7 +128,7 @@ export function NotificationBell() {
 							))}
 						</div>
 					) : notifications.length === 0 ? (
-						<StyledEmpty
+						<EmptyState
 							icon={<Bell />}
 							title="You're all caught up"
 							description="New notifications will appear here"

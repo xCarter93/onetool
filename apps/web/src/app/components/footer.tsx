@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Calendar } from "lucide-react";
 import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
 
@@ -72,14 +72,14 @@ export default function Footer() {
 						<h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-foreground mb-6">
 							Ready to simplify your business?
 						</h2>
-						<StyledButton
-							intent="outline"
+						<Button
+							variant="outline"
 							size="lg"
 							onClick={() => setIsScheduleDemoOpen(true)}
-							icon={<Calendar className="h-4 w-4" />}
 						>
+							<Calendar className="h-4 w-4" />
 							Schedule a Demo
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			</div>

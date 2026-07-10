@@ -202,6 +202,7 @@ export function FilterGroupsEditor({
 									<Select
 										value={rule.field}
 										onValueChange={(field) => {
+											if (!field) return;
 											const nextOperators = operatorsForField(objectType, field);
 											updateRule(groupIndex, ruleIndex, {
 												field,
@@ -227,6 +228,7 @@ export function FilterGroupsEditor({
 									<Select
 										value={rule.operator}
 										onValueChange={(op) =>
+											op &&
 											updateRule(groupIndex, ruleIndex, {
 												...rule,
 												operator: op as ConditionRule["operator"],
@@ -273,9 +275,9 @@ export function FilterGroupsEditor({
 					{group.rules.length < MAX_RULES_PER_GROUP && (
 						<Button
 							type="button"
-							intent="outline"
+							variant="outline"
 							size="sm"
-							onPress={() => addRule(groupIndex)}
+							onClick={() => addRule(groupIndex)}
 							className="w-full gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
 						>
 							<Plus className="h-3.5 w-3.5" /> Add rule
@@ -287,9 +289,9 @@ export function FilterGroupsEditor({
 			{groups.length < MAX_CONDITION_GROUPS && (
 				<Button
 					type="button"
-					intent="outline"
+					variant="outline"
 					size="sm"
-					onPress={addGroup}
+					onClick={addGroup}
 					className="w-full gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
 				>
 					<Plus className="h-3.5 w-3.5" /> Add {topLevelLogic ? "condition" : "filter"} group

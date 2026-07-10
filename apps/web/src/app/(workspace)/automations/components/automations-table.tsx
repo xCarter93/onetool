@@ -16,7 +16,8 @@ import {
 import { useRouter } from "next/navigation";
 import { ArrowRight, Pencil, Power, PowerOff, Search, Trash2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -28,17 +29,18 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import { DataGrid } from "@/components/ui/data-grid";
-import { DataGridTable } from "@/components/ui/data-grid-table";
-import { DataGridPagination } from "@/components/ui/data-grid-pagination";
-import { DataGridColumnHeader } from "@/components/ui/data-grid-column-header";
+import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
+import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-column-header";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { useToast } from "@/hooks/use-toast";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import { ManualRunButton } from "./manual-run-button";
 import {
-	STATUS_BADGE,
+	STATUS_BADGE_PROPS,
+	STATUS_LABEL,
 	actionNodeCount,
 	effectiveStatus,
 	formatObjectType,
@@ -208,14 +210,15 @@ export function AutomationsTable() {
 				size: 140,
 				cell: ({ row }) => {
 					const status = effectiveStatus(row.original);
-					const badge = STATUS_BADGE[status];
 					return (
 						<div className="flex items-center gap-2">
-							<Badge variant={badge.variant}>{badge.label}</Badge>
+							<StatusBadge status={status} {...STATUS_BADGE_PROPS[status]}>
+								{STATUS_LABEL[status]}
+							</StatusBadge>
 							<Button
-								intent="plain"
-								size="sq-sm"
-								onPress={() => handleToggle(row.original._id)}
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => handleToggle(row.original._id)}
 								aria-label={
 									status === "active"
 										? `Pause ${row.original.name}`
@@ -248,17 +251,17 @@ export function AutomationsTable() {
 							/>
 						)}
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={() => handleEdit(row.original._id)}
+							variant="outline"
+							size="icon-sm"
+							onClick={() => handleEdit(row.original._id)}
 							aria-label={`Edit ${row.original.name}`}
 						>
 							<Pencil className="size-4" />
 						</Button>
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={() =>
+							variant="outline"
+							size="icon-sm"
+							onClick={() =>
 								setPendingDelete({
 									id: row.original._id,
 									name: row.original.name,

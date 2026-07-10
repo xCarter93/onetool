@@ -22,9 +22,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
-import { Users, Building2, Globe, Upload, Check } from "lucide-react";
+import { Users, Building2, Globe, Upload, Check, Loader2 } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { ImportWizard } from "../../clients/import/components/import-wizard";
 import Image from "next/image";
 
@@ -665,15 +665,15 @@ export default function CompleteOrganizationMetadata() {
 						</div>
 
 						<div className="pt-2">
-							<StyledButton
-								intent="primary"
+							<Button
 								type="submit"
-								isLoading={createSubmitting}
 								disabled={createSubmitting || !orgListLoaded}
-								showArrow={false}
 							>
+								{createSubmitting && (
+									<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+								)}
 								Create Organization
-							</StyledButton>
+							</Button>
 						</div>
 					</form>
 				)}
@@ -893,15 +893,9 @@ export default function CompleteOrganizationMetadata() {
 			</div>
 
 			<div className="flex justify-end pt-6">
-				<StyledButton
-					type="button"
-					onClick={handleNext}
-					intent="primary"
-					size="md"
-					showArrow={false}
-				>
+				<Button type="button" onClick={handleNext}>
 					Next Step
-				</StyledButton>
+				</Button>
 			</div>
 		</div>
 	);
@@ -932,24 +926,12 @@ export default function CompleteOrganizationMetadata() {
 			</div>
 
 			<div className="flex justify-between pt-6">
-				<StyledButton
-					type="button"
-					onClick={handlePrevious}
-					intent="secondary"
-					size="md"
-					showArrow={false}
-				>
+				<Button type="button" onClick={handlePrevious} variant="secondary">
 					Previous
-				</StyledButton>
-				<StyledButton
-					type="button"
-					onClick={handleNext}
-					intent="primary"
-					size="md"
-					showArrow={false}
-				>
+				</Button>
+				<Button type="button" onClick={handleNext}>
 					Next Step
-				</StyledButton>
+				</Button>
 			</div>
 		</div>
 	);
@@ -1248,24 +1230,12 @@ export default function CompleteOrganizationMetadata() {
 			</div>
 
 			<div className="flex justify-between pt-6">
-				<StyledButton
-					type="button"
-					onClick={handlePrevious}
-					intent="secondary"
-					size="md"
-					showArrow={false}
-				>
+				<Button type="button" onClick={handlePrevious} variant="secondary">
 					Previous
-				</StyledButton>
-				<StyledButton
-					type="button"
-					onClick={handleNext}
-					intent="primary"
-					size="md"
-					showArrow={false}
-				>
+				</Button>
+				<Button type="button" onClick={handleNext}>
 					Next Step
-				</StyledButton>
+				</Button>
 			</div>
 		</div>
 	);
@@ -1302,12 +1272,13 @@ export default function CompleteOrganizationMetadata() {
 							Upload a CSV file to import clients in bulk
 						</p>
 					</div>
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() => setImportState("expanded")}
-						label="Import from CSV"
-					/>
+					>
+						Import from CSV
+					</Button>
 				</div>
 			)}
 
@@ -1336,25 +1307,22 @@ export default function CompleteOrganizationMetadata() {
 
 			{/* Action Buttons */}
 			<div className="flex justify-between pt-6">
-				<StyledButton
+				<Button
 					type="button"
 					onClick={handlePrevious}
-					intent="secondary"
-					size="md"
+					variant="secondary"
 					disabled={isLoading}
-					showArrow={false}
 				>
 					Previous
-				</StyledButton>
+				</Button>
 
 				<div className="flex gap-3">
-					<StyledButton
-						intent="primary"
-						onClick={handleCompleteSetup}
-						isLoading={isLoading}
-					>
+					<Button onClick={handleCompleteSetup} disabled={isLoading}>
+						{isLoading && (
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+						)}
 						{isLoading ? "Completing..." : "Complete Setup"}
-					</StyledButton>
+					</Button>
 				</div>
 			</div>
 		</div>

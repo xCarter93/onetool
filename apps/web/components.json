@@ -1,6 +1,6 @@
 {
 	"$schema": "https://ui.shadcn.com/schema.json",
-	"style": "new-york",
+	"style": "base-nova",
 	"rsc": true,
 	"tsx": true,
 	"tailwind": {
@@ -19,26 +19,10 @@
 		"hooks": "@/hooks"
 	},
 	"registries": {
-		"@intentui": "https://intentui.com/r/{name}",
-		"@kibo-ui": "https://www.kibo-ui.com/r/{name}.json",
 		"@reui": {
-			"url": "https://reui.io/r/radix-nova/{name}.json",
+			"url": "https://reui.io/r/base-nova/{name}.json",
 			"headers": {
 				"Authorization": "Bearer ${REUI_LICENSE_KEY}"
-			}
-		},
-		"@wigggle-ui": "https://wigggle-ui.vercel.app/r/{name}.json",
-		"@react-bits": "https://reactbits.dev/r/{name}.json",
-		"@reactbits-starter": {
-			"url": "https://pro.reactbits.dev/api/r/starter/{name}.json",
-			"headers": {
-				"Authorization": "Bearer ${REACTBITS_LICENSE_KEY}"
-			}
-		},
-		"@reactbits-pro": {
-			"url": "https://pro.reactbits.dev/api/r/pro/{name}.json",
-			"headers": {
-				"Authorization": "Bearer ${REACTBITS_LICENSE_KEY}"
 			}
 		}
 	}

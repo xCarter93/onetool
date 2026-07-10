@@ -66,23 +66,25 @@ export function CalendarEventIcon({
 	);
 
 	return (
-		<TooltipProvider>
-			<Tooltip delayDuration={300}>
-				<TooltipTrigger asChild>
-					<div
-						className={`
-							${colors.bg} ${colors.border} ${colors.text} ${colors.hover}
-							${sizeClasses[size]}
-							border-2 rounded-full
-							flex items-center justify-center
-							cursor-pointer transition-all
-							shadow-sm hover:shadow-md
-							hover:scale-110
-						`}
-					onClick={onClick}
+		<TooltipProvider delay={300}>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<div
+							className={`
+								${colors.bg} ${colors.border} ${colors.text} ${colors.hover}
+								${sizeClasses[size]}
+								border-2 rounded-full
+								flex items-center justify-center
+								cursor-pointer transition-all
+								shadow-sm hover:shadow-md
+								hover:scale-110
+							`}
+							onClick={onClick}
+						/>
+					}
 				>
 					{getStatusIcon()}
-				</div>
 				</TooltipTrigger>
 				<TooltipContent side="top" className="max-w-sm">
 					{tooltipContent}

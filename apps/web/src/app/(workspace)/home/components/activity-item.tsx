@@ -17,7 +17,7 @@ import {
 	TimelineSeparator,
 	TimelineContent,
 } from "@/components/reui/timeline";
-import { StyledStatusBadge } from "@/components/ui/styled";
+import { StatusBadge } from "@/components/domain/status-badge";
 import ActivityChangesTooltip, {
 	type FieldChange,
 } from "./activity-changes-tooltip";
@@ -538,12 +538,12 @@ function getActivityRenderParts(activity: ActivityItemType) {
 			{/* Inline badge */}
 			{label &&
 				(isSuccess || isFinancialStatus ? (
-					<StyledStatusBadge
+					<StatusBadge
 						role={isSuccess ? "success" : "warning"}
 						className="shrink-0"
 					>
 						{label}
-					</StyledStatusBadge>
+					</StatusBadge>
 				) : (
 					<span className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded shrink-0 bg-primary/10 text-primary">
 						{label}

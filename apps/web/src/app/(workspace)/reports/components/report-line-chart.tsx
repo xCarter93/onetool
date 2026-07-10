@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/chart";
 import { CHART_CATEGORICAL } from "@/lib/chart-colors";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
-import { ChartStripeDefs, stripeId } from "./chart-stripe-defs";
+import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 
 interface DataPoint {
 	name: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Rocket, X } from "lucide-react";
+import { Loader2, Rocket, X } from "lucide-react";
 import {
 	Alert,
 	AlertAction,
@@ -39,17 +39,17 @@ export function UnpublishedBanner({
 				className="pointer-events-auto w-full max-w-md shadow-lg"
 			>
 				<FramePanel className="overflow-hidden p-0!">
-					<Alert variant="violet" className="border-0 shadow-none">
+					<Alert variant="info" className="border-0 shadow-none">
 						<Rocket />
 						<AlertTitle>
 							{isPublished ? "Unpublished changes" : "Draft automation"}
 						</AlertTitle>
 						<AlertAction>
 							<Button
-								intent="plain"
-								size="sq-xs"
+								variant="ghost"
+								size="icon-xs"
 								className="-mt-1 -mr-1 text-muted-foreground hover:bg-transparent hover:text-foreground"
-								onPress={() => setDismissed(true)}
+								onClick={() => setDismissed(true)}
 								aria-label="Dismiss"
 							>
 								<X data-slot="icon" className="size-3.5" />
@@ -62,10 +62,14 @@ export function UnpublishedBanner({
 							<Button
 								size="xs"
 								className="mt-1.5 [--btn-bg:var(--color-violet-600)] [--btn-fg:white] [--btn-overlay:var(--color-violet-700)]"
-								onPress={onPublish}
-								isPending={isPublishing}
+								onClick={onPublish}
+								disabled={isPublishing}
 							>
-								<Rocket data-slot="icon" />
+								{isPublishing ? (
+									<Loader2 data-slot="icon" className="animate-spin" />
+								) : (
+									<Rocket data-slot="icon" />
+								)}
 								{publishLabel}
 							</Button>
 						</AlertDescription>

@@ -5,23 +5,17 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled/styled-select";
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import {
 	Sheet,
 	SheetContent,
@@ -38,6 +32,7 @@ import {
 	Building2,
 	FolderOpen,
 	Activity,
+	Loader2,
 } from "lucide-react";
 import { Task } from "@/types/task";
 
@@ -90,8 +85,6 @@ export function TaskSheet({
 		repeatUntil: undefined as Date | undefined,
 	});
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [datePopoverOpen, setDatePopoverOpen] = useState(false);
-	const [repeatUntilPopoverOpen, setRepeatUntilPopoverOpen] = useState(false);
 	const [internalOpen, setInternalOpen] = useState(false);
 
 	// Queries for form data
@@ -281,22 +274,22 @@ export function TaskSheet({
 							<label className="text-sm font-semibold text-foreground">
 								Task Type
 							</label>
-							<StyledSelect
+							<Select
 								value={formData.type}
 								onValueChange={(value) =>
 									handleInputChange("type", value as "internal" | "external")
 								}
 							>
-								<StyledSelectTrigger className="w-full">
+								<SelectTrigger className="w-full">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									<SelectItem value="external">
 										External (Client Task)
 									</SelectItem>
 									<SelectItem value="internal">Internal (Team Task)</SelectItem>
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 							<p className="text-xs text-muted-foreground">
 								{formData.type === "external"
 									? "External tasks require a client and can be linked to projects"
@@ -347,23 +340,23 @@ export function TaskSheet({
 									<Building2 className="h-4 w-4 text-primary" />
 									Client <span className="text-danger">*</span>
 								</label>
-								<StyledSelect
+								<Select<Id<"clients"> | "">
 									value={formData.clientId}
 									onValueChange={(value) =>
-										handleInputChange("clientId", value)
+										handleInputChange("clientId", value as string)
 									}
 								>
-									<StyledSelectTrigger className="w-full">
+									<SelectTrigger className="w-full">
 										<SelectValue placeholder="Select a client..." />
-									</StyledSelectTrigger>
-									<StyledSelectContent>
+									</SelectTrigger>
+									<SelectContent>
 										{clients?.map((client) => (
 											<SelectItem key={client._id} value={client._id}>
 												{client.companyName}
 											</SelectItem>
 										))}
-									</StyledSelectContent>
-								</StyledSelect>
+									</SelectContent>
+								</Select>
 							</div>
 						)}
 
@@ -377,27 +370,27 @@ export function TaskSheet({
 										(Optional)
 									</span>
 								</label>
-								<StyledSelect
+								<Select<Id<"projects"> | "">
 									value={formData.projectId}
 									onValueChange={(value) =>
-										handleInputChange("projectId", value)
+										handleInputChange("projectId", value as string)
 									}
 									disabled={!formData.clientId}
 								>
-									<StyledSelectTrigger
+									<SelectTrigger
 										className="w-full"
 										disabled={!formData.clientId}
 									>
 										<SelectValue placeholder="No project selected" />
-									</StyledSelectTrigger>
-									<StyledSelectContent>
+									</SelectTrigger>
+									<SelectContent>
 										{projects?.map((project) => (
 											<SelectItem key={project._id} value={project._id}>
 												{project.title}
 											</SelectItem>
 										))}
-									</StyledSelectContent>
-								</StyledSelect>
+									</SelectContent>
+								</Select>
 								{!formData.clientId && (
 									<p className="text-xs text-muted-foreground">
 										Select a client first to choose a project
@@ -412,40 +405,15 @@ export function TaskSheet({
 								<CalendarIcon className="h-4 w-4 text-primary" />
 								Date <span className="text-danger">*</span>
 							</label>
-							<Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-								<PopoverTrigger asChild>
-									<Button
-										intent="outline"
-										id="date-picker"
-										className="w-full justify-start font-normal"
-									>
-										<CalendarIcon className="mr-2 h-4 w-4" />
-										{formData.date
-											? formData.date.toLocaleDateString("en-US", {
-													year: "numeric",
-													month: "long",
-													day: "numeric",
-											  })
-											: "Select date"}
-									</Button>
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-auto p-0 bg-white dark:bg-gray-950"
-									align="start"
-								>
-									<Calendar
-										mode="single"
-										selected={formData.date}
-										onSelect={(date) => {
-											if (date) {
-												setFormData((prev) => ({ ...prev, date }));
-												setDatePopoverOpen(false);
-											}
-										}}
-										className="bg-white! dark:bg-gray-950!"
-									/>
-								</PopoverContent>
-							</Popover>
+							<DatePicker
+								id="date-picker"
+								value={formData.date}
+								onChange={(date) => {
+									if (date) {
+										setFormData((prev) => ({ ...prev, date }));
+									}
+								}}
+							/>
 						</div>
 
 						{/* Status */}
@@ -454,21 +422,23 @@ export function TaskSheet({
 								<Activity className="h-4 w-4 text-primary" />
 								Status
 							</label>
-							<StyledSelect
+							<Select
 								value={formData.status}
-								onValueChange={(value) => handleInputChange("status", value)}
+								onValueChange={(value) =>
+									handleInputChange("status", value as string)
+								}
 							>
-								<StyledSelectTrigger className="w-full">
+								<SelectTrigger className="w-full">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{statusOptions.map((option) => (
 										<SelectItem key={option.value} value={option.value}>
 											{option.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						</div>
 
 						{/* Assignee */}
@@ -477,23 +447,23 @@ export function TaskSheet({
 								<User className="h-4 w-4 text-primary" />
 								Assign To
 							</label>
-							<StyledSelect
+							<Select
 								value={formData.assigneeUserId || undefined}
 								onValueChange={(value) =>
-									handleInputChange("assigneeUserId", value)
+									handleInputChange("assigneeUserId", value as string)
 								}
 							>
-								<StyledSelectTrigger className="w-full">
+								<SelectTrigger className="w-full">
 									<SelectValue placeholder="Unassigned" />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{users?.map((user) => (
 										<SelectItem key={user._id} value={user._id}>
 											{user.name || user.email}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						</div>
 
 						{/* Repeat Options */}
@@ -505,21 +475,23 @@ export function TaskSheet({
 								<label className="text-xs font-medium text-foreground">
 									Repeat
 								</label>
-								<StyledSelect
+								<Select
 									value={formData.repeat}
-									onValueChange={(value) => handleInputChange("repeat", value)}
+									onValueChange={(value) =>
+										handleInputChange("repeat", value as string)
+									}
 								>
-									<StyledSelectTrigger className="w-full">
+									<SelectTrigger className="w-full">
 										<SelectValue />
-									</StyledSelectTrigger>
-									<StyledSelectContent>
+									</SelectTrigger>
+									<SelectContent>
 										{repeatOptions.map((option) => (
 											<SelectItem key={option.value} value={option.value}>
 												{option.label}
 											</SelectItem>
 										))}
-									</StyledSelectContent>
-								</StyledSelect>
+									</SelectContent>
+								</Select>
 							</div>
 
 							{formData.repeat !== "none" && (
@@ -530,54 +502,27 @@ export function TaskSheet({
 									>
 										Repeat Until <span className="text-danger">*</span>
 									</Label>
-									<Popover
-										open={repeatUntilPopoverOpen}
-										onOpenChange={setRepeatUntilPopoverOpen}
-									>
-										<PopoverTrigger asChild>
-											<Button
-												intent="outline"
-												id="repeat-until-picker"
-												className="w-full justify-start font-normal"
-											>
-												<CalendarIcon className="mr-2 h-4 w-4" />
-												{formData.repeatUntil
-													? formData.repeatUntil.toLocaleDateString("en-US", {
-															year: "numeric",
-															month: "long",
-															day: "numeric",
-													  })
-													: "Select end date"}
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent
-											className="w-auto p-0 bg-white dark:bg-gray-950"
-											align="start"
-										>
-											<Calendar
-												mode="single"
-												selected={formData.repeatUntil}
-												onSelect={(date) => {
-													if (date) {
-														setFormData((prev) => ({
-															...prev,
-															repeatUntil: date,
-														}));
-														setRepeatUntilPopoverOpen(false);
-													}
-												}}
-												disabled={(date) => {
-													if (!formData.date) return false;
-													const taskDate = new Date(formData.date);
-													taskDate.setHours(0, 0, 0, 0);
-													const checkDate = new Date(date);
-													checkDate.setHours(0, 0, 0, 0);
-													return checkDate < taskDate;
-												}}
-												className="bg-white! dark:bg-gray-950!"
-											/>
-										</PopoverContent>
-									</Popover>
+									<DatePicker
+										id="repeat-until-picker"
+										value={formData.repeatUntil}
+										onChange={(date) => {
+											if (date) {
+												setFormData((prev) => ({
+													...prev,
+													repeatUntil: date,
+												}));
+											}
+										}}
+										placeholder="Select end date"
+										disabledDates={(date) => {
+											if (!formData.date) return false;
+											const taskDate = new Date(formData.date);
+											taskDate.setHours(0, 0, 0, 0);
+											const checkDate = new Date(date);
+											checkDate.setHours(0, 0, 0, 0);
+											return checkDate < taskDate;
+										}}
+									/>
 								</div>
 							)}
 						</div>
@@ -585,37 +530,36 @@ export function TaskSheet({
 				</div>
 
 				<SheetFooter className="flex flex-row justify-end gap-3 border-t border-border shrink-0">
-					<StyledButton
+					<Button
 						type="button"
-						intent="outline"
+						variant="outline"
 						onClick={handleClose}
 						disabled={isSubmitting}
-						label="Cancel"
-						showArrow={false}
-					/>
-					<StyledButton
+					>
+						Cancel
+					</Button>
+					<Button
 						type="button"
-						intent="primary"
 						onClick={() => handleSubmit()}
-						isLoading={isSubmitting}
 						disabled={
 							isSubmitting ||
 							!formData.title.trim() ||
 							(formData.type === "external" && !formData.clientId) ||
 							(formData.repeat !== "none" && !formData.repeatUntil)
 						}
-						label={
-							isSubmitting
-								? isEditMode
-									? "Updating..."
-									: "Creating..."
-								: isEditMode
-								? "Update Task"
-								: "Create Task"
-						}
 						className="min-w-[120px]"
-						showArrow={false}
-					/>
+					>
+						{isSubmitting && (
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+						)}
+						{isSubmitting
+							? isEditMode
+								? "Updating..."
+								: "Creating..."
+							: isEditMode
+							? "Update Task"
+							: "Create Task"}
+					</Button>
 				</SheetFooter>
 			</div>
 		</SheetContent>
@@ -625,7 +569,7 @@ export function TaskSheet({
 	if (trigger) {
 		return (
 			<Sheet open={internalOpen} onOpenChange={setInternalOpen}>
-				<SheetTrigger asChild>{trigger}</SheetTrigger>
+				<SheetTrigger render={trigger as React.ReactElement} />
 				{sheetContent}
 			</Sheet>
 		);

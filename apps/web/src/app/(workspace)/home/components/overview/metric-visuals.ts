@@ -7,7 +7,7 @@ import {
 	Users,
 	type LucideIcon,
 } from "lucide-react";
-import type { MetricDatum } from "@/components/line-chart-6";
+import type { MetricDatum } from "@/app/(workspace)/home/components/overview/metric-types";
 
 /** Display order of the Overview metrics (Revenue leads as the default hero). */
 export const OVERVIEW_METRIC_ORDER = [

@@ -5,20 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-	StyledBadge,
-	StyledButton,
-	StyledTable,
-	StyledTableBody,
-	StyledTableCell,
-	StyledTableHead,
-	StyledTableHeader,
-	StyledTableRow,
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled";
-import { StyledFilters } from "@/components/ui/styled/styled-filters";
-import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
+import { FiltersWithClear } from "@/components/filters/radius-full";
+import { StatusBadge } from "@/components/domain/status-badge";
+import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -29,9 +23,14 @@ import {
 	FrameTitle,
 } from "@/components/reui/frame";
 import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
+import {
 	ColumnDef,
 	SortingState,
-	flexRender,
 	getCoreRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
@@ -40,8 +39,6 @@ import {
 import {
 	Archive,
 	CheckCircle2,
-	ChevronLeft,
-	ChevronRight,
 	ExternalLink,
 	Eye,
 	Filter as FilterIcon,
@@ -132,34 +129,6 @@ const statusDot: Record<ClientKanbanStatus, string> = {
 	lead: "bg-amber-500",
 	active: "bg-emerald-500",
 	inactive: "bg-muted-foreground/50",
-};
-
-const statusToBadgeVariant = (status: Client["status"]) => {
-	switch (status) {
-		case "Active":
-			return "default" as const;
-		case "Prospect":
-			return "secondary" as const;
-		case "Paused":
-			return "outline" as const;
-		case "Archived":
-			return "outline" as const;
-		default:
-			return "outline" as const;
-	}
-};
-
-const kanbanStatusToBadgeVariant = (status: ClientKanbanStatus) => {
-	switch (status) {
-		case "active":
-			return "default" as const;
-		case "lead":
-			return "secondary" as const;
-		case "inactive":
-			return "outline" as const;
-		default:
-			return "outline" as const;
-	}
 };
 
 const formatKanbanStatus = (status: ClientKanbanStatus) => {
@@ -275,11 +244,23 @@ const createColumns = (
 	{
 		accessorKey: "status",
 		header: "Status",
-		cell: ({ row }) => (
-			<StyledBadge variant={statusToBadgeVariant(row.original.status)}>
-				{row.original.status}
-			</StyledBadge>
-		),
+		cell: ({ row }) => {
+			const status = row.original.status;
+			return (
+				<StatusBadge
+					status={status.toLowerCase()}
+					appearance={
+						status === "Active"
+							? "solid"
+							: status === "Prospect"
+								? "soft"
+								: "outline"
+					}
+				>
+					{status}
+				</StatusBadge>
+			);
+		},
 	},
 	{
 		id: "actions",
@@ -291,26 +272,26 @@ const createColumns = (
 				onClick={(e) => e.stopPropagation()}
 			>
 				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() => onPreview(row.original.id)}
+					variant="outline"
+					size="icon-sm"
+					onClick={() => onPreview(row.original.id)}
 					aria-label={`Preview client ${row.original.name}`}
 				>
 					<Eye className="size-4" />
 				</Button>
 				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() => router.push(`/clients/${row.original.id}`)}
+					variant="outline"
+					size="icon-sm"
+					onClick={() => router.push(`/clients/${row.original.id}`)}
 					aria-label={`Open client ${row.original.name}`}
 				>
 					<ExternalLink className="size-4" />
 				</Button>
 				{isArchivedTab ? (
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={() => onRestore(row.original.id, row.original.name)}
+						variant="outline"
+						size="icon-sm"
+						onClick={() => onRestore(row.original.id, row.original.name)}
 						className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
 						aria-label={`Restore client ${row.original.name}`}
 					>
@@ -318,9 +299,9 @@ const createColumns = (
 					</Button>
 				) : (
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={() => onDelete(row.original.id, row.original.name)}
+						variant="outline"
+						size="icon-sm"
+						onClick={() => onDelete(row.original.id, row.original.name)}
 						className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
 						aria-label={`Archive client ${row.original.name}`}
 					>
@@ -341,63 +322,46 @@ function ActiveEmptyState({
 }) {
 	const { canPerform, reason, currentUsage, limit } = gate;
 	return (
-		<div className="px-6 py-12 text-center">
-			<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-				<Users className="h-12 w-12 text-muted-foreground" />
-			</div>
-			<h3 className="mb-2 text-lg font-semibold text-foreground">
-				No clients yet
-			</h3>
-			<p className="mx-auto mb-6 max-w-sm text-muted-foreground">
-				Create your first client to start organizing relationships and tracking
-				activity.
-			</p>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<span className="inline-block">
-						<StyledButton
-							intent="primary"
-							size="md"
-							onClick={onAdd}
-							disabled={!canPerform}
-							icon={<Plus className="h-4 w-4" />}
-						>
+		<EmptyState
+			size="md"
+			icon={<Users />}
+			title="No clients yet"
+			description="Create your first client to start organizing relationships and tracking activity."
+			action={
+				<Tooltip>
+					<TooltipTrigger render={<span className="inline-block" />}>
+						<Button onClick={onAdd} disabled={!canPerform}>
+							<Plus className="h-4 w-4" />
 							Add Your First Client
-						</StyledButton>
-					</span>
-				</TooltipTrigger>
-				{!canPerform && (
-					<TooltipContent>
-						<div className="space-y-1">
-							<p className="font-semibold">Upgrade Required</p>
-							<p>{reason || "You've reached your client limit"}</p>
-							{limit && limit !== "unlimited" && currentUsage !== undefined && (
-								<p className="text-muted-foreground">
-									{currentUsage}/{limit} clients
-								</p>
-							)}
-						</div>
-					</TooltipContent>
-				)}
-			</Tooltip>
-		</div>
+						</Button>
+					</TooltipTrigger>
+					{!canPerform && (
+						<TooltipContent>
+							<div className="space-y-1">
+								<p className="font-semibold">Upgrade Required</p>
+								<p>{reason || "You've reached your client limit"}</p>
+								{limit && limit !== "unlimited" && currentUsage !== undefined && (
+									<p className="text-muted-foreground">
+										{currentUsage}/{limit} clients
+									</p>
+								)}
+							</div>
+						</TooltipContent>
+					)}
+				</Tooltip>
+			}
+		/>
 	);
 }
 
 function ArchivedEmptyState() {
 	return (
-		<div className="px-6 py-12 text-center">
-			<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-				<Archive className="h-12 w-12 text-muted-foreground" />
-			</div>
-			<h3 className="mb-2 text-lg font-semibold text-foreground">
-				No archived clients
-			</h3>
-			<p className="mx-auto max-w-sm text-muted-foreground">
-				Clients you archive will appear here for seven days before being
-				permanently deleted.
-			</p>
-		</div>
+		<EmptyState
+			size="md"
+			icon={<Archive />}
+			title="No archived clients"
+			description="Clients you archive will appear here for seven days before being permanently deleted."
+		/>
 	);
 }
 
@@ -665,7 +629,7 @@ export default function ClientsPage() {
 
 	const filtersBar = (
 		<div className="border-b px-4 py-3">
-			<StyledFilters
+			<FiltersWithClear
 				filters={filters}
 				fields={filterFields}
 				onChange={setFilters}
@@ -673,6 +637,7 @@ export default function ClientsPage() {
 				addButtonIcon={<FilterIcon className="h-4 w-4" />}
 				size="md"
 				variant="outline"
+				radius="full"
 				showClearButton={true}
 				clearButtonText="Clear"
 				clearButtonIcon={<X className="h-4 w-4" />}
@@ -716,7 +681,7 @@ export default function ClientsPage() {
 										</p>
 									</div>
 								</div>
-								<StyledBadge variant="outline">{columnItems.length}</StyledBadge>
+								<Badge variant="outline">{columnItems.length}</Badge>
 							</KanbanHeader>
 							<KanbanCards id={column.id}>
 								{(item: ClientKanbanItem) => (
@@ -742,12 +707,19 @@ export default function ClientsPage() {
 												<p className="text-foreground line-clamp-2 text-sm font-medium">
 													{item.name}
 												</p>
-												<StyledBadge
-													variant={kanbanStatusToBadgeVariant(item.column)}
+												<StatusBadge
+													status={item.column}
+													appearance={
+														item.column === "active"
+															? "solid"
+															: item.column === "inactive"
+																? "outline"
+																: "soft"
+													}
 													className="shrink-0"
 												>
 													{formatKanbanStatus(item.column)}
-												</StyledBadge>
+												</StatusBadge>
 											</div>
 											<p className="text-muted-foreground truncate text-xs">
 												{item.activeProjects === 0
@@ -790,52 +762,9 @@ export default function ClientsPage() {
 
 	const clientsTable = (
 		<div className="overflow-x-auto">
-			<StyledTable>
-				<StyledTableHeader>
-					{table.getHeaderGroups().map((headerGroup) => (
-						<StyledTableRow key={headerGroup.id}>
-							{headerGroup.headers.map((header) => (
-								<StyledTableHead key={header.id}>
-									{header.isPlaceholder
-										? null
-										: flexRender(
-												header.column.columnDef.header,
-												header.getContext()
-											)}
-								</StyledTableHead>
-							))}
-						</StyledTableRow>
-					))}
-				</StyledTableHeader>
-				<StyledTableBody>
-					{table.getRowModel().rows?.length ? (
-						table.getRowModel().rows.map((row) => (
-							<StyledTableRow
-								key={row.id}
-								className="cursor-pointer"
-								onClick={() => openPreview(row.original.id)}
-							>
-								{row.getVisibleCells().map((cell) => (
-									<StyledTableCell key={cell.id}>
-										{flexRender(cell.column.columnDef.cell, cell.getContext())}
-									</StyledTableCell>
-								))}
-							</StyledTableRow>
-						))
-					) : (
-						<StyledTableRow>
-							<StyledTableCell
-								colSpan={columns.length}
-								className="h-24 text-center"
-							>
-								{isArchivedTab
-									? "No archived clients match your filters."
-									: "No clients match your filters."}
-							</StyledTableCell>
-						</StyledTableRow>
-					)}
-				</StyledTableBody>
-			</StyledTable>
+			<DataGridContainer className="rounded-lg border">
+				<DataGridTable />
+			</DataGridContainer>
 		</div>
 	);
 
@@ -853,18 +782,15 @@ export default function ClientsPage() {
 				</div>
 				<div className="flex gap-2">
 					<Tooltip>
-						<TooltipTrigger asChild>
-							<span className="inline-block">
-								<StyledButton
-									intent="outline"
-									size="md"
-									onClick={() => router.push("/clients/import")}
-									disabled={!hasPremiumAccess}
-								>
-									<Upload className="h-4 w-4" />
-									Import Clients
-								</StyledButton>
-							</span>
+						<TooltipTrigger render={<span className="inline-block" />}>
+							<Button
+								variant="outline"
+								onClick={() => router.push("/clients/import")}
+								disabled={!hasPremiumAccess}
+							>
+								<Upload className="h-4 w-4" />
+								Import Clients
+							</Button>
 						</TooltipTrigger>
 						{!hasPremiumAccess && (
 							<TooltipContent>
@@ -877,26 +803,19 @@ export default function ClientsPage() {
 					</Tooltip>
 
 					<Tooltip>
-						<TooltipTrigger asChild>
-							<span className="inline-block">
-								<StyledButton
-									intent="primary"
-									size="md"
-									onClick={handleAddClient}
-									disabled={!canPerform}
-									icon={<Plus className="h-4 w-4" />}
-								>
-									Add Client
-									{!canPerform &&
-										gate.limit &&
-										gate.limit !== "unlimited" &&
-										gate.currentUsage !== undefined && (
-											<Badge variant="secondary" className="ml-1 text-xs">
-												{gate.currentUsage}/{gate.limit}
-											</Badge>
-										)}
-								</StyledButton>
-							</span>
+						<TooltipTrigger render={<span className="inline-block" />}>
+							<Button onClick={handleAddClient} disabled={!canPerform}>
+								<Plus className="h-4 w-4" />
+								Add Client
+								{!canPerform &&
+									gate.limit &&
+									gate.limit !== "unlimited" &&
+									gate.currentUsage !== undefined && (
+										<Badge variant="secondary" className="ml-1 text-xs">
+											{gate.currentUsage}/{gate.limit}
+										</Badge>
+									)}
+							</Button>
 						</TooltipTrigger>
 						{!canPerform && (
 							<TooltipContent>
@@ -967,7 +886,7 @@ export default function ClientsPage() {
 								className="pl-9"
 							/>
 						</div>
-						<StyledSegmentedControl
+						<SegmentedControl
 							className="shrink-0"
 							value={viewMode}
 							onValueChange={(v) => {
@@ -1000,93 +919,83 @@ export default function ClientsPage() {
 					</div>
 				</FrameHeader>
 
-				<FramePanel className="p-0">
-					{isLoading ? (
-						<div className="p-4">
-							<div className="space-y-4">
-								{[...Array(5)].map((_, i) => (
-									<div key={i} className="flex items-center space-x-4 p-4">
-										<div className="flex-1 space-y-2">
-											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+				<DataGrid
+					table={table}
+					recordCount={searchedData.length}
+					onRowClick={(row) => openPreview(row.id)}
+					emptyMessage={
+						isArchivedTab
+							? "No archived clients match your filters."
+							: "No clients match your filters."
+					}
+					tableLayout={{
+						width: "auto",
+						headerBackground: true,
+					}}
+				>
+					<FramePanel className="p-0">
+						{isLoading ? (
+							<div className="p-4">
+								<div className="space-y-4">
+									{[...Array(5)].map((_, i) => (
+										<div key={i} className="flex items-center space-x-4 p-4">
+											<div className="flex-1 space-y-2">
+												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+											</div>
+											<div className="h-4 bg-muted rounded animate-pulse w-16" />
+											<div className="h-4 bg-muted rounded animate-pulse w-20" />
+											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
 										</div>
-										<div className="h-4 bg-muted rounded animate-pulse w-16" />
-										<div className="h-4 bg-muted rounded animate-pulse w-20" />
-										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
-									</div>
-								))}
+									))}
+								</div>
 							</div>
-						</div>
-					) : viewMode === "kanban" ? (
-						isActiveEmpty ? (
-							<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
-						) : (
-							<>
-								{filtersBar}
-								{kanbanBoard}
-							</>
-						)
-					) : (
-						<StyledTabs value={activeTab} onValueChange={handleTabChange}>
-							<div className="px-4 pt-4">
-								<StyledTabsList className="overflow-x-auto">
-									<StyledTabsTrigger value="active">
-										Active Clients
-									</StyledTabsTrigger>
-									<StyledTabsTrigger value="archived">
-										Archived Clients
-									</StyledTabsTrigger>
-								</StyledTabsList>
-							</div>
-							{currentTabEmpty ? (
-								isArchivedTab ? (
-									<ArchivedEmptyState />
-								) : (
-									<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
-								)
+						) : viewMode === "kanban" ? (
+							isActiveEmpty ? (
+								<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
 							) : (
 								<>
 									{filtersBar}
-									{clientsTable}
+									{kanbanBoard}
 								</>
-							)}
-						</StyledTabs>
-					)}
-				</FramePanel>
-
-				{showFooter && (
-					<FrameFooter className="flex-row items-center justify-between">
-						<div className="text-muted-foreground text-sm">
-							{footerShown} of {footerTotal} clients
-						</div>
-						{viewMode === "table" ? (
-							<div className="flex items-center gap-2">
-								<Button
-									intent="outline"
-									size="sq-sm"
-									onPress={() => table.previousPage()}
-									isDisabled={!table.getCanPreviousPage()}
-									aria-label="Previous page"
-								>
-									<ChevronLeft className="size-4" />
-								</Button>
-								<div className="text-sm font-medium">
-									Page {table.getState().pagination?.pageIndex + 1} of{" "}
-									{Math.max(table.getPageCount(), 1)}
+							)
+						) : (
+							<PillTabs value={activeTab} onValueChange={handleTabChange}>
+								<div className="px-4 pt-4">
+									<PillTabsList className="overflow-x-auto">
+										<PillTabsTrigger value="active">
+											Active Clients
+										</PillTabsTrigger>
+										<PillTabsTrigger value="archived">
+											Archived Clients
+										</PillTabsTrigger>
+									</PillTabsList>
 								</div>
-								<Button
-									intent="outline"
-									size="sq-sm"
-									onPress={() => table.nextPage()}
-									isDisabled={!table.getCanNextPage()}
-									aria-label="Next page"
-								>
-									<ChevronRight className="size-4" />
-								</Button>
+								{currentTabEmpty ? (
+									isArchivedTab ? (
+										<ArchivedEmptyState />
+									) : (
+										<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
+									)
+								) : (
+									<>
+										{filtersBar}
+										{clientsTable}
+									</>
+								)}
+							</PillTabs>
+						)}
+					</FramePanel>
+
+					{showFooter && (
+						<FrameFooter className="flex-row items-center justify-between">
+							<div className="text-muted-foreground text-sm">
+								{footerShown} of {footerTotal} clients
 							</div>
-						) : null}
-					</FrameFooter>
-				)}
+							{viewMode === "table" ? <DataGridPagination /> : null}
+						</FrameFooter>
+					)}
+				</DataGrid>
 			</Frame>
 
 			{/* Detail preview drawer */}

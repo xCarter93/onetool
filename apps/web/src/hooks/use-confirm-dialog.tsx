@@ -183,15 +183,23 @@ export const ConfirmDialogProvider: React.FC<ConfirmDialogProviderProps> = ({
 
 						<div className="flex justify-end space-x-3">
 							<Button
-								onPress={handleCancel}
-								intent="secondary"
+								onClick={handleCancel}
+								variant="secondary"
 								autoFocus={variant !== "destructive"}
 							>
 								{options.cancelLabel || "Cancel"}
 							</Button>
 							<Button
-								onPress={handleConfirm}
-								intent={styles.buttonIntent}
+								onClick={handleConfirm}
+								// TODO(reui-rebuild): "warning" intent has no base-nova Button
+								// variant equivalent; falling back to outline per mapping table.
+								variant={
+									styles.buttonIntent === "primary"
+										? "default"
+										: styles.buttonIntent === "warning"
+											? "outline"
+											: styles.buttonIntent
+								}
 								autoFocus={variant === "destructive"}
 							>
 								{options.confirmLabel || "Confirm"}

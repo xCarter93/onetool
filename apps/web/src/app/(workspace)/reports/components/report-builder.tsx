@@ -8,6 +8,7 @@ import {
 	ChartColumn,
 	Filter,
 	ListTree,
+	Loader2,
 	Save,
 	Sparkles,
 	X,
@@ -28,7 +29,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
 	Popover,
-	PopoverArrow,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
@@ -39,14 +39,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import {
-	StyledMultiSelector,
-	StyledTabs,
-	StyledTabsContent,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+	PillTabs,
+	PillTabsContent,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ReportPreview } from "./report-preview";
@@ -293,9 +292,9 @@ export function ReportBuilder({
 			{/* Top strip — spans rail + canvas; pt clears the header notch (~48px) */}
 			<div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 pb-3 pt-3 lg:pt-7">
 				<Button
-					intent="plain"
-					size="sq-sm"
-					onPress={onBack}
+					variant="ghost"
+					size="icon-sm"
+					onClick={onBack}
 					aria-label={mode === "edit" ? "Cancel editing" : "Back to reports"}
 				>
 					<ArrowLeft className="h-4 w-4" />
@@ -317,17 +316,18 @@ export function ReportBuilder({
 					/>
 				</div>
 				<AddChartControl value={vizType} groupBy={groupBy} onChange={setVizType} />
-				<StyledButton
-					intent="primary"
+				<Button
 					size="sm"
-					showArrow={false}
 					onClick={handleSave}
 					disabled={!name.trim() || saving}
-					isLoading={saving}
-					icon={<Save className="h-4 w-4" />}
 				>
+					{saving ? (
+						<Loader2 className="h-4 w-4 animate-spin" />
+					) : (
+						<Save className="h-4 w-4" />
+					)}
 					{mode === "edit" ? "Save changes" : "Save report"}
-				</StyledButton>
+				</Button>
 			</div>
 
 			{/* Body — config rail + chart canvas */}
@@ -335,16 +335,16 @@ export function ReportBuilder({
 				{/* Config rail */}
 				<aside className="flex shrink-0 flex-col gap-6 border-b border-border/60 bg-background/50 px-4 py-5 lg:h-full lg:w-80 lg:overflow-y-auto lg:border-b-0 lg:border-r">
 					{/* Outline / Filters tab strip */}
-					<StyledTabs
+					<PillTabs
 						value={configTab}
 						onValueChange={(v) => setConfigTab(v as "outline" | "filters")}
 					>
-						<StyledTabsList className="w-full">
-							<StyledTabsTrigger value="outline">
+						<PillTabsList className="w-full">
+							<PillTabsTrigger value="outline">
 								<ListTree className="size-3.5" />
 								Outline
-							</StyledTabsTrigger>
-							<StyledTabsTrigger value="filters">
+							</PillTabsTrigger>
+							<PillTabsTrigger value="filters">
 								<Filter className="size-3.5" />
 								Filters
 								{activeFilterCount > 0 && (
@@ -352,15 +352,16 @@ export function ReportBuilder({
 										{activeFilterCount}
 									</span>
 								)}
-							</StyledTabsTrigger>
-						</StyledTabsList>
+							</PillTabsTrigger>
+						</PillTabsList>
 
-						<StyledTabsContent value="outline" className="mt-4 space-y-4">
+						<PillTabsContent value="outline" className="mt-4 space-y-4">
 							<div className="space-y-1.5">
 								<Label className="text-xs">Source</Label>
 								<Select
 									value={entityType}
 									onValueChange={(v) => {
+										if (!v) return;
 										setEntityType(v as EntityType);
 										const first = groupByOptions[v]?.[0]?.value;
 										if (first) setGroupBy(first);
@@ -393,6 +394,7 @@ export function ReportBuilder({
 								<Select
 									value={dateRangePreset}
 									onValueChange={(value) => {
+										if (!value) return;
 										setDateRangePreset(value);
 										if (value !== "custom") setCustomDateRange(undefined);
 									}}
@@ -425,6 +427,7 @@ export function ReportBuilder({
 								<Select
 									value={groupBy ?? NO_GROUP_BY}
 									onValueChange={(v) => {
+										if (!v) return;
 										const next = v === NO_GROUP_BY ? undefined : v;
 										setGroupBy(next);
 										// A legacy-only groupBy only ever ran through the hardcoded
@@ -485,7 +488,7 @@ export function ReportBuilder({
 
 							<div className={cn("space-y-1.5", vizType !== "table" && "opacity-60")}>
 								<Label className="text-xs">Columns</Label>
-								<StyledMultiSelector
+								<MultiSelector
 									options={Object.entries(REPORT_FIELDS[entityType].fields).map(
 										([field, def]) => ({ label: def.label, value: field })
 									)}
@@ -507,24 +510,24 @@ export function ReportBuilder({
 									Columns appear in the table view.
 								</p>
 							</div>
-						</StyledTabsContent>
+						</PillTabsContent>
 
-						<StyledTabsContent value="filters" className="mt-4">
+						<PillTabsContent value="filters" className="mt-4">
 							<ReportFiltersEditor
 								entityType={entityType}
 								filters={filters}
 								onChange={setFilters}
 							/>
-						</StyledTabsContent>
-					</StyledTabs>
+						</PillTabsContent>
+					</PillTabs>
 
 					{/* NL report building lives in the assistant panel (createReport tool). */}
 					{openAssistant && (
 						<section className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
-								onPress={openAssistant}
+								onClick={openAssistant}
 								className="w-full"
 							>
 								<Sparkles className="h-4 w-4 text-primary" data-slot="icon" />
@@ -603,20 +606,21 @@ export function AddChartControl({
 	return (
 		<div className="flex items-center gap-2">
 			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						showArrow={false}
-						disabled={disabled}
-						icon={<TriggerIcon className="h-4 w-4" />}
-						title={disabled ? "Group your data to add a chart." : undefined}
-					>
-						{triggerLabel}
-					</StyledButton>
+				<PopoverTrigger
+					render={
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={disabled}
+							title={disabled ? "Group your data to add a chart." : undefined}
+						/>
+					}
+				>
+					<TriggerIcon className="h-4 w-4" />
+					{triggerLabel}
 				</PopoverTrigger>
+				{/* TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented. */}
 				<PopoverContent side="bottom" align="end" sideOffset={8} className="w-60">
-					<PopoverArrow />
 					<div className="grid grid-cols-3 gap-1.5">
 						{chartVizOptions.map((opt) => {
 							const Icon = opt.icon;

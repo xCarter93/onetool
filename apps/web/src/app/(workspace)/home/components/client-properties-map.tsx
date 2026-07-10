@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/map";
 import { MapDetailSidebar } from "./map-detail-sidebar";
 import type { PropertyDetails } from "./map-detail-sidebar";
-import { StyledEmpty } from "@/components/ui/styled";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { Badge } from "@/components/reui/badge";
 import { MapPin } from "lucide-react";
@@ -195,7 +195,7 @@ export default function ClientPropertiesMap({
 							{/* Empty State */}
 							{properties.length === 0 && (
 								<div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-									<StyledEmpty
+									<EmptyState
 										icon={<MapPin />}
 										title="No properties mapped"
 										description="Add addresses to client properties to see them here."

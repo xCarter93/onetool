@@ -185,7 +185,7 @@ export function TriggerConfigPanel({
 					<PanelField label="Trigger event">
 						<Select
 							value={triggerType}
-							onValueChange={handleTriggerTypeChange}
+							onValueChange={(value) => value && handleTriggerTypeChange(value)}
 						>
 							<SelectTrigger>
 								<SelectValue placeholder="Choose an event" />
@@ -219,7 +219,10 @@ export function TriggerConfigPanel({
 								: undefined
 						}
 					>
-						<Select value={objectType} onValueChange={handleObjectTypeChange}>
+						<Select
+							value={objectType}
+							onValueChange={(value) => value && handleObjectTypeChange(value)}
+						>
 							<SelectTrigger>
 								<SelectValue />
 							</SelectTrigger>
@@ -241,7 +244,8 @@ export function TriggerConfigPanel({
 									onValueChange={(value) =>
 										onTriggerChange({
 											...currentTrigger,
-											fromStatus: value === "any" ? undefined : value,
+											fromStatus:
+												!value || value === "any" ? undefined : value,
 										})
 									}
 								>
@@ -263,6 +267,7 @@ export function TriggerConfigPanel({
 								<Select
 									value={currentTrigger.toStatus || ""}
 									onValueChange={(value) =>
+										value &&
 										onTriggerChange({ ...currentTrigger, toStatus: value })
 									}
 								>
@@ -286,7 +291,7 @@ export function TriggerConfigPanel({
 							<PanelField label="Repeats">
 								<Select
 									value={schedule?.frequency ?? "daily"}
-									onValueChange={handleFrequencyChange}
+									onValueChange={(value) => value && handleFrequencyChange(value)}
 								>
 									<SelectTrigger>
 										<SelectValue />

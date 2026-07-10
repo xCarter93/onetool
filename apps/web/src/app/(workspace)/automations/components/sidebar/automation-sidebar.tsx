@@ -239,9 +239,9 @@ export function AutomationSidebar({
 							{onDeleteNode && "nodeId" in mode && (
 								<div className="pt-6 border-t border-border">
 									<Button
-										intent="destructive"
+										variant="destructive"
 										className="w-full"
-										onPress={() => onDeleteNode(mode.nodeId)}
+										onClick={() => onDeleteNode(mode.nodeId)}
 									>
 										Delete Node
 									</Button>
@@ -280,9 +280,9 @@ export function AutomationSidebar({
 				<div className="flex items-center justify-between px-6 py-5 border-b border-border">
 					<span className="text-lg font-semibold">{title}</span>
 					<Button
-						intent="plain"
-						size="sq-sm"
-						onPress={onClose}
+						variant="ghost"
+						size="icon-sm"
+						onClick={onClose}
 						aria-label="Close sidebar"
 					>
 						<X className="h-4 w-4" />

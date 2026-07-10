@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -146,28 +146,26 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 								className="flex flex-col gap-0.5 px-5 pb-3"
 							>
 								<Item
-									asChild
+									render={<Label className="cursor-pointer" />}
 									className={cn(
 										"w-full min-w-0 cursor-pointer flex-nowrap items-center px-0.5 py-1.5 text-left transition-colors duration-150",
 										activeCategory === ALL_PRESET_CATEGORY ? "bg-accent/50" : "hover:bg-accent/50"
 									)}
 								>
-									<Label className="cursor-pointer">
-										<RadioGroupItem value={ALL_PRESET_CATEGORY} className="sr-only" />
-										<ItemMedia className="self-center">
-											<Item className={cn("size-9 items-center justify-center p-0", ALL_TONE_BOX)}>
-												<LayoutGrid className="h-4 w-4" />
-											</Item>
-										</ItemMedia>
-										<ItemContent className="min-w-0 flex-1 gap-0.5">
-											<ItemTitle className="text-sm font-medium leading-tight">
-												All presets
-											</ItemTitle>
-											<ItemDescription className="mt-0.5 text-xs text-muted-foreground">
-												Every ready-made report
-											</ItemDescription>
-										</ItemContent>
-									</Label>
+									<RadioGroupItem value={ALL_PRESET_CATEGORY} className="sr-only" />
+									<ItemMedia className="self-center">
+										<Item className={cn("size-9 items-center justify-center p-0", ALL_TONE_BOX)}>
+											<LayoutGrid className="h-4 w-4" />
+										</Item>
+									</ItemMedia>
+									<ItemContent className="min-w-0 flex-1 gap-0.5">
+										<ItemTitle className="text-sm font-medium leading-tight">
+											All presets
+										</ItemTitle>
+										<ItemDescription className="mt-0.5 text-xs text-muted-foreground">
+											Every ready-made report
+										</ItemDescription>
+									</ItemContent>
 								</Item>
 
 								{PRESET_CATEGORIES.map((category) => {
@@ -176,33 +174,31 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 									return (
 										<Item
 											key={category.id}
-											asChild
+											render={<Label className="cursor-pointer" />}
 											className={cn(
 												"w-full min-w-0 cursor-pointer flex-nowrap items-center px-0.5 py-1.5 text-left transition-colors duration-150",
 												isActive ? "bg-accent/50" : "hover:bg-accent/50"
 											)}
 										>
-											<Label className="cursor-pointer">
-												<RadioGroupItem value={category.id} className="sr-only" />
-												<ItemMedia className="self-center">
-													<Item
-														className={cn(
-															"size-9 items-center justify-center p-0",
-															TONE_BOX[category.tone]
-														)}
-													>
-														<Icon className="h-4 w-4" />
-													</Item>
-												</ItemMedia>
-												<ItemContent className="min-w-0 flex-1 gap-0.5">
-													<ItemTitle className="text-sm font-medium leading-tight">
-														{category.label}
-													</ItemTitle>
-													<ItemDescription className="mt-0.5 text-xs text-muted-foreground">
-														{category.note}
-													</ItemDescription>
-												</ItemContent>
-											</Label>
+											<RadioGroupItem value={category.id} className="sr-only" />
+											<ItemMedia className="self-center">
+												<Item
+													className={cn(
+														"size-9 items-center justify-center p-0",
+														TONE_BOX[category.tone]
+													)}
+												>
+													<Icon className="h-4 w-4" />
+												</Item>
+											</ItemMedia>
+											<ItemContent className="min-w-0 flex-1 gap-0.5">
+												<ItemTitle className="text-sm font-medium leading-tight">
+													{category.label}
+												</ItemTitle>
+												<ItemDescription className="mt-0.5 text-xs text-muted-foreground">
+													{category.note}
+												</ItemDescription>
+											</ItemContent>
 										</Item>
 									);
 								})}
@@ -271,11 +267,10 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 					</span>
 
 					<div className="flex items-center gap-2">
-						<StyledButton intent="outline" size="sm" showArrow={false} onClick={goBlank}>
+						<Button variant="outline" size="sm" onClick={goBlank}>
 							Start blank
-						</StyledButton>
-						<StyledButton
-							intent="primary"
+						</Button>
+						<Button
 							size="sm"
 							disabled={!selected}
 							onClick={() => {
@@ -283,7 +278,7 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 							}}
 						>
 							Use preset
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			</div>

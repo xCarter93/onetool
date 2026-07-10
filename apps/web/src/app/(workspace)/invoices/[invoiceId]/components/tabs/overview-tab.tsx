@@ -1,17 +1,19 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledCard, StyledCardContent } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
+import { GlassCard, GlassCardContent } from "@/components/shared/glass-card";
+import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import {
+	ColumnDef,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { Settings, ClipboardList, DollarSign, CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -34,6 +36,36 @@ interface OverviewTabProps {
 	};
 }
 
+const columns: ColumnDef<Doc<"invoiceLineItems">>[] = [
+	{
+		accessorKey: "description",
+		header: "Description",
+		meta: { cellClassName: "font-medium" },
+		cell: ({ row }) => row.original.description,
+	},
+	{
+		accessorKey: "quantity",
+		header: "Qty",
+		meta: { headerClassName: "text-center", cellClassName: "text-center" },
+		cell: ({ row }) => row.original.quantity,
+	},
+	{
+		accessorKey: "unitPrice",
+		header: "Unit Price",
+		meta: { headerClassName: "text-right", cellClassName: "text-right" },
+		cell: ({ row }) => formatCurrency(row.original.unitPrice),
+	},
+	{
+		accessorKey: "total",
+		header: "Total",
+		meta: {
+			headerClassName: "text-right",
+			cellClassName: "text-right font-medium",
+		},
+		cell: ({ row }) => formatCurrency(row.original.total),
+	},
+];
+
 export function OverviewTab({
 	invoice,
 	invoiceId,
@@ -41,13 +73,18 @@ export function OverviewTab({
 	paymentSummary,
 }: OverviewTabProps) {
 	const router = useRouter();
+	const table = useReactTable({
+		data: lineItems ?? [],
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+	});
 
 	return (
 		<div className="space-y-8">
 			{/* Summary Cards */}
 			<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				<StyledCard>
-					<StyledCardContent className="flex items-center gap-3 p-4">
+				<GlassCard>
+					<GlassCardContent className="flex items-center gap-3 p-4">
 						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 							<DollarSign className="h-5 w-5 text-primary" />
 						</div>
@@ -59,11 +96,11 @@ export function OverviewTab({
 								Total Amount
 							</p>
 						</div>
-					</StyledCardContent>
-				</StyledCard>
+					</GlassCardContent>
+				</GlassCard>
 
-				<StyledCard>
-					<StyledCardContent className="flex items-center gap-3 p-4">
+				<GlassCard>
+					<GlassCardContent className="flex items-center gap-3 p-4">
 						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 							<CreditCard className="h-5 w-5 text-primary" />
 						</div>
@@ -77,8 +114,8 @@ export function OverviewTab({
 									: ""}
 							</p>
 						</div>
-					</StyledCardContent>
-				</StyledCard>
+					</GlassCardContent>
+				</GlassCard>
 			</div>
 
 			{/* Line Items Section */}
@@ -87,61 +124,32 @@ export function OverviewTab({
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Line Items
 					</h3>
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() =>
 							router.push(
 								`/invoices/${invoiceId}/lineEditor`
 							)
 						}
-						icon={<Settings className="h-4 w-4" />}
-						label="Edit Line Items"
-						showArrow={false}
-					/>
+					>
+						<Settings className="h-4 w-4" />
+						Edit Line Items
+					</Button>
 				</div>
 				<Separator className="mb-4" />
 
 				{lineItems && lineItems.length > 0 ? (
 					<>
-						<div className="overflow-hidden rounded-lg border">
-							<Table>
-								<TableHeader className="bg-muted">
-									<TableRow>
-										<TableHead>Description</TableHead>
-										<TableHead className="text-center">
-											Qty
-										</TableHead>
-										<TableHead className="text-right">
-											Unit Price
-										</TableHead>
-										<TableHead className="text-right">
-											Total
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{lineItems.map((item) => (
-										<TableRow key={item._id}>
-											<TableCell className="font-medium">
-												{item.description}
-											</TableCell>
-											<TableCell className="text-center">
-												{item.quantity}
-											</TableCell>
-											<TableCell className="text-right">
-												{formatCurrency(
-													item.unitPrice
-												)}
-											</TableCell>
-											<TableCell className="text-right font-medium">
-												{formatCurrency(item.total)}
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</div>
+						<DataGrid
+							table={table}
+							recordCount={lineItems.length}
+							tableLayout={{ width: "auto", headerBackground: true }}
+						>
+							<DataGridContainer className="rounded-lg border">
+								<DataGridTable />
+							</DataGridContainer>
+						</DataGrid>
 
 						{/* Totals */}
 						<div className="mt-6 space-y-2">

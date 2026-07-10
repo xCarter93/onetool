@@ -9,22 +9,18 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TaskSheet } from "@/components/shared/task-sheet";
+import { Badge } from "@/components/ui/badge";
+import { FiltersWithClear } from "@/components/filters/radius-full";
+import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
-	StyledBadge,
-	StyledButton,
-	StyledTable,
-	StyledTableBody,
-	StyledTableCell,
-	StyledTableHead,
-	StyledTableHeader,
-	StyledTableRow,
-	StyledFilters,
-	type Filter,
-	type FilterFieldConfig,
-} from "@/components/ui/styled";
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import {
 	ColumnDef,
-	flexRender,
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
@@ -220,7 +216,7 @@ function createColumns(
 					return <span className="text-sm text-muted-foreground">—</span>;
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
@@ -228,7 +224,7 @@ function createColumns(
 						<span className="truncate max-w-[120px]">
 							{client.companyName}
 						</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		},
@@ -242,13 +238,13 @@ function createColumns(
 					return <span className="text-sm text-muted-foreground">—</span>;
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
 						<FolderOpen className="h-3 w-3 text-primary" />
 						<span className="truncate max-w-[120px]">{project.title}</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		},
@@ -264,7 +260,7 @@ function createColumns(
 					);
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
@@ -272,7 +268,7 @@ function createColumns(
 						<span className="truncate max-w-[100px]">
 							{assignee.name || assignee.email}
 						</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		},
@@ -327,61 +323,27 @@ function GroupTable({
 		<div className="mb-6">
 			{/* Group header */}
 			<div className="flex items-center gap-2 px-4 py-2 mb-1">
-				<StyledBadge variant={group.variant} className="text-xs">
+				<Badge variant={group.variant} className="text-xs">
 					{group.label}
-				</StyledBadge>
+				</Badge>
 				<span className="text-xs text-muted-foreground">
 					{group.tasks.length} {group.tasks.length === 1 ? "task" : "tasks"}
 				</span>
 			</div>
 
 			{/* Table for this group */}
-			<div className="overflow-hidden rounded-lg border">
-				<StyledTable>
-					<StyledTableHeader>
-						{table.getHeaderGroups().map((headerGroup) => (
-							<StyledTableRow key={headerGroup.id}>
-								{headerGroup.headers.map((header) => (
-									<StyledTableHead
-										key={header.id}
-										style={
-											header.column.getSize() !== 150
-												? { width: header.column.getSize() }
-												: undefined
-										}
-									>
-										{header.isPlaceholder
-											? null
-											: flexRender(
-													header.column.columnDef.header,
-													header.getContext()
-												)}
-									</StyledTableHead>
-								))}
-							</StyledTableRow>
-						))}
-					</StyledTableHeader>
-					<StyledTableBody>
-						{table.getRowModel().rows.map((row) => (
-							<StyledTableRow
-								key={row.id}
-								className={cn(
-									row.original.status === "completed" && "opacity-60"
-								)}
-							>
-								{row.getVisibleCells().map((cell) => (
-									<StyledTableCell key={cell.id}>
-										{flexRender(
-											cell.column.columnDef.cell,
-											cell.getContext()
-										)}
-									</StyledTableCell>
-								))}
-							</StyledTableRow>
-						))}
-					</StyledTableBody>
-				</StyledTable>
-			</div>
+			<DataGrid
+				table={table}
+				recordCount={group.tasks.length}
+				tableLayout={{ width: "auto", headerBackground: true }}
+				rowClassName={(task) =>
+					task.status === "completed" ? "opacity-60" : undefined
+				}
+			>
+				<DataGridContainer className="rounded-lg border">
+					<DataGridTable />
+				</DataGridContainer>
+			</DataGrid>
 		</div>
 	);
 }
@@ -673,18 +635,17 @@ export default function TasksPage() {
 				<TaskSheet
 					mode="create"
 					trigger={
-						<StyledButton
-							label="New Task"
-							icon={<Plus className="h-4 w-4" />}
-							intent="primary"
-						/>
+						<Button>
+							<Plus className="h-4 w-4" />
+							New Task
+						</Button>
 					}
 				/>
 			</div>
 
 			{/* Filters and Search */}
 			<div className="flex flex-col sm:flex-row gap-4 items-start">
-				<StyledFilters
+				<FiltersWithClear
 					filters={filters}
 					fields={filterFields}
 					onChange={setFilters}
@@ -692,6 +653,7 @@ export default function TasksPage() {
 					addButtonIcon={<FilterIcon className="h-4 w-4" />}
 					size="md"
 					variant="outline"
+					radius="full"
 					showClearButton={true}
 					clearButtonText="Clear"
 					clearButtonIcon={<X className="h-4 w-4" />}
@@ -708,13 +670,10 @@ export default function TasksPage() {
 				</div>
 
 				{searchQuery.trim() !== "" && filters.length === 0 && (
-					<StyledButton
-						label="Clear"
-						icon={<X className="h-4 w-4" />}
-						intent="outline"
-						onClick={() => setSearchQuery("")}
-						showArrow={false}
-					/>
+					<Button variant="outline" onClick={() => setSearchQuery("")}>
+						<X className="h-4 w-4" />
+						Clear
+					</Button>
 				)}
 			</div>
 
@@ -745,33 +704,29 @@ export default function TasksPage() {
 				</div>
 			) : (
 				<div className="bg-card rounded-lg border">
-					<div className="text-center py-12">
-						<div className="space-y-4">
-							<div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full">
-								<Calendar className="h-8 w-8 text-muted-foreground" />
-							</div>
-							<div className="space-y-2">
-								<h3 className="text-lg font-medium">No tasks found</h3>
-								<p className="text-muted-foreground max-w-md mx-auto">
-									{searchQuery || filters.length > 0
-										? "No tasks match your current filters or search. Try adjusting your filters or clearing them."
-										: "You haven't created any tasks yet. Create your first task to get started."}
-								</p>
-							</div>
-							{!searchQuery && filters.length === 0 && (
+					<EmptyState
+						size="md"
+						icon={<Calendar />}
+						title="No tasks found"
+						description={
+							searchQuery || filters.length > 0
+								? "No tasks match your current filters or search. Try adjusting your filters or clearing them."
+								: "You haven't created any tasks yet. Create your first task to get started."
+						}
+						action={
+							!searchQuery && filters.length === 0 ? (
 								<TaskSheet
 									mode="create"
 									trigger={
-										<StyledButton
-											label="Create Your First Task"
-											icon={<Plus className="h-4 w-4" />}
-											intent="primary"
-										/>
+										<Button>
+											<Plus className="h-4 w-4" />
+											Create Your First Task
+										</Button>
 									}
 								/>
-							)}
-						</div>
-					</div>
+							) : undefined
+						}
+					/>
 				</div>
 			)}
 

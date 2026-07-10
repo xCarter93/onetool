@@ -3,11 +3,11 @@
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { ActivityWithUser } from "@/app/(workspace)/home/components/activity-item";
 import {
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-	StyledTabsContent,
-} from "@/components/ui/styled";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+	PillTabsContent,
+} from "@/components/shared/pill-tabs";
 import { OverviewTab } from "./tabs/overview-tab";
 import { SignaturesTab } from "./tabs/signatures-tab";
 import { ActivityTab } from "./tabs/activity-tab";
@@ -114,35 +114,35 @@ export function QuoteDetailTabs({
 	};
 
 	return (
-		<StyledTabs value={activeTab} onValueChange={onTabChange}>
+		<PillTabs value={activeTab} onValueChange={onTabChange}>
 			{/* Two-column layout: tabs + content on left, sidebar on right */}
 			<div className="flex gap-0">
 				{/* Left: Tabs list + tab content */}
 				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
-					<StyledTabsList className="overflow-x-auto">
-						<StyledTabsTrigger value="overview">
+					<PillTabsList className="overflow-x-auto">
+						<PillTabsTrigger value="overview">
 							Overview
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="signatures">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="signatures">
 							Signatures
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="approval-audit">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="approval-audit">
 							Approval Audit
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="activity">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="activity">
 							Activity
-						</StyledTabsTrigger>
-					</StyledTabsList>
+						</PillTabsTrigger>
+					</PillTabsList>
 
-					<StyledTabsContent value="overview" className="mt-0 pt-5">
+					<PillTabsContent value="overview" className="mt-0 pt-5">
 						<OverviewTab
 							quote={quote}
 							quoteId={quoteId}
 							lineItems={lineItems}
 						/>
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent
+					<PillTabsContent
 						value="signatures"
 						className="mt-0 pt-5"
 					>
@@ -156,9 +156,9 @@ export function QuoteDetailTabs({
 							primaryContact={primaryContact}
 							documentsWithSignatures={documentsWithSignatures}
 						/>
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent
+					<PillTabsContent
 						value="approval-audit"
 						className="mt-0 pt-5"
 					>
@@ -166,11 +166,11 @@ export function QuoteDetailTabs({
 							quoteId={quoteId}
 							documentsWithSignatures={documentsWithSignatures}
 						/>
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="activity" className="mt-0 pt-5">
+					<PillTabsContent value="activity" className="mt-0 pt-5">
 						<ActivityTab activities={activities} />
-					</StyledTabsContent>
+					</PillTabsContent>
 				</div>
 
 				{/* Right: Persistent sidebar (desktop) */}
@@ -185,6 +185,6 @@ export function QuoteDetailTabs({
 			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
 				<QuoteDetailSidebar {...sidebarProps} />
 			</div>
-		</StyledTabs>
+		</PillTabs>
 	);
 }

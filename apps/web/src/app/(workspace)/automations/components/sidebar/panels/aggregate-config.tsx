@@ -100,6 +100,7 @@ export function AggregateConfigPanel({
 									onValueChange={(sourceNodeId) =>
 										// Reset the field when the source changes so it can't
 										// reference a field from the previous object type.
+										sourceNodeId &&
 										commit({ ...config, sourceNodeId, field: "" })
 									}
 								>
@@ -123,7 +124,7 @@ export function AggregateConfigPanel({
 								<Select
 									value={config.field}
 									disabled={!sourceObjectType}
-									onValueChange={(field) => commit({ ...config, field })}
+									onValueChange={(field) => field && commit({ ...config, field })}
 								>
 									<SelectTrigger>
 										<SelectValue

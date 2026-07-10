@@ -5,9 +5,16 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { CheckCircle2, ExternalLink, Plus, Receipt, Send } from "lucide-react";
+import {
+	CheckCircle2,
+	ExternalLink,
+	Loader2,
+	Plus,
+	Receipt,
+	Send,
+} from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -16,7 +23,7 @@ import {
 	TimelineSeparator,
 	TimelineTitle,
 } from "@/components/reui/timeline";
-import { StyledButton } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
 	Select,
@@ -48,17 +55,6 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 	cancelled: "Cancelled",
 };
 
-const STATUS_BADGE: Record<
-	InvoiceStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	draft: "secondary",
-	sent: "warning-light",
-	paid: "success-light",
-	overdue: "destructive-light",
-	cancelled: "secondary",
-};
-
 // Status options offered in the drawer's editable control. "overdue" is a
 // computed state, so it only appears when the invoice is currently overdue.
 const STATUS_ORDER: InvoiceStatus[] = ["draft", "sent", "paid", "cancelled"];
@@ -70,18 +66,6 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 	refunded: "Refunded",
 	overdue: "Overdue",
 	cancelled: "Cancelled",
-};
-
-const PAYMENT_STATUS_BADGE: Record<
-	PaymentStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	pending: "secondary",
-	sent: "warning-light",
-	paid: "success-light",
-	refunded: "secondary",
-	overdue: "destructive-light",
-	cancelled: "secondary",
 };
 
 function formatDate(ts: number | null | undefined): string {
@@ -189,35 +173,30 @@ export function InvoiceDetailDrawer({
 			title={title}
 			badge={
 				invoice && effectiveStatus ? (
-					<Badge variant={STATUS_BADGE[effectiveStatus]} size="lg">
+					<StatusBadge status={effectiveStatus} size="lg">
 						{STATUS_LABEL[effectiveStatus]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={data ? (client?.companyName ?? "No client") : undefined}
 			actions={
 				<>
 					{canMarkPaid ? (
-						<StyledButton
-							intent="primary"
-							size="sm"
-							icon={<CheckCircle2 className="size-3.5" />}
-							label="Mark paid"
-							showArrow={false}
-							disabled={pending}
-							onClick={handleMarkPaid}
-						/>
+						<Button size="sm" disabled={pending} onClick={handleMarkPaid}>
+							<CheckCircle2 className="size-3.5" />
+							Mark paid
+						</Button>
 					) : null}
 					{effectiveStatus === "draft" ? (
-						<StyledButton
-							intent="outline"
+						<Button
+							variant="outline"
 							size="sm"
-							icon={<Send className="size-3.5" />}
-							label="Send"
-							showArrow={false}
 							disabled={pending}
 							onClick={handleSend}
-						/>
+						>
+							<Send className="size-3.5" />
+							Send
+						</Button>
 					) : null}
 					<TaskSheet
 						mode="create"
@@ -226,23 +205,20 @@ export function InvoiceDetailDrawer({
 							clientId: client?._id,
 						}}
 						trigger={
-							<StyledButton
-								intent="outline"
-								size="sm"
-								icon={<Plus className="size-3.5" />}
-								label="Add Task"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm">
+								<Plus className="size-3.5" />
+								Add Task
+							</Button>
 						}
 					/>
-					<StyledButton
-						intent={canMarkPaid ? "outline" : "primary"}
+					<Button
+						variant={canMarkPaid ? "outline" : "default"}
 						size="sm"
-						icon={<ExternalLink className="size-3.5" />}
-						label="Open invoice"
-						showArrow={false}
 						onClick={openRecord}
-					/>
+					>
+						<ExternalLink className="size-3.5" />
+						Open invoice
+					</Button>
 				</>
 			}
 		>
@@ -264,9 +240,9 @@ export function InvoiceDetailDrawer({
 							<span className="text-foreground text-3xl font-semibold tabular-nums">
 								{formatCurrency(invoice.total)}
 							</span>
-							<Badge variant={STATUS_BADGE[effectiveStatus]} size="lg">
+							<StatusBadge status={effectiveStatus} size="lg">
 								{STATUS_LABEL[effectiveStatus]}
-							</Badge>
+							</StatusBadge>
 						</div>
 						<div className="flex flex-col gap-1.5">
 							<Progress
@@ -313,12 +289,9 @@ export function InvoiceDetailDrawer({
 											</span>
 										</div>
 										<div className="flex shrink-0 items-center gap-2">
-											<Badge
-												variant={PAYMENT_STATUS_BADGE[payment.status]}
-												size="lg"
-											>
+											<StatusBadge status={payment.status} size="lg">
 												{PAYMENT_STATUS_LABEL[payment.status]}
-											</Badge>
+											</StatusBadge>
 											<span className="text-foreground text-sm font-medium tabular-nums">
 												{formatCurrency(payment.paymentAmount)}
 											</span>
@@ -443,14 +416,10 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						label={saving ? "Saving…" : "Save"}
-						showArrow={false}
-						disabled={saving}
-						onClick={handleSave}
-					/>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
+						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{saving ? "Saving…" : "Save"}
+					</Button>
 				) : null}
 			</div>
 			{dirty ? (

@@ -156,7 +156,10 @@ export function CsvMappingPreview({
 										<Select
 											value={mapping.schemaField}
 											onValueChange={(value) =>
-												onMappingChange(mapping.csvColumn, value)
+												onMappingChange(
+													mapping.csvColumn,
+													typeof value === "string" ? value : ""
+												)
 											}
 										>
 											<SelectTrigger className="w-full max-w-xs bg-background">

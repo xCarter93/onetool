@@ -7,7 +7,7 @@ import { CalendarMonthView } from "./calendar-month-view";
 import { CalendarWeekView } from "./calendar-week-view";
 import { CalendarDayView } from "./calendar-day-view";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { StyledSegmentedControl } from "@/components/ui/styled";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import {
 	ChevronLeft,
 	ChevronRight,
@@ -223,7 +223,7 @@ export function CalendarContainer() {
 					</div>
 
 					{/* View Switcher */}
-					<StyledSegmentedControl
+					<SegmentedControl
 						value={view}
 						onValueChange={setView}
 						options={[

@@ -114,7 +114,7 @@ export default function ActivityChangesTooltip({
 
 	return (
 		<Tooltip>
-			<TooltipTrigger asChild>{children}</TooltipTrigger>
+			<TooltipTrigger render={children as React.ReactElement} />
 			<TooltipContent side="top" className="max-w-72 p-3">
 				<p className="text-xs font-semibold text-foreground mb-2">
 					Field Changes

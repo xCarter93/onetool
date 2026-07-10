@@ -4,11 +4,11 @@ import { useState } from "react";
 import { MentionInput } from "./mention-input";
 import { MentionFeed } from "./mention-feed";
 import {
-	StyledCard,
-	StyledCardHeader,
-	StyledCardTitle,
-	StyledCardContent,
-} from "@/components/ui/styled";
+	GlassCard,
+	GlassCardHeader,
+	GlassCardTitle,
+	GlassCardContent,
+} from "@/components/shared/glass-card";
 import { MessageSquare } from "lucide-react";
 
 interface MentionSectionProps {
@@ -76,14 +76,14 @@ export function MentionSection({
 	}
 
 	return (
-		<StyledCard>
-			<StyledCardHeader>
+		<GlassCard>
+			<GlassCardHeader>
 				{headerContent}
-			</StyledCardHeader>
-			<StyledCardContent className="space-y-6">
+			</GlassCardHeader>
+			<GlassCardContent className="space-y-6">
 				{bodyContent}
-			</StyledCardContent>
-		</StyledCard>
+			</GlassCardContent>
+		</GlassCard>
 	);
 }
 

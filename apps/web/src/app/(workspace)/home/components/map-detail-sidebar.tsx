@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { X, MapPin } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 interface PropertyDetails {
 	id: string;
@@ -71,17 +71,15 @@ export function MapDetailSidebar({
 						<hr className="border-border my-3" />
 
 						{/* View Client CTA */}
-						<StyledButton
-							intent="primary"
+						<Button
 							size="sm"
 							className="w-full"
 							onClick={() =>
 								router.push(`/clients/${property.clientId}`)
 							}
-							showArrow={false}
 						>
 							View Client
-						</StyledButton>
+						</Button>
 					</motion.div>
 				</div>
 			)}

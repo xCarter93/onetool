@@ -77,7 +77,9 @@ export function LoopConfigPanel({
 							<PanelField label="Records to loop over">
 								<Select
 									value={config.sourceNodeId}
-									onValueChange={(sourceNodeId) => commit({ ...config, sourceNodeId })}
+									onValueChange={(sourceNodeId) =>
+										sourceNodeId && commit({ ...config, sourceNodeId })
+									}
 								>
 									<SelectTrigger>
 										<SelectValue placeholder="Choose a Find records step" />

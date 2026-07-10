@@ -111,7 +111,7 @@ export default function RevenueGoalSetter() {
 					</div>
 					{!isEditing && (
 						<Button
-							intent="plain"
+							variant="ghost"
 							size="sm"
 							onClick={handleEdit}
 							className="text-muted-foreground hover:text-foreground transition-colors"
@@ -144,9 +144,9 @@ export default function RevenueGoalSetter() {
 							<Button
 								onClick={handleSave}
 								size="sm"
-								intent="primary"
+								variant="default"
 								className="flex-1 bg-success hover:bg-success/90 text-white"
-								isDisabled={
+								disabled={
 									!tempValue ||
 									isNaN(parseFloat(tempValue.replace(/,/g, ""))) ||
 									isSaving
@@ -158,7 +158,7 @@ export default function RevenueGoalSetter() {
 							<Button
 								onClick={handleCancel}
 								size="sm"
-								intent="outline"
+								variant="outline"
 								className="flex-1"
 							>
 								<XMarkIcon className="w-4 h-4 mr-1" />

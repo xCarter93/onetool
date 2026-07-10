@@ -6,7 +6,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Table,
@@ -17,7 +17,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Input } from "@/components/ui/input";
 import {
 	FileText,
@@ -65,21 +64,6 @@ const formatCurrency = (amount: number) => {
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 0,
 	}).format(amount);
-};
-
-const statusVariant = (status: string) => {
-	switch (status) {
-		case "paid":
-			return "default" as const;
-		case "sent":
-			return "secondary" as const;
-		case "overdue":
-		case "cancelled":
-			return "destructive" as const;
-		case "draft":
-		default:
-			return "outline" as const;
-	}
 };
 
 export default function InvoiceLineEditorPage() {
@@ -333,9 +317,9 @@ export default function InvoiceLineEditorPage() {
 				<div className="flex items-center justify-between mb-8">
 					<div className="flex items-center gap-4">
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={handleCancel}
+							variant="outline"
+							size="icon-sm"
+							onClick={handleCancel}
 							aria-label="Go back"
 						>
 							<ArrowLeft className="h-4 w-4" />
@@ -349,9 +333,18 @@ export default function InvoiceLineEditorPage() {
 									<h1 className="text-3xl font-bold text-gray-900 dark:text-white">
 										Invoice Line Editor
 									</h1>
-									<Badge variant={statusVariant(invoice.status)}>
+									<StatusBadge
+										status={invoice.status}
+										appearance={
+											invoice.status === "paid"
+												? "solid"
+												: invoice.status === "draft"
+													? "outline"
+													: "soft"
+										}
+									>
 										{formatStatus(invoice.status)}
-									</Badge>
+									</StatusBadge>
 								</div>
 								<p className="text-muted-foreground text-sm mt-1">
 									{invoice.invoiceNumber || `#${invoice._id.slice(-6)}`} •{" "}
@@ -362,14 +355,10 @@ export default function InvoiceLineEditorPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-3">
-						<StyledButton
-							intent="primary"
-							size="sm"
-							onClick={handleSaveInvoice}
-							disabled={!hasChanges}
-							icon={<Save className="h-4 w-4" />}
-							label="Save Changes"
-						/>
+						<Button size="sm" onClick={handleSaveInvoice} disabled={!hasChanges}>
+							<Save className="h-4 w-4" />
+							Save Changes
+						</Button>
 					</div>
 				</div>
 
@@ -440,9 +429,9 @@ export default function InvoiceLineEditorPage() {
 													: `${allLineItems.length} line item${allLineItems.length !== 1 ? "s" : ""} configured`}
 											</div>
 											<Button
-												intent="outline"
+												variant="outline"
 												size="sm"
-												onPress={handleAddLineItem}
+												onClick={handleAddLineItem}
 											>
 												<Plus className="h-4 w-4 mr-2" />
 												Add Line Item
@@ -518,9 +507,9 @@ export default function InvoiceLineEditorPage() {
 														-{formatCurrency(totals.discountAmount)}
 													</span>
 													<Button
-														intent="outline"
-														size="sq-sm"
-														onPress={handleRemoveDiscount}
+														variant="outline"
+														size="icon-sm"
+														onClick={handleRemoveDiscount}
 														aria-label="Remove discount"
 														className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
 													>
@@ -534,9 +523,9 @@ export default function InvoiceLineEditorPage() {
 													Discount:
 												</span>
 												<Button
-													intent="outline"
+													variant="outline"
 													size="sm"
-													onPress={handleAddDiscount}
+													onClick={handleAddDiscount}
 													className="text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20"
 												>
 													Add Discount
@@ -575,9 +564,9 @@ export default function InvoiceLineEditorPage() {
 														{formatCurrency(totals.taxAmount)}
 													</span>
 													<Button
-														intent="outline"
-														size="sq-sm"
-														onPress={handleRemoveTax}
+														variant="outline"
+														size="icon-sm"
+														onClick={handleRemoveTax}
 														aria-label="Remove tax"
 														className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
 													>
@@ -591,9 +580,9 @@ export default function InvoiceLineEditorPage() {
 													Tax:
 												</span>
 												<Button
-													intent="outline"
+													variant="outline"
 													size="sm"
-													onPress={handleAddTax}
+													onClick={handleAddTax}
 													className="text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20"
 												>
 													Add Tax
@@ -741,11 +730,11 @@ function InvoiceLineItemRow({
 			<TableCell>
 				<div className="flex gap-1">
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={onDelete}
+						variant="outline"
+						size="icon-sm"
+						onClick={onDelete}
 						aria-label="Delete"
-						isDisabled={isSaving}
+						disabled={isSaving}
 					>
 						<Trash2 className="h-3 w-3" />
 					</Button>

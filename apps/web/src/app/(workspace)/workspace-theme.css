@@ -52,22 +52,22 @@ html.dark .workspace-zone {
 /* A primary-colored bar pinned to the left edge plus a soft primary tint,
    replacing the default full-fill accent. More specific than the shadcn
    data-[active] / hover utilities so it wins cleanly. */
-.workspace-zone [data-sidebar="menu-button"][data-active="true"] {
+.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"]) {
 	position: relative;
 	font-weight: 600;
 	background-color: color-mix(in oklch, var(--primary) 11%, transparent);
 }
 
-.workspace-zone [data-sidebar="menu-button"][data-active="true"]:hover {
+.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"]):hover {
 	background-color: color-mix(in oklch, var(--primary) 16%, transparent);
 }
 
 /* Icon picks up the accent; the label keeps its readable foreground color. */
-.workspace-zone [data-sidebar="menu-button"][data-active="true"] > svg {
+.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"]) > svg {
 	color: var(--primary);
 }
 
-.workspace-zone [data-sidebar="menu-button"][data-active="true"]::before {
+.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"])::before {
 	content: "";
 	position: absolute;
 	left: 0.125rem;
@@ -81,7 +81,7 @@ html.dark .workspace-zone {
 
 /* Active submenu item (Settings → tabs): subtle primary tint, no bar
    (the sub-list already sits on its own left rail). */
-.workspace-zone [data-sidebar="menu-sub-button"][data-active="true"] {
+.workspace-zone [data-sidebar="menu-sub-button"][data-active]:not([data-active="false"]) {
 	font-weight: 600;
 	background-color: color-mix(in oklch, var(--primary) 10%, transparent);
 }

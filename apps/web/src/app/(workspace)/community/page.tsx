@@ -18,8 +18,9 @@ import {
 } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -222,7 +223,7 @@ export default function CommunityPage() {
 				<div className="max-w-xl mx-auto space-y-6">
 					<div className="space-y-2">
 						<Label htmlFor="pageTitle">Page Title</Label>
-						<StyledInput
+						<Input
 							id="pageTitle"
 							value={pageTitle}
 							onChange={(e) => setPageTitle(e.target.value)}
@@ -287,8 +288,8 @@ export default function CommunityPage() {
 
 					{/* Create Button */}
 					<div className="pt-6">
-						<StyledButton
-							intent="primary"
+						<Button
+							variant="default"
 							className="w-full justify-center py-6 text-base"
 							onClick={handleCreatePage}
 							disabled={isCreating || !slug || !!slugError || isSlugAvailable === false}
@@ -299,7 +300,7 @@ export default function CommunityPage() {
 								<Globe className="size-5 mr-2" />
 							)}
 							Create Community Page
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			</div>
@@ -316,10 +317,10 @@ export default function CommunityPage() {
 							<h1 className="text-2xl font-bold text-fg tracking-tight">
 								Community Page
 							</h1>
-							<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">
+							<StatusBadge role="warning" appearance="soft" className="gap-1.5">
 								<Clock className="size-3" />
 								Draft
-							</span>
+							</StatusBadge>
 						</div>
 						<p className="text-muted-fg text-sm">
 							Your community page is set up but not yet visible to the public.
@@ -349,22 +350,22 @@ export default function CommunityPage() {
 					</div>
 
 					<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-4 md:mt-0">
-						<StyledButton
-							intent="secondary"
+						<Button
+							variant="secondary"
 							onClick={() => router.push("/community/edit")}
 							className="w-full sm:w-auto"
 						>
 							<Edit className="size-4 mr-2" />
 							Edit Page
-						</StyledButton>
-						<StyledButton
-							intent="primary"
+						</Button>
+						<Button
+							variant="default"
 							onClick={() => router.push("/community/edit")}
 							className="w-full sm:w-auto"
 						>
 							<Eye className="size-4 mr-2" />
 							Publish to Public
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 
@@ -388,10 +389,10 @@ export default function CommunityPage() {
 						<h1 className="text-2xl font-bold text-fg tracking-tight">
 							Community Page
 						</h1>
-						<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
+						<StatusBadge role="success" appearance="soft" className="gap-1.5">
 							<CheckCircle2 className="size-3" />
 							Live
-						</span>
+						</StatusBadge>
 					</div>
 					<p className="text-muted-fg text-sm">
 						Your community page is live and accessible to anyone with the link.
@@ -429,8 +430,8 @@ export default function CommunityPage() {
 				</div>
 
 				<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-4 md:mt-0">
-					<StyledButton
-						intent="plain"
+					<Button
+						variant="ghost"
 						onClick={handleCopyUrl}
 						className="w-full sm:w-auto"
 					>
@@ -445,25 +446,25 @@ export default function CommunityPage() {
 								Copy Link
 							</>
 						)}
-					</StyledButton>
-					<StyledButton
-						intent="secondary"
+					</Button>
+					<Button
+						variant="secondary"
 						onClick={() => router.push("/community/edit")}
 						className="w-full sm:w-auto"
 					>
 						<Edit className="size-4 mr-2" />
 						Edit Page
-					</StyledButton>
+					</Button>
 					<a
 						href={pageUrl}
 						target="_blank"
 						rel="noopener noreferrer"
 						className="w-full sm:w-auto"
 					>
-						<StyledButton intent="primary" className="w-full sm:w-auto">
+						<Button variant="default" className="w-full sm:w-auto">
 							<ExternalLink className="size-4 mr-2" />
 							View Live
-						</StyledButton>
+						</Button>
 					</a>
 				</div>
 			</div>

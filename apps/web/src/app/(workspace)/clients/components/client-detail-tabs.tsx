@@ -4,11 +4,11 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import type { ActivityWithUser } from "@/app/(workspace)/home/components/activity-item";
 import {
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-	StyledTabsContent,
-} from "@/components/ui/styled";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+	PillTabsContent,
+} from "@/components/shared/pill-tabs";
 import { OverviewTab } from "./tabs/overview-tab";
 import { ActivityTab } from "./tabs/activity-tab";
 import { EmailsTab } from "./tabs/emails-tab";
@@ -60,27 +60,27 @@ export function ClientDetailTabs({
 	onThreadClick,
 }: ClientDetailTabsProps) {
 	return (
-		<StyledTabs value={activeTab} onValueChange={onTabChange}>
+		<PillTabs value={activeTab} onValueChange={onTabChange}>
 			{/* Two-column layout: tabs + content on left, sidebar on right */}
 			<div className="flex gap-0">
 				{/* Left: Tabs list + tab content */}
 				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
-					<StyledTabsList className="overflow-x-auto">
-						<StyledTabsTrigger value="overview">Overview</StyledTabsTrigger>
-						<StyledTabsTrigger value="activity">Activity</StyledTabsTrigger>
-						<StyledTabsTrigger value="emails">
+					<PillTabsList className="overflow-x-auto">
+						<PillTabsTrigger value="overview">Overview</PillTabsTrigger>
+						<PillTabsTrigger value="activity">Activity</PillTabsTrigger>
+						<PillTabsTrigger value="emails">
 							Email Threads
 							{threads && threads.length > 0 ? ` (${threads.length})` : ""}
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="tasks">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="tasks">
 							Tasks{tasks && tasks.length > 0 ? ` (${tasks.length})` : ""}
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="properties">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="properties">
 							Properties & Contacts
-						</StyledTabsTrigger>
-					</StyledTabsList>
+						</PillTabsTrigger>
+					</PillTabsList>
 
-					<StyledTabsContent value="overview" className="mt-0 pt-5">
+					<PillTabsContent value="overview" className="mt-0 pt-5">
 						<OverviewTab
 							projects={projects}
 							quotes={quotes}
@@ -89,25 +89,25 @@ export function ClientDetailTabs({
 							clientId={clientId}
 							clientName={client.companyName}
 						/>
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="activity" className="mt-0 pt-5">
+					<PillTabsContent value="activity" className="mt-0 pt-5">
 						<ActivityTab activities={activities} />
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="emails" className="mt-0 pt-5">
+					<PillTabsContent value="emails" className="mt-0 pt-5">
 						<EmailsTab
 							threads={threads}
 							onComposeEmail={onComposeEmail}
 							onThreadClick={onThreadClick}
 						/>
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="tasks" className="mt-0 pt-5">
+					<PillTabsContent value="tasks" className="mt-0 pt-5">
 						<TasksTab tasks={tasks} onAddTask={onAddTask} />
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="properties" className="mt-0 pt-5">
+					<PillTabsContent value="properties" className="mt-0 pt-5">
 						<div className="flex items-center justify-between mb-1 min-h-8">
 							<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 								Properties & Contacts
@@ -128,7 +128,7 @@ export function ClientDetailTabs({
 								onChange={() => {}}
 							/>
 						</div>
-					</StyledTabsContent>
+					</PillTabsContent>
 				</div>
 
 				{/* Right: Persistent sidebar (desktop) — border extends from top */}
@@ -155,6 +155,6 @@ export function ClientDetailTabs({
 					invoices={invoices}
 				/>
 			</div>
-		</StyledTabs>
+		</PillTabs>
 	);
 }

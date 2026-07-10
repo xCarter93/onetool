@@ -15,13 +15,15 @@ export function SettingsPopover() {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 data-[state=open]:bg-foreground/[0.08] data-[state=open]:text-foreground"
-					aria-label="Settings"
-				>
-					<Settings className="size-[18px]" />
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 data-[state=open]:bg-foreground/[0.08] data-[state=open]:text-foreground"
+						aria-label="Settings"
+					/>
+				}
+			>
+				<Settings className="size-[18px]" />
 			</PopoverTrigger>
 			<PopoverContent
 				className="w-64 rounded-xl border-border p-0 shadow-xl"
@@ -44,7 +46,7 @@ export function SettingsPopover() {
 							Theme
 						</span>
 						<ThemeSwitcher
-							size="sq-sm"
+							size="icon-sm"
 							className="h-8 w-8 border-border/40 hover:border-border/60"
 						/>
 					</div>

@@ -1,6 +1,5 @@
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
-
-export type LifecycleStatus = "draft" | "active" | "paused";
+import type { StatusBadgeProps } from "@/components/domain/status-badge";
 
 type BadgeVariant =
 	| "default"
@@ -10,16 +9,29 @@ type BadgeVariant =
 	| "warning"
 	| "outline";
 
+export type LifecycleStatus = "draft" | "active" | "paused";
+
 export const effectiveStatus = (a: Doc<"workflowAutomations">): LifecycleStatus =>
 	a.status ?? "draft";
 
-export const STATUS_BADGE: Record<
+/** Display label for each lifecycle status (automations-domain concern). */
+export const STATUS_LABEL: Record<LifecycleStatus, string> = {
+	draft: "Draft",
+	active: "Active",
+	paused: "Paused",
+};
+
+/**
+ * <StatusBadge status={...} .../> props for each lifecycle status
+ * (components/domain/status-badge.tsx StatusKey).
+ */
+export const STATUS_BADGE_PROPS: Record<
 	LifecycleStatus,
-	{ label: string; variant: Extract<BadgeVariant, "outline" | "success" | "warning"> }
+	{ appearance: StatusBadgeProps["appearance"] }
 > = {
-	draft: { label: "Draft", variant: "outline" },
-	active: { label: "Active", variant: "success" },
-	paused: { label: "Paused", variant: "warning" },
+	draft: { appearance: "outline" },
+	active: { appearance: "solid" },
+	paused: { appearance: "solid" },
 };
 
 type ObjectType = "client" | "project" | "quote" | "invoice" | "task";

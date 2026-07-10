@@ -1,6 +1,7 @@
 @layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./reui-nova.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -668,5 +669,57 @@
 
 	[data-paper-total] {
 		font-size: 24pt;
+	}
+}
+/* OneTool exception: primary actions keep the pre-rebuild "frosted blue" look
+   (translucent sky tint + soft ring + blur) instead of nova's solid fill.
+   App `components` layer intentionally beats reui-nova.css (`base` layer). */
+@layer components {
+	.style-nova .cn-button-variant-default {
+		@apply bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-primary/15 hover:text-primary/80 hover:border-primary/40 hover:shadow-md;
+	}
+}
+
+/* Collapsed sidebar rail: the toggle's icon matches the enlarged (size-5)
+   collapsed menu icons set in reui-nova.css cn-sidebar-menu-button. */
+@layer components {
+	[data-slot="sidebar"][data-collapsible="icon"] [data-sidebar="trigger"] svg {
+		width: calc(var(--spacing) * 5);
+		height: calc(var(--spacing) * 5);
+	}
+}
+
+/* Toast variants: framed + tinted per type. Sonner's injected stylesheet is
+   unlayered (it would beat layered property overrides), but it paints each
+   toast from --normal-* vars, so we feed those per type instead. Tints are
+   color-mixed opaque — stacked toasts must not show through each other. */
+@layer components {
+	[data-sonner-toast][data-type="success"] {
+		--normal-bg: color-mix(in oklab, var(--success) 10%, var(--popover));
+		--normal-border: color-mix(in oklab, var(--success) 35%, var(--border));
+	}
+	[data-sonner-toast][data-type="success"] [data-icon] {
+		color: var(--success-fg);
+	}
+	[data-sonner-toast][data-type="error"] {
+		--normal-bg: color-mix(in oklab, var(--danger) 10%, var(--popover));
+		--normal-border: color-mix(in oklab, var(--danger) 35%, var(--border));
+	}
+	[data-sonner-toast][data-type="error"] [data-icon] {
+		color: var(--danger-fg);
+	}
+	[data-sonner-toast][data-type="warning"] {
+		--normal-bg: color-mix(in oklab, var(--warning) 12%, var(--popover));
+		--normal-border: color-mix(in oklab, var(--warning) 40%, var(--border));
+	}
+	[data-sonner-toast][data-type="warning"] [data-icon] {
+		color: var(--warning-fg);
+	}
+	[data-sonner-toast][data-type="info"] {
+		--normal-bg: color-mix(in oklab, var(--info) 10%, var(--popover));
+		--normal-border: color-mix(in oklab, var(--info) 35%, var(--border));
+	}
+	[data-sonner-toast][data-type="info"] [data-icon] {
+		color: var(--info-fg);
 	}
 }

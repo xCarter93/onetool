@@ -4,20 +4,15 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled";
+} from "@/components/ui/select";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar } from "@/components/ui/calendar";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -279,14 +274,14 @@ export function QuoteDetailSidebar({
 						}
 					>
 						{editingField === "status" ? (
-							<StyledSelect
+							<Select
 								value={editValue}
-								onValueChange={setEditValue}
+								onValueChange={(value) => setEditValue(value as string)}
 							>
-								<StyledSelectTrigger className="h-8">
+								<SelectTrigger className="h-8">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{STATUS_OPTIONS.map((opt) => (
 										<SelectItem
 											key={opt.value}
@@ -295,8 +290,8 @@ export function QuoteDetailSidebar({
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<ProminentStatusBadge
 								status={quote.status}
@@ -333,39 +328,24 @@ export function QuoteDetailSidebar({
 						}
 					>
 						{editingField === "validUntil" ? (
-							<Popover
+							<DatePicker
 								open={true}
 								onOpenChange={(open) => {
 									if (!open) cancelEditing();
 								}}
-							>
-								<PopoverTrigger asChild>
-									<button className="text-sm text-primary hover:text-primary/80">
-										{editDateValue
-											? formatDate(
-													editDateValue.getTime()
-												)
-											: "Select date..."}
-									</button>
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-auto p-0"
-									align="start"
-								>
-									<Calendar
-										mode="single"
-										selected={editDateValue}
-										onSelect={(date) => {
-											if (date) {
-												saveField(
-													"validUntil",
-													date.getTime()
-												);
-											}
-										}}
-									/>
-								</PopoverContent>
-							</Popover>
+								value={editDateValue}
+								onChange={(date) => {
+									if (date) {
+										saveField(
+											"validUntil",
+											date.getTime()
+										);
+									}
+								}}
+								formatDate={(date) => formatDate(date.getTime())}
+								placeholder="Select date..."
+								className="h-8"
+							/>
 						) : (
 							<span className="text-sm text-foreground">
 								{quote.validUntil ? (
@@ -657,7 +637,7 @@ export function QuoteDetailSidebar({
 								className="flex-1"
 							>
 								<Button
-									intent="outline"
+									variant="outline"
 									size="sm"
 									className="w-full"
 								>
@@ -666,7 +646,7 @@ export function QuoteDetailSidebar({
 								</Button>
 							</a>
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
 								className="w-full flex-1"
 								onClick={onDownloadPdf}
@@ -680,7 +660,7 @@ export function QuoteDetailSidebar({
 							allDocumentVersions.length > 1 && (
 								<div className="pt-2 border-t border-gray-200 dark:border-gray-700">
 									<Button
-										intent="outline"
+										variant="outline"
 										size="sm"
 										className="w-full"
 										onClick={onToggleVersionHistory}
@@ -766,7 +746,7 @@ export function QuoteDetailSidebar({
 							No PDF generated yet
 						</p>
 						<Button
-							intent="outline"
+							variant="outline"
 							size="sm"
 							onClick={onGeneratePdf}
 						>

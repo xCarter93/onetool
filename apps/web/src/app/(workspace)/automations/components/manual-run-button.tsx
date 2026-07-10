@@ -85,14 +85,16 @@ export function ManualRunButton({
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button
-					intent="outline"
-					size="sq-sm"
-					aria-label={`Run ${automationName} now`}
-				>
-					<Play className="size-4" />
-				</Button>
+			<PopoverTrigger
+				render={
+					<Button
+						variant="outline"
+						size="icon-sm"
+						aria-label={`Run ${automationName} now`}
+					/>
+				}
+			>
+				<Play className="size-4" />
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-72 space-y-3 p-4">
 				<div className="space-y-1">
@@ -116,7 +118,10 @@ export function ManualRunButton({
 								Loading records…
 							</div>
 						) : records.length > 0 ? (
-							<Select value={effectiveRecordId} onValueChange={setRecordId}>
+							<Select
+								value={effectiveRecordId}
+								onValueChange={(value) => setRecordId(value ?? undefined)}
+							>
 								<SelectTrigger id="manual-run-record" className="w-full">
 									<SelectValue placeholder="Pick a record" />
 								</SelectTrigger>
@@ -137,12 +142,11 @@ export function ManualRunButton({
 				)}
 
 				<Button
-					intent="primary"
+					variant="default"
 					size="sm"
 					className="w-full"
-					onPress={run}
-					isPending={isRunning}
-					isDisabled={needsRecord && records.length === 0}
+					onClick={run}
+					disabled={isRunning || (needsRecord && records.length === 0)}
 				>
 					{isRunning ? (
 						<Loader2 className="size-4 animate-spin" />

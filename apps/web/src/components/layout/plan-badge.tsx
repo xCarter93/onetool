@@ -9,7 +9,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -47,26 +47,28 @@ export function PlanBadge() {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					className={`group inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold shadow-sm ring-1 transition-colors duration-200 ${
-						hasPremiumAccess
-							? "bg-warning/15 hover:bg-warning/20 ring-warning/30 hover:ring-warning/50 text-warning-foreground"
-							: "text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-					}`}
-				>
-					{hasPremiumAccess ? (
-						<Crown className="size-3.5 text-warning drop-shadow-sm" />
-					) : (
-						<Users className="size-3.5" />
-					)}
-					<span className="font-bold tracking-tight">{planName}</span>
-					{hasPremiumAccess && (
-						<span className="rounded bg-warning/20 px-1 py-px text-[9px] font-semibold text-warning-foreground ring-1 ring-warning/30">
-							PRO
-						</span>
-					)}
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						className={`group inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold shadow-sm ring-1 transition-colors duration-200 ${
+							hasPremiumAccess
+								? "bg-warning/15 hover:bg-warning/20 ring-warning/30 hover:ring-warning/50 text-warning-foreground"
+								: "text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
+						}`}
+					/>
+				}
+			>
+				{hasPremiumAccess ? (
+					<Crown className="size-3.5 text-warning drop-shadow-sm" />
+				) : (
+					<Users className="size-3.5" />
+				)}
+				<span className="font-bold tracking-tight">{planName}</span>
+				{hasPremiumAccess && (
+					<span className="rounded bg-warning/20 px-1 py-px text-[9px] font-semibold text-warning-foreground ring-1 ring-warning/30">
+						PRO
+					</span>
+				)}
 			</PopoverTrigger>
 			<PopoverContent
 				className="w-80 p-0 bg-background! backdrop-blur-xl border-border shadow-xl"
@@ -146,19 +148,16 @@ export function PlanBadge() {
 							Create an organization to unlock OneTool features and start
 							managing your clients and projects.
 						</p>
-						<StyledButton
+						<Button
 							onClick={() => {
 								setOpen(false);
 								router.push("/organization/complete");
 							}}
-							intent="primary"
-							size="md"
-							icon={<ArrowUpRight className="h-4 w-4" />}
 							className="w-full justify-center"
-							showArrow={false}
 						>
+							<ArrowUpRight className="h-4 w-4" />
 							Create Organization
-						</StyledButton>
+						</Button>
 					</div>
 				)}
 
@@ -197,16 +196,14 @@ export function PlanBadge() {
 				{/* Manage Subscription Button - Admin only */}
 				{hasOrganization && isAdmin && (
 					<div className="p-4 border-t border-border bg-background">
-						<StyledButton
+						<Button
 							onClick={handleManageSubscription}
-							intent={hasPremiumAccess ? "outline" : "primary"}
-							size="md"
-							icon={<ArrowUpRight className="h-4 w-4" />}
+							variant={hasPremiumAccess ? "outline" : "default"}
 							className="w-full justify-center"
-							showArrow={false}
 						>
+							<ArrowUpRight className="h-4 w-4" />
 							Manage Subscription
-						</StyledButton>
+						</Button>
 					</div>
 				)}
 			</PopoverContent>
