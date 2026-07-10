@@ -6,12 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
 	StyledBadge,
-	StyledTable,
-	StyledTableBody,
-	StyledTableCell,
-	StyledTableHead,
-	StyledTableHeader,
-	StyledTableRow,
 	StyledTabs,
 	StyledTabsList,
 	StyledTabsTrigger,
@@ -28,9 +22,14 @@ import {
 	FrameTitle,
 } from "@/components/reui/frame";
 import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
+import {
 	ColumnDef,
 	SortingState,
-	flexRender,
 	getCoreRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
@@ -39,8 +38,6 @@ import {
 import {
 	Archive,
 	CheckCircle2,
-	ChevronLeft,
-	ChevronRight,
 	ExternalLink,
 	Eye,
 	Filter as FilterIcon,
@@ -782,52 +779,9 @@ export default function ClientsPage() {
 
 	const clientsTable = (
 		<div className="overflow-x-auto">
-			<StyledTable>
-				<StyledTableHeader>
-					{table.getHeaderGroups().map((headerGroup) => (
-						<StyledTableRow key={headerGroup.id}>
-							{headerGroup.headers.map((header) => (
-								<StyledTableHead key={header.id}>
-									{header.isPlaceholder
-										? null
-										: flexRender(
-												header.column.columnDef.header,
-												header.getContext()
-											)}
-								</StyledTableHead>
-							))}
-						</StyledTableRow>
-					))}
-				</StyledTableHeader>
-				<StyledTableBody>
-					{table.getRowModel().rows?.length ? (
-						table.getRowModel().rows.map((row) => (
-							<StyledTableRow
-								key={row.id}
-								className="cursor-pointer"
-								onClick={() => openPreview(row.original.id)}
-							>
-								{row.getVisibleCells().map((cell) => (
-									<StyledTableCell key={cell.id}>
-										{flexRender(cell.column.columnDef.cell, cell.getContext())}
-									</StyledTableCell>
-								))}
-							</StyledTableRow>
-						))
-					) : (
-						<StyledTableRow>
-							<StyledTableCell
-								colSpan={columns.length}
-								className="h-24 text-center"
-							>
-								{isArchivedTab
-									? "No archived clients match your filters."
-									: "No clients match your filters."}
-							</StyledTableCell>
-						</StyledTableRow>
-					)}
-				</StyledTableBody>
-			</StyledTable>
+			<DataGridContainer className="rounded-lg border">
+				<DataGridTable />
+			</DataGridContainer>
 		</div>
 	);
 
@@ -982,93 +936,83 @@ export default function ClientsPage() {
 					</div>
 				</FrameHeader>
 
-				<FramePanel className="p-0">
-					{isLoading ? (
-						<div className="p-4">
-							<div className="space-y-4">
-								{[...Array(5)].map((_, i) => (
-									<div key={i} className="flex items-center space-x-4 p-4">
-										<div className="flex-1 space-y-2">
-											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+				<DataGrid
+					table={table}
+					recordCount={searchedData.length}
+					onRowClick={(row) => openPreview(row.id)}
+					emptyMessage={
+						isArchivedTab
+							? "No archived clients match your filters."
+							: "No clients match your filters."
+					}
+					tableLayout={{
+						width: "auto",
+						headerBackground: true,
+					}}
+				>
+					<FramePanel className="p-0">
+						{isLoading ? (
+							<div className="p-4">
+								<div className="space-y-4">
+									{[...Array(5)].map((_, i) => (
+										<div key={i} className="flex items-center space-x-4 p-4">
+											<div className="flex-1 space-y-2">
+												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+											</div>
+											<div className="h-4 bg-muted rounded animate-pulse w-16" />
+											<div className="h-4 bg-muted rounded animate-pulse w-20" />
+											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
 										</div>
-										<div className="h-4 bg-muted rounded animate-pulse w-16" />
-										<div className="h-4 bg-muted rounded animate-pulse w-20" />
-										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
-									</div>
-								))}
+									))}
+								</div>
 							</div>
-						</div>
-					) : viewMode === "kanban" ? (
-						isActiveEmpty ? (
-							<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
-						) : (
-							<>
-								{filtersBar}
-								{kanbanBoard}
-							</>
-						)
-					) : (
-						<StyledTabs value={activeTab} onValueChange={handleTabChange}>
-							<div className="px-4 pt-4">
-								<StyledTabsList className="overflow-x-auto">
-									<StyledTabsTrigger value="active">
-										Active Clients
-									</StyledTabsTrigger>
-									<StyledTabsTrigger value="archived">
-										Archived Clients
-									</StyledTabsTrigger>
-								</StyledTabsList>
-							</div>
-							{currentTabEmpty ? (
-								isArchivedTab ? (
-									<ArchivedEmptyState />
-								) : (
-									<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
-								)
+						) : viewMode === "kanban" ? (
+							isActiveEmpty ? (
+								<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
 							) : (
 								<>
 									{filtersBar}
-									{clientsTable}
+									{kanbanBoard}
 								</>
-							)}
-						</StyledTabs>
-					)}
-				</FramePanel>
-
-				{showFooter && (
-					<FrameFooter className="flex-row items-center justify-between">
-						<div className="text-muted-foreground text-sm">
-							{footerShown} of {footerTotal} clients
-						</div>
-						{viewMode === "table" ? (
-							<div className="flex items-center gap-2">
-								<Button
-									variant="outline"
-									size="icon-sm"
-									onClick={() => table.previousPage()}
-									disabled={!table.getCanPreviousPage()}
-									aria-label="Previous page"
-								>
-									<ChevronLeft className="size-4" />
-								</Button>
-								<div className="text-sm font-medium">
-									Page {table.getState().pagination?.pageIndex + 1} of{" "}
-									{Math.max(table.getPageCount(), 1)}
+							)
+						) : (
+							<StyledTabs value={activeTab} onValueChange={handleTabChange}>
+								<div className="px-4 pt-4">
+									<StyledTabsList className="overflow-x-auto">
+										<StyledTabsTrigger value="active">
+											Active Clients
+										</StyledTabsTrigger>
+										<StyledTabsTrigger value="archived">
+											Archived Clients
+										</StyledTabsTrigger>
+									</StyledTabsList>
 								</div>
-								<Button
-									variant="outline"
-									size="icon-sm"
-									onClick={() => table.nextPage()}
-									disabled={!table.getCanNextPage()}
-									aria-label="Next page"
-								>
-									<ChevronRight className="size-4" />
-								</Button>
+								{currentTabEmpty ? (
+									isArchivedTab ? (
+										<ArchivedEmptyState />
+									) : (
+										<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
+									)
+								) : (
+									<>
+										{filtersBar}
+										{clientsTable}
+									</>
+								)}
+							</StyledTabs>
+						)}
+					</FramePanel>
+
+					{showFooter && (
+						<FrameFooter className="flex-row items-center justify-between">
+							<div className="text-muted-foreground text-sm">
+								{footerShown} of {footerTotal} clients
 							</div>
-						) : null}
-					</FrameFooter>
-				)}
+							{viewMode === "table" ? <DataGridPagination /> : null}
+						</FrameFooter>
+					)}
+				</DataGrid>
 			</Frame>
 
 			{/* Detail preview drawer */}
