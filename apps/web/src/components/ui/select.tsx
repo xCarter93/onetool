@@ -103,7 +103,9 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Base UI defaults to macOS-style "popup covers the trigger" positioning;
+  // false = Radix-style dropdown below the trigger.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
