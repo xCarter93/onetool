@@ -4,12 +4,12 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled";
+} from "@/components/ui/select";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -227,14 +227,14 @@ export function InvoiceDetailSidebar({
 						}
 					>
 						{editingField === "status" ? (
-							<StyledSelect
+							<Select
 								value={editValue}
 								onValueChange={(value) => setEditValue(value as string)}
 							>
-								<StyledSelectTrigger className="h-8">
+								<SelectTrigger className="h-8">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{STATUS_OPTIONS.map((opt) => (
 										<SelectItem
 											key={opt.value}
@@ -243,8 +243,8 @@ export function InvoiceDetailSidebar({
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<ProminentStatusBadge
 								status={currentStatus}

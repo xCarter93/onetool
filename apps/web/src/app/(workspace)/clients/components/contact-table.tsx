@@ -6,11 +6,11 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import {
-	StyledCard,
-	StyledCardContent,
-	StyledCardHeader,
-	StyledCardTitle,
-} from "@/components/ui/styled";
+	GlassCard,
+	GlassCardContent,
+	GlassCardHeader,
+	GlassCardTitle,
+} from "@/components/shared/glass-card";
 import {
 	Table,
 	TableBody,
@@ -273,18 +273,18 @@ export function ContactTable({
 	}
 
 	return (
-		<StyledCard>
-			<StyledCardHeader className="flex flex-row items-center justify-between pb-6">
-				<StyledCardTitle className="text-xl">Contacts</StyledCardTitle>
+		<GlassCard>
+			<GlassCardHeader className="flex flex-row items-center justify-between pb-6">
+				<GlassCardTitle className="text-xl">Contacts</GlassCardTitle>
 				<Button variant="outline" size="sm" onClick={handleAddContact}>
 					<PlusIcon className="h-4 w-4 mr-2" />
 					New Contact
 				</Button>
-			</StyledCardHeader>
-			<StyledCardContent>
+			</GlassCardHeader>
+			<GlassCardContent>
 				{content}
-			</StyledCardContent>
-		</StyledCard>
+			</GlassCardContent>
+		</GlassCard>
 	);
 }
 

@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 interface CommunityEditorProps {
@@ -468,7 +468,7 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 						<Label htmlFor="link-url" className="text-sm">
 							URL
 						</Label>
-						<StyledInput
+						<Input
 							id="link-url"
 							type="url"
 							value={url}
@@ -552,7 +552,7 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 						<Label htmlFor="image-url" className="text-sm">
 							Image URL
 						</Label>
-						<StyledInput
+						<Input
 							id="image-url"
 							type="url"
 							value={url}

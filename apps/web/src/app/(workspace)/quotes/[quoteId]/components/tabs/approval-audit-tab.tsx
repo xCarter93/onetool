@@ -27,7 +27,7 @@ import { Activity, Download, FileText } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Separator } from "@/components/ui/separator";
-import { StyledBadge } from "@/components/ui/styled";
+import { Badge } from "@/components/ui/badge";
 import { Badge as ReuiBadge } from "@/components/reui/badge";
 import { hasCompletedBoldsign } from "./has-completed-boldsign";
 
@@ -157,7 +157,7 @@ function AuditRowCard({ row }: { row: AuditRow }) {
 		row.action === "approved" ? (
 			<ReuiBadge variant="success">Approved</ReuiBadge>
 		) : (
-			<StyledBadge variant="secondary">Declined</StyledBadge>
+			<Badge variant="secondary">Declined</Badge>
 		);
 
 	return (

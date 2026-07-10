@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Separator } from "@/components/ui/separator";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
-import { StyledListProvider } from "@/components/ui/styled/styled-list";
+import { MultiSelector } from "@/components/shared/multi-selector";
+import { ListProvider } from "@/components/shared/sortable-list";
 import { SignatureProgressBar } from "@/app/(workspace)/quotes/components/signature-progress-bar";
 import {
 	Accordion,
@@ -298,7 +298,7 @@ export function SignaturesTab({
 									<Users className="h-4 w-4 text-primary" />
 									Select Countersigner
 								</Label>
-								<StyledMultiSelector
+								<MultiSelector
 									options={userOptions}
 									value={
 										selectedUserId
@@ -335,7 +335,7 @@ export function SignaturesTab({
 												Drag to reorder who signs
 												first
 											</p>
-											<StyledListProvider
+											<ListProvider
 												items={signers}
 												onReorder={handleReorder}
 												renderItem={

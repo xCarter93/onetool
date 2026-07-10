@@ -13,9 +13,9 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * StyledCard - A wrapper around the base Card component with consistent glassmorphism styling
+ * GlassCard - A wrapper around the base Card component with consistent glassmorphism styling
  */
-export function StyledCard({
+export function GlassCard({
 	className,
 	children,
 	...props
@@ -35,21 +35,21 @@ export function StyledCard({
 	);
 }
 
-export function StyledCardHeader({
+export function GlassCardHeader({
 	className,
 	...props
 }: React.ComponentProps<typeof CardHeader>) {
 	return <CardHeader className={cn("relative z-10", className)} {...props} />;
 }
 
-export function StyledCardTitle({
+export function GlassCardTitle({
 	className,
 	...props
 }: React.ComponentProps<typeof CardTitle>) {
 	return <CardTitle className={cn("relative z-10", className)} {...props} />;
 }
 
-export function StyledCardDescription({
+export function GlassCardDescription({
 	className,
 	...props
 }: React.ComponentProps<typeof CardDescription>) {
@@ -58,21 +58,21 @@ export function StyledCardDescription({
 	);
 }
 
-export function StyledCardContent({
+export function GlassCardContent({
 	className,
 	...props
 }: React.ComponentProps<typeof CardContent>) {
 	return <CardContent className={cn("relative z-10", className)} {...props} />;
 }
 
-export function StyledCardFooter({
+export function GlassCardFooter({
 	className,
 	...props
 }: React.ComponentProps<typeof CardFooter>) {
 	return <CardFooter className={cn("relative z-10", className)} {...props} />;
 }
 
-export function StyledCardAction({
+export function GlassCardAction({
 	className,
 	...props
 }: React.ComponentProps<typeof CardAction>) {

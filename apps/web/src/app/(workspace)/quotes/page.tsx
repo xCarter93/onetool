@@ -3,8 +3,8 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { StyledBadge } from "@/components/ui/styled";
-import { StyledFilters } from "@/components/ui/styled/styled-filters";
+import { Badge } from "@/components/ui/badge";
+import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
@@ -655,7 +655,7 @@ export default function QuotesPage() {
 					<FramePanel className="p-0">
 						{!isLoading && !isEmpty && (
 							<div className="border-b px-4 py-3">
-								<StyledFilters
+								<FiltersWithClear
 									filters={filters}
 									fields={filterFields}
 									onChange={setFilters}
@@ -663,6 +663,7 @@ export default function QuotesPage() {
 									addButtonIcon={<FilterIcon className="h-4 w-4" />}
 									size="md"
 									variant="outline"
+									radius="full"
 									showClearButton={true}
 									clearButtonText="Clear"
 									clearButtonIcon={<X className="h-4 w-4" />}
@@ -741,9 +742,9 @@ export default function QuotesPage() {
 															</p>
 														</div>
 													</div>
-													<StyledBadge variant="outline">
+													<Badge variant="outline">
 														{columnItems.length}
-													</StyledBadge>
+													</Badge>
 												</KanbanHeader>
 												<KanbanCards id={column.id}>
 													{(item: QuoteKanbanItem) => (

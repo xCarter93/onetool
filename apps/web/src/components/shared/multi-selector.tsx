@@ -5,11 +5,11 @@ import { MultiSelect } from "@/components/ui/multi-selector";
 import { cn } from "@/lib/utils";
 
 /**
- * StyledMultiSelector - A wrapper around the base MultiSelect component with consistent styling
+ * MultiSelector - A wrapper around the base MultiSelect component with consistent styling
  * that matches the application's design system
  */
 
-interface StyledMultiSelectorProps {
+interface MultiSelectorProps {
 	/**
 	 * An array of option objects to be displayed in the multi-select component.
 	 */
@@ -66,9 +66,9 @@ interface StyledMultiSelectorProps {
 	disabled?: boolean;
 }
 
-export const StyledMultiSelector = React.forwardRef<
+export const MultiSelector = React.forwardRef<
 	HTMLButtonElement,
-	StyledMultiSelectorProps
+	MultiSelectorProps
 >(
 	(
 		{
@@ -117,4 +117,4 @@ export const StyledMultiSelector = React.forwardRef<
 	}
 );
 
-StyledMultiSelector.displayName = "StyledMultiSelector";
+MultiSelector.displayName = "MultiSelector";

@@ -14,8 +14,8 @@ import {
 	Check,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { StyledInput } from "@/components/ui/styled/styled-input";
-import { StyledTagsInput } from "@/components/ui/styled/styled-tags-input";
+import { Input } from "@/components/ui/input";
+import { TagsInput } from "@/components/shared/tags-input";
 import { Switch } from "@/components/ui/switch";
 import {
 	Select,
@@ -146,7 +146,7 @@ const SocialLinkInput = React.memo(function SocialLinkInput({
 							: undefined
 					}
 				>
-					<StyledInput
+					<Input
 						placeholder={placeholder}
 						value={value}
 						onChange={(e) => onChange(e.target.value)}
@@ -210,7 +210,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 					<div className="space-y-1.5">
 						<Label htmlFor="ownerName">Your Name</Label>
-						<StyledInput
+						<Input
 							id="ownerName"
 							placeholder="e.g., Jane Doe"
 							value={ownerName}
@@ -219,7 +219,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					</div>
 					<div className="space-y-1.5">
 						<Label htmlFor="ownerTitle">Your Title</Label>
-						<StyledInput
+						<Input
 							id="ownerTitle"
 							placeholder="e.g., Owner & Operator"
 							value={ownerTitle}
@@ -277,7 +277,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 					<div className="space-y-1.5">
 						<Label htmlFor="yearEstablished">Year Established</Label>
-						<StyledInput
+						<Input
 							id="yearEstablished"
 							type="number"
 							placeholder="e.g., 2015"
@@ -297,7 +297,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					</div>
 					<div className="space-y-1.5">
 						<Label htmlFor="licenseNumber">License Number</Label>
-						<StyledInput
+						<Input
 							id="licenseNumber"
 							placeholder="e.g., ABC-123456"
 							value={licenseNumber}
@@ -307,7 +307,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 				</div>
 				<div className="space-y-1.5">
 					<Label>Additional Certifications</Label>
-					<StyledTagsInput
+					<TagsInput
 						tags={certifications}
 						setTags={setCertifications}
 						placeholder="Type a certification and press Enter"

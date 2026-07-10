@@ -3,15 +3,17 @@
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
-	StyledCard,
-	StyledCardHeader,
-	StyledCardTitle,
-	StyledCardContent,
-	StyledTabs,
-	StyledTabsContent,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled";
+	GlassCard,
+	GlassCardHeader,
+	GlassCardTitle,
+	GlassCardContent,
+} from "@/components/shared/glass-card";
+import {
+	PillTabs,
+	PillTabsContent,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
 import {
 	Empty,
 	EmptyHeader,
@@ -51,29 +53,29 @@ export function RelatedItemsSection({
 	tasks,
 }: RelatedItemsSectionProps) {
 	return (
-		<StyledCard>
-			<StyledCardHeader>
-				<StyledCardTitle className="text-xl">Related Items</StyledCardTitle>
-			</StyledCardHeader>
-			<StyledCardContent>
-				<StyledTabs defaultValue="projects" className="w-full">
-					<StyledTabsList className="overflow-x-auto">
-						<StyledTabsTrigger value="projects">
+		<GlassCard>
+			<GlassCardHeader>
+				<GlassCardTitle className="text-xl">Related Items</GlassCardTitle>
+			</GlassCardHeader>
+			<GlassCardContent>
+				<PillTabs defaultValue="projects" className="w-full">
+					<PillTabsList className="overflow-x-auto">
+						<PillTabsTrigger value="projects">
 							Projects ({projects?.length || 0})
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="quotes">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="quotes">
 							Quotes ({quotes?.length || 0})
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="invoices">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="invoices">
 							Invoices ({invoices?.length || 0})
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="tasks">
+						</PillTabsTrigger>
+						<PillTabsTrigger value="tasks">
 							Tasks ({tasks?.length || 0})
-						</StyledTabsTrigger>
-					</StyledTabsList>
+						</PillTabsTrigger>
+					</PillTabsList>
 
 					{/* Projects Tab */}
-					<StyledTabsContent value="projects">
+					<PillTabsContent value="projects">
 						{projects && projects.length > 0 ? (
 							<div className="space-y-3">
 								{projects.map((project: Doc<"projects">) => (
@@ -121,10 +123,10 @@ export function RelatedItemsSection({
 								</EmptyHeader>
 							</Empty>
 						)}
-					</StyledTabsContent>
+					</PillTabsContent>
 
 					{/* Quotes Tab */}
-					<StyledTabsContent value="quotes">
+					<PillTabsContent value="quotes">
 						{quotes && quotes.length > 0 ? (
 							<div className="space-y-3">
 								{quotes.map((quote: Doc<"quotes">) => (
@@ -177,10 +179,10 @@ export function RelatedItemsSection({
 								</EmptyHeader>
 							</Empty>
 						)}
-					</StyledTabsContent>
+					</PillTabsContent>
 
 					{/* Invoices Tab */}
-					<StyledTabsContent value="invoices">
+					<PillTabsContent value="invoices">
 						{invoices && invoices.length > 0 ? (
 							<div className="space-y-3">
 								{invoices.map((invoice: Doc<"invoices">) => (
@@ -231,10 +233,10 @@ export function RelatedItemsSection({
 								</EmptyHeader>
 							</Empty>
 						)}
-					</StyledTabsContent>
+					</PillTabsContent>
 
 					{/* Tasks Tab */}
-					<StyledTabsContent value="tasks">
+					<PillTabsContent value="tasks">
 						{tasks && tasks.length > 0 ? (
 							<div className="space-y-3">
 								{tasks.map((task: Doc<"tasks">) => (
@@ -286,10 +288,10 @@ export function RelatedItemsSection({
 								</EmptyHeader>
 							</Empty>
 						)}
-					</StyledTabsContent>
-				</StyledTabs>
-			</StyledCardContent>
-		</StyledCard>
+					</PillTabsContent>
+				</PillTabs>
+			</GlassCardContent>
+		</GlassCard>
 	);
 }
 

@@ -19,7 +19,7 @@ import {
 
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -223,7 +223,7 @@ export default function CommunityPage() {
 				<div className="max-w-xl mx-auto space-y-6">
 					<div className="space-y-2">
 						<Label htmlFor="pageTitle">Page Title</Label>
-						<StyledInput
+						<Input
 							id="pageTitle"
 							value={pageTitle}
 							onChange={(e) => setPageTitle(e.target.value)}

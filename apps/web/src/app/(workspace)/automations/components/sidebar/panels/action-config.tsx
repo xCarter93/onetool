@@ -16,7 +16,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import {
 	MAX_DUE_IN_DAYS,
 	getTargetOptions,
@@ -452,7 +452,7 @@ function SendTeamMessageFields({
 
 			{typeof action.recipients !== "string" && (
 				<PanelField label="Members">
-					<StyledMultiSelector
+					<MultiSelector
 						options={memberOptions}
 						value={action.recipients.userIds}
 						onValueChange={(userIds) => update({ recipients: { userIds } })}

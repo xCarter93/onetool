@@ -14,14 +14,14 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { StyledInput } from "@/components/ui/styled";
+import { Input } from "@/components/ui/input";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled/styled-select";
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Send, Paperclip, Download, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -251,16 +251,16 @@ export function EmailThreadSheet({
 									>
 										Send To
 									</label>
-									<StyledSelect
+									<Select
 										value={selectedContactId ?? primaryContact?._id ?? ""}
 										onValueChange={(value) =>
 											setSelectedContactId(value as Id<"clientContacts">)
 										}
 									>
-										<StyledSelectTrigger id="contact-select">
+										<SelectTrigger id="contact-select">
 											<SelectValue placeholder="Select a contact" />
-										</StyledSelectTrigger>
-										<StyledSelectContent>
+										</SelectTrigger>
+										<SelectContent>
 											{allContacts.map((contact) => (
 												<SelectItem key={contact._id} value={contact._id}>
 													<div className="flex items-center gap-2">
@@ -278,8 +278,8 @@ export function EmailThreadSheet({
 													</div>
 												</SelectItem>
 											))}
-										</StyledSelectContent>
-									</StyledSelect>
+										</SelectContent>
+									</Select>
 								</div>
 							)}
 
@@ -292,7 +292,7 @@ export function EmailThreadSheet({
 									>
 										Subject
 									</label>
-									<StyledInput
+									<Input
 										id="email-subject"
 										value={subject}
 										onChange={(e) => setSubject(e.target.value)}

@@ -17,8 +17,7 @@ import type { JSONContent } from "@tiptap/react";
 
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { StyledBadge } from "@/components/ui/styled/styled-badge";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
@@ -240,7 +239,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 			<div className="grid gap-8 lg:grid-cols-2">
 				<div className="space-y-3">
 					<Label htmlFor="pageTitle">Page Title</Label>
-					<StyledInput
+					<Input
 						id="pageTitle"
 						value={pageTitle}
 						onChange={(e) => setPageTitle(e.target.value)}
@@ -303,7 +302,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 
 				<div className="space-y-3 lg:col-span-2">
 					<Label htmlFor="metaDescription">SEO Description</Label>
-					<StyledInput
+					<Input
 						id="metaDescription"
 						value={metaDescription}
 						onChange={(e) => setMetaDescription(e.target.value)}

@@ -13,13 +13,13 @@ import {
 	TooltipContent,
 } from "@/components/ui/tooltip";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectItem,
 	SelectValue,
-} from "@/components/ui/styled/styled-select";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import type { FieldMapping, ImportRecord, ImportResult, ImportResultItem, RecordValidationError } from "@/types/csv-import";
 import {
 	parseCsvData,
@@ -564,7 +564,7 @@ export function StepReviewValues({
 													</div>
 												) : isEditing ? (
 													isEnum ? (
-														<StyledSelect
+														<Select
 															value={cellVal || undefined}
 															onValueChange={(val) => {
 																handleCellChange(
@@ -578,17 +578,17 @@ export function StepReviewValues({
 																if (!open) setEditingCell(null);
 															}}
 														>
-															<StyledSelectTrigger size="sm" className="w-full h-7 text-sm">
+															<SelectTrigger size="sm" className="w-full h-7 text-sm">
 																<SelectValue placeholder="Select..." />
-															</StyledSelectTrigger>
-															<StyledSelectContent>
+															</SelectTrigger>
+															<SelectContent>
 																{meta.options!.map((opt) => (
 																	<SelectItem key={opt} value={opt}>{opt}</SelectItem>
 																))}
-															</StyledSelectContent>
-														</StyledSelect>
+															</SelectContent>
+														</Select>
 													) : (
-														<StyledInput
+														<Input
 															autoFocus
 															type="text"
 															className="h-7 text-sm"

@@ -39,13 +39,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import {
-	StyledMultiSelector,
-	StyledTabs,
-	StyledTabsContent,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled";
+	PillTabs,
+	PillTabsContent,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ReportPreview } from "./report-preview";
@@ -335,16 +335,16 @@ export function ReportBuilder({
 				{/* Config rail */}
 				<aside className="flex shrink-0 flex-col gap-6 border-b border-border/60 bg-background/50 px-4 py-5 lg:h-full lg:w-80 lg:overflow-y-auto lg:border-b-0 lg:border-r">
 					{/* Outline / Filters tab strip */}
-					<StyledTabs
+					<PillTabs
 						value={configTab}
 						onValueChange={(v) => setConfigTab(v as "outline" | "filters")}
 					>
-						<StyledTabsList className="w-full">
-							<StyledTabsTrigger value="outline">
+						<PillTabsList className="w-full">
+							<PillTabsTrigger value="outline">
 								<ListTree className="size-3.5" />
 								Outline
-							</StyledTabsTrigger>
-							<StyledTabsTrigger value="filters">
+							</PillTabsTrigger>
+							<PillTabsTrigger value="filters">
 								<Filter className="size-3.5" />
 								Filters
 								{activeFilterCount > 0 && (
@@ -352,10 +352,10 @@ export function ReportBuilder({
 										{activeFilterCount}
 									</span>
 								)}
-							</StyledTabsTrigger>
-						</StyledTabsList>
+							</PillTabsTrigger>
+						</PillTabsList>
 
-						<StyledTabsContent value="outline" className="mt-4 space-y-4">
+						<PillTabsContent value="outline" className="mt-4 space-y-4">
 							<div className="space-y-1.5">
 								<Label className="text-xs">Source</Label>
 								<Select
@@ -488,7 +488,7 @@ export function ReportBuilder({
 
 							<div className={cn("space-y-1.5", vizType !== "table" && "opacity-60")}>
 								<Label className="text-xs">Columns</Label>
-								<StyledMultiSelector
+								<MultiSelector
 									options={Object.entries(REPORT_FIELDS[entityType].fields).map(
 										([field, def]) => ({ label: def.label, value: field })
 									)}
@@ -510,16 +510,16 @@ export function ReportBuilder({
 									Columns appear in the table view.
 								</p>
 							</div>
-						</StyledTabsContent>
+						</PillTabsContent>
 
-						<StyledTabsContent value="filters" className="mt-4">
+						<PillTabsContent value="filters" className="mt-4">
 							<ReportFiltersEditor
 								entityType={entityType}
 								filters={filters}
 								onChange={setFilters}
 							/>
-						</StyledTabsContent>
-					</StyledTabs>
+						</PillTabsContent>
+					</PillTabs>
 
 					{/* NL report building lives in the assistant panel (createReport tool). */}
 					{openAssistant && (

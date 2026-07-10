@@ -5,7 +5,7 @@ import React, { useState, useRef, useEffect } from "react";
 
 type TagsInputSize = "default" | "sm";
 
-interface StyledTagsInputProps {
+interface TagsInputProps {
 	tags: string[];
 	setTags: React.Dispatch<React.SetStateAction<string[]>>;
 	onTagAdded?: (tag: string) => void;
@@ -17,7 +17,7 @@ interface StyledTagsInputProps {
 	size?: TagsInputSize;
 }
 
-export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
+export const TagsInput: React.FC<TagsInputProps> = ({
 	tags,
 	setTags,
 	onTagAdded,
@@ -178,4 +178,3 @@ export const StyledTagsInput: React.FC<StyledTagsInputProps> = ({
 		</div>
 	);
 };
-

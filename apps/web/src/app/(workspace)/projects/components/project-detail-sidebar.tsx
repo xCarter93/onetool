@@ -4,13 +4,13 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
+} from "@/components/ui/select";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -231,18 +231,18 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Status</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "status" && e.stopPropagation()}>
 						{editingField === "status" ? (
-							<StyledSelect value={editValue} onValueChange={(value) => setEditValue(value as string)}>
-								<StyledSelectTrigger className="h-8">
+							<Select value={editValue} onValueChange={(value) => setEditValue(value as string)}>
+								<SelectTrigger className="h-8">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{STATUS_OPTIONS.map((opt) => (
 										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<ProminentStatusBadge
 								status={project.status}
@@ -267,18 +267,18 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Project Type</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "projectType" && e.stopPropagation()}>
 						{editingField === "projectType" ? (
-							<StyledSelect value={editValue} onValueChange={(value) => setEditValue(value as string)}>
-								<StyledSelectTrigger className="h-8">
+							<Select value={editValue} onValueChange={(value) => setEditValue(value as string)}>
+								<SelectTrigger className="h-8">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{TYPE_OPTIONS.map((opt) => (
 										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<span className="text-sm text-foreground capitalize">
 								{project.projectType === "one-off" ? "One-off" : "Recurring"}
@@ -370,7 +370,7 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Assigned To</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "assignedUserIds" && e.stopPropagation()}>
 						{editingField === "assignedUserIds" ? (
-							<StyledMultiSelector
+							<MultiSelector
 								options={
 									users?.map((user) => ({
 										label: user.name || user.email,

@@ -23,7 +23,7 @@ import { useRouter } from "next/navigation";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { cn } from "@/lib/utils";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import { User } from "lucide-react";
 import { ProjectCreationSidebar } from "./project-creation-sidebar";
 
@@ -578,7 +578,7 @@ export function ProjectOnboardingForm({
 													<User className="h-4 w-4 text-primary" />
 													Assign To
 												</FieldLabel>
-												<StyledMultiSelector
+												<MultiSelector
 													options={
 														users?.map((user) => ({
 															label: user.name || user.email,

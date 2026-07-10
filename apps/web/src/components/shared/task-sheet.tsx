@@ -6,12 +6,12 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled/styled-select";
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -274,22 +274,22 @@ export function TaskSheet({
 							<label className="text-sm font-semibold text-foreground">
 								Task Type
 							</label>
-							<StyledSelect
+							<Select
 								value={formData.type}
 								onValueChange={(value) =>
 									handleInputChange("type", value as "internal" | "external")
 								}
 							>
-								<StyledSelectTrigger className="w-full">
+								<SelectTrigger className="w-full">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									<SelectItem value="external">
 										External (Client Task)
 									</SelectItem>
 									<SelectItem value="internal">Internal (Team Task)</SelectItem>
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 							<p className="text-xs text-muted-foreground">
 								{formData.type === "external"
 									? "External tasks require a client and can be linked to projects"
@@ -340,23 +340,23 @@ export function TaskSheet({
 									<Building2 className="h-4 w-4 text-primary" />
 									Client <span className="text-danger">*</span>
 								</label>
-								<StyledSelect
+								<Select<Id<"clients"> | "">
 									value={formData.clientId}
 									onValueChange={(value) =>
 										handleInputChange("clientId", value as string)
 									}
 								>
-									<StyledSelectTrigger className="w-full">
+									<SelectTrigger className="w-full">
 										<SelectValue placeholder="Select a client..." />
-									</StyledSelectTrigger>
-									<StyledSelectContent>
+									</SelectTrigger>
+									<SelectContent>
 										{clients?.map((client) => (
 											<SelectItem key={client._id} value={client._id}>
 												{client.companyName}
 											</SelectItem>
 										))}
-									</StyledSelectContent>
-								</StyledSelect>
+									</SelectContent>
+								</Select>
 							</div>
 						)}
 
@@ -370,27 +370,27 @@ export function TaskSheet({
 										(Optional)
 									</span>
 								</label>
-								<StyledSelect
+								<Select<Id<"projects"> | "">
 									value={formData.projectId}
 									onValueChange={(value) =>
 										handleInputChange("projectId", value as string)
 									}
 									disabled={!formData.clientId}
 								>
-									<StyledSelectTrigger
+									<SelectTrigger
 										className="w-full"
 										disabled={!formData.clientId}
 									>
 										<SelectValue placeholder="No project selected" />
-									</StyledSelectTrigger>
-									<StyledSelectContent>
+									</SelectTrigger>
+									<SelectContent>
 										{projects?.map((project) => (
 											<SelectItem key={project._id} value={project._id}>
 												{project.title}
 											</SelectItem>
 										))}
-									</StyledSelectContent>
-								</StyledSelect>
+									</SelectContent>
+								</Select>
 								{!formData.clientId && (
 									<p className="text-xs text-muted-foreground">
 										Select a client first to choose a project
@@ -422,23 +422,23 @@ export function TaskSheet({
 								<Activity className="h-4 w-4 text-primary" />
 								Status
 							</label>
-							<StyledSelect
+							<Select
 								value={formData.status}
 								onValueChange={(value) =>
 									handleInputChange("status", value as string)
 								}
 							>
-								<StyledSelectTrigger className="w-full">
+								<SelectTrigger className="w-full">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{statusOptions.map((option) => (
 										<SelectItem key={option.value} value={option.value}>
 											{option.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						</div>
 
 						{/* Assignee */}
@@ -447,23 +447,23 @@ export function TaskSheet({
 								<User className="h-4 w-4 text-primary" />
 								Assign To
 							</label>
-							<StyledSelect
+							<Select
 								value={formData.assigneeUserId || undefined}
 								onValueChange={(value) =>
 									handleInputChange("assigneeUserId", value as string)
 								}
 							>
-								<StyledSelectTrigger className="w-full">
+								<SelectTrigger className="w-full">
 									<SelectValue placeholder="Unassigned" />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{users?.map((user) => (
 										<SelectItem key={user._id} value={user._id}>
 											{user.name || user.email}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						</div>
 
 						{/* Repeat Options */}
@@ -475,23 +475,23 @@ export function TaskSheet({
 								<label className="text-xs font-medium text-foreground">
 									Repeat
 								</label>
-								<StyledSelect
+								<Select
 									value={formData.repeat}
 									onValueChange={(value) =>
 										handleInputChange("repeat", value as string)
 									}
 								>
-									<StyledSelectTrigger className="w-full">
+									<SelectTrigger className="w-full">
 										<SelectValue />
-									</StyledSelectTrigger>
-									<StyledSelectContent>
+									</SelectTrigger>
+									<SelectContent>
 										{repeatOptions.map((option) => (
 											<SelectItem key={option.value} value={option.value}>
 												{option.label}
 											</SelectItem>
 										))}
-									</StyledSelectContent>
-								</StyledSelect>
+									</SelectContent>
+								</Select>
 							</div>
 
 							{formData.repeat !== "none" && (

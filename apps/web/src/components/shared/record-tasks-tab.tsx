@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import { StyledBadge } from "@/components/ui/styled";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	DataGrid,
@@ -215,13 +215,13 @@ function createColumns(
 					return <span className="text-sm text-muted-foreground">—</span>;
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
 						<FolderOpen className="h-3 w-3 text-primary" />
 						<span className="truncate max-w-[120px]">{project.title}</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		});
@@ -239,7 +239,7 @@ function createColumns(
 					return <span className="text-sm text-muted-foreground">—</span>;
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
@@ -247,7 +247,7 @@ function createColumns(
 						<span className="truncate max-w-[120px]">
 							{client.companyName}
 						</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		});
@@ -266,7 +266,7 @@ function createColumns(
 				);
 			}
 			return (
-				<StyledBadge
+				<Badge
 					variant="outline"
 					className="gap-1.5 font-normal text-xs"
 				>
@@ -274,7 +274,7 @@ function createColumns(
 					<span className="truncate max-w-[100px]">
 						{assignee.name || assignee.email}
 					</span>
-				</StyledBadge>
+				</Badge>
 			);
 		},
 	});
@@ -331,9 +331,9 @@ function GroupTable({
 	return (
 		<div className="mb-6">
 			<div className="flex items-center gap-2 px-4 py-2 mb-1">
-				<StyledBadge variant={group.variant} className="text-xs">
+				<Badge variant={group.variant} className="text-xs">
 					{group.label}
-				</StyledBadge>
+				</Badge>
 				<span className="text-xs text-muted-foreground">
 					{group.tasks.length} {group.tasks.length === 1 ? "task" : "tasks"}
 				</span>

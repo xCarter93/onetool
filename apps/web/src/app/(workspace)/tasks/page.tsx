@@ -9,12 +9,9 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TaskSheet } from "@/components/shared/task-sheet";
-import {
-	StyledBadge,
-	StyledFilters,
-	type Filter,
-	type FilterFieldConfig,
-} from "@/components/ui/styled";
+import { Badge } from "@/components/ui/badge";
+import { FiltersWithClear } from "@/components/filters/radius-full";
+import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/domain/empty-state";
 import {
@@ -219,7 +216,7 @@ function createColumns(
 					return <span className="text-sm text-muted-foreground">—</span>;
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
@@ -227,7 +224,7 @@ function createColumns(
 						<span className="truncate max-w-[120px]">
 							{client.companyName}
 						</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		},
@@ -241,13 +238,13 @@ function createColumns(
 					return <span className="text-sm text-muted-foreground">—</span>;
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
 						<FolderOpen className="h-3 w-3 text-primary" />
 						<span className="truncate max-w-[120px]">{project.title}</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		},
@@ -263,7 +260,7 @@ function createColumns(
 					);
 				}
 				return (
-					<StyledBadge
+					<Badge
 						variant="outline"
 						className="gap-1.5 font-normal text-xs"
 					>
@@ -271,7 +268,7 @@ function createColumns(
 						<span className="truncate max-w-[100px]">
 							{assignee.name || assignee.email}
 						</span>
-					</StyledBadge>
+					</Badge>
 				);
 			},
 		},
@@ -326,9 +323,9 @@ function GroupTable({
 		<div className="mb-6">
 			{/* Group header */}
 			<div className="flex items-center gap-2 px-4 py-2 mb-1">
-				<StyledBadge variant={group.variant} className="text-xs">
+				<Badge variant={group.variant} className="text-xs">
 					{group.label}
-				</StyledBadge>
+				</Badge>
 				<span className="text-xs text-muted-foreground">
 					{group.tasks.length} {group.tasks.length === 1 ? "task" : "tasks"}
 				</span>
@@ -648,7 +645,7 @@ export default function TasksPage() {
 
 			{/* Filters and Search */}
 			<div className="flex flex-col sm:flex-row gap-4 items-start">
-				<StyledFilters
+				<FiltersWithClear
 					filters={filters}
 					fields={filterFields}
 					onChange={setFilters}
@@ -656,6 +653,7 @@ export default function TasksPage() {
 					addButtonIcon={<FilterIcon className="h-4 w-4" />}
 					size="md"
 					variant="outline"
+					radius="full"
 					showClearButton={true}
 					clearButtonText="Clear"
 					clearButtonIcon={<X className="h-4 w-4" />}

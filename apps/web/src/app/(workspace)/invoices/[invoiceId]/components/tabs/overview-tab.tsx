@@ -3,7 +3,7 @@
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { StyledCard, StyledCardContent } from "@/components/ui/styled";
+import { GlassCard, GlassCardContent } from "@/components/shared/glass-card";
 import {
 	DataGrid,
 	DataGridContainer,
@@ -83,8 +83,8 @@ export function OverviewTab({
 		<div className="space-y-8">
 			{/* Summary Cards */}
 			<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				<StyledCard>
-					<StyledCardContent className="flex items-center gap-3 p-4">
+				<GlassCard>
+					<GlassCardContent className="flex items-center gap-3 p-4">
 						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 							<DollarSign className="h-5 w-5 text-primary" />
 						</div>
@@ -96,11 +96,11 @@ export function OverviewTab({
 								Total Amount
 							</p>
 						</div>
-					</StyledCardContent>
-				</StyledCard>
+					</GlassCardContent>
+				</GlassCard>
 
-				<StyledCard>
-					<StyledCardContent className="flex items-center gap-3 p-4">
+				<GlassCard>
+					<GlassCardContent className="flex items-center gap-3 p-4">
 						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 							<CreditCard className="h-5 w-5 text-primary" />
 						</div>
@@ -114,8 +114,8 @@ export function OverviewTab({
 									: ""}
 							</p>
 						</div>
-					</StyledCardContent>
-				</StyledCard>
+					</GlassCardContent>
+				</GlassCard>
 			</div>
 
 			{/* Line Items Section */}

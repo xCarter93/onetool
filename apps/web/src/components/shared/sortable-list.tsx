@@ -20,33 +20,33 @@ import { GripVertical } from "lucide-react";
 export type { DragEndEvent } from "@dnd-kit/core";
 export { arrayMove } from "@dnd-kit/sortable";
 
-export type StyledListItemData = {
+export type ListItemData = {
 	id: string;
 	[key: string]: unknown;
 };
 
-export type StyledListItemsProps = {
+export type ListItemsProps = {
 	children: ReactNode;
 	className?: string;
 };
 
-export const StyledListItems = ({ children, className }: StyledListItemsProps) => (
+export const ListItems = ({ children, className }: ListItemsProps) => (
 	<div className={cn("flex flex-col gap-2", className)}>{children}</div>
 );
 
-export type StyledListItemProps<T extends StyledListItemData> = {
+export type ListItemProps<T extends ListItemData> = {
 	item: T;
 	renderContent: (item: T, index: number) => ReactNode;
 	index: number;
 	className?: string;
 };
 
-export function StyledListItem<T extends StyledListItemData>({
+export function ListItem<T extends ListItemData>({
 	item,
 	renderContent,
 	index,
 	className,
-}: StyledListItemProps<T>) {
+}: ListItemProps<T>) {
 	const {
 		attributes,
 		listeners,
@@ -90,7 +90,7 @@ export function StyledListItem<T extends StyledListItemData>({
 	);
 }
 
-export type StyledListProviderProps<T extends StyledListItemData> = {
+export type ListProviderProps<T extends ListItemData> = {
 	items: T[];
 	onReorder: (items: T[]) => void;
 	renderItem: (item: T, index: number) => ReactNode;
@@ -98,13 +98,13 @@ export type StyledListProviderProps<T extends StyledListItemData> = {
 	itemClassName?: string;
 };
 
-export function StyledListProvider<T extends StyledListItemData>({
+export function ListProvider<T extends ListItemData>({
 	items,
 	onReorder,
 	renderItem,
 	className,
 	itemClassName,
-}: StyledListProviderProps<T>) {
+}: ListProviderProps<T>) {
 	const handleDragEnd = (event: DragEndEvent) => {
 		const { active, over } = event;
 
@@ -123,9 +123,9 @@ export function StyledListProvider<T extends StyledListItemData>({
 			onDragEnd={handleDragEnd}
 		>
 			<SortableContext items={items} strategy={verticalListSortingStrategy}>
-				<StyledListItems className={className}>
+				<ListItems className={className}>
 					{items.map((item, index) => (
-						<StyledListItem
+						<ListItem
 							key={item.id}
 							item={item}
 							renderContent={renderItem}
@@ -133,7 +133,7 @@ export function StyledListProvider<T extends StyledListItemData>({
 							className={itemClassName}
 						/>
 					))}
-				</StyledListItems>
+				</ListItems>
 			</SortableContext>
 		</DndContext>
 	);

@@ -3,11 +3,11 @@
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { ActivityWithUser } from "@/app/(workspace)/home/components/activity-item";
 import {
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-	StyledTabsContent,
-} from "@/components/ui/styled";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+	PillTabsContent,
+} from "@/components/shared/pill-tabs";
 import { OverviewTab } from "./tabs/overview-tab";
 import { ActivityTab } from "./tabs/activity-tab";
 import { TasksTab } from "./tabs/tasks-tab";
@@ -45,20 +45,20 @@ export function ProjectDetailTabs({
 	onAddTask,
 }: ProjectDetailTabsProps) {
 	return (
-		<StyledTabs value={activeTab} onValueChange={onTabChange}>
+		<PillTabs value={activeTab} onValueChange={onTabChange}>
 			{/* Two-column layout: tabs + content on left, sidebar on right */}
 			<div className="flex gap-0">
 				{/* Left: Tabs list + tab content */}
 				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
-					<StyledTabsList className="overflow-x-auto">
-						<StyledTabsTrigger value="overview">Overview</StyledTabsTrigger>
-						<StyledTabsTrigger value="tasks">
+					<PillTabsList className="overflow-x-auto">
+						<PillTabsTrigger value="overview">Overview</PillTabsTrigger>
+						<PillTabsTrigger value="tasks">
 							Tasks{tasks && tasks.length > 0 ? ` (${tasks.length})` : ""}
-						</StyledTabsTrigger>
-						<StyledTabsTrigger value="activity">Activity</StyledTabsTrigger>
-					</StyledTabsList>
+						</PillTabsTrigger>
+						<PillTabsTrigger value="activity">Activity</PillTabsTrigger>
+					</PillTabsList>
 
-					<StyledTabsContent value="overview" className="mt-0 pt-5">
+					<PillTabsContent value="overview" className="mt-0 pt-5">
 						<OverviewTab
 							projectId={projectId}
 							projectTitle={project.title}
@@ -70,15 +70,15 @@ export function ProjectDetailTabs({
 							quotes={quotes}
 							invoices={invoices}
 						/>
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="tasks" className="mt-0 pt-5">
+					<PillTabsContent value="tasks" className="mt-0 pt-5">
 						<TasksTab tasks={tasks} onAddTask={onAddTask} />
-					</StyledTabsContent>
+					</PillTabsContent>
 
-					<StyledTabsContent value="activity" className="mt-0 pt-5">
+					<PillTabsContent value="activity" className="mt-0 pt-5">
 						<ActivityTab activities={activities} />
-					</StyledTabsContent>
+					</PillTabsContent>
 				</div>
 
 				{/* Right: Persistent sidebar (desktop) */}
@@ -109,6 +109,6 @@ export function ProjectDetailTabs({
 					invoices={invoices}
 				/>
 			</div>
-		</StyledTabs>
+		</PillTabs>
 	);
 }

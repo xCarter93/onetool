@@ -38,6 +38,8 @@ const eslintConfig = [
 								"react-aria-components",
 								"tailwind-variants",
 								"@intentui/*",
+								"@/components/ui/styled",
+								"@/components/ui/styled/*",
 							],
 							message:
 								"Retired by the ReUI rebuild. Use the vendored primitives in @/components/ui (Base UI), @/components/reui, or @/components/domain; icons from lucide-react.",
@@ -78,6 +80,8 @@ const eslintConfig = [
 								"react-aria-components",
 								"tailwind-variants",
 								"@intentui/*",
+								"@/components/ui/styled",
+								"@/components/ui/styled/*",
 							],
 							message:
 								"Retired by the ReUI rebuild. Use the vendored primitives in @/components/ui (Base UI), @/components/reui, or @/components/domain; icons from lucide-react.",

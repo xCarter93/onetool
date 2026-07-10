@@ -6,12 +6,12 @@ import type { JSONContent } from "@tiptap/react";
 
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Input } from "@/components/ui/input";
 import {
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled/styled-tabs";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
 import type { PricingMode, PricingTier } from "../use-community-page-form";
 
@@ -46,22 +46,22 @@ export const PricingSection = React.memo(function PricingSection({
 					Choose structured tiers or a rich-text pricing section.
 				</p>
 			</div>
-			<StyledTabs
+			<PillTabs
 				value={pricingMode}
 				onValueChange={(v) =>
 					setPricingMode(v as PricingMode)
 				}
 				className="mb-5 w-auto"
 			>
-				<StyledTabsList>
-					<StyledTabsTrigger value="structured">
+				<PillTabsList>
+					<PillTabsTrigger value="structured">
 						Structured tiers
-					</StyledTabsTrigger>
-					<StyledTabsTrigger value="richText">
+					</PillTabsTrigger>
+					<PillTabsTrigger value="richText">
 						Rich text
-					</StyledTabsTrigger>
-				</StyledTabsList>
-			</StyledTabs>
+					</PillTabsTrigger>
+				</PillTabsList>
+			</PillTabs>
 
 			{pricingMode === "structured" ? (
 				<div className="space-y-4">
@@ -96,7 +96,7 @@ export const PricingSection = React.memo(function PricingSection({
 								<div className="grid gap-3 sm:grid-cols-2">
 									<div className="space-y-2">
 										<Label className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</Label>
-										<StyledInput
+										<Input
 											value={tier.name}
 											onChange={(e) =>
 												setPricingTiers((prev) =>
@@ -112,7 +112,7 @@ export const PricingSection = React.memo(function PricingSection({
 									</div>
 									<div className="space-y-2">
 										<Label className="text-xs uppercase tracking-wider text-muted-fg">Price</Label>
-										<StyledInput
+										<Input
 											value={tier.price}
 											onChange={(e) =>
 												setPricingTiers((prev) =>
@@ -129,7 +129,7 @@ export const PricingSection = React.memo(function PricingSection({
 								</div>
 								<div className="space-y-2">
 									<Label className="text-xs uppercase tracking-wider text-muted-fg">Description</Label>
-									<StyledInput
+									<Input
 										value={tier.description}
 										onChange={(e) =>
 											setPricingTiers((prev) =>

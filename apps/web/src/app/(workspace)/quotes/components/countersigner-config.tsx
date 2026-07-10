@@ -7,8 +7,8 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
-import { StyledListProvider } from "@/components/ui/styled/styled-list";
+import { MultiSelector } from "@/components/shared/multi-selector";
+import { ListProvider } from "@/components/shared/sortable-list";
 import { useToast } from "@/hooks/use-toast";
 import { PenTool, Users, User, Mail } from "lucide-react";
 
@@ -253,7 +253,7 @@ export function CountersignerConfig({
 									<Users className="h-4 w-4 text-primary" />
 									Select Countersigner
 								</Label>
-								<StyledMultiSelector
+								<MultiSelector
 									options={userOptions}
 									value={selectedUserId ? [selectedUserId] : []}
 									onValueChange={handleUserChange}
@@ -281,7 +281,7 @@ export function CountersignerConfig({
 											<p className="text-xs text-muted-foreground">
 												Drag to reorder who signs first
 											</p>
-											<StyledListProvider
+											<ListProvider
 												items={signers}
 												onReorder={handleReorder}
 												renderItem={renderSignerItem}

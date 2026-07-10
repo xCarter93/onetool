@@ -5,12 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-	StyledBadge,
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled";
-import { StyledFilters } from "@/components/ui/styled/styled-filters";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
+import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
@@ -630,7 +629,7 @@ export default function ClientsPage() {
 
 	const filtersBar = (
 		<div className="border-b px-4 py-3">
-			<StyledFilters
+			<FiltersWithClear
 				filters={filters}
 				fields={filterFields}
 				onChange={setFilters}
@@ -638,6 +637,7 @@ export default function ClientsPage() {
 				addButtonIcon={<FilterIcon className="h-4 w-4" />}
 				size="md"
 				variant="outline"
+				radius="full"
 				showClearButton={true}
 				clearButtonText="Clear"
 				clearButtonIcon={<X className="h-4 w-4" />}
@@ -681,7 +681,7 @@ export default function ClientsPage() {
 										</p>
 									</div>
 								</div>
-								<StyledBadge variant="outline">{columnItems.length}</StyledBadge>
+								<Badge variant="outline">{columnItems.length}</Badge>
 							</KanbanHeader>
 							<KanbanCards id={column.id}>
 								{(item: ClientKanbanItem) => (
@@ -960,16 +960,16 @@ export default function ClientsPage() {
 								</>
 							)
 						) : (
-							<StyledTabs value={activeTab} onValueChange={handleTabChange}>
+							<PillTabs value={activeTab} onValueChange={handleTabChange}>
 								<div className="px-4 pt-4">
-									<StyledTabsList className="overflow-x-auto">
-										<StyledTabsTrigger value="active">
+									<PillTabsList className="overflow-x-auto">
+										<PillTabsTrigger value="active">
 											Active Clients
-										</StyledTabsTrigger>
-										<StyledTabsTrigger value="archived">
+										</PillTabsTrigger>
+										<PillTabsTrigger value="archived">
 											Archived Clients
-										</StyledTabsTrigger>
-									</StyledTabsList>
+										</PillTabsTrigger>
+									</PillTabsList>
 								</div>
 								{currentTabEmpty ? (
 									isArchivedTab ? (
@@ -983,7 +983,7 @@ export default function ClientsPage() {
 										{clientsTable}
 									</>
 								)}
-							</StyledTabs>
+							</PillTabs>
 						)}
 					</FramePanel>
 

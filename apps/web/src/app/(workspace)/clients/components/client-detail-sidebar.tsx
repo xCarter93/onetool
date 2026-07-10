@@ -4,13 +4,13 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useMutation } from "convex/react";
 import {
-	StyledSelect,
-	StyledSelectTrigger,
-	StyledSelectContent,
+	Select,
+	SelectTrigger,
+	SelectContent,
 	SelectValue,
 	SelectItem,
-} from "@/components/ui/styled";
-import { StyledTagsInput } from "@/components/ui/styled/styled-tags-input";
+} from "@/components/ui/select";
+import { TagsInput } from "@/components/shared/tags-input";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
@@ -285,21 +285,21 @@ export function ClientDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Status</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "status" && e.stopPropagation()}>
 						{editingField === "status" ? (
-							<StyledSelect
+							<Select
 								value={editValue}
 								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
 							>
-								<StyledSelectTrigger className="h-8">
+								<SelectTrigger className="h-8">
 									<SelectValue />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{STATUS_OPTIONS.map((opt) => (
 										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<ProminentStatusBadge
 								status={client.status}
@@ -324,21 +324,21 @@ export function ClientDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Lead Source</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "leadSource" && e.stopPropagation()}>
 						{editingField === "leadSource" ? (
-							<StyledSelect
+							<Select
 								value={editValue}
 								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
 							>
-								<StyledSelectTrigger className="h-8">
+								<SelectTrigger className="h-8">
 									<SelectValue placeholder="Select source" />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{LEAD_SOURCE_OPTIONS.map((opt) => (
 										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<span className="text-sm text-foreground">
 								{formatLeadSource(client.leadSource)}
@@ -399,21 +399,21 @@ export function ClientDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Comm. Pref.</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "communicationPreference" && e.stopPropagation()}>
 						{editingField === "communicationPreference" ? (
-							<StyledSelect
+							<Select
 								value={editValue}
 								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
 							>
-								<StyledSelectTrigger className="h-8">
+								<SelectTrigger className="h-8">
 									<SelectValue placeholder="Select" />
-								</StyledSelectTrigger>
-								<StyledSelectContent>
+								</SelectTrigger>
+								<SelectContent>
 									{COMM_PREF_OPTIONS.map((opt) => (
 										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
-								</StyledSelectContent>
-							</StyledSelect>
+								</SelectContent>
+							</Select>
 						) : (
 							<span className="text-sm text-foreground">
 								{formatCommunicationPreference(client.communicationPreference)}
@@ -431,7 +431,7 @@ export function ClientDetailSidebar({
 					<Tag className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Tags</span>
 					<div className="flex-1 min-w-0">
-						<StyledTagsInput
+						<TagsInput
 							tags={localTags}
 							setTags={handleTagsChange}
 							placeholder="Add a tag..."

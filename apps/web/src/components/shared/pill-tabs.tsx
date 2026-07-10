@@ -5,17 +5,17 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 /**
- * StyledTabs - A wrapper around the base Tabs component with consistent styling
+ * PillTabs - A wrapper around the base Tabs component with consistent styling
  * that matches the app's design system (similar to Button and Badge)
  */
-export function StyledTabs({
+export function PillTabs({
 	className,
 	...props
 }: React.ComponentProps<typeof Tabs>) {
 	return <Tabs className={cn("w-full", className)} {...props} />;
 }
 
-export function StyledTabsList({
+export function PillTabsList({
 	className,
 	...props
 }: React.ComponentProps<typeof TabsList>) {
@@ -35,7 +35,7 @@ export function StyledTabsList({
 	);
 }
 
-export function StyledTabsTrigger({
+export function PillTabsTrigger({
 	className,
 	...props
 }: React.ComponentProps<typeof TabsTrigger>) {
@@ -62,7 +62,7 @@ export function StyledTabsTrigger({
 	);
 }
 
-export function StyledTabsContent({
+export function PillTabsContent({
 	className,
 	...props
 }: React.ComponentProps<typeof TabsContent>) {
