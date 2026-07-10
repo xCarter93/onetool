@@ -13,6 +13,7 @@ import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/reui/badge";
 import {
 	Crown,
 	Users,
@@ -218,11 +219,14 @@ export default function SubscriptionPage() {
 											</div>
 											<div className="flex items-center gap-3">
 												{hasPremiumAccess && (
-													<div className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30">
-														<span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-															ACTIVE
-														</span>
-													</div>
+													<Badge
+														variant="warning-light"
+														radius="full"
+														size="lg"
+														className="px-3 py-1"
+													>
+														ACTIVE
+													</Badge>
 												)}
 												{/* Subscription Details Button Inline */}
 												<SignedIn>
@@ -292,9 +296,9 @@ export default function SubscriptionPage() {
 													<div className="flex flex-col items-center gap-2">
 														<span>Free</span>
 														{!hasPremiumAccess && (
-															<span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+															<Badge variant="primary-light" radius="full">
 																Current
-															</span>
+															</Badge>
 														)}
 													</div>
 												</th>
@@ -303,9 +307,9 @@ export default function SubscriptionPage() {
 														<div className="flex items-center gap-1">
 															<span>Business</span>
 															{hasPremiumAccess && (
-																<span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+																<Badge variant="warning-light" radius="full">
 																	Current
-																</span>
+																</Badge>
 															)}
 														</div>
 														{!hasPremiumAccess && (

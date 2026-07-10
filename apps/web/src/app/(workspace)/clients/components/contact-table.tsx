@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/reui/badge";
 import {
 	EnvelopeIcon,
 	PlusIcon,
@@ -422,9 +423,9 @@ function ContactRow({
 						{contact.firstName} {contact.lastName}
 					</span>
 					{contact.isNew && (
-						<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+						<Badge variant="warning-light" radius="full">
 							Unsaved
-						</span>
+						</Badge>
 					)}
 				</div>
 			</TableCell>

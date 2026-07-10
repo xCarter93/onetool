@@ -26,6 +26,7 @@ import {
 	type AddressData,
 } from "@/components/ui/address-autocomplete";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/reui/badge";
 import {
 	BuildingOffice2Icon,
 	PlusIcon,
@@ -448,9 +449,9 @@ function PropertyRow({
 				<div className="flex items-center gap-2">
 					<span>{property.streetAddress}</span>
 					{property.isNew && (
-						<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+						<Badge variant="warning-light" radius="full">
 							Unsaved
-						</span>
+						</Badge>
 					)}
 				</div>
 			</TableCell>

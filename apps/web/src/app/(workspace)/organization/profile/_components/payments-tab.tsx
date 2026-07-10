@@ -24,7 +24,9 @@ import {
 } from "@stripe/react-connect-js";
 
 import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/reui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { formatRelativeTime } from "@/lib/notification-utils";
@@ -496,9 +498,13 @@ export function PaymentsTab() {
 									</FrameTitle>
 								</div>
 								{Boolean(stripeStatus) && currentlyDue.length > 0 && (
-									<span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+									<Badge
+										variant="warning-light"
+										radius="full"
+										className="shrink-0 px-2.5"
+									>
 										{currentlyDue.length} required
-									</span>
+									</Badge>
 								)}
 							</FrameHeader>
 							<FramePanel>
@@ -610,23 +616,10 @@ export function PaymentsTab() {
 
 function StatusPill({ active }: { active: boolean }) {
 	return (
-		<span
-			className={cn(
-				"inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
-				active
-					? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-					: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-			)}
-		>
-			<span
-				aria-hidden="true"
-				className={cn(
-					"size-1.5 rounded-full",
-					active ? "bg-emerald-500" : "bg-amber-500",
-				)}
-			/>
+		<StatusBadge role={active ? "success" : "warning"} className="gap-1.5">
+			<span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
 			{active ? "Active" : "Restricted"}
-		</span>
+		</StatusBadge>
 	);
 }
 

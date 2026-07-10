@@ -20,6 +20,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { StyledInput } from "@/components/ui/styled/styled-input";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -316,10 +317,10 @@ export default function CommunityPage() {
 							<h1 className="text-2xl font-bold text-fg tracking-tight">
 								Community Page
 							</h1>
-							<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">
+							<StatusBadge role="warning" appearance="soft" className="gap-1.5">
 								<Clock className="size-3" />
 								Draft
-							</span>
+							</StatusBadge>
 						</div>
 						<p className="text-muted-fg text-sm">
 							Your community page is set up but not yet visible to the public.
@@ -388,10 +389,10 @@ export default function CommunityPage() {
 						<h1 className="text-2xl font-bold text-fg tracking-tight">
 							Community Page
 						</h1>
-						<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
+						<StatusBadge role="success" appearance="soft" className="gap-1.5">
 							<CheckCircle2 className="size-3" />
 							Live
-						</span>
+						</StatusBadge>
 					</div>
 					<p className="text-muted-fg text-sm">
 						Your community page is live and accessible to anyone with the link.
