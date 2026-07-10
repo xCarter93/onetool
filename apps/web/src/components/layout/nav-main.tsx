@@ -108,6 +108,17 @@ function QuickActionContent({
 	);
 }
 
+// Base UI warns when an uncontrolled Collapsible's defaultOpen changes
+// (isActive tracks the route). Seed local state once, then user-controlled —
+// same behavior Radix had.
+function NavCollapsible({
+	defaultOpen,
+	...props
+}: React.ComponentProps<typeof Collapsible>) {
+	const [open, setOpen] = React.useState(defaultOpen ?? false);
+	return <Collapsible open={open} onOpenChange={setOpen} {...props} />;
+}
+
 export function NavMain({
 	groups,
 	showQuickActions = true,
@@ -398,7 +409,7 @@ export function NavMain({
 								}
 
 								return (
-									<Collapsible
+									<NavCollapsible
 										key={item.title}
 										render={<SidebarMenuItem />}
 										defaultOpen={item.isActive}
@@ -452,7 +463,7 @@ export function NavMain({
 												))}
 											</SidebarMenuSub>
 										</CollapsibleContent>
-									</Collapsible>
+									</NavCollapsible>
 								);
 							}
 
