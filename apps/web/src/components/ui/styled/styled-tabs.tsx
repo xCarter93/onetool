@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * StyledTabs - A wrapper around the base Tabs component with consistent styling
- * that matches the app's design system (similar to StyledButton and Badge)
+ * that matches the app's design system (similar to Button and Badge)
  */
 export function StyledTabs({
 	className,

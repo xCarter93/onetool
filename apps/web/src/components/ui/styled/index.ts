@@ -6,7 +6,6 @@
  * for consistent design across the application.
  */
 
-export * from "./styled-button";
 export * from "./styled-card";
 export * from "./styled-input";
 export * from "./styled-badge";

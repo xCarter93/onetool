@@ -9,7 +9,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -148,19 +148,16 @@ export function PlanBadge() {
 							Create an organization to unlock OneTool features and start
 							managing your clients and projects.
 						</p>
-						<StyledButton
+						<Button
 							onClick={() => {
 								setOpen(false);
 								router.push("/organization/complete");
 							}}
-							intent="primary"
-							size="md"
-							icon={<ArrowUpRight className="h-4 w-4" />}
 							className="w-full justify-center"
-							showArrow={false}
 						>
+							<ArrowUpRight className="h-4 w-4" />
 							Create Organization
-						</StyledButton>
+						</Button>
 					</div>
 				)}
 
@@ -199,16 +196,14 @@ export function PlanBadge() {
 				{/* Manage Subscription Button - Admin only */}
 				{hasOrganization && isAdmin && (
 					<div className="p-4 border-t border-border bg-background">
-						<StyledButton
+						<Button
 							onClick={handleManageSubscription}
-							intent={hasPremiumAccess ? "outline" : "primary"}
-							size="md"
-							icon={<ArrowUpRight className="h-4 w-4" />}
+							variant={hasPremiumAccess ? "outline" : "default"}
 							className="w-full justify-center"
-							showArrow={false}
 						>
+							<ArrowUpRight className="h-4 w-4" />
 							Manage Subscription
-						</StyledButton>
+						</Button>
 					</div>
 				)}
 			</PopoverContent>

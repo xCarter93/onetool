@@ -8,6 +8,7 @@ import {
 	ChartColumn,
 	Filter,
 	ListTree,
+	Loader2,
 	Save,
 	Sparkles,
 	X,
@@ -45,7 +46,6 @@ import {
 	StyledTabsList,
 	StyledTabsTrigger,
 } from "@/components/ui/styled";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ReportPreview } from "./report-preview";
@@ -316,17 +316,18 @@ export function ReportBuilder({
 					/>
 				</div>
 				<AddChartControl value={vizType} groupBy={groupBy} onChange={setVizType} />
-				<StyledButton
-					intent="primary"
+				<Button
 					size="sm"
-					showArrow={false}
 					onClick={handleSave}
 					disabled={!name.trim() || saving}
-					isLoading={saving}
-					icon={<Save className="h-4 w-4" />}
 				>
+					{saving ? (
+						<Loader2 className="h-4 w-4 animate-spin" />
+					) : (
+						<Save className="h-4 w-4" />
+					)}
 					{mode === "edit" ? "Save changes" : "Save report"}
-				</StyledButton>
+				</Button>
 			</div>
 
 			{/* Body — config rail + chart canvas */}
@@ -607,16 +608,15 @@ export function AddChartControl({
 			<Popover open={open} onOpenChange={setOpen}>
 				<PopoverTrigger
 					render={
-						<StyledButton
-							intent="outline"
+						<Button
+							variant="outline"
 							size="sm"
-							showArrow={false}
 							disabled={disabled}
-							icon={<TriggerIcon className="h-4 w-4" />}
 							title={disabled ? "Group your data to add a chart." : undefined}
 						/>
 					}
 				>
+					<TriggerIcon className="h-4 w-4" />
 					{triggerLabel}
 				</PopoverTrigger>
 				{/* TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented. */}

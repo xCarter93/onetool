@@ -1,8 +1,8 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Loader2, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { LinkClientPopover } from "./link-client-popover";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
@@ -75,16 +75,18 @@ export function MessageComposer({
 					aria-label="Reply message"
 					className="max-h-[200px] min-h-9 flex-1 resize-none bg-transparent px-1.5 py-1.5 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
 				/>
-				<StyledButton
-					intent="primary"
+				<Button
 					size="sm"
 					onClick={handleSend}
-					isLoading={isSending}
-					disabled={!canSend}
-					icon={<Send className="h-4 w-4" aria-hidden="true" />}
-					label="Send"
-					showArrow={false}
-				/>
+					disabled={!canSend || isSending}
+				>
+					{isSending ? (
+						<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+					) : (
+						<Send className="h-4 w-4" aria-hidden="true" />
+					)}
+					Send
+				</Button>
 			</div>
 		</div>
 	);

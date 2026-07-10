@@ -15,7 +15,6 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/reui/badge";
 import {
@@ -357,30 +356,20 @@ export function SKUsTab() {
 						Create your first SKU to streamline your quote creation process
 						with reusable line items.
 					</p>
-					<StyledButton
-						intent="primary"
-						size="lg"
-						showArrow={false}
-						onClick={handleCreate}
-						icon={<Plus className="h-5 w-5" />}
-					>
+					<Button size="lg" onClick={handleCreate}>
+						<Plus className="h-5 w-5" />
 						Create Your First SKU
-					</StyledButton>
+					</Button>
 				</div>
 			) : (
 				<Frame variant="default" className="w-full">
 					<FrameHeader className="flex-row items-center justify-between gap-3">
 						<FrameTitle>Line items</FrameTitle>
 						{!isEditing && hasSKUs && (
-							<StyledButton
-								intent="primary"
-								size="sm"
-								showArrow={false}
-								onClick={handleCreate}
-								icon={<Plus className="h-4 w-4" />}
-							>
+							<Button size="sm" onClick={handleCreate}>
+								<Plus className="h-4 w-4" />
 								Add SKU
-							</StyledButton>
+							</Button>
 						)}
 					</FrameHeader>
 

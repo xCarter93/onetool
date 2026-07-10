@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useRoleAccess } from "@/hooks/use-role-access";
 
@@ -41,12 +40,9 @@ export function PremiumGate({ children }: { children: ReactNode }) {
 							Back
 						</Button>
 						{isAdmin && !hasPremiumAccess && (
-							<StyledButton
-								intent="primary"
-								onClick={() => router.push("/subscription")}
-							>
+							<Button onClick={() => router.push("/subscription")}>
 								Upgrade to Business
-							</StyledButton>
+							</Button>
 						)}
 					</div>
 				</div>

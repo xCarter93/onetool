@@ -11,6 +11,7 @@ import {
 	ExternalLink,
 	FileText,
 	FolderKanban,
+	Loader2,
 	Mail,
 	Plus,
 	Receipt,
@@ -26,7 +27,7 @@ import {
 	TimelineSeparator,
 	TimelineTitle,
 } from "@/components/reui/timeline";
-import { StyledButton } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
@@ -185,25 +186,18 @@ export function ClientDetailDrawer({
 			}
 			actions={
 				<>
-					<StyledButton
-						intent="primary"
-						size="sm"
-						icon={<ExternalLink className="size-3.5" />}
-						label="Open client"
-						showArrow={false}
-						onClick={openRecord}
-					/>
+					<Button size="sm" onClick={openRecord}>
+						<ExternalLink className="size-3.5" />
+						Open client
+					</Button>
 					<TaskSheet
 						mode="create"
 						initialValues={{ clientId: clientId ?? undefined }}
 						trigger={
-							<StyledButton
-								intent="outline"
-								size="sm"
-								icon={<Plus className="size-3.5" />}
-								label="Add Task"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm">
+								<Plus className="size-3.5" />
+								Add Task
+							</Button>
 						}
 					/>
 					{client && contactEmail && emailName ? (
@@ -218,33 +212,22 @@ export function ClientDetailDrawer({
 								email: contactEmail,
 							}}
 						>
-							<StyledButton
-								intent="outline"
-								size="sm"
-								icon={<Mail className="size-3.5" />}
-								label="Email"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm">
+								<Mail className="size-3.5" />
+								Email
+							</Button>
 						</SendClientEmailPopover>
 					) : null}
 					{client && client.status === "archived" ? (
-						<StyledButton
-							intent="outline"
-							size="sm"
-							icon={<RotateCcw className="size-3.5" />}
-							label="Restore"
-							showArrow={false}
-							onClick={handleRestore}
-						/>
+						<Button variant="outline" size="sm" onClick={handleRestore}>
+							<RotateCcw className="size-3.5" />
+							Restore
+						</Button>
 					) : client ? (
-						<StyledButton
-							intent="outline"
-							size="sm"
-							icon={<Archive className="size-3.5" />}
-							label="Archive"
-							showArrow={false}
-							onClick={handleArchive}
-						/>
+						<Button variant="outline" size="sm" onClick={handleArchive}>
+							<Archive className="size-3.5" />
+							Archive
+						</Button>
 					) : null}
 				</>
 			}
@@ -446,14 +429,10 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						label={saving ? "Saving…" : "Save"}
-						showArrow={false}
-						disabled={saving}
-						onClick={handleSave}
-					/>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
+						{saving && <Loader2 className="size-3.5 animate-spin" />}
+						{saving ? "Saving…" : "Save"}
+					</Button>
 				) : null}
 			</div>
 			{dirty ? (

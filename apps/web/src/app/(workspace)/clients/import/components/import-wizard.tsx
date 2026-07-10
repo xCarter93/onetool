@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Flag } from "lucide-react";
+import { ArrowLeft, Download, Flag, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	Frame,
@@ -14,7 +14,7 @@ import {
 } from "@/components/reui/frame";
 import { Badge } from "@/components/reui/badge";
 import { Separator } from "@/components/ui/separator";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
 	TooltipContent,
@@ -112,7 +112,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 		const buttons: Array<{
 			label: string;
 			onClick: () => void;
-			intent: "outline" | "plain";
+			variant: "outline" | "ghost";
 			disabled?: boolean;
 			icon?: ReactNode;
 		}> = [];
@@ -121,7 +121,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 			buttons.push({
 				label: "Start over",
 				onClick: startOver,
-				intent: "plain",
+				variant: "ghost",
 				disabled: state.isImporting,
 			});
 		}
@@ -130,7 +130,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 			buttons.push({
 				label: "Back",
 				onClick: goBack,
-				intent: "outline",
+				variant: "outline",
 				disabled: state.isImporting,
 				icon: <ArrowLeft className="size-4" />,
 			});
@@ -209,33 +209,33 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 		// Steps 1-2: a simple Continue button.
 		if (currentStep !== "review") {
 			return (
-				<StyledButton
-					label="Continue"
-					onClick={goNext}
-					intent="primary"
-					disabled={!canContinue}
-				/>
+				<Button onClick={goNext} disabled={!canContinue}>
+					Continue
+				</Button>
 			);
 		}
 
 		// Review step: import / results button (state lifted from StepReviewValues).
 		if (!reviewAction) {
-			return <StyledButton label="Import clients" intent="primary" disabled />;
+			return (
+				<Button disabled>
+					Import clients
+				</Button>
+			);
 		}
 		if (reviewAction.isResultsMode) {
 			// Embedded onboarding swaps the wizard out via onComplete — no button needed.
 			if (embedded) return null;
 			return (
-				<StyledButton
-					label="Go to Clients"
-					intent="primary"
-					onClick={() => router.push("/clients")}
-				/>
+				<Button onClick={() => router.push("/clients")}>Go to Clients</Button>
 			);
 		}
 		if (reviewAction.isImporting) {
 			return (
-				<StyledButton label="Importing..." intent="primary" isLoading disabled />
+				<Button disabled>
+					<Loader2 className="size-4 animate-spin" />
+					Importing...
+				</Button>
 			);
 		}
 
@@ -245,7 +245,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 			return (
 				<Tooltip>
 					<TooltipTrigger render={<span className="inline-flex" />}>
-						<StyledButton label={label} intent="primary" disabled />
+						<Button disabled>{label}</Button>
 					</TooltipTrigger>
 					<TooltipContent>
 						{reviewAction.validationErrorCount} validation error
@@ -256,12 +256,9 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 			);
 		}
 		return (
-			<StyledButton
-				label={label}
-				intent="primary"
-				onClick={reviewAction.triggerImport}
-				disabled={count === 0}
-			/>
+			<Button onClick={reviewAction.triggerImport} disabled={count === 0}>
+				{label}
+			</Button>
 		);
 	};
 
@@ -285,14 +282,14 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 				<div className="flex shrink-0 items-center gap-2">
 					{currentStep === "upload" && (
 						<>
-							<StyledButton
-								intent="plain"
+							<Button
+								variant="ghost"
 								size="sm"
-								showArrow={false}
-								icon={<Download className="size-4" />}
-								label="Template"
 								onClick={() => void downloadTemplateCsv()}
-							/>
+							>
+								<Download className="size-4" />
+								Template
+							</Button>
 							<CsvSchemaGuideDrawer entityType="clients" />
 						</>
 					)}
@@ -333,15 +330,15 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
 					{secondaryButtons.map((button) => (
-						<StyledButton
+						<Button
 							key={button.label}
-							label={button.label}
+							variant={button.variant}
 							onClick={button.onClick}
-							intent={button.intent}
 							disabled={button.disabled}
-							showArrow={false}
-							icon={button.icon}
-						/>
+						>
+							{button.icon}
+							{button.label}
+						</Button>
 					))}
 					{rightAction}
 				</div>

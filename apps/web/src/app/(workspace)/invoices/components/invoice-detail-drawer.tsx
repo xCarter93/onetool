@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { CheckCircle2, ExternalLink, Plus, Receipt, Send } from "lucide-react";
+import {
+	CheckCircle2,
+	ExternalLink,
+	Loader2,
+	Plus,
+	Receipt,
+	Send,
+} from "lucide-react";
 
 import { Badge } from "@/components/reui/badge";
 import {
@@ -16,7 +23,7 @@ import {
 	TimelineSeparator,
 	TimelineTitle,
 } from "@/components/reui/timeline";
-import { StyledButton } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
 	Select,
@@ -198,26 +205,21 @@ export function InvoiceDetailDrawer({
 			actions={
 				<>
 					{canMarkPaid ? (
-						<StyledButton
-							intent="primary"
-							size="sm"
-							icon={<CheckCircle2 className="size-3.5" />}
-							label="Mark paid"
-							showArrow={false}
-							disabled={pending}
-							onClick={handleMarkPaid}
-						/>
+						<Button size="sm" disabled={pending} onClick={handleMarkPaid}>
+							<CheckCircle2 className="size-3.5" />
+							Mark paid
+						</Button>
 					) : null}
 					{effectiveStatus === "draft" ? (
-						<StyledButton
-							intent="outline"
+						<Button
+							variant="outline"
 							size="sm"
-							icon={<Send className="size-3.5" />}
-							label="Send"
-							showArrow={false}
 							disabled={pending}
 							onClick={handleSend}
-						/>
+						>
+							<Send className="size-3.5" />
+							Send
+						</Button>
 					) : null}
 					<TaskSheet
 						mode="create"
@@ -226,23 +228,20 @@ export function InvoiceDetailDrawer({
 							clientId: client?._id,
 						}}
 						trigger={
-							<StyledButton
-								intent="outline"
-								size="sm"
-								icon={<Plus className="size-3.5" />}
-								label="Add Task"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm">
+								<Plus className="size-3.5" />
+								Add Task
+							</Button>
 						}
 					/>
-					<StyledButton
-						intent={canMarkPaid ? "outline" : "primary"}
+					<Button
+						variant={canMarkPaid ? "outline" : "default"}
 						size="sm"
-						icon={<ExternalLink className="size-3.5" />}
-						label="Open invoice"
-						showArrow={false}
 						onClick={openRecord}
-					/>
+					>
+						<ExternalLink className="size-3.5" />
+						Open invoice
+					</Button>
 				</>
 			}
 		>
@@ -443,14 +442,10 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						label={saving ? "Saving…" : "Save"}
-						showArrow={false}
-						disabled={saving}
-						onClick={handleSave}
-					/>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
+						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{saving ? "Saving…" : "Save"}
+					</Button>
 				) : null}
 			</div>
 			{dirty ? (

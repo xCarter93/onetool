@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Mail, Inbox } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmailThreadListPopover } from "./email-thread-list-popover";
@@ -50,19 +50,15 @@ export function EmailThreadListButton({
 
 	return (
 		<EmailThreadListPopover clientId={clientId}>
-			<StyledButton
-				type="button"
-				intent="outline"
-				label="Messages"
-				icon={<Inbox className="w-4 h-4" />}
-				showArrow={false}
-			>
+			<Button type="button" variant="outline">
+				<Inbox className="w-4 h-4" />
+				Messages
 				{unreadCount > 0 && (
 					<Badge variant="destructive" className="ml-2 h-5 px-2 text-xs">
 						{unreadCount}
 					</Badge>
 				)}
-			</StyledButton>
+			</Button>
 		</EmailThreadListPopover>
 	);
 }

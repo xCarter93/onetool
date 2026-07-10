@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	CreditCard,
 	Settings,
@@ -133,14 +132,10 @@ export function PaymentScheduleTab({
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Payment Schedule
 					</h3>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						onClick={onConfigurePayments}
-						icon={<Settings className="h-4 w-4" />}
-						label="Configure"
-						showArrow={false}
-					/>
+					<Button variant="outline" size="sm" onClick={onConfigurePayments}>
+						<Settings className="h-4 w-4" />
+						Configure
+					</Button>
 				</div>
 				<Separator className="mb-4" />
 
@@ -320,14 +315,10 @@ export function PaymentScheduleTab({
 						<p className="text-sm text-muted-foreground mb-3">
 							No payments configured
 						</p>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onConfigurePayments}
-							icon={<Settings className="h-4 w-4" />}
-							label="Configure Payments"
-							showArrow={false}
-						/>
+						<Button variant="outline" size="sm" onClick={onConfigurePayments}>
+							<Settings className="h-4 w-4" />
+							Configure Payments
+						</Button>
 					</div>
 				)}
 			</div>

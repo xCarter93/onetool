@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useOrganization } from "@clerk/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	Popover,
@@ -619,26 +619,26 @@ export function MentionInput({
 					/>
 
 					{/* Attach file button */}
-					<StyledButton
+					<Button
 						onClick={() => fileInputRef.current?.click()}
 						size="sm"
-						intent="outline"
-						icon={<Paperclip className="h-4 w-4" />}
-						showArrow={false}
+						variant="outline"
 						type="button"
-					/>
+						aria-label="Attach file"
+					>
+						<Paperclip className="h-4 w-4" />
+					</Button>
 
-					<StyledButton
+					<Button
 						onClick={handleSubmit}
 						disabled={
 							!message.trim() || attachments.some((a) => a.uploading || a.error)
 						}
 						size="sm"
-						intent="primary"
-						icon={<Send className="h-4 w-4" />}
-						label="Send"
-						showArrow={false}
-					/>
+					>
+						<Send className="h-4 w-4" />
+						Send
+					</Button>
 				</div>
 			</div>
 		</div>

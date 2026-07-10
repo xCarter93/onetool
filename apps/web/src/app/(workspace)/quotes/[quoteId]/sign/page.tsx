@@ -6,7 +6,7 @@ import { useAction } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -208,20 +208,12 @@ export default function QuoteSignPage() {
 							</p>
 						</div>
 						<div className="mt-1 flex items-center gap-3">
-							<StyledButton
-								intent="primary"
-								size="md"
-								showArrow={false}
-								label="View plans"
-								onClick={() => router.push("/subscription")}
-							/>
-							<StyledButton
-								intent="plain"
-								size="md"
-								showArrow={false}
-								label="Back to quote"
-								onClick={backToQuote}
-							/>
+							<Button onClick={() => router.push("/subscription")}>
+								View plans
+							</Button>
+							<Button variant="ghost" onClick={backToQuote}>
+								Back to quote
+							</Button>
 						</div>
 					</div>
 				)}
@@ -243,13 +235,9 @@ export default function QuoteSignPage() {
 								address before you can send it for signature.
 							</p>
 						</div>
-						<StyledButton
-							intent="outline"
-							size="md"
-							showArrow={false}
-							label="Back to quote"
-							onClick={backToQuote}
-						/>
+						<Button variant="outline" onClick={backToQuote}>
+							Back to quote
+						</Button>
 					</div>
 				)}
 
@@ -270,21 +258,13 @@ export default function QuoteSignPage() {
 							</p>
 						</div>
 						<div className="mt-1 flex items-center gap-3">
-							<StyledButton
-								intent="primary"
-								size="md"
-								showArrow={false}
-								icon={<RefreshCw className="h-4 w-4" />}
-								label="Try again"
-								onClick={() => void runCreate()}
-							/>
-							<StyledButton
-								intent="plain"
-								size="md"
-								showArrow={false}
-								label="Back to quote"
-								onClick={backToQuote}
-							/>
+							<Button onClick={() => void runCreate()}>
+								<RefreshCw className="h-4 w-4" />
+								Try again
+							</Button>
+							<Button variant="ghost" onClick={backToQuote}>
+								Back to quote
+							</Button>
 						</div>
 					</div>
 				)}

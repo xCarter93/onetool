@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Send, CheckCircle, AlertCircle } from "lucide-react";
+import { Send, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { StyledInput } from "@/components/ui/styled/styled-input";
 import {
 	StyledCard,
@@ -10,7 +10,7 @@ import {
 	StyledCardDescription,
 	StyledCardContent,
 } from "@/components/ui/styled/styled-card";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -161,17 +161,19 @@ export function ContactForm({ slug }: ContactFormProps) {
 							</div>
 						)}
 
-						<StyledButton
+						<Button
 							type="submit"
-							intent="primary"
-							size="md"
+							variant="default"
 							className="w-full"
 							disabled={isSubmitting}
-							isLoading={isSubmitting}
-							icon={!isSubmitting && <Send className="size-4" />}
 						>
+							{isSubmitting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Send className="size-4" />
+							)}
 							{isSubmitting ? "Sending..." : "Request a Quote"}
-						</StyledButton>
+						</Button>
 					</form>
 				)}
 			</StyledCardContent>

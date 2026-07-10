@@ -11,6 +11,7 @@ import {
 	FileText,
 	FolderKanban,
 	ListChecks,
+	Loader2,
 	Plus,
 	Receipt,
 	Users,
@@ -25,7 +26,7 @@ import {
 	TimelineSeparator,
 	TimelineTitle,
 } from "@/components/reui/timeline";
-import { StyledButton } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -172,14 +173,10 @@ export function ProjectDetailDrawer({
 			}
 			actions={
 				<>
-					<StyledButton
-						intent="primary"
-						size="sm"
-						icon={<ExternalLink className="size-3.5" />}
-						label="Open project"
-						showArrow={false}
-						onClick={openRecord}
-					/>
+					<Button size="sm" onClick={openRecord}>
+						<ExternalLink className="size-3.5" />
+						Open project
+					</Button>
 					<TaskSheet
 						mode="create"
 						initialValues={{
@@ -187,13 +184,10 @@ export function ProjectDetailDrawer({
 							clientId: data?.client?._id,
 						}}
 						trigger={
-							<StyledButton
-								intent="outline"
-								size="sm"
-								icon={<Plus className="size-3.5" />}
-								label="Add Task"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm">
+								<Plus className="size-3.5" />
+								Add Task
+							</Button>
 						}
 					/>
 				</>
@@ -422,14 +416,10 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						label={saving ? "Saving…" : "Save"}
-						showArrow={false}
-						disabled={saving}
-						onClick={handleSave}
-					/>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
+						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{saving ? "Saving…" : "Save"}
+					</Button>
 				) : null}
 			</div>
 			{dirty ? (

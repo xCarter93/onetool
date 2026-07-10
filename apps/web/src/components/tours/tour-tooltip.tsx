@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, X, Keyboard } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 // Subscribe to viewport size so positioning stays pure and SSR-safe
 function subscribeViewport(callback: () => void) {
@@ -202,15 +202,15 @@ export function TourTooltip({
 					<div className="flex-1 pr-2">
 						<h3 className="font-semibold text-foreground text-base">{title}</h3>
 					</div>
-					<StyledButton
+					<Button
 						onClick={onSkip}
 						aria-label="Skip tour"
-						intent="plain"
+						variant="ghost"
 						size="sm"
-						showArrow={false}
-						icon={<X className="w-4 h-4" />}
 						className="shrink-0 p-1! min-w-0!"
-					/>
+					>
+						<X className="w-4 h-4" />
+					</Button>
 				</div>
 
 				{/* Description */}
@@ -242,25 +242,24 @@ export function TourTooltip({
 					{/* Navigation buttons */}
 					<div className="flex items-center gap-2">
 						{!isFirstStep && (
-							<StyledButton
+							<Button
 								onClick={onPrev}
 								aria-label="Previous step"
-								intent="outline"
+								variant="outline"
 								size="sm"
-								showArrow={false}
-								icon={<ChevronLeft className="w-4 h-4" />}
 								className="p-2! min-w-0!"
-							/>
+							>
+								<ChevronLeft className="w-4 h-4" />
+							</Button>
 						)}
-						<StyledButton
+						{/* TODO(reui-rebuild): showArrow (hover "→" on non-final steps) dropped — nova Button has no hover-arrow affordance */}
+						<Button
 							onClick={onNext}
-							intent="primary"
 							size="sm"
-							showArrow={!isLastStep}
 							className="shadow-sm! hover:shadow-md!"
 						>
 							{isLastStep ? "Finish" : "Next"}
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 

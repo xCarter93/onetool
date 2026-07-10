@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/empty";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { initialsOf, type InboxThread } from "../lib/inbox-utils";
@@ -149,23 +149,19 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 					</div>
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={handleMarkUnread}
-						icon={<MailMinus className="h-4 w-4" aria-hidden="true" />}
-						label="Mark unread"
-						showArrow={false}
 						className="hidden sm:inline-flex"
-					/>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						onClick={handleArchive}
-						icon={<Archive className="h-4 w-4" aria-hidden="true" />}
-						label="Archive"
-						showArrow={false}
-					/>
+					>
+						<MailMinus className="h-4 w-4" aria-hidden="true" />
+						Mark unread
+					</Button>
+					<Button variant="outline" size="sm" onClick={handleArchive}>
+						<Archive className="h-4 w-4" aria-hidden="true" />
+						Archive
+					</Button>
 				</div>
 			</header>
 

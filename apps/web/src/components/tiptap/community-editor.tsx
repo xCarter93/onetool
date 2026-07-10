@@ -26,7 +26,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { StyledInput } from "@/components/ui/styled/styled-input";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 interface CommunityEditorProps {
 	content?: JSONContent;
@@ -478,22 +478,22 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 						/>
 					</div>
 					<div className="flex gap-2">
-						<StyledButton
+						<Button
 							type="submit"
-							intent="primary"
+							variant="default"
 							className="flex-1"
 							disabled={!url.trim()}
 						>
 							{isActive ? "Update Link" : "Add Link"}
-						</StyledButton>
+						</Button>
 						{isActive && (
-							<StyledButton
+							<Button
 								type="button"
-								intent="secondary"
+								variant="secondary"
 								onClick={handleRemoveLink}
 							>
 								Remove
-							</StyledButton>
+							</Button>
 						)}
 					</div>
 				</form>
@@ -564,14 +564,14 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 							Paste a URL to an image hosted online
 						</p>
 					</div>
-					<StyledButton
+					<Button
 						type="submit"
-						intent="primary"
+						variant="default"
 						className="w-full"
 						disabled={!url.trim()}
 					>
 						Insert Image
-					</StyledButton>
+					</Button>
 				</form>
 			</PopoverContent>
 		</Popover>

@@ -18,7 +18,7 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface LinkClientPopoverProps {
@@ -59,14 +59,10 @@ export function LinkClientPopover({
 							)}
 						/>
 					) : (
-						<StyledButton
-							intent="outline"
-							size="sm"
-							icon={<Link2 className="h-4 w-4" aria-hidden="true" />}
-							label="Link to client"
-							showArrow={false}
-							disabled={disabled}
-						/>
+						<Button variant="outline" size="sm" disabled={disabled}>
+							<Link2 className="h-4 w-4" aria-hidden="true" />
+							Link to client
+						</Button>
 					)
 				}
 			>

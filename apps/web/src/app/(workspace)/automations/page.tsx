@@ -10,7 +10,7 @@ import {
 	StyledTabsTrigger,
 	StyledTabsContent,
 } from "@/components/ui/styled";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { RunMetricsTiles } from "./components/run-metrics-tiles";
@@ -73,12 +73,9 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 									: "Workflow automations are available on the Business plan. Upgrade to automate your workflows and save time."}
 							</p>
 							{!hasPremiumAccess && isAdmin && (
-								<StyledButton
-									intent="primary"
-									onClick={() => router.push("/subscription")}
-								>
+								<Button onClick={() => router.push("/subscription")}>
 									Upgrade to Business
-								</StyledButton>
+								</Button>
 							)}
 						</div>
 					</CardContent>
@@ -105,13 +102,10 @@ function AutomationsContent() {
 						</p>
 					</div>
 				</div>
-				<StyledButton
-					intent="primary"
-					icon={<Plus className="h-4 w-4" />}
-					onClick={() => router.push("/automations/editor")}
-				>
+				<Button onClick={() => router.push("/automations/editor")}>
+					<Plus className="h-4 w-4" />
 					Create Automation
-				</StyledButton>
+				</Button>
 			</div>
 
 			<RunMetricsTiles />

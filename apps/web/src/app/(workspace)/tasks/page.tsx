@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import {
 	StyledBadge,
-	StyledButton,
 	StyledTable,
 	StyledTableBody,
 	StyledTableCell,
@@ -22,6 +21,7 @@ import {
 	type Filter,
 	type FilterFieldConfig,
 } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import {
 	ColumnDef,
 	flexRender,
@@ -673,11 +673,10 @@ export default function TasksPage() {
 				<TaskSheet
 					mode="create"
 					trigger={
-						<StyledButton
-							label="New Task"
-							icon={<Plus className="h-4 w-4" />}
-							intent="primary"
-						/>
+						<Button>
+							<Plus className="h-4 w-4" />
+							New Task
+						</Button>
 					}
 				/>
 			</div>
@@ -708,13 +707,10 @@ export default function TasksPage() {
 				</div>
 
 				{searchQuery.trim() !== "" && filters.length === 0 && (
-					<StyledButton
-						label="Clear"
-						icon={<X className="h-4 w-4" />}
-						intent="outline"
-						onClick={() => setSearchQuery("")}
-						showArrow={false}
-					/>
+					<Button variant="outline" onClick={() => setSearchQuery("")}>
+						<X className="h-4 w-4" />
+						Clear
+					</Button>
 				)}
 			</div>
 
@@ -762,11 +758,10 @@ export default function TasksPage() {
 								<TaskSheet
 									mode="create"
 									trigger={
-										<StyledButton
-											label="Create Your First Task"
-											icon={<Plus className="h-4 w-4" />}
-											intent="primary"
-										/>
+										<Button>
+											<Plus className="h-4 w-4" />
+											Create Your First Task
+										</Button>
 									}
 								/>
 							)}

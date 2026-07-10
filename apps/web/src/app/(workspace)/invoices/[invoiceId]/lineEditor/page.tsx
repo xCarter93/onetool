@@ -17,7 +17,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Input } from "@/components/ui/input";
 import {
 	FileText,
@@ -362,14 +361,10 @@ export default function InvoiceLineEditorPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-3">
-						<StyledButton
-							intent="primary"
-							size="sm"
-							onClick={handleSaveInvoice}
-							disabled={!hasChanges}
-							icon={<Save className="h-4 w-4" />}
-							label="Save Changes"
-						/>
+						<Button size="sm" onClick={handleSaveInvoice} disabled={!hasChanges}>
+							<Save className="h-4 w-4" />
+							Save Changes
+						</Button>
 					</div>
 				</div>
 

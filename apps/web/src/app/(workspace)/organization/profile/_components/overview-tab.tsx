@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/input-group";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	Avatar,
 	AvatarImage,
@@ -691,22 +690,14 @@ export function OverviewTab() {
 										))}
 									</SelectContent>
 								</Select>
-								<StyledButton
-									intent="primary"
-									size="md"
-									showArrow={false}
-									onClick={handleInvite}
-									disabled={inviting}
-									icon={
-										inviting ? (
-											<Loader2 className="h-4 w-4 animate-spin" />
-										) : (
-											<UserPlus className="h-4 w-4" />
-										)
-									}
-								>
+								<Button onClick={handleInvite} disabled={inviting}>
+									{inviting ? (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									) : (
+										<UserPlus className="h-4 w-4" />
+									)}
 									Send invite
-								</StyledButton>
+								</Button>
 							</div>
 
 							{pendingInvites.length > 0 ? (
@@ -821,22 +812,19 @@ export function OverviewTab() {
 								</ItemDescription>
 							</ItemContent>
 							<ItemActions>
-								<StyledButton
-									intent="destructive"
+								<Button
+									variant="destructive"
 									size="sm"
-									showArrow={false}
 									onClick={handleDelete}
 									disabled={deleting}
-									icon={
-										deleting ? (
-											<Loader2 className="h-4 w-4 animate-spin" />
-										) : (
-											<Trash2 className="h-4 w-4" />
-										)
-									}
 								>
+									{deleting ? (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									) : (
+										<Trash2 className="h-4 w-4" />
+									)}
 									Delete
-								</StyledButton>
+								</Button>
 							</ItemActions>
 						</Item>
 					)}

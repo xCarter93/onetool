@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
 	StyledBadge,
-	StyledButton,
 	StyledTable,
 	StyledTableBody,
 	StyledTableCell,
@@ -522,12 +521,10 @@ export default function ProjectsPage() {
 						</p>
 					</div>
 				</div>
-				<StyledButton
-					intent="primary"
-					icon={<Plus className="h-4 w-4" />}
-					label="Create Project"
-					onClick={() => router.push("/projects/new")}
-				/>
+				<Button onClick={() => router.push("/projects/new")}>
+					<Plus className="h-4 w-4" />
+					Create Project
+				</Button>
 			</div>
 
 			<MetricFrame
@@ -654,12 +651,10 @@ export default function ProjectsPage() {
 								Get started by creating your first project. Projects help you
 								organize work and track progress.
 							</p>
-							<StyledButton
-								intent="primary"
-								icon={<Plus className="h-4 w-4" />}
-								label="Create Your First Project"
-								onClick={() => router.push("/projects/new")}
-							/>
+							<Button onClick={() => router.push("/projects/new")}>
+								<Plus className="h-4 w-4" />
+								Create Your First Project
+							</Button>
 						</div>
 					) : viewMode === "table" ? (
 						<div className="overflow-x-auto">

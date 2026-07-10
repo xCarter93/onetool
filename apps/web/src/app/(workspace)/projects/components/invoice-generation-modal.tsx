@@ -6,11 +6,11 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Modal from "@/components/ui/modal";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup } from "@headlessui/react";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import { Receipt } from "lucide-react";
+import { Loader2, Receipt } from "lucide-react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ApprovedQuote } from "@/types/quote";
 
@@ -181,25 +181,18 @@ export function InvoiceGenerationModal({
 
 				{/* Footer */}
 				<div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-					<StyledButton
-						onClick={onClose}
-						intent="outline"
-						disabled={isCreating}
-						showArrow={false}
-					>
+					<Button onClick={onClose} variant="outline" disabled={isCreating}>
 						Cancel
-					</StyledButton>
-					<StyledButton
+					</Button>
+					<Button
 						onClick={handleCreateInvoice}
-						intent="primary"
 						disabled={
 							!selectedQuoteId || isCreating || approvedQuotes.length === 0
 						}
-						isLoading={isCreating}
-						showArrow={false}
 					>
+						{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
 						Create Invoice
-					</StyledButton>
+					</Button>
 				</div>
 			</div>
 		</Modal>

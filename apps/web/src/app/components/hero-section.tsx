@@ -9,7 +9,7 @@ import {
 } from "react";
 import Image from "next/image";
 import { motion, useMotionValue, useSpring } from "motion/react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { AccentCTA } from "@/app/components/landing/accent-cta";
 import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
 import { Calendar } from "lucide-react";
@@ -146,14 +146,14 @@ export default function HeroSection() {
 						className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3"
 					>
 						<AccentCTA href="/sign-up">Get Started</AccentCTA>
-						<StyledButton
-							intent="outline"
+						<Button
+							variant="outline"
 							size="lg"
 							onClick={() => setIsScheduleDemoOpen(true)}
-							icon={<Calendar className="h-4 w-4" />}
 						>
+							<Calendar className="h-4 w-4" />
 							Schedule a Demo
-						</StyledButton>
+						</Button>
 					</motion.div>
 
 					{/* iOS App Store badge — smart link: opens the App Store app on iOS, the web product page on desktop */}

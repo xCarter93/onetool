@@ -10,7 +10,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { StyledCard, StyledCardContent } from "@/components/ui/styled";
 import { Settings, ClipboardList, DollarSign, CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -87,18 +87,18 @@ export function OverviewTab({
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Line Items
 					</h3>
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() =>
 							router.push(
 								`/invoices/${invoiceId}/lineEditor`
 							)
 						}
-						icon={<Settings className="h-4 w-4" />}
-						label="Edit Line Items"
-						showArrow={false}
-					/>
+					>
+						<Settings className="h-4 w-4" />
+						Edit Line Items
+					</Button>
 				</div>
 				<Separator className="mb-4" />
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import Image from "next/image";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import PaymentSuccessMessage from "../components/success-message";
 
 type PaymentResponse = {
@@ -377,25 +377,22 @@ export default function PayPage() {
 					{/* Pay Button */}
 					<div className="pt-2">
 						<div className="group relative overflow-hidden rounded-lg">
-							<StyledButton
+							<Button
 								size="lg"
-								intent="primary"
+								variant="default"
 								className="w-full justify-center py-4"
 								onClick={handleCheckout}
 								disabled={loading || confirming}
-								showArrow={false}
-								icon={
-									loading ? (
-										<div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
-									) : (
-										<LockIcon className="h-4 w-4" />
-									)
-								}
 							>
+								{loading ? (
+									<div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+								) : (
+									<LockIcon className="h-4 w-4" />
+								)}
 								{loading
 									? "Starting checkout..."
 									: `Pay ${formatCurrency(payment.paymentAmount)}`}
-							</StyledButton>
+							</Button>
 							{/* Shimmer effect overlay */}
 							<div className="pointer-events-none absolute inset-0 -translate-x-full bg-linear-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
 						</div>
@@ -478,23 +475,20 @@ export default function PayPage() {
 				{/* Pay Button */}
 				<div className="pt-2">
 					<div className="group relative overflow-hidden rounded-lg">
-						<StyledButton
+						<Button
 							size="lg"
-							intent="primary"
+							variant="default"
 							className="w-full justify-center py-4"
 							onClick={handleCheckout}
 							disabled={loading || confirming}
-							showArrow={false}
-							icon={
-								loading ? (
-									<div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
-								) : (
-									<LockIcon className="h-4 w-4" />
-								)
-							}
 						>
+							{loading ? (
+								<div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+							) : (
+								<LockIcon className="h-4 w-4" />
+							)}
 							{loading ? "Starting checkout..." : `Pay ${displayAmount}`}
-						</StyledButton>
+						</Button>
 						{/* Shimmer effect overlay */}
 						<div className="pointer-events-none absolute inset-0 -translate-x-full bg-linear-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
 					</div>

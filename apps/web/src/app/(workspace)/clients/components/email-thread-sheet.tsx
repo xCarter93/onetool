@@ -12,7 +12,7 @@ import {
 	SheetTitle,
 	SheetDescription,
 } from "@/components/ui/sheet";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { StyledInput } from "@/components/ui/styled";
 import {
@@ -23,7 +23,7 @@ import {
 	SelectItem,
 } from "@/components/ui/styled/styled-select";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Paperclip, Download } from "lucide-react";
+import { Send, Paperclip, Download, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -343,34 +343,34 @@ export function EmailThreadSheet({
 							</div>
 
 							<div className="flex justify-end gap-3">
-								<StyledButton
+								<Button
 									type="button"
-									intent="outline"
+									variant="outline"
 									onClick={handleClose}
-									label="Close"
-									showArrow={false}
 									disabled={isSending}
-								/>
-								<StyledButton
+								>
+									Close
+								</Button>
+								<Button
 									type="button"
-									intent="primary"
 									onClick={handleSendEmail}
-									isLoading={isSending}
 									disabled={
 										!replyBody.trim() ||
 										(showSubjectField && !subject.trim()) ||
 										isSending
 									}
-									label={
-										isSending
-											? "Sending..."
-											: isNewEmail
-											? "Send Email"
-											: "Send Reply"
-									}
-									icon={!isSending && <Send className="w-4 h-4" />}
-									showArrow={false}
-								/>
+								>
+									{isSending ? (
+										<Loader2 className="w-4 h-4 animate-spin" />
+									) : (
+										<Send className="w-4 h-4" />
+									)}
+									{isSending
+										? "Sending..."
+										: isNewEmail
+										? "Send Email"
+										: "Send Reply"}
+								</Button>
 							</div>
 						</div>
 					</div>

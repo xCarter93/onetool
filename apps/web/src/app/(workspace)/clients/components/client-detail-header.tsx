@@ -7,7 +7,7 @@ import { EnvelopeIcon } from "@heroicons/react/24/outline";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import { Heart, ListTodo, FolderPlus, FileText } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -96,39 +96,23 @@ export function ClientDetailHeader({
 
 					{/* Right side - Quick action buttons */}
 					<div className="flex items-center gap-2 shrink-0">
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onAddTask}
-							icon={<ListTodo className="h-4 w-4" />}
-							label="Create Task"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onCreateProject}
-							icon={<FolderPlus className="h-4 w-4" />}
-							label="Create Project"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onCreateQuote}
-							icon={<FileText className="h-4 w-4" />}
-							label="Create Quote"
-							showArrow={false}
-						/>
+						<Button variant="outline" size="sm" onClick={onAddTask}>
+							<ListTodo className="h-4 w-4" />
+							Create Task
+						</Button>
+						<Button variant="outline" size="sm" onClick={onCreateProject}>
+							<FolderPlus className="h-4 w-4" />
+							Create Project
+						</Button>
+						<Button variant="outline" size="sm" onClick={onCreateQuote}>
+							<FileText className="h-4 w-4" />
+							Create Quote
+						</Button>
 						{hasPrimaryContactEmail && (
-							<StyledButton
-								intent="outline"
-								size="sm"
-								onClick={onComposeEmail}
-								icon={<EnvelopeIcon className="h-4 w-4" />}
-								label="Compose Email"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm" onClick={onComposeEmail}>
+								<EnvelopeIcon className="h-4 w-4" />
+								Compose Email
+							</Button>
 						)}
 					</div>
 				</div>

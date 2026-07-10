@@ -14,7 +14,7 @@ import {
 	isSameDay,
 } from "date-fns";
 import { formatTime } from "@/lib/calendar-utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { StyledEmpty, StyledStatusBadge } from "@/components/ui/styled";
 import {
 	ExternalLink,
@@ -239,16 +239,14 @@ export function CalendarDetailSidebar({
 
 					{/* Actions */}
 					<div className="pt-6 border-t border-border">
-						<StyledButton
-							intent="primary"
+						<Button
 							size="lg"
 							onClick={handleViewFullDetails}
-							icon={<ExternalLink className="w-4 h-4" />}
 							className="w-full justify-center"
-							showArrow={false}
 						>
+							<ExternalLink className="w-4 h-4" />
 							View Full Details
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			)}

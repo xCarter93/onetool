@@ -7,7 +7,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import {
 	endOfMonth,
 	endOfWeek,
@@ -139,7 +139,8 @@ export default function DatePickerRange({
 	onChange,
 	presets = defaultPresets,
 	align = "start",
-	showArrow = true,
+	// showArrow intentionally not destructured: nova Button has no hover-arrow
+	// affordance, so this prop is now a no-op kept only for caller compatibility.
 }: DatePickerRangeProps) {
 	const defaultPresetRange = useMemo<DateRange | undefined>(
 		() => presets.find((preset) => preset.label === "This month")?.getRange(),
@@ -242,10 +243,9 @@ export default function DatePickerRange({
 		<Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
 			<PopoverTrigger
 				render={
-					<StyledButton
+					<Button
 						type="button"
-						intent="outline"
-						showArrow={showArrow}
+						variant="outline"
 						className="inline-flex w-full min-w-[260px] items-center justify-between gap-2"
 					/>
 				}
@@ -310,12 +310,10 @@ export default function DatePickerRange({
 									: "No dates selected"}
 							</div>
 							<div className="flex items-center justify-end gap-1.5">
-								<StyledButton intent="outline" onClick={handleReset}>
+								<Button variant="outline" onClick={handleReset}>
 									Reset
-								</StyledButton>
-								<StyledButton intent="primary" onClick={handleApply}>
-									Apply
-								</StyledButton>
+								</Button>
+								<Button onClick={handleApply}>Apply</Button>
 							</div>
 						</div>
 					</div>

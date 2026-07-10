@@ -12,7 +12,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
@@ -133,16 +133,16 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Line Items
 					</h3>
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() =>
 							router.push(`/quotes/${quoteId}/quoteLineEditor`)
 						}
-						icon={<Settings className="h-4 w-4" />}
-						label="Edit Line Items"
-						showArrow={false}
-					/>
+					>
+						<Settings className="h-4 w-4" />
+						Edit Line Items
+					</Button>
 				</div>
 				<Separator className="mb-4" />
 

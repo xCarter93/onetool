@@ -5,7 +5,7 @@ import { Trash2, Plus } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
 import { Label } from "@/components/ui/label";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { StyledInput } from "@/components/ui/styled/styled-input";
 import {
 	StyledTabs,
@@ -79,8 +79,8 @@ export const PricingSection = React.memo(function PricingSection({
 										{tier.name || "Untitled Tier"}
 									</span>
 								</div>
-								<StyledButton
-									intent="destructive"
+								<Button
+									variant="destructive"
 									size="sm"
 									onClick={() =>
 										setPricingTiers((prev) =>
@@ -90,7 +90,7 @@ export const PricingSection = React.memo(function PricingSection({
 								>
 									<Trash2 className="size-3.5 mr-1.5" />
 									Remove
-								</StyledButton>
+								</Button>
 							</div>
 							<div className="p-4 space-y-3">
 								<div className="grid gap-3 sm:grid-cols-2">
@@ -146,8 +146,8 @@ export const PricingSection = React.memo(function PricingSection({
 							</div>
 						</div>
 					))}
-					<StyledButton
-						intent="secondary"
+					<Button
+						variant="secondary"
 						onClick={() =>
 							setPricingTiers((prev) => [
 								...prev,
@@ -157,7 +157,7 @@ export const PricingSection = React.memo(function PricingSection({
 					>
 						<Plus className="size-4 mr-2" />
 						Add Tier
-					</StyledButton>
+					</Button>
 				</div>
 			) : (
 				<CommunityEditor

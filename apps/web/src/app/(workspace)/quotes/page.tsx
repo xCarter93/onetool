@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
 	StyledBadge,
-	StyledButton,
 	StyledTable,
 	StyledTableBody,
 	StyledTableCell,
@@ -572,12 +571,10 @@ export default function QuotesPage() {
 						</p>
 					</div>
 				</div>
-				<StyledButton
-					intent="primary"
-					icon={<Plus className="h-4 w-4" />}
-					label="Create Quote"
-					onClick={() => router.push("/quotes/new")}
-				/>
+				<Button onClick={() => router.push("/quotes/new")}>
+					<Plus className="h-4 w-4" />
+					Create Quote
+				</Button>
 			</div>
 
 			<MetricFrame
@@ -700,12 +697,10 @@ export default function QuotesPage() {
 								Create your first quote to get started and track proposals in
 								one place.
 							</p>
-							<StyledButton
-								intent="primary"
-								icon={<Plus className="h-4 w-4" />}
-								label="Create Your First Quote"
-								onClick={() => router.push("/quotes/new")}
-							/>
+							<Button onClick={() => router.push("/quotes/new")}>
+								<Plus className="h-4 w-4" />
+								Create Your First Quote
+							</Button>
 						</div>
 					) : viewMode === "table" ? (
 						<div className="overflow-x-auto">

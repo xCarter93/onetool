@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface GalleryImage {
@@ -40,8 +40,8 @@ export function GalleryCarousel({ images }: GalleryCarouselProps) {
 				<h2 className="text-2xl font-semibold text-fg">Image Gallery</h2>
 				{images.length > 1 && (
 					<div className="flex items-center gap-2">
-						<StyledButton
-							intent="secondary"
+						<Button
+							variant="secondary"
 							size="sm"
 							onClick={() =>
 								setActiveSlide(
@@ -51,16 +51,16 @@ export function GalleryCarousel({ images }: GalleryCarouselProps) {
 							}
 						>
 							<ChevronLeft className="size-4" />
-						</StyledButton>
-						<StyledButton
-							intent="secondary"
+						</Button>
+						<Button
+							variant="secondary"
 							size="sm"
 							onClick={() =>
 								setActiveSlide((prev) => (prev + 1) % images.length)
 							}
 						>
 							<ChevronRight className="size-4" />
-						</StyledButton>
+						</Button>
 					</div>
 				)}
 			</div>

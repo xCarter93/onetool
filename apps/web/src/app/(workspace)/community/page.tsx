@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { StyledInput } from "@/components/ui/styled/styled-input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -287,8 +287,8 @@ export default function CommunityPage() {
 
 					{/* Create Button */}
 					<div className="pt-6">
-						<StyledButton
-							intent="primary"
+						<Button
+							variant="default"
 							className="w-full justify-center py-6 text-base"
 							onClick={handleCreatePage}
 							disabled={isCreating || !slug || !!slugError || isSlugAvailable === false}
@@ -299,7 +299,7 @@ export default function CommunityPage() {
 								<Globe className="size-5 mr-2" />
 							)}
 							Create Community Page
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			</div>
@@ -349,22 +349,22 @@ export default function CommunityPage() {
 					</div>
 
 					<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-4 md:mt-0">
-						<StyledButton
-							intent="secondary"
+						<Button
+							variant="secondary"
 							onClick={() => router.push("/community/edit")}
 							className="w-full sm:w-auto"
 						>
 							<Edit className="size-4 mr-2" />
 							Edit Page
-						</StyledButton>
-						<StyledButton
-							intent="primary"
+						</Button>
+						<Button
+							variant="default"
 							onClick={() => router.push("/community/edit")}
 							className="w-full sm:w-auto"
 						>
 							<Eye className="size-4 mr-2" />
 							Publish to Public
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 
@@ -429,8 +429,8 @@ export default function CommunityPage() {
 				</div>
 
 				<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto mt-4 md:mt-0">
-					<StyledButton
-						intent="plain"
+					<Button
+						variant="ghost"
 						onClick={handleCopyUrl}
 						className="w-full sm:w-auto"
 					>
@@ -445,25 +445,25 @@ export default function CommunityPage() {
 								Copy Link
 							</>
 						)}
-					</StyledButton>
-					<StyledButton
-						intent="secondary"
+					</Button>
+					<Button
+						variant="secondary"
 						onClick={() => router.push("/community/edit")}
 						className="w-full sm:w-auto"
 					>
 						<Edit className="size-4 mr-2" />
 						Edit Page
-					</StyledButton>
+					</Button>
 					<a
 						href={pageUrl}
 						target="_blank"
 						rel="noopener noreferrer"
 						className="w-full sm:w-auto"
 					>
-						<StyledButton intent="primary" className="w-full sm:w-auto">
+						<Button variant="default" className="w-full sm:w-auto">
 							<ExternalLink className="size-4 mr-2" />
 							View Live
-						</StyledButton>
+						</Button>
 					</a>
 				</div>
 			</div>

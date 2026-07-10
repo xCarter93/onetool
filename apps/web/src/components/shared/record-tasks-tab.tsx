@@ -11,7 +11,6 @@ import { TaskSheet } from "@/components/shared/task-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import {
 	StyledBadge,
-	StyledButton,
 	StyledTable,
 	StyledTableBody,
 	StyledTableCell,
@@ -19,6 +18,7 @@ import {
 	StyledTableHeader,
 	StyledTableRow,
 } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import {
 	ColumnDef,
 	flexRender,
@@ -526,13 +526,10 @@ export function RecordTasksTab({
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Tasks ({totalTasks})
 				</h3>
-				<StyledButton
-					label="Add Task"
-					icon={<Plus className="h-4 w-4" />}
-					intent="outline"
-					size="sm"
-					onClick={onAddTask}
-				/>
+				<Button variant="outline" size="sm" onClick={onAddTask}>
+					<Plus className="h-4 w-4" />
+					Add Task
+				</Button>
 			</div>
 			<Separator className="mb-4" />
 

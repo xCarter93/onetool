@@ -12,7 +12,7 @@ export function AdminFab() {
 
 	const isOnAdminPage = pathname?.startsWith("/admin");
 
-	// Using StyledButton styling patterns
+	// Hand-rolled "primary" pill styling (this is a Link, not a Button)
 	const baseClasses =
 		"group inline-flex items-center gap-2 font-semibold transition-all duration-200 rounded-lg ring-1 shadow-sm hover:shadow-md backdrop-blur-sm";
 	const intentClasses =

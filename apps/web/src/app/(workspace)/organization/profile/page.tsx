@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useOrgOwner } from "./_hooks/use-org-owner";
@@ -91,14 +90,13 @@ function SettingsSaveFooter() {
 				>
 					Discard
 				</Button>
-				<StyledButton
+				<Button
 					size="sm"
-					intent="primary"
 					onClick={save}
 					disabled={!dirty || saving || !canSave}
 				>
 					{saving ? "Saving…" : (saveLabel ?? "Save changes")}
-				</StyledButton>
+				</Button>
 			</div>
 		</div>
 	);

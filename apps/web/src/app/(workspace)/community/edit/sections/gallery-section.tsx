@@ -11,7 +11,7 @@ import {
 	Plus,
 } from "lucide-react";
 
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { MAX_GALLERY_IMAGES, type GalleryItem } from "../use-community-page-form";
@@ -54,8 +54,8 @@ export const GallerySection = React.memo(function GallerySection({
 					</Badge>
 				</div>
 				{galleryItems.length > 0 && galleryItems.length < MAX_GALLERY_IMAGES && (
-					<StyledButton
-						intent="secondary"
+					<Button
+						variant="secondary"
 						size="sm"
 						onClick={() => galleryInputRef.current?.click()}
 						disabled={isUploadingGallery}
@@ -66,7 +66,7 @@ export const GallerySection = React.memo(function GallerySection({
 							<Plus className="size-4 mr-2" />
 						)}
 						Add Image
-					</StyledButton>
+					</Button>
 				)}
 			</div>
 			<input

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import { AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import {
 	StyledCard,
 	StyledCardContent,
@@ -121,20 +121,22 @@ export default function Error({
 					</div>
 				</StyledCardContent>
 				<StyledCardFooter className="flex justify-center gap-4 pb-8 relative z-10">
-					<StyledButton
-						label="Try again"
+					<Button
 						onClick={() => reset()}
-						intent="primary"
+						variant="default"
 						size="lg"
 						className="px-8"
-					/>
-					<StyledButton
-						label="Back to Home"
+					>
+						Try again
+					</Button>
+					<Button
 						onClick={() => router.push("/home")}
-						intent="outline"
+						variant="outline"
 						size="lg"
 						className="px-8"
-					/>
+					>
+						Back to Home
+					</Button>
 				</StyledCardFooter>
 			</StyledCard>
 		</div>

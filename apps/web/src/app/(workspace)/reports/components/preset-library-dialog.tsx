@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -267,11 +267,10 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 					</span>
 
 					<div className="flex items-center gap-2">
-						<StyledButton intent="outline" size="sm" showArrow={false} onClick={goBlank}>
+						<Button variant="outline" size="sm" onClick={goBlank}>
 							Start blank
-						</StyledButton>
-						<StyledButton
-							intent="primary"
+						</Button>
+						<Button
 							size="sm"
 							disabled={!selected}
 							onClick={() => {
@@ -279,7 +278,7 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 							}}
 						>
 							Use preset
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			</div>

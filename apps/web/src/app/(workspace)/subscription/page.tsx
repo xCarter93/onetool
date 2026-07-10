@@ -11,7 +11,7 @@ import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Crown,
@@ -135,16 +135,15 @@ export default function SubscriptionPage() {
 			<div className="mx-auto py-8 px-4">
 				{/* Header */}
 				<div className="mb-8">
-					<StyledButton
+					<Button
 						onClick={() => router.push("/home")}
-						intent="outline"
+						variant="outline"
 						size="sm"
-						icon={<ArrowLeft className="w-4 h-4" />}
-						showArrow={false}
 						className="mb-6"
 					>
+						<ArrowLeft className="w-4 h-4" />
 						Back to Home
-					</StyledButton>
+					</Button>
 
 					<div className="flex items-center gap-4 mb-4">
 						{hasPremiumAccess ? (
@@ -178,13 +177,12 @@ export default function SubscriptionPage() {
 								You need to create an organization before managing
 								subscriptions.
 							</p>
-							<StyledButton
+							<Button
 								onClick={() => router.push("/organization/complete")}
-								intent="primary"
 								size="lg"
 							>
 								Create Organization
-							</StyledButton>
+							</Button>
 						</CardContent>
 					</Card>
 				) : (
@@ -264,14 +262,10 @@ export default function SubscriptionPage() {
 															},
 														}}
 													>
-														<StyledButton
-															intent="outline"
-															size="sm"
-															icon={<Calendar className="h-3.5 w-3.5" />}
-															showArrow={false}
-														>
+														<Button variant="outline" size="sm">
+															<Calendar className="h-3.5 w-3.5" />
 															View Details
-														</StyledButton>
+														</Button>
 													</SubscriptionDetailsButton>
 												</SignedIn>
 											</div>
@@ -349,14 +343,10 @@ export default function SubscriptionPage() {
 																			},
 																		}}
 																	>
-																		<StyledButton
-																			intent="primary"
-																			size="sm"
-																			icon={<TrendingUp className="h-3 w-3" />}
-																			showArrow={false}
-																		>
+																		<Button size="sm">
+																			<TrendingUp className="h-3 w-3" />
 																			Buy Monthly Plan
-																		</StyledButton>
+																		</Button>
 																	</CheckoutButton>
 																</SignedIn>
 																<SignedIn>
@@ -392,14 +382,11 @@ export default function SubscriptionPage() {
 																			},
 																		}}
 																	>
-																		<StyledButton
-																			intent="warning"
-																			size="sm"
-																			icon={<Crown className="h-3 w-3" />}
-																			showArrow={false}
-																		>
+																		{/* TODO(reui-rebuild): warning button intent mapped to outline */}
+																		<Button variant="outline" size="sm">
+																			<Crown className="h-3 w-3" />
 																			Buy Annual Plan
-																		</StyledButton>
+																		</Button>
 																	</CheckoutButton>
 																</SignedIn>
 															</div>

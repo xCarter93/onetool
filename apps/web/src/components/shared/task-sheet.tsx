@@ -5,7 +5,6 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	StyledSelect,
 	StyledSelectTrigger,
@@ -38,6 +37,7 @@ import {
 	Building2,
 	FolderOpen,
 	Activity,
+	Loader2,
 } from "lucide-react";
 import { Task } from "@/types/task";
 
@@ -593,37 +593,36 @@ export function TaskSheet({
 				</div>
 
 				<SheetFooter className="flex flex-row justify-end gap-3 border-t border-border shrink-0">
-					<StyledButton
+					<Button
 						type="button"
-						intent="outline"
+						variant="outline"
 						onClick={handleClose}
 						disabled={isSubmitting}
-						label="Cancel"
-						showArrow={false}
-					/>
-					<StyledButton
+					>
+						Cancel
+					</Button>
+					<Button
 						type="button"
-						intent="primary"
 						onClick={() => handleSubmit()}
-						isLoading={isSubmitting}
 						disabled={
 							isSubmitting ||
 							!formData.title.trim() ||
 							(formData.type === "external" && !formData.clientId) ||
 							(formData.repeat !== "none" && !formData.repeatUntil)
 						}
-						label={
-							isSubmitting
-								? isEditMode
-									? "Updating..."
-									: "Creating..."
-								: isEditMode
-								? "Update Task"
-								: "Create Task"
-						}
 						className="min-w-[120px]"
-						showArrow={false}
-					/>
+					>
+						{isSubmitting && (
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+						)}
+						{isSubmitting
+							? isEditMode
+								? "Updating..."
+								: "Creating..."
+							: isEditMode
+							? "Update Task"
+							: "Create Task"}
+					</Button>
 				</SheetFooter>
 			</div>
 		</SheetContent>

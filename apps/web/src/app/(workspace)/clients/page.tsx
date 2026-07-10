@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
 	StyledBadge,
-	StyledButton,
 	StyledTable,
 	StyledTableBody,
 	StyledTableCell,
@@ -354,15 +353,10 @@ function ActiveEmptyState({
 			</p>
 			<Tooltip>
 				<TooltipTrigger render={<span className="inline-block" />}>
-					<StyledButton
-						intent="primary"
-						size="md"
-						onClick={onAdd}
-						disabled={!canPerform}
-						icon={<Plus className="h-4 w-4" />}
-					>
+					<Button onClick={onAdd} disabled={!canPerform}>
+						<Plus className="h-4 w-4" />
 						Add Your First Client
-					</StyledButton>
+					</Button>
 				</TooltipTrigger>
 				{!canPerform && (
 					<TooltipContent>
@@ -852,15 +846,14 @@ export default function ClientsPage() {
 				<div className="flex gap-2">
 					<Tooltip>
 						<TooltipTrigger render={<span className="inline-block" />}>
-							<StyledButton
-								intent="outline"
-								size="md"
+							<Button
+								variant="outline"
 								onClick={() => router.push("/clients/import")}
 								disabled={!hasPremiumAccess}
 							>
 								<Upload className="h-4 w-4" />
 								Import Clients
-							</StyledButton>
+							</Button>
 						</TooltipTrigger>
 						{!hasPremiumAccess && (
 							<TooltipContent>
@@ -874,13 +867,8 @@ export default function ClientsPage() {
 
 					<Tooltip>
 						<TooltipTrigger render={<span className="inline-block" />}>
-							<StyledButton
-								intent="primary"
-								size="md"
-								onClick={handleAddClient}
-								disabled={!canPerform}
-								icon={<Plus className="h-4 w-4" />}
-							>
+							<Button onClick={handleAddClient} disabled={!canPerform}>
+								<Plus className="h-4 w-4" />
 								Add Client
 								{!canPerform &&
 									gate.limit &&
@@ -890,7 +878,7 @@ export default function ClientsPage() {
 											{gate.currentUsage}/{gate.limit}
 										</Badge>
 									)}
-							</StyledButton>
+							</Button>
 						</TooltipTrigger>
 						{!canPerform && (
 							<TooltipContent>

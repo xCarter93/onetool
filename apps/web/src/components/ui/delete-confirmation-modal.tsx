@@ -2,7 +2,7 @@
 
 import React from "react";
 import Modal from "./modal";
-import { StyledButton } from "./styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 interface DeleteConfirmationModalProps {
@@ -153,15 +153,15 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 				)}
 
 				<div className="flex justify-end space-x-3">
-					<StyledButton onClick={onClose} intent="secondary">
+					<Button onClick={onClose} variant="secondary">
 						Cancel
-					</StyledButton>
-					<StyledButton
+					</Button>
+					<Button
 						onClick={handleConfirm}
-						intent={isArchive ? "warning" : "destructive"}
+						variant={isArchive ? "outline" : "destructive"}
 					>
 						{isArchive ? `Archive ${itemType}` : `Delete ${itemType}`}
-					</StyledButton>
+					</Button>
 				</div>
 			</div>
 		</Modal>

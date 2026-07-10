@@ -25,7 +25,6 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { useToast } from "@/hooks/use-toast";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { formatRelativeTime } from "@/lib/notification-utils";
@@ -280,9 +279,7 @@ export function PaymentsTab() {
 							details. Fees are paid by the connected account; disputes are
 							handled by Stripe.
 						</p>
-						<StyledButton
-							size="md"
-							intent="primary"
+						<Button
 							onClick={handleStartStripeOnboarding}
 							disabled={onboardingLoading}
 						>
@@ -292,7 +289,7 @@ export function PaymentsTab() {
 								<ExternalLink className="mr-2 h-4 w-4" />
 							)}
 							Onboard to collect payments
-						</StyledButton>
+						</Button>
 						<p className="text-xs text-muted-foreground">
 							Note: The account ID will be stored on this organization so
 							future visits reuse the same Stripe account.
@@ -351,9 +348,8 @@ export function PaymentsTab() {
 									Refresh status
 								</Button>
 								{!onboardingComplete && (
-									<StyledButton
+									<Button
 										size="sm"
-										intent="primary"
 										onClick={handleStartStripeOnboarding}
 										disabled={onboardingLoading}
 										aria-label={
@@ -368,7 +364,7 @@ export function PaymentsTab() {
 											<ExternalLink className="mr-2 h-4 w-4" />
 										)}
 										Continue onboarding
-									</StyledButton>
+									</Button>
 								)}
 							</div>
 						)}

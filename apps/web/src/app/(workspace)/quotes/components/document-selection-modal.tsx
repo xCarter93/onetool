@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Modal from "@/components/ui/modal";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -84,10 +84,10 @@ export function DocumentSelectionModal({
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<StyledButton intent="outline" size="sm">
+							<Button variant="outline" size="sm">
 								<ExternalLink className="h-3 w-3 mr-2" />
 								Go to Documents
-							</StyledButton>
+							</Button>
 						</a>
 					</div>
 				) : (
@@ -142,14 +142,14 @@ export function DocumentSelectionModal({
 						)}
 					</div>
 					<div className="flex gap-2">
-						<StyledButton intent="outline" onClick={handleClose}>
+						<Button variant="outline" onClick={handleClose}>
 							Cancel
-						</StyledButton>
-						<StyledButton intent="primary" onClick={handleConfirm}>
+						</Button>
+						<Button onClick={handleConfirm}>
 							{selectedIds.length > 0
 								? `Generate with ${selectedIds.length} document${selectedIds.length !== 1 ? "s" : ""}`
 								: "Generate PDF Only"}
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			</div>

@@ -31,7 +31,7 @@ const AccentCTA = forwardRef<HTMLButtonElement, AccentCTAProps>(
 				<span
 					className={`absolute right-0 inset-y-0 ${sm ? "w-[calc(100%-1.5rem)]" : "w-[calc(100%-2rem)]"} rounded-lg bg-primary/10`}
 				/>
-				{/* Main button - matches StyledButton primary intent */}
+				{/* Main button - matches Button default variant */}
 				<span
 					className={`relative z-10 ${sm ? "text-xs px-3 py-1.5" : "text-sm px-4 py-2"} rounded-lg font-semibold ring-1 shadow-sm backdrop-blur-sm text-primary bg-primary/10 ring-primary/30`}
 				>

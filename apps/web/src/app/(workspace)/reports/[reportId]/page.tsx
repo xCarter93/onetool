@@ -7,7 +7,6 @@ import { ArrowLeft, Copy, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	ReportBuilder,
 	isValidReportFilters,
@@ -74,9 +73,9 @@ export default function ReportViewPage() {
 				<p className="mb-4 text-muted-foreground">
 					This report may have been deleted or you don&apos;t have access to it.
 				</p>
-				<StyledButton intent="primary" onClick={() => router.push("/reports")}>
+				<Button onClick={() => router.push("/reports")}>
 					Back to Reports
-				</StyledButton>
+				</Button>
 			</div>
 		);
 	}
@@ -190,22 +189,14 @@ export default function ReportViewPage() {
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
-					<StyledButton
-						intent="outline"
-						onClick={handleDuplicate}
-						showArrow={false}
-					>
+					<Button variant="outline" onClick={handleDuplicate}>
 						<Copy className="mr-2 h-4 w-4" />
 						Duplicate
-					</StyledButton>
-					<StyledButton
-						intent="primary"
-						onClick={() => setIsEditing(true)}
-						showArrow={false}
-					>
+					</Button>
+					<Button onClick={() => setIsEditing(true)}>
 						<Pencil className="mr-2 h-4 w-4" />
 						Edit
-					</StyledButton>
+					</Button>
 				</div>
 			</div>
 
@@ -224,19 +215,14 @@ export default function ReportViewPage() {
 			{/* Chart toggle — chart visualizations only; the table is always shown */}
 			{isChartVisualization && (
 				<div className="flex justify-end">
-					<StyledButton
-						intent="plain"
-						size="sm"
-						onClick={toggleChartVisible}
-						showArrow={false}
-					>
+					<Button variant="ghost" size="sm" onClick={toggleChartVisible}>
 						{chartVisible ? (
 							<EyeOff className="mr-2 h-4 w-4" />
 						) : (
 							<Eye className="mr-2 h-4 w-4" />
 						)}
 						{chartVisible ? "Hide chart" : "Show chart"}
-					</StyledButton>
+					</Button>
 				</div>
 			)}
 

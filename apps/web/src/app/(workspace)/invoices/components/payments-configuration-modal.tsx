@@ -13,10 +13,11 @@ import {
 	CheckCircle2,
 	AlertCircle,
 	DollarSign,
+	Loader2,
 	Lock,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -727,23 +728,20 @@ export function PaymentsConfigurationModal({
 						{/* Footer */}
 						<div className="border-t border-border px-6 py-4">
 							<div className="flex items-center justify-end gap-3">
-								<StyledButton
-									intent="outline"
+								<Button
+									variant="outline"
 									onClick={onClose}
 									disabled={isSaving}
-									showArrow={false}
 								>
 									Cancel
-								</StyledButton>
-								<StyledButton
-									intent="primary"
+								</Button>
+								<Button
 									onClick={handleSave}
 									disabled={!isValid || isSaving || !hasUnpaidPayments}
-									isLoading={isSaving}
-									showArrow={false}
 								>
+									{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
 									{isSaving ? "Saving..." : "Save Payment Schedule"}
-								</StyledButton>
+								</Button>
 							</div>
 
 							{!isValid && (

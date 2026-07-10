@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { Badge } from "@/components/reui/badge";
 import { cn } from "@/lib/utils";
 import { useCommunityPageForm, SECTION_LIST } from "./use-community-page-form";
@@ -113,45 +112,47 @@ export default function CommunityEditContent() {
 							</div>
 						</div>
 						<div className="flex items-center gap-3">
-							<StyledButton
-								intent="outline"
+							<Button
+								variant="outline"
 								size="sm"
 								onClick={() => setPreviewOpen(true)}
 							>
 								<Eye className="size-4 mr-2" />
 								Preview Page
-							</StyledButton>
+							</Button>
 							{actions.hasUnsavedChanges && (
 								<span className="text-sm font-medium text-amber-600 dark:text-amber-500 animate-pulse hidden sm:inline-block pr-2">Unsaved changes</span>
 							)}
 							{mainSettings.isPublic && (
-								<StyledButton
-									intent="warning"
+								// TODO(reui-rebuild): warning button intent mapped to outline
+								<Button
+									variant="outline"
 									size="sm"
 									onClick={mainSettings.handleMakePrivate}
 								>
 									<GlobeLock className="size-4 mr-2" />
 									Make Private
-								</StyledButton>
+								</Button>
 							)}
 							{!mainSettings.isPublic && (
-								<StyledButton
-									intent="success"
+								// TODO(reui-rebuild): success button intent mapped to default
+								<Button
+									variant="default"
 									onClick={actions.handlePublish}
 									disabled={actions.isSaving || actions.isPublishing || !actions.hasPublishableContent || !!actions.slugError || actions.isSlugAvailable === false || actions.hasInvalidSocialUrls}
 								>
 									{actions.isPublishing ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Send className="size-4 mr-2" />}
 									Publish
-								</StyledButton>
+								</Button>
 							)}
-							<StyledButton
-								intent={actions.hasUnsavedChanges ? "primary" : "secondary"}
+							<Button
+								variant={actions.hasUnsavedChanges ? "default" : "secondary"}
 								onClick={actions.handleSave}
 								disabled={actions.isSaving || actions.isPublishing || !!actions.slugError || actions.isSlugAvailable === false || actions.hasInvalidSocialUrls || (!actions.hasUnsavedChanges && !mainSettings.isPublic)}
 							>
 								{actions.isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Save className="size-4 mr-2" />}
 								{mainSettings.isPublic ? "Save Changes" : "Save Draft"}
-							</StyledButton>
+							</Button>
 						</div>
 					</div>
 				</div>

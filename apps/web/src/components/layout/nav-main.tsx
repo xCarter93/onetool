@@ -350,10 +350,7 @@ export function NavMain({
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											render={
-												<button
-													type="button"
-													className={cn(quickActionRowClass, "cursor-pointer")}
-												/>
+												<div className={cn(quickActionRowClass, "cursor-pointer")} />
 											}
 											className="p-0 focus:bg-muted/60"
 											onClick={(e) => {
