@@ -21,6 +21,20 @@ const eslintConfig = [
 			"@typescript-eslint/no-explicit-any": "warn",
 		},
 	},
+	// Vendored ReUI source (owned but upstream-authored): React Compiler
+	// strictness rules downgraded to warn — their internal ref/store patterns
+	// predate the compiler and are not ours to rewrite on re-sync. Everything
+	// else (rules-of-hooks, exhaustive-deps) stays at error.
+	{
+		files: ["src/components/ui/**/*.{ts,tsx}", "src/components/reui/**/*.{ts,tsx}"],
+		rules: {
+			"react-hooks/refs": "warn",
+			"react-hooks/set-state-in-effect": "warn",
+			"react-hooks/use-memo": "warn",
+			"react-hooks/immutability": "warn",
+			"react-hooks/preserve-manual-memoization": "warn",
+		},
+	},
 	// DESIGN-SYSTEM: the ReUI rebuild retired these libraries app-wide (P2–P8).
 	// All are at zero imports; this rule keeps them out for good. UI primitives
 	// come from @base-ui/react via src/components/ui/**, icons from lucide-react.
