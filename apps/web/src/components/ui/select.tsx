@@ -6,7 +6,45 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
 
-const Select = SelectPrimitive.Root
+type SelectItemEntry = { value: unknown; label: React.ReactNode }
+
+// Base UI renders the raw value in Select.Value unless Root receives an
+// `items` value→label map (the popup is unmounted while closed, so labels
+// can't be read from mounted items). Derive `items` from SelectItem children
+// so consumers keep the Radix-era "labels come from JSX" ergonomics.
+function collectSelectItems(
+  children: React.ReactNode,
+  out: SelectItemEntry[]
+) {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    const props = child.props as {
+      value?: unknown
+      children?: React.ReactNode
+    }
+    if (child.type === SelectItem) {
+      if (props.value !== undefined) {
+        out.push({ value: props.value, label: props.children })
+      }
+      return
+    }
+    if (props.children != null) collectSelectItems(props.children, out)
+  })
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>(
+  props: SelectPrimitive.Root.Props<Value, Multiple>
+) {
+  const collected: SelectItemEntry[] = []
+  collectSelectItems(props.children, collected)
+  const derivedItems = collected.length > 0 ? collected : undefined
+  return (
+    <SelectPrimitive.Root
+      items={derivedItems as SelectPrimitive.Root.Props<Value, Multiple>["items"]}
+      {...props}
+    />
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
