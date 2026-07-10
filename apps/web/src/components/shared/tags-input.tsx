@@ -88,7 +88,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
 
 	useEffect(() => {
 		if (editInputRef.current) {
-			editInputRef.current.style.width = `${input.length + 1}ch`;
+			editInputRef.current.style.width = `${Math.max(input.length + 1, 8)}ch`;
 		}
 	}, [input]);
 

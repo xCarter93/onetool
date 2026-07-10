@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { Copy, Trash2 } from "lucide-react";
@@ -19,6 +19,7 @@ import { ReportCreatePanel } from "./components/report-create-panel";
 import { entityLabels, formatRelativeTime, groupByOptions, visualizationIcons } from "./report-config";
 
 function createReportColumns(
+	duplicatingId: string | null,
 	onDuplicate: (id: string) => void,
 	onDelete: (id: string, name: string) => void
 ): ColumnDef<Doc<"reports">>[] {
@@ -94,6 +95,7 @@ function createReportColumns(
 							variant="ghost"
 							size="icon-sm"
 							aria-label="Duplicate report"
+							disabled={duplicatingId === report._id}
 							onClick={() => onDuplicate(report._id)}
 						>
 							<Copy className="h-4 w-4" />
@@ -138,13 +140,23 @@ export default function ReportsPage() {
 		}
 	};
 
+	const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+	// Ref guards the same-tick double-click the disabled state can't catch.
+	const duplicatingRef = useRef(false);
+
 	const handleDuplicate = useCallback(
 		async (id: string) => {
+			if (duplicatingRef.current) return;
+			duplicatingRef.current = true;
+			setDuplicatingId(id);
 			try {
 				const newId = await duplicateReport({ id: id as Id<"reports"> });
 				router.push(`/reports/${newId}`);
 			} catch (error) {
 				console.error("Failed to duplicate report:", error);
+			} finally {
+				duplicatingRef.current = false;
+				setDuplicatingId(null);
 			}
 		},
 		[duplicateReport, router]
@@ -156,8 +168,8 @@ export default function ReportsPage() {
 	}, []);
 
 	const columns = useMemo(
-		() => createReportColumns(handleDuplicate, handleDeleteClick),
-		[handleDuplicate, handleDeleteClick]
+		() => createReportColumns(duplicatingId, handleDuplicate, handleDeleteClick),
+		[duplicatingId, handleDuplicate, handleDeleteClick]
 	);
 
 	const table = useReactTable({
