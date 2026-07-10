@@ -30,8 +30,8 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import { DataGrid } from "@/components/ui/data-grid";
-import { DataGridTable } from "@/components/ui/data-grid-table";
+import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import { RunStatusBadge } from "./run-status-badge";

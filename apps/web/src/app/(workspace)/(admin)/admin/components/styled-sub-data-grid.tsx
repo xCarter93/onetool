@@ -4,10 +4,13 @@ import { useMemo, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
-import { DataGrid, DataGridContainer } from "@/components/ui/data-grid";
-import { DataGridColumnHeader } from "@/components/ui/data-grid-column-header";
-import { DataGridPagination } from "@/components/ui/data-grid-pagination";
-import { DataGridTable } from "@/components/ui/data-grid-table";
+import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-column-header";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import {
@@ -201,7 +204,7 @@ function OrgUsersSubTable({
 			>
 				<div className="w-full space-y-2.5">
 					<div className="bg-card rounded-lg border border-muted-foreground/20">
-						<DataGridContainer>
+						<DataGridContainer className="rounded-lg border">
 							<ScrollArea>
 								<DataGridTable />
 								<ScrollBar orientation="horizontal" />
@@ -414,7 +417,7 @@ export function StyledSubDataGrid({
 			>
 				<div className="w-full space-y-2.5">
 					<div className="bg-card rounded-lg border">
-						<DataGridContainer>
+						<DataGridContainer className="rounded-lg border">
 							<ScrollArea>
 								<DataGridTable />
 								<ScrollBar orientation="horizontal" />

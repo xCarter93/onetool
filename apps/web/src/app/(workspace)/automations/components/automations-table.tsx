@@ -28,10 +28,10 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import { DataGrid } from "@/components/ui/data-grid";
-import { DataGridTable } from "@/components/ui/data-grid-table";
-import { DataGridPagination } from "@/components/ui/data-grid-pagination";
-import { DataGridColumnHeader } from "@/components/ui/data-grid-column-header";
+import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
+import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-column-header";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { useToast } from "@/hooks/use-toast";
