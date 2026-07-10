@@ -9,19 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import {
-	StyledBadge,
-	StyledTable,
-	StyledTableBody,
-	StyledTableCell,
-	StyledTableHead,
-	StyledTableHeader,
-	StyledTableRow,
-} from "@/components/ui/styled";
+import { StyledBadge } from "@/components/ui/styled";
 import { Button } from "@/components/ui/button";
 import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import {
 	ColumnDef,
-	flexRender,
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
@@ -343,52 +339,18 @@ function GroupTable({
 				</span>
 			</div>
 
-			<div className="overflow-hidden rounded-lg border">
-				<StyledTable>
-					<StyledTableHeader>
-						{table.getHeaderGroups().map((headerGroup) => (
-							<StyledTableRow key={headerGroup.id}>
-								{headerGroup.headers.map((header) => (
-									<StyledTableHead
-										key={header.id}
-										style={
-											header.column.getSize() !== 150
-												? { width: header.column.getSize() }
-												: undefined
-										}
-									>
-										{header.isPlaceholder
-											? null
-											: flexRender(
-													header.column.columnDef.header,
-													header.getContext()
-												)}
-									</StyledTableHead>
-								))}
-							</StyledTableRow>
-						))}
-					</StyledTableHeader>
-					<StyledTableBody>
-						{table.getRowModel().rows.map((row) => (
-							<StyledTableRow
-								key={row.id}
-								className={cn(
-									row.original.status === "completed" && "opacity-60"
-								)}
-							>
-								{row.getVisibleCells().map((cell) => (
-									<StyledTableCell key={cell.id}>
-										{flexRender(
-											cell.column.columnDef.cell,
-											cell.getContext()
-										)}
-									</StyledTableCell>
-								))}
-							</StyledTableRow>
-						))}
-					</StyledTableBody>
-				</StyledTable>
-			</div>
+			<DataGrid
+				table={table}
+				recordCount={group.tasks.length}
+				tableLayout={{ width: "auto", headerBackground: true }}
+				rowClassName={(task) =>
+					task.status === "completed" ? "opacity-60" : undefined
+				}
+			>
+				<DataGridContainer className="rounded-lg border">
+					<DataGridTable />
+				</DataGridContainer>
+			</DataGrid>
 		</div>
 	);
 }

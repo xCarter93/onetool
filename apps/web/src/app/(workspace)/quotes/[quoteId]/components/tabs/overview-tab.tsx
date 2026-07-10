@@ -3,19 +3,21 @@
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
+import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import {
+	ColumnDef,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { Settings, ClipboardList, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -34,10 +36,51 @@ interface OverviewTabProps {
 	lineItems: Doc<"quoteLineItems">[] | undefined;
 }
 
+const columns: ColumnDef<Doc<"quoteLineItems">>[] = [
+	{
+		accessorKey: "description",
+		header: "Description",
+		meta: { cellClassName: "font-medium" },
+		cell: ({ row }) => row.original.description,
+	},
+	{
+		accessorKey: "quantity",
+		header: "Qty",
+		meta: { headerClassName: "text-center", cellClassName: "text-center" },
+		cell: ({ row }) => row.original.quantity,
+	},
+	{
+		accessorKey: "unit",
+		header: "Unit",
+		meta: { headerClassName: "text-center", cellClassName: "text-center" },
+		cell: ({ row }) => row.original.unit || "item",
+	},
+	{
+		accessorKey: "rate",
+		header: "Rate",
+		meta: { headerClassName: "text-right", cellClassName: "text-right" },
+		cell: ({ row }) => formatCurrency(row.original.rate),
+	},
+	{
+		accessorKey: "amount",
+		header: "Amount",
+		meta: {
+			headerClassName: "text-right",
+			cellClassName: "text-right font-medium",
+		},
+		cell: ({ row }) => formatCurrency(row.original.amount),
+	},
+];
+
 export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 	const router = useRouter();
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
+	const table = useReactTable({
+		data: lineItems ?? [],
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+	});
 
 	// Inline editing for terms
 	const [isEditingTerms, setIsEditingTerms] = useState(false);
@@ -148,48 +191,15 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 
 				{lineItems && lineItems.length > 0 ? (
 					<>
-						<div className="overflow-hidden rounded-lg border">
-							<Table>
-								<TableHeader className="bg-muted">
-									<TableRow>
-										<TableHead>Description</TableHead>
-										<TableHead className="text-center">
-											Qty
-										</TableHead>
-										<TableHead className="text-center">
-											Unit
-										</TableHead>
-										<TableHead className="text-right">
-											Rate
-										</TableHead>
-										<TableHead className="text-right">
-											Amount
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{lineItems.map((item) => (
-										<TableRow key={item._id}>
-											<TableCell className="font-medium">
-												{item.description}
-											</TableCell>
-											<TableCell className="text-center">
-												{item.quantity}
-											</TableCell>
-											<TableCell className="text-center">
-												{item.unit || "item"}
-											</TableCell>
-											<TableCell className="text-right">
-												{formatCurrency(item.rate)}
-											</TableCell>
-											<TableCell className="text-right font-medium">
-												{formatCurrency(item.amount)}
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</div>
+						<DataGrid
+							table={table}
+							recordCount={lineItems.length}
+							tableLayout={{ width: "auto", headerBackground: true }}
+						>
+							<DataGridContainer className="rounded-lg border">
+								<DataGridTable />
+							</DataGridContainer>
+						</DataGrid>
 
 						{/* Totals */}
 						<div className="mt-6 space-y-2">

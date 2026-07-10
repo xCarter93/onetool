@@ -10,7 +10,6 @@ export * from "./styled-card";
 export * from "./styled-input";
 export * from "./styled-badge";
 export * from "./styled-status-badge";
-export * from "./styled-table";
 export * from "./styled-select";
 export * from "./styled-tabs";
 export * from "./styled-tags-input";

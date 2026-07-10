@@ -1,17 +1,19 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { StyledCard, StyledCardContent } from "@/components/ui/styled";
+import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import {
+	ColumnDef,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { Settings, ClipboardList, DollarSign, CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -34,6 +36,36 @@ interface OverviewTabProps {
 	};
 }
 
+const columns: ColumnDef<Doc<"invoiceLineItems">>[] = [
+	{
+		accessorKey: "description",
+		header: "Description",
+		meta: { cellClassName: "font-medium" },
+		cell: ({ row }) => row.original.description,
+	},
+	{
+		accessorKey: "quantity",
+		header: "Qty",
+		meta: { headerClassName: "text-center", cellClassName: "text-center" },
+		cell: ({ row }) => row.original.quantity,
+	},
+	{
+		accessorKey: "unitPrice",
+		header: "Unit Price",
+		meta: { headerClassName: "text-right", cellClassName: "text-right" },
+		cell: ({ row }) => formatCurrency(row.original.unitPrice),
+	},
+	{
+		accessorKey: "total",
+		header: "Total",
+		meta: {
+			headerClassName: "text-right",
+			cellClassName: "text-right font-medium",
+		},
+		cell: ({ row }) => formatCurrency(row.original.total),
+	},
+];
+
 export function OverviewTab({
 	invoice,
 	invoiceId,
@@ -41,6 +73,11 @@ export function OverviewTab({
 	paymentSummary,
 }: OverviewTabProps) {
 	const router = useRouter();
+	const table = useReactTable({
+		data: lineItems ?? [],
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+	});
 
 	return (
 		<div className="space-y-8">
@@ -104,44 +141,15 @@ export function OverviewTab({
 
 				{lineItems && lineItems.length > 0 ? (
 					<>
-						<div className="overflow-hidden rounded-lg border">
-							<Table>
-								<TableHeader className="bg-muted">
-									<TableRow>
-										<TableHead>Description</TableHead>
-										<TableHead className="text-center">
-											Qty
-										</TableHead>
-										<TableHead className="text-right">
-											Unit Price
-										</TableHead>
-										<TableHead className="text-right">
-											Total
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{lineItems.map((item) => (
-										<TableRow key={item._id}>
-											<TableCell className="font-medium">
-												{item.description}
-											</TableCell>
-											<TableCell className="text-center">
-												{item.quantity}
-											</TableCell>
-											<TableCell className="text-right">
-												{formatCurrency(
-													item.unitPrice
-												)}
-											</TableCell>
-											<TableCell className="text-right font-medium">
-												{formatCurrency(item.total)}
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</div>
+						<DataGrid
+							table={table}
+							recordCount={lineItems.length}
+							tableLayout={{ width: "auto", headerBackground: true }}
+						>
+							<DataGridContainer className="rounded-lg border">
+								<DataGridTable />
+							</DataGridContainer>
+						</DataGrid>
 
 						{/* Totals */}
 						<div className="mt-6 space-y-2">
