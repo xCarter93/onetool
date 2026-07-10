@@ -58,6 +58,10 @@ export function DocumentsTab() {
 		}
 
 		setIsUploading(true);
+		const loadingToastId = toast.loading(
+			"Uploading document…",
+			file.name,
+		);
 		try {
 			const uploadUrl = await generateUploadUrl({});
 
@@ -77,12 +81,14 @@ export function DocumentsTab() {
 				fileSize: file.size,
 			});
 
+			toast.removeToast(loadingToastId);
 			toast.success("Document uploaded", "Your document is ready");
 
 			if (fileInputRef.current) {
 				fileInputRef.current.value = "";
 			}
 		} catch (error) {
+			toast.removeToast(loadingToastId);
 			// Log error securely to error reporting service
 			logError(error, {
 				action: "upload_organization_document",

@@ -97,6 +97,11 @@ export function PaymentsTab() {
 
 		setOnboardingLoading(true);
 
+		const loadingToastId = toast.loading(
+			"Connecting to Stripe…",
+			"Setting up your connected account",
+		);
+
 		try {
 			// The route derives account identity from the Clerk session.
 			const accountResponse = await fetch("/api/stripe-connect/account", {
@@ -146,8 +151,10 @@ export function PaymentsTab() {
 				requirements: accountData.requirements,
 			});
 
+			toast.removeToast(loadingToastId);
 			window.location.href = linkData.url;
 		} catch (error) {
+			toast.removeToast(loadingToastId);
 			logError(error, { action: "stripe_onboarding" });
 			toast.error(
 				"Stripe onboarding failed",
