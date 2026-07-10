@@ -12,12 +12,7 @@ import {
 } from "@/components/ui/styled";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar } from "@/components/ui/calendar";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -333,41 +328,24 @@ export function QuoteDetailSidebar({
 						}
 					>
 						{editingField === "validUntil" ? (
-							<Popover
+							<DatePicker
 								open={true}
 								onOpenChange={(open) => {
 									if (!open) cancelEditing();
 								}}
-							>
-								<PopoverTrigger
-									render={
-										<button className="text-sm text-primary hover:text-primary/80" />
+								value={editDateValue}
+								onChange={(date) => {
+									if (date) {
+										saveField(
+											"validUntil",
+											date.getTime()
+										);
 									}
-								>
-									{editDateValue
-										? formatDate(
-												editDateValue.getTime()
-											)
-										: "Select date..."}
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-auto p-0"
-									align="start"
-								>
-									<Calendar
-										mode="single"
-										selected={editDateValue}
-										onSelect={(date) => {
-											if (date) {
-												saveField(
-													"validUntil",
-													date.getTime()
-												);
-											}
-										}}
-									/>
-								</PopoverContent>
-							</Popover>
+								}}
+								formatDate={(date) => formatDate(date.getTime())}
+								placeholder="Select date..."
+								className="h-8"
+							/>
 						) : (
 							<span className="text-sm text-foreground">
 								{quote.validUntil ? (

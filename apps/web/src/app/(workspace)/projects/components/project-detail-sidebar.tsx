@@ -13,12 +13,7 @@ import {
 import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar } from "@/components/ui/calendar";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import {
@@ -305,24 +300,19 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Start Date</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "startDate" && e.stopPropagation()}>
 						{editingField === "startDate" ? (
-							<Popover open={true} onOpenChange={(open) => { if (!open) cancelEditing(); }}>
-								<PopoverTrigger
-									render={<button className="text-sm text-primary hover:text-primary/80" />}
-								>
-									{editDateValue ? formatDate(editDateValue.getTime()) : "Select date..."}
-								</PopoverTrigger>
-								<PopoverContent className="w-auto p-0" align="start">
-									<Calendar
-										mode="single"
-										selected={editDateValue}
-										onSelect={(date) => {
-											if (date) {
-												saveField("startDate", date.getTime());
-											}
-										}}
-									/>
-								</PopoverContent>
-							</Popover>
+							<DatePicker
+								open={true}
+								onOpenChange={(open) => { if (!open) cancelEditing(); }}
+								value={editDateValue}
+								onChange={(date) => {
+									if (date) {
+										saveField("startDate", date.getTime());
+									}
+								}}
+								formatDate={(date) => formatDate(date.getTime())}
+								placeholder="Select date..."
+								className="h-8"
+							/>
 						) : (
 							<span className="text-sm text-foreground">
 								{project.startDate ? formatDate(project.startDate) : <span className="text-muted-foreground italic">Not set</span>}
@@ -341,32 +331,27 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">End Date</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "endDate" && e.stopPropagation()}>
 						{editingField === "endDate" ? (
-							<Popover open={true} onOpenChange={(open) => { if (!open) cancelEditing(); }}>
-								<PopoverTrigger
-									render={<button className="text-sm text-primary hover:text-primary/80" />}
-								>
-									{editDateValue ? formatDate(editDateValue.getTime()) : "Select date..."}
-								</PopoverTrigger>
-								<PopoverContent className="w-auto p-0" align="start">
-									<Calendar
-										mode="single"
-										selected={editDateValue}
-										onSelect={(date) => {
-											if (date) {
-												saveField("endDate", date.getTime());
-											}
-										}}
-										disabled={(date) => {
-											if (!project.startDate) return false;
-											const start = new Date(project.startDate);
-											start.setHours(0, 0, 0, 0);
-											const checkDate = new Date(date);
-											checkDate.setHours(0, 0, 0, 0);
-											return checkDate < start;
-										}}
-									/>
-								</PopoverContent>
-							</Popover>
+							<DatePicker
+								open={true}
+								onOpenChange={(open) => { if (!open) cancelEditing(); }}
+								value={editDateValue}
+								onChange={(date) => {
+									if (date) {
+										saveField("endDate", date.getTime());
+									}
+								}}
+								disabledDates={(date) => {
+									if (!project.startDate) return false;
+									const start = new Date(project.startDate);
+									start.setHours(0, 0, 0, 0);
+									const checkDate = new Date(date);
+									checkDate.setHours(0, 0, 0, 0);
+									return checkDate < start;
+								}}
+								formatDate={(date) => formatDate(date.getTime())}
+								placeholder="Select date..."
+								className="h-8"
+							/>
 						) : (
 							<span className="text-sm text-foreground">
 								{project.endDate ? formatDate(project.endDate) : <span className="text-muted-foreground italic">Not set</span>}

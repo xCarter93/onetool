@@ -13,14 +13,9 @@ import {
 	SelectItem,
 } from "@/components/ui/styled/styled-select";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import {
 	Sheet,
 	SheetContent,
@@ -90,8 +85,6 @@ export function TaskSheet({
 		repeatUntil: undefined as Date | undefined,
 	});
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [datePopoverOpen, setDatePopoverOpen] = useState(false);
-	const [repeatUntilPopoverOpen, setRepeatUntilPopoverOpen] = useState(false);
 	const [internalOpen, setInternalOpen] = useState(false);
 
 	// Queries for form data
@@ -412,42 +405,15 @@ export function TaskSheet({
 								<CalendarIcon className="h-4 w-4 text-primary" />
 								Date <span className="text-danger">*</span>
 							</label>
-							<Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-								<PopoverTrigger
-									render={
-										<Button
-											variant="outline"
-											id="date-picker"
-											className="w-full justify-start font-normal"
-										/>
+							<DatePicker
+								id="date-picker"
+								value={formData.date}
+								onChange={(date) => {
+									if (date) {
+										setFormData((prev) => ({ ...prev, date }));
 									}
-								>
-									<CalendarIcon className="mr-2 h-4 w-4" />
-									{formData.date
-										? formData.date.toLocaleDateString("en-US", {
-												year: "numeric",
-												month: "long",
-												day: "numeric",
-										  })
-										: "Select date"}
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-auto p-0 bg-white dark:bg-gray-950"
-									align="start"
-								>
-									<Calendar
-										mode="single"
-										selected={formData.date}
-										onSelect={(date) => {
-											if (date) {
-												setFormData((prev) => ({ ...prev, date }));
-												setDatePopoverOpen(false);
-											}
-										}}
-										className="bg-white! dark:bg-gray-950!"
-									/>
-								</PopoverContent>
-							</Popover>
+								}}
+							/>
 						</div>
 
 						{/* Status */}
@@ -536,56 +502,27 @@ export function TaskSheet({
 									>
 										Repeat Until <span className="text-danger">*</span>
 									</Label>
-									<Popover
-										open={repeatUntilPopoverOpen}
-										onOpenChange={setRepeatUntilPopoverOpen}
-									>
-										<PopoverTrigger
-											render={
-												<Button
-													variant="outline"
-													id="repeat-until-picker"
-													className="w-full justify-start font-normal"
-												/>
+									<DatePicker
+										id="repeat-until-picker"
+										value={formData.repeatUntil}
+										onChange={(date) => {
+											if (date) {
+												setFormData((prev) => ({
+													...prev,
+													repeatUntil: date,
+												}));
 											}
-										>
-											<CalendarIcon className="mr-2 h-4 w-4" />
-											{formData.repeatUntil
-												? formData.repeatUntil.toLocaleDateString("en-US", {
-														year: "numeric",
-														month: "long",
-														day: "numeric",
-												  })
-												: "Select end date"}
-										</PopoverTrigger>
-										<PopoverContent
-											className="w-auto p-0 bg-white dark:bg-gray-950"
-											align="start"
-										>
-											<Calendar
-												mode="single"
-												selected={formData.repeatUntil}
-												onSelect={(date) => {
-													if (date) {
-														setFormData((prev) => ({
-															...prev,
-															repeatUntil: date,
-														}));
-														setRepeatUntilPopoverOpen(false);
-													}
-												}}
-												disabled={(date) => {
-													if (!formData.date) return false;
-													const taskDate = new Date(formData.date);
-													taskDate.setHours(0, 0, 0, 0);
-													const checkDate = new Date(date);
-													checkDate.setHours(0, 0, 0, 0);
-													return checkDate < taskDate;
-												}}
-												className="bg-white! dark:bg-gray-950!"
-											/>
-										</PopoverContent>
-									</Popover>
+										}}
+										placeholder="Select end date"
+										disabledDates={(date) => {
+											if (!formData.date) return false;
+											const taskDate = new Date(formData.date);
+											taskDate.setHours(0, 0, 0, 0);
+											const checkDate = new Date(date);
+											checkDate.setHours(0, 0, 0, 0);
+											return checkDate < taskDate;
+										}}
+									/>
 								</div>
 							)}
 						</div>
