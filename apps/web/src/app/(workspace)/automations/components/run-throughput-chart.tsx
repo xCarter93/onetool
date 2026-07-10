@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
@@ -22,6 +22,7 @@ import {
 	ChartTooltip,
 	type ChartConfig,
 } from "@/components/ui/chart";
+import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +69,8 @@ function ThroughputTooltip({
 }
 
 export function RunThroughputChart({ className }: { className?: string }) {
+	const patternPrefix = useId();
+	const AREA_STRIPE_ID = stripeId(patternPrefix, 0);
 	const raw = useQuery(api.automations.getRunThroughput, {
 		windowDays: WINDOW_DAYS,
 	});
@@ -138,26 +141,7 @@ export function RunThroughputChart({ className }: { className?: string }) {
 								data={data}
 								margin={{ top: 10, bottom: 10, left: 10, right: 10 }}
 							>
-								<defs>
-									<linearGradient
-										id="runThroughputFill"
-										x1="0"
-										y1="0"
-										x2="0"
-										y2="1"
-									>
-										<stop
-											offset="0%"
-											stopColor="var(--primary)"
-											stopOpacity={0.15}
-										/>
-										<stop
-											offset="100%"
-											stopColor="var(--primary)"
-											stopOpacity={0}
-										/>
-									</linearGradient>
-								</defs>
+								<ChartStripeDefs idPrefix={patternPrefix} colors={["var(--primary)"]} />
 								<CartesianGrid
 									vertical={false}
 									strokeDasharray="3 3"
@@ -177,7 +161,7 @@ export function RunThroughputChart({ className }: { className?: string }) {
 								<Area
 									type="monotone"
 									dataKey="runs"
-									fill="url(#runThroughputFill)"
+									fill={`url(#${AREA_STRIPE_ID})`}
 									stroke="transparent"
 								/>
 								<Line

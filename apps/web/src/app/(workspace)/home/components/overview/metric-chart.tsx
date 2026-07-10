@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
 	Area,
 	CartesianGrid,
@@ -20,6 +20,7 @@ import {
 import { FramePanel } from "@/components/reui/frame";
 import { AnimatedNumber } from "@/components/animated-number";
 import type { MetricDatum, MetricDefinition } from "@/components/line-chart-6";
+import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import {
 	ACCENT_COLOR,
 	formatDayLabel,
@@ -108,7 +109,8 @@ export function MetricChartBody({
 		[metric.key, metric.label, color]
 	);
 
-	const gradientId = `overview-area-${metric.key}`;
+	const patternPrefix = useId();
+	const AREA_STRIPE_ID = stripeId(patternPrefix, 0);
 	const dotGridId = `overview-dots-${metric.key}`;
 
 	return (
@@ -183,11 +185,8 @@ export function MetricChartBody({
 				style={{ height, width: "100%" }}
 			>
 				<ComposedChart data={data} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
+					<ChartStripeDefs idPrefix={patternPrefix} colors={[color]} />
 					<defs>
-						<linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-							<stop offset="0%" stopColor={color} stopOpacity={0.22} />
-							<stop offset="100%" stopColor={color} stopOpacity={0} />
-						</linearGradient>
 						<pattern
 							id={dotGridId}
 							x="0"
@@ -249,7 +248,7 @@ export function MetricChartBody({
 						type="monotone"
 						dataKey={metric.key}
 						stroke="none"
-						fill={`url(#${gradientId})`}
+						fill={`url(#${AREA_STRIPE_ID})`}
 						isAnimationActive={false}
 					/>
 					<Line
