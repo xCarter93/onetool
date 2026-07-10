@@ -102,6 +102,12 @@ describe("validateGeneratedReport", () => {
 		).toEqual([]);
 	});
 
+	it("accepts the widened visualization enum ('column', 'radar', 'radial')", () => {
+		expect(validateGeneratedReport(gen({ visualization: "column" }))).toEqual([]);
+		expect(validateGeneratedReport(gen({ visualization: "radar" }))).toEqual([]);
+		expect(validateGeneratedReport(gen({ visualization: "radial" }))).toEqual([]);
+	});
+
 	it("rejects a groupBy the entity does not offer", () => {
 		expect(validateGeneratedReport(gen({ groupBy: "leadSource" }))[0]).toMatch(
 			/groupBy "leadSource" is not valid for invoices/
@@ -186,6 +192,20 @@ describe("validateGeneratedReport", () => {
 });
 
 describe("toSavedReport", () => {
+	it("Slice 3-D3: a chart visualization with null groupBy is silently coerced to table", () => {
+		// Charts require a groupBy to aggregate on — without one, there's
+		// nothing to chart above the table, so the saved report is friendlier
+		// as a plain table than a chart-labeled report that never renders one.
+		const saved = toSavedReport(gen({ groupBy: null, visualization: "bar" }));
+		expect(saved.visualization).toEqual({ type: "table" });
+		expect(saved.config.groupBy).toBeUndefined();
+	});
+
+	it("Slice 3-D3: a chart visualization WITH a groupBy is left as the chosen chart", () => {
+		const saved = toSavedReport(gen({ groupBy: "status", visualization: "pie" }));
+		expect(saved.visualization).toEqual({ type: "pie" });
+	});
+
 	it("maps count measure to omitted aggregations and wraps groupBy", () => {
 		const saved = toSavedReport(gen({ measure: { op: "count", field: null } }));
 		expect(saved.config.groupBy).toEqual(["status"]);
@@ -242,10 +262,12 @@ describe("toExecuteReportArgs", () => {
 		expect(args.detail).toEqual({ columns: ["total"] });
 	});
 
-	it("sends explicit count aggregation for ungrouped charts", () => {
+	it("ungrouped charts → detail mode (Slice 3-D3: charts require a groupBy; nothing to chart above)", () => {
 		const args = toExecuteReportArgs(gen({ groupBy: null }));
-		expect(args.aggregation).toEqual({ op: "count" });
-		expect(args.detail).toBeUndefined();
+		expect(args.detail).toEqual({
+			columns: ["invoiceNumber", "status", "total", "issuedDate"],
+		});
+		expect(args.aggregation).toBeUndefined();
 	});
 
 	it("omits aggregation for grouped count so legacy dispatch applies", () => {
@@ -261,6 +283,34 @@ describe("toExecuteReportArgs", () => {
 			gen({ groupBy: "status", measure: { op: "sum", field: "total" } })
 		);
 		expect(args.aggregation).toEqual({ op: "sum", field: "total" });
+	});
+
+	it("sends an explicit count aggregation for a grouped count on a NON-legacy (generic-only) groupBy", () => {
+		// invoices.issuedDate_month is one of the newly-added, generic-only
+		// options — a grouped count must NOT fall through to legacy dispatch
+		// (which would silently mis-group it under the entity default).
+		const args = toExecuteReportArgs(
+			gen({ groupBy: "issuedDate_month", measure: { op: "count", field: null } })
+		);
+		expect(args.groupBy).toBe("issuedDate_month");
+		expect(args.aggregation).toEqual({ op: "count" });
+	});
+
+	it("still omits aggregation for a grouped count on legacy-only groupBys (status, leadSource, etc.)", () => {
+		expect(
+			toExecuteReportArgs(
+				gen({ groupBy: "status", measure: { op: "count", field: null } })
+			).aggregation
+		).toBeUndefined();
+		expect(
+			toExecuteReportArgs(
+				gen({
+					entityType: "clients",
+					groupBy: "leadSource",
+					measure: { op: "count", field: null },
+				})
+			).aggregation
+		).toBeUndefined();
 	});
 });
 
@@ -328,6 +378,12 @@ describe("toBuilderConfig", () => {
 		const config = toBuilderConfig(gen({ columns: ["invoiceNumber"] }));
 		expect(config.columns).toBeNull();
 		expect(config.dateRange).toBeNull();
+	});
+
+	it("Slice 3-D3: a chart visualization with null groupBy is coerced to table (keeps the builder's chart-requires-groupBy invariant)", () => {
+		const config = toBuilderConfig(gen({ groupBy: null, visualization: "column" }));
+		expect(config.visualization).toBe("table");
+		expect(config.groupBy).toBeNull();
 	});
 });
 
@@ -397,7 +453,7 @@ describe("recordUsage explicit attribution", () => {
 			orgId: org.orgId,
 			userId: org.userId,
 			agentName: "report-config-generator",
-			model: "gpt-5-nano",
+			model: "gpt-5.4-mini",
 			provider: "openai",
 			inputTokens: 100,
 			outputTokens: 50,
@@ -419,7 +475,7 @@ describe("recordUsage explicit attribution", () => {
 
 	it("still skips thread-less usage without explicit attribution", async () => {
 		await t.mutation(internal.assistantAgent.recordUsage, {
-			model: "gpt-5-nano",
+			model: "gpt-5.4-mini",
 			provider: "openai",
 			inputTokens: 1,
 			outputTokens: 1,

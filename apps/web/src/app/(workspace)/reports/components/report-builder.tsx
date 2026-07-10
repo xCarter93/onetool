@@ -3,9 +3,21 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ArrowLeft, Filter, ListTree, Loader2, Save, Sparkles } from "lucide-react";
+import {
+	ArrowLeft,
+	ChartColumn,
+	Filter,
+	ListTree,
+	Save,
+	Sparkles,
+	X,
+} from "lucide-react";
 import { DateRange } from "react-day-picker";
-import { getReportDateField, REPORT_FIELDS } from "@onetool/backend/convex/lib/reportFields";
+import {
+	getReportDateField,
+	isGenericGroupBy,
+	REPORT_FIELDS,
+} from "@onetool/backend/convex/lib/reportFields";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import { cn } from "@/lib/utils";
 import { useAssistantOpener } from "@/components/assistant/assistant-opener-context";
@@ -14,6 +26,12 @@ import { usePublishScreenContext } from "@/components/assistant/use-screen-conte
 import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+	Popover,
+	PopoverArrow,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import {
 	Select,
 	SelectContent,
@@ -28,6 +46,7 @@ import {
 	StyledTabsList,
 	StyledTabsTrigger,
 } from "@/components/ui/styled";
+import { StyledButton } from "@/components/ui/styled/styled-button";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ReportPreview } from "./report-preview";
@@ -169,6 +188,13 @@ export function ReportBuilder({
 	const sanitizedFilters = useMemo(() => sanitizeReportFilters(filters), [filters]);
 	const activeFilterCount = useMemo(() => countFilterRules(filters), [filters]);
 	const aggregation = measure.op === "count" ? undefined : measure;
+	// Non-count measures only work when groupBy is None or generic-safe — a
+	// legacy-only groupBy (e.g. invoices "month") only ever ran through the
+	// hardcoded dispatch, which ignores measures entirely.
+	const groupByIsGenericSafe = !groupBy || isGenericGroupBy(entityType, groupBy);
+	const availableMeasureOptions = groupByIsGenericSafe
+		? measureOptionsFor(entityType)
+		: measureOptionsFor(entityType).filter((o) => o.value === "count");
 	const detailModeActive = isDetailModeActive(vizType, groupBy, columns);
 	// What the Columns checklist actually shows as checked: the user's raw
 	// selection, or the per-entity default once detail mode is implied by
@@ -290,20 +316,18 @@ export function ReportBuilder({
 						className="w-full border-none bg-transparent px-1.5 text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
 					/>
 				</div>
-				<SegmentedViz value={vizType} onChange={setVizType} />
-				<Button
+				<AddChartControl value={vizType} groupBy={groupBy} onChange={setVizType} />
+				<StyledButton
 					intent="primary"
 					size="sm"
-					onPress={handleSave}
-					isDisabled={!name.trim() || saving}
+					showArrow={false}
+					onClick={handleSave}
+					disabled={!name.trim() || saving}
+					isLoading={saving}
+					icon={<Save className="h-4 w-4" />}
 				>
-					{saving ? (
-						<Loader2 className="h-4 w-4 animate-spin" data-slot="icon" />
-					) : (
-						<Save className="h-4 w-4" data-slot="icon" />
-					)}
 					{mode === "edit" ? "Save changes" : "Save report"}
-				</Button>
+				</StyledButton>
 			</div>
 
 			{/* Body — config rail + chart canvas */}
@@ -400,7 +424,23 @@ export function ReportBuilder({
 								<Label className="text-xs">Group by</Label>
 								<Select
 									value={groupBy ?? NO_GROUP_BY}
-									onValueChange={(v) => setGroupBy(v === NO_GROUP_BY ? undefined : v)}
+									onValueChange={(v) => {
+										const next = v === NO_GROUP_BY ? undefined : v;
+										setGroupBy(next);
+										// A legacy-only groupBy only ever ran through the hardcoded
+										// dispatch (which ignores measures) — coerce back to count
+										// here rather than in an effect (this repo lints
+										// set-state-in-effect).
+										if (next && !isGenericGroupBy(entityType, next) && measure.op !== "count") {
+											setMeasure({ op: "count" });
+										}
+										// Charts require a groupBy (Slice 3-D3) — dropping to "None"
+										// while a chart is active leaves nothing to chart above the
+										// table, so fall back to table here rather than in an effect.
+										if (!next && vizType !== "table") {
+											setVizType("table");
+										}
+									}}
 								>
 									<SelectTrigger className="w-full">
 										<SelectValue />
@@ -421,7 +461,7 @@ export function ReportBuilder({
 								<Select
 									value={measureToValue(measure)}
 									onValueChange={(v) => {
-										const opt = measureOptionsFor(entityType).find((o) => o.value === v);
+										const opt = availableMeasureOptions.find((o) => o.value === v);
 										if (opt) setMeasure(opt.measure);
 									}}
 								>
@@ -429,13 +469,18 @@ export function ReportBuilder({
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
-										{measureOptionsFor(entityType).map((opt) => (
+										{availableMeasureOptions.map((opt) => (
 											<SelectItem key={opt.value} value={opt.value}>
 												{opt.label}
 											</SelectItem>
 										))}
 									</SelectContent>
 								</Select>
+								{!groupByIsGenericSafe && (
+									<p className="text-xs text-muted-foreground">
+										This grouping only supports record counts.
+									</p>
+								)}
 							</div>
 
 							<div className={cn("space-y-1.5", vizType !== "table" && "opacity-60")}>
@@ -524,42 +569,97 @@ export function ReportBuilder({
 	);
 }
 
-function SegmentedViz({
+/** The six chart types, excluding "table" (table is the base layer, not a pickable "chart"). */
+const chartVizOptions = visualizationOptions.filter((o) => o.value !== "table");
+
+/**
+ * Salesforce-style "Add chart" control (Slice 3-D3): the table is always the
+ * base layer; this is how the user opts a chart in ABOVE it. Disabled
+ * without a Group by — a chart needs something to aggregate on. Once a
+ * chart is active, the trigger shows that chart's icon/label and the
+ * popover gains a "Remove chart" row that drops back to table.
+ */
+export function AddChartControl({
 	value,
+	groupBy,
 	onChange,
 }: {
 	value: VizType;
+	groupBy: string | undefined;
 	onChange: (v: VizType) => void;
 }) {
+	const [open, setOpen] = useState(false);
+	const isChartActive = value !== "table";
+	const disabled = !groupBy;
+	const active = isChartActive ? visualizationOptions.find((o) => o.value === value) : undefined;
+	const TriggerIcon = active?.icon ?? ChartColumn;
+	const triggerLabel = active?.label ?? "Add chart";
+
+	const select = (viz: VizType) => {
+		onChange(viz);
+		setOpen(false);
+	};
+
 	return (
-		<div
-			role="radiogroup"
-			aria-label="Visualization type"
-			className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5"
-		>
-			{visualizationOptions.map((opt) => {
-				const Icon = opt.icon;
-				const active = value === opt.value;
-				return (
-					<button
-						key={opt.value}
-						type="button"
-						role="radio"
-						aria-checked={active}
-						aria-label={opt.label}
-						onClick={() => onChange(opt.value)}
-						className={cn(
-							"flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-							active
-								? "bg-background text-primary shadow-sm"
-								: "text-muted-foreground hover:text-foreground"
-						)}
+		<div className="flex items-center gap-2">
+			<Popover open={open} onOpenChange={setOpen}>
+				<PopoverTrigger asChild>
+					<StyledButton
+						intent="outline"
+						size="sm"
+						showArrow={false}
+						disabled={disabled}
+						icon={<TriggerIcon className="h-4 w-4" />}
+						title={disabled ? "Group your data to add a chart." : undefined}
 					>
-						<Icon className="h-4 w-4" />
-						<span className="hidden sm:inline">{opt.label}</span>
-					</button>
-				);
-			})}
+						{triggerLabel}
+					</StyledButton>
+				</PopoverTrigger>
+				<PopoverContent side="bottom" align="end" sideOffset={8} className="w-60">
+					<PopoverArrow />
+					<div className="grid grid-cols-3 gap-1.5">
+						{chartVizOptions.map((opt) => {
+							const Icon = opt.icon;
+							const isActive = value === opt.value;
+							return (
+								<button
+									key={opt.value}
+									type="button"
+									aria-pressed={isActive}
+									onClick={() => select(opt.value)}
+									className={cn(
+										"flex flex-col items-center gap-1 rounded-md px-2 py-2.5 text-xs font-medium transition-colors",
+										isActive
+											? "bg-primary/10 text-primary ring-1 ring-primary/30"
+											: "text-muted-foreground hover:bg-muted hover:text-foreground"
+									)}
+								>
+									<Icon className="h-4 w-4" />
+									{opt.label}
+								</button>
+							);
+						})}
+					</div>
+					{isChartActive && (
+						<>
+							<div className="my-2 border-t border-border/60" />
+							<button
+								type="button"
+								onClick={() => select("table")}
+								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+							>
+								<X className="h-3.5 w-3.5" />
+								Remove chart
+							</button>
+						</>
+					)}
+				</PopoverContent>
+			</Popover>
+			{disabled && (
+				<span className="hidden text-xs text-muted-foreground/70 md:inline">
+					Group your data to add a chart.
+				</span>
+			)}
 		</div>
 	);
 }

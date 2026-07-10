@@ -4,6 +4,7 @@ import {
 	dateRangeToBuilderState,
 	getReportValueTypes,
 	formatReportValue,
+	isDetailModeActive,
 	resolveReportQueryArgs,
 	type ReportConfigShape,
 } from "./report-config";
@@ -132,28 +133,95 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 		expect(args.detail).toEqual({ columns: ["invoiceNumber"] });
 	});
 
-	it("chart + groupBy None → explicit count aggregation is sent, not left undefined", () => {
-		// Regression: the backend's legacy dispatch (runReportByConfig) silently
-		// re-groups by status when both groupBy and aggregation are omitted —
-		// wrong for an intentional "no grouping" chart. Must send {op:"count"}.
+	it("chart + groupBy None → detail mode (Slice 3-D3: charts require a groupBy; nothing to chart above)", () => {
+		// A chart with no grouping has nothing to chart above the table —
+		// falls back to raw-row detail mode with default columns, same as
+		// table + groupBy None.
 		const args = resolveReportQueryArgs(baseConfig, "bar");
-		expect(args.groupBy).toBeUndefined();
-		expect(args.aggregation).toEqual({ op: "count" });
-		expect(args.detail).toBeUndefined();
+		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
+		expect(args.aggregation).toBeUndefined();
 	});
 
-	it("chart + groupBy None + a non-count measure → the configured aggregation is sent as-is", () => {
+	it("chart + groupBy None + a non-count measure → still detail mode (measure ignored, same as table)", () => {
 		const args = resolveReportQueryArgs(
 			{ ...baseConfig, aggregation: { op: "sum", field: "total" } },
 			"pie"
 		);
-		expect(args.aggregation).toEqual({ op: "sum", field: "total" });
+		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
+		expect(args.aggregation).toBeUndefined();
 	});
 
 	it("chart + groupBy set → aggregation passes through unchanged (legacy grouped-chart behavior)", () => {
 		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "bar");
 		expect(args.groupBy).toBe("status");
 		expect(args.aggregation).toBeUndefined();
+	});
+});
+
+describe("resolveReportQueryArgs — legacy vs. generic groupBy routing", () => {
+	it("count + legacy-dispatch groupBy (invoices 'month') → no aggregation sent (legacy dispatch handles it)", () => {
+		const args = resolveReportQueryArgs(
+			{ entityType: "invoices", groupBy: ["month"] },
+			"bar"
+		);
+		expect(args.groupBy).toBe("month");
+		expect(args.aggregation).toBeUndefined();
+	});
+
+	it("count + legacy-dispatch groupBy (clients 'status') → no aggregation sent", () => {
+		const args = resolveReportQueryArgs({ entityType: "clients", groupBy: ["status"] }, "pie");
+		expect(args.groupBy).toBe("status");
+		expect(args.aggregation).toBeUndefined();
+	});
+
+	it("count + generic-only groupBy (invoices 'issuedDate_month') → explicit count aggregation, not left to legacy fallback", () => {
+		const args = resolveReportQueryArgs(
+			{ entityType: "invoices", groupBy: ["issuedDate_month"] },
+			"line"
+		);
+		expect(args.groupBy).toBe("issuedDate_month");
+		expect(args.aggregation).toEqual({ op: "count" });
+	});
+
+	it("count + generic-only groupBy (tasks 'assigneeUserId') → explicit count aggregation", () => {
+		const args = resolveReportQueryArgs({ entityType: "tasks", groupBy: ["assigneeUserId"] }, "bar");
+		expect(args.groupBy).toBe("assigneeUserId");
+		expect(args.aggregation).toEqual({ op: "count" });
+	});
+
+	it("non-count measure unchanged regardless of groupBy legacy/generic status", () => {
+		const args = resolveReportQueryArgs(
+			{
+				entityType: "invoices",
+				groupBy: ["issuedDate_month"],
+				aggregation: { op: "avg", field: "total" },
+			},
+			"line"
+		);
+		expect(args.aggregation).toEqual({ op: "avg", field: "total" });
+	});
+});
+
+describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
+	it("any viz type with groupBy None → detail (a chart with nothing to group on has nothing to chart above)", () => {
+		expect(isDetailModeActive("table", undefined, undefined)).toBe(true);
+		expect(isDetailModeActive("bar", undefined, undefined)).toBe(true);
+		expect(isDetailModeActive("pie", undefined, ["invoiceNumber"])).toBe(true);
+	});
+
+	it("table + groupBy set + columns checked → detail (explicit raw-row override)", () => {
+		expect(isDetailModeActive("table", "status", ["invoiceNumber"])).toBe(true);
+	});
+
+	it("table + groupBy set + no columns → grouped table, not detail", () => {
+		expect(isDetailModeActive("table", "status", undefined)).toBe(false);
+	});
+
+	it("chart + groupBy set → grouped (aggregated) mode, not detail — feeds chart + table together", () => {
+		expect(isDetailModeActive("bar", "status", undefined)).toBe(false);
+		// Columns are table-viz-only; a chart ignores any leftover column
+		// selection and still aggregates instead of going to detail mode.
+		expect(isDetailModeActive("bar", "status", ["invoiceNumber"])).toBe(false);
 	});
 });
 

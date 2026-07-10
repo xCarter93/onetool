@@ -23,6 +23,7 @@ import {
 	getReportField,
 	isGenericGroupBy,
 	REPORT_FIELDS,
+	usesLegacyDispatch,
 	type ReportEntityType,
 } from "./lib/reportFields";
 import type {
@@ -102,7 +103,7 @@ export const generatedReportSchema = z.object({
 		.nullable()
 		.describe("YYYY-MM-DD lower bound for the entity's date field, or null."),
 	endDate: z.string().nullable().describe("YYYY-MM-DD upper bound, or null."),
-	visualization: z.enum(["bar", "line", "pie", "table"]),
+	visualization: z.enum(["bar", "column", "line", "pie", "radar", "radial", "table"]),
 	name: z.string().describe("Short report title."),
 	description: z.string().nullable().describe("One sentence, or null."),
 });
@@ -157,7 +158,8 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	"Rules:",
 	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, or null. Never invent values.',
 	'- A list of individual records ("show me all overdue invoices") is visualization "table" with groupBy null and 3-5 relevant columns.',
-	"- Charts (bar/line/pie) aggregate: pick a groupBy, or null for a single total.",
+	'- Charts (bar/column/line/pie/radar/radial) render above the aggregated data table and require a groupBy. "table" means no chart — groupBy null there is fine for raw rows.',
+	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
 	"- measure: null (count of records) unless the user asks about amounts — then sum/avg/min/max of a number or currency field. A non-count measure only combines with the measure-compatible Group-by values listed per entity, or groupBy null.",
 	"- filters: only fields listed for the entity. Timestamp fields are never filterable — use startDate/endDate for time. When a field lists allowed values, equals/not_equals values must match one exactly.",
 	'- "contains" is for free-text string fields only; greater/less operators are for number and currency fields.',
@@ -328,6 +330,17 @@ function toDateRange(
 	};
 }
 
+/**
+ * Charts require a groupBy to aggregate on (Slice 3-D3: the chart renders
+ * above the data table, fed by the same grouped query) — a chart with no
+ * groupBy has nothing to chart above, so it's coerced to a plain table
+ * instead of silently producing a chart-labeled report that only ever
+ * renders a table (see toExecuteReportArgs' matching detailMode fallback).
+ */
+function resolveVisualization(gen: GeneratedReport): GeneratedReport["visualization"] {
+	return gen.groupBy === null && gen.visualization !== "table" ? "table" : gen.visualization;
+}
+
 /** Saved shape for reports.create — matches the builder's persistence rules
  * (count measure = omitted aggregations; columns only for table viz). */
 export function toSavedReport(gen: GeneratedReport): {
@@ -344,10 +357,11 @@ export function toSavedReport(gen: GeneratedReport): {
 		}[];
 		columns?: string[];
 	};
-	visualization: { type: "bar" | "line" | "pie" | "table" };
+	visualization: { type: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table" };
 } {
 	const filters = sanitizeGeneratedFilters(gen.filters);
 	const measure = gen.measure;
+	const visualization = resolveVisualization(gen);
 	return {
 		name: gen.name.trim(),
 		...(gen.description ? { description: gen.description } : {}),
@@ -363,11 +377,11 @@ export function toSavedReport(gen: GeneratedReport): {
 						],
 					}
 				: {}),
-			...(gen.visualization === "table" && gen.columns?.length
+			...(visualization === "table" && gen.columns?.length
 				? { columns: gen.columns }
 				: {}),
 		},
-		visualization: { type: gen.visualization },
+		visualization: { type: visualization },
 	};
 }
 
@@ -390,8 +404,11 @@ export function toExecuteReportArgs(gen: GeneratedReport): {
 		filters,
 	};
 
-	const detailMode =
-		gen.visualization === "table" && ((gen.columns?.length ?? 0) > 0 || !groupBy);
+	// No groupBy means raw-row detail mode for every viz type, not just
+	// table — a chart with nothing to group on has nothing to chart above
+	// (Slice 3-D3: chart renders above the data table, fed by the same
+	// grouped query). Mirrors the web's isDetailModeActive.
+	const detailMode = !groupBy || (gen.visualization === "table" && (gen.columns?.length ?? 0) > 0);
 	if (detailMode) {
 		return {
 			...base,
@@ -407,22 +424,38 @@ export function toExecuteReportArgs(gen: GeneratedReport): {
 		gen.measure && gen.measure.op !== "count" && gen.measure.field
 			? { op: gen.measure.op, field: gen.measure.field }
 			: undefined;
-	const aggregation =
-		!groupBy && gen.visualization !== "table"
-			? (measure ?? { op: "count" as const })
-			: measure;
+
+	// detailMode already returned above whenever groupBy is unset, so
+	// groupBy is guaranteed defined past this point. Non-count measures
+	// always need the generic pipeline; a legacy-only groupBy must keep
+	// hitting the legacy dispatch for unchanged output; any other groupBy
+	// (including the newer generic-only options) needs an explicit count so
+	// the generic pipeline — not the legacy fallback — runs and validates
+	// the groupBy.
+	let aggregation: { op: "count" | "sum" | "avg" | "min" | "max"; field?: string } | undefined;
+	if (measure) {
+		aggregation = measure;
+	} else if (usesLegacyDispatch(gen.entityType, groupBy!)) {
+		aggregation = undefined;
+	} else {
+		aggregation = { op: "count" as const };
+	}
+
 	return { ...base, ...(aggregation ? { aggregation } : {}) };
 }
 
 /** One short sentence the assistant can echo about what was built. */
 export function summarizeGeneratedReport(gen: GeneratedReport): string {
+	// Reflect what's actually saved/applied, not the model's raw guess — a
+	// chart with null groupBy is coerced to table (see resolveVisualization).
+	const visualization = resolveVisualization(gen);
 	const parts: string[] = [gen.entityType];
 	if (gen.groupBy) {
 		const label = GROUP_BY_OPTIONS[gen.entityType].find(
 			(o) => o.value === gen.groupBy
 		)?.label;
 		parts.push(`grouped by ${label ?? gen.groupBy}`);
-	} else if (gen.visualization === "table") {
+	} else if (visualization === "table") {
 		parts.push("as individual rows");
 	}
 	if (gen.measure && gen.measure.op !== "count" && gen.measure.field) {
@@ -437,7 +470,7 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 			`from ${gen.startDate ?? "the beginning"} to ${gen.endDate ?? "now"}`
 		);
 	}
-	return `${gen.visualization} of ${parts.join(", ")}`;
+	return `${visualization} of ${parts.join(", ")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -449,9 +482,11 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 // org from thread meta). NOTE: AI SDK v6 marks generateObject deprecated in
 // favor of generateText output settings; @convex-dev/agent 0.6.x still
 // wraps it directly — revisit on the next agent-component upgrade.
+// gpt-5.4-mini (not nano): schema-generation misses cause whole-tool retries,
+// which dominated configure-turn latency — one clean shot beats 3 cheap ones.
 export const reportConfigAgent = new Agent(components.agent, {
 	name: "report-config-generator",
-	languageModel: openai.chat("gpt-5-nano"),
+	languageModel: openai.chat("gpt-5.4-mini"),
 });
 
 /** Resolve the calling user + org for rate limiting and usage metering.
@@ -553,6 +588,9 @@ async function runReportGeneration(
 				schema: generatedReportSchema,
 				system: REPORT_CONFIG_SYSTEM_PROMPT,
 				prompt: promptParts.join("\n\n"),
+				// Schema-constrained one-shot needs little deliberation; default
+				// effort spends most of the turn's wall-clock on reasoning tokens.
+				providerOptions: { openai: { reasoningEffort: "low" } },
 			},
 			{
 				usageHandler: async (handlerCtx, args) => {
@@ -642,7 +680,7 @@ export type BuilderReportConfig = {
 	} | null;
 	columns: string[] | null;
 	dateRange: { start?: number; end?: number } | null;
-	visualization: "bar" | "line" | "pie" | "table";
+	visualization: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table";
 	name: string;
 	description: string | null;
 };
@@ -659,14 +697,17 @@ export type ConfigureReportResult =
 
 /** Generated config → the shape the builder applies (exported for tests). */
 export function toBuilderConfig(gen: GeneratedReport): BuilderReportConfig {
+	// Coerced the same way as toSavedReport — the builder's "Add chart"
+	// affordance assumes a chart is only ever active when groupBy is set.
+	const visualization = resolveVisualization(gen);
 	return {
 		entityType: gen.entityType,
 		groupBy: gen.groupBy,
 		filters: sanitizeGeneratedFilters(gen.filters),
 		measure: gen.measure,
-		columns: gen.visualization === "table" ? (gen.columns ?? null) : null,
+		columns: visualization === "table" ? (gen.columns ?? null) : null,
 		dateRange: toDateRange(gen) ?? null,
-		visualization: gen.visualization,
+		visualization,
 		name: gen.name.trim(),
 		description: gen.description,
 	};

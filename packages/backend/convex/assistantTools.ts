@@ -306,7 +306,7 @@ interface ActivityItem {
 
 type NotFound = { found: false };
 
-type ReportVisualization = "bar" | "line" | "pie" | "table";
+type ReportVisualization = "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table";
 
 interface TeamMemberItem {
 	id: string;
@@ -542,10 +542,10 @@ export const runReport = createTool({
 		startDate: isoDate.optional(),
 		endDate: isoDate.optional(),
 		visualization: z
-			.enum(["bar", "line", "pie", "table"])
+			.enum(["bar", "column", "line", "pie", "radar", "radial", "table"])
 			.optional()
 			.describe(
-				"How the result is shown to the user in chat. Pick 'line' for time series, 'pie' for share-of-total, 'table' for exact values. Defaults to bar."
+				"How the result is shown to the user in chat. Pick 'column' for time-bucketed groups, 'line' for time series, 'pie' for share-of-total, 'table' for exact values. Only pick 'radar'/'radial' if the user explicitly asks for that chart type. Defaults to bar."
 			),
 	}),
 	execute: async (

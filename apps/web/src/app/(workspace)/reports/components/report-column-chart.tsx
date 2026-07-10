@@ -8,7 +8,6 @@ import {
 	YAxis,
 	CartesianGrid,
 	Cell,
-	ResponsiveContainer,
 } from "recharts";
 import {
 	ChartConfig,
@@ -28,7 +27,7 @@ interface DataPoint {
 	[key: string]: unknown;
 }
 
-interface ReportBarChartProps {
+interface ReportColumnChartProps {
 	data: DataPoint[];
 	total: number;
 	groupBy?: string;
@@ -39,13 +38,14 @@ interface ReportBarChartProps {
 	itemValueIsCurrency?: boolean;
 }
 
-export function ReportBarChart({
+/** Vertical bars — category names on the X axis, numeric value on the Y
+ * axis. Prefer this over ReportBarChart for time buckets (months, weeks). */
+export function ReportColumnChart({
 	data,
 	total,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
-}: ReportBarChartProps) {
-	// Build chart config dynamically
+}: ReportColumnChartProps) {
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
 		acc[item.name] = {
 			label: item.name,
@@ -70,9 +70,7 @@ export function ReportBarChart({
 		<div className="space-y-4">
 			{/* Summary stats */}
 			<div className="flex items-center justify-between text-sm">
-				<span className="text-muted-foreground">
-					{data.length} categories
-				</span>
+				<span className="text-muted-foreground">{data.length} categories</span>
 				<span className="font-medium text-foreground">
 					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
 				</span>
@@ -80,33 +78,27 @@ export function ReportBarChart({
 
 			{/* Chart */}
 			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
-				<BarChart
-					data={data}
-					layout="vertical"
-					margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-				>
+				<BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
 					<ChartStripeDefs colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
-					<CartesianGrid strokeDasharray="3 3" horizontal vertical={false} stroke="var(--border)" />
+					<CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
 					<XAxis
-						type="number"
-						axisLine={false}
-						tickLine={false}
-						tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-						tickFormatter={(value) => formatValue(value)}
-					/>
-					<YAxis
-						type="category"
 						dataKey="name"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 12, fill: "hsl(var(--foreground))" }}
-						width={75}
+						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tickMargin={10}
+					/>
+					<YAxis
+						axisLine={false}
+						tickLine={false}
+						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tickFormatter={(value) => formatValue(value)}
 					/>
 					<ChartTooltip
 						cursor={{ fill: "var(--muted)", opacity: 0.2 }}
 						content={<ChartTooltipContent />}
 					/>
-					<Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={40}>
+					<Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48}>
 						{data.map((entry, index) => {
 							const color = getChartColor(index, CHART_CATEGORICAL);
 							return (
@@ -124,4 +116,3 @@ export function ReportBarChart({
 		</div>
 	);
 }
-

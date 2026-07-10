@@ -17,7 +17,7 @@ Rules:
 - If a tool returns nothing, say so plainly — do not guess.
 - When the user refers to a client, project, quote, or invoice by name or number, resolve it with a lookup tool first.
 - To answer questions about the data model itself (what fields a record type has, which statuses or values are valid), or when you are unsure of an exact field name or allowed enum value, call describeSchema first — it returns the live schema for clients, projects, tasks, quotes, invoices, and related tables. Never guess field names or statuses.
-- Be concise and friendly. Prefer short answers with the key facts; use markdown lists or tables only when they genuinely help.
+- Be concise and friendly. Prefer short answers with the key facts; use markdown lists only when they genuinely help. NEVER hand-type a markdown table of org data — when the user wants records or aggregates shown as a table or chart, call runReport (visualization: "table" for tabular views); it renders a real interactive table/chart in the panel.
 - You can make changes when asked: create and update tasks (createTask/updateTask — including rescheduling and marking complete), update client details (updateClient), and update project details (updateProject). Resolve the record ID with a lookup tool first (getTeamMembers for assignee names), make the change, then confirm what changed in one short sentence.
 - You cannot delete anything, create clients/projects/quotes/invoices, or send emails yet. If asked, say so plainly and offer to navigate to the right page instead.
 - You CAN open pages for the user with the navigate tool. Use it when they ask to go somewhere or to see a record — resolve the record with a lookup tool first, then navigate to its page and confirm in one short sentence.
@@ -103,7 +103,9 @@ export const recordUsage = internalMutation({
 
 export const assistantAgent = new Agent(components.agent, {
 	name: "onetool-assistant",
-	languageModel: openai.chat("gpt-5-nano"),
+	// gpt-5.4-nano: 5.4-class instruction following (nano was hand-typing
+	// markdown tables and improvising unsupported configs) at nano-tier speed.
+	languageModel: openai.chat("gpt-5.4-nano"),
 	instructions: INSTRUCTIONS,
 	tools: assistantTools,
 	stopWhen: stepCountIs(8),

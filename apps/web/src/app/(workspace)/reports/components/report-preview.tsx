@@ -5,9 +5,13 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Loader2, AlertCircle, TriangleAlert } from "lucide-react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { Separator } from "@/components/ui/separator";
 import { ReportBarChart } from "./report-bar-chart";
+import { ReportColumnChart } from "./report-column-chart";
 import { ReportLineChart } from "./report-line-chart";
 import { ReportPieChart } from "./report-pie-chart";
+import { ReportRadarChart } from "./report-radar-chart";
+import { ReportRadialChart } from "./report-radial-chart";
 import { ReportTable } from "./report-table";
 import {
 	getReportValueTypes,
@@ -100,12 +104,37 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 			? reportData.metadata.itemValueIsCurrency
 			: fallbackValueTypes.itemValueIsCurrency;
 
-	// Render the appropriate visualization
+	// The grouped table is always rendered — it's the base layer (Slice
+	// 3-D3). A chart (when vizType is a chart type — guaranteed to have a
+	// groupBy at this point, since chart + no groupBy already went through
+	// the reportData.detail branch above) renders ABOVE it, fed by this same
+	// grouped query result.
+	const table = (
+		<ReportTable
+			data={chartData}
+			total={total}
+			groupBy={groupBy}
+			entityType={config.entityType}
+			totalIsCurrency={totalIsCurrency}
+		/>
+	);
+
 	const chart = (() => {
 		switch (visualization.type) {
 			case "bar":
 				return (
 					<ReportBarChart
+						data={chartData}
+						total={total}
+						groupBy={groupBy}
+						entityType={config.entityType}
+						totalIsCurrency={totalIsCurrency}
+						itemValueIsCurrency={itemValueIsCurrency}
+					/>
+				);
+			case "column":
+				return (
+					<ReportColumnChart
 						data={chartData}
 						total={total}
 						groupBy={groupBy}
@@ -132,17 +161,31 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 					/>
 				);
-			case "table":
-			default:
+			case "radar":
 				return (
-					<ReportTable
+					<ReportRadarChart
 						data={chartData}
 						total={total}
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						itemValueIsCurrency={itemValueIsCurrency}
 					/>
 				);
+			case "radial":
+				return (
+					<ReportRadialChart
+						data={chartData}
+						total={total}
+						groupBy={groupBy}
+						entityType={config.entityType}
+						totalIsCurrency={totalIsCurrency}
+						itemValueIsCurrency={itemValueIsCurrency}
+					/>
+				);
+			case "table":
+			default:
+				return null;
 		}
 	})();
 
@@ -154,7 +197,15 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 					<span>{TRUNCATION_NOTICE}</span>
 				</div>
 			)}
-			{chart}
+			{chart ? (
+				<>
+					{chart}
+					<Separator className="my-1" />
+					{table}
+				</>
+			) : (
+				table
+			)}
 		</div>
 	);
 }

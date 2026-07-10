@@ -2,12 +2,11 @@
 
 import React from "react";
 import {
-	Line,
-	LineChart,
+	Area,
+	AreaChart,
 	XAxis,
 	YAxis,
 	CartesianGrid,
-	Area,
 } from "recharts";
 import {
 	ChartConfig,
@@ -15,6 +14,9 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
+import { CHART_CATEGORICAL } from "@/lib/chart-colors";
+import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ChartStripeDefs, stripeId } from "./chart-stripe-defs";
 
 interface DataPoint {
 	name: string;
@@ -29,10 +31,15 @@ interface ReportLineChartProps {
 	entityType: string;
 }
 
-// Glass blue color palette (matching app's primary color)
-const PRIMARY_BLUE = "rgb(0, 166, 244)";
-const PRIMARY_BLUE_LIGHT = "rgba(0, 166, 244, 0.15)";
+// This chart's single series used to hardcode the same rgb() value as
+// CHART_COLORS.primary[0]; now sourced from the categorical palette so every
+// chart shares one validated color system.
+const PRIMARY_BLUE = CHART_CATEGORICAL[0];
+const AREA_STRIPE_ID = stripeId("report-stripe", 0);
 
+// Renders as an area chart (viz type value stays "line" — schema/presets/
+// saved reports are unchanged; only the label/icon in report-config.ts
+// present it as "Area").
 export function ReportLineChart({
 	data,
 	total,
@@ -45,6 +52,10 @@ export function ReportLineChart({
 			color: PRIMARY_BLUE,
 		},
 	};
+
+	if (isChartDataEmpty(data)) {
+		return <ChartNoData />;
+	}
 
 	const formatValue = (value: number) => {
 		if (entityType === "invoices" || entityType === "quotes") {
@@ -61,7 +72,7 @@ export function ReportLineChart({
 	};
 
 	// Calculate trend
-	const trend = data.length >= 2 
+	const trend = data.length >= 2
 		? data[data.length - 1].value - data[0].value
 		: 0;
 
@@ -88,24 +99,11 @@ export function ReportLineChart({
 
 			{/* Chart */}
 			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
-				<LineChart
+				<AreaChart
 					data={data}
 					margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
 				>
-					<defs>
-						<linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-							<stop
-								offset="0%"
-								stopColor={PRIMARY_BLUE}
-								stopOpacity={0.3}
-							/>
-							<stop
-								offset="100%"
-								stopColor={PRIMARY_BLUE}
-								stopOpacity={0.05}
-							/>
-						</linearGradient>
-					</defs>
+					<ChartStripeDefs colors={[PRIMARY_BLUE]} />
 					<CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
 					<XAxis
 						dataKey="name"
@@ -125,22 +123,14 @@ export function ReportLineChart({
 						cursor={{ strokeDasharray: "3 3", stroke: PRIMARY_BLUE }}
 						content={<ChartTooltipContent />}
 					/>
-					{/* Area fill under the line — decorative only; without
-					    tooltipType="none" it duplicates the Line's tooltip entry
-					    (two payload rows keyed "value" → React duplicate-key error) */}
+					{/* Solid 2px stroke for the curve, diagonal-stripe pattern (not a
+					    gradient) filling the area beneath it. */}
 					<Area
 						type="monotone"
 						dataKey="value"
-						stroke="none"
-						fill="url(#lineGradient)"
-						tooltipType="none"
-					/>
-					{/* Main line with connected points */}
-					<Line
-						type="monotone"
-						dataKey="value"
 						stroke={PRIMARY_BLUE}
-						strokeWidth={2.5}
+						strokeWidth={2}
+						fill={`url(#${AREA_STRIPE_ID})`}
 						connectNulls
 						dot={{
 							r: 5,
@@ -155,9 +145,8 @@ export function ReportLineChart({
 							strokeWidth: 2,
 						}}
 					/>
-				</LineChart>
+				</AreaChart>
 			</ChartContainer>
 		</div>
 	);
 }
-

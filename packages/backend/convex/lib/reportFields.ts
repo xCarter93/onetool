@@ -277,6 +277,7 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "creationDate_month", label: "Created by Month" },
 		{ value: "creationDate_week", label: "Created by Week" },
 		{ value: "creationDate_day", label: "Created by Day" },
+		{ value: "completedAt_month", label: "Completed by Month" },
 	],
 	tasks: [
 		{ value: "status", label: "Status" },
@@ -284,6 +285,7 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "date_month", label: "By Month" },
 		{ value: "date_week", label: "By Week" },
 		{ value: "date_day", label: "By Day" },
+		{ value: "assigneeUserId", label: "Assignee" },
 	],
 	quotes: [
 		{ value: "status", label: "Status" },
@@ -293,14 +295,54 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "status", label: "Status" },
 		{ value: "month", label: "Revenue by Month" },
 		{ value: "client", label: "Revenue by Client" },
+		{ value: "issuedDate_month", label: "Issued by Month" },
+		{ value: "dueDate_month", label: "Due by Month" },
 	],
 	activities: [
 		{ value: "activityType", label: "Activity Type" },
 		{ value: "timestamp_month", label: "By Month" },
 		{ value: "timestamp_week", label: "By Week" },
 		{ value: "timestamp_day", label: "By Day" },
+		{ value: "entityType", label: "Related record type" },
 	],
 };
+
+/**
+ * Per-entity groupBy values that predate the generic aggregation pipeline —
+ * the exact set that only ever worked through the legacy hardcoded dispatch
+ * (runReportByConfig). Callers with a count measure route these through
+ * legacy dispatch to preserve existing saved-report output byte-for-byte;
+ * everything else (new options added after the generic pipeline landed, plus
+ * any measure-bearing aggregation) runs through the generic pipeline instead.
+ */
+const LEGACY_DISPATCH_GROUP_BY: Record<ReportEntityType, ReadonlySet<string>> = {
+	clients: new Set([
+		"status",
+		"leadSource",
+		"creationDate_month",
+		"creationDate_week",
+		"creationDate_day",
+	]),
+	projects: new Set([
+		"status",
+		"projectType",
+		"creationDate_month",
+		"creationDate_week",
+		"creationDate_day",
+	]),
+	tasks: new Set(["status", "completionRate", "date_month", "date_week", "date_day"]),
+	quotes: new Set(["status", "conversionRate"]),
+	invoices: new Set(["status", "month", "client"]),
+	activities: new Set(["activityType", "timestamp_month", "timestamp_week", "timestamp_day"]),
+};
+
+/** True when this groupBy value only works through the legacy dispatch path. */
+export function usesLegacyDispatch(
+	entityType: ReportEntityType,
+	groupBy: string
+): boolean {
+	return LEGACY_DISPATCH_GROUP_BY[entityType].has(groupBy);
+}
 
 /** Per-entity fallback columns for detail (raw-row) mode when nothing is checked. */
 export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {

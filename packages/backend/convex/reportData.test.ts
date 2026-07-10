@@ -11,6 +11,12 @@ import {
 } from "./test.helpers";
 import { api } from "./_generated/api";
 import { evaluateReportFilters, type ReportFilters } from "./lib/reportFilters";
+import {
+	GROUP_BY_OPTIONS,
+	isGenericGroupBy,
+	usesLegacyDispatch,
+	type ReportEntityType,
+} from "./lib/reportFields";
 import type { Id } from "./_generated/dataModel";
 
 /**
@@ -685,6 +691,185 @@ describe("reportData.executeReport", () => {
 
 		expect(result.detail?.rows).toEqual([{ status: "sent" }]);
 		expect(result.detail?.totalMatched).toBe(1);
+	});
+
+	// ==========================================================================
+	// Generic pipeline coverage for the newly-expanded GROUP_BY_OPTIONS values
+	// ==========================================================================
+
+	it("activities entityType groupBy with an explicit count runs through the generic pipeline", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			await ctx.db.insert("activities", {
+				orgId: org.orgId,
+				userId: org.userId,
+				activityType: "client_created",
+				entityType: "client",
+				entityId: "fake-id-1",
+				entityName: "Fake Entity 1",
+				description: "test activity",
+				timestamp: Date.now(),
+				isVisible: true,
+			});
+			await ctx.db.insert("activities", {
+				orgId: org.orgId,
+				userId: org.userId,
+				activityType: "invoice_paid",
+				entityType: "invoice",
+				entityId: "fake-id-2",
+				entityName: "Fake Entity 2",
+				description: "test activity",
+				timestamp: Date.now(),
+				isVisible: true,
+			});
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "activities",
+			groupBy: "entityType",
+			aggregation: { op: "count" },
+		});
+
+		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
+		expect(byLabel).toEqual({ Client: 1, Invoice: 1 });
+	});
+
+	it("projects completedAt_month groupBy + count + status=completed filter runs through the generic pipeline", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		const completedAt = Date.UTC(2024, 3, 10);
+		await t.run(async (ctx) => {
+			const completedId = await createTestProject(ctx, org.orgId, clientId, {
+				status: "completed",
+			});
+			await ctx.db.patch(completedId, { completedAt });
+			await createTestProject(ctx, org.orgId, clientId, { status: "planned" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "projects",
+			groupBy: "completedAt_month",
+			aggregation: { op: "count" },
+			filters: {
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [{ field: "status", operator: "equals", value: "completed" }],
+					},
+				],
+			},
+		});
+
+		expect(result.total).toBe(1);
+		expect(result.data).toEqual([{ label: "Apr 2024", value: 1, metadata: { dateKey: "2024-04" } }]);
+	});
+
+	it("invoices dueDate_month groupBy + sum(total) + or-filters (sent/overdue) runs through the generic pipeline", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		const dueDate = Date.UTC(2024, 6, 1);
+		await t.run(async (ctx) => {
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				status: "sent",
+				total: 200,
+				dueDate,
+			});
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				status: "overdue",
+				total: 300,
+				dueDate,
+			});
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				status: "paid",
+				total: 999,
+				dueDate,
+			}); // excluded — not sent/overdue
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoices",
+			groupBy: "dueDate_month",
+			aggregation: { op: "sum", field: "total" },
+			filters: {
+				logic: "and",
+				groups: [
+					{
+						logic: "or",
+						rules: [
+							{ field: "status", operator: "equals", value: "sent" },
+							{ field: "status", operator: "equals", value: "overdue" },
+						],
+					},
+				],
+			},
+		});
+
+		expect(result.total).toBe(500);
+		expect(result.data).toEqual([{ label: "Jul 2024", value: 500, metadata: { dateKey: "2024-07" } }]);
+	});
+
+	// ==========================================================================
+	// Assignee bucket label resolution (tasks x assigneeUserId)
+	// ==========================================================================
+
+	it("tasks assigneeUserId groupBy resolves bucket labels to user names, with Unassigned for missing assignee", async () => {
+		const { org, asOrg } = await seedOrg();
+		const otherUserId = await t.run((ctx) =>
+			ctx.db.insert("users", {
+				name: "Jamie Rivera",
+				email: "jamie@example.com",
+				image: "https://example.com/image.jpg",
+				externalId: "user_jamie",
+			})
+		);
+		await t.run(async (ctx) => {
+			await createTestTask(ctx, org.orgId, { assigneeUserId: org.userId });
+			await createTestTask(ctx, org.orgId, { assigneeUserId: org.userId });
+			await createTestTask(ctx, org.orgId, { assigneeUserId: otherUserId });
+			await createTestTask(ctx, org.orgId, {}); // unassigned
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "tasks",
+			groupBy: "assigneeUserId",
+			aggregation: { op: "count" },
+		});
+
+		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
+		expect(byLabel).toEqual({
+			"Test User": 2,
+			"Jamie Rivera": 1,
+			Unassigned: 1,
+		});
+	});
+});
+
+describe("GROUP_BY_OPTIONS / usesLegacyDispatch / isGenericGroupBy invariants", () => {
+	const NEW_GENERIC_ONLY_VALUES: { entity: ReportEntityType; value: string }[] = [
+		{ entity: "projects", value: "completedAt_month" },
+		{ entity: "invoices", value: "issuedDate_month" },
+		{ entity: "invoices", value: "dueDate_month" },
+		{ entity: "tasks", value: "assigneeUserId" },
+		{ entity: "activities", value: "entityType" },
+	];
+
+	it("every GROUP_BY_OPTIONS value is handled by either legacy dispatch or the generic pipeline", () => {
+		for (const entity of Object.keys(GROUP_BY_OPTIONS) as ReportEntityType[]) {
+			for (const { value } of GROUP_BY_OPTIONS[entity]) {
+				expect(
+					usesLegacyDispatch(entity, value) || isGenericGroupBy(entity, value),
+					`${entity}.${value} must be legacy-dispatch or generic-safe`
+				).toBe(true);
+			}
+		}
+	});
+
+	it("the five newly-added groupBy values are generic-safe and NOT legacy-dispatch", () => {
+		for (const { entity, value } of NEW_GENERIC_ONLY_VALUES) {
+			expect(isGenericGroupBy(entity, value)).toBe(true);
+			expect(usesLegacyDispatch(entity, value)).toBe(false);
+		}
 	});
 });
 

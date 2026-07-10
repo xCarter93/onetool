@@ -452,12 +452,25 @@ async function runGenericAggregation(
 				raw === undefined || raw === null || raw === "" ? "unknown" : String(raw);
 			(buckets[key] ??= []).push(row);
 		}
-		data = Object.entries(buckets)
-			.map(([key, bucketRows]) => ({
-				label: capitalizeWords(key, "-"),
-				value: computeAggregateValue(bucketRows, aggregation),
-			}))
-			.sort((a, b) => b.value - a.value);
+
+		// Assignee buckets are user ids, not display strings — resolve to
+		// names (mirrors queryRevenueByClient's companyName resolution).
+		const isAssigneeGroupBy = entityType === "tasks" && groupBy === "assigneeUserId";
+		const resolveLabel = async (key: string): Promise<string> => {
+			if (!isAssigneeGroupBy) return capitalizeWords(key, "-");
+			if (key === "unknown") return "Unassigned";
+			const user = await ctx.db.get(key as Id<"users">);
+			return user?.name ?? key;
+		};
+
+		data = (
+			await Promise.all(
+				Object.entries(buckets).map(async ([key, bucketRows]) => ({
+					label: await resolveLabel(key),
+					value: computeAggregateValue(bucketRows, aggregation),
+				}))
+			)
+		).sort((a, b) => b.value - a.value);
 	} else {
 		data = [{ label: "Total", value: computeAggregateValue(rows, aggregation) }];
 	}

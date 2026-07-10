@@ -202,7 +202,7 @@ export async function mapCsvSchema(
 
 	try {
 		const { output } = await generateText({
-			model: openai("gpt-5-nano"),
+			model: openai("gpt-5.4-nano"),
 			output: Output.object({ schema: llmMappingSchema }),
 			prompt: buildMappingPrompt(entityType, headers, sampleRows, schema),
 			// Below the route's maxDuration (60s) so a timeout still returns

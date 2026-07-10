@@ -2,8 +2,11 @@
 
 import { TriangleAlert } from "lucide-react";
 import { ReportBarChart } from "@/app/(workspace)/reports/components/report-bar-chart";
+import { ReportColumnChart } from "@/app/(workspace)/reports/components/report-column-chart";
 import { ReportLineChart } from "@/app/(workspace)/reports/components/report-line-chart";
 import { ReportPieChart } from "@/app/(workspace)/reports/components/report-pie-chart";
+import { ReportRadarChart } from "@/app/(workspace)/reports/components/report-radar-chart";
+import { ReportRadialChart } from "@/app/(workspace)/reports/components/report-radial-chart";
 import { ReportTable } from "@/app/(workspace)/reports/components/report-table";
 import { getReportValueTypes, TRUNCATION_NOTICE } from "@/app/(workspace)/reports/report-config";
 import type { ToolRendererProps } from "./index";
@@ -16,7 +19,7 @@ interface ReportOutput {
 		metadata?: Record<string, unknown>;
 	}>;
 	total: number;
-	visualization?: "bar" | "line" | "pie" | "table";
+	visualization?: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table";
 	metadata?: {
 		entityType?: string;
 		groupBy?: string;
@@ -77,10 +80,16 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 					<span>{TRUNCATION_NOTICE}</span>
 				</div>
 			)}
-			{report.visualization === "line" ? (
+			{report.visualization === "column" ? (
+				<ReportColumnChart {...chartProps} />
+			) : report.visualization === "line" ? (
 				<ReportLineChart {...chartProps} />
 			) : report.visualization === "pie" ? (
 				<ReportPieChart {...chartProps} />
+			) : report.visualization === "radar" ? (
+				<ReportRadarChart {...chartProps} />
+			) : report.visualization === "radial" ? (
+				<ReportRadialChart {...chartProps} />
 			) : report.visualization === "table" ? (
 				<ReportTable {...chartProps} />
 			) : (

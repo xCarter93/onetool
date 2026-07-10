@@ -1,11 +1,15 @@
 import {
+	AreaChart,
 	BarChart3,
 	Briefcase,
+	ChartColumn,
 	DollarSign,
 	FileText,
 	ListChecks,
 	PieChart,
+	Radar,
 	Table as TableIcon,
+	Target,
 	TrendingUp,
 	Users,
 	type LucideIcon,
@@ -14,6 +18,7 @@ import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import {
 	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
+	usesLegacyDispatch,
 } from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 
@@ -25,7 +30,7 @@ export type EntityType =
 	| "invoices"
 	| "activities";
 
-export type VizType = "table" | "bar" | "line" | "pie";
+export type VizType = "table" | "bar" | "column" | "line" | "pie" | "radar" | "radial";
 
 export type MeasureOp = "count" | "sum" | "avg" | "min" | "max";
 export type ReportMeasure =
@@ -83,8 +88,13 @@ export const visualizationOptions: {
 	icon: LucideIcon;
 }[] = [
 	{ value: "bar", label: "Bar", icon: BarChart3 },
-	{ value: "line", label: "Line", icon: TrendingUp },
+	{ value: "column", label: "Column", icon: ChartColumn },
+	// Value stays "line" (schema/presets/saved reports unchanged) — user-facing
+	// label + icon reflect the area-chart rendering (see ReportLineChart).
+	{ value: "line", label: "Area", icon: AreaChart },
 	{ value: "pie", label: "Pie", icon: PieChart },
+	{ value: "radar", label: "Radar", icon: Radar },
+	{ value: "radial", label: "Radial", icon: Target },
 	{ value: "table", label: "Table", icon: TableIcon },
 ];
 
@@ -108,83 +118,13 @@ export const entityLabels: Record<string, string> = Object.fromEntries(
 
 export const visualizationIcons: Record<VizType, LucideIcon> = {
 	bar: BarChart3,
-	line: TrendingUp,
+	column: ChartColumn,
+	line: AreaChart,
 	pie: PieChart,
+	radar: Radar,
+	radial: Target,
 	table: TableIcon,
 };
-
-/** Pre-built starting points surfaced on the reports landing page. */
-export const reportTemplates: {
-	id: string;
-	name: string;
-	description: string;
-	entityType: EntityType;
-	groupBy: string;
-	viz: VizType;
-	dateRange: string;
-	icon: LucideIcon;
-}[] = [
-	{
-		id: "client-status",
-		name: "Client status breakdown",
-		description: "Where clients sit in your pipeline",
-		entityType: "clients",
-		groupBy: "status",
-		viz: "pie",
-		dateRange: "all_time",
-		icon: Users,
-	},
-	{
-		id: "revenue-month",
-		name: "Revenue by month",
-		description: "Paid invoice revenue over time",
-		entityType: "invoices",
-		groupBy: "month",
-		viz: "line",
-		dateRange: "this_year",
-		icon: DollarSign,
-	},
-	{
-		id: "quote-conversion",
-		name: "Quote conversion",
-		description: "Sent vs. approved quotes",
-		entityType: "quotes",
-		groupBy: "status",
-		viz: "bar",
-		dateRange: "this_quarter",
-		icon: FileText,
-	},
-	{
-		id: "task-workload",
-		name: "Task workload",
-		description: "Open vs. completed tasks",
-		entityType: "tasks",
-		groupBy: "status",
-		viz: "bar",
-		dateRange: "all_time",
-		icon: ListChecks,
-	},
-	{
-		id: "new-clients",
-		name: "New clients over time",
-		description: "Acquisition by month",
-		entityType: "clients",
-		groupBy: "creationDate_month",
-		viz: "line",
-		dateRange: "this_year",
-		icon: TrendingUp,
-	},
-	{
-		id: "projects-status",
-		name: "Projects by status",
-		description: "Project pipeline health",
-		entityType: "projects",
-		groupBy: "status",
-		viz: "bar",
-		dateRange: "all_time",
-		icon: Briefcase,
-	},
-];
 
 export function formatDate(timestamp: number) {
 	return new Date(timestamp).toLocaleDateString("en-US", {
@@ -330,17 +270,19 @@ export function formatReportValue(
 export { DEFAULT_DETAIL_COLUMNS };
 
 /**
- * True when the table view should render raw rows instead of aggregated
- * groups: either the user explicitly checked columns, or Group by is "None".
- * Grouping only ever applies to the table view via aggregated rows — charts
- * always use `aggregation` (see resolveReportQueryArgs).
+ * True when the report should render raw rows instead of aggregated groups.
+ * Charts require a Group by (Slice 3-D3: chart renders above the data table,
+ * fed by the same grouped query) — with no Group by, there's nothing to
+ * chart, so ANY viz type (table or chart) falls back to detail rows. Beyond
+ * that, only the table view has its own explicit-columns override.
  */
 export function isDetailModeActive(
 	vizType: VizType,
 	groupBy: string | undefined,
 	columns: string[] | undefined
 ): boolean {
-	return vizType === "table" && ((columns?.length ?? 0) > 0 || !groupBy);
+	if (!groupBy) return true;
+	return vizType === "table" && (columns?.length ?? 0) > 0;
 }
 
 /** Columns to actually query/display in detail mode — falls back to a sensible per-entity default so the table (and its Columns checklist) never looks empty. */
@@ -362,13 +304,26 @@ export type ReportQueryArgs = {
 
 /**
  * Single source of truth for turning a builder/saved config into
- * executeReport args. Centralizes the two "Group by: None" behaviors:
- * table view always falls back to raw-row detail mode (with default
- * columns if none are checked), and chart views must send an explicit
- * `aggregation` (count included) — the backend's legacy dispatch
- * (runReportByConfig) silently re-groups by status when both `groupBy`
- * and `aggregation` are omitted, which is wrong for an intentional
- * "no grouping" chart.
+ * executeReport args — must mirror the backend's toExecuteReportArgs
+ * (reportConfigGeneration.ts) exactly, since both feed the same
+ * executeReport query.
+ *
+ * "Group by: None" always means raw-row detail mode (with default columns
+ * if none are checked) — this applies to every viz type, not just table,
+ * since a chart with nothing to group on has nothing to chart above (see
+ * isDetailModeActive). Once a groupBy IS set, chart views must send an
+ * explicit `aggregation` (count included) when they don't already have a
+ * measure — the backend's legacy dispatch (runReportByConfig) silently
+ * re-groups by status when both `groupBy` and `aggregation` are omitted,
+ * which is wrong for an intentional grouping.
+ *
+ * For a count measure with a groupBy set, whether that omission is safe
+ * depends on the groupBy: legacy-dispatch values (status, leadSource,
+ * creationDate_*, etc.) must still omit `aggregation` to hit the legacy
+ * dispatch unchanged, but generic-only values (e.g. issuedDate_month,
+ * assigneeUserId) need an explicit `{ op: "count" }` so the generic
+ * pipeline runs instead of legacy dispatch silently falling back to the
+ * entity default.
  */
 export function resolveReportQueryArgs(
 	config: ReportConfigShape,
@@ -389,8 +344,16 @@ export function resolveReportQueryArgs(
 		};
 	}
 
-	const aggregation =
-		!groupBy && vizType !== "table" ? (config.aggregation ?? { op: "count" }) : config.aggregation;
+	// isDetailModeActive already returned above whenever groupBy is unset, so
+	// groupBy is guaranteed defined past this point.
+	let aggregation: ReportMeasure | undefined;
+	if (config.aggregation) {
+		aggregation = config.aggregation;
+	} else if (usesLegacyDispatch(config.entityType, groupBy!)) {
+		aggregation = undefined;
+	} else {
+		aggregation = { op: "count" };
+	}
 
 	return { ...base, aggregation };
 }

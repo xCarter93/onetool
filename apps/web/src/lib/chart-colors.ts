@@ -68,6 +68,22 @@ export const CHART_COLORS = {
 } as const;
 
 /**
+ * Fixed-order categorical palette, validated for lightness band, chroma, CVD
+ * separation, and surface contrast in BOTH light and dark modes (dataviz
+ * validator, 2026-07-09). Assign hues by index in fixed order, never re-sort
+ * by rank/value — >7 series wrap using the same order (see getChartColor).
+ */
+export const CHART_CATEGORICAL: string[] = [
+	"#0284c7",
+	"#059669",
+	"#7c3aed",
+	"#d97706",
+	"#e11d48",
+	"#0891b2",
+	"#4f46e5",
+];
+
+/**
  * Get a color from the primary palette by index
  * Wraps around if index exceeds palette length
  */

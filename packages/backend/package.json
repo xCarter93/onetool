@@ -53,6 +53,10 @@
       "types": "./convex/lib/reportFields.ts",
       "default": "./convex/lib/reportFields.ts"
     },
+    "./convex/lib/reportPresets": {
+      "types": "./convex/lib/reportPresets.ts",
+      "default": "./convex/lib/reportPresets.ts"
+    },
     "./convex/lib/reportFilters": {
       "types": "./convex/lib/reportFilters.ts",
       "default": "./convex/lib/reportFilters.ts"

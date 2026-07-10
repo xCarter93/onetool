@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Copy, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, Copy, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,11 @@ import {
 	visualizationOptions,
 } from "../report-config";
 
+/** localStorage key for the per-report chart-visible toggle (Slice 3-D3). */
+function chartVisibleKey(reportId: string) {
+	return `report-chart-visible:${reportId}`;
+}
+
 export default function ReportViewPage() {
 	const router = useRouter();
 	const params = useParams();
@@ -35,6 +40,22 @@ export default function ReportViewPage() {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	// Lazy localStorage read is hydration-safe here: the toggle only affects
+	// the report body, which isn't in the HTML while `report` is still
+	// loading (this same early-return-before-hydration pattern is used for
+	// "assistant-panel-pinned" in sidebar-with-header.tsx).
+	const [chartVisible, setChartVisible] = useState(
+		() =>
+			typeof window === "undefined" ||
+			localStorage.getItem(chartVisibleKey(reportId)) !== "false"
+	);
+	const toggleChartVisible = () => {
+		setChartVisible((prev) => {
+			const next = !prev;
+			localStorage.setItem(chartVisibleKey(reportId), String(next));
+			return next;
+		});
+	};
 
 	if (report === undefined) {
 		return (
@@ -120,6 +141,7 @@ export default function ReportViewPage() {
 	};
 
 	const VizIcon = visualizationIcons[report.visualization.type];
+	const isChartVisualization = report.visualization.type !== "table";
 	const groupByLabel =
 		groupByOptions[report.config.entityType]?.find(
 			(o) => o.value === report.config.groupBy?.[0]
@@ -199,6 +221,25 @@ export default function ReportViewPage() {
 				))}
 			</div>
 
+			{/* Chart toggle — chart visualizations only; the table is always shown */}
+			{isChartVisualization && (
+				<div className="flex justify-end">
+					<StyledButton
+						intent="plain"
+						size="sm"
+						onClick={toggleChartVisible}
+						showArrow={false}
+					>
+						{chartVisible ? (
+							<EyeOff className="mr-2 h-4 w-4" />
+						) : (
+							<Eye className="mr-2 h-4 w-4" />
+						)}
+						{chartVisible ? "Hide chart" : "Show chart"}
+					</StyledButton>
+				</div>
+			)}
+
 			{/* Report */}
 			<div className="rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
 				<ReportPreview
@@ -217,7 +258,9 @@ export default function ReportViewPage() {
 							: undefined,
 						columns: report.config.columns,
 					}}
-					visualization={{ type: report.visualization.type }}
+					visualization={{
+						type: isChartVisualization && chartVisible ? report.visualization.type : "table",
+					}}
 				/>
 			</div>
 		</div>
