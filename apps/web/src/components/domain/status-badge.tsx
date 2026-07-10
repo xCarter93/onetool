@@ -5,7 +5,7 @@ import { Badge, type BadgeProps } from "@/components/reui/badge";
 import { cn } from "@/lib/utils";
 
 /**
- * StyledStatusBadge - the single status-pill component for the app.
+ * StatusBadge - the single status-pill component for the app.
  * Wraps the ReUI Badge (components/reui/badge.tsx — vendor layer, do not edit)
  * and maps OneTool domain statuses onto the semantic status tokens
  * (--success / --warning / --danger / --info) defined in globals.css.
@@ -31,7 +31,10 @@ export type StatusKey =
 	| "archived"
 	| "draft"
 	| "expired"
-	| "refunded";
+	| "refunded"
+	| "paused"
+	| "prospect"
+	| "revoked";
 
 const STATUS_ROLE: Record<StatusKey, StatusRole> = {
 	active: "success",
@@ -40,17 +43,20 @@ const STATUS_ROLE: Record<StatusKey, StatusRole> = {
 	paid: "success",
 	"in-progress": "warning",
 	pending: "warning",
+	paused: "warning",
 	cancelled: "danger",
 	overdue: "danger",
 	declined: "danger",
+	expired: "danger",
+	revoked: "danger",
 	lead: "info",
 	planned: "info",
 	scheduled: "info",
 	sent: "info",
+	prospect: "info",
 	inactive: "neutral",
 	archived: "neutral",
 	draft: "neutral",
-	expired: "neutral",
 	refunded: "neutral",
 };
 
@@ -83,7 +89,7 @@ const ROLE_VARIANT: Record<
 	neutral: { soft: "secondary", solid: "invert", outline: "outline" },
 };
 
-export interface StyledStatusBadgeProps
+export interface StatusBadgeProps
 	extends Omit<BadgeProps, "variant"> {
 	/** Domain status string (e.g. "paid", "overdue"); unknown values render neutral. */
 	status?: string;
@@ -92,14 +98,14 @@ export interface StyledStatusBadgeProps
 	appearance?: Appearance;
 }
 
-export function StyledStatusBadge({
+export function StatusBadge({
 	status,
 	role,
 	appearance = "soft",
 	radius = "full",
 	className,
 	...props
-}: StyledStatusBadgeProps) {
+}: StatusBadgeProps) {
 	const resolved = role ?? statusRole(status ?? "");
 	return (
 		<Badge

@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	formatRelativeTime,
 	parseMessageParts,
@@ -169,18 +170,12 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 	// Empty state
 	if (mentions.length === 0) {
 		return (
-			<div className="flex flex-col items-center justify-center py-12 text-center">
-				<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-					<MessageSquare className="h-8 w-8 text-gray-400 dark:text-gray-600" />
-				</div>
-				<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-					No messages yet
-				</h3>
-				<p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm">
-					Start a conversation by mentioning a team member with @ in the input
-					above.
-				</p>
-			</div>
+			<EmptyState
+				size="sm"
+				icon={<MessageSquare />}
+				title="No messages yet"
+				description="Start a conversation by mentioning a team member with @ in the input above."
+			/>
 		);
 	}
 

@@ -6,7 +6,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Table,
@@ -68,21 +68,6 @@ const formatCurrency = (amount: number) => {
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 0,
 	}).format(amount);
-};
-
-const statusVariant = (status: string) => {
-	switch (status) {
-		case "approved":
-			return "default" as const;
-		case "sent":
-			return "secondary" as const;
-		case "declined":
-		case "expired":
-			return "destructive" as const;
-		case "draft":
-		default:
-			return "outline" as const;
-	}
 };
 
 export default function QuoteLineEditorPage() {
@@ -388,9 +373,18 @@ export default function QuoteLineEditorPage() {
 									<h1 className="text-3xl font-bold text-gray-900 dark:text-white">
 										Quote Line Editor
 									</h1>
-									<Badge variant={statusVariant(quote.status)}>
+									<StatusBadge
+										status={quote.status}
+										appearance={
+											quote.status === "approved"
+												? "solid"
+												: quote.status === "draft"
+													? "outline"
+													: "soft"
+										}
+									>
 										{formatStatus(quote.status)}
-									</Badge>
+									</StatusBadge>
 								</div>
 								<p className="text-muted-foreground text-sm mt-1">
 									{quote.quoteNumber || `#${quote._id.slice(-6)}`} •{" "}

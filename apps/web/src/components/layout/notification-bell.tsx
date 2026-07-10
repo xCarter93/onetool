@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StyledEmpty } from "@/components/ui/styled";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	formatRelativeTime,
 	truncateText,
@@ -128,7 +128,7 @@ export function NotificationBell() {
 							))}
 						</div>
 					) : notifications.length === 0 ? (
-						<StyledEmpty
+						<EmptyState
 							icon={<Bell />}
 							title="You're all caught up"
 							description="New notifications will appear here"

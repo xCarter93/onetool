@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 
-export interface StyledEmptyProps {
+export interface EmptyStateProps {
 	icon?: React.ReactNode;
 	title: React.ReactNode;
 	description?: React.ReactNode;
@@ -28,14 +28,14 @@ export interface StyledEmptyProps {
  * Canonical empty state. Composes ui/empty; replaces hand-rolled
  * "icon + title + subtext" blocks so all surfaces share one treatment.
  */
-export function StyledEmpty({
+export function EmptyState({
 	icon,
 	title,
 	description,
 	action,
 	size = "sm",
 	className,
-}: StyledEmptyProps) {
+}: EmptyStateProps) {
 	const compact = size === "sm";
 	return (
 		<Empty

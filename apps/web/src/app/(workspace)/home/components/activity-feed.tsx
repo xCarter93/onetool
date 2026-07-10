@@ -16,7 +16,8 @@ import {
 	PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StyledSegmentedControl, StyledEmpty } from "@/components/ui/styled";
+import { SegmentedControl } from "@/components/domain/segmented-control";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Activity } from "lucide-react";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { cn } from "@/lib/utils";
@@ -187,7 +188,7 @@ export default function ActivityFeed({
 						<h3 className="text-base font-semibold text-foreground">
 							Recent Activity
 						</h3>
-						<StyledSegmentedControl
+						<SegmentedControl
 							value={selectedFilter}
 							onValueChange={handleFilterChange}
 							options={[
@@ -214,7 +215,7 @@ export default function ActivityFeed({
 								))}
 							</div>
 						) : currentPageActivities.length === 0 ? (
-							<StyledEmpty
+							<EmptyState
 								icon={<Activity />}
 								title="No recent activity"
 								description="Activity will appear here as you work"

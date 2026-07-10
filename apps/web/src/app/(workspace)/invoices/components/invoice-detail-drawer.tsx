@@ -14,7 +14,7 @@ import {
 	Send,
 } from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -55,17 +55,6 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 	cancelled: "Cancelled",
 };
 
-const STATUS_BADGE: Record<
-	InvoiceStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	draft: "secondary",
-	sent: "warning-light",
-	paid: "success-light",
-	overdue: "destructive-light",
-	cancelled: "secondary",
-};
-
 // Status options offered in the drawer's editable control. "overdue" is a
 // computed state, so it only appears when the invoice is currently overdue.
 const STATUS_ORDER: InvoiceStatus[] = ["draft", "sent", "paid", "cancelled"];
@@ -77,18 +66,6 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 	refunded: "Refunded",
 	overdue: "Overdue",
 	cancelled: "Cancelled",
-};
-
-const PAYMENT_STATUS_BADGE: Record<
-	PaymentStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	pending: "secondary",
-	sent: "warning-light",
-	paid: "success-light",
-	refunded: "secondary",
-	overdue: "destructive-light",
-	cancelled: "secondary",
 };
 
 function formatDate(ts: number | null | undefined): string {
@@ -196,9 +173,9 @@ export function InvoiceDetailDrawer({
 			title={title}
 			badge={
 				invoice && effectiveStatus ? (
-					<Badge variant={STATUS_BADGE[effectiveStatus]} size="lg">
+					<StatusBadge status={effectiveStatus} size="lg">
 						{STATUS_LABEL[effectiveStatus]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={data ? (client?.companyName ?? "No client") : undefined}
@@ -263,9 +240,9 @@ export function InvoiceDetailDrawer({
 							<span className="text-foreground text-3xl font-semibold tabular-nums">
 								{formatCurrency(invoice.total)}
 							</span>
-							<Badge variant={STATUS_BADGE[effectiveStatus]} size="lg">
+							<StatusBadge status={effectiveStatus} size="lg">
 								{STATUS_LABEL[effectiveStatus]}
-							</Badge>
+							</StatusBadge>
 						</div>
 						<div className="flex flex-col gap-1.5">
 							<Progress
@@ -312,12 +289,9 @@ export function InvoiceDetailDrawer({
 											</span>
 										</div>
 										<div className="flex shrink-0 items-center gap-2">
-											<Badge
-												variant={PAYMENT_STATUS_BADGE[payment.status]}
-												size="lg"
-											>
+											<StatusBadge status={payment.status} size="lg">
 												{PAYMENT_STATUS_LABEL[payment.status]}
-											</Badge>
+											</StatusBadge>
 											<span className="text-foreground text-sm font-medium tabular-nums">
 												{formatCurrency(payment.paymentAmount)}
 											</span>

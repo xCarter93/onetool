@@ -11,7 +11,9 @@ import {
 	StyledTabsTrigger,
 } from "@/components/ui/styled";
 import { StyledFilters } from "@/components/ui/styled/styled-filters";
-import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import { StatusBadge } from "@/components/domain/status-badge";
+import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -130,34 +132,6 @@ const statusDot: Record<ClientKanbanStatus, string> = {
 	inactive: "bg-muted-foreground/50",
 };
 
-const statusToBadgeVariant = (status: Client["status"]) => {
-	switch (status) {
-		case "Active":
-			return "default" as const;
-		case "Prospect":
-			return "secondary" as const;
-		case "Paused":
-			return "outline" as const;
-		case "Archived":
-			return "outline" as const;
-		default:
-			return "outline" as const;
-	}
-};
-
-const kanbanStatusToBadgeVariant = (status: ClientKanbanStatus) => {
-	switch (status) {
-		case "active":
-			return "default" as const;
-		case "lead":
-			return "secondary" as const;
-		case "inactive":
-			return "outline" as const;
-		default:
-			return "outline" as const;
-	}
-};
-
 const formatKanbanStatus = (status: ClientKanbanStatus) => {
 	switch (status) {
 		case "lead":
@@ -271,11 +245,23 @@ const createColumns = (
 	{
 		accessorKey: "status",
 		header: "Status",
-		cell: ({ row }) => (
-			<StyledBadge variant={statusToBadgeVariant(row.original.status)}>
-				{row.original.status}
-			</StyledBadge>
-		),
+		cell: ({ row }) => {
+			const status = row.original.status;
+			return (
+				<StatusBadge
+					status={status.toLowerCase()}
+					appearance={
+						status === "Active"
+							? "solid"
+							: status === "Prospect"
+								? "soft"
+								: "outline"
+					}
+				>
+					{status}
+				</StatusBadge>
+			);
+		},
 	},
 	{
 		id: "actions",
@@ -337,56 +323,46 @@ function ActiveEmptyState({
 }) {
 	const { canPerform, reason, currentUsage, limit } = gate;
 	return (
-		<div className="px-6 py-12 text-center">
-			<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-				<Users className="h-12 w-12 text-muted-foreground" />
-			</div>
-			<h3 className="mb-2 text-lg font-semibold text-foreground">
-				No clients yet
-			</h3>
-			<p className="mx-auto mb-6 max-w-sm text-muted-foreground">
-				Create your first client to start organizing relationships and tracking
-				activity.
-			</p>
-			<Tooltip>
-				<TooltipTrigger render={<span className="inline-block" />}>
-					<Button onClick={onAdd} disabled={!canPerform}>
-						<Plus className="h-4 w-4" />
-						Add Your First Client
-					</Button>
-				</TooltipTrigger>
-				{!canPerform && (
-					<TooltipContent>
-						<div className="space-y-1">
-							<p className="font-semibold">Upgrade Required</p>
-							<p>{reason || "You've reached your client limit"}</p>
-							{limit && limit !== "unlimited" && currentUsage !== undefined && (
-								<p className="text-muted-foreground">
-									{currentUsage}/{limit} clients
-								</p>
-							)}
-						</div>
-					</TooltipContent>
-				)}
-			</Tooltip>
-		</div>
+		<EmptyState
+			size="md"
+			icon={<Users />}
+			title="No clients yet"
+			description="Create your first client to start organizing relationships and tracking activity."
+			action={
+				<Tooltip>
+					<TooltipTrigger render={<span className="inline-block" />}>
+						<Button onClick={onAdd} disabled={!canPerform}>
+							<Plus className="h-4 w-4" />
+							Add Your First Client
+						</Button>
+					</TooltipTrigger>
+					{!canPerform && (
+						<TooltipContent>
+							<div className="space-y-1">
+								<p className="font-semibold">Upgrade Required</p>
+								<p>{reason || "You've reached your client limit"}</p>
+								{limit && limit !== "unlimited" && currentUsage !== undefined && (
+									<p className="text-muted-foreground">
+										{currentUsage}/{limit} clients
+									</p>
+								)}
+							</div>
+						</TooltipContent>
+					)}
+				</Tooltip>
+			}
+		/>
 	);
 }
 
 function ArchivedEmptyState() {
 	return (
-		<div className="px-6 py-12 text-center">
-			<div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-				<Archive className="h-12 w-12 text-muted-foreground" />
-			</div>
-			<h3 className="mb-2 text-lg font-semibold text-foreground">
-				No archived clients
-			</h3>
-			<p className="mx-auto max-w-sm text-muted-foreground">
-				Clients you archive will appear here for seven days before being
-				permanently deleted.
-			</p>
-		</div>
+		<EmptyState
+			size="md"
+			icon={<Archive />}
+			title="No archived clients"
+			description="Clients you archive will appear here for seven days before being permanently deleted."
+		/>
 	);
 }
 
@@ -731,12 +707,19 @@ export default function ClientsPage() {
 												<p className="text-foreground line-clamp-2 text-sm font-medium">
 													{item.name}
 												</p>
-												<StyledBadge
-													variant={kanbanStatusToBadgeVariant(item.column)}
+												<StatusBadge
+													status={item.column}
+													appearance={
+														item.column === "active"
+															? "solid"
+															: item.column === "inactive"
+																? "outline"
+																: "soft"
+													}
 													className="shrink-0"
 												>
 													{formatKanbanStatus(item.column)}
-												</StyledBadge>
+												</StatusBadge>
 											</div>
 											<p className="text-muted-foreground truncate text-xs">
 												{item.activeProjects === 0
@@ -903,7 +886,7 @@ export default function ClientsPage() {
 								className="pl-9"
 							/>
 						</div>
-						<StyledSegmentedControl
+						<SegmentedControl
 							className="shrink-0"
 							value={viewMode}
 							onValueChange={(v) => {

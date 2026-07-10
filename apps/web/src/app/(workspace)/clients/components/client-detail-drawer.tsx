@@ -18,7 +18,7 @@ import {
 	RotateCcw,
 } from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -56,16 +56,6 @@ const STATUS_LABEL: Record<ClientStatus, string> = {
 	active: "Active",
 	inactive: "Inactive",
 	archived: "Archived",
-};
-
-const STATUS_BADGE: Record<
-	ClientStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	lead: "warning-light",
-	active: "success-light",
-	inactive: "secondary",
-	archived: "secondary",
 };
 
 // Status Select options exclude "archived" — archiving/restoring is a separate,
@@ -174,9 +164,9 @@ export function ClientDetailDrawer({
 			title={title}
 			badge={
 				client ? (
-					<Badge variant={STATUS_BADGE[client.status]} size="lg">
+					<StatusBadge status={client.status} size="lg">
 						{STATUS_LABEL[client.status]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={
@@ -247,9 +237,9 @@ export function ClientDetailDrawer({
 								<FolderKanban className="size-4" />
 								<span>Projects</span>
 							</div>
-							<Badge variant={STATUS_BADGE[client.status]}>
+							<StatusBadge status={client.status}>
 								{STATUS_LABEL[client.status]}
-							</Badge>
+							</StatusBadge>
 						</div>
 						<p className="text-foreground text-sm">
 							<span className="text-2xl font-semibold tabular-nums">

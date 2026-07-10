@@ -2,27 +2,23 @@
 
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
+import {
+	STATUS_BADGE_PROPS,
+	STATUS_LABEL,
+	type LifecycleStatus,
+} from "../../lib/automation-display";
 
 interface EditorTopBarProps {
 	name: string;
 	description: string;
-	status: "draft" | "active" | "paused";
+	status: LifecycleStatus;
 	isSaving: boolean;
 	onBack: () => void;
 	onNameChange: (value: string) => void;
 	onDescriptionChange: (value: string) => void;
 	onSave: () => void;
 }
-
-const STATUS_BADGE: Record<
-	EditorTopBarProps["status"],
-	{ label: string; variant: "outline" | "success" | "warning" }
-> = {
-	draft: { label: "Draft", variant: "outline" },
-	active: { label: "Active", variant: "success" },
-	paused: { label: "Paused", variant: "warning" },
-};
 
 export function EditorTopBar({
 	name,
@@ -34,8 +30,6 @@ export function EditorTopBar({
 	onDescriptionChange,
 	onSave,
 }: EditorTopBarProps) {
-	const badge = STATUS_BADGE[status];
-
 	return (
 		// md: extra top padding clears the workspace notches, which hang ~20px
 		// below the card's top edge (see .header-notch in globals.css).
@@ -64,9 +58,13 @@ export function EditorTopBar({
 					className="w-64 border-none bg-transparent text-xs text-muted-foreground outline-none focus-visible:ring-0"
 				/>
 			</div>
-			<Badge variant={badge.variant} className="ml-1 shrink-0">
-				{badge.label}
-			</Badge>
+			<StatusBadge
+				status={status}
+				{...STATUS_BADGE_PROPS[status]}
+				className="ml-1 shrink-0"
+			>
+				{STATUS_LABEL[status]}
+			</StatusBadge>
 
 			<div className="ml-auto flex items-center gap-2">
 				<Button variant="outline" onClick={onSave} disabled={isSaving}>

@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { FileSignature, FileText } from "lucide-react";
 import {
 	Accordion,
@@ -76,16 +77,6 @@ export function SignatureStatusCard({
 									doc.boldsign.sentAt ||
 									doc.generatedAt;
 
-								// Status badge variant
-								const statusVariant =
-									doc.boldsign.status === "Completed"
-										? "default"
-										: doc.boldsign.status === "Declined" ||
-											  doc.boldsign.status === "Revoked" ||
-											  doc.boldsign.status === "Expired"
-											? "destructive"
-											: "secondary";
-
 								const formattedDate = new Date(lastUpdate).toLocaleDateString(
 									"en-US",
 									{
@@ -108,11 +99,24 @@ export function SignatureStatusCard({
 													<Badge variant="outline" className="text-xs">
 														v{doc.version}
 													</Badge>
-													<Badge variant={statusVariant} className="text-xs">
-														{doc.boldsign.status === "Draft"
-															? "Preparing"
-															: doc.boldsign.status}
-													</Badge>
+													{doc.boldsign.status === "Completed" ? (
+														<StatusBadge
+															status="completed"
+															appearance="solid"
+															className="text-xs"
+														>
+															Completed
+														</StatusBadge>
+													) : (
+														<StatusBadge
+															status={doc.boldsign.status.toLowerCase()}
+															className="text-xs"
+														>
+															{doc.boldsign.status === "Draft"
+																? "Preparing"
+																: doc.boldsign.status}
+														</StatusBadge>
+													)}
 													<span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
 														Last updated: {formattedDate}
 													</span>

@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StyledBadge } from "@/components/ui/styled";
 import { StyledFilters } from "@/components/ui/styled/styled-filters";
-import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import { StatusBadge } from "@/components/domain/status-badge";
+import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -87,19 +89,10 @@ type QuoteKanbanColumn = {
 	description: string;
 };
 
-const statusVariant = (status: Doc<"quotes">["status"]) => {
-	switch (status) {
-		case "approved":
-			return "default" as const;
-		case "sent":
-			return "secondary" as const;
-		case "declined":
-		case "expired":
-			return "destructive" as const;
-		case "draft":
-		default:
-			return "outline" as const;
-	}
+const quoteStatusAppearance = (status: Doc<"quotes">["status"]) => {
+	if (status === "approved") return "solid" as const;
+	if (status === "draft") return "outline" as const;
+	return "soft" as const;
 };
 
 // Per-lane accent dot (kanban-board-4 style); status → colored dot only.
@@ -188,11 +181,14 @@ const createColumns = (
 	{
 		accessorKey: "status",
 		header: "Status",
-		cell: ({ row }) => (
-			<StyledBadge variant={statusVariant(row.original.status)}>
-				{formatStatus(row.original.status)}
-			</StyledBadge>
-		),
+		cell: ({ row }) => {
+			const status = row.original.status;
+			return (
+				<StatusBadge status={status} appearance={quoteStatusAppearance(status)}>
+					{formatStatus(status)}
+				</StatusBadge>
+			);
+		},
 	},
 	{
 		accessorKey: "validUntil",
@@ -622,7 +618,7 @@ export default function QuotesPage() {
 								className="pl-9"
 							/>
 						</div>
-						<StyledSegmentedControl
+						<SegmentedControl
 							className="shrink-0"
 							value={viewMode}
 							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
@@ -691,22 +687,18 @@ export default function QuotesPage() {
 								</div>
 							</div>
 						) : isEmpty ? (
-							<div className="px-6 py-12 text-center">
-								<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
-									<FileText className="h-12 w-12 text-muted-foreground" />
-								</div>
-								<h3 className="text-lg font-semibold text-foreground mb-2">
-									No quotes yet
-								</h3>
-								<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-									Create your first quote to get started and track proposals in
-									one place.
-								</p>
-								<Button onClick={() => router.push("/quotes/new")}>
-									<Plus className="h-4 w-4" />
-									Create Your First Quote
-								</Button>
-							</div>
+							<EmptyState
+								size="md"
+								icon={<FileText />}
+								title="No quotes yet"
+								description="Create your first quote to get started and track proposals in one place."
+								action={
+									<Button onClick={() => router.push("/quotes/new")}>
+										<Plus className="h-4 w-4" />
+										Create Your First Quote
+									</Button>
+								}
+							/>
 						) : viewMode === "table" ? (
 							<div className="overflow-x-auto">
 								<DataGridContainer className="rounded-lg border">
@@ -777,12 +769,13 @@ export default function QuotesPage() {
 																	<p className="text-foreground text-sm font-semibold">
 																		{item.quoteNumber}
 																	</p>
-																	<StyledBadge
-																		variant={statusVariant(item.status)}
+																	<StatusBadge
+																		status={item.status}
+																		appearance={quoteStatusAppearance(item.status)}
 																		className="shrink-0"
 																	>
 																		{formatStatus(item.status)}
-																	</StyledBadge>
+																	</StatusBadge>
 																</div>
 																<p className="text-muted-foreground truncate text-xs">
 																	{item.name}

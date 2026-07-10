@@ -6,7 +6,8 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/reui/badge";
-import { StyledEmpty, StyledStatusBadge } from "@/components/ui/styled";
+import { EmptyState } from "@/components/domain/empty-state";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Collapsible,
@@ -508,7 +509,7 @@ export function NeedsAttention() {
 					</p>
 				</div>
 				<div role="status">
-					<StyledEmpty
+					<EmptyState
 						icon={<CheckCircle2 />}
 						title="You're all caught up"
 						description="No overdue items, tasks, or pending signatures need your attention right now."
@@ -604,13 +605,13 @@ export function NeedsAttention() {
 						Needs Attention ({totalCount})
 					</p>
 					{totalOverdue > 0 && (
-						<StyledStatusBadge
+						<StatusBadge
 							status="overdue"
 							size="sm"
 							aria-label={`${totalOverdue} overdue items`}
 						>
 							{totalOverdue} overdue
-						</StyledStatusBadge>
+						</StatusBadge>
 					)}
 				</div>
 			</div>

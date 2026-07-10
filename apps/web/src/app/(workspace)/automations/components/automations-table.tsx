@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Pencil, Power, PowerOff, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -38,7 +39,8 @@ import { useToast } from "@/hooks/use-toast";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import { ManualRunButton } from "./manual-run-button";
 import {
-	STATUS_BADGE,
+	STATUS_BADGE_PROPS,
+	STATUS_LABEL,
 	actionNodeCount,
 	effectiveStatus,
 	formatObjectType,
@@ -208,10 +210,11 @@ export function AutomationsTable() {
 				size: 140,
 				cell: ({ row }) => {
 					const status = effectiveStatus(row.original);
-					const badge = STATUS_BADGE[status];
 					return (
 						<div className="flex items-center gap-2">
-							<Badge variant={badge.variant}>{badge.label}</Badge>
+							<StatusBadge status={status} {...STATUS_BADGE_PROPS[status]}>
+								{STATUS_LABEL[status]}
+							</StatusBadge>
 							<Button
 								variant="ghost"
 								size="icon-sm"

@@ -17,7 +17,7 @@ import {
 	Users,
 } from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -56,16 +56,6 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 	"in-progress": "In Progress",
 	completed: "Completed",
 	cancelled: "Cancelled",
-};
-
-const STATUS_BADGE: Record<
-	ProjectStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	planned: "secondary",
-	"in-progress": "warning-light",
-	completed: "success-light",
-	cancelled: "destructive-light",
 };
 
 const STATUS_ORDER: ProjectStatus[] = [
@@ -159,9 +149,9 @@ export function ProjectDetailDrawer({
 			title={title}
 			badge={
 				project ? (
-					<Badge variant={STATUS_BADGE[project.status]} size="lg">
+					<StatusBadge status={project.status} size="lg">
 						{STATUS_LABEL[project.status]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={

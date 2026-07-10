@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StyledBadge } from "@/components/ui/styled";
 import { StyledFilters } from "@/components/ui/styled/styled-filters";
-import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import { StatusBadge } from "@/components/domain/status-badge";
+import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -90,19 +92,12 @@ type ProjectKanbanColumn = {
 	description: string;
 };
 
-const statusVariant = (status: Doc<"projects">["status"]) => {
-	switch (status) {
-		case "completed":
-			return "default" as const;
-		case "in-progress":
-			return "secondary" as const;
-		case "cancelled":
-			return "destructive" as const;
-		case "planned":
-			return "outline" as const;
-		default:
-			return "outline" as const;
-	}
+// appearance chosen to match the legacy statusVariant() boldness: solid for the
+// primary/positive status, soft for the mid-weight statuses, outline for the rest.
+const statusAppearance = (status: Doc<"projects">["status"]) => {
+	if (status === "completed") return "solid" as const;
+	if (status === "planned") return "outline" as const;
+	return "soft" as const;
 };
 
 // Per-lane accent dot (kanban-board-4 style); status → colored dot only.
@@ -193,9 +188,12 @@ const createColumns = (
 		accessorKey: "status",
 		header: "Status",
 		cell: ({ row }) => (
-			<StyledBadge variant={statusVariant(row.original.status)}>
+			<StatusBadge
+				status={row.original.status}
+				appearance={statusAppearance(row.original.status)}
+			>
 				{formatStatus(row.original.status)}
-			</StyledBadge>
+			</StatusBadge>
 		),
 	},
 	{
@@ -576,7 +574,7 @@ export default function ProjectsPage() {
 								className="pl-9"
 							/>
 						</div>
-						<StyledSegmentedControl
+						<SegmentedControl
 							className="shrink-0"
 							value={viewMode}
 							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
@@ -645,22 +643,18 @@ export default function ProjectsPage() {
 								</div>
 							</div>
 						) : isEmpty ? (
-							<div className="px-6 py-12 text-center">
-								<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
-									<FolderOpen className="h-12 w-12 text-muted-foreground" />
-								</div>
-								<h3 className="text-lg font-semibold text-foreground mb-2">
-									No projects yet
-								</h3>
-								<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-									Get started by creating your first project. Projects help you
-									organize work and track progress.
-								</p>
-								<Button onClick={() => router.push("/projects/new")}>
-									<Plus className="h-4 w-4" />
-									Create Your First Project
-								</Button>
-							</div>
+							<EmptyState
+								size="md"
+								icon={<FolderOpen />}
+								title="No projects yet"
+								description="Get started by creating your first project. Projects help you organize work and track progress."
+								action={
+									<Button onClick={() => router.push("/projects/new")}>
+										<Plus className="h-4 w-4" />
+										Create Your First Project
+									</Button>
+								}
+							/>
 						) : viewMode === "table" ? (
 							<div className="overflow-x-auto">
 								<DataGridContainer className="rounded-lg border">
@@ -731,12 +725,13 @@ export default function ProjectsPage() {
 																	<p className="text-foreground line-clamp-2 text-sm font-medium">
 																		{item.name}
 																	</p>
-																	<StyledBadge
-																		variant={statusVariant(item.column)}
+																	<StatusBadge
+																		status={item.column}
+																		appearance={statusAppearance(item.column)}
 																		className="shrink-0"
 																	>
 																		{formatStatus(item.column)}
-																	</StyledBadge>
+																	</StatusBadge>
 																</div>
 																<p className="text-muted-foreground truncate text-xs">
 																	{item.clientName || "Unknown Client"}

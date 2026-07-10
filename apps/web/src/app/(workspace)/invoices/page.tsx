@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StyledBadge } from "@/components/ui/styled";
 import { StyledFilters } from "@/components/ui/styled/styled-filters";
-import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import { StatusBadge } from "@/components/domain/status-badge";
+import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -100,20 +102,12 @@ const getEffectiveStatus = (
 ): InvoiceStatus =>
 	status === "sent" && dueDate < Date.now() ? "overdue" : status;
 
-const statusVariant = (status: InvoiceStatus) => {
-	switch (status) {
-		case "paid":
-			return "default" as const;
-		case "sent":
-			return "secondary" as const;
-		case "overdue":
-			return "destructive" as const;
-		case "cancelled":
-			return "destructive" as const;
-		case "draft":
-		default:
-			return "outline" as const;
-	}
+// appearance chosen to match the legacy statusVariant() boldness: solid for the
+// primary/positive status, soft for the mid-weight statuses, outline for the rest.
+const statusAppearance = (status: InvoiceStatus) => {
+	if (status === "paid") return "solid" as const;
+	if (status === "draft") return "outline" as const;
+	return "soft" as const;
 };
 
 // Per-lane accent dot (kanban-board-4 style); status → colored dot only.
@@ -208,9 +202,9 @@ const createColumns = (
 				row.original.dueDate
 			);
 			return (
-				<StyledBadge variant={statusVariant(effective)}>
+				<StatusBadge status={effective} appearance={statusAppearance(effective)}>
 					{formatStatus(effective)}
-				</StyledBadge>
+				</StatusBadge>
 			);
 		},
 	},
@@ -667,7 +661,7 @@ export default function InvoicesPage() {
 								className="pl-9"
 							/>
 						</div>
-						<StyledSegmentedControl
+						<SegmentedControl
 							className="shrink-0"
 							value={viewMode}
 							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
@@ -736,18 +730,12 @@ export default function InvoicesPage() {
 								</div>
 							</div>
 						) : isEmpty ? (
-							<div className="px-6 py-12 text-center">
-								<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
-									<Receipt className="h-12 w-12 text-muted-foreground" />
-								</div>
-								<h3 className="text-lg font-semibold text-foreground mb-2">
-									No invoices yet
-								</h3>
-								<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-									Create invoices from approved quotes on the Projects page to
-									get started tracking payments and revenue.
-								</p>
-							</div>
+							<EmptyState
+								size="md"
+								icon={<Receipt />}
+								title="No invoices yet"
+								description="Create invoices from approved quotes on the Projects page to get started tracking payments and revenue."
+							/>
 						) : viewMode === "table" ? (
 							<div className="overflow-x-auto">
 								<DataGridContainer className="rounded-lg border">
@@ -819,12 +807,13 @@ export default function InvoicesPage() {
 																	<p className="text-foreground line-clamp-2 text-sm font-medium">
 																		{item.invoiceNumber}
 																	</p>
-																	<StyledBadge
-																		variant={statusVariant(item.status)}
+																	<StatusBadge
+																		status={item.status}
+																		appearance={statusAppearance(item.status)}
 																		className="shrink-0"
 																	>
 																		{formatStatus(item.status)}
-																	</StyledBadge>
+																	</StatusBadge>
 																</div>
 																<p className="text-muted-foreground truncate text-xs">
 																	{item.clientName}

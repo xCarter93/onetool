@@ -14,7 +14,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
-import { StyledSegmentedControl } from "@/components/ui/styled";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import { LayoutDashboard, CalendarDays } from "lucide-react";
 import {
 	TourElement,
@@ -173,7 +173,7 @@ export default function Page() {
 							HOME_TOUR_CONTENT[HomeTour.VIEW_TOGGLE].tooltipPosition
 						}
 					>
-						<StyledSegmentedControl
+						<SegmentedControl
 							value={viewMode}
 							onValueChange={handleViewChange}
 							options={[

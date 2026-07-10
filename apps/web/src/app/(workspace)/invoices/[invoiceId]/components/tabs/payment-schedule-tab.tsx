@@ -1,7 +1,7 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -24,35 +24,35 @@ const paymentStatusConfig: Record<
 	PaymentStatus,
 	{
 		label: string;
-		variant: "default" | "secondary" | "destructive" | "outline";
 		icon: React.ReactNode;
+		appearance: "soft" | "outline" | "solid";
 		className?: string;
 	}
 > = {
 	pending: {
 		label: "Pending",
-		variant: "outline",
 		icon: <Clock className="h-3 w-3" />,
+		appearance: "outline",
 	},
 	sent: {
 		label: "Sent",
-		variant: "secondary",
 		icon: <Mail className="h-3 w-3" />,
+		appearance: "soft",
 	},
 	paid: {
 		label: "Paid",
-		variant: "default",
 		icon: <CheckCircle className="h-3 w-3" />,
+		appearance: "solid",
 	},
 	overdue: {
 		label: "Overdue",
-		variant: "destructive",
 		icon: <AlertCircle className="h-3 w-3" />,
+		appearance: "soft",
 	},
 	cancelled: {
 		label: "Cancelled",
-		variant: "outline",
 		icon: <Ban className="h-3 w-3" />,
+		appearance: "outline",
 		className: "line-through opacity-60",
 	},
 };
@@ -243,17 +243,17 @@ export function PaymentScheduleTab({
 														</p>
 													</div>
 												</div>
-												<Badge
-													variant={
-														statusConfig?.variant ||
-														"outline"
+												<StatusBadge
+													status={payment.status}
+													appearance={
+														statusConfig?.appearance ?? "soft"
 													}
 													className={`gap-1 ${statusConfig?.className || ""}`}
 												>
 													{statusConfig?.icon}
 													{statusConfig?.label ||
 														payment.status}
-												</Badge>
+												</StatusBadge>
 											</div>
 
 											{/* Payment Amount */}

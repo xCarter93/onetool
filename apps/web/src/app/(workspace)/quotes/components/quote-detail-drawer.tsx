@@ -15,7 +15,7 @@ import {
 	XCircle,
 } from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -51,17 +51,6 @@ const STATUS_LABEL: Record<QuoteStatus, string> = {
 	approved: "Approved",
 	declined: "Declined",
 	expired: "Expired",
-};
-
-const STATUS_BADGE: Record<
-	QuoteStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	draft: "secondary",
-	sent: "warning-light",
-	approved: "success-light",
-	declined: "destructive-light",
-	expired: "secondary",
 };
 
 const STATUS_ORDER: QuoteStatus[] = [
@@ -178,9 +167,9 @@ export function QuoteDetailDrawer({
 			title={title}
 			badge={
 				quote ? (
-					<Badge variant={STATUS_BADGE[quote.status]} size="lg">
+					<StatusBadge status={quote.status} size="lg">
 						{STATUS_LABEL[quote.status]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={
@@ -261,9 +250,9 @@ export function QuoteDetailDrawer({
 									{formatCurrency(data.totals.total)}
 								</span>
 							</div>
-							<Badge variant={STATUS_BADGE[quote.status]} size="lg">
+							<StatusBadge status={quote.status} size="lg">
 								{STATUS_LABEL[quote.status]}
-							</Badge>
+							</StatusBadge>
 						</div>
 						<span className="text-muted-foreground text-xs">
 							Subtotal {formatCurrency(data.totals.subtotal)} · Tax{" "}

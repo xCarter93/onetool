@@ -14,7 +14,7 @@ const SEGMENT_SELECTED =
 const SEGMENT_UNSELECTED =
 	"text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border";
 
-export interface StyledSegmentedControlOption<T extends string> {
+export interface SegmentedControlOption<T extends string> {
 	value: T;
 	label?: React.ReactNode;
 	icon?: React.ReactNode;
@@ -24,10 +24,10 @@ export interface StyledSegmentedControlOption<T extends string> {
 	hideLabelOnMobile?: boolean;
 }
 
-export interface StyledSegmentedControlProps<T extends string> {
+export interface SegmentedControlProps<T extends string> {
 	value: T;
 	onValueChange: (value: T) => void;
-	options: ReadonlyArray<StyledSegmentedControlOption<T>>;
+	options: ReadonlyArray<SegmentedControlOption<T>>;
 	className?: string;
 }
 
@@ -36,12 +36,12 @@ export interface StyledSegmentedControlProps<T extends string> {
  * One selected segment at a time; use plain ButtonGroup + Button for
  * action rows like prev/today/next.
  */
-export function StyledSegmentedControl<T extends string>({
+export function SegmentedControl<T extends string>({
 	value,
 	onValueChange,
 	options,
 	className,
-}: StyledSegmentedControlProps<T>) {
+}: SegmentedControlProps<T>) {
 	return (
 		<ButtonGroup className={className}>
 			{options.map((option) => (

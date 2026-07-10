@@ -16,6 +16,7 @@ import {
 	type FilterFieldConfig,
 } from "@/components/ui/styled";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	DataGrid,
 	DataGridContainer,
@@ -705,20 +706,17 @@ export default function TasksPage() {
 				</div>
 			) : (
 				<div className="bg-card rounded-lg border">
-					<div className="text-center py-12">
-						<div className="space-y-4">
-							<div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full">
-								<Calendar className="h-8 w-8 text-muted-foreground" />
-							</div>
-							<div className="space-y-2">
-								<h3 className="text-lg font-medium">No tasks found</h3>
-								<p className="text-muted-foreground max-w-md mx-auto">
-									{searchQuery || filters.length > 0
-										? "No tasks match your current filters or search. Try adjusting your filters or clearing them."
-										: "You haven't created any tasks yet. Create your first task to get started."}
-								</p>
-							</div>
-							{!searchQuery && filters.length === 0 && (
+					<EmptyState
+						size="md"
+						icon={<Calendar />}
+						title="No tasks found"
+						description={
+							searchQuery || filters.length > 0
+								? "No tasks match your current filters or search. Try adjusting your filters or clearing them."
+								: "You haven't created any tasks yet. Create your first task to get started."
+						}
+						action={
+							!searchQuery && filters.length === 0 ? (
 								<TaskSheet
 									mode="create"
 									trigger={
@@ -728,9 +726,9 @@ export default function TasksPage() {
 										</Button>
 									}
 								/>
-							)}
-						</div>
-					</div>
+							) : undefined
+						}
+					/>
 				</div>
 			)}
 
