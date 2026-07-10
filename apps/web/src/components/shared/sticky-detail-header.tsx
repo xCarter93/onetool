@@ -15,10 +15,12 @@ export function StickyDetailHeader({ children }: StickyDetailHeaderProps) {
 		<>
 			<div ref={sentinelRef} className="h-0 w-full" />
 
-			{/* Separate sticky blur strip covering the gap between main header and detail header */}
+			{/* Sticky opaque strip covering the full band between the container top
+			    and the stuck header (0–44px) — scrolling content must never show
+			    through it. The navbar notches sit at z-30, above this. */}
 			{isSticky && (
 				<div
-					className="sticky top-[20px] z-[25] h-[24px] -mb-[24px] bg-background pointer-events-none -ml-6 pr-6 xl:mr-[480px]"
+					className="sticky top-0 z-[25] h-[44px] -mb-[44px] bg-background pointer-events-none -ml-6 pr-6 xl:mr-[480px]"
 					aria-hidden="true"
 				/>
 			)}
