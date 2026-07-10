@@ -460,7 +460,7 @@ export function MentionInput({
 					if (!open) setShowUserList(false);
 				}}
 			>
-				<PopoverTrigger render={<div className="relative" />}>
+				<PopoverTrigger nativeButton={false} render={<div className="relative" />}>
 					{/* Plain contenteditable - shows @[username] format */}
 					<div
 						ref={contentEditableRef}
