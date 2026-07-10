@@ -3,15 +3,7 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-	StyledBadge,
-	StyledTable,
-	StyledTableBody,
-	StyledTableCell,
-	StyledTableHead,
-	StyledTableHeader,
-	StyledTableRow,
-} from "@/components/ui/styled";
+import { StyledBadge } from "@/components/ui/styled";
 import { StyledFilters } from "@/components/ui/styled/styled-filters";
 import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
@@ -24,9 +16,14 @@ import {
 	FrameTitle,
 } from "@/components/reui/frame";
 import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
+import {
 	ColumnDef,
 	SortingState,
-	flexRender,
 	getCoreRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
@@ -36,8 +33,6 @@ import {
 	Building2,
 	Calendar,
 	CheckCircle2,
-	ChevronLeft,
-	ChevronRight,
 	Clock,
 	DollarSign,
 	ExternalLink,
@@ -696,251 +691,195 @@ export default function InvoicesPage() {
 					</div>
 				</FrameHeader>
 
-				<FramePanel className="p-0">
-					{!isLoading && !isEmpty && (
-						<div className="border-b px-4 py-3">
-							<StyledFilters
-								filters={filters}
-								fields={filterFields}
-								onChange={setFilters}
-								addButtonText="Filter"
-								addButtonIcon={<FilterIcon className="h-4 w-4" />}
-								size="md"
-								variant="outline"
-								showClearButton={true}
-								clearButtonText="Clear"
-								clearButtonIcon={<X className="h-4 w-4" />}
-							/>
-						</div>
-					)}
+				<DataGrid
+					table={table}
+					recordCount={searchedData.length}
+					onRowClick={(row) => openPreview(row._id)}
+					emptyMessage="No invoices match your filters."
+					tableLayout={{
+						width: "auto",
+						headerBackground: true,
+					}}
+				>
+					<FramePanel className="p-0">
+						{!isLoading && !isEmpty && (
+							<div className="border-b px-4 py-3">
+								<StyledFilters
+									filters={filters}
+									fields={filterFields}
+									onChange={setFilters}
+									addButtonText="Filter"
+									addButtonIcon={<FilterIcon className="h-4 w-4" />}
+									size="md"
+									variant="outline"
+									showClearButton={true}
+									clearButtonText="Clear"
+									clearButtonIcon={<X className="h-4 w-4" />}
+								/>
+							</div>
+						)}
 
-					{isLoading ? (
-						<div className="p-4">
-							<div className="space-y-4">
-								{[...Array(5)].map((_, i) => (
-									<div key={i} className="flex items-center space-x-4 p-4">
-										<div className="flex-1 space-y-2">
-											<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-											<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+						{isLoading ? (
+							<div className="p-4">
+								<div className="space-y-4">
+									{[...Array(5)].map((_, i) => (
+										<div key={i} className="flex items-center space-x-4 p-4">
+											<div className="flex-1 space-y-2">
+												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+											</div>
+											<div className="h-4 bg-muted rounded animate-pulse w-16" />
+											<div className="h-4 bg-muted rounded animate-pulse w-20" />
+											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
 										</div>
-										<div className="h-4 bg-muted rounded animate-pulse w-16" />
-										<div className="h-4 bg-muted rounded animate-pulse w-20" />
-										<div className="h-8 w-8 bg-muted rounded animate-pulse" />
-									</div>
-								))}
-							</div>
-						</div>
-					) : isEmpty ? (
-						<div className="px-6 py-12 text-center">
-							<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
-								<Receipt className="h-12 w-12 text-muted-foreground" />
-							</div>
-							<h3 className="text-lg font-semibold text-foreground mb-2">
-								No invoices yet
-							</h3>
-							<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-								Create invoices from approved quotes on the Projects page to get
-								started tracking payments and revenue.
-							</p>
-						</div>
-					) : viewMode === "table" ? (
-						<div className="overflow-x-auto">
-							<StyledTable>
-								<StyledTableHeader>
-									{table.getHeaderGroups().map((headerGroup) => (
-										<StyledTableRow key={headerGroup.id}>
-											{headerGroup.headers.map((header) => (
-												<StyledTableHead key={header.id}>
-													{header.isPlaceholder
-														? null
-														: flexRender(
-																header.column.columnDef.header,
-																header.getContext()
-															)}
-												</StyledTableHead>
-											))}
-										</StyledTableRow>
 									))}
-								</StyledTableHeader>
-								<StyledTableBody>
-									{table.getRowModel().rows?.length ? (
-										table.getRowModel().rows.map((row) => (
-											<StyledTableRow
-												key={row.id}
-												className="cursor-pointer"
-												onClick={() => openPreview(row.original._id)}
-											>
-												{row.getVisibleCells().map((cell) => (
-													<StyledTableCell key={cell.id}>
-														{flexRender(
-															cell.column.columnDef.cell,
-															cell.getContext()
-														)}
-													</StyledTableCell>
-												))}
-											</StyledTableRow>
-										))
-									) : (
-										<StyledTableRow>
-											<StyledTableCell
-												colSpan={columns.length}
-												className="h-24 text-center"
-											>
-												No invoices match your filters.
-											</StyledTableCell>
-										</StyledTableRow>
-									)}
-								</StyledTableBody>
-							</StyledTable>
-						</div>
-					) : (
-						<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
-							<KanbanProvider
-								columns={kanbanColumns}
-								data={kanbanData}
-								onDataChange={handleKanbanDataChange}
-								onDragEnd={handleKanbanDragEnd}
-							>
-								{(column) => {
-									const columnItems = kanbanData.filter(
-										(item) => item.column === column.id
-									);
-
-									return (
-										<KanbanBoard
-											key={column.id}
-											id={column.id}
-											className="bg-card/60 flex flex-col"
-										>
-											<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
-												<div className="flex min-w-0 items-center gap-2">
-													<span
-														className={cn(
-															"size-2.5 shrink-0 rounded-full",
-															statusDot[column.id]
-														)}
-													/>
-													<div className="min-w-0">
-														<p className="text-foreground truncate text-sm font-semibold">
-															{column.name}
-														</p>
-														<p className="text-muted-foreground truncate text-xs">
-															{column.description}
-														</p>
-													</div>
-												</div>
-												<StyledBadge variant="outline">
-													{columnItems.length}
-												</StyledBadge>
-											</KanbanHeader>
-											<KanbanCards id={column.id}>
-												{(item: InvoiceKanbanItem) => (
-													<KanbanCard
-														key={item.id}
-														id={item.id}
-														name={item.name}
-														column={item.column}
-													>
-														<div
-															role="button"
-															tabIndex={0}
-															onClick={() => openPreview(item.id)}
-															onKeyDown={(e) => {
-																if (e.currentTarget !== e.target) return;
-																if (e.key === "Enter" || e.key === " ") {
-																	e.preventDefault();
-																	openPreview(item.id);
-																}
-															}}
-															className="flex cursor-pointer flex-col gap-2 outline-none"
-														>
-															<div className="flex items-start justify-between gap-2">
-																<p className="text-foreground line-clamp-2 text-sm font-medium">
-																	{item.invoiceNumber}
-																</p>
-																<StyledBadge
-																	variant={statusVariant(item.status)}
-																	className="shrink-0"
-																>
-																	{formatStatus(item.status)}
-																</StyledBadge>
-															</div>
-															<p className="text-muted-foreground truncate text-xs">
-																{item.clientName}
-															</p>
-															<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
-																<span>{formatInvoiceDate(item.issuedDate)}</span>
-																<span aria-hidden>·</span>
-																<span
-																	className={cn(
-																		item.dueDate < Date.now() &&
-																			item.status !== "paid" &&
-																			"text-destructive font-medium"
-																	)}
-																>
-																	Due {formatInvoiceDate(item.dueDate)}
-																</span>
-															</div>
-															<div className="flex items-center justify-between pt-1">
-																<span className="text-foreground text-sm font-semibold tabular-nums">
-																	{formatCurrency(item.total)}
-																</span>
-																<button
-																	type="button"
-																	onClick={(e) => {
-																		e.stopPropagation();
-																		router.push(`/invoices/${item.id}`);
-																	}}
-																	className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
-																>
-																	Open <ExternalLink className="size-3" />
-																</button>
-															</div>
-														</div>
-													</KanbanCard>
-												)}
-											</KanbanCards>
-										</KanbanBoard>
-									);
-								}}
-							</KanbanProvider>
-						</div>
-					)}
-				</FramePanel>
-
-				{!isLoading && !isEmpty && (
-					<FrameFooter className="flex-row items-center justify-between">
-						<div className="text-muted-foreground text-sm">
-							{searchedData.length} of {data.length} invoices
-						</div>
-						{viewMode === "table" ? (
-							<div className="flex items-center gap-2">
-								<Button
-									variant="outline"
-									size="icon-sm"
-									onClick={() => table.previousPage()}
-									disabled={!table.getCanPreviousPage()}
-									aria-label="Previous page"
-								>
-									<ChevronLeft className="size-4" />
-								</Button>
-								<div className="text-sm font-medium">
-									Page {table.getState().pagination?.pageIndex + 1} of{" "}
-									{Math.max(table.getPageCount(), 1)}
 								</div>
-								<Button
-									variant="outline"
-									size="icon-sm"
-									onClick={() => table.nextPage()}
-									disabled={!table.getCanNextPage()}
-									aria-label="Next page"
-								>
-									<ChevronRight className="size-4" />
-								</Button>
 							</div>
-						) : null}
-					</FrameFooter>
-				)}
+						) : isEmpty ? (
+							<div className="px-6 py-12 text-center">
+								<div className="mx-auto w-24 h-24 mb-4 flex items-center justify-center rounded-full bg-muted">
+									<Receipt className="h-12 w-12 text-muted-foreground" />
+								</div>
+								<h3 className="text-lg font-semibold text-foreground mb-2">
+									No invoices yet
+								</h3>
+								<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+									Create invoices from approved quotes on the Projects page to
+									get started tracking payments and revenue.
+								</p>
+							</div>
+						) : viewMode === "table" ? (
+							<div className="overflow-x-auto">
+								<DataGridContainer className="rounded-lg border">
+									<DataGridTable />
+								</DataGridContainer>
+							</div>
+						) : (
+							<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
+								<KanbanProvider
+									columns={kanbanColumns}
+									data={kanbanData}
+									onDataChange={handleKanbanDataChange}
+									onDragEnd={handleKanbanDragEnd}
+								>
+									{(column) => {
+										const columnItems = kanbanData.filter(
+											(item) => item.column === column.id
+										);
+
+										return (
+											<KanbanBoard
+												key={column.id}
+												id={column.id}
+												className="bg-card/60 flex flex-col"
+											>
+												<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+													<div className="flex min-w-0 items-center gap-2">
+														<span
+															className={cn(
+																"size-2.5 shrink-0 rounded-full",
+																statusDot[column.id]
+															)}
+														/>
+														<div className="min-w-0">
+															<p className="text-foreground truncate text-sm font-semibold">
+																{column.name}
+															</p>
+															<p className="text-muted-foreground truncate text-xs">
+																{column.description}
+															</p>
+														</div>
+													</div>
+													<StyledBadge variant="outline">
+														{columnItems.length}
+													</StyledBadge>
+												</KanbanHeader>
+												<KanbanCards id={column.id}>
+													{(item: InvoiceKanbanItem) => (
+														<KanbanCard
+															key={item.id}
+															id={item.id}
+															name={item.name}
+															column={item.column}
+														>
+															<div
+																role="button"
+																tabIndex={0}
+																onClick={() => openPreview(item.id)}
+																onKeyDown={(e) => {
+																	if (e.currentTarget !== e.target) return;
+																	if (e.key === "Enter" || e.key === " ") {
+																		e.preventDefault();
+																		openPreview(item.id);
+																	}
+																}}
+																className="flex cursor-pointer flex-col gap-2 outline-none"
+															>
+																<div className="flex items-start justify-between gap-2">
+																	<p className="text-foreground line-clamp-2 text-sm font-medium">
+																		{item.invoiceNumber}
+																	</p>
+																	<StyledBadge
+																		variant={statusVariant(item.status)}
+																		className="shrink-0"
+																	>
+																		{formatStatus(item.status)}
+																	</StyledBadge>
+																</div>
+																<p className="text-muted-foreground truncate text-xs">
+																	{item.clientName}
+																</p>
+																<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
+																	<span>
+																		{formatInvoiceDate(item.issuedDate)}
+																	</span>
+																	<span aria-hidden>·</span>
+																	<span
+																		className={cn(
+																			item.dueDate < Date.now() &&
+																				item.status !== "paid" &&
+																				"text-destructive font-medium"
+																		)}
+																	>
+																		Due {formatInvoiceDate(item.dueDate)}
+																	</span>
+																</div>
+																<div className="flex items-center justify-between pt-1">
+																	<span className="text-foreground text-sm font-semibold tabular-nums">
+																		{formatCurrency(item.total)}
+																	</span>
+																	<button
+																		type="button"
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			router.push(`/invoices/${item.id}`);
+																		}}
+																		className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																	>
+																		Open <ExternalLink className="size-3" />
+																	</button>
+																</div>
+															</div>
+														</KanbanCard>
+													)}
+												</KanbanCards>
+											</KanbanBoard>
+										);
+									}}
+								</KanbanProvider>
+							</div>
+						)}
+					</FramePanel>
+
+					{!isLoading && !isEmpty && (
+						<FrameFooter className="flex-row items-center justify-between">
+							<div className="text-muted-foreground text-sm">
+								{searchedData.length} of {data.length} invoices
+							</div>
+							{viewMode === "table" ? <DataGridPagination /> : null}
+						</FrameFooter>
+					)}
+				</DataGrid>
 			</Frame>
 
 			{/* Detail preview drawer */}
