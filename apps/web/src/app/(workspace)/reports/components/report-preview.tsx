@@ -159,6 +159,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 						total={total}
 						groupBy={groupBy}
 						entityType={config.entityType}
+						totalIsCurrency={totalIsCurrency}
 					/>
 				);
 			case "radar":

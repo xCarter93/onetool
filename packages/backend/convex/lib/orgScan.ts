@@ -24,9 +24,11 @@ const SCAN_BATCH = 500;
 type ScanRow = Record<string, unknown> & { _creationTime: number };
 
 /**
- * One page of an org's rows, newest first, starting strictly after the
- * `before` cursor (a _creationTime — Convex appends _creationTime to every
- * index as the unique final tiebreaker, so it's a stable pagination cursor).
+ * One page of an org's rows, newest first, from the `before` cursor
+ * (inclusive — _creationTime is millisecond-precision and NOT unique, so the
+ * caller re-reads the boundary tie group and drops rows it already returned;
+ * a strict-lt cursor would silently skip same-timestamp rows straddling a
+ * page break).
  */
 type NonActivityTable = Exclude<ReportTable, "activities">;
 
@@ -43,7 +45,7 @@ async function takeOrgPage(
 				.query("clients")
 				.withIndex("by_org", (q) => {
 					const r = q.eq("orgId", orgId);
-					return before === undefined ? r : r.lt("_creationTime", before);
+					return before === undefined ? r : r.lte("_creationTime", before);
 				})
 				.order("desc")
 				.take(count);
@@ -52,7 +54,7 @@ async function takeOrgPage(
 				.query("projects")
 				.withIndex("by_org", (q) => {
 					const r = q.eq("orgId", orgId);
-					return before === undefined ? r : r.lt("_creationTime", before);
+					return before === undefined ? r : r.lte("_creationTime", before);
 				})
 				.order("desc")
 				.take(count);
@@ -61,7 +63,7 @@ async function takeOrgPage(
 				.query("tasks")
 				.withIndex("by_org", (q) => {
 					const r = q.eq("orgId", orgId);
-					return before === undefined ? r : r.lt("_creationTime", before);
+					return before === undefined ? r : r.lte("_creationTime", before);
 				})
 				.order("desc")
 				.take(count);
@@ -70,7 +72,7 @@ async function takeOrgPage(
 				.query("quotes")
 				.withIndex("by_org", (q) => {
 					const r = q.eq("orgId", orgId);
-					return before === undefined ? r : r.lt("_creationTime", before);
+					return before === undefined ? r : r.lte("_creationTime", before);
 				})
 				.order("desc")
 				.take(count);
@@ -79,7 +81,7 @@ async function takeOrgPage(
 				.query("invoices")
 				.withIndex("by_org", (q) => {
 					const r = q.eq("orgId", orgId);
-					return before === undefined ? r : r.lt("_creationTime", before);
+					return before === undefined ? r : r.lte("_creationTime", before);
 				})
 				.order("desc")
 				.take(count);
@@ -159,15 +161,28 @@ export async function scanOrgTable(
 	const matches: ScanRow[] = [];
 	let scanned = 0;
 	let cursor: number | undefined;
+	// Rows already returned at exactly `cursor` — the lte page re-reads the
+	// boundary tie group (always the head of the page, same index order), so
+	// these are filtered out to make progress without skipping ties.
+	let cursorIds = new Set<string>();
 
 	const takePage = (before: number | undefined, count: number) =>
 		takeOrgPage(ctx, table as NonActivityTable, orgId, before, count);
 
 	while (scanned < maxScan) {
 		const pageSize = Math.min(batchSize, maxScan - scanned);
-		const page = await takePage(cursor, pageSize);
+		const raw = await takePage(cursor, pageSize + cursorIds.size);
+		const page = raw.filter((row) => !cursorIds.has(String(row._id)));
 		if (page.length > 0) {
-			cursor = page[page.length - 1]._creationTime;
+			const lastTs = page[page.length - 1]._creationTime;
+			const boundary = page
+				.filter((row) => row._creationTime === lastTs)
+				.map((row) => String(row._id));
+			cursorIds =
+				lastTs === cursor
+					? new Set([...cursorIds, ...boundary])
+					: new Set(boundary);
+			cursor = lastTs;
 		}
 		scanned += page.length;
 
@@ -193,7 +208,12 @@ export async function scanOrgTable(
 		}
 	}
 
-	// Hit the scan cap. Truncated only if rows actually remain past it.
-	const probe = await takePage(cursor, 1);
-	return { matches, scanned, truncated: probe.length > 0 };
+	// Hit the scan cap. Truncated only if rows actually remain past it —
+	// the lte probe must look past the already-returned boundary ties.
+	const probe = await takePage(cursor, cursorIds.size + 1);
+	return {
+		matches,
+		scanned,
+		truncated: probe.some((row) => !cursorIds.has(String(row._id))),
+	};
 }

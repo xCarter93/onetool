@@ -298,12 +298,6 @@ export async function validateCsvData(
 		if (missingRequiredFields.includes("status")) {
 			suggestedDefaults.status = "lead";
 		}
-		if (missingRequiredFields.includes("emailOptIn")) {
-			suggestedDefaults.emailOptIn = false;
-		}
-		if (missingRequiredFields.includes("smsOptIn")) {
-			suggestedDefaults.smsOptIn = false;
-		}
 	} else if (entityType === "projects") {
 		if (missingRequiredFields.includes("status")) {
 			suggestedDefaults.status = "planned";

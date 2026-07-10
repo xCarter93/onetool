@@ -46,6 +46,8 @@ export function ReportColumnChart({
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 }: ReportColumnChartProps) {
+	const patternPrefix = React.useId();
+
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
 		acc[item.name] = {
 			label: item.name,
@@ -55,7 +57,7 @@ export function ReportColumnChart({
 	}, {} as ChartConfig);
 
 	chartConfig.value = {
-		label: "Count",
+		label: itemValueIsCurrency ? "Amount" : "Count",
 		color: getChartColor(0, CHART_CATEGORICAL),
 	};
 
@@ -79,7 +81,7 @@ export function ReportColumnChart({
 			{/* Chart */}
 			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
 				<BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
-					<ChartStripeDefs colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
+					<ChartStripeDefs idPrefix={patternPrefix} colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
 					<CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
 					<XAxis
 						dataKey="name"
@@ -104,7 +106,7 @@ export function ReportColumnChart({
 							return (
 								<Cell
 									key={`cell-${index}`}
-									fill={`url(#${stripeId("report-stripe", index)})`}
+									fill={`url(#${stripeId(patternPrefix, index)})`}
 									stroke={color}
 									strokeWidth={1}
 								/>

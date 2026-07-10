@@ -293,8 +293,11 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 		["startDate", gen.startDate],
 		["endDate", gen.endDate],
 	] as const) {
-		if (value !== null && !ISO_DATE.test(value)) {
+		if (value === null) continue;
+		if (!ISO_DATE.test(value)) {
 			errors.push(`${label} must be YYYY-MM-DD`);
+		} else if (!isRealCalendarDate(value)) {
+			errors.push(`${label} must be a real calendar date`);
 		}
 	}
 	if (
@@ -310,6 +313,19 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	if (!gen.name.trim()) errors.push("name must not be empty");
 
 	return errors;
+}
+
+/**
+ * True when a shape-valid YYYY-MM-DD names an actual calendar day —
+ * Date.parse alone rolls impossible days over (2026-02-31 → Mar 3) and
+ * yields NaN for impossible months, which inDateBounds treats as unbounded.
+ */
+function isRealCalendarDate(date: string): boolean {
+	const [y, m, d] = date.split("-").map(Number);
+	const dt = new Date(Date.UTC(y, m - 1, d));
+	return (
+		dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
+	);
 }
 
 function dayStartMs(date: string): number {

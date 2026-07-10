@@ -81,16 +81,19 @@ export function useRegisterReportConfigApply(handler: ApplyHandler) {
 }
 
 /** Returns an applier that forwards to the mounted builder; false if none.
- * No manual memoization — the panel's consuming effect dedupes by
- * toolCallId, so identity stability isn't load-bearing. */
+ * Stable identity — the panel's consuming effect lists it as a dependency,
+ * so a per-render closure would re-scan the whole thread on every render. */
 export function useApplyReportConfig(): (
 	config: BuilderReportConfig
 ) => boolean {
 	const ctx = useContext(ReportConfigApplyContext);
-	return (config: BuilderReportConfig) => {
-		const handler = ctx?.holder.current?.current;
-		if (!handler) return false;
-		handler(config);
-		return true;
-	};
+	return useCallback(
+		(config: BuilderReportConfig) => {
+			const handler = ctx?.holder.current?.current;
+			if (!handler) return false;
+			handler(config);
+			return true;
+		},
+		[ctx]
+	);
 }

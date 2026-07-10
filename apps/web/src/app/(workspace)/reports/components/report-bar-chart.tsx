@@ -45,6 +45,8 @@ export function ReportBarChart({
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 }: ReportBarChartProps) {
+	const patternPrefix = React.useId();
+
 	// Build chart config dynamically
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
 		acc[item.name] = {
@@ -55,7 +57,7 @@ export function ReportBarChart({
 	}, {} as ChartConfig);
 
 	chartConfig.value = {
-		label: "Count",
+		label: itemValueIsCurrency ? "Amount" : "Count",
 		color: getChartColor(0, CHART_CATEGORICAL),
 	};
 
@@ -85,7 +87,7 @@ export function ReportBarChart({
 					layout="vertical"
 					margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
 				>
-					<ChartStripeDefs colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
+					<ChartStripeDefs idPrefix={patternPrefix} colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
 					<CartesianGrid strokeDasharray="3 3" horizontal vertical={false} stroke="var(--border)" />
 					<XAxis
 						type="number"
@@ -112,7 +114,7 @@ export function ReportBarChart({
 							return (
 								<Cell
 									key={`cell-${index}`}
-									fill={`url(#${stripeId("report-stripe", index)})`}
+									fill={`url(#${stripeId(patternPrefix, index)})`}
 									stroke={color}
 									strokeWidth={1}
 								/>

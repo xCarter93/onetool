@@ -9,6 +9,7 @@ import {
 	ChartTooltipContent,
 } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
+import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ChartStripeDefs, stripeId } from "./chart-stripe-defs";
 
@@ -23,14 +24,17 @@ interface ReportPieChartProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
+	totalIsCurrency?: boolean;
 }
 
 export function ReportPieChart({
 	data,
 	total,
-	groupBy,
+	totalIsCurrency = false,
 }: ReportPieChartProps) {
 	const [activeIndex, setActiveIndex] = React.useState<number | undefined>();
+	const patternPrefix = React.useId();
 
 	// Build chart config dynamically
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
@@ -40,8 +44,6 @@ export function ReportPieChart({
 		};
 		return acc;
 	}, {} as ChartConfig);
-
-	const totalCount = data.reduce((sum, d) => sum + d.value, 0);
 
 	if (isChartDataEmpty(data)) {
 		return <ChartNoData />;
@@ -121,14 +123,17 @@ export function ReportPieChart({
 					{data.length} categories
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {totalCount}
+					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
 				</span>
 			</div>
 
 			{/* Chart */}
 			<ChartContainer config={chartConfig} className="h-[420px] w-full">
 				<PieChart>
-					<ChartStripeDefs colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
+					<ChartStripeDefs
+						idPrefix={patternPrefix}
+						colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))}
+					/>
 					<Pie
 						data={data}
 						cx="50%"
@@ -150,7 +155,7 @@ export function ReportPieChart({
 							return (
 								<Cell
 									key={`cell-${index}`}
-									fill={`url(#${stripeId("report-stripe", index)})`}
+									fill={`url(#${stripeId(patternPrefix, index)})`}
 									stroke={color}
 									strokeWidth={1}
 								/>

@@ -180,6 +180,14 @@ describe("validateGeneratedReport", () => {
 		expect(
 			validateGeneratedReport(gen({ startDate: "June 1st" }))[0]
 		).toMatch(/must be YYYY-MM-DD/);
+		// Shape-valid but impossible dates: Date.parse would roll 2026-02-31
+		// into March and NaN the month-13 one (an unbounded filter).
+		expect(
+			validateGeneratedReport(gen({ startDate: "2026-02-31" }))[0]
+		).toMatch(/real calendar date/);
+		expect(
+			validateGeneratedReport(gen({ endDate: "2026-13-45" }))[0]
+		).toMatch(/real calendar date/);
 		expect(
 			validateGeneratedReport(
 				gen({ startDate: "2026-06-30", endDate: "2026-01-01" })

@@ -35,7 +35,6 @@ interface ReportLineChartProps {
 // CHART_COLORS.primary[0]; now sourced from the categorical palette so every
 // chart shares one validated color system.
 const PRIMARY_BLUE = CHART_CATEGORICAL[0];
-const AREA_STRIPE_ID = stripeId("report-stripe", 0);
 
 // Renders as an area chart (viz type value stays "line" — schema/presets/
 // saved reports are unchanged; only the label/icon in report-config.ts
@@ -46,6 +45,9 @@ export function ReportLineChart({
 	groupBy,
 	entityType,
 }: ReportLineChartProps) {
+	const patternPrefix = React.useId();
+	const AREA_STRIPE_ID = stripeId(patternPrefix, 0);
+
 	const chartConfig: ChartConfig = {
 		value: {
 			label: "Value",
@@ -103,7 +105,7 @@ export function ReportLineChart({
 					data={data}
 					margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
 				>
-					<ChartStripeDefs colors={[PRIMARY_BLUE]} />
+					<ChartStripeDefs idPrefix={patternPrefix} colors={[PRIMARY_BLUE]} />
 					<CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
 					<XAxis
 						dataKey="name"

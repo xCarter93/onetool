@@ -34,6 +34,7 @@ export function ReportRadialChart({
 	total,
 	totalIsCurrency = false,
 }: ReportRadialChartProps) {
+	const patternPrefix = React.useId();
 	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
 		acc[item.name] = {
 			label: item.name,
@@ -48,7 +49,7 @@ export function ReportRadialChart({
 
 	const chartData = data.map((item, index) => ({
 		...item,
-		fill: `url(#${stripeId("report-stripe", index)})`,
+		fill: `url(#${stripeId(patternPrefix, index)})`,
 	}));
 
 	return (
@@ -70,7 +71,7 @@ export function ReportRadialChart({
 					startAngle={90}
 					endAngle={-270}
 				>
-					<ChartStripeDefs colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
+					<ChartStripeDefs idPrefix={patternPrefix} colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
 					<PolarGrid stroke="var(--border)" gridType="circle" radialLines={false} />
 					<ChartTooltip content={<ChartTooltipContent hideLabel />} />
 					{/* recharts 3.8.0 animated Pie/RadialBar (shared polar animation

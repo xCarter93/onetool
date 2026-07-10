@@ -36,7 +36,6 @@ interface ReportRadarChartProps {
 
 const RADAR_MIN_BUCKETS = 3;
 const RADAR_COLOR = getChartColor(0, CHART_CATEGORICAL);
-const RADAR_STRIPE_ID = stripeId("report-stripe", 0);
 
 /** Single series over the category buckets. Radar reads poorly with fewer
  * than 3 axes, so callers should steer toward another chart type below that. */
@@ -45,6 +44,9 @@ export function ReportRadarChart({
 	total,
 	totalIsCurrency = false,
 }: ReportRadarChartProps) {
+	const patternPrefix = React.useId();
+	const RADAR_STRIPE_ID = stripeId(patternPrefix, 0);
+
 	const chartConfig: ChartConfig = {
 		value: {
 			label: "Value",
@@ -78,7 +80,7 @@ export function ReportRadarChart({
 			{/* Chart */}
 			<ChartContainer config={chartConfig} className="h-[420px] w-full">
 				<RadarChart data={data} outerRadius="80%">
-					<ChartStripeDefs colors={[RADAR_COLOR]} />
+					<ChartStripeDefs idPrefix={patternPrefix} colors={[RADAR_COLOR]} />
 					<PolarGrid stroke="var(--border)" />
 					<PolarAngleAxis
 						dataKey="name"

@@ -13,6 +13,8 @@ import {
 import {
 	getReportField,
 	getReportDateField,
+	isGenericGroupBy,
+	usesLegacyDispatch,
 	type ReportEntityType,
 	type ReportFieldType,
 } from "./lib/reportFields";
@@ -1184,6 +1186,22 @@ export const executeReport = optionalUserQuery({
 				filters,
 				aggregation,
 				timezone
+			);
+		}
+
+		// Without an aggregation, a generic-valid groupBy must not fall
+		// through to legacy dispatch — it would silently come back as the
+		// entity default, mislabeled with the requested groupBy. Real callers
+		// (web resolveReportQueryArgs, assistant toExecuteReportArgs) always
+		// send an explicit count for these. Unknown literals still fall back
+		// to the entity default (pinned legacy semantics).
+		if (
+			args.groupBy &&
+			isGenericGroupBy(entityType, args.groupBy) &&
+			!usesLegacyDispatch(entityType, args.groupBy)
+		) {
+			throw new ConvexError(
+				`groupBy "${args.groupBy}" requires an explicit aggregation (e.g. { op: "count" })`
 			);
 		}
 

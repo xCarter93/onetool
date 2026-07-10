@@ -505,6 +505,17 @@ describe("reportData.executeReport", () => {
 		expect(result.metadata?.totalIsCurrency).toBe(true);
 	});
 
+	it("generic-only groupBy without aggregation throws instead of silently returning the legacy default", async () => {
+		const { asOrg } = await seedOrg();
+
+		await expect(
+			asOrg.query(api.reportData.executeReport, {
+				entityType: "invoices",
+				groupBy: "issuedDate_month",
+			})
+		).rejects.toThrow();
+	});
+
 	it("aggregation: unknown field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
