@@ -1,6 +1,7 @@
 @layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./reui-nova.css";
 
 @custom-variant dark (&:is(.dark *));
 
