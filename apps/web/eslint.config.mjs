@@ -21,6 +21,32 @@ const eslintConfig = [
 			"@typescript-eslint/no-explicit-any": "warn",
 		},
 	},
+	// DESIGN-SYSTEM: the ReUI rebuild retired these libraries app-wide (P2–P8).
+	// All are at zero imports; this rule keeps them out for good. UI primitives
+	// come from @base-ui/react via src/components/ui/**, icons from lucide-react.
+	{
+		files: ["src/**/*.{ts,tsx}"],
+		rules: {
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{
+							group: [
+								"@radix-ui/*",
+								"radix-ui",
+								"react-aria-components",
+								"tailwind-variants",
+								"@intentui/*",
+							],
+							message:
+								"Retired by the ReUI rebuild. Use the vendored primitives in @/components/ui (Base UI), @/components/reui, or @/components/domain; icons from lucide-react.",
+						},
+					],
+				},
+			],
+		},
+	},
 	// PORTAL-05: portal route group, lib/portal/**, and ConvexPortalProvider must
 	// run with no Clerk dependency. This rule mechanically blocks any Clerk import
 	// from leaking into the portal bundle (CI fails red on violation).
@@ -44,6 +70,17 @@ const eslintConfig = [
 							],
 							message:
 								"PORTAL-05: Clerk imports are forbidden in portal route group, lib/portal, and ConvexPortalProvider. The portal must run with no Clerk dependency.",
+						},
+						{
+							group: [
+								"@radix-ui/*",
+								"radix-ui",
+								"react-aria-components",
+								"tailwind-variants",
+								"@intentui/*",
+							],
+							message:
+								"Retired by the ReUI rebuild. Use the vendored primitives in @/components/ui (Base UI), @/components/reui, or @/components/domain; icons from lucide-react.",
 						},
 						{
 							group: ["convex/react-clerk", "**/ConvexClientProvider"],
