@@ -37,7 +37,7 @@ export function PremiumGate({ children }: { children: ReactNode }) {
 							: "Upgrade to Business to create workflow automations."}
 					</p>
 					<div className="mt-6 flex justify-center gap-3">
-						<Button intent="outline" onPress={() => router.push("/automations")}>
+						<Button variant="outline" onClick={() => router.push("/automations")}>
 							Back
 						</Button>
 						{isAdmin && !hasPremiumAccess && (

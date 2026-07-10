@@ -147,16 +147,18 @@ export function CsvSchemaGuideDrawer({ entityType }: CsvSchemaGuideDrawerProps) 
 	const entityLabel = entityType === "clients" ? "Clients" : "Projects";
 
 	return (
-		<Drawer direction="right">
-			<DrawerTrigger asChild>
-				<StyledButton
-					intent="plain"
-					size="sm"
-					showArrow={false}
-					icon={<Info className="size-4" />}
-					label="Column guide"
-				/>
-			</DrawerTrigger>
+		<Drawer swipeDirection="right">
+			<DrawerTrigger
+				render={
+					<StyledButton
+						intent="plain"
+						size="sm"
+						showArrow={false}
+						icon={<Info className="size-4" />}
+						label="Column guide"
+					/>
+				}
+			/>
 			<DrawerContent className="sm:max-w-md!">
 				<DrawerHeader className="border-b border-border">
 					<DrawerTitle>CSV Column Guide for {entityLabel}</DrawerTitle>

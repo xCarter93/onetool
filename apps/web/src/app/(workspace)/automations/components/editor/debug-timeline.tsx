@@ -13,7 +13,7 @@ import {
 import type { Node } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { FETCH_SCAN_CEILING } from "@onetool/backend/convex/lib/workflowTypes";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -158,14 +158,16 @@ export function DebugTimeline({
 									</span>
 									{entry.truncated && (
 										<Tooltip>
-											<TooltipTrigger asChild>
-												<Badge
-													variant="warning"
-													className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
-												>
-													<AlertTriangle className="size-2.5" aria-hidden />
-													Truncated
-												</Badge>
+											<TooltipTrigger
+												render={
+													<Badge
+														variant="warning"
+														className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
+													/>
+												}
+											>
+												<AlertTriangle className="size-2.5" aria-hidden />
+												Truncated
 											</TooltipTrigger>
 											<TooltipContent side="top" className="max-w-xs">
 												This step stopped scanning at the{" "}
@@ -181,9 +183,9 @@ export function DebugTimeline({
 									)}
 								</button>
 								<Button
-									intent="plain"
-									size="sq-sm"
-									onPress={() => onNavigateToNode(entry.nodeId)}
+									variant="ghost"
+									size="icon-sm"
+									onClick={() => onNavigateToNode(entry.nodeId)}
 									aria-label={`Focus ${label} on canvas`}
 									className="shrink-0 text-muted-foreground"
 								>

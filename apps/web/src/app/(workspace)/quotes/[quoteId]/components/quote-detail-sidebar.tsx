@@ -281,7 +281,7 @@ export function QuoteDetailSidebar({
 						{editingField === "status" ? (
 							<StyledSelect
 								value={editValue}
-								onValueChange={setEditValue}
+								onValueChange={(value) => setEditValue(value as string)}
 							>
 								<StyledSelectTrigger className="h-8">
 									<SelectValue />
@@ -339,14 +339,16 @@ export function QuoteDetailSidebar({
 									if (!open) cancelEditing();
 								}}
 							>
-								<PopoverTrigger asChild>
-									<button className="text-sm text-primary hover:text-primary/80">
-										{editDateValue
-											? formatDate(
-													editDateValue.getTime()
-												)
-											: "Select date..."}
-									</button>
+								<PopoverTrigger
+									render={
+										<button className="text-sm text-primary hover:text-primary/80" />
+									}
+								>
+									{editDateValue
+										? formatDate(
+												editDateValue.getTime()
+											)
+										: "Select date..."}
 								</PopoverTrigger>
 								<PopoverContent
 									className="w-auto p-0"
@@ -657,7 +659,7 @@ export function QuoteDetailSidebar({
 								className="flex-1"
 							>
 								<Button
-									intent="outline"
+									variant="outline"
 									size="sm"
 									className="w-full"
 								>
@@ -666,7 +668,7 @@ export function QuoteDetailSidebar({
 								</Button>
 							</a>
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
 								className="w-full flex-1"
 								onClick={onDownloadPdf}
@@ -680,7 +682,7 @@ export function QuoteDetailSidebar({
 							allDocumentVersions.length > 1 && (
 								<div className="pt-2 border-t border-gray-200 dark:border-gray-700">
 									<Button
-										intent="outline"
+										variant="outline"
 										size="sm"
 										className="w-full"
 										onClick={onToggleVersionHistory}
@@ -766,7 +768,7 @@ export function QuoteDetailSidebar({
 							No PDF generated yet
 						</p>
 						<Button
-							intent="outline"
+							variant="outline"
 							size="sm"
 							onClick={onGeneratePdf}
 						>

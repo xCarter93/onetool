@@ -338,10 +338,10 @@ export function PaymentsTab() {
 						{hasAccount && (
 							<div className="flex shrink-0 flex-wrap gap-2">
 								<Button
-									intent="outline"
+									variant="outline"
 									size="sm"
 									onClick={refreshStripeAccountStatus}
-									isDisabled={statusLoading}
+									disabled={statusLoading}
 								>
 									{statusLoading ? (
 										<Loader2 className="mr-2 h-4 w-4 animate-spin" />

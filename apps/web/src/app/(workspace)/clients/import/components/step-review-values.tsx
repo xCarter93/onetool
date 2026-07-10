@@ -69,10 +69,12 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
 	if (tooltipText) {
 		return (
 			<Tooltip>
-				<TooltipTrigger asChild>
-					<span className="inline-flex" role="img" aria-label={label} tabIndex={0}>
-						{icon}
-					</span>
+				<TooltipTrigger
+					render={
+						<span className="inline-flex" role="img" aria-label={label} tabIndex={0} />
+					}
+				>
+					{icon}
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs whitespace-pre-wrap">
 					{tooltipText}
@@ -499,8 +501,12 @@ export function StepReviewValues({
 												)}
 												{row.status === "error" && (
 													<Tooltip>
-														<TooltipTrigger asChild>
-															<span className="inline-flex cursor-help" role="img" aria-label="Error" tabIndex={0}><Badge variant="destructive-light" size="sm" radius="full"><XCircle /></Badge></span>
+														<TooltipTrigger
+															render={
+																<span className="inline-flex cursor-help" role="img" aria-label="Error" tabIndex={0} />
+															}
+														>
+															<Badge variant="destructive-light" size="sm" radius="full"><XCircle /></Badge>
 														</TooltipTrigger>
 														<TooltipContent>
 															<div className="space-y-1">
@@ -561,7 +567,10 @@ export function StepReviewValues({
 														<StyledSelect
 															value={cellVal || undefined}
 															onValueChange={(val) => {
-																handleCellChange(key, val);
+																handleCellChange(
+																	key,
+																	typeof val === "string" ? val : ""
+																);
 																setEditingCell(null);
 															}}
 															open
@@ -591,15 +600,17 @@ export function StepReviewValues({
 													)
 												) : hasError ? (
 													<Tooltip>
-														<TooltipTrigger asChild>
-															<div
-																className="truncate text-sm text-red-700 dark:text-red-300 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/40 rounded px-1 -mx-1"
-																onClick={() => handleCellClick(row.rowIndex, field)}
-															>
-																{displayStr || (
-																	<span className="italic text-red-400">empty</span>
-																)}
-															</div>
+														<TooltipTrigger
+															render={
+																<div
+																	className="truncate text-sm text-red-700 dark:text-red-300 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/40 rounded px-1 -mx-1"
+																	onClick={() => handleCellClick(row.rowIndex, field)}
+																/>
+															}
+														>
+															{displayStr || (
+																<span className="italic text-red-400">empty</span>
+															)}
 														</TooltipTrigger>
 														<TooltipContent>
 															<p className="text-xs">{errorMsg}</p>
@@ -635,10 +646,10 @@ export function StepReviewValues({
 										<div className="w-24 shrink-0 px-3 flex items-center">
 											{row.status === "duplicate" && (
 												<Button
-													intent={isSkipped ? "outline" : "secondary"}
+													variant={isSkipped ? "outline" : "secondary"}
 													size="sm"
 													className="text-xs h-7"
-													onPress={() =>
+													onClick={() =>
 														setRowSkip(row.rowIndex, !isSkipped)
 													}
 												>

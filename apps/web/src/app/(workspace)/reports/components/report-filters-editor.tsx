@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
 	Popover,
-	PopoverArrow,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
@@ -283,7 +282,7 @@ export function ReportFiltersEditor({
 		setEditor({ ...editor, draft: { ...editor.draft, value } });
 	};
 
-	const editorPopover = (target: EditorTarget, trigger: React.ReactNode) => {
+	const editorPopover = (target: EditorTarget, trigger: React.ReactElement) => {
 		const isOpen = editor !== null && targetKey(editor.target) === targetKey(target);
 		return (
 			<Popover
@@ -292,12 +291,10 @@ export function ReportFiltersEditor({
 					if (!open) closeEditor();
 				}}
 			>
-				<PopoverTrigger asChild onClick={() => openEditor(target)}>
-					{trigger}
-				</PopoverTrigger>
+				<PopoverTrigger render={trigger} onClick={() => openEditor(target)} />
 				{isOpen && editor && (
+					// TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented.
 					<PopoverContent side="right" align="start" sideOffset={8} className="w-80">
-						<PopoverArrow />
 						<FilterEditorBody
 							entityType={entityType}
 							fields={fields}
@@ -486,7 +483,12 @@ function FilterEditorBody({
 			</div>
 
 			<div className="space-y-1.5">
-				<Select value={draft.field} onValueChange={onFieldChange}>
+				<Select
+					value={draft.field}
+					onValueChange={(v) => {
+						if (v) onFieldChange(v);
+					}}
+				>
 					<SelectTrigger className="w-full">
 						<SelectValue placeholder="Field" />
 					</SelectTrigger>
@@ -521,7 +523,7 @@ function FilterEditorBody({
 					(fieldDef.options ? (
 						<Select
 							value={typeof draft.value === "string" ? draft.value : ""}
-							onValueChange={(value) => onValueChange(value)}
+							onValueChange={(value) => onValueChange(value ?? undefined)}
 						>
 							<SelectTrigger className="w-full">
 								<SelectValue placeholder="Value" />
@@ -567,10 +569,10 @@ function FilterEditorBody({
 			</div>
 
 			<div className="flex items-center justify-end gap-2 pt-1">
-				<Button type="button" intent="plain" size="sm" onPress={onCancel}>
+				<Button type="button" variant="ghost" size="sm" onClick={onCancel}>
 					Cancel
 				</Button>
-				<Button type="button" intent="primary" size="sm" onPress={onApply} isDisabled={!canApply}>
+				<Button type="button" variant="default" size="sm" onClick={onApply} disabled={!canApply}>
 					Apply
 				</Button>
 			</div>

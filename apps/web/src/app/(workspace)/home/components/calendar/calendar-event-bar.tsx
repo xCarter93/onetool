@@ -70,24 +70,26 @@ export function CalendarEventBar({
 	);
 
 	return (
-		<TooltipProvider>
-			<Tooltip delayDuration={300}>
-				<TooltipTrigger asChild>
-					<div
-						className={`
-							${colors.bg} ${colors.border} ${colors.text} ${colors.hover}
-							border rounded px-2 py-1 text-xs font-medium
-							truncate cursor-pointer transition-colors
-							shadow-sm
-							${isMultiDay ? "min-h-[28px]" : "h-full"}
-						`}
-						style={style}
-						onClick={onClick}
-					>
-						<div className="flex items-center gap-1">
-							{getStatusIcon()}
-							<span className="truncate flex-1">{event.title}</span>
-						</div>
+		<TooltipProvider delay={300}>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<div
+							className={`
+								${colors.bg} ${colors.border} ${colors.text} ${colors.hover}
+								border rounded px-2 py-1 text-xs font-medium
+								truncate cursor-pointer transition-colors
+								shadow-sm
+								${isMultiDay ? "min-h-[28px]" : "h-full"}
+							`}
+							style={style}
+							onClick={onClick}
+						/>
+					}
+				>
+					<div className="flex items-center gap-1">
+						{getStatusIcon()}
+						<span className="truncate flex-1">{event.title}</span>
 					</div>
 				</TooltipTrigger>
 				<TooltipContent side="top" className="max-w-sm">

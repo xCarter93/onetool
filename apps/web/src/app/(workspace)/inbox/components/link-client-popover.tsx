@@ -45,30 +45,36 @@ export function LinkClientPopover({
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				{compact ? (
-					<button
-						type="button"
-						disabled={disabled}
-						aria-label="Link to client"
-						className={cn(
-							"inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors duration-150",
-							"hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-							disabled && "cursor-not-allowed opacity-50"
-						)}
-					>
+			<PopoverTrigger
+				render={
+					compact ? (
+						<button
+							type="button"
+							disabled={disabled}
+							aria-label="Link to client"
+							className={cn(
+								"inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors duration-150",
+								"hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+								disabled && "cursor-not-allowed opacity-50"
+							)}
+						/>
+					) : (
+						<StyledButton
+							intent="outline"
+							size="sm"
+							icon={<Link2 className="h-4 w-4" aria-hidden="true" />}
+							label="Link to client"
+							showArrow={false}
+							disabled={disabled}
+						/>
+					)
+				}
+			>
+				{compact && (
+					<>
 						<Link2 className="h-3.5 w-3.5" aria-hidden="true" />
 						Link to client
-					</button>
-				) : (
-					<StyledButton
-						intent="outline"
-						size="sm"
-						icon={<Link2 className="h-4 w-4" aria-hidden="true" />}
-						label="Link to client"
-						showArrow={false}
-						disabled={disabled}
-					/>
+					</>
 				)}
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-72 p-0">

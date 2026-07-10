@@ -152,14 +152,14 @@ export function CsvUploadZone({
 							</p>
 						</div>
 						<Button
-							intent="outline"
+							variant="outline"
 							size="sm"
 							onClick={(e) => {
 								e.preventDefault();
 								handleClear();
 							}}
 							className="hover:bg-destructive/10 hover:text-destructive"
-							isDisabled={disabled}
+							disabled={disabled}
 						>
 							<X className="w-4 h-4" />
 						</Button>

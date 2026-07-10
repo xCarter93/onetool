@@ -373,9 +373,9 @@ export default function QuoteLineEditorPage() {
 				<div className="flex items-center justify-between mb-8">
 					<div className="flex items-center gap-4">
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={handleCancel}
+							variant="outline"
+							size="icon-sm"
+							onClick={handleCancel}
 							aria-label="Go back"
 						>
 							<ArrowLeft className="h-4 w-4" />
@@ -494,9 +494,9 @@ export default function QuoteLineEditorPage() {
 													: `${allLineItems.length} line item${allLineItems.length !== 1 ? "s" : ""} configured`}
 											</div>
 											<Button
-												intent="outline"
+												variant="outline"
 												size="sm"
-												onPress={handleAddLineItem}
+												onClick={handleAddLineItem}
 											>
 												<Plus className="h-4 w-4 mr-2" />
 												Add Line Item
@@ -656,9 +656,9 @@ export default function QuoteLineEditorPage() {
 														-{formatCurrency(totals.discountAmount)}
 													</span>
 													<Button
-														intent="outline"
-														size="sq-sm"
-														onPress={handleRemoveDiscount}
+														variant="outline"
+														size="icon-sm"
+														onClick={handleRemoveDiscount}
 														aria-label="Remove discount"
 														className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
 													>
@@ -672,9 +672,9 @@ export default function QuoteLineEditorPage() {
 													Discount:
 												</span>
 												<Button
-													intent="outline"
+													variant="outline"
 													size="sm"
-													onPress={handleAddDiscount}
+													onClick={handleAddDiscount}
 													className="text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20"
 												>
 													Add Discount
@@ -713,9 +713,9 @@ export default function QuoteLineEditorPage() {
 														{formatCurrency(totals.taxAmount)}
 													</span>
 													<Button
-														intent="outline"
-														size="sq-sm"
-														onPress={handleRemoveTax}
+														variant="outline"
+														size="icon-sm"
+														onClick={handleRemoveTax}
 														aria-label="Remove tax"
 														className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
 													>
@@ -729,9 +729,9 @@ export default function QuoteLineEditorPage() {
 													Tax:
 												</span>
 												<Button
-													intent="outline"
+													variant="outline"
 													size="sm"
-													onPress={handleAddTax}
+													onClick={handleAddTax}
 													className="text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20"
 												>
 													Add Tax
@@ -952,11 +952,11 @@ function LineItemRow({
 			<TableCell>
 				<div className="flex gap-1">
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={onDelete}
+						variant="outline"
+						size="icon-sm"
+						onClick={onDelete}
 						aria-label="Delete"
-						isDisabled={isSaving}
+						disabled={isSaving}
 					>
 						<Trash2 className="h-3 w-3" />
 					</Button>

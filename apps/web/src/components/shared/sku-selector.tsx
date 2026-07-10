@@ -65,16 +65,18 @@ export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button
-					intent="outline"
-					size="sq-sm"
-					isDisabled={disabled}
-					aria-label="Select SKU"
-					className="shrink-0"
-				>
-					<Package className="h-4 w-4" />
-				</Button>
+			<PopoverTrigger
+				render={
+					<Button
+						variant="outline"
+						size="icon-sm"
+						disabled={disabled}
+						aria-label="Select SKU"
+						className="shrink-0"
+					/>
+				}
+			>
+				<Package className="h-4 w-4" />
 			</PopoverTrigger>
 			<PopoverContent
 				className="w-[400px] p-0 bg-white dark:bg-gray-900 border border-border shadow-xl opacity-100"

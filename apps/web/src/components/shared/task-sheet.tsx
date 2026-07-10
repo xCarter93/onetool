@@ -350,7 +350,7 @@ export function TaskSheet({
 								<StyledSelect
 									value={formData.clientId}
 									onValueChange={(value) =>
-										handleInputChange("clientId", value)
+										handleInputChange("clientId", value as string)
 									}
 								>
 									<StyledSelectTrigger className="w-full">
@@ -380,7 +380,7 @@ export function TaskSheet({
 								<StyledSelect
 									value={formData.projectId}
 									onValueChange={(value) =>
-										handleInputChange("projectId", value)
+										handleInputChange("projectId", value as string)
 									}
 									disabled={!formData.clientId}
 								>
@@ -413,21 +413,23 @@ export function TaskSheet({
 								Date <span className="text-danger">*</span>
 							</label>
 							<Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-								<PopoverTrigger asChild>
-									<Button
-										intent="outline"
-										id="date-picker"
-										className="w-full justify-start font-normal"
-									>
-										<CalendarIcon className="mr-2 h-4 w-4" />
-										{formData.date
-											? formData.date.toLocaleDateString("en-US", {
-													year: "numeric",
-													month: "long",
-													day: "numeric",
-											  })
-											: "Select date"}
-									</Button>
+								<PopoverTrigger
+									render={
+										<Button
+											variant="outline"
+											id="date-picker"
+											className="w-full justify-start font-normal"
+										/>
+									}
+								>
+									<CalendarIcon className="mr-2 h-4 w-4" />
+									{formData.date
+										? formData.date.toLocaleDateString("en-US", {
+												year: "numeric",
+												month: "long",
+												day: "numeric",
+										  })
+										: "Select date"}
 								</PopoverTrigger>
 								<PopoverContent
 									className="w-auto p-0 bg-white dark:bg-gray-950"
@@ -456,7 +458,9 @@ export function TaskSheet({
 							</label>
 							<StyledSelect
 								value={formData.status}
-								onValueChange={(value) => handleInputChange("status", value)}
+								onValueChange={(value) =>
+									handleInputChange("status", value as string)
+								}
 							>
 								<StyledSelectTrigger className="w-full">
 									<SelectValue />
@@ -480,7 +484,7 @@ export function TaskSheet({
 							<StyledSelect
 								value={formData.assigneeUserId || undefined}
 								onValueChange={(value) =>
-									handleInputChange("assigneeUserId", value)
+									handleInputChange("assigneeUserId", value as string)
 								}
 							>
 								<StyledSelectTrigger className="w-full">
@@ -507,7 +511,9 @@ export function TaskSheet({
 								</label>
 								<StyledSelect
 									value={formData.repeat}
-									onValueChange={(value) => handleInputChange("repeat", value)}
+									onValueChange={(value) =>
+										handleInputChange("repeat", value as string)
+									}
 								>
 									<StyledSelectTrigger className="w-full">
 										<SelectValue />
@@ -534,21 +540,23 @@ export function TaskSheet({
 										open={repeatUntilPopoverOpen}
 										onOpenChange={setRepeatUntilPopoverOpen}
 									>
-										<PopoverTrigger asChild>
-											<Button
-												intent="outline"
-												id="repeat-until-picker"
-												className="w-full justify-start font-normal"
-											>
-												<CalendarIcon className="mr-2 h-4 w-4" />
-												{formData.repeatUntil
-													? formData.repeatUntil.toLocaleDateString("en-US", {
-															year: "numeric",
-															month: "long",
-															day: "numeric",
-													  })
-													: "Select end date"}
-											</Button>
+										<PopoverTrigger
+											render={
+												<Button
+													variant="outline"
+													id="repeat-until-picker"
+													className="w-full justify-start font-normal"
+												/>
+											}
+										>
+											<CalendarIcon className="mr-2 h-4 w-4" />
+											{formData.repeatUntil
+												? formData.repeatUntil.toLocaleDateString("en-US", {
+														year: "numeric",
+														month: "long",
+														day: "numeric",
+												  })
+												: "Select end date"}
 										</PopoverTrigger>
 										<PopoverContent
 											className="w-auto p-0 bg-white dark:bg-gray-950"
@@ -625,7 +633,7 @@ export function TaskSheet({
 	if (trigger) {
 		return (
 			<Sheet open={internalOpen} onOpenChange={setInternalOpen}>
-				<SheetTrigger asChild>{trigger}</SheetTrigger>
+				<SheetTrigger render={trigger as React.ReactElement} />
 				{sheetContent}
 			</Sheet>
 		);

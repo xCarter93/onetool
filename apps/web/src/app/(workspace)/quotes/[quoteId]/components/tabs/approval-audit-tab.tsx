@@ -28,6 +28,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Separator } from "@/components/ui/separator";
 import { StyledBadge } from "@/components/ui/styled";
+import { Badge as ReuiBadge } from "@/components/reui/badge";
 import { hasCompletedBoldsign } from "./has-completed-boldsign";
 
 type LineItemSnapshot = {
@@ -154,7 +155,7 @@ function LineItemsSnapshotBlock({
 function AuditRowCard({ row }: { row: AuditRow }) {
 	const badge =
 		row.action === "approved" ? (
-			<StyledBadge variant="success">Approved</StyledBadge>
+			<ReuiBadge variant="success">Approved</ReuiBadge>
 		) : (
 			<StyledBadge variant="secondary">Declined</StyledBadge>
 		);

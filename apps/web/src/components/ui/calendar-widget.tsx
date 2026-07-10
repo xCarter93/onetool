@@ -112,7 +112,7 @@ export function CalendarWidget({
 									>
 										<Button
 											type="button"
-											intent="outline"
+											variant="outline"
 											size="sm"
 											onClick={(e) => {
 												e.preventDefault();
@@ -136,7 +136,7 @@ export function CalendarWidget({
 										</Button>
 										<Button
 											type="button"
-											intent="outline"
+											variant="outline"
 											size="sm"
 											onClick={(e) => {
 												e.preventDefault();

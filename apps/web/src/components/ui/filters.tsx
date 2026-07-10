@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, isValidElement, useCallback, useContext, useMemo, useState } from 'react';
 import {
   Command,
   CommandEmpty,
@@ -597,11 +597,13 @@ function FilterInput<T = unknown>({
         />
         {!isValid && validationMessage && (
           <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
-                <AlertCircle className="size-3.5 text-destructive" />
-              </div>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                  <AlertCircle className="size-3.5 text-destructive" />
+                </div>
+              }
+            />
             <TooltipContent>
               <p className="text-sm">{validationMessage}</p>
             </TooltipContent>
@@ -1937,27 +1939,29 @@ export function Filters<T = unknown>({
               }
             }}
           >
-            <PopoverTrigger asChild>
-              {addButton ? (
-                addButton
-              ) : (
-                <button
-                  className={cn(
-                    filterAddButtonVariants({
-                      variant: variant,
-                      size: size,
-                      cursorPointer: cursorPointer,
-                      radius: radius,
-                    }),
-                    addButtonClassName,
-                  )}
-                  title={mergedI18n.addFilterTitle}
-                >
-                  {addButtonIcon || <Plus />}
-                  {addButtonText || mergedI18n.addFilter}
-                </button>
-              )}
-            </PopoverTrigger>
+            <PopoverTrigger
+              render={
+                isValidElement(addButton) ? (
+                  addButton
+                ) : (
+                  <button
+                    className={cn(
+                      filterAddButtonVariants({
+                        variant: variant,
+                        size: size,
+                        cursorPointer: cursorPointer,
+                        radius: radius,
+                      }),
+                      addButtonClassName,
+                    )}
+                    title={mergedI18n.addFilterTitle}
+                  >
+                    {addButtonIcon || <Plus />}
+                    {addButtonText || mergedI18n.addFilter}
+                  </button>
+                )
+              }
+            />
             <PopoverContent className={cn('w-[200px] p-0', popoverContentClassName)} align="start">
               <Command>
                 {selectedFieldForOptions ? (

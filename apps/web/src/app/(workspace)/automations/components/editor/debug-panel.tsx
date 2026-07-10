@@ -13,7 +13,7 @@ import {
 import type { Node } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { FETCH_SCAN_CEILING } from "@onetool/backend/convex/lib/workflowTypes";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -178,7 +178,10 @@ export function DebugPanel({
 						Sample {OBJECT_LABEL[objectType!] ?? "record"}
 					</label>
 					{sampleRecords.length > 0 ? (
-						<Select value={effectiveRecordId} onValueChange={setRecordId}>
+						<Select
+							value={effectiveRecordId}
+							onValueChange={(value) => setRecordId(value ?? undefined)}
+						>
 							<SelectTrigger id="debug-run-record" className="w-full">
 								<SelectValue placeholder="Pick a record" />
 							</SelectTrigger>
@@ -202,23 +205,27 @@ export function DebugPanel({
 			<div className="flex items-center gap-2">
 				{isRunning ? (
 					<Button
-						intent="outline"
+						variant="outline"
 						size="sm"
 						className="flex-1"
-						onPress={onCancel}
+						onClick={onCancel}
 					>
 						<Square className="size-4" />
 						Stop
 					</Button>
 				) : (
 					<Button
-						intent="primary"
+						variant="default"
 						size="sm"
 						className="flex-1"
-						onPress={run}
-						isPending={isStartingTest}
+						onClick={run}
+						disabled={isStartingTest}
 					>
-						<Play className="size-4" />
+						{isStartingTest ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : (
+							<Play className="size-4" />
+						)}
 						{hasActiveRun ? "Run again" : "Run test"}
 					</Button>
 				)}
@@ -228,11 +235,11 @@ export function DebugPanel({
 
 			{hasActiveRun && execution?.dataTruncated && (
 				<Tooltip>
-					<TooltipTrigger asChild>
-						<Badge variant="warning" className="w-fit gap-1">
-							<AlertTriangle className="size-3" aria-hidden />
-							Results truncated
-						</Badge>
+					<TooltipTrigger
+						render={<Badge variant="warning" className="w-fit gap-1" />}
+					>
+						<AlertTriangle className="size-3" aria-hidden />
+						Results truncated
 					</TooltipTrigger>
 					<TooltipContent side="top" className="max-w-xs">
 						At least one step stopped scanning at the{" "}

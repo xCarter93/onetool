@@ -276,7 +276,7 @@ export function PaymentScheduleTab({
 													"cancelled" && (
 													<div className="flex gap-2 pt-3 border-t border-border/50">
 														<Button
-															intent="outline"
+															variant="outline"
 															size="sm"
 															className="flex-1"
 															onClick={() =>
@@ -290,7 +290,7 @@ export function PaymentScheduleTab({
 															Copy Link
 														</Button>
 														<Button
-															intent="outline"
+															variant="outline"
 															size="sm"
 															className="flex-1"
 															onClick={() => {

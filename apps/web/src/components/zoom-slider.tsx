@@ -43,9 +43,9 @@ export function ZoomSlider({
         )}
       >
         <Button
-          intent="plain"
-          size="sq-sm"
-          onPress={() => zoomOut({ duration: 300 })}
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => zoomOut({ duration: 300 })}
         >
           <Minus className="h-4 w-4" />
         </Button>
@@ -58,12 +58,14 @@ export function ZoomSlider({
           min={minZoom}
           max={maxZoom}
           step={0.01}
-          onValueChange={(values) => zoomTo(values[0])}
+          onValueChange={(values) =>
+            zoomTo(Array.isArray(values) ? values[0] : values)
+          }
         />
         <Button
-          intent="plain"
-          size="sq-sm"
-          onPress={() => zoomIn({ duration: 300 })}
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => zoomIn({ duration: 300 })}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -75,16 +77,16 @@ export function ZoomSlider({
             ? "w-[140px] min-w-10"
             : "h-[40px] w-[40px]",
         )}
-        intent="plain"
+        variant="ghost"
         size="sm"
-        onPress={() => zoomTo(1, { duration: 300 })}
+        onClick={() => zoomTo(1, { duration: 300 })}
       >
         {(100 * zoom).toFixed(0)}%
       </Button>
       <Button
-        intent="plain"
-        size="sq-sm"
-        onPress={() => fitView({ duration: 300 })}
+        variant="ghost"
+        size="icon-sm"
+        onClick={() => fitView({ duration: 300 })}
       >
         <Maximize className="h-4 w-4" />
       </Button>

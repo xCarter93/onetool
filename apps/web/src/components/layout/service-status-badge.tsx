@@ -59,30 +59,32 @@ export function ServiceStatusBadge() {
 
 	return (
 		<Popover>
-			<PopoverTrigger asChild>
-				<button
-					className={cn(
-						"inline-flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-						theme.pill
-					)}
-				>
-					<span className="relative flex size-2">
-						<span
-							className={cn(
-								"absolute inline-flex h-full w-full rounded-full opacity-75",
-								theme.dot,
-								health === "operational" && "motion-safe:animate-ping"
-							)}
-						/>
-						<span
-							className={cn(
-								"relative inline-flex size-2 rounded-full",
-								theme.dot
-							)}
-						/>
-					</span>
-					<span className="whitespace-nowrap">{theme.label}</span>
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						className={cn(
+							"inline-flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+							theme.pill
+						)}
+					/>
+				}
+			>
+				<span className="relative flex size-2">
+					<span
+						className={cn(
+							"absolute inline-flex h-full w-full rounded-full opacity-75",
+							theme.dot,
+							health === "operational" && "motion-safe:animate-ping"
+						)}
+					/>
+					<span
+						className={cn(
+							"relative inline-flex size-2 rounded-full",
+							theme.dot
+						)}
+					/>
+				</span>
+				<span className="whitespace-nowrap">{theme.label}</span>
 			</PopoverTrigger>
 			<PopoverContent
 				align="center"

@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 
 interface EditorTopBarProps {
 	name: string;
@@ -41,9 +41,9 @@ export function EditorTopBar({
 		// below the card's top edge (see .header-notch in globals.css).
 		<div className="flex h-16 items-center gap-3 border-b border-border bg-background px-6 md:h-[84px] md:pt-5">
 			<Button
-				intent="outline"
-				size="sq-md"
-				onPress={onBack}
+				variant="outline"
+				size="icon"
+				onClick={onBack}
 				aria-label="Back to automations"
 			>
 				<ArrowLeft className="h-4 w-4" />
@@ -69,8 +69,8 @@ export function EditorTopBar({
 			</Badge>
 
 			<div className="ml-auto flex items-center gap-2">
-				<Button intent="outline" onPress={onSave} isPending={isSaving}>
-					<Save className="h-4 w-4" />
+				<Button variant="outline" onClick={onSave} disabled={isSaving}>
+					<Save className={isSaving ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
 					Save
 				</Button>
 			</div>

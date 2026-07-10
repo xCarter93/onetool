@@ -349,7 +349,7 @@ export function OverviewTab({
 						<div className="flex gap-2 rounded-lg bg-gray-50/80 dark:bg-white/5 p-1 ring-1 ring-inset ring-gray-200/70 dark:ring-white/10 shadow-sm">
 							<Button
 								type="button"
-								intent="outline"
+								variant="outline"
 								size="sm"
 								onClick={() => handleCalendarNavigation("prev")}
 							>
@@ -369,7 +369,7 @@ export function OverviewTab({
 							</Button>
 							<Button
 								type="button"
-								intent="outline"
+								variant="outline"
 								size="sm"
 								onClick={() => handleCalendarNavigation("next")}
 							>

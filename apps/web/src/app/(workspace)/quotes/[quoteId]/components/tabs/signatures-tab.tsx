@@ -12,7 +12,12 @@ import { Separator } from "@/components/ui/separator";
 import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
 import { StyledListProvider } from "@/components/ui/styled/styled-list";
 import { SignatureProgressBar } from "@/app/(workspace)/quotes/components/signature-progress-bar";
-import Accordion from "@/components/ui/accordion";
+import {
+	Accordion,
+	AccordionItem,
+	AccordionTrigger,
+	AccordionContent,
+} from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Users, User, Mail, FileSignature } from "lucide-react";
 
@@ -364,8 +369,8 @@ export function SignaturesTab({
 				<Separator className="mb-4" />
 
 				{hasSignatures ? (
-					<Accordion
-						items={documentsWithSignatures.map((doc) => {
+					<Accordion>
+						{documentsWithSignatures.map((doc) => {
 							const lastUpdate =
 								doc.boldsign.completedAt ||
 								doc.boldsign.declinedAt ||
@@ -394,104 +399,108 @@ export function SignaturesTab({
 								minute: "2-digit",
 							});
 
-							return {
-								title: `Version ${doc.version} - ${doc.boldsign.status === "Draft" ? "Preparing" : doc.boldsign.status} - ${formattedDate}`,
-								content: (
-									<div className="space-y-4">
-										<div className="flex items-center gap-3 pb-3 border-b border-border">
-											<Badge
-												variant="outline"
-												className="text-xs"
-											>
-												v{doc.version}
-											</Badge>
-											<Badge
-												variant={statusVariant}
-												className="text-xs"
-											>
-												{doc.boldsign.status === "Draft"
-													? "Preparing"
-													: doc.boldsign.status}
-											</Badge>
-											<span className="text-xs text-muted-foreground ml-auto">
-												Last updated: {formattedDate}
-											</span>
-										</div>
+							return (
+								<AccordionItem key={doc._id} value={doc._id}>
+									<AccordionTrigger>
+										{`Version ${doc.version} - ${doc.boldsign.status === "Draft" ? "Preparing" : doc.boldsign.status} - ${formattedDate}`}
+									</AccordionTrigger>
+									<AccordionContent>
+										<div className="space-y-4">
+											<div className="flex items-center gap-3 pb-3 border-b border-border">
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
+													v{doc.version}
+												</Badge>
+												<Badge
+													variant={statusVariant}
+													className="text-xs"
+												>
+													{doc.boldsign.status === "Draft"
+														? "Preparing"
+														: doc.boldsign.status}
+												</Badge>
+												<span className="text-xs text-muted-foreground ml-auto">
+													Last updated: {formattedDate}
+												</span>
+											</div>
 
-										<SignatureProgressBar
-											status={doc.boldsign.status}
-											events={[
-												{
-													type: "Sent",
-													timestamp:
-														doc.boldsign.sentAt,
-												},
-												{
-													type: "Viewed",
-													timestamp:
-														doc.boldsign.viewedAt,
-												},
-												{
-													type: "Signed",
-													timestamp:
-														doc.boldsign.signedAt,
-												},
-												{
-													type: doc.boldsign.status,
-													timestamp:
-														doc.boldsign
-															.completedAt ||
-														doc.boldsign
-															.declinedAt ||
-														doc.boldsign
-															.revokedAt ||
-														doc.boldsign
-															.expiredAt,
-												},
-											]}
-										/>
+											<SignatureProgressBar
+												status={doc.boldsign.status}
+												events={[
+													{
+														type: "Sent",
+														timestamp:
+															doc.boldsign.sentAt,
+													},
+													{
+														type: "Viewed",
+														timestamp:
+															doc.boldsign.viewedAt,
+													},
+													{
+														type: "Signed",
+														timestamp:
+															doc.boldsign.signedAt,
+													},
+													{
+														type: doc.boldsign.status,
+														timestamp:
+															doc.boldsign
+																.completedAt ||
+															doc.boldsign
+																.declinedAt ||
+															doc.boldsign
+																.revokedAt ||
+															doc.boldsign
+																.expiredAt,
+													},
+												]}
+											/>
 
-										<div className="pt-4 border-t border-border">
-											<p className="font-medium mb-3 text-sm text-foreground">
-												Sent to:
-											</p>
-											<ul className="space-y-2">
-												{doc.boldsign.sentTo.map(
-													(recipient, i) => (
-														<li
-															key={i}
-															className="flex items-center justify-between text-sm"
-														>
-															<span className="text-muted-foreground">
-																<span className="font-medium text-foreground">
-																	{
-																		recipient.name
-																	}
-																</span>{" "}
-																(
-																{
-																	recipient.email
-																}
-																)
-															</span>
-															<Badge
-																variant="outline"
-																className="text-xs"
+											<div className="pt-4 border-t border-border">
+												<p className="font-medium mb-3 text-sm text-foreground">
+													Sent to:
+												</p>
+												<ul className="space-y-2">
+													{doc.boldsign.sentTo.map(
+														(recipient, i) => (
+															<li
+																key={i}
+																className="flex items-center justify-between text-sm"
 															>
-																{
-																	recipient.signerType
-																}
-															</Badge>
-														</li>
-													)
-												)}
-											</ul>
+																<span className="text-muted-foreground">
+																	<span className="font-medium text-foreground">
+																		{
+																			recipient.name
+																		}
+																	</span>{" "}
+																	(
+																	{
+																		recipient.email
+																	}
+																	)
+																</span>
+																<Badge
+																	variant="outline"
+																	className="text-xs"
+																>
+																	{
+																		recipient.signerType
+																	}
+																</Badge>
+															</li>
+														)
+													)}
+												</ul>
+											</div>
 										</div>
-									</div>
-								),
-							};
+									</AccordionContent>
+								</AccordionItem>
+							);
 						})}
-					/>
+					</Accordion>
 				) : (
 					<div className="flex flex-col items-center justify-center py-12 text-center">
 						<div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mb-3">

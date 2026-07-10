@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Send, Loader2, Globe, GlobeLock, Copy, Check, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledBadge } from "@/components/ui/styled/styled-badge";
+import { Badge } from "@/components/reui/badge";
 import { cn } from "@/lib/utils";
 import { useCommunityPageForm, SECTION_LIST } from "./use-community-page-form";
 import { MainSettingsSection } from "./sections/main-settings-section";
@@ -88,16 +88,16 @@ export default function CommunityEditContent() {
 				<div className="mx-auto px-4 sm:px-6 lg:px-8 py-4">
 					<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 						<div className="flex items-center gap-4">
-							<Button intent="outline" size="sq-sm" onPress={() => router.push("/community")} aria-label="Back to Community">
+							<Button variant="outline" size="icon-sm" onClick={() => router.push("/community")} aria-label="Back to Community">
 								<ArrowLeft className="size-4" />
 							</Button>
 							<div>
 								<div className="flex items-center gap-3">
 									<h1 className="text-xl font-bold text-fg">Edit Page</h1>
 									{mainSettings.isPublic ? (
-										<StyledBadge variant="success"><Globe className="size-3" />Live</StyledBadge>
+										<Badge variant="success" className="transition-all duration-200"><Globe className="size-3" />Live</Badge>
 									) : (
-										<StyledBadge variant="warning"><GlobeLock className="size-3" />Private</StyledBadge>
+										<Badge variant="warning" className="transition-all duration-200"><GlobeLock className="size-3" />Private</Badge>
 									)}
 								</div>
 								{mainSettings.isPublic && (

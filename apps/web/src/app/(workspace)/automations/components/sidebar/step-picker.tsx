@@ -176,9 +176,9 @@ export function StepPicker({ onSelect, onClose, inLoop = false }: StepPickerProp
 				</p>
 				{onClose && (
 					<Button
-						intent="plain"
-						size="sq-xs"
-						onPress={onClose}
+						variant="ghost"
+						size="icon-xs"
+						onClick={onClose}
 						className="absolute top-0 right-0"
 						aria-label="Close sidebar"
 					>

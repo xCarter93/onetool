@@ -460,25 +460,23 @@ export function MentionInput({
 					if (!open) setShowUserList(false);
 				}}
 			>
-				<PopoverTrigger asChild>
-					<div className="relative">
-						{/* Plain contenteditable - shows @[username] format */}
-						<div
-							ref={contentEditableRef}
-							contentEditable
-							onInput={handleInput}
-							className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-auto whitespace-pre-wrap break-words empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground"
-							style={{ minHeight: "100px" }}
-							suppressContentEditableWarning
-							data-placeholder="Type @ to mention a team member..."
-						/>
-					</div>
+				<PopoverTrigger render={<div className="relative" />}>
+					{/* Plain contenteditable - shows @[username] format */}
+					<div
+						ref={contentEditableRef}
+						contentEditable
+						onInput={handleInput}
+						className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-auto whitespace-pre-wrap break-words empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground"
+						style={{ minHeight: "100px" }}
+						suppressContentEditableWarning
+						data-placeholder="Type @ to mention a team member..."
+					/>
 				</PopoverTrigger>
 				<PopoverContent
 					align="start"
 					side="bottom"
 					className="w-80 p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700"
-					onOpenAutoFocus={(e) => e.preventDefault()}
+					initialFocus={false}
 				>
 					<div className="max-h-64 overflow-y-auto">
 						{filteredUsers.map((user) => (

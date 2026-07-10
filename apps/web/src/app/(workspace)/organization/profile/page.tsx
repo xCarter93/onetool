@@ -84,10 +84,10 @@ function SettingsSaveFooter() {
 			</div>
 			<div className="flex items-center gap-2">
 				<Button
-					intent="outline"
+					variant="outline"
 					size="sm"
-					onPress={discard}
-					isDisabled={!dirty || saving}
+					onClick={discard}
+					disabled={!dirty || saving}
 				>
 					Discard
 				</Button>

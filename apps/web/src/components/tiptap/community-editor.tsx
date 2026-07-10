@@ -435,20 +435,22 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 
 	return (
 		<Popover open={open} onOpenChange={handleOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					className={cn(
-						"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-						"text-muted-fg hover:text-fg hover:bg-muted/50",
-						isActive && "bg-muted text-fg"
-					)}
-					aria-label="Add Link"
-					aria-pressed={isActive}
-					title="Add Link"
-				>
-					<LinkIcon className="size-4" />
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						type="button"
+						className={cn(
+							"inline-flex items-center justify-center size-8 rounded-md transition-colors",
+							"text-muted-fg hover:text-fg hover:bg-muted/50",
+							isActive && "bg-muted text-fg"
+						)}
+						aria-label="Add Link"
+						aria-pressed={isActive}
+						title="Add Link"
+					/>
+				}
+			>
+				<LinkIcon className="size-4" />
 			</PopoverTrigger>
 			<PopoverContent className="w-80" align="start">
 				<form onSubmit={handleSubmit} className="space-y-4">
@@ -519,18 +521,20 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					className={cn(
-						"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-						"text-muted-fg hover:text-fg hover:bg-muted/50"
-					)}
-					aria-label="Add Image"
-					title="Add Image"
-				>
-					<ImageIcon className="size-4" />
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						type="button"
+						className={cn(
+							"inline-flex items-center justify-center size-8 rounded-md transition-colors",
+							"text-muted-fg hover:text-fg hover:bg-muted/50"
+						)}
+						aria-label="Add Image"
+						title="Add Image"
+					/>
+				}
+			>
+				<ImageIcon className="size-4" />
 			</PopoverTrigger>
 			<PopoverContent className="w-80" align="start">
 				<form onSubmit={handleSubmit} className="space-y-4">

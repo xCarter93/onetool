@@ -168,9 +168,9 @@ export default function ReportViewPage() {
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-3">
 					<Button
-						intent="plain"
-						size="sq-sm"
-						onPress={() => router.push("/reports")}
+						variant="ghost"
+						size="icon-sm"
+						onClick={() => router.push("/reports")}
 						aria-label="Back to reports"
 					>
 						<ArrowLeft className="h-4 w-4" />

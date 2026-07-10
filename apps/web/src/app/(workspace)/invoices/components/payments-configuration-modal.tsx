@@ -253,30 +253,32 @@ function PaymentRow({
 								Due Date
 							</label>
 							<Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-								<PopoverTrigger asChild>
-									<button
-										type="button"
-										disabled={payment.isPaid}
+								<PopoverTrigger
+									render={
+										<button
+											type="button"
+											disabled={payment.isPaid}
+											className={cn(
+												"flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors",
+												"focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+												"hover:bg-muted/50",
+												payment.isPaid && "cursor-not-allowed opacity-60"
+											)}
+										/>
+									}
+								>
+									<CalendarDays className="h-4 w-4 text-muted-foreground" />
+									<span
 										className={cn(
-											"flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors",
-											"focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-											"hover:bg-muted/50",
-											payment.isPaid && "cursor-not-allowed opacity-60"
+											payment.dueDate
+												? "text-foreground"
+												: "text-muted-foreground"
 										)}
 									>
-										<CalendarDays className="h-4 w-4 text-muted-foreground" />
-										<span
-											className={cn(
-												payment.dueDate
-													? "text-foreground"
-													: "text-muted-foreground"
-											)}
-										>
-											{payment.dueDate
-												? formatDateForDisplay(payment.dueDate)
-												: "Select date"}
-										</span>
-									</button>
+										{payment.dueDate
+											? formatDateForDisplay(payment.dueDate)
+											: "Select date"}
+									</span>
 								</PopoverTrigger>
 								<PopoverContent className="w-auto p-0 z-[10000]" align="start">
 									<Calendar

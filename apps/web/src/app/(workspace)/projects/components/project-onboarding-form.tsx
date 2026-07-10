@@ -139,16 +139,18 @@ function DateFieldsSection({
 					<Field>
 						<FieldLabel>Start Date</FieldLabel>
 						<Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
-							<PopoverTrigger asChild>
-								<Button
-									intent="outline"
-									className="w-full justify-start text-left font-normal"
-								>
-									<CalendarIcon className="mr-2 h-4 w-4" />
-									{field.state.value
-										? formatDisplayDate(field.state.value)
-										: "Select start date"}
-								</Button>
+							<PopoverTrigger
+								render={
+									<Button
+										variant="outline"
+										className="w-full justify-start text-left font-normal"
+									/>
+								}
+							>
+								<CalendarIcon className="mr-2 h-4 w-4" />
+								{field.state.value
+									? formatDisplayDate(field.state.value)
+									: "Select start date"}
 							</PopoverTrigger>
 							<PopoverContent
 								className="w-auto p-0 bg-white dark:bg-gray-950"
@@ -178,16 +180,18 @@ function DateFieldsSection({
 						<Field>
 							<FieldLabel>End Date</FieldLabel>
 							<Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
-								<PopoverTrigger asChild>
-									<Button
-										intent="outline"
-										className="w-full justify-start text-left font-normal"
-									>
-										<CalendarIcon className="mr-2 h-4 w-4" />
-										{field.state.value
-											? formatDisplayDate(field.state.value)
-											: "Select end date"}
-									</Button>
+								<PopoverTrigger
+									render={
+										<Button
+											variant="outline"
+											className="w-full justify-start text-left font-normal"
+										/>
+									}
+								>
+									<CalendarIcon className="mr-2 h-4 w-4" />
+									{field.state.value
+										? formatDisplayDate(field.state.value)
+										: "Select end date"}
 								</PopoverTrigger>
 								<PopoverContent
 									className="w-auto p-0 bg-white dark:bg-gray-950"

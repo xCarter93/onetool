@@ -96,13 +96,13 @@ function DataGridColumnHeader<TData, TValue>({
   const headerButton = () => {
     return (
       <Button
-        intent="plain"
+        variant="ghost"
         className={cn(
           'text-secondary-foreground/80 rounded-md font-normal -ms-2 px-2 h-7 hover:bg-secondary data-[state=open]:bg-secondary hover:text-foreground data-[state=open]:text-foreground',
           className,
         )}
-        isDisabled={isLoading || recordCount === 0}
-        onPress={() => {
+        disabled={isLoading || recordCount === 0}
+        onClick={() => {
           const isSorted = column.getIsSorted();
           if (isSorted === 'asc') {
             column.toggleSorting(true);
@@ -131,10 +131,10 @@ function DataGridColumnHeader<TData, TValue>({
   const headerPin = () => {
     return (
       <Button
-        size="sq-sm"
-        intent="plain"
+        size="icon-sm"
+        variant="ghost"
         className="-me-1 size-7 rounded-md"
-        onPress={() => column.pin(false)}
+        onClick={() => column.pin(false)}
         aria-label={`Unpin ${title} column`}
       >
         <PinOff className="size-3.5! opacity-50!" aria-hidden="true" />
@@ -146,7 +146,7 @@ function DataGridColumnHeader<TData, TValue>({
     return (
       <div className="flex items-center h-full gap-1.5 justify-between">
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>{headerButton()}</DropdownMenuTrigger>
+          <DropdownMenuTrigger render={headerButton()} />
           <DropdownMenuContent className="w-40" align="start">
             {filter && <DropdownMenuLabel>{filter}</DropdownMenuLabel>}
 

@@ -61,19 +61,19 @@ function ReportRow({
 					className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
 				>
 					<Button
-						intent="plain"
-						size="sq-sm"
+						variant="ghost"
+						size="icon-sm"
 						aria-label="Duplicate report"
-						onPress={onDuplicate}
+						onClick={onDuplicate}
 					>
 						<Copy className="h-4 w-4" />
 					</Button>
 					<Button
-						intent="plain"
-						size="sq-sm"
+						variant="ghost"
+						size="icon-sm"
 						aria-label="Delete report"
 						className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950"
-						onPress={onDelete}
+						onClick={onDelete}
 					>
 						<Trash2 className="h-4 w-4" />
 					</Button>

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledBadge } from "@/components/ui/styled/styled-badge";
+import { Badge } from "@/components/reui/badge";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { MAX_GALLERY_IMAGES, type GalleryItem } from "../use-community-page-form";
 
@@ -46,9 +46,12 @@ export const GallerySection = React.memo(function GallerySection({
 					<h2 className="text-lg font-semibold text-fg">
 						Image Gallery
 					</h2>
-					<StyledBadge variant={galleryItems.length >= MAX_GALLERY_IMAGES ? "warning" : "default"}>
+					<Badge
+						variant={galleryItems.length >= MAX_GALLERY_IMAGES ? "warning" : "default"}
+						className="transition-all duration-200"
+					>
 						{galleryItems.length}/{MAX_GALLERY_IMAGES}
-					</StyledBadge>
+					</Badge>
 				</div>
 				{galleryItems.length > 0 && galleryItems.length < MAX_GALLERY_IMAGES && (
 					<StyledButton

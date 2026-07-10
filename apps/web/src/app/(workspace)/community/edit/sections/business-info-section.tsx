@@ -340,7 +340,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 								<Select
 									value={day.open}
 									onValueChange={(v) =>
-										updateSchedule(index, { open: v })
+										updateSchedule(index, { open: v ?? day.open })
 									}
 									disabled={day.isClosed}
 								>
@@ -358,7 +358,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 								<Select
 									value={day.close}
 									onValueChange={(v) =>
-										updateSchedule(index, { close: v })
+										updateSchedule(index, { close: v ?? day.close })
 									}
 									disabled={day.isClosed}
 								>

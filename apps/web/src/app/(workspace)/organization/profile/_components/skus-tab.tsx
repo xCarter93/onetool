@@ -307,20 +307,20 @@ export function SKUsTab() {
 			<td className="px-4 py-3">
 				<div className="flex justify-end gap-1">
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={handleSave}
-						isDisabled={isSaving}
+						variant="outline"
+						size="icon-sm"
+						onClick={handleSave}
+						disabled={isSaving}
 						aria-label={isSaving ? "Saving..." : "Save SKU"}
 						className="border-emerald-500/25 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500/40 hover:bg-emerald-500/15 dark:text-emerald-400"
 					>
 						<Check className="h-3 w-3" />
 					</Button>
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={closeForm}
-						isDisabled={isSaving}
+						variant="outline"
+						size="icon-sm"
+						onClick={closeForm}
+						disabled={isSaving}
 						aria-label="Cancel"
 						className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 					>
@@ -469,9 +469,9 @@ export function SKUsTab() {
 													<div className="flex justify-end gap-1">
 														{sku.isActive ? (
 															<Button
-																intent="outline"
-																size="sq-sm"
-																onPress={() => handleDeactivate(sku._id)}
+																variant="outline"
+																size="icon-sm"
+																onClick={() => handleDeactivate(sku._id)}
 																aria-label="Deactivate SKU"
 																className="hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400"
 															>
@@ -479,9 +479,9 @@ export function SKUsTab() {
 															</Button>
 														) : (
 															<Button
-																intent="outline"
-																size="sq-sm"
-																onPress={() => handleReactivate(sku._id)}
+																variant="outline"
+																size="icon-sm"
+																onClick={() => handleReactivate(sku._id)}
 																aria-label="Reactivate SKU"
 																className="hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
 															>
@@ -489,18 +489,18 @@ export function SKUsTab() {
 															</Button>
 														)}
 														<Button
-															intent="outline"
-															size="sq-sm"
-															onPress={() => handleEdit(sku)}
+															variant="outline"
+															size="icon-sm"
+															onClick={() => handleEdit(sku)}
 															aria-label="Edit SKU"
 															className="hover:bg-primary/10 hover:text-primary"
 														>
 															<Pencil className="h-3 w-3" />
 														</Button>
 														<Button
-															intent="outline"
-															size="sq-sm"
-															onPress={() => handleDelete(sku._id)}
+															variant="outline"
+															size="icon-sm"
+															onClick={() => handleDelete(sku._id)}
 															aria-label="Delete SKU"
 															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 														>

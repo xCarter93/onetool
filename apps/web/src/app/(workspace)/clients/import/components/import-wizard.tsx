@@ -244,10 +244,8 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 		if (reviewAction.hasValidationErrors) {
 			return (
 				<Tooltip>
-					<TooltipTrigger asChild>
-						<span className="inline-flex">
-							<StyledButton label={label} intent="primary" disabled />
-						</span>
+					<TooltipTrigger render={<span className="inline-flex" />}>
+						<StyledButton label={label} intent="primary" disabled />
 					</TooltipTrigger>
 					<TooltipContent>
 						{reviewAction.validationErrorCount} validation error

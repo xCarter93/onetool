@@ -370,7 +370,10 @@ export function FormulaEditorModal({
 							<div className="flex items-center justify-between gap-2">
 								<span className="text-xs font-medium text-muted-foreground">Preview</span>
 								{sampleRecords.length > 1 && (
-									<Select value={selectedSample?.entityId} onValueChange={setSampleId}>
+									<Select
+										value={selectedSample?.entityId}
+										onValueChange={(value) => setSampleId(value ?? undefined)}
+									>
 										<SelectTrigger className="h-7 w-40 text-xs">
 											<SelectValue placeholder="Sample record" />
 										</SelectTrigger>
@@ -471,9 +474,9 @@ export function FormulaEditorModal({
 					<div>
 						{formula && onDelete && (
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
-								onPress={handleDelete}
+								onClick={handleDelete}
 								className="text-destructive"
 							>
 								<Trash2 className="h-3.5 w-3.5" />
@@ -482,18 +485,18 @@ export function FormulaEditorModal({
 						)}
 					</div>
 					<div className="flex items-center gap-2">
-						<Button intent="outline" size="sm" onPress={() => onOpenChange(false)}>
+						<Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
 							Cancel
 						</Button>
 						<Button
-							intent="primary"
+							variant="default"
 							size="sm"
-							onPress={handleSave}
+							onClick={handleSave}
 							// parseError is debounced (250ms) and only drives the inline
 							// message; handleSave re-parses synchronously and blocks an
 							// invalid save, so gating disabled on it would spuriously
 							// disable Save right after a syntax error is fixed.
-							isDisabled={!name.trim()}
+							disabled={!name.trim()}
 						>
 							Save
 						</Button>

@@ -95,9 +95,9 @@ export function FiltersWithClear<T = unknown>({
 
 			{showClearButton && hasActiveFilters && (
 				<Button
-					intent="outline"
-					size={size}
-					isCircle={radius === "full"}
+					variant="outline"
+					size={size === "md" ? "default" : size}
+					className={radius === "full" ? "rounded-full" : undefined}
 					onClick={handleClear}
 				>
 					{clearButtonIcon} {clearButtonText}

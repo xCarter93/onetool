@@ -233,25 +233,25 @@ const createColumns = (
 				onClick={(e) => e.stopPropagation()}
 			>
 				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() => onPreview(row.original._id)}
+					variant="outline"
+					size="icon-sm"
+					onClick={() => onPreview(row.original._id)}
 					aria-label={`Preview project ${row.original.title}`}
 				>
 					<Eye className="size-4" />
 				</Button>
 				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() => router.push(`/projects/${row.original._id}`)}
+					variant="outline"
+					size="icon-sm"
+					onClick={() => router.push(`/projects/${row.original._id}`)}
 					aria-label={`Open project ${row.original.title}`}
 				>
 					<ExternalLink className="size-4" />
 				</Button>
 				<Button
-					intent="outline"
-					size="sq-sm"
-					onPress={() => onDelete(row.original._id, row.original.title)}
+					variant="outline"
+					size="icon-sm"
+					onClick={() => onDelete(row.original._id, row.original.title)}
 					className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
 					aria-label={`Delete project ${row.original.title}`}
 				>
@@ -835,10 +835,10 @@ export default function ProjectsPage() {
 						{viewMode === "table" ? (
 							<div className="flex items-center gap-2">
 								<Button
-									intent="outline"
-									size="sq-sm"
-									onPress={() => table.previousPage()}
-									isDisabled={!table.getCanPreviousPage()}
+									variant="outline"
+									size="icon-sm"
+									onClick={() => table.previousPage()}
+									disabled={!table.getCanPreviousPage()}
 									aria-label="Previous page"
 								>
 									<ChevronLeft className="size-4" />
@@ -848,10 +848,10 @@ export default function ProjectsPage() {
 									{Math.max(table.getPageCount(), 1)}
 								</div>
 								<Button
-									intent="outline"
-									size="sq-sm"
-									onPress={() => table.nextPage()}
-									isDisabled={!table.getCanNextPage()}
+									variant="outline"
+									size="icon-sm"
+									onClick={() => table.nextPage()}
+									disabled={!table.getCanNextPage()}
 									aria-label="Next page"
 								>
 									<ChevronRight className="size-4" />

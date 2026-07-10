@@ -263,16 +263,16 @@ export function WorkflowDrawer({
 
 				<div className="flex justify-end gap-2">
 					<Button
-						intent="outline"
+						variant="outline"
 						size="sm"
-						onPress={() => setDeleteTarget(null)}
+						onClick={() => setDeleteTarget(null)}
 					>
 						Cancel
 					</Button>
 					<Button
-						intent="destructive"
+						variant="destructive"
 						size="sm"
-						onPress={confirmDeleteFormula}
+						onClick={confirmDeleteFormula}
 					>
 						Delete formula
 					</Button>
@@ -285,9 +285,9 @@ export function WorkflowDrawer({
 		return (
 			<div className="absolute left-3 top-3 z-10 flex w-10 flex-col items-center rounded-xl border border-border bg-card py-1.5 shadow-sm">
 				<Button
-					intent="plain"
-					size="sq-sm"
-					onPress={onToggle}
+					variant="ghost"
+					size="icon-sm"
+					onClick={onToggle}
 					aria-label="Open workflow panel"
 				>
 					<PanelLeft className="h-4 w-4" />
@@ -321,9 +321,9 @@ export function WorkflowDrawer({
 			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
 				<span className="text-sm font-semibold">Workflow</span>
 				<Button
-					intent="plain"
-					size="sq-sm"
-					onPress={onToggle}
+					variant="ghost"
+					size="icon-sm"
+					onClick={onToggle}
 					aria-label="Collapse workflow panel"
 				>
 					<PanelLeftClose className="h-4 w-4" />
@@ -447,10 +447,10 @@ export function WorkflowDrawer({
 								Resources
 							</span>
 							<Button
-								intent="plain"
+								variant="ghost"
 								size="xs"
-								onPress={() => setFormulaModal({ formula: null })}
-								isDisabled={formulas.length >= MAX_FORMULAS}
+								onClick={() => setFormulaModal({ formula: null })}
+								disabled={formulas.length >= MAX_FORMULAS}
 								className="text-muted-foreground"
 							>
 								<Plus className="h-3 w-3" />

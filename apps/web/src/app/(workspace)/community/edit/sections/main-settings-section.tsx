@@ -121,17 +121,17 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 								onClick={(e) => e.stopPropagation()}
 							>
 								<Button
-									intent="secondary"
+									variant="secondary"
 									size="sm"
-									onPress={() => bannerInputRef.current?.click()}
+									onClick={() => bannerInputRef.current?.click()}
 								>
 									<Upload className="size-4 mr-2" />
 									Replace
 								</Button>
 								<Button
-									intent="destructive"
+									variant="destructive"
 									size="sm"
-									onPress={handleDeleteBanner}
+									onClick={handleDeleteBanner}
 								>
 									<Trash2 className="size-4 mr-2" />
 									Remove
@@ -204,19 +204,19 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 					</div>
 					<div className="flex flex-col gap-2">
 						<Button
-							intent="outline"
+							variant="outline"
 							size="sm"
-							onPress={() => avatarInputRef.current?.click()}
-							isDisabled={isUploadingAvatar}
+							onClick={() => avatarInputRef.current?.click()}
+							disabled={isUploadingAvatar}
 						>
 							<Upload className="size-4 mr-2" />
 							Upload Avatar
 						</Button>
 						{avatarStorageId && (
 							<Button
-								intent="plain"
+								variant="ghost"
 								size="sm"
-								onPress={handleDeleteAvatar}
+								onClick={handleDeleteAvatar}
 							>
 								<Trash2 className="size-4 mr-2" />
 								Use Organization Logo

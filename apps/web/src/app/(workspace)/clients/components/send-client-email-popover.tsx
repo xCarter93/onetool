@@ -99,7 +99,7 @@ export function SendClientEmailPopover({
 
 	return (
 		<Popover open={isOpen} onOpenChange={onOpenChange}>
-			<PopoverTrigger asChild>{children}</PopoverTrigger>
+			<PopoverTrigger render={children as React.ReactElement} />
 			<PopoverContent
 				align="end"
 				side="top"

@@ -47,26 +47,28 @@ export function PlanBadge() {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					className={`group inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold shadow-sm ring-1 transition-colors duration-200 ${
-						hasPremiumAccess
-							? "bg-warning/15 hover:bg-warning/20 ring-warning/30 hover:ring-warning/50 text-warning-foreground"
-							: "text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
-					}`}
-				>
-					{hasPremiumAccess ? (
-						<Crown className="size-3.5 text-warning drop-shadow-sm" />
-					) : (
-						<Users className="size-3.5" />
-					)}
-					<span className="font-bold tracking-tight">{planName}</span>
-					{hasPremiumAccess && (
-						<span className="rounded bg-warning/20 px-1 py-px text-[9px] font-semibold text-warning-foreground ring-1 ring-warning/30">
-							PRO
-						</span>
-					)}
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						className={`group inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold shadow-sm ring-1 transition-colors duration-200 ${
+							hasPremiumAccess
+								? "bg-warning/15 hover:bg-warning/20 ring-warning/30 hover:ring-warning/50 text-warning-foreground"
+								: "text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
+						}`}
+					/>
+				}
+			>
+				{hasPremiumAccess ? (
+					<Crown className="size-3.5 text-warning drop-shadow-sm" />
+				) : (
+					<Users className="size-3.5" />
+				)}
+				<span className="font-bold tracking-tight">{planName}</span>
+				{hasPremiumAccess && (
+					<span className="rounded bg-warning/20 px-1 py-px text-[9px] font-semibold text-warning-foreground ring-1 ring-warning/30">
+						PRO
+					</span>
+				)}
 			</PopoverTrigger>
 			<PopoverContent
 				className="w-80 p-0 bg-background! backdrop-blur-xl border-border shadow-xl"

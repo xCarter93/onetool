@@ -236,7 +236,7 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Status</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "status" && e.stopPropagation()}>
 						{editingField === "status" ? (
-							<StyledSelect value={editValue} onValueChange={setEditValue}>
+							<StyledSelect value={editValue} onValueChange={(value) => setEditValue(value as string)}>
 								<StyledSelectTrigger className="h-8">
 									<SelectValue />
 								</StyledSelectTrigger>
@@ -272,7 +272,7 @@ export function ProjectDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Project Type</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "projectType" && e.stopPropagation()}>
 						{editingField === "projectType" ? (
-							<StyledSelect value={editValue} onValueChange={setEditValue}>
+							<StyledSelect value={editValue} onValueChange={(value) => setEditValue(value as string)}>
 								<StyledSelectTrigger className="h-8">
 									<SelectValue />
 								</StyledSelectTrigger>
@@ -306,10 +306,10 @@ export function ProjectDetailSidebar({
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "startDate" && e.stopPropagation()}>
 						{editingField === "startDate" ? (
 							<Popover open={true} onOpenChange={(open) => { if (!open) cancelEditing(); }}>
-								<PopoverTrigger asChild>
-									<button className="text-sm text-primary hover:text-primary/80">
-										{editDateValue ? formatDate(editDateValue.getTime()) : "Select date..."}
-									</button>
+								<PopoverTrigger
+									render={<button className="text-sm text-primary hover:text-primary/80" />}
+								>
+									{editDateValue ? formatDate(editDateValue.getTime()) : "Select date..."}
 								</PopoverTrigger>
 								<PopoverContent className="w-auto p-0" align="start">
 									<Calendar
@@ -342,10 +342,10 @@ export function ProjectDetailSidebar({
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "endDate" && e.stopPropagation()}>
 						{editingField === "endDate" ? (
 							<Popover open={true} onOpenChange={(open) => { if (!open) cancelEditing(); }}>
-								<PopoverTrigger asChild>
-									<button className="text-sm text-primary hover:text-primary/80">
-										{editDateValue ? formatDate(editDateValue.getTime()) : "Select date..."}
-									</button>
+								<PopoverTrigger
+									render={<button className="text-sm text-primary hover:text-primary/80" />}
+								>
+									{editDateValue ? formatDate(editDateValue.getTime()) : "Select date..."}
 								</PopoverTrigger>
 								<PopoverContent className="w-auto p-0" align="start">
 									<Calendar

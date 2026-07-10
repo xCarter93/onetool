@@ -287,7 +287,7 @@ export function ClientDetailSidebar({
 						{editingField === "status" ? (
 							<StyledSelect
 								value={editValue}
-								onValueChange={setEditValue}
+								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
 							>
 								<StyledSelectTrigger className="h-8">
 									<SelectValue />
@@ -326,7 +326,7 @@ export function ClientDetailSidebar({
 						{editingField === "leadSource" ? (
 							<StyledSelect
 								value={editValue}
-								onValueChange={setEditValue}
+								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
 							>
 								<StyledSelectTrigger className="h-8">
 									<SelectValue placeholder="Select source" />
@@ -401,7 +401,7 @@ export function ClientDetailSidebar({
 						{editingField === "communicationPreference" ? (
 							<StyledSelect
 								value={editValue}
-								onValueChange={setEditValue}
+								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
 							>
 								<StyledSelectTrigger className="h-8">
 									<SelectValue placeholder="Select" />

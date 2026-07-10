@@ -44,7 +44,7 @@ export function EmailThreadListPopover({
 	return (
 		<>
 			<Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-				<PopoverTrigger asChild>{children}</PopoverTrigger>
+				<PopoverTrigger render={children as React.ReactElement} />
 				<PopoverContent
 					className="w-96 p-0 bg-background! backdrop-blur-xl border-border shadow-xl"
 					align="end"

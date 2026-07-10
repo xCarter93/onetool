@@ -213,7 +213,7 @@ export function ContactTable({
 	const header = (
 		<div className="flex items-center justify-between pb-6">
 			<h3 className="text-xl font-semibold text-foreground">Contacts</h3>
-			<Button intent="outline" size="sm" onPress={handleAddContact}>
+			<Button variant="outline" size="sm" onClick={handleAddContact}>
 				<PlusIcon className="h-4 w-4 mr-2" />
 				New Contact
 			</Button>
@@ -275,7 +275,7 @@ export function ContactTable({
 		<StyledCard>
 			<StyledCardHeader className="flex flex-row items-center justify-between pb-6">
 				<StyledCardTitle className="text-xl">Contacts</StyledCardTitle>
-				<Button intent="outline" size="sm" onPress={handleAddContact}>
+				<Button variant="outline" size="sm" onClick={handleAddContact}>
 					<PlusIcon className="h-4 w-4 mr-2" />
 					New Contact
 				</Button>
@@ -391,17 +391,17 @@ function ContactRow({
 				<TableCell>
 					<div className="flex gap-1">
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={handleSave}
+							variant="outline"
+							size="icon-sm"
+							onClick={handleSave}
 							aria-label="Save"
 						>
 							<CheckIcon className="h-3 w-3" />
 						</Button>
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={onCancel}
+							variant="outline"
+							size="icon-sm"
+							onClick={onCancel}
 							aria-label="Cancel"
 						>
 							<XMarkIcon className="h-3 w-3" />
@@ -445,17 +445,17 @@ function ContactRow({
 			<TableCell>
 				<div className="flex gap-1">
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={onEdit}
+						variant="outline"
+						size="icon-sm"
+						onClick={onEdit}
 						aria-label="Edit"
 					>
 						<PencilIcon className="h-3 w-3" />
 					</Button>
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={onDelete}
+						variant="outline"
+						size="icon-sm"
+						onClick={onDelete}
 						aria-label="Delete"
 					>
 						<TrashIcon className="h-3 w-3" />

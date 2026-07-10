@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
 	Popover,
-	PopoverArrow,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
@@ -293,9 +292,9 @@ export function ReportBuilder({
 			{/* Top strip — spans rail + canvas; pt clears the header notch (~48px) */}
 			<div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 pb-3 pt-3 lg:pt-7">
 				<Button
-					intent="plain"
-					size="sq-sm"
-					onPress={onBack}
+					variant="ghost"
+					size="icon-sm"
+					onClick={onBack}
 					aria-label={mode === "edit" ? "Cancel editing" : "Back to reports"}
 				>
 					<ArrowLeft className="h-4 w-4" />
@@ -361,6 +360,7 @@ export function ReportBuilder({
 								<Select
 									value={entityType}
 									onValueChange={(v) => {
+										if (!v) return;
 										setEntityType(v as EntityType);
 										const first = groupByOptions[v]?.[0]?.value;
 										if (first) setGroupBy(first);
@@ -393,6 +393,7 @@ export function ReportBuilder({
 								<Select
 									value={dateRangePreset}
 									onValueChange={(value) => {
+										if (!value) return;
 										setDateRangePreset(value);
 										if (value !== "custom") setCustomDateRange(undefined);
 									}}
@@ -425,6 +426,7 @@ export function ReportBuilder({
 								<Select
 									value={groupBy ?? NO_GROUP_BY}
 									onValueChange={(v) => {
+										if (!v) return;
 										const next = v === NO_GROUP_BY ? undefined : v;
 										setGroupBy(next);
 										// A legacy-only groupBy only ever ran through the hardcoded
@@ -522,9 +524,9 @@ export function ReportBuilder({
 					{openAssistant && (
 						<section className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
-								onPress={openAssistant}
+								onClick={openAssistant}
 								className="w-full"
 							>
 								<Sparkles className="h-4 w-4 text-primary" data-slot="icon" />
@@ -603,20 +605,22 @@ export function AddChartControl({
 	return (
 		<div className="flex items-center gap-2">
 			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						showArrow={false}
-						disabled={disabled}
-						icon={<TriggerIcon className="h-4 w-4" />}
-						title={disabled ? "Group your data to add a chart." : undefined}
-					>
-						{triggerLabel}
-					</StyledButton>
+				<PopoverTrigger
+					render={
+						<StyledButton
+							intent="outline"
+							size="sm"
+							showArrow={false}
+							disabled={disabled}
+							icon={<TriggerIcon className="h-4 w-4" />}
+							title={disabled ? "Group your data to add a chart." : undefined}
+						/>
+					}
+				>
+					{triggerLabel}
 				</PopoverTrigger>
+				{/* TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented. */}
 				<PopoverContent side="bottom" align="end" sideOffset={8} className="w-60">
-					<PopoverArrow />
 					<div className="grid grid-cols-3 gap-1.5">
 						{chartVizOptions.map((opt) => {
 							const Icon = opt.icon;

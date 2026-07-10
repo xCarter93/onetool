@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/components/reui/badge';
 import { Button } from '@/components/ui/button';
 import { DataGrid, DataGridContainer } from '@/components/ui/data-grid';
 import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
@@ -564,7 +564,7 @@ export default function DataGridDemo() {
         header: () => null,
         cell: ({ row }) => {
           return row.getCanExpand() ? (
-            <Button onClick={row.getToggleExpandedHandler()} size="sq-sm" intent="plain">
+            <Button onClick={row.getToggleExpandedHandler()} size="icon-sm" variant="ghost">
               {row.getIsExpanded() ? <SquareMinus /> : <SquarePlus />}
             </Button>
           ) : null;

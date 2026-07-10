@@ -16,7 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { ArrowRight, Pencil, Power, PowerOff, Search, Trash2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -213,9 +213,9 @@ export function AutomationsTable() {
 						<div className="flex items-center gap-2">
 							<Badge variant={badge.variant}>{badge.label}</Badge>
 							<Button
-								intent="plain"
-								size="sq-sm"
-								onPress={() => handleToggle(row.original._id)}
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => handleToggle(row.original._id)}
 								aria-label={
 									status === "active"
 										? `Pause ${row.original.name}`
@@ -248,17 +248,17 @@ export function AutomationsTable() {
 							/>
 						)}
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={() => handleEdit(row.original._id)}
+							variant="outline"
+							size="icon-sm"
+							onClick={() => handleEdit(row.original._id)}
 							aria-label={`Edit ${row.original.name}`}
 						>
 							<Pencil className="size-4" />
 						</Button>
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={() =>
+							variant="outline"
+							size="icon-sm"
+							onClick={() =>
 								setPendingDelete({
 									id: row.original._id,
 									name: row.original.name,

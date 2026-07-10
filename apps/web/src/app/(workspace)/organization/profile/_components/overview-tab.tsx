@@ -440,11 +440,10 @@ export function OverviewTab() {
 								disabled={!isAdmin || !isOwner || uploadingLogo}
 							/>
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
-								onPress={() => logoInputRef.current?.click()}
-								isDisabled={!isAdmin || !isOwner || uploadingLogo}
-								isPending={uploadingLogo}
+								onClick={() => logoInputRef.current?.click()}
+								disabled={!isAdmin || !isOwner || uploadingLogo}
 							>
 								{uploadingLogo ? (
 									<Loader2 className="h-4 w-4 animate-spin" />
@@ -563,9 +562,9 @@ export function OverviewTab() {
 													<>
 														<Select
 															value={member.role}
-															onValueChange={(value) =>
-																handleRoleChange(member, value)
-															}
+															onValueChange={(value) => {
+																if (value) handleRoleChange(member, value);
+															}}
 															disabled={rowBusy}
 														>
 															<SelectTrigger size="sm" className="w-28">
@@ -583,11 +582,11 @@ export function OverviewTab() {
 															</SelectContent>
 														</Select>
 														<Button
-															intent="outline"
-															size="sq-sm"
+															variant="outline"
+															size="icon-sm"
 															aria-label="Remove member"
-															isDisabled={rowBusy}
-															onPress={() => handleRemoveMember(member)}
+															disabled={rowBusy}
+															onClick={() => handleRemoveMember(member)}
 															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 														>
 															{rowBusy ? (
@@ -621,10 +620,10 @@ export function OverviewTab() {
 					{memberships?.hasNextPage && (
 						<FrameFooter className="items-center">
 							<Button
-								intent="plain"
+								variant="ghost"
 								size="sm"
-								onPress={() => memberships.fetchNext?.()}
-								isDisabled={memberships.isFetching}
+								onClick={() => memberships.fetchNext?.()}
+								disabled={memberships.isFetching}
 							>
 								{memberships.isFetching && (
 									<Loader2 className="h-4 w-4 animate-spin" />
@@ -676,7 +675,9 @@ export function OverviewTab() {
 								</Field>
 								<Select
 									value={inviteRole}
-									onValueChange={setInviteRole}
+									onValueChange={(value) => {
+										if (value) setInviteRole(value);
+									}}
 									disabled={inviting}
 								>
 									<SelectTrigger className="sm:w-32">
@@ -741,11 +742,11 @@ export function OverviewTab() {
 															{roleLabel(invitation.role)}
 														</Badge>
 														<Button
-															intent="outline"
-															size="sq-sm"
+															variant="outline"
+															size="icon-sm"
 															aria-label="Revoke invitation"
-															isDisabled={rowBusy}
-															onPress={() => handleRevoke(invitation)}
+															disabled={rowBusy}
+															onClick={() => handleRevoke(invitation)}
 															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 														>
 															{rowBusy ? (
@@ -792,11 +793,10 @@ export function OverviewTab() {
 						</ItemContent>
 						<ItemActions>
 							<Button
-								intent="outline"
+								variant="outline"
 								size="sm"
-								onPress={handleLeave}
-								isDisabled={leaving}
-								isPending={leaving}
+								onClick={handleLeave}
+								disabled={leaving}
 								className="text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 							>
 								{leaving ? (

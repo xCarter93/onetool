@@ -271,7 +271,12 @@ export function StatusProgressBar({
 							"bg-muted/50 dark:bg-muted/30"
 						)}
 					>
-						<Select value={status} onValueChange={onStatusChange}>
+						<Select
+							value={status}
+							onValueChange={(value) => {
+								if (value !== null) onStatusChange(value);
+							}}
+						>
 							<SelectTrigger
 								className={cn(
 									"w-auto whitespace-nowrap border-0 transition-all duration-200",

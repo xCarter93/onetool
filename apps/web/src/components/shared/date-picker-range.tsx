@@ -240,18 +240,20 @@ export default function DatePickerRange({
 
 	return (
 		<Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-			<PopoverTrigger asChild>
-				<StyledButton
-					type="button"
-					intent="outline"
-					showArrow={showArrow}
-					className="inline-flex w-full min-w-[260px] items-center justify-between gap-2"
-				>
-					<div className="flex items-center gap-2">
-						<CalendarIcon className="size-4" />
-						<span className="text-sm font-medium">{displayLabel}</span>
-					</div>
-				</StyledButton>
+			<PopoverTrigger
+				render={
+					<StyledButton
+						type="button"
+						intent="outline"
+						showArrow={showArrow}
+						className="inline-flex w-full min-w-[260px] items-center justify-between gap-2"
+					/>
+				}
+			>
+				<div className="flex items-center gap-2">
+					<CalendarIcon className="size-4" />
+					<span className="text-sm font-medium">{displayLabel}</span>
+				</div>
 			</PopoverTrigger>
 			<PopoverContent
 				className="w-auto max-w-[780px] rounded-lg border border-border bg-background p-0 text-foreground shadow-lg"
