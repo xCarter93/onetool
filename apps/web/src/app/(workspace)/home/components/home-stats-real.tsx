@@ -10,7 +10,7 @@ import type {
 	MetricDatum,
 	MetricDataMap,
 	MetricDefinition,
-} from "@/components/line-chart-6";
+} from "@/app/(workspace)/home/components/overview/metric-types";
 import { DateRange } from "react-day-picker";
 import { endOfDay, startOfDay, startOfMonth } from "date-fns";
 import { OverviewPanel } from "./overview/overview-panel";

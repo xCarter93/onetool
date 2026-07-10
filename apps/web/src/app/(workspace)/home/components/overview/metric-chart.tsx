@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/chart";
 import { FramePanel } from "@/components/reui/frame";
 import { AnimatedNumber } from "@/components/animated-number";
-import type { MetricDatum, MetricDefinition } from "@/components/line-chart-6";
+import type { MetricDatum, MetricDefinition } from "@/app/(workspace)/home/components/overview/metric-types";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import {
 	ACCENT_COLOR,

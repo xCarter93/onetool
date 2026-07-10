@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { FramePanel } from "@/components/reui/frame";
 import { AnimatedNumber } from "@/components/animated-number";
-import type { MetricDatum, MetricDefinition } from "@/components/line-chart-6";
+import type { MetricDatum, MetricDefinition } from "@/app/(workspace)/home/components/overview/metric-types";
 import { ACCENT_COLOR, metricVisual } from "./metric-visuals";
 
 /** Faint dotted bed anchored to the bottom of a card, behind the sparkline. */

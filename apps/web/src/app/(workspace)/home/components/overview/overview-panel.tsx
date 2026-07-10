@@ -3,7 +3,7 @@
 import { Frame } from "@/components/reui/frame";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { DateRange } from "react-day-picker";
-import type { MetricDataMap, MetricDefinition } from "@/components/line-chart-6";
+import type { MetricDataMap, MetricDefinition } from "@/app/(workspace)/home/components/overview/metric-types";
 import { MetricCards } from "./metric-cards";
 import { MetricChartBody } from "./metric-chart";
 
