@@ -145,12 +145,15 @@ export const list = optionalUserQuery({
 	},
 	handler: async (ctx, args): Promise<ClientDocument[]> => {
 		if (!ctx.orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 		const includeArchived = args.includeArchived || false;
 
-		if (args.status) {
-			return await listClientsForOrg(ctx, "by_status", includeArchived);
-		}
-		return await listClientsForOrg(ctx, "by_org", includeArchived);
+		const clients = args.status
+			? await listClientsForOrg(ctx, "by_status", includeArchived)
+			: await listClientsForOrg(ctx, "by_org", includeArchived);
+		return await ctx.applyReadScope("clients", clients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
 	},
 });
 
@@ -165,13 +168,17 @@ export const listNamesForOrg = optionalUserQuery({
 	handler: async (ctx) => {
 		const orgId = ctx.orgId;
 		if (!orgId) return [];
+		await ctx.requireLevel("clients", "view");
 
 		const clients = await ctx.db
 			.query("clients")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		const visible = await ctx.applyReadScope("clients", clients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
 
-		return clients
+		return visible
 			.filter((c) => c.status !== "archived")
 			.map((c) => ({
 				_id: c._id,
@@ -189,13 +196,17 @@ export const listArchived = optionalUserQuery({
 	handler: async (ctx): Promise<ClientDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 
-		return await ctx.db
+		const clients = await ctx.db
 			.query("clients")
 			.withIndex("by_status", (q) =>
 				q.eq("orgId", orgId).eq("status", "archived")
 			)
 			.collect();
+		return await ctx.applyReadScope("clients", clients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
 	},
 });
 
@@ -206,6 +217,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("clients", "view");
 		try {
 			return await ctx.orgEntity("clients", args.id);
 		} catch (error) {
@@ -263,6 +275,7 @@ export const getPreview = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ClientPreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
+		await ctx.requireLevel("clients", "view");
 
 		let client: ClientDocument;
 		try {
@@ -485,6 +498,7 @@ export const create = userMutation({
 		portalAccessId: v.string(),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
+		await ctx.requireLevel("clients", "modify");
 		// Type assertion needed because schema still has deprecated fields
 		const clientId = await createClientWithOrg(ctx, args as any);
 
@@ -601,6 +615,7 @@ export const bulkCreate = userMutation({
 			warnings?: string[];
 		}>
 	> => {
+		await ctx.requireLevel("clients", "modify");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const results: Array<{
 			success: boolean;
@@ -760,6 +775,7 @@ export const update = userMutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
+		await ctx.requireLevel("clients", "modify");
 		const { id, ...updates } = args;
 
 		// Filter and validate updates
@@ -768,6 +784,9 @@ export const update = userMutation({
 
 		// Get existing client to track status changes
 		const existingClient = await ctx.orgEntity("clients", id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(id))
+		);
 		const oldStatus = existingClient.status;
 
 		// Compute field-level changes before applying the update
@@ -817,8 +836,12 @@ export const update = userMutation({
 export const archive = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
+		await ctx.requireLevel("clients", "modify");
 		// Validate client exists and belongs to user's org
 		await ctx.orgEntity("clients", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(args.id))
+		);
 
 		// Archive the client by setting status to archived and adding archivedAt timestamp
 		await ctx.db.patch(args.id, {
@@ -842,8 +865,12 @@ export const archive = userMutation({
 export const restore = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
+		await ctx.requireLevel("clients", "modify");
 		// Validate client exists and belongs to user's org
 		const client = await ctx.orgEntity("clients", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(args.id))
+		);
 
 		if (client.status !== "archived") {
 			throw new Error("Only archived clients can be restored");
@@ -874,6 +901,9 @@ async function permanentlyDeleteHandler(
 ): Promise<ClientId> {
 	// Validate client exists and belongs to user's org
 	const client = await ctx.orgEntity("clients", args.id);
+	await ctx.requireRecordScope("clients", () =>
+		ctx.actorScope().then((s) => s.clientIds.has(args.id))
+	);
 
 	if (client.status !== "archived") {
 		throw new Error("Only archived clients can be permanently deleted");
@@ -1017,6 +1047,7 @@ async function permanentlyDeleteSystemHandler(
 export const permanentlyDelete = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
+		await ctx.requireLevel("clients", "delete");
 		return await permanentlyDeleteHandler(ctx, args);
 	},
 });
@@ -1029,6 +1060,10 @@ export const permanentlyDelete = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
+		await ctx.requireLevel("clients", "delete");
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(args.id))
+		);
 		// For backward compatibility, redirect to archive
 		// Archive the client by setting status to archived and adding archivedAt timestamp
 		await ctx.db.patch(args.id, {
@@ -1064,7 +1099,11 @@ export const search = optionalUserQuery({
 	},
 	handler: async (ctx, args): Promise<ClientDocument[]> => {
 		if (!ctx.orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 		let clients = await listClientsForOrg(ctx, "by_org");
+		clients = await ctx.applyReadScope("clients", clients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
 
 		// Type-safe filtering using proper type guards
 		if (args.status) {
@@ -1101,7 +1140,11 @@ export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<ClientStats> => {
 		if (!ctx.orgId) return EMPTY_CLIENT_STATS;
-		const clients = await listClientsForOrg(ctx, "by_org", true);
+		await ctx.requireLevel("clients", "view");
+		const allClients = await listClientsForOrg(ctx, "by_org", true);
+		const clients = await ctx.applyReadScope("clients", allClients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
 
 		const stats: ClientStats = {
 			total: clients.length,
@@ -1163,6 +1206,7 @@ export const getRecentActivity = optionalUserQuery({
 
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 
 		// Get recent client-related activities
 		const activities = await ctx.db
@@ -1180,8 +1224,11 @@ export const getRecentActivity = optionalUserQuery({
 
 		const clients = await Promise.all(clientPromises);
 
-		return clients.filter(
+		const found = clients.filter(
 			(client): client is ClientDocument => client !== null
+		);
+		return await ctx.applyReadScope("clients", found, (c, s) =>
+			s.clientIds.has(c._id)
 		);
 	},
 });
@@ -1223,6 +1270,7 @@ export const listWithProjectCounts = optionalUserQuery({
 
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult<ClientWithProjectCount>();
+		await ctx.requireLevel("clients", "view");
 
 		// Get clients based on status filter
 		let clients: Doc<"clients">[];
@@ -1246,6 +1294,10 @@ export const listWithProjectCounts = optionalUserQuery({
 				clients = clients.filter((client) => client.status !== "archived");
 			}
 		}
+
+		clients = await ctx.applyReadScope("clients", clients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
 
 		// For each client, get their active project count
 		const clientsWithProjectCounts = await Promise.all(

@@ -1,7 +1,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
@@ -12,8 +12,9 @@ export const listByClient = optionalUserQuery({
 		clientId: v.id("clients"),
 	},
 	handler: async (ctx, args): Promise<Doc<"emailMessages">[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult<Doc<"emailMessages">>();
+		if (!ctx.orgId) return emptyListResult<Doc<"emailMessages">>();
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		// Get emails for this client, filtered by org
 		const emails = await ctx.db
@@ -34,8 +35,9 @@ export const getByResendId = optionalUserQuery({
 		resendEmailId: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
+		if (!ctx.orgId) return null;
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		const email = await ctx.db
 			.query("emailMessages")
@@ -60,8 +62,9 @@ export const getRecentEmails = optionalUserQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult<Doc<"emailMessages">>();
+		if (!ctx.orgId) return emptyListResult<Doc<"emailMessages">>();
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		return await ctx.db
 			.query("emailMessages")
@@ -79,8 +82,9 @@ export const countUnopened = optionalUserQuery({
 		clientId: v.id("clients"),
 	},
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return 0;
+		if (!ctx.orgId) return 0;
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		// Query for both "sent" and "delivered" emails separately
 		const [sentEmails, deliveredEmails] = await Promise.all([
@@ -116,8 +120,9 @@ export const getClientEmailStats = optionalUserQuery({
 		clientId: v.id("clients"),
 	},
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
+		if (!ctx.orgId) return null;
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		const emails = await ctx.db
 			.query("emailMessages")
@@ -156,8 +161,9 @@ export const getEmailThread = optionalUserQuery({
 		threadDocId: v.id("emailThreads"),
 	},
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
+		if (!ctx.orgId) return null;
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		// The thread must belong to this org before returning any of its messages.
 		const thread = await ctx.db.get(args.threadDocId);
@@ -226,8 +232,9 @@ export const listThreadsByClient = optionalUserQuery({
 		clientId: v.id("clients"),
 	},
 	handler: async (ctx, args): Promise<EmailThreadSummary[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult<EmailThreadSummary>();
+		if (!ctx.orgId) return emptyListResult<EmailThreadSummary>();
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		const threads = await ctx.db
 			.query("emailThreads")
@@ -257,8 +264,9 @@ export const getEmailWithAttachments = optionalUserQuery({
 		emailMessageId: v.id("emailMessages"),
 	},
 	handler: async (ctx, args) => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return null;
+		if (!ctx.orgId) return null;
+		await ctx.requireLevel("inbox", "view");
+		const orgId = ctx.orgId;
 
 		const email = await ctx.db.get(args.emailMessageId);
 		if (!email || email.orgId !== orgId) {

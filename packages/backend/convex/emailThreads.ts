@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
@@ -143,8 +143,9 @@ export const listThreadsByOrg = optionalUserQuery({
     ),
   },
   handler: async (ctx, args): Promise<InboxThread[]> => {
-    const orgId = await getOptionalOrgId(ctx);
-    if (!orgId) return emptyListResult<InboxThread>();
+    if (!ctx.orgId) return emptyListResult<InboxThread>();
+    await ctx.requireLevel("inbox", "view");
+    const orgId = ctx.orgId;
 
     const openThreads = await ctx.db
       .query("emailThreads")
@@ -180,8 +181,9 @@ export const getThread = optionalUserQuery({
     threadDocId: v.id("emailThreads"),
   },
   handler: async (ctx, args): Promise<InboxThread | null> => {
-    const orgId = await getOptionalOrgId(ctx);
-    if (!orgId) return null;
+    if (!ctx.orgId) return null;
+    await ctx.requireLevel("inbox", "view");
+    const orgId = ctx.orgId;
 
     const thread = await ctx.db.get(args.threadDocId);
     if (!thread || thread.orgId !== orgId) return null;
@@ -199,8 +201,9 @@ export const getThread = optionalUserQuery({
 export const countUnreadThreads = optionalUserQuery({
   args: {},
   handler: async (ctx): Promise<number> => {
-    const orgId = await getOptionalOrgId(ctx);
-    if (!orgId) return 0;
+    if (!ctx.orgId) return 0;
+    await ctx.requireLevel("inbox", "view");
+    const orgId = ctx.orgId;
 
     // Bounded to the same recency window the inbox list renders, so the badge
     // (a) never exceeds what the list can actually show and (b) stays cheap on
@@ -230,6 +233,7 @@ export const markRead = userMutation({
     threadDocId: v.id("emailThreads"),
   },
   handler: async (ctx, args): Promise<null> => {
+    await ctx.requireLevel("inbox", "modify");
     const thread = await ctx.db.get(args.threadDocId);
     if (!thread || thread.orgId !== ctx.orgId) {
       throw new Error("Thread not found");
@@ -265,6 +269,7 @@ export const markUnread = userMutation({
     threadDocId: v.id("emailThreads"),
   },
   handler: async (ctx, args): Promise<null> => {
+    await ctx.requireLevel("inbox", "modify");
     const thread = await ctx.db.get(args.threadDocId);
     if (!thread || thread.orgId !== ctx.orgId) {
       throw new Error("Thread not found");
@@ -287,6 +292,7 @@ export const archiveThread = userMutation({
     archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<null> => {
+    await ctx.requireLevel("inbox", "modify");
     const thread = await ctx.db.get(args.threadDocId);
     if (!thread || thread.orgId !== ctx.orgId) {
       throw new Error("Thread not found");
@@ -311,6 +317,7 @@ export const linkThreadToClient = userMutation({
     clientId: v.id("clients"),
   },
   handler: async (ctx, args): Promise<null> => {
+    await ctx.requireLevel("inbox", "modify");
     const thread = await ctx.db.get(args.threadDocId);
     if (!thread || thread.orgId !== ctx.orgId) {
       throw new Error("Thread not found");

@@ -25,6 +25,8 @@ type PricingMode = "structured" | "richText";
 export const get = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<CommunityPageDocument | null> => {
+		if (!ctx.user) return null;
+		await ctx.requireLevel("community", "view");
 		const userOrgId = await getOptionalOrgId(ctx);
 		if (!userOrgId) return null;
 
@@ -115,6 +117,7 @@ export const upsert = userMutation({
 		draftTheme: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
+		await ctx.requireLevel("community", "modify");
 		await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		if (args.draftPricingTiers !== undefined) {
@@ -238,6 +241,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 export const publish = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
+		await ctx.requireLevel("community", "modify");
 		await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
@@ -284,6 +288,7 @@ export const publish = userMutation({
 export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
+		await ctx.requireLevel("community", "modify");
 		await getCurrentUserOrThrow(ctx);
 		return await ctx.storage.generateUploadUrl();
 	},
@@ -295,6 +300,8 @@ export const generateUploadUrl = userMutation({
 export const getImageUrl = optionalUserQuery({
 	args: { storageId: v.id("_storage") },
 	handler: async (ctx, args): Promise<string | null> => {
+		if (!ctx.user) throw new Error("User not authenticated");
+		await ctx.requireLevel("community", "view");
 		const user = await getCurrentUserOrThrow(ctx);
 		if (!user) return null;
 		return await ctx.storage.getUrl(args.storageId);
@@ -307,6 +314,8 @@ export const getImageUrls = optionalUserQuery({
 		ctx,
 		args
 	): Promise<Array<{ storageId: Id<"_storage">; url: string | null }>> => {
+		if (!ctx.user) throw new Error("User not authenticated");
+		await ctx.requireLevel("community", "view");
 		await getCurrentUserOrThrow(ctx);
 		return await Promise.all(
 			args.storageIds.map(async (storageId) => ({
@@ -323,6 +332,9 @@ export const getImageUrls = optionalUserQuery({
 export const checkSlugAvailable = optionalUserQuery({
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<boolean> => {
+		if (ctx.user) {
+			await ctx.requireLevel("community", "view");
+		}
 		const userOrgId = await getOptionalOrgId(ctx);
 
 		const existing = await ctx.db
@@ -341,6 +353,7 @@ export const checkSlugAvailable = optionalUserQuery({
 export const deleteBannerImage = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
+		await ctx.requireLevel("community", "modify");
 		await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
@@ -368,6 +381,7 @@ export const deleteBannerImage = userMutation({
 export const deleteAvatarImage = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
+		await ctx.requireLevel("community", "modify");
 		await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
 

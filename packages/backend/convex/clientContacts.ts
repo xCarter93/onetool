@@ -69,6 +69,9 @@ async function createContactWithOrg(
 ): Promise<Id<"clientContacts">> {
 	// Validate client access
 	await validateClientAccess(ctx, data.clientId, ctx.orgId);
+	await ctx.requireRecordScope("clients", () =>
+		ctx.actorScope().then((s) => s.clientIds.has(data.clientId))
+	);
 
 	return await ctx.db.insert("clientContacts", {
 		...data,
@@ -92,13 +95,17 @@ export const listByClient = optionalUserQuery({
 	handler: async (ctx, args): Promise<ClientContactDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 
 		await validateClientAccess(ctx, args.clientId, orgId);
 
-		return await ctx.db
+		const contacts = await ctx.db
 			.query("clientContacts")
 			.withIndex("by_client", (q) => q.eq("clientId", args.clientId))
 			.collect();
+		return await ctx.applyReadScope("clients", contacts, (row, s) =>
+			s.clientIds.has(row.clientId)
+		);
 	},
 });
 
@@ -110,11 +117,15 @@ export const list = optionalUserQuery({
 	handler: async (ctx): Promise<ClientContactDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 
-		return await ctx.db
+		const contacts = await ctx.db
 			.query("clientContacts")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		return await ctx.applyReadScope("clients", contacts, (row, s) =>
+			s.clientIds.has(row.clientId)
+		);
 	},
 });
 
@@ -125,6 +136,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("clients", "view");
 		try {
 			return await ctx.orgEntity("clientContacts", args.id);
 		} catch (error) {
@@ -146,6 +158,7 @@ export const getPrimaryContact = optionalUserQuery({
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("clients", "view");
 		await validateClientAccess(ctx, args.clientId, userOrgId);
 
 		return await ctx.db
@@ -175,6 +188,7 @@ export const create = userMutation({
 		isPrimary: v.boolean(),
 	},
 	handler: async (ctx, args): Promise<ClientContactId> => {
+		await ctx.requireLevel("clients", "modify");
 		// Validate email format if provided
 		if (args.email && !ValidationPatterns.isValidEmail(args.email)) {
 			throw new Error("Invalid email format");
@@ -227,6 +241,7 @@ export const update = userMutation({
 		isPrimary: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<ClientContactId> => {
+		await ctx.requireLevel("clients", "modify");
 		const { id, ...updates } = args;
 
 		// Validate email format if provided
@@ -258,6 +273,10 @@ export const update = userMutation({
 			await validateClientAccess(ctx, filteredUpdates.clientId);
 		}
 
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(clientId))
+		);
+
 		// Handle primary contact uniqueness
 		if (filteredUpdates.isPrimary === true) {
 			await handlePrimaryContact(ctx, clientId, id);
@@ -288,7 +307,11 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactId> => {
+		await ctx.requireLevel("clients", "delete");
 		const contact = await ctx.orgEntity("clientContacts", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(contact.clientId))
+		);
 
 		// Delete the contact
 		await ctx.db.delete(args.id);
@@ -317,6 +340,7 @@ export const search = optionalUserQuery({
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("clients", "view");
 
 		let contacts: ClientContactDocument[];
 
@@ -332,6 +356,10 @@ export const search = optionalUserQuery({
 				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
 				.collect();
 		}
+
+		contacts = await ctx.applyReadScope("clients", contacts, (row, s) =>
+			s.clientIds.has(row.clientId)
+		);
 
 		// Search in first name, last name, email, and job title
 		const searchQuery = args.query.toLowerCase();
@@ -365,10 +393,14 @@ export const bulkCreate = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<ClientContactId[]> => {
+		await ctx.requireLevel("clients", "modify");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
 		// Validate client access
 		await validateClientAccess(ctx, args.clientId);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(args.clientId))
+		);
 
 		const contactIds: ClientContactId[] = [];
 		let hasPrimary = false;
@@ -445,7 +477,11 @@ export const bulkCreate = userMutation({
 export const setPrimary = userMutation({
 	args: { id: v.id("clientContacts") },
 	handler: async (ctx, args): Promise<ClientContactId> => {
+		await ctx.requireLevel("clients", "modify");
 		const contact = await ctx.orgEntity("clientContacts", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(contact.clientId))
+		);
 
 		// Unset any existing primary contact for this client
 		const existingPrimary = await ctx.db

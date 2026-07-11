@@ -24,6 +24,7 @@ import {
 	type UserMutationCtx,
 } from "./lib/factories";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
+import { permissionsEnforced } from "./lib/permissions";
 
 /**
  * Project operations
@@ -87,6 +88,25 @@ async function createProjectWithOrg(
 	};
 
 	return await ctx.db.insert("projects", projectData);
+}
+
+/**
+ * Resolve assignedUserIds for a new project: scoped users own what they create (PRD §3.2).
+ */
+async function resolveScopedCreateAssignees(
+	ctx: UserMutationCtx,
+	assignedUserIds: Id<"users">[] | undefined
+): Promise<Id<"users">[] | undefined> {
+	if (await ctx.hasAllRecords("projects")) return assignedUserIds;
+	if (assignedUserIds?.includes(ctx.user._id)) return assignedUserIds;
+	if (permissionsEnforced()) {
+		// scoped users own what they create (PRD §3.2)
+		return [...(assignedUserIds ?? []), ctx.user._id];
+	}
+	console.warn(
+		`[permissions-shadow] would auto-assign project creator user=${ctx.user._id}`
+	);
+	return assignedUserIds;
 }
 
 /**
@@ -171,7 +191,7 @@ export const list = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("projects", "view");
 
 		let projects: ProjectDocument[];
 
@@ -195,7 +215,7 @@ export const list = optionalUserQuery({
 				.collect();
 		}
 
-		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
+		projects = await ctx.scopedToActor("projects", projects, (project) => project.assignedUserIds);
 
 		return projects;
 	},
@@ -208,6 +228,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("projects") },
 	handler: async (ctx, args: any): Promise<ProjectDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("projects", "view");
 		let project: ProjectDocument;
 		try {
 			project = await ctx.orgEntity("projects", args.id);
@@ -219,7 +240,7 @@ export const get = optionalUserQuery({
 		}
 
 
-		const visibleProjects = await ctx.scopedToActor(
+		const visibleProjects = await ctx.scopedToActor("projects", 
 			[project],
 			(item) => item.assignedUserIds
 		);
@@ -281,6 +302,7 @@ export const getPreview = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ProjectPreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
+		await ctx.requireLevel("projects", "view");
 
 		let project: ProjectDocument;
 		try {
@@ -295,7 +317,7 @@ export const getPreview = optionalUserQuery({
 			throw error;
 		}
 
-		const visible = await ctx.scopedToActor(
+		const visible = await ctx.scopedToActor("projects", 
 			[project],
 			(item) => item.assignedUserIds
 		);
@@ -497,6 +519,8 @@ export const create = userMutation({
 		assignedUserIds: v.optional(v.array(v.id("users"))),
 	},
 	handler: async (ctx, args: any): Promise<ProjectId> => {
+		await ctx.requireLevel("projects", "modify");
+
 		// Validate title is not empty
 		if (!args.title.trim()) {
 			throw new Error("Project title is required");
@@ -507,7 +531,14 @@ export const create = userMutation({
 			throw new Error("Start date cannot be after end date");
 		}
 
-		const projectId = await createProjectWithOrg(ctx, args);
+		const assignedUserIds = await resolveScopedCreateAssignees(
+			ctx,
+			args.assignedUserIds
+		);
+		const projectId = await createProjectWithOrg(ctx, {
+			...args,
+			assignedUserIds,
+		});
 
 		// Get the created project for activity logging and aggregates
 		const project = await ctx.db.get(projectId);
@@ -556,6 +587,8 @@ export const bulkCreate = userMutation({
 		ctx: UserMutationCtx,
 		args: any
 	): Promise<Array<{ success: boolean; id?: ProjectId; error?: string }>> => {
+		await ctx.requireLevel("projects", "modify");
+
 		const results: Array<{
 			success: boolean;
 			id?: ProjectId;
@@ -625,9 +658,14 @@ export const bulkCreate = userMutation({
 				// Omit clientName as it's only used for lookup, not stored in the project
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 				const { clientName, ...projectCreateData } = projectData;
+				const assignedUserIds = await resolveScopedCreateAssignees(
+					ctx,
+					projectCreateData.assignedUserIds
+				);
 				const projectId = await createProjectWithOrg(ctx, {
 					...projectCreateData,
 					clientId,
+					assignedUserIds,
 				});
 
 				// Get the created project for activity logging and aggregate updates
@@ -680,6 +718,8 @@ export const update = userMutation({
 		assignedUserIds: v.optional(v.array(v.id("users"))),
 	},
 	handler: async (ctx, args: any): Promise<ProjectId> => {
+		await ctx.requireLevel("projects", "modify");
+
 		const { id, ...updates } = args;
 
 		// Validate title is not empty if being updated
@@ -693,6 +733,10 @@ export const update = userMutation({
 
 		// Get current project for date validation
 		const currentProject = await ctx.orgEntity("projects", id);
+		await ctx.requireRecordScope(
+			"projects",
+			() => currentProject.assignedUserIds?.includes(ctx.user._id) ?? false
+		);
 		const oldStatus = currentProject.status;
 		const startDate = filteredUpdates.startDate ?? currentProject.startDate;
 		const endDate = filteredUpdates.endDate ?? currentProject.endDate;
@@ -783,7 +827,13 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("projects") },
 	handler: async (ctx, args: any): Promise<ProjectId> => {
+		await ctx.requireLevel("projects", "delete");
+
 		const project = await ctx.orgEntity("projects", args.id); // Validate access
+		await ctx.requireRecordScope(
+			"projects",
+			() => project.assignedUserIds?.includes(ctx.user._id) ?? false
+		);
 
 		// 1. Delete all tasks associated with this project
 		const tasks = await ctx.db
@@ -908,14 +958,14 @@ export const search = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("projects", "view");
 
 		let projects = await ctx.db
 			.query("projects")
 			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
 			.collect();
 
-		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
+		projects = await ctx.scopedToActor("projects", projects, (project) => project.assignedUserIds);
 
 		// Filter by client if specified
 		if (args.clientId) {
@@ -962,14 +1012,14 @@ export const getStats = optionalUserQuery({
 		if (!orgId) {
 			return createEmptyProjectStats();
 		}
-
+		await ctx.requireLevel("projects", "view");
 
 		let projects = await ctx.db
 			.query("projects")
 			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
 			.collect();
 
-		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
+		projects = await ctx.scopedToActor("projects", projects, (project) => project.assignedUserIds);
 
 		const stats: ProjectStats = {
 			total: projects.length,
@@ -1029,6 +1079,7 @@ export const getByAssignee = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("projects", "view");
 
 		// Validate user belongs to organization
 		await validateUserAccess(ctx, [args.userId], orgId);
@@ -1045,7 +1096,7 @@ export const getByAssignee = optionalUserQuery({
 				project.assignedUserIds && project.assignedUserIds.includes(args.userId)
 		);
 
-		filteredProjects = await ctx.scopedToActor(filteredProjects, (project) => project.assignedUserIds);
+		filteredProjects = await ctx.scopedToActor("projects", filteredProjects, (project) => project.assignedUserIds);
 
 		return filteredProjects;
 	},
@@ -1060,7 +1111,7 @@ export const getUpcomingDeadlines = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("projects", "view");
 
 		const daysAhead = args.days || 7;
 
@@ -1069,7 +1120,7 @@ export const getUpcomingDeadlines = optionalUserQuery({
 			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
 			.collect();
 
-		projects = await ctx.scopedToActor(projects, (project) => project.assignedUserIds);
+		projects = await ctx.scopedToActor("projects", projects, (project) => project.assignedUserIds);
 
 		const now = Date.now();
 		const deadline = DateUtils.addDays(now, daysAhead);
@@ -1094,6 +1145,7 @@ export const getOverdue = optionalUserQuery({
 	handler: async (ctx): Promise<ProjectDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("projects", "view");
 
 		const projects = await ctx.db
 			.query("projects")
@@ -1102,12 +1154,13 @@ export const getOverdue = optionalUserQuery({
 
 		const now = Date.now();
 
-		return projects.filter(
+		const overdue = projects.filter(
 			(project: any) =>
 				project.endDate &&
 				project.endDate < now &&
 				project.status !== "completed" &&
 				project.status !== "cancelled"
 		);
+		return ctx.scopedToActor("projects", overdue, (p) => p.assignedUserIds);
 	},
 });

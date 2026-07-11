@@ -68,6 +68,9 @@ async function createPropertyWithOrg(
 ): Promise<Id<"clientProperties">> {
 	// Validate client access
 	await validateClientAccess(ctx, data.clientId, ctx.orgId);
+	await ctx.requireRecordScope("clients", () =>
+		ctx.actorScope().then((s) => s.clientIds.has(data.clientId))
+	);
 
 	return await ctx.db.insert("clientProperties", {
 		...data,
@@ -91,13 +94,17 @@ export const listByClient = optionalUserQuery({
 	handler: async (ctx, args): Promise<ClientPropertyDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 
 		await validateClientAccess(ctx, args.clientId, orgId);
 
-		return await ctx.db
+		const properties = await ctx.db
 			.query("clientProperties")
 			.withIndex("by_client", (q) => q.eq("clientId", args.clientId))
 			.collect();
+		return await ctx.applyReadScope("clients", properties, (row, s) =>
+			s.clientIds.has(row.clientId)
+		);
 	},
 });
 
@@ -109,11 +116,15 @@ export const list = optionalUserQuery({
 	handler: async (ctx): Promise<ClientPropertyDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("clients", "view");
 
-		return await ctx.db
+		const properties = await ctx.db
 			.query("clientProperties")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		return await ctx.applyReadScope("clients", properties, (row, s) =>
+			s.clientIds.has(row.clientId)
+		);
 	},
 });
 
@@ -125,11 +136,17 @@ export const listGeocodedWithClients = optionalUserQuery({
 	handler: async (ctx) => {
 		const orgId = ctx.orgId;
 		if (!orgId) return { properties: [], totalCount: 0, geocodedCount: 0 };
+		await ctx.requireLevel("clients", "view");
 
-		const allProperties = await ctx.db
+		const orgProperties = await ctx.db
 			.query("clientProperties")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		const allProperties = await ctx.applyReadScope(
+			"clients",
+			orgProperties,
+			(row, s) => s.clientIds.has(row.clientId)
+		);
 
 		const totalCount = allProperties.length;
 
@@ -187,6 +204,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("clients", "view");
 		try {
 			return await ctx.orgEntity("clientProperties", args.id);
 		} catch (error) {
@@ -209,6 +227,7 @@ export const getPrimaryProperty = optionalUserQuery({
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("clients", "view");
 		await validateClientAccess(ctx, args.clientId, userOrgId);
 
 		return await ctx.db
@@ -253,6 +272,7 @@ export const create = userMutation({
 		formattedAddress: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
+		await ctx.requireLevel("clients", "modify");
 		// Validate required address fields are not empty
 		if (!args.streetAddress.trim()) {
 			throw new Error("Street address is required");
@@ -314,6 +334,7 @@ export const update = userMutation({
 		formattedAddress: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
+		await ctx.requireLevel("clients", "modify");
 		const { id, ...updates } = args;
 
 		// Validate required address fields are not empty if being updated
@@ -342,6 +363,10 @@ export const update = userMutation({
 		if (filteredUpdates.clientId) {
 			await validateClientAccess(ctx, filteredUpdates.clientId);
 		}
+
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(clientId))
+		);
 
 		// Handle primary property uniqueness
 		if (filteredUpdates.isPrimary === true) {
@@ -373,7 +398,11 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
+		await ctx.requireLevel("clients", "delete");
 		const property = await ctx.orgEntity("clientProperties", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(property.clientId))
+		);
 
 		// Delete the property
 		await ctx.db.delete(args.id);
@@ -412,6 +441,7 @@ export const search = optionalUserQuery({
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("clients", "view");
 
 		let properties: ClientPropertyDocument[];
 
@@ -427,6 +457,10 @@ export const search = optionalUserQuery({
 				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
 				.collect();
 		}
+
+		properties = await ctx.applyReadScope("clients", properties, (row, s) =>
+			s.clientIds.has(row.clientId)
+		);
 
 		// Filter by property type if specified
 		if (args.propertyType) {
@@ -457,7 +491,11 @@ export const search = optionalUserQuery({
 export const setPrimary = userMutation({
 	args: { id: v.id("clientProperties") },
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
+		await ctx.requireLevel("clients", "modify");
 		const property = await ctx.orgEntity("clientProperties", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(property.clientId))
+		);
 
 		// Unset any existing primary property for this client
 		await handlePrimaryProperty(ctx, property.clientId, args.id);
@@ -509,10 +547,14 @@ export const bulkCreate = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<ClientPropertyId[]> => {
+		await ctx.requireLevel("clients", "modify");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
 		// Validate client access
 		await validateClientAccess(ctx, args.clientId);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(args.clientId))
+		);
 
 		const propertyIds: ClientPropertyId[] = [];
 		let hasPrimary = false;
@@ -589,11 +631,17 @@ export const getStats = optionalUserQuery({
 				},
 			};
 		}
+		await ctx.requireLevel("clients", "view");
 
-		const properties = await ctx.db
+		const orgProperties = await ctx.db
 			.query("clientProperties")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		const properties = await ctx.applyReadScope(
+			"clients",
+			orgProperties,
+			(row, s) => s.clientIds.has(row.clientId)
+		);
 
 		const stats = {
 			total: properties.length,

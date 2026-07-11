@@ -56,6 +56,7 @@ export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		await getCurrentUserOrThrow(ctx);
+		await ctx.requireLevel("documents", "modify");
 		return await ctx.storage.generateUploadUrl();
 	},
 });
@@ -75,6 +76,7 @@ export const create = userMutation({
 	handler: async (ctx, args): Promise<Id<"clientDocuments">> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
+		await ctx.requireLevel("documents", "modify");
 
 		// Validate client belongs to user's org
 		const client = await ctx.db.get(args.clientId);
@@ -84,6 +86,11 @@ export const create = userMutation({
 		if (client.orgId !== userOrgId) {
 			throw new Error("Client does not belong to your organization");
 		}
+
+		await ctx.requireRecordScope("documents", async () => {
+			const scope = await ctx.actorScope();
+			return scope.clientIds.has(args.clientId);
+		});
 
 		// Validate file metadata
 		const validation = StorageHelpers.validateFileMetadata(
@@ -125,6 +132,7 @@ export const listByClient = optionalUserQuery({
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("documents", "view");
 
 		const documents = await ctx.db
 			.query("clientDocuments")
@@ -132,9 +140,13 @@ export const listByClient = optionalUserQuery({
 			.collect();
 
 		// Filter by org and sort newest first
-		const filtered = documents
+		let filtered = documents
 			.filter((d) => d.orgId === userOrgId)
 			.sort((a, b) => b.uploadedAt - a.uploadedAt);
+
+		filtered = await ctx.applyReadScope("documents", filtered, (_doc, scope) =>
+			scope.clientIds.has(args.clientId)
+		);
 
 		// Fetch download URLs in parallel
 		const withUrls = await Promise.all(
@@ -160,7 +172,12 @@ export const listByClient = optionalUserQuery({
 export const remove = userMutation({
 	args: { id: v.id("clientDocuments") },
 	handler: async (ctx, args): Promise<Id<"clientDocuments">> => {
+		await ctx.requireLevel("documents", "delete");
 		const document = await getDocumentOrThrow(ctx, args.id);
+		await ctx.requireRecordScope("documents", async () => {
+			const scope = await ctx.actorScope();
+			return scope.clientIds.has(document.clientId);
+		});
 
 		// Delete from storage
 		await StorageHelpers.deleteFromStorage(ctx, document.storageId);

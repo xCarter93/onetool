@@ -795,6 +795,7 @@ function scheduledNextRunAt(
 export const list = userQuery({
 	args: {},
 	handler: async (ctx): Promise<AutomationDocument[]> => {
+		await ctx.requireLevel("automations", "view");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
 		const automations = await ctx.db
@@ -813,6 +814,7 @@ export const list = userQuery({
 export const listActive = userQuery({
 	args: {},
 	handler: async (ctx): Promise<AutomationDocument[]> => {
+		await ctx.requireLevel("automations", "view");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
 		const automations = await ctx.db
@@ -832,6 +834,7 @@ export const listActive = userQuery({
 export const get = userQuery({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationDocument | null> => {
+		await ctx.requireLevel("automations", "view");
 		return await getAutomationWithOrgValidation(ctx, args.id);
 	},
 });
@@ -854,6 +857,7 @@ export const create = userMutation({
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
+		await ctx.requireLevel("automations", "modify");
 		if (!args.name.trim()) {
 			throw new Error("Automation name is required");
 		}
@@ -912,6 +916,7 @@ export const update = userMutation({
 		formulas: v.optional(v.array(formulaResourceValidator)),
 	},
 	handler: async (ctx, args): Promise<AutomationId> => {
+		await ctx.requireLevel("automations", "modify");
 		const { id, ...updates } = args;
 		const automation = await getAutomationOrThrow(ctx, id);
 
@@ -962,6 +967,7 @@ export const update = userMutation({
 export const publish = userMutation({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationId> => {
+		await ctx.requireLevel("automations", "modify");
 		const automation = await getAutomationOrThrow(ctx, args.id);
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
@@ -991,6 +997,7 @@ export const publish = userMutation({
 export const toggleActive = userMutation({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationId> => {
+		await ctx.requireLevel("automations", "modify");
 		const automation = await getAutomationOrThrow(ctx, args.id);
 		const status = effectiveStatus(automation);
 
@@ -1036,6 +1043,7 @@ export const toggleActive = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationId> => {
+		await ctx.requireLevel("automations", "delete");
 		await getAutomationOrThrow(ctx, args.id); // Validate access
 
 		// Also delete associated execution logs
@@ -1144,6 +1152,7 @@ export const getExecutions = userQuery({
 		ctx,
 		args
 	): Promise<ExecutionDoc[] | PaginationResult<ExecutionDoc>> => {
+		await ctx.requireLevel("automations", "view");
 		// Validate access to the automation (org-scoped).
 		await getAutomationOrThrow(ctx, args.automationId);
 
@@ -1176,6 +1185,7 @@ export const listRuns = userQuery({
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, args): Promise<PaginationResult<RunRow>> => {
+		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
 		const status = args.status;
 		const automationId = args.automationId;
@@ -1238,6 +1248,7 @@ export const getRunMetrics = userQuery({
 		p95ActiveMs: number;
 		activeAutomationCount: number;
 	}> => {
+		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
 		const windowDays = clampInt(args.windowDays ?? 30, 1, 365);
 		const windowStart = Date.now() - windowDays * DAY_MS;
@@ -1316,6 +1327,7 @@ export const getRunThroughput = userQuery({
 	): Promise<
 		Array<{ day: number; success: number; failed: number; skipped: number }>
 	> => {
+		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
 		const windowDays = clampInt(args.windowDays ?? 30, 1, 365);
 		const now = Date.now();
@@ -1372,6 +1384,7 @@ export const getRecentFailures = userQuery({
 			triggeredAt: number;
 		}>
 	> => {
+		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
 		const limit = clampInt(args.limit ?? 10, 1, 50);
 

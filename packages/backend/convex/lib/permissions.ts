@@ -223,3 +223,141 @@ export async function getCurrentUserId(
 	const user = await getCurrentUser(ctx);
 	return user?._id ?? null;
 }
+
+/**
+ * Granular per-object permissions (PRD §4.1)
+ */
+
+import { ConvexError } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
+import {
+	DEFAULT_MEMBER_PERMISSIONS,
+	PERMISSION_OBJECTS,
+	isPermissionObject,
+	levelAtLeast,
+	type AccessLevel,
+	type ObjectGrant,
+	type PermissionGrants,
+	type PermissionObject,
+} from "./permissionKeys";
+import { getMembership } from "./memberships";
+
+export type EffectivePermissions = PermissionGrants | "all";
+export type RequiredLevel = Exclude<AccessLevel, "none">;
+
+/**
+ * Shadow-mode switch. While unset/false, permission verdicts are computed and
+ * would-denies logged (`[permissions-shadow]`), but nothing throws and no rows
+ * are hidden. Read at call time so tests can toggle process.env.
+ */
+export function permissionsEnforced(): boolean {
+	return process.env.PERMISSIONS_ENFORCE === "true";
+}
+
+/** Pure verdict on an already-resolved grant set. */
+export function checkLevel(
+	grants: EffectivePermissions,
+	object: PermissionObject,
+	level: RequiredLevel
+): boolean {
+	if (grants === "all") return true;
+	const grant = grants[object];
+	return !!grant && levelAtLeast(grant.level, level);
+}
+
+/** Pure verdict: does the grant set cover all records of `object`? */
+export function checkAllRecords(
+	grants: EffectivePermissions,
+	object: PermissionObject
+): boolean {
+	if (grants === "all") return true;
+	if (PERMISSION_OBJECTS[object].scope === null) return true; // unscoped = org-wide
+	return grants[object]?.allRecords === true;
+}
+
+/**
+ * Throw FORBIDDEN when enforcing; console.warn the would-deny in shadow mode.
+ * `extra` lands in the ConvexError data and the log line.
+ */
+export function denyPermission(extra: {
+	object: PermissionObject;
+	level?: RequiredLevel;
+	scope?: true;
+	userId?: Id<"users">;
+	orgId?: Id<"organizations">;
+	detail?: string;
+}): void {
+	if (permissionsEnforced()) {
+		const { userId: _u, orgId: _o, detail: _d, ...data } = extra;
+		throw new ConvexError({ code: "FORBIDDEN", ...data });
+	}
+	console.warn(
+		`[permissions-shadow] would deny ${extra.level ?? (extra.scope ? "record-scope" : "?")} on ${extra.object}` +
+			(extra.userId ? ` user=${extra.userId}` : "") +
+			(extra.orgId ? ` org=${extra.orgId}` : "") +
+			(extra.detail ? ` (${extra.detail})` : "")
+	);
+}
+
+/**
+ * Effective grants for a known user+org (factories pass their resolved pair to
+ * skip re-deriving identity). "all" = owner/admin short-circuit.
+ */
+export async function getEffectivePermissionsFor(
+	ctx: QueryCtx | MutationCtx,
+	user: Doc<"users">,
+	orgId: Id<"organizations">
+): Promise<EffectivePermissions> {
+	const org = await ctx.db.get(orgId);
+	if (org?.ownerUserId === user._id) return "all"; // owner: immutable full access
+
+	const membership = await getMembership(ctx, user._id, orgId);
+	// Prefer the webhook-synced role column (fresh within seconds); the JWT
+	// orgRole claim can lag ~60s and is only the fallback for legacy rows.
+	const role = membership?.role ?? (await getCurrentUserRole(ctx));
+	if (isAdminRole(role)) return "all";
+
+	const stored = (membership?.permissions ?? {}) as PermissionGrants;
+	// Stored entry replaces the default per object; {level:"none"} explicitly revokes.
+	const effective: PermissionGrants = { ...DEFAULT_MEMBER_PERMISSIONS };
+	for (const [obj, grant] of Object.entries(stored)) {
+		if (isPermissionObject(obj)) effective[obj] = grant as ObjectGrant;
+	}
+	return effective;
+}
+
+/** Effective grants for the current caller. Secure-by-default: no identity/org ⇒ {}. */
+export async function getEffectivePermissions(
+	ctx: QueryCtx | MutationCtx
+): Promise<EffectivePermissions> {
+	const user = await getCurrentUser(ctx);
+	const orgId = await getCurrentUserOrgIdOrNull(ctx);
+	if (!user || !orgId) return {};
+	return getEffectivePermissionsFor(ctx, user, orgId);
+}
+
+export async function can(
+	ctx: QueryCtx | MutationCtx,
+	object: PermissionObject,
+	level: RequiredLevel
+): Promise<boolean> {
+	return checkLevel(await getEffectivePermissions(ctx), object, level);
+}
+
+export async function hasAllRecords(
+	ctx: QueryCtx | MutationCtx,
+	object: PermissionObject
+): Promise<boolean> {
+	return checkAllRecords(await getEffectivePermissions(ctx), object);
+}
+
+/** Shadow-aware level gate for non-factory call sites (assistant tools etc.). */
+export async function requireLevel(
+	ctx: QueryCtx | MutationCtx,
+	object: PermissionObject,
+	level: RequiredLevel
+): Promise<void> {
+	if (!(await can(ctx, object, level))) {
+		denyPermission({ object, level });
+	}
+}

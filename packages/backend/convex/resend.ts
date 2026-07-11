@@ -25,6 +25,7 @@ export const sendClientEmail = userMutation({
 		contactId: v.optional(v.id("clientContacts")), // Recipient; defaults to primary
 	},
 	handler: async (ctx, args) => {
+		await ctx.requireLevel("inbox", "modify");
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 
@@ -180,6 +181,7 @@ export const replyToEmail = userMutation({
 		messageBody: v.string(),
 	},
 	handler: async (ctx, args) => {
+		await ctx.requireLevel("inbox", "modify");
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 

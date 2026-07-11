@@ -1,8 +1,13 @@
 import { query, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+import { emptyListResult } from "./lib/queries";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserFunctionExtras,
+} from "./lib/factories";
+import type { PermissionObject } from "./lib/permissionKeys";
 
 /**
  * Activity operations for activity feed
@@ -26,6 +31,33 @@ export interface ActivityWithUser extends Doc<"activities"> {
 // ============================================================================
 // Local Helper Functions
 // ============================================================================
+
+// Cross-cutting feed: never return an object type the caller can't view (PRD §4.4).
+const ENTITY_PERMISSION_OBJECT: Partial<Record<string, PermissionObject>> = {
+	client: "clients",
+	project: "projects",
+	quote: "quotes",
+	invoice: "invoices",
+	task: "tasks",
+};
+
+/** Drop activities whose entity type the caller lacks `view` on (one gateRead per type). */
+async function filterByEntityGrant(
+	ctx: { gateRead: UserFunctionExtras["gateRead"] },
+	activities: Doc<"activities">[]
+): Promise<Doc<"activities">[]> {
+	const allowed = new Map<string, boolean>();
+	for (const activity of activities) {
+		if (!allowed.has(activity.entityType)) {
+			const object = ENTITY_PERMISSION_OBJECT[activity.entityType];
+			allowed.set(
+				activity.entityType,
+				object ? await ctx.gateRead(object) : true
+			);
+		}
+	}
+	return activities.filter((a) => allowed.get(a.entityType) ?? true);
+}
 
 /**
  * Enrich activities with user data
@@ -66,8 +98,8 @@ export const getRecent = optionalUserQuery({
 		limit: v.optional(v.number()), // Max activities to fetch
 	},
 	handler: async (ctx, args): Promise<ActivityWithUser[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!ctx.orgId) return emptyListResult();
+		const orgId = ctx.orgId;
 
 		// Query all recent activities for the organization, ordered by timestamp (newest first)
 		const activities = await ctx.db
@@ -77,7 +109,10 @@ export const getRecent = optionalUserQuery({
 			.filter((q) => q.eq(q.field("isVisible"), true))
 			.take(args.limit || 1000); // Default to last 1000 activities
 
-		return await enrichActivitiesWithUsers(ctx, activities);
+		return await enrichActivitiesWithUsers(
+			ctx,
+			await filterByEntityGrant(ctx, activities)
+		);
 	},
 });
 
@@ -109,8 +144,8 @@ export const getByType = optionalUserQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ActivityWithUser[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!ctx.orgId) return emptyListResult();
+		const orgId = ctx.orgId;
 
 		const activities = await ctx.db
 			.query("activities")
@@ -121,7 +156,10 @@ export const getByType = optionalUserQuery({
 			.filter((q) => q.eq(q.field("isVisible"), true))
 			.take(args.limit || 25);
 
-		return await enrichActivitiesWithUsers(ctx, activities);
+		return await enrichActivitiesWithUsers(
+			ctx,
+			await filterByEntityGrant(ctx, activities)
+		);
 	},
 });
 
@@ -144,8 +182,11 @@ export const getByEntity = optionalUserQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ActivityWithUser[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!ctx.orgId) return emptyListResult();
+		const orgId = ctx.orgId;
+
+		const entityObject = ENTITY_PERMISSION_OBJECT[args.entityType];
+		if (entityObject) await ctx.requireLevel(entityObject, "view");
 
 		const activities = await ctx.db
 			.query("activities")
@@ -192,8 +233,8 @@ export const getCount = optionalUserQuery({
 		),
 	},
 	handler: async (ctx, args): Promise<number> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return 0;
+		if (!ctx.orgId) return 0;
+		const orgId = ctx.orgId;
 
 		// Calculate timestamp filter if dayRange is provided
 		let timestampFilter: number | undefined;
@@ -227,6 +268,6 @@ export const getCount = optionalUserQuery({
 				.collect();
 		}
 
-		return activities.length;
+		return (await filterByEntityGrant(ctx, activities)).length;
 	},
 });

@@ -21,6 +21,7 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import { permissionsEnforced } from "./lib/permissions";
 
 /**
  * Task/Schedule operations
@@ -259,7 +260,7 @@ export const list = optionalUserQuery({
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("tasks", "view");
 
 		let tasks: TaskDocument[];
 
@@ -322,7 +323,7 @@ export const list = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
 		// Sort by date
 		return tasks.sort((a, b) => a.date - b.date);
@@ -336,6 +337,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("tasks", "view");
 		let task: TaskDocument;
 		try {
 			task = await ctx.orgEntity("tasks", args.id);
@@ -347,7 +349,7 @@ export const get = optionalUserQuery({
 		}
 
 
-		const visibleTasks = await ctx.scopedToActor([task], (item) => item.assigneeUserId);
+		const visibleTasks = await ctx.scopedToActor("tasks", [task], (item) => item.assigneeUserId);
 		if (visibleTasks.length === 0) return null;
 
 		return task;
@@ -390,6 +392,21 @@ export const create = userMutation({
 		repeatUntil: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<TaskId> => {
+		await ctx.requireLevel("tasks", "modify");
+
+		let assigneeUserId = args.assigneeUserId;
+		if (!(await ctx.hasAllRecords("tasks")) && args.assigneeUserId === undefined) {
+			if (permissionsEnforced()) {
+				// scoped users own what they create (PRD §3.2)
+				assigneeUserId = ctx.user._id;
+			} else {
+				console.warn(
+					`[permissions-shadow] would auto-assign task creator user=${ctx.user._id}`
+				);
+			}
+		}
+		args = { ...args, assigneeUserId };
+
 		// Validate title is not empty
 		if (!args.title.trim()) {
 			throw new Error("Task title is required");
@@ -532,6 +549,8 @@ export const update = userMutation({
 		repeatUntil: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<TaskId> => {
+		await ctx.requireLevel("tasks", "modify");
+
 		const { id, ...updates } = args;
 
 		// Validate title is not empty if being updated
@@ -560,6 +579,10 @@ export const update = userMutation({
 
 		// Get current task for validation
 		const currentTask = await ctx.orgEntity("tasks", id);
+		await ctx.requireRecordScope(
+			"tasks",
+			() => currentTask.assigneeUserId === ctx.user._id
+		);
 		const oldStatus = currentTask.status;
 
 		// Validate time logic with current or updated values
@@ -628,7 +651,13 @@ export const update = userMutation({
 export const complete = userMutation({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskId> => {
+		await ctx.requireLevel("tasks", "modify");
+
 		const task = await ctx.orgEntity("tasks", args.id);
+		await ctx.requireRecordScope(
+			"tasks",
+			() => task.assigneeUserId === ctx.user._id
+		);
 
 		if (task.status === "completed") {
 			throw new Error("Task is already completed");
@@ -677,7 +706,14 @@ export const complete = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("tasks") },
 	handler: async (ctx, args): Promise<TaskId> => {
-		await ctx.orgEntity("tasks", args.id); // Validate access
+		await ctx.requireLevel("tasks", "delete");
+
+		const task = await ctx.orgEntity("tasks", args.id); // Validate access
+		await ctx.requireRecordScope(
+			"tasks",
+			() => task.assigneeUserId === ctx.user._id
+		);
+
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -704,6 +740,7 @@ export const search = optionalUserQuery({
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("tasks", "view");
 
 		let tasks = await ctx.db
 			.query("tasks")
@@ -748,14 +785,14 @@ export const getStats = optionalUserQuery({
 	handler: async (ctx): Promise<TaskStats> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return createEmptyTaskStats();
-
+		await ctx.requireLevel("tasks", "view");
 
 		let tasks = await ctx.db
 			.query("tasks")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
 
-		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
 		const stats: TaskStats = {
 			total: tasks.length,
@@ -833,7 +870,7 @@ export const getToday = optionalUserQuery({
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("tasks", "view");
 
 		const today = DateUtils.startOfDay(Date.now());
 		const tomorrow = DateUtils.addDays(today, 1);
@@ -853,7 +890,7 @@ export const getToday = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
 		return tasks.sort((a, b) => {
 			// Sort by start time if available, otherwise by creation time
@@ -873,7 +910,7 @@ export const getOverdue = optionalUserQuery({
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("tasks", "view");
 
 		const today = DateUtils.startOfDay(Date.now());
 
@@ -895,7 +932,7 @@ export const getOverdue = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
 		return tasks.sort((a, b) => b.date - a.date); // Most recent overdue first
 	},
@@ -912,7 +949,7 @@ export const getUpcoming = optionalUserQuery({
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
-
+		await ctx.requireLevel("tasks", "view");
 
 		const today = DateUtils.startOfDay(Date.now());
 		const daysAhead = args.daysAhead || 7;
@@ -938,7 +975,7 @@ export const getUpcoming = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor(tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
 		// Sort by date, then by start time
 		return tasks.sort((a, b) => {
@@ -977,6 +1014,7 @@ export const getByUser = optionalUserQuery({
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("tasks", "view");
 
 		// Validate the user exists and belongs to the same org
 		await validateUserAccess(ctx, args.userId, orgId);
@@ -988,6 +1026,9 @@ export const getByUser = optionalUserQuery({
 
 		// Filter by organization (additional security check)
 		tasks = tasks.filter((task) => task.orgId === orgId);
+
+		// Scoped members may only read their own assignments this way
+		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
 		// Filter by status if specified
 		if (args.status) {

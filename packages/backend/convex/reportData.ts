@@ -3,7 +3,6 @@ import { v, ConvexError } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { getOrgTimezoneById } from "./lib/organization";
 import { DateUtils } from "./lib/shared";
-import { getOptionalOrgId } from "./lib/queries";
 import { optionalUserQuery } from "./lib/factories";
 import {
 	scanOrgTable,
@@ -1157,8 +1156,9 @@ export const executeReport = optionalUserQuery({
 		detail: detailValidator,
 	},
 	handler: async (ctx, args): Promise<ReportDataResult> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyReportResult();
+		if (!ctx.orgId) return emptyReportResult();
+		await ctx.requireLevel("reports", "view");
+		const orgId = ctx.orgId;
 
 		const entityType = args.entityType as ReportEntityType;
 		const filters = args.filters as ReportFilters | undefined;

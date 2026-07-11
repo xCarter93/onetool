@@ -3,7 +3,6 @@ import { query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { DateUtils } from "./lib/shared";
 import {
-	getOptionalOrgId,
 	getDateRangeBounds,
 	getMonthComparisonPeriods,
 	getWeekRange,
@@ -121,10 +120,13 @@ const EMPTY_HOME_STATS: HomeStats = {
 export const getHomeStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<HomeStats> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
-			return EMPTY_HOME_STATS;
-		}
+		if (!ctx.orgId) return EMPTY_HOME_STATS;
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("clients", "view");
+		await ctx.requireLevel("projects", "view");
+		await ctx.requireLevel("quotes", "view");
+		await ctx.requireLevel("invoices", "view");
+		await ctx.requireLevel("tasks", "view");
 
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
@@ -345,10 +347,9 @@ export const getHomeStats = optionalUserQuery({
 export const getPendingTasksCount = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<{ count: number; dueThisWeek: number }> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
-			return { count: 0, dueThisWeek: 0 };
-		}
+		if (!ctx.orgId) return { count: 0, dueThisWeek: 0 };
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("tasks", "view");
 		const weekRange = getWeekRange();
 
 		const pendingTasks = await ctx.db
@@ -388,8 +389,7 @@ export const getClientsStats = optionalUserQuery({
 		change: number;
 		changeType: "increase" | "decrease" | "neutral";
 	}> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				total: 0,
 				thisMonth: 0,
@@ -398,6 +398,8 @@ export const getClientsStats = optionalUserQuery({
 				changeType: "neutral",
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("clients", "view");
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
 
@@ -441,8 +443,7 @@ export const getRevenueGoalProgress = optionalUserQuery({
 		target: number;
 		isOnTrack: boolean;
 	}> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				percentage: 0,
 				current: 0,
@@ -450,6 +451,8 @@ export const getRevenueGoalProgress = optionalUserQuery({
 				isOnTrack: false,
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("invoices", "view");
 
 		// Get organization to fetch revenue target
 		const organization = await ctx.db.get(userOrgId);
@@ -515,8 +518,7 @@ export const getClientsCreatedByDateRange = optionalUserQuery({
 			status?: "lead" | "active" | "inactive" | "archived";
 		}>;
 	}> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				baselineCount: 0,
 				totalInRange: 0,
@@ -524,6 +526,8 @@ export const getClientsCreatedByDateRange = optionalUserQuery({
 				data: [],
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("clients", "view");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -591,8 +595,7 @@ export const getProjectsCompletedByDateRange = optionalUserQuery({
 			_creationTime: number;
 		}>;
 	}> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				baselineCount: 0,
 				totalInRange: 0,
@@ -600,6 +603,8 @@ export const getProjectsCompletedByDateRange = optionalUserQuery({
 				data: [],
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("projects", "view");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -688,8 +693,7 @@ export const getQuotesApprovedByDateRange = optionalUserQuery({
 			_creationTime: number;
 		}>;
 	}> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				baselineCount: 0,
 				totalInRange: 0,
@@ -697,6 +701,8 @@ export const getQuotesApprovedByDateRange = optionalUserQuery({
 				data: [],
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("quotes", "view");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -767,8 +773,7 @@ export const getInvoicesPaidByDateRange = optionalUserQuery({
 			_creationTime: number;
 		}>;
 	}> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				baselineCount: 0,
 				totalInRange: 0,
@@ -776,6 +781,8 @@ export const getInvoicesPaidByDateRange = optionalUserQuery({
 				data: [],
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("invoices", "view");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -859,10 +866,9 @@ export const getRevenueByDateRange = optionalUserQuery({
 			_creationTime: number;
 		}>
 	> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
-			return [];
-		}
+		if (!ctx.orgId) return [];
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("invoices", "view");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -910,10 +916,9 @@ export const getTasksCreatedByDateRange = optionalUserQuery({
 			_creationTime: number;
 		}>
 	> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
-			return [];
-		}
+		if (!ctx.orgId) return [];
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("tasks", "view");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -959,8 +964,7 @@ export interface JourneyProgress {
 export const getJourneyProgress = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<JourneyProgress> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return {
 				hasOrganization: false,
 				hasClient: false,
@@ -972,6 +976,12 @@ export const getJourneyProgress = optionalUserQuery({
 				hasPayment: false,
 			};
 		}
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("clients", "view");
+		await ctx.requireLevel("projects", "view");
+		await ctx.requireLevel("quotes", "view");
+		await ctx.requireLevel("documents", "view");
+		await ctx.requireLevel("invoices", "view");
 
 		// Get organization to check metadata completion and Stripe Connect
 		const organization = await ctx.db.get(userOrgId);

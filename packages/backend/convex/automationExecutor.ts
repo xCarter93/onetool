@@ -3784,6 +3784,7 @@ export const startTestRun = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		await ctx.requireLevel("automations", "modify");
 		// No server-side premium check by design: the automations editor is behind
 		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
 		// interactive test runs stay ungated.
@@ -3956,6 +3957,7 @@ export const executeTestStep = systemMutation({
 export const cancelTestRun = userMutation({
 	args: { executionId: v.id("workflowExecutions") },
 	handler: async (ctx, args): Promise<void> => {
+		await ctx.requireLevel("automations", "modify");
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) {
 			throw new Error("Test run not found");
@@ -3982,6 +3984,7 @@ export const startManualRun = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		await ctx.requireLevel("automations", "modify");
 		// No server-side premium check by design: the automations editor is behind
 		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
 		// interactive manual runs stay ungated.
@@ -4087,6 +4090,7 @@ export const startManualRun = userMutation({
 export const getExecution = userQuery({
 	args: { executionId: v.id("workflowExecutions") },
 	handler: async (ctx, args): Promise<Doc<"workflowExecutions"> | null> => {
+		await ctx.requireLevel("automations", "view");
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) return null;
 		return execution;
@@ -4107,6 +4111,7 @@ export const getSampleRecords = userQuery({
 		ctx,
 		args
 	): Promise<{ entityType: ObjectType; entityId: string; label: string }[]> => {
+		await ctx.requireLevel("automations", "view");
 		let objectType = args.objectType;
 		if (!objectType && args.automationId) {
 			const automation = await ctx.db.get(args.automationId);

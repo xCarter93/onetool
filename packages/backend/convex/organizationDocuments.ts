@@ -2,7 +2,6 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { getOptionalOrgId } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
@@ -57,10 +56,11 @@ type OrganizationDocumentId = Id<"organizationDocuments">;
 export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<OrganizationDocument[]> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("orgDocuments", "view");
 
 		const documents = await ctx.db
 			.query("organizationDocuments")
@@ -78,10 +78,11 @@ export const list = optionalUserQuery({
 export const get = optionalUserQuery({
 	args: { id: v.id("organizationDocuments") },
 	handler: async (ctx, args): Promise<OrganizationDocument | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("orgDocuments", "view");
 		return await getDocumentWithOrgValidation(ctx, args.id);
 	},
 });
@@ -99,6 +100,7 @@ export const create = userMutation({
 	handler: async (ctx, args): Promise<OrganizationDocumentId> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
+		await ctx.requireLevel("orgDocuments", "modify");
 
 		const documentId = await ctx.db.insert("organizationDocuments", {
 			orgId: userOrgId,
@@ -124,6 +126,7 @@ export const update = userMutation({
 		description: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<OrganizationDocumentId> => {
+		await ctx.requireLevel("orgDocuments", "modify");
 		const { id, ...updates } = args;
 
 		// Validate document exists and belongs to user's org
@@ -151,6 +154,7 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("organizationDocuments") },
 	handler: async (ctx, args): Promise<OrganizationDocumentId> => {
+		await ctx.requireLevel("orgDocuments", "delete");
 		const document = await getDocumentOrThrow(ctx, args.id);
 
 		// Delete the file from storage
@@ -174,10 +178,11 @@ export const remove = userMutation({
 export const getDocumentUrl = optionalUserQuery({
 	args: { id: v.id("organizationDocuments") },
 	handler: async (ctx, args): Promise<string | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("orgDocuments", "view");
 		const document = await getDocumentWithOrgValidation(ctx, args.id);
 
 		if (!document) {
@@ -198,10 +203,11 @@ export const getDocumentUrls = optionalUserQuery({
 		ctx,
 		args
 	): Promise<Array<{ id: string; url: string | null }>> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("orgDocuments", "view");
 
 		const results = [];
 		for (const id of args.ids) {
@@ -231,6 +237,7 @@ export const generateUploadUrl = userMutation({
 	handler: async (ctx) => {
 		// Ensure user is authenticated
 		await getCurrentUserOrThrow(ctx);
+		await ctx.requireLevel("orgDocuments", "modify");
 		return await ctx.storage.generateUploadUrl();
 	},
 });
@@ -241,7 +248,7 @@ export const generateUploadUrl = userMutation({
 export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return {
 				total: 0,
@@ -250,6 +257,7 @@ export const getStats = optionalUserQuery({
 				thisWeek: 0,
 			};
 		}
+		await ctx.requireLevel("orgDocuments", "view");
 
 		const documents = await ctx.db
 			.query("organizationDocuments")

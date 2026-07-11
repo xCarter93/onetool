@@ -272,6 +272,7 @@ describe("org-scoped function factories", () => {
 				args: {},
 				handler: async (factoryCtx) => {
 					return await factoryCtx.scopedToActor(
+						"tasks",
 						makeRows(),
 						(row) => row.assigneeUserId ?? row.assignedUserIds
 					);
@@ -294,6 +295,7 @@ describe("org-scoped function factories", () => {
 				args: {},
 				handler: async (factoryCtx) => {
 					return await factoryCtx.scopedToActor(
+						"tasks",
 						makeRows(),
 						(row) => row.assigneeUserId ?? row.assignedUserIds
 					);

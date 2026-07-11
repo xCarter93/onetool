@@ -212,16 +212,24 @@ export const listByInvoice = optionalUserQuery({
 	handler: async (ctx, args): Promise<PaymentDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("invoices", "view");
 
-		await validateInvoiceAccess(ctx, args.invoiceId, orgId);
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, orgId);
 
 		const payments = await ctx.db
 			.query("payments")
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
 
+		// All rows share one parent invoice — scope check runs once, not per row.
+		const scoped = await ctx.applyReadScope("invoices", payments, (_row, s) =>
+			parentInvoice.projectId
+				? s.projectIds.has(parentInvoice.projectId)
+				: s.clientIds.has(parentInvoice.clientId)
+		);
+
 		// Sort by sortOrder
-		return payments.sort((a, b) => a.sortOrder - b.sortOrder);
+		return scoped.sort((a, b) => a.sortOrder - b.sortOrder);
 	},
 });
 
@@ -232,6 +240,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("invoices", "view");
 		try {
 			return await ctx.orgEntity("payments", args.id);
 		} catch (error) {
@@ -339,12 +348,19 @@ export const getInvoiceSummary = optionalUserQuery({
 			};
 		}
 
-		await validateInvoiceAccess(ctx, args.invoiceId, orgId);
+		await ctx.requireLevel("invoices", "view");
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, orgId);
 
-		const payments = await ctx.db
+		const allPayments = await ctx.db
 			.query("payments")
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
+		// All rows share one parent invoice — scope check runs once, not per row.
+		const payments = await ctx.applyReadScope("invoices", allPayments, (_row, s) =>
+			parentInvoice.projectId
+				? s.projectIds.has(parentInvoice.projectId)
+				: s.clientIds.has(parentInvoice.clientId)
+		);
 
 		const invoice = await ctx.db.get(args.invoiceId);
 
@@ -386,8 +402,16 @@ export const create = userMutation({
 		sortOrder: v.number(),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
-		await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Validate payment amount and sort order
 		validatePaymentAmount(args.paymentAmount);
@@ -427,10 +451,19 @@ export const update = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const { id, ...updates } = args;
 
 		// Get payment and validate access
 		const payment = await ctx.orgEntity("payments", id);
+		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Cannot update paid payments
 		if (payment.status === "paid") {
@@ -458,7 +491,16 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "delete");
 		const payment = await ctx.orgEntity("payments", args.id);
+		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Cannot delete paid payments
 		if (payment.status === "paid") {
@@ -490,8 +532,16 @@ export const configurePayments = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<PaymentId[]> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
-		await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Get existing payments
 		const existingPayments = await ctx.db
@@ -565,8 +615,16 @@ export const configurePayments = userMutation({
 export const createDefaultPayment = userMutation({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Check if payments already exist
 		const existingPayments = await ctx.db
@@ -674,7 +732,15 @@ export const reorder = userMutation({
 		paymentIds: v.array(v.id("payments")),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		await validateInvoiceAccess(ctx, args.invoiceId);
+		await ctx.requireLevel("invoices", "modify");
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Validate that all payments belong to the invoice
 		for (const paymentId of args.paymentIds) {
@@ -699,7 +765,16 @@ export const reorder = userMutation({
 export const markAsSent = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const payment = await ctx.orgEntity("payments", args.id);
+		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot send a paid payment");
@@ -719,7 +794,16 @@ export const markAsSent = userMutation({
 export const markAsOverdue = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const payment = await ctx.orgEntity("payments", args.id);
+		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot mark a paid payment as overdue");
@@ -1153,7 +1237,16 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 export const cancel = userMutation({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentId> => {
+		await ctx.requireLevel("invoices", "delete");
 		const payment = await ctx.orgEntity("payments", args.id);
+		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot cancel a paid payment");
