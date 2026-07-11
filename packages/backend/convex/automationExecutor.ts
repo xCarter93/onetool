@@ -11,7 +11,7 @@ import { AggregateHelpers } from "./lib/aggregates";
 import { ActivityHelpers } from "./lib/activities";
 import { systemMutation, userMutation, userQuery } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
-import { orgHasPremiumPlan } from "./lib/permissions";
+import { isAdminRole, orgHasPremiumPlan } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import { enqueuePush } from "./push";
 import {
@@ -2790,7 +2790,7 @@ async function resolveMemberUserIds(
 ): Promise<Id<"users">[]> {
 	const memberships = await listMembershipsByOrg(ctx, orgId);
 	return memberships
-		.filter((m) => (adminsOnly ? m.role === "admin" : true))
+		.filter((m) => (adminsOnly ? isAdminRole(m.role) : true))
 		.map((m) => m.userId);
 }
 
@@ -4162,3 +4162,6 @@ export const failStaleTestRuns = internalMutation({
 		return { failed };
 	},
 });
+
+/** Exposed for tests; not part of the public API. */
+export const __testUtils = { resolveMemberUserIds };

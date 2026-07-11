@@ -353,6 +353,18 @@ function resolveFromEmail(organization: { receivingAddress?: string }): string {
 	return addr && addr.length > 0 ? addr : FALLBACK_FROM_EMAIL;
 }
 
+// OneTool brand mark, served from the marketing site's public assets. Used for
+// the "Powered by OneTool" footer lockup on org-branded client emails.
+const ONETOOL_MARK_URL = "https://onetool.biz/OneTool-mark.png";
+
+// Two-letter monogram shown when an org hasn't uploaded a logo.
+function getOrgInitials(name: string): string {
+	const words = name.trim().split(/\s+/).filter(Boolean);
+	if (words.length === 0) return "?";
+	if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+	return (words[0][0] + words[1][0]).toUpperCase();
+}
+
 /**
  * Build email HTML with organization branding
  */
@@ -377,8 +389,8 @@ function buildEmailHtml(options: {
 		senderName,
 	} = options;
 
-	// Default brand color (hardcoded since brandColor field was removed)
-	const brandColor = "#3b82f6";
+	// Current year for the footer copyright line.
+	const year = new Date().getFullYear();
 
 	// HTML escape helper to prevent XSS
 	const escapeHtml = (text: string): string => {
@@ -404,6 +416,7 @@ function buildEmailHtml(options: {
 	const escapedOrganizationAddress = organizationAddress
 		? escapeHtml(organizationAddress)
 		: undefined;
+	const escapedInitials = escapeHtml(getOrgInitials(organizationName));
 
 	// Convert message body to HTML (preserve line breaks) with XSS protection
 	const messageHtml = messageBody
@@ -422,64 +435,64 @@ function buildEmailHtml(options: {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>${escapedOrganizationName}</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; color: #1f2937;">
-	<table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f1f5f9; color: #0f172a;">
+	<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 32px 16px;">
 		<tr>
 			<td align="center">
-				<!-- Main container -->
-				<table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-					<!-- Header with logo -->
+				<!-- Main card -->
+				<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border: 1px solid #e6eaf0; border-radius: 14px; overflow: hidden;">
+					<!-- Org identity lockup -->
 					<tr>
-						<td style="background-color: ${brandColor}; padding: 40px 40px 30px 40px; text-align: center;">
-							${
-								logoUrl
-									? `<img src="${logoUrl}" alt="${escapedOrganizationName}" style="max-width: 180px; height: auto; display: block; margin: 0 auto;" />`
-									: `<h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">${escapedOrganizationName}</h1>`
-							}
-						</td>
-					</tr>
-					
-					<!-- Content -->
-					<tr>
-						<td style="padding: 40px;">
-							<p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">Hi ${escapedClientName},</p>
-							
-							<div style="margin: 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
-								${messageHtml}
-							</div>
-							
-							<p style="margin: 30px 0 10px 0; font-size: 16px; line-height: 1.6;">Best regards,</p>
-							<p style="margin: 0 0 5px 0; font-size: 18px; line-height: 1.6; font-weight: 700; color: ${brandColor};">${escapedSenderName}</p>
-							<p style="margin: 0 0 15px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">${escapedOrganizationName}</p>
-						</td>
-					</tr>
-					
-					<!-- Footer -->
-					<tr>
-						<td style="background-color: #f9fafb; padding: 30px 40px; border-top: 1px solid #e5e7eb;">
-							<table width="100%" cellpadding="0" cellspacing="0">
+						<td style="padding: 30px 40px 22px 40px; border-bottom: 1px solid #e2e8f0;">
+							<table role="presentation" cellpadding="0" cellspacing="0">
 								<tr>
-									<td style="font-size: 14px; line-height: 1.6; color: #6b7280;">
-										<strong style="color: #1f2937;">${escapedOrganizationName}</strong><br />
+									<td style="vertical-align: middle;">
 										${
-											escapedOrganizationEmail
-												? `Email: <a href="mailto:${escapedOrganizationEmail}" style="color: ${brandColor}; text-decoration: none;">${escapedOrganizationEmail}</a><br />`
-												: ""
+											logoUrl
+												? `<img src="${logoUrl}" alt="${escapedOrganizationName}" style="max-height: 40px; max-width: 200px; height: auto; display: block;" />`
+												: `<div style="width: 40px; height: 40px; border-radius: 10px; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; text-align: center; line-height: 40px;">${escapedInitials}</div>`
 										}
-										${escapedOrganizationPhone ? `Phone: ${escapedOrganizationPhone}<br />` : ""}
-										${escapedOrganizationAddress ? `${escapedOrganizationAddress}` : ""}
 									</td>
+									${
+										logoUrl
+											? ""
+											: `<td style="vertical-align: middle; padding-left: 12px;"><span style="font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em;">${escapedOrganizationName}</span></td>`
+									}
 								</tr>
 							</table>
 						</td>
 					</tr>
-				</table>
-				
-				<!-- Footer note -->
-				<table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin-top: 20px;">
+
+					<!-- Letter body -->
 					<tr>
-						<td style="text-align: center; font-size: 12px; color: #9ca3af; line-height: 1.5;">
-							<p style="margin: 0;">This email was sent by ${escapedOrganizationName}</p>
+						<td style="padding: 26px 40px 30px 40px;">
+							<p style="margin: 0 0 18px 0; font-size: 16px; line-height: 1.6; color: #0f172a;">Hi ${escapedClientName},</p>
+							<div style="font-size: 15px; line-height: 1.7; color: #334155;">
+								${messageHtml}
+							</div>
+							<p style="margin: 28px 0 4px 0; font-size: 15px; line-height: 1.6; color: #334155;">Best regards,</p>
+							<p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">${escapedSenderName}</p>
+							<p style="margin: 2px 0 0 0; font-size: 13px; color: #64748b;">${escapedOrganizationName}</p>
+						</td>
+					</tr>
+
+					<!-- Footer: org contact + OneTool branding -->
+					<tr>
+						<td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px;">
+							<p style="margin: 0 0 5px 0; font-size: 13px; font-weight: 700; color: #0f172a;">${escapedOrganizationName}</p>
+							<p style="margin: 0; font-size: 13px; line-height: 1.7; color: #64748b;">
+								${escapedOrganizationEmail ? `<a href="mailto:${escapedOrganizationEmail}" style="color: #2563eb; text-decoration: none;">${escapedOrganizationEmail}</a>` : ""}${escapedOrganizationEmail && escapedOrganizationPhone ? " &middot; " : ""}${escapedOrganizationPhone ? escapedOrganizationPhone : ""}${(escapedOrganizationEmail || escapedOrganizationPhone) && escapedOrganizationAddress ? "<br />" : ""}${escapedOrganizationAddress ? escapedOrganizationAddress : ""}
+							</p>
+							<div style="height: 1px; line-height: 1px; font-size: 0; background-color: #e9edf3; margin: 16px 0;">&nbsp;</div>
+							<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+								<tr>
+									<td style="vertical-align: middle;">
+										<img src="${ONETOOL_MARK_URL}" alt="OneTool" width="16" height="16" style="vertical-align: middle; display: inline-block;" />
+										<span style="font-size: 12px; color: #475569; font-weight: 600; vertical-align: middle; margin-left: 6px;">Powered by OneTool</span>
+									</td>
+									<td style="vertical-align: middle; text-align: right; font-size: 11px; color: #94a3b8;">&copy; ${year} OneTool</td>
+								</tr>
+							</table>
 						</td>
 					</tr>
 				</table>

@@ -348,6 +348,41 @@ describe("Community Pages", () => {
 		expect(task?.assigneeUserId).toBeTruthy();
 	});
 
+	it("submitInterest assigns to an admin stored with Clerk's org:admin role", async () => {
+		// Regression: the webhook stores Clerk's verbatim "org:admin"; the old
+		// bare-"admin" DB filter never matched it, silently leaving leads unassigned.
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		const adminUserId = await t.run(async (ctx) => {
+			const memberships = await ctx.db.query("organizationMemberships").collect();
+			await ctx.db.patch(memberships[0]._id, { role: "org:admin" });
+			return memberships[0].userId;
+		});
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "org-admin-lead-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "org-admin-lead-test",
+			name: "Lead Person",
+			email: "lead@example.com",
+		});
+
+		const task = await t.run(async (ctx) => {
+			const tasks = await ctx.db.query("tasks").collect();
+			return tasks.find((row) => row.title === "Follow up: Lead Person");
+		});
+		expect(task).toBeTruthy();
+		expect(task?.assigneeUserId).toBe(adminUserId);
+	});
+
 	it("submitInterest task due date is a weekday", async () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 

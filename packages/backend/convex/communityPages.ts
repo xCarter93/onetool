@@ -8,6 +8,7 @@ import {
 import { getOptionalOrgId } from "./lib/queries";
 import { rateLimiter } from "./rateLimits";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import { isAdminRole } from "./lib/permissions";
 
 // Type definitions
 type CommunityPageDocument = Doc<"communityPages">;
@@ -571,11 +572,11 @@ export const submitInterest = mutation({
 		descParts.push(`\nSource: Community page (${args.slug})`);
 
 		// Find org admin for task assignment
-		const adminMembership = await ctx.db
+		const memberships = await ctx.db
 			.query("organizationMemberships")
 			.withIndex("by_org", (q) => q.eq("orgId", page.orgId))
-			.filter((q) => q.eq(q.field("role"), "admin"))
-			.first();
+			.collect();
+		const adminMembership = memberships.find((m) => isAdminRole(m.role));
 
 		const assigneeUserId = adminMembership?.userId;
 

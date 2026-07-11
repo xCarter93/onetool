@@ -158,6 +158,27 @@ interface ClerkIdentityWithOrgRole {
 }
 
 /**
+ * Normalize a Clerk/stored role to its bare key: lowercase, "org:" prefix
+ * stripped. "org:admin" → "admin", "admin" → "admin", nullish → null.
+ */
+function normalizeRoleKey(role: string | null | undefined): string | null {
+	if (!role) return null;
+	const normalized = role.trim().toLowerCase();
+	return normalized.startsWith("org:")
+		? normalized.slice("org:".length)
+		: normalized;
+}
+
+/**
+ * True only for the org admin role. Exact match (not substring) so values like
+ * "org:administrator" or "not-an-admin" are rejected; accepts both Clerk's
+ * "org:admin" and the bare "admin" (tests/legacy rows). Nullish → false.
+ */
+export function isAdminRole(role: string | null | undefined): boolean {
+	return normalizeRoleKey(role) === "admin";
+}
+
+/**
  * Get the current user's role in their active organization from Clerk JWT
  * This reads directly from the Clerk authentication token, not from the database
  */
@@ -189,12 +210,8 @@ export async function isMember(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 		return false;
 	}
 
-	// Normalize role string
-	const normalizedRole = role.trim().toLowerCase();
-
-	// Only return true for explicit member roles
-	// Must include/equal "member" and must NOT include "admin"
-	return normalizedRole.includes("member") && !normalizedRole.includes("admin");
+	// Exact match on the normalized role key (not substring collisions).
+	return normalizeRoleKey(role) === "member";
 }
 
 /**
