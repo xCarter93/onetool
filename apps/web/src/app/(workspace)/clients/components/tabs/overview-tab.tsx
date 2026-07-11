@@ -3,12 +3,11 @@
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useMutation } from "convex/react";
-import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
-import { GlassCard, GlassCardContent } from "@/components/shared/glass-card";
-import { FolderOpen, DollarSign, TrendingUp, Pencil, Check, X } from "lucide-react";
-import Link from "next/link";
+import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
+import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
+import { FolderOpen, DollarSign, TrendingUp, FileText, Receipt, Pencil, Check, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -42,46 +41,6 @@ function sortedByNewest<T extends { _creationTime: number }>(
 ): T[] {
 	if (!items) return [];
 	return [...items].sort((a, b) => b._creationTime - a._creationTime);
-}
-
-function RelatedEntityColumn<T>({
-	label,
-	count,
-	emptyMessage,
-	items,
-	renderItem,
-}: {
-	label: string;
-	count: number;
-	emptyMessage: string;
-	items: T[] | undefined;
-	renderItem: (item: T) => React.ReactNode;
-}) {
-	return (
-		<div className="flex flex-col min-w-0">
-			<div className="flex items-center justify-between mb-2 px-1">
-				<span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-					{label}
-				</span>
-				{count > 0 && (
-					<span className="text-[11px] text-muted-foreground/70 tabular-nums">
-						{count}
-					</span>
-				)}
-			</div>
-			{count === 0 ? (
-				<div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
-					<p className="text-sm text-muted-foreground/50">
-						{emptyMessage}
-					</p>
-				</div>
-			) : (
-				<div className="overflow-y-auto max-h-[320px] rounded-lg border border-border/60 divide-y divide-border/40">
-					{(items ?? []).map(renderItem)}
-				</div>
-			)}
-		</div>
-	);
 }
 
 export function OverviewTab({
@@ -165,53 +124,28 @@ export function OverviewTab({
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
 					Highlights
 				</h3>
-				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-					<GlassCard>
-						<GlassCardContent className="flex items-center gap-3 p-4">
-							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
-								<FolderOpen className="h-5 w-5 text-primary" />
-							</div>
-							<div>
-								<p className="text-2xl font-bold text-foreground">
-									{activeProjects}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									Active Projects
-								</p>
-							</div>
-						</GlassCardContent>
-					</GlassCard>
-					<GlassCard>
-						<GlassCardContent className="flex items-center gap-3 p-4">
-							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
-								<DollarSign className="h-5 w-5 text-primary" />
-							</div>
-							<div>
-								<p className="text-2xl font-bold text-foreground">
-									${outstanding.toLocaleString()}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									Outstanding
-								</p>
-							</div>
-						</GlassCardContent>
-					</GlassCard>
-					<GlassCard>
-						<GlassCardContent className="flex items-center gap-3 p-4">
-							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
-								<TrendingUp className="h-5 w-5 text-primary" />
-							</div>
-							<div>
-								<p className="text-2xl font-bold text-foreground">
-									${totalRevenue.toLocaleString()}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									Total Revenue
-								</p>
-							</div>
-						</GlassCardContent>
-					</GlassCard>
-				</div>
+				<HighlightMetricGrid
+					metrics={[
+						{
+							icon: FolderOpen,
+							label: "Active Projects",
+							value: activeProjects,
+							description: "Projects currently in progress",
+						},
+						{
+							icon: DollarSign,
+							label: "Outstanding",
+							value: formatCurrency(outstanding),
+							description: "Invoiced but not yet paid",
+						},
+						{
+							icon: TrendingUp,
+							label: "Total Revenue",
+							value: formatCurrency(totalRevenue),
+							description: "Lifetime billed to this client",
+						},
+					]}
+				/>
 			</div>
 
 			<Separator className="my-6" />
@@ -277,103 +211,43 @@ export function OverviewTab({
 
 			<Separator className="my-6" />
 
-			{/* Related Entities — 3-column grid with independent scroll */}
-			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
-					Related
-				</h3>
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-					{/* Projects */}
-					<RelatedEntityColumn
-						label="Projects"
-						count={projects?.length ?? 0}
-						emptyMessage="No projects yet"
-						items={sortedByNewest(projects)}
-						renderItem={(project) => (
-							<Link
-								key={project._id}
-								href={`/projects/${project._id}`}
-								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
-							>
-								<div className="flex items-center justify-between gap-2">
-									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
-										{project.title}
-									</span>
-									<ProminentStatusBadge
-										status={project.status}
-										size="default"
-										showIcon={false}
-										entityType="project"
-									/>
-								</div>
-								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
-									{formatDate(project._creationTime)}
-								</span>
-							</Link>
-						)}
-					/>
-
-					{/* Quotes */}
-					<RelatedEntityColumn
-						label="Quotes"
-						count={quotes?.length ?? 0}
-						emptyMessage="No quotes yet"
-						items={sortedByNewest(quotes)}
-						renderItem={(quote) => (
-							<Link
-								key={quote._id}
-								href={`/quotes/${quote._id}`}
-								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
-							>
-								<div className="flex items-center justify-between gap-2">
-									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
-										{quote.quoteNumber || quote.title || "Untitled"}
-									</span>
-									<ProminentStatusBadge
-										status={quote.status}
-										size="default"
-										showIcon={false}
-										entityType="quote"
-									/>
-								</div>
-								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
-									{formatCurrency(quote.total)}
-								</span>
-							</Link>
-						)}
-					/>
-
-					{/* Invoices */}
-					<RelatedEntityColumn
-						label="Invoices"
-						count={invoices?.length ?? 0}
-						emptyMessage="No invoices yet"
-						items={sortedByNewest(invoices)}
-						renderItem={(invoice) => (
-							<Link
-								key={invoice._id}
-								href={`/invoices/${invoice._id}`}
-								className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/50 transition-colors group"
-							>
-								<div className="flex items-center justify-between gap-2">
-									<span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
-										{invoice.invoiceNumber}
-									</span>
-									<ProminentStatusBadge
-										status={invoice.status}
-										size="default"
-										showIcon={false}
-										entityType="invoice"
-									/>
-								</div>
-								<span className="text-[11px] text-muted-foreground/70 tabular-nums">
-									{formatCurrency(invoice.total)}
-								</span>
-							</Link>
-						)}
-					/>
-				</div>
-			</div>
+			<RelatedRecordsFrame
+				sections={[
+					{
+						title: "Projects",
+						icon: FolderOpen,
+						items: sortedByNewest(projects).map((project) => ({
+							id: project._id,
+							title: project.title,
+							meta: formatDate(project._creationTime),
+							status: project.status,
+							href: `/projects/${project._id}`,
+						})),
+					},
+					{
+						title: "Quotes",
+						icon: FileText,
+						items: sortedByNewest(quotes).map((quote) => ({
+							id: quote._id,
+							title: quote.quoteNumber || quote.title || "Untitled",
+							meta: formatCurrency(quote.total),
+							status: quote.status,
+							href: `/quotes/${quote._id}`,
+						})),
+					},
+					{
+						title: "Invoices",
+						icon: Receipt,
+						items: sortedByNewest(invoices).map((invoice) => ({
+							id: invoice._id,
+							title: invoice.invoiceNumber,
+							meta: formatCurrency(invoice.total),
+							status: invoice.status,
+							href: `/invoices/${invoice._id}`,
+						})),
+					},
+				]}
+			/>
 
 			<Separator className="my-6" />
 

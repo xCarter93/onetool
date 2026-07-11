@@ -3,7 +3,7 @@
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { GlassCard, GlassCardContent } from "@/components/shared/glass-card";
+import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
 import {
 	DataGrid,
 	DataGridContainer,
@@ -82,41 +82,25 @@ export function OverviewTab({
 	return (
 		<div className="space-y-8">
 			{/* Summary Cards */}
-			<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				<GlassCard>
-					<GlassCardContent className="flex items-center gap-3 p-4">
-						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
-							<DollarSign className="h-5 w-5 text-primary" />
-						</div>
-						<div>
-							<p className="text-2xl font-bold text-foreground">
-								{formatCurrency(invoice.total)}
-							</p>
-							<p className="text-xs text-muted-foreground">
-								Total Amount
-							</p>
-						</div>
-					</GlassCardContent>
-				</GlassCard>
-
-				<GlassCard>
-					<GlassCardContent className="flex items-center gap-3 p-4">
-						<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
-							<CreditCard className="h-5 w-5 text-primary" />
-						</div>
-						<div>
-							<p className="text-2xl font-bold text-foreground">
-								{paymentSummary?.totalPayments ?? 0}
-							</p>
-							<p className="text-xs text-muted-foreground">
-								Payments{paymentSummary && paymentSummary.totalPayments > 0
-									? ` \u00B7 ${paymentSummary.paidCount} paid`
-									: ""}
-							</p>
-						</div>
-					</GlassCardContent>
-				</GlassCard>
-			</div>
+			<HighlightMetricGrid
+				metrics={[
+					{
+						icon: DollarSign,
+						label: "Total Amount",
+						value: formatCurrency(invoice.total),
+						description: "Invoice grand total",
+					},
+					{
+						icon: CreditCard,
+						label: "Payments",
+						value: paymentSummary?.totalPayments ?? 0,
+						description:
+							paymentSummary && paymentSummary.totalPayments > 0
+								? `${paymentSummary.paidCount} paid`
+								: "No payments yet",
+					},
+				]}
+			/>
 
 			{/* Line Items Section */}
 			<div>
