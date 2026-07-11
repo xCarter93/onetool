@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
+import { Bell, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/reui/badge";
 import {
 	Popover,
@@ -18,6 +18,7 @@ import {
 	formatRelativeTime,
 	truncateText,
 	stripAuthorIdFromMessage,
+	resolveNotificationHref,
 } from "@/lib/notification-utils";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -34,6 +35,8 @@ export function NotificationBell() {
 	});
 
 	const markAsRead = useMutation(api.notifications.markRead);
+	const markAllRead = useMutation(api.notifications.markAllRead);
+	const [markingAll, setMarkingAll] = useState(false);
 
 	// Treat the switch grace window as loading so the previous org's unread
 	// count and notification list don't flash.
@@ -41,10 +44,11 @@ export function NotificationBell() {
 	const notifications = isLoading ? [] : notificationData.notifications;
 	const unreadCount = isLoading ? 0 : notificationData.unreadCount;
 
-	// Handle notification click
+	// Handle notification click. `href` is a pre-resolved, known-good route
+	// (or null when the notification isn't navigable).
 	const handleNotificationClick = async (
 		notificationId: Id<"notifications">,
-		actionUrl?: string,
+		href: string | null,
 		isRead?: boolean
 	) => {
 		// Mark as read if not already
@@ -56,10 +60,22 @@ export function NotificationBell() {
 			}
 		}
 
-		// Navigate to the entity
-		if (actionUrl) {
-			router.push(actionUrl);
+		// Navigate only when the notification points at a real page.
+		if (href) {
+			router.push(href);
 			setOpen(false);
+		}
+	};
+
+	const handleMarkAllRead = async () => {
+		if (markingAll || unreadCount === 0) return;
+		setMarkingAll(true);
+		try {
+			await markAllRead({});
+		} catch (error) {
+			console.error("Failed to mark all notifications as read:", error);
+		} finally {
+			setMarkingAll(false);
 		}
 	};
 
@@ -103,9 +119,19 @@ export function NotificationBell() {
 						</h3>
 					</div>
 					{unreadCount > 0 && (
-						<span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-							{unreadCount} new
-						</span>
+						<div className="flex items-center gap-1.5">
+							<span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+								{unreadCount} new
+							</span>
+							<button
+								type="button"
+								onClick={handleMarkAllRead}
+								disabled={markingAll}
+								className="cursor-pointer rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50"
+							>
+								Mark all read
+							</button>
+						</div>
 					)}
 				</div>
 
@@ -137,43 +163,51 @@ export function NotificationBell() {
 						/>
 					) : (
 						<div className="p-1.5">
-							{notifications.map((notification) => (
-								<button
-									key={notification._id}
-									onClick={() =>
-										handleNotificationClick(
-											notification._id,
-											notification.actionUrl,
-											notification.isRead
-										)
-									}
-									className={cn(
-										"flex w-full cursor-pointer gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
-										!notification.isRead && "bg-primary/5"
-									)}
-								>
-									<span
+							{notifications.map((notification) => {
+								const href = resolveNotificationHref(notification);
+								return (
+									<button
+										key={notification._id}
+										onClick={() =>
+											handleNotificationClick(
+												notification._id,
+												href,
+												notification.isRead
+											)
+										}
 										className={cn(
-											"mt-1.5 size-2 shrink-0 rounded-full",
-											notification.isRead ? "bg-transparent" : "bg-primary"
+											"flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
+											!notification.isRead && "bg-primary/5"
 										)}
-									/>
-									<div className="min-w-0 flex-1">
-										<p className="text-sm font-medium text-foreground">
-											{notification.title}
-										</p>
-										<p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-											{truncateText(
-												stripAuthorIdFromMessage(notification.message),
-												100
+									>
+										<span
+											className={cn(
+												"mt-1.5 size-2 shrink-0 rounded-full",
+												notification.isRead ? "bg-transparent" : "bg-primary"
 											)}
-										</p>
-										<p className="mt-1 text-[11px] text-muted-foreground/80">
-											{formatRelativeTime(notification._creationTime)}
-										</p>
-									</div>
-								</button>
-							))}
+										/>
+										<div className="min-w-0 flex-1">
+											<p className="text-sm font-medium text-foreground">
+												{notification.title}
+											</p>
+											<p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+												{truncateText(
+													stripAuthorIdFromMessage(notification.message),
+													100
+												)}
+											</p>
+											<p className="mt-1 text-[11px] text-muted-foreground/80">
+												{formatRelativeTime(notification._creationTime)}
+											</p>
+										</div>
+										{/* Chevron marks a notification that navigates somewhere;
+										    its absence signals a non-routable, info-only item. */}
+										{href && (
+											<ChevronRight className="mt-1.5 size-4 shrink-0 self-start text-muted-foreground/50" />
+										)}
+									</button>
+								);
+							})}
 						</div>
 					)}
 				</ScrollArea>

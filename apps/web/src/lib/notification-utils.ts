@@ -12,6 +12,51 @@ export function buildEntityUrl(
 	return `/${entityType}s/${entityId}`;
 }
 
+/** Entity types that have a real record/detail page in the workspace. */
+const ENTITY_DETAIL_PATHS: Record<string, (id: string) => string> = {
+	client: (id) => `/clients/${id}`,
+	project: (id) => `/projects/${id}`,
+	quote: (id) => `/quotes/${id}`,
+	invoice: (id) => `/invoices/${id}`,
+	// `task` intentionally omitted — no task detail page exists yet.
+};
+
+/** Non-record routes an actionUrl may legitimately point to. */
+const SAFE_ACTION_PATHS = new Set(["/home", "/tasks", "/automations"]);
+
+/**
+ * Resolve a safe navigation target for a notification, or `null` when it should
+ * not be clickable. Prefers the entity type/id (authoritative) and only falls
+ * back to a stored actionUrl when it points at a route we know exists — so we
+ * never route to a dead page (e.g. task records, which have no detail page).
+ */
+export function resolveNotificationHref(notification: {
+	entityType?: "client" | "project" | "quote" | "invoice" | "task" | null;
+	entityId?: string | null;
+	actionUrl?: string | null;
+}): string | null {
+	const { entityType, entityId, actionUrl } = notification;
+
+	// Tasks have no detail page — send to the task list instead of a dead record URL.
+	if (entityType === "task") return "/tasks";
+
+	if (entityType && entityId && ENTITY_DETAIL_PATHS[entityType]) {
+		return ENTITY_DETAIL_PATHS[entityType](entityId);
+	}
+
+	if (actionUrl) {
+		const path = actionUrl.split(/[?#]/)[0];
+		// Downgrade dead task-record links to the list page.
+		if (/^\/tasks\/.+/.test(path)) return "/tasks";
+		if (SAFE_ACTION_PATHS.has(path)) return actionUrl;
+		if (/^\/(clients|projects|quotes|invoices)\/[^/]+/.test(path)) {
+			return actionUrl;
+		}
+	}
+
+	return null;
+}
+
 /**
  * Format timestamp as relative time (e.g., "2 hours ago")
  */
