@@ -1315,6 +1315,92 @@ describe("Tasks", () => {
 			expect(stats.byStatus.completed).toBe(1);
 			expect(stats.byStatus.cancelled).toBe(0);
 		});
+
+		it("excludes completed and cancelled tasks from sidebar badge counts", async () => {
+			const { clientId } = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Badge User",
+					email: "badge@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_badge",
+				});
+
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_badge",
+					name: "Badge Org",
+					ownerUserId: userId,
+				});
+
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Badge Client",
+					status: "active",
+				});
+
+				return { clientId };
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_badge",
+				activeOrgId: "org_badge",
+			});
+
+			const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
+
+			// Actionable, due today -> counts toward todayTasks
+			await asUser.mutation(api.tasks.create, {
+				title: "Actionable today",
+				date: Date.now(),
+				status: "pending",
+				clientId,
+				type: "external",
+			});
+			// Completed today -> must NOT count
+			await asUser.mutation(api.tasks.create, {
+				title: "Completed today",
+				date: Date.now(),
+				status: "completed",
+				clientId,
+				type: "external",
+			});
+			// Cancelled today -> must NOT count
+			await asUser.mutation(api.tasks.create, {
+				title: "Cancelled today",
+				date: Date.now(),
+				status: "cancelled",
+				clientId,
+				type: "external",
+			});
+			// Actionable, overdue -> counts toward overdue
+			await asUser.mutation(api.tasks.create, {
+				title: "Actionable overdue",
+				date: twoDaysAgo,
+				status: "in-progress",
+				clientId,
+				type: "external",
+			});
+			// Cancelled, overdue -> must NOT count
+			await asUser.mutation(api.tasks.create, {
+				title: "Cancelled overdue",
+				date: twoDaysAgo,
+				status: "cancelled",
+				clientId,
+				type: "external",
+			});
+
+			const stats = await asUser.query(api.tasks.getStats, {});
+
+			expect(stats.todayTasks).toBe(1);
+			expect(stats.overdue).toBe(1);
+			// Sidebar badge = todayTasks + overdue
+			expect(stats.todayTasks + stats.overdue).toBe(2);
+		});
 	});
 
 	describe("remove", () => {
