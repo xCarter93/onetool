@@ -3,8 +3,7 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Check, Minus, ChevronDown } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	SidebarGroup,
@@ -12,7 +11,17 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
+import {
+	Frame,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 interface JourneyProgress {
@@ -52,10 +61,65 @@ function getEncouragingMessage(percentage: number): string {
 	return "All done!";
 }
 
+/**
+ * Mini circular progress indicator with the completion % in the center.
+ * Frosted-blue: translucent primary track + arc, primary label. Rotated -90°
+ * so the arc sweeps clockwise from 12 o'clock.
+ */
+function ProgressRing({
+	percentage,
+	size = 36,
+	strokeWidth = 3,
+}: {
+	percentage: number;
+	size?: number;
+	strokeWidth?: number;
+}) {
+	const radius = (size - strokeWidth) / 2;
+	const circumference = 2 * Math.PI * radius;
+	const offset = circumference - (percentage / 100) * circumference;
+
+	return (
+		<div
+			className="relative shrink-0"
+			style={{ width: size, height: size }}
+			role="img"
+			aria-label={`${percentage}% complete`}
+		>
+			<svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+				<circle
+					cx={size / 2}
+					cy={size / 2}
+					r={radius}
+					fill="none"
+					strokeWidth={strokeWidth}
+					className="stroke-primary/15"
+				/>
+				<circle
+					cx={size / 2}
+					cy={size / 2}
+					r={radius}
+					fill="none"
+					strokeWidth={strokeWidth}
+					strokeDasharray={circumference}
+					strokeDashoffset={offset}
+					strokeLinecap="round"
+					className="stroke-primary/70 transition-[stroke-dashoffset] duration-500 ease-out"
+				/>
+			</svg>
+			<span
+				aria-hidden="true"
+				className="text-primary absolute inset-0 flex items-center justify-center text-[0.625rem] font-semibold leading-none tabular-nums"
+			>
+				{percentage}%
+			</span>
+		</div>
+	);
+}
+
 export function NavGettingStarted() {
 	const isOrgSwitching = useIsOrgSwitching();
 	const journeyProgress = useQuery(api.homeStats.getJourneyProgress);
-	const [isOpen, setIsOpen] = React.useState(false);
 	const { state } = useSidebar();
 
 	// Don't render in collapsed sidebar mode
@@ -83,85 +147,54 @@ export function NavGettingStarted() {
 	return (
 		<SidebarGroup className="mt-auto pt-0">
 			<SidebarGroupContent>
-				<div className="rounded-lg border border-border/50 bg-sidebar-accent/30 overflow-hidden">
-					{/* Header */}
-					<button
-						onClick={() => setIsOpen(!isOpen)}
-						className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-sidebar-accent/50 transition-colors"
-					>
-						<div className="flex flex-col items-start gap-0.5">
-							<span className="text-sm font-medium text-sidebar-foreground">
-								Getting started
-							</span>
-							<span className="text-xs text-muted-foreground">
-								{percentage}% completed · {getEncouragingMessage(percentage)}
-							</span>
-						</div>
-						<motion.div
-							animate={{ rotate: isOpen ? 0 : -90 }}
-							transition={{ duration: 0.2, ease: "easeInOut" }}
-							className="flex items-center"
-						>
-							{isOpen ? (
-								<Minus className="size-4 text-muted-foreground" />
-							) : (
-								<ChevronDown className="size-4 text-muted-foreground" />
-							)}
-						</motion.div>
-					</button>
-
-					{/* Progress bar */}
-					<div className="px-3 pb-2">
-						<Progress
-							value={percentage}
-							className="h-1 bg-border/50 [&>div]:rounded-full [&>div]:duration-500 [&>div]:ease-out"
-						/>
-					</div>
-
-					{/* Checklist with animation */}
-					<AnimatePresence initial={false}>
-						{isOpen && (
-							<motion.div
-								initial={{ height: 0, opacity: 0 }}
-								animate={{ height: "auto", opacity: 1 }}
-								exit={{ height: 0, opacity: 0 }}
-								transition={{
-									height: { duration: 0.25, ease: [0.4, 0, 0.2, 1] },
-									opacity: { duration: 0.2, ease: "easeInOut" },
-								}}
-								className="overflow-hidden"
-							>
-								<div className="px-2 pb-2 space-y-0.5">
-									{journeySteps.map((step, index) => {
+				<Frame stacked dense spacing="sm" className="w-full">
+					<Collapsible defaultOpen>
+						<CollapsibleTrigger className="flex w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+							<FrameHeader className="flex grow flex-row items-center justify-between gap-2">
+								<div className="flex min-w-0 items-center gap-2.5">
+									{/* Frosted-blue progress ring with % in the center */}
+									<ProgressRing percentage={percentage} />
+									<div className="flex min-w-0 flex-col items-start gap-0.5">
+										<FrameTitle className="text-sm font-medium">
+											Getting started
+										</FrameTitle>
+										<span className="text-muted-foreground truncate text-xs font-normal">
+											{getEncouragingMessage(percentage)}
+										</span>
+									</div>
+								</div>
+								<ChevronRight
+									aria-hidden="true"
+									className="text-muted-foreground size-4 shrink-0 transition-transform in-data-open:rotate-90"
+								/>
+							</FrameHeader>
+						</CollapsibleTrigger>
+						<CollapsibleContent>
+							<FramePanel>
+								{/* Checklist */}
+								<div className="space-y-0.5">
+									{journeySteps.map((step) => {
 										const isCompleted = journeyProgress[step.completionKey];
 										return (
-											<motion.div
+											<div
 												key={step.id}
-												initial={{ opacity: 0, x: -10 }}
-												animate={{ opacity: 1, x: 0 }}
-												transition={{
-													duration: 0.2,
-													delay: index * 0.03,
-													ease: "easeOut",
-												}}
 												className={cn(
-													"flex items-center gap-2 px-2 py-1.5 rounded-md text-sm",
+													"flex items-center gap-2 rounded-md px-1 py-1 text-sm",
 													isCompleted
 														? "text-muted-foreground"
-														: "text-sidebar-foreground"
+														: "text-foreground"
 												)}
 											>
+												{/* Completed steps use the frosted-blue treatment */}
 												<div
 													className={cn(
-														"flex size-4 items-center justify-center rounded-full border shrink-0",
+														"flex size-4 shrink-0 items-center justify-center rounded-full border",
 														isCompleted
-															? "bg-primary border-primary"
+															? "border-primary/30 bg-primary/10 text-primary shadow-sm backdrop-blur-sm"
 															: "border-border"
 													)}
 												>
-													{isCompleted && (
-														<Check className="size-2.5 text-primary-foreground" />
-													)}
+													{isCompleted && <Check className="size-2.5" />}
 												</div>
 												<span
 													className={cn(
@@ -171,14 +204,14 @@ export function NavGettingStarted() {
 												>
 													{step.label}
 												</span>
-											</motion.div>
+											</div>
 										);
 									})}
 								</div>
-							</motion.div>
-						)}
-					</AnimatePresence>
-				</div>
+							</FramePanel>
+						</CollapsibleContent>
+					</Collapsible>
+				</Frame>
 			</SidebarGroupContent>
 		</SidebarGroup>
 	);
@@ -194,11 +227,18 @@ function NavGettingStartedSkeleton() {
 	return (
 		<SidebarGroup className="mt-auto pt-0">
 			<SidebarGroupContent>
-				<div className="rounded-lg border border-border/50 bg-sidebar-accent/30 p-3">
-					<Skeleton className="h-4 w-24 mb-1" />
-					<Skeleton className="h-3 w-32 mb-2" />
-					<Skeleton className="h-1 w-full rounded-full" />
-				</div>
+				<Frame stacked dense spacing="sm" className="w-full">
+					<FrameHeader className="flex flex-row items-center justify-between gap-2">
+						<div className="flex min-w-0 items-center gap-2.5">
+							<Skeleton className="size-9 shrink-0 rounded-full" />
+							<div className="flex flex-col gap-1">
+								<Skeleton className="h-4 w-24" />
+								<Skeleton className="h-3 w-20" />
+							</div>
+						</div>
+						<Skeleton className="size-4 shrink-0 rounded-full" />
+					</FrameHeader>
+				</Frame>
 			</SidebarGroupContent>
 		</SidebarGroup>
 	);
