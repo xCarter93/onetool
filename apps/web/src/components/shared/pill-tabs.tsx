@@ -5,6 +5,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 /**
+ * Class recipes for tab-like controls that are NOT built on ui/tabs
+ * (SegmentedControl, chip navs, hand-rolled filter strips) but must render
+ * identically to PillTabs: frosted pill container + frosted primary active.
+ */
+export const PILL_TAB_CONTAINER =
+	"inline-flex w-fit items-center rounded-full p-[3px] bg-background/80 dark:bg-background/60 ring-1 ring-border/40 dark:ring-border/30 backdrop-blur-sm shadow-sm";
+
+export const PILL_TAB_SEGMENT_ACTIVE =
+	"bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground ring-1 ring-primary/30 dark:ring-primary/40 shadow-sm";
+
+export const PILL_TAB_SEGMENT_INACTIVE =
+	"text-muted-foreground hover:bg-accent/30 hover:text-accent-foreground";
+
+/**
  * PillTabs - A wrapper around the base Tabs component with consistent styling
  * that matches the app's design system (similar to Button and Badge)
  */
@@ -21,15 +35,8 @@ export function PillTabsList({
 }: React.ComponentProps<typeof TabsList>) {
 	return (
 		<TabsList
-			className={cn(
-				"bg-background/80 dark:bg-background/60",
-				"ring-1 ring-border/40 dark:ring-border/30",
-				"backdrop-blur-sm",
-				"shadow-sm",
-				// Pill shape per ReUI maia tabs recipe (rounded-4xl list / rounded-xl triggers)
-				"p-[3px] gap-0 rounded-full",
-				className
-			)}
+			// Pill shape per ReUI maia tabs recipe (rounded-4xl list / rounded-xl triggers)
+			className={cn(PILL_TAB_CONTAINER, "gap-0", className)}
 			{...props}
 		/>
 	);
@@ -44,11 +51,12 @@ export function PillTabsTrigger({
 			className={cn(
 				// Smooth transitions
 				"transition-all duration-200",
-				// Active state - clean and prominent
-				"data-[state=active]:bg-primary/10 dark:data-[state=active]:bg-primary/20",
-				"data-[state=active]:text-primary dark:data-[state=active]:text-primary-foreground",
-				"data-[state=active]:ring-1 data-[state=active]:ring-primary/30 dark:data-[state=active]:ring-primary/40",
-				"data-[state=active]:shadow-sm",
+				// Active state - Base UI tabs expose `data-active` (NOT Radix's
+				// data-state="active"); these must override ui/tabs' white pill.
+				"data-active:bg-primary/10 dark:data-active:bg-primary/20",
+				"data-active:text-primary dark:data-active:text-primary-foreground",
+				"data-active:ring-1 data-active:ring-primary/30 dark:data-active:ring-primary/40",
+				"data-active:shadow-sm",
 				// Hover state
 				"hover:bg-accent/30 hover:text-accent-foreground",
 				// Font styling

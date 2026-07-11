@@ -4,6 +4,11 @@ import * as React from "react";
 import { Lock, ShieldCheck, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+	PILL_TAB_CONTAINER,
+	PILL_TAB_SEGMENT_ACTIVE,
+	PILL_TAB_SEGMENT_INACTIVE,
+} from "@/components/shared/pill-tabs";
 
 export interface SettingsNavItem {
 	value: string;
@@ -89,32 +94,32 @@ export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavPro
 /** Horizontal chip nav shown on mobile in place of the rail. */
 export function SettingsNavChips({ items, activeValue, onSelect }: SettingsNavProps) {
 	return (
-		<div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1 lg:hidden">
-			{items.map((item) => {
-				const active = item.value === activeValue;
-				const Icon = item.icon;
-				return (
-					<button
-						key={item.value}
-						type="button"
-						onClick={() => onSelect(item.value)}
-						aria-current={active ? "page" : undefined}
-						aria-disabled={item.locked || undefined}
-						className={cn(
-							"flex shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors",
-							active
-								? "border-primary/30 bg-primary/10 text-primary"
-								: "border-border text-muted-foreground hover:bg-muted",
-						)}
-					>
-						<Icon className="size-4" />
-						{item.label}
-						{item.locked && (
-							<Lock aria-hidden="true" className="size-3 text-muted-foreground" />
-						)}
-					</button>
-				);
-			})}
+		<div className="scrollbar-hide overflow-x-auto pb-1 lg:hidden">
+			<div className={PILL_TAB_CONTAINER}>
+				{items.map((item) => {
+					const active = item.value === activeValue;
+					const Icon = item.icon;
+					return (
+						<button
+							key={item.value}
+							type="button"
+							onClick={() => onSelect(item.value)}
+							aria-current={active ? "page" : undefined}
+							aria-disabled={item.locked || undefined}
+							className={cn(
+								"flex shrink-0 cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200",
+								active ? PILL_TAB_SEGMENT_ACTIVE : PILL_TAB_SEGMENT_INACTIVE,
+							)}
+						>
+							<Icon className="size-4" />
+							{item.label}
+							{item.locked && (
+								<Lock aria-hidden="true" className="size-3 text-muted-foreground" />
+							)}
+						</button>
+					);
+				})}
+			</div>
 		</div>
 	);
 }

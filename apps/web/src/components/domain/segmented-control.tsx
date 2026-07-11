@@ -1,18 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { ButtonGroup } from "@/components/ui/button-group";
+import {
+	PILL_TAB_CONTAINER,
+	PILL_TAB_SEGMENT_ACTIVE,
+	PILL_TAB_SEGMENT_INACTIVE,
+} from "@/components/shared/pill-tabs";
 import { cn } from "@/lib/utils";
 
-// rounded-full pills; ButtonGroup strips the inner edges so only the group ends stay round
 const SEGMENT_BASE =
-	"inline-flex cursor-pointer items-center gap-2 font-semibold transition-all duration-200 text-xs px-3 py-1.5 rounded-full ring-1 shadow-sm hover:shadow-md backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
-const SEGMENT_SELECTED =
-	"text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40";
-
-const SEGMENT_UNSELECTED =
-	"text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted ring-transparent hover:ring-border";
+	"inline-flex cursor-pointer items-center gap-2 font-medium transition-all duration-200 text-xs px-3 py-1.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export interface SegmentedControlOption<T extends string> {
 	value: T;
@@ -33,7 +30,8 @@ export interface SegmentedControlProps<T extends string> {
 
 /**
  * Canonical segmented selector (view toggles, time-range filters).
- * One selected segment at a time; use plain ButtonGroup + Button for
+ * One selected segment at a time, rendered in the shared PillTabs shell so
+ * every tab-like control matches; use plain ButtonGroup + Button for
  * action rows like prev/today/next.
  */
 export function SegmentedControl<T extends string>({
@@ -43,7 +41,7 @@ export function SegmentedControl<T extends string>({
 	className,
 }: SegmentedControlProps<T>) {
 	return (
-		<ButtonGroup className={className}>
+		<div role="group" className={cn(PILL_TAB_CONTAINER, className)}>
 			{options.map((option) => (
 				<button
 					key={option.value}
@@ -53,7 +51,9 @@ export function SegmentedControl<T extends string>({
 					aria-label={option.ariaLabel}
 					className={cn(
 						SEGMENT_BASE,
-						value === option.value ? SEGMENT_SELECTED : SEGMENT_UNSELECTED
+						value === option.value
+							? PILL_TAB_SEGMENT_ACTIVE
+							: PILL_TAB_SEGMENT_INACTIVE
 					)}
 				>
 					{option.icon}
@@ -68,6 +68,6 @@ export function SegmentedControl<T extends string>({
 					)}
 				</button>
 			))}
-		</ButtonGroup>
+		</div>
 	);
 }

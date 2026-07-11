@@ -26,7 +26,11 @@ const eslintConfig = [
 	// predate the compiler and are not ours to rewrite on re-sync. Everything
 	// else (rules-of-hooks, exhaustive-deps) stays at error.
 	{
-		files: ["src/components/ui/**/*.{ts,tsx}", "src/components/reui/**/*.{ts,tsx}"],
+		files: [
+			"src/components/ui/**/*.{ts,tsx}",
+			"src/components/reui/**/*.{ts,tsx}",
+			"src/components/blocks/**/*.{ts,tsx}",
+		],
 		rules: {
 			"react-hooks/refs": "warn",
 			"react-hooks/set-state-in-effect": "warn",
