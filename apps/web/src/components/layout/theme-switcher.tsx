@@ -1,6 +1,6 @@
 "use client";
 
-import { IconMoon, IconSun } from "@intentui/icons";
+import { MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,14 +27,17 @@ export function ThemeSwitcher({
 
 	return (
 		<Button
-			intent="outline"
-			size="sq-lg"
+			variant="outline"
+			size="icon-lg"
 			aria-label="Switch theme"
-			onPress={toggleTheme}
 			onClick={toggleTheme}
 			{...props}
 		>
-			{resolvedTheme === "light" ? <IconSun /> : <IconMoon />}
+			{resolvedTheme === "light" ? (
+				<SunIcon className="size-4" />
+			) : (
+				<MoonIcon className="size-4" />
+			)}
 		</Button>
 	);
 }

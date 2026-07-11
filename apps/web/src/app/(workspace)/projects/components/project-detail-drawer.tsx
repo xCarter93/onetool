@@ -11,12 +11,13 @@ import {
 	FileText,
 	FolderKanban,
 	ListChecks,
+	Loader2,
 	Plus,
 	Receipt,
 	Users,
 } from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -25,7 +26,7 @@ import {
 	TimelineSeparator,
 	TimelineTitle,
 } from "@/components/reui/timeline";
-import { StyledButton } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -55,16 +56,6 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 	"in-progress": "In Progress",
 	completed: "Completed",
 	cancelled: "Cancelled",
-};
-
-const STATUS_BADGE: Record<
-	ProjectStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	planned: "secondary",
-	"in-progress": "warning-light",
-	completed: "success-light",
-	cancelled: "destructive-light",
 };
 
 const STATUS_ORDER: ProjectStatus[] = [
@@ -158,9 +149,9 @@ export function ProjectDetailDrawer({
 			title={title}
 			badge={
 				project ? (
-					<Badge variant={STATUS_BADGE[project.status]} size="lg">
+					<StatusBadge status={project.status} size="lg">
 						{STATUS_LABEL[project.status]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={
@@ -172,14 +163,10 @@ export function ProjectDetailDrawer({
 			}
 			actions={
 				<>
-					<StyledButton
-						intent="primary"
-						size="sm"
-						icon={<ExternalLink className="size-3.5" />}
-						label="Open project"
-						showArrow={false}
-						onClick={openRecord}
-					/>
+					<Button size="sm" onClick={openRecord}>
+						<ExternalLink className="size-3.5" />
+						Open project
+					</Button>
 					<TaskSheet
 						mode="create"
 						initialValues={{
@@ -187,13 +174,10 @@ export function ProjectDetailDrawer({
 							clientId: data?.client?._id,
 						}}
 						trigger={
-							<StyledButton
-								intent="outline"
-								size="sm"
-								icon={<Plus className="size-3.5" />}
-								label="Add Task"
-								showArrow={false}
-							/>
+							<Button variant="outline" size="sm">
+								<Plus className="size-3.5" />
+								Add Task
+							</Button>
 						}
 					/>
 				</>
@@ -422,14 +406,10 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						label={saving ? "Saving…" : "Save"}
-						showArrow={false}
-						disabled={saving}
-						onClick={handleSave}
-					/>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
+						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{saving ? "Saving…" : "Save"}
+					</Button>
 				) : null}
 			</div>
 			{dirty ? (

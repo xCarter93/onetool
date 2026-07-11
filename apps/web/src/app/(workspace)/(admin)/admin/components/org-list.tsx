@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { User, Crown } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { UserSheet } from "./user-sheet";
 import { OrgSheet } from "./org-sheet";
 import { StyledSubDataGrid } from "./styled-sub-data-grid";

@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-table";
 
 import { AlertTriangle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -30,8 +30,8 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import { DataGrid } from "@/components/ui/data-grid";
-import { DataGridTable } from "@/components/ui/data-grid-table";
+import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import { RunStatusBadge } from "./run-status-badge";
@@ -91,11 +91,9 @@ export function RunsTable() {
 						<RunStatusBadge status={row.original.status as RunStatus} />
 						{row.original.dataTruncated && (
 							<Tooltip>
-								<TooltipTrigger asChild>
-									<Badge variant="warning" className="gap-1">
-										<AlertTriangle className="size-3" aria-hidden />
-										Truncated
-									</Badge>
+								<TooltipTrigger render={<Badge variant="warning" className="gap-1" />}>
+									<AlertTriangle className="size-3" aria-hidden />
+									Truncated
 								</TooltipTrigger>
 								<TooltipContent side="top" className="max-w-xs">
 									At least one step stopped scanning at the 5,000 most recent
@@ -205,7 +203,7 @@ export function RunsTable() {
 						>
 							<SelectValue placeholder="All statuses" />
 						</SelectTrigger>
-						<SelectContent position="popper" align="end">
+						<SelectContent alignItemWithTrigger={false} align="end">
 							<SelectItem value={ALL}>All statuses</SelectItem>
 							{RUN_STATUS_FILTER_ORDER.map((s) => (
 								<SelectItem key={s} value={s}>
@@ -228,9 +226,9 @@ export function RunsTable() {
 							<FrameFooter className="items-center justify-center">
 								{status === "CanLoadMore" ? (
 									<Button
-										intent="outline"
+										variant="outline"
 										size="sm"
-										onPress={() => loadMore(PAGE_SIZE)}
+										onClick={() => loadMore(PAGE_SIZE)}
 									>
 										Load more
 									</Button>

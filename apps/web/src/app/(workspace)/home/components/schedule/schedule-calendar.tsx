@@ -39,12 +39,14 @@ export function ScheduleCalendar({
 		onMonthChange(next);
 	};
 
-	const handleMonthSelect = (value: string) => {
+	const handleMonthSelect = (value: string | null) => {
+		if (!value) return;
 		const i = MONTHS.indexOf(value);
 		if (i >= 0) onMonthChange(new Date(month.getFullYear(), i, 1));
 	};
 
-	const handleYearSelect = (value: string) => {
+	const handleYearSelect = (value: string | null) => {
+		if (!value) return;
 		const y = parseInt(value, 10);
 		if (!Number.isNaN(y)) onMonthChange(new Date(y, month.getMonth(), 1));
 	};

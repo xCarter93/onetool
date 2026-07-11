@@ -7,13 +7,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
 import {
@@ -22,7 +16,6 @@ import {
 	DocumentTextIcon,
 } from "@heroicons/react/16/solid";
 import { FolderOpenIcon } from "@heroicons/react/24/outline";
-import { CalendarIcon } from "lucide-react";
 import ComboBox from "@/components/ui/combo-box";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
@@ -55,7 +48,6 @@ export default function NewQuotePage() {
 	// Form fields
 	const [quoteTitle, setQuoteTitle] = useState("");
 	const [validUntil, setValidUntil] = useState<Date | undefined>(undefined);
-	const [validUntilOpen, setValidUntilOpen] = useState(false);
 	const [clientMessage, setClientMessage] = useState("");
 	const [terms, setTerms] = useState(
 		"Payment due within 30 days of acceptance"
@@ -207,16 +199,6 @@ export default function NewQuotePage() {
 			default:
 				return status;
 		}
-	};
-
-	const formatDisplayDate = (date?: Date | number) => {
-		if (!date) return "Not set";
-		const dateObj = typeof date === "number" ? new Date(date) : date;
-		return dateObj.toLocaleDateString("en-US", {
-			year: "numeric",
-			month: "long",
-			day: "numeric",
-		});
 	};
 
 	const getStatusColor = (status: string) => {
@@ -383,37 +365,12 @@ export default function NewQuotePage() {
 										>
 											Valid Until (Optional)
 										</label>
-										<Popover
-											open={validUntilOpen}
-											onOpenChange={setValidUntilOpen}
-										>
-											<PopoverTrigger asChild>
-												<Button
-													intent="outline"
-													className="w-full justify-start text-left font-normal"
-												>
-													<CalendarIcon className="mr-2 h-4 w-4" />
-													{validUntil
-														? formatDisplayDate(validUntil)
-														: "Select valid until date"}
-												</Button>
-											</PopoverTrigger>
-											<PopoverContent
-												className="w-auto p-0 bg-white dark:bg-gray-950"
-												align="start"
-											>
-												<Calendar
-													mode="single"
-													selected={validUntil}
-													onSelect={(date) => {
-														setValidUntil(date);
-														setValidUntilOpen(false);
-													}}
-													disabled={isLoading}
-													className="!bg-white dark:!bg-gray-950"
-												/>
-											</PopoverContent>
-										</Popover>
+										<DatePicker
+											value={validUntil}
+											onChange={setValidUntil}
+											placeholder="Select valid until date"
+											disabled={isLoading}
+										/>
 									</div>
 								</CardContent>
 							</Card>

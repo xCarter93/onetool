@@ -18,7 +18,7 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface LinkClientPopoverProps {
@@ -45,30 +45,32 @@ export function LinkClientPopover({
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				{compact ? (
-					<button
-						type="button"
-						disabled={disabled}
-						aria-label="Link to client"
-						className={cn(
-							"inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors duration-150",
-							"hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-							disabled && "cursor-not-allowed opacity-50"
-						)}
-					>
+			<PopoverTrigger
+				render={
+					compact ? (
+						<button
+							type="button"
+							disabled={disabled}
+							aria-label="Link to client"
+							className={cn(
+								"inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors duration-150",
+								"hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+								disabled && "cursor-not-allowed opacity-50"
+							)}
+						/>
+					) : (
+						<Button variant="outline" size="sm" disabled={disabled}>
+							<Link2 className="h-4 w-4" aria-hidden="true" />
+							Link to client
+						</Button>
+					)
+				}
+			>
+				{compact && (
+					<>
 						<Link2 className="h-3.5 w-3.5" aria-hidden="true" />
 						Link to client
-					</button>
-				) : (
-					<StyledButton
-						intent="outline"
-						size="sm"
-						icon={<Link2 className="h-4 w-4" aria-hidden="true" />}
-						label="Link to client"
-						showArrow={false}
-						disabled={disabled}
-					/>
+					</>
 				)}
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-72 p-0">

@@ -124,7 +124,9 @@ export function ColumnMappingRow({
 			<div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
 				<Select
 					value={schemaField}
-					onValueChange={(value) => onMappingChange(csvColumn, value)}
+					onValueChange={(value) =>
+						onMappingChange(csvColumn, typeof value === "string" ? value : "")
+					}
 				>
 					<SelectTrigger className="h-8 text-sm">
 						<SelectValue placeholder="Select field..." />

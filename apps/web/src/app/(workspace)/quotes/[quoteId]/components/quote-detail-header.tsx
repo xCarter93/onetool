@@ -4,7 +4,7 @@ import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import {
-	Mail,
+	PenLine,
 	FileText,
 	Trash2,
 	Check,
@@ -12,7 +12,7 @@ import {
 	RotateCcw,
 	Receipt,
 } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ interface QuoteDetailHeaderProps {
 	currentStatus: QuoteStatus;
 	onStatusChange: (status: QuoteStatus) => void;
 	onSendToClient: () => void;
-	/** Disable "Send to Client" when the monthly e-signature cap is reached. */
+	/** Disable "Send for e-signature" when the monthly e-signature cap is reached. */
 	sendDisabled?: boolean;
 	sendDisabledReason?: string;
 	onGeneratePdf: () => void;
@@ -46,58 +46,47 @@ export function QuoteDetailHeader({
 		switch (currentStatus) {
 			case "draft":
 				return (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						onClick={() => onStatusChange("sent")}
-						icon={<Send className="h-4 w-4" />}
-						label="Mark as Sent"
-						showArrow={false}
-					/>
+					<Button size="sm" onClick={() => onStatusChange("sent")}>
+						<Send className="h-4 w-4" />
+						Mark as Sent
+					</Button>
 				);
 			case "sent":
 				return (
-					<StyledButton
-						intent="success"
-						size="sm"
-						onClick={() => onStatusChange("approved")}
-						icon={<Check className="h-4 w-4" />}
-						label="Mark Approved"
-						showArrow={false}
-					/>
+					// TODO(reui-rebuild): success button intent mapped to default
+					<Button size="sm" onClick={() => onStatusChange("approved")}>
+						<Check className="h-4 w-4" />
+						Mark Approved
+					</Button>
 				);
 			case "approved":
 				return (
 					<>
-						<StyledButton
-							intent="primary"
-							size="sm"
-							onClick={onConvertToInvoice}
-							icon={<Receipt className="h-4 w-4" />}
-							label="Convert to Invoice"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
+						<Button size="sm" onClick={onConvertToInvoice}>
+							<Receipt className="h-4 w-4" />
+							Convert to Invoice
+						</Button>
+						<Button
+							variant="outline"
 							size="sm"
 							onClick={() => onStatusChange("draft")}
-							icon={<RotateCcw className="h-4 w-4" />}
-							label="Reopen"
-							showArrow={false}
-						/>
+						>
+							<RotateCcw className="h-4 w-4" />
+							Reopen
+						</Button>
 					</>
 				);
 			case "declined":
 			case "expired":
 				return (
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() => onStatusChange("draft")}
-						icon={<RotateCcw className="h-4 w-4" />}
-						label="Reopen"
-						showArrow={false}
-					/>
+					>
+						<RotateCcw className="h-4 w-4" />
+						Reopen
+					</Button>
 				);
 			default:
 				return null;
@@ -168,32 +157,24 @@ export function QuoteDetailHeader({
 							className="inline-flex"
 							title={sendDisabled ? sendDisabledReason : undefined}
 						>
-							<StyledButton
-								intent="outline"
+							<Button
+								variant="outline"
 								size="sm"
 								onClick={onSendToClient}
 								disabled={sendDisabled}
-								icon={<Mail className="h-4 w-4" />}
-								label="Send to Client"
-								showArrow={false}
-							/>
+							>
+								<PenLine className="h-4 w-4" />
+								Send for e-signature
+							</Button>
 						</span>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onGeneratePdf}
-							icon={<FileText className="h-4 w-4" />}
-							label="Generate PDF"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="destructive"
-							size="sm"
-							onClick={onDelete}
-							icon={<Trash2 className="h-4 w-4" />}
-							label="Delete"
-							showArrow={false}
-						/>
+						<Button variant="outline" size="sm" onClick={onGeneratePdf}>
+							<FileText className="h-4 w-4" />
+							Generate PDF
+						</Button>
+						<Button variant="destructive" size="sm" onClick={onDelete}>
+							<Trash2 className="h-4 w-4" />
+							Delete
+						</Button>
 					</div>
 				</div>
 			)}

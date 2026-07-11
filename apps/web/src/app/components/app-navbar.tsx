@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { AccentCTA } from "@/app/components/landing/accent-cta";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -320,13 +320,13 @@ function AppNavBar() {
 								</SignUpButton>
 							</SignedOut>
 							<SignedIn>
-								<StyledButton
-									intent="primary"
+								<Button
+									variant="default"
 									size="sm"
 									onClick={() => router.push("/home")}
 								>
 									Go To Dashboard
-								</StyledButton>
+								</Button>
 							</SignedIn>
 						</div>
 
@@ -369,9 +369,9 @@ function AppNavBar() {
 								<div className="pt-3 mt-2 border-t border-border flex items-center justify-center gap-2">
 									<SignedOut>
 										<SignInButton mode="modal" forceRedirectUrl="/home">
-											<StyledButton intent="outline" size="sm">
+											<Button variant="outline" size="sm">
 												Sign In
-											</StyledButton>
+											</Button>
 										</SignInButton>
 										<SignUpButton mode="modal" forceRedirectUrl="/home">
 											<AccentCTA size="sm">
@@ -380,8 +380,8 @@ function AppNavBar() {
 										</SignUpButton>
 									</SignedOut>
 									<SignedIn>
-										<StyledButton
-											intent="primary"
+										<Button
+											variant="default"
 											size="sm"
 											onClick={() => {
 												router.push("/home");
@@ -389,7 +389,7 @@ function AppNavBar() {
 											}}
 										>
 											Go To Dashboard
-										</StyledButton>
+										</Button>
 									</SignedIn>
 								</div>
 							</div>

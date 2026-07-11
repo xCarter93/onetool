@@ -17,7 +17,7 @@ import {
 	EmptyDescription,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StyledSegmentedControl } from "@/components/ui/styled/styled-segmented-control";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import { cn } from "@/lib/utils";
 import type {
 	DisplayGroup,
@@ -101,7 +101,7 @@ export function ThreadList({
 					)}
 				</div>
 
-				<StyledSegmentedControl
+				<SegmentedControl
 					value={filter}
 					onValueChange={onFilterChange}
 					options={FILTER_OPTIONS}

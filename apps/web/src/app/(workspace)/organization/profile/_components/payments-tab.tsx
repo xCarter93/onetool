@@ -24,8 +24,9 @@ import {
 } from "@stripe/react-connect-js";
 
 import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Badge } from "@/components/reui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { formatRelativeTime } from "@/lib/notification-utils";
@@ -98,6 +99,11 @@ export function PaymentsTab() {
 
 		setOnboardingLoading(true);
 
+		const loadingToastId = toast.loading(
+			"Connecting to Stripe…",
+			"Setting up your connected account",
+		);
+
 		try {
 			// The route derives account identity from the Clerk session.
 			const accountResponse = await fetch("/api/stripe-connect/account", {
@@ -147,8 +153,10 @@ export function PaymentsTab() {
 				requirements: accountData.requirements,
 			});
 
+			toast.removeToast(loadingToastId);
 			window.location.href = linkData.url;
 		} catch (error) {
+			toast.removeToast(loadingToastId);
 			logError(error, { action: "stripe_onboarding" });
 			toast.error(
 				"Stripe onboarding failed",
@@ -280,9 +288,7 @@ export function PaymentsTab() {
 							details. Fees are paid by the connected account; disputes are
 							handled by Stripe.
 						</p>
-						<StyledButton
-							size="md"
-							intent="primary"
+						<Button
 							onClick={handleStartStripeOnboarding}
 							disabled={onboardingLoading}
 						>
@@ -292,7 +298,7 @@ export function PaymentsTab() {
 								<ExternalLink className="mr-2 h-4 w-4" />
 							)}
 							Onboard to collect payments
-						</StyledButton>
+						</Button>
 						<p className="text-xs text-muted-foreground">
 							Note: The account ID will be stored on this organization so
 							future visits reuse the same Stripe account.
@@ -338,10 +344,10 @@ export function PaymentsTab() {
 						{hasAccount && (
 							<div className="flex shrink-0 flex-wrap gap-2">
 								<Button
-									intent="outline"
+									variant="outline"
 									size="sm"
 									onClick={refreshStripeAccountStatus}
-									isDisabled={statusLoading}
+									disabled={statusLoading}
 								>
 									{statusLoading ? (
 										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -351,9 +357,8 @@ export function PaymentsTab() {
 									Refresh status
 								</Button>
 								{!onboardingComplete && (
-									<StyledButton
+									<Button
 										size="sm"
-										intent="primary"
 										onClick={handleStartStripeOnboarding}
 										disabled={onboardingLoading}
 										aria-label={
@@ -368,7 +373,7 @@ export function PaymentsTab() {
 											<ExternalLink className="mr-2 h-4 w-4" />
 										)}
 										Continue onboarding
-									</StyledButton>
+									</Button>
 								)}
 							</div>
 						)}
@@ -493,9 +498,13 @@ export function PaymentsTab() {
 									</FrameTitle>
 								</div>
 								{Boolean(stripeStatus) && currentlyDue.length > 0 && (
-									<span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+									<Badge
+										variant="warning-light"
+										radius="full"
+										className="shrink-0 px-2.5"
+									>
 										{currentlyDue.length} required
-									</span>
+									</Badge>
 								)}
 							</FrameHeader>
 							<FramePanel>
@@ -607,23 +616,10 @@ export function PaymentsTab() {
 
 function StatusPill({ active }: { active: boolean }) {
 	return (
-		<span
-			className={cn(
-				"inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
-				active
-					? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-					: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-			)}
-		>
-			<span
-				aria-hidden="true"
-				className={cn(
-					"size-1.5 rounded-full",
-					active ? "bg-emerald-500" : "bg-amber-500",
-				)}
-			/>
+		<StatusBadge role={active ? "success" : "warning"} className="gap-1.5">
+			<span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
 			{active ? "Active" : "Restricted"}
-		</span>
+		</StatusBadge>
 	);
 }
 

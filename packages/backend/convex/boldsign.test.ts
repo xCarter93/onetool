@@ -486,6 +486,132 @@ describe("BoldSign embedded sending", () => {
 	});
 
 	// ========================================================================
+	// getEmbeddedDraft / clearEmbeddedDraft (abandoned-draft discard)
+	// ========================================================================
+
+	describe("getEmbeddedDraft", () => {
+		it("returns the latest document's Draft for discard", async () => {
+			const { clerkUserId, clerkOrgId, quoteId, documentId } = await t.run(
+				async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, org.orgId);
+					const quoteId = await seedQuote(ctx, org.orgId, clientId);
+					const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+						documentId: "bs_abandoned",
+						status: "Draft",
+					});
+					return { ...org, quoteId, documentId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const result = await asUser.query(internal.boldsign.getEmbeddedDraft, {
+				quoteId,
+			});
+
+			expect(result).toEqual({
+				documentId,
+				boldsignDocumentId: "bs_abandoned",
+			});
+		});
+
+		it("returns null when the latest document is already Sent, ignoring an older Draft", async () => {
+			const { clerkUserId, clerkOrgId, quoteId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_old_draft",
+					status: "Draft",
+				});
+				await seedDocument(ctx, org.orgId, quoteId, 2, {
+					documentId: "bs_already_sent",
+					status: "Sent",
+				});
+				return { ...org, quoteId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const result = await asUser.query(internal.boldsign.getEmbeddedDraft, {
+				quoteId,
+			});
+
+			expect(result).toBeNull();
+		});
+	});
+
+	describe("clearEmbeddedDraft", () => {
+		it("removes the boldsign state from an abandoned Draft", async () => {
+			const { documentId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_to_clear",
+					status: "Draft",
+					viewUrl: "https://boldsign.test/send/clear",
+				});
+				return { documentId };
+			});
+
+			await t.mutation(internal.boldsign.clearEmbeddedDraft, {
+				documentId,
+				boldsignDocumentId: "bs_to_clear",
+			});
+
+			const doc = await t.run(async (ctx) => ctx.db.get(documentId));
+			expect(doc?.boldsign).toBeUndefined();
+			expect(doc?.boldsignDocumentId).toBeUndefined();
+		});
+
+		it("keeps the state when a Sent webhook won the race", async () => {
+			const { documentId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_race_sent",
+					status: "Sent",
+				});
+				return { documentId };
+			});
+
+			await t.mutation(internal.boldsign.clearEmbeddedDraft, {
+				documentId,
+				boldsignDocumentId: "bs_race_sent",
+			});
+
+			const doc = await t.run(async (ctx) => ctx.db.get(documentId));
+			expect(doc?.boldsign?.status).toBe("Sent");
+			expect(doc?.boldsignDocumentId).toBe("bs_race_sent");
+		});
+
+		it("keeps the state when the document was re-prepared under a new BoldSign ID", async () => {
+			const { documentId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_newer_draft",
+					status: "Draft",
+				});
+				return { documentId };
+			});
+
+			await t.mutation(internal.boldsign.clearEmbeddedDraft, {
+				documentId,
+				boldsignDocumentId: "bs_stale_draft",
+			});
+
+			const doc = await t.run(async (ctx) => ctx.db.get(documentId));
+			expect(doc?.boldsign?.status).toBe("Draft");
+			expect(doc?.boldsignDocumentId).toBe("bs_newer_draft");
+		});
+	});
+
+	// ========================================================================
 	// handleWebhook lifecycle
 	// ========================================================================
 

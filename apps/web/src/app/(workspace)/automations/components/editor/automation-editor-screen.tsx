@@ -177,9 +177,9 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 					This automation may have been deleted or you don&apos;t have access to it.
 				</p>
 				<Button
-					intent="primary"
+					variant="default"
 					className="mt-6"
-					onPress={() => router.push("/automations")}
+					onClick={() => router.push("/automations")}
 				>
 					Back to Automations
 				</Button>

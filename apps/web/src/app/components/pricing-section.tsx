@@ -10,7 +10,6 @@ import {
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import { useTheme } from "next-themes";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import { AccentCTA } from "@/app/components/landing/accent-cta";
 import { usePlans } from "@clerk/nextjs/experimental";
 import { useRouter } from "next/navigation";

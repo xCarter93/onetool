@@ -1,6 +1,7 @@
 import { ReactNode, Fragment } from "react";
+import { Loader2 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 interface ButtonConfig {
 	label: string;
@@ -34,6 +35,34 @@ interface StickyFormFooterProps {
 	fullWidth?: boolean;
 	hasUnsavedChanges?: boolean;
 	isEditing?: boolean;
+}
+
+// TODO(reui-rebuild): nova Button has no "success" or "warning" variant —
+// "success" maps to default, "warning" maps to outline.
+function intentToVariant(
+	intent: ButtonConfig["intent"]
+): "default" | "outline" | "secondary" | "ghost" | "destructive" {
+	switch (intent) {
+		case "primary":
+		case "success":
+			return "default";
+		case "secondary":
+			return "secondary";
+		case "plain":
+			return "ghost";
+		case "destructive":
+			return "destructive";
+		case "outline":
+		case "warning":
+		default:
+			return "outline";
+	}
+}
+
+function toButtonSize(size: ButtonConfig["size"]): "default" | "sm" | "lg" {
+	if (size === "sm") return "sm";
+	if (size === "lg") return "lg";
+	return "default";
 }
 
 export function StickyFormFooter({
@@ -106,16 +135,20 @@ export function StickyFormFooter({
 								)
 								.map((button, index) => {
 									const buttonElement = (
-										<StyledButton
-											label={button.label}
+										<Button
 											onClick={button.onClick}
-											intent={button.intent}
-											size={button.size}
-											icon={button.icon}
-											isLoading={button.isLoading}
-											disabled={button.disabled}
+											variant={intentToVariant(button.intent)}
+											size={toButtonSize(button.size)}
+											disabled={button.disabled || button.isLoading}
 											type={button.type}
-										/>
+										>
+											{button.isLoading ? (
+												<Loader2 className="h-4 w-4 animate-spin" />
+											) : (
+												button.icon
+											)}
+											{button.label}
+										</Button>
 									);
 									return (
 										<Fragment key={`left-${index}`}>
@@ -148,16 +181,20 @@ export function StickyFormFooter({
 								.filter((button) => button.position === "right")
 								.map((button, index) => {
 									const buttonElement = (
-										<StyledButton
-											label={button.label}
+										<Button
 											onClick={button.onClick}
-											intent={button.intent}
-											size={button.size}
-											icon={button.icon}
-											isLoading={button.isLoading}
-											disabled={button.disabled}
+											variant={intentToVariant(button.intent)}
+											size={toButtonSize(button.size)}
+											disabled={button.disabled || button.isLoading}
 											type={button.type}
-										/>
+										>
+											{button.isLoading ? (
+												<Loader2 className="h-4 w-4 animate-spin" />
+											) : (
+												button.icon
+											)}
+											{button.label}
+										</Button>
 									);
 									return (
 										<Fragment key={`right-${index}`}>

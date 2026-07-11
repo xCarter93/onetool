@@ -16,7 +16,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import {
 	MAX_DUE_IN_DAYS,
 	getTargetOptions,
@@ -156,7 +156,10 @@ function UpdateFieldFields({
 							: `Updates the ${targetObjectType} linked to the triggering ${triggerObjectType}.`
 				}
 			>
-				<Select value={targetValue} onValueChange={updateTarget}>
+				<Select
+					value={targetValue}
+					onValueChange={(value) => value && updateTarget(value)}
+				>
 					<SelectTrigger>
 						<SelectValue />
 					</SelectTrigger>
@@ -173,7 +176,10 @@ function UpdateFieldFields({
 			</PanelField>
 
 			<PanelField label="Field">
-				<Select value={action.field} onValueChange={updateField}>
+				<Select
+					value={action.field}
+					onValueChange={(value) => value && updateField(value)}
+				>
 					<SelectTrigger>
 						<SelectValue placeholder="Select field" />
 					</SelectTrigger>
@@ -288,7 +294,9 @@ function CreateTaskFields({
 			<PanelField label="Assignee" helper="Optional — leave unassigned to skip.">
 				<Select
 					value={action.assigneeUserId ?? "__unassigned__"}
-					onValueChange={(v) => update({ assigneeUserId: v === "__unassigned__" ? undefined : v })}
+					onValueChange={(v) =>
+						update({ assigneeUserId: !v || v === "__unassigned__" ? undefined : v })
+					}
 				>
 					<SelectTrigger>
 						<SelectValue placeholder="Unassigned" />
@@ -354,7 +362,7 @@ function SendNotificationFields({
 				<PanelField label="Member">
 					<Select
 						value={action.recipient.userId}
-						onValueChange={(userId) => update({ recipient: { userId } })}
+						onValueChange={(userId) => userId && update({ recipient: { userId } })}
 					>
 						<SelectTrigger>
 							<SelectValue placeholder="Choose a member" />
@@ -444,7 +452,7 @@ function SendTeamMessageFields({
 
 			{typeof action.recipients !== "string" && (
 				<PanelField label="Members">
-					<StyledMultiSelector
+					<MultiSelector
 						options={memberOptions}
 						value={action.recipients.userIds}
 						onValueChange={(userIds) => update({ recipients: { userIds } })}

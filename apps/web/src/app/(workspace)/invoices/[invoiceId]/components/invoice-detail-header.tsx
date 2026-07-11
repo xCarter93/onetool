@@ -11,7 +11,7 @@ import {
 	Send,
 	RotateCcw,
 } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
@@ -49,67 +49,57 @@ export function InvoiceDetailHeader({
 			case "draft":
 				return (
 					<>
-						<StyledButton
-							intent="primary"
-							size="sm"
-							onClick={() => onStatusChange("sent")}
-							icon={<Send className="h-4 w-4" />}
-							label="Mark as Sent"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="success"
-							size="sm"
-							onClick={onMarkPaid}
-							icon={<CheckCircle className="h-4 w-4" />}
-							label="Mark as Paid"
-							showArrow={false}
-						/>
+						<Button size="sm" onClick={() => onStatusChange("sent")}>
+							<Send className="h-4 w-4" />
+							Mark as Sent
+						</Button>
+						{/* TODO(reui-rebuild): success button intent mapped to default */}
+						<Button size="sm" onClick={onMarkPaid}>
+							<CheckCircle className="h-4 w-4" />
+							Mark as Paid
+						</Button>
 					</>
 				);
 			case "sent":
 			case "overdue":
 				return (
 					<>
-						<StyledButton
-							intent="success"
-							size="sm"
-							onClick={onMarkPaid}
-							icon={<CheckCircle className="h-4 w-4" />}
-							label="Mark as Paid"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
+						{/* TODO(reui-rebuild): success button intent mapped to default */}
+						<Button size="sm" onClick={onMarkPaid}>
+							<CheckCircle className="h-4 w-4" />
+							Mark as Paid
+						</Button>
+						<Button
+							variant="outline"
 							size="sm"
 							onClick={() => onStatusChange("draft")}
-							icon={<RotateCcw className="h-4 w-4" />}
-							label="Revert to Draft"
-							showArrow={false}
-						/>
+						>
+							<RotateCcw className="h-4 w-4" />
+							Revert to Draft
+						</Button>
 					</>
 				);
 			case "paid":
 				return (
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() => onStatusChange("sent")}
-						icon={<RotateCcw className="h-4 w-4" />}
-						label="Reopen"
-						showArrow={false}
-					/>
+					>
+						<RotateCcw className="h-4 w-4" />
+						Reopen
+					</Button>
 				);
 			case "cancelled":
 				return (
-					<StyledButton
-						intent="outline"
+					<Button
+						variant="outline"
 						size="sm"
 						onClick={() => onStatusChange("draft")}
-						icon={<RotateCcw className="h-4 w-4" />}
-						label="Reopen (Draft)"
-						showArrow={false}
-					/>
+					>
+						<RotateCcw className="h-4 w-4" />
+						Reopen (Draft)
+					</Button>
 				);
 			default:
 				return null;
@@ -190,31 +180,19 @@ export function InvoiceDetailHeader({
 					</AnimatePresence>
 					<div className="flex items-center gap-2 shrink-0">
 						{renderStatusActions()}
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onSendToClient}
-							icon={<Mail className="h-4 w-4" />}
-							label="Send to Client"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onGeneratePdf}
-							icon={<FileText className="h-4 w-4" />}
-							label="Generate PDF"
-							showArrow={false}
-						/>
+						<Button variant="outline" size="sm" onClick={onSendToClient}>
+							<Mail className="h-4 w-4" />
+							Send to Client
+						</Button>
+						<Button variant="outline" size="sm" onClick={onGeneratePdf}>
+							<FileText className="h-4 w-4" />
+							Generate PDF
+						</Button>
 						{currentStatus !== "cancelled" && (
-							<StyledButton
-								intent="destructive"
-								size="sm"
-								onClick={onCancel}
-								icon={<XCircle className="h-4 w-4" />}
-								label="Cancel"
-								showArrow={false}
-							/>
+							<Button variant="destructive" size="sm" onClick={onCancel}>
+								<XCircle className="h-4 w-4" />
+								Cancel
+							</Button>
 						)}
 					</div>
 				</div>

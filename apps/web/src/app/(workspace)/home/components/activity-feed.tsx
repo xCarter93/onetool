@@ -6,11 +6,115 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { ActivityTimelineItem } from "./activity-item";
 import { Timeline } from "@/components/reui/timeline";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PaginationControls } from "@/components/ui/pagination";
+import {
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+} from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StyledSegmentedControl, StyledEmpty } from "@/components/ui/styled";
+import { SegmentedControl } from "@/components/domain/segmented-control";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Activity } from "lucide-react";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { cn } from "@/lib/utils";
+
+// TODO(reui-rebuild): ui/pagination.tsx dropped its `PaginationControls`
+// composite export in the base-nova rebuild; rebuilt locally from the new
+// compound Pagination parts (same page/prev/next behavior as before).
+interface PaginationControlsProps {
+	currentPage: number;
+	totalPages: number;
+	onPageChange: (page: number) => void;
+	className?: string;
+	maxVisiblePages?: number;
+}
+
+function PaginationControls({
+	currentPage,
+	totalPages,
+	onPageChange,
+	className,
+	maxVisiblePages = 5,
+}: PaginationControlsProps) {
+	if (totalPages <= 1) return null;
+
+	const generatePageNumbers = () => {
+		const pages: (number | "ellipsis")[] = [];
+		const half = Math.floor(maxVisiblePages / 2);
+
+		let start = Math.max(1, currentPage - half);
+		const end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+		if (end - start < maxVisiblePages - 1) {
+			start = Math.max(1, end - maxVisiblePages + 1);
+		}
+
+		if (start > 1) {
+			pages.push(1);
+			if (start > 2) {
+				pages.push("ellipsis");
+			}
+		}
+
+		for (let i = start; i <= end; i++) {
+			pages.push(i);
+		}
+
+		if (end < totalPages) {
+			if (end < totalPages - 1) {
+				pages.push("ellipsis");
+			}
+			pages.push(totalPages);
+		}
+
+		return pages;
+	};
+
+	const pages = generatePageNumbers();
+
+	return (
+		<Pagination className={className}>
+			<PaginationContent>
+				<PaginationItem>
+					<PaginationPrevious
+						onClick={() => onPageChange(currentPage - 1)}
+						aria-disabled={currentPage <= 1}
+						className={cn(currentPage <= 1 && "pointer-events-none opacity-50")}
+					/>
+				</PaginationItem>
+
+				{pages.map((page, index) => (
+					<PaginationItem key={index}>
+						{page === "ellipsis" ? (
+							<PaginationEllipsis />
+						) : (
+							<PaginationLink
+								isActive={page === currentPage}
+								onClick={() => onPageChange(page)}
+							>
+								{page}
+							</PaginationLink>
+						)}
+					</PaginationItem>
+				))}
+
+				<PaginationItem>
+					<PaginationNext
+						onClick={() => onPageChange(currentPage + 1)}
+						aria-disabled={currentPage >= totalPages}
+						className={cn(
+							currentPage >= totalPages && "pointer-events-none opacity-50"
+						)}
+					/>
+				</PaginationItem>
+			</PaginationContent>
+		</Pagination>
+	);
+}
 
 type TimeFilter = "1d" | "3d" | "7d" | "2w";
 
@@ -84,7 +188,7 @@ export default function ActivityFeed({
 						<h3 className="text-base font-semibold text-foreground">
 							Recent Activity
 						</h3>
-						<StyledSegmentedControl
+						<SegmentedControl
 							value={selectedFilter}
 							onValueChange={handleFilterChange}
 							options={[
@@ -111,7 +215,7 @@ export default function ActivityFeed({
 								))}
 							</div>
 						) : currentPageActivities.length === 0 ? (
-							<StyledEmpty
+							<EmptyState
 								icon={<Activity />}
 								title="No recent activity"
 								description="Activity will appear here as you work"

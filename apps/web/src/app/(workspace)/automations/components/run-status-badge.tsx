@@ -1,5 +1,5 @@
 import type { ElementType } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/reui/badge";
 import { CheckCircle2, XCircle, Loader2, MinusCircle, Ban } from "lucide-react";
 import { RUN_STATUS_META, type RunStatus } from "../lib/run-format";
 

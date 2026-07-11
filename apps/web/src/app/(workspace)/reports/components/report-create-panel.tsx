@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { BarChart3, ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
 	Empty,
@@ -69,24 +69,21 @@ export function ReportCreatePanel({ onBrowsePresets }: ReportCreatePanelProps) {
 
 							<EmptyContent className="max-w-none items-start gap-0 text-left">
 								<div className="flex w-full items-center gap-2 max-[420px]:flex-wrap">
-									<StyledButton
-										intent="primary"
-										showArrow={false}
-										icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+									<Button
 										onClick={onBrowsePresets}
 										className="shrink-0 whitespace-nowrap"
 									>
+										<Plus className="h-4 w-4" aria-hidden="true" />
 										Browse presets
-									</StyledButton>
+									</Button>
 
-									<StyledButton
-										intent="outline"
-										showArrow={false}
+									<Button
+										variant="outline"
 										onClick={() => router.push("/reports/new")}
 										className="shrink-0 whitespace-nowrap"
 									>
 										Start blank
-									</StyledButton>
+									</Button>
 								</div>
 							</EmptyContent>
 						</Empty>

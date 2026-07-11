@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Users } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 interface ShowcaseItem {
 	slug: string;
@@ -132,10 +132,10 @@ export default function ShowcaseSection() {
 						transition={{ duration: 0.5, delay: 0.4 }}
 						className="text-center mt-8"
 					>
-						<StyledButton intent="outline" size="lg">
+						<Button variant="outline" size="lg">
 							View All Communities
 							<ArrowRight className="size-4 ml-2" />
-						</StyledButton>
+						</Button>
 					</motion.div>
 				)}
 			</div>

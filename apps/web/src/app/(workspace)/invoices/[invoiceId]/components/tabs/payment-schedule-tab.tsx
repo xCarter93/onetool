@@ -1,11 +1,10 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { StyledButton } from "@/components/ui/styled/styled-button";
 import {
 	CreditCard,
 	Settings,
@@ -25,35 +24,35 @@ const paymentStatusConfig: Record<
 	PaymentStatus,
 	{
 		label: string;
-		variant: "default" | "secondary" | "destructive" | "outline";
 		icon: React.ReactNode;
+		appearance: "soft" | "outline" | "solid";
 		className?: string;
 	}
 > = {
 	pending: {
 		label: "Pending",
-		variant: "outline",
 		icon: <Clock className="h-3 w-3" />,
+		appearance: "outline",
 	},
 	sent: {
 		label: "Sent",
-		variant: "secondary",
 		icon: <Mail className="h-3 w-3" />,
+		appearance: "soft",
 	},
 	paid: {
 		label: "Paid",
-		variant: "default",
 		icon: <CheckCircle className="h-3 w-3" />,
+		appearance: "solid",
 	},
 	overdue: {
 		label: "Overdue",
-		variant: "destructive",
 		icon: <AlertCircle className="h-3 w-3" />,
+		appearance: "soft",
 	},
 	cancelled: {
 		label: "Cancelled",
-		variant: "outline",
 		icon: <Ban className="h-3 w-3" />,
+		appearance: "outline",
 		className: "line-through opacity-60",
 	},
 };
@@ -133,14 +132,10 @@ export function PaymentScheduleTab({
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Payment Schedule
 					</h3>
-					<StyledButton
-						intent="outline"
-						size="sm"
-						onClick={onConfigurePayments}
-						icon={<Settings className="h-4 w-4" />}
-						label="Configure"
-						showArrow={false}
-					/>
+					<Button variant="outline" size="sm" onClick={onConfigurePayments}>
+						<Settings className="h-4 w-4" />
+						Configure
+					</Button>
 				</div>
 				<Separator className="mb-4" />
 
@@ -248,17 +243,17 @@ export function PaymentScheduleTab({
 														</p>
 													</div>
 												</div>
-												<Badge
-													variant={
-														statusConfig?.variant ||
-														"outline"
+												<StatusBadge
+													status={payment.status}
+													appearance={
+														statusConfig?.appearance ?? "soft"
 													}
 													className={`gap-1 ${statusConfig?.className || ""}`}
 												>
 													{statusConfig?.icon}
 													{statusConfig?.label ||
 														payment.status}
-												</Badge>
+												</StatusBadge>
 											</div>
 
 											{/* Payment Amount */}
@@ -276,7 +271,7 @@ export function PaymentScheduleTab({
 													"cancelled" && (
 													<div className="flex gap-2 pt-3 border-t border-border/50">
 														<Button
-															intent="outline"
+															variant="outline"
 															size="sm"
 															className="flex-1"
 															onClick={() =>
@@ -290,7 +285,7 @@ export function PaymentScheduleTab({
 															Copy Link
 														</Button>
 														<Button
-															intent="outline"
+															variant="outline"
 															size="sm"
 															className="flex-1"
 															onClick={() => {
@@ -320,14 +315,10 @@ export function PaymentScheduleTab({
 						<p className="text-sm text-muted-foreground mb-3">
 							No payments configured
 						</p>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onConfigurePayments}
-							icon={<Settings className="h-4 w-4" />}
-							label="Configure Payments"
-							showArrow={false}
-						/>
+						<Button variant="outline" size="sm" onClick={onConfigurePayments}>
+							<Settings className="h-4 w-4" />
+							Configure Payments
+						</Button>
 					</div>
 				)}
 			</div>

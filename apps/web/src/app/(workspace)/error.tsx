@@ -5,15 +5,15 @@ import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import { AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import {
-	StyledCard,
-	StyledCardContent,
-	StyledCardFooter,
-	StyledCardHeader,
-	StyledCardTitle,
-	StyledCardDescription,
-} from "@/components/ui/styled/styled-card";
+	GlassCard,
+	GlassCardContent,
+	GlassCardFooter,
+	GlassCardHeader,
+	GlassCardTitle,
+	GlassCardDescription,
+} from "@/components/shared/glass-card";
 
 const LOOP_DURATION = 4;
 
@@ -95,20 +95,20 @@ export default function Error({
 
 	return (
 		<div className="flex h-[80vh] w-full items-center justify-center p-6">
-			<StyledCard className="w-full max-w-xl overflow-visible">
-				<StyledCardHeader className="text-center pb-2 relative z-10">
+			<GlassCard className="w-full max-w-xl overflow-visible">
+				<GlassCardHeader className="text-center pb-2 relative z-10">
 					<div className="mx-auto mb-2">
 						<Ping />
 					</div>
-					<StyledCardTitle className="text-2xl mt-4">
+					<GlassCardTitle className="text-2xl mt-4">
 						Something went wrong!
-					</StyledCardTitle>
-					<StyledCardDescription className="text-base">
+					</GlassCardTitle>
+					<GlassCardDescription className="text-base">
 						We apologize for the inconvenience. Our team has been notified of
 						this issue.
-					</StyledCardDescription>
-				</StyledCardHeader>
-				<StyledCardContent className="text-center pb-2 relative z-10">
+					</GlassCardDescription>
+				</GlassCardHeader>
+				<GlassCardContent className="text-center pb-2 relative z-10">
 					<div className="rounded-md bg-muted/50 p-4 mb-4 backdrop-blur-sm">
 						<p className="text-sm font-medium text-foreground">
 							{error.message || "An unexpected error occurred"}
@@ -119,24 +119,26 @@ export default function Error({
 							</p>
 						)}
 					</div>
-				</StyledCardContent>
-				<StyledCardFooter className="flex justify-center gap-4 pb-8 relative z-10">
-					<StyledButton
-						label="Try again"
+				</GlassCardContent>
+				<GlassCardFooter className="flex justify-center gap-4 pb-8 relative z-10">
+					<Button
 						onClick={() => reset()}
-						intent="primary"
+						variant="default"
 						size="lg"
 						className="px-8"
-					/>
-					<StyledButton
-						label="Back to Home"
+					>
+						Try again
+					</Button>
+					<Button
 						onClick={() => router.push("/home")}
-						intent="outline"
+						variant="outline"
 						size="lg"
 						className="px-8"
-					/>
-				</StyledCardFooter>
-			</StyledCard>
+					>
+						Back to Home
+					</Button>
+				</GlassCardFooter>
+			</GlassCard>
 		</div>
 	);
 }

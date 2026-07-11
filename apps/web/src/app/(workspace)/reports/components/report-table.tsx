@@ -52,7 +52,7 @@ function ReportDetailTable({ detail }: { detail: DetailResult }) {
 		<div className="space-y-3">
 			<div className="rounded-lg border overflow-hidden">
 				<Table>
-					<TableHeader className="bg-muted/50">
+					<TableHeader className="bg-muted">
 						<TableRow>
 							{detail.columns.map((col) => (
 								<TableHead key={col.field}>{col.label}</TableHead>
@@ -121,7 +121,7 @@ export function ReportTable({
 			{/* Table */}
 			<div className="rounded-lg border overflow-hidden">
 				<Table>
-					<TableHeader className="bg-muted/50">
+					<TableHeader className="bg-muted">
 						<TableRow>
 							<TableHead className="w-12">#</TableHead>
 							<TableHead>

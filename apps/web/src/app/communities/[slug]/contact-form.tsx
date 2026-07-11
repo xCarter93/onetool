@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import { Send, CheckCircle, AlertCircle } from "lucide-react";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Send, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
-	StyledCard,
-	StyledCardHeader,
-	StyledCardTitle,
-	StyledCardDescription,
-	StyledCardContent,
-} from "@/components/ui/styled/styled-card";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+	GlassCard,
+	GlassCardHeader,
+	GlassCardTitle,
+	GlassCardDescription,
+	GlassCardContent,
+} from "@/components/shared/glass-card";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -64,18 +64,18 @@ export function ContactForm({ slug }: ContactFormProps) {
 	};
 
 	return (
-		<StyledCard>
-			<StyledCardHeader className="space-y-2">
-				<StyledCardTitle className="text-xl sm:text-2xl">
+		<GlassCard>
+			<GlassCardHeader className="space-y-2">
+				<GlassCardTitle className="text-xl sm:text-2xl">
 					Get a Free Quote
-				</StyledCardTitle>
-				<StyledCardDescription>
+				</GlassCardTitle>
+				<GlassCardDescription>
 					Tell us about your project and we&apos;ll get back to you
 					within one business day.
-				</StyledCardDescription>
-			</StyledCardHeader>
+				</GlassCardDescription>
+			</GlassCardHeader>
 
-			<StyledCardContent className="pt-4">
+			<GlassCardContent className="pt-4">
 				{submitSuccess ? (
 					<div className="flex flex-col items-center py-8 text-center">
 						<div className="size-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
@@ -95,7 +95,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 							<Label htmlFor="name" className="text-sm font-medium">
 								Name <span className="text-danger">*</span>
 							</Label>
-							<StyledInput
+							<Input
 								id="name"
 								value={formState.name}
 								onChange={(e) =>
@@ -110,7 +110,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 							<Label htmlFor="email" className="text-sm font-medium">
 								Email <span className="text-danger">*</span>
 							</Label>
-							<StyledInput
+							<Input
 								id="email"
 								type="email"
 								value={formState.email}
@@ -125,7 +125,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 							<Label htmlFor="phone" className="text-sm font-medium">
 								Phone <span className="text-muted-fg">(optional)</span>
 							</Label>
-							<StyledInput
+							<Input
 								id="phone"
 								type="tel"
 								value={formState.phone}
@@ -161,20 +161,22 @@ export function ContactForm({ slug }: ContactFormProps) {
 							</div>
 						)}
 
-						<StyledButton
+						<Button
 							type="submit"
-							intent="primary"
-							size="md"
+							variant="default"
 							className="w-full"
 							disabled={isSubmitting}
-							isLoading={isSubmitting}
-							icon={!isSubmitting && <Send className="size-4" />}
 						>
+							{isSubmitting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Send className="size-4" />
+							)}
 							{isSubmitting ? "Sending..." : "Request a Quote"}
-						</StyledButton>
+						</Button>
 					</form>
 				)}
-			</StyledCardContent>
-		</StyledCard>
+			</GlassCardContent>
+		</GlassCard>
 	);
 }

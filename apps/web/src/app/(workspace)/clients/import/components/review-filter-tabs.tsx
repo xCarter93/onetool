@@ -1,6 +1,12 @@
 "use client";
 
 import { Badge } from "@/components/reui/badge";
+import {
+	PILL_TAB_CONTAINER,
+	PILL_TAB_SEGMENT_ACTIVE,
+	PILL_TAB_SEGMENT_INACTIVE,
+} from "@/components/shared/pill-tabs";
+import { cn } from "@/lib/utils";
 import type { FilterTab } from "../utils/review-types";
 
 interface ReviewFilterTabsProps {
@@ -27,7 +33,7 @@ export function ReviewFilterTabs({
 	counts,
 }: ReviewFilterTabsProps) {
 	return (
-		<div className="flex border-b border-border">
+		<div className={PILL_TAB_CONTAINER}>
 			{TABS.map((tab) => {
 				const count = counts[tab.key];
 				const isActive = activeTab === tab.key;
@@ -45,11 +51,11 @@ export function ReviewFilterTabs({
 						key={tab.key}
 						type="button"
 						onClick={() => onTabChange(tab.key)}
-						className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-							isActive
-								? "text-foreground"
-								: "text-muted-foreground hover:text-foreground"
-						}`}
+						aria-pressed={isActive}
+						className={cn(
+							"cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200",
+							isActive ? PILL_TAB_SEGMENT_ACTIVE : PILL_TAB_SEGMENT_INACTIVE
+						)}
 					>
 						<span className="inline-flex items-center gap-1.5">
 							{tab.label}
@@ -57,9 +63,6 @@ export function ReviewFilterTabs({
 								{count}
 							</Badge>
 						</span>
-						{isActive && (
-							<span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-						)}
 					</button>
 				);
 			})}

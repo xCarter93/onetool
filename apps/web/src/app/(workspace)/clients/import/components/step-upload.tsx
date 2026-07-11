@@ -59,19 +59,19 @@ export function StepUpload({
 						<p>{analysisError}</p>
 						<div className="flex flex-wrap gap-2 mt-2">
 							{onRetryAnalysis && (
-								<Button intent="outline" size="sm" onPress={onRetryAnalysis}>
+								<Button variant="outline" size="sm" onClick={onRetryAnalysis}>
 									<RotateCcw className="w-3.5 h-3.5 mr-1.5" />
 									Try again
 								</Button>
 							)}
 							{onClearFile && (
-								<Button intent="outline" size="sm" onPress={onClearFile}>
+								<Button variant="outline" size="sm" onClick={onClearFile}>
 									<Upload className="w-3.5 h-3.5 mr-1.5" />
 									Upload different file
 								</Button>
 							)}
 							{onProceedUnmapped && (
-								<Button intent="plain" size="sm" onPress={onProceedUnmapped}>
+								<Button variant="ghost" size="sm" onClick={onProceedUnmapped}>
 									<ArrowRight className="w-3.5 h-3.5 mr-1.5" />
 									Continue without AI mapping
 								</Button>

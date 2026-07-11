@@ -58,6 +58,10 @@ export function DocumentsTab() {
 		}
 
 		setIsUploading(true);
+		const loadingToastId = toast.loading(
+			"Uploading document…",
+			file.name,
+		);
 		try {
 			const uploadUrl = await generateUploadUrl({});
 
@@ -77,12 +81,14 @@ export function DocumentsTab() {
 				fileSize: file.size,
 			});
 
+			toast.removeToast(loadingToastId);
 			toast.success("Document uploaded", "Your document is ready");
 
 			if (fileInputRef.current) {
 				fileInputRef.current.value = "";
 			}
 		} catch (error) {
+			toast.removeToast(loadingToastId);
 			// Log error securely to error reporting service
 			logError(error, {
 				action: "upload_organization_document",
@@ -322,14 +328,14 @@ function DocumentRow({ document, onDelete }: DocumentRowProps) {
 				{documentUrl && (
 					<>
 						<a href={documentUrl} target="_blank" rel="noopener noreferrer">
-							<Button intent="outline" size="sq-sm" aria-label="View document">
+							<Button variant="outline" size="icon-sm" aria-label="View document">
 								<Eye className="h-4 w-4" />
 							</Button>
 						</a>
 						<a href={documentUrl} download={`${document.name}.pdf`}>
 							<Button
-								intent="outline"
-								size="sq-sm"
+								variant="outline"
+								size="icon-sm"
 								aria-label="Download document"
 							>
 								<Download className="h-4 w-4" />
@@ -338,10 +344,10 @@ function DocumentRow({ document, onDelete }: DocumentRowProps) {
 					</>
 				)}
 				<Button
-					intent="outline"
-					size="sq-sm"
+					variant="outline"
+					size="icon-sm"
 					aria-label="Delete document"
-					onPress={onDelete}
+					onClick={onDelete}
 					className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 				>
 					<Trash2 className="h-4 w-4" />

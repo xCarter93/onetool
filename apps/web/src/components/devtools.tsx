@@ -192,15 +192,27 @@ type DevToolsToggleProps = {
 };
 
 const DevToolsToggle = ({ tools, position }: DevToolsToggleProps) => {
+  // Base UI's ToggleGroup drives pressed state from a single `value` array
+  // rather than per-item `isSelected`; derive it from each tool's own
+  // active/setActive pair so multi-select behavior is unchanged.
+  const activeValues = tools.filter((t) => t.active).map((t) => t.value);
+
   return (
     <Panel position={position} className="bg-card rounded border p-1 shadow-xs">
-      <ToggleGroup selectionMode="multiple">
-        {tools.map(({ active, setActive, label, value }) => (
+      <ToggleGroup
+        multiple
+        value={activeValues}
+        onValueChange={(nextValues) => {
+          tools.forEach(({ setActive, value }) =>
+            setActive(nextValues.includes(value)),
+          );
+        }}
+      >
+        {tools.map(({ label, value }) => (
           <ToggleGroupItem
             key={value}
             id={value}
-            isSelected={active}
-            onPress={() => setActive((prev) => !prev)}
+            value={value}
             className="bg-card text-card-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors duration-300"
           >
             {label}

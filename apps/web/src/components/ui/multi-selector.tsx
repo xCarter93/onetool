@@ -3,12 +3,12 @@ import * as React from 'react';
 import { CheckIcon, XCircle, ChevronDown, XIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/website/ui/button';
+import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/website/ui/popover';
+} from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
@@ -17,7 +17,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-} from '@/components/website/ui/command';
+} from '@/components/ui/command';
 
 /**
  * Props for MultiSelect component
@@ -138,10 +138,6 @@ export const MultiSelect = React.forwardRef<
       onValueChange([]);
     };
 
-    const handleTogglePopover = () => {
-      setIsPopoverOpen((prev) => !prev);
-    };
-
     const clearExtraOptions = () => {
       const newSelectedValues = selectedValues.slice(0, maxCount);
       setSelectedValues(newSelectedValues);
@@ -164,16 +160,19 @@ export const MultiSelect = React.forwardRef<
         onOpenChange={setIsPopoverOpen}
         modal={modalPopover}
       >
-        <PopoverTrigger asChild>
-          <Button
-            ref={ref}
-            {...props}
-            onClick={handleTogglePopover}
-            className={cn(
-              'flex w-full p-1 rounded-md border min-h-10 h-auto items-center justify-between hover:bg-neutral-100 dark:bg-neutral-900 bg-neutral-50 dark:hover:bg-neutral-950',
-              className
-            )}
-          >
+        <PopoverTrigger
+          render={
+            <Button
+              ref={ref}
+              {...props}
+              variant="outline"
+              className={cn(
+                'flex w-full p-1 rounded-md border min-h-10 h-auto items-center justify-between hover:bg-neutral-100 dark:bg-neutral-900 bg-neutral-50 dark:hover:bg-neutral-950',
+                className
+              )}
+            />
+          }
+        >
             {selectedValues.length > 0 ? (
               <div className='flex justify-between items-center w-full'>
                 <div className='flex flex-wrap items-center  gap-1 p-1'>
@@ -245,12 +244,10 @@ export const MultiSelect = React.forwardRef<
                 <ChevronDown className='h-4 cursor-pointer text-muted-foreground mx-2' />
               </div>
             )}
-          </Button>
         </PopoverTrigger>
         <PopoverContent
           className={cn('w-auto p-0', popoverClass)}
           align='start'
-          onEscapeKeyDown={() => setIsPopoverOpen(false)}
         >
           <Command>
             <CommandInput

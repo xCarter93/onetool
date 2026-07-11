@@ -5,13 +5,13 @@ import { Trash2, Plus } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
 import { Label } from "@/components/ui/label";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledInput } from "@/components/ui/styled/styled-input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-	StyledTabs,
-	StyledTabsList,
-	StyledTabsTrigger,
-} from "@/components/ui/styled/styled-tabs";
+	PillTabs,
+	PillTabsList,
+	PillTabsTrigger,
+} from "@/components/shared/pill-tabs";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
 import type { PricingMode, PricingTier } from "../use-community-page-form";
 
@@ -46,22 +46,22 @@ export const PricingSection = React.memo(function PricingSection({
 					Choose structured tiers or a rich-text pricing section.
 				</p>
 			</div>
-			<StyledTabs
+			<PillTabs
 				value={pricingMode}
 				onValueChange={(v) =>
 					setPricingMode(v as PricingMode)
 				}
 				className="mb-5 w-auto"
 			>
-				<StyledTabsList>
-					<StyledTabsTrigger value="structured">
+				<PillTabsList>
+					<PillTabsTrigger value="structured">
 						Structured tiers
-					</StyledTabsTrigger>
-					<StyledTabsTrigger value="richText">
+					</PillTabsTrigger>
+					<PillTabsTrigger value="richText">
 						Rich text
-					</StyledTabsTrigger>
-				</StyledTabsList>
-			</StyledTabs>
+					</PillTabsTrigger>
+				</PillTabsList>
+			</PillTabs>
 
 			{pricingMode === "structured" ? (
 				<div className="space-y-4">
@@ -79,8 +79,8 @@ export const PricingSection = React.memo(function PricingSection({
 										{tier.name || "Untitled Tier"}
 									</span>
 								</div>
-								<StyledButton
-									intent="destructive"
+								<Button
+									variant="destructive"
 									size="sm"
 									onClick={() =>
 										setPricingTiers((prev) =>
@@ -90,13 +90,13 @@ export const PricingSection = React.memo(function PricingSection({
 								>
 									<Trash2 className="size-3.5 mr-1.5" />
 									Remove
-								</StyledButton>
+								</Button>
 							</div>
 							<div className="p-4 space-y-3">
 								<div className="grid gap-3 sm:grid-cols-2">
 									<div className="space-y-2">
 										<Label className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</Label>
-										<StyledInput
+										<Input
 											value={tier.name}
 											onChange={(e) =>
 												setPricingTiers((prev) =>
@@ -112,7 +112,7 @@ export const PricingSection = React.memo(function PricingSection({
 									</div>
 									<div className="space-y-2">
 										<Label className="text-xs uppercase tracking-wider text-muted-fg">Price</Label>
-										<StyledInput
+										<Input
 											value={tier.price}
 											onChange={(e) =>
 												setPricingTiers((prev) =>
@@ -129,7 +129,7 @@ export const PricingSection = React.memo(function PricingSection({
 								</div>
 								<div className="space-y-2">
 									<Label className="text-xs uppercase tracking-wider text-muted-fg">Description</Label>
-									<StyledInput
+									<Input
 										value={tier.description}
 										onChange={(e) =>
 											setPricingTiers((prev) =>
@@ -146,8 +146,8 @@ export const PricingSection = React.memo(function PricingSection({
 							</div>
 						</div>
 					))}
-					<StyledButton
-						intent="secondary"
+					<Button
+						variant="secondary"
 						onClick={() =>
 							setPricingTiers((prev) => [
 								...prev,
@@ -157,7 +157,7 @@ export const PricingSection = React.memo(function PricingSection({
 					>
 						<Plus className="size-4 mr-2" />
 						Add Tier
-					</StyledButton>
+					</Button>
 				</div>
 			) : (
 				<CommunityEditor

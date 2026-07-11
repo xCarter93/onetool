@@ -13,13 +13,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { CalendarIcon } from "lucide-react";
 import { CalendarWidget } from "@/components/ui/calendar-widget";
 import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
@@ -29,7 +23,7 @@ import { useRouter } from "next/navigation";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { cn } from "@/lib/utils";
-import { StyledMultiSelector } from "@/components/ui/styled/styled-multi-selector";
+import { MultiSelector } from "@/components/shared/multi-selector";
 import { User } from "lucide-react";
 import { ProjectCreationSidebar } from "./project-creation-sidebar";
 
@@ -127,9 +121,6 @@ function DateFieldsSection({
 	form: any;
 	isLoading: boolean;
 }) {
-	const [startDateOpen, setStartDateOpen] = React.useState(false);
-	const [endDateOpen, setEndDateOpen] = React.useState(false);
-
 	return (
 		<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
 			<form.Field
@@ -138,34 +129,12 @@ function DateFieldsSection({
 				children={(field: any) => (
 					<Field>
 						<FieldLabel>Start Date</FieldLabel>
-						<Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
-							<PopoverTrigger asChild>
-								<Button
-									intent="outline"
-									className="w-full justify-start text-left font-normal"
-								>
-									<CalendarIcon className="mr-2 h-4 w-4" />
-									{field.state.value
-										? formatDisplayDate(field.state.value)
-										: "Select start date"}
-								</Button>
-							</PopoverTrigger>
-							<PopoverContent
-								className="w-auto p-0 bg-white dark:bg-gray-950"
-								align="start"
-							>
-								<Calendar
-									mode="single"
-									selected={field.state.value}
-									onSelect={(date) => {
-										field.handleChange(date);
-										setStartDateOpen(false);
-									}}
-									disabled={isLoading}
-									className="!bg-white dark:!bg-gray-950"
-								/>
-							</PopoverContent>
-						</Popover>
+						<DatePicker
+							value={field.state.value}
+							onChange={field.handleChange}
+							placeholder="Select start date"
+							disabled={isLoading}
+						/>
 					</Field>
 				)}
 			/>
@@ -177,45 +146,23 @@ function DateFieldsSection({
 					return (
 						<Field>
 							<FieldLabel>End Date</FieldLabel>
-							<Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
-								<PopoverTrigger asChild>
-									<Button
-										intent="outline"
-										className="w-full justify-start text-left font-normal"
-									>
-										<CalendarIcon className="mr-2 h-4 w-4" />
-										{field.state.value
-											? formatDisplayDate(field.state.value)
-											: "Select end date"}
-									</Button>
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-auto p-0 bg-white dark:bg-gray-950"
-									align="start"
-								>
-									<Calendar
-										mode="single"
-										selected={field.state.value}
-										onSelect={(date) => {
-											field.handleChange(date);
-											setEndDateOpen(false);
-										}}
-										disabled={(date) => {
-											if (isLoading) return true;
-											if (!startDateValue) return false;
-											const start =
-												typeof startDateValue === "number"
-													? new Date(startDateValue)
-													: new Date(startDateValue.getTime());
-											start.setHours(0, 0, 0, 0);
-											const checkDate = new Date(date);
-											checkDate.setHours(0, 0, 0, 0);
-											return checkDate < start;
-										}}
-										className="!bg-white dark:!bg-gray-950"
-									/>
-								</PopoverContent>
-							</Popover>
+							<DatePicker
+								value={field.state.value}
+								onChange={field.handleChange}
+								placeholder="Select end date"
+								disabled={isLoading}
+								disabledDates={(date) => {
+									if (!startDateValue) return false;
+									const start =
+										typeof startDateValue === "number"
+											? new Date(startDateValue)
+											: new Date(startDateValue.getTime());
+									start.setHours(0, 0, 0, 0);
+									const checkDate = new Date(date);
+									checkDate.setHours(0, 0, 0, 0);
+									return checkDate < start;
+								}}
+							/>
 						</Field>
 					);
 				}}
@@ -631,7 +578,7 @@ export function ProjectOnboardingForm({
 													<User className="h-4 w-4 text-primary" />
 													Assign To
 												</FieldLabel>
-												<StyledMultiSelector
+												<MultiSelector
 													options={
 														users?.map((user) => ({
 															label: user.name || user.email,

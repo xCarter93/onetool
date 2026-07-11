@@ -25,8 +25,8 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
-import { StyledInput } from "@/components/ui/styled/styled-input";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface CommunityEditorProps {
 	content?: JSONContent;
@@ -435,20 +435,22 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 
 	return (
 		<Popover open={open} onOpenChange={handleOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					className={cn(
-						"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-						"text-muted-fg hover:text-fg hover:bg-muted/50",
-						isActive && "bg-muted text-fg"
-					)}
-					aria-label="Add Link"
-					aria-pressed={isActive}
-					title="Add Link"
-				>
-					<LinkIcon className="size-4" />
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						type="button"
+						className={cn(
+							"inline-flex items-center justify-center size-8 rounded-md transition-colors",
+							"text-muted-fg hover:text-fg hover:bg-muted/50",
+							isActive && "bg-muted text-fg"
+						)}
+						aria-label="Add Link"
+						aria-pressed={isActive}
+						title="Add Link"
+					/>
+				}
+			>
+				<LinkIcon className="size-4" />
 			</PopoverTrigger>
 			<PopoverContent className="w-80" align="start">
 				<form onSubmit={handleSubmit} className="space-y-4">
@@ -466,7 +468,7 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 						<Label htmlFor="link-url" className="text-sm">
 							URL
 						</Label>
-						<StyledInput
+						<Input
 							id="link-url"
 							type="url"
 							value={url}
@@ -476,22 +478,22 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 						/>
 					</div>
 					<div className="flex gap-2">
-						<StyledButton
+						<Button
 							type="submit"
-							intent="primary"
+							variant="default"
 							className="flex-1"
 							disabled={!url.trim()}
 						>
 							{isActive ? "Update Link" : "Add Link"}
-						</StyledButton>
+						</Button>
 						{isActive && (
-							<StyledButton
+							<Button
 								type="button"
-								intent="secondary"
+								variant="secondary"
 								onClick={handleRemoveLink}
 							>
 								Remove
-							</StyledButton>
+							</Button>
 						)}
 					</div>
 				</form>
@@ -519,18 +521,20 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					className={cn(
-						"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-						"text-muted-fg hover:text-fg hover:bg-muted/50"
-					)}
-					aria-label="Add Image"
-					title="Add Image"
-				>
-					<ImageIcon className="size-4" />
-				</button>
+			<PopoverTrigger
+				render={
+					<button
+						type="button"
+						className={cn(
+							"inline-flex items-center justify-center size-8 rounded-md transition-colors",
+							"text-muted-fg hover:text-fg hover:bg-muted/50"
+						)}
+						aria-label="Add Image"
+						title="Add Image"
+					/>
+				}
+			>
+				<ImageIcon className="size-4" />
 			</PopoverTrigger>
 			<PopoverContent className="w-80" align="start">
 				<form onSubmit={handleSubmit} className="space-y-4">
@@ -548,7 +552,7 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 						<Label htmlFor="image-url" className="text-sm">
 							Image URL
 						</Label>
-						<StyledInput
+						<Input
 							id="image-url"
 							type="url"
 							value={url}
@@ -560,14 +564,14 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 							Paste a URL to an image hosted online
 						</p>
 					</div>
-					<StyledButton
+					<Button
 						type="submit"
-						intent="primary"
+						variant="default"
 						className="w-full"
 						disabled={!url.trim()}
 					>
 						Insert Image
-					</StyledButton>
+					</Button>
 				</form>
 			</PopoverContent>
 		</Popover>

@@ -12,7 +12,7 @@ import {
 	DrawerTitle,
 	DrawerTrigger,
 } from "@/components/ui/drawer";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 function getSchemaFields(entityType: EntityType) {
 	const schemaFields =
@@ -147,16 +147,15 @@ export function CsvSchemaGuideDrawer({ entityType }: CsvSchemaGuideDrawerProps) 
 	const entityLabel = entityType === "clients" ? "Clients" : "Projects";
 
 	return (
-		<Drawer direction="right">
-			<DrawerTrigger asChild>
-				<StyledButton
-					intent="plain"
-					size="sm"
-					showArrow={false}
-					icon={<Info className="size-4" />}
-					label="Column guide"
-				/>
-			</DrawerTrigger>
+		<Drawer swipeDirection="right">
+			<DrawerTrigger
+				render={
+					<Button variant="ghost" size="sm">
+						<Info className="size-4" />
+						Column guide
+					</Button>
+				}
+			/>
 			<DrawerContent className="sm:max-w-md!">
 				<DrawerHeader className="border-b border-border">
 					<DrawerTitle>CSV Column Guide for {entityLabel}</DrawerTitle>

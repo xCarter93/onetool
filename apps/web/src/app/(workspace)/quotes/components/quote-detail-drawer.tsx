@@ -9,12 +9,13 @@ import {
 	CheckCircle2,
 	ExternalLink,
 	FileText,
+	Loader2,
 	PenLine,
 	Receipt,
 	XCircle,
 } from "lucide-react";
 
-import { Badge } from "@/components/reui/badge";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	Timeline,
 	TimelineContent,
@@ -23,7 +24,7 @@ import {
 	TimelineSeparator,
 	TimelineTitle,
 } from "@/components/reui/timeline";
-import { StyledButton } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
@@ -50,17 +51,6 @@ const STATUS_LABEL: Record<QuoteStatus, string> = {
 	approved: "Approved",
 	declined: "Declined",
 	expired: "Expired",
-};
-
-const STATUS_BADGE: Record<
-	QuoteStatus,
-	React.ComponentProps<typeof Badge>["variant"]
-> = {
-	draft: "secondary",
-	sent: "warning-light",
-	approved: "success-light",
-	declined: "destructive-light",
-	expired: "secondary",
 };
 
 const STATUS_ORDER: QuoteStatus[] = [
@@ -177,9 +167,9 @@ export function QuoteDetailDrawer({
 			title={title}
 			badge={
 				quote ? (
-					<Badge variant={STATUS_BADGE[quote.status]} size="lg">
+					<StatusBadge status={quote.status} size="lg">
 						{STATUS_LABEL[quote.status]}
-					</Badge>
+					</StatusBadge>
 				) : null
 			}
 			description={
@@ -193,58 +183,50 @@ export function QuoteDetailDrawer({
 				quote ? (
 					<>
 						{canSend ? (
-							<StyledButton
-								intent="primary"
-								size="sm"
-								icon={<PenLine className="size-3.5" />}
-								label="Send for e-signature"
-								showArrow={false}
-								onClick={sendForSignature}
-							/>
+							<Button size="sm" onClick={sendForSignature}>
+								<PenLine className="size-3.5" />
+								Send for e-signature
+							</Button>
 						) : null}
 						{canDecide ? (
 							<>
-								<StyledButton
-									intent="success"
+								{/* TODO(reui-rebuild): success button intent mapped to default */}
+								<Button size="sm" onClick={() => void setStatus("approved")}>
+									<CheckCircle2 className="size-3.5" />
+									Approve
+								</Button>
+								<Button
+									variant="destructive"
 									size="sm"
-									icon={<CheckCircle2 className="size-3.5" />}
-									label="Approve"
-									showArrow={false}
-									onClick={() => void setStatus("approved")}
-								/>
-								<StyledButton
-									intent="destructive"
-									size="sm"
-									icon={<XCircle className="size-3.5" />}
-									label="Decline"
-									showArrow={false}
 									onClick={() => void setStatus("declined")}
-								/>
+								>
+									<XCircle className="size-3.5" />
+									Decline
+								</Button>
 							</>
 						) : null}
 						{canConvert ? (
-							<StyledButton
-								intent="primary"
+							<Button
 								size="sm"
-								icon={<Receipt className="size-3.5" />}
-								label={converting ? "Converting…" : "Convert to invoice"}
-								showArrow={false}
 								disabled={converting}
 								onClick={convertToInvoice}
-							/>
+							>
+								{converting ? (
+									<Loader2 className="size-3.5 animate-spin" />
+								) : (
+									<Receipt className="size-3.5" />
+								)}
+								{converting ? "Converting…" : "Convert to invoice"}
+							</Button>
 						) : quote.status === "approved" && data?.hasInvoice ? (
 							<span className="text-muted-foreground text-xs">
 								Invoice already created
 							</span>
 						) : null}
-						<StyledButton
-							intent="outline"
-							size="sm"
-							icon={<ExternalLink className="size-3.5" />}
-							label="Open quote"
-							showArrow={false}
-							onClick={openRecord}
-						/>
+						<Button variant="outline" size="sm" onClick={openRecord}>
+							<ExternalLink className="size-3.5" />
+							Open quote
+						</Button>
 					</>
 				) : null
 			}
@@ -268,9 +250,9 @@ export function QuoteDetailDrawer({
 									{formatCurrency(data.totals.total)}
 								</span>
 							</div>
-							<Badge variant={STATUS_BADGE[quote.status]} size="lg">
+							<StatusBadge status={quote.status} size="lg">
 								{STATUS_LABEL[quote.status]}
-							</Badge>
+							</StatusBadge>
 						</div>
 						<span className="text-muted-foreground text-xs">
 							Subtotal {formatCurrency(data.totals.subtotal)} · Tax{" "}
@@ -429,14 +411,10 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<StyledButton
-						intent="primary"
-						size="sm"
-						label={saving ? "Saving…" : "Save"}
-						showArrow={false}
-						disabled={saving}
-						onClick={handleSave}
-					/>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
+						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{saving ? "Saving…" : "Save"}
+					</Button>
 				) : null}
 			</div>
 			{dirty ? (

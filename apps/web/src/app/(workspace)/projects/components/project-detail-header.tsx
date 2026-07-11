@@ -4,7 +4,7 @@ import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import { ListTodo, FileText, Receipt, Trash2 } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
@@ -70,39 +70,27 @@ export function ProjectDetailHeader({
 						)}
 					</AnimatePresence>
 					<div className="flex items-center gap-2 shrink-0">
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onAddTask}
-							icon={<ListTodo className="h-4 w-4" />}
-							label="Add Task"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
-							size="sm"
-							onClick={onAddQuote}
-							icon={<FileText className="h-4 w-4" />}
-							label="Add Quote"
-							showArrow={false}
-						/>
-						<StyledButton
-							intent="outline"
+						<Button variant="outline" size="sm" onClick={onAddTask}>
+							<ListTodo className="h-4 w-4" />
+							Add Task
+						</Button>
+						<Button variant="outline" size="sm" onClick={onAddQuote}>
+							<FileText className="h-4 w-4" />
+							Add Quote
+						</Button>
+						<Button
+							variant="outline"
 							size="sm"
 							onClick={onGenerateInvoice}
-							icon={<Receipt className="h-4 w-4" />}
-							label="Generate Invoice"
-							showArrow={false}
 							disabled={!hasApprovedQuotes}
-						/>
-						<StyledButton
-							intent="destructive"
-							size="sm"
-							onClick={onDelete}
-							icon={<Trash2 className="h-4 w-4" />}
-							label="Delete"
-							showArrow={false}
-						/>
+						>
+							<Receipt className="h-4 w-4" />
+							Generate Invoice
+						</Button>
+						<Button variant="destructive" size="sm" onClick={onDelete}>
+							<Trash2 className="h-4 w-4" />
+							Delete
+						</Button>
 					</div>
 				</div>
 			)}

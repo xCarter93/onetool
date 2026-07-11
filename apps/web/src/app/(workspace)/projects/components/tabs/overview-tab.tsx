@@ -7,7 +7,7 @@ import { useMutation } from "convex/react";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
-import { StyledCard, StyledCardContent } from "@/components/ui/styled";
+import { GlassCard, GlassCardContent } from "@/components/shared/glass-card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardList, DollarSign, CheckCircle, Pencil } from "lucide-react";
@@ -207,8 +207,8 @@ export function OverviewTab({
 					Highlights
 				</h3>
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-					<StyledCard>
-						<StyledCardContent className="flex items-center gap-3 p-4">
+					<GlassCard>
+						<GlassCardContent className="flex items-center gap-3 p-4">
 							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 								<ClipboardList className="h-5 w-5 text-primary" />
 							</div>
@@ -220,10 +220,10 @@ export function OverviewTab({
 									Active Tasks
 								</p>
 							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardContent className="flex items-center gap-3 p-4">
+						</GlassCardContent>
+					</GlassCard>
+					<GlassCard>
+						<GlassCardContent className="flex items-center gap-3 p-4">
 							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 								<DollarSign className="h-5 w-5 text-primary" />
 							</div>
@@ -235,10 +235,10 @@ export function OverviewTab({
 									Total Quoted
 								</p>
 							</div>
-						</StyledCardContent>
-					</StyledCard>
-					<StyledCard>
-						<StyledCardContent className="flex items-center gap-3 p-4">
+						</GlassCardContent>
+					</GlassCard>
+					<GlassCard>
+						<GlassCardContent className="flex items-center gap-3 p-4">
 							<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
 								<CheckCircle className="h-5 w-5 text-primary" />
 							</div>
@@ -250,8 +250,8 @@ export function OverviewTab({
 									Approved Quotes
 								</p>
 							</div>
-						</StyledCardContent>
-					</StyledCard>
+						</GlassCardContent>
+					</GlassCard>
 				</div>
 			</div>
 
@@ -349,7 +349,7 @@ export function OverviewTab({
 						<div className="flex gap-2 rounded-lg bg-gray-50/80 dark:bg-white/5 p-1 ring-1 ring-inset ring-gray-200/70 dark:ring-white/10 shadow-sm">
 							<Button
 								type="button"
-								intent="outline"
+								variant="outline"
 								size="sm"
 								onClick={() => handleCalendarNavigation("prev")}
 							>
@@ -369,7 +369,7 @@ export function OverviewTab({
 							</Button>
 							<Button
 								type="button"
-								intent="outline"
+								variant="outline"
 								size="sm"
 								onClick={() => handleCalendarNavigation("next")}
 							>

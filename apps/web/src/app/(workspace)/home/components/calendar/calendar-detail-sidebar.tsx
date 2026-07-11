@@ -14,8 +14,9 @@ import {
 	isSameDay,
 } from "date-fns";
 import { formatTime } from "@/lib/calendar-utils";
-import { StyledButton } from "@/components/ui/styled/styled-button";
-import { StyledEmpty, StyledStatusBadge } from "@/components/ui/styled";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
+import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	ExternalLink,
 	Calendar,
@@ -141,7 +142,7 @@ export function CalendarDetailSidebar({
 
 			{/* Event details or empty state */}
 			{!event ? (
-				<StyledEmpty
+				<EmptyState
 					icon={<Calendar />}
 					title="Select an event to view details"
 					size="md"
@@ -167,9 +168,9 @@ export function CalendarDetailSidebar({
 
 					{/* Status Badge */}
 					<div className="flex items-center gap-2">
-						<StyledStatusBadge status={event.status} size="sm">
+						<StatusBadge status={event.status} size="sm">
 							{event.status.replace("-", " ")}
-						</StyledStatusBadge>
+						</StatusBadge>
 					</div>
 
 				{/* Details */}
@@ -239,16 +240,14 @@ export function CalendarDetailSidebar({
 
 					{/* Actions */}
 					<div className="pt-6 border-t border-border">
-						<StyledButton
-							intent="primary"
+						<Button
 							size="lg"
 							onClick={handleViewFullDetails}
-							icon={<ExternalLink className="w-4 h-4" />}
 							className="w-full justify-center"
-							showArrow={false}
 						>
+							<ExternalLink className="w-4 h-4" />
 							View Full Details
-						</StyledButton>
+						</Button>
 					</div>
 				</div>
 			)}

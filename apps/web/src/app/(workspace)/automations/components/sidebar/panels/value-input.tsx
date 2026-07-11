@@ -240,15 +240,17 @@ export function ValueInput({
 				<StaticControl field={field} value={value} onChange={onChange} placeholder={placeholder} />
 			</div>
 			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>
-					<Button
-						intent="outline"
-						size="sq-md"
-						aria-label="Use a variable"
-						className="shrink-0"
-					>
-						<Braces className="h-4 w-4" />
-					</Button>
+				<PopoverTrigger
+					render={
+						<Button
+							variant="outline"
+							size="icon"
+							aria-label="Use a variable"
+							className="shrink-0"
+						/>
+					}
+				>
+					<Braces className="h-4 w-4" />
 				</PopoverTrigger>
 				<PopoverContent align="end" className="w-72 p-0">
 					<Command>
@@ -306,16 +308,18 @@ export function VariableInsertButton({
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button
-					intent="outline"
-					size="xs"
-					aria-label="Insert a variable"
-					className={cn("text-muted-foreground", className)}
-				>
-					<Braces className="h-3.5 w-3.5" />
-					Insert variable
-				</Button>
+			<PopoverTrigger
+				render={
+					<Button
+						variant="outline"
+						size="xs"
+						aria-label="Insert a variable"
+						className={cn("text-muted-foreground", className)}
+					/>
+				}
+			>
+				<Braces className="h-3.5 w-3.5" />
+				Insert variable
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-72 p-0">
 				<Command>

@@ -108,6 +108,17 @@ function QuickActionContent({
 	);
 }
 
+// Base UI warns when an uncontrolled Collapsible's defaultOpen changes
+// (isActive tracks the route). Seed local state once, then user-controlled —
+// same behavior Radix had.
+function NavCollapsible({
+	defaultOpen,
+	...props
+}: React.ComponentProps<typeof Collapsible>) {
+	const [open, setOpen] = React.useState(defaultOpen ?? false);
+	return <Collapsible open={open} onOpenChange={setOpen} {...props} />;
+}
+
 export function NavMain({
 	groups,
 	showQuickActions = true,
@@ -223,29 +234,28 @@ export function NavMain({
 								open={openQuickActions}
 								onOpenChange={handleOpenChange}
 							>
-								<DropdownMenuTrigger asChild>
-									<SidebarMenuButton
-										onMouseEnter={handleMouseEnterTrigger}
-										onMouseLeave={handleMouseLeaveTrigger}
-									>
-										<Plus />
-										<span>Create</span>
-									</SidebarMenuButton>
+								<DropdownMenuTrigger
+									render={
+										<SidebarMenuButton
+											onMouseEnter={handleMouseEnterTrigger}
+											onMouseLeave={handleMouseLeaveTrigger}
+										/>
+									}
+								>
+									<Plus />
+									<span>Create</span>
 								</DropdownMenuTrigger>
+								{/* TODO(reui-rebuild): collisionPadding + onPointerDownOutside dropped —
+								    local ui/dropdown-menu.tsx wrapper only forwards align/alignOffset/side/sideOffset
+								    from MenuPositioner, and MenuPopup has no outside-press hook to prevent the
+								    trigger-reclick double-toggle; no Base UI equivalent to invent. */}
 								<DropdownMenuContent
 									side={isMobile ? "bottom" : "right"}
 									align="start"
 									alignOffset={isMobile ? 0 : -16}
 									sideOffset={isMobile ? 6 : 8}
-									collisionPadding={12}
 									onMouseEnter={handleMouseEnterContent}
 									onMouseLeave={handleMouseLeaveContent}
-									onPointerDownOutside={(e) => {
-										const target = e.target as HTMLElement;
-										if (target.closest('[data-slot="dropdown-menu-trigger"]')) {
-											e.preventDefault();
-										}
-									}}
 									className="group/qa relative w-[calc(100vw-2rem)] max-w-[90vw] overflow-visible! rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl md:w-72 md:max-w-none"
 								>
 									{/* Left nubbin pointing back at the Create item */}
@@ -264,45 +274,47 @@ export function NavMain({
 										    needs the extra wrapper. */}
 										{canCreateClient ? (
 											<DropdownMenuItem
-												asChild
+												render={
+													<Link href="/clients/new" className={quickActionRowClass} />
+												}
 												className="p-0 focus:bg-muted/60"
-												onSelect={() => setOpenQuickActions(false)}
+												onClick={() => setOpenQuickActions(false)}
 											>
-												<Link href="/clients/new" className={quickActionRowClass}>
-													<QuickActionContent
-														icon={UserPlus}
-														iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
-														title="New Client"
-														description="Add a new client to your workspace"
-													/>
-												</Link>
+												<QuickActionContent
+													icon={UserPlus}
+													iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+													title="New Client"
+													description="Add a new client to your workspace"
+												/>
 											</DropdownMenuItem>
 										) : (
 											<Tooltip>
-												<TooltipTrigger asChild>
-													<DropdownMenuItem
-														className="p-0 focus:bg-transparent"
-														onSelect={(e) => {
-															e.preventDefault();
-															handleNewClientClick(e as unknown as React.MouseEvent);
-														}}
+												<TooltipTrigger
+													render={
+														<DropdownMenuItem
+															className="p-0 focus:bg-transparent"
+															onClick={(e) => {
+																e.preventDefault();
+																handleNewClientClick(e as unknown as React.MouseEvent);
+															}}
+														/>
+													}
+												>
+													<button
+														type="button"
+														disabled
+														className={cn(
+															quickActionRowClass,
+															"cursor-not-allowed opacity-50 hover:bg-transparent"
+														)}
 													>
-														<button
-															type="button"
-															disabled
-															className={cn(
-																quickActionRowClass,
-																"cursor-not-allowed opacity-50 hover:bg-transparent"
-															)}
-														>
-															<QuickActionContent
-																icon={UserPlus}
-																iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
-																title="New Client"
-																description="Add a new client to your workspace"
-															/>
-														</button>
-													</DropdownMenuItem>
+														<QuickActionContent
+															icon={UserPlus}
+															iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+															title="New Client"
+															description="Add a new client to your workspace"
+														/>
+													</button>
 												</TooltipTrigger>
 												<TooltipContent>
 													<div className="space-y-1">
@@ -320,53 +332,50 @@ export function NavMain({
 											</Tooltip>
 										)}
 										<DropdownMenuItem
-											asChild
+											render={
+												<Link href="/projects/new" className={quickActionRowClass} />
+											}
 											className="p-0 focus:bg-muted/60"
-											onSelect={() => setOpenQuickActions(false)}
+											onClick={() => setOpenQuickActions(false)}
 										>
-											<Link href="/projects/new" className={quickActionRowClass}>
-												<QuickActionContent
-													icon={FolderPlus}
-													iconClassName="bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
-													title="New Project"
-													description="Start a new project for a client"
-												/>
-											</Link>
+											<QuickActionContent
+												icon={FolderPlus}
+												iconClassName="bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
+												title="New Project"
+												description="Start a new project for a client"
+											/>
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											asChild
+											render={
+												<Link href="/quotes/new" className={quickActionRowClass} />
+											}
 											className="p-0 focus:bg-muted/60"
-											onSelect={() => setOpenQuickActions(false)}
+											onClick={() => setOpenQuickActions(false)}
 										>
-											<Link href="/quotes/new" className={quickActionRowClass}>
-												<QuickActionContent
-													icon={FilePlus}
-													iconClassName="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
-													title="New Quote"
-													description="Create a quote for a project"
-												/>
-											</Link>
+											<QuickActionContent
+												icon={FilePlus}
+												iconClassName="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+												title="New Quote"
+												description="Create a quote for a project"
+											/>
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											asChild
+											render={
+												<div className={cn(quickActionRowClass, "cursor-pointer")} />
+											}
 											className="p-0 focus:bg-muted/60"
-											onSelect={(e) => {
+											onClick={(e) => {
 												e.preventDefault();
 												setTaskSheetOpen(true);
 												setOpenQuickActions(false);
 											}}
 										>
-											<button
-												type="button"
-												className={cn(quickActionRowClass, "cursor-pointer")}
-											>
-												<QuickActionContent
-													icon={CheckSquare}
-													iconClassName="bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
-													title="New Task"
-													description="Add a task to your schedule"
-												/>
-											</button>
+											<QuickActionContent
+												icon={CheckSquare}
+												iconClassName="bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+												title="New Task"
+												description="Add a task to your schedule"
+											/>
 										</DropdownMenuItem>
 									</div>
 								</DropdownMenuContent>
@@ -400,61 +409,61 @@ export function NavMain({
 								}
 
 								return (
-									<Collapsible
+									<NavCollapsible
 										key={item.title}
-										asChild
+										render={<SidebarMenuItem />}
 										defaultOpen={item.isActive}
 										className="group/collapsible"
 									>
-										<SidebarMenuItem>
-											<CollapsibleTrigger asChild>
+										<CollapsibleTrigger
+											render={
 												<SidebarMenuButton
 													tooltip={item.title}
 													isActive={item.isActive}
-												>
-													{item.icon && <item.icon />}
-													<span>{item.title}</span>
-													<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-												</SidebarMenuButton>
-											</CollapsibleTrigger>
-											<CollapsibleContent>
-												<SidebarMenuSub>
-													{item.items.map((subItem) => (
-														<SidebarMenuSubItem key={subItem.title}>
-															{subItem.isLocked ? (
-																<Tooltip>
-																	<TooltipTrigger asChild>
+												/>
+											}
+										>
+											{item.icon && <item.icon />}
+											<span>{item.title}</span>
+											<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+										</CollapsibleTrigger>
+										<CollapsibleContent>
+											<SidebarMenuSub>
+												{item.items.map((subItem) => (
+													<SidebarMenuSubItem key={subItem.title}>
+														{subItem.isLocked ? (
+															<Tooltip>
+																<TooltipTrigger
+																	render={
 																		<SidebarMenuSubButton
 																			className="opacity-60 cursor-not-allowed"
 																			onClick={(e) => e.preventDefault()}
-																		>
-																			<Lock className="mr-2 h-3 w-3" />
-																			<span>{subItem.title}</span>
-																		</SidebarMenuSubButton>
-																	</TooltipTrigger>
-																	<TooltipContent>
-																		<div className="space-y-1">
-																			<p className="font-semibold">Premium Feature</p>
-																			<p>Upgrade to access {subItem.title}</p>
-																		</div>
-																	</TooltipContent>
-																</Tooltip>
-															) : (
-																<SidebarMenuSubButton
-																	asChild
-																	isActive={subItem.isActive}
+																		/>
+																	}
 																>
-																	<Link href={subItem.url}>
-																		<span>{subItem.title}</span>
-																	</Link>
-																</SidebarMenuSubButton>
-															)}
-														</SidebarMenuSubItem>
-													))}
-												</SidebarMenuSub>
-											</CollapsibleContent>
-										</SidebarMenuItem>
-									</Collapsible>
+																	<Lock className="mr-2 h-3 w-3" />
+																	<span>{subItem.title}</span>
+																</TooltipTrigger>
+																<TooltipContent>
+																	<div className="space-y-1">
+																		<p className="font-semibold">Premium Feature</p>
+																		<p>Upgrade to access {subItem.title}</p>
+																	</div>
+																</TooltipContent>
+															</Tooltip>
+														) : (
+															<SidebarMenuSubButton
+																render={<Link href={subItem.url} />}
+																isActive={subItem.isActive}
+															>
+																<span>{subItem.title}</span>
+															</SidebarMenuSubButton>
+														)}
+													</SidebarMenuSubItem>
+												))}
+											</SidebarMenuSub>
+										</CollapsibleContent>
+									</NavCollapsible>
 								);
 							}
 
@@ -463,15 +472,17 @@ export function NavMain({
 								return (
 									<SidebarMenuItem key={item.title}>
 										<Tooltip>
-											<TooltipTrigger asChild>
-												<SidebarMenuButton
-													tooltip={item.title}
-													className="opacity-60 cursor-not-allowed"
-													onClick={(e) => e.preventDefault()}
-												>
-													{item.icon && <item.icon />}
-													<span>{item.title}</span>
-												</SidebarMenuButton>
+											<TooltipTrigger
+												render={
+													<SidebarMenuButton
+														tooltip={item.title}
+														className="opacity-60 cursor-not-allowed"
+														onClick={(e) => e.preventDefault()}
+													/>
+												}
+											>
+												{item.icon && <item.icon />}
+												<span>{item.title}</span>
 											</TooltipTrigger>
 											<TooltipContent>
 												<p>{item.disabledTooltip || "This feature is not available"}</p>

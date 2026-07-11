@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Badge } from "@/components/reui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useOrgOwner } from "./_hooks/use-org-owner";
@@ -69,13 +69,13 @@ function SettingsSaveFooter() {
 		<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<div className="flex min-h-7 items-center">
 				{dirty ? (
-					<span className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+					<Badge variant="warning-light" radius="full" className="gap-2 px-3">
 						<span
 							aria-hidden="true"
 							className="size-2 rounded-full bg-amber-500 motion-safe:animate-pulse"
 						/>
 						Unsaved changes
-					</span>
+					</Badge>
 				) : (
 					<span className="text-xs text-muted-foreground">
 						All changes saved
@@ -84,21 +84,20 @@ function SettingsSaveFooter() {
 			</div>
 			<div className="flex items-center gap-2">
 				<Button
-					intent="outline"
+					variant="outline"
 					size="sm"
-					onPress={discard}
-					isDisabled={!dirty || saving}
+					onClick={discard}
+					disabled={!dirty || saving}
 				>
 					Discard
 				</Button>
-				<StyledButton
+				<Button
 					size="sm"
-					intent="primary"
 					onClick={save}
 					disabled={!dirty || saving || !canSave}
 				>
 					{saving ? "Saving…" : (saveLabel ?? "Save changes")}
-				</StyledButton>
+				</Button>
 			</div>
 		</div>
 	);

@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import { Sparkles, X } from "lucide-react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 
 interface TourStartModalProps {
 	isOpen: boolean;
@@ -207,21 +207,21 @@ export function TourStartModal({
 
 							{/* Buttons */}
 							<div className="flex flex-col gap-3">
-								<StyledButton
+								<Button
 									onClick={handleStartTour}
-									intent="primary"
 									size="lg"
-									label="Start Tour"
 									className="w-full justify-center"
-								/>
-								<StyledButton
+								>
+									Start Tour
+								</Button>
+								<Button
 									onClick={handleSkip}
-									intent="plain"
+									variant="ghost"
 									size="lg"
-									label="Skip for now"
-									showArrow={false}
 									className="w-full justify-center"
-								/>
+								>
+									Skip for now
+								</Button>
 							</div>
 
 							{/* Don't show again checkbox */}

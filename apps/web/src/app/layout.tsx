@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
 	return (
 		<html suppressHydrationWarning lang="en">
-			<body className={`${outfit.className} antialiased`}>
+			<body className={`${outfit.className} style-nova antialiased`}>
 				<ThemeProvider>
 					<ToastProvider position="top-right" maxToasts={5}>
 						{children}

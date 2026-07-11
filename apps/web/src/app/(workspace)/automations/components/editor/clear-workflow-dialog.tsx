@@ -32,10 +32,10 @@ export function ClearWorkflowDialog({
 					</div>
 				</div>
 				<div className="mt-6 flex justify-end gap-3">
-					<Button intent="outline" onPress={onCancel}>
+					<Button variant="outline" onClick={onCancel}>
 						Keep Workflow
 					</Button>
-					<Button intent="destructive" onPress={onConfirm}>
+					<Button variant="destructive" onClick={onConfirm}>
 						Clear All Steps
 					</Button>
 				</div>

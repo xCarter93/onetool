@@ -557,6 +557,14 @@ export function useCommunityPageForm() {
 		if (type === "avatar") setIsUploadingAvatar(true);
 		if (type === "gallery") setIsUploadingGallery(true);
 
+		const loadingTitle =
+			type === "banner"
+				? "Uploading banner…"
+				: type === "avatar"
+					? "Uploading avatar…"
+					: "Uploading gallery image…";
+		const loadingToastId = toast.loading(loadingTitle);
+
 		try {
 			const uploadUrl = await generateUploadUrl();
 			const response = await fetch(uploadUrl, {
@@ -582,15 +590,17 @@ export function useCommunityPageForm() {
 				]);
 			}
 
+			toast.removeToast(loadingToastId);
 			toast.success("Image uploaded", "Don't forget to save your changes");
 		} catch {
+			toast.removeToast(loadingToastId);
 			toast.error("Upload failed", "Please try again");
 		} finally {
 			if (type === "banner") setIsUploadingBanner(false);
 			if (type === "avatar") setIsUploadingAvatar(false);
 			if (type === "gallery") setIsUploadingGallery(false);
 		}
-	}, [galleryItems.length, generateUploadUrl]);
+	}, [galleryItems.length, generateUploadUrl, toast]);
 
 	// Snapshot comparison
 	const currentSnapshot = useMemo(

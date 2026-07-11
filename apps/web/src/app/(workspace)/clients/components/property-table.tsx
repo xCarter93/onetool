@@ -6,11 +6,11 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import {
-	StyledCard,
-	StyledCardContent,
-	StyledCardHeader,
-	StyledCardTitle,
-} from "@/components/ui/styled";
+	GlassCard,
+	GlassCardContent,
+	GlassCardHeader,
+	GlassCardTitle,
+} from "@/components/shared/glass-card";
 import {
 	Table,
 	TableBody,
@@ -26,6 +26,7 @@ import {
 	type AddressData,
 } from "@/components/ui/address-autocomplete";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/reui/badge";
 import {
 	BuildingOffice2Icon,
 	PlusIcon,
@@ -234,7 +235,7 @@ export function PropertyTable({
 	const header = (
 		<div className="flex items-center justify-between pb-6">
 			<h3 className="text-xl font-semibold text-foreground">Properties</h3>
-			<Button intent="outline" size="sm" onPress={handleAddProperty}>
+			<Button variant="outline" size="sm" onClick={handleAddProperty}>
 				<PlusIcon className="h-4 w-4 mr-2" />
 				New Property
 			</Button>
@@ -293,18 +294,18 @@ export function PropertyTable({
 	}
 
 	return (
-		<StyledCard>
-			<StyledCardHeader className="flex flex-row items-center justify-between pb-6">
-				<StyledCardTitle className="text-xl">Properties</StyledCardTitle>
-				<Button intent="outline" size="sm" onPress={handleAddProperty}>
+		<GlassCard>
+			<GlassCardHeader className="flex flex-row items-center justify-between pb-6">
+				<GlassCardTitle className="text-xl">Properties</GlassCardTitle>
+				<Button variant="outline" size="sm" onClick={handleAddProperty}>
 					<PlusIcon className="h-4 w-4 mr-2" />
 					New Property
 				</Button>
-			</StyledCardHeader>
-			<StyledCardContent>
+			</GlassCardHeader>
+			<GlassCardContent>
 				{content}
-			</StyledCardContent>
-		</StyledCard>
+			</GlassCardContent>
+		</GlassCard>
 	);
 }
 
@@ -419,17 +420,17 @@ function PropertyRow({
 				<TableCell>
 					<div className="flex gap-1">
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={handleSave}
+							variant="outline"
+							size="icon-sm"
+							onClick={handleSave}
 							aria-label="Save"
 						>
 							<CheckIcon className="h-3 w-3" />
 						</Button>
 						<Button
-							intent="outline"
-							size="sq-sm"
-							onPress={onCancel}
+							variant="outline"
+							size="icon-sm"
+							onClick={onCancel}
 							aria-label="Cancel"
 						>
 							<XMarkIcon className="h-3 w-3" />
@@ -448,9 +449,9 @@ function PropertyRow({
 				<div className="flex items-center gap-2">
 					<span>{property.streetAddress}</span>
 					{property.isNew && (
-						<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+						<Badge variant="warning-light" radius="full">
 							Unsaved
-						</span>
+						</Badge>
 					)}
 				</div>
 			</TableCell>
@@ -465,17 +466,17 @@ function PropertyRow({
 			<TableCell>
 				<div className="flex gap-1">
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={onEdit}
+						variant="outline"
+						size="icon-sm"
+						onClick={onEdit}
 						aria-label="Edit"
 					>
 						<PencilIcon className="h-3 w-3" />
 					</Button>
 					<Button
-						intent="outline"
-						size="sq-sm"
-						onPress={onDelete}
+						variant="outline"
+						size="icon-sm"
+						onClick={onDelete}
 						aria-label="Delete"
 					>
 						<TrashIcon className="h-3 w-3" />

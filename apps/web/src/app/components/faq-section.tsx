@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
-import { StyledButton } from "@/components/ui/styled/styled-button";
+import { Button } from "@/components/ui/button";
 import { AccentCTA } from "@/app/components/landing/accent-cta";
 
 const faqs = [
@@ -154,7 +154,7 @@ export default function FAQSection() {
 				>
 					<AccentCTA href="/sign-up">Get Started</AccentCTA>
 					<a href="mailto:support@onetool.biz">
-						<StyledButton intent="outline">Contact Support</StyledButton>
+						<Button variant="outline">Contact Support</Button>
 					</a>
 				</motion.div>
 			</div>

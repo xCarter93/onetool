@@ -4,7 +4,12 @@
 import React from "react";
 import { useForm } from "@tanstack/react-form";
 import * as z from 'zod/v3';
-import Accordion from "@/components/ui/accordion";
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useToastOperations } from "@/hooks/use-toast";
 import {
 	Field,
@@ -522,10 +527,7 @@ export const ClientOnboardingForm: React.FC<ClientOnboardingFormProps> = ({
 											const additionalContacts =
 												contactsField.state.value.filter((c) => !c.isPrimary);
 
-											return (
-												<>
-													<Accordion
-														items={[
+											const contactAccordionItems = [
 															// Primary Contact
 															{
 																title: "Primary Contact (Required)",
@@ -983,8 +985,17 @@ export const ClientOnboardingForm: React.FC<ClientOnboardingFormProps> = ({
 																	),
 																};
 															}),
-														]}
-													/>
+											];
+										return (
+											<>
+												<Accordion>
+													{contactAccordionItems.map((item, i) => (
+														<AccordionItem key={i} value={item.title}>
+															<AccordionTrigger>{item.title}</AccordionTrigger>
+															<AccordionContent>{item.content}</AccordionContent>
+														</AccordionItem>
+													))}
+												</Accordion>
 													{additionalContacts.length === 0 && (
 														<div className="mt-4">
 															<button
@@ -1064,10 +1075,7 @@ export const ClientOnboardingForm: React.FC<ClientOnboardingFormProps> = ({
 											const additionalProperties =
 												propertiesField.state.value.filter((p) => !p.isPrimary);
 
-											return (
-												<>
-													<Accordion
-														items={[
+											const propertyAccordionItems = [
 															// Primary Property
 															{
 																title: "Primary Property (Required)",
@@ -1550,8 +1558,17 @@ export const ClientOnboardingForm: React.FC<ClientOnboardingFormProps> = ({
 																	),
 																};
 															}),
-														]}
-													/>
+											];
+										return (
+											<>
+												<Accordion>
+													{propertyAccordionItems.map((item, i) => (
+														<AccordionItem key={i} value={item.title}>
+															<AccordionTrigger>{item.title}</AccordionTrigger>
+															<AccordionContent>{item.content}</AccordionContent>
+														</AccordionItem>
+													))}
+												</Accordion>
 													{additionalProperties.length === 0 && (
 														<div className="mt-4">
 															<button

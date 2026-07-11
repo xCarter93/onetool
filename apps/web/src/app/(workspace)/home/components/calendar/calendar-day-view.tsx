@@ -7,7 +7,7 @@ import { formatTime, isEventOnDate } from "@/lib/calendar-utils";
 import { CalendarEventIcon } from "./calendar-event-icon";
 import { CalendarEventBar } from "./calendar-event-bar";
 import { CalendarDetailSidebar } from "./calendar-detail-sidebar";
-import { StyledEmpty } from "@/components/ui/styled";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Calendar as CalendarIcon } from "lucide-react";
 
 interface CalendarDayViewProps {
@@ -211,7 +211,7 @@ export function CalendarDayView({
 
 				{/* Empty State */}
 				{dayEvents.length === 0 && (
-					<StyledEmpty
+					<EmptyState
 						icon={<CalendarIcon />}
 						title="No events scheduled"
 						description="Enjoy your free day!"
