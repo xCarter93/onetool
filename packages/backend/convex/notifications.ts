@@ -728,6 +728,32 @@ export const markMultipleRead = userMutation({
 });
 
 /**
+ * Mark every unread notification for the current user (in the active org) as read
+ */
+export const markAllRead = userMutation({
+	args: {},
+	handler: async (ctx): Promise<{ updated: number }> => {
+		const now = Date.now();
+		const unread = await ctx.db
+			.query("notifications")
+			.withIndex("by_user_read", (q) =>
+				q.eq("userId", ctx.user._id).eq("isRead", false)
+			)
+			.collect();
+
+		let updated = 0;
+		for (const notification of unread) {
+			// by_user_read isn't org-scoped; skip notifications from other orgs.
+			if (notification.orgId !== ctx.orgId) continue;
+			await ctx.db.patch(notification._id, { isRead: true, readAt: now });
+			updated++;
+		}
+
+		return { updated };
+	},
+});
+
+/**
  * Mark a notification as sent
  */
 // TODO: Candidate for deletion if confirmed unused.
