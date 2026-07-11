@@ -788,8 +788,12 @@ export const getStats = optionalUserQuery({
 				stats.byStatus.cancelled++;
 			}
 
-			// Count today's tasks
-			if (task.date >= today && task.date < tomorrow) {
+			// Count today's tasks (actionable only)
+			if (
+				task.date >= today &&
+				task.date < tomorrow &&
+				(task.status === "pending" || task.status === "in-progress")
+			) {
 				stats.todayTasks++;
 			}
 

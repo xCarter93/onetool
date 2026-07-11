@@ -30,6 +30,7 @@ import {
 	Plus,
 	CheckCircle2,
 	Circle,
+	XCircle,
 	Search,
 	Building2,
 	FolderOpen,
@@ -39,6 +40,7 @@ import {
 	X,
 } from "lucide-react";
 import { Task } from "@/types/task";
+import { isTerminalStatus } from "@/lib/tasks";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 
 // --- Grouping logic ---
@@ -64,9 +66,12 @@ function groupTasks(tasks: Task[]): TaskGroup[] {
 	const thisWeek: Task[] = [];
 	const upcoming: Task[] = [];
 	const completed: Task[] = [];
+	const cancelled: Task[] = [];
 
 	for (const task of tasks) {
-		if (task.status === "completed") {
+		if (task.status === "cancelled") {
+			cancelled.push(task);
+		} else if (task.status === "completed") {
 			completed.push(task);
 		} else if (task.date < todayStart) {
 			overdue.push(task);
@@ -85,6 +90,7 @@ function groupTasks(tasks: Task[]): TaskGroup[] {
 		{ label: "This Week", tasks: thisWeek, variant: "secondary" as const },
 		{ label: "Upcoming", tasks: upcoming, variant: "outline" as const },
 		{ label: "Completed", tasks: completed, variant: "outline" as const },
+		{ label: "Cancelled", tasks: cancelled, variant: "outline" as const },
 	].filter((g) => g.tasks.length > 0);
 }
 
@@ -115,7 +121,7 @@ function formatRelativeDate(timestamp: number): string {
 function isOverdue(task: Task): boolean {
 	const now = new Date();
 	const todayStart = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-	return task.date < todayStart && task.status !== "completed";
+	return task.date < todayStart && !isTerminalStatus(task.status);
 }
 
 // --- Columns ---
@@ -142,7 +148,7 @@ function createColumns(
 				return (
 					<button
 						onClick={() => onToggleComplete(task)}
-						disabled={isUpdating}
+						disabled={isUpdating || task.status === "cancelled"}
 						className={cn(
 							"p-0.5 rounded-full transition-colors",
 							"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -151,6 +157,8 @@ function createColumns(
 					>
 						{task.status === "completed" ? (
 							<CheckCircle2 className="h-5 w-5 text-green-600" />
+						) : task.status === "cancelled" ? (
+							<XCircle className="h-5 w-5 text-muted-foreground" />
 						) : (
 							<Circle className="h-5 w-5 text-muted-foreground hover:text-foreground" />
 						)}
@@ -169,7 +177,7 @@ function createColumns(
 							<span
 								className={cn(
 									"font-medium text-foreground truncate",
-									task.status === "completed" &&
+									isTerminalStatus(task.status) &&
 										"line-through text-muted-foreground"
 								)}
 							>
@@ -337,7 +345,7 @@ function GroupTable({
 				recordCount={group.tasks.length}
 				tableLayout={{ width: "auto", headerBackground: true }}
 				rowClassName={(task) =>
-					task.status === "completed" ? "opacity-60" : undefined
+					isTerminalStatus(task.status) ? "opacity-60" : undefined
 				}
 			>
 				<DataGridContainer className="rounded-lg border">
@@ -528,6 +536,7 @@ export default function TasksPage() {
 
 	// Handlers
 	const handleToggleComplete = async (task: Task) => {
+		if (task.status === "cancelled") return;
 		setUpdatingTasks((prev) => new Set(prev).add(task._id));
 		try {
 			if (task.status === "completed") {
@@ -585,7 +594,7 @@ export default function TasksPage() {
 		allTasks?.filter((t) => t.status === "completed").length || 0;
 	const overdueTasks =
 		allTasks?.filter(
-			(t) => t.date < todayStart && t.status !== "completed"
+			(t) => t.date < todayStart && !isTerminalStatus(t.status)
 		).length || 0;
 
 	// Columns
