@@ -36,6 +36,7 @@ import {
 	ClipboardList,
 } from "lucide-react";
 import { Task } from "@/types/task";
+import { isTerminalStatus } from "@/lib/tasks";
 
 // --- Grouping logic (matches tasks page) ---
 
@@ -43,11 +44,6 @@ interface TaskGroup {
 	label: string;
 	tasks: Task[];
 	variant: "destructive" | "default" | "secondary" | "outline";
-}
-
-// Task in terminal state (completed or cancelled) needs no action.
-function isTerminalStatus(status: Task["status"]): boolean {
-	return status === "completed" || status === "cancelled";
 }
 
 function groupTasks(tasks: Task[]): TaskGroup[] {

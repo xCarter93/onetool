@@ -1352,16 +1352,24 @@ describe("Tasks", () => {
 			});
 
 			const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
+			const threeDaysOut = Date.now() + 3 * 24 * 60 * 60 * 1000;
 
-			// Actionable, due today -> counts toward todayTasks
+			// Actionable, due today -> count toward todayTasks
 			await asUser.mutation(api.tasks.create, {
-				title: "Actionable today",
+				title: "Pending today",
 				date: Date.now(),
 				status: "pending",
 				clientId,
 				type: "external",
 			});
-			// Completed today -> must NOT count
+			await asUser.mutation(api.tasks.create, {
+				title: "In-progress today",
+				date: Date.now(),
+				status: "in-progress",
+				clientId,
+				type: "external",
+			});
+			// Terminal, due today -> must NOT count
 			await asUser.mutation(api.tasks.create, {
 				title: "Completed today",
 				date: Date.now(),
@@ -1369,7 +1377,6 @@ describe("Tasks", () => {
 				clientId,
 				type: "external",
 			});
-			// Cancelled today -> must NOT count
 			await asUser.mutation(api.tasks.create, {
 				title: "Cancelled today",
 				date: Date.now(),
@@ -1377,15 +1384,21 @@ describe("Tasks", () => {
 				clientId,
 				type: "external",
 			});
-			// Actionable, overdue -> counts toward overdue
+			// Overdue -> only actionable counts
 			await asUser.mutation(api.tasks.create, {
-				title: "Actionable overdue",
+				title: "In-progress overdue",
 				date: twoDaysAgo,
 				status: "in-progress",
 				clientId,
 				type: "external",
 			});
-			// Cancelled, overdue -> must NOT count
+			await asUser.mutation(api.tasks.create, {
+				title: "Completed overdue",
+				date: twoDaysAgo,
+				status: "completed",
+				clientId,
+				type: "external",
+			});
 			await asUser.mutation(api.tasks.create, {
 				title: "Cancelled overdue",
 				date: twoDaysAgo,
@@ -1393,13 +1406,32 @@ describe("Tasks", () => {
 				clientId,
 				type: "external",
 			});
+			// This week -> only actionable counts toward thisWeek
+			await asUser.mutation(api.tasks.create, {
+				title: "Pending this week",
+				date: threeDaysOut,
+				status: "pending",
+				clientId,
+				type: "external",
+			});
+			await asUser.mutation(api.tasks.create, {
+				title: "Cancelled this week",
+				date: threeDaysOut,
+				status: "cancelled",
+				clientId,
+				type: "external",
+			});
 
 			const stats = await asUser.query(api.tasks.getStats, {});
 
-			expect(stats.todayTasks).toBe(1);
+			// Only pending/in-progress due today
+			expect(stats.todayTasks).toBe(2);
+			// Only pending/in-progress overdue
 			expect(stats.overdue).toBe(1);
+			// today (2 actionable) + this-week pending; terminal excluded
+			expect(stats.thisWeek).toBe(3);
 			// Sidebar badge = todayTasks + overdue
-			expect(stats.todayTasks + stats.overdue).toBe(2);
+			expect(stats.todayTasks + stats.overdue).toBe(3);
 		});
 	});
 

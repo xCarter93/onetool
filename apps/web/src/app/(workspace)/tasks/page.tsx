@@ -40,6 +40,7 @@ import {
 	X,
 } from "lucide-react";
 import { Task } from "@/types/task";
+import { isTerminalStatus } from "@/lib/tasks";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 
 // --- Grouping logic ---
@@ -48,11 +49,6 @@ interface TaskGroup {
 	label: string;
 	tasks: Task[];
 	variant: "destructive" | "default" | "secondary" | "outline";
-}
-
-// Task in terminal state (completed or cancelled) needs no action.
-function isTerminalStatus(status: Task["status"]): boolean {
-	return status === "completed" || status === "cancelled";
 }
 
 function groupTasks(tasks: Task[]): TaskGroup[] {
