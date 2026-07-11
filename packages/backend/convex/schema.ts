@@ -152,6 +152,23 @@ export default defineSchema({
 		orgId: v.id("organizations"),
 		userId: v.id("users"),
 		role: v.optional(v.string()), // role from Clerk membership payload
+		// Granular RBAC per-object grants (PRD §3.7). Absent objects fall back to
+		// the role default; admins/owners resolve to "all" and ignore stored grants.
+		permissions: v.optional(
+			v.record(
+				v.string(), // PermissionObject key (validated against PERMISSION_OBJECTS at the mutation layer)
+				v.object({
+					level: v.union(
+						v.literal("none"),
+						v.literal("view"),
+						v.literal("modify"),
+						v.literal("delete")
+					),
+					allRecords: v.optional(v.boolean()),
+				})
+			)
+		),
+		permissionsVersion: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_user", ["userId"])

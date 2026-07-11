@@ -1,5 +1,9 @@
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import {
+	DEFAULT_MEMBER_PERMISSIONS,
+	PERMISSIONS_VERSION,
+} from "./permissionKeys";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -42,10 +46,15 @@ export async function ensureMembership(
 		return existing._id;
 	}
 
+	// Seed member defaults on every new membership. Grants are dormant while the
+	// row is admin/owner (resolver short-circuits to "all") and reactivate on
+	// demotion — so seeding regardless of role is correct (PRD §2, §4.5).
 	return await ctx.db.insert("organizationMemberships", {
 		orgId,
 		userId,
 		role: role ?? undefined,
+		permissions: { ...DEFAULT_MEMBER_PERMISSIONS },
+		permissionsVersion: PERMISSIONS_VERSION,
 	});
 }
 
