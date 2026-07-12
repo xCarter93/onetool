@@ -12,12 +12,15 @@ import {
 	FolderKanban,
 	ListChecks,
 	Loader2,
+	Lock,
 	Plus,
 	Receipt,
 	Users,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	Timeline,
 	TimelineContent,
@@ -110,6 +113,9 @@ export function ProjectDetailDrawer({
 	onOpenChange,
 }: ProjectDetailDrawerProps) {
 	const router = useRouter();
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("projects", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
 	const preview = useQuery(
 		api.projects.getPreview,
 		projectId ? { id: projectId } : "skip"
@@ -148,11 +154,19 @@ export function ProjectDetailDrawer({
 			}
 			title={title}
 			badge={
-				project ? (
-					<StatusBadge status={project.status} size="lg">
-						{STATUS_LABEL[project.status]}
-					</StatusBadge>
-				) : null
+				<>
+					{project ? (
+						<StatusBadge status={project.status} size="lg">
+							{STATUS_LABEL[project.status]}
+						</StatusBadge>
+					) : null}
+					{showReadOnly ? (
+						<Badge variant="secondary" className="gap-1">
+							<Lock className="h-3 w-3" />
+							Read Only
+						</Badge>
+					) : null}
+				</>
 			}
 			description={
 				data
@@ -174,7 +188,11 @@ export function ProjectDetailDrawer({
 							clientId: data?.client?._id,
 						}}
 						trigger={
-							<Button variant="outline" size="sm">
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={!can("tasks", "modify")}
+							>
 								<Plus className="size-3.5" />
 								Add Task
 							</Button>
@@ -229,6 +247,7 @@ export function ProjectDetailDrawer({
 							key={project.status}
 							projectId={project._id}
 							currentStatus={project.status}
+							canModify={canModify}
 						/>
 					</DrawerSection>
 
@@ -364,9 +383,11 @@ export function ProjectDetailDrawer({
 function StatusControl({
 	projectId,
 	currentStatus,
+	canModify,
 }: {
 	projectId: Id<"projects">;
 	currentStatus: ProjectStatus;
+	canModify: boolean;
 }) {
 	const updateProject = useMutation(api.projects.update);
 	const toast = useToast();
@@ -393,6 +414,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as ProjectStatus)}
+					disabled={!canModify}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />

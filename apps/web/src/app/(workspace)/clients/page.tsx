@@ -192,7 +192,8 @@ const createColumns = (
 	onDelete: (id: string, name: string) => void,
 	onRestore: (id: string, name: string) => void,
 	isArchivedTab: boolean,
-	canModify: boolean
+	canModify: boolean,
+	canDelete: boolean
 ): ColumnDef<Client>[] => [
 	{
 		accessorKey: "name",
@@ -306,6 +307,7 @@ const createColumns = (
 							variant="outline"
 							size="icon-sm"
 							onClick={() => onDelete(row.original.id, row.original.name)}
+							disabled={!canDelete}
 							className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
 							aria-label={`Archive client ${row.original.name}`}
 						>
@@ -401,6 +403,7 @@ function ClientsPageContent() {
 	const { hasPremiumAccess } = useFeatureAccess();
 	const { can } = usePermissions();
 	const canModifyClients = can("clients", "modify");
+	const canDeleteClients = can("clients", "delete");
 
 	const archiveClient = useMutation(api.clients.archive);
 	const restoreClient = useMutation(api.clients.restore);
@@ -497,21 +500,10 @@ function ClientsPageContent() {
 
 	const confirmDelete = async () => {
 		if (!clientToDelete) return;
-		try {
-			await archiveClient({ id: clientToDelete.id as Id<"clients"> });
-			setDeleteModalOpen(false);
-			setClientToDelete(null);
-			toast.success(
-				"Client Archived",
-				`${clientToDelete.name} has been archived. It will be permanently deleted in 7 days.`
-			);
-		} catch (error) {
-			console.error("Failed to archive client:", error);
-			toast.error(
-				"Archive Failed",
-				"Failed to archive the client. Please try again."
-			);
-		}
+		// Success/error toasts + closing are owned by DeleteConfirmationModal;
+		// let errors propagate so the modal shows a single error toast.
+		await archiveClient({ id: clientToDelete.id as Id<"clients"> });
+		setClientToDelete(null);
 	};
 
 	// Switching dataset resets the dataset-scoped filters (their status options
@@ -588,7 +580,8 @@ function ClientsPageContent() {
 				handleDelete,
 				handleRestore,
 				isArchivedTab,
-				canModifyClients
+				canModifyClients,
+				canDeleteClients
 			),
 		[
 			router,
@@ -597,6 +590,7 @@ function ClientsPageContent() {
 			handleRestore,
 			isArchivedTab,
 			canModifyClients,
+			canDeleteClients,
 		]
 	);
 

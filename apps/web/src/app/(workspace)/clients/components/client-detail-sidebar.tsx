@@ -32,9 +32,12 @@ import {
 	DollarSign,
 	AlertCircle,
 	Pencil,
+	Lock,
 	Check,
 	X,
 } from "lucide-react";
+import { usePermissions } from "@/hooks/use-permissions";
+import { Badge } from "@/components/ui/badge";
 import { ClientDocumentsSection } from "./client-documents-section";
 
 function formatLeadSource(leadSource?: string): string {
@@ -112,6 +115,14 @@ export function ClientDetailSidebar({
 	const toast = useToast();
 	const updateClient = useMutation(api.clients.update);
 
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("clients", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
+	// Editable rows get the interactive affordance; read-only rows sit flat.
+	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
+		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
+	}`;
+
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
 	const [localTags, setLocalTags] = useState<string[]>(client.tags || []);
@@ -142,6 +153,7 @@ export function ClientDetailSidebar({
 	}, [editingField]);
 
 	const startEditing = (field: EditingField, currentValue: string) => {
+		if (!canModify) return;
 		setEditingField(field);
 		setEditValue(currentValue);
 	};
@@ -174,6 +186,7 @@ export function ClientDetailSidebar({
 	};
 
 	const handleTagsChange: React.Dispatch<React.SetStateAction<string[]>> = (action) => {
+		if (!canModify) return;
 		const newTags = typeof action === "function" ? action(localTags) : action;
 		setLocalTags(newTags);
 		// Auto-save tags
@@ -234,21 +247,30 @@ export function ClientDetailSidebar({
 		</div>
 	);
 
-	// Shared pencil icon for non-editing rows
-	const renderPencil = () => (
-		<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto mt-0.5" />
-	);
+	// Shared pencil icon for non-editing rows (hidden entirely when read-only)
+	const renderPencil = () =>
+		canModify ? (
+			<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto mt-0.5" />
+		) : null;
 
 	return (
 		<div className="px-5 py-4">
 			{/* Record Details Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Record Details
-			</h3>
+			<div className="mb-3 flex items-center justify-between gap-2">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+					Record Details
+				</h3>
+				{showReadOnly && (
+					<Badge variant="secondary" className="gap-1">
+						<Lock className="h-3 w-3" />
+						Read Only
+					</Badge>
+				)}
+			</div>
 			<div className="space-y-0">
 				{/* Client Name */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() => editingField !== "companyName" && startEditing("companyName", client.companyName)}
 				>
 					<Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -278,7 +300,7 @@ export function ClientDetailSidebar({
 
 				{/* Status */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() => editingField !== "status" && startEditing("status", client.status)}
 				>
 					<CircleDot className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -317,7 +339,7 @@ export function ClientDetailSidebar({
 
 				{/* Lead Source */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() => editingField !== "leadSource" && startEditing("leadSource", client.leadSource || "")}
 				>
 					<Target className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -353,7 +375,7 @@ export function ClientDetailSidebar({
 
 				{/* Description */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() => editingField !== "description" && startEditing("description", client.companyDescription || "")}
 				>
 					<FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -392,7 +414,7 @@ export function ClientDetailSidebar({
 
 				{/* Communication Preference */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() => editingField !== "communicationPreference" && startEditing("communicationPreference", client.communicationPreference || "")}
 				>
 					<MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -436,6 +458,7 @@ export function ClientDetailSidebar({
 							setTags={handleTagsChange}
 							placeholder="Add a tag..."
 							size="sm"
+							disabled={!canModify}
 						/>
 					</div>
 				</div>

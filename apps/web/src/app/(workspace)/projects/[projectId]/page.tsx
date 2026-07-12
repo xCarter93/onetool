@@ -5,7 +5,6 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
-import { useToast } from "@/hooks/use-toast";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { InvoiceGenerationModal } from "@/app/(workspace)/projects/components/invoice-generation-modal";
@@ -19,7 +18,6 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 function ProjectDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
-	const toast = useToast();
 	const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
@@ -35,7 +33,7 @@ function ProjectDetailPageContent() {
 	// Skip related queries if project is null or deletion is in progress
 	const projectTasks = useQuery(
 		api.tasks.list,
-		project === null || isDeleting ? "skip" : { projectId }
+		project === null || isDeleting || !can("tasks") ? "skip" : { projectId }
 	);
 	const projectQuotes = useQuery(
 		api.quotes.list,
@@ -79,15 +77,12 @@ function ProjectDetailPageContent() {
 		setIsDeleting(true);
 		try {
 			await deleteProject({ id: projectId });
-			toast.success("Project Deleted", "Project has been successfully deleted");
-			setIsDeleteModalOpen(false);
+			// Success toast + modal close are owned by DeleteConfirmationModal.
 			router.push("/projects");
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : "Failed to delete project";
-			toast.error("Error", message);
-			setIsDeleteModalOpen(false);
+			// Re-throw so the modal shows a single error toast and stays open.
 			setIsDeleting(false);
+			throw err;
 		}
 	};
 

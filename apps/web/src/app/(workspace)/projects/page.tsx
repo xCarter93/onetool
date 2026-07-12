@@ -159,7 +159,8 @@ const formatProjectDate = (timestamp?: number) => {
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
-	onPreview: (id: string) => void
+	onPreview: (id: string) => void,
+	canDelete: boolean
 ): ColumnDef<ProjectWithClient>[] => [
 	{
 		accessorKey: "title",
@@ -246,6 +247,7 @@ const createColumns = (
 					variant="outline"
 					size="icon-sm"
 					onClick={() => onDelete(row.original._id, row.original.title)}
+					disabled={!canDelete}
 					className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
 					aria-label={`Delete project ${row.original.title}`}
 				>
@@ -278,6 +280,8 @@ function ProjectsPageContent() {
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
 	const { can } = usePermissions();
+	const canModifyProjects = can("projects", "modify");
+	const canDeleteProjects = can("projects", "delete");
 
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
@@ -394,20 +398,16 @@ function ProjectsPageContent() {
 	}, []);
 
 	const confirmDelete = async () => {
-		if (projectToDelete) {
-			try {
-				await deleteProject({ id: projectToDelete.id as Id<"projects"> });
-				setDeleteModalOpen(false);
-				setProjectToDelete(null);
-			} catch (error) {
-				console.error("Failed to delete project:", error);
-			}
-		}
+		if (!projectToDelete) return;
+		// Success/error toasts + closing are owned by DeleteConfirmationModal;
+		// let errors propagate so the modal shows a single error toast.
+		await deleteProject({ id: projectToDelete.id as Id<"projects"> });
+		setProjectToDelete(null);
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview),
-		[router, handleDelete, openPreview]
+		() => createColumns(router, handleDelete, openPreview, canDeleteProjects),
+		[router, handleDelete, openPreview, canDeleteProjects]
 	);
 
 	const table = useReactTable({
@@ -519,7 +519,7 @@ function ProjectsPageContent() {
 						</p>
 					</div>
 				</div>
-				<Button onClick={() => router.push("/projects/new")}>
+				<Button onClick={() => router.push("/projects/new")} disabled={!canModifyProjects}>
 					<Plus className="h-4 w-4" />
 					Create Project
 				</Button>
@@ -655,7 +655,7 @@ function ProjectsPageContent() {
 								title="No projects yet"
 								description="Get started by creating your first project. Projects help you organize work and track progress."
 								action={
-									<Button onClick={() => router.push("/projects/new")}>
+									<Button onClick={() => router.push("/projects/new")} disabled={!canModifyProjects}>
 										<Plus className="h-4 w-4" />
 										Create Your First Project
 									</Button>

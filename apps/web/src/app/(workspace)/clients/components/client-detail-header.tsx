@@ -9,6 +9,7 @@ import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import { Heart, ListTodo, FolderPlus, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 interface ClientDetailHeaderProps {
@@ -31,6 +32,7 @@ export function ClientDetailHeader({
 	hasPrimaryContactEmail,
 }: ClientDetailHeaderProps) {
 	const toast = useToast();
+	const { can } = usePermissions();
 
 	// Favorite functionality
 	const isFavorited = useQuery(api.favorites.isFavorited, {
@@ -96,20 +98,40 @@ export function ClientDetailHeader({
 
 					{/* Right side - Quick action buttons */}
 					<div className="flex items-center gap-2 shrink-0">
-						<Button variant="outline" size="sm" onClick={onAddTask}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onAddTask}
+							disabled={!can("tasks", "modify")}
+						>
 							<ListTodo className="h-4 w-4" />
 							Create Task
 						</Button>
-						<Button variant="outline" size="sm" onClick={onCreateProject}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onCreateProject}
+							disabled={!can("projects", "modify")}
+						>
 							<FolderPlus className="h-4 w-4" />
 							Create Project
 						</Button>
-						<Button variant="outline" size="sm" onClick={onCreateQuote}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onCreateQuote}
+							disabled={!can("quotes", "modify")}
+						>
 							<FileText className="h-4 w-4" />
 							Create Quote
 						</Button>
 						{hasPrimaryContactEmail && (
-							<Button variant="outline" size="sm" onClick={onComposeEmail}>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={onComposeEmail}
+								disabled={!can("inbox", "modify")}
+							>
 								<EnvelopeIcon className="h-4 w-4" />
 								Compose Email
 							</Button>

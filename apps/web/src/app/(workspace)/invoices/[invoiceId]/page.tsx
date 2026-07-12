@@ -150,21 +150,9 @@ function InvoiceDetailPageContent() {
 	};
 
 	const confirmCancelInvoice = async () => {
-		try {
-			await updateInvoice({ id: invoiceId, status: "cancelled" });
-			toast.success(
-				"Invoice Cancelled",
-				"Invoice has been cancelled"
-			);
-			setIsCancelModalOpen(false);
-		} catch (err) {
-			const message =
-				err instanceof Error
-					? err.message
-					: "Failed to cancel invoice";
-			toast.error("Error", message);
-			setIsCancelModalOpen(false);
-		}
+		// Success toast + modal close are owned by DeleteConfirmationModal;
+		// let errors propagate so the modal shows a single error toast.
+		await updateInvoice({ id: invoiceId, status: "cancelled" });
 	};
 
 	const handleGeneratePdf = async () => {

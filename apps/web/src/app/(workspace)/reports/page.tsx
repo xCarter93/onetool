@@ -132,13 +132,10 @@ function ReportsPageContent() {
 
 	const confirmDelete = async () => {
 		if (!reportToDelete) return;
-		try {
-			await deleteReport({ id: reportToDelete.id as Id<"reports"> });
-			setDeleteModalOpen(false);
-			setReportToDelete(null);
-		} catch (error) {
-			console.error("Failed to delete report:", error);
-		}
+		// Success/error toasts owned by DeleteConfirmationModal; let errors propagate.
+		await deleteReport({ id: reportToDelete.id as Id<"reports"> });
+		setDeleteModalOpen(false);
+		setReportToDelete(null);
 	};
 
 	const [duplicatingId, setDuplicatingId] = useState<string | null>(null);

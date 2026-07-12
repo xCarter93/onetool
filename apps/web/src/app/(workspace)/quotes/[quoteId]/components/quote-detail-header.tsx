@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnimatePresence, motion } from "motion/react";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
@@ -42,11 +43,16 @@ export function QuoteDetailHeader({
 	onDelete,
 	onConvertToInvoice,
 }: QuoteDetailHeaderProps) {
+	const { can } = usePermissions();
 	const renderStatusActions = () => {
 		switch (currentStatus) {
 			case "draft":
 				return (
-					<Button size="sm" onClick={() => onStatusChange("sent")}>
+					<Button
+						size="sm"
+						onClick={() => onStatusChange("sent")}
+						disabled={!can("quotes", "modify")}
+					>
 						<Send className="h-4 w-4" />
 						Mark as Sent
 					</Button>
@@ -54,7 +60,11 @@ export function QuoteDetailHeader({
 			case "sent":
 				return (
 					// TODO(reui-rebuild): success button intent mapped to default
-					<Button size="sm" onClick={() => onStatusChange("approved")}>
+					<Button
+						size="sm"
+						onClick={() => onStatusChange("approved")}
+						disabled={!can("quotes", "modify")}
+					>
 						<Check className="h-4 w-4" />
 						Mark Approved
 					</Button>
@@ -62,7 +72,11 @@ export function QuoteDetailHeader({
 			case "approved":
 				return (
 					<>
-						<Button size="sm" onClick={onConvertToInvoice}>
+						<Button
+							size="sm"
+							onClick={onConvertToInvoice}
+							disabled={!can("invoices", "modify")}
+						>
 							<Receipt className="h-4 w-4" />
 							Convert to Invoice
 						</Button>
@@ -70,6 +84,7 @@ export function QuoteDetailHeader({
 							variant="outline"
 							size="sm"
 							onClick={() => onStatusChange("draft")}
+							disabled={!can("quotes", "modify")}
 						>
 							<RotateCcw className="h-4 w-4" />
 							Reopen
@@ -83,6 +98,7 @@ export function QuoteDetailHeader({
 						variant="outline"
 						size="sm"
 						onClick={() => onStatusChange("draft")}
+						disabled={!can("quotes", "modify")}
 					>
 						<RotateCcw className="h-4 w-4" />
 						Reopen
@@ -161,17 +177,27 @@ export function QuoteDetailHeader({
 								variant="outline"
 								size="sm"
 								onClick={onSendToClient}
-								disabled={sendDisabled}
+								disabled={sendDisabled || !can("quotes", "modify")}
 							>
 								<PenLine className="h-4 w-4" />
 								Send for e-signature
 							</Button>
 						</span>
-						<Button variant="outline" size="sm" onClick={onGeneratePdf}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onGeneratePdf}
+							disabled={!can("quotes", "modify")}
+						>
 							<FileText className="h-4 w-4" />
 							Generate PDF
 						</Button>
-						<Button variant="destructive" size="sm" onClick={onDelete}>
+						<Button
+							variant="destructive"
+							size="sm"
+							onClick={onDelete}
+							disabled={!can("quotes", "delete")}
+						>
 							<Trash2 className="h-4 w-4" />
 							Delete
 						</Button>

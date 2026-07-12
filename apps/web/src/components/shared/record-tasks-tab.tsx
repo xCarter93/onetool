@@ -456,7 +456,8 @@ export function RecordTasksTab({
 			setDeleteModalOpen(false);
 			setTaskToDelete(null);
 		} catch (error) {
-			console.error("Error deleting task:", error);
+			// Re-throw so the modal shows a single error toast, not a false success.
+			throw error;
 		} finally {
 			if (taskToDelete) {
 				setUpdatingTasks((prev) => {

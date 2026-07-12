@@ -137,7 +137,9 @@ function createColumns(
 	onToggleComplete: (task: Task) => void,
 	onEdit: (task: Task) => void,
 	onDelete: (task: Task) => void,
-	updatingTasks: Set<Id<"tasks">>
+	updatingTasks: Set<Id<"tasks">>,
+	canModify: boolean,
+	canDelete: boolean
 ): ColumnDef<Task>[] {
 	return [
 		{
@@ -150,7 +152,9 @@ function createColumns(
 				return (
 					<button
 						onClick={() => onToggleComplete(task)}
-						disabled={isUpdating || task.status === "cancelled"}
+						disabled={
+							isUpdating || task.status === "cancelled" || !canModify
+						}
 						className={cn(
 							"p-0.5 rounded-full transition-colors",
 							"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -293,7 +297,7 @@ function createColumns(
 					<div className="flex items-center gap-1">
 						<button
 							onClick={() => onEdit(task)}
-							disabled={isUpdating}
+							disabled={isUpdating || !canModify}
 							className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
 							title="Edit task"
 						>
@@ -301,7 +305,7 @@ function createColumns(
 						</button>
 						<button
 							onClick={() => onDelete(task)}
-							disabled={isUpdating}
+							disabled={isUpdating || !canDelete}
 							className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 transition-colors"
 							title="Delete task"
 						>
@@ -375,6 +379,8 @@ function TasksPageContent() {
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 	const { can } = usePermissions();
+	const canModifyTasks = can("tasks", "modify");
+	const canDeleteTasks = can("tasks", "delete");
 
 	// Queries
 	const allTasks = useQuery(api.tasks.list, {});
@@ -576,7 +582,8 @@ function TasksPageContent() {
 			setDeleteModalOpen(false);
 			setTaskToDelete(null);
 		} catch (error) {
-			console.error("Error deleting task:", error);
+			// Re-throw so the modal shows a single error toast, not a false success.
+			throw error;
 		} finally {
 			if (taskToDelete) {
 				setUpdatingTasks((prev) => {
@@ -617,10 +624,12 @@ function TasksPageContent() {
 				handleToggleComplete,
 				handleEdit,
 				handleDeleteRequest,
-				updatingTasks
+				updatingTasks,
+				canModifyTasks,
+				canDeleteTasks
 			),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[clients, projects, users, updatingTasks]
+		[clients, projects, users, updatingTasks, canModifyTasks, canDeleteTasks]
 	);
 
 	return (
@@ -648,7 +657,7 @@ function TasksPageContent() {
 				<TaskSheet
 					mode="create"
 					trigger={
-						<Button>
+						<Button disabled={!canModifyTasks}>
 							<Plus className="h-4 w-4" />
 							New Task
 						</Button>
@@ -731,7 +740,7 @@ function TasksPageContent() {
 								<TaskSheet
 									mode="create"
 									trigger={
-										<Button>
+										<Button disabled={!canModifyTasks}>
 											<Plus className="h-4 w-4" />
 											Create Your First Task
 										</Button>

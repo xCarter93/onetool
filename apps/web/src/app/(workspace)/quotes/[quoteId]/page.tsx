@@ -174,18 +174,12 @@ function QuoteDetailPageContent() {
 		setIsDeleting(true);
 		try {
 			await deleteQuote({ id: quoteId });
-			toast.success(
-				"Quote Deleted",
-				"Quote has been successfully deleted"
-			);
-			setIsDeleteModalOpen(false);
+			// Success toast + modal close are owned by DeleteConfirmationModal.
 			router.push("/quotes");
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : "Failed to delete quote";
-			toast.error("Error", message);
-			setIsDeleteModalOpen(false);
+			// Re-throw so the modal shows a single error toast and stays open.
 			setIsDeleting(false);
+			throw err;
 		}
 	};
 

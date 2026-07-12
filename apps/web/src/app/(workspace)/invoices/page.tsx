@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -162,7 +163,8 @@ const formatInvoiceDate = (timestamp?: number) => {
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
-	onPreview: (id: string) => void
+	onPreview: (id: string) => void,
+	canDelete: boolean
 ): ColumnDef<InvoiceWithClient>[] => [
 	{
 		accessorKey: "invoiceNumber",
@@ -265,6 +267,7 @@ const createColumns = (
 					variant="outline"
 					size="icon-sm"
 					onClick={() => onDelete(row.original._id, row.original.invoiceNumber)}
+					disabled={!canDelete}
 					className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
 					aria-label={`Delete invoice ${row.original.invoiceNumber}`}
 				>
@@ -296,18 +299,21 @@ function InvoicesPageContent() {
 	const updateInvoiceStatus = useMutation(api.invoices.update);
 	const [kanbanData, setKanbanData] = useState<InvoiceKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
+	const { can } = usePermissions();
+	const canDeleteInvoices = can("invoices", "delete");
 
-	// Fetch invoices, clients, and projects from Convex
+	// Fetch invoices, clients, and projects from Convex. The clients/projects
+	// reads are gated — skip them without the grant so the page doesn't crash.
 	const invoices = useQuery(api.invoices.list, {});
-	const clients = useQuery(api.clients.list, {});
-	const projects = useQuery(api.projects.list, {});
+	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 
 	// Combine invoices with resolved client and project names
 	const data = React.useMemo((): InvoiceWithClient[] => {
-		if (!invoices || !clients || !projects) return [];
+		if (!invoices) return [];
 		return invoices.map((invoice) => {
-			const client = clients.find((c) => c._id === invoice.clientId);
-			const project = projects.find((p) => p._id === invoice.projectId);
+			const client = clients?.find((c) => c._id === invoice.clientId);
+			const project = projects?.find((p) => p._id === invoice.projectId);
 			return {
 				...invoice,
 				clientName: client?.companyName || "Unknown Client",
@@ -446,20 +452,16 @@ function InvoicesPageContent() {
 	}, []);
 
 	const confirmDelete = async () => {
-		if (invoiceToDelete) {
-			try {
-				await deleteInvoice({ id: invoiceToDelete.id as Id<"invoices"> });
-				setDeleteModalOpen(false);
-				setInvoiceToDelete(null);
-			} catch (error) {
-				console.error("Failed to delete invoice:", error);
-			}
-		}
+		if (!invoiceToDelete) return;
+		// Success/error toasts + closing are owned by DeleteConfirmationModal;
+		// let errors propagate so the modal shows a single error toast.
+		await deleteInvoice({ id: invoiceToDelete.id as Id<"invoices"> });
+		setInvoiceToDelete(null);
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview),
-		[router, handleDelete, openPreview]
+		() => createColumns(router, handleDelete, openPreview, canDeleteInvoices),
+		[router, handleDelete, openPreview, canDeleteInvoices]
 	);
 
 	const table = useReactTable({
