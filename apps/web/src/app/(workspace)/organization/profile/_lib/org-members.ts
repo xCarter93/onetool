@@ -10,9 +10,13 @@ export const ROLE_OPTIONS = [
 	{ value: MEMBER_ROLE, label: "Member" },
 ];
 
-// Opt-in fetch params, hoisted so the object identity is stable across renders.
-export const ORGANIZATION_PARAMS = {
+// Opt-in fetch params, hoisted so object identity stays stable across renders.
+// Split per resource so a component only fetches the collection it renders — the
+// read-only roster shouldn't pull invitations.
+export const MEMBERSHIPS_PARAMS = {
 	memberships: { pageSize: 20 },
+};
+export const INVITATIONS_PARAMS = {
 	invitations: { pageSize: 20 },
 };
 

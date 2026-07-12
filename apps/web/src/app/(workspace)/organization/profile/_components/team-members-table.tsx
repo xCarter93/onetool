@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
@@ -46,7 +46,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	ADMIN_ROLE,
 	ROLE_OPTIONS,
-	ORGANIZATION_PARAMS,
+	MEMBERSHIPS_PARAMS,
 	roleLabel,
 	getInitials,
 	memberDisplayName,
@@ -62,7 +62,7 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 	const router = useRouter();
 	const toast = useToast();
 	const { confirm: confirmDialog } = useConfirmDialog();
-	const { membership, memberships } = useOrganization(ORGANIZATION_PARAMS);
+	const { membership, memberships } = useOrganization(MEMBERSHIPS_PARAMS);
 
 	const isAdmin = membership?.role === ADMIN_ROLE;
 	// Admins get management controls, but the summary variant stays read-only.
@@ -85,40 +85,49 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 		return map;
 	}, [accessRows]);
 
-	const handleRoleChange = async (member: MemberRow, role: string) => {
-		if (member.role === role) return;
-		setPendingMemberId(member.id);
-		try {
-			await member.update({ role });
-			await memberships?.revalidate?.();
-			toast.success("Role updated", "The member's role has been changed.");
-		} catch (error) {
-			toast.error("Couldn't update role", clerkErr(error));
-		} finally {
-			setPendingMemberId(null);
-		}
-	};
+	// Wrapped in useCallback (with `memberships` as a dep) so the columns memo
+	// below can list them explicitly — this keeps the closed-over `revalidate`
+	// current instead of relying on a suppressed exhaustive-deps rule.
+	const handleRoleChange = useCallback(
+		async (member: MemberRow, role: string) => {
+			if (member.role === role) return;
+			setPendingMemberId(member.id);
+			try {
+				await member.update({ role });
+				await memberships?.revalidate?.();
+				toast.success("Role updated", "The member's role has been changed.");
+			} catch (error) {
+				toast.error("Couldn't update role", clerkErr(error));
+			} finally {
+				setPendingMemberId(null);
+			}
+		},
+		[memberships, toast],
+	);
 
-	const handleRemoveMember = async (member: MemberRow) => {
-		const confirmed = await confirmDialog({
-			title: "Remove member",
-			message: `Remove ${memberDisplayName(member) || "this member"} from the organization? They'll lose access immediately.`,
-			confirmLabel: "Remove member",
-			cancelLabel: "Cancel",
-			variant: "destructive",
-		});
-		if (!confirmed) return;
-		setPendingMemberId(member.id);
-		try {
-			await member.destroy();
-			await memberships?.revalidate?.();
-			toast.success("Member removed", "They no longer have access.");
-		} catch (error) {
-			toast.error("Couldn't remove member", clerkErr(error));
-		} finally {
-			setPendingMemberId(null);
-		}
-	};
+	const handleRemoveMember = useCallback(
+		async (member: MemberRow) => {
+			const confirmed = await confirmDialog({
+				title: "Remove member",
+				message: `Remove ${memberDisplayName(member) || "this member"} from the organization? They'll lose access immediately.`,
+				confirmLabel: "Remove member",
+				cancelLabel: "Cancel",
+				variant: "destructive",
+			});
+			if (!confirmed) return;
+			setPendingMemberId(member.id);
+			try {
+				await member.destroy();
+				await memberships?.revalidate?.();
+				toast.success("Member removed", "They no longer have access.");
+			} catch (error) {
+				toast.error("Couldn't remove member", clerkErr(error));
+			} finally {
+				setPendingMemberId(null);
+			}
+		},
+		[memberships, confirmDialog, toast],
+	);
 
 	const members = memberships?.data ?? [];
 
@@ -182,7 +191,13 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 								}}
 								disabled={rowBusy}
 							>
-								<SelectTrigger size="sm" className="w-28">
+								<SelectTrigger
+									size="sm"
+									className="w-28"
+									aria-label={`Change role for ${
+										memberDisplayName(member) || "this member"
+									}`}
+								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -307,7 +322,6 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 				},
 			},
 		];
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [
 		isAdmin,
 		canManage,
@@ -316,6 +330,8 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 		accessRows,
 		pendingMemberId,
 		router,
+		handleRoleChange,
+		handleRemoveMember,
 	]);
 
 	const [memberSorting, setMemberSorting] = useState<SortingState>([]);

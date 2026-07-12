@@ -43,7 +43,7 @@ import {
 	ADMIN_ROLE,
 	MEMBER_ROLE,
 	ROLE_OPTIONS,
-	ORGANIZATION_PARAMS,
+	INVITATIONS_PARAMS,
 	roleLabel,
 	clerkErr,
 } from "../_lib/org-members";
@@ -52,7 +52,7 @@ export function TeamTab() {
 	const toast = useToast();
 	const { confirm: confirmDialog } = useConfirmDialog();
 	const { organization, membership, invitations, isLoaded } =
-		useOrganization(ORGANIZATION_PARAMS);
+		useOrganization(INVITATIONS_PARAMS);
 
 	const isAdmin = membership?.role === ADMIN_ROLE;
 
