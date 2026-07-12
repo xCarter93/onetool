@@ -687,6 +687,7 @@ export default defineSchema({
 			v.literal("task_completed"),
 			v.literal("user_invited"),
 			v.literal("user_removed"),
+			v.literal("member_permissions_updated"),
 			v.literal("organization_updated"),
 			v.literal("email_sent"),
 			v.literal("email_delivered"),

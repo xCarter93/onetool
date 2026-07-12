@@ -155,6 +155,24 @@ describe("permissions grant management", () => {
 		expect(mine.grants).toEqual(grants);
 	});
 
+	it("logs a member_permissions_updated activity", async () => {
+		const { member, asOwner } = await seedOrgWithMembers("set_activity");
+		await asOwner.mutation(api.permissions.setMemberPermissions, {
+			userId: member.userId,
+			permissions: { clients: { level: "view" } },
+		});
+
+		const activities = await t.run(async (ctx) => ctx.db.query("activities").collect());
+		const activity = activities.find(
+			(a) => a.activityType === "member_permissions_updated"
+		);
+		expect(activity).toMatchObject({
+			activityType: "member_permissions_updated",
+			entityType: "user",
+			entityId: member.userId,
+		});
+	});
+
 	// ── myPermissions ────────────────────────────────────────────────────
 
 	it("returns all:true for owner and admin", async () => {

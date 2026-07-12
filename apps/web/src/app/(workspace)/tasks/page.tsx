@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
@@ -373,11 +374,13 @@ function TasksPageContent() {
 	);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+	const { can } = usePermissions();
 
 	// Queries
 	const allTasks = useQuery(api.tasks.list, {});
 	const projects = useQuery(api.projects.list, {});
-	const clients = useQuery(api.clients.list, {});
+	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
+	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, {});
 
 	// Mutations

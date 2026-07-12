@@ -26,6 +26,7 @@ import {
 } from "@/components/reui/frame";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -52,6 +53,9 @@ const headCellClass =
 export function SKUsTab() {
 	const toast = useToast();
 	const { confirm: confirmDialog } = useConfirmDialog();
+	const { can } = usePermissions();
+	const canModify = can("skus", "modify");
+	const canDelete = can("skus", "delete");
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [editingSKU, setEditingSKU] = useState<Id<"skus"> | null>(null);
@@ -84,12 +88,13 @@ export function SKUsTab() {
 	};
 
 	const handleCreate = () => {
+		if (!canModify) return;
 		resetForm();
 		setIsEditing(true);
 	};
 
 	const handleEdit = (sku: SKUDoc) => {
-		if (!sku) return;
+		if (!canModify || !sku) return;
 		setSKUForm({
 			name: sku.name,
 			unit: sku.unit,
@@ -356,16 +361,18 @@ export function SKUsTab() {
 						Create your first SKU to streamline your quote creation process
 						with reusable line items.
 					</p>
-					<Button size="lg" onClick={handleCreate}>
-						<Plus className="h-5 w-5" />
-						Create Your First SKU
-					</Button>
+					{canModify && (
+						<Button size="lg" onClick={handleCreate}>
+							<Plus className="h-5 w-5" />
+							Create Your First SKU
+						</Button>
+					)}
 				</div>
 			) : (
 				<Frame variant="default" className="w-full">
 					<FrameHeader className="flex-row items-center justify-between gap-3">
 						<FrameTitle>Line items</FrameTitle>
-						{!isEditing && hasSKUs && (
+						{!isEditing && hasSKUs && canModify && (
 							<Button size="sm" onClick={handleCreate}>
 								<Plus className="h-4 w-4" />
 								Add SKU
@@ -456,45 +463,50 @@ export function SKUsTab() {
 												</td>
 												<td className="px-4 py-3">
 													<div className="flex justify-end gap-1">
-														{sku.isActive ? (
+														{canModify &&
+															(sku.isActive ? (
+																<Button
+																	variant="outline"
+																	size="icon-sm"
+																	onClick={() => handleDeactivate(sku._id)}
+																	aria-label="Deactivate SKU"
+																	className="hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400"
+																>
+																	<PowerOff className="h-3 w-3" />
+																</Button>
+															) : (
+																<Button
+																	variant="outline"
+																	size="icon-sm"
+																	onClick={() => handleReactivate(sku._id)}
+																	aria-label="Reactivate SKU"
+																	className="hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+																>
+																	<RotateCcw className="h-3 w-3" />
+																</Button>
+															))}
+														{canModify && (
 															<Button
 																variant="outline"
 																size="icon-sm"
-																onClick={() => handleDeactivate(sku._id)}
-																aria-label="Deactivate SKU"
-																className="hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400"
+																onClick={() => handleEdit(sku)}
+																aria-label="Edit SKU"
+																className="hover:bg-primary/10 hover:text-primary"
 															>
-																<PowerOff className="h-3 w-3" />
-															</Button>
-														) : (
-															<Button
-																variant="outline"
-																size="icon-sm"
-																onClick={() => handleReactivate(sku._id)}
-																aria-label="Reactivate SKU"
-																className="hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
-															>
-																<RotateCcw className="h-3 w-3" />
+																<Pencil className="h-3 w-3" />
 															</Button>
 														)}
-														<Button
-															variant="outline"
-															size="icon-sm"
-															onClick={() => handleEdit(sku)}
-															aria-label="Edit SKU"
-															className="hover:bg-primary/10 hover:text-primary"
-														>
-															<Pencil className="h-3 w-3" />
-														</Button>
-														<Button
-															variant="outline"
-															size="icon-sm"
-															onClick={() => handleDelete(sku._id)}
-															aria-label="Delete SKU"
-															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-														>
-															<Trash2 className="h-3 w-3" />
-														</Button>
+														{canDelete && (
+															<Button
+																variant="outline"
+																size="icon-sm"
+																onClick={() => handleDelete(sku._id)}
+																aria-label="Delete SKU"
+																className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+															>
+																<Trash2 className="h-3 w-3" />
+															</Button>
+														)}
 													</div>
 												</td>
 											</tr>

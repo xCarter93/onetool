@@ -246,7 +246,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
 	const isOrgSwitching = useIsOrgSwitching();
-	const taskStats = useQuery(api.tasks.getStats, {});
+	const { can, hasFullAccess, isLoading: permissionsLoading } = usePermissions();
+	// Badge queries hit view-gated endpoints — skip them for users without the
+	// grant or they throw FORBIDDEN once PERMISSIONS_ENFORCE is on.
+	const taskStats = useQuery(api.tasks.getStats, can("tasks") ? {} : "skip");
 	// Suppress the badge during the org-switch grace window so a stale count
 	// (or a transient "0") never flashes for the new org.
 	const tasksBadgeCount =
@@ -254,12 +257,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			? 0
 			: (taskStats.todayTasks ?? 0) + (taskStats.overdue ?? 0);
 	// Org-wide count of email threads with unread inbound messages (Inbox badge).
-	const inboxUnread = useQuery(api.emailThreads.countUnreadThreads, {});
+	const inboxUnread = useQuery(
+		api.emailThreads.countUnreadThreads,
+		can("inbox") ? {} : "skip"
+	);
 	const inboxBadgeCount =
 		isOrgSwitching || inboxUnread === undefined ? 0 : inboxUnread;
 	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
 	const { isAdmin, isMember } = useRoleAccess();
-	const { can, hasFullAccess, isLoading: permissionsLoading } = usePermissions();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled("workflow-automation-access");
 

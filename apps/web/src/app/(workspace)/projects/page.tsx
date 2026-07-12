@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -276,19 +277,22 @@ function ProjectsPageContent() {
 	const updateProjectStatus = useMutation(api.projects.update);
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
+	const { can } = usePermissions();
 
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
-	const clients = useQuery(api.clients.list, {});
+	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
+	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projectStats = useQuery(api.projects.getStats, {});
 
-	// Enhanced projects with client information
+	// Enhanced projects with client information. Clients may stay undefined
+	// forever without the grant — don't let that block rendering projects.
 	const data = React.useMemo((): ProjectWithClient[] => {
-		if (!projects || !clients) return [];
+		if (!projects) return [];
 
 		return projects.map((project) => ({
 			...project,
-			client: clients.find((client) => client._id === project.clientId),
+			client: clients?.find((client) => client._id === project.clientId),
 		}));
 	}, [projects, clients]);
 
@@ -372,9 +376,9 @@ function ProjectsPageContent() {
 		);
 	}, [searchedData]);
 
-	// Loading state
-	const isLoading =
-		isOrgSwitching || projects === undefined || clients === undefined;
+	// Loading state. `clients` may stay undefined forever without the grant,
+	// so it isn't part of the gate — only `projects` blocks the table.
+	const isLoading = isOrgSwitching || projects === undefined;
 
 	// Empty state
 	const isEmpty = !isLoading && data.length === 0;

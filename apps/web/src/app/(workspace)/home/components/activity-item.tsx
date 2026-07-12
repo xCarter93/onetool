@@ -9,6 +9,7 @@ import {
 	BuildingOfficeIcon,
 	UserGroupIcon,
 	EnvelopeIcon,
+	ShieldCheckIcon,
 } from "@heroicons/react/24/solid";
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import {
@@ -342,6 +343,16 @@ function getActivityStyle(activityType: string): {
 		};
 	}
 
+	// Permissions — primary
+	if (activityType === "member_permissions_updated") {
+		return {
+			icon: ShieldCheckIcon,
+			iconColor: "text-primary",
+			bgColor: "bg-primary/10",
+			ringColor: "ring-primary/20",
+		};
+	}
+
 	if (activityType === "organization_updated") {
 		return {
 			icon: BuildingOfficeIcon,
@@ -389,6 +400,7 @@ function getActivityLabel(activityType: string): string | null {
 		email_received: "Received",
 		user_invited: "Team",
 		user_removed: "Team",
+		member_permissions_updated: "Team",
 		organization_updated: "Org",
 	};
 	return labels[activityType] || null;

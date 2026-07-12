@@ -7,6 +7,7 @@ import {
 	type UserMutationCtx,
 	type UserQueryCtx,
 } from "./lib/factories";
+import { ActivityHelpers } from "./lib/activities";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import {
 	getEffectivePermissions,
@@ -147,7 +148,11 @@ export const setMemberPermissions = userMutation({
 			permissions: validated,
 			permissionsVersion: PERMISSIONS_VERSION,
 		});
-		// Follow-up (Phase 4): activities audit entry ("X changed Y's permissions").
+
+		const targetUser = await ctx.db.get(userId);
+		if (targetUser) {
+			await ActivityHelpers.memberPermissionsUpdated(ctx, targetUser, validated);
+		}
 		return null;
 	},
 });

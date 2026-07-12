@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DotField } from "@/components/ui/dot-field";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -34,6 +35,9 @@ function formatFileSize(bytes?: number) {
 export function DocumentsTab() {
 	const toast = useToast();
 	const { confirm: confirmDialog } = useConfirmDialog();
+	const { can } = usePermissions();
+	const canUpload = can("orgDocuments", "modify");
+	const canDelete = can("orgDocuments", "delete");
 	const [isUploading, setIsUploading] = useState(false);
 	const [isDragging, setIsDragging] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,69 +190,71 @@ export function DocumentsTab() {
 			/>
 
 			{/* Upload dropzone */}
-			<div
-				onClick={handleClick}
-				onKeyDown={handleKeyDown}
-				onDragOver={handleDragOver}
-				onDragLeave={handleDragLeave}
-				onDrop={handleDrop}
-				tabIndex={isUploading ? -1 : 0}
-				role="button"
-				aria-disabled={isUploading}
-				className={cn(
-					"relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl border-[1.5px] border-dashed px-5 py-11 text-center transition-all duration-200 ease-in-out",
-					"cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-					isDragging
-						? "border-primary bg-primary/5"
-						: "border-input bg-card hover:border-primary/50 hover:bg-muted/40",
-					isUploading && "cursor-not-allowed opacity-60",
-				)}
-			>
-				<DotField className={DROPZONE_TEXTURE} />
-				<input
-					ref={fileInputRef}
-					type="file"
-					accept="application/pdf"
-					onChange={handleUpload}
-					disabled={isUploading}
-					className="hidden"
-				/>
-
+			{canUpload && (
 				<div
+					onClick={handleClick}
+					onKeyDown={handleKeyDown}
+					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
+					onDrop={handleDrop}
+					tabIndex={isUploading ? -1 : 0}
+					role="button"
+					aria-disabled={isUploading}
 					className={cn(
-						"relative flex size-12 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200",
+						"relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl border-[1.5px] border-dashed px-5 py-11 text-center transition-all duration-200 ease-in-out",
+						"cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
 						isDragging
-							? "border-primary/30 bg-primary/15 text-primary"
-							: "border-border bg-muted text-muted-foreground",
+							? "border-primary bg-primary/5"
+							: "border-input bg-card hover:border-primary/50 hover:bg-muted/40",
+						isUploading && "cursor-not-allowed opacity-60",
 					)}
 				>
-					{isUploading ? (
-						<Loader2 className="size-[22px] animate-spin" />
-					) : (
-						<Upload className="size-[22px]" />
-					)}
-				</div>
+					<DotField className={DROPZONE_TEXTURE} />
+					<input
+						ref={fileInputRef}
+						type="file"
+						accept="application/pdf"
+						onChange={handleUpload}
+						disabled={isUploading}
+						className="hidden"
+					/>
 
-				<div className="relative min-w-0">
-					{isUploading ? (
-						<span className="font-medium text-foreground">
-							Uploading document…
-						</span>
-					) : (
-						<>
-							<p className="text-[15px] text-muted-foreground">
-								<span className="font-semibold text-primary">
-									Click to upload
-								</span>{" "}
-								or drag and drop
-							</p>
-							<p className="mt-1 text-xs text-muted-foreground">
-								PDF files only (max 10MB)
-							</p>
-						</>
-					)}
+					<div
+						className={cn(
+							"relative flex size-12 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200",
+							isDragging
+								? "border-primary/30 bg-primary/15 text-primary"
+								: "border-border bg-muted text-muted-foreground",
+						)}
+					>
+						{isUploading ? (
+							<Loader2 className="size-[22px] animate-spin" />
+						) : (
+							<Upload className="size-[22px]" />
+						)}
+					</div>
+
+					<div className="relative min-w-0">
+						{isUploading ? (
+							<span className="font-medium text-foreground">
+								Uploading document…
+							</span>
+						) : (
+							<>
+								<p className="text-[15px] text-muted-foreground">
+									<span className="font-semibold text-primary">
+										Click to upload
+									</span>{" "}
+									or drag and drop
+								</p>
+								<p className="mt-1 text-xs text-muted-foreground">
+									PDF files only (max 10MB)
+								</p>
+							</>
+						)}
+					</div>
 				</div>
-			</div>
+			)}
 
 			{/* Documents list */}
 			{documents === undefined ? (
@@ -278,6 +284,7 @@ export function DocumentsTab() {
 									key={doc._id}
 									document={doc}
 									onDelete={() => handleDelete(doc._id)}
+									canDelete={canDelete}
 								/>
 							))}
 						</div>
@@ -297,9 +304,10 @@ interface DocumentRowProps {
 		fileSize?: number;
 	};
 	onDelete: () => void;
+	canDelete: boolean;
 }
 
-function DocumentRow({ document, onDelete }: DocumentRowProps) {
+function DocumentRow({ document, onDelete, canDelete }: DocumentRowProps) {
 	const documentUrl = useQuery(api.organizationDocuments.getDocumentUrl, {
 		id: document._id,
 	});
@@ -343,15 +351,17 @@ function DocumentRow({ document, onDelete }: DocumentRowProps) {
 						</a>
 					</>
 				)}
-				<Button
-					variant="outline"
-					size="icon-sm"
-					aria-label="Delete document"
-					onClick={onDelete}
-					className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-				>
-					<Trash2 className="h-4 w-4" />
-				</Button>
+				{canDelete && (
+					<Button
+						variant="outline"
+						size="icon-sm"
+						aria-label="Delete document"
+						onClick={onDelete}
+						className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+					>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				)}
 			</div>
 		</div>
 	);

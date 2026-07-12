@@ -991,19 +991,45 @@ Tours are implemented by:
 - **Member Restrictions**: Members see only assigned projects
 - **Session Management**: Last sign-in tracking
 
-### Role-Based Access Control
+### Granular Per-Object Permissions (RBAC)
+
+Access is resolved per-object, not just per-role. Precedence, highest first:
+
+1. **Owner** (`organizations.ownerUserId`) — implicit access to everything, immutable (can't be edited or revoked).
+2. **Admin** (Clerk `org:admin`) — implicit access to everything. The resolver prefers the webhook-synced `organizationMemberships.role` column (fresh within seconds) over the JWT `orgRole` claim, which is only a fallback for legacy rows and can lag ~60s.
+3. **Member** — `DEFAULT_MEMBER_PERMISSIONS` (projects + tasks at `modify`, assigned-only) overlaid with any grants stored on their membership row.
+4. No membership / no auth — deny.
+
+Each of the 13 registered objects (`PERMISSION_OBJECTS` in `packages/backend/convex/lib/permissionKeys.ts` — clients, projects, tasks, quotes, invoices, skus, documents, orgDocuments, community, automations, reports, inbox, billing) stores one level on the access ladder `none < view < modify < delete` (`modify` merges create+update), plus an `allRecords` scope switch for objects that support scoping. Grants live in `organizationMemberships.permissions` (a `v.record`).
+
+Scoping when `allRecords` is off:
+
+- **Direct** — an assignment field on the record itself (`projects.assignedUserIds`, `tasks.assigneeUserId`, `reports.createdBy`).
+- **Derived** — computed from the caller's assigned-project closure via `actorScope()`: the user's assigned `projectIds` plus those projects' `clientIds`. Clients, quotes, invoices, and documents use this — quotes/invoices match by `projectId` with a `clientId` fallback.
+- `null` — not scopable; view is always org-wide (e.g. `skus`, `billing`).
+
+Enforcement runs through ctx helpers attached by the `userMutation`/`userQuery` factories (`packages/backend/convex/lib/factories.ts`): `ctx.requireLevel`, `ctx.hasAllRecords`, `ctx.requireRecordScope`, `ctx.applyReadScope`, `ctx.gateRead`, `ctx.scopedToActor`. Denials throw `ConvexError({ code: "FORBIDDEN", ... })`.
 
 ```typescript
 // From projects.ts
-const isUserMember = await isMember(ctx);
-if (isUserMember && currentUserId) {
-	// Filter to only assigned projects
-	projects = projects.filter(
-		(project) =>
-			project.assignedUserIds && project.assignedUserIds.includes(currentUserId)
-	);
-}
+await ctx.requireLevel("projects", "modify");
+await ctx.requireRecordScope("projects", () =>
+	project.assignedUserIds?.includes(ctx.user._id) ?? false
+);
 ```
+
+**Shadow mode**: while the `PERMISSIONS_ENFORCE` env var is unset, verdicts are computed and logged as `[permissions-shadow]` `console.warn`s but nothing is denied or hidden. Set `PERMISSIONS_ENFORCE=true` to enforce.
+
+**Grant management** (`convex/permissions.ts`) is admin/owner-only via `setMemberPermissions`, `myPermissions`, `memberPermissions`, and `orgMemberAccess` — this admin plane is always enforced, never shadow-gated. On the frontend, `usePermissions()` (`apps/web/src/hooks/use-permissions.ts`) is reactive over `useQuery(api.permissions.myPermissions)`:
+
+```typescript
+const { can, hasAllRecords, hasFullAccess } = usePermissions();
+if (!can("invoices", "delete")) return null;
+```
+
+The per-user access matrix lives at `/organization/profile/members/[userId]`; `<PermissionGate object="..." level="...">` (`components/domain/permission-gate.tsx`) gates routes/sections, and sidebar items are gated per-object the same way.
+
+The AI assistant inherits enforcement for free: its tools call the same public `api.*` functions under the caller's identity, so every assistant action is gated exactly like a normal user request.
 
 ### Clerk Webhooks
 
@@ -1144,7 +1170,7 @@ export const csvImportAgent = new Agent({
 
 - `users`: User accounts (synced from Clerk)
 - `organizations`: Organization records
-- `organizationMemberships`: User-org relationships
+- `organizationMemberships`: User-org relationships (incl. `permissions` — per-object RBAC grants)
 - `clients`: Client records
 - `clientContacts`: Client contact information
 - `clientProperties`: Client property addresses

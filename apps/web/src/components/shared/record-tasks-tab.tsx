@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -383,10 +384,12 @@ export function RecordTasksTab({
 	);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+	const { can } = usePermissions();
 
-	// Queries for related data
-	const clients = useQuery(api.clients.list, {});
-	const projects = useQuery(api.projects.list, {});
+	// Queries for related data — skip without the view grant, gated endpoints
+	// throw FORBIDDEN otherwise. This component is shared across record types.
+	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, {});
 
 	// Mutations
