@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnimatePresence, motion } from "motion/react";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
@@ -44,17 +45,23 @@ export function InvoiceDetailHeader({
 	onGeneratePdf,
 	onCancel,
 }: InvoiceDetailHeaderProps) {
+	const { can } = usePermissions();
+	const canModify = can("invoices", "modify");
 	const renderStatusActions = () => {
 		switch (currentStatus) {
 			case "draft":
 				return (
 					<>
-						<Button size="sm" onClick={() => onStatusChange("sent")}>
+						<Button
+							size="sm"
+							onClick={() => onStatusChange("sent")}
+							disabled={!canModify}
+						>
 							<Send className="h-4 w-4" />
 							Mark as Sent
 						</Button>
 						{/* TODO(reui-rebuild): success button intent mapped to default */}
-						<Button size="sm" onClick={onMarkPaid}>
+						<Button size="sm" onClick={onMarkPaid} disabled={!canModify}>
 							<CheckCircle className="h-4 w-4" />
 							Mark as Paid
 						</Button>
@@ -65,7 +72,7 @@ export function InvoiceDetailHeader({
 				return (
 					<>
 						{/* TODO(reui-rebuild): success button intent mapped to default */}
-						<Button size="sm" onClick={onMarkPaid}>
+						<Button size="sm" onClick={onMarkPaid} disabled={!canModify}>
 							<CheckCircle className="h-4 w-4" />
 							Mark as Paid
 						</Button>
@@ -73,6 +80,7 @@ export function InvoiceDetailHeader({
 							variant="outline"
 							size="sm"
 							onClick={() => onStatusChange("draft")}
+							disabled={!canModify}
 						>
 							<RotateCcw className="h-4 w-4" />
 							Revert to Draft
@@ -85,6 +93,7 @@ export function InvoiceDetailHeader({
 						variant="outline"
 						size="sm"
 						onClick={() => onStatusChange("sent")}
+						disabled={!canModify}
 					>
 						<RotateCcw className="h-4 w-4" />
 						Reopen
@@ -96,6 +105,7 @@ export function InvoiceDetailHeader({
 						variant="outline"
 						size="sm"
 						onClick={() => onStatusChange("draft")}
+						disabled={!canModify}
 					>
 						<RotateCcw className="h-4 w-4" />
 						Reopen (Draft)
@@ -180,16 +190,31 @@ export function InvoiceDetailHeader({
 					</AnimatePresence>
 					<div className="flex items-center gap-2 shrink-0">
 						{renderStatusActions()}
-						<Button variant="outline" size="sm" onClick={onSendToClient}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onSendToClient}
+							disabled={!canModify}
+						>
 							<Mail className="h-4 w-4" />
 							Send to Client
 						</Button>
-						<Button variant="outline" size="sm" onClick={onGeneratePdf}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onGeneratePdf}
+							disabled={!canModify}
+						>
 							<FileText className="h-4 w-4" />
 							Generate PDF
 						</Button>
 						{currentStatus !== "cancelled" && (
-							<Button variant="destructive" size="sm" onClick={onCancel}>
+							<Button
+								variant="destructive"
+								size="sm"
+								onClick={onCancel}
+								disabled={!canModify}
+							>
 								<XCircle className="h-4 w-4" />
 								Cancel
 							</Button>

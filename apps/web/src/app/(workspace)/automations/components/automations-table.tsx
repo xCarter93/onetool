@@ -92,17 +92,11 @@ export function AutomationsTable() {
 
 	const confirmDelete = useCallback(async () => {
 		if (!pendingDelete) return;
-		try {
-			await removeAutomation({ id: pendingDelete.id });
-			toast.success(
-				"Automation deleted",
-				`"${pendingDelete.name}" has been deleted.`
-			);
-			setPendingDelete(null);
-		} catch {
-			toast.error("Error", "Failed to delete automation");
-		}
-	}, [pendingDelete, removeAutomation, toast]);
+		// Success/error toasts owned by DeleteConfirmationModal; let errors
+		// propagate so it shows a single error toast (was double-toasting).
+		await removeAutomation({ id: pendingDelete.id });
+		setPendingDelete(null);
+	}, [pendingDelete, removeAutomation]);
 
 	const columns = useMemo<ColumnDef<Automation>[]>(
 		() => [

@@ -123,6 +123,8 @@ function isOverdue(task: Task): boolean {
 
 function createColumns(
 	entityType: "client" | "project",
+	canModify: boolean,
+	canDelete: boolean,
 	clients: { _id: Id<"clients">; companyName: string }[] | undefined,
 	projects: { _id: Id<"projects">; title: string }[] | undefined,
 	users:
@@ -144,9 +146,9 @@ function createColumns(
 				return (
 					<button
 						onClick={() => onToggleComplete(task)}
-						disabled={isUpdating || task.status === "cancelled"}
+						disabled={isUpdating || task.status === "cancelled" || !canModify}
 						className={cn(
-							"p-0.5 rounded-full transition-colors",
+							"p-0.5 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
 							"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							isUpdating && "opacity-50 cursor-not-allowed"
 						)}
@@ -300,16 +302,16 @@ function createColumns(
 				<div className="flex items-center gap-1">
 					<button
 						onClick={() => onEdit(task)}
-						disabled={isUpdating}
-						className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+						disabled={isUpdating || !canModify}
+						className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
 						title="Edit task"
 					>
 						<Edit className="h-3.5 w-3.5" />
 					</button>
 					<button
 						onClick={() => onDelete(task)}
-						disabled={isUpdating}
-						className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 transition-colors"
+						disabled={isUpdating || !canDelete}
+						className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
 						title="Delete task"
 					>
 						<Trash2 className="h-3.5 w-3.5" />
@@ -385,6 +387,8 @@ export function RecordTasksTab({
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 	const { can } = usePermissions();
+	const canModifyTasks = can("tasks", "modify");
+	const canDeleteTasks = can("tasks", "delete");
 
 	// Queries for related data — skip without the view grant, gated endpoints
 	// throw FORBIDDEN otherwise. This component is shared across record types.
@@ -456,7 +460,8 @@ export function RecordTasksTab({
 			setDeleteModalOpen(false);
 			setTaskToDelete(null);
 		} catch (error) {
-			console.error("Error deleting task:", error);
+			// Re-throw so the modal shows a single error toast, not a false success.
+			throw error;
 		} finally {
 			if (taskToDelete) {
 				setUpdatingTasks((prev) => {
@@ -473,6 +478,8 @@ export function RecordTasksTab({
 		() =>
 			createColumns(
 				entityType,
+				canModifyTasks,
+				canDeleteTasks,
 				clients as
 					| { _id: Id<"clients">; companyName: string }[]
 					| undefined,
@@ -488,7 +495,7 @@ export function RecordTasksTab({
 				updatingTasks
 			),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[clients, projects, users, updatingTasks, entityType]
+		[clients, projects, users, updatingTasks, entityType, canModifyTasks, canDeleteTasks]
 	);
 
 	const totalTasks = tasks?.length ?? 0;
@@ -500,7 +507,7 @@ export function RecordTasksTab({
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Tasks ({totalTasks})
 				</h3>
-				<Button variant="outline" size="sm" onClick={onAddTask}>
+				<Button variant="outline" size="sm" onClick={onAddTask} disabled={!canModifyTasks}>
 					<Plus className="h-4 w-4" />
 					Add Task
 				</Button>

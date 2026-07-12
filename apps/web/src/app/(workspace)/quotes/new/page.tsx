@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
@@ -55,18 +56,25 @@ function NewQuotePageContent() {
 	);
 
 	// Fetch data from Convex
-	const clientsResult = useQuery(api.clients.list, {});
+	const { can } = usePermissions();
+	// Gated read — skip without the clients grant to avoid a FORBIDDEN crash.
+	const clientsResult = useQuery(
+		api.clients.list,
+		can("clients") ? {} : "skip"
+	);
 	const clients = useMemo(() => clientsResult || [], [clientsResult]);
 	const projectsResult = useQuery(
 		api.projects.list,
-		selectedClient ? { clientId: selectedClient._id } : "skip"
+		selectedClient && can("projects")
+			? { clientId: selectedClient._id }
+			: "skip"
 	);
 	const projects = useMemo(() => projectsResult || [], [projectsResult]);
 
 	// Get project from URL param
 	const projectFromParam = useQuery(
 		api.projects.get,
-		projectIdParam ? { id: projectIdParam } : "skip"
+		projectIdParam && can("projects") ? { id: projectIdParam } : "skip"
 	);
 
 	// Mutations

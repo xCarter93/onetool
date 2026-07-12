@@ -288,18 +288,19 @@ function QuotesPageContent() {
 	const updateQuoteStatus = useMutation(api.quotes.update);
 	const [kanbanData, setKanbanData] = useState<QuoteKanbanItem[]>([]);
 
-	// Fetch data from Convex
+	// Fetch data from Convex. The clients/projects reads are gated — skip them
+	// without the grant so the page doesn't crash for quotes-only viewers.
 	const quotes = useQuery(api.quotes.list, {});
-	const clients = useQuery(api.clients.list, {});
-	const projects = useQuery(api.projects.list, {});
+	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 
 	// Combine quotes with client and project data
 	const data = React.useMemo((): QuoteWithClient[] => {
-		if (!quotes || !clients || !projects) return [];
+		if (!quotes) return [];
 
 		return quotes.map((quote) => {
-			const client = clients.find((c) => c._id === quote.clientId);
-			const project = projects.find((p) => p._id === quote.projectId);
+			const client = clients?.find((c) => c._id === quote.clientId);
+			const project = projects?.find((p) => p._id === quote.projectId);
 
 			return {
 				...quote,
@@ -406,9 +407,10 @@ function QuotesPageContent() {
 		);
 	}, [searchedData]);
 
-	// Loading state
-	const isLoading =
-		quotes === undefined || clients === undefined || projects === undefined;
+	// Loading state — gate only on the primary quotes query. The clients and
+	// projects reads are permission-skipped and stay undefined without the grant,
+	// which would otherwise pin the page on the skeleton forever.
+	const isLoading = quotes === undefined;
 
 	// Empty state
 	const isEmpty = !isLoading && data.length === 0;
@@ -424,17 +426,11 @@ function QuotesPageContent() {
 	}, []);
 
 	const confirmDelete = async () => {
-		if (quoteToDelete) {
-			try {
-				await deleteQuote({ id: quoteToDelete.id as Id<"quotes"> });
-				setDeleteModalOpen(false);
-				setQuoteToDelete(null);
-				toast.success("Quote Deleted", `${quoteToDelete.name} has been deleted.`);
-			} catch (error) {
-				console.error("Failed to delete quote:", error);
-				toast.error("Delete Failed", "Failed to delete the quote. Please try again.");
-			}
-		}
+		if (!quoteToDelete) return;
+		// Success/error toasts + closing are owned by DeleteConfirmationModal;
+		// let errors propagate so the modal shows a single error toast.
+		await deleteQuote({ id: quoteToDelete.id as Id<"quotes"> });
+		setQuoteToDelete(null);
 	};
 
 	const columns = React.useMemo(

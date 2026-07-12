@@ -6,6 +6,7 @@ import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import { ListTodo, FileText, Receipt, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnimatePresence, motion } from "motion/react";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 interface ProjectDetailHeaderProps {
@@ -25,6 +26,7 @@ export function ProjectDetailHeader({
 	onGenerateInvoice,
 	onDelete,
 }: ProjectDetailHeaderProps) {
+	const { can } = usePermissions();
 	return (
 		<StickyDetailHeader>
 			{(isSticky) => (
@@ -70,11 +72,21 @@ export function ProjectDetailHeader({
 						)}
 					</AnimatePresence>
 					<div className="flex items-center gap-2 shrink-0">
-						<Button variant="outline" size="sm" onClick={onAddTask}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onAddTask}
+							disabled={!can("tasks", "modify")}
+						>
 							<ListTodo className="h-4 w-4" />
 							Add Task
 						</Button>
-						<Button variant="outline" size="sm" onClick={onAddQuote}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onAddQuote}
+							disabled={!can("quotes", "modify")}
+						>
 							<FileText className="h-4 w-4" />
 							Add Quote
 						</Button>
@@ -82,12 +94,17 @@ export function ProjectDetailHeader({
 							variant="outline"
 							size="sm"
 							onClick={onGenerateInvoice}
-							disabled={!hasApprovedQuotes}
+							disabled={!hasApprovedQuotes || !can("invoices", "modify")}
 						>
 							<Receipt className="h-4 w-4" />
 							Generate Invoice
 						</Button>
-						<Button variant="destructive" size="sm" onClick={onDelete}>
+						<Button
+							variant="destructive"
+							size="sm"
+							onClick={onDelete}
+							disabled={!can("projects", "delete")}
+						>
 							<Trash2 className="h-4 w-4" />
 							Delete
 						</Button>

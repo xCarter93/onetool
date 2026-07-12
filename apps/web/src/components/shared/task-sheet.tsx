@@ -554,6 +554,7 @@ export function TaskSheet({
 						onClick={() => handleSubmit()}
 						disabled={
 							isSubmitting ||
+							!can("tasks", "modify") ||
 							!formData.title.trim() ||
 							(formData.type === "external" && !formData.clientId) ||
 							(formData.repeat !== "none" && !formData.repeatUntil)

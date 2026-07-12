@@ -9,12 +9,15 @@ import {
 	CheckCircle2,
 	ExternalLink,
 	Loader2,
+	Lock,
 	Plus,
 	Receipt,
 	Send,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	Timeline,
 	TimelineContent,
@@ -95,6 +98,9 @@ export function InvoiceDetailDrawer({
 	onOpenChange,
 }: InvoiceDetailDrawerProps) {
 	const router = useRouter();
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("invoices", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
 	const toast = useToast();
 	const preview = useQuery(
 		api.invoices.getPreview,
@@ -172,17 +178,29 @@ export function InvoiceDetailDrawer({
 			}
 			title={title}
 			badge={
-				invoice && effectiveStatus ? (
-					<StatusBadge status={effectiveStatus} size="lg">
-						{STATUS_LABEL[effectiveStatus]}
-					</StatusBadge>
-				) : null
+				<>
+					{invoice && effectiveStatus ? (
+						<StatusBadge status={effectiveStatus} size="lg">
+							{STATUS_LABEL[effectiveStatus]}
+						</StatusBadge>
+					) : null}
+					{showReadOnly ? (
+						<Badge variant="secondary" className="gap-1">
+							<Lock className="h-3 w-3" />
+							Read Only
+						</Badge>
+					) : null}
+				</>
 			}
 			description={data ? (client?.companyName ?? "No client") : undefined}
 			actions={
 				<>
 					{canMarkPaid ? (
-						<Button size="sm" disabled={pending} onClick={handleMarkPaid}>
+						<Button
+							size="sm"
+							disabled={pending || !can("invoices", "modify")}
+							onClick={handleMarkPaid}
+						>
 							<CheckCircle2 className="size-3.5" />
 							Mark paid
 						</Button>
@@ -191,7 +209,7 @@ export function InvoiceDetailDrawer({
 						<Button
 							variant="outline"
 							size="sm"
-							disabled={pending}
+							disabled={pending || !can("invoices", "modify")}
 							onClick={handleSend}
 						>
 							<Send className="size-3.5" />
@@ -205,7 +223,11 @@ export function InvoiceDetailDrawer({
 							clientId: client?._id,
 						}}
 						trigger={
-							<Button variant="outline" size="sm">
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={!can("tasks", "modify")}
+							>
 								<Plus className="size-3.5" />
 								Add Task
 							</Button>
@@ -265,6 +287,7 @@ export function InvoiceDetailDrawer({
 							key={effectiveStatus}
 							invoiceId={invoice._id}
 							currentStatus={effectiveStatus}
+							canModify={canModify}
 						/>
 					</DrawerSection>
 
@@ -368,9 +391,11 @@ export function InvoiceDetailDrawer({
 function StatusControl({
 	invoiceId,
 	currentStatus,
+	canModify,
 }: {
 	invoiceId: Id<"invoices">;
 	currentStatus: InvoiceStatus;
+	canModify: boolean;
 }) {
 	const updateInvoice = useMutation(api.invoices.update);
 	const toast = useToast();
@@ -403,6 +428,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as InvoiceStatus)}
+					disabled={!canModify}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />

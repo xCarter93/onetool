@@ -10,12 +10,15 @@ import {
 	ExternalLink,
 	FileText,
 	Loader2,
+	Lock,
 	PenLine,
 	Receipt,
 	XCircle,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	Timeline,
 	TimelineContent,
@@ -82,6 +85,9 @@ export function QuoteDetailDrawer({
 	onOpenChange,
 }: QuoteDetailDrawerProps) {
 	const router = useRouter();
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("quotes", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
 	const createInvoice = useMutation(api.invoices.createFromQuote);
@@ -166,11 +172,19 @@ export function QuoteDetailDrawer({
 			}
 			title={title}
 			badge={
-				quote ? (
-					<StatusBadge status={quote.status} size="lg">
-						{STATUS_LABEL[quote.status]}
-					</StatusBadge>
-				) : null
+				<>
+					{quote ? (
+						<StatusBadge status={quote.status} size="lg">
+							{STATUS_LABEL[quote.status]}
+						</StatusBadge>
+					) : null}
+					{showReadOnly ? (
+						<Badge variant="secondary" className="gap-1">
+							<Lock className="h-3 w-3" />
+							Read Only
+						</Badge>
+					) : null}
+				</>
 			}
 			description={
 				data
@@ -183,7 +197,11 @@ export function QuoteDetailDrawer({
 				quote ? (
 					<>
 						{canSend ? (
-							<Button size="sm" onClick={sendForSignature}>
+							<Button
+								size="sm"
+								disabled={!can("quotes", "modify")}
+								onClick={sendForSignature}
+							>
 								<PenLine className="size-3.5" />
 								Send for e-signature
 							</Button>
@@ -191,13 +209,18 @@ export function QuoteDetailDrawer({
 						{canDecide ? (
 							<>
 								{/* TODO(reui-rebuild): success button intent mapped to default */}
-								<Button size="sm" onClick={() => void setStatus("approved")}>
+								<Button
+									size="sm"
+									disabled={!can("quotes", "modify")}
+									onClick={() => void setStatus("approved")}
+								>
 									<CheckCircle2 className="size-3.5" />
 									Approve
 								</Button>
 								<Button
 									variant="destructive"
 									size="sm"
+									disabled={!can("quotes", "modify")}
 									onClick={() => void setStatus("declined")}
 								>
 									<XCircle className="size-3.5" />
@@ -208,7 +231,7 @@ export function QuoteDetailDrawer({
 						{canConvert ? (
 							<Button
 								size="sm"
-								disabled={converting}
+								disabled={converting || !can("invoices", "modify")}
 								onClick={convertToInvoice}
 							>
 								{converting ? (
@@ -266,6 +289,7 @@ export function QuoteDetailDrawer({
 							key={quote.status}
 							quoteId={quote._id}
 							currentStatus={quote.status}
+							canModify={canModify}
 						/>
 					</DrawerSection>
 
@@ -369,9 +393,11 @@ export function QuoteDetailDrawer({
 function StatusControl({
 	quoteId,
 	currentStatus,
+	canModify,
 }: {
 	quoteId: Id<"quotes">;
 	currentStatus: QuoteStatus;
+	canModify: boolean;
 }) {
 	const updateQuote = useMutation(api.quotes.update);
 	const toast = useToast();
@@ -398,6 +424,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as QuoteStatus)}
+					disabled={!canModify}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />

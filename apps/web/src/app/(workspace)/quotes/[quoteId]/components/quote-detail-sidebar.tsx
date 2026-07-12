@@ -33,6 +33,7 @@ import {
 	Receipt,
 	Type,
 	Pencil,
+	Lock,
 	Check,
 	X,
 	FileText,
@@ -42,6 +43,7 @@ import {
 	Clock,
 } from "lucide-react";
 import Link from "next/link";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -114,6 +116,14 @@ export function QuoteDetailSidebar({
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
 
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("quotes", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
+	// Editable rows get the interactive affordance; read-only rows sit flat.
+	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
+		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
+	}`;
+
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
@@ -121,6 +131,7 @@ export function QuoteDetailSidebar({
 	);
 
 	const startEditing = (field: EditingField, currentValue: string) => {
+		if (!canModify) return;
 		setEditingField(field);
 		setEditValue(currentValue);
 	};
@@ -129,6 +140,7 @@ export function QuoteDetailSidebar({
 		field: "validUntil",
 		currentTimestamp?: number
 	) => {
+		if (!canModify) return;
 		setEditingField(field);
 		setEditDateValue(
 			currentTimestamp ? new Date(currentTimestamp) : undefined
@@ -202,20 +214,29 @@ export function QuoteDetailSidebar({
 		</div>
 	);
 
-	const renderPencil = () => (
-		<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto mt-0.5" />
-	);
+	const renderPencil = () =>
+		canModify ? (
+			<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto mt-0.5" />
+		) : null;
 
 	return (
 		<div className="px-5 py-4">
 			{/* Record Details Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Record Details
-			</h3>
+			<div className="mb-3 flex items-center justify-between gap-2">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+					Record Details
+				</h3>
+				{showReadOnly && (
+					<Badge variant="secondary" className="gap-1">
+						<Lock className="h-3 w-3" />
+						Read Only
+					</Badge>
+				)}
+			</div>
 			<div className="space-y-0">
 				{/* Title */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() =>
 						editingField !== "title" &&
 						startEditing("title", quote.title || "")
@@ -257,7 +278,7 @@ export function QuoteDetailSidebar({
 
 				{/* Status */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() =>
 						editingField !== "status" &&
 						startEditing("status", quote.status)
@@ -310,7 +331,7 @@ export function QuoteDetailSidebar({
 
 				{/* Valid Until */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() =>
 						editingField !== "validUntil" &&
 						startEditingDate("validUntil", quote.validUntil)
@@ -749,6 +770,7 @@ export function QuoteDetailSidebar({
 							variant="outline"
 							size="sm"
 							onClick={onGeneratePdf}
+							disabled={!canModify}
 						>
 							<FileText className="h-4 w-4 mr-2" />
 							Generate PDF

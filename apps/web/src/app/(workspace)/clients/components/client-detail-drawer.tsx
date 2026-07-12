@@ -12,6 +12,7 @@ import {
 	FileText,
 	FolderKanban,
 	Loader2,
+	Lock,
 	Mail,
 	Plus,
 	Receipt,
@@ -19,6 +20,8 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	Timeline,
 	TimelineContent,
@@ -88,6 +91,9 @@ export function ClientDetailDrawer({
 	onOpenChange,
 }: ClientDetailDrawerProps) {
 	const router = useRouter();
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("clients", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
 	const toast = useToast();
 	const preview = useQuery(
 		api.clients.getPreview,
@@ -163,11 +169,19 @@ export function ClientDetailDrawer({
 			}
 			title={title}
 			badge={
-				client ? (
-					<StatusBadge status={client.status} size="lg">
-						{STATUS_LABEL[client.status]}
-					</StatusBadge>
-				) : null
+				<>
+					{client ? (
+						<StatusBadge status={client.status} size="lg">
+							{STATUS_LABEL[client.status]}
+						</StatusBadge>
+					) : null}
+					{showReadOnly ? (
+						<Badge variant="secondary" className="gap-1">
+							<Lock className="h-3 w-3" />
+							Read Only
+						</Badge>
+					) : null}
+				</>
 			}
 			description={
 				data
@@ -184,7 +198,11 @@ export function ClientDetailDrawer({
 						mode="create"
 						initialValues={{ clientId: clientId ?? undefined }}
 						trigger={
-							<Button variant="outline" size="sm">
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={!can("tasks", "modify")}
+							>
 								<Plus className="size-3.5" />
 								Add Task
 							</Button>
@@ -202,19 +220,33 @@ export function ClientDetailDrawer({
 								email: contactEmail,
 							}}
 						>
-							<Button variant="outline" size="sm">
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={!can("inbox", "modify")}
+							>
 								<Mail className="size-3.5" />
 								Email
 							</Button>
 						</SendClientEmailPopover>
 					) : null}
 					{client && client.status === "archived" ? (
-						<Button variant="outline" size="sm" onClick={handleRestore}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleRestore}
+							disabled={!can("clients", "modify")}
+						>
 							<RotateCcw className="size-3.5" />
 							Restore
 						</Button>
 					) : client ? (
-						<Button variant="outline" size="sm" onClick={handleArchive}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleArchive}
+							disabled={!can("clients", "delete")}
+						>
 							<Archive className="size-3.5" />
 							Archive
 						</Button>
@@ -258,6 +290,7 @@ export function ClientDetailDrawer({
 								key={client.status}
 								clientId={client._id}
 								currentStatus={client.status}
+								canModify={canModify}
 							/>
 						</DrawerSection>
 					) : null}
@@ -377,9 +410,11 @@ export function ClientDetailDrawer({
 function StatusControl({
 	clientId,
 	currentStatus,
+	canModify,
 }: {
 	clientId: Id<"clients">;
 	currentStatus: ClientStatus;
+	canModify: boolean;
 }) {
 	const updateClient = useMutation(api.clients.update);
 	const toast = useToast();
@@ -406,6 +441,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as ClientStatus)}
+					disabled={!canModify}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />

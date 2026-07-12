@@ -32,6 +32,7 @@ import {
 	Percent,
 	Receipt,
 	Pencil,
+	Lock,
 	Check,
 	X,
 	FileText,
@@ -41,6 +42,7 @@ import {
 	Clock,
 } from "lucide-react";
 import Link from "next/link";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -113,6 +115,14 @@ export function InvoiceDetailSidebar({
 	const toast = useToast();
 	const updateInvoice = useMutation(api.invoices.update);
 
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	const canModify = can("invoices", "modify");
+	const showReadOnly = !permissionsLoading && !canModify;
+	// Editable rows get the interactive affordance; read-only rows sit flat.
+	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
+		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
+	}`;
+
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
@@ -129,6 +139,7 @@ export function InvoiceDetailSidebar({
 			: (invoice.status as InvoiceStatus);
 
 	const startEditing = (field: EditingField, currentValue: string) => {
+		if (!canModify) return;
 		setEditingField(field);
 		setEditValue(currentValue);
 	};
@@ -137,6 +148,7 @@ export function InvoiceDetailSidebar({
 		field: "dueDate",
 		currentTimestamp?: number
 	) => {
+		if (!canModify) return;
 		setEditingField(field);
 		setEditDateValue(
 			currentTimestamp ? new Date(currentTimestamp) : undefined
@@ -197,20 +209,30 @@ export function InvoiceDetailSidebar({
 		</div>
 	);
 
-	const renderPencil = () => (
-		<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto mt-0.5" />
-	);
+	// Shared pencil icon for non-editing rows (hidden entirely when read-only)
+	const renderPencil = () =>
+		canModify ? (
+			<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto mt-0.5" />
+		) : null;
 
 	return (
 		<div className="px-5 py-4">
 			{/* Record Details Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Record Details
-			</h3>
+			<div className="mb-3 flex items-center justify-between gap-2">
+				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+					Record Details
+				</h3>
+				{showReadOnly && (
+					<Badge variant="secondary" className="gap-1">
+						<Lock className="h-3 w-3" />
+						Read Only
+					</Badge>
+				)}
+			</div>
 			<div className="space-y-0">
 				{/* Status (editable) */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() =>
 						editingField !== "status" &&
 						startEditing("status", invoice.status)
@@ -266,7 +288,7 @@ export function InvoiceDetailSidebar({
 
 				{/* Due Date (editable) */}
 				<div
-					className="flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors group hover:bg-muted/50 cursor-pointer"
+					className={rowClass}
 					onClick={() =>
 						editingField !== "dueDate" &&
 						startEditingDate("dueDate", invoice.dueDate)

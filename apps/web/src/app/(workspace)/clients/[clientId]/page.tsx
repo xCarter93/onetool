@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -18,6 +19,7 @@ function ClientDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
 	const clientId = params.clientId as string;
+	const { can } = usePermissions();
 	const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 	const [isEmailSheetOpen, setIsEmailSheetOpen] = useState(false);
 	const [emailSheetMode, setEmailSheetMode] = useState<"new" | "reply">("new");
@@ -41,24 +43,31 @@ function ClientDetailPageContent() {
 		clientId: clientId as Id<"clients">,
 	});
 
-	// Fetch related data
-	const quotes = useQuery(api.quotes.list, {
-		clientId: clientId as Id<"clients">,
-	});
-	const projects = useQuery(api.projects.list, {
-		clientId: clientId as Id<"clients">,
-	});
-	const invoices = useQuery(api.invoices.list, {
-		clientId: clientId as Id<"clients">,
-	});
-	const clientTasks = useQuery(api.tasks.list, {
-		clientId: clientId as Id<"clients">,
-	});
+	// Fetch related data. Each list endpoint is gated and throws FORBIDDEN
+	// without the object's view grant, so skip it when the user can't see it.
+	const quotes = useQuery(
+		api.quotes.list,
+		can("quotes") ? { clientId: clientId as Id<"clients"> } : "skip"
+	);
+	const projects = useQuery(
+		api.projects.list,
+		can("projects") ? { clientId: clientId as Id<"clients"> } : "skip"
+	);
+	const invoices = useQuery(
+		api.invoices.list,
+		can("invoices") ? { clientId: clientId as Id<"clients"> } : "skip"
+	);
+	const clientTasks = useQuery(
+		api.tasks.list,
+		can("tasks") ? { clientId: clientId as Id<"clients"> } : "skip"
+	);
 
-	// Fetch email threads (grouped conversations) for this client
-	const clientThreads = useQuery(api.emailMessages.listThreadsByClient, {
-		clientId: clientId as Id<"clients">,
-	}) as EmailThreadSummary[] | undefined;
+	// Fetch email threads (grouped conversations) for this client. Gated on
+	// the inbox grant — skip without it to avoid a FORBIDDEN crash.
+	const clientThreads = useQuery(
+		api.emailMessages.listThreadsByClient,
+		can("inbox") ? { clientId: clientId as Id<"clients"> } : "skip"
+	) as EmailThreadSummary[] | undefined;
 
 	// Fetch activities for this client
 	const activities = useQuery(api.activities.getByEntity, {
@@ -77,11 +86,11 @@ function ClientDetailPageContent() {
 		clientContacts === undefined ||
 		clientProperties === undefined ||
 		primaryContact === undefined ||
-		quotes === undefined ||
-		projects === undefined ||
-		invoices === undefined ||
-		clientTasks === undefined ||
-		clientThreads === undefined
+		(can("quotes") && quotes === undefined) ||
+		(can("projects") && projects === undefined) ||
+		(can("invoices") && invoices === undefined) ||
+		(can("tasks") && clientTasks === undefined) ||
+		(can("inbox") && clientThreads === undefined)
 	) {
 		return (
 			<div className="relative pl-6 pt-8 pb-20">

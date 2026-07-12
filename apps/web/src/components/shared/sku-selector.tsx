@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -43,7 +44,9 @@ const formatCurrency = (amount: number) => {
 export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
 	const [open, setOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
-	const skus = useQuery(api.skus.list);
+	const { can } = usePermissions();
+	// Gated read — skip without the SKU catalog grant to avoid a FORBIDDEN crash.
+	const skus = useQuery(api.skus.list, can("skus") ? {} : "skip");
 
 	const filteredSKUs = React.useMemo(() => {
 		if (!skus) return [];
@@ -99,7 +102,7 @@ export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
 
 					{/* SKU List */}
 					<div className="max-h-[300px] overflow-y-auto bg-white dark:bg-gray-900">
-						{skus === undefined ? (
+						{can("skus") && skus === undefined ? (
 							<div className="p-4 text-center text-sm text-muted-foreground bg-white dark:bg-gray-900">
 								Loading SKUs...
 							</div>
