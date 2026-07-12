@@ -1,4 +1,5 @@
 import { createTool } from "@convex-dev/agent";
+import { ConvexError } from "convex/values";
 import { z } from "zod";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -363,7 +364,42 @@ interface SkuItem {
 // model can read the reason and correct its call.
 type WriteResult<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+// ConvexError.data can arrive (double-)JSON-stringified across function-call
+// boundaries; unwrap until it's an object.
+function forbiddenErrorData(e: unknown): Record<string, unknown> | null {
+	if (!(e instanceof ConvexError)) return null;
+	let data: unknown = e.data;
+	try {
+		while (typeof data === "string") data = JSON.parse(data);
+	} catch {
+		return null;
+	}
+	if (
+		typeof data === "object" &&
+		data !== null &&
+		(data as Record<string, unknown>).code === "FORBIDDEN"
+	) {
+		return data as Record<string, unknown>;
+	}
+	return null;
+}
+
+function noPermissionResult(data: Record<string, unknown>): {
+	error: "no_permission";
+	object: string | null;
+	message: string;
+} {
+	const object = typeof data.object === "string" ? data.object : null;
+	return {
+		error: "no_permission",
+		object,
+		message: `The user does not have permission to access ${object ?? "this area"}. Tell them an admin can grant access from the organization settings.`,
+	};
+}
+
 function writeError(e: unknown): { ok: false; error: string } {
+	const forbidden = forbiddenErrorData(e);
+	if (forbidden) return { ok: false, error: noPermissionResult(forbidden).message };
 	return { ok: false, error: e instanceof Error ? e.message : String(e) };
 }
 
@@ -1435,7 +1471,37 @@ export const describeSchema = createTool({
 	},
 });
 
-export const assistantTools = {
+// Permission denials become structured tool results instead of failing the
+// whole turn — the model tells the user they lack access to that area.
+function withPermissionFallback<T extends { execute?: unknown }>(tool: T): T {
+	const original = tool.execute;
+	if (typeof original !== "function") return tool;
+	return {
+		...tool,
+		execute: async (...args: unknown[]) => {
+			try {
+				return await original(...args);
+			} catch (e) {
+				const forbidden = forbiddenErrorData(e);
+				if (forbidden) return noPermissionResult(forbidden);
+				throw e;
+			}
+		},
+	} as T;
+}
+
+function withPermissionFallbackAll<T extends Record<string, { execute?: unknown }>>(
+	tools: T
+): T {
+	return Object.fromEntries(
+		Object.entries(tools).map(([name, tool]) => [
+			name,
+			withPermissionFallback(tool),
+		])
+	) as T;
+}
+
+export const assistantTools = withPermissionFallbackAll({
 	getSchedule,
 	getTasks,
 	getBusinessStats,
@@ -1466,4 +1532,4 @@ export const assistantTools = {
 	updateClient,
 	updateProject,
 	navigate,
-};
+});

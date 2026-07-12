@@ -98,6 +98,7 @@ import type * as orgCascade from "../orgCascade.js";
 import type * as organizationDocuments from "../organizationDocuments.js";
 import type * as organizations from "../organizations.js";
 import type * as payments from "../payments.js";
+import type * as permissions from "../permissions.js";
 import type * as portal_branding from "../portal/branding.js";
 import type * as portal_email from "../portal/email.js";
 import type * as portal_helpers from "../portal/helpers.js";
@@ -227,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   organizationDocuments: typeof organizationDocuments;
   organizations: typeof organizations;
   payments: typeof payments;
+  permissions: typeof permissions;
   "portal/branding": typeof portal_branding;
   "portal/email": typeof portal_email;
   "portal/helpers": typeof portal_helpers;

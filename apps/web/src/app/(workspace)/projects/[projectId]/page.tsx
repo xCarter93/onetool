@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
@@ -14,7 +15,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 
-export default function ProjectDetailPage() {
+function ProjectDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
 	const toast = useToast();
@@ -181,5 +182,13 @@ export default function ProjectDetailPage() {
 				approvedQuotes={approvedQuotes}
 			/>
 		</>
+	);
+}
+
+export default function ProjectDetailPage() {
+	return (
+		<PermissionGate object="projects">
+			<ProjectDetailPageContent />
+		</PermissionGate>
 	);
 }

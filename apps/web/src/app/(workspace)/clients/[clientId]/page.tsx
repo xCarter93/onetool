@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -13,7 +14,7 @@ import { ClientDetailHeader } from "@/app/(workspace)/clients/components/client-
 import { ClientDetailTabs } from "@/app/(workspace)/clients/components/client-detail-tabs";
 import { useState } from "react";
 
-export default function ClientDetailPage() {
+function ClientDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
 	const clientId = params.clientId as string;
@@ -188,5 +189,13 @@ export default function ClientDetailPage() {
 				}}
 			/>
 		</>
+	);
+}
+
+export default function ClientDetailPage() {
+	return (
+		<PermissionGate object="clients">
+			<ClientDetailPageContent />
+		</PermissionGate>
 	);
 }

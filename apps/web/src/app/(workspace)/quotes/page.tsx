@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -257,7 +258,7 @@ const createColumns = (
 	},
 ];
 
-export default function QuotesPage() {
+function QuotesPageContent() {
 	const router = useRouter();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -847,5 +848,13 @@ export default function QuotesPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function QuotesPage() {
+	return (
+		<PermissionGate object="quotes">
+			<QuotesPageContent />
+		</PermissionGate>
 	);
 }

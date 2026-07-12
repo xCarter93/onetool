@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
@@ -66,7 +67,7 @@ const formatCurrency = (amount: number) => {
 	}).format(amount);
 };
 
-export default function InvoiceLineEditorPage() {
+function InvoiceLineEditorPageContent() {
 	const router = useRouter();
 	const params = useParams();
 	const toast = useToast();
@@ -606,6 +607,14 @@ export default function InvoiceLineEditorPage() {
 				</div>
 			</div>
 		</div>
+	);
+}
+
+export default function InvoiceLineEditorPage() {
+	return (
+		<PermissionGate object="invoices">
+			<InvoiceLineEditorPageContent />
+		</PermissionGate>
 	);
 }
 

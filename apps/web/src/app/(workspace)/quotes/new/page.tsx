@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
@@ -31,7 +32,7 @@ interface Project {
 	clientId: Id<"clients">;
 }
 
-export default function NewQuotePage() {
+function NewQuotePageContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
@@ -457,5 +458,13 @@ export default function NewQuotePage() {
 				]}
 			/>
 		</div>
+	);
+}
+
+export default function NewQuotePage() {
+	return (
+		<PermissionGate object="quotes">
+			<NewQuotePageContent />
+		</PermissionGate>
 	);
 }

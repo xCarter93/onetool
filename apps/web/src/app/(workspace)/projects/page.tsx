@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -254,7 +255,7 @@ const createColumns = (
 	},
 ];
 
-export default function ProjectsPage() {
+function ProjectsPageContent() {
 	const router = useRouter();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -809,5 +810,13 @@ export default function ProjectsPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function ProjectsPage() {
+	return (
+		<PermissionGate object="projects">
+			<ProjectsPageContent />
+		</PermissionGate>
 	);
 }

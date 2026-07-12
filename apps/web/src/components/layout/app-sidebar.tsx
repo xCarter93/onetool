@@ -43,6 +43,8 @@ import {
 } from "@/hooks/use-feature-access";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { usePermissions } from "@/hooks/use-permissions";
+import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import {
 	TourElement,
@@ -178,6 +180,28 @@ const data = {
 	],
 };
 
+// Top-level nav item title -> permission object. Titles with no entry (Home,
+// Settings) have no permission object of their own and fall back to
+// admin-only visibility below.
+const NAV_ITEM_PERMISSIONS: Partial<Record<string, PermissionObject>> = {
+	Inbox: "inbox",
+	Clients: "clients",
+	Projects: "projects",
+	Tasks: "tasks",
+	Quotes: "quotes",
+	Invoices: "invoices",
+	Reports: "reports",
+	Automations: "automations",
+	Community: "community",
+};
+
+// Settings sub-item title -> permission object (Overview/Business Info/Payments
+// have no object of their own and stay admin-only).
+const SETTINGS_SUBITEM_PERMISSIONS: Partial<Record<string, PermissionObject>> = {
+	SKUs: "skus",
+	Documents: "orgDocuments",
+};
+
 function SidebarBrandHeader() {
 	const { state } = useSidebar();
 	const isCollapsed = state === "collapsed";
@@ -235,6 +259,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		isOrgSwitching || inboxUnread === undefined ? 0 : inboxUnread;
 	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
 	const { isAdmin, isMember } = useRoleAccess();
+	const { can, hasFullAccess, isLoading: permissionsLoading } = usePermissions();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled("workflow-automation-access");
 
@@ -313,9 +338,32 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		return pathname.startsWith(navUrl);
 	};
 
+	// Top-level nav item visibility. While permissions are still loading, fall
+	// back to the old role-based gate (isMember -> Projects/Tasks only) so the
+	// sidebar doesn't flash once the granular grants resolve.
+	const canViewNavItem = (title: string): boolean => {
+		if (!hasOrganization) return true;
+		if (permissionsLoading) {
+			return !isMember || title === "Projects" || title === "Tasks";
+		}
+		const permissionObject = NAV_ITEM_PERMISSIONS[title];
+		if (permissionObject) return can(permissionObject);
+		// Unmapped items (Home, Settings) were admin-only under the old gate.
+		return hasFullAccess;
+	};
+
+	const canViewSettingsSubItem = (title: string): boolean => {
+		if (!hasOrganization) return true;
+		if (permissionsLoading) return !isMember;
+		const permissionObject = SETTINGS_SUBITEM_PERMISSIONS[title];
+		if (permissionObject) return can(permissionObject);
+		// Overview/Business Info/Payments have no permission object; admin-only.
+		return hasFullAccess;
+	};
+
 	// Process each group's items with dynamic isActive property
 	const processItem = (item: (typeof data.navGroups)[number]["items"][number]) => {
-		const subItems = item.items?.map((subItem) => {
+		const subItems = item.items?.filter((subItem) => canViewSettingsSubItem(subItem.title)).map((subItem) => {
 			const [subItemPath, subItemParams] = subItem.url.split("?");
 			const currentPath = pathname;
 			const currentParams = searchParams.toString();
@@ -380,14 +428,28 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const navigationGroups = data.navGroups.map((group) => ({
 		label: group.label,
 		items: group.items
+			.map(processItem)
 			.filter((item) => {
-				if (isMember && hasOrganization) {
-					return item.title === "Projects" || item.title === "Tasks";
+				if (!hasOrganization) return true;
+				// Settings has no permission object of its own — keep it visible
+				// if any sub-item (e.g. a granted SKUs/Documents grant) survived
+				// filtering, even when the admin-only gate itself fails.
+				if (item.title === "Settings") {
+					return canViewNavItem(item.title) || (item.items?.length ?? 0) > 0;
 				}
-				return true;
-			})
-			.map(processItem),
+				return canViewNavItem(item.title);
+			}),
 	})).filter((group) => group.items.length > 0);
+
+	// Quick-create actions gated per object ("modify" = can create). Falls back
+	// to the old isAdmin gate while permissions are loading.
+	const quickActionAccess = {
+		client: permissionsLoading ? isAdmin : can("clients", "modify"),
+		project: permissionsLoading ? isAdmin : can("projects", "modify"),
+		quote: permissionsLoading ? isAdmin : can("quotes", "modify"),
+		task: permissionsLoading ? isAdmin : can("tasks", "modify"),
+	};
+	const showQuickActions = Object.values(quickActionAccess).some(Boolean);
 
 	return (
 		<Sidebar collapsible="icon" {...props}>
@@ -413,7 +475,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 				>
 					<NavMain
 						groups={navigationGroups}
-						showQuickActions={isAdmin}
+						showQuickActions={showQuickActions}
+						quickActionAccess={quickActionAccess}
 						canCreateClient={canCreateClient}
 						clientLimitReason={clientLimitReason}
 						clientCurrentUsage={clientCurrentUsage}

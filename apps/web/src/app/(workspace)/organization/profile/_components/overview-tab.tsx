@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
 	useOrganization,
 	useClerk,
@@ -10,11 +10,19 @@ import {
 	isClerkAPIResponseError,
 	isReverificationCancelledError,
 } from "@clerk/nextjs/errors";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
+import {
+	ColumnDef,
+	getCoreRowModel,
+	getSortedRowModel,
+	SortingState,
+	useReactTable,
+} from "@tanstack/react-table";
 import {
 	Lock,
 	Mail,
+	ShieldCheck,
 	Upload,
 	UserPlus,
 	Trash2,
@@ -46,6 +54,11 @@ import {
 	FrameFooter,
 } from "@/components/reui/frame";
 import {
+	DataGrid,
+	DataGridContainer,
+} from "@/components/reui/data-grid/data-grid";
+import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import {
 	Select,
 	SelectTrigger,
 	SelectValue,
@@ -60,6 +73,7 @@ import {
 	ItemDescription,
 	ItemActions,
 } from "@/components/ui/item";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -96,6 +110,16 @@ function getInitials(name: string, email?: string) {
 	if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
 	if (src.length >= 2) return src.slice(0, 2).toUpperCase();
 	return src.slice(0, 1).toUpperCase() || "?";
+}
+
+function memberDisplayName(member: {
+	publicUserData?:
+		| { firstName?: string | null; lastName?: string | null; identifier?: string | null }
+		| null;
+}) {
+	const info = member.publicUserData;
+	const name = `${info?.firstName ?? ""} ${info?.lastName ?? ""}`.trim();
+	return name || info?.identifier || "";
 }
 
 function clerkErr(err: unknown, fallback = "Something went wrong.") {
@@ -212,6 +236,240 @@ export function OverviewTab() {
 		saveLabel: "Save changes",
 	});
 
+	// Per-member access summary for the Access chip + "Manage access" link,
+	// joined to Clerk rows by externalId (Clerk user id). Admin-only surface.
+	const accessRows = useQuery(
+		api.permissions.orgMemberAccess,
+		isAdmin ? {} : "skip",
+	);
+	type AccessRow = NonNullable<typeof accessRows>[number];
+	const accessByExternalId = useMemo(() => {
+		const map = new Map<string, AccessRow>();
+		accessRows?.forEach((row) => map.set(row.externalId, row));
+		return map;
+	}, [accessRows]);
+
+	const handleRoleChange = async (
+		member: MemberRow,
+		role: string,
+	) => {
+		if (member.role === role) return;
+		setPendingMemberId(member.id);
+		try {
+			await member.update({ role });
+			await memberships?.revalidate?.();
+			toast.success("Role updated", "The member's role has been changed.");
+		} catch (error) {
+			toast.error("Couldn't update role", clerkErr(error));
+		} finally {
+			setPendingMemberId(null);
+		}
+	};
+
+	const handleRemoveMember = async (member: MemberRow) => {
+		const confirmed = await confirmDialog({
+			title: "Remove member",
+			message: `Remove ${memberDisplayName(member) || "this member"} from the organization? They'll lose access immediately.`,
+			confirmLabel: "Remove member",
+			cancelLabel: "Cancel",
+			variant: "destructive",
+		});
+		if (!confirmed) return;
+		setPendingMemberId(member.id);
+		try {
+			await member.destroy();
+			await memberships?.revalidate?.();
+			toast.success("Member removed", "They no longer have access.");
+		} catch (error) {
+			toast.error("Couldn't remove member", clerkErr(error));
+		} finally {
+			setPendingMemberId(null);
+		}
+	};
+
+	const members = memberships?.data ?? [];
+
+	const memberColumns = useMemo<ColumnDef<MemberRow>[]>(() => {
+		const base: ColumnDef<MemberRow>[] = [
+			{
+				id: "member",
+				accessorFn: (member) => memberDisplayName(member),
+				header: "Member",
+				cell: ({ row }) => {
+					const member = row.original;
+					const info = member.publicUserData;
+					const name = memberDisplayName(member);
+					const email = info?.identifier ?? "";
+					const isSelf = member.id === membership?.id;
+					return (
+						<div className="flex items-center gap-3">
+							<Avatar className="size-8">
+								{info?.imageUrl ? (
+									<AvatarImage src={info.imageUrl} alt="" />
+								) : null}
+								<AvatarFallback className="text-xs font-medium">
+									{getInitials(name, email)}
+								</AvatarFallback>
+							</Avatar>
+							<div className="flex flex-col">
+								<span className="text-sm font-medium text-foreground">
+									{name}
+									{isSelf && (
+										<span className="font-normal text-muted-foreground">
+											{" "}
+											(you)
+										</span>
+									)}
+								</span>
+								{email && name !== email && (
+									<span className="text-xs text-muted-foreground">{email}</span>
+								)}
+							</div>
+						</div>
+					);
+				},
+			},
+			{
+				id: "role",
+				header: "Role",
+				cell: ({ row }) => {
+					const member = row.original;
+					const isSelf = member.id === membership?.id;
+					const access = accessByExternalId.get(member.publicUserData?.userId ?? "");
+					const isOwnerRow = access?.isOwner ?? false;
+					const rowBusy = pendingMemberId === member.id;
+					if (isAdmin && !isSelf && !isOwnerRow) {
+						return (
+							<Select
+								value={member.role}
+								onValueChange={(value) => {
+									if (value) handleRoleChange(member, value);
+								}}
+								disabled={rowBusy}
+							>
+								<SelectTrigger size="sm" className="w-28">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{ROLE_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						);
+					}
+					if (isOwnerRow) {
+						return (
+							<Badge variant="primary-light" radius="full" size="lg">
+								<Lock className="h-3 w-3" aria-hidden="true" /> Owner
+							</Badge>
+						);
+					}
+					return (
+						<Badge
+							variant={member.role === ADMIN_ROLE ? "primary-light" : "secondary"}
+							radius="full"
+							size="lg"
+						>
+							{roleLabel(member.role)}
+						</Badge>
+					);
+				},
+			},
+		];
+
+		if (!isAdmin) return base;
+
+		return [
+			...base,
+			{
+				id: "access",
+				header: "Access",
+				cell: ({ row }) => {
+					const member = row.original;
+					const access = accessByExternalId.get(member.publicUserData?.userId ?? "");
+					if (accessRows === undefined) {
+						return <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />;
+					}
+					if (!access) {
+						return <span className="text-xs text-muted-foreground">—</span>;
+					}
+					const label =
+						access.isOwner || access.isAdmin
+							? "Full access"
+							: access.hasCustomPermissions
+								? "Custom"
+								: "Default";
+					return (
+						<Badge variant="outline" radius="full" size="lg">
+							{label}
+						</Badge>
+					);
+				},
+			},
+			{
+				id: "actions",
+				header: "",
+				cell: ({ row }) => {
+					const member = row.original;
+					const isSelf = member.id === membership?.id;
+					if (isSelf) return null;
+					const rowBusy = pendingMemberId === member.id;
+					const access = accessByExternalId.get(member.publicUserData?.userId ?? "");
+					const isOwnerRow = access?.isOwner ?? false;
+					const convexUserId = access?.userId;
+					const name = memberDisplayName(member) || "this member";
+					return (
+						<div
+							className="flex items-center justify-end gap-2"
+							onClick={(e) => e.stopPropagation()}
+						>
+							{!isOwnerRow && convexUserId && (
+								<Button
+									variant="outline"
+									size="icon-sm"
+									aria-label={`Manage access for ${name}`}
+									onClick={() =>
+										router.push(`/organization/profile/members/${convexUserId}`)
+									}
+								>
+									<ShieldCheck className="h-4 w-4" />
+								</Button>
+							)}
+							<Button
+								variant="outline"
+								size="icon-sm"
+								aria-label="Remove member"
+								disabled={rowBusy}
+								onClick={() => handleRemoveMember(member)}
+								className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+							>
+								{rowBusy ? (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								) : (
+									<Trash2 className="h-4 w-4" />
+								)}
+							</Button>
+						</div>
+					);
+				},
+			},
+		];
+	}, [isAdmin, membership?.id, accessByExternalId, accessRows, pendingMemberId, router]);
+
+	const [memberSorting, setMemberSorting] = useState<SortingState>([]);
+	const memberTable = useReactTable({
+		data: members,
+		columns: memberColumns,
+		state: { sorting: memberSorting },
+		onSortingChange: setMemberSorting,
+		getRowId: (member) => member.id,
+		getCoreRowModel: getCoreRowModel(),
+		getSortedRowModel: getSortedRowModel(),
+	});
+
 	if (!isLoaded || !organization) {
 		return (
 			<div className="flex items-center justify-center py-16">
@@ -255,48 +513,6 @@ export function OverviewTab() {
 		} finally {
 			setUploadingLogo(false);
 			if (logoInputRef.current) logoInputRef.current.value = "";
-		}
-	};
-
-	const handleRoleChange = async (
-		member: MemberRow,
-		role: string,
-	) => {
-		if (member.role === role) return;
-		setPendingMemberId(member.id);
-		try {
-			await member.update({ role });
-			await memberships?.revalidate?.();
-			toast.success("Role updated", "The member's role has been changed.");
-		} catch (error) {
-			toast.error("Couldn't update role", clerkErr(error));
-		} finally {
-			setPendingMemberId(null);
-		}
-	};
-
-	const handleRemoveMember = async (member: MemberRow) => {
-		const label =
-			`${member.publicUserData?.firstName ?? ""} ${member.publicUserData?.lastName ?? ""}`.trim() ||
-			member.publicUserData?.identifier ||
-			"this member";
-		const confirmed = await confirmDialog({
-			title: "Remove member",
-			message: `Remove ${label} from the organization? They'll lose access immediately.`,
-			confirmLabel: "Remove member",
-			cancelLabel: "Cancel",
-			variant: "destructive",
-		});
-		if (!confirmed) return;
-		setPendingMemberId(member.id);
-		try {
-			await member.destroy();
-			await memberships?.revalidate?.();
-			toast.success("Member removed", "They no longer have access.");
-		} catch (error) {
-			toast.error("Couldn't remove member", clerkErr(error));
-		} finally {
-			setPendingMemberId(null);
 		}
 	};
 
@@ -386,7 +602,6 @@ export function OverviewTab() {
 		}
 	};
 
-	const members = memberships?.data ?? [];
 	const pendingInvites = (invitations?.data ?? []).filter(
 		(invitation) => invitation.status === "pending",
 	);
@@ -516,121 +731,36 @@ export function OverviewTab() {
 						</Badge>
 					</FrameHeader>
 
-					<FramePanel className="p-0">
-						{members.length === 0 ? (
-							<p className="px-4 py-5 text-sm text-muted-foreground">
-								No members yet.
-							</p>
-						) : (
-							<div className="divide-y divide-border">
-								{members.map((member) => {
-									const info = member.publicUserData;
-									const name =
-										`${info?.firstName ?? ""} ${info?.lastName ?? ""}`.trim();
-									const email = info?.identifier ?? "";
-									const isSelf = member.id === membership?.id;
-									const rowBusy = pendingMemberId === member.id;
-									return (
-										<Item key={member.id} size="sm" className="px-4 py-3.5">
-											<ItemMedia>
-												<Avatar className="size-9">
-													{info?.imageUrl ? (
-														<AvatarImage src={info.imageUrl} alt="" />
-													) : null}
-													<AvatarFallback className="text-xs font-medium">
-														{getInitials(name, email)}
-													</AvatarFallback>
-												</Avatar>
-											</ItemMedia>
-											<ItemContent>
-												<ItemTitle>
-													{name || email}
-													{isSelf && (
-														<span className="font-normal text-muted-foreground">
-															{" "}
-															(you)
-														</span>
-													)}
-												</ItemTitle>
-												{email && name && (
-													<ItemDescription>{email}</ItemDescription>
-												)}
-											</ItemContent>
-											<ItemActions>
-												{isAdmin && !isSelf ? (
-													<>
-														<Select
-															value={member.role}
-															onValueChange={(value) => {
-																if (value) handleRoleChange(member, value);
-															}}
-															disabled={rowBusy}
-														>
-															<SelectTrigger size="sm" className="w-28">
-																<SelectValue />
-															</SelectTrigger>
-															<SelectContent>
-																{ROLE_OPTIONS.map((option) => (
-																	<SelectItem
-																		key={option.value}
-																		value={option.value}
-																	>
-																		{option.label}
-																	</SelectItem>
-																))}
-															</SelectContent>
-														</Select>
-														<Button
-															variant="outline"
-															size="icon-sm"
-															aria-label="Remove member"
-															disabled={rowBusy}
-															onClick={() => handleRemoveMember(member)}
-															className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-														>
-															{rowBusy ? (
-																<Loader2 className="h-4 w-4 animate-spin" />
-															) : (
-																<Trash2 className="h-4 w-4" />
-															)}
-														</Button>
-													</>
-												) : (
-													<Badge
-														variant={
-															member.role === ADMIN_ROLE
-																? "primary-light"
-																: "secondary"
-														}
-														radius="full"
-														size="lg"
-													>
-														{roleLabel(member.role)}
-													</Badge>
-												)}
-											</ItemActions>
-										</Item>
-									);
-								})}
+					<DataGrid
+						table={memberTable}
+						recordCount={members.length}
+						emptyMessage="No members yet."
+						tableLayout={{ width: "auto", headerBackground: true }}
+					>
+						<FramePanel className="p-0">
+							<div className="overflow-x-auto">
+								<DataGridContainer className="rounded-lg border">
+									<DataGridTable />
+								</DataGridContainer>
 							</div>
-						)}
-					</FramePanel>
+						</FramePanel>
 
-					{memberships?.hasNextPage && (
-						<FrameFooter className="items-center">
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => memberships.fetchNext?.()}
-								disabled={memberships.isFetching}
-							>
-								{memberships.isFetching && (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								)}
-								Load more
-							</Button>
-						</FrameFooter>
-					)}
+						{memberships?.hasNextPage && (
+							<FrameFooter className="items-center">
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => memberships.fetchNext?.()}
+									disabled={memberships.isFetching}
+								>
+									{memberships.isFetching && (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									)}
+									Load more
+								</Button>
+							</FrameFooter>
+						)}
+					</DataGrid>
 				</Frame>
 
 				{/* Invitations (admins only) */}
@@ -773,61 +903,67 @@ export function OverviewTab() {
 					</FrameDescription>
 				</FrameHeader>
 
-				<FramePanel className="divide-y divide-destructive/20 border-destructive/20 bg-destructive/[0.03] p-0">
-					<Item size="sm" className="px-[22px] py-4">
-						<ItemContent>
-							<ItemTitle>Leave organization</ItemTitle>
-							<ItemDescription>
-								Remove yourself from this organization. You&apos;ll lose access
-								to its data.
-							</ItemDescription>
-						</ItemContent>
-						<ItemActions>
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={handleLeave}
-								disabled={leaving}
-								className="text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-							>
-								{leaving ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<LogOut className="h-4 w-4" />
-								)}
-								Leave
-							</Button>
-						</ItemActions>
-					</Item>
-
-					{isAdmin && (
-						<Item size="sm" className="px-[22px] py-4">
-							<ItemContent>
-								<ItemTitle className="text-destructive">
-									Delete organization
-								</ItemTitle>
-								<ItemDescription>
-									Permanently delete this organization and all of its data. This
-									cannot be undone.
-								</ItemDescription>
-							</ItemContent>
-							<ItemActions>
+				<FramePanel className="border-destructive/20 bg-destructive/[0.03] p-0!">
+					<ul className="flex flex-col">
+						<li>
+							<div className="flex items-center gap-3 px-[22px] py-4">
+								<div className="flex min-w-0 flex-1 flex-col gap-1">
+									<p className="text-sm font-medium text-foreground">
+										Leave organization
+									</p>
+									<p className="text-xs leading-4 text-muted-foreground">
+										Remove yourself from this organization. You&apos;ll lose
+										access to its data.
+									</p>
+								</div>
 								<Button
-									variant="destructive"
+									variant="outline"
 									size="sm"
-									onClick={handleDelete}
-									disabled={deleting}
+									onClick={handleLeave}
+									disabled={leaving}
+									className="shrink-0 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
 								>
-									{deleting ? (
+									{leaving ? (
 										<Loader2 className="h-4 w-4 animate-spin" />
 									) : (
-										<Trash2 className="h-4 w-4" />
+										<LogOut className="h-4 w-4" />
 									)}
-									Delete
+									Leave
 								</Button>
-							</ItemActions>
-						</Item>
-					)}
+							</div>
+							{isAdmin && <Separator className="bg-destructive/20" />}
+						</li>
+
+						{isAdmin && (
+							<li>
+								<div className="flex items-center gap-3 px-[22px] py-4">
+									<div className="flex min-w-0 flex-1 flex-col gap-1">
+										<p className="text-sm font-medium text-destructive">
+											Delete organization
+										</p>
+										<p className="text-xs leading-4 text-muted-foreground">
+											Permanently delete this organization and all of its data.
+											This cannot be undone.
+										</p>
+									</div>
+									<Button
+										variant="destructive"
+										size="sm"
+										onClick={handleDelete}
+										disabled={deleting}
+										className="shrink-0"
+									>
+										{deleting ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<Trash2 className="h-4 w-4" />
+										)}
+										Delete
+									</Button>
+								</div>
+							</li>
+						)}
+					</ul>
 				</FramePanel>
 			</Frame>
 		</div>

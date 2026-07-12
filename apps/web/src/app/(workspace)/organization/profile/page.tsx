@@ -8,14 +8,18 @@ import {
 	CreditCard,
 	FileText,
 	LayoutGrid,
+	Lock,
 	ShieldCheck,
 	Tags,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
+import { EmptyState } from "@/components/domain/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { usePermissions } from "@/hooks/use-permissions";
+import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import { useOrgOwner } from "./_hooks/use-org-owner";
 import {
 	SettingsSaveProvider,
@@ -42,6 +46,16 @@ const TAB_VALUES = [
 type TabValue = (typeof TAB_VALUES)[number];
 
 const PREMIUM_TABS: readonly TabValue[] = ["payments", "documents", "skus"];
+
+// Granular-permission gating per tab (§5.4); tabs absent here are role/premium-gated only.
+const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
+	documents: "orgDocuments",
+	skus: "skus",
+};
+
+// Stripe payouts stay role-gated (no matrix object in v1); Overview and
+// Business Info remain viewable read-only for members.
+const ADMIN_TABS: readonly TabValue[] = ["payments"];
 
 const isTabValue = (value: string): value is TabValue =>
 	TAB_VALUES.includes(value as TabValue);
@@ -108,6 +122,7 @@ export default function OrganizationProfilePage() {
 	const searchParams = useSearchParams();
 	const toast = useToast();
 	const { hasPremiumAccess, isLoading: featureLoading } = useFeatureAccess();
+	const { can, hasFullAccess, isLoading: permsLoading } = usePermissions();
 	const { organization, isLoading } = useOrgOwner();
 
 	// Get active tab from search params
@@ -121,6 +136,13 @@ export default function OrganizationProfilePage() {
 	// the durable boundary must live in the backend.)
 	const deniedPremium =
 		!featureLoading && PREMIUM_TABS.includes(activeTab) && !hasPremiumAccess;
+	const tabPermission = TAB_PERMISSIONS[activeTab];
+	// Role/grant denials render an in-place no-access panel (no redirect, no
+	// error toast) — pasting ?tab=payments as a member shows the empty state.
+	const deniedAccess =
+		!permsLoading &&
+		((ADMIN_TABS.includes(activeTab) && !hasFullAccess) ||
+			(tabPermission !== undefined && !can(tabPermission)));
 	const renderTab: TabValue = deniedPremium ? "overview" : activeTab;
 
 	React.useEffect(() => {
@@ -142,6 +164,15 @@ export default function OrganizationProfilePage() {
 				return;
 			}
 
+			// Role/grant-locked tabs don't navigate; the rail already shows the lock.
+			if (!permsLoading && ADMIN_TABS.includes(value) && !hasFullAccess) {
+				return;
+			}
+			const permission = TAB_PERMISSIONS[value];
+			if (permission !== undefined && !permsLoading && !can(permission)) {
+				return;
+			}
+
 			// Use search params for tab navigation
 			const params = new URLSearchParams();
 			if (value !== "overview") {
@@ -153,7 +184,7 @@ export default function OrganizationProfilePage() {
 					: `/organization/profile?${params.toString()}`;
 			router.push(newUrl);
 		},
-		[router, hasPremiumAccess, toast],
+		[router, hasPremiumAccess, toast, can, permsLoading, hasFullAccess],
 	);
 
 	const navItems: SettingsNavItem[] = React.useMemo(
@@ -175,24 +206,25 @@ export default function OrganizationProfilePage() {
 				label: "Payments",
 				sublabel: "Stripe & payouts",
 				icon: CreditCard,
-				locked: !hasPremiumAccess,
+				locked: !hasPremiumAccess || (!permsLoading && !hasFullAccess),
 			},
 			{
 				value: "documents",
 				label: "Documents",
 				sublabel: "Quote & invoice files",
 				icon: FileText,
-				locked: !hasPremiumAccess,
+				locked:
+					!hasPremiumAccess || (!permsLoading && !can("orgDocuments")),
 			},
 			{
 				value: "skus",
 				label: "SKUs",
 				sublabel: "Reusable line items",
 				icon: Tags,
-				locked: !hasPremiumAccess,
+				locked: !hasPremiumAccess || (!permsLoading && !can("skus")),
 			},
 		],
-		[hasPremiumAccess],
+		[hasPremiumAccess, can, permsLoading, hasFullAccess],
 	);
 
 	if (isLoading) {
@@ -265,11 +297,28 @@ export default function OrganizationProfilePage() {
 								/>
 							</div>
 							<div className="min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8">
-								{renderTab === "overview" && <OverviewTab />}
-								{renderTab === "business" && <BusinessInfoTab />}
-								{renderTab === "payments" && <PaymentsTab />}
-								{renderTab === "documents" && <DocumentsTab />}
-								{renderTab === "skus" && <SKUsTab />}
+								{deniedAccess ? (
+									<div className="flex min-h-[40vh] items-center justify-center">
+										<EmptyState
+											size="md"
+											icon={<Lock className="h-6 w-6" aria-hidden="true" />}
+											title="You don't have access to this area"
+											description={
+												ADMIN_TABS.includes(activeTab)
+													? "Only organization admins can access payment settings."
+													: "Ask an organization admin to grant you access from the team settings."
+											}
+										/>
+									</div>
+								) : (
+									<>
+										{renderTab === "overview" && <OverviewTab />}
+										{renderTab === "business" && <BusinessInfoTab />}
+										{renderTab === "payments" && <PaymentsTab />}
+										{renderTab === "documents" && <DocumentsTab />}
+										{renderTab === "skus" && <SKUsTab />}
+									</>
+								)}
 							</div>
 						</div>
 					</div>

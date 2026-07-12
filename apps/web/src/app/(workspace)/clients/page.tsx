@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -365,7 +366,7 @@ function ArchivedEmptyState() {
 	);
 }
 
-export default function ClientsPage() {
+function ClientsPageContent() {
 	const router = useRouter();
 	const toast = useToast();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
@@ -1018,5 +1019,13 @@ export default function ClientsPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function ClientsPage() {
+	return (
+		<PermissionGate object="clients">
+			<ClientsPageContent />
+		</PermissionGate>
 	);
 }

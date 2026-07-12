@@ -1,6 +1,7 @@
 "use client";
 
 import { ProjectOnboardingForm } from "@/app/(workspace)/projects/components/project-onboarding-form";
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -14,8 +15,10 @@ function ProjectNewContent() {
 
 export default function NewProjectPage() {
 	return (
-		<Suspense fallback={<div>Loading...</div>}>
-			<ProjectNewContent />
-		</Suspense>
+		<PermissionGate object="projects">
+			<Suspense fallback={<div>Loading...</div>}>
+				<ProjectNewContent />
+			</Suspense>
+		</PermissionGate>
 	);
 }

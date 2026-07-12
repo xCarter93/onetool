@@ -119,9 +119,24 @@ function NavCollapsible({
 	return <Collapsible open={open} onOpenChange={setOpen} {...props} />;
 }
 
+type QuickActionAccess = {
+	client: boolean;
+	project: boolean;
+	quote: boolean;
+	task: boolean;
+};
+
+const DEFAULT_QUICK_ACTION_ACCESS: QuickActionAccess = {
+	client: true,
+	project: true,
+	quote: true,
+	task: true,
+};
+
 export function NavMain({
 	groups,
 	showQuickActions = true,
+	quickActionAccess = DEFAULT_QUICK_ACTION_ACCESS,
 	canCreateClient = true,
 	clientLimitReason,
 	clientCurrentUsage,
@@ -129,6 +144,7 @@ export function NavMain({
 }: {
 	groups: NavGroup[];
 	showQuickActions?: boolean;
+	quickActionAccess?: QuickActionAccess;
 	canCreateClient?: boolean;
 	clientLimitReason?: string;
 	clientCurrentUsage?: number;
@@ -272,7 +288,7 @@ export function NavMain({
 										    a disabled button hosting the upgrade tooltip — a disabled
 										    control can't act as the menu item / tooltip trigger, so it
 										    needs the extra wrapper. */}
-										{canCreateClient ? (
+										{quickActionAccess.client && (canCreateClient ? (
 											<DropdownMenuItem
 												render={
 													<Link href="/clients/new" className={quickActionRowClass} />
@@ -330,53 +346,59 @@ export function NavMain({
 													</div>
 												</TooltipContent>
 											</Tooltip>
+										))}
+										{quickActionAccess.project && (
+											<DropdownMenuItem
+												render={
+													<Link href="/projects/new" className={quickActionRowClass} />
+												}
+												className="p-0 focus:bg-muted/60"
+												onClick={() => setOpenQuickActions(false)}
+											>
+												<QuickActionContent
+													icon={FolderPlus}
+													iconClassName="bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
+													title="New Project"
+													description="Start a new project for a client"
+												/>
+											</DropdownMenuItem>
 										)}
-										<DropdownMenuItem
-											render={
-												<Link href="/projects/new" className={quickActionRowClass} />
-											}
-											className="p-0 focus:bg-muted/60"
-											onClick={() => setOpenQuickActions(false)}
-										>
-											<QuickActionContent
-												icon={FolderPlus}
-												iconClassName="bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
-												title="New Project"
-												description="Start a new project for a client"
-											/>
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											render={
-												<Link href="/quotes/new" className={quickActionRowClass} />
-											}
-											className="p-0 focus:bg-muted/60"
-											onClick={() => setOpenQuickActions(false)}
-										>
-											<QuickActionContent
-												icon={FilePlus}
-												iconClassName="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
-												title="New Quote"
-												description="Create a quote for a project"
-											/>
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											render={
-												<div className={cn(quickActionRowClass, "cursor-pointer")} />
-											}
-											className="p-0 focus:bg-muted/60"
-											onClick={(e) => {
-												e.preventDefault();
-												setTaskSheetOpen(true);
-												setOpenQuickActions(false);
-											}}
-										>
-											<QuickActionContent
-												icon={CheckSquare}
-												iconClassName="bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
-												title="New Task"
-												description="Add a task to your schedule"
-											/>
-										</DropdownMenuItem>
+										{quickActionAccess.quote && (
+											<DropdownMenuItem
+												render={
+													<Link href="/quotes/new" className={quickActionRowClass} />
+												}
+												className="p-0 focus:bg-muted/60"
+												onClick={() => setOpenQuickActions(false)}
+											>
+												<QuickActionContent
+													icon={FilePlus}
+													iconClassName="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+													title="New Quote"
+													description="Create a quote for a project"
+												/>
+											</DropdownMenuItem>
+										)}
+										{quickActionAccess.task && (
+											<DropdownMenuItem
+												render={
+													<div className={cn(quickActionRowClass, "cursor-pointer")} />
+												}
+												className="p-0 focus:bg-muted/60"
+												onClick={(e) => {
+													e.preventDefault();
+													setTaskSheetOpen(true);
+													setOpenQuickActions(false);
+												}}
+											>
+												<QuickActionContent
+													icon={CheckSquare}
+													iconClassName="bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+													title="New Task"
+													description="Add a task to your schedule"
+												/>
+											</DropdownMenuItem>
+										)}
 									</div>
 								</DropdownMenuContent>
 							</DropdownMenu>

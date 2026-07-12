@@ -2,6 +2,7 @@
 
 import React from "react";
 import { SignedIn } from "@clerk/nextjs";
+import { PermissionGate } from "@/components/domain/permission-gate";
 import {
 	SubscriptionDetailsButton,
 	CheckoutButton,
@@ -32,7 +33,7 @@ import {
 	Headphones,
 } from "lucide-react";
 
-export default function SubscriptionPage() {
+function SubscriptionPageContent() {
 	const router = useRouter();
 	const { hasPremiumAccess, isLoading, hasOrganization } = useFeatureAccess();
 	const { resolvedTheme } = useTheme();
@@ -470,5 +471,13 @@ export default function SubscriptionPage() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+export default function SubscriptionPage() {
+	return (
+		<PermissionGate object="billing">
+			<SubscriptionPageContent />
+		</PermissionGate>
 	);
 }

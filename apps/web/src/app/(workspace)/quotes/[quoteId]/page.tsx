@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -45,7 +46,7 @@ const formatStatus = (status: QuoteStatus) => {
 	}
 };
 
-export default function QuoteDetailPage() {
+function QuoteDetailPageContent() {
 	const router = useRouter();
 	const params = useParams();
 	const toast = useToast();
@@ -464,5 +465,13 @@ export default function QuoteDetailPage() {
 				onConfirm={(selectedIds) => handleGeneratePdf(selectedIds)}
 			/>
 		</>
+	);
+}
+
+export default function QuoteDetailPage() {
+	return (
+		<PermissionGate object="quotes">
+			<QuoteDetailPageContent />
+		</PermissionGate>
 	);
 }

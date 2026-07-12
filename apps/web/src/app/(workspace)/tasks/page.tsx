@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
@@ -358,7 +359,7 @@ function GroupTable({
 
 // --- Main Page ---
 
-export default function TasksPage() {
+function TasksPageContent() {
 	const searchParams = useSearchParams();
 	const projectIdFromUrl = searchParams.get(
 		"projectId"
@@ -764,5 +765,13 @@ export default function TasksPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function TasksPage() {
+	return (
+		<PermissionGate object="tasks">
+			<TasksPageContent />
+		</PermissionGate>
 	);
 }

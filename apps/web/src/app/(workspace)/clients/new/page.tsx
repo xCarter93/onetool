@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
@@ -10,7 +11,7 @@ import {
 } from "@/app/(workspace)/clients/components/client-onboarding-form";
 import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
 
-export default function NewClientPage() {
+function NewClientPageContent() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [formErrors, setFormErrors] = useState<string[]>([]);
 	const router = useRouter();
@@ -141,5 +142,13 @@ export default function NewClientPage() {
 				isLoading={isLoading}
 			/>
 		</div>
+	);
+}
+
+export default function NewClientPage() {
+	return (
+		<PermissionGate object="clients">
+			<NewClientPageContent />
+		</PermissionGate>
 	);
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
@@ -116,7 +117,7 @@ function createReportColumns(
 	];
 }
 
-export default function ReportsPage() {
+function ReportsPageContent() {
 	const router = useRouter();
 	const reports = useQuery(api.reports.list);
 	const deleteReport = useMutation(api.reports.remove);
@@ -256,5 +257,13 @@ export default function ReportsPage() {
 
 			<PresetLibraryDialog open={presetDialogOpen} onOpenChange={setPresetDialogOpen} />
 		</div>
+	);
+}
+
+export default function ReportsPage() {
+	return (
+		<PermissionGate object="reports">
+			<ReportsPageContent />
+		</PermissionGate>
 	);
 }

@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { ImportWizard } from "./components/import-wizard";
 
@@ -46,8 +47,10 @@ function ImportPageSkeleton() {
 
 export default function ClientsImportPage() {
 	return (
-		<Suspense fallback={<ImportPageSkeleton />}>
-			<ImportPageContent />
-		</Suspense>
+		<PermissionGate object="clients">
+			<Suspense fallback={<ImportPageSkeleton />}>
+				<ImportPageContent />
+			</Suspense>
+		</PermissionGate>
 	);
 }

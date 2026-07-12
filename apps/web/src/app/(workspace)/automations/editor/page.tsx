@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { PremiumGate } from "../components/editor/premium-gate";
 import { AutomationEditorScreen } from "../components/editor/automation-editor-screen";
 
@@ -24,8 +25,10 @@ function AutomationEditorWithSuspense() {
 
 export default function AutomationEditorPage() {
 	return (
-		<PremiumGate>
-			<AutomationEditorWithSuspense />
-		</PremiumGate>
+		<PermissionGate object="automations">
+			<PremiumGate>
+				<AutomationEditorWithSuspense />
+			</PremiumGate>
+		</PermissionGate>
 	);
 }

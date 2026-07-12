@@ -11,6 +11,7 @@ import {
 	PillTabsContent,
 } from "@/components/shared/pill-tabs";
 import { Button } from "@/components/ui/button";
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { RunMetricsTiles } from "./components/run-metrics-tiles";
@@ -133,8 +134,10 @@ function AutomationsContent() {
 
 export default function AutomationsPage() {
 	return (
-		<PremiumGate>
-			<AutomationsContent />
-		</PremiumGate>
+		<PermissionGate object="automations">
+			<PremiumGate>
+				<AutomationsContent />
+			</PremiumGate>
+		</PermissionGate>
 	);
 }
