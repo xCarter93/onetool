@@ -79,6 +79,7 @@ import {
 } from "../projects/components/kanban";
 import { ClientDetailDrawer } from "./components/client-detail-drawer";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
+import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
 
 type Client = {
@@ -269,7 +270,7 @@ const createColumns = (
 	},
 	{
 		id: "activity",
-		header: () => <div className="text-center">Activity</div>,
+		header: () => <ActivityColumnHeader />,
 		enableSorting: false,
 		cell: ({ row }) => (
 			<div className="flex justify-center">
