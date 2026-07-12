@@ -94,14 +94,17 @@ export const get = optionalUserQuery({
 	handler: async (ctx, args): Promise<Doc<"reports"> | null> => {
 		if (!ctx.orgId) return null;
 		await ctx.requireLevel("reports", "view");
+		let report: Doc<"reports">;
 		try {
-			return await ctx.orgEntity("reports", args.id);
+			report = await ctx.orgEntity("reports", args.id);
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in reports:")) {
 				return null;
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("reports", () => report.createdBy === ctx.user._id);
+		return report;
 	},
 });
 

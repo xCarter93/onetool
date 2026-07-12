@@ -284,6 +284,13 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
@@ -651,6 +658,16 @@ export const remove = userMutation({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args): Promise<InvoiceId> => {
 		await ctx.requireLevel("invoices", "delete");
+		// Validate access + scope before any deletes (checks-before-writes).
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+
 		// Delete line items first
 		const lineItems = await ctx.db
 			.query("invoiceLineItems")
@@ -661,15 +678,6 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		// Get invoice and remove from aggregates before deleting
-		const invoice = await ctx.orgEntity("invoices", args.id); // Validate access
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
 		await AggregateHelpers.removeInvoice(ctx, invoice as InvoiceDocument);
 		await ctx.db.delete(args.id);
 
@@ -1009,6 +1017,13 @@ export const getWithPayments = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
@@ -1127,6 +1142,13 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Recompute total from line items (source of truth; stored total can be
 		// stale). Reuse the shared helper so discount/tax logic can't diverge.

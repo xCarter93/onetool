@@ -527,4 +527,192 @@ describe("granular RBAC domain-function gating", () => {
 		const rows = await asMember.query(api.quotes.list, {});
 		expect(rows).toHaveLength(2);
 	});
+
+	// ── 10. Single-record read scope: clients.get ────────────────────────
+
+	it("enforced: a scoped member reading an out-of-scope client by ID via clients.get is FORBIDDEN; allRecords lifts the scope", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
+			"org_get_12",
+			"user_get_12"
+		);
+
+		const clientC = await asAdmin.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName: "Get Client C",
+			status: "active",
+		});
+		const clientD = await asAdmin.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName: "Get Client D",
+			status: "active",
+		});
+		// Project under C, assigned to the member — derives client C into scope.
+		await asAdmin.mutation(api.projects.create, {
+			clientId: clientC,
+			title: "Assigned project",
+			status: "planned",
+			projectType: "one-off",
+			assignedUserIds: [member.userId],
+		});
+
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "view" },
+		});
+
+		await expect(
+			asMember.query(api.clients.get, { id: clientC })
+		).resolves.toMatchObject({ _id: clientC });
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.clients.get, { id: clientD });
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+			scope: true,
+		});
+
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "view", allRecords: true },
+		});
+
+		await expect(
+			asMember.query(api.clients.get, { id: clientD })
+		).resolves.toMatchObject({ _id: clientD });
+	});
+
+	// ── 11. Single-record read scope: quotes.get (projectId/clientId fallback) ──
+
+	it("enforced: a scoped member reading an out-of-scope quote by ID via quotes.get is FORBIDDEN; allRecords lifts the scope", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
+			"org_get_13",
+			"user_get_13"
+		);
+
+		const clientC = await asAdmin.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName: "Get Quotes Client C",
+			status: "active",
+		});
+		const clientD = await asAdmin.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName: "Get Quotes Client D",
+			status: "active",
+		});
+		const projectP = await asAdmin.mutation(api.projects.create, {
+			clientId: clientC,
+			title: "Assigned project",
+			status: "planned",
+			projectType: "one-off",
+			assignedUserIds: [member.userId],
+		});
+
+		const quoteOnProject = await asAdmin.mutation(api.quotes.create, {
+			clientId: clientC,
+			projectId: projectP,
+			title: "Quote linked to P",
+			status: "draft",
+			subtotal: 1000,
+			total: 1000,
+		});
+		const quoteOnOtherClient = await asAdmin.mutation(api.quotes.create, {
+			clientId: clientD,
+			title: "Quote of client D",
+			status: "draft",
+			subtotal: 250,
+			total: 250,
+		});
+
+		await grantMemberPermissions(org.orgId, member.userId, {
+			quotes: { level: "view" },
+		});
+
+		// In scope via the assigned project's derived client.
+		await expect(
+			asMember.query(api.quotes.get, { id: quoteOnProject })
+		).resolves.toMatchObject({ _id: quoteOnProject });
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.quotes.get, { id: quoteOnOtherClient });
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "quotes",
+			scope: true,
+		});
+
+		await grantMemberPermissions(org.orgId, member.userId, {
+			quotes: { level: "view", allRecords: true },
+		});
+
+		await expect(
+			asMember.query(api.quotes.get, { id: quoteOnOtherClient })
+		).resolves.toMatchObject({ _id: quoteOnOtherClient });
+	});
+
+	// ── 12. Single-record read scope: reports.get (direct createdBy scope) ──
+
+	it("enforced: a member reading another user's report via reports.get is FORBIDDEN", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const org = await t.run(async (ctx) =>
+			createTestOrg(ctx, {
+				clerkUserId: "org_get_14_owner",
+				clerkOrgId: "org_get_14",
+			})
+		);
+		const memberA = await t.run(async (ctx) =>
+			addMemberToOrg(ctx, org.orgId, { clerkUserId: "user_get_14_a" })
+		);
+		const memberB = await t.run(async (ctx) =>
+			addMemberToOrg(ctx, org.orgId, { clerkUserId: "user_get_14_b" })
+		);
+		const asMemberA = t.withIdentity(
+			createTestIdentity(memberA.clerkUserId, org.clerkOrgId)
+		);
+		const asMemberB = t.withIdentity(
+			createTestIdentity(memberB.clerkUserId, org.clerkOrgId)
+		);
+
+		await grantMemberPermissions(org.orgId, memberA.userId, {
+			reports: { level: "modify" },
+		});
+		await grantMemberPermissions(org.orgId, memberB.userId, {
+			reports: { level: "view" },
+		});
+
+		const reportId = await asMemberA.mutation(api.reports.create, {
+			name: "Member A's report",
+			config: { entityType: "clients" },
+			visualization: { type: "table" },
+		});
+
+		// Owner can read their own report.
+		await expect(
+			asMemberA.query(api.reports.get, { id: reportId })
+		).resolves.toMatchObject({ _id: reportId });
+
+		// Another member (view grant, no ownership) is denied.
+		let caught: unknown;
+		try {
+			await asMemberB.query(api.reports.get, { id: reportId });
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "reports",
+			scope: true,
+		});
+	});
 });

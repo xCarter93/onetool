@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isAdminRole } from "./permissions";
+import { isPermissionObject } from "./permissionKeys";
 
 describe("isAdminRole", () => {
 	it("matches admins regardless of stored format", () => {
@@ -29,5 +30,19 @@ describe("isAdminRole", () => {
 		expect(isAdminRole(undefined)).toBe(false);
 		expect(isAdminRole(null)).toBe(false);
 		expect(isAdminRole("")).toBe(false);
+	});
+});
+
+describe("isPermissionObject", () => {
+	it("matches registered permission objects", () => {
+		expect(isPermissionObject("clients")).toBe(true);
+		expect(isPermissionObject("projects")).toBe(true);
+	});
+
+	it("rejects unregistered keys, including prototype-chain properties", () => {
+		expect(isPermissionObject("toString")).toBe(false);
+		expect(isPermissionObject("constructor")).toBe(false);
+		expect(isPermissionObject("hasOwnProperty")).toBe(false);
+		expect(isPermissionObject("not-a-real-object")).toBe(false);
 	});
 });

@@ -227,7 +227,7 @@ export default function OrganizationProfilePage() {
 		[hasPremiumAccess, can, permsLoading, hasFullAccess],
 	);
 
-	if (isLoading) {
+	if (isLoading || permsLoading) {
 		return (
 			<div className="min-h-screen flex-1 flex items-center justify-center">
 				<div className="text-center">

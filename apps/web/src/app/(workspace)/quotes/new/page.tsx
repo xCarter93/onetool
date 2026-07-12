@@ -463,7 +463,7 @@ function NewQuotePageContent() {
 
 export default function NewQuotePage() {
 	return (
-		<PermissionGate object="quotes">
+		<PermissionGate object="quotes" level="modify">
 			<NewQuotePageContent />
 		</PermissionGate>
 	);

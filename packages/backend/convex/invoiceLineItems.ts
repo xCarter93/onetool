@@ -110,8 +110,9 @@ export const get = optionalUserQuery({
 		if (!ctx.orgId) return null;
 		await ctx.requireLevel("invoices", "view");
 
+		let lineItem: InvoiceLineItemDocument;
 		try {
-			return await ctx.orgEntity("invoiceLineItems", args.id);
+			lineItem = await ctx.orgEntity("invoiceLineItems", args.id);
 		} catch (error) {
 			if (
 				error instanceof Error &&
@@ -127,6 +128,17 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+
+		const parentInvoice = await validateInvoiceAccess(ctx, lineItem.invoiceId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
+
+		return lineItem;
 	},
 });
 

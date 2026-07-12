@@ -513,7 +513,9 @@ export default function MemberAccessPage() {
 				levelIndex("modify") <= levelIndex(cap) ? "modify" : cap;
 			if (checked) {
 				return {
-					level: modifyLevel,
+					// Rows above modify (e.g. delete) keep their higher level.
+					level:
+						levelIndex(g.level) > levelIndex(modifyLevel) ? g.level : modifyLevel,
 					...(isScopable(object) ? { allRecords: true } : {}),
 				};
 			}

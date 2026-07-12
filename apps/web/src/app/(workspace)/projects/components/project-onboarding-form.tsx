@@ -206,16 +206,20 @@ export function ProjectOnboardingForm({
 	const clients = useMemo(() => clientsResult ?? [], [clientsResult]);
 	const clientDetails = useQuery(
 		api.clients.get,
-		selectedClientId ? { id: selectedClientId } : "skip"
+		selectedClientId && can("clients") ? { id: selectedClientId } : "skip"
 	);
 
 	const clientContacts = useQuery(
 		api.clientContacts.listByClient,
-		selectedClientId ? { clientId: selectedClientId } : "skip"
+		selectedClientId && can("clients")
+			? { clientId: selectedClientId }
+			: "skip"
 	);
 	const clientProperties = useQuery(
 		api.clientProperties.listByClient,
-		selectedClientId ? { clientId: selectedClientId } : "skip"
+		selectedClientId && can("clients")
+			? { clientId: selectedClientId }
+			: "skip"
 	);
 
 	const users = useQuery(api.users.listByOrg);

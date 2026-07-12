@@ -319,6 +319,13 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const calculatedTotals = await calculateQuoteTotals(ctx, args.id, {
@@ -414,6 +421,13 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		// Recompute totals from current line items (stored values can be stale)
 		const totals = await calculateQuoteTotals(ctx, args.id, {
@@ -1178,6 +1192,13 @@ export const getApprovalAudit = userQuery({
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
 		if (quote.orgId !== orgId)
 			throw new ConvexError({ code: "FORBIDDEN" });
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		const rows = await ctx.db
 			.query("quoteApprovals")

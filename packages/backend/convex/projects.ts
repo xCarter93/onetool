@@ -323,8 +323,15 @@ export const getPreview = optionalUserQuery({
 		);
 		if (visible.length === 0) return null;
 
+		// Cross-cutting read: gate each child bucket independently — never
+		// return an object type the caller can't view (PRD rule).
+		const canViewClient = await ctx.gateRead("clients");
+		const canViewQuotes = await ctx.gateRead("quotes");
+		const canViewInvoices = await ctx.gateRead("invoices");
+		const canViewTasks = await ctx.gateRead("tasks");
+
 		// Resolve client + its primary address (one-line composed string)
-		const clientDoc = await ctx.db.get(project.clientId);
+		const clientDoc = canViewClient ? await ctx.db.get(project.clientId) : null;
 		let clientAddress: string | null = null;
 		if (clientDoc) {
 			const primaryProperty = await ctx.db
@@ -366,19 +373,26 @@ export const getPreview = optionalUserQuery({
 			}
 		}
 
-		// Related records (project-scoped; the project itself is already org-scoped)
-		const quotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
-			.collect();
-		const invoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
-			.collect();
-		const tasks = await ctx.db
-			.query("tasks")
-			.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
-			.collect();
+		// Related records (project-scoped; the project itself is already org-scoped).
+		// Each bucket is skipped entirely when the caller can't view that object type.
+		const quotes = canViewQuotes
+			? await ctx.db
+					.query("quotes")
+					.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
+					.collect()
+			: [];
+		const invoices = canViewInvoices
+			? await ctx.db
+					.query("invoices")
+					.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
+					.collect()
+			: [];
+		const tasks = canViewTasks
+			? await ctx.db
+					.query("tasks")
+					.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
+					.collect()
+			: [];
 
 		// Quote totals: recompute from line items (stored quote.total can be stale)
 		// Recompute totals concurrently; each call reads its quote's line items,

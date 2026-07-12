@@ -198,8 +198,15 @@ export const list = optionalUserQuery({
 					(doc) => doc.documentType === args.documentType
 				);
 			}
-			// NOTE: mixed parents (many quotes/invoices) - not scope-filtered,
-			// would require a per-row parent fetch. Level-gated only.
+			// KNOWN LIMIT (parity with quoteLineItems.list / invoiceLineItems.list):
+			// rows here span arbitrary quotes/invoices (documents carries only
+			// documentType + a generic documentId, no clientId/projectId of its
+			// own), so per-row scoping would need one parent fetch per distinct
+			// documentId. Level-gated only — a scoped `documents:view` member
+			// (no allRecords) sees every org document via this branch, not just
+			// ones tied to their assigned projects/clients. Call list with
+			// documentType+documentId (the parented branch above) for a scoped
+			// read; see RBAC gating report.
 		}
 
 		// Sort by generation time (newest first)

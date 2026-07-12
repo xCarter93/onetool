@@ -419,6 +419,7 @@ function buildEmailHtml(options: {
 		? escapeHtml(organizationAddress)
 		: undefined;
 	const escapedInitials = escapeHtml(getOrgInitials(organizationName));
+	const escapedLogoUrl = logoUrl ? escapeHtml(logoUrl) : undefined;
 
 	// Convert message body to HTML (preserve line breaks) with XSS protection
 	const messageHtml = messageBody
@@ -451,7 +452,7 @@ function buildEmailHtml(options: {
 									<td style="vertical-align: middle;">
 										${
 											logoUrl
-												? `<img src="${logoUrl}" alt="${escapedOrganizationName}" style="max-height: 40px; max-width: 200px; height: auto; display: block;" />`
+												? `<img src="${escapedLogoUrl}" alt="${escapedOrganizationName}" style="max-height: 40px; max-width: 200px; height: auto; display: block;" />`
 												: `<div style="width: 40px; height: 40px; border-radius: 10px; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 700; text-align: center; line-height: 40px;">${escapedInitials}</div>`
 										}
 									</td>

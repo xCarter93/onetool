@@ -776,7 +776,7 @@ function QuoteLineEditorPageContent() {
 
 export default function QuoteLineEditorPage() {
 	return (
-		<PermissionGate object="quotes">
+		<PermissionGate object="quotes" level="modify">
 			<QuoteLineEditorPageContent />
 		</PermissionGate>
 	);

@@ -165,6 +165,7 @@ export function SKUsTab() {
 	};
 
 	const handleDelete = async (id: Id<"skus">) => {
+		if (!canDelete) return;
 		const confirmed = await confirmDialog({
 			title: "Delete SKU",
 			message:
@@ -190,6 +191,7 @@ export function SKUsTab() {
 	};
 
 	const handleReactivate = async (id: Id<"skus">) => {
+		if (!canModify) return;
 		try {
 			await updateSKU({ id, isActive: true });
 			toast.success("SKU reactivated", "It will appear in new quotes again");
@@ -204,6 +206,7 @@ export function SKUsTab() {
 	};
 
 	const handleDeactivate = async (id: Id<"skus">) => {
+		if (!canModify) return;
 		try {
 			await updateSKU({ id, isActive: false });
 			toast.success("SKU deactivated", "It won't appear in new quotes");

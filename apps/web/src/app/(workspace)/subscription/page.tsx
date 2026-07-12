@@ -33,9 +33,59 @@ import {
 	Headphones,
 } from "lucide-react";
 
+/** Rendered before the billing PermissionGate — no org means no grants either. */
+function NoOrganizationState() {
+	const router = useRouter();
+	return (
+		<div className="min-h-screen bg-background">
+			<div className="mx-auto py-8 px-4">
+				<div className="mb-8">
+					<Button
+						onClick={() => router.push("/home")}
+						variant="outline"
+						size="sm"
+						className="mb-6"
+					>
+						<ArrowLeft className="w-4 h-4" />
+						Back to Home
+					</Button>
+
+					<div className="flex items-center gap-4 mb-4">
+						<div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
+							<Users className="h-8 w-8 text-primary" />
+						</div>
+						<div>
+							<h1 className="text-3xl font-bold text-foreground">
+								Subscription Management
+							</h1>
+							<p className="text-muted-foreground">Manage your Free plan and billing</p>
+						</div>
+					</div>
+				</div>
+
+				<Card className="border-2 border-dashed border-border">
+					<CardContent className="p-12 text-center">
+						<Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+						<h2 className="text-xl font-semibold mb-2">No Organization Found</h2>
+						<p className="text-muted-foreground mb-6 max-w-md mx-auto">
+							You need to create an organization before managing subscriptions.
+						</p>
+						<Button
+							onClick={() => router.push("/organization/complete")}
+							size="lg"
+						>
+							Create Organization
+						</Button>
+					</CardContent>
+				</Card>
+			</div>
+		</div>
+	);
+}
+
 function SubscriptionPageContent() {
 	const router = useRouter();
-	const { hasPremiumAccess, isLoading, hasOrganization } = useFeatureAccess();
+	const { hasPremiumAccess, isLoading } = useFeatureAccess();
 	const { resolvedTheme } = useTheme();
 	// True only after client hydration; avoids theme hydration mismatch
 	const mounted = useSyncExternalStore(
@@ -168,27 +218,7 @@ function SubscriptionPageContent() {
 					</div>
 				</div>
 
-				{!hasOrganization ? (
-					<Card className="border-2 border-dashed border-border">
-						<CardContent className="p-12 text-center">
-							<Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-							<h2 className="text-xl font-semibold mb-2">
-								No Organization Found
-							</h2>
-							<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-								You need to create an organization before managing
-								subscriptions.
-							</p>
-							<Button
-								onClick={() => router.push("/organization/complete")}
-								size="lg"
-							>
-								Create Organization
-							</Button>
-						</CardContent>
-					</Card>
-				) : (
-					<div className="mx-auto space-y-6">
+				<div className="mx-auto space-y-6">
 						{/* Current Plan Card */}
 						<Card>
 							<CardHeader>
@@ -467,14 +497,32 @@ function SubscriptionPageContent() {
 								</div>
 							</CardContent>
 						</Card>
-					</div>
-				)}
+				</div>
 			</div>
 		</div>
 	);
 }
 
 export default function SubscriptionPage() {
+	const { hasOrganization, isLoading } = useFeatureAccess();
+
+	if (isLoading) {
+		return (
+			<div className="min-h-screen bg-background flex items-center justify-center">
+				<div className="flex flex-col items-center gap-4">
+					<Loader2 className="h-8 w-8 animate-spin text-primary" />
+					<p className="text-muted-foreground">
+						Loading subscription details...
+					</p>
+				</div>
+			</div>
+		);
+	}
+
+	if (!hasOrganization) {
+		return <NoOrganizationState />;
+	}
+
 	return (
 		<PermissionGate object="billing">
 			<SubscriptionPageContent />

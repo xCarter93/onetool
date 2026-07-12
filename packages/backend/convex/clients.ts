@@ -218,14 +218,19 @@ export const get = optionalUserQuery({
 	handler: async (ctx, args): Promise<ClientDocument | null> => {
 		if (!ctx.orgId) return null;
 		await ctx.requireLevel("clients", "view");
+		let client: ClientDocument;
 		try {
-			return await ctx.orgEntity("clients", args.id);
+			client = await ctx.orgEntity("clients", args.id);
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in clients:")) {
 				return null;
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(client._id))
+		);
+		return client;
 	},
 });
 
@@ -289,6 +294,9 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((s) => s.clientIds.has(client._id))
+		);
 
 		// Primary contact (from clientContacts, not the client doc)
 		const primaryContactDoc = await ctx.db

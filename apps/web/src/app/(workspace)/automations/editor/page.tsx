@@ -25,7 +25,7 @@ function AutomationEditorWithSuspense() {
 
 export default function AutomationEditorPage() {
 	return (
-		<PermissionGate object="automations">
+		<PermissionGate object="automations" level="modify">
 			<PremiumGate>
 				<AutomationEditorWithSuspense />
 			</PremiumGate>

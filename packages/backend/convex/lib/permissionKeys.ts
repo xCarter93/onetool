@@ -70,7 +70,7 @@ export function isScopable(object: PermissionObject): boolean {
 
 /** Narrowing guard for untrusted string keys (mutation args, stored records). */
 export function isPermissionObject(key: string): key is PermissionObject {
-	return key in PERMISSION_OBJECTS;
+	return Object.prototype.hasOwnProperty.call(PERMISSION_OBJECTS, key);
 }
 
 /**

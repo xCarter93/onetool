@@ -8,6 +8,7 @@ import {
 	type UserFunctionExtras,
 } from "./lib/factories";
 import type { PermissionObject } from "./lib/permissionKeys";
+import { getEffectivePermissions } from "./lib/permissions";
 
 /**
  * Activity operations for activity feed
@@ -33,7 +34,8 @@ export interface ActivityWithUser extends Doc<"activities"> {
 // ============================================================================
 
 // Cross-cutting feed: never return an object type the caller can't view (PRD §4.4).
-const ENTITY_PERMISSION_OBJECT: Partial<Record<string, PermissionObject>> = {
+// Exported: also the objectType->PermissionObject map for automationExecutor's sample-record gate.
+export const ENTITY_PERMISSION_OBJECT: Partial<Record<string, PermissionObject>> = {
 	client: "clients",
 	project: "projects",
 	quote: "quotes",
@@ -41,14 +43,30 @@ const ENTITY_PERMISSION_OBJECT: Partial<Record<string, PermissionObject>> = {
 	task: "tasks",
 };
 
-/** Drop activities whose entity type the caller lacks `view` on (one gateRead per type). */
+/**
+ * Drop activities whose entity type the caller lacks `view` on (one gateRead
+ * per type). "user" activities (e.g. member_permissions_updated audit rows)
+ * are permission-change audit trail — visible only to admins/owners, checked
+ * once per call via the standalone resolver (not gateRead, which has no
+ * "user" object to gate on).
+ */
 async function filterByEntityGrant(
-	ctx: { gateRead: UserFunctionExtras["gateRead"] },
+	ctx: QueryCtx & { gateRead: UserFunctionExtras["gateRead"] },
 	activities: Doc<"activities">[]
 ): Promise<Doc<"activities">[]> {
 	const allowed = new Map<string, boolean>();
+	let isAllAccessPromise: Promise<boolean> | null = null;
+	const isAllAccess = () =>
+		(isAllAccessPromise ??= getEffectivePermissions(ctx).then(
+			(grants) => grants === "all"
+		));
+
 	for (const activity of activities) {
 		if (!allowed.has(activity.entityType)) {
+			if (activity.entityType === "user") {
+				allowed.set(activity.entityType, await isAllAccess());
+				continue;
+			}
 			const object = ENTITY_PERMISSION_OBJECT[activity.entityType];
 			allowed.set(
 				activity.entityType,

@@ -113,8 +113,9 @@ export const get = optionalUserQuery({
 		if (!orgId) return null;
 		await ctx.requireLevel("quotes", "view");
 
+		let lineItem: QuoteLineItemDocument;
 		try {
-			return await ctx.orgEntity("quoteLineItems", args.id);
+			lineItem = await ctx.orgEntity("quoteLineItems", args.id);
 		} catch (error) {
 			if (
 				error instanceof Error &&
@@ -130,6 +131,17 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+
+		const parentQuote = await ctx.orgEntity("quotes", lineItem.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
+
+		return lineItem;
 	},
 });
 
@@ -151,12 +163,21 @@ export const getStats = optionalUserQuery({
 		}
 		await ctx.requireLevel("quotes", "view");
 
-		await validateQuoteAccess(ctx, args.quoteId, orgId);
+		const parentQuote = await validateQuoteAccess(ctx, args.quoteId, orgId);
 
-		const lineItems = await ctx.db
+		const allLineItems = await ctx.db
 			.query("quoteLineItems")
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.collect();
+		// All rows share one parent quote — scope check runs once, not per row.
+		const lineItems = await ctx.applyReadScope(
+			"quotes",
+			allLineItems,
+			(_row, s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+		);
 
 		const baseStats = calculateLineItemStats(lineItems, "amount");
 

@@ -239,16 +239,28 @@ export const listByInvoice = optionalUserQuery({
 export const get = optionalUserQuery({
 	args: { id: v.id("payments") },
 	handler: async (ctx, args): Promise<PaymentDocument | null> => {
-		if (!ctx.orgId) return null;
+		const orgId = ctx.orgId;
+		if (!orgId) return null;
 		await ctx.requireLevel("invoices", "view");
+		let payment: PaymentDocument;
 		try {
-			return await ctx.orgEntity("payments", args.id);
+			payment = await ctx.orgEntity("payments", args.id);
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in payments:")) {
 				return null;
 			}
 			throw error;
 		}
+		// Payments belong to the invoices permission object — scope via the parent invoice.
+		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
+		return payment;
 	},
 });
 

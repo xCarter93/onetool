@@ -378,8 +378,8 @@ function TasksPageContent() {
 
 	// Queries
 	const allTasks = useQuery(api.tasks.list, {});
-	const projects = useQuery(api.projects.list, {});
-	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
+	// Skip without the projects/clients grant — gated endpoints throw FORBIDDEN otherwise.
+	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, {});
 

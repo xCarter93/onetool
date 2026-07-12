@@ -9,6 +9,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
 import { ActivityHelpers } from "./lib/activities";
+import { ENTITY_PERMISSION_OBJECT } from "./activities";
 import { systemMutation, userMutation, userQuery } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
 import { isAdminRole, orgHasPremiumPlan } from "./lib/permissions";
@@ -4124,6 +4125,12 @@ export const getSampleRecords = userQuery({
 			}
 		}
 		if (!objectType) return [];
+
+		// Sample records are per-object-type; automations:view alone doesn't
+		// grant visibility into arbitrary record types (e.g. invoices).
+		const permissionObject = ENTITY_PERMISSION_OBJECT[objectType];
+		if (!permissionObject) return [];
+		await ctx.requireLevel(permissionObject, "view");
 
 		const rows = await takeOrgPage(ctx, objectType, ctx.orgId, undefined, 10);
 		return rows.map((row) => ({
