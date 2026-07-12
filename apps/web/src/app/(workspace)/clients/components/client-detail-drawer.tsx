@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -157,6 +161,89 @@ export function ClientDetailDrawer({
 
 	const title = client?.companyName ?? (loading ? "Loading…" : "Client");
 
+	const recordActions: RecordAction[] = [
+		{
+			key: "open",
+			slot: "start",
+			variant: "default",
+			label: "Open client",
+			icon: <ExternalLink className="size-3.5" />,
+			onClick: openRecord,
+		},
+		{
+			key: "add-task",
+			slot: "secondary",
+			label: "Add Task",
+			node: (
+				<TaskSheet
+					mode="create"
+					initialValues={{ clientId: clientId ?? undefined }}
+					trigger={
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={!can("tasks", "modify")}
+						>
+							<Plus className="size-3.5" />
+							Add Task
+						</Button>
+					}
+				/>
+			),
+		},
+		...(client && contactEmail && emailName
+			? [
+					{
+						key: "email",
+						slot: "secondary" as const,
+						label: "Email",
+						node: (
+							<SendClientEmailPopover
+								isOpen={emailOpen}
+								onOpenChange={setEmailOpen}
+								clientId={client._id}
+								clientName={client.companyName}
+								primaryContact={{
+									firstName: emailName.firstName,
+									lastName: emailName.lastName,
+									email: contactEmail,
+								}}
+							>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={!can("inbox", "modify")}
+								>
+									<Mail className="size-3.5" />
+									Email
+								</Button>
+							</SendClientEmailPopover>
+						),
+					},
+				]
+			: []),
+		{
+			key: "restore",
+			slot: "secondary",
+			variant: "outline",
+			label: "Restore",
+			icon: <RotateCcw className="size-3.5" />,
+			onClick: handleRestore,
+			disabled: !can("clients", "modify"),
+			hidden: !(client && client.status === "archived"),
+		},
+		{
+			key: "archive",
+			slot: "end",
+			variant: "destructive",
+			label: "Archive",
+			icon: <Archive className="size-3.5" />,
+			onClick: handleArchive,
+			disabled: !can("clients", "delete"),
+			hidden: !(client && client.status !== "archived"),
+		},
+	];
+
 	return (
 		<DetailDrawer
 			open={open}
@@ -188,71 +275,7 @@ export function ClientDetailDrawer({
 					? `${activeCount} active project${activeCount === 1 ? "" : "s"}`
 					: undefined
 			}
-			actions={
-				<>
-					<Button size="sm" onClick={openRecord}>
-						<ExternalLink className="size-3.5" />
-						Open client
-					</Button>
-					<TaskSheet
-						mode="create"
-						initialValues={{ clientId: clientId ?? undefined }}
-						trigger={
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={!can("tasks", "modify")}
-							>
-								<Plus className="size-3.5" />
-								Add Task
-							</Button>
-						}
-					/>
-					{client && contactEmail && emailName ? (
-						<SendClientEmailPopover
-							isOpen={emailOpen}
-							onOpenChange={setEmailOpen}
-							clientId={client._id}
-							clientName={client.companyName}
-							primaryContact={{
-								firstName: emailName.firstName,
-								lastName: emailName.lastName,
-								email: contactEmail,
-							}}
-						>
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={!can("inbox", "modify")}
-							>
-								<Mail className="size-3.5" />
-								Email
-							</Button>
-						</SendClientEmailPopover>
-					) : null}
-					{client && client.status === "archived" ? (
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleRestore}
-							disabled={!can("clients", "modify")}
-						>
-							<RotateCcw className="size-3.5" />
-							Restore
-						</Button>
-					) : client ? (
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleArchive}
-							disabled={!can("clients", "delete")}
-						>
-							<Archive className="size-3.5" />
-							Archive
-						</Button>
-					) : null}
-				</>
-			}
+			actions={<ActionButtonGroup actions={recordActions} />}
 		>
 			{loading ? (
 				<DrawerSkeleton />

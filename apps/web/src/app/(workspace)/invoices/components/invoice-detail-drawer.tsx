@@ -10,12 +10,15 @@ import {
 	ExternalLink,
 	Loader2,
 	Lock,
-	Plus,
 	Receipt,
 	Send,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -35,7 +38,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { TaskSheet } from "@/components/shared/task-sheet";
 import {
 	DetailDrawer,
 	DrawerField,
@@ -158,6 +160,37 @@ export function InvoiceDetailDrawer({
 		}
 	};
 
+	const recordActions: RecordAction[] = [
+		{
+			key: "open-invoice",
+			label: "Open invoice",
+			icon: <ExternalLink className="size-3.5" />,
+			onClick: openRecord,
+			variant: "default",
+			slot: "start",
+		},
+		{
+			key: "mark-paid",
+			label: "Mark paid",
+			icon: <CheckCircle2 className="size-3.5" />,
+			onClick: handleMarkPaid,
+			variant: "default",
+			slot: "start",
+			disabled: pending || !can("invoices", "modify"),
+			hidden: !canMarkPaid,
+		},
+		{
+			key: "send",
+			label: "Send",
+			icon: <Send className="size-3.5" />,
+			onClick: handleSend,
+			variant: "outline",
+			slot: "secondary",
+			disabled: pending || !can("invoices", "modify"),
+			hidden: effectiveStatus !== "draft",
+		},
+	];
+
 	const title = invoice
 		? `#${invoice.invoiceNumber}`
 		: loading
@@ -193,56 +226,7 @@ export function InvoiceDetailDrawer({
 				</>
 			}
 			description={data ? (client?.companyName ?? "No client") : undefined}
-			actions={
-				<>
-					{canMarkPaid ? (
-						<Button
-							size="sm"
-							disabled={pending || !can("invoices", "modify")}
-							onClick={handleMarkPaid}
-						>
-							<CheckCircle2 className="size-3.5" />
-							Mark paid
-						</Button>
-					) : null}
-					{effectiveStatus === "draft" ? (
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={pending || !can("invoices", "modify")}
-							onClick={handleSend}
-						>
-							<Send className="size-3.5" />
-							Send
-						</Button>
-					) : null}
-					<TaskSheet
-						mode="create"
-						initialValues={{
-							projectId: project?._id,
-							clientId: client?._id,
-						}}
-						trigger={
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={!can("tasks", "modify")}
-							>
-								<Plus className="size-3.5" />
-								Add Task
-							</Button>
-						}
-					/>
-					<Button
-						variant={canMarkPaid ? "outline" : "default"}
-						size="sm"
-						onClick={openRecord}
-					>
-						<ExternalLink className="size-3.5" />
-						Open invoice
-					</Button>
-				</>
-			}
+			actions={<ActionButtonGroup actions={recordActions} />}
 		>
 			{loading ? (
 				<DrawerSkeleton />

@@ -19,6 +19,10 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -140,6 +144,41 @@ export function ProjectDetailDrawer({
 
 	const title = project?.title ?? (loading ? "Loading…" : "Project");
 
+	const recordActions: RecordAction[] = [
+		{
+			key: "open",
+			label: "Open project",
+			icon: <ExternalLink className="size-3.5" />,
+			onClick: openRecord,
+			variant: "default",
+			slot: "start",
+		},
+		{
+			key: "add-task",
+			label: "Add Task",
+			slot: "secondary",
+			node: (
+				<TaskSheet
+					mode="create"
+					initialValues={{
+						projectId: projectId ?? undefined,
+						clientId: data?.client?._id,
+					}}
+					trigger={
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={!can("tasks", "modify")}
+						>
+							<Plus className="size-3.5" />
+							Add Task
+						</Button>
+					}
+				/>
+			),
+		},
+	];
+
 	return (
 		<DetailDrawer
 			open={open}
@@ -175,31 +214,7 @@ export function ProjectDetailDrawer({
 						}`
 					: undefined
 			}
-			actions={
-				<>
-					<Button size="sm" onClick={openRecord}>
-						<ExternalLink className="size-3.5" />
-						Open project
-					</Button>
-					<TaskSheet
-						mode="create"
-						initialValues={{
-							projectId: projectId ?? undefined,
-							clientId: data?.client?._id,
-						}}
-						trigger={
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={!can("tasks", "modify")}
-							>
-								<Plus className="size-3.5" />
-								Add Task
-							</Button>
-						}
-					/>
-				</>
-			}
+			actions={<ActionButtonGroup actions={recordActions} />}
 		>
 			{loading ? (
 				<DrawerSkeleton />

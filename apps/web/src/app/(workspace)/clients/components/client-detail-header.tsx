@@ -7,7 +7,10 @@ import { EnvelopeIcon } from "@heroicons/react/24/outline";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import { Heart, ListTodo, FolderPlus, FileText } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
@@ -55,6 +58,46 @@ export function ClientDetailHeader({
 		}
 	};
 
+	const actions: RecordAction[] = [
+		{
+			key: "create-task",
+			label: "Create Task",
+			icon: <ListTodo className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onAddTask,
+			disabled: !can("tasks", "modify"),
+		},
+		{
+			key: "create-project",
+			label: "Create Project",
+			icon: <FolderPlus className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onCreateProject,
+			disabled: !can("projects", "modify"),
+		},
+		{
+			key: "create-quote",
+			label: "Create Quote",
+			icon: <FileText className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onCreateQuote,
+			disabled: !can("quotes", "modify"),
+		},
+		{
+			key: "compose-email",
+			label: "Compose Email",
+			icon: <EnvelopeIcon className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onComposeEmail,
+			disabled: !can("inbox", "modify"),
+			hidden: !hasPrimaryContactEmail,
+		},
+	];
+
 	return (
 		<StickyDetailHeader>
 			{(isSticky) => (
@@ -97,46 +140,7 @@ export function ClientDetailHeader({
 					</div>
 
 					{/* Right side - Quick action buttons */}
-					<div className="flex items-center gap-2 shrink-0">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onAddTask}
-							disabled={!can("tasks", "modify")}
-						>
-							<ListTodo className="h-4 w-4" />
-							Create Task
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onCreateProject}
-							disabled={!can("projects", "modify")}
-						>
-							<FolderPlus className="h-4 w-4" />
-							Create Project
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onCreateQuote}
-							disabled={!can("quotes", "modify")}
-						>
-							<FileText className="h-4 w-4" />
-							Create Quote
-						</Button>
-						{hasPrimaryContactEmail && (
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={onComposeEmail}
-								disabled={!can("inbox", "modify")}
-							>
-								<EnvelopeIcon className="h-4 w-4" />
-								Compose Email
-							</Button>
-						)}
-					</div>
+					<ActionButtonGroup actions={actions} className="shrink-0" />
 				</div>
 			)}
 		</StickyDetailHeader>

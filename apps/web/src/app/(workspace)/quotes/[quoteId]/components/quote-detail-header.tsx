@@ -12,7 +12,10 @@ import {
 	RotateCcw,
 	Receipt,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { AnimatePresence, motion } from "motion/react";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
@@ -44,70 +47,109 @@ export function QuoteDetailHeader({
 	onConvertToInvoice,
 }: QuoteDetailHeaderProps) {
 	const { can } = usePermissions();
-	const renderStatusActions = () => {
+	const canModifyQuote = can("quotes", "modify");
+	const canDeleteQuote = can("quotes", "delete");
+	const canModifyInvoice = can("invoices", "modify");
+
+	// Status-dependent actions. The primary next step for each status is pinned
+	// left ("start"); everything else is secondary and collapses into the ⋯ menu.
+	const statusActions: RecordAction[] = (() => {
 		switch (currentStatus) {
 			case "draft":
-				return (
-					<Button
-						size="sm"
-						onClick={() => onStatusChange("sent")}
-						disabled={!can("quotes", "modify")}
-					>
-						<Send className="h-4 w-4" />
-						Mark as Sent
-					</Button>
-				);
+				return [
+					{
+						key: "mark-sent",
+						label: "Mark as Sent",
+						icon: <Send className="h-4 w-4" />,
+						slot: "start",
+						variant: "default",
+						onClick: () => onStatusChange("sent"),
+						disabled: !canModifyQuote,
+					},
+				];
 			case "sent":
-				return (
-					// TODO(reui-rebuild): success button intent mapped to default
-					<Button
-						size="sm"
-						onClick={() => onStatusChange("approved")}
-						disabled={!can("quotes", "modify")}
-					>
-						<Check className="h-4 w-4" />
-						Mark Approved
-					</Button>
-				);
+				return [
+					{
+						// TODO(reui-rebuild): success button intent mapped to default
+						key: "mark-approved",
+						label: "Mark Approved",
+						icon: <Check className="h-4 w-4" />,
+						slot: "start",
+						variant: "default",
+						onClick: () => onStatusChange("approved"),
+						disabled: !canModifyQuote,
+					},
+				];
 			case "approved":
-				return (
-					<>
-						<Button
-							size="sm"
-							onClick={onConvertToInvoice}
-							disabled={!can("invoices", "modify")}
-						>
-							<Receipt className="h-4 w-4" />
-							Convert to Invoice
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => onStatusChange("draft")}
-							disabled={!can("quotes", "modify")}
-						>
-							<RotateCcw className="h-4 w-4" />
-							Reopen
-						</Button>
-					</>
-				);
+				return [
+					{
+						key: "convert",
+						label: "Convert to Invoice",
+						icon: <Receipt className="h-4 w-4" />,
+						slot: "start",
+						variant: "default",
+						onClick: onConvertToInvoice,
+						disabled: !canModifyInvoice,
+					},
+					{
+						key: "reopen",
+						label: "Reopen",
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "secondary",
+						variant: "outline",
+						onClick: () => onStatusChange("draft"),
+						disabled: !canModifyQuote,
+					},
+				];
 			case "declined":
 			case "expired":
-				return (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => onStatusChange("draft")}
-						disabled={!can("quotes", "modify")}
-					>
-						<RotateCcw className="h-4 w-4" />
-						Reopen
-					</Button>
-				);
+				return [
+					{
+						key: "reopen",
+						label: "Reopen",
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "start",
+						variant: "outline",
+						onClick: () => onStatusChange("draft"),
+						disabled: !canModifyQuote,
+					},
+				];
 			default:
-				return null;
+				return [];
 		}
-	};
+	})();
+
+	const actions: RecordAction[] = [
+		...statusActions,
+		{
+			key: "send-esign",
+			label: "Send for e-signature",
+			icon: <PenLine className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onSendToClient,
+			disabled: sendDisabled || !canModifyQuote,
+			disabledReason: sendDisabled ? sendDisabledReason : undefined,
+		},
+		{
+			key: "generate-pdf",
+			label: "Generate PDF",
+			icon: <FileText className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onGeneratePdf,
+			disabled: !canModifyQuote,
+		},
+		{
+			key: "delete",
+			label: "Delete",
+			icon: <Trash2 className="h-4 w-4" />,
+			slot: "end",
+			variant: "destructive",
+			onClick: onDelete,
+			disabled: !canDeleteQuote,
+		},
+	];
 
 	return (
 		<StickyDetailHeader>
@@ -165,43 +207,7 @@ export function QuoteDetailHeader({
 							</motion.div>
 						)}
 					</AnimatePresence>
-					<div className="flex items-center gap-2 shrink-0">
-						{renderStatusActions()}
-						{/* Tooltip lives on the wrapper: a disabled button won't
-						    reliably surface a native title on hover. */}
-						<span
-							className="inline-flex"
-							title={sendDisabled ? sendDisabledReason : undefined}
-						>
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={onSendToClient}
-								disabled={sendDisabled || !can("quotes", "modify")}
-							>
-								<PenLine className="h-4 w-4" />
-								Send for e-signature
-							</Button>
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onGeneratePdf}
-							disabled={!can("quotes", "modify")}
-						>
-							<FileText className="h-4 w-4" />
-							Generate PDF
-						</Button>
-						<Button
-							variant="destructive"
-							size="sm"
-							onClick={onDelete}
-							disabled={!can("quotes", "delete")}
-						>
-							<Trash2 className="h-4 w-4" />
-							Delete
-						</Button>
-					</div>
+					<ActionButtonGroup actions={actions} className="shrink-0" />
 				</div>
 			)}
 		</StickyDetailHeader>
