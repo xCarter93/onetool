@@ -500,11 +500,14 @@ function TasksPageContent() {
 			if (filter.values.length === 0) return;
 
 			switch (filter.field) {
-				case "status":
-					filtered = filtered.filter((task) =>
-						filter.values.includes(task.status as unknown)
-					);
+				case "status": {
+					const isNot = filter.operator === "is_not";
+					filtered = filtered.filter((task) => {
+						const match = filter.values.includes(task.status as unknown);
+						return isNot ? !match : match;
+					});
 					break;
+				}
 				case "client":
 					filtered = filtered.filter((task) =>
 						filter.values.includes(task.clientId as unknown)

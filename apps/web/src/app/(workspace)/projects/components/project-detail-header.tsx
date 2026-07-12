@@ -40,6 +40,7 @@ export function ProjectDetailHeader({
 			variant: "outline",
 			onClick: onAddTask,
 			disabled: !can("tasks", "modify"),
+			disabledReason: "You don't have permission to add tasks",
 		},
 		{
 			key: "add-quote",
@@ -49,6 +50,7 @@ export function ProjectDetailHeader({
 			variant: "outline",
 			onClick: onAddQuote,
 			disabled: !can("quotes", "modify"),
+			disabledReason: "You don't have permission to add quotes",
 		},
 		{
 			key: "generate-invoice",
@@ -58,6 +60,9 @@ export function ProjectDetailHeader({
 			variant: "outline",
 			onClick: onGenerateInvoice,
 			disabled: !hasApprovedQuotes || !can("invoices", "modify"),
+			disabledReason: !hasApprovedQuotes
+				? "Requires an approved quote"
+				: "You don't have permission to generate invoices",
 		},
 		{
 			key: "delete",
@@ -67,6 +72,7 @@ export function ProjectDetailHeader({
 			variant: "destructive",
 			onClick: onDelete,
 			disabled: !can("projects", "delete"),
+			disabledReason: "You don't have permission to delete this project",
 		},
 	];
 

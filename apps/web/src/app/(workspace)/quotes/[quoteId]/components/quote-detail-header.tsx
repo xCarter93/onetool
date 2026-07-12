@@ -33,6 +33,8 @@ interface QuoteDetailHeaderProps {
 	onGeneratePdf: () => void;
 	onDelete: () => void;
 	onConvertToInvoice: () => void;
+	/** True while a convert-to-invoice mutation is in flight — disables the action to prevent duplicate invoices. */
+	converting?: boolean;
 }
 
 export function QuoteDetailHeader({
@@ -45,6 +47,7 @@ export function QuoteDetailHeader({
 	onGeneratePdf,
 	onDelete,
 	onConvertToInvoice,
+	converting = false,
 }: QuoteDetailHeaderProps) {
 	const { can } = usePermissions();
 	const canModifyQuote = can("quotes", "modify");
@@ -89,7 +92,8 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onConvertToInvoice,
-						disabled: !canModifyInvoice,
+						disabled: !canModifyInvoice || converting,
+						loading: converting,
 					},
 					{
 						key: "reopen",

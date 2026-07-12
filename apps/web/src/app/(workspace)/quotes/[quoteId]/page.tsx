@@ -61,6 +61,7 @@ function QuoteDetailPageContent() {
 	const [showDocumentModal, setShowDocumentModal] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isConverting, setIsConverting] = useState(false);
 
 	// Queries
 	const quote = useQuery(api.quotes.get, { id: quoteId });
@@ -150,6 +151,8 @@ function QuoteDetailPageContent() {
 	};
 
 	const handleConvertToInvoice = async () => {
+		if (isConverting) return;
+		setIsConverting(true);
 		try {
 			const invoiceId = await createInvoiceFromQuote({
 				quoteId,
@@ -161,12 +164,14 @@ function QuoteDetailPageContent() {
 				"Quote converted to invoice successfully"
 			);
 			router.push(`/invoices/${invoiceId}`);
+			// Leave the action disabled through navigation; the page unmounts.
 		} catch (err) {
 			const message =
 				err instanceof Error
 					? err.message
 					: "Failed to create invoice";
 			toast.error("Error", message);
+			setIsConverting(false);
 		}
 	};
 
@@ -410,6 +415,7 @@ function QuoteDetailPageContent() {
 					onGeneratePdf={() => setShowDocumentModal(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 					onConvertToInvoice={handleConvertToInvoice}
+					converting={isConverting}
 				/>
 
 				{/* Tabs + Sidebar */}

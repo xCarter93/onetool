@@ -106,6 +106,8 @@ export function ClientDetailDrawer({
 	const archiveClient = useMutation(api.clients.archive);
 	const restoreClient = useMutation(api.clients.restore);
 	const [emailOpen, setEmailOpen] = React.useState(false);
+	const [archiving, setArchiving] = React.useState(false);
+	const [restoring, setRestoring] = React.useState(false);
 
 	const loading = clientId !== null && preview === undefined;
 	const notFound = clientId !== null && preview === null;
@@ -119,7 +121,8 @@ export function ClientDetailDrawer({
 	};
 
 	const handleArchive = async () => {
-		if (!clientId) return;
+		if (!clientId || archiving) return;
+		setArchiving(true);
 		try {
 			await archiveClient({ id: clientId });
 			toast.success(
@@ -133,11 +136,14 @@ export function ClientDetailDrawer({
 				"Archive Failed",
 				"Failed to archive the client. Please try again."
 			);
+		} finally {
+			setArchiving(false);
 		}
 	};
 
 	const handleRestore = async () => {
-		if (!clientId) return;
+		if (!clientId || restoring) return;
+		setRestoring(true);
 		try {
 			await restoreClient({ id: clientId });
 			toast.success(
@@ -150,6 +156,8 @@ export function ClientDetailDrawer({
 				"Restore Failed",
 				"Failed to restore the client. Please try again."
 			);
+		} finally {
+			setRestoring(false);
 		}
 	};
 
@@ -230,6 +238,7 @@ export function ClientDetailDrawer({
 			icon: <RotateCcw className="size-3.5" />,
 			onClick: handleRestore,
 			disabled: !can("clients", "modify"),
+			loading: restoring,
 			hidden: !(client && client.status === "archived"),
 		},
 		{
@@ -240,6 +249,7 @@ export function ClientDetailDrawer({
 			icon: <Archive className="size-3.5" />,
 			onClick: handleArchive,
 			disabled: !can("clients", "delete"),
+			loading: archiving,
 			hidden: !(client && client.status !== "archived"),
 		},
 	];

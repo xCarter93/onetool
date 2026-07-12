@@ -58,6 +58,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
@@ -246,9 +247,13 @@ const createColumns = (
 	},
 	{
 		id: "activity",
-		header: "Activity",
+		header: () => <div className="text-center">Activity</div>,
 		enableSorting: false,
-		cell: ({ row }) => <ActivitySparkline data={row.original.activity} />,
+		cell: ({ row }) => (
+			<div className="flex justify-center">
+				<ActivitySparkline data={row.original.activity} />
+			</div>
+		),
 	},
 	{
 		id: "actions",
@@ -318,9 +323,7 @@ function InvoicesPageContent() {
 	// reads are gated — skip them without the grant so the page doesn't crash.
 	const invoices = useQuery(api.invoices.list, {});
 	// 30-day activity sparkline data, keyed by invoice id (presentational).
-	const sparklines = useQuery(api.activities.activitySparklines, {
-		entityType: "invoice",
-	});
+	const sparklines = useActivitySparklines("invoice");
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 

@@ -295,8 +295,9 @@ export const getCount = optionalUserQuery({
  *
  * Returns a map of entityId -> daily activity counts (index 0 = 29 days ago,
  * index 29 = today) for every record of `entityType` in the org that saw
- * activity in the window. One org-scoped scan on `by_org_timestamp`; the caller
- * looks up each grid row by its `_id`. Presentational only — not filterable.
+ * activity in the window. One scan on `by_org_entityType_timestamp` (scoped to
+ * org + entityType); the caller looks up each grid row by its `_id`.
+ * Presentational only — not filterable.
  */
 export const activitySparklines = optionalUserQuery({
 	args: {
@@ -321,17 +322,19 @@ export const activitySparklines = optionalUserQuery({
 
 		const activities = await ctx.db
 			.query("activities")
-			.withIndex("by_org_timestamp", (q) =>
-				q.eq("orgId", orgId).gte("timestamp", windowStart)
+			.withIndex("by_org_entityType_timestamp", (q) =>
+				q
+					.eq("orgId", orgId)
+					.eq("entityType", args.entityType)
+					.gte("timestamp", windowStart)
 			)
 			.collect();
 
-		// Bucket into per-day counts keyed by entityId (filter in memory to keep
-		// the index range tight — no composite entityType index needed).
+		// Bucket into per-day counts keyed by entityId. The index already scopes
+		// the scan to this org + entityType within the 30-day window.
 		const series: Record<string, number[]> = {};
 		for (const activity of activities) {
 			if (!activity.isVisible) continue;
-			if (activity.entityType !== args.entityType) continue;
 			const dayIdx = Math.floor((activity.timestamp - windowStart) / dayMs);
 			if (dayIdx < 0 || dayIdx >= DAYS) continue;
 			let buckets = series[activity.entityId];

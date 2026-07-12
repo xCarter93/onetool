@@ -712,6 +712,7 @@ export default defineSchema({
 		isVisible: v.boolean(), // Whether to show in activity feeds
 	})
 		.index("by_org_timestamp", ["orgId", "timestamp"])
+		.index("by_org_entityType_timestamp", ["orgId", "entityType", "timestamp"])
 		.index("by_user", ["userId"])
 		.index("by_entity", ["entityType", "entityId"])
 		.index("by_type", ["orgId", "activityType"]),

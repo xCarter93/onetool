@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
+import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -226,9 +227,13 @@ const createColumns = (
 	},
 	{
 		id: "activity",
-		header: "Activity",
+		header: () => <div className="text-center">Activity</div>,
 		enableSorting: false,
-		cell: ({ row }) => <ActivitySparkline data={row.original.activity} />,
+		cell: ({ row }) => (
+			<div className="flex justify-center">
+				<ActivitySparkline data={row.original.activity} />
+			</div>
+		),
 	},
 	{
 		id: "actions",
@@ -301,9 +306,7 @@ function ProjectsPageContent() {
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projectStats = useQuery(api.projects.getStats, {});
 	// 30-day activity sparkline data, keyed by project id (presentational).
-	const sparklines = useQuery(api.activities.activitySparklines, {
-		entityType: "project",
-	});
+	const sparklines = useActivitySparklines("project");
 
 	// Enhanced projects with client information. Clients may stay undefined
 	// forever without the grant — don't let that block rendering projects.

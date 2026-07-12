@@ -58,6 +58,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
@@ -226,9 +227,13 @@ const createColumns = (
 	},
 	{
 		id: "activity",
-		header: "Activity",
+		header: () => <div className="text-center">Activity</div>,
 		enableSorting: false,
-		cell: ({ row }) => <ActivitySparkline data={row.original.activity} />,
+		cell: ({ row }) => (
+			<div className="flex justify-center">
+				<ActivitySparkline data={row.original.activity} />
+			</div>
+		),
 	},
 	{
 		id: "actions",
@@ -304,9 +309,7 @@ function QuotesPageContent() {
 	// without the grant so the page doesn't crash for quotes-only viewers.
 	const quotes = useQuery(api.quotes.list, {});
 	// 30-day activity sparkline data, keyed by quote id (presentational).
-	const sparklines = useQuery(api.activities.activitySparklines, {
-		entityType: "quote",
-	});
+	const sparklines = useActivitySparklines("quote");
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 
@@ -333,11 +336,14 @@ function QuotesPageContent() {
 		filters.forEach((filter) => {
 			if (filter.values.length === 0) return;
 			switch (filter.field) {
-				case "status":
-					result = result.filter((q) =>
-						filter.values.includes(q.status as unknown)
-					);
+				case "status": {
+					const isNot = filter.operator === "is_not";
+					result = result.filter((q) => {
+						const match = filter.values.includes(q.status as unknown);
+						return isNot ? !match : match;
+					});
 					break;
+				}
 				case "client":
 					result = result.filter((q) =>
 						filter.values.includes(q.clientId as unknown)

@@ -18,8 +18,15 @@ interface DateFilterValueProps {
 	placeholder?: string;
 }
 
-const toDate = (value: unknown): Date | undefined =>
-	typeof value === "string" && value ? new Date(value) : undefined;
+const toDate = (value: unknown): Date | undefined => {
+	if (typeof value !== "string" || !value) return undefined;
+	// Parse "yyyy-MM-dd" as a local calendar day; `new Date(value)` would treat
+	// it as UTC and roll the displayed day back for users behind UTC. Matches
+	// the local construction in `matchesDateFilter`.
+	const [y, m, d] = value.split("-").map(Number);
+	if (!y || !m || !d) return undefined;
+	return new Date(y, m - 1, d);
+};
 
 /**
  * Single-date filter value control: a calendar popover that commits the picked

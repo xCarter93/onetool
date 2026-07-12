@@ -907,6 +907,16 @@ export const createFromQuote = userMutation({
 			throw new Error("Only approved quotes can be converted to invoices");
 		}
 
+		// One invoice per quote — guard against duplicates from double-clicks or
+		// stale UI on any surface (drawer/header both treat conversion as terminal).
+		const existingInvoice = await ctx.db
+			.query("invoices")
+			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+			.first();
+		if (existingInvoice) {
+			throw new Error("An invoice has already been created from this quote");
+		}
+
 		// Generate invoice number automatically
 		const orgInvoices = await ctx.db
 			.query("invoices")
