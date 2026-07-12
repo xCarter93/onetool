@@ -415,10 +415,10 @@ export default function MemberAccessPage() {
 						<Button
 							variant="outline"
 							onClick={() =>
-								router.push("/organization/profile?tab=overview")
+								router.push("/organization/profile?tab=team")
 							}
 						>
-							Back to organization
+							Back to team
 						</Button>
 					}
 				/>
@@ -623,10 +623,10 @@ export default function MemberAccessPage() {
 					variant="ghost"
 					size="sm"
 					className="-ml-2 text-muted-foreground"
-					onClick={() => router.push("/organization/profile?tab=overview")}
+					onClick={() => router.push("/organization/profile?tab=team")}
 				>
 					<ArrowLeft className="h-4 w-4" aria-hidden="true" />
-					Organization settings
+					Back to team
 				</Button>
 			</div>
 

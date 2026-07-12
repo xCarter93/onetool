@@ -151,6 +151,10 @@ const data = {
 							url: "/organization/profile",
 						},
 						{
+							title: "Team",
+							url: "/organization/profile?tab=team",
+						},
+						{
 							title: "Business Info",
 							url: "/organization/profile?tab=business",
 						},

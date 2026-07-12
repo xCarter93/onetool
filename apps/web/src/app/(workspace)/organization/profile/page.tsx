@@ -11,6 +11,7 @@ import {
 	Lock,
 	ShieldCheck,
 	Tags,
+	Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
 	type SettingsNavItem,
 } from "./_components/settings-nav";
 import { OverviewTab } from "./_components/overview-tab";
+import { TeamTab } from "./_components/team-tab";
 import { BusinessInfoTab } from "./_components/business-info-tab";
 import { PaymentsTab } from "./_components/payments-tab";
 import { DocumentsTab } from "./_components/documents-tab";
@@ -38,6 +40,7 @@ import { SKUsTab } from "./_components/skus-tab";
 
 const TAB_VALUES = [
 	"overview",
+	"team",
 	"business",
 	"payments",
 	"documents",
@@ -53,9 +56,10 @@ const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
 	skus: "skus",
 };
 
-// Stripe payouts stay role-gated (no matrix object in v1); Overview and
-// Business Info remain viewable read-only for members.
-const ADMIN_TABS: readonly TabValue[] = ["payments"];
+// Team management and Stripe payouts are admin/owner-only (no grantable "manage
+// team" object in v1). Overview and Business Info stay viewable read-only for
+// members — the Overview tab still shows a read-only team roster.
+const ADMIN_TABS: readonly TabValue[] = ["team", "payments"];
 
 const isTabValue = (value: string): value is TabValue =>
 	TAB_VALUES.includes(value as TabValue);
@@ -192,8 +196,15 @@ export default function OrganizationProfilePage() {
 			{
 				value: "overview",
 				label: "Overview",
-				sublabel: "Profile & team",
+				sublabel: "Profile & branding",
 				icon: LayoutGrid,
+			},
+			{
+				value: "team",
+				label: "Team",
+				sublabel: "Members & access",
+				icon: Users,
+				locked: !permsLoading && !hasFullAccess,
 			},
 			{
 				value: "business",
@@ -304,15 +315,18 @@ export default function OrganizationProfilePage() {
 											icon={<Lock className="h-6 w-6" aria-hidden="true" />}
 											title="You don't have access to this area"
 											description={
-												ADMIN_TABS.includes(activeTab)
-													? "Only organization admins can access payment settings."
-													: "Ask an organization admin to grant you access from the team settings."
+												activeTab === "team"
+													? "Only organization admins can manage team members and access."
+													: ADMIN_TABS.includes(activeTab)
+														? "Only organization admins can access payment settings."
+														: "Ask an organization admin to grant you access from the team settings."
 											}
 										/>
 									</div>
 								) : (
 									<>
 										{renderTab === "overview" && <OverviewTab />}
+										{renderTab === "team" && <TeamTab />}
 										{renderTab === "business" && <BusinessInfoTab />}
 										{renderTab === "payments" && <PaymentsTab />}
 										{renderTab === "documents" && <DocumentsTab />}
