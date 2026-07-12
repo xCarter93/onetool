@@ -81,7 +81,7 @@ export function FiltersWithClear<T = unknown>({
 	const hasActiveFilters = filters.length > 0;
 
 	return (
-		<div className="flex items-start gap-2.5 grow space-y-6 self-start content-start">
+		<div className="flex items-center gap-2.5 grow self-start">
 			<div className="flex-1">
 				<Filters
 					filters={filters}

@@ -12,6 +12,10 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
+	DateFilterValue,
+	matchesDateFilter,
+} from "@/components/filters/date-filter";
+import {
 	Frame,
 	FrameDescription,
 	FrameFooter,
@@ -69,11 +73,13 @@ import {
 	KanbanProvider,
 } from "./components/kanban";
 import { ProjectDetailDrawer } from "./components/project-detail-drawer";
+import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { cn } from "@/lib/utils";
 
 // Enhanced project type that includes client information for display
 type ProjectWithClient = Doc<"projects"> & {
 	client?: Doc<"clients">;
+	activity?: number[];
 };
 
 type ProjectKanbanItem = {
@@ -219,6 +225,12 @@ const createColumns = (
 		},
 	},
 	{
+		id: "activity",
+		header: "Activity",
+		enableSorting: false,
+		cell: ({ row }) => <ActivitySparkline data={row.original.activity} />,
+	},
+	{
 		id: "actions",
 		header: "",
 		cell: ({ row }) => (
@@ -288,6 +300,10 @@ function ProjectsPageContent() {
 	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projectStats = useQuery(api.projects.getStats, {});
+	// 30-day activity sparkline data, keyed by project id (presentational).
+	const sparklines = useQuery(api.activities.activitySparklines, {
+		entityType: "project",
+	});
 
 	// Enhanced projects with client information. Clients may stay undefined
 	// forever without the grant — don't let that block rendering projects.
@@ -297,8 +313,9 @@ function ProjectsPageContent() {
 		return projects.map((project) => ({
 			...project,
 			client: clients?.find((client) => client._id === project.clientId),
+			activity: sparklines?.[project._id],
 		}));
-	}, [projects, clients]);
+	}, [projects, clients, sparklines]);
 
 	// Advanced filters (status / type / client / start-date) applied to the set.
 	const filteredData = React.useMemo(() => {
@@ -322,23 +339,9 @@ function ProjectsPageContent() {
 					);
 					break;
 				case "date":
-					if (filter.operator === "between" && filter.values.length === 2) {
-						const [startDate, endDate] = filter.values as [string, string];
-						if (startDate) {
-							const startTs = new Date(startDate).getTime();
-							result = result.filter(
-								(p) => p.startDate != null && p.startDate >= startTs
-							);
-						}
-						if (endDate) {
-							const end = new Date(endDate);
-							end.setHours(23, 59, 59, 999);
-							const endTs = end.getTime();
-							result = result.filter(
-								(p) => p.startDate != null && p.startDate <= endTs
-							);
-						}
-					}
+					result = result.filter((p) =>
+						matchesDateFilter(p.startDate, filter.operator, filter.values[0])
+					);
 					break;
 			}
 		});
@@ -454,14 +457,14 @@ function ProjectsPageContent() {
 				key: "status",
 				label: "Status",
 				icon: <CheckCircle2 className="h-3 w-3" />,
-				type: "multiselect",
+				type: "select",
 				options: statusOptions,
 			},
 			{
 				key: "type",
 				label: "Type",
 				icon: <Repeat className="h-3 w-3" />,
-				type: "multiselect",
+				type: "select",
 				options: typeOptions,
 			},
 			{
@@ -476,7 +479,16 @@ function ProjectsPageContent() {
 				key: "date",
 				label: "Start Date",
 				icon: <Calendar className="h-3 w-3" />,
-				type: "daterange",
+				type: "date",
+				defaultOperator: "before",
+				operators: [
+					{ value: "before", label: "before" },
+					{ value: "after", label: "after" },
+					{ value: "is", label: "on" },
+				],
+				customRenderer: (p) => (
+					<DateFilterValue values={p.values} onChange={p.onChange} />
+				),
 			},
 		];
 	}, [clients]);

@@ -11,6 +11,10 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
+	DateFilterValue,
+	matchesDateFilter,
+} from "@/components/filters/date-filter";
+import {
 	Frame,
 	FrameDescription,
 	FrameFooter,
@@ -68,11 +72,13 @@ import {
 	KanbanProvider,
 } from "../projects/components/kanban";
 import { QuoteDetailDrawer } from "./components/quote-detail-drawer";
+import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { cn } from "@/lib/utils";
 
 type QuoteWithClient = Doc<"quotes"> & {
 	clientName: string;
 	projectName?: string;
+	activity?: number[];
 };
 
 type QuoteKanbanItem = {
@@ -219,6 +225,12 @@ const createColumns = (
 		},
 	},
 	{
+		id: "activity",
+		header: "Activity",
+		enableSorting: false,
+		cell: ({ row }) => <ActivitySparkline data={row.original.activity} />,
+	},
+	{
 		id: "actions",
 		header: "",
 		cell: ({ row }) => {
@@ -291,6 +303,10 @@ function QuotesPageContent() {
 	// Fetch data from Convex. The clients/projects reads are gated — skip them
 	// without the grant so the page doesn't crash for quotes-only viewers.
 	const quotes = useQuery(api.quotes.list, {});
+	// 30-day activity sparkline data, keyed by quote id (presentational).
+	const sparklines = useQuery(api.activities.activitySparklines, {
+		entityType: "quote",
+	});
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 
@@ -306,9 +322,10 @@ function QuotesPageContent() {
 				...quote,
 				clientName: client?.companyName || "Unknown Client",
 				projectName: project?.title,
+				activity: sparklines?.[quote._id],
 			};
 		});
-	}, [quotes, clients, projects]);
+	}, [quotes, clients, projects, sparklines]);
 
 	// Advanced filters (status / client / project / valid-until / amount).
 	const filteredData = React.useMemo(() => {
@@ -334,23 +351,9 @@ function QuotesPageContent() {
 					);
 					break;
 				case "validUntil":
-					if (filter.operator === "between" && filter.values.length === 2) {
-						const [startDate, endDate] = filter.values as [string, string];
-						if (startDate) {
-							const startTs = new Date(startDate).getTime();
-							result = result.filter(
-								(q) => q.validUntil != null && q.validUntil >= startTs
-							);
-						}
-						if (endDate) {
-							const end = new Date(endDate);
-							end.setHours(23, 59, 59, 999);
-							const endTs = end.getTime();
-							result = result.filter(
-								(q) => q.validUntil != null && q.validUntil <= endTs
-							);
-						}
-					}
+					result = result.filter((q) =>
+						matchesDateFilter(q.validUntil, filter.operator, filter.values[0])
+					);
 					break;
 				case "amount":
 					if (filter.operator === "between" && filter.values.length === 2) {
@@ -484,7 +487,7 @@ function QuotesPageContent() {
 				key: "status",
 				label: "Status",
 				icon: <CheckCircle2 className="h-3 w-3" />,
-				type: "multiselect",
+				type: "select",
 				options: statusOptions,
 			},
 			{
@@ -507,7 +510,16 @@ function QuotesPageContent() {
 				key: "validUntil",
 				label: "Valid Until",
 				icon: <Calendar className="h-3 w-3" />,
-				type: "daterange",
+				type: "date",
+				defaultOperator: "before",
+				operators: [
+					{ value: "before", label: "before" },
+					{ value: "after", label: "after" },
+					{ value: "is", label: "on" },
+				],
+				customRenderer: (p) => (
+					<DateFilterValue values={p.values} onChange={p.onChange} />
+				),
 			},
 			{
 				key: "amount",
