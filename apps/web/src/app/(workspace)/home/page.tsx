@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from "react";
 import ActivityFeed from "@/app/(workspace)/home/components/activity-feed";
 import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
-import OnboardingBanner from "@/app/(workspace)/home/components/onboarding-banner";
 import { CalendarContainer } from "@/app/(workspace)/home/components/calendar/calendar-container";
 import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
 import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
@@ -199,29 +198,14 @@ export default function Page() {
 				{/* Conditional View Rendering */}
 				{viewMode === "dashboard" ? (
 					<>
-						{/* Animation Group 1: Banner + Stats - no delay */}
+						{/* Animation Group 1: Stats - no delay */}
 						<motion.div
 							initial={{ opacity: 0, y: 10 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.3, ease: "easeOut" }}
 						>
-							{/* Onboarding Banner - Tour Step */}
-							<TourElement<HomeTour>
-								TourContext={HomeTourContext}
-								stepId={HomeTour.ONBOARDING_BANNER}
-								title={HOME_TOUR_CONTENT[HomeTour.ONBOARDING_BANNER].title}
-								description={
-									HOME_TOUR_CONTENT[HomeTour.ONBOARDING_BANNER].description
-								}
-								tooltipPosition={
-									HOME_TOUR_CONTENT[HomeTour.ONBOARDING_BANNER].tooltipPosition
-								}
-							>
-								<OnboardingBanner />
-							</TourElement>
-
 							{/* Home Stats - Tour Step */}
-							<div className="mt-6">
+							<div>
 								<TourElement<HomeTour>
 									TourContext={HomeTourContext}
 									stepId={HomeTour.HOME_STATS}

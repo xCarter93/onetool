@@ -236,8 +236,16 @@ export const listByEntity = optionalUserQuery({
 		ctx,
 		args
 	): Promise<(MessageAttachment & { downloadUrl: string | null })[]> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
+			return [];
+		}
+
+		// Attachment metadata follows the parent entity's view grant.
+		const entityObject = (
+			{ client: "clients", project: "projects", quote: "quotes" } as const
+		)[args.entityType];
+		if (!(await ctx.gateRead(entityObject))) {
 			return [];
 		}
 

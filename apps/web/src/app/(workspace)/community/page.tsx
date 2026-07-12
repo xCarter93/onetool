@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import React, { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -28,7 +29,7 @@ import { useOrganization } from "@clerk/nextjs";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
 
-export default function CommunityPage() {
+function CommunityPageContent() {
 	const router = useRouter();
 	const toast = useToast();
 	const { organization: clerkOrganization } = useOrganization();
@@ -477,5 +478,13 @@ export default function CommunityPage() {
 				</p>
 			</div>
 		</div>
+	);
+}
+
+export default function CommunityPage() {
+	return (
+		<PermissionGate object="community">
+			<CommunityPageContent />
+		</PermissionGate>
 	);
 }

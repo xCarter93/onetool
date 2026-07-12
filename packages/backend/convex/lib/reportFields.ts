@@ -222,6 +222,7 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 					"task_completed",
 					"user_invited",
 					"user_removed",
+					"member_permissions_updated",
 					"organization_updated",
 					"email_sent",
 					"email_delivered",

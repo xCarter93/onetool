@@ -1,5 +1,7 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
@@ -14,7 +16,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 
-export default function ProjectDetailPage() {
+function ProjectDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
 	const toast = useToast();
@@ -23,6 +25,7 @@ export default function ProjectDetailPage() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 	const [activeTab, setActiveTab] = useState("overview");
+	const { can } = usePermissions();
 
 	const projectId = params.projectId as Id<"projects">;
 
@@ -36,11 +39,13 @@ export default function ProjectDetailPage() {
 	);
 	const projectQuotes = useQuery(
 		api.quotes.list,
-		project === null || isDeleting ? "skip" : { projectId }
+		project === null || isDeleting || !can("quotes") ? "skip" : { projectId }
 	);
 	const projectInvoices = useQuery(
 		api.invoices.list,
-		project === null || isDeleting ? "skip" : { projectId }
+		project === null || isDeleting || !can("invoices")
+			? "skip"
+			: { projectId }
 	);
 	const activities = useQuery(
 		api.activities.getByEntity,
@@ -52,15 +57,19 @@ export default function ProjectDetailPage() {
 	// Fetch client and related data
 	const client = useQuery(
 		api.clients.get,
-		project?.clientId ? { id: project.clientId } : "skip"
+		project?.clientId && can("clients") ? { id: project.clientId } : "skip"
 	);
 	const primaryContact = useQuery(
 		api.clientContacts.getPrimaryContact,
-		project?.clientId ? { clientId: project.clientId } : "skip"
+		project?.clientId && can("clients")
+			? { clientId: project.clientId }
+			: "skip"
 	);
 	const primaryProperty = useQuery(
 		api.clientProperties.getPrimaryProperty,
-		project?.clientId ? { clientId: project.clientId } : "skip"
+		project?.clientId && can("clients")
+			? { clientId: project.clientId }
+			: "skip"
 	);
 
 	// Mutations
@@ -181,5 +190,13 @@ export default function ProjectDetailPage() {
 				approvedQuotes={approvedQuotes}
 			/>
 		</>
+	);
+}
+
+export default function ProjectDetailPage() {
+	return (
+		<PermissionGate object="projects">
+			<ProjectDetailPageContent />
+		</PermissionGate>
 	);
 }

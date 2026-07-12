@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useMutation } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { REPORT_PRESETS } from "@onetool/backend/convex/lib/reportPresets";
 import {
@@ -114,14 +115,16 @@ function NewReportInner() {
 
 export default function NewReportPage() {
 	return (
-		<Suspense
-			fallback={
-				<div className="flex min-h-[400px] items-center justify-center">
-					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-				</div>
-			}
-		>
-			<NewReportInner />
-		</Suspense>
+		<PermissionGate object="reports">
+			<Suspense
+				fallback={
+					<div className="flex min-h-[400px] items-center justify-center">
+						<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+					</div>
+				}
+			>
+				<NewReportInner />
+			</Suspense>
+		</PermissionGate>
 	);
 }

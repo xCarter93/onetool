@@ -64,6 +64,10 @@
     "./convex/lib/orgScan": {
       "types": "./convex/lib/orgScan.ts",
       "default": "./convex/lib/orgScan.ts"
+    },
+    "./convex/lib/permissionKeys": {
+      "types": "./convex/lib/permissionKeys.ts",
+      "default": "./convex/lib/permissionKeys.ts"
     }
   },
   "scripts": {

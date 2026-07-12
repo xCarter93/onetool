@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter, useParams } from "next/navigation";
@@ -28,7 +29,7 @@ function chartVisibleKey(reportId: string) {
 	return `report-chart-visible:${reportId}`;
 }
 
-export default function ReportViewPage() {
+function ReportViewPageContent() {
 	const router = useRouter();
 	const params = useParams();
 	const reportId = params.reportId as string;
@@ -250,5 +251,13 @@ export default function ReportViewPage() {
 				/>
 			</div>
 		</div>
+	);
+}
+
+export default function ReportViewPage() {
+	return (
+		<PermissionGate object="reports">
+			<ReportViewPageContent />
+		</PermissionGate>
 	);
 }

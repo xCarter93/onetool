@@ -88,6 +88,8 @@ type SKUId = Id<"skus">;
 export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<SKUDocument[]> => {
+		if (!ctx.user) return [];
+		await ctx.requireLevel("skus", "view");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
 		const skus = await ctx.db
@@ -108,6 +110,8 @@ export const list = optionalUserQuery({
 export const listAll = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<SKUDocument[]> => {
+		if (!ctx.user) return [];
+		await ctx.requireLevel("skus", "view");
 		const userOrgId = await getCurrentUserOrgId(ctx);
 
 		const skus = await ctx.db
@@ -126,6 +130,8 @@ export const listAll = optionalUserQuery({
 export const get = optionalUserQuery({
 	args: { id: v.id("skus") },
 	handler: async (ctx, args): Promise<SKUDocument | null> => {
+		if (!ctx.user) return null;
+		await ctx.requireLevel("skus", "view");
 		return await getSKUWithOrgValidation(ctx, args.id);
 	},
 });
@@ -141,6 +147,7 @@ export const create = userMutation({
 		cost: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<SKUId> => {
+		await ctx.requireLevel("skus", "modify");
 		// Validate required fields
 		if (!args.name.trim()) {
 			throw new Error("SKU name is required");
@@ -188,6 +195,7 @@ export const update = userMutation({
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<SKUId> => {
+		await ctx.requireLevel("skus", "modify");
 		const { id, ...updates } = args;
 
 		// Validate fields if being updated
@@ -245,6 +253,7 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("skus") },
 	handler: async (ctx, args): Promise<SKUId> => {
+		await ctx.requireLevel("skus", "delete");
 		await getSKUOrThrow(ctx, args.id); // Validate access
 
 		await ctx.db.patch(args.id, {
@@ -262,6 +271,7 @@ export const remove = userMutation({
 export const permanentlyDelete = userMutation({
 	args: { id: v.id("skus") },
 	handler: async (ctx, args): Promise<SKUId> => {
+		await ctx.requireLevel("skus", "delete");
 		await getSKUOrThrow(ctx, args.id); // Validate access
 		await ctx.db.delete(args.id);
 		return args.id;

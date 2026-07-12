@@ -8,8 +8,13 @@ import {
 import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { internal, api } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
-import { getCurrentUserOrgId } from "./lib/auth";
-import { hasPremiumAccess } from "./lib/permissions";
+import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
+import {
+	denyPermission,
+	hasAllRecords,
+	hasPremiumAccess,
+	requireLevel,
+} from "./lib/permissions";
 import {
 	computeEsignaturesSentThisMonth,
 	FREE_ESIGNATURES_PER_MONTH,
@@ -121,6 +126,26 @@ export const getEmbeddedRequestContext = internalQuery({
 		const quote = await ctx.db.get(args.quoteId);
 		if (!quote || quote.orgId !== orgId) {
 			throw new Error("Quote does not belong to your organization");
+		}
+
+		// E-sign send = quotes modify (PRD §4.4); caller identity flows through
+		// the action into this internal query. Shadow-aware.
+		await requireLevel(ctx, "quotes", "modify");
+		if (!(await hasAllRecords(ctx, "quotes"))) {
+			const user = await getCurrentUser(ctx);
+			const projects = await ctx.db
+				.query("projects")
+				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.collect();
+			const mine = projects.filter(
+				(p) => user && p.assignedUserIds?.includes(user._id)
+			);
+			const inScope = quote.projectId
+				? mine.some((p) => p._id === quote.projectId)
+				: mine.some((p) => p.clientId === quote.clientId);
+			if (!inScope) {
+				denyPermission({ object: "quotes", scope: true, userId: user?._id, orgId });
+			}
 		}
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);

@@ -92,6 +92,8 @@ export const KanbanBoard = ({ id, children, className }: KanbanBoardProps) => {
 export type KanbanCardProps<T extends KanbanItemProps = KanbanItemProps> = T & {
 	children?: ReactNode;
 	className?: string;
+	/** Hides the drag handle and disables drag initiation (view-only users). */
+	dragDisabled?: boolean;
 };
 
 export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
@@ -99,6 +101,7 @@ export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
 	name,
 	children,
 	className,
+	dragDisabled,
 }: KanbanCardProps<T>) => {
 	const {
 		attributes,
@@ -128,14 +131,16 @@ export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
 					)}
 				>
 					{/* Slim, always-visible grip so drag stays reachable on touch */}
-					<div
-						{...listeners}
-						{...attributes}
-						className="bg-muted/20 hover:bg-muted/40 border-border/50 flex cursor-grab items-center justify-center border-b py-1 transition-colors active:cursor-grabbing"
-						aria-label="Drag to move"
-					>
-						<GripHorizontal className="text-muted-foreground/50 size-4" />
-					</div>
+					{!dragDisabled && (
+						<div
+							{...listeners}
+							{...attributes}
+							className="bg-muted/20 hover:bg-muted/40 border-border/50 flex cursor-grab items-center justify-center border-b py-1 transition-colors active:cursor-grabbing"
+							aria-label="Drag to move"
+						>
+							<GripHorizontal className="text-muted-foreground/50 size-4" />
+						</div>
+					)}
 					<div className="p-3">
 						{children ?? <p className="m-0 text-sm font-medium">{name}</p>}
 					</div>

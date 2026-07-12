@@ -19,6 +19,7 @@ import { CalendarWidget } from "@/components/ui/calendar-widget";
 import { StickyFormFooter } from "@/components/shared/sticky-form-footer";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useRouter } from "next/navigation";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -196,20 +197,29 @@ export function ProjectOnboardingForm({
 		"one-off"
 	);
 
-	const clientsResult = useQuery(api.clients.list, {});
+	const { can } = usePermissions();
+	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
+	const clientsResult = useQuery(
+		api.clients.list,
+		can("clients") ? {} : "skip"
+	);
 	const clients = useMemo(() => clientsResult ?? [], [clientsResult]);
 	const clientDetails = useQuery(
 		api.clients.get,
-		selectedClientId ? { id: selectedClientId } : "skip"
+		selectedClientId && can("clients") ? { id: selectedClientId } : "skip"
 	);
 
 	const clientContacts = useQuery(
 		api.clientContacts.listByClient,
-		selectedClientId ? { clientId: selectedClientId } : "skip"
+		selectedClientId && can("clients")
+			? { clientId: selectedClientId }
+			: "skip"
 	);
 	const clientProperties = useQuery(
 		api.clientProperties.listByClient,
-		selectedClientId ? { clientId: selectedClientId } : "skip"
+		selectedClientId && can("clients")
+			? { clientId: selectedClientId }
+			: "skip"
 	);
 
 	const users = useQuery(api.users.listByOrg);

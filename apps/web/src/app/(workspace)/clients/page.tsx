@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ import {
 	useCanPerformAction,
 	useFeatureAccess,
 } from "@/hooks/use-feature-access";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	Tooltip,
 	TooltipContent,
@@ -189,7 +191,8 @@ const createColumns = (
 	onPreview: (id: string) => void,
 	onDelete: (id: string, name: string) => void,
 	onRestore: (id: string, name: string) => void,
-	isArchivedTab: boolean
+	isArchivedTab: boolean,
+	canModify: boolean
 ): ColumnDef<Client>[] => [
 	{
 		accessorKey: "name",
@@ -287,27 +290,28 @@ const createColumns = (
 				>
 					<ExternalLink className="size-4" />
 				</Button>
-				{isArchivedTab ? (
-					<Button
-						variant="outline"
-						size="icon-sm"
-						onClick={() => onRestore(row.original.id, row.original.name)}
-						className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
-						aria-label={`Restore client ${row.original.name}`}
-					>
-						<RotateCcw className="size-4" />
-					</Button>
-				) : (
-					<Button
-						variant="outline"
-						size="icon-sm"
-						onClick={() => onDelete(row.original.id, row.original.name)}
-						className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-						aria-label={`Archive client ${row.original.name}`}
-					>
-						<Trash2 className="size-4" />
-					</Button>
-				)}
+				{canModify &&
+					(isArchivedTab ? (
+						<Button
+							variant="outline"
+							size="icon-sm"
+							onClick={() => onRestore(row.original.id, row.original.name)}
+							className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+							aria-label={`Restore client ${row.original.name}`}
+						>
+							<RotateCcw className="size-4" />
+						</Button>
+					) : (
+						<Button
+							variant="outline"
+							size="icon-sm"
+							onClick={() => onDelete(row.original.id, row.original.name)}
+							className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+							aria-label={`Archive client ${row.original.name}`}
+						>
+							<Trash2 className="size-4" />
+						</Button>
+					))}
 			</div>
 		),
 	},
@@ -316,9 +320,11 @@ const createColumns = (
 function ActiveEmptyState({
 	gate,
 	onAdd,
+	canModify,
 }: {
 	gate: ClientActionGate;
 	onAdd: () => void;
+	canModify: boolean;
 }) {
 	const { canPerform, reason, currentUsage, limit } = gate;
 	return (
@@ -328,27 +334,29 @@ function ActiveEmptyState({
 			title="No clients yet"
 			description="Create your first client to start organizing relationships and tracking activity."
 			action={
-				<Tooltip>
-					<TooltipTrigger render={<span className="inline-block" />}>
-						<Button onClick={onAdd} disabled={!canPerform}>
-							<Plus className="h-4 w-4" />
-							Add Your First Client
-						</Button>
-					</TooltipTrigger>
-					{!canPerform && (
-						<TooltipContent>
-							<div className="space-y-1">
-								<p className="font-semibold">Upgrade Required</p>
-								<p>{reason || "You've reached your client limit"}</p>
-								{limit && limit !== "unlimited" && currentUsage !== undefined && (
-									<p className="text-muted-foreground">
-										{currentUsage}/{limit} clients
-									</p>
-								)}
-							</div>
-						</TooltipContent>
-					)}
-				</Tooltip>
+				canModify ? (
+					<Tooltip>
+						<TooltipTrigger render={<span className="inline-block" />}>
+							<Button onClick={onAdd} disabled={!canPerform}>
+								<Plus className="h-4 w-4" />
+								Add Your First Client
+							</Button>
+						</TooltipTrigger>
+						{!canPerform && (
+							<TooltipContent>
+								<div className="space-y-1">
+									<p className="font-semibold">Upgrade Required</p>
+									<p>{reason || "You've reached your client limit"}</p>
+									{limit && limit !== "unlimited" && currentUsage !== undefined && (
+										<p className="text-muted-foreground">
+											{currentUsage}/{limit} clients
+										</p>
+									)}
+								</div>
+							</TooltipContent>
+						)}
+					</Tooltip>
+				) : undefined
 			}
 		/>
 	);
@@ -365,7 +373,7 @@ function ArchivedEmptyState() {
 	);
 }
 
-export default function ClientsPage() {
+function ClientsPageContent() {
 	const router = useRouter();
 	const toast = useToast();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
@@ -391,6 +399,8 @@ export default function ClientsPage() {
 	const gate = useCanPerformAction("create_client");
 	const { canPerform, reason } = gate;
 	const { hasPremiumAccess } = useFeatureAccess();
+	const { can } = usePermissions();
+	const canModifyClients = can("clients", "modify");
 
 	const archiveClient = useMutation(api.clients.archive);
 	const restoreClient = useMutation(api.clients.restore);
@@ -549,6 +559,7 @@ export default function ClientsPage() {
 
 	const handleKanbanDragEnd = React.useCallback(
 		(event: DragEndEvent) => {
+			if (!canModifyClients) return;
 			const item = kanbanData.find((i) => i.id === event.active.id);
 			if (!item) return;
 			const originalStatus = clientStatusMap.get(item.id);
@@ -565,13 +576,28 @@ export default function ClientsPage() {
 				});
 			}
 		},
-		[kanbanData, clientStatusMap, updateClient, toast]
+		[canModifyClients, kanbanData, clientStatusMap, updateClient, toast]
 	);
 
 	const isArchivedTab = activeTab === "archived";
 	const columns = React.useMemo(
-		() => createColumns(router, openPreview, handleDelete, handleRestore, isArchivedTab),
-		[router, openPreview, handleDelete, handleRestore, isArchivedTab]
+		() =>
+			createColumns(
+				router,
+				openPreview,
+				handleDelete,
+				handleRestore,
+				isArchivedTab,
+				canModifyClients
+			),
+		[
+			router,
+			openPreview,
+			handleDelete,
+			handleRestore,
+			isArchivedTab,
+			canModifyClients,
+		]
 	);
 
 	const table = useReactTable({
@@ -690,6 +716,7 @@ export default function ClientsPage() {
 										id={item.id}
 										name={item.name}
 										column={item.column}
+										dragDisabled={!canModifyClients}
 									>
 										<div
 											role="button"
@@ -780,60 +807,62 @@ export default function ClientsPage() {
 						</p>
 					</div>
 				</div>
-				<div className="flex gap-2">
-					<Tooltip>
-						<TooltipTrigger render={<span className="inline-block" />}>
-							<Button
-								variant="outline"
-								onClick={() => router.push("/clients/import")}
-								disabled={!hasPremiumAccess}
-							>
-								<Upload className="h-4 w-4" />
-								Import Clients
-							</Button>
-						</TooltipTrigger>
-						{!hasPremiumAccess && (
-							<TooltipContent>
-								<div className="space-y-1">
-									<p className="font-semibold">Premium Feature</p>
-									<p>Upgrade to access client import functionality</p>
-								</div>
-							</TooltipContent>
-						)}
-					</Tooltip>
+				{canModifyClients && (
+					<div className="flex gap-2">
+						<Tooltip>
+							<TooltipTrigger render={<span className="inline-block" />}>
+								<Button
+									variant="outline"
+									onClick={() => router.push("/clients/import")}
+									disabled={!hasPremiumAccess}
+								>
+									<Upload className="h-4 w-4" />
+									Import Clients
+								</Button>
+							</TooltipTrigger>
+							{!hasPremiumAccess && (
+								<TooltipContent>
+									<div className="space-y-1">
+										<p className="font-semibold">Premium Feature</p>
+										<p>Upgrade to access client import functionality</p>
+									</div>
+								</TooltipContent>
+							)}
+						</Tooltip>
 
-					<Tooltip>
-						<TooltipTrigger render={<span className="inline-block" />}>
-							<Button onClick={handleAddClient} disabled={!canPerform}>
-								<Plus className="h-4 w-4" />
-								Add Client
-								{!canPerform &&
-									gate.limit &&
-									gate.limit !== "unlimited" &&
-									gate.currentUsage !== undefined && (
-										<Badge variant="secondary" className="ml-1 text-xs">
-											{gate.currentUsage}/{gate.limit}
-										</Badge>
-									)}
-							</Button>
-						</TooltipTrigger>
-						{!canPerform && (
-							<TooltipContent>
-								<div className="space-y-1">
-									<p className="font-semibold">Upgrade Required</p>
-									<p>{reason || "You've reached your client limit"}</p>
-									{gate.limit &&
+						<Tooltip>
+							<TooltipTrigger render={<span className="inline-block" />}>
+								<Button onClick={handleAddClient} disabled={!canPerform}>
+									<Plus className="h-4 w-4" />
+									Add Client
+									{!canPerform &&
+										gate.limit &&
 										gate.limit !== "unlimited" &&
 										gate.currentUsage !== undefined && (
-											<p className="text-muted-foreground">
-												{gate.currentUsage}/{gate.limit} clients
-											</p>
+											<Badge variant="secondary" className="ml-1 text-xs">
+												{gate.currentUsage}/{gate.limit}
+											</Badge>
 										)}
-								</div>
-							</TooltipContent>
-						)}
-					</Tooltip>
-				</div>
+								</Button>
+							</TooltipTrigger>
+							{!canPerform && (
+								<TooltipContent>
+									<div className="space-y-1">
+										<p className="font-semibold">Upgrade Required</p>
+										<p>{reason || "You've reached your client limit"}</p>
+										{gate.limit &&
+											gate.limit !== "unlimited" &&
+											gate.currentUsage !== undefined && (
+												<p className="text-muted-foreground">
+													{gate.currentUsage}/{gate.limit} clients
+												</p>
+											)}
+									</div>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</div>
+				)}
 			</div>
 
 			<MetricFrame
@@ -952,7 +981,7 @@ export default function ClientsPage() {
 							</div>
 						) : viewMode === "kanban" ? (
 							isActiveEmpty ? (
-								<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
+								<ActiveEmptyState gate={gate} onAdd={handleAddClient} canModify={canModifyClients} />
 							) : (
 								<>
 									{filtersBar}
@@ -975,7 +1004,7 @@ export default function ClientsPage() {
 									isArchivedTab ? (
 										<ArchivedEmptyState />
 									) : (
-										<ActiveEmptyState gate={gate} onAdd={handleAddClient} />
+										<ActiveEmptyState gate={gate} onAdd={handleAddClient} canModify={canModifyClients} />
 									)
 								) : (
 									<>
@@ -1018,5 +1047,13 @@ export default function ClientsPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function ClientsPage() {
+	return (
+		<PermissionGate object="clients">
+			<ClientsPageContent />
+		</PermissionGate>
 	);
 }

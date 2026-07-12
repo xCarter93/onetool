@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAction } from "convex/react";
@@ -32,7 +33,7 @@ type ViewState =
  * fields, edits recipients, and sends themselves. The Sent webhook remains the
  * source of truth for the quote's status regardless of what this page observes.
  */
-export default function QuoteSignPage() {
+function QuoteSignPageContent() {
 	const params = useParams<{ quoteId: string }>();
 	const quoteId = params.quoteId as Id<"quotes">;
 	const router = useRouter();
@@ -319,5 +320,13 @@ export default function QuoteSignPage() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+export default function QuoteSignPage() {
+	return (
+		<PermissionGate object="quotes">
+			<QuoteSignPageContent />
+		</PermissionGate>
 	);
 }

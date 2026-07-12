@@ -311,4 +311,19 @@ export const ActivityHelpers = {
 			description: `Updated organization settings`,
 		});
 	},
+
+	async memberPermissionsUpdated(
+		ctx: MutationCtx,
+		targetUser: Doc<"users">,
+		permissions: Record<string, unknown>
+	) {
+		return createActivity(ctx, {
+			activityType: "member_permissions_updated",
+			entityType: "user",
+			entityId: targetUser._id,
+			entityName: targetUser.name,
+			description: `Updated access permissions for ${targetUser.name}`,
+			metadata: { permissions },
+		});
+	},
 };

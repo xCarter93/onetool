@@ -15,7 +15,6 @@ export const enum HomeTour {
 	// Dashboard steps
 	VIEW_TOGGLE = "view-toggle",
 	HOME_STATS = "home-stats",
-	ONBOARDING_BANNER = "onboarding-banner",
 	WEEKLY_CALENDAR = "weekly-calendar",
 	CLIENT_MAP = "client-map",
 	TASKS = "tasks",
@@ -32,7 +31,6 @@ export const ORDERED_HOME_TOUR: HomeTour[] = [
 	HomeTour.USER_MENU,
 	HomeTour.VIEW_TOGGLE,
 	HomeTour.HOME_STATS,
-	HomeTour.ONBOARDING_BANNER,
 	HomeTour.WEEKLY_CALENDAR,
 	HomeTour.CLIENT_MAP,
 	HomeTour.TASKS,
@@ -78,12 +76,6 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 		title: "Your Business at a Glance",
 		description:
 			"Track your key metrics including active clients, projects in progress, pending quotes, and revenue. These update in real-time as you work.",
-		tooltipPosition: "bottom",
-	},
-	[HomeTour.ONBOARDING_BANNER]: {
-		title: "Setup Progress",
-		description:
-			"Track your onboarding progress here. Complete each step to get your workspace fully set up and ready for business.",
 		tooltipPosition: "bottom",
 	},
 	[HomeTour.WEEKLY_CALENDAR]: {

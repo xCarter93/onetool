@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,8 @@ import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
+import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	type DragEndEvent,
 	KanbanBoard,
@@ -146,7 +149,8 @@ const formatQuoteDate = (timestamp?: number) => {
 const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
-	onPreview: (id: string) => void
+	onPreview: (id: string) => void,
+	canDelete: boolean
 ): ColumnDef<QuoteWithClient>[] => [
 	{
 		accessorKey: "quoteNumber",
@@ -242,23 +246,29 @@ const createColumns = (
 					>
 						<ExternalLink className="size-4" />
 					</Button>
-					<Button
-						variant="outline"
-						size="icon-sm"
-						onClick={() => onDelete(row.original._id, label)}
-						className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-						aria-label={`Delete quote ${label}`}
-					>
-						<Trash2 className="size-4" />
-					</Button>
+					{canDelete && (
+						<Button
+							variant="outline"
+							size="icon-sm"
+							onClick={() => onDelete(row.original._id, label)}
+							className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+							aria-label={`Delete quote ${label}`}
+						>
+							<Trash2 className="size-4" />
+						</Button>
+					)}
 				</div>
 			);
 		},
 	},
 ];
 
-export default function QuotesPage() {
+function QuotesPageContent() {
 	const router = useRouter();
+	const toast = useToast();
+	const { can } = usePermissions();
+	const canModifyQuotes = can("quotes", "modify");
+	const canDeleteQuotes = can("quotes", "delete");
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [query, setQuery] = React.useState("");
@@ -419,15 +429,17 @@ export default function QuotesPage() {
 				await deleteQuote({ id: quoteToDelete.id as Id<"quotes"> });
 				setDeleteModalOpen(false);
 				setQuoteToDelete(null);
+				toast.success("Quote Deleted", `${quoteToDelete.name} has been deleted.`);
 			} catch (error) {
 				console.error("Failed to delete quote:", error);
+				toast.error("Delete Failed", "Failed to delete the quote. Please try again.");
 			}
 		}
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview),
-		[router, handleDelete, openPreview]
+		() => createColumns(router, handleDelete, openPreview, canDeleteQuotes),
+		[router, handleDelete, openPreview, canDeleteQuotes]
 	);
 
 	const table = useReactTable({
@@ -522,6 +534,7 @@ export default function QuotesPage() {
 
 	const handleKanbanDragEnd = React.useCallback(
 		(event: DragEndEvent) => {
+			if (!canModifyQuotes) return;
 			const item = kanbanData.find((i) => i.id === event.active.id);
 			if (!item) return;
 			const originalStatus = quoteStatusMap.get(item.id);
@@ -531,10 +544,14 @@ export default function QuotesPage() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update quote status:", error);
+					toast.error(
+						"Update Failed",
+						"Failed to update quote status. Please try again."
+					);
 				});
 			}
 		},
-		[kanbanData, quoteStatusMap, updateQuoteStatus]
+		[canModifyQuotes, kanbanData, quoteStatusMap, updateQuoteStatus, toast]
 	);
 
 	const totalPending = React.useMemo(
@@ -562,10 +579,12 @@ export default function QuotesPage() {
 						</p>
 					</div>
 				</div>
-				<Button onClick={() => router.push("/quotes/new")}>
-					<Plus className="h-4 w-4" />
-					Create Quote
-				</Button>
+				{canModifyQuotes && (
+					<Button onClick={() => router.push("/quotes/new")}>
+						<Plus className="h-4 w-4" />
+						Create Quote
+					</Button>
+				)}
 			</div>
 
 			<MetricFrame
@@ -694,10 +713,12 @@ export default function QuotesPage() {
 								title="No quotes yet"
 								description="Create your first quote to get started and track proposals in one place."
 								action={
-									<Button onClick={() => router.push("/quotes/new")}>
-										<Plus className="h-4 w-4" />
-										Create Your First Quote
-									</Button>
+									canModifyQuotes ? (
+										<Button onClick={() => router.push("/quotes/new")}>
+											<Plus className="h-4 w-4" />
+											Create Your First Quote
+										</Button>
+									) : undefined
 								}
 							/>
 						) : viewMode === "table" ? (
@@ -753,6 +774,7 @@ export default function QuotesPage() {
 															id={item.id}
 															name={item.name}
 															column={item.column}
+															dragDisabled={!canModifyQuotes}
 														>
 															<div
 																role="button"
@@ -847,5 +869,13 @@ export default function QuotesPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function QuotesPage() {
+	return (
+		<PermissionGate object="quotes">
+			<QuotesPageContent />
+		</PermissionGate>
 	);
 }

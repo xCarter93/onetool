@@ -5,6 +5,7 @@ import { setupConvexTest } from "./test.setup";
 import {
 	createTestOrg,
 	createTestIdentity,
+	addMemberToOrg,
 	TestOrgSetup,
 } from "./test.helpers";
 import { Id } from "./_generated/dataModel";
@@ -189,6 +190,60 @@ describe("Activities", () => {
 
 			expect(activities).toHaveLength(1);
 			expect(activities[0].entityName).toBe("Visible Activity");
+		});
+	});
+
+	describe("entityType 'user' visibility (permission-change audit trail)", () => {
+		it("hides member_permissions_updated activities from ordinary members", async () => {
+			const { clerkOrgId, memberClerkUserId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx);
+				const { userId: targetUserId, clerkUserId: memberClerkUserId } =
+					await addMemberToOrg(ctx, setup.orgId, {
+						userName: "Target Member",
+					});
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					activityType: "user_removed",
+					entityType: "user",
+					entityId: targetUserId,
+					entityName: "Target Member",
+					description: "Updated access permissions for Target Member",
+				});
+				return { ...setup, memberClerkUserId };
+			});
+
+			const asMember = t.withIdentity(
+				createTestIdentity(memberClerkUserId, clerkOrgId)
+			);
+			const memberActivities = await asMember.query(
+				api.activities.getRecent,
+				{}
+			);
+			expect(memberActivities).toHaveLength(0);
+		});
+
+		it("shows member_permissions_updated activities to admins/owners", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx);
+				const { userId: targetUserId } = await addMemberToOrg(
+					ctx,
+					setup.orgId,
+					{ userName: "Target Member" }
+				);
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					activityType: "user_removed",
+					entityType: "user",
+					entityId: targetUserId,
+					entityName: "Target Member",
+					description: "Updated access permissions for Target Member",
+				});
+				return setup;
+			});
+
+			const asAdmin = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const adminActivities = await asAdmin.query(api.activities.getRecent, {});
+
+			expect(adminActivities).toHaveLength(1);
+			expect(adminActivities[0].entityType).toBe("user");
 		});
 	});
 

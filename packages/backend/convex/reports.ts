@@ -5,7 +5,7 @@ import { getCurrentUserOrgId, getCurrentUser } from "./lib/auth";
 import {
 	filterUndefined,
 } from "./lib/crud";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
@@ -71,8 +71,9 @@ const visualizationValidator = v.object({
 export const list = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<"reports">[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
+		if (!ctx.orgId) return emptyListResult();
+		await ctx.requireLevel("reports", "view");
+		const orgId = ctx.orgId;
 
 		const reports = await ctx.db
 			.query("reports")
@@ -80,7 +81,8 @@ export const list = optionalUserQuery({
 			.collect();
 
 		// Sort by most recently updated
-		return reports.sort((a, b) => b.updatedAt - a.updatedAt);
+		const sorted = reports.sort((a, b) => b.updatedAt - a.updatedAt);
+		return await ctx.scopedToActor("reports", sorted, (r) => r.createdBy);
 	},
 });
 
@@ -91,14 +93,18 @@ export const get = optionalUserQuery({
 	args: { id: v.id("reports") },
 	handler: async (ctx, args): Promise<Doc<"reports"> | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("reports", "view");
+		let report: Doc<"reports">;
 		try {
-			return await ctx.orgEntity("reports", args.id);
+			report = await ctx.orgEntity("reports", args.id);
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in reports:")) {
 				return null;
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("reports", () => report.createdBy === ctx.user._id);
+		return report;
 	},
 });
 
@@ -108,6 +114,8 @@ export const get = optionalUserQuery({
 export const getMyReports = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<"reports">[]> => {
+		if (!ctx.user) return emptyListResult();
+		await ctx.requireLevel("reports", "view");
 		const user = await getCurrentUser(ctx);
 		if (!user) return emptyListResult();
 
@@ -116,7 +124,8 @@ export const getMyReports = optionalUserQuery({
 			.withIndex("by_creator", (q) => q.eq("createdBy", user._id))
 			.collect();
 
-		return reports.sort((a, b) => b.updatedAt - a.updatedAt);
+		const sorted = reports.sort((a, b) => b.updatedAt - a.updatedAt);
+		return await ctx.scopedToActor("reports", sorted, (r) => r.createdBy);
 	},
 });
 
@@ -136,6 +145,7 @@ export const create = userMutation({
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {
+		await ctx.requireLevel("reports", "modify");
 		const user = await getCurrentUser(ctx);
 		if (!user) {
 			throw new Error("Not authenticated");
@@ -177,7 +187,9 @@ export const update = userMutation({
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {
+		await ctx.requireLevel("reports", "modify");
 		const report = await ctx.orgEntity("reports", args.id);
+		await ctx.requireRecordScope("reports", () => report.createdBy === ctx.user._id);
 
 		const { id: _, ...updateFields } = args;
 		const updates = filterUndefined({
@@ -196,7 +208,9 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("reports") },
 	handler: async (ctx, args): Promise<void> => {
+		await ctx.requireLevel("reports", "delete");
 		const report = await ctx.orgEntity("reports", args.id);
+		await ctx.requireRecordScope("reports", () => report.createdBy === ctx.user._id);
 		await ctx.db.delete(report._id);
 	},
 });
@@ -207,12 +221,15 @@ export const remove = userMutation({
 export const duplicate = userMutation({
 	args: { id: v.id("reports") },
 	handler: async (ctx, args): Promise<Id<"reports">> => {
+		await ctx.requireLevel("reports", "modify");
 		const user = await getCurrentUser(ctx);
 		if (!user) {
 			throw new Error("Not authenticated");
 		}
 
 		const report = await ctx.orgEntity("reports", args.id);
+		// Scoped members may only duplicate their own reports (source content copy)
+		await ctx.requireRecordScope("reports", () => report.createdBy === ctx.user._id);
 		const now = Date.now();
 
 		const newReportId = await ctx.db.insert("reports", {

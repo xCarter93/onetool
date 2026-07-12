@@ -1,5 +1,7 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
@@ -358,7 +360,7 @@ function GroupTable({
 
 // --- Main Page ---
 
-export default function TasksPage() {
+function TasksPageContent() {
 	const searchParams = useSearchParams();
 	const projectIdFromUrl = searchParams.get(
 		"projectId"
@@ -372,11 +374,13 @@ export default function TasksPage() {
 	);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+	const { can } = usePermissions();
 
 	// Queries
 	const allTasks = useQuery(api.tasks.list, {});
-	const projects = useQuery(api.projects.list, {});
-	const clients = useQuery(api.clients.list, {});
+	// Skip without the projects/clients grant — gated endpoints throw FORBIDDEN otherwise.
+	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
+	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, {});
 
 	// Mutations
@@ -764,5 +768,13 @@ export default function TasksPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+export default function TasksPage() {
+	return (
+		<PermissionGate object="tasks">
+			<TasksPageContent />
+		</PermissionGate>
 	);
 }

@@ -9,9 +9,10 @@ import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
 import { ActivityHelpers } from "./lib/activities";
+import { ENTITY_PERMISSION_OBJECT } from "./activities";
 import { systemMutation, userMutation, userQuery } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
-import { orgHasPremiumPlan } from "./lib/permissions";
+import { isAdminRole, orgHasPremiumPlan } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import { enqueuePush } from "./push";
 import {
@@ -2790,7 +2791,7 @@ async function resolveMemberUserIds(
 ): Promise<Id<"users">[]> {
 	const memberships = await listMembershipsByOrg(ctx, orgId);
 	return memberships
-		.filter((m) => (adminsOnly ? m.role === "admin" : true))
+		.filter((m) => (adminsOnly ? isAdminRole(m.role) : true))
 		.map((m) => m.userId);
 }
 
@@ -3784,6 +3785,7 @@ export const startTestRun = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		await ctx.requireLevel("automations", "modify");
 		// No server-side premium check by design: the automations editor is behind
 		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
 		// interactive test runs stay ungated.
@@ -3956,6 +3958,7 @@ export const executeTestStep = systemMutation({
 export const cancelTestRun = userMutation({
 	args: { executionId: v.id("workflowExecutions") },
 	handler: async (ctx, args): Promise<void> => {
+		await ctx.requireLevel("automations", "modify");
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) {
 			throw new Error("Test run not found");
@@ -3982,6 +3985,7 @@ export const startManualRun = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
+		await ctx.requireLevel("automations", "modify");
 		// No server-side premium check by design: the automations editor is behind
 		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
 		// interactive manual runs stay ungated.
@@ -4087,6 +4091,7 @@ export const startManualRun = userMutation({
 export const getExecution = userQuery({
 	args: { executionId: v.id("workflowExecutions") },
 	handler: async (ctx, args): Promise<Doc<"workflowExecutions"> | null> => {
+		await ctx.requireLevel("automations", "view");
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) return null;
 		return execution;
@@ -4107,6 +4112,7 @@ export const getSampleRecords = userQuery({
 		ctx,
 		args
 	): Promise<{ entityType: ObjectType; entityId: string; label: string }[]> => {
+		await ctx.requireLevel("automations", "view");
 		let objectType = args.objectType;
 		if (!objectType && args.automationId) {
 			const automation = await ctx.db.get(args.automationId);
@@ -4119,6 +4125,12 @@ export const getSampleRecords = userQuery({
 			}
 		}
 		if (!objectType) return [];
+
+		// Sample records are per-object-type; automations:view alone doesn't
+		// grant visibility into arbitrary record types (e.g. invoices).
+		const permissionObject = ENTITY_PERMISSION_OBJECT[objectType];
+		if (!permissionObject) return [];
+		await ctx.requireLevel(permissionObject, "view");
 
 		const rows = await takeOrgPage(ctx, objectType, ctx.orgId, undefined, 10);
 		return rows.map((row) => ({
@@ -4162,3 +4174,6 @@ export const failStaleTestRuns = internalMutation({
 		return { failed };
 	},
 });
+
+/** Exposed for tests; not part of the public API. */
+export const __testUtils = { resolveMemberUserIds };

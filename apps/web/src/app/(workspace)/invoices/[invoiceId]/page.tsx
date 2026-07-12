@@ -1,5 +1,6 @@
 "use client";
 
+import { PermissionGate } from "@/components/domain/permission-gate";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -43,7 +44,7 @@ const formatStatus = (status: InvoiceStatus) => {
 	}
 };
 
-export default function InvoiceDetailPage() {
+function InvoiceDetailPageContent() {
 	const router = useRouter();
 	const params = useParams();
 	const toast = useToast();
@@ -387,5 +388,13 @@ export default function InvoiceDetailPage() {
 				/>
 			)}
 		</>
+	);
+}
+
+export default function InvoiceDetailPage() {
+	return (
+		<PermissionGate object="invoices">
+			<InvoiceDetailPageContent />
+		</PermissionGate>
 	);
 }

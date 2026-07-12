@@ -184,6 +184,7 @@ export const list = optionalUserQuery({
 	handler: async (ctx, args): Promise<InvoiceDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("invoices", "view");
 
 		let invoices: InvoiceDocument[];
 
@@ -253,8 +254,14 @@ export const list = optionalUserQuery({
 		});
 
 		// Sort by creation time (newest first)
-		return invoicesWithCalculatedTotals.sort(
+		const sorted = invoicesWithCalculatedTotals.sort(
 			(a, b) => b._creationTime - a._creationTime
+		);
+
+		return await ctx.applyReadScope("invoices", sorted, (invoice, scope) =>
+			invoice.projectId
+				? scope.projectIds.has(invoice.projectId)
+				: scope.clientIds.has(invoice.clientId)
 		);
 	},
 });
@@ -267,6 +274,7 @@ export const get = optionalUserQuery({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args): Promise<InvoiceDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("invoices", "view");
 		let invoice: InvoiceDocument;
 		try {
 			invoice = await ctx.orgEntity("invoices", args.id);
@@ -276,6 +284,13 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
@@ -413,6 +428,7 @@ export const create = userMutation({
 		paymentMethod: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Validate required fields
 		if (!args.invoiceNumber.trim()) {
 			throw new Error("Invoice number is required");
@@ -483,6 +499,7 @@ export const update = userMutation({
 		stripePaymentIntentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const { id, ...updates } = args;
 
 		// Filter and validate updates
@@ -492,6 +509,13 @@ export const update = userMutation({
 		// Get current invoice to check for status changes
 		const currentInvoice = await ctx.orgEntity("invoices", id);
 		const oldStatus = currentInvoice.status;
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				currentInvoice.projectId
+					? s.projectIds.has(currentInvoice.projectId)
+					: s.clientIds.has(currentInvoice.clientId)
+			)
+		);
 
 		// Compute field-level changes before applying the update
 		const changes = computeFieldChanges(
@@ -588,7 +612,15 @@ export const markPaid = userMutation({
 		paymentMethod: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		if (invoice.status === "paid") {
 			throw new Error("Invoice is already paid");
@@ -625,6 +657,17 @@ export const markPaid = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "delete");
+		// Validate access + scope before any deletes (checks-before-writes).
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+
 		// Delete line items first
 		const lineItems = await ctx.db
 			.query("invoiceLineItems")
@@ -635,8 +678,6 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		// Get invoice and remove from aggregates before deleting
-		const invoice = await ctx.orgEntity("invoices", args.id); // Validate access
 		await AggregateHelpers.removeInvoice(ctx, invoice as InvoiceDocument);
 		await ctx.db.delete(args.id);
 
@@ -653,11 +694,20 @@ export const getStats = optionalUserQuery({
 	handler: async (ctx): Promise<InvoiceStats> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return createEmptyInvoiceStats();
+		await ctx.requireLevel("invoices", "view");
 
-		const invoices = await ctx.db
+		const allInvoices = await ctx.db
 			.query("invoices")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+		const invoices = await ctx.applyReadScope(
+			"invoices",
+			allInvoices,
+			(invoice, scope) =>
+				invoice.projectId
+					? scope.projectIds.has(invoice.projectId)
+					: scope.clientIds.has(invoice.clientId)
+		);
 
 		const stats: InvoiceStats = {
 			total: invoices.length,
@@ -717,6 +767,7 @@ export const getOverdue = optionalUserQuery({
 	handler: async (ctx) => {
 		const orgId = ctx.orgId;
 		if (!orgId) return [];
+		await ctx.requireLevel("invoices", "view");
 
 		const now = Date.now();
 		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
@@ -773,7 +824,11 @@ export const getOverdue = optionalUserQuery({
 			}
 		}
 
-		return results;
+		return await ctx.applyReadScope("invoices", results, (invoice, scope) =>
+			invoice.projectId
+				? scope.projectIds.has(invoice.projectId)
+				: scope.clientIds.has(invoice.clientId)
+		);
 	},
 });
 
@@ -784,8 +839,16 @@ export const getOverdue = optionalUserQuery({
 export const recalculateTotals = userMutation({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args): Promise<void> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Validate access
-		await ctx.orgEntity("invoices", args.id);
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
@@ -804,6 +867,7 @@ export const recalculateTotals = userMutation({
 export const generateInvoiceNumber = userMutation({
 	args: {},
 	handler: async (ctx): Promise<string> => {
+		await ctx.requireLevel("invoices", "view");
 		// Get all invoices for this organization
 		const orgInvoices = await ctx.db
 			.query("invoices")
@@ -835,6 +899,7 @@ export const createFromQuote = userMutation({
 		dueDate: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Get and validate quote
 		const quote = await ctx.orgEntity("quotes", args.quoteId);
 
@@ -942,6 +1007,7 @@ export const getWithPayments = optionalUserQuery({
 	args: { id: v.id("invoices") },
 	handler: async (ctx, args) => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("invoices", "view");
 		let invoice: InvoiceDocument;
 		try {
 			invoice = await ctx.orgEntity("invoices", args.id);
@@ -951,6 +1017,13 @@ export const getWithPayments = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
@@ -1055,6 +1128,7 @@ export const getPreview = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<InvoicePreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
+		await ctx.requireLevel("invoices", "view");
 
 		let invoice: InvoiceDocument;
 		try {
@@ -1068,6 +1142,13 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
 
 		// Recompute total from line items (source of truth; stored total can be
 		// stale). Reuse the shared helper so discount/tax logic can't diverge.

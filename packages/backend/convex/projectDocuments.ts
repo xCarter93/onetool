@@ -53,6 +53,7 @@ export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
 		await getCurrentUserOrThrow(ctx);
+		await ctx.requireLevel("documents", "modify");
 		return await ctx.storage.generateUploadUrl();
 	},
 });
@@ -72,6 +73,7 @@ export const create = userMutation({
 	handler: async (ctx, args): Promise<Id<"projectDocuments">> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
+		await ctx.requireLevel("documents", "modify");
 
 		// Validate project belongs to user's org
 		const project = await ctx.db.get(args.projectId);
@@ -81,6 +83,11 @@ export const create = userMutation({
 		if (project.orgId !== userOrgId) {
 			throw new Error("Project does not belong to your organization");
 		}
+
+		await ctx.requireRecordScope("documents", async () => {
+			const scope = await ctx.actorScope();
+			return scope.projectIds.has(args.projectId);
+		});
 
 		// Validate file metadata
 		const validation = StorageHelpers.validateFileMetadata(
@@ -122,6 +129,7 @@ export const listByProject = optionalUserQuery({
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("documents", "view");
 
 		const documents = await ctx.db
 			.query("projectDocuments")
@@ -129,9 +137,13 @@ export const listByProject = optionalUserQuery({
 			.collect();
 
 		// Filter by org and sort newest first
-		const filtered = documents
+		let filtered = documents
 			.filter((d) => d.orgId === userOrgId)
 			.sort((a, b) => b.uploadedAt - a.uploadedAt);
+
+		filtered = await ctx.applyReadScope("documents", filtered, (_doc, scope) =>
+			scope.projectIds.has(args.projectId)
+		);
 
 		// Fetch download URLs in parallel
 		const withUrls = await Promise.all(
@@ -157,7 +169,12 @@ export const listByProject = optionalUserQuery({
 export const remove = userMutation({
 	args: { id: v.id("projectDocuments") },
 	handler: async (ctx, args): Promise<Id<"projectDocuments">> => {
+		await ctx.requireLevel("documents", "delete");
 		const document = await getDocumentOrThrow(ctx, args.id);
+		await ctx.requireRecordScope("documents", async () => {
+			const scope = await ctx.actorScope();
+			return scope.projectIds.has(document.projectId);
+		});
 
 		// Delete from storage
 		await StorageHelpers.deleteFromStorage(ctx, document.storageId);

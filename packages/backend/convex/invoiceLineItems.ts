@@ -60,15 +60,23 @@ export const listByInvoice = optionalUserQuery({
 	handler: async (ctx, args): Promise<InvoiceLineItemDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("invoices", "view");
 
-		await validateInvoiceAccess(ctx, args.invoiceId, orgId);
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, orgId);
 
 		const lineItems = await ctx.db
 			.query("invoiceLineItems")
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
 
-		return sortLineItems(lineItems);
+		// All rows share one parent invoice — scope check runs once, not per row.
+		const scoped = await ctx.applyReadScope("invoices", lineItems, (_row, s) =>
+			parentInvoice.projectId
+				? s.projectIds.has(parentInvoice.projectId)
+				: s.clientIds.has(parentInvoice.clientId)
+		);
+
+		return sortLineItems(scoped);
 	},
 });
 
@@ -81,6 +89,9 @@ export const list = optionalUserQuery({
 	handler: async (ctx): Promise<InvoiceLineItemDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		// Rows span arbitrary invoices; scoping would require a per-row parent
+		// fetch. Level-gate only — see report.
+		await ctx.requireLevel("invoices", "view");
 
 		return await ctx.db
 			.query("invoiceLineItems")
@@ -97,9 +108,11 @@ export const get = optionalUserQuery({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemDocument | null> => {
 		if (!ctx.orgId) return null;
+		await ctx.requireLevel("invoices", "view");
 
+		let lineItem: InvoiceLineItemDocument;
 		try {
-			return await ctx.orgEntity("invoiceLineItems", args.id);
+			lineItem = await ctx.orgEntity("invoiceLineItems", args.id);
 		} catch (error) {
 			if (
 				error instanceof Error &&
@@ -115,6 +128,17 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+
+		const parentInvoice = await validateInvoiceAccess(ctx, lineItem.invoiceId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
+
+		return lineItem;
 	},
 });
 
@@ -135,6 +159,16 @@ export const create = userMutation({
 		sortOrder: v.number(),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
+		await ctx.requireLevel("invoices", "modify");
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
+
 		// Validate line item fields
 		validateInvoiceLineItemFields(args);
 
@@ -164,6 +198,7 @@ export const update = userMutation({
 		sortOrder: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const { id, ...updates } = args;
 
 		// Validate fields if being updated
@@ -175,10 +210,30 @@ export const update = userMutation({
 
 		// Get current line item to calculate new total if needed
 		const currentLineItem = await ctx.orgEntity("invoiceLineItems", id);
+		const parentInvoice = await validateInvoiceAccess(
+			ctx,
+			currentLineItem.invoiceId,
+			ctx.orgId
+		);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Validate new invoiceId if changing
 		if (filteredUpdates.invoiceId) {
-			await validateInvoiceAccess(ctx, filteredUpdates.invoiceId);
+			const newParent = await validateInvoiceAccess(ctx, filteredUpdates.invoiceId);
+			// Reassignment: target invoice must also be in the actor's scope
+			await ctx.requireRecordScope("invoices", () =>
+				ctx.actorScope().then((s) =>
+					newParent.projectId
+						? s.projectIds.has(newParent.projectId)
+						: s.clientIds.has(newParent.clientId)
+				)
+			);
 		}
 
 		// Recalculate total if quantity or unit price changed
@@ -206,7 +261,20 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
-		await ctx.orgEntity("invoiceLineItems", args.id);
+		await ctx.requireLevel("invoices", "delete");
+		const lineItem = await ctx.orgEntity("invoiceLineItems", args.id);
+		const parentInvoice = await validateInvoiceAccess(
+			ctx,
+			lineItem.invoiceId,
+			ctx.orgId
+		);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -229,8 +297,16 @@ export const bulkCreate = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId[]> => {
+		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access once
-		await validateInvoiceAccess(ctx, args.invoiceId);
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const createdIds: InvoiceLineItemId[] = [];
@@ -271,7 +347,15 @@ export const reorder = userMutation({
 		lineItemIds: v.array(v.id("invoiceLineItems")),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		await validateInvoiceAccess(ctx, args.invoiceId);
+		await ctx.requireLevel("invoices", "modify");
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Validate that all line items belong to the invoice
 		for (const lineItemId of args.lineItemIds) {
@@ -297,7 +381,20 @@ export const reorder = userMutation({
 export const duplicate = userMutation({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
+		await ctx.requireLevel("invoices", "modify");
 		const originalItem = await ctx.orgEntity("invoiceLineItems", args.id);
+		const parentInvoice = await validateInvoiceAccess(
+			ctx,
+			originalItem.invoiceId,
+			ctx.orgId
+		);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+			)
+		);
 
 		// Get the highest sort order for the invoice to append the duplicate
 		const allItems = await ctx.db
@@ -341,12 +438,22 @@ export const getStats = optionalUserQuery({
 			};
 		}
 
-		await validateInvoiceAccess(ctx, args.invoiceId, orgId);
+		await ctx.requireLevel("invoices", "view");
+		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, orgId);
 
-		const lineItems = await ctx.db
+		const allLineItems = await ctx.db
 			.query("invoiceLineItems")
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
+		// All rows share one parent invoice — scope check runs once, not per row.
+		const lineItems = await ctx.applyReadScope(
+			"invoices",
+			allLineItems,
+			(_row, s) =>
+				parentInvoice.projectId
+					? s.projectIds.has(parentInvoice.projectId)
+					: s.clientIds.has(parentInvoice.clientId)
+		);
 
 		const stats = {
 			totalItems: lineItems.length,

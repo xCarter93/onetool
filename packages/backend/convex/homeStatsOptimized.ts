@@ -1,6 +1,5 @@
 import { query } from "./_generated/server";
 import { getCurrentUserOrgId } from "./lib/auth";
-import { getOptionalOrgId } from "./lib/queries";
 import { DateUtils } from "./lib/shared";
 import {
 	clientCountsAggregate,
@@ -62,10 +61,13 @@ export const getHomeStats = optionalUserQuery({
 			},
 		};
 
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
-			return emptyStats;
-		}
+		if (!ctx.orgId) return emptyStats;
+		const userOrgId = ctx.orgId;
+		await ctx.requireLevel("clients", "view");
+		await ctx.requireLevel("projects", "view");
+		await ctx.requireLevel("quotes", "view");
+		await ctx.requireLevel("invoices", "view");
+		await ctx.requireLevel("tasks", "view");
 
 		const now = Date.now();
 		const startOfThisMonth = new Date(new Date(now).setDate(1));

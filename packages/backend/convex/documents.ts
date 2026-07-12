@@ -2,7 +2,6 @@ import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
-import { getOptionalOrgId } from "./lib/queries";
 import { ActivityHelpers } from "./lib/activities";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
@@ -76,6 +75,30 @@ async function validateDocumentOwnership(
 }
 
 /**
+ * Derived scope check: is the document's parent quote/invoice in the caller's scope?
+ */
+async function isDocumentParentInScope(
+	ctx: (QueryCtx | MutationCtx) & {
+		actorScope: () => Promise<{
+			projectIds: Set<Id<"projects">>;
+			clientIds: Set<Id<"clients">>;
+		}>;
+	},
+	documentType: "quote" | "invoice",
+	documentId: string
+): Promise<boolean> {
+	const parent =
+		documentType === "quote"
+			? await ctx.db.get(documentId as Id<"quotes">)
+			: await ctx.db.get(documentId as Id<"invoices">);
+	if (!parent) return false;
+	const scope = await ctx.actorScope();
+	return parent.projectId
+		? scope.projectIds.has(parent.projectId)
+		: scope.clientIds.has(parent.clientId);
+}
+
+/**
  * Create a document with automatic orgId assignment
  */
 async function createDocumentWithOrg(
@@ -133,10 +156,11 @@ export const list = optionalUserQuery({
 		documentId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<DocumentDocument[]> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("documents", "view");
 
 		let documents: DocumentDocument[];
 
@@ -153,6 +177,14 @@ export const list = optionalUserQuery({
 
 			// Filter by organization
 			documents = documents.filter((doc) => doc.orgId === userOrgId);
+
+			// Single shared parent - scope check is cheap here.
+			const inScope = await isDocumentParentInScope(
+				ctx,
+				args.documentType,
+				args.documentId
+			);
+			documents = await ctx.applyReadScope("documents", documents, () => inScope);
 		} else {
 			// Get all documents for organization
 			documents = await ctx.db
@@ -166,6 +198,15 @@ export const list = optionalUserQuery({
 					(doc) => doc.documentType === args.documentType
 				);
 			}
+			// KNOWN LIMIT (parity with quoteLineItems.list / invoiceLineItems.list):
+			// rows here span arbitrary quotes/invoices (documents carries only
+			// documentType + a generic documentId, no clientId/projectId of its
+			// own), so per-row scoping would need one parent fetch per distinct
+			// documentId. Level-gated only — a scoped `documents:view` member
+			// (no allRecords) sees every org document via this branch, not just
+			// ones tied to their assigned projects/clients. Call list with
+			// documentType+documentId (the parented branch above) for a scoped
+			// read; see RBAC gating report.
 		}
 
 		// Sort by generation time (newest first)
@@ -179,11 +220,22 @@ export const list = optionalUserQuery({
 export const get = optionalUserQuery({
 	args: { id: v.id("documents") },
 	handler: async (ctx, args): Promise<DocumentDocument | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
-		return await getDocumentWithOrgValidation(ctx, args.id);
+		await ctx.requireLevel("documents", "view");
+		const document = await getDocumentWithOrgValidation(ctx, args.id);
+		if (!document) {
+			return null;
+		}
+		const inScope = await isDocumentParentInScope(
+			ctx,
+			document.documentType,
+			document.documentId
+		);
+		const [visible] = await ctx.applyReadScope("documents", [document], () => inScope);
+		return visible ?? null;
 	},
 });
 
@@ -196,10 +248,11 @@ export const getLatest = optionalUserQuery({
 		documentId: v.string(),
 	},
 	handler: async (ctx, args): Promise<DocumentDocument | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("documents", "view");
 		// Validate document ownership
 		await validateDocumentOwnership(
 			ctx,
@@ -218,7 +271,19 @@ export const getLatest = optionalUserQuery({
 			.collect();
 
 		// Filter by organization and find the latest
-		const orgDocuments = documents.filter((doc) => doc.orgId === userOrgId);
+		let orgDocuments = documents.filter((doc) => doc.orgId === userOrgId);
+
+		if (orgDocuments.length === 0) {
+			return null;
+		}
+
+		// Single shared parent - scope check is cheap here.
+		const inScope = await isDocumentParentInScope(
+			ctx,
+			args.documentType,
+			args.documentId
+		);
+		orgDocuments = await ctx.applyReadScope("documents", orgDocuments, () => inScope);
 
 		if (orgDocuments.length === 0) {
 			return null;
@@ -243,10 +308,11 @@ export const getAllVersions = optionalUserQuery({
 		documentId: v.string(),
 	},
 	handler: async (ctx, args): Promise<DocumentDocument[]> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("documents", "view");
 		// Validate document ownership
 		await validateDocumentOwnership(
 			ctx,
@@ -265,7 +331,15 @@ export const getAllVersions = optionalUserQuery({
 			.collect();
 
 		// Filter by organization
-		const orgDocuments = documents.filter((doc) => doc.orgId === userOrgId);
+		let orgDocuments = documents.filter((doc) => doc.orgId === userOrgId);
+
+		// Single shared parent - scope check is cheap here.
+		const inScope = await isDocumentParentInScope(
+			ctx,
+			args.documentType,
+			args.documentId
+		);
+		orgDocuments = await ctx.applyReadScope("documents", orgDocuments, () => inScope);
 
 		// Sort by version (descending - newest first)
 		return orgDocuments.sort((a, b) => {
@@ -288,6 +362,10 @@ export const create = userMutation({
 		version: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<DocumentId> => {
+		await ctx.requireLevel("documents", "modify");
+		await ctx.requireRecordScope("documents", () =>
+			isDocumentParentInScope(ctx, args.documentType, args.documentId)
+		);
 		// If no version specified, auto-increment from existing documents
 		let version = args.version;
 		if (!version) {
@@ -347,6 +425,7 @@ export const update = userMutation({
 		version: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<DocumentId> => {
+		await ctx.requireLevel("documents", "modify");
 		const { id, ...updates } = args;
 
 		// Filter out undefined values
@@ -357,6 +436,11 @@ export const update = userMutation({
 		if (Object.keys(filteredUpdates).length === 0) {
 			throw new Error("No valid updates provided");
 		}
+
+		const document = await getDocumentOrThrow(ctx, id);
+		await ctx.requireRecordScope("documents", () =>
+			isDocumentParentInScope(ctx, document.documentType, document.documentId)
+		);
 
 		await updateDocumentWithValidation(ctx, id, filteredUpdates);
 
@@ -371,7 +455,11 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("documents") },
 	handler: async (ctx, args): Promise<DocumentId> => {
+		await ctx.requireLevel("documents", "delete");
 		const document = await getDocumentOrThrow(ctx, args.id);
+		await ctx.requireRecordScope("documents", () =>
+			isDocumentParentInScope(ctx, document.documentType, document.documentId)
+		);
 
 		// Delete the file from storage
 		try {
@@ -395,7 +483,7 @@ export const remove = userMutation({
 export const getStats = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return {
 				total: 0,
@@ -409,6 +497,9 @@ export const getStats = optionalUserQuery({
 				averageVersionsPerDocument: 0,
 			};
 		}
+		await ctx.requireLevel("documents", "view");
+		// NOTE: aggregate over all org documents (mixed parents) - not
+		// scope-filtered, would require a per-row parent fetch.
 		const documents = await ctx.db
 			.query("documents")
 			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
@@ -481,8 +572,12 @@ export const cleanupOldVersions = userMutation({
 		keepVersions: v.number(), // How many versions to keep
 	},
 	handler: async (ctx, args): Promise<{ deletedCount: number }> => {
+		await ctx.requireLevel("documents", "delete");
 		// Validate document ownership
 		await validateDocumentOwnership(ctx, args.documentType, args.documentId);
+		await ctx.requireRecordScope("documents", () =>
+			isDocumentParentInScope(ctx, args.documentType, args.documentId)
+		);
 
 		if (args.keepVersions < 1) {
 			throw new Error("Must keep at least 1 version");
@@ -540,18 +635,29 @@ export const cleanupOldVersions = userMutation({
 export const getDocumentUrl = optionalUserQuery({
 	args: { id: v.id("documents") },
 	handler: async (ctx, args): Promise<string | null> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("documents", "view");
 		const document = await getDocumentWithOrgValidation(ctx, args.id);
 
 		if (!document) {
 			return null;
 		}
 
+		const inScope = await isDocumentParentInScope(
+			ctx,
+			document.documentType,
+			document.documentId
+		);
+		const [visible] = await ctx.applyReadScope("documents", [document], () => inScope);
+		if (!visible) {
+			return null;
+		}
+
 		// Get storage URL
-		return await ctx.storage.getUrl(document.storageId);
+		return await ctx.storage.getUrl(visible.storageId);
 	},
 });
 
@@ -561,6 +667,7 @@ export const getDocumentUrl = optionalUserQuery({
 export const generateUploadUrl = userMutation({
 	args: {},
 	handler: async (ctx) => {
+		await ctx.requireLevel("documents", "modify");
 		return await ctx.storage.generateUploadUrl();
 	},
 });
@@ -571,12 +678,22 @@ export const generateUploadUrl = userMutation({
 export const getBoldsignStatus = optionalUserQuery({
 	args: { documentId: v.id("documents") },
 	handler: async (ctx, args) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
+		await ctx.requireLevel("documents", "view");
 		const document = await getDocumentWithOrgValidation(ctx, args.documentId);
-		return document?.boldsign || null;
+		if (!document) {
+			return null;
+		}
+		const inScope = await isDocumentParentInScope(
+			ctx,
+			document.documentType,
+			document.documentId
+		);
+		const [visible] = await ctx.applyReadScope("documents", [document], () => inScope);
+		return visible?.boldsign || null;
 	},
 });
 
@@ -599,10 +716,11 @@ export const getAllDocumentsWithSignatures = optionalUserQuery({
 			boldsign: NonNullable<DocumentDocument["boldsign"]>;
 		}>
 	> => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("documents", "view");
 
 		// Validate document ownership
 		await validateDocumentOwnership(
@@ -622,7 +740,7 @@ export const getAllDocumentsWithSignatures = optionalUserQuery({
 			.collect();
 
 		// Filter by organization and only return documents with boldsign data
-		const orgDocuments = documents
+		let orgDocuments = documents
 			.filter(
 				(doc) =>
 					doc.orgId === userOrgId && doc.boldsign && doc.version !== undefined
@@ -633,6 +751,14 @@ export const getAllDocumentsWithSignatures = optionalUserQuery({
 				generatedAt: doc.generatedAt,
 				boldsign: doc.boldsign!,
 			}));
+
+		// Single shared parent - scope check is cheap here.
+		const inScope = await isDocumentParentInScope(
+			ctx,
+			args.documentType,
+			args.documentId
+		);
+		orgDocuments = await ctx.applyReadScope("documents", orgDocuments, () => inScope);
 
 		// Sort by version (descending - newest first), falling back to generatedAt
 		return orgDocuments.sort((a, b) => {
@@ -652,10 +778,11 @@ export const listSignedByProject = optionalUserQuery({
 		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
+		await ctx.requireLevel("documents", "view");
 
 		// Validate project access
 		const project = await ctx.db.get(args.projectId);
@@ -681,12 +808,19 @@ export const listSignedByProject = optionalUserQuery({
 			.collect();
 
 		// Filter to documents for our quotes that have signed storage IDs
-		const signedDocuments = allDocuments.filter(
+		let signedDocuments = allDocuments.filter(
 			(doc) =>
 				doc.documentType === "quote" &&
 				quoteIds.includes(doc.documentId as Id<"quotes">) &&
 				doc.signedStorageId !== undefined &&
 				doc.boldsign?.status === "Completed"
+		);
+
+		// Single shared parent project - scope check is cheap here.
+		signedDocuments = await ctx.applyReadScope(
+			"documents",
+			signedDocuments,
+			(_doc, scope) => scope.projectIds.has(args.projectId)
 		);
 
 		// Generate download URLs and return metadata

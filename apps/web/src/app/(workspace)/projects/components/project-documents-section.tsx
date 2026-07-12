@@ -5,6 +5,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useMemo, useRef, useState, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	FileIcon,
 	Upload,
@@ -72,16 +73,22 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isUploading, setIsUploading] = useState(false);
 	const [isModalOpen, setIsModalOpen] = useState(false);
+	const { can } = usePermissions();
 
-	const uploadedDocs = useQuery(api.projectDocuments.listByProject, { projectId });
+	// Skip without the documents grant — gated endpoints throw FORBIDDEN otherwise.
+	const uploadedDocs = useQuery(
+		api.projectDocuments.listByProject,
+		can("documents") ? { projectId } : "skip"
+	);
 	const communicationDocs = useQuery(api.messageAttachments.listByEntity, {
 		entityType: "project",
 		entityId: projectId,
 	});
 	// Completed BoldSign quotes, derived from documents.signedStorageId + quote.projectId.
-	const signedDocuments = useQuery(api.documents.listSignedByProject, {
-		projectId,
-	});
+	const signedDocuments = useQuery(
+		api.documents.listSignedByProject,
+		can("documents") ? { projectId } : "skip"
+	);
 
 	const generateUploadUrl = useMutation(api.projectDocuments.generateUploadUrl);
 	const createDocument = useMutation(api.projectDocuments.create);
@@ -190,6 +197,10 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 
 	const mostRecent = allDocuments?.[0];
 	const totalCount = allDocuments?.length ?? 0;
+
+	// Without the grant, uploadedDocs/signedDocuments stay undefined forever —
+	// don't render a permanent loading skeleton, just hide the section.
+	if (!can("documents")) return null;
 
 	// Loading state
 	if (allDocuments === undefined) {

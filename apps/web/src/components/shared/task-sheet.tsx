@@ -26,6 +26,7 @@ import {
 	SheetFooter,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	CalendarIcon,
 	User,
@@ -86,14 +87,24 @@ export function TaskSheet({
 	});
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [internalOpen, setInternalOpen] = useState(false);
+	const sheetOpen = isOpen ?? internalOpen;
+	const { can } = usePermissions();
 
-	// Queries for form data
-	const clients = useQuery(api.clients.list, {});
+	// Form-data queries run only while the sheet is open, and each selector's
+	// query is skipped without the view grant (gated endpoints throw FORBIDDEN).
+	const clients = useQuery(
+		api.clients.list,
+		sheetOpen && can("clients") ? {} : "skip"
+	);
 	const projects = useQuery(
 		api.projects.list,
-		formData.clientId ? { clientId: formData.clientId as Id<"clients"> } : {}
+		sheetOpen && can("projects")
+			? formData.clientId
+				? { clientId: formData.clientId as Id<"clients"> }
+				: {}
+			: "skip"
 	);
-	const users = useQuery(api.users.listByOrg);
+	const users = useQuery(api.users.listByOrg, sheetOpen ? {} : "skip");
 
 	// Mutations
 	const createTask = useMutation(api.tasks.create);

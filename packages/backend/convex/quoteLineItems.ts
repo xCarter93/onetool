@@ -63,15 +63,23 @@ export const listByQuote = optionalUserQuery({
 	handler: async (ctx, args): Promise<QuoteLineItemDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("quotes", "view");
 
-		await validateQuoteAccess(ctx, args.quoteId, orgId);
+		const parentQuote = await validateQuoteAccess(ctx, args.quoteId, orgId);
 
 		const lineItems = await ctx.db
 			.query("quoteLineItems")
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.collect();
 
-		return sortLineItems(lineItems);
+		// All rows share the same parent quote, so one predicate covers the list.
+		const scoped = await ctx.applyReadScope("quotes", lineItems, (_row, s) =>
+			parentQuote.projectId
+				? s.projectIds.has(parentQuote.projectId)
+				: s.clientIds.has(parentQuote.clientId)
+		);
+
+		return sortLineItems(scoped);
 	},
 });
 
@@ -83,6 +91,9 @@ export const list = optionalUserQuery({
 	handler: async (ctx): Promise<QuoteLineItemDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		// Org-wide list: no parent-quote context per row without an extra fetch
+		// per distinct quoteId. Level-gate only (see RBAC gating report).
+		await ctx.requireLevel("quotes", "view");
 
 		return await ctx.db
 			.query("quoteLineItems")
@@ -100,9 +111,11 @@ export const get = optionalUserQuery({
 	handler: async (ctx, args): Promise<QuoteLineItemDocument | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
+		await ctx.requireLevel("quotes", "view");
 
+		let lineItem: QuoteLineItemDocument;
 		try {
-			return await ctx.orgEntity("quoteLineItems", args.id);
+			lineItem = await ctx.orgEntity("quoteLineItems", args.id);
 		} catch (error) {
 			if (
 				error instanceof Error &&
@@ -118,6 +131,17 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+
+		const parentQuote = await ctx.orgEntity("quotes", lineItem.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
+
+		return lineItem;
 	},
 });
 
@@ -137,13 +161,23 @@ export const getStats = optionalUserQuery({
 				totalQuantity: 0,
 			};
 		}
+		await ctx.requireLevel("quotes", "view");
 
-		await validateQuoteAccess(ctx, args.quoteId, orgId);
+		const parentQuote = await validateQuoteAccess(ctx, args.quoteId, orgId);
 
-		const lineItems = await ctx.db
+		const allLineItems = await ctx.db
 			.query("quoteLineItems")
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.collect();
+		// All rows share one parent quote — scope check runs once, not per row.
+		const lineItems = await ctx.applyReadScope(
+			"quotes",
+			allLineItems,
+			(_row, s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+		);
 
 		const baseStats = calculateLineItemStats(lineItems, "amount");
 
@@ -177,8 +211,19 @@ export const create = userMutation({
 		sortOrder: v.number(),
 	},
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		// Validate all fields using shared utility
 		validateQuoteLineItemFields(args, { isUpdate: false });
+
+		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
 
 		// Calculate amount
 		const amount = calculateQuoteLineItemAmount(args.quantity, args.rate);
@@ -207,6 +252,8 @@ export const update = userMutation({
 		sortOrder: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		const { id, ...updates } = args;
 
 		// Validate fields using shared utility
@@ -218,10 +265,26 @@ export const update = userMutation({
 
 		// Get current line item
 		const currentLineItem = await ctx.orgEntity("quoteLineItems", id);
+		const parentQuote = await ctx.orgEntity("quotes", currentLineItem.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
 
 		// Validate new quoteId if changing
 		if (filteredUpdates.quoteId) {
-			await validateQuoteAccess(ctx, filteredUpdates.quoteId);
+			const newParent = await validateQuoteAccess(ctx, filteredUpdates.quoteId);
+			// Reassignment: target quote must also be in the actor's scope
+			await ctx.requireRecordScope("quotes", () =>
+				ctx.actorScope().then((s) =>
+					newParent.projectId
+						? s.projectIds.has(newParent.projectId)
+						: s.clientIds.has(newParent.clientId)
+				)
+			);
 		}
 
 		// Recalculate amount if quantity or rate changed
@@ -245,7 +308,18 @@ export const update = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("quoteLineItems") },
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
-		await ctx.orgEntity("quoteLineItems", args.id);
+		await ctx.requireLevel("quotes", "delete");
+
+		const lineItem = await ctx.orgEntity("quoteLineItems", args.id);
+		const parentQuote = await ctx.orgEntity("quotes", lineItem.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
+
 		await ctx.db.delete(args.id);
 		return args.id;
 	},
@@ -269,8 +343,17 @@ export const bulkCreate = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<QuoteLineItemId[]> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		// Validate quote access once
-		await validateQuoteAccess(ctx, args.quoteId);
+		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
 
 		// Validate all items using shared utility
 		validateBulkLineItems(args.lineItems, "quote");
@@ -309,7 +392,16 @@ export const reorder = userMutation({
 		lineItemIds: v.array(v.id("quoteLineItems")),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		await validateQuoteAccess(ctx, args.quoteId);
+		await ctx.requireLevel("quotes", "modify");
+
+		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
 
 		// Validate that all line items belong to the quote and update sort order
 		for (let i = 0; i < args.lineItemIds.length; i++) {
@@ -332,7 +424,17 @@ export const reorder = userMutation({
 export const duplicate = userMutation({
 	args: { id: v.id("quoteLineItems") },
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		const originalItem = await ctx.orgEntity("quoteLineItems", args.id);
+		const parentQuote = await ctx.orgEntity("quotes", originalItem.quoteId);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				parentQuote.projectId
+					? s.projectIds.has(parentQuote.projectId)
+					: s.clientIds.has(parentQuote.clientId)
+			)
+		);
 
 		// Get all items for the quote to determine next sort order
 		const allItems = await ctx.db

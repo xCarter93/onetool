@@ -2,7 +2,6 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
-import { getOptionalOrgId } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
@@ -15,30 +14,50 @@ export const getCalendarEvents = optionalUserQuery({
 		endDate: v.number(), // Unix timestamp
 	},
 	handler: async (ctx, args) => {
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) {
+		if (!ctx.orgId) {
 			return { projects: [], tasks: [] };
 		}
+		const userOrgId = ctx.orgId;
+
+		// Cross-cutting read: drop each bucket the caller can't view (PRD §4.4)
+		const showProjects = await ctx.gateRead("projects");
+		const showTasks = await ctx.gateRead("tasks");
 
 		// Fetch all projects for the organization
-		const allProjects = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.collect();
+		const allProjects = showProjects
+			? await ctx.db
+					.query("projects")
+					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
+					.collect()
+			: [];
 
 		// Fetch all tasks within the date range
-		const allTasks = await ctx.db
-			.query("tasks")
-			.withIndex("by_date", (q) =>
-				q
-					.eq("orgId", userOrgId)
-					.gte("date", args.startDate)
-					.lte("date", args.endDate)
-			)
-			.collect();
+		const rawTasks = showTasks
+			? await ctx.db
+					.query("tasks")
+					.withIndex("by_date", (q) =>
+						q
+							.eq("orgId", userOrgId)
+							.gte("date", args.startDate)
+							.lte("date", args.endDate)
+					)
+					.collect()
+			: [];
+
+		// Record scope: members without allRecords only see their assigned work
+		const allTasks = await ctx.applyReadScope(
+			"tasks",
+			rawTasks,
+			(t) => t.assigneeUserId === ctx.user._id
+		);
 
 		// Filter projects that overlap with the date range
-		const projects = allProjects.filter((project) => {
+		const scopedProjects = await ctx.applyReadScope(
+			"projects",
+			allProjects,
+			(p) => p.assignedUserIds?.includes(ctx.user._id) ?? false
+		);
+		const projects = scopedProjects.filter((project) => {
 			// Projects without dates are not shown on calendar
 			if (!project.startDate) return false;
 

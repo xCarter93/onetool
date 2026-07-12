@@ -207,6 +207,7 @@ export const list = optionalUserQuery({
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("quotes", "view");
 
 		let quotes: QuoteDocument[];
 
@@ -235,6 +236,10 @@ export const list = optionalUserQuery({
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
 				.collect();
 		}
+
+		quotes = await ctx.applyReadScope("quotes", quotes, (q, s) =>
+			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
+		);
 
 		// Batch fetch ALL line items for ALL quotes in a single query
 		// This avoids N+1 query problem (1 query for quotes + 1 query for all line items = 2 total)
@@ -303,6 +308,7 @@ export const get = optionalUserQuery({
 	handler: async (ctx, args): Promise<QuoteDocument | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
+		await ctx.requireLevel("quotes", "view");
 
 		let quote: QuoteDocument;
 		try {
@@ -313,6 +319,13 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		// Calculate totals from line items
 		const calculatedTotals = await calculateQuoteTotals(ctx, args.id, {
@@ -394,6 +407,7 @@ export const getPreview = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<QuotePreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
+		await ctx.requireLevel("quotes", "view");
 
 		let quote: QuoteDocument;
 		try {
@@ -407,6 +421,13 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		// Recompute totals from current line items (stored values can be stale)
 		const totals = await calculateQuoteTotals(ctx, args.id, {
@@ -584,6 +605,8 @@ export const create = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		// Validate financial values
 		if (args.subtotal < 0) {
 			throw new Error("Subtotal cannot be negative");
@@ -685,6 +708,8 @@ export const update = userMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		const { id, ...updates } = args;
 
 		// Validate financial values
@@ -738,6 +763,13 @@ export const update = userMutation({
 
 		// Get current quote to check for status changes
 		const currentQuote = await ctx.orgEntity("quotes", id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				currentQuote.projectId
+					? s.projectIds.has(currentQuote.projectId)
+					: s.clientIds.has(currentQuote.clientId)
+			)
+		);
 		const oldStatus = currentQuote.status;
 
 		// Compute field-level changes before applying the update
@@ -845,7 +877,16 @@ export const update = userMutation({
 export const recalculateTotals = userMutation({
 	args: { id: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+
 		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		const totals = await calculateQuoteTotals(ctx, args.id, {
 			discountEnabled: quote.discountEnabled,
@@ -871,6 +912,18 @@ export const recalculateTotals = userMutation({
 export const remove = userMutation({
 	args: { id: v.id("quotes") },
 	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "delete");
+
+		// Validate access before any destructive side effects
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
 		// Check if quote has related invoices
 		const invoices = await ctx.db
 			.query("invoices")
@@ -894,8 +947,7 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		// Get quote and remove from aggregates before deleting
-		const quote = await ctx.orgEntity("quotes", args.id); // Validate access
+		// Remove from aggregates before deleting
 		await AggregateHelpers.removeQuote(ctx, quote as QuoteDocument);
 		await ctx.db.delete(args.id);
 
@@ -923,11 +975,16 @@ export const search = optionalUserQuery({
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("quotes", "view");
 
 		let quotes = await ctx.db
 			.query("quotes")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+
+		quotes = await ctx.applyReadScope("quotes", quotes, (q, s) =>
+			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
+		);
 
 		// Filter by status if specified
 		if (args.status) {
@@ -977,11 +1034,16 @@ export const getStats = optionalUserQuery({
 				thisMonth: 0,
 			};
 		}
+		await ctx.requireLevel("quotes", "view");
 
-		const quotes = await ctx.db
+		let quotes = await ctx.db
 			.query("quotes")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
+
+		quotes = await ctx.applyReadScope("quotes", quotes, (q, s) =>
+			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
+		);
 
 		const stats: QuoteStats = {
 			total: quotes.length,
@@ -1052,6 +1114,7 @@ export const getAwaitingSigning = optionalUserQuery({
 	handler: async (ctx) => {
 		const orgId = ctx.orgId;
 		if (!orgId) return [];
+		await ctx.requireLevel("quotes", "view");
 
 		const now = Date.now();
 		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
@@ -1063,9 +1126,13 @@ export const getAwaitingSigning = optionalUserQuery({
 			.collect();
 
 		// Return quotes whose validUntil date is within the next 7 days (or already past)
-		return quotes.filter(
+		const upcoming = quotes.filter(
 			(quote) =>
 				quote.validUntil !== undefined && quote.validUntil <= sevenDaysFromNow
+		);
+
+		return await ctx.applyReadScope("quotes", upcoming, (q, s) =>
+			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
 		);
 	},
 });
@@ -1078,6 +1145,7 @@ export const getExpiringSoon = optionalUserQuery({
 	handler: async (ctx, args): Promise<QuoteDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
+		await ctx.requireLevel("quotes", "view");
 
 		const daysAhead = args.days || 7;
 
@@ -1089,12 +1157,16 @@ export const getExpiringSoon = optionalUserQuery({
 		const now = Date.now();
 		const expirationThreshold = now + daysAhead * 24 * 60 * 60 * 1000;
 
-		return quotes.filter(
+		const expiringSoon = quotes.filter(
 			(quote: QuoteDocument) =>
 				quote.status === "sent" &&
 				quote.validUntil &&
 				quote.validUntil <= expirationThreshold &&
 				quote.validUntil > now
+		);
+
+		return await ctx.applyReadScope("quotes", expiringSoon, (q, s) =>
+			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
 		);
 	},
 });
@@ -1113,12 +1185,20 @@ export const getExpiringSoon = optionalUserQuery({
 export const getApprovalAudit = userQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
+		await ctx.requireLevel("quotes", "view");
 		const orgId = await getCurrentUserOrgId(ctx);
 
 		const quote = await ctx.db.get(quoteId);
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
 		if (quote.orgId !== orgId)
 			throw new ConvexError({ code: "FORBIDDEN" });
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
 
 		const rows = await ctx.db
 			.query("quoteApprovals")
