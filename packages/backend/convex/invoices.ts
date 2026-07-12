@@ -938,6 +938,24 @@ export const createFromQuote = userMutation({
 		const issuedDate = args.issuedDate || Date.now();
 		const dueDate = args.dueDate || Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days default
 
+		const quoteLineItems = await ctx.db
+			.query("quoteLineItems")
+			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+			.collect();
+
+		// Quotes store discountAmount as the raw input — a percent when discountType
+		// is "percentage" — while invoices store it as dollars (calculateInvoiceTotals
+		// subtracts it flat). Convert here or a 10% discount bills the client $10 off.
+		const lineItemSubtotal = quoteLineItems.reduce(
+			(sum, item) => sum + item.amount,
+			0
+		);
+		const discountAmount = quote.discountAmount
+			? quote.discountType === "percentage"
+				? (lineItemSubtotal * quote.discountAmount) / 100
+				: quote.discountAmount
+			: undefined;
+
 		// Create invoice from quote
 		const invoiceId = await ctx.db.insert("invoices", {
 			orgId: ctx.orgId,
@@ -947,7 +965,7 @@ export const createFromQuote = userMutation({
 			invoiceNumber,
 			status: "draft",
 			subtotal: quote.subtotal,
-			discountAmount: quote.discountAmount,
+			discountAmount,
 			taxAmount: quote.taxAmount,
 			total: quote.total,
 			issuedDate,
@@ -956,11 +974,6 @@ export const createFromQuote = userMutation({
 		});
 
 		// Copy quote line items to invoice line items
-		const quoteLineItems = await ctx.db
-			.query("quoteLineItems")
-			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-			.collect();
-
 		for (const quoteLineItem of quoteLineItems) {
 			await ctx.db.insert("invoiceLineItems", {
 				invoiceId,

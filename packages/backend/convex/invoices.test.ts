@@ -174,6 +174,103 @@ describe("Invoices", () => {
 		});
 	});
 
+	describe("createFromQuote", () => {
+		// Quotes persist discountAmount as the raw input (a percent when discountType
+		// is "percentage"); invoices persist it as dollars. Converting at the seam is
+		// what keeps a percentage-discounted quote from overbilling the client.
+		async function setupApprovedQuote(discount: {
+			discountEnabled: boolean;
+			discountAmount?: number;
+			discountType?: "percentage" | "fixed";
+			total: number;
+		}) {
+			return await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+
+				const quoteId = await ctx.db.insert("quotes", {
+					orgId,
+					clientId,
+					title: "Discounted Quote",
+					quoteNumber: `Q-${Date.now()}`,
+					status: "approved",
+					subtotal: 5000,
+					taxAmount: 0,
+					...discount,
+				});
+
+				await ctx.db.insert("quoteLineItems", {
+					quoteId,
+					orgId,
+					description: "Landscaping",
+					quantity: 1,
+					unit: "item",
+					rate: 5000,
+					amount: 5000,
+					sortOrder: 0,
+				});
+
+				return { quoteId, clerkUserId, clerkOrgId };
+			});
+		}
+
+		it("converts a percentage discount into dollars", async () => {
+			// 10% off a $5,000 subtotal => $500 off => $4,500 total.
+			const { quoteId, clerkUserId, clerkOrgId } = await setupApprovedQuote({
+				discountEnabled: true,
+				discountAmount: 10,
+				discountType: "percentage",
+				total: 4500,
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoiceId = await asUser.mutation(api.invoices.createFromQuote, {
+				quoteId,
+			});
+			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+
+			expect(invoice?.subtotal).toBe(5000);
+			// Regression: the raw `10` used to be copied straight through and then
+			// subtracted as $10, billing the client $4,990.
+			expect(invoice?.discountAmount).toBe(500);
+			expect(invoice?.total).toBe(4500);
+		});
+
+		it("passes a fixed discount through unchanged", async () => {
+			const { quoteId, clerkUserId, clerkOrgId } = await setupApprovedQuote({
+				discountEnabled: true,
+				discountAmount: 250,
+				discountType: "fixed",
+				total: 4750,
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoiceId = await asUser.mutation(api.invoices.createFromQuote, {
+				quoteId,
+			});
+			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+
+			expect(invoice?.discountAmount).toBe(250);
+			expect(invoice?.total).toBe(4750);
+		});
+
+		it("carries no discount when the quote has none", async () => {
+			const { quoteId, clerkUserId, clerkOrgId } = await setupApprovedQuote({
+				discountEnabled: false,
+				total: 5000,
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoiceId = await asUser.mutation(api.invoices.createFromQuote, {
+				quoteId,
+			});
+			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+
+			expect(invoice?.discountAmount).toBeUndefined();
+			expect(invoice?.total).toBe(5000);
+		});
+	});
+
 	describe("update", () => {
 		// Skip - requires aggregates to be properly initialized via API create
 		it.skip("should update invoice fields", async () => {
