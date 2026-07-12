@@ -354,7 +354,7 @@ function InvoiceDetailPageContent() {
 					`Invoice #${invoice._id.slice(-6)}`
 				}
 				itemType="Invoice"
-				isArchive={true}
+				mode="cancel"
 			/>
 
 			{invoice && (
