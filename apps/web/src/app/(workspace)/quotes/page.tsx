@@ -74,6 +74,7 @@ import {
 } from "../projects/components/kanban";
 import { QuoteDetailDrawer } from "./components/quote-detail-drawer";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
+import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
 
 type QuoteWithClient = Doc<"quotes"> & {
@@ -227,7 +228,7 @@ const createColumns = (
 	},
 	{
 		id: "activity",
-		header: () => <div className="text-center">Activity</div>,
+		header: () => <ActivityColumnHeader />,
 		enableSorting: false,
 		cell: ({ row }) => (
 			<div className="flex justify-center">

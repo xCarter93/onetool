@@ -75,6 +75,7 @@ import {
 } from "./components/kanban";
 import { ProjectDetailDrawer } from "./components/project-detail-drawer";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
+import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
 
 // Enhanced project type that includes client information for display
@@ -227,7 +228,7 @@ const createColumns = (
 	},
 	{
 		id: "activity",
-		header: () => <div className="text-center">Activity</div>,
+		header: () => <ActivityColumnHeader />,
 		enableSorting: false,
 		cell: ({ row }) => (
 			<div className="flex justify-center">
