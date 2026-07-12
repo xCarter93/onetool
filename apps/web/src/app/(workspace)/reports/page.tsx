@@ -132,10 +132,9 @@ function ReportsPageContent() {
 
 	const confirmDelete = async () => {
 		if (!reportToDelete) return;
-		// Success/error toasts owned by DeleteConfirmationModal; let errors propagate.
+		// Success toast + modal close are owned by DeleteConfirmationModal
+		// (onClose); let errors propagate so it shows a single error toast.
 		await deleteReport({ id: reportToDelete.id as Id<"reports"> });
-		setDeleteModalOpen(false);
-		setReportToDelete(null);
 	};
 
 	const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
@@ -244,7 +243,10 @@ function ReportsPageContent() {
 			{reportToDelete && (
 				<DeleteConfirmationModal
 					isOpen={deleteModalOpen}
-					onClose={() => setDeleteModalOpen(false)}
+					onClose={() => {
+						setDeleteModalOpen(false);
+						setReportToDelete(null);
+					}}
 					onConfirm={confirmDelete}
 					title="Delete Report"
 					itemName={reportToDelete.name}

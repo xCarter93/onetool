@@ -770,6 +770,7 @@ export function QuoteDetailSidebar({
 							variant="outline"
 							size="sm"
 							onClick={onGeneratePdf}
+							disabled={!canModify}
 						>
 							<FileText className="h-4 w-4 mr-2" />
 							Generate PDF

@@ -431,12 +431,10 @@ function InvoicesPageContent() {
 		);
 	}, [searchedData]);
 
-	// Loading state
-	const isLoading =
-		isOrgSwitching ||
-		invoices === undefined ||
-		clients === undefined ||
-		projects === undefined;
+	// Loading state — gate only on the primary invoices query. The clients and
+	// projects reads are permission-skipped and stay undefined without the grant,
+	// which would otherwise pin the page on the skeleton forever.
+	const isLoading = isOrgSwitching || invoices === undefined;
 
 	// Empty state
 	const isEmpty = !isLoading && data.length === 0;

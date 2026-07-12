@@ -102,7 +102,7 @@ export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
 
 					{/* SKU List */}
 					<div className="max-h-[300px] overflow-y-auto bg-white dark:bg-gray-900">
-						{skus === undefined ? (
+						{can("skus") && skus === undefined ? (
 							<div className="p-4 text-center text-sm text-muted-foreground bg-white dark:bg-gray-900">
 								Loading SKUs...
 							</div>

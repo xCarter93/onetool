@@ -86,11 +86,11 @@ function ClientDetailPageContent() {
 		clientContacts === undefined ||
 		clientProperties === undefined ||
 		primaryContact === undefined ||
-		quotes === undefined ||
-		projects === undefined ||
-		invoices === undefined ||
-		clientTasks === undefined ||
-		clientThreads === undefined
+		(can("quotes") && quotes === undefined) ||
+		(can("projects") && projects === undefined) ||
+		(can("invoices") && invoices === undefined) ||
+		(can("tasks") && clientTasks === undefined) ||
+		(can("inbox") && clientThreads === undefined)
 	) {
 		return (
 			<div className="relative pl-6 pt-8 pb-20">
