@@ -5,11 +5,6 @@ import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-	PillTabs,
-	PillTabsList,
-	PillTabsTrigger,
-} from "@/components/shared/pill-tabs";
 import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -38,7 +33,6 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import {
-	Archive,
 	CheckCircle2,
 	ExternalLink,
 	Eye,
@@ -64,6 +58,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
+import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import {
 	useCanPerformAction,
 	useFeatureAccess,
@@ -83,6 +78,7 @@ import {
 	KanbanProvider,
 } from "../projects/components/kanban";
 import { ClientDetailDrawer } from "./components/client-detail-drawer";
+import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { cn } from "@/lib/utils";
 
 type Client = {
@@ -97,6 +93,7 @@ type Client = {
 		email: string;
 		jobTitle: string;
 	} | null;
+	activity?: number[];
 };
 
 type ClientKanbanStatus = "lead" | "active" | "inactive";
@@ -153,7 +150,9 @@ const toKanbanStatus = (status: Client["status"]): ClientKanbanStatus => {
 	return "inactive";
 };
 
-// Advanced filters (status / active-projects) applied to a client set.
+// Advanced filters (status) applied to a client set. Status honors is / is_not
+// so the default "is not Archived" chip can hide archived clients while staying
+// removable to reveal them.
 const applyClientFilters = (
 	rows: Client[],
 	filters: Filter<unknown>[]
@@ -162,11 +161,14 @@ const applyClientFilters = (
 	filters.forEach((filter) => {
 		if (filter.values.length === 0) return;
 		switch (filter.field) {
-			case "status":
-				result = result.filter((c) =>
-					filter.values.includes(c.status as unknown)
-				);
+			case "status": {
+				const isNot = filter.operator === "is_not";
+				result = result.filter((c) => {
+					const match = filter.values.includes(c.status as unknown);
+					return isNot ? !match : match;
+				});
 				break;
+			}
 		}
 	});
 	return result;
@@ -191,7 +193,6 @@ const createColumns = (
 	onPreview: (id: string) => void,
 	onDelete: (id: string, name: string) => void,
 	onRestore: (id: string, name: string) => void,
-	isArchivedTab: boolean,
 	canModify: boolean,
 	canDelete: boolean
 ): ColumnDef<Client>[] => [
@@ -267,6 +268,16 @@ const createColumns = (
 		},
 	},
 	{
+		id: "activity",
+		header: () => <div className="text-center">Activity</div>,
+		enableSorting: false,
+		cell: ({ row }) => (
+			<div className="flex justify-center">
+				<ActivitySparkline data={row.original.activity} />
+			</div>
+		),
+	},
+	{
 		id: "actions",
 		header: "",
 		cell: ({ row }) => (
@@ -292,7 +303,7 @@ const createColumns = (
 					<ExternalLink className="size-4" />
 				</Button>
 				{canModify &&
-					(isArchivedTab ? (
+					(row.original.status === "Archived" ? (
 						<Button
 							variant="outline"
 							size="icon-sm"
@@ -364,25 +375,22 @@ function ActiveEmptyState({
 	);
 }
 
-function ArchivedEmptyState() {
-	return (
-		<EmptyState
-			size="md"
-			icon={<Archive />}
-			title="No archived clients"
-			description="Clients you archive will appear here for seven days before being permanently deleted."
-		/>
-	);
-}
-
 function ClientsPageContent() {
 	const router = useRouter();
 	const toast = useToast();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
-	const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [query, setQuery] = React.useState("");
-	const [filters, setFilters] = React.useState<Filter<unknown>[]>([]);
+	// Seed a removable "Status is not Archived" chip so archived clients are
+	// hidden by default but revealed by clearing or editing the filter.
+	const [filters, setFilters] = React.useState<Filter<unknown>[]>(() => [
+		{
+			id: "default-hide-archived",
+			field: "status",
+			operator: "is_not",
+			values: ["Archived"],
+		},
+	]);
 	const [pagination, setPagination] = React.useState({
 		pageIndex: 0,
 		pageSize: 10,
@@ -409,54 +417,38 @@ function ClientsPageContent() {
 	const restoreClient = useMutation(api.clients.restore);
 	const updateClient = useMutation(api.clients.update);
 
-	// Two datasets: active clients and archived clients.
-	const convexClients = useQuery(api.clients.listWithProjectCounts, {});
-	const archivedClients = useQuery(api.clients.listWithProjectCounts, {
-		status: "archived" as const,
+	// Single dataset: all clients incl. archived. Archived rows stay in the
+	// table's data (so they're reachable) but are hidden by the default
+	// "is not Archived" filter chip until the user edits or removes it.
+	const convexClients = useQuery(api.clients.listWithProjectCounts, {
 		includeArchived: true,
 	});
 	const clientsStats = useQuery(api.clients.getStats, {});
+	// 30-day activity sparkline data, keyed by client id (presentational).
+	const sparklines = useActivitySparklines("client");
 
-	const activeData = React.useMemo<Client[]>(
-		() => convexClients ?? [],
-		[convexClients]
-	);
-	const archivedData = React.useMemo<Client[]>(
-		() => archivedClients ?? [],
-		[archivedClients]
-	);
-
-	// Advanced filters + free-text search, computed per dataset.
-	const activeFiltered = React.useMemo(
-		() => applyClientFilters(activeData, filters),
-		[activeData, filters]
-	);
-	const activeSearched = React.useMemo(
-		() => searchClients(activeFiltered, query),
-		[activeFiltered, query]
-	);
-	const archivedFiltered = React.useMemo(
-		() => applyClientFilters(archivedData, filters),
-		[archivedData, filters]
-	);
-	const archivedSearched = React.useMemo(
-		() => searchClients(archivedFiltered, query),
-		[archivedFiltered, query]
+	const allData = React.useMemo<Client[]>(
+		() =>
+			(convexClients ?? []).map((client) => ({
+				...client,
+				activity: sparklines?.[client.id],
+			})),
+		[convexClients, sparklines]
 	);
 
-	const searchedData =
-		activeTab === "active" ? activeSearched : archivedSearched;
-	const currentDataset = activeTab === "active" ? activeData : archivedData;
+	// Advanced filters + free-text search over the full set.
+	const filteredData = React.useMemo(
+		() => applyClientFilters(allData, filters),
+		[allData, filters]
+	);
+	const searchedData = React.useMemo(
+		() => searchClients(filteredData, query),
+		[filteredData, query]
+	);
 
-	const isActiveEmpty = activeData.length === 0;
-	const isArchivedEmpty = archivedData.length === 0;
-	const currentTabEmpty =
-		activeTab === "active" ? isActiveEmpty : isArchivedEmpty;
+	const isEmpty = allData.length === 0;
 
-	const isLoading =
-		isOrgSwitching ||
-		convexClients === undefined ||
-		archivedClients === undefined;
+	const isLoading = isOrgSwitching || convexClients === undefined;
 
 	const handleAddClient = React.useCallback(() => {
 		if (!canPerform) {
@@ -506,24 +498,17 @@ function ClientsPageContent() {
 		setClientToDelete(null);
 	};
 
-	// Switching dataset resets the dataset-scoped filters (their status options
-	// differ between the active and archived tabs).
-	const handleTabChange = (value: string) => {
-		setActiveTab(value as "active" | "archived");
-		setFilters([]);
-	};
-
-	// Stable status map (from the full active set) for drag-to-update detection.
+	// Stable status map (from the full set) for drag-to-update detection.
 	const clientStatusMap = React.useMemo(() => {
 		const map = new Map<string, ClientKanbanStatus>();
-		activeData.forEach((client) => map.set(client.id, toKanbanStatus(client.status)));
+		allData.forEach((client) => map.set(client.id, toKanbanStatus(client.status)));
 		return map;
-	}, [activeData]);
+	}, [allData]);
 
-	// Kanban always reflects the (filtered + searched) active clients.
+	// Kanban reflects the (filtered + searched) non-archived clients.
 	React.useEffect(() => {
 		setKanbanData(
-			activeSearched
+			searchedData
 				.filter((client) => client.status !== "Archived")
 				.map((client) => ({
 					id: client.id,
@@ -538,7 +523,7 @@ function ClientsPageContent() {
 						: null,
 				}))
 		);
-	}, [activeSearched]);
+	}, [searchedData]);
 
 	// onDataChange fires on every drag-over (column crossing), so keep it purely
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
@@ -571,7 +556,6 @@ function ClientsPageContent() {
 		[canModifyClients, kanbanData, clientStatusMap, updateClient, toast]
 	);
 
-	const isArchivedTab = activeTab === "archived";
 	const columns = React.useMemo(
 		() =>
 			createColumns(
@@ -579,7 +563,6 @@ function ClientsPageContent() {
 				openPreview,
 				handleDelete,
 				handleRestore,
-				isArchivedTab,
 				canModifyClients,
 				canDeleteClients
 			),
@@ -588,7 +571,6 @@ function ClientsPageContent() {
 			openPreview,
 			handleDelete,
 			handleRestore,
-			isArchivedTab,
 			canModifyClients,
 			canDeleteClients,
 		]
@@ -615,37 +597,33 @@ function ClientsPageContent() {
 		setPagination((prev) =>
 			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
 		);
-	}, [activeTab, query, filters, searchedData.length]);
+	}, [query, filters, searchedData.length]);
 
-	// Status options track the visible dataset; active-context lanes are
-	// lead/active/inactive, the archived tab is a single "Archived" bucket.
-	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
-		const statusOptions =
-			isArchivedTab && viewMode === "table"
-				? [{ value: "Archived", label: "Archived" }]
-				: [
-						{ value: "Active", label: "Active" },
-						{ value: "Prospect", label: "Prospect" },
-						{ value: "Paused", label: "Paused" },
-					];
-		return [
+	// One status filter covering every status incl. Archived. New status chips
+	// default to "is"; the seeded default chip uses "is not Archived".
+	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(
+		() => [
 			{
 				key: "status",
 				label: "Status",
 				icon: <CheckCircle2 className="h-3 w-3" />,
-				type: "multiselect",
-				options: statusOptions,
+				type: "select",
+				defaultOperator: "is",
+				options: [
+					{ value: "Active", label: "Active" },
+					{ value: "Prospect", label: "Prospect" },
+					{ value: "Paused", label: "Paused" },
+					{ value: "Archived", label: "Archived" },
+				],
 			},
-		];
-	}, [isArchivedTab, viewMode]);
+		],
+		[]
+	);
 
-	// Kanban footer counts the active set; table footer counts the current tab.
 	const footerShown =
-		viewMode === "table" ? searchedData.length : activeSearched.length;
-	const footerTotal =
-		viewMode === "table" ? currentDataset.length : activeData.length;
-	const showFooter =
-		!isLoading && (viewMode === "table" ? !currentTabEmpty : !isActiveEmpty);
+		viewMode === "table" ? searchedData.length : kanbanData.length;
+	const footerTotal = allData.length;
+	const showFooter = !isLoading && !isEmpty;
 
 	const filtersBar = (
 		<div className="border-b px-4 py-3">
@@ -912,16 +890,7 @@ function ClientsPageContent() {
 						<SegmentedControl
 							className="shrink-0"
 							value={viewMode}
-							onValueChange={(v) => {
-								const next = v as "table" | "kanban";
-								setViewMode(next);
-								// Kanban only shows active clients; leaving the Archived tab
-								// (or its filters) applied would render an empty board.
-								if (next === "kanban" && activeTab === "archived") {
-									setActiveTab("active");
-									setFilters([]);
-								}
-							}}
+							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
 							options={[
 								{
 									value: "table",
@@ -946,11 +915,7 @@ function ClientsPageContent() {
 					table={table}
 					recordCount={searchedData.length}
 					onRowClick={(row) => openPreview(row.id)}
-					emptyMessage={
-						isArchivedTab
-							? "No archived clients match your filters."
-							: "No clients match your filters."
-					}
+					emptyMessage="No clients match your filters."
 					tableLayout={{
 						width: "auto",
 						headerBackground: true,
@@ -973,40 +938,22 @@ function ClientsPageContent() {
 									))}
 								</div>
 							</div>
+						) : isEmpty ? (
+							<ActiveEmptyState
+								gate={gate}
+								onAdd={handleAddClient}
+								canModify={canModifyClients}
+							/>
 						) : viewMode === "kanban" ? (
-							isActiveEmpty ? (
-								<ActiveEmptyState gate={gate} onAdd={handleAddClient} canModify={canModifyClients} />
-							) : (
-								<>
-									{filtersBar}
-									{kanbanBoard}
-								</>
-							)
+							<>
+								{filtersBar}
+								{kanbanBoard}
+							</>
 						) : (
-							<PillTabs value={activeTab} onValueChange={handleTabChange}>
-								<div className="px-4 pt-4">
-									<PillTabsList className="overflow-x-auto">
-										<PillTabsTrigger value="active">
-											Active Clients
-										</PillTabsTrigger>
-										<PillTabsTrigger value="archived">
-											Archived Clients
-										</PillTabsTrigger>
-									</PillTabsList>
-								</div>
-								{currentTabEmpty ? (
-									isArchivedTab ? (
-										<ArchivedEmptyState />
-									) : (
-										<ActiveEmptyState gate={gate} onAdd={handleAddClient} canModify={canModifyClients} />
-									)
-								) : (
-									<>
-										{filtersBar}
-										{clientsTable}
-									</>
-								)}
-							</PillTabs>
+							<>
+								{filtersBar}
+								{clientsTable}
+							</>
 						)}
 					</FramePanel>
 

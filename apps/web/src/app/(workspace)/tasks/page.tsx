@@ -14,6 +14,10 @@ import { TaskSheet } from "@/components/shared/task-sheet";
 import { Badge } from "@/components/ui/badge";
 import { FiltersWithClear } from "@/components/filters/radius-full";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
+import {
+	DateFilterValue,
+	matchesDateFilter,
+} from "@/components/filters/date-filter";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/domain/empty-state";
 import {
@@ -435,7 +439,7 @@ function TasksPageContent() {
 				key: "status",
 				label: "Status",
 				icon: <CheckCircle2 className="h-3 w-3" />,
-				type: "multiselect",
+				type: "select",
 				options: statusOptions,
 			},
 			{
@@ -466,7 +470,16 @@ function TasksPageContent() {
 				key: "date",
 				label: "Date",
 				icon: <Calendar className="h-3 w-3" />,
-				type: "daterange",
+				type: "date",
+				defaultOperator: "before",
+				operators: [
+					{ value: "before", label: "before" },
+					{ value: "after", label: "after" },
+					{ value: "is", label: "on" },
+				],
+				customRenderer: (p) => (
+					<DateFilterValue values={p.values} onChange={p.onChange} />
+				),
 			},
 		];
 	}, [clients, projects, users]);
@@ -487,11 +500,14 @@ function TasksPageContent() {
 			if (filter.values.length === 0) return;
 
 			switch (filter.field) {
-				case "status":
-					filtered = filtered.filter((task) =>
-						filter.values.includes(task.status as unknown)
-					);
+				case "status": {
+					const isNot = filter.operator === "is_not";
+					filtered = filtered.filter((task) => {
+						const match = filter.values.includes(task.status as unknown);
+						return isNot ? !match : match;
+					});
 					break;
+				}
 				case "client":
 					filtered = filtered.filter((task) =>
 						filter.values.includes(task.clientId as unknown)
@@ -510,17 +526,9 @@ function TasksPageContent() {
 					);
 					break;
 				case "date":
-					if (filter.operator === "between" && filter.values.length === 2) {
-						const [startDate, endDate] = filter.values as [string, string];
-						if (startDate) {
-							const startTimestamp = new Date(startDate).getTime();
-							filtered = filtered.filter((task) => task.date >= startTimestamp);
-						}
-						if (endDate) {
-							const endTimestamp = new Date(endDate).getTime();
-							filtered = filtered.filter((task) => task.date <= endTimestamp);
-						}
-					}
+					filtered = filtered.filter((task) =>
+						matchesDateFilter(task.date, filter.operator, filter.values[0])
+					);
 					break;
 			}
 		});

@@ -16,6 +16,10 @@ import {
 	XCircle,
 } from "lucide-react";
 
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -158,7 +162,62 @@ export function QuoteDetailDrawer({
 
 	const canSend = quote?.status === "draft" || quote?.status === "sent";
 	const canDecide = quote?.status === "sent";
-	const canConvert = quote?.status === "approved" && data?.hasInvoice !== true;
+	const isApproved = quote?.status === "approved";
+	const alreadyInvoiced = data?.hasInvoice === true;
+
+	const recordActions: RecordAction[] = [
+		{
+			key: "open",
+			label: "Open quote",
+			icon: <ExternalLink className="size-3.5" />,
+			variant: "default",
+			slot: "start",
+			onClick: openRecord,
+		},
+		{
+			key: "send",
+			label: "Send for e-signature",
+			icon: <PenLine className="size-3.5" />,
+			variant: "default",
+			slot: "start",
+			onClick: sendForSignature,
+			disabled: !can("quotes", "modify"),
+			hidden: !canSend,
+		},
+		{
+			// TODO(reui-rebuild): success button intent mapped to default
+			key: "approve",
+			label: "Approve",
+			icon: <CheckCircle2 className="size-3.5" />,
+			variant: "default",
+			slot: "start",
+			onClick: () => void setStatus("approved"),
+			disabled: !can("quotes", "modify"),
+			hidden: !canDecide,
+		},
+		{
+			key: "convert",
+			label: alreadyInvoiced ? "Invoice created" : "Convert to invoice",
+			loadingLabel: "Converting…",
+			icon: <Receipt className="size-3.5" />,
+			variant: "default",
+			slot: "start",
+			onClick: convertToInvoice,
+			disabled: !can("invoices", "modify") || alreadyInvoiced,
+			loading: converting,
+			hidden: !isApproved,
+		},
+		{
+			key: "decline",
+			label: "Decline",
+			icon: <XCircle className="size-3.5" />,
+			variant: "destructive",
+			slot: "end",
+			onClick: () => void setStatus("declined"),
+			disabled: !can("quotes", "modify"),
+			hidden: !canDecide,
+		},
+	];
 
 	return (
 		<DetailDrawer
@@ -194,64 +253,7 @@ export function QuoteDetailDrawer({
 					: undefined
 			}
 			actions={
-				quote ? (
-					<>
-						{canSend ? (
-							<Button
-								size="sm"
-								disabled={!can("quotes", "modify")}
-								onClick={sendForSignature}
-							>
-								<PenLine className="size-3.5" />
-								Send for e-signature
-							</Button>
-						) : null}
-						{canDecide ? (
-							<>
-								{/* TODO(reui-rebuild): success button intent mapped to default */}
-								<Button
-									size="sm"
-									disabled={!can("quotes", "modify")}
-									onClick={() => void setStatus("approved")}
-								>
-									<CheckCircle2 className="size-3.5" />
-									Approve
-								</Button>
-								<Button
-									variant="destructive"
-									size="sm"
-									disabled={!can("quotes", "modify")}
-									onClick={() => void setStatus("declined")}
-								>
-									<XCircle className="size-3.5" />
-									Decline
-								</Button>
-							</>
-						) : null}
-						{canConvert ? (
-							<Button
-								size="sm"
-								disabled={converting || !can("invoices", "modify")}
-								onClick={convertToInvoice}
-							>
-								{converting ? (
-									<Loader2 className="size-3.5 animate-spin" />
-								) : (
-									<Receipt className="size-3.5" />
-								)}
-								{converting ? "Converting…" : "Convert to invoice"}
-							</Button>
-						) : quote.status === "approved" && data?.hasInvoice ? (
-							<span className="text-muted-foreground text-xs">
-								Invoice already created
-							</span>
-						) : null}
-						<Button variant="outline" size="sm" onClick={openRecord}>
-							<ExternalLink className="size-3.5" />
-							Open quote
-						</Button>
-					</>
-				) : null
+				quote ? <ActionButtonGroup actions={recordActions} /> : null
 			}
 		>
 			{loading ? (

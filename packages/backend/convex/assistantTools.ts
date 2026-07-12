@@ -1478,9 +1478,11 @@ function withPermissionFallback<T extends { execute?: unknown }>(tool: T): T {
 	if (typeof original !== "function") return tool;
 	return {
 		...tool,
-		execute: async (...args: unknown[]) => {
+		// The agent runtime injects ctx by spreading {...tool, ctx} and reading it
+		// off `this` inside execute — must forward `this`, not call `original` bare.
+		execute: async function (this: unknown, ...args: unknown[]) {
 			try {
-				return await original(...args);
+				return await original.apply(this, args);
 			} catch (e) {
 				const forbidden = forbiddenErrorData(e);
 				if (forbidden) return noPermissionResult(forbidden);

@@ -11,7 +11,10 @@ import {
 	Send,
 	RotateCcw,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { AnimatePresence, motion } from "motion/react";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
@@ -47,74 +50,116 @@ export function InvoiceDetailHeader({
 }: InvoiceDetailHeaderProps) {
 	const { can } = usePermissions();
 	const canModify = can("invoices", "modify");
-	const renderStatusActions = () => {
+
+	// Status-dependent actions. The primary next step for each status is pinned
+	// left ("start"); everything else is secondary and collapses into the ⋯ menu.
+	const statusActions: RecordAction[] = (() => {
 		switch (currentStatus) {
 			case "draft":
-				return (
-					<>
-						<Button
-							size="sm"
-							onClick={() => onStatusChange("sent")}
-							disabled={!canModify}
-						>
-							<Send className="h-4 w-4" />
-							Mark as Sent
-						</Button>
-						{/* TODO(reui-rebuild): success button intent mapped to default */}
-						<Button size="sm" onClick={onMarkPaid} disabled={!canModify}>
-							<CheckCircle className="h-4 w-4" />
-							Mark as Paid
-						</Button>
-					</>
-				);
+				return [
+					{
+						key: "mark-sent",
+						label: "Mark as Sent",
+						icon: <Send className="h-4 w-4" />,
+						slot: "start",
+						variant: "default",
+						onClick: () => onStatusChange("sent"),
+						disabled: !canModify,
+					},
+					{
+						// TODO(reui-rebuild): success button intent mapped to default
+						key: "mark-paid",
+						label: "Mark as Paid",
+						icon: <CheckCircle className="h-4 w-4" />,
+						slot: "start",
+						variant: "default",
+						onClick: onMarkPaid,
+						disabled: !canModify,
+					},
+				];
 			case "sent":
 			case "overdue":
-				return (
-					<>
-						{/* TODO(reui-rebuild): success button intent mapped to default */}
-						<Button size="sm" onClick={onMarkPaid} disabled={!canModify}>
-							<CheckCircle className="h-4 w-4" />
-							Mark as Paid
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => onStatusChange("draft")}
-							disabled={!canModify}
-						>
-							<RotateCcw className="h-4 w-4" />
-							Revert to Draft
-						</Button>
-					</>
-				);
+				return [
+					{
+						// TODO(reui-rebuild): success button intent mapped to default
+						key: "mark-paid",
+						label: "Mark as Paid",
+						icon: <CheckCircle className="h-4 w-4" />,
+						slot: "start",
+						variant: "default",
+						onClick: onMarkPaid,
+						disabled: !canModify,
+					},
+					{
+						key: "revert-draft",
+						label: "Revert to Draft",
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "secondary",
+						variant: "outline",
+						onClick: () => onStatusChange("draft"),
+						disabled: !canModify,
+					},
+				];
 			case "paid":
-				return (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => onStatusChange("sent")}
-						disabled={!canModify}
-					>
-						<RotateCcw className="h-4 w-4" />
-						Reopen
-					</Button>
-				);
+				return [
+					{
+						key: "reopen",
+						label: "Reopen",
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "start",
+						variant: "outline",
+						onClick: () => onStatusChange("sent"),
+						disabled: !canModify,
+					},
+				];
 			case "cancelled":
-				return (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => onStatusChange("draft")}
-						disabled={!canModify}
-					>
-						<RotateCcw className="h-4 w-4" />
-						Reopen (Draft)
-					</Button>
-				);
+				return [
+					{
+						key: "reopen",
+						label: "Reopen (Draft)",
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "start",
+						variant: "outline",
+						onClick: () => onStatusChange("draft"),
+						disabled: !canModify,
+					},
+				];
 			default:
-				return null;
+				return [];
 		}
-	};
+	})();
+
+	const actions: RecordAction[] = [
+		...statusActions,
+		{
+			key: "send-to-client",
+			label: "Send to Client",
+			icon: <Mail className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onSendToClient,
+			disabled: !canModify,
+		},
+		{
+			key: "generate-pdf",
+			label: "Generate PDF",
+			icon: <FileText className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onGeneratePdf,
+			disabled: !canModify,
+		},
+		{
+			key: "cancel",
+			label: "Cancel",
+			icon: <XCircle className="h-4 w-4" />,
+			slot: "end",
+			variant: "destructive",
+			onClick: onCancel,
+			disabled: !canModify,
+			hidden: currentStatus === "cancelled",
+		},
+	];
 
 	const computedStatus = getInvoiceStatus(
 		invoice.status as InvoiceStatus,
@@ -188,38 +233,7 @@ export function InvoiceDetailHeader({
 							</motion.div>
 						)}
 					</AnimatePresence>
-					<div className="flex items-center gap-2 shrink-0">
-						{renderStatusActions()}
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onSendToClient}
-							disabled={!canModify}
-						>
-							<Mail className="h-4 w-4" />
-							Send to Client
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onGeneratePdf}
-							disabled={!canModify}
-						>
-							<FileText className="h-4 w-4" />
-							Generate PDF
-						</Button>
-						{currentStatus !== "cancelled" && (
-							<Button
-								variant="destructive"
-								size="sm"
-								onClick={onCancel}
-								disabled={!canModify}
-							>
-								<XCircle className="h-4 w-4" />
-								Cancel
-							</Button>
-						)}
-					</div>
+					<ActionButtonGroup actions={actions} className="shrink-0" />
 				</div>
 			)}
 		</StickyDetailHeader>

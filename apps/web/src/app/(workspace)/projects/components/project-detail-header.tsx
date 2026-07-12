@@ -4,7 +4,10 @@ import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import { ListTodo, FileText, Receipt, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+	ActionButtonGroup,
+	type RecordAction,
+} from "@/components/domain/action-button-group";
 import { AnimatePresence, motion } from "motion/react";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
@@ -27,6 +30,52 @@ export function ProjectDetailHeader({
 	onDelete,
 }: ProjectDetailHeaderProps) {
 	const { can } = usePermissions();
+
+	const actions: RecordAction[] = [
+		{
+			key: "add-task",
+			label: "Add Task",
+			icon: <ListTodo className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onAddTask,
+			disabled: !can("tasks", "modify"),
+			disabledReason: "You don't have permission to add tasks",
+		},
+		{
+			key: "add-quote",
+			label: "Add Quote",
+			icon: <FileText className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onAddQuote,
+			disabled: !can("quotes", "modify"),
+			disabledReason: "You don't have permission to add quotes",
+		},
+		{
+			key: "generate-invoice",
+			label: "Generate Invoice",
+			icon: <Receipt className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onGenerateInvoice,
+			disabled: !hasApprovedQuotes || !can("invoices", "modify"),
+			disabledReason: !hasApprovedQuotes
+				? "Requires an approved quote"
+				: "You don't have permission to generate invoices",
+		},
+		{
+			key: "delete",
+			label: "Delete",
+			icon: <Trash2 className="h-4 w-4" />,
+			slot: "end",
+			variant: "destructive",
+			onClick: onDelete,
+			disabled: !can("projects", "delete"),
+			disabledReason: "You don't have permission to delete this project",
+		},
+	];
+
 	return (
 		<StickyDetailHeader>
 			{(isSticky) => (
@@ -71,44 +120,7 @@ export function ProjectDetailHeader({
 							</motion.div>
 						)}
 					</AnimatePresence>
-					<div className="flex items-center gap-2 shrink-0">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onAddTask}
-							disabled={!can("tasks", "modify")}
-						>
-							<ListTodo className="h-4 w-4" />
-							Add Task
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onAddQuote}
-							disabled={!can("quotes", "modify")}
-						>
-							<FileText className="h-4 w-4" />
-							Add Quote
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onGenerateInvoice}
-							disabled={!hasApprovedQuotes || !can("invoices", "modify")}
-						>
-							<Receipt className="h-4 w-4" />
-							Generate Invoice
-						</Button>
-						<Button
-							variant="destructive"
-							size="sm"
-							onClick={onDelete}
-							disabled={!can("projects", "delete")}
-						>
-							<Trash2 className="h-4 w-4" />
-							Delete
-						</Button>
-					</div>
+					<ActionButtonGroup actions={actions} className="shrink-0" />
 				</div>
 			)}
 		</StickyDetailHeader>
