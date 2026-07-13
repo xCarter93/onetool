@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/reui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -146,13 +147,13 @@ export default function ScheduleDemoModal({
 
 					<div className="space-y-2">
 						<Label htmlFor="phone">Phone</Label>
-						<Input
+						<PhoneInput
 							id="phone"
-							type="tel"
-							placeholder="+1 (555) 123-4567"
+							defaultCountry="US"
+							placeholder="(555) 123-4567"
 							value={formData.phone}
-							onChange={(e) =>
-								setFormData({ ...formData, phone: e.target.value })
+							onChange={(next) =>
+								setFormData((prev) => ({ ...prev, phone: next ?? "" }))
 							}
 							disabled={isSubmitting}
 						/>

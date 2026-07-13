@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Send, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/reui/phone-input";
 import {
 	GlassCard,
 	GlassCardHeader,
@@ -125,12 +126,12 @@ export function ContactForm({ slug }: ContactFormProps) {
 							<Label htmlFor="phone" className="text-sm font-medium">
 								Phone <span className="text-muted-fg">(optional)</span>
 							</Label>
-							<Input
+							<PhoneInput
 								id="phone"
-								type="tel"
+								defaultCountry="US"
 								value={formState.phone}
-								onChange={(e) =>
-									setFormState((s) => ({ ...s, phone: e.target.value }))
+								onChange={(next) =>
+									setFormState((s) => ({ ...s, phone: next ?? "" }))
 								}
 								placeholder="(555) 123-4567"
 							/>

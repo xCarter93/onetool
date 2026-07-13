@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { useCreateRecord } from "@/components/domain/create-record-provider";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -18,6 +19,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 function ProjectDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
+	const openCreate = useCreateRecord();
 	const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
@@ -136,9 +138,7 @@ function ProjectDetailPageContent() {
 					project={project}
 					hasApprovedQuotes={approvedQuotes.length > 0}
 					onAddTask={() => setIsTaskSheetOpen(true)}
-					onAddQuote={() =>
-						router.push(`/quotes/new?projectId=${projectId}`)
-					}
+					onAddQuote={() => openCreate({ type: "quote", projectId })}
 					onGenerateInvoice={() => setIsInvoiceModalOpen(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 				/>

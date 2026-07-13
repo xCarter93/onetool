@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { useCreateRecord } from "@/components/domain/create-record-provider";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
@@ -18,6 +19,7 @@ import { useState } from "react";
 function ClientDetailPageContent() {
 	const params = useParams();
 	const router = useRouter();
+	const openCreate = useCreateRecord();
 	const clientId = params.clientId as string;
 	const { can } = usePermissions();
 	const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
@@ -138,10 +140,13 @@ function ClientDetailPageContent() {
 					onComposeEmail={handleComposeEmail}
 					onAddTask={() => setIsTaskSheetOpen(true)}
 					onCreateProject={() =>
-						router.push(`/projects/new?clientId=${clientId}`)
+						openCreate({
+							type: "project",
+							clientId: clientId as Id<"clients">,
+						})
 					}
 					onCreateQuote={() =>
-						router.push(`/quotes/new?clientId=${clientId}`)
+						openCreate({ type: "quote", clientId: clientId as Id<"clients"> })
 					}
 					hasPrimaryContactEmail={!!primaryContact?.email}
 				/>

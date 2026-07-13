@@ -9,6 +9,7 @@ import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { useCreateRecord } from "@/components/domain/create-record-provider";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -379,6 +380,7 @@ function ActiveEmptyState({
 function ClientsPageContent() {
 	const router = useRouter();
 	const toast = useToast();
+	const openCreate = useCreateRecord();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [query, setQuery] = React.useState("");
@@ -459,8 +461,8 @@ function ClientsPageContent() {
 			);
 			return;
 		}
-		router.push("/clients/new");
-	}, [canPerform, reason, router, toast]);
+		openCreate({ type: "client" });
+	}, [canPerform, reason, openCreate, toast]);
 
 	const openPreview = React.useCallback((id: string) => {
 		setPreviewId(id as Id<"clients">);

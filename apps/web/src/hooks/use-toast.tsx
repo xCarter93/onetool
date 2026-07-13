@@ -39,6 +39,8 @@ export interface Toast {
 	message?: string;
 	showIcon?: boolean;
 	duration?: number;
+	/** Optional inline button, e.g. "View client" after a create. */
+	action?: { label: string; onClick: () => void };
 }
 
 interface ToastContextType {
@@ -86,6 +88,7 @@ function show(
 		// sonner treats undefined as "use Toaster default"; loading toasts get
 		// Infinity to persist like the old implementation.
 		duration: duration ?? (type === "loading" ? Infinity : undefined),
+		action: options?.action,
 	});
 	if (type === "info" || type === "success") {
 		liveTransientIds.add(id);

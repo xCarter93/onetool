@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { useCreateRecord } from "@/components/domain/create-record-provider";
 import { usePermissions } from "@/hooks/use-permissions";
 import React from "react";
 import { Input } from "@/components/ui/input";
@@ -278,6 +279,7 @@ const createColumns = (
 
 function ProjectsPageContent() {
 	const router = useRouter();
+	const openCreate = useCreateRecord();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [query, setQuery] = React.useState("");
@@ -535,7 +537,7 @@ function ProjectsPageContent() {
 						</p>
 					</div>
 				</div>
-				<Button onClick={() => router.push("/projects/new")} disabled={!canModifyProjects}>
+				<Button onClick={() => openCreate({ type: "project" })} disabled={!canModifyProjects}>
 					<Plus className="h-4 w-4" />
 					Create Project
 				</Button>
@@ -671,7 +673,7 @@ function ProjectsPageContent() {
 								title="No projects yet"
 								description="Get started by creating your first project. Projects help you organize work and track progress."
 								action={
-									<Button onClick={() => router.push("/projects/new")} disabled={!canModifyProjects}>
+									<Button onClick={() => openCreate({ type: "project" })} disabled={!canModifyProjects}>
 										<Plus className="h-4 w-4" />
 										Create Your First Project
 									</Button>

@@ -50,6 +50,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast: "cn-toast",
+          // Sonner's default action button is a solid inverted (black) pill; this
+          // is the frosted-blue treatment used by the active pill tabs.
+          actionButton:
+            "bg-primary/10! text-primary! dark:bg-primary/20! ring-1 ring-primary/30 dark:ring-primary/40 backdrop-blur-sm shadow-sm rounded-full! font-medium hover:bg-primary/20! dark:hover:bg-primary/30!",
         },
       }}
       {...props}
