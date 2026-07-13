@@ -31,15 +31,6 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 const DEFAULT_TERMS = "Payment due within 30 days of acceptance";
 
-interface NewQuoteFormData {
-	clientId: string;
-	projectId: string;
-	title: string;
-	validUntil: Date | undefined;
-	clientMessage: string;
-	terms: string;
-}
-
 const formSchema = z.object({
 	clientId: z.string().min(1, "Client is required"),
 	projectId: z.string(),
@@ -48,6 +39,8 @@ const formSchema = z.object({
 	clientMessage: z.string(),
 	terms: z.string(),
 });
+
+type NewQuoteFormData = z.infer<typeof formSchema>;
 
 const emptyValues: NewQuoteFormData = {
 	clientId: "",
@@ -70,6 +63,7 @@ function startOfTomorrow(): Date {
 interface NewQuoteDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	onOpenChangeComplete?: (open: boolean) => void;
 	defaultClientId?: Id<"clients"> | null;
 	defaultProjectId?: Id<"projects"> | null;
 }
@@ -77,6 +71,7 @@ interface NewQuoteDialogProps {
 export function NewQuoteDialog({
 	open,
 	onOpenChange,
+	onOpenChangeComplete,
 	defaultClientId,
 	defaultProjectId,
 }: NewQuoteDialogProps) {
@@ -99,16 +94,10 @@ export function NewQuoteDialog({
 
 	const form = useForm({
 		defaultValues: emptyValues,
+		// Form-level, so submitting without ever touching the client dropdown still
+		// marks the field invalid and renders its inline error.
+		validators: { onSubmit: formSchema },
 		onSubmit: async ({ value }) => {
-			const parsed = formSchema.safeParse(value);
-			if (!parsed.success) {
-				toast.error(
-					"Missing Client",
-					"Please select a client before creating the quote."
-				);
-				return;
-			}
-
 			try {
 				const quoteId = await createQuote({
 					clientId: value.clientId as Id<"clients">,
@@ -200,6 +189,7 @@ export function NewQuoteDialog({
 		<CreateRecordDialog
 			open={open}
 			onOpenChange={onOpenChange}
+			onOpenChangeComplete={onOpenChangeComplete}
 			title="New quote"
 			description="Pick the client and add the basics. Line items come next."
 			submitLabel="Create quote"
@@ -210,14 +200,10 @@ export function NewQuoteDialog({
 			<FieldGroup className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
 				<form.Field
 					name="clientId"
-					validators={{
-						onChange: ({ value }: { value: string }) =>
-							value ? undefined : { message: "Client is required" },
-					}}
+					validators={{ onChange: formSchema.shape.clientId }}
 				>
 					{(field) => {
-						const isInvalid =
-							field.state.meta.isTouched && field.state.meta.errors.length > 0;
+						const isInvalid = field.state.meta.errors.length > 0;
 						// Never hand the Select a value it has no option for.
 						const selectValue = clientOptions.some(
 							(client) => client._id === field.state.value

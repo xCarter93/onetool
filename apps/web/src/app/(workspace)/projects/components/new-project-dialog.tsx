@@ -70,6 +70,7 @@ const PROJECT_TYPE_OPTIONS = [
 interface NewProjectDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	onOpenChangeComplete?: (open: boolean) => void;
 	/** Seeds the client field when launched from a client record; stays editable. */
 	defaultClientId?: ClientId | null;
 }
@@ -77,6 +78,7 @@ interface NewProjectDialogProps {
 export function NewProjectDialog({
 	open,
 	onOpenChange,
+	onOpenChangeComplete,
 	defaultClientId,
 }: NewProjectDialogProps) {
 	const router = useRouter();
@@ -151,6 +153,7 @@ export function NewProjectDialog({
 		<CreateRecordDialog
 			open={open}
 			onOpenChange={onOpenChange}
+			onOpenChangeComplete={onOpenChangeComplete}
 			title="New project"
 			description="Set up the project's essentials — you can fill in the rest later."
 			submitLabel="Create project"

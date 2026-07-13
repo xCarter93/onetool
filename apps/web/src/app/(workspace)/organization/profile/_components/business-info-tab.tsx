@@ -5,12 +5,9 @@ import Image from "next/image";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { Lock, Mail, Phone, Users, Building2, Globe } from "lucide-react";
-import {
-	formatPhoneNumber,
-	isValidPhoneNumber,
-	parsePhoneNumber,
-} from "react-phone-number-input";
+import { formatPhoneNumber } from "react-phone-number-input";
 
+import { parseLegacyPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
@@ -139,19 +136,6 @@ function parseAddress(address?: string) {
 	};
 }
 
-// PhoneInput speaks E.164, but existing rows hold free text ("(555) 123-4567").
-// Upgrade what libphonenumber can parse; hand back anything it can't as `unparsed`
-// so the UI can surface it instead of silently starting from an empty field.
-function seedPhone(raw?: string): { value: string; unparsed: string } {
-	const trimmed = raw?.trim() ?? "";
-	if (!trimmed) return { value: "", unparsed: "" };
-	if (isValidPhoneNumber(trimmed)) return { value: trimmed, unparsed: "" };
-	const upgraded = parsePhoneNumber(trimmed, "US")?.number;
-	return upgraded
-		? { value: upgraded, unparsed: "" }
-		: { value: "", unparsed: trimmed };
-}
-
 export function BusinessInfoTab() {
 	const toast = useToast();
 	const { organization, isOwner } = useOrgOwner();
@@ -186,7 +170,7 @@ export function BusinessInfoTab() {
 			if (orgIdChanged) setBusinessDirty(false);
 			// Use structured fields if available, otherwise parse from legacy address
 			const { street, city, state, zip } = parseAddress(organization?.address);
-			const phone = seedPhone(organization?.phone);
+			const phone = parseLegacyPhone(organization?.phone);
 			setUnparsedPhone(phone.unparsed);
 			setBusinessForm({
 				email: organization?.email ?? "",
@@ -318,7 +302,7 @@ export function BusinessInfoTab() {
 	// "Discard" action.
 	const handleDiscard = useCallback(() => {
 		const { street, city, state, zip } = parseAddress(organization?.address);
-		const phone = seedPhone(organization?.phone);
+		const phone = parseLegacyPhone(organization?.phone);
 		setUnparsedPhone(phone.unparsed);
 		setBusinessForm({
 			email: organization?.email ?? "",

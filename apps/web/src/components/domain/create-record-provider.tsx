@@ -28,7 +28,11 @@ const CreateRecordContext = React.createContext<
  * header, the sidebar's quick actions — can open one without routing.
  *
  * The active dialog is mounted on demand: its Convex subscriptions should not
- * run on every workspace page just because the sidebar can launch it.
+ * run on every workspace page just because the sidebar can launch it. Closing
+ * therefore has two steps — flip `open` to false so the dialog can play its
+ * exit animation, then drop `target` on `onOpenChangeComplete` to unmount it
+ * and release those subscriptions. Unmounting straight from the close handler
+ * would cut the animation off mid-flight.
  */
 export function CreateRecordProvider({
 	children,
@@ -36,29 +40,38 @@ export function CreateRecordProvider({
 	children: React.ReactNode;
 }) {
 	const [target, setTarget] = React.useState<CreateTarget | null>(null);
+	const [open, setOpen] = React.useState(false);
 
-	const close = React.useCallback((open: boolean) => {
-		if (!open) setTarget(null);
+	const openCreate = React.useCallback((next: CreateTarget) => {
+		setTarget(next);
+		setOpen(true);
 	}, []);
 
+	const close = React.useCallback((next: boolean) => {
+		if (!next) setOpen(false);
+	}, []);
+
+	const unmountWhenClosed = React.useCallback((nowOpen: boolean) => {
+		if (!nowOpen) setTarget(null);
+	}, []);
+
+	const dialogProps = {
+		open,
+		onOpenChange: close,
+		onOpenChangeComplete: unmountWhenClosed,
+	};
+
 	return (
-		<CreateRecordContext.Provider value={setTarget}>
+		<CreateRecordContext.Provider value={openCreate}>
 			{children}
 
-			{target?.type === "client" && (
-				<NewClientDialog open onOpenChange={close} />
-			)}
+			{target?.type === "client" && <NewClientDialog {...dialogProps} />}
 			{target?.type === "project" && (
-				<NewProjectDialog
-					open
-					onOpenChange={close}
-					defaultClientId={target.clientId}
-				/>
+				<NewProjectDialog {...dialogProps} defaultClientId={target.clientId} />
 			)}
 			{target?.type === "quote" && (
 				<NewQuoteDialog
-					open
-					onOpenChange={close}
+					{...dialogProps}
 					defaultClientId={target.clientId}
 					defaultProjectId={target.projectId}
 				/>

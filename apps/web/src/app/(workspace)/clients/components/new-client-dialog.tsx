@@ -193,6 +193,7 @@ const PROPERTY_TYPE_OPTIONS: Array<{ value: PropertyType; label: string }> = [
 interface NewClientDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	onOpenChangeComplete?: (open: boolean) => void;
 }
 
 /**
@@ -200,7 +201,11 @@ interface NewClientDialogProps {
  * Additional contacts and properties are added afterwards on the client page,
  * which has inline editors for both.
  */
-export function NewClientDialog({ open, onOpenChange }: NewClientDialogProps) {
+export function NewClientDialog({
+	open,
+	onOpenChange,
+	onOpenChangeComplete,
+}: NewClientDialogProps) {
 	const router = useRouter();
 	const toast = useToast();
 
@@ -330,6 +335,7 @@ export function NewClientDialog({ open, onOpenChange }: NewClientDialogProps) {
 		<CreateRecordDialog
 			open={open}
 			onOpenChange={onOpenChange}
+			onOpenChangeComplete={onOpenChangeComplete}
 			title="New client"
 			description="Capture the essentials — more contacts and properties can be added on the client page."
 			submitLabel="Create client"

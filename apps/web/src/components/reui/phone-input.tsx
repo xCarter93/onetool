@@ -87,9 +87,11 @@ function InputComponent({
   const { variant } = useContext(PhoneInputContext)
 
   return (
+    // No ring reset here: the input keeps cn-input's focus-visible and
+    // aria-invalid rings, and focus:z-1 lifts them over the country button.
     <Input
       className={cn(
-        "ring-none! rounded-s-none outline-none! focus:z-1",
+        "rounded-s-none outline-none! focus:z-1",
         variant === "sm" &&
           "h-7",
         variant === "lg" &&

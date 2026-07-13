@@ -2,10 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useMutation } from "convex/react";
-import {
-	isValidPhoneNumber,
-	parsePhoneNumber,
-} from "react-phone-number-input";
+import { toE164 } from "@/lib/phone";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
@@ -48,18 +45,6 @@ type Contact = {
 	isPrimary: boolean;
 	isNew?: boolean; // Track if this is a new item not yet saved
 };
-
-// Stored phones are free text; PhoneInput needs E.164. Returns "" when unparseable.
-function toE164(raw?: string): string {
-	const trimmed = raw?.trim();
-	if (!trimmed) return "";
-	if (isValidPhoneNumber(trimmed)) return trimmed;
-	try {
-		return parsePhoneNumber(trimmed, "US")?.number ?? "";
-	} catch {
-		return "";
-	}
-}
 
 interface ContactTableProps {
 	clientId: Id<"clients">;

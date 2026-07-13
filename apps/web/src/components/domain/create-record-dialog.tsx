@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 interface CreateRecordDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** Fires once the open/close animation has finished. */
+	onOpenChangeComplete?: (open: boolean) => void;
 	title: string;
 	description?: string;
 	submitLabel: string;
@@ -38,6 +40,7 @@ interface CreateRecordDialogProps {
 export function CreateRecordDialog({
 	open,
 	onOpenChange,
+	onOpenChangeComplete,
 	title,
 	description,
 	submitLabel,
@@ -56,6 +59,7 @@ export function CreateRecordDialog({
 				if (isSubmitting) return;
 				onOpenChange(next);
 			}}
+			onOpenChangeComplete={onOpenChangeComplete}
 		>
 			<DialogContent
 				className={cn(

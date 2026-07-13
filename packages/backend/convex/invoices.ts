@@ -946,15 +946,21 @@ export const createFromQuote = userMutation({
 		// Quotes store discountAmount as the raw input — a percent when discountType
 		// is "percentage" — while invoices store it as dollars (calculateInvoiceTotals
 		// subtracts it flat). Convert here or a 10% discount bills the client $10 off.
+		//
+		// Gate on discountEnabled: turning a discount off sends discountAmount:
+		// undefined, which `filterUndefined` drops from the patch, so the old amount
+		// stays on the doc. Quote totals ignore it; billing it here would under-charge.
 		const lineItemSubtotal = quoteLineItems.reduce(
 			(sum, item) => sum + item.amount,
 			0
 		);
-		const discountAmount = quote.discountAmount
-			? quote.discountType === "percentage"
-				? (lineItemSubtotal * quote.discountAmount) / 100
-				: quote.discountAmount
-			: undefined;
+		const discountAmount =
+			quote.discountEnabled && quote.discountAmount
+				? quote.discountType === "percentage"
+					? // Round to cents — payments must sum exactly to the invoice total.
+						Math.round(lineItemSubtotal * quote.discountAmount) / 100
+					: quote.discountAmount
+				: undefined;
 
 		// Create invoice from quote
 		const invoiceId = await ctx.db.insert("invoices", {
