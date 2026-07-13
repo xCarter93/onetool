@@ -68,6 +68,8 @@
 	--fg: oklch(0.141 0.005 285.823);
 	--background: var(--bg);
 	--foreground: var(--fg);
+	/* Tint of the workspace dot-grid; per-theme so each can be tuned alone. */
+	--canvas-dot: color-mix(in oklch, var(--foreground) 12%, transparent);
 	/* Ensure muted-foreground is defined for Tailwind text-muted-foreground */
 	--muted-foreground: var(--muted-fg);
 
@@ -158,6 +160,7 @@
 	--fg: oklch(0.985 0 0);
 	--background: var(--bg);
 	--foreground: var(--fg);
+	--canvas-dot: color-mix(in oklch, var(--foreground) 12%, transparent);
 	/* Dark mode mapping for muted-foreground */
 	--muted-foreground: var(--muted-fg);
 
@@ -618,15 +621,11 @@
 	/* ========================================================================
 	   Workspace canvas texture
 	   Reusable fine dot-grid for the main content area across every workspace
-	   page. The dot color is derived from --foreground via color-mix, so it
-	   adapts to light/dark automatically and stays subtle (6% tint). The base
-	   stays transparent so the underlying --background shows through.
+	   page. The dot color comes from --canvas-dot. The base stays transparent
+	   so the underlying --background shows through.
 	   ======================================================================== */
 	.workspace-canvas {
-		background-image: radial-gradient(
-			color-mix(in oklch, var(--foreground) 6%, transparent) 1px,
-			transparent 1px
-		);
+		background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
 		background-size: 22px 22px;
 		background-position: -1px -1px;
 		/* Canvas scrolls inside the picture-frame card — keep its scrollbar
