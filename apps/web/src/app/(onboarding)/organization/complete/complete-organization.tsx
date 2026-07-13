@@ -10,6 +10,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import SelectService from "@/components/shared/choice-set";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/reui/phone-input";
 import {
 	AddressAutocomplete,
 	type AddressData,
@@ -730,13 +731,15 @@ export function CompleteOrganizationMetadata() {
 				>
 					Phone Number
 				</label>
-				<Input
+				<PhoneInput
 					id="business-phone"
+					defaultCountry="US"
 					value={formData.phone}
-					onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-					className="w-full bg-background"
-					placeholder="+1 (555) 123-4567"
-					type="tel"
+					onChange={(next) =>
+						setFormData((prev) => ({ ...prev, phone: next ?? "" }))
+					}
+					className="w-full"
+					placeholder="(555) 123-4567"
 				/>
 			</div>
 

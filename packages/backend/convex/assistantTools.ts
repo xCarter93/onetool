@@ -407,18 +407,18 @@ function writeError(e: unknown): { ok: false; error: string } {
 // Navigation (client-executed — the web app intercepts the result and routes)
 // ---------------------------------------------------------------------------
 
+// Clients/projects/quotes are created in a dialog, not at a /new route — the id
+// patterns must not match the retired "new" segment or the assistant will happily
+// navigate the user to a 404.
 const NAVIGATE_ALLOWED_PATHS: RegExp[] = [
 	/^\/home$/,
 	/^\/clients$/,
-	/^\/clients\/new$/,
 	/^\/clients\/import$/,
-	/^\/clients\/[A-Za-z0-9_-]+$/,
+	/^\/clients\/(?!new$)[A-Za-z0-9_-]+$/,
 	/^\/projects$/,
-	/^\/projects\/new$/,
-	/^\/projects\/[A-Za-z0-9_-]+$/,
+	/^\/projects\/(?!new$)[A-Za-z0-9_-]+$/,
 	/^\/quotes$/,
-	/^\/quotes\/new$/,
-	/^\/quotes\/[A-Za-z0-9_-]+$/,
+	/^\/quotes\/(?!new$)[A-Za-z0-9_-]+$/,
 	/^\/invoices$/,
 	/^\/invoices\/[A-Za-z0-9_-]+$/,
 	/^\/tasks$/,
@@ -1418,7 +1418,8 @@ export const updateProject = createTool({
 export const navigate = createTool({
 	description: [
 		"Open a page in the app for the user. Use when they ask to go somewhere, or after resolving the record they want to see.",
-		"Valid paths: /home, /clients, /clients/{clientId}, /clients/new, /clients/import, /projects, /projects/{projectId}, /projects/new, /quotes, /quotes/{quoteId}, /quotes/new, /invoices, /invoices/{invoiceId}, /tasks, /reports, /reports/{reportId}, /reports/new, /automations, /subscription, /organization/profile.",
+		"Valid paths: /home, /clients, /clients/{clientId}, /clients/import, /projects, /projects/{projectId}, /quotes, /quotes/{quoteId}, /invoices, /invoices/{invoiceId}, /tasks, /reports, /reports/{reportId}, /reports/new, /automations, /subscription, /organization/profile.",
+		"Clients, projects and quotes are created in a dialog, not at a URL — there is no /clients/new, /projects/new or /quotes/new. To create one, send the user to the relevant list page and tell them to press the create button.",
 		"IDs must come from lookup tools — never guess an ID.",
 		"Never navigate while the user has the report builder open (current-screen has reportBuilderConfig) unless they explicitly ask to go somewhere else.",
 	].join("\n"),

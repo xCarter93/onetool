@@ -2,6 +2,10 @@
 
 import { useState, useMemo } from "react";
 import { useMutation } from "convex/react";
+import {
+	isValidPhoneNumber,
+	parsePhoneNumber,
+} from "react-phone-number-input";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
@@ -21,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/reui/phone-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/reui/badge";
 import {
@@ -43,6 +48,18 @@ type Contact = {
 	isPrimary: boolean;
 	isNew?: boolean; // Track if this is a new item not yet saved
 };
+
+// Stored phones are free text; PhoneInput needs E.164. Returns "" when unparseable.
+function toE164(raw?: string): string {
+	const trimmed = raw?.trim();
+	if (!trimmed) return "";
+	if (isValidPhoneNumber(trimmed)) return trimmed;
+	try {
+		return parsePhoneNumber(trimmed, "US")?.number ?? "";
+	} catch {
+		return "";
+	}
+}
 
 interface ContactTableProps {
 	clientId: Id<"clients">;
@@ -304,14 +321,23 @@ function ContactRow({
 	onCancel: () => void;
 	onDelete: () => void;
 }) {
-	const [editedContact, setEditedContact] = useState<Contact>(contact);
+	const [editedContact, setEditedContact] = useState<Contact>(() => ({
+		...contact,
+		phone: toE164(contact.phone),
+	}));
+	const [phoneTouched, setPhoneTouched] = useState(false);
+
+	// Legacy free-text phone we couldn't parse: field renders empty, so surface the stored value
+	const unparsedPhone =
+		contact.phone && !toE164(contact.phone) ? contact.phone : "";
 
 	// Resync edits from the source contact while editing
 	const [prevSource, setPrevSource] = useState({ isEditing, contact });
 	if (prevSource.isEditing !== isEditing || prevSource.contact !== contact) {
 		setPrevSource({ isEditing, contact });
 		if (isEditing) {
-			setEditedContact(contact);
+			setEditedContact({ ...contact, phone: toE164(contact.phone) });
+			setPhoneTouched(false);
 		}
 	}
 
@@ -330,7 +356,12 @@ function ContactRow({
 			originalContactId: contact._id,
 			originalContactIdType: typeof contact._id,
 		});
-		onSave(editedContact);
+		// Never let an untouched, unparseable legacy phone be saved as ""
+		const phone =
+			phoneTouched || editedContact.phone
+				? editedContact.phone
+				: contact.phone;
+		onSave({ ...editedContact, phone });
 	};
 
 	if (isEditing) {
@@ -365,12 +396,21 @@ function ContactRow({
 					</div>
 				</TableCell>
 				<TableCell>
-					<Input
+					<PhoneInput
+						defaultCountry="US"
 						value={editedContact.phone || ""}
-						onChange={(e) => handleFieldChange("phone", e.target.value)}
-						placeholder="Phone..."
+						onChange={(next) => {
+							setPhoneTouched(true);
+							handleFieldChange("phone", next ?? "");
+						}}
+						placeholder="(555) 123-4567"
 						className="w-full"
 					/>
+					{unparsedPhone && !phoneTouched && (
+						<p className="mt-1 text-xs text-muted-foreground">
+							Saved as “{unparsedPhone}” — re-enter to update.
+						</p>
+					)}
 				</TableCell>
 				<TableCell>
 					<Input

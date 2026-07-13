@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { useCreateRecord } from "@/components/domain/create-record-provider";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -283,6 +284,7 @@ const createColumns = (
 
 function QuotesPageContent() {
 	const router = useRouter();
+	const openCreate = useCreateRecord();
 	const toast = useToast();
 	const { can } = usePermissions();
 	const canModifyQuotes = can("quotes", "modify");
@@ -595,7 +597,7 @@ function QuotesPageContent() {
 					</div>
 				</div>
 				{canModifyQuotes && (
-					<Button onClick={() => router.push("/quotes/new")}>
+					<Button onClick={() => openCreate({ type: "quote" })}>
 						<Plus className="h-4 w-4" />
 						Create Quote
 					</Button>
@@ -729,7 +731,7 @@ function QuotesPageContent() {
 								description="Create your first quote to get started and track proposals in one place."
 								action={
 									canModifyQuotes ? (
-										<Button onClick={() => router.push("/quotes/new")}>
+										<Button onClick={() => openCreate({ type: "quote" })}>
 											<Plus className="h-4 w-4" />
 											Create Your First Quote
 										</Button>

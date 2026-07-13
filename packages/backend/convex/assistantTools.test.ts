@@ -6,7 +6,7 @@ describe("isAllowedWorkspacePath", () => {
 	it("accepts workspace list and detail paths", () => {
 		expect(isAllowedWorkspacePath("/home")).toBe(true);
 		expect(isAllowedWorkspacePath("/clients")).toBe(true);
-		expect(isAllowedWorkspacePath("/clients/new")).toBe(true);
+		expect(isAllowedWorkspacePath("/clients/import")).toBe(true);
 		expect(isAllowedWorkspacePath("/clients/jd7abc123XYZ_-")).toBe(true);
 		expect(isAllowedWorkspacePath("/projects/jd7abc123")).toBe(true);
 		expect(isAllowedWorkspacePath("/quotes/jd7abc123")).toBe(true);
@@ -14,6 +14,14 @@ describe("isAllowedWorkspacePath", () => {
 		expect(isAllowedWorkspacePath("/tasks")).toBe(true);
 		expect(isAllowedWorkspacePath("/reports/new")).toBe(true);
 		expect(isAllowedWorkspacePath("/organization/profile")).toBe(true);
+	});
+
+	// Client/project/quote creation moved into dialogs; the routes are gone. The
+	// id patterns would otherwise still match "new" and route the user to a 404.
+	it("rejects the retired /new creation routes", () => {
+		expect(isAllowedWorkspacePath("/clients/new")).toBe(false);
+		expect(isAllowedWorkspacePath("/projects/new")).toBe(false);
+		expect(isAllowedWorkspacePath("/quotes/new")).toBe(false);
 	});
 
 	it("rejects external, malformed, and unlisted paths", () => {

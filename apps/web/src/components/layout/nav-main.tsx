@@ -40,6 +40,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import { useToast } from "@/hooks/use-toast";
+import { useCreateRecord } from "@/components/domain/create-record-provider";
 import { useRouter } from "next/navigation";
 import {
 	Tooltip,
@@ -157,6 +158,7 @@ export function NavMain({
 	const isCollapsed = sidebarState === "collapsed";
 	const toast = useToast();
 	const router = useRouter();
+	const openCreate = useCreateRecord();
 	const openTimerRef = React.useRef<number | null>(null);
 	const closeTimerRef = React.useRef<number | null>(null);
 	
@@ -171,8 +173,8 @@ export function NavMain({
 			return;
 		}
 		setOpenQuickActions(false);
-		router.push("/clients/new");
-	}, [canCreateClient, clientLimitReason, toast, router]);
+		openCreate({ type: "client" });
+	}, [canCreateClient, clientLimitReason, toast, openCreate]);
 
 	const handleOpenChange = React.useCallback((open: boolean) => {
 		// Clear any pending timers
@@ -283,18 +285,17 @@ export function NavMain({
 										Create new
 									</p>
 									<div className="flex flex-col gap-0.5">
-										{/* New Client is gated by plan limits. When allowed it's a
-										    plain navigation row like the others; when gated it becomes
-										    a disabled button hosting the upgrade tooltip — a disabled
-										    control can't act as the menu item / tooltip trigger, so it
-										    needs the extra wrapper. */}
+										{/* New Client is gated by plan limits. When allowed it opens the
+										    create dialog like the others; when gated it becomes a disabled
+										    button hosting the upgrade tooltip — a disabled control can't act
+										    as the menu item / tooltip trigger, so it needs the extra wrapper. */}
 										{quickActionAccess.client && (canCreateClient ? (
 											<DropdownMenuItem
 												render={
-													<Link href="/clients/new" className={quickActionRowClass} />
+													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
 												className="p-0 focus:bg-muted/60"
-												onClick={() => setOpenQuickActions(false)}
+												onClick={handleNewClientClick}
 											>
 												<QuickActionContent
 													icon={UserPlus}
@@ -350,10 +351,13 @@ export function NavMain({
 										{quickActionAccess.project && (
 											<DropdownMenuItem
 												render={
-													<Link href="/projects/new" className={quickActionRowClass} />
+													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
 												className="p-0 focus:bg-muted/60"
-												onClick={() => setOpenQuickActions(false)}
+												onClick={() => {
+													setOpenQuickActions(false);
+													openCreate({ type: "project" });
+												}}
 											>
 												<QuickActionContent
 													icon={FolderPlus}
@@ -366,10 +370,13 @@ export function NavMain({
 										{quickActionAccess.quote && (
 											<DropdownMenuItem
 												render={
-													<Link href="/quotes/new" className={quickActionRowClass} />
+													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
 												className="p-0 focus:bg-muted/60"
-												onClick={() => setOpenQuickActions(false)}
+												onClick={() => {
+													setOpenQuickActions(false);
+													openCreate({ type: "quote" });
+												}}
 											>
 												<QuickActionContent
 													icon={FilePlus}

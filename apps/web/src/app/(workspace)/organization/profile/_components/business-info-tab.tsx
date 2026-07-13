@@ -5,6 +5,11 @@ import Image from "next/image";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { Lock, Mail, Phone, Users, Building2, Globe } from "lucide-react";
+import {
+	formatPhoneNumber,
+	isValidPhoneNumber,
+	parsePhoneNumber,
+} from "react-phone-number-input";
 
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -14,7 +19,13 @@ import {
 	InputGroupInput,
 	InputGroupText,
 } from "@/components/ui/input-group";
-import { Field, FieldLabel, FieldError } from "@/components/ui/field";
+import { PhoneInput } from "@/components/reui/phone-input";
+import {
+	Field,
+	FieldLabel,
+	FieldError,
+	FieldDescription,
+} from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -128,6 +139,19 @@ function parseAddress(address?: string) {
 	};
 }
 
+// PhoneInput speaks E.164, but existing rows hold free text ("(555) 123-4567").
+// Upgrade what libphonenumber can parse; hand back anything it can't as `unparsed`
+// so the UI can surface it instead of silently starting from an empty field.
+function seedPhone(raw?: string): { value: string; unparsed: string } {
+	const trimmed = raw?.trim() ?? "";
+	if (!trimmed) return { value: "", unparsed: "" };
+	if (isValidPhoneNumber(trimmed)) return { value: trimmed, unparsed: "" };
+	const upgraded = parsePhoneNumber(trimmed, "US")?.number;
+	return upgraded
+		? { value: upgraded, unparsed: "" }
+		: { value: "", unparsed: trimmed };
+}
+
 export function BusinessInfoTab() {
 	const toast = useToast();
 	const { organization, isOwner } = useOrgOwner();
@@ -138,6 +162,9 @@ export function BusinessInfoTab() {
 
 	const [businessForm, setBusinessForm] =
 		useState<BusinessFormState>(initialBusinessForm);
+	// Stored phone that couldn't be parsed into E.164; kept so the user is told to
+	// re-enter it rather than being shown a blank field over a real saved number.
+	const [unparsedPhone, setUnparsedPhone] = useState("");
 	const [businessDirty, setBusinessDirty] = useState(false);
 	const [savingBusiness, setSavingBusiness] = useState(false);
 
@@ -159,10 +186,12 @@ export function BusinessInfoTab() {
 			if (orgIdChanged) setBusinessDirty(false);
 			// Use structured fields if available, otherwise parse from legacy address
 			const { street, city, state, zip } = parseAddress(organization?.address);
+			const phone = seedPhone(organization?.phone);
+			setUnparsedPhone(phone.unparsed);
 			setBusinessForm({
 				email: organization?.email ?? "",
 				website: organization?.website?.replace(/^https?:\/\//i, "") ?? "",
-				phone: organization?.phone ?? "",
+				phone: phone.value,
 				addressStreet: organization?.addressStreet ?? street,
 				addressCity: organization?.addressCity ?? city,
 				addressState: organization?.addressState ?? state,
@@ -289,10 +318,12 @@ export function BusinessInfoTab() {
 	// "Discard" action.
 	const handleDiscard = useCallback(() => {
 		const { street, city, state, zip } = parseAddress(organization?.address);
+		const phone = seedPhone(organization?.phone);
+		setUnparsedPhone(phone.unparsed);
 		setBusinessForm({
 			email: organization?.email ?? "",
 			website: organization?.website?.replace(/^https?:\/\//i, "") ?? "",
-			phone: organization?.phone ?? "",
+			phone: phone.value,
 			addressStreet: organization?.addressStreet ?? street,
 			addressCity: organization?.addressCity ?? city,
 			addressState: organization?.addressState ?? state,
@@ -330,6 +361,10 @@ export function BusinessInfoTab() {
 	const previewCityStateZip = [previewCityState, businessForm.addressZip.trim()]
 		.filter(Boolean)
 		.join(" ");
+	// The field now holds E.164; render it the way a client would see it.
+	const previewPhone = businessForm.phone
+		? formatPhoneNumber(businessForm.phone) || businessForm.phone
+		: unparsedPhone;
 
 	return (
 		<div className="space-y-6">
@@ -392,30 +427,29 @@ export function BusinessInfoTab() {
 											Phone number
 											<RequiredMark />
 										</FieldLabel>
-										<InputGroup
+										<PhoneInput
+											id="biz-phone"
+											defaultCountry="US"
+											placeholder="(555) 123-4567"
+											value={businessForm.phone}
+											disabled={controlsDisabled}
+											aria-invalid={invalid("phone") || undefined}
 											className={cn(controlsDisabled && "opacity-70")}
-										>
-											<InputGroupAddon>
-												<Phone />
-											</InputGroupAddon>
-											<InputGroupInput
-												id="biz-phone"
-												type="tel"
-												inputMode="tel"
-												autoComplete="tel"
-												placeholder="(555) 123-4567"
-												value={businessForm.phone}
-												disabled={controlsDisabled}
-												aria-invalid={invalid("phone") || undefined}
-												onChange={(event) => {
-													setBusinessDirty(true);
-													setBusinessForm((prev) => ({
-														...prev,
-														phone: event.target.value,
-													}));
-												}}
-											/>
-										</InputGroup>
+											onChange={(next) => {
+												setBusinessDirty(true);
+												setUnparsedPhone("");
+												setBusinessForm((prev) => ({
+													...prev,
+													phone: next ?? "",
+												}));
+											}}
+										/>
+										{unparsedPhone && !businessForm.phone && (
+											<FieldDescription>
+												Saved as “{unparsedPhone}” — re-enter it to store a
+												valid number.
+											</FieldDescription>
+										)}
 										{invalid("phone") && (
 											<FieldError>Phone number is required.</FieldError>
 										)}
@@ -753,7 +787,7 @@ export function BusinessInfoTab() {
 								</span>
 								<span className="inline-flex items-center gap-1.5">
 									<Phone className="size-3.5 shrink-0" aria-hidden="true" />
-									{businessForm.phone.trim() || "(555) 123-4567"}
+									{previewPhone || "(555) 123-4567"}
 								</span>
 								<span aria-hidden="true" className="text-muted-foreground/40">
 									·
