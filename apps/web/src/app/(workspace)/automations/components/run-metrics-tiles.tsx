@@ -90,8 +90,14 @@ export function RunMetricsTiles() {
 					value={formatPercent(metrics?.successRate)}
 					sub={
 						metrics
-							? `${metrics.failedCount.toLocaleString()} failed of ${(
-									metrics.successCount + metrics.failedCount
+							? `${metrics.failedCount.toLocaleString()} failed${
+									metrics.withErrorsCount > 0
+										? ` · ${metrics.withErrorsCount.toLocaleString()} partial`
+										: ""
+								} of ${(
+									metrics.successCount +
+									metrics.failedCount +
+									metrics.withErrorsCount
 								).toLocaleString()}`
 							: undefined
 					}

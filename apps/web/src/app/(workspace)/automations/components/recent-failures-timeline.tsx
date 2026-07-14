@@ -20,7 +20,7 @@ import {
 	TimelineTitle,
 } from "@/components/reui/timeline";
 import { Badge } from "@/components/ui/badge";
-import { XCircle, CheckCircle2, Clock } from "lucide-react";
+import { XCircle, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/notification-utils";
 
@@ -34,7 +34,7 @@ export function RecentFailuresTimeline({ className }: { className?: string }) {
 			<FrameHeader>
 				<FrameTitle>Recent failures</FrameTitle>
 				<FrameDescription className="text-xs">
-					Production runs that ended in an error
+					Production runs that failed, or finished with items skipped
 				</FrameDescription>
 			</FrameHeader>
 
@@ -87,14 +87,30 @@ export function RecentFailuresTimeline({ className }: { className?: string }) {
 												{failure.automationName}
 											</button>
 										</TimelineTitle>
-										<Badge variant="destructive" className="gap-1.5">
-											<XCircle className="size-3" aria-hidden />
-											Failed
-										</Badge>
+										{failure.status === "completed_with_errors" ? (
+											<Badge
+												variant="outline"
+												className="gap-1.5 border-warning/30 bg-warning/10 text-warning"
+											>
+												<AlertTriangle className="size-3" aria-hidden />
+												Completed with errors
+											</Badge>
+										) : (
+											<Badge variant="destructive" className="gap-1.5">
+												<XCircle className="size-3" aria-hidden />
+												Failed
+											</Badge>
+										)}
 									</div>
-									<TimelineIndicator className="flex size-6 items-center justify-center border-none bg-destructive/10 text-destructive group-data-[orientation=vertical]/timeline:-left-6">
-										<XCircle className="size-3.5" />
-									</TimelineIndicator>
+									{failure.status === "completed_with_errors" ? (
+										<TimelineIndicator className="flex size-6 items-center justify-center border-none bg-warning/10 text-warning group-data-[orientation=vertical]/timeline:-left-6">
+											<AlertTriangle className="size-3.5" />
+										</TimelineIndicator>
+									) : (
+										<TimelineIndicator className="flex size-6 items-center justify-center border-none bg-destructive/10 text-destructive group-data-[orientation=vertical]/timeline:-left-6">
+											<XCircle className="size-3.5" />
+										</TimelineIndicator>
+									)}
 								</TimelineHeader>
 								<TimelineContent className="mt-1.5">
 									<div className="text-muted-foreground flex items-center gap-1.5 text-xs">

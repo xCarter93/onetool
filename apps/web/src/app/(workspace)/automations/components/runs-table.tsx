@@ -40,6 +40,7 @@ import {
 	RUN_STATUS_META,
 	formatDuration,
 	formatTriggerSource,
+	summarizeLoopFailures,
 	type RunRow,
 	type RunStatus,
 } from "../lib/run-format";
@@ -86,23 +87,42 @@ export function RunsTable() {
 				id: "status",
 				header: "Status",
 				size: 170,
-				cell: ({ row }) => (
-					<div className="flex items-center gap-1.5">
-						<RunStatusBadge status={row.original.status as RunStatus} />
-						{row.original.dataTruncated && (
-							<Tooltip>
-								<TooltipTrigger render={<Badge variant="warning" className="gap-1" />}>
-									<AlertTriangle className="size-3" aria-hidden />
-									Truncated
-								</TooltipTrigger>
-								<TooltipContent side="top" className="max-w-xs">
-									At least one step stopped scanning at the 5,000 most recent
-									records; older records were not considered.
-								</TooltipContent>
-							</Tooltip>
-						)}
-					</div>
-				),
+				cell: ({ row }) => {
+					const status = row.original.status as RunStatus;
+					const loopFailed =
+						status === "completed_with_errors"
+							? summarizeLoopFailures(row.original.loopSummary).failed
+							: 0;
+					return (
+						<div className="flex flex-wrap items-center gap-1.5">
+							<RunStatusBadge status={status} />
+							{row.original.dataTruncated && (
+								<Tooltip>
+									<TooltipTrigger render={<Badge variant="warning" className="gap-1" />}>
+										<AlertTriangle className="size-3" aria-hidden />
+										Truncated
+									</TooltipTrigger>
+									<TooltipContent side="top" className="max-w-xs">
+										At least one step stopped scanning at the 5,000 most recent
+										records; older records were not considered.
+									</TooltipContent>
+								</Tooltip>
+							)}
+							{loopFailed > 0 && (
+								<Tooltip>
+									<TooltipTrigger render={<Badge variant="warning" className="gap-1" />}>
+										<AlertTriangle className="size-3" aria-hidden />
+										{loopFailed} failed
+									</TooltipTrigger>
+									<TooltipContent side="top" className="max-w-xs">
+										{loopFailed} item{loopFailed === 1 ? "" : "s"} failed during this
+										run — open the automation to see which.
+									</TooltipContent>
+								</Tooltip>
+							)}
+						</div>
+					);
+				},
 			},
 			{
 				id: "started",

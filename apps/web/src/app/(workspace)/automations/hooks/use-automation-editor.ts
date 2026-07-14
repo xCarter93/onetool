@@ -165,9 +165,18 @@ function buildFetchNode(
 	};
 }
 
-/** Config (sourceNodeId) is set once the user picks a fetch_records step in the panel. */
+/**
+ * sourceNodeId is set once the user picks a fetch_records step in the panel.
+ * New loops are born with onItemError: "continue" (the builder's default);
+ * a loop published before this field existed has it absent, which means
+ * "abort" — see loopNodeConfigValidator in workflowTypes.ts.
+ */
 function buildLoopNode(id: string): WorkflowNode {
-	return { id, type: "loop" };
+	return {
+		id,
+		type: "loop",
+		config: { kind: "loop", sourceNodeId: "", onItemError: "continue" },
+	};
 }
 
 /** sourceNodeId/field are chosen once the user picks a Find records step in the panel. */

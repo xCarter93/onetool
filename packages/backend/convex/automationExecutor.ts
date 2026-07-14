@@ -35,6 +35,7 @@ import {
 	FETCH_SCAN_CEILING,
 	MAX_DELAY_MS,
 	MAX_FETCH_LIMIT,
+	MAX_LOOP_ITEM_ERRORS,
 	MAX_LOOP_ITERATIONS,
 	objectTypeValidator,
 	type ActionTarget,
@@ -43,6 +44,7 @@ import {
 	type AutomationTrigger,
 	type ExecutedNode,
 	type FormulaResource,
+	type LoopSummary,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
 
@@ -792,6 +794,19 @@ type WalkEnv = {
 	nodeStartedAt: number;
 	/** True for real runs (not test/dry); gates failure notifications. */
 	isProduction: boolean;
+	/**
+	 * Per-loop item tallies, keyed by loop node id and carried across chunk
+	 * boundaries via workflowExecutions.loopSummary. Authoritative — the entry
+	 * log truncates and compacts, these counts never do.
+	 */
+	loopSummaries: LoopSummary[];
+	/** The loop iteration currently executing; stamps identity onto its entries. */
+	currentLoop?: {
+		nodeId: string;
+		index: number;
+		itemId: string;
+		label?: string;
+	};
 };
 
 type WalkOutcome =
@@ -807,14 +822,27 @@ const MAX_EXECUTED_ENTRIES = 400;
 function pushEntry(env: WalkEnv, entry: ExecEntry): void {
 	// Stamp per-node timing: startedAt = when the walk began this node,
 	// completedAt = now. Both feed the runs viewer's per-step durations.
+	// Inside a loop body, also stamp which iteration and record produced it —
+	// without that a mid-loop failure can't be traced back to a record.
+	const loop = env.currentLoop;
 	const stamped: ExecEntry = {
 		...entry,
 		startedAt: entry.startedAt ?? env.nodeStartedAt,
 		completedAt: entry.completedAt ?? Date.now(),
+		...(loop
+			? {
+					loopNodeId: loop.nodeId,
+					loopIndex: loop.index,
+					loopItemId: loop.itemId,
+					loopItemLabel: loop.label,
+				}
+			: {}),
 	};
 	if (env.nodesExecuted.length >= MAX_EXECUTED_ENTRIES) {
 		if (!env.logTruncated) {
 			env.logTruncated = true;
+			// Synthetic marker: no loop stamp, or it renders as a phantom
+			// iteration of whichever node happened to overflow the log.
 			env.nodesExecuted.push({
 				nodeId: stamped.nodeId,
 				result: "skipped",
@@ -826,6 +854,80 @@ function pushEntry(env: WalkEnv, entry: ExecEntry): void {
 		return;
 	}
 	env.nodesExecuted.push(stamped);
+}
+
+/**
+ * Iterations whose per-step entries are kept in full. Past this, successful
+ * iterations are rolled back out of the log (their outcome is still counted in
+ * loopSummary) so the 400-entry cap can't swallow the failures further down —
+ * which are the entries anyone reading the log actually came for.
+ */
+const LOOP_LOG_FULL_ITERATIONS = 50;
+
+/**
+ * Consecutive failures, with no success anywhere, that mean the loop is
+ * misconfigured rather than fed bad data (a renamed field, a status value that
+ * matches nothing). Below LOOP_CHUNK_SIZE, so it always trips inside the first
+ * chunk — before any of it commits.
+ */
+const LOOP_FAILURE_CIRCUIT_BREAK = 10;
+
+/** Stored error strings are display copy; keep one item's error from bloating the row. */
+const MAX_ITEM_ERROR_CHARS = 500;
+
+/**
+ * A throw that means the transaction is already doomed — every remaining item
+ * would hit it too, and calling it "item 13 failed" would be a lie. These are
+ * rethrown even when the loop is set to continue; everything else (a schema
+ * validation throw, a plan-limit throw, a ConvexError from a handler) is a
+ * genuine per-item failure and is caught.
+ */
+function isFatalExecutionError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return (
+		/too many (reads|writes|bytes|documents|function calls|scheduled functions)/i.test(
+			message
+		) ||
+		/execution timed out/i.test(message) ||
+		/transaction.*too large/i.test(message)
+	);
+}
+
+function loopSummaryFor(env: WalkEnv, nodeId: string): LoopSummary {
+	let summary = env.loopSummaries.find((s) => s.nodeId === nodeId);
+	if (!summary) {
+		summary = {
+			nodeId,
+			total: 0,
+			succeeded: 0,
+			failed: 0,
+			skipped: 0,
+			errors: [],
+		};
+		env.loopSummaries.push(summary);
+	}
+	return summary;
+}
+
+/** True when any loop in this run skipped past a failing item. */
+function hasLoopItemFailures(env: WalkEnv): boolean {
+	return env.loopSummaries.some((s) => s.failed > 0);
+}
+
+/** Loop tallies for an execution patch; undefined when the run had no loops. */
+function loopSummaryPatch(env: WalkEnv): LoopSummary[] | undefined {
+	return env.loopSummaries.length > 0 ? env.loopSummaries : undefined;
+}
+
+/**
+ * Drop the entries a compacted iteration appended. The truncation marker may be
+ * among them, so logTruncated is re-derived rather than left latched — a stale
+ * true makes pushEntry drop everything afterwards with nothing in the log to
+ * show for it.
+ */
+function rollbackEntries(env: WalkEnv, mark: number): void {
+	env.nodesExecuted.length = mark;
+	env.logTruncated = env.nodesExecuted.length >= MAX_EXECUTED_ENTRIES;
 }
 
 /**
@@ -976,6 +1078,7 @@ export const executeAutomation = systemMutation({
 			nodesExecuted: [],
 			logTruncated: false,
 			dataTruncated: false,
+			loopSummaries: [],
 			fetchScanBudget: WALK_SCAN_BUDGET,
 			trigger: { objectType: args.objectType, objectId: args.objectId },
 			nodeStartedAt: Date.now(),
@@ -1006,6 +1109,7 @@ export const executeAutomation = systemMutation({
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
 				dataTruncated: env.dataTruncated,
+				loopSummary: loopSummaryPatch(env),
 				error: message,
 			});
 			if (isProduction) {
@@ -1168,8 +1272,14 @@ export const resumeExecution = systemMutation({
 			},
 			fetchOutputs: {},
 			nodesExecuted: [...execution.nodesExecuted],
-			logTruncated: false,
+			// Derived, not reset: the log carries over from the previous chunk, so
+			// a false here makes every later chunk append its own truncation marker.
+			logTruncated: execution.nodesExecuted.length >= MAX_EXECUTED_ENTRIES,
 			dataTruncated: execution.dataTruncated ?? false,
+			loopSummaries: (execution.loopSummary ?? []).map((l) => ({
+				...l,
+				errors: [...l.errors],
+			})),
 			fetchScanBudget: WALK_SCAN_BUDGET,
 			trigger: { objectType: resume.objectType, objectId: resume.objectId },
 			nodeStartedAt: Date.now(),
@@ -1213,6 +1323,7 @@ export const resumeExecution = systemMutation({
 				status: "failed",
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
+				loopSummary: loopSummaryPatch(env),
 				error: message,
 				resumeState: undefined,
 				currentNodeId: undefined,
@@ -1241,6 +1352,7 @@ export const resumeExecution = systemMutation({
 						status: "failed",
 						completedAt: Date.now(),
 						nodesExecuted: env.nodesExecuted,
+						loopSummary: loopSummaryPatch(env),
 						error: message,
 						resumeState: undefined,
 						currentNodeId: undefined,
@@ -1273,6 +1385,7 @@ export const resumeExecution = systemMutation({
 				completedAt: Date.now(),
 				nodesExecuted: env.nodesExecuted,
 				dataTruncated: env.dataTruncated,
+				loopSummary: loopSummaryPatch(env),
 				error: message,
 				resumeState: undefined,
 				currentNodeId: undefined,
@@ -1305,6 +1418,9 @@ async function finishWalk(
 			completedAt: Date.now(),
 			nodesExecuted: env.nodesExecuted,
 			dataTruncated: env.dataTruncated,
+			// Earlier chunks already committed their writes — say how many items
+			// got through rather than implying the run did nothing.
+			loopSummary: loopSummaryPatch(env),
 			error: outcome.error,
 			resumeState: undefined,
 			currentNodeId: undefined,
@@ -1326,14 +1442,34 @@ async function finishWalk(
 		lastTriggeredAt: Date.now(),
 		triggerCount: (env.automation.triggerCount || 0) + 1,
 	});
+
+	// The walk reached the end, but a loop may have skipped past failing items.
+	// This has to be checked on every non-failed outcome — an End step inside a
+	// loop body lands here too, and would otherwise report a clean run.
+	const itemFailures = hasLoopItemFailures(env);
 	await ctx.db.patch(env.executionId, {
-		status: "completed",
+		status: itemFailures ? "completed_with_errors" : "completed",
 		completedAt: Date.now(),
 		nodesExecuted: env.nodesExecuted,
 		dataTruncated: env.dataTruncated,
+		loopSummary: loopSummaryPatch(env),
 		resumeState: undefined,
 		currentNodeId: undefined,
 	});
+
+	if (itemFailures && env.isProduction) {
+		const failed = env.loopSummaries.reduce((n, l) => n + l.failed, 0);
+		const total = env.loopSummaries.reduce((n, l) => n + l.total, 0);
+		const first = env.loopSummaries.find((l) => l.errors.length > 0)?.errors[0];
+		await notifyAutomationFailure(
+			ctx,
+			env.automation,
+			`${failed} of ${total} items failed${
+				first ? ` — ${first.label ?? "an item"}: ${first.error}` : ""
+			}`,
+			env.executionId
+		);
+	}
 }
 
 /**
@@ -1474,6 +1610,7 @@ async function runWalk(
 			await ctx.db.patch(env.executionId, {
 				nodesExecuted: env.nodesExecuted,
 				dataTruncated: env.dataTruncated,
+				loopSummary: loopSummaryPatch(env),
 				currentNodeId: node.nextNodeId,
 				resumeState: {
 					resumeNodeId: node.nextNodeId,
@@ -1586,6 +1723,8 @@ async function runLoopNode(
 		return { kind: "failed", error };
 	}
 
+	const summary = loopSummaryFor(env, node.id);
+
 	let queue: { item: Record<string, unknown>; index: number }[];
 	if (resumeFrom) {
 		// Continue a chunked run. Items are matched by id so records deleted
@@ -1596,6 +1735,10 @@ async function runLoopNode(
 			const item = byId.get(id);
 			return item ? [{ item, index: resumeFrom.nextIndex + offset }] : [];
 		});
+		// Records deleted since the last chunk. They count against `total`, so
+		// without this succeeded + failed + skipped wouldn't add up and
+		// "updated 12 of 50" would be a lie.
+		summary.skipped += resumeFrom.remainingItemIds.length - queue.length;
 	} else {
 		const cap = Math.min(
 			config.maxIterations ?? MAX_LOOP_ITERATIONS,
@@ -1603,6 +1746,7 @@ async function runLoopNode(
 		);
 		const items = source.records.slice(0, Math.max(cap, 0));
 		if (source.truncated) env.dataTruncated = true;
+		summary.total = items.length;
 		// Logged once for the whole loop; continuation chunks don't re-log it.
 		pushEntry(env, {
 			nodeId: node.id,
@@ -1617,6 +1761,11 @@ async function runLoopNode(
 		return { kind: "chain_done" };
 	}
 
+	// Absent means "abort": every snapshot published before onItemError existed
+	// stopped the whole run at the first failing item, and republishing an
+	// untouched loop must not quietly change that.
+	const continueOnItemError = config.onItemError === "continue";
+
 	env.scope.loops ??= {};
 	try {
 		for (let qi = 0; qi < queue.length; qi++) {
@@ -1629,23 +1778,43 @@ async function runLoopNode(
 				return { kind: "waiting" };
 			}
 			const { item, index } = queue[qi];
+			const itemId = String(item._id);
+			const label = sampleRecordLabel(source.objectType, item);
 			env.scope.loops[node.id] = { item, index };
+			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
-				id: String(item._id),
+				id: itemId,
 				record: item,
 			};
-			const outcome = await runWalk(
-				ctx,
-				env,
-				node.bodyStartNodeId,
-				itemScope,
-				node.id
-			);
-			// "next_item" and "chain_done" both continue with the next record.
-			if (outcome.kind === "failed" || outcome.kind === "ended") {
-				return outcome;
+
+			// Items processed across every chunk so far — the log window and the
+			// compaction boundary are global to the loop, not per chunk.
+			const processedBefore = summary.succeeded + summary.failed;
+			const withinLogWindow = processedBefore < LOOP_LOG_FULL_ITERATIONS;
+			const entryMark = env.nodesExecuted.length;
+
+			let outcome: WalkOutcome;
+			try {
+				outcome = await runWalk(
+					ctx,
+					env,
+					node.bodyStartNodeId,
+					itemScope,
+					node.id
+				);
+			} catch (error) {
+				// An unexpected throw (a schema-validation reject, a plan-limit
+				// throw) is this item's failure, not the run's — unless the
+				// transaction itself is spent, in which case every remaining item
+				// would hit it too.
+				if (!continueOnItemError || isFatalExecutionError(error)) throw error;
+				outcome = {
+					kind: "failed",
+					error: error instanceof Error ? error.message : "Unknown error",
+				};
 			}
+
 			if (outcome.kind === "waiting") {
 				// Unreachable: delays are rejected inside loop bodies.
 				return {
@@ -1653,10 +1822,93 @@ async function runLoopNode(
 					error: "Delay steps are not supported inside loops",
 				};
 			}
+
+			if (outcome.kind === "failed") {
+				summary.failed += 1;
+				if (!continueOnItemError) {
+					// Record the item that stopped the run before bailing: the failed
+					// patch persists this, so the run can name the record it died on.
+					summary.errors.push({
+						index,
+						itemId,
+						label,
+						error: outcome.error.slice(0, MAX_ITEM_ERROR_CHARS),
+					});
+					return outcome;
+				}
+
+				if (summary.errors.length < MAX_LOOP_ITEM_ERRORS) {
+					summary.errors.push({
+						index,
+						itemId,
+						label,
+						error: outcome.error.slice(0, MAX_ITEM_ERROR_CHARS),
+						// Convex has no sub-transaction: body steps that already ran
+						// for this item are committed and stay applied. Only actions
+						// write, so a condition that passed before the failure doesn't
+						// make the item partially applied.
+						partial: env.nodesExecuted
+							.slice(entryMark)
+							.some(
+								(e) =>
+									e.result === "success" &&
+									env.nodesById.get(e.nodeId)?.config?.kind === "action"
+							),
+					});
+				}
+
+				// Nothing has succeeded and the first N items all failed: this is a
+				// broken configuration, not bad data. Stop before it burns through
+				// the rest of the records.
+				if (
+					summary.succeeded === 0 &&
+					summary.failed >= LOOP_FAILURE_CIRCUIT_BREAK
+				) {
+					return {
+						kind: "failed",
+						error:
+							`The first ${summary.failed} items all failed, so this looks like a ` +
+							`configuration problem rather than bad data. First error: ` +
+							`${summary.errors[0]?.error ?? outcome.error}`,
+					};
+				}
+				continue;
+			}
+
+			// "next_item" and "chain_done" both mean this item is done with.
+			summary.succeeded += 1;
+
+			// An End step inside the body stops the whole run, by design. Keep its
+			// entries whatever the log window says — they're where the run stopped.
+			if (outcome.kind === "ended") return outcome;
+
+			// Past the log window a successful iteration leaves no per-step trace —
+			// its outcome is already counted above, and keeping it would push the
+			// failures that follow out past MAX_EXECUTED_ENTRIES.
+			if (!withinLogWindow) {
+				rollbackEntries(env, entryMark);
+			}
 		}
 	} finally {
 		// Loop variables are only valid inside the body.
 		delete env.scope.loops[node.id];
+		env.currentLoop = undefined;
+	}
+
+	// Reached only when the last chunk drains the queue, so this lands once per
+	// loop however many chunks it took — and regardless of whether the item that
+	// crossed the boundary succeeded. Says why the log stops short of the tally,
+	// which otherwise just looks like missing steps.
+	if (summary.succeeded + summary.failed > LOOP_LOG_FULL_ITERATIONS) {
+		pushEntry(env, {
+			nodeId: node.id,
+			result: "success",
+			output: {
+				note:
+					`Step-by-step log covers the first ${LOOP_LOG_FULL_ITERATIONS} items. ` +
+					`Later items are counted in this loop's totals; failures are logged in full.`,
+			},
+		});
 	}
 
 	return { kind: "chain_done" };
@@ -1677,6 +1929,7 @@ async function checkpointLoopChunk(
 	await ctx.db.patch(env.executionId, {
 		nodesExecuted: env.nodesExecuted,
 		dataTruncated: env.dataTruncated,
+		loopSummary: loopSummaryPatch(env),
 		currentNodeId: node.id,
 		resumeState: {
 			resumeNodeId: node.id,
@@ -3159,6 +3412,11 @@ export const getExecutionStats = internalQuery({
 			total: recentExecutions.length,
 			completed: recentExecutions.filter((e) => e.status === "completed")
 				.length,
+			// Ran to the end with some loop items skipped — counted apart from
+			// `completed` so the buckets still sum to `total`.
+			withErrors: recentExecutions.filter(
+				(e) => e.status === "completed_with_errors"
+			).length,
 			failed: recentExecutions.filter((e) => e.status === "failed").length,
 			skipped: recentExecutions.filter((e) => e.status === "skipped").length,
 		};
@@ -3167,6 +3425,9 @@ export const getExecutionStats = internalQuery({
 			total: weeklyExecutions.length,
 			completed: weeklyExecutions.filter((e) => e.status === "completed")
 				.length,
+			withErrors: weeklyExecutions.filter(
+				(e) => e.status === "completed_with_errors"
+			).length,
 			failed: weeklyExecutions.filter((e) => e.status === "failed").length,
 			skipped: weeklyExecutions.filter((e) => e.status === "skipped").length,
 		};
@@ -3189,6 +3450,8 @@ export const getExecutionStats = internalQuery({
 const TEST_STEP_INTERVAL_MS = 150;
 /** Loop iterations sampled per loop in a dry run (keeps the reveal snappy). */
 const DRY_LOOP_SAMPLE = 3;
+
+type DryWalkOutcome = "chain_done" | "ended" | "next_item" | "failed";
 /** A test run stuck "running" past this is presumed dropped and marked failed. */
 const STALE_TEST_RUN_MS = 5 * 60 * 1000;
 
@@ -3206,6 +3469,15 @@ type DryEnv = {
 	fetchScanBudget: number;
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
 	nodeStartedAt: number;
+	/** Per-loop item tallies, same shape production records. */
+	loopSummaries: LoopSummary[];
+	/** The loop iteration currently executing; stamps identity onto its entries. */
+	currentLoop?: {
+		nodeId: string;
+		index: number;
+		itemId: string;
+		label?: string;
+	};
 };
 
 /** Char ceiling (~4KB) for a stored input/output snapshot. */
@@ -3228,12 +3500,21 @@ function boundSnapshot(value: unknown): unknown {
 }
 
 function pushDry(env: DryEnv, entry: ExecutedNode): void {
+	const loop = env.currentLoop;
 	const stamped: ExecutedNode = {
 		...entry,
 		input: boundSnapshot(entry.input),
 		output: boundSnapshot(entry.output),
 		startedAt: entry.startedAt ?? env.nodeStartedAt,
 		completedAt: entry.completedAt ?? Date.now(),
+		...(loop
+			? {
+					loopNodeId: loop.nodeId,
+					loopIndex: loop.index,
+					loopItemId: loop.itemId,
+					loopItemLabel: loop.label,
+				}
+			: {}),
 	};
 	if (env.entries.length >= MAX_EXECUTED_ENTRIES) {
 		if (!env.truncated) {
@@ -3567,14 +3848,32 @@ async function dryRunLoopNode(
 		return "chain_done";
 	}
 
+	// Absent means "abort" — the same reading production uses.
+	const continueOnItemError = config.onItemError === "continue";
+	// `sampled`, not `total`: a preview only walks the first few items, and a
+	// summary claiming the full match count would have the test run reporting
+	// items it never attempted.
+	const summary: LoopSummary = {
+		nodeId: node.id,
+		total: sampled,
+		succeeded: 0,
+		failed: 0,
+		skipped: 0,
+		errors: [],
+	};
+	env.loopSummaries.push(summary);
+
 	env.scope.loops ??= {};
 	try {
 		for (let index = 0; index < sampled; index++) {
 			const item = source.records[index];
+			const itemId = String(item._id);
+			const label = sampleRecordLabel(source.objectType, item);
 			env.scope.loops[node.id] = { item, index };
+			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
-				id: String(item._id),
+				id: itemId,
 				record: item,
 			};
 			const outcome = await dryRunWalk(
@@ -3584,11 +3883,33 @@ async function dryRunLoopNode(
 				itemScope,
 				true
 			);
+
+			if (outcome === "failed") {
+				summary.failed += 1;
+				if (summary.errors.length < MAX_LOOP_ITEM_ERRORS) {
+					const error =
+						[...env.entries]
+							.reverse()
+							.find((e) => e.result === "failed" && e.loopIndex === index)
+							?.error ?? "Step failed";
+					summary.errors.push({
+						index,
+						itemId,
+						label,
+						error: error.slice(0, MAX_ITEM_ERROR_CHARS),
+					});
+				}
+				if (!continueOnItemError) return "failed";
+				continue;
+			}
+
 			// "next_item"/"chain_done" continue with the next sampled record.
-			if (outcome === "failed" || outcome === "ended") return outcome;
+			summary.succeeded += 1;
+			if (outcome === "ended") return outcome;
 		}
 	} finally {
 		delete env.scope.loops[node.id];
+		env.currentLoop = undefined;
 	}
 
 	return "chain_done";
@@ -3605,7 +3926,7 @@ async function dryRunWalk(
 	startNodeId: string | undefined,
 	scopeRecord: ScopeRecord | undefined,
 	inLoop: boolean
-): Promise<"chain_done" | "ended" | "next_item" | "failed"> {
+): Promise<DryWalkOutcome> {
 	let currentNodeId = startNodeId;
 	const visited = new Set<string>();
 
@@ -3791,7 +4112,12 @@ async function buildDryPlan(
 	eventOldValue: string | undefined,
 	eventNewValue: string | undefined,
 	globals: Pick<VariableScope, "workflow" | "org" | "user">
-): Promise<ExecutedNode[]> {
+): Promise<{
+	plan: ExecutedNode[];
+	/** The walk stopped on a failure, rather than running past skipped items. */
+	aborted: boolean;
+	loopSummaries: LoopSummary[];
+}> {
 	const env: DryEnv = {
 		orgId: automation.orgId,
 		automationName: automation.name,
@@ -3813,12 +4139,18 @@ async function buildDryPlan(
 		dataTruncated: false,
 		fetchScanBudget: WALK_SCAN_BUDGET,
 		nodeStartedAt: Date.now(),
+		loopSummaries: [],
 	};
 
+	let outcome: DryWalkOutcome = "chain_done";
 	if (automation.nodes.length > 0) {
-		await dryRunWalk(ctx, env, automation.nodes[0].id, scopeRecord, false);
+		outcome = await dryRunWalk(ctx, env, automation.nodes[0].id, scopeRecord, false);
 	}
-	return env.entries;
+	return {
+		plan: env.entries,
+		aborted: outcome === "failed",
+		loopSummaries: env.loopSummaries,
+	};
 }
 
 /**
@@ -3900,7 +4232,7 @@ export const startTestRun = userMutation({
 			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
 		};
 
-		const plan = await buildDryPlan(
+		const { plan, aborted, loopSummaries } = await buildDryPlan(
 			ctx,
 			automation,
 			scopeRecord,
@@ -3914,12 +4246,22 @@ export const startTestRun = userMutation({
 		const done = plan.length === 0;
 		const dataTruncated = plan.some((e) => e.truncated);
 
+		// A failed step no longer implies a failed run: a loop set to continue
+		// records the failure and carries on. `aborted` is the only thing that
+		// separates the two, so it's decided here and carried on the cursor —
+		// executeTestStep only ever sees the entries, which can't tell them apart.
+		const terminalStatus = aborted
+			? ("failed" as const)
+			: failed
+				? ("completed_with_errors" as const)
+				: ("completed" as const);
+
 		const executionId = await ctx.db.insert("workflowExecutions", {
 			orgId: ctx.orgId,
 			automationId: args.automationId,
 			triggeredBy: `test:${ctx.user._id}`,
 			triggeredAt: now,
-			status: done ? (failed ? "failed" : "completed") : "running",
+			status: done ? terminalStatus : "running",
 			completedAt: done ? now : undefined,
 			mode: "test",
 			dryRun: true,
@@ -3927,9 +4269,10 @@ export const startTestRun = userMutation({
 			triggerRecord,
 			nodesExecuted: [],
 			dataTruncated,
-			testCursor: done ? undefined : { plan },
+			loopSummary: loopSummaries.length > 0 ? loopSummaries : undefined,
+			testCursor: done ? undefined : { plan, terminalStatus },
 			error:
-				done && failed
+				done && aborted
 					? plan.find((e) => e.result === "failed")?.error
 					: undefined,
 		});
@@ -3961,10 +4304,18 @@ export const executeTestStep = systemMutation({
 		const plan = execution.testCursor.plan;
 		const index = execution.nodesExecuted.length;
 
+		// Legacy cursors (written before terminalStatus existed) fall back to the
+		// old derivation, but over `plan` — nodesExecuted excludes the entry this
+		// call is about to reveal, so a run failing on its last step read clean.
+		const terminalStatus =
+			execution.testCursor.terminalStatus ??
+			(plan.some((e) => e.result === "failed")
+				? ("failed" as const)
+				: ("completed" as const));
+
 		if (index >= plan.length) {
-			const failed = execution.nodesExecuted.some((e) => e.result === "failed");
 			await ctx.db.patch(args.executionId, {
-				status: failed ? "failed" : "completed",
+				status: terminalStatus,
 				completedAt: Date.now(),
 				currentNodeId: undefined,
 				testCursor: undefined,
@@ -3988,16 +4339,16 @@ export const executeTestStep = systemMutation({
 			return;
 		}
 
-		const failed = revealed.some((e) => e.result === "failed");
 		await ctx.db.patch(args.executionId, {
 			nodesExecuted: revealed,
-			status: failed ? "failed" : "completed",
+			status: terminalStatus,
 			completedAt: Date.now(),
 			currentNodeId: undefined,
 			testCursor: undefined,
-			error: failed
-				? revealed.find((e) => e.result === "failed")?.error
-				: undefined,
+			error:
+				terminalStatus === "failed"
+					? revealed.find((e) => e.result === "failed")?.error
+					: undefined,
 		});
 	},
 });

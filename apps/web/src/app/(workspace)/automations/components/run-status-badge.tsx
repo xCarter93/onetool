@@ -1,11 +1,19 @@
 import type { ElementType } from "react";
 import { Badge } from "@/components/reui/badge";
-import { CheckCircle2, XCircle, Loader2, MinusCircle, Ban } from "lucide-react";
+import {
+	CheckCircle2,
+	XCircle,
+	Loader2,
+	MinusCircle,
+	Ban,
+	AlertTriangle,
+} from "lucide-react";
 import { RUN_STATUS_META, type RunStatus } from "../lib/run-format";
 
 const STATUS_ICON: Record<RunStatus, ElementType> = {
 	running: Loader2,
 	completed: CheckCircle2,
+	completed_with_errors: AlertTriangle,
 	failed: XCircle,
 	skipped: MinusCircle,
 	cancelled: Ban,

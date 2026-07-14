@@ -1480,13 +1480,48 @@ describe("automationExecutor (v2 engine)", () => {
 		function loopNode(
 			id: string,
 			sourceNodeId: string,
-			opts: { bodyStartNodeId?: string; nextNodeId?: string } = {}
+			opts: {
+				bodyStartNodeId?: string;
+				nextNodeId?: string;
+				onItemError?: "continue" | "abort";
+			} = {}
 		) {
 			return {
 				id,
 				type: "loop" as const,
-				config: { kind: "loop" as const, sourceNodeId },
+				config: {
+					kind: "loop" as const,
+					sourceNodeId,
+					onItemError: opts.onItemError,
+				},
 				bodyStartNodeId: opts.bodyStartNodeId,
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		/**
+		 * Writes a field from a variable path. Used to poison individual loop items:
+		 * driving project.status off the item's own title makes a project titled
+		 * "bogus" fail select coercion while its valid-status siblings succeed.
+		 */
+		function updateFieldFromVarNode(
+			id: string,
+			field: string,
+			path: string,
+			opts: { nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "update_field" as const,
+						target: "self" as const,
+						field,
+						value: { kind: "var" as const, path },
+					},
+				},
 				nextNodeId: opts.nextNodeId,
 			};
 		}
@@ -2988,6 +3023,287 @@ describe("automationExecutor (v2 engine)", () => {
 						isActive: false,
 					})
 				).rejects.toThrow(/only works inside a loop/);
+			});
+		});
+
+		describe("per-item error isolation (Phase A3)", () => {
+			/**
+			 * Projects whose titles are valid project statuses, plus poisoned ones
+			 * titled "bogus". The loop body writes status = {loop item's title}, so a
+			 * poisoned project fails select coercion and its siblings don't.
+			 *
+			 * `titles` is given in LOOP order. fetch_records returns newest-first, so
+			 * they're created back-to-front — otherwise every index assertion below
+			 * would be quietly testing the reverse of what it reads like.
+			 */
+			async function createProjects(
+				asUser: ReturnType<typeof t.withIdentity>,
+				titles: string[]
+			) {
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				for (const title of [...titles].reverse()) {
+					await asUser.mutation(api.projects.create, {
+						clientId,
+						title,
+						status: "planned",
+						projectType: "one-off",
+					});
+				}
+				return clientId;
+			}
+
+			function poisonedLoopNodes(onItemError?: "continue" | "abort") {
+				return [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1", limit: 100 }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "end-1",
+						onItemError,
+					}),
+					updateFieldFromVarNode(
+						"body-act",
+						"status",
+						"loop.loop-1.item.title"
+					),
+					endNode("end-1"),
+				];
+			}
+
+			async function runPoisonedLoop(
+				titles: string[],
+				onItemError?: "continue" | "abort"
+			) {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+				await createProjects(asUser, titles);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Advance every project",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: poisonedLoopNodes(onItemError),
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const execution = await t.run(async (ctx) => {
+					const rows = await ctx.db.query("workflowExecutions").collect();
+					return rows[0];
+				});
+				const projects = await t.run(async (ctx) =>
+					ctx.db.query("projects").collect()
+				);
+				return { execution, projects };
+			}
+
+			it("skips the failing item and finishes the rest — completed_with_errors names the record", async () => {
+				// 5 items: three advance, one is poisoned, one advances after it.
+				const { execution, projects } = await runPoisonedLoop(
+					["in-progress", "in-progress", "bogus", "in-progress", "completed"],
+					"continue"
+				);
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(execution.resumeState).toBeUndefined();
+
+				// The poisoned record is untouched; every other record was written.
+				const advanced = projects.filter((p) => p.status !== "planned");
+				expect(advanced).toHaveLength(4);
+				expect(
+					projects.find((p) => p.title === "bogus")?.status
+				).toBe("planned");
+
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toBeDefined();
+				expect(summary).toMatchObject({
+					total: 5,
+					succeeded: 4,
+					failed: 1,
+					skipped: 0,
+				});
+				expect(summary!.errors).toHaveLength(1);
+				expect(summary!.errors[0].label).toBe("bogus");
+				expect(summary!.errors[0].index).toBe(2);
+				expect(summary!.errors[0].error).toContain("not a valid value");
+			});
+
+			it("stamps loop identity on body entries so a failure traces to its record", async () => {
+				const { execution } = await runPoisonedLoop(
+					["in-progress", "bogus", "in-progress"],
+					"continue"
+				);
+
+				const bodyEntries = execution.nodesExecuted.filter(
+					(n) => n.nodeId === "body-act"
+				);
+				expect(bodyEntries).toHaveLength(3);
+				expect(bodyEntries.map((e) => e.loopIndex)).toEqual([0, 1, 2]);
+				expect(bodyEntries.every((e) => e.loopNodeId === "loop-1")).toBe(true);
+				expect(bodyEntries.every((e) => !!e.loopItemId)).toBe(true);
+
+				const failedEntry = bodyEntries.find((e) => e.result === "failed");
+				expect(failedEntry?.loopItemLabel).toBe("bogus");
+				expect(failedEntry?.loopIndex).toBe(1);
+
+				// The loop node's own entries carry no iteration identity.
+				const loopEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "loop-1"
+				);
+				expect(loopEntry?.loopIndex).toBeUndefined();
+			});
+
+			it("a legacy loop (no onItemError) still aborts the whole run at the first failure", async () => {
+				// Field absent = "abort" — the semantics every snapshot published
+				// before onItemError existed actually had.
+				const { execution, projects } = await runPoisonedLoop([
+					"in-progress",
+					"bogus",
+					"in-progress",
+				]);
+
+				expect(execution.status).toBe("failed");
+				// Item 0 was written (its chunk committed); item 2 never ran.
+				expect(
+					projects.filter((p) => p.status === "in-progress")
+				).toHaveLength(1);
+				// Even a failed run reports what got through before it stopped, and
+				// names the record it died on.
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toMatchObject({ total: 3, succeeded: 1, failed: 1 });
+				expect(summary!.errors).toHaveLength(1);
+				expect(summary!.errors[0].label).toBe("bogus");
+			});
+
+			it('"abort" set explicitly behaves the same as the legacy absent field', async () => {
+				const { execution } = await runPoisonedLoop(
+					["in-progress", "bogus", "in-progress"],
+					"abort"
+				);
+				expect(execution.status).toBe("failed");
+			});
+
+			it("circuit breaker: the first 10 items all failing stops the run as a config problem", async () => {
+				// 12 poisoned records, none of which can ever succeed.
+				const { execution, projects } = await runPoisonedLoop(
+					Array.from({ length: 12 }, () => "bogus"),
+					"continue"
+				);
+
+				expect(execution.status).toBe("failed");
+				expect(execution.error).toContain("configuration problem");
+				// It stopped at 10 rather than grinding through all 12.
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toMatchObject({ total: 12, succeeded: 0, failed: 10 });
+				// Nothing was written.
+				expect(
+					projects.every((p) => p.status === "planned")
+				).toBe(true);
+			});
+
+			it("one success disarms the circuit breaker — later failures don't trip it", async () => {
+				// One good item first, then 12 poisoned ones: the breaker only fires
+				// when nothing at all has succeeded.
+				const titles = [
+					"in-progress",
+					...Array.from({ length: 12 }, () => "bogus"),
+				];
+				const { execution } = await runPoisonedLoop(titles, "continue");
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(
+					execution.loopSummary?.find((l) => l.nodeId === "loop-1")
+				).toMatchObject({ total: 13, succeeded: 1, failed: 12 });
+			});
+
+			it("compacts successful iterations past the log window but keeps every failure", async () => {
+				// 60 items (> the 50-iteration log window) with one poisoned item near
+				// the end. Without compaction the failure is exactly the kind of entry
+				// the 400-entry cap eats.
+				const titles = Array.from({ length: 60 }, (_, i) =>
+					i === 55 ? "bogus" : "in-progress"
+				);
+				const { execution } = await runPoisonedLoop(titles, "continue");
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(
+					execution.loopSummary?.find((l) => l.nodeId === "loop-1")
+				).toMatchObject({ total: 60, succeeded: 59, failed: 1 });
+
+				const bodyEntries = execution.nodesExecuted.filter(
+					(n) => n.nodeId === "body-act"
+				);
+				// The first 50 iterations are logged in full; later successes are
+				// dropped from the log (their outcome lives in loopSummary).
+				expect(bodyEntries.filter((e) => e.result === "success")).toHaveLength(
+					50
+				);
+				// The late failure survives regardless — that's the whole point.
+				const failures = bodyEntries.filter((e) => e.result === "failed");
+				expect(failures).toHaveLength(1);
+				expect(failures[0].loopIndex).toBe(55);
+				expect(failures[0].loopItemLabel).toBe("bogus");
+
+				// The log never hit the global truncation cap.
+				expect(
+					execution.nodesExecuted.some((e) =>
+						e.error?.includes("Execution log truncated")
+					)
+				).toBe(false);
+
+				// Exactly one note explains why the log stops short of the tally.
+				const notes = execution.nodesExecuted.filter((e) =>
+					String(
+						(e.output as { note?: string } | undefined)?.note ?? ""
+					).includes("Step-by-step log covers")
+				);
+				expect(notes).toHaveLength(1);
+			});
+
+			it("carries failures across a chunk boundary and still finishes", async () => {
+				// 30 items (> LOOP_CHUNK_SIZE of 25) with poison on both sides of the
+				// boundary — the tally has to survive the checkpoint/resume hop.
+				const titles = Array.from({ length: 30 }, (_, i) =>
+					i === 3 || i === 27 ? "bogus" : "in-progress"
+				);
+				const { execution, projects } = await runPoisonedLoop(
+					titles,
+					"continue"
+				);
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(execution.resumeState).toBeUndefined();
+				expect(
+					projects.filter((p) => p.status === "in-progress")
+				).toHaveLength(28);
+
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toMatchObject({
+					total: 30,
+					succeeded: 28,
+					failed: 2,
+					skipped: 0,
+				});
+				expect(summary!.errors.map((e) => e.index)).toEqual([3, 27]);
 			});
 		});
 

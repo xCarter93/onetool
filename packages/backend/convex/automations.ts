@@ -1077,6 +1077,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const executionStatusValidator = v.union(
 	v.literal("running"),
 	v.literal("completed"),
+	v.literal("completed_with_errors"),
 	v.literal("failed"),
 	v.literal("skipped"),
 	v.literal("cancelled")
@@ -1242,6 +1243,7 @@ export const getRunMetrics = userQuery({
 		successCount: number;
 		failedCount: number;
 		skippedCount: number;
+		withErrorsCount: number;
 		successRate: number;
 		avgActiveMs: number;
 		p50ActiveMs: number;
@@ -1264,6 +1266,7 @@ export const getRunMetrics = userQuery({
 		let successCount = 0;
 		let failedCount = 0;
 		let skippedCount = 0;
+		let withErrorsCount = 0;
 		const activeDurations: number[] = [];
 
 		for (const e of executions) {
@@ -1273,6 +1276,11 @@ export const getRunMetrics = userQuery({
 				successCount++;
 				const { activeMs } = deriveDurations(e);
 				if (activeMs != null) activeDurations.push(activeMs);
+			} else if (e.status === "completed_with_errors") {
+				withErrorsCount++;
+				// Ran to the end, so its latency counts toward the same distribution.
+				const { activeMs } = deriveDurations(e);
+				if (activeMs != null) activeDurations.push(activeMs);
 			} else if (e.status === "failed") {
 				failedCount++;
 			} else if (e.status === "skipped") {
@@ -1280,7 +1288,8 @@ export const getRunMetrics = userQuery({
 			}
 		}
 
-		const decided = successCount + failedCount;
+		// A partial run drags the rate down without counting as a full failure.
+		const decided = successCount + failedCount + withErrorsCount;
 		const successRate = decided > 0 ? successCount / decided : 0;
 
 		activeDurations.sort((a, b) => a - b);
@@ -1305,6 +1314,7 @@ export const getRunMetrics = userQuery({
 			successCount,
 			failedCount,
 			skippedCount,
+			withErrorsCount,
 			successRate,
 			avgActiveMs,
 			p50ActiveMs: percentile(activeDurations, 50),
@@ -1325,7 +1335,13 @@ export const getRunThroughput = userQuery({
 		ctx,
 		args
 	): Promise<
-		Array<{ day: number; success: number; failed: number; skipped: number }>
+		Array<{
+			day: number;
+			success: number;
+			failed: number;
+			withErrors: number;
+			skipped: number;
+		}>
 	> => {
 		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
@@ -1344,10 +1360,22 @@ export const getRunThroughput = userQuery({
 		// Seed every UTC day (incl. zero-count) in chronological order.
 		const buckets = new Map<
 			number,
-			{ day: number; success: number; failed: number; skipped: number }
+			{
+				day: number;
+				success: number;
+				failed: number;
+				withErrors: number;
+				skipped: number;
+			}
 		>();
 		for (let day = firstDay; day <= todayMidnight; day += DAY_MS) {
-			buckets.set(day, { day, success: 0, failed: 0, skipped: 0 });
+			buckets.set(day, {
+				day,
+				success: 0,
+				failed: 0,
+				withErrors: 0,
+				skipped: 0,
+			});
 		}
 
 		for (const e of executions) {
@@ -1357,6 +1385,7 @@ export const getRunThroughput = userQuery({
 			if (!bucket) continue; // outside the seeded window
 			if (e.status === "completed") bucket.success++;
 			else if (e.status === "failed") bucket.failed++;
+			else if (e.status === "completed_with_errors") bucket.withErrors++;
 			else if (e.status === "skipped") bucket.skipped++;
 		}
 
@@ -1365,9 +1394,28 @@ export const getRunThroughput = userQuery({
 });
 
 /**
- * The most recent failed PRODUCTION runs (org-scoped, newest first) for the
- * recent-failures timeline. failedNodeId = the last nodesExecuted entry whose
- * result is "failed" (undefined for pre-walk failures like a missing record).
+ * Sensible one-line message for a completed_with_errors run, which has no
+ * top-level `error` field — summed across every loop node's failed count.
+ */
+function deriveLoopSummaryError(
+	loopSummary: Doc<"workflowExecutions">["loopSummary"]
+): string {
+	if (!loopSummary || loopSummary.length === 0) return "Some items failed";
+	let total = 0;
+	let totalFailed = 0;
+	for (const s of loopSummary) {
+		total += s.total;
+		totalFailed += s.failed;
+	}
+	if (totalFailed === 0) return "Some items failed";
+	return `${totalFailed} of ${total} items failed`;
+}
+
+/**
+ * The most recent failed or partially-failed PRODUCTION runs (org-scoped,
+ * newest first) for the recent-failures timeline. failedNodeId = the last
+ * nodesExecuted entry whose result is "failed" (undefined for pre-walk
+ * failures like a missing record).
  */
 export const getRecentFailures = userQuery({
 	args: { limit: v.optional(v.number()) },
@@ -1379,6 +1427,7 @@ export const getRecentFailures = userQuery({
 			executionId: Id<"workflowExecutions">;
 			automationId: Id<"workflowAutomations">;
 			automationName: string;
+			status: "failed" | "completed_with_errors";
 			error: string;
 			failedNodeId?: string;
 			triggeredAt: number;
@@ -1397,17 +1446,38 @@ export const getRecentFailures = userQuery({
 			.filter((q) => q.neq(q.field("mode"), "test"))
 			.take(limit);
 
+		// A partially-failed run (loop continued past skipped items) also
+		// belongs in the recent-failures timeline.
+		const partialFailures = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_status_triggeredAt", (q) =>
+				q.eq("orgId", orgId).eq("status", "completed_with_errors")
+			)
+			.order("desc")
+			.filter((q) => q.neq(q.field("mode"), "test"))
+			.take(limit);
+
+		const merged = [...failures, ...partialFailures]
+			.sort((a, b) => b.triggeredAt - a.triggeredAt)
+			.slice(0, limit);
+
 		const resolveName = makeAutomationNameResolver(ctx, orgId);
 		const rows = [];
-		for (const e of failures) {
+		for (const e of merged) {
 			const failedNode = [...e.nodesExecuted]
 				.reverse()
 				.find((n) => n.result === "failed");
+			const status = e.status as "failed" | "completed_with_errors";
+			const error =
+				status === "completed_with_errors"
+					? deriveLoopSummaryError(e.loopSummary)
+					: (e.error ?? "Unknown error");
 			rows.push({
 				executionId: e._id,
 				automationId: e.automationId,
 				automationName: await resolveName(e.automationId),
-				error: e.error ?? "Unknown error",
+				status,
+				error,
 				failedNodeId: failedNode?.nodeId,
 				triggeredAt: e.triggeredAt,
 			});

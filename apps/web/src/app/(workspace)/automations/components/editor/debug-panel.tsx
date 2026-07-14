@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
 	Loader2,
 	CheckCircle2,
@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { RunRecordRef } from "../../hooks/use-automation-editor";
 import { DebugTimeline } from "./debug-timeline";
+import { summarizeLoopFailures, type RunStatus } from "../../lib/run-format";
 
 type SampleRecord = {
 	entityType: "client" | "project" | "quote" | "invoice" | "task";
@@ -73,7 +74,25 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 				? `Failed: ${execution.error}`
 				: "Test failed";
 
-	const map = {
+	const { total: loopTotal, failed: loopFailed } = summarizeLoopFailures(
+		execution.loopSummary
+	);
+	// A test run is a dry run over a sample: nothing failed, it *would* fail.
+	const isDry = execution.dryRun === true;
+	const withErrorsText =
+		loopTotal > 0
+			? isDry
+				? `Test completed — ${loopFailed} of ${loopTotal} previewed item${
+						loopTotal === 1 ? "" : "s"
+					} would fail`
+				: `Completed — ${loopFailed} of ${loopTotal} item${
+						loopTotal === 1 ? "" : "s"
+					} failed`
+			: "Completed with errors";
+
+	// Typed against RunStatus so a future added status fails to compile here
+	// instead of silently falling through the `if (!s) return null` guard.
+	const map: Record<RunStatus, { icon: ReactNode; text: string; cls: string }> = {
 		running: {
 			icon: (
 				<Loader2 className="size-4 animate-spin text-blue-600 dark:text-blue-400" />
@@ -87,6 +106,13 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 			),
 			text: "Test completed",
 			cls: "text-emerald-700 dark:text-emerald-300",
+		},
+		completed_with_errors: {
+			icon: (
+				<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+			),
+			text: withErrorsText,
+			cls: "text-amber-700 dark:text-amber-300",
 		},
 		failed: {
 			icon: <XCircle className="size-4 text-red-600 dark:text-red-400" />,
@@ -103,7 +129,7 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 			text: "Test cancelled",
 			cls: "text-muted-foreground",
 		},
-	} as const;
+	};
 
 	const s = map[execution.status];
 	if (!s) return null; // guard an out-of-enum status rather than crash the panel
@@ -118,6 +144,85 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 		>
 			<span className="mt-px shrink-0">{s.icon}</span>
 			<span className="min-w-0 break-words">{s.text}</span>
+		</div>
+	);
+}
+
+/**
+ * One block per loop node that had at least one item fail — headline count,
+ * the first few failing items by label/error, and a partial-write caveat
+ * when the backend flagged any of them `partial: true`.
+ */
+function PartialProgressBanner({ execution }: { execution: ExecutionDoc }) {
+	// Test runs are dry: nothing was written, and the loop only walks a sample.
+	// Saying "updated 2 of 50 records" there would be false twice over.
+	const dry = execution?.dryRun === true;
+	const loopsWithFailures = (execution?.loopSummary ?? []).filter(
+		(s) => s.failed > 0
+	);
+	if (loopsWithFailures.length === 0) return null;
+
+	const MAX_SHOWN = 3;
+
+	return (
+		<div className="space-y-2">
+			{loopsWithFailures.map((summary) => {
+				const shown = summary.errors.slice(0, MAX_SHOWN);
+				const hiddenCount = summary.errors.length - shown.length;
+				const anyPartial = shown.some((e) => e.partial);
+				return (
+					<div
+						key={summary.nodeId}
+						className="space-y-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/20"
+					>
+						<div className="flex items-start justify-between gap-2">
+							<span className="text-xs font-medium text-amber-900 dark:text-amber-200">
+								{dry
+									? `${summary.succeeded} of ${summary.total} previewed item${
+											summary.total === 1 ? "" : "s"
+										} would run`
+									: `Updated ${summary.succeeded} of ${summary.total} record${
+											summary.total === 1 ? "" : "s"
+										}`}
+								{!dry && summary.skipped > 0
+									? ` — ${summary.skipped} skipped`
+									: ""}
+							</span>
+							<Badge variant="warning" className="shrink-0">
+								{summary.failed} {dry ? "would fail" : "failed"}
+							</Badge>
+						</div>
+						{shown.length > 0 && (
+							<ul className="space-y-1">
+								{shown.map((err) => (
+									<li
+										key={err.index}
+										className="text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90"
+									>
+										<span className="font-medium">
+											{err.label ?? `Item ${err.index + 1}`}:
+										</span>{" "}
+										<span className="text-amber-800/80 dark:text-amber-300/70">
+											{err.error}
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+						{hiddenCount > 0 && (
+							<p className="text-[11px] text-amber-800/70 dark:text-amber-300/60">
+								+{hiddenCount} more
+							</p>
+						)}
+						{anyPartial && !dry && (
+							<p className="text-[11px] text-amber-800/80 dark:text-amber-300/70">
+								Some failed items may have been partially updated — check the
+								timeline for which steps ran.
+							</p>
+						)}
+					</div>
+				);
+			})}
 		</div>
 	);
 }
@@ -232,6 +337,10 @@ export function DebugPanel({
 			</div>
 
 			{hasActiveRun && <StatusLine execution={execution} />}
+
+			{hasActiveRun && execution && execution.status !== "running" && (
+				<PartialProgressBanner execution={execution} />
+			)}
 
 			{hasActiveRun && execution?.dataTruncated && (
 				<Tooltip>

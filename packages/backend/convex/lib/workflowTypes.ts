@@ -242,6 +242,13 @@ export const loopNodeConfigValidator = v.object({
 	sourceNodeId: v.string(),
 	/** Engine enforces MAX_LOOP_ITERATIONS regardless. */
 	maxIterations: v.optional(v.number()),
+	/**
+	 * What a failing item does to the run. Absent = "abort", which is what every
+	 * snapshot published before this field existed did — so old automations keep
+	 * their exact semantics until someone changes this control by hand. The
+	 * builder writes "continue" on new loops.
+	 */
+	onItemError: v.optional(v.union(v.literal("continue"), v.literal("abort"))),
 });
 
 export const delayNodeConfigValidator = v.object({
@@ -539,6 +546,48 @@ export const executedNodeValidator = v.object({
 	// Bounded (~4KB) input/output snapshots for the runs viewer.
 	input: v.optional(v.any()),
 	output: v.optional(v.any()),
+	// Set on entries pushed from inside a loop body: which loop, which iteration,
+	// and which record. Without these a mid-loop failure can't be traced back to
+	// the record that caused it.
+	loopNodeId: v.optional(v.string()),
+	loopIndex: v.optional(v.number()),
+	loopItemId: v.optional(v.string()),
+	loopItemLabel: v.optional(v.string()),
 });
 
 export type ExecutedNode = Infer<typeof executedNodeValidator>;
+
+// ---------------------------------------------------------------------------
+// Per-loop outcome tallies (workflowExecutions.loopSummary)
+// ---------------------------------------------------------------------------
+
+/** Item errors kept per loop node; the rest are counted, not listed. */
+export const MAX_LOOP_ITEM_ERRORS = 10;
+
+/**
+ * Authoritative per-item tallies for one loop node. The execution log is lossy
+ * (it truncates at MAX_EXECUTED_ENTRIES and compacts long loops), so counts
+ * live here instead of being re-derived from it at read time.
+ */
+export const loopSummaryValidator = v.object({
+	nodeId: v.string(),
+	/** Items the loop set out to process, frozen when the first chunk started. */
+	total: v.number(),
+	succeeded: v.number(),
+	failed: v.number(),
+	/** Items deleted between chunks — present in `total`, never processed. */
+	skipped: v.number(),
+	/** First MAX_LOOP_ITEM_ERRORS failures, in item order. */
+	errors: v.array(
+		v.object({
+			index: v.number(),
+			itemId: v.string(),
+			label: v.optional(v.string()),
+			error: v.string(),
+			/** True when earlier steps for this item were already applied. */
+			partial: v.optional(v.boolean()),
+		})
+	),
+});
+
+export type LoopSummary = Infer<typeof loopSummaryValidator>;
