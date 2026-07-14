@@ -159,6 +159,10 @@ const data = {
 							url: "/organization/profile?tab=business",
 						},
 						{
+							title: "Billing",
+							url: "/organization/profile?tab=billing",
+						},
+						{
 							title: "Payments",
 							url: "/organization/profile?tab=payments",
 							requiresPremium: true,
@@ -202,6 +206,7 @@ const NAV_ITEM_PERMISSIONS: Partial<Record<string, PermissionObject>> = {
 // Settings sub-item title -> permission object (Overview/Business Info/Payments
 // have no object of their own and stay admin-only).
 const SETTINGS_SUBITEM_PERMISSIONS: Partial<Record<string, PermissionObject>> = {
+	Billing: "billing",
 	SKUs: "skus",
 	Documents: "orgDocuments",
 };

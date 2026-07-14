@@ -6,6 +6,7 @@ import {
 	AlertTriangle,
 	Briefcase,
 	CreditCard,
+	Crown,
 	FileText,
 	LayoutGrid,
 	Lock,
@@ -34,6 +35,7 @@ import {
 import { OverviewTab } from "./_components/overview-tab";
 import { TeamTab } from "./_components/team-tab";
 import { BusinessInfoTab } from "./_components/business-info-tab";
+import { BillingTab } from "./_components/billing-tab";
 import { PaymentsTab } from "./_components/payments-tab";
 import { DocumentsTab } from "./_components/documents-tab";
 import { SKUsTab } from "./_components/skus-tab";
@@ -42,6 +44,7 @@ const TAB_VALUES = [
 	"overview",
 	"team",
 	"business",
+	"billing",
 	"payments",
 	"documents",
 	"skus",
@@ -52,6 +55,8 @@ const PREMIUM_TABS: readonly TabValue[] = ["payments", "documents", "skus"];
 
 // Granular-permission gating per tab (§5.4); tabs absent here are role/premium-gated only.
 const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
+	// Billing is intentionally NOT premium-gated — free orgs need it to upgrade.
+	billing: "billing",
 	documents: "orgDocuments",
 	skus: "skus",
 };
@@ -213,6 +218,13 @@ export default function OrganizationProfilePage() {
 				icon: Briefcase,
 			},
 			{
+				value: "billing",
+				label: "Billing",
+				sublabel: "Plan & subscription",
+				icon: Crown,
+				locked: !permsLoading && !can("billing"),
+			},
+			{
 				value: "payments",
 				label: "Payments",
 				sublabel: "Stripe & payouts",
@@ -328,6 +340,7 @@ export default function OrganizationProfilePage() {
 										{renderTab === "overview" && <OverviewTab />}
 										{renderTab === "team" && <TeamTab />}
 										{renderTab === "business" && <BusinessInfoTab />}
+										{renderTab === "billing" && <BillingTab />}
 										{renderTab === "payments" && <PaymentsTab />}
 										{renderTab === "documents" && <DocumentsTab />}
 										{renderTab === "skus" && <SKUsTab />}

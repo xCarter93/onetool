@@ -247,7 +247,7 @@ function UpgradePrompt() {
 				</p>
 			</div>
 			<Link
-				href="/subscription"
+				href="/organization/profile?tab=billing"
 				className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
 			>
 				View plans

@@ -258,7 +258,7 @@ function QuoteSignPageContent() {
 							</p>
 						</div>
 						<div className="mt-1 flex items-center gap-3">
-							<Button onClick={() => router.push("/subscription")}>
+							<Button onClick={() => router.push("/organization/profile?tab=billing")}>
 								View plans
 							</Button>
 							<Button variant="ghost" onClick={() => void backToQuote()} disabled={discarding}>

@@ -74,7 +74,7 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 									: "Workflow automations are available on the Business plan. Upgrade to automate your workflows and save time."}
 							</p>
 							{!hasPremiumAccess && isAdmin && (
-								<Button onClick={() => router.push("/subscription")}>
+								<Button onClick={() => router.push("/organization/profile?tab=billing")}>
 									Upgrade to Business
 								</Button>
 							)}
