@@ -42,6 +42,22 @@ function updateFieldActionNode(
 	};
 }
 
+/** A step a scheduled run can execute: no record scope needed. */
+function notifyNode(id: string, message = "Scheduled run fired") {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "send_notification" as const,
+				recipient: "org_admins" as const,
+				message,
+			},
+		},
+	};
+}
+
 function conditionNode(
 	id: string,
 	field: string,
@@ -1151,7 +1167,8 @@ describe("automationExecutor (v2 engine)", () => {
 				};
 				nodes?:
 					| ReturnType<typeof conditionNode>[]
-					| ReturnType<typeof updateFieldActionNode>[];
+					| ReturnType<typeof updateFieldActionNode>[]
+					| ReturnType<typeof notifyNode>[];
 				isActive?: boolean;
 			} = {}
 		) {
@@ -1165,7 +1182,9 @@ describe("automationExecutor (v2 engine)", () => {
 						time: "09:00",
 					},
 				},
-				nodes: overrides.nodes ?? [conditionNode("cond-1", "status", "equals", "active")],
+				// A scheduled run has no trigger record, so the default step must not
+				// need one — a top-level condition or update_field is rejected at save.
+				nodes: overrides.nodes ?? [notifyNode("notify-1")],
 				isActive: overrides.isActive,
 			};
 		}
@@ -1252,14 +1271,15 @@ describe("automationExecutor (v2 engine)", () => {
 			const switchedAway = await t.run(async (ctx) => ctx.db.get(id));
 			expect(switchedAway?.nextRunAt).toBeUndefined();
 
-			// Publishing a scheduled trigger sets it again.
+			// Publishing a scheduled trigger sets it again. The condition has to go:
+			// switching back to a schedule takes the trigger record away with it.
 			await asUser.mutation(api.automations.update, {
 				id,
 				trigger: {
 					type: "scheduled",
 					schedule: { frequency: "daily" as const, timezone: "UTC", time: "09:00" },
 				},
-				nodes: [conditionNode("cond-1", "status", "equals", "active")],
+				nodes: [notifyNode("notify-1")],
 			});
 			await asUser.mutation(api.automations.publish, { id });
 			const switchedBack = await t.run(async (ctx) => ctx.db.get(id));
@@ -1354,19 +1374,57 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(executions).toHaveLength(0);
 		});
 
-		it("a record-dependent action on a scheduled run fails with a clear error", async () => {
-			const { asUser, orgId } = await setupUser();
+		it("a record-dependent action on a scheduled trigger is rejected at save", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(
+					api.automations.create,
+					scheduledAutomation({
+						isActive: true,
+						nodes: [updateFieldActionNode("act-1", "notes", "Should not run")],
+					})
+				)
+			).rejects.toThrow(/no record to update/i);
+		});
+
+		it("a snapshot published before that rule still fails the run with a clear error", async () => {
+			// Rows published before the save-time rule landed can still carry a
+			// top-level update_field. The runtime guard is what protects them.
+			const { orgId } = await setupUser();
 			await makeOrgPremium(orgId);
 
-			const id = await asUser.mutation(
-				api.automations.create,
-				scheduledAutomation({
-					isActive: true,
-					nodes: [updateFieldActionNode("act-1", "notes", "Should not run")],
-				})
-			);
-			const past = Date.now() - 1000;
-			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+			const trigger = {
+				type: "scheduled" as const,
+				schedule: {
+					frequency: "daily" as const,
+					timezone: "UTC",
+					time: "09:00",
+				},
+			};
+			const nodes = [updateFieldActionNode("act-1", "notes", "Should not run")];
+
+			await t.run(async (ctx) => {
+				const user = await ctx.db.query("users").first();
+				const now = Date.now();
+				return ctx.db.insert("workflowAutomations", {
+					orgId,
+					name: "Legacy broken scheduled",
+					trigger,
+					nodes,
+					status: "active" as const,
+					publishedSnapshot: {
+						trigger,
+						nodes,
+						version: 1,
+						publishedAt: now,
+					},
+					nextRunAt: now - 1000,
+					createdBy: user!._id,
+					createdAt: now,
+					updatedAt: now,
+				});
+			});
 
 			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
 			await drainScheduled();
@@ -2064,6 +2122,279 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(result("avg")).toBeNull();
 			expect(result("min")).toBeNull();
 			expect(result("max")).toBeNull();
+		});
+
+		describe("scheduled triggers have no record (A1)", () => {
+			/** A condition whose left side is a scope value, not a record field. */
+			function varLeftConditionNode(
+				id: string,
+				path: string,
+				operator: string,
+				value: number,
+				opts: { nextNodeId?: string; elseNodeId?: string } = {}
+			) {
+				return {
+					id,
+					type: "condition" as const,
+					config: {
+						kind: "condition" as const,
+						logic: "and" as const,
+						groups: [
+							{
+								logic: "and" as const,
+								rules: [
+									{
+										field: "",
+										left: { kind: "var" as const, path },
+										// eslint-disable-next-line @typescript-eslint/no-explicit-any
+										operator: operator as any,
+										value: { kind: "static" as const, value },
+									},
+								],
+							},
+						],
+					},
+					nextNodeId: opts.nextNodeId,
+					elseNodeId: opts.elseNodeId,
+				};
+			}
+
+			async function seedInvoices(
+				orgId: Id<"organizations">,
+				clientId: Id<"clients">,
+				totals: number[]
+			) {
+				await t.run(async (ctx) => {
+					for (let i = 0; i < totals.length; i++) {
+						await ctx.db.insert("invoices", {
+							orgId,
+							clientId,
+							invoiceNumber: `INV-A1-${i}`,
+							status: "sent" as const,
+							subtotal: totals[i],
+							total: totals[i],
+							issuedDate: Date.now(),
+							dueDate: Date.now(),
+							publicToken: crypto.randomUUID(),
+						});
+					}
+				});
+			}
+
+			// The pattern A1 exists to unlock: a record-less run that branches on an
+			// aggregate. Before the var-left rule this was unbuildable — a condition
+			// could only read a record field, and a scheduled run has no record.
+			it("fetch -> aggregate -> condition on the aggregate -> notify", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await seedInvoices(orgId, clientId, [6000, 5000]); // sum 11,000
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Unpaid over 10k",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "invoice", [], { nextNodeId: "agg-1" }),
+						{
+							id: "agg-1",
+							type: "aggregate" as const,
+							config: {
+								kind: "aggregate" as const,
+								sourceNodeId: "fetch-1",
+								field: "total",
+								op: "sum" as const,
+							},
+							nextNodeId: "cond-1",
+						},
+						varLeftConditionNode(
+							"cond-1",
+							"node.agg-1.result",
+							"greater_than",
+							10000,
+							{ nextNodeId: "notify-1", elseNodeId: "end-1" }
+						),
+						sendNotificationActionNode(
+							"notify-1",
+							"org_admins",
+							"Unpaid invoices are over $10k",
+							{ nextNodeId: "end-1" }
+						),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+
+				const notifications = await t.run(async (ctx) =>
+					ctx.db.query("notifications").collect()
+				);
+				expect(notifications).toHaveLength(1);
+				expect(notifications[0].message).toMatch(/over \$10k/);
+			});
+
+			it("takes the else branch when the aggregate is under the threshold", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await seedInvoices(orgId, clientId, [1000]); // sum 1,000
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Unpaid over 10k",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "invoice", [], { nextNodeId: "agg-1" }),
+						{
+							id: "agg-1",
+							type: "aggregate" as const,
+							config: {
+								kind: "aggregate" as const,
+								sourceNodeId: "fetch-1",
+								field: "total",
+								op: "sum" as const,
+							},
+							nextNodeId: "cond-1",
+						},
+						varLeftConditionNode(
+							"cond-1",
+							"node.agg-1.result",
+							"greater_than",
+							10000,
+							{ nextNodeId: "notify-1", elseNodeId: "end-1" }
+						),
+						sendNotificationActionNode(
+							"notify-1",
+							"org_admins",
+							"Unpaid invoices are over $10k",
+							{ nextNodeId: "end-1" }
+						),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions[0].status).toBe("completed");
+				const notifications = await t.run(async (ctx) =>
+					ctx.db.query("notifications").collect()
+				);
+				expect(notifications).toHaveLength(0);
+			});
+
+			// Back-compat: the correctly-built scheduled shape (record scope comes
+			// from the loop, not the trigger) must keep validating AND running. The
+			// rejection rules key on loop-body membership; invert that and this
+			// breaks every working scheduled automation in production.
+			it("fetch -> loop -> update inside the loop still saves and runs", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				// Created through the API so aggregates initialise (see CLAUDE.md).
+				const projectIds = await Promise.all(
+					["Alpha", "Beta"].map((title) =>
+						asUser.mutation(api.projects.create, {
+							clientId,
+							title,
+							status: "planned",
+							projectType: "one-off",
+						})
+					)
+				);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Nightly project sweep",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "project", [], { nextNodeId: "loop-1" }),
+						loopNode("loop-1", "fetch-1", {
+							bodyStartNodeId: "act-1",
+							nextNodeId: "end-1",
+						}),
+						updateFieldActionNode("act-1", "status", "in-progress"),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions[0].status).toBe("completed");
+
+				const projects = await t.run(async (ctx) =>
+					Promise.all(projectIds.map((id) => ctx.db.get(id)))
+				);
+				for (const project of projects) {
+					expect(project?.status).toBe("in-progress");
+				}
+			});
+
+			// The dead field: stored rows carry it, so it must still parse — and the
+			// run must stay record-less regardless.
+			it("a stored objectType is stripped on save and the run stays record-less", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Legacy scheduled with objectType",
+					trigger: {
+						type: "scheduled",
+						objectType: "quote",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [notifyNode("notify-1")],
+					isActive: true,
+				});
+
+				const stored = await t.run(async (ctx) => ctx.db.get(automationId));
+				expect(stored?.trigger).not.toHaveProperty("objectType");
+				expect(stored?.publishedSnapshot?.trigger).not.toHaveProperty(
+					"objectType"
+				);
+
+				await runScheduledOnce(automationId);
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions[0].status).toBe("completed");
+				expect(executions[0].triggerRecord).toBeUndefined();
+			});
 		});
 
 		it("adjust_time: shifts a base timestamp by a fixed offset (add and subtract)", async () => {

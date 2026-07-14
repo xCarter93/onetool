@@ -128,6 +128,15 @@ export const conditionRuleValidator = v.object({
 	field: v.string(),
 	operator: conditionOperatorValidator,
 	value: v.optional(valueRefValidator),
+	/**
+	 * Left-hand side. Absent => the rule reads `field` off the in-scope record.
+	 * Set => the rule compares a scope value (an aggregate result, a fetch count)
+	 * and `field` is ignored, which is the only way to branch without a record —
+	 * e.g. a scheduled automation asking "is unpaid total over $10k?".
+	 * Only legal on condition nodes: a fetch filter and trigger entry criteria
+	 * must name a real field, so both reject it.
+	 */
+	left: v.optional(valueRefValidator),
 });
 
 export const conditionGroupValidator = v.object({
@@ -445,8 +454,11 @@ export const scheduledTriggerValidator = v.object({
 	type: v.literal("scheduled"),
 	schedule: scheduleValidator,
 	/**
-	 * When set, the automation runs once per record matching the first
-	 * fetch_records node (or once with no record scope if none).
+	 * @deprecated Ignored. A scheduled run has no triggering record — the
+	 * dispatcher passes none, so `trigger.record` is `{}` for the whole walk.
+	 * Record scope comes from a fetch_records + loop instead. Still accepted so
+	 * stored rows parse; `triggerRecordObjectType()` returns undefined for
+	 * scheduled, and writes strip it.
 	 */
 	objectType: v.optional(objectTypeValidator),
 });
@@ -466,6 +478,24 @@ export type AutomationTriggerV2 =
 	| Infer<typeof recordCreatedTriggerValidator>
 	| Infer<typeof recordUpdatedTriggerValidator>
 	| Infer<typeof scheduledTriggerValidator>;
+
+/**
+ * The object type of the record the trigger binds to `trigger.record`, or
+ * undefined when there is none. Scheduled triggers always return undefined:
+ * their stored `objectType` is a dead field (see scheduledTriggerValidator).
+ *
+ * Single chokepoint — read the trigger's object type through this, never off
+ * the trigger directly, or scheduled automations start claiming a record scope
+ * the runtime never gives them.
+ */
+export function triggerRecordObjectType(
+	trigger: AutomationTrigger
+): AutomationObjectType | undefined {
+	if (!("type" in trigger) || trigger.type === "scheduled") return undefined;
+	return "objectType" in trigger && trigger.objectType
+		? trigger.objectType
+		: undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Formula resources — reusable named expressions (Slice 4.6). Defined once on

@@ -38,6 +38,7 @@ import {
 	MAX_LOOP_ITEM_ERRORS,
 	MAX_LOOP_ITERATIONS,
 	objectTypeValidator,
+	triggerRecordObjectType,
 	type ActionTarget,
 	type AutomationAction,
 	type AutomationObjectType,
@@ -4175,10 +4176,9 @@ export const startTestRun = userMutation({
 		}
 
 		const trigger = automation.trigger;
-		const triggerObjectType =
-			"objectType" in trigger && trigger.objectType
-				? (trigger.objectType as ObjectType)
-				: undefined;
+		const triggerObjectType = triggerRecordObjectType(
+			trigger as AutomationTrigger
+		) as ObjectType | undefined;
 
 		let triggerObject: Record<string, unknown> = {};
 		let scopeRecord: ScopeRecord | undefined;
@@ -4397,11 +4397,9 @@ export const startManualRun = userMutation({
 		}
 
 		const { trigger } = executableDefinition(automation);
-		const triggerType = "type" in trigger ? trigger.type : "status_changed";
-		const objectType =
-			"objectType" in trigger && trigger.objectType
-				? (trigger.objectType as ObjectType)
-				: undefined;
+		const objectType = triggerRecordObjectType(
+			trigger as AutomationTrigger
+		) as ObjectType | undefined;
 
 		let triggerRecord:
 			| { entityType: string; entityId: string; label?: string }
@@ -4430,7 +4428,7 @@ export const startManualRun = userMutation({
 				entityId: objectId,
 				label: sampleRecordLabel(objType, obj as Record<string, unknown>),
 			};
-		} else if (objectType && triggerType !== "scheduled") {
+		} else if (objectType) {
 			throw new Error("Pick a record to run this automation against");
 		}
 
@@ -4519,9 +4517,9 @@ export const getSampleRecords = userQuery({
 			// Manual runs execute the published snapshot, so derive the record
 			// type from it — an unpublished object-type edit must not leak here.
 			const { trigger } = executableDefinition(automation);
-			if ("objectType" in trigger && trigger.objectType) {
-				objectType = trigger.objectType as ObjectType;
-			}
+			objectType = triggerRecordObjectType(trigger as AutomationTrigger) as
+				| ObjectType
+				| undefined;
 		}
 		if (!objectType) return [];
 

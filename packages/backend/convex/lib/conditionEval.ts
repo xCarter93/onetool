@@ -351,7 +351,12 @@ export function evaluateRule(
 	record: Record<string, unknown>,
 	scope: VariableScope
 ): boolean {
-	const fieldValue = record[rule.field];
+	// A rule with an explicit `left` compares a scope value (aggregate result,
+	// fetch count) and never touches the record — that is how a record-less run
+	// branches at all.
+	const fieldValue = rule.left
+		? resolveValueRef(rule.left, scope)
+		: record[rule.field];
 	const compareValue = rule.value
 		? resolveValueRef(rule.value, scope)
 		: undefined;

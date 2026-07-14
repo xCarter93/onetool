@@ -1,4 +1,8 @@
 import { createTool } from "@convex-dev/agent";
+import {
+	triggerRecordObjectType,
+	type AutomationTrigger,
+} from "./lib/workflowTypes";
 import { ConvexError } from "convex/values";
 import { z } from "zod";
 import { api } from "./_generated/api";
@@ -1126,7 +1130,7 @@ export const getAutomations = createTool({
 				name: a.name,
 				description: truncate(a.description, TEXT_CAP),
 				isActive: a.status === "active",
-				trigger: `${a.trigger.type}${"objectType" in a.trigger ? ` (${a.trigger.objectType})` : ""}`,
+				trigger: `${a.trigger.type}${triggerRecordObjectType(a.trigger as AutomationTrigger) ? ` (${triggerRecordObjectType(a.trigger as AutomationTrigger)})` : ""}`,
 				lastTriggeredAt: isoInstant(a.lastTriggeredAt),
 				triggerCount: a.triggerCount,
 			})),

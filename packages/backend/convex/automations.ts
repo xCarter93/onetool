@@ -21,8 +21,10 @@ import {
 	recordUpdatedTriggerValidator,
 	scheduledTriggerValidator,
 	statusChangedTriggerValidator,
+	triggerRecordObjectType,
 	type AutomationObjectType,
 	type AutomationTrigger,
+	type ConditionGroup,
 	type FormulaResource,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
@@ -195,21 +197,128 @@ function validateTrigger(trigger: AutomationTrigger): void {
 	}
 }
 
-function triggerObjectType(
-	trigger: AutomationTrigger
-): AutomationObjectType | undefined {
-	if ("objectType" in trigger && trigger.objectType) {
-		return trigger.objectType;
+function isScheduledTrigger(trigger: AutomationTrigger): boolean {
+	return "type" in trigger && trigger.type === "scheduled";
+}
+
+/**
+ * Scheduled triggers store no object type: it was never read at runtime, but
+ * the builder used to stamp one on every scheduled trigger, and anything that
+ * reads it starts claiming a record scope the run does not have. Stripping on
+ * write heals stored rows the next time they are saved.
+ */
+function sanitizeTrigger<T>(trigger: T): T {
+	if (
+		!trigger ||
+		typeof trigger !== "object" ||
+		(trigger as { type?: string }).type !== "scheduled" ||
+		!("objectType" in trigger)
+	) {
+		return trigger;
 	}
-	return undefined;
+	const rest = { ...(trigger as Record<string, unknown>) };
+	delete rest.objectType;
+	return rest as T;
+}
+
+const TEMPLATE_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
+
+/**
+ * Every scope path a config reads: `{kind:"var"}` refs plus `{{token}}`s inside
+ * static strings. A message template is not a ValueRef but resolves the same
+ * paths at runtime, so a path-only scan would miss `{{trigger.record.total}}`
+ * sitting in a notification body.
+ */
+function collectConfigPaths(value: unknown, out: string[] = []): string[] {
+	if (typeof value === "string") {
+		for (const match of value.matchAll(TEMPLATE_TOKEN)) {
+			out.push(match[1].trim());
+		}
+		return out;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) collectConfigPaths(item, out);
+		return out;
+	}
+	if (value !== null && typeof value === "object") {
+		const obj = value as Record<string, unknown>;
+		if (obj.kind === "var" && typeof obj.path === "string") {
+			out.push(obj.path);
+		}
+		for (const key of Object.keys(obj)) collectConfigPaths(obj[key], out);
+	}
+	return out;
+}
+
+/** Paths that only resolve when the run has a triggering record. */
+function readsTriggerRecord(path: string): boolean {
+	return /^trigger\.(record|event)\b/.test(path);
+}
+
+const NO_RECORD = "a scheduled automation has no triggering record";
+
+/**
+ * A scheduled run walks with `trigger.record` = {} — the dispatcher passes no
+ * record. So anything reading or acting on the trigger record is dead at
+ * runtime: an action hard-fails, a condition silently takes the wrong branch.
+ * Reject at save time and point at fetch + loop.
+ *
+ * Loop bodies are exempt — there the record in scope IS the loop item. The
+ * predicate is "not in a loop body", never "source === trigger": a legacy
+ * in-loop condition with no stored source works fine at runtime, and keying on
+ * source would refuse to save it.
+ */
+function validateScheduledRecordScope(
+	nodes: NodeArg[],
+	bodyScopeType: Map<string, AutomationObjectType | undefined>
+): void {
+	for (const node of nodes) {
+		for (const path of collectConfigPaths(node.config)) {
+			if (readsTriggerRecord(path)) {
+				throw new Error(
+					`Node ${node.id}: "${path}" is always empty — ${NO_RECORD}. Add a "Find records" step and read the loop item instead.`
+				);
+			}
+		}
+
+		if (bodyScopeType.has(node.id)) continue;
+
+		const config = node.config;
+		if (
+			config.kind === "condition" &&
+			config.groups.some((group) => group.rules.some((rule) => !rule.left))
+		) {
+			throw new Error(
+				`Node ${node.id}: this condition has nothing to test — ${NO_RECORD}. Compare a step result instead (a "Find records" count or an aggregate), or move the condition inside a loop.`
+			);
+		}
+		if (config.kind === "action") {
+			// Both update_field targets (self and related) resolve off the record in
+			// scope, so neither can work outside a loop.
+			if (config.action.type === "update_field") {
+				throw new Error(
+					`Node ${node.id}: there is no record to update — ${NO_RECORD}. Add a "Find records" step and put this action inside a loop.`
+				);
+			}
+			if (config.action.type === "create_task" && config.action.linkToRecord) {
+				throw new Error(
+					`Node ${node.id}: there is no record to link this task to — ${NO_RECORD}. Put it inside a loop, or turn off "Link to record".`
+				);
+			}
+		}
+	}
 }
 
 function validateConditionGroups(
 	nodeId: string,
-	groups: { logic: "and" | "or"; rules: { field: string; operator: string; value?: unknown }[] }[],
+	groups: ConditionGroup[],
 	objectType: AutomationObjectType | undefined,
-	context: string
+	context: "condition" | "filter" | "entry criteria"
 ): void {
+	// A variable left-hand side is only meaningful on a condition node. A fetch
+	// filter and trigger entry criteria both run against records being scanned,
+	// so their rules must name a real field.
+	const allowVarLeft = context === "condition";
 	if (groups.length > MAX_CONDITION_GROUPS) {
 		throw new Error(
 			`Node ${nodeId}: at most ${MAX_CONDITION_GROUPS} ${context} groups allowed`
@@ -222,21 +331,37 @@ function validateConditionGroups(
 			);
 		}
 		for (const rule of group.rules) {
-			if (!rule.field.trim()) {
-				throw new Error(`Node ${nodeId}: rule is missing a field`);
-			}
-			if (objectType) {
-				const def = getFieldDefinition(objectType, rule.field);
-				if (!def) {
+			if (rule.left) {
+				if (!allowVarLeft) {
 					throw new Error(
-						`Node ${nodeId}: unknown field "${rule.field}" for ${objectType}`
+						`Node ${nodeId}: a ${context} rule must compare a field on the record`
 					);
 				}
-				const operators = operatorsForField(objectType, rule.field);
-				if (!operators.includes(rule.operator as never)) {
+				if (rule.left.kind !== "var") {
 					throw new Error(
-						`Node ${nodeId}: operator "${rule.operator}" is not valid for field "${rule.field}"`
+						`Node ${nodeId}: a condition's left side must be a variable`
 					);
+				}
+				if (!rule.left.path.trim()) {
+					throw new Error(`Node ${nodeId}: rule is missing a variable to test`);
+				}
+			} else {
+				if (!rule.field.trim()) {
+					throw new Error(`Node ${nodeId}: rule is missing a field`);
+				}
+				if (objectType) {
+					const def = getFieldDefinition(objectType, rule.field);
+					if (!def) {
+						throw new Error(
+							`Node ${nodeId}: unknown field "${rule.field}" for ${objectType}`
+						);
+					}
+					const operators = operatorsForField(objectType, rule.field);
+					if (!operators.includes(rule.operator as never)) {
+						throw new Error(
+							`Node ${nodeId}: operator "${rule.operator}" is not valid for field "${rule.field}"`
+						);
+					}
 				}
 			}
 			const valueless = (VALUELESS_OPERATORS as readonly string[]).includes(
@@ -340,7 +465,7 @@ function validateWorkflowDefinition(
 ): void {
 	validateTrigger(trigger);
 
-	const objectType = triggerObjectType(trigger);
+	const objectType = triggerRecordObjectType(trigger);
 	const nodeIds = new Set(nodes.map((n) => n.id));
 	if (nodeIds.size !== nodes.length) {
 		throw new Error("Node ids must be unique");
@@ -349,6 +474,10 @@ function validateWorkflowDefinition(
 	// Loop-body nodes act on the loop's fetched records, not the trigger
 	// record — validate their update_field configs against that object type.
 	const bodyScopeType = computeLoopBodyScopeTypes(nodes);
+
+	if (isScheduledTrigger(trigger)) {
+		validateScheduledRecordScope(nodes, bodyScopeType);
+	}
 
 	for (const node of nodes) {
 		const config = node.config;
@@ -680,8 +809,12 @@ function validateForActivation(
  * inputs are in scope) is handled in the builder; at runtime an out-of-scope
  * reference fails the run clearly.
  */
-function validateFormulas(formulas: FormulaResource[] | undefined): void {
+function validateFormulas(
+	formulas: FormulaResource[] | undefined,
+	trigger: AutomationTrigger
+): void {
 	if (!formulas || formulas.length === 0) return;
+	const scheduled = isScheduledTrigger(trigger);
 	if (formulas.length > MAX_FORMULAS) {
 		throw new Error(`An automation can have at most ${MAX_FORMULAS} formulas`);
 	}
@@ -704,6 +837,17 @@ function validateFormulas(formulas: FormulaResource[] | undefined): void {
 			const msg = err instanceof FormulaError ? err.message : "invalid expression";
 			throw new Error(`Formula "${f.name}" has a syntax error: ${msg}`);
 		}
+		// Formulas are automation-level, so a node-only scan never sees them: a
+		// formula reading the trigger record is dead at every use site.
+		if (scheduled) {
+			const dead = referenced.find(readsTriggerRecord);
+			if (dead) {
+				throw new Error(
+					`Formula "${f.name}" reads "${dead}", which is always empty — ${NO_RECORD}. Use a step result, or a loop item inside a loop.`
+				);
+			}
+		}
+
 		refs.set(
 			f.id,
 			referenced
@@ -765,7 +909,7 @@ function buildSnapshot(
 	>
 ): NonNullable<AutomationDocument["publishedSnapshot"]> {
 	return {
-		trigger: automation.trigger,
+		trigger: sanitizeTrigger(automation.trigger),
 		nodes: automation.nodes,
 		formulas: automation.formulas,
 		version: (automation.publishedSnapshot?.version ?? 0) + 1,
@@ -868,30 +1012,31 @@ export const create = userMutation({
 		} else {
 			validateWorkflowDefinition(args.trigger, args.nodes);
 		}
-		validateFormulas(args.formulas);
+		validateFormulas(args.formulas, args.trigger);
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const user = await getCurrentUserOrThrow(ctx);
 		const now = Date.now();
+		const trigger = sanitizeTrigger(args.trigger);
 
 		return await ctx.db.insert("workflowAutomations", {
 			orgId: userOrgId,
 			name: args.name.trim(),
 			description: args.description?.trim(),
-			trigger: args.trigger,
+			trigger,
 			nodes: args.nodes,
 			formulas: args.formulas,
 			status: activate ? "active" : "draft",
 			publishedSnapshot: activate
 				? {
-						trigger: args.trigger,
+						trigger,
 						nodes: args.nodes,
 						formulas: args.formulas,
 						version: 1,
 						publishedAt: now,
 					}
 				: undefined,
-			nextRunAt: scheduledNextRunAt(args.trigger, activate),
+			nextRunAt: scheduledNextRunAt(trigger, activate),
 			createdBy: user._id,
 			createdAt: now,
 			updatedAt: now,
@@ -924,8 +1069,9 @@ export const update = userMutation({
 			throw new Error("Automation name cannot be empty");
 		}
 
+		const nextTrigger = updates.trigger ?? automation.trigger;
+
 		if (updates.trigger !== undefined || updates.nodes !== undefined) {
-			const nextTrigger = updates.trigger ?? automation.trigger;
 			const nextNodes = (updates.nodes ?? automation.nodes) as NodeArg[];
 			if (updates.trigger !== undefined && !("type" in nextTrigger)) {
 				throw new Error("Legacy triggers can no longer be written");
@@ -942,8 +1088,10 @@ export const update = userMutation({
 			validateWorkflowDefinition(nextTrigger, nextNodes);
 		}
 
-		if (updates.formulas !== undefined) {
-			validateFormulas(updates.formulas);
+		// Also re-check stored formulas when the trigger changes: switching to a
+		// schedule can strand a formula that reads the trigger record.
+		if (updates.formulas !== undefined || updates.trigger !== undefined) {
+			validateFormulas(updates.formulas ?? automation.formulas, nextTrigger);
 		}
 
 		const patch: Partial<AutomationDocument> = { updatedAt: Date.now() };
@@ -952,7 +1100,9 @@ export const update = userMutation({
 		if (updates.description !== undefined) {
 			patch.description = updates.description.trim();
 		}
-		if (updates.trigger !== undefined) patch.trigger = updates.trigger;
+		if (updates.trigger !== undefined) {
+			patch.trigger = sanitizeTrigger(updates.trigger);
+		}
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.formulas !== undefined) patch.formulas = updates.formulas;
 
@@ -971,7 +1121,7 @@ export const publish = userMutation({
 		const automation = await getAutomationOrThrow(ctx, args.id);
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
-		validateFormulas(automation.formulas);
+		validateFormulas(automation.formulas, automation.trigger);
 
 		await ctx.db.patch(args.id, {
 			status: "active",
@@ -1025,7 +1175,7 @@ export const toggleActive = userMutation({
 
 		// Draft with no snapshot: publishing is the only way to go live.
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
-		validateFormulas(automation.formulas);
+		validateFormulas(automation.formulas, automation.trigger);
 		await ctx.db.patch(args.id, {
 			status: "active",
 			publishedSnapshot: buildSnapshot(automation),

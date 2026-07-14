@@ -117,6 +117,22 @@ function createTaskNode(
 	};
 }
 
+/** A step a scheduled run can execute: no record scope needed. */
+function notifyNode(id: string, message = "Scheduled run fired") {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "send_notification" as const,
+				recipient: "org_admins" as const,
+				message,
+			},
+		},
+	};
+}
+
 function actionNode(id: string, statusValue = "inactive") {
 	return {
 		id,
@@ -227,7 +243,7 @@ describe("Automations", () => {
 						time: "09:00",
 					},
 				},
-				nodes: [actionNode("act-1", "inactive")],
+				nodes: [notifyNode("notify-1")],
 				isActive: true,
 			});
 
@@ -433,6 +449,203 @@ describe("Automations", () => {
 			});
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("draft");
+		});
+	});
+
+	describe("scheduled triggers have no record (A1)", () => {
+		const schedule = {
+			frequency: "daily" as const,
+			timezone: "UTC",
+			time: "09:00",
+		};
+		const scheduledTrigger = { type: "scheduled" as const, schedule };
+
+		/** A condition whose left side is a scope value, not a record field. */
+		function varLeftConditionNode(id: string, path: string) {
+			return {
+				id,
+				type: "condition" as const,
+				config: {
+					kind: "condition" as const,
+					logic: "and" as const,
+					groups: [
+						{
+							logic: "and" as const,
+							rules: [
+								{
+									field: "",
+									left: { kind: "var" as const, path },
+									operator: "greater_than" as const,
+									value: { kind: "static" as const, value: 100 },
+								},
+							],
+						},
+					],
+				},
+			};
+		}
+
+		it("rejects a top-level update_field on update, not just create", async () => {
+			const { asUser } = await setupUser();
+
+			// Starts life as a record trigger, where update_field(self) is fine.
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Switcher",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+			});
+
+			await expect(
+				asUser.mutation(api.automations.update, {
+					id,
+					trigger: scheduledTrigger,
+				})
+			).rejects.toThrow(/no record to update/i);
+		});
+
+		it("rejects a condition that reads a record field", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Record-reading condition",
+					trigger: scheduledTrigger,
+					nodes: [conditionNode("cond-1")],
+				})
+			).rejects.toThrow(/nothing to test/i);
+		});
+
+		it("accepts a top-level condition whose left side is a variable", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Aggregate threshold",
+				trigger: scheduledTrigger,
+				nodes: [varLeftConditionNode("cond-1", "node.agg-1.result")],
+			});
+
+			expect(await asUser.query(api.automations.get, { id })).toBeTruthy();
+		});
+
+		it("rejects a {{trigger.record.*}} token inside a message template", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Dead token in a template",
+					trigger: scheduledTrigger,
+					// Not a ValueRef — a path-only scan would sail right past this.
+					nodes: [notifyNode("notify-1", "Total: {{trigger.record.total}}")],
+				})
+			).rejects.toThrow(/always empty/i);
+		});
+
+		it("rejects a formula that reads the trigger record", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Dead formula",
+					trigger: scheduledTrigger,
+					nodes: [notifyNode("notify-1")],
+					formulas: [
+						{
+							id: "f1",
+							name: "Doubled",
+							returnType: "number" as const,
+							expression: "{trigger.record.budget} * 2",
+						},
+					],
+				})
+			).rejects.toThrow(/always empty/i);
+		});
+
+		it("rejects switching to a schedule when a stored formula reads the record", async () => {
+			const { asUser } = await setupUser();
+
+			// Formulas are automation-level: changing only the trigger has to
+			// re-check them, or a live formula is stranded reading nothing.
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Formula stranded by a trigger switch",
+				trigger: clientTrigger,
+				nodes: [notifyNode("notify-1")],
+				formulas: [
+					{
+						id: "f1",
+						name: "Doubled",
+						returnType: "number" as const,
+						expression: "{trigger.record.budget} * 2",
+					},
+				],
+			});
+
+			await expect(
+				asUser.mutation(api.automations.update, { id, trigger: scheduledTrigger })
+			).rejects.toThrow(/always empty/i);
+		});
+
+		it("rejects a variable left side in a fetch filter", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Var left in a filter",
+					trigger: scheduledTrigger,
+					nodes: [
+						{
+							id: "fetch-1",
+							type: "fetch_records" as const,
+							config: {
+								kind: "fetch_records" as const,
+								objectType: "client" as const,
+								filters: [
+									{
+										logic: "and" as const,
+										rules: [
+											{
+												field: "",
+												left: { kind: "var" as const, path: "node.x.count" },
+												operator: "greater_than" as const,
+												value: { kind: "static" as const, value: 1 },
+											},
+										],
+									},
+								],
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/must compare a field/i);
+		});
+
+		it("rejects a variable left side in trigger entry criteria", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Var left in entry criteria",
+					trigger: {
+						...clientTrigger,
+						entryCriteria: {
+							logic: "and" as const,
+							groups: [
+								{
+									logic: "and" as const,
+									rules: [
+										{
+											field: "",
+											left: { kind: "var" as const, path: "node.x.count" },
+											operator: "greater_than" as const,
+											value: { kind: "static" as const, value: 1 },
+										},
+									],
+								},
+							],
+						},
+					},
+					nodes: [notifyNode("notify-1")],
+				})
+			).rejects.toThrow(/must compare a field/i);
 		});
 	});
 
@@ -872,7 +1085,7 @@ describe("Automations", () => {
 			const id = await asUser.mutation(api.automations.create, {
 				name: "Resume trigger check",
 				trigger: { type: "scheduled", schedule: originalSchedule },
-				nodes: [actionNode("act-1")],
+				nodes: [notifyNode("notify-1")],
 				isActive: true,
 			});
 
