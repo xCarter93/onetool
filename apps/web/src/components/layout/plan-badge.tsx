@@ -42,7 +42,7 @@ export function PlanBadge() {
 
 	const handleManageSubscription = () => {
 		setOpen(false);
-		router.push("/subscription");
+		router.push("/organization/profile?tab=billing");
 	};
 
 	return (

@@ -40,7 +40,7 @@ export function PremiumGate({ children }: { children: ReactNode }) {
 							Back
 						</Button>
 						{isAdmin && !hasPremiumAccess && (
-							<Button onClick={() => router.push("/subscription")}>
+							<Button onClick={() => router.push("/organization/profile?tab=billing")}>
 								Upgrade to Business
 							</Button>
 						)}
