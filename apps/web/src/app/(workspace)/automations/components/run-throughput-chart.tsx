@@ -3,14 +3,7 @@
 import { useId, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import {
-	Area,
-	CartesianGrid,
-	ComposedChart,
-	Line,
-	XAxis,
-	YAxis,
-} from "recharts";
+import { Area, CartesianGrid, ComposedChart, XAxis, YAxis } from "recharts";
 import {
 	Frame,
 	FrameHeader,
@@ -29,7 +22,8 @@ import { cn } from "@/lib/utils";
 const WINDOW_DAYS = 30;
 
 const chartConfig: ChartConfig = {
-	runs: { label: "Runs", color: "var(--primary)" },
+	success: { label: "Successful", color: "var(--primary)" },
+	failed: { label: "Failed", color: "var(--destructive)" },
 };
 
 const dayLabel = (value: number) =>
@@ -38,12 +32,17 @@ const dayLabel = (value: number) =>
 		day: "numeric",
 	});
 
+const SERIES = [
+	{ key: "success", label: "Successful", color: "var(--primary)" },
+	{ key: "failed", label: "Failed", color: "var(--destructive)" },
+] as const;
+
 function ThroughputTooltip({
 	active,
 	payload,
 }: {
 	active?: boolean;
-	payload?: { payload: { day: number; runs: number } }[];
+	payload?: { payload: { day: number; success: number; failed: number } }[];
 }) {
 	if (!active || !payload?.length) return null;
 	const point = payload[0].payload;
@@ -52,17 +51,23 @@ function ThroughputTooltip({
 			<div className="text-popover-foreground border-border/50 mb-2 border-b pb-1.5 text-sm font-semibold">
 				{dayLabel(point.day)}
 			</div>
-			<div className="flex items-center justify-between gap-3">
-				<div className="flex items-center gap-2">
-					<span
-						className="size-2.5 rounded-sm"
-						style={{ backgroundColor: "var(--primary)" }}
-					/>
-					<span className="text-muted-foreground text-xs font-medium">Runs</span>
-				</div>
-				<span className="text-popover-foreground text-sm font-semibold tabular-nums">
-					{point.runs.toLocaleString()}
-				</span>
+			<div className="flex flex-col gap-1.5">
+				{SERIES.map(({ key, label, color }) => (
+					<div key={key} className="flex items-center justify-between gap-3">
+						<div className="flex items-center gap-2">
+							<span
+								className="size-2.5 rounded-sm"
+								style={{ backgroundColor: color }}
+							/>
+							<span className="text-muted-foreground text-xs font-medium">
+								{label}
+							</span>
+						</div>
+						<span className="text-popover-foreground text-sm font-semibold tabular-nums">
+							{point[key].toLocaleString()}
+						</span>
+					</div>
+				))}
 			</div>
 		</div>
 	);
@@ -70,15 +75,19 @@ function ThroughputTooltip({
 
 export function RunThroughputChart({ className }: { className?: string }) {
 	const patternPrefix = useId();
-	const AREA_STRIPE_ID = stripeId(patternPrefix, 0);
+	const SUCCESS_STRIPE_ID = stripeId(patternPrefix, 0);
+	const FAILED_STRIPE_ID = stripeId(patternPrefix, 1);
 	const raw = useQuery(api.automations.getRunThroughput, {
 		windowDays: WINDOW_DAYS,
 	});
 	const loading = raw === undefined;
 
 	const { data, total, delta, positive } = useMemo(() => {
+		// Bands chart success/failed only; skipped still counts toward the headline total.
 		const points = (raw ?? []).map((d) => ({
 			day: d.day,
+			success: d.success,
+			failed: d.failed,
 			runs: d.success + d.failed + d.skipped,
 		}));
 		const sum = points.reduce((s, p) => s + p.runs, 0);
@@ -132,6 +141,19 @@ export function RunThroughputChart({ className }: { className?: string }) {
 				</div>
 
 				<div className="mt-auto pt-4">
+					<div className="mb-2 flex items-center justify-end gap-4">
+						{SERIES.map(({ key, label, color }) => (
+							<div key={key} className="flex items-center gap-1.5">
+								<span
+									className="size-2 rounded-sm"
+									style={{ backgroundColor: color }}
+								/>
+								<span className="text-muted-foreground text-xs font-medium">
+									{label}
+								</span>
+							</div>
+						))}
+					</div>
 					{loading ? (
 						<div className="h-[240px] w-full rounded-md bg-muted motion-safe:animate-pulse" />
 					) : (
@@ -141,7 +163,10 @@ export function RunThroughputChart({ className }: { className?: string }) {
 								data={data}
 								margin={{ top: 10, bottom: 10, left: 10, right: 10 }}
 							>
-								<ChartStripeDefs idPrefix={patternPrefix} colors={["var(--primary)"]} />
+								<ChartStripeDefs
+									idPrefix={patternPrefix}
+									colors={["var(--primary)", "var(--destructive)"]}
+								/>
 								<CartesianGrid
 									vertical={false}
 									strokeDasharray="3 3"
@@ -158,18 +183,22 @@ export function RunThroughputChart({ className }: { className?: string }) {
 								/>
 								<YAxis hide />
 								<ChartTooltip cursor={false} content={<ThroughputTooltip />} />
+								{/* First Area = stack bottom: failures hug the baseline, success stroke traces the total */}
 								<Area
 									type="monotone"
-									dataKey="runs"
-									fill={`url(#${AREA_STRIPE_ID})`}
+									dataKey="failed"
+									stackId="runs"
+									fill={`url(#${FAILED_STRIPE_ID})`}
 									stroke="transparent"
+									activeDot={false}
 								/>
-								<Line
+								<Area
 									type="monotone"
-									dataKey="runs"
+									dataKey="success"
+									stackId="runs"
+									fill={`url(#${SUCCESS_STRIPE_ID})`}
 									stroke="var(--primary)"
 									strokeWidth={2.5}
-									dot={false}
 									activeDot={{
 										r: 5,
 										fill: "var(--primary)",
