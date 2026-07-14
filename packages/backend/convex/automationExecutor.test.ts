@@ -941,6 +941,123 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("update_field on a non-status field", () => {
+		it("non-status update_field emits record_updated so chained automations fire", async () => {
+			const { asUser } = await setupUser();
+
+			// A writes a non-status field. Only `status` writes went through
+			// applyStatusUpdate (which emits); this path used to patch silently.
+			await asUser.mutation(api.automations.create, {
+				name: "A \u2014 stamp notes on create",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "A wrote this")],
+				isActive: true,
+			});
+
+			// B chains on the field A writes. Without the emit it never fires.
+			await asUser.mutation(api.automations.create, {
+				name: "B \u2014 react to the notes change",
+				trigger: {
+					type: "record_updated",
+					objectType: "client",
+					fields: ["notes"],
+				},
+				nodes: [updateFieldActionNode("act-1", "companyDescription", "B ran")],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("A wrote this");
+			// The cascade's payoff: B's write only lands if A's write was announced.
+			expect(client?.companyDescription).toBe("B ran");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(2);
+			expect(executions.map((e) => e.status)).toEqual([
+				"completed",
+				"completed",
+			]);
+
+			const cascadeEvents = await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("eventType"), "entity.record_updated"),
+							q.eq(
+								q.field("eventSource"),
+								"automationExecutor.executeActionNodeV2"
+							)
+						)
+					)
+					.collect()
+			);
+			const notesCascade = cascadeEvents.find(
+				(e) => e.payload.field === "notes"
+			);
+			expect(notesCascade).toBeDefined();
+			expect(notesCascade?.payload.oldValue).toBeUndefined();
+			expect(notesCascade?.payload.newValue).toBe("A wrote this");
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const metadata = notesCascade?.payload.metadata as any;
+			expect(metadata?.changedFields).toEqual(["notes"]);
+			expect(metadata?.isCascade).toBe(true);
+		});
+
+		it("a no-op update_field (same value) emits no record_updated event", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Rewrite notes with the value already on the record",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "Preset note")],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+				notes: "Preset note",
+			});
+
+			await drainEvents();
+
+			// The action ran \u2014 it just had nothing to announce.
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+
+			const cascadeEvents = await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("eventType"), "entity.record_updated"),
+							q.eq(
+								q.field("eventSource"),
+								"automationExecutor.executeActionNodeV2"
+							)
+						)
+					)
+					.collect()
+			);
+			expect(cascadeEvents).toHaveLength(0);
+		});
+	});
+
 	describe("org isolation", () => {
 		it("does not fire an org A automation for an org B record", async () => {
 			const orgA = await setupUser({

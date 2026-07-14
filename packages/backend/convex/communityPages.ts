@@ -8,6 +8,7 @@ import {
 import { getOptionalOrgId } from "./lib/queries";
 import { rateLimiter } from "./rateLimits";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import { emitRecordCreatedEvent } from "./eventBus";
 import { isAdminRole } from "./lib/permissions";
 
 // Type definitions
@@ -603,7 +604,7 @@ export const submitInterest = mutation({
 		}
 		nextDay.setHours(9, 0, 0, 0);
 
-		await ctx.db.insert("tasks", {
+		const taskId = await ctx.db.insert("tasks", {
 			orgId: page.orgId,
 			title: `Follow up: ${sanitizedName}`,
 			description: descParts.join("\n"),
@@ -612,6 +613,16 @@ export const submitInterest = mutation({
 			type: "internal",
 			assigneeUserId: assigneeUserId || undefined,
 		});
+
+		// Public submission — no actor user, but task record_created automations
+		// must still fire for lead-capture follow-ups.
+		await emitRecordCreatedEvent(
+			ctx,
+			page.orgId,
+			"task",
+			taskId,
+			"communityPages.submitInterest"
+		);
 
 		return { success: true };
 	},

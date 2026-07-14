@@ -2492,6 +2492,7 @@ async function executeActionNodeV2(
 	if (!targetObject) {
 		return { success: false, error: "Target object not found" };
 	}
+	const previousValue = (targetObject as Record<string, unknown>)[action.field];
 
 	try {
 		const updatePayload: Record<string, any> = {
@@ -2533,6 +2534,36 @@ async function executeActionNodeV2(
 				);
 				break;
 			// Clients and tasks don't have aggregate field tracking
+		}
+
+		// Emit record_updated so automations chained on this field actually fire
+		// (status writes emit their own event via applyStatusUpdate). The chain
+		// rides in metadata — the emitRecordUpdatedEvent helper would drop it and
+		// defeat the recursion guard. Same shape as the create_task emit below.
+		if (previousValue !== coerced.value) {
+			await ctx.db.insert("domainEvents", {
+				orgId,
+				eventType: "entity.record_updated",
+				eventSource: "automationExecutor.executeActionNodeV2",
+				payload: {
+					entityType: targetInfo.type,
+					entityId: targetInfo.id,
+					field: action.field,
+					oldValue: previousValue,
+					newValue: coerced.value,
+					metadata: {
+						changedFields: [action.field],
+						executionChain,
+						recursionDepth,
+						isCascade: true,
+					},
+				},
+				status: "pending",
+				correlationId: `cascade-${executionChain.join("-")}-${Date.now()}`,
+				createdAt: Date.now(),
+				attemptCount: 0,
+			});
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
 		}
 
 		return { success: true };

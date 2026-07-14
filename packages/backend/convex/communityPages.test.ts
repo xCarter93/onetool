@@ -321,6 +321,43 @@ describe("Community Pages", () => {
 		expect(tasks[0].type).toBe("internal");
 	});
 
+	it("submitInterest emits entity.record_created for the follow-up task", async () => {
+		// Public, unauthenticated submission \u2014 the lead-capture task still has to
+		// reach record_created automations. It used to be inserted silently.
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "lead-event-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "lead-event-test",
+			name: "Lead Eventson",
+			email: "lead@example.com",
+		});
+
+		const taskId = await t.run(async (ctx) => {
+			const tasks = await ctx.db.query("tasks").collect();
+			return tasks[0]._id;
+		});
+
+		const events = await t.run(async (ctx) =>
+			ctx.db
+				.query("domainEvents")
+				.filter((q) => q.eq(q.field("eventType"), "entity.record_created"))
+				.collect()
+		);
+		const taskCreated = events.find((e) => e.payload.entityId === taskId);
+		expect(taskCreated).toBeDefined();
+		expect(taskCreated?.payload.entityType).toBe("task");
+	});
+
 	it("submitInterest assigns task to org admin", async () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
