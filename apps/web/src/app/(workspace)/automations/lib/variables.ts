@@ -170,7 +170,14 @@ function triggerVariableOptions(
 	trigger: TriggerConfig | AutomationTrigger
 ): VariableOption[] {
 	const options: VariableOption[] = [];
-	const triggerObjectType = trigger.objectType as AutomationObjectType | undefined;
+	// A scheduled trigger has no record, so it offers no trigger.record.* tokens.
+	// This is the root site: every picker, the drawer's Variables pane, and the
+	// formula reference pane all read from here.
+	const triggerObjectType =
+		effectiveTriggerType(trigger) === "scheduled"
+			? undefined
+			: ((trigger as { objectType?: AutomationObjectType }).objectType ??
+				undefined);
 
 	if (triggerObjectType) {
 		// Runtime resolves _id by raw property lookup on the record; offer it explicitly.

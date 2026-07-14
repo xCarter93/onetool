@@ -37,7 +37,7 @@ function isValueless(operator: ConditionOperator): boolean {
 }
 
 function isRuleComplete(rule: ConditionRule): boolean {
-	if (!rule.field.trim()) return false;
+	if (!rule.left && !rule.field.trim()) return false;
 	if (isValueless(rule.operator)) return true;
 	if (rule.value === undefined) return false;
 	if (
@@ -59,7 +59,10 @@ function describeVarPath(
 		const field = path.slice(prefix.length);
 		if (field === "_id") return "Trigger record ID"; // not in the field registry
 		const label = objectType ? getFieldDefinition(objectType, field)?.label : undefined;
-		return label ?? field;
+		// With no record in scope there is no field to name it after. Say so
+		// rather than leaking a raw path that reads like it resolves.
+		if (!label) return objectType ? field : "the triggering record";
+		return label;
 	}
 	return `{${path}}`;
 }
@@ -82,7 +85,12 @@ function describeValue(
 
 function ruleText(rule: ConditionRule, objectType: AutomationObjectType | null): string {
 	const fieldDef = objectType ? getFieldDefinition(objectType, rule.field) : undefined;
-	const fieldLabel = fieldDef?.label ?? rule.field;
+	const fieldLabel = rule.left
+		? describeVarPath(
+				rule.left.kind === "var" ? rule.left.path : String(rule.left.value),
+				objectType
+			)
+		: (fieldDef?.label ?? rule.field);
 	const opLabel = OPERATOR_LABELS[rule.operator] ?? rule.operator;
 
 	if (isValueless(rule.operator) || rule.value === undefined) {

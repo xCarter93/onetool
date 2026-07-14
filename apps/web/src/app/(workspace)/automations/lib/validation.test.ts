@@ -507,3 +507,134 @@ describe("validateWorkflowForSave — trigger entry criteria", () => {
 		).toBe(true);
 	});
 });
+
+describe("validateWorkflowForSave — scheduled triggers have no record (A1)", () => {
+	const scheduled: TriggerConfig = {
+		type: "scheduled",
+		schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+	};
+
+	const updateSelf: WorkflowNode = {
+		id: "act1",
+		type: "action",
+		config: {
+			kind: "action",
+			action: {
+				type: "update_field",
+				target: "self",
+				field: "status",
+				value: { kind: "static", value: "active" },
+			},
+		},
+	};
+
+	function conditionNode(id: string, config: ConditionNodeConfig): WorkflowNode {
+		return { id, type: "condition", config };
+	}
+
+	it("rejects a top-level update_field, and says why", () => {
+		const result = validateWorkflowForSave(scheduled, [updateSelf]);
+		const error = result.errors.find((e) => e.nodeId === "act1");
+		expect(error?.type).toBe("no_trigger_record");
+		expect(error?.message).toMatch(/no record to update/i);
+	});
+
+	it("rejects a top-level condition that reads a record field", () => {
+		const nodes = [conditionNode("cond1", conditionRule("status", "equals"))];
+		const result = validateWorkflowForSave(scheduled, nodes);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "cond1" && e.type === "no_trigger_record"
+			)
+		).toBe(true);
+	});
+
+	it("accepts a top-level condition whose left side is a step result", () => {
+		const nodes = [
+			fetchNode("fetch1", "invoice"),
+			aggregateNode("agg1", {
+				kind: "aggregate",
+				sourceNodeId: "fetch1",
+				field: "total",
+				op: "sum",
+			}),
+			conditionNode("cond1", {
+				kind: "condition",
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [
+							{
+								field: "",
+								left: { kind: "var", path: "node.agg1.result" },
+								operator: "greater_than",
+								value: { kind: "static", value: 10000 },
+							},
+						],
+					},
+				],
+			}),
+		];
+		const result = validateWorkflowForSave(scheduled, nodes);
+		expect(result.errors.filter((e) => e.nodeId === "cond1")).toHaveLength(0);
+	});
+
+	it("rejects a {{trigger.record.*}} token inside a message template", () => {
+		const notify: WorkflowNode = {
+			id: "notify1",
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "send_notification",
+					recipient: "org_admins",
+					message: "Total is {{trigger.record.total}}",
+				},
+			},
+		};
+		const result = validateWorkflowForSave(scheduled, [notify]);
+		const error = result.errors.find((e) => e.nodeId === "notify1");
+		expect(error?.type).toBe("no_trigger_record");
+		expect(error?.message).toMatch(/always empty/i);
+	});
+
+	it("rejects a formula that reads the trigger record", () => {
+		const notify: WorkflowNode = {
+			id: "notify1",
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "send_notification",
+					recipient: "org_admins",
+					message: "hi",
+				},
+			},
+		};
+		const result = validateWorkflowForSave(scheduled, [notify], [
+			{
+				id: "f1",
+				name: "Doubled",
+				returnType: "number",
+				expression: "{trigger.record.budget} * 2",
+			},
+		]);
+		expect(result.errors.some((e) => e.type === "no_trigger_record")).toBe(true);
+	});
+
+	it("leaves a correctly-built fetch -> loop -> update alone", () => {
+		const nodes: WorkflowNode[] = [
+			fetchNode("fetch1", "project"),
+			{
+				id: "loop1",
+				type: "loop",
+				config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
+				bodyStartNodeId: "act1",
+			},
+			updateSelf,
+		];
+		const result = validateWorkflowForSave(scheduled, nodes);
+		expect(result.errors.some((e) => e.type === "no_trigger_record")).toBe(false);
+	});
+});

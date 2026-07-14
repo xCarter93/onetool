@@ -30,6 +30,8 @@ export type StepGroupItem = {
 	/** Selects the action variant when type is "action". */
 	actionType?: string;
 	comingSoon?: boolean;
+	/** Set when the step can't work in this position; shown instead of enabling it. */
+	disabledReason?: string;
 };
 
 type StepGroup = {
@@ -151,19 +153,41 @@ interface StepPickerProps {
 	onClose?: () => void;
 	/** True when inserting inside a loop body — offers "Next item" and hides "End" (invalid there). */
 	inLoop?: boolean;
+	/** The trigger's type. A scheduled run has no record, which rules some steps out. */
+	triggerType?: string;
 }
 
-export function StepPicker({ onSelect, onClose, inLoop = false }: StepPickerProps) {
+export function StepPicker({
+	onSelect,
+	onClose,
+	inLoop = false,
+	triggerType,
+}: StepPickerProps) {
 	const [search, setSearch] = useState("");
 	const lowerSearch = search.toLowerCase();
 
+	// A scheduled run has no triggering record, so outside a loop there is
+	// nothing for "Update Record" to act on. Offering it anyway would let a user
+	// build a step they cannot save and cannot fix in place — the panel has no
+	// control for pointing it at another record.
+	const noRecordInScope = triggerType === "scheduled" && !inLoop;
+
 	const filteredGroups = STEP_GROUPS.map((group) => ({
 		...group,
-		items: group.items.filter((item) => {
-			if (item.type === "next_item" && !inLoop) return false;
-			if (item.type === "end" && inLoop) return false;
-			return item.label.toLowerCase().includes(lowerSearch);
-		}),
+		items: group.items
+			.filter((item) => {
+				if (item.type === "next_item" && !inLoop) return false;
+				if (item.type === "end" && inLoop) return false;
+				return item.label.toLowerCase().includes(lowerSearch);
+			})
+			.map((item) =>
+				noRecordInScope && item.type === "action" && !item.actionType
+					? {
+							...item,
+							disabledReason: "Needs a record — add Find Records, then a Loop",
+						}
+					: item
+			),
 	})).filter((group) => group.items.length > 0);
 
 	return (
@@ -209,15 +233,18 @@ export function StepPicker({ onSelect, onClose, inLoop = false }: StepPickerProp
 						<div className="space-y-0.5">
 							{group.items.map((item) => {
 								const Icon = item.icon;
+								const disabled =
+									item.comingSoon || Boolean(item.disabledReason);
 								return (
 									<button
 										key={`${item.type}-${item.actionType ?? ""}-${item.label}`}
 										type="button"
-										disabled={item.comingSoon}
-										onClick={() => !item.comingSoon && onSelect(item.type, item.actionType)}
+										disabled={disabled}
+										title={item.disabledReason}
+										onClick={() => !disabled && onSelect(item.type, item.actionType)}
 										className={cn(
 											"w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-left",
-											item.comingSoon
+											disabled
 												? "opacity-50 cursor-not-allowed"
 												: "hover:bg-accent"
 										)}
@@ -232,6 +259,11 @@ export function StepPicker({ onSelect, onClose, inLoop = false }: StepPickerProp
 										</div>
 										<span className="text-sm flex-1">
 											{item.label}
+											{item.disabledReason && (
+												<span className="block text-xs text-muted-foreground">
+													{item.disabledReason}
+												</span>
+											)}
 										</span>
 										{item.comingSoon && (
 											<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">

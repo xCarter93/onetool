@@ -64,9 +64,11 @@ export function legacyTriggerToDraft(trigger: AutomationTrigger): TriggerConfig 
 				entryCriteria: trigger.entryCriteria,
 			};
 		case "scheduled":
+			// objectType is deliberately dropped: a scheduled run has no record.
+			// Rehydrating it would keep offering dead trigger.record.* tokens, and
+			// would make every stored scheduled automation read as unpublished.
 			return {
 				type: "scheduled",
-				objectType: trigger.objectType,
 				schedule: trigger.schedule,
 			};
 	}

@@ -9,6 +9,7 @@ import { BaseHandle } from "@/components/base-handle";
 import {
 	OBJECT_TYPE_LABELS,
 	describeSchedule,
+	triggerScopeObjectType,
 	getStatusOptions,
 	validateSchedule,
 	type TriggerConfig,
@@ -21,7 +22,7 @@ function entryCriteriaSuffix(trigger: TriggerConfig): string {
 	const sentence = conditionSentence(
 		trigger.entryCriteria.logic,
 		trigger.entryCriteria.groups,
-		trigger.objectType ?? null
+		triggerScopeObjectType(trigger)
 	);
 	return sentence ? ` · when ${sentence}` : "";
 }
@@ -32,14 +33,15 @@ function getSummary(trigger: TriggerConfig | undefined): {
 } {
 	if (!trigger) return { title: "Configure trigger", description: "Select a trigger type..." };
 
-	const objectLabel = trigger.objectType ? OBJECT_TYPE_LABELS[trigger.objectType] : "";
+	const scopeObjectType = triggerScopeObjectType(trigger);
+	const objectLabel = scopeObjectType ? OBJECT_TYPE_LABELS[scopeObjectType] : "";
 	const triggerType = trigger.type || "status_changed";
 	const whenSuffix = entryCriteriaSuffix(trigger);
 
 	switch (triggerType) {
 		case "status_changed": {
 			const title = "Status Changed";
-			const statusOptions = trigger.objectType ? getStatusOptions(trigger.objectType) : [];
+			const statusOptions = scopeObjectType ? getStatusOptions(scopeObjectType) : [];
 			const toLabel =
 				statusOptions.find((s) => s.value === trigger.toStatus)?.label || trigger.toStatus;
 			if (trigger.fromStatus && toLabel) {

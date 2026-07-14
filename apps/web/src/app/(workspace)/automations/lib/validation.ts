@@ -35,8 +35,10 @@ import {
 	type DelayUntilNodeConfig,
 	type FetchNodeConfig,
 	type LoopNodeConfig,
+	type FormulaResource,
 	type TriggerConfig,
 	type WorkflowNode,
+	triggerScopeObjectType,
 } from "./node-types";
 import { getScopeObjectType } from "./variables";
 
@@ -47,6 +49,7 @@ export type ValidationResult = {
 			| "placeholder_present"
 			| "missing_required_config"
 			| "no_trigger"
+			| "no_trigger_record"
 			| "end_inside_loop"
 			| "next_item_outside_loop";
 		message: string;
@@ -64,11 +67,17 @@ function isRuleComplete(
 	objectType: AutomationObjectType | null,
 	rule: ConditionRule
 ): boolean {
-	if (!rule.field.trim()) return false;
-	if (objectType) {
-		const operators = operatorsForField(objectType, rule.field);
-		if (operators.length > 0 && !operators.includes(rule.operator)) {
-			return false;
+	if (rule.left) {
+		// Tests a scope value, not a record field — there is no field to check
+		// and no registry entry to validate the operator against.
+		if (rule.left.kind !== "var" || !rule.left.path.trim()) return false;
+	} else {
+		if (!rule.field.trim()) return false;
+		if (objectType) {
+			const operators = operatorsForField(objectType, rule.field);
+			if (operators.length > 0 && !operators.includes(rule.operator)) {
+				return false;
+			}
 		}
 	}
 	const valueless = (VALUELESS_OPERATORS as readonly string[]).includes(
@@ -95,9 +104,11 @@ function validateTrigger(
 		return;
 	}
 
+	const triggerObjectType = triggerScopeObjectType(trigger);
+
 	switch (trigger.type ?? "status_changed") {
 		case "status_changed":
-			if (!trigger.objectType || !trigger.toStatus?.trim()) {
+			if (!triggerObjectType || !trigger.toStatus?.trim()) {
 				errors.push({
 					type: "missing_required_config",
 					message: "Trigger status is required",
@@ -106,7 +117,7 @@ function validateTrigger(
 			break;
 		case "record_created":
 		case "record_updated":
-			if (!trigger.objectType) {
+			if (!triggerObjectType) {
 				errors.push({
 					type: "missing_required_config",
 					message: "Trigger object type is required",
@@ -136,7 +147,18 @@ function validateTrigger(
 	// Entry criteria (A5-2): absent/empty is fine; started-but-incomplete
 	// rules block save, mirroring condition-node completeness.
 	if (trigger.entryCriteria) {
-		const objectType = trigger.objectType ?? null;
+		const objectType = triggerObjectType;
+		// Entry criteria run against records being matched, so a rule must name a
+		// real field — the backend rejects a variable left side here too.
+		const hasVariableLeft = trigger.entryCriteria.groups.some((group) =>
+			group.rules.some((rule) => rule.left !== undefined)
+		);
+		if (hasVariableLeft) {
+			errors.push({
+				type: "missing_required_config",
+				message: "Entry criteria must compare a field on the record",
+			});
+		}
 		const incomplete = trigger.entryCriteria.groups.some((group) =>
 			group.rules.some((rule) => !isRuleComplete(objectType, rule))
 		);
@@ -214,9 +236,12 @@ function validateActionNode(
 	switch (action.type) {
 		case "update_field": {
 			if (!scopeObjectType) {
+				// Reached on a scheduled automation outside a loop — the trigger is
+				// fine, there is simply no record for the action to touch.
 				errors.push({
-					type: "missing_required_config",
-					message: "Set a trigger before configuring actions",
+					type: "no_trigger_record",
+					message:
+						"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
 					nodeId,
 				});
 				return;
@@ -611,15 +636,98 @@ function validateDelayUntilNode(
 	// var kind: resolved at run time — nothing further to check here.
 }
 
+const TEMPLATE_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
+
+/** Scope paths a config reads: var refs plus {{tokens}} inside static strings. */
+function collectConfigPaths(value: unknown, out: string[] = []): string[] {
+	if (typeof value === "string") {
+		for (const match of value.matchAll(TEMPLATE_TOKEN)) out.push(match[1].trim());
+		return out;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) collectConfigPaths(item, out);
+		return out;
+	}
+	if (value !== null && typeof value === "object") {
+		const obj = value as Record<string, unknown>;
+		if (obj.kind === "var" && typeof obj.path === "string") out.push(obj.path);
+		for (const key of Object.keys(obj)) collectConfigPaths(obj[key], out);
+	}
+	return out;
+}
+
+function readsTriggerRecord(path: string): boolean {
+	return /^trigger\.(record|event)\b/.test(path);
+}
+
+/**
+ * Mirrors the backend (automations.ts validateScheduledRecordScope) so a broken
+ * scheduled automation fails inline at save rather than throwing from the
+ * server. A scheduled run walks with trigger.record = {}, so anything reading or
+ * acting on the trigger record is dead.
+ *
+ * Keyed on loop-body membership, never on the stored condition `source`: inside
+ * a loop the record in scope IS the loop item, and legacy in-loop conditions
+ * carry source "trigger" but run correctly.
+ */
+function validateScheduledRecordScope(
+	nodes: EditorNode[],
+	workflowNodes: WorkflowNode[],
+	errors: ValidationResult["errors"]
+): void {
+	for (const node of nodes) {
+		const config = (node as WorkflowNode).config;
+		if (!config) continue;
+
+		const deadPath = collectConfigPaths(config).find(readsTriggerRecord);
+		if (deadPath) {
+			errors.push({
+				type: "no_trigger_record",
+				message: `"${deadPath}" is always empty — a scheduled automation has no triggering record. Add a Find records step and read the loop item instead.`,
+				nodeId: node.id,
+			});
+			continue;
+		}
+
+		const inLoop = getScopeObjectType(workflowNodes, node.id, null).inLoop;
+		if (inLoop) continue;
+
+		if (
+			config.kind === "condition" &&
+			config.groups.some((group) => group.rules.some((rule) => !rule.left))
+		) {
+			errors.push({
+				type: "no_trigger_record",
+				message:
+					"This condition has nothing to test — a scheduled automation has no triggering record. Compare a step result instead, or move it inside a Loop.",
+				nodeId: node.id,
+			});
+		}
+		if (config.kind === "action" && config.action.type === "create_task") {
+			if (config.action.linkToRecord) {
+				errors.push({
+					type: "no_trigger_record",
+					message:
+						"There is no record to link this task to — a scheduled automation has no triggering record. Put it inside a Loop, or turn off \"Link to record\".",
+					nodeId: node.id,
+				});
+			}
+		}
+		// A top-level update_field is caught by validateActionNode, which already
+		// sees a null scope object type.
+	}
+}
+
 export function validateWorkflowForSave(
 	trigger: TriggerConfig | null,
-	nodes: EditorNode[]
+	nodes: EditorNode[],
+	formulas?: FormulaResource[]
 ): ValidationResult {
 	const errors: ValidationResult["errors"] = [];
 	const warnings: ValidationResult["warnings"] = [];
 
 	validateTrigger(trigger, errors);
-	const objectType = trigger?.objectType ?? null;
+	const objectType = triggerScopeObjectType(trigger);
 
 	// Check for empty workflow (no real steps)
 	if (nodes.length === 0) {
@@ -635,6 +743,24 @@ export function validateWorkflowForSave(
 	const workflowNodes: WorkflowNode[] = nodes.filter(
 		(n): n is WorkflowNode => n.type !== "placeholder"
 	);
+
+	if (trigger?.type === "scheduled") {
+		validateScheduledRecordScope(nodes, workflowNodes, errors);
+		// Formulas are automation-level: a node-only scan never sees them, so one
+		// reading the trigger record is dead at every use site.
+		for (const formula of formulas ?? []) {
+			const tokens = formula.expression.match(/\{([^}]+)\}/g) ?? [];
+			const dead = tokens
+				.map((t) => t.slice(1, -1).trim())
+				.find(readsTriggerRecord);
+			if (dead) {
+				errors.push({
+					type: "no_trigger_record",
+					message: `Formula "${formula.name}" reads "${dead}", which is always empty — a scheduled automation has no triggering record.`,
+				});
+			}
+		}
+	}
 
 	for (const node of nodes) {
 		const config = (node as WorkflowNode).config;

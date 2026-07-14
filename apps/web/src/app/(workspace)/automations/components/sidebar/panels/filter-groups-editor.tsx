@@ -14,6 +14,7 @@ import {
 	MAX_CONDITION_GROUPS,
 	MAX_RULES_PER_GROUP,
 	VALUELESS_OPERATORS,
+	VARIABLE_LEFT_OPERATORS,
 	getFieldDefinition,
 	getFilterableFields,
 	operatorsForField,
@@ -27,6 +28,10 @@ import {
 } from "../../../lib/node-types";
 import { ValueInput } from "./value-input";
 import { OPERATOR_LABELS } from "../../../lib/condition-sentence";
+import type { VariableOption } from "../../../lib/variables";
+
+/** Left-side select values are namespaced so a variable can't collide with a field key. */
+const VAR_PREFIX = "var:";
 
 /**
  * Shared group/rule builder for condition-config.tsx (with a top-level
@@ -49,8 +54,24 @@ export function emptyFilterRule(
 		: { field, operator, value: { kind: "static", value: "" } };
 }
 
+/** A rule that tests a scope value (a step result) instead of a record field. */
+function emptyVariableRule(path: string): ConditionRule {
+	return {
+		field: "",
+		left: { kind: "var", path },
+		operator: "greater_than",
+		value: { kind: "static", value: "" },
+	};
+}
+
 export interface FilterGroupsEditorProps {
-	objectType: AutomationObjectType;
+	/** null when nothing puts a record in scope (a scheduled trigger outside a loop). */
+	objectType: AutomationObjectType | null;
+	/**
+	 * Step results / formulas a rule may test on its left side. Condition panels
+	 * only — a fetch filter or entry criteria must name a real field.
+	 */
+	variableLeftOptions?: VariableOption[];
 	groups: ConditionGroup[];
 	onChange: (groups: ConditionGroup[]) => void;
 	/** Present for condition-config: lets the user choose "all"/"any" across groups. Omit when groups are always ANDed (fetch-config). */
@@ -68,6 +89,7 @@ export interface FilterGroupsEditorProps {
 
 export function FilterGroupsEditor({
 	objectType,
+	variableLeftOptions,
 	groups,
 	onChange,
 	topLevelLogic,
@@ -77,7 +99,15 @@ export function FilterGroupsEditor({
 	targetNodeId,
 	formulas,
 }: FilterGroupsEditorProps) {
-	const fields = getFilterableFields(objectType);
+	const fields = objectType ? getFilterableFields(objectType) : [];
+	const variableOptions = variableLeftOptions ?? [];
+	const canAddRule = fields.length > 0 || variableOptions.length > 0;
+
+	const newRule = (): ConditionRule | null => {
+		if (objectType && fields[0]) return emptyFilterRule(objectType, fields[0].key);
+		if (variableOptions[0]) return emptyVariableRule(variableOptions[0].path);
+		return null;
+	};
 
 	const updateGroup = (groupIndex: number, group: ConditionGroup) => {
 		onChange(groups.map((g, i) => (i === groupIndex ? group : g)));
@@ -92,11 +122,9 @@ export function FilterGroupsEditor({
 	const addRule = (groupIndex: number) => {
 		const group = groups[groupIndex];
 		if (group.rules.length >= MAX_RULES_PER_GROUP) return;
-		const firstField = fields[0]?.key ?? "";
-		updateGroup(groupIndex, {
-			...group,
-			rules: [...group.rules, emptyFilterRule(objectType, firstField)],
-		});
+		const rule = newRule();
+		if (!rule) return;
+		updateGroup(groupIndex, { ...group, rules: [...group.rules, rule] });
 	};
 
 	const removeRule = (groupIndex: number, ruleIndex: number) => {
@@ -192,20 +220,47 @@ export function FilterGroupsEditor({
 					)}
 
 					{group.rules.map((rule, ruleIndex) => {
-						const fieldDef = getFieldDefinition(objectType, rule.field);
-						const operators = fieldDef ? operatorsForField(objectType, rule.field) : [];
+						const variableLeft = rule.left?.kind === "var" ? rule.left : undefined;
+						const leftOption = variableLeft
+							? variableOptions.find((o) => o.path === variableLeft.path)
+							: undefined;
+						const fieldDef =
+							!variableLeft && objectType
+								? getFieldDefinition(objectType, rule.field)
+								: undefined;
+						const operators = variableLeft
+							? [...VARIABLE_LEFT_OPERATORS]
+							: fieldDef && objectType
+								? operatorsForField(objectType, rule.field)
+								: [];
 						const needsValue = !isValueless(rule.operator);
+						// A step result has no registry entry; drive the value control off
+						// the variable's own type, defaulting to a number.
+						const valueSpec = variableLeft
+							? { type: leftOption?.fieldType ?? ("number" as const) }
+							: fieldDef;
 
 						return (
 							<div key={ruleIndex} className="flex items-start gap-2">
 								<div className="flex-1 space-y-2">
 									<Select
-										value={rule.field}
-										onValueChange={(field) => {
-											if (!field) return;
-											const nextOperators = operatorsForField(objectType, field);
+										value={
+											variableLeft ? `${VAR_PREFIX}${variableLeft.path}` : rule.field
+										}
+										onValueChange={(next) => {
+											if (!next) return;
+											if (next.startsWith(VAR_PREFIX)) {
+												updateRule(
+													groupIndex,
+													ruleIndex,
+													emptyVariableRule(next.slice(VAR_PREFIX.length))
+												);
+												return;
+											}
+											if (!objectType) return;
+											const nextOperators = operatorsForField(objectType, next);
 											updateRule(groupIndex, ruleIndex, {
-												field,
+												field: next,
 												operator: nextOperators[0] ?? "equals",
 												value: isValueless(nextOperators[0] ?? "equals")
 													? undefined
@@ -220,6 +275,14 @@ export function FilterGroupsEditor({
 											{fields.map((f) => (
 												<SelectItem key={f.key} value={f.key}>
 													{f.label}
+												</SelectItem>
+											))}
+											{variableOptions.map((o) => (
+												<SelectItem
+													key={o.path}
+													value={`${VAR_PREFIX}${o.path}`}
+												>
+													{o.label}
 												</SelectItem>
 											))}
 										</SelectContent>
@@ -248,9 +311,9 @@ export function FilterGroupsEditor({
 										</SelectContent>
 									</Select>
 
-									{needsValue && fieldDef && (
+									{needsValue && valueSpec && (
 										<ValueInput
-											field={fieldDef}
+											field={valueSpec}
 											value={rule.value}
 											onChange={(value) => updateRule(groupIndex, ruleIndex, { ...rule, value })}
 											nodes={nodes}
@@ -272,7 +335,7 @@ export function FilterGroupsEditor({
 						);
 					})}
 
-					{group.rules.length < MAX_RULES_PER_GROUP && (
+					{group.rules.length < MAX_RULES_PER_GROUP && canAddRule && (
 						<Button
 							type="button"
 							variant="outline"

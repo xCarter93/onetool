@@ -15,6 +15,7 @@ import {
 	DEFAULT_FETCH_LIMIT,
 	MAX_FETCH_LIMIT,
 	OBJECT_TYPE_OPTIONS,
+	triggerScopeObjectType,
 	type AutomationObjectType,
 	type FetchNodeConfig,
 	type WorkflowNode,
@@ -51,7 +52,7 @@ export function FetchConfigPanel({
 
 	const currentConfig: FetchNodeConfig = (node.config as FetchNodeConfig | undefined) ?? {
 		kind: "fetch_records",
-		objectType: trigger?.objectType || "client",
+		objectType: triggerScopeObjectType(trigger) ?? "client",
 		filters: [],
 	};
 	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
