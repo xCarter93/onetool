@@ -1162,12 +1162,16 @@ export const toggleActive = userMutation({
 
 		if (automation.publishedSnapshot) {
 			// Resume a previously-published automation on its published version.
+			// Re-validate it first: this path never re-checked the snapshot, so an
+			// automation published before a rule landed could be switched straight
+			// back on and fail every tick with nothing to stop it.
+			const snapshot = automation.publishedSnapshot;
+			validateForActivation(snapshot.trigger, snapshot.nodes as NodeArg[]);
+			validateFormulas(snapshot.formulas, snapshot.trigger);
+
 			await ctx.db.patch(args.id, {
 				status: "active",
-				nextRunAt: scheduledNextRunAt(
-					automation.publishedSnapshot.trigger,
-					true
-				),
+				nextRunAt: scheduledNextRunAt(snapshot.trigger, true),
 				updatedAt: Date.now(),
 			});
 			return args.id;

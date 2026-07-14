@@ -618,6 +618,39 @@ describe("Automations", () => {
 			).rejects.toThrow(/must compare a field/i);
 		});
 
+		it("refuses to resume a snapshot that breaks the rules", async () => {
+			// toggleActive resumes the PUBLISHED snapshot. It never re-checked it, so
+			// an automation published before this rule landed could be switched back
+			// on and fail every tick.
+			const { asUser, orgId } = await setupUser();
+
+			const trigger = { type: "scheduled" as const, schedule };
+			const nodes = [actionNode("act-1")]; // update_field(self) — no record to act on
+
+			const id = await t.run(async (ctx) => {
+				const user = await ctx.db.query("users").first();
+				const now = Date.now();
+				return ctx.db.insert("workflowAutomations", {
+					orgId,
+					name: "Broken scheduled, paused",
+					trigger,
+					nodes,
+					status: "paused" as const,
+					publishedSnapshot: { trigger, nodes, version: 1, publishedAt: now },
+					createdBy: user!._id,
+					createdAt: now,
+					updatedAt: now,
+				});
+			});
+
+			await expect(
+				asUser.mutation(api.automations.toggleActive, { id })
+			).rejects.toThrow(/no record to update/i);
+
+			const after = await t.run(async (ctx) => ctx.db.get(id));
+			expect(after?.status).toBe("paused");
+		});
+
 		it("rejects a variable left side in trigger entry criteria", async () => {
 			const { asUser } = await setupUser();
 
