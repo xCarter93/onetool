@@ -82,12 +82,12 @@ export function RunThroughputChart({ className }: { className?: string }) {
 	const loading = raw === undefined;
 
 	const { data, total, delta, positive } = useMemo(() => {
-		// Bands chart success/failed only; skipped still counts toward the headline total.
+		// Skipped runs are excluded everywhere: bands, headline, and delta.
 		const points = (raw ?? []).map((d) => ({
 			day: d.day,
 			success: d.success,
 			failed: d.failed,
-			runs: d.success + d.failed + d.skipped,
+			runs: d.success + d.failed,
 		}));
 		const sum = points.reduce((s, p) => s + p.runs, 0);
 		const mid = Math.floor(points.length / 2);
@@ -114,7 +114,7 @@ export function RunThroughputChart({ className }: { className?: string }) {
 			<FramePanel className="flex grow flex-col">
 				<div className="flex flex-col gap-1">
 					<div className="text-muted-foreground text-xs font-medium">
-						Total runs
+						Executed runs
 					</div>
 					<div className="flex items-center gap-2.5">
 						<span className="text-2xl leading-none font-semibold tabular-nums text-foreground">
