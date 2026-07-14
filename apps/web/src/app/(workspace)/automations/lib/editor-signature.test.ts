@@ -4,7 +4,9 @@ import {
 	automationToReactFlow,
 	reactFlowToFlatArray,
 } from "./flow-adapter";
+import { legacyTriggerToDraft } from "./legacy-load";
 import type {
+	AutomationTrigger,
 	ConditionNodeConfig,
 	FetchNodeConfig,
 	TriggerConfig,
@@ -227,5 +229,39 @@ describe("definitionSignature — load round-trip stability", () => {
 
 		// Stable => isDirty would be false immediately after load.
 		expect(workingSig).toBe(loadedSig);
+	});
+});
+
+describe("stored scheduled triggers with a legacy objectType (A1)", () => {
+	it("signs identically with and without the stored objectType", () => {
+		// Old rows carry objectType on scheduled triggers; the save path strips
+		// it. If load kept it, the published signature could never equal the
+		// draft signature and every stored scheduled automation would wear a
+		// "Publish changes" badge forever.
+		const schedule = {
+			frequency: "daily",
+			timezone: "UTC",
+			time: "09:00",
+		} as const;
+		const legacyStored = {
+			type: "scheduled",
+			objectType: "quote",
+			schedule,
+		} as unknown as AutomationTrigger;
+		const cleanStored = {
+			type: "scheduled",
+			schedule,
+		} as unknown as AutomationTrigger;
+
+		const nodes: WorkflowNode[] = [node("n1")];
+		const legacySig = definitionSignature(
+			legacyTriggerToDraft(legacyStored),
+			nodes
+		);
+		const cleanSig = definitionSignature(
+			legacyTriggerToDraft(cleanStored),
+			nodes
+		);
+		expect(legacySig).toBe(cleanSig);
 	});
 });

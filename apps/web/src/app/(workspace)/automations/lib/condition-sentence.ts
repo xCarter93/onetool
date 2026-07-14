@@ -49,11 +49,34 @@ function isRuleComplete(rule: ConditionRule): boolean {
 	return true;
 }
 
-/** trigger.record.<field> paths render as the field label; anything else as a raw {path}. */
-function describeVarPath(
+/** Path → friendly label for callers that computed variable options (exact labels). */
+export type VarLabelMap = ReadonlyMap<string, string>;
+
+const GLOBAL_PATH_LABELS: Record<string, string> = {
+	"workflow.now": "Current time",
+	"workflow.tz": "Timezone",
+	"org.id": "Organization ID",
+	"org.name": "Organization name",
+	"user.id": "Your user ID",
+	"user.name": "Your name",
+	"user.email": "Your email",
+	"trigger.event.oldValue": "Previous value",
+	"trigger.event.newValue": "New value",
+};
+
+/**
+ * trigger.record.<field> paths render as the field label; other known path
+ * shapes get a generic description. Exact labels come from `varLabels` when the
+ * caller has them (the config panel does; the canvas card doesn't).
+ */
+export function describeVarPath(
 	path: string,
-	objectType: AutomationObjectType | null
+	objectType: AutomationObjectType | null,
+	varLabels?: VarLabelMap
 ): string {
+	const exact = varLabels?.get(path);
+	if (exact) return exact;
+
 	const prefix = "trigger.record.";
 	if (path.startsWith(prefix)) {
 		const field = path.slice(prefix.length);
@@ -64,15 +87,27 @@ function describeVarPath(
 		if (!label) return objectType ? field : "the triggering record";
 		return label;
 	}
+
+	const global = GLOBAL_PATH_LABELS[path];
+	if (global) return global;
+	if (/^node\.[^.]+\.count$/.test(path)) return "Found records count";
+	if (/^node\.[^.]+\.result$/.test(path)) return "Computed result";
+	if (/^loop\.[^.]+\.index$/.test(path)) return "Loop item index";
+	const loopItem = path.match(/^loop\.[^.]+\.item\.(.+)$/);
+	if (loopItem) {
+		return loopItem[1] === "_id" ? "Loop item ID" : `Loop item ${loopItem[1]}`;
+	}
+	if (/^formula\.[^.]+$/.test(path)) return "Formula result";
 	return `{${path}}`;
 }
 
 function describeValue(
 	objectType: AutomationObjectType | null,
 	field: string,
-	value: ValueRef
+	value: ValueRef,
+	varLabels?: VarLabelMap
 ): string {
-	if (value.kind === "var") return describeVarPath(value.path, objectType);
+	if (value.kind === "var") return describeVarPath(value.path, objectType, varLabels);
 
 	const fieldDef = objectType ? getFieldDefinition(objectType, field) : undefined;
 	if (fieldDef?.type === "select") {
@@ -83,12 +118,17 @@ function describeValue(
 	return String(value.value);
 }
 
-function ruleText(rule: ConditionRule, objectType: AutomationObjectType | null): string {
+function ruleText(
+	rule: ConditionRule,
+	objectType: AutomationObjectType | null,
+	varLabels?: VarLabelMap
+): string {
 	const fieldDef = objectType ? getFieldDefinition(objectType, rule.field) : undefined;
 	const fieldLabel = rule.left
 		? describeVarPath(
 				rule.left.kind === "var" ? rule.left.path : String(rule.left.value),
-				objectType
+				objectType,
+				varLabels
 			)
 		: (fieldDef?.label ?? rule.field);
 	const opLabel = OPERATOR_LABELS[rule.operator] ?? rule.operator;
@@ -96,14 +136,15 @@ function ruleText(rule: ConditionRule, objectType: AutomationObjectType | null):
 	if (isValueless(rule.operator) || rule.value === undefined) {
 		return `${fieldLabel} ${opLabel}`;
 	}
-	return `${fieldLabel} ${opLabel} ${describeValue(objectType, rule.field, rule.value)}`;
+	return `${fieldLabel} ${opLabel} ${describeValue(objectType, rule.field, rule.value, varLabels)}`;
 }
 
 type RenderedGroup = { parts: SentencePart[]; multi: boolean };
 
 function renderGroup(
 	group: ConditionGroup,
-	objectType: AutomationObjectType | null
+	objectType: AutomationObjectType | null,
+	varLabels?: VarLabelMap
 ): RenderedGroup | null {
 	const completeRules = group.rules.filter(isRuleComplete);
 	if (completeRules.length === 0) return null;
@@ -111,7 +152,7 @@ function renderGroup(
 	const parts: SentencePart[] = [];
 	completeRules.forEach((rule, index) => {
 		if (index > 0) parts.push({ kind: "text", text: ` ${group.logic} ` });
-		parts.push({ kind: "rule", text: ruleText(rule, objectType) });
+		parts.push({ kind: "rule", text: ruleText(rule, objectType, varLabels) });
 	});
 	return { parts, multi: completeRules.length > 1 };
 }
@@ -125,10 +166,11 @@ function renderGroup(
 export function conditionSentenceParts(
 	logic: "and" | "or",
 	groups: ConditionGroup[],
-	objectType: AutomationObjectType | null
+	objectType: AutomationObjectType | null,
+	varLabels?: VarLabelMap
 ): SentencePart[] {
 	const rendered = groups
-		.map((group) => renderGroup(group, objectType))
+		.map((group) => renderGroup(group, objectType, varLabels))
 		.filter((g): g is RenderedGroup => g !== null);
 
 	if (rendered.length === 0) return [];
@@ -151,9 +193,10 @@ export function conditionSentenceParts(
 export function conditionSentence(
 	logic: "and" | "or",
 	groups: ConditionGroup[],
-	objectType: AutomationObjectType | null
+	objectType: AutomationObjectType | null,
+	varLabels?: VarLabelMap
 ): string {
-	return conditionSentenceParts(logic, groups, objectType)
+	return conditionSentenceParts(logic, groups, objectType, varLabels)
 		.map((part) => part.text)
 		.join("");
 }

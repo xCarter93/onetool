@@ -52,9 +52,13 @@ export function ConditionConfigPanel({
 	const objectType = scope.objectType;
 
 	// Step results and formulas can be tested without a record at all.
-	const variableLeftOptions = (
-		trigger ? getAvailableVariables(workflowNodes, trigger, nodeId, formulas) : []
-	).filter((o) => o.path.startsWith("node.") || o.path.startsWith("formula."));
+	const availableVariables = trigger
+		? getAvailableVariables(workflowNodes, trigger, nodeId, formulas)
+		: [];
+	const variableLeftOptions = availableVariables.filter(
+		(o) => o.path.startsWith("node.") || o.path.startsWith("formula.")
+	);
+	const varLabels = new Map(availableVariables.map((o) => [o.path, o.label]));
 	const hasNothingToTest = !objectType && variableLeftOptions.length === 0;
 
 	const commit = (next: ConditionNodeConfig) => {
@@ -101,6 +105,7 @@ export function ConditionConfigPanel({
 						logic={config.logic}
 						groups={config.groups}
 						objectType={objectType}
+						varLabels={varLabels}
 					/>
 				</PanelSection>
 			</div>

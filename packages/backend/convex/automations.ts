@@ -334,7 +334,7 @@ function validateConditionGroups(
 			if (rule.left) {
 				if (!allowVarLeft) {
 					throw new Error(
-						`Node ${nodeId}: a ${context} rule must compare a field on the record`
+						`Node ${nodeId}: ${context} rules must compare a field on the record`
 					);
 				}
 				if (rule.left.kind !== "var") {
@@ -1383,8 +1383,8 @@ export const listRuns = userQuery({
 
 /**
  * Windowed cumulative run metrics for the KPI tiles (production runs only).
- * successRate is over decided runs (completed + failed); skipped/running are
- * excluded from the denominator. Latency stats are over completed runs' active
+ * successRate is over decided runs (completed + completed_with_errors +
+ * failed); skipped/running are excluded from the denominator. Latency stats are over completed runs' active
  * time. `activeAutomationCount` is the count of currently-active automations.
  */
 export const getRunMetrics = userQuery({

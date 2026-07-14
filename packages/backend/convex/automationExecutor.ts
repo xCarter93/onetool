@@ -883,10 +883,14 @@ const MAX_ITEM_ERROR_CHARS = 500;
  * validation throw, a plan-limit throw, a ConvexError from a handler) is a
  * genuine per-item failure and is caught.
  */
-function isFatalExecutionError(error: unknown): boolean {
+export function isFatalExecutionError(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
+	// Verbatim Convex limit errors (get-convex/convex-backend): "Too many
+	// documents read / bytes read / bytes written / writes in a single function
+	// execution", "Too many functions scheduled by this mutation", "Function
+	// execution timed out (maximum duration: …)".
 	return (
-		/too many (reads|writes|bytes|documents|function calls|scheduled functions)/i.test(
+		/too many (reads|writes|bytes|documents|function calls|functions(?: being)? scheduled|scheduled functions)/i.test(
 			message
 		) ||
 		/execution timed out/i.test(message) ||
@@ -4186,6 +4190,13 @@ export const startTestRun = userMutation({
 			| { entityType: string; entityId: string; label?: string }
 			| undefined;
 		if (args.record) {
+			// A scheduled run never has a triggering record; binding one here would
+			// make the dry run lie about production behavior.
+			if ("type" in trigger && trigger.type === "scheduled") {
+				throw new Error(
+					"Scheduled automations run without a triggering record — test without one"
+				);
+			}
 			if (triggerObjectType && args.record.entityType !== triggerObjectType) {
 				throw new Error(
 					`This automation runs on ${triggerObjectType} records — pick a ${triggerObjectType} to test with`

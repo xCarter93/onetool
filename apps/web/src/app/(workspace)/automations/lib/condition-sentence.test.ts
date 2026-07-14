@@ -121,4 +121,56 @@ describe("conditionSentence", () => {
 		expect(parts.map((p) => p.kind)).toEqual(["rule", "text", "rule"]);
 		expect(parts[1].text).toBe(" and ");
 	});
+
+	it("renders a variable-left rule with the exact label when provided", () => {
+		const groups: ConditionGroup[] = [
+			{
+				logic: "and",
+				rules: [
+					{
+						field: "",
+						left: { kind: "var", path: "node.agg1.result" },
+						operator: "greater_than",
+						value: { kind: "static", value: 10000 },
+					},
+				],
+			},
+		];
+		const varLabels = new Map([["node.agg1.result", "Aggregate result"]]);
+		expect(conditionSentence("and", groups, null, varLabels)).toBe(
+			"Aggregate result is greater than 10000"
+		);
+	});
+
+	it("never leaks a raw internal path for known variable shapes", () => {
+		const groups: ConditionGroup[] = [
+			{
+				logic: "and",
+				rules: [
+					{
+						field: "",
+						left: { kind: "var", path: "node.agg1.result" },
+						operator: "greater_than",
+						value: { kind: "static", value: 10000 },
+					},
+					{
+						field: "",
+						left: { kind: "var", path: "formula.f1" },
+						operator: "equals",
+						value: { kind: "var", path: "workflow.now" },
+					},
+					{
+						field: "",
+						left: { kind: "var", path: "node.fetch1.count" },
+						operator: "gte",
+						value: { kind: "static", value: 3 },
+					},
+				],
+			},
+		];
+		// No varLabels map (the canvas card path) — generic descriptions, no {path}.
+		expect(conditionSentence("and", groups, null)).toBe(
+			"Computed result is greater than 10000 and Formula result equals Current time and Found records count is at least 3"
+		);
+	});
 });

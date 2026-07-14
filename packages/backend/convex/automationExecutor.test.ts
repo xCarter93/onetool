@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity, addMemberToOrg } from "./test.helpers";
 import { api, internal } from "./_generated/api";
-import { scanOrgRows } from "./automationExecutor";
+import { isFatalExecutionError, scanOrgRows } from "./automationExecutor";
 import { projectCountsAggregate } from "./aggregates";
 import type { Id } from "./_generated/dataModel";
 
@@ -2395,6 +2395,33 @@ describe("automationExecutor (v2 engine)", () => {
 				expect(executions[0].status).toBe("completed");
 				expect(executions[0].triggerRecord).toBeUndefined();
 			});
+
+			it("startTestRun rejects a sample record on a scheduled automation", async () => {
+				const { asUser } = await setupUser();
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Scheduled test-run guard",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [notifyNode("notify-1")],
+				});
+
+				// Binding a record would make the dry run lie: production scheduled
+				// dispatch never has one.
+				await expect(
+					asUser.mutation(api.automationExecutor.startTestRun, {
+						automationId,
+						record: { entityType: "client", entityId: clientId },
+					})
+				).rejects.toThrow(/without a triggering record/);
+			});
 		});
 
 		it("adjust_time: shifts a base timestamp by a fixed offset (add and subtract)", async () => {
@@ -3358,6 +3385,25 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 
 		describe("per-item error isolation (Phase A3)", () => {
+			it("isFatalExecutionError matches Convex's verbatim limit errors", () => {
+				// Wording from get-convex/convex-backend. These doom the whole
+				// transaction and must rethrow, not count as one item's failure.
+				const fatal = [
+					"Too many documents read in a single function execution (limit: 32000)",
+					"Too many bytes read in a single function execution",
+					"Too many bytes written in a single function execution",
+					"Too many writes in a single function execution",
+					"Too many functions scheduled by this mutation",
+					"Function execution timed out (maximum duration: 1s)",
+				];
+				for (const message of fatal) {
+					expect(isFatalExecutionError(new Error(message)), message).toBe(true);
+				}
+				expect(
+					isFatalExecutionError(new Error("Status bogus is not valid for project"))
+				).toBe(false);
+			});
+
 			/**
 			 * Projects whose titles are valid project statuses, plus poisoned ones
 			 * titled "bogus". The loop body writes status = {loop item's title}, so a
