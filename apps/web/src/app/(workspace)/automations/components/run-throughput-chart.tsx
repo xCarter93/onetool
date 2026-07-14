@@ -21,21 +21,20 @@ import { cn } from "@/lib/utils";
 
 const WINDOW_DAYS = 30;
 
-const chartConfig: ChartConfig = {
-	success: { label: "Successful", color: "var(--primary)" },
-	failed: { label: "Failed", color: "var(--destructive)" },
-};
+const SERIES = [
+	{ key: "success", label: "Successful", color: "var(--primary)" },
+	{ key: "failed", label: "Failed", color: "var(--destructive)" },
+] as const;
+
+const chartConfig: ChartConfig = Object.fromEntries(
+	SERIES.map(({ key, label, color }) => [key, { label, color }])
+);
 
 const dayLabel = (value: number) =>
 	new Date(value).toLocaleDateString(undefined, {
 		month: "short",
 		day: "numeric",
 	});
-
-const SERIES = [
-	{ key: "success", label: "Successful", color: "var(--primary)" },
-	{ key: "failed", label: "Failed", color: "var(--destructive)" },
-] as const;
 
 function ThroughputTooltip({
 	active,
@@ -141,19 +140,21 @@ export function RunThroughputChart({ className }: { className?: string }) {
 				</div>
 
 				<div className="mt-auto pt-4">
-					<div className="mb-2 flex items-center justify-end gap-4">
-						{SERIES.map(({ key, label, color }) => (
-							<div key={key} className="flex items-center gap-1.5">
-								<span
-									className="size-2 rounded-sm"
-									style={{ backgroundColor: color }}
-								/>
-								<span className="text-muted-foreground text-xs font-medium">
-									{label}
-								</span>
-							</div>
-						))}
-					</div>
+					{!loading && (
+						<div className="mb-2 flex items-center justify-end gap-4">
+							{SERIES.map(({ key, label, color }) => (
+								<div key={key} className="flex items-center gap-1.5">
+									<span
+										className="size-2 rounded-sm"
+										style={{ backgroundColor: color }}
+									/>
+									<span className="text-muted-foreground text-xs font-medium">
+										{label}
+									</span>
+								</div>
+							))}
+						</div>
+					)}
 					{loading ? (
 						<div className="h-[240px] w-full rounded-md bg-muted motion-safe:animate-pulse" />
 					) : (

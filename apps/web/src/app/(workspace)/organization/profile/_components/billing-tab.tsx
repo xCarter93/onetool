@@ -324,7 +324,7 @@ export function BillingTab() {
 								</p>
 							</div>
 						</div>
-						{canManageBilling && (
+						{hasPremiumAccess && canManageBilling && (
 							<SignedIn>
 								<SubscriptionDetailsButton
 									for="organization"
