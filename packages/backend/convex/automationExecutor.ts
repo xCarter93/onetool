@@ -21,6 +21,7 @@ import {
 	resolveValueRef,
 	type VariableScope,
 } from "./lib/conditionEval";
+import { calendarDayEpoch } from "./lib/formula";
 import {
 	RELATION_FIELD,
 	getFieldDefinition,
@@ -1922,8 +1923,9 @@ function roundCents(n: number): number {
 	return Math.round(n * 100) / 100;
 }
 
-/** Epoch ms from a number (as-is) or a parseable date string; else NaN. */
+/** Epoch ms from a Date, a number (as-is), or a parseable date string; else NaN. */
 function valueToEpochMs(value: unknown): number {
+	if (value instanceof Date) return value.getTime();
 	if (typeof value === "number") return value;
 	if (typeof value === "string") return Date.parse(value);
 	return NaN;
@@ -2029,13 +2031,7 @@ function computeDelayResume(
 		return { ok: true, resumeAt: Date.now() + ms };
 	}
 
-	const raw = resolveValueRef(config.until, scope);
-	const resumeAt =
-		typeof raw === "number"
-			? raw
-			: typeof raw === "string"
-				? Date.parse(raw)
-				: NaN;
+	const resumeAt = valueToEpochMs(resolveValueRef(config.until, scope));
 	if (Number.isNaN(resumeAt)) {
 		return {
 			ok: false,
@@ -2335,7 +2331,9 @@ async function applyStatusUpdate(
  */
 function coerceFieldValue(
 	fieldDef: FieldDefinition,
-	raw: unknown
+	raw: unknown,
+	/** Run timezone — decides which calendar day an instant falls on. */
+	tz: string
 ): { ok: true; value: unknown } | { ok: false; error: string } {
 	if (raw === undefined || raw === null) {
 		return { ok: true, value: null };
@@ -2385,14 +2383,25 @@ function coerceFieldValue(
 			};
 		}
 		case "date": {
-			const n = typeof raw === "number" ? raw : Date.parse(String(raw));
+			const n =
+				raw instanceof Date
+					? raw.getTime()
+					: typeof raw === "number"
+						? raw
+						: Date.parse(String(raw));
 			if (Number.isNaN(n)) {
 				return {
 					ok: false,
 					error: `"${String(raw)}" is not a valid date for field "${fieldDef.key}"`,
 				};
 			}
-			return { ok: true, value: n };
+			// Every WRITABLE date field is a calendar date (the instants — paidAt,
+			// sentAt, approvedAt, ... — are all writable:false), and calendar dates
+			// are stored at UTC midnight. Normalizing here is the chokepoint that
+			// keeps a formula which produced an instant (e.g. ADDDAYS(NOW(), 3))
+			// from writing one into a date field, where it would be misread as an
+			// instant from then on.
+			return { ok: true, value: calendarDayEpoch(n, tz) };
 		}
 		case "id":
 			return { ok: true, value: String(raw) };
@@ -2465,7 +2474,11 @@ async function executeActionNodeV2(
 	}
 
 	const rawValue = resolveValueRef(action.value, env.scope);
-	const coerced = coerceFieldValue(fieldDef, rawValue);
+	const coerced = coerceFieldValue(
+		fieldDef,
+		rawValue,
+		env.scope.workflow?.tz ?? "UTC"
+	);
 	if (!coerced.ok) {
 		return { success: false, error: coerced.error };
 	}
@@ -3324,7 +3337,11 @@ async function dryExecuteAction(
 				};
 			}
 			const raw = resolveValueRef(action.value, env.scope);
-			const coerced = coerceFieldValue(fieldDef, raw);
+			const coerced = coerceFieldValue(
+				fieldDef,
+				raw,
+				env.scope.workflow?.tz ?? "UTC"
+			);
 			if (!coerced.ok) {
 				return { success: false, error: coerced.error };
 			}

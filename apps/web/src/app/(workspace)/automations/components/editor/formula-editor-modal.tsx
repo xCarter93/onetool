@@ -97,6 +97,20 @@ function formatPreviewValue(value: Val): string {
 	return String(value);
 }
 
+/**
+ * The IANA tz this automation's formulas evaluate in at run time. Must stay in
+ * lockstep with automationFormulaTz() in automationExecutor.ts: scheduled
+ * automations use their schedule's tz, everything else runs in UTC.
+ */
+function runtimeTimezone(trigger: TriggerConfig | AutomationTrigger | null): string {
+	if (!trigger || trigger.type !== "scheduled") return "UTC";
+	// A stale `schedule` can linger on the draft config after a type switch, so
+	// read it only once the trigger is actually scheduled.
+	return "schedule" in trigger && trigger.schedule?.timezone
+		? trigger.schedule.timezone
+		: "UTC";
+}
+
 /** Order-preserving group-by, shared by the Variables and Functions reference lists. */
 function groupBy<T>(items: T[], keyOf: (item: T) => string): [string, T[]][] {
 	const groups: [string, T[]][] = [];
@@ -189,7 +203,10 @@ export function FormulaEditorModal({
 		| null
 		| undefined;
 
-	const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+	// The tz the automation will ACTUALLY run in — mirrors automationFormulaTz on
+	// the backend. Previewing in the browser's tz made authoring-time results
+	// differ from production for every non-local user.
+	const tz = useMemo(() => runtimeTimezone(trigger), [trigger]);
 
 	// Formulas this one may reference — excludes itself (no self-reference).
 	const referenceFormulas = useMemo(
@@ -368,7 +385,12 @@ export function FormulaEditorModal({
 
 						<div className="space-y-1.5 rounded-md border border-border bg-muted/30 p-3">
 							<div className="flex items-center justify-between gap-2">
-								<span className="text-xs font-medium text-muted-foreground">Preview</span>
+								<span className="text-xs font-medium text-muted-foreground">
+									Preview{" "}
+									<span className="font-normal">
+										· dates in {tz} (this automation&rsquo;s run timezone)
+									</span>
+								</span>
 								{sampleRecords.length > 1 && (
 									<Select
 										value={selectedSample?.entityId}

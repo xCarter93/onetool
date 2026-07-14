@@ -222,9 +222,21 @@ describe("comparison and equality", () => {
 	});
 
 	it("throws TYPE on mismatched order comparison", () => {
-		expect(code(() => run("DATE(2026,1,1) < 5"))).toBe("TYPE");
 		expect(code(() => run('1 < "abc"'))).toBe("TYPE");
 		expect(code(() => run("true < false"))).toBe("TYPE");
+		// A date compared with a boolean has no reading.
+		expect(code(() => run("DATE(2026,1,1) < true"))).toBe("TYPE");
+		// ...and against a string that isn't a date it throws rather than silently
+		// answering false, which is what it used to do.
+		expect(code(() => run('DATE(2026,1,1) == "not-a-date"'))).toBe("TYPE");
+	});
+
+	it("reads a number compared against a date as an epoch timestamp", () => {
+		// Deliberate: record date fields reach formulas as raw epoch numbers, so
+		// `{dueDate} < NOW()` MUST work. The cost is that a nonsense literal like
+		// `DATE(...) < 5` now compares against 1970 instead of throwing.
+		expect(run("DATE(2026,1,1) > 5")).toBe(true);
+		expect(run("{d} == DATE(2026,1,1)", { d: Date.UTC(2026, 0, 1) })).toBe(true);
 	});
 
 	it("equality across types", () => {
@@ -395,9 +407,122 @@ describe("date functions (deterministic)", () => {
 		const nearBoundary = Date.UTC(2026, 6, 4, 2, 0, 0);
 		expect(run("DAY(NOW())", {}, { now: nearBoundary, tz: "America/New_York" })).toBe(3);
 		expect(run("DAY(NOW())", {}, { now: nearBoundary, tz: "UTC" })).toBe(4);
-		// TODAY in NY is midnight of Jul 3 NY = 2026-07-03T04:00:00Z.
+		// WHICH day it is, is still decided in the run tz — but the result is a
+		// calendar DATE (UTC-midnight encoded, like every stored date field), not a
+		// local-midnight instant. Encoding it locally is what made
+		// `dueDate == TODAY()` silently false outside UTC.
 		const todayNY = run("TODAY()", {}, { now: nearBoundary, tz: "America/New_York" }) as Date;
-		expect(todayNY.toISOString()).toBe("2026-07-03T04:00:00.000Z");
+		expect(todayNY.toISOString()).toBe("2026-07-03T00:00:00.000Z");
+	});
+});
+
+/* ------------- calendar dates vs instants (day-space semantics) ------------ */
+
+describe("calendar dates vs instants", () => {
+	const DAY = 86_400_000;
+	// How OneTool stores a calendar date: UTC midnight.
+	const dueJul4 = Date.UTC(2026, 6, 4);
+
+	it("a date field matches TODAY() on its due day, in a non-UTC run tz", () => {
+		// The headline bug. Note the boundary: at 2026-07-05T02:00Z it is still
+		// Jul 4 in New York, so a Jul 4 due date must still match.
+		const duringJul4NY = Date.UTC(2026, 6, 5, 2, 0, 0);
+		expect(
+			run(
+				"{dueDate} == TODAY()",
+				{ dueDate: dueJul4 },
+				{ now: duringJul4NY, tz: "America/New_York" }
+			)
+		).toBe(true);
+		expect(
+			run(
+				"{dueDate} == TODAY()",
+				{ dueDate: dueJul4 - DAY },
+				{ now: duringJul4NY, tz: "America/New_York" }
+			)
+		).toBe(false);
+	});
+
+	it("a date field orders against NOW() instead of throwing", () => {
+		// compareValues used to throw TYPE outright for Date-vs-number.
+		expect(run("{dueDate} < NOW()", { dueDate: Date.UTC(2026, 6, 1) })).toBe(true);
+		expect(run("{dueDate} > NOW()", { dueDate: Date.UTC(2026, 6, 9) })).toBe(true);
+	});
+
+	it("an instant compares to TODAY() as 'happened today' in the run tz", () => {
+		// 2026-07-05T02:00Z is Jul 4 22:00 in New York.
+		const paidLateJul4NY = Date.UTC(2026, 6, 5, 2, 0, 0);
+		expect(
+			run(
+				"{paidAt} == TODAY()",
+				{ paidAt: paidLateJul4NY },
+				{ now: paidLateJul4NY, tz: "America/New_York" }
+			)
+		).toBe(true);
+	});
+
+	it("keeps ==, < and > consistent across a mixed pair (trichotomy)", () => {
+		// An instant vs a calendar date (TODAY()) on the same day: equal, and
+		// neither before nor after. If == were day-granular but < instant-granular,
+		// all three would be false and ordering would be incoherent.
+		const midJul4 = Date.UTC(2026, 6, 4, 15, 30, 0);
+		const vars = { paidAt: midJul4 };
+		const opts = { now: midJul4, tz: "UTC" };
+		expect(run("{paidAt} == TODAY()", vars, opts)).toBe(true);
+		expect(run("{paidAt} < TODAY()", vars, opts)).toBe(false);
+		expect(run("{paidAt} > TODAY()", vars, opts)).toBe(false);
+	});
+
+	it("KNOWN LIMIT: two raw date fields still compare as exact epochs", () => {
+		// Classification only engages once one side is a real Date (produced by
+		// TODAY()/NOW()/DATE()/ADDDAYS). Two record fields arrive as plain numbers,
+		// so `dueDate == paidAt` is exact-instant equality and is false even when
+		// both fall on the same day. Fixing this needs real field types — Phase C's
+		// date/datetime registry split. Pinned here so it is a known gap, not a
+		// surprise.
+		const vars = { dueDate: dueJul4, paidAt: Date.UTC(2026, 6, 4, 15, 30, 0) };
+		expect(run("{dueDate} == {paidAt}", vars, { tz: "UTC" })).toBe(false);
+		// The workaround that does work today:
+		expect(run("DAYS_BETWEEN({dueDate}, {paidAt}) == 0", vars, { tz: "UTC" })).toBe(
+			true
+		);
+	});
+
+	it("ADDDAYS on a calendar date stays a calendar date across a DST boundary", () => {
+		// US DST springs forward 2026-03-08. Preserving wall-clock in the run tz
+		// (right for an instant) would land this off UTC midnight and silently
+		// reclassify it as an instant, corrupting any date field it is written to.
+		const result = run("ADDDAYS(DATE(2026,3,6), 5)", {}, {
+			tz: "America/New_York",
+		}) as Date;
+		expect(result.getTime() % DAY).toBe(0);
+		expect(result.toISOString()).toBe("2026-03-11T00:00:00.000Z");
+	});
+
+	it("ADDDAYS on an instant preserves its wall-clock time", () => {
+		const noonUTC = Date.UTC(2026, 6, 4, 12, 0, 0);
+		const result = run("ADDDAYS({t}, 1)", { t: noonUTC }, { tz: "UTC" }) as Date;
+		expect(result.toISOString()).toBe("2026-07-05T12:00:00.000Z");
+	});
+
+	it("DATE() builds the same calendar date in every timezone", () => {
+		// Building it from zoned parts broke outright where DST springs forward AT
+		// midnight (local midnight doesn't exist, so the epoch landed at 01:00).
+		for (const tz of ["UTC", "America/New_York", "America/Santiago", "Asia/Kolkata"]) {
+			const d = run("DATE(2026, 7, 4)", {}, { tz }) as Date;
+			expect(d.toISOString()).toBe("2026-07-04T00:00:00.000Z");
+		}
+	});
+
+	it("DAYS_BETWEEN does not go off-by-one between a date and an instant", () => {
+		// now = 2026-07-04T12:00Z, which is Jul 4 in New York.
+		expect(
+			run(
+				"DAYS_BETWEEN({d}, NOW())",
+				{ d: Date.UTC(2026, 6, 1) },
+				{ tz: "America/New_York" }
+			)
+		).toBe(3);
 	});
 });
 

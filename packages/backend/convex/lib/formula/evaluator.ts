@@ -57,17 +57,18 @@ function evalBinary(
 	ctx: FormulaContext
 ): Val {
 	// Equality operators compare values directly (no numeric-only requirement).
+	// tz is threaded through because a date compares in its own day-space.
 	if (op === "==" || op === "!=") {
 		const l = evalNode(leftNode, ctx);
 		const r = evalNode(rightNode, ctx);
-		const eq = valuesEqual(l, r);
+		const eq = valuesEqual(l, r, ctx.tz);
 		return op === "==" ? eq : !eq;
 	}
 
 	if (op === "<" || op === "<=" || op === ">" || op === ">=") {
 		const l = evalNode(leftNode, ctx);
 		const r = evalNode(rightNode, ctx);
-		const c = compareValues(l, r);
+		const c = compareValues(l, r, ctx.tz);
 		switch (op) {
 			case "<":
 				return c < 0;

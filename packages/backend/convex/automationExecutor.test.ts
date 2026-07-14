@@ -1058,6 +1058,45 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("date writes are normalized to the calendar-date encoding", () => {
+		it("stores an instant written into a date field as UTC midnight", async () => {
+			const { asUser } = await setupUser();
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			// A mid-afternoon instant, not a calendar date. A formula like
+			// ADDDAYS(NOW(), 3) produces exactly this shape.
+			const instant = Date.UTC(2026, 6, 4, 15, 30, 0);
+
+			await asUser.mutation(api.automations.create, {
+				name: "Stamp a start date",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [updateFieldActionNode("act-1", "startDate", instant)],
+				isActive: true,
+			});
+
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			// Written through unchanged, the stored value would be an instant, which
+			// the formula layer then reads as an instant forever after — and
+			// `startDate == TODAY()` would go quietly false for this record.
+			expect(project?.startDate).toBe(Date.UTC(2026, 6, 4));
+			expect((project?.startDate as number) % 86_400_000).toBe(0);
+		});
+	});
+
 	describe("org isolation", () => {
 		it("does not fire an org A automation for an org B record", async () => {
 			const orgA = await setupUser({
