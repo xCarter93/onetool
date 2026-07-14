@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity } from "./test.helpers";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { computeNextRunAt } from "./lib/schedule";
 
 // Valid v2 trigger: client statuses are lead/active/inactive/archived
@@ -1219,6 +1219,109 @@ describe("Automations", () => {
 			);
 			expect(automation).toBeNull();
 			expect(execution).toBeNull();
+		});
+	});
+
+	describe("remove — batched execution cleanup", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("deletes an automation with >100 execution rows fully once scheduled batches finish, leaving only the 100-row inline batch gone right after remove", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Heavy history",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+				isActive: true,
+			});
+
+			const TOTAL_EXECUTIONS = 120;
+			await t.run(async (ctx) => {
+				for (let i = 0; i < TOTAL_EXECUTIONS; i++) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId: id,
+						triggeredBy: "status_changed",
+						triggeredAt: Date.now(),
+						status: "completed",
+						nodesExecuted: [],
+					});
+				}
+			});
+
+			await asUser.mutation(api.automations.remove, { id });
+
+			// Inline batch deletes exactly REMOVE_EXECUTIONS_BATCH (100) rows before
+			// the scheduled follow-up runs — 20 should remain right now.
+			const remainingAfterInline = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) => q.eq("automationId", id))
+					.collect()
+			);
+			expect(remainingAfterInline).toHaveLength(
+				TOTAL_EXECUTIONS - 100
+			);
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const [automation, remainingAfterDrain] = await t.run(async (ctx) =>
+				Promise.all([
+					ctx.db.get(id),
+					ctx.db
+						.query("workflowExecutions")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.collect(),
+				])
+			);
+			expect(automation).toBeNull();
+			expect(remainingAfterDrain).toHaveLength(0);
+		});
+
+		it("removeExecutionsBatch is a no-op guard when the automation still exists", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Still alive",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+				isActive: true,
+			});
+
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 5; i++) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId: id,
+						triggeredBy: "status_changed",
+						triggeredAt: Date.now(),
+						status: "completed",
+						nodesExecuted: [],
+					});
+				}
+			});
+
+			await t.mutation(internal.automations.removeExecutionsBatch, {
+				automationId: id,
+			});
+
+			const [automation, executions] = await t.run(async (ctx) =>
+				Promise.all([
+					ctx.db.get(id),
+					ctx.db
+						.query("workflowExecutions")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.collect(),
+				])
+			);
+			expect(automation).not.toBeNull();
+			expect(executions).toHaveLength(5);
 		});
 	});
 

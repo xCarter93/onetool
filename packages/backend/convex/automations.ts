@@ -1,4 +1,5 @@
-import { QueryCtx, MutationCtx } from "./_generated/server";
+import { QueryCtx, MutationCtx, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
@@ -1191,8 +1192,39 @@ export const toggleActive = userMutation({
 	},
 });
 
+/** Execution rows deleted per transaction while removing an automation. */
+const REMOVE_EXECUTIONS_BATCH = 100;
+
 /**
- * Delete an automation (hard delete)
+ * Delete one bounded batch of a removed automation's execution rows and
+ * reschedule while more remain. Rows still present during the handoff window
+ * render as "(deleted automation)" in run listings.
+ */
+async function deleteExecutionsBatch(
+	ctx: MutationCtx,
+	automationId: AutomationId
+): Promise<void> {
+	const batch = await ctx.db
+		.query("workflowExecutions")
+		.withIndex("by_automation", (q) => q.eq("automationId", automationId))
+		.take(REMOVE_EXECUTIONS_BATCH);
+	for (const execution of batch) {
+		await ctx.db.delete(execution._id);
+	}
+	if (batch.length === REMOVE_EXECUTIONS_BATCH) {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.automations.removeExecutionsBatch,
+			{ automationId }
+		);
+	}
+}
+
+/**
+ * Delete an automation (hard delete). The doc goes immediately — lists and
+ * the scheduled dispatcher stop seeing it in this transaction — but a
+ * long-lived automation's run history can exceed one transaction's limits,
+ * so it is chewed through in self-rescheduling batches.
  */
 export const remove = userMutation({
 	args: { id: v.id("workflowAutomations") },
@@ -1200,18 +1232,21 @@ export const remove = userMutation({
 		await ctx.requireLevel("automations", "delete");
 		await getAutomationOrThrow(ctx, args.id); // Validate access
 
-		// Also delete associated execution logs
-		const executions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_automation", (q) => q.eq("automationId", args.id))
-			.collect();
-
-		for (const execution of executions) {
-			await ctx.db.delete(execution._id);
-		}
-
 		await ctx.db.delete(args.id);
+		await deleteExecutionsBatch(ctx, args.id);
 		return args.id;
+	},
+});
+
+/** Follow-up batches for `remove` — only ever runs on orphaned rows. */
+export const removeExecutionsBatch = internalMutation({
+	args: { automationId: v.id("workflowAutomations") },
+	handler: async (ctx, args): Promise<void> => {
+		// Refuse to touch history of a live automation: this only cleans up
+		// after a hard delete, so a still-present doc means a bad caller.
+		const automation = await ctx.db.get(args.automationId);
+		if (automation) return;
+		await deleteExecutionsBatch(ctx, args.automationId);
 	},
 });
 

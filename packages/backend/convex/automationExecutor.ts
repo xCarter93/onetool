@@ -4583,5 +4583,77 @@ export const failStaleTestRuns = internalMutation({
 	},
 });
 
+/**
+ * A production run idle past this is presumed stranded by a dropped scheduler
+ * hop. Applies to both the run's age (stuck mid-walk with no resumeState) and
+ * a parked run's missed wake time.
+ */
+const STALE_PRODUCTION_RUN_MS = 30 * 60 * 1000;
+
+/**
+ * Watchdog: rescue production runs stranded by a dropped scheduler hop. Two
+ * shapes: stuck mid-walk (`running`, no resumeState, older than the cutoff)
+ * and parked runs whose resumeState wake time passed the cutoff without the
+ * resume ever firing. Legitimately parked runs (future wake) are skipped.
+ * Without this, a wedged run shows "running" forever and is excluded from
+ * retention cleanup, and the owner is never told.
+ */
+export const failStaleProductionRuns = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ failed: number }> => {
+		const now = Date.now();
+		const cutoff = now - STALE_PRODUCTION_RUN_MS;
+		// resumeAt >= triggeredAt always (wake times are computed at park time),
+		// so triggeredAt < cutoff catches both shapes in one indexed read.
+		const candidates = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoff))
+			.filter((q) =>
+				q.and(
+					q.eq(q.field("status"), "running"),
+					q.neq(q.field("mode"), "test")
+				)
+			)
+			.take(100);
+
+		let failed = 0;
+		for (const execution of candidates) {
+			const resume = execution.resumeState;
+			// Parked with the wake still ahead (or recently passed): leave it be.
+			if (resume && resume.resumeAt >= cutoff) continue;
+
+			// A parked run's wait is honest pause, not activity — fold it in so
+			// the derived activeMs stays truthful (mirrors resumeExecution).
+			const pausedMs = resume
+				? (execution.pausedMs ?? 0) + (now - (resume.checkpointAt ?? now))
+				: execution.pausedMs;
+
+			const message = resume
+				? "Run never woke from its scheduled resume and was marked failed by the watchdog"
+				: "Run stalled without completing and was marked failed by the watchdog";
+
+			await ctx.db.patch(execution._id, {
+				status: "failed",
+				completedAt: now,
+				currentNodeId: undefined,
+				resumeState: undefined,
+				pausedMs,
+				error: execution.error ?? message,
+			});
+			failed++;
+
+			// Legacy dry-run rows can carry mode !== "test": clean them up above,
+			// but never alert on a run that wrote nothing.
+			if (execution.dryRun) continue;
+			const automation = await ctx.db.get(execution.automationId);
+			if (automation && automation.orgId === execution.orgId) {
+				await notifyAutomationFailure(ctx, automation, message, execution._id);
+			}
+			// else: no automation doc to name the alert; skip (deleted automation).
+		}
+		return { failed };
+	},
+});
+
 /** Exposed for tests; not part of the public API. */
 export const __testUtils = { resolveMemberUserIds };
