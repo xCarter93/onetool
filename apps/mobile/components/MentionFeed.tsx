@@ -9,7 +9,7 @@ import {
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
-import { MessageSquare, Download, FileText } from "lucide-react-native";
+import { MessageSquare, Download, FileText, Sparkles } from "lucide-react-native";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
@@ -56,14 +56,14 @@ const parseMessageParts = (
 
 // Component to display attachments
 function AttachmentItem({
-	notificationId,
+	teamMessageId,
 }: {
-	notificationId: Id<"notifications">;
+	teamMessageId: Id<"teamMessages">;
 }) {
 	const attachments = useQuery(
-		api.messageAttachments.listByNotificationWithUrls,
+		api.messageAttachments.listByTeamMessageWithUrls,
 		{
-			notificationId,
+			teamMessageId,
 		}
 	);
 
@@ -130,7 +130,7 @@ function AttachmentItem({
 }
 
 export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
-	const mentions = useQuery(api.notifications.listByEntity, {
+	const messages = useQuery(api.teamMessages.listByEntity, {
 		entityType,
 		entityId,
 	});
@@ -145,7 +145,7 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 	};
 
 	// Loading state
-	if (mentions === undefined) {
+	if (messages === undefined) {
 		return (
 			<View style={styles.loadingContainer}>
 				<ActivityIndicator size="large" color={colors.primary} />
@@ -155,7 +155,7 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 	}
 
 	// Empty state
-	if (mentions.length === 0) {
+	if (messages.length === 0) {
 		return (
 			<View style={styles.emptyContainer}>
 				<View style={styles.emptyIcon}>
@@ -172,55 +172,61 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 
 	return (
 		<View style={styles.feedContainer}>
-			{mentions.map((mention) => (
-				<View key={mention._id} style={styles.mentionItem}>
-					{/* Avatar */}
-					<View style={styles.avatar}>
-						<Text style={styles.avatarText}>
-							{mention.author?.name
-								? getInitials(mention.author.name)
-								: mention.author?.email
-									? mention.author.email.substring(0, 2).toUpperCase()
-									: "??"}
-						</Text>
-					</View>
-
-					{/* Message content */}
-					<View style={styles.messageContent}>
-						{/* Header */}
-						<View style={styles.messageHeader}>
-							<Text style={styles.authorName} numberOfLines={1}>
-								{mention.author?.name ||
-									mention.author?.email ||
-									"Unknown User"}
-							</Text>
-							<Text style={styles.timestamp}>
-								{formatRelativeTime(mention._creationTime)}
-							</Text>
+			{messages.map((message) => {
+				const isAutomation = message.authorType === "automation";
+				return (
+					<View key={message._id} style={styles.mentionItem}>
+						{/* Avatar */}
+						<View style={styles.avatar}>
+							{isAutomation ? (
+								<Sparkles size={16} color="#ffffff" />
+							) : (
+								<Text style={styles.avatarText}>
+									{getInitials(message.authorName)}
+								</Text>
+							)}
 						</View>
 
-						{/* Message text with styled mentions */}
-						<View style={styles.messageBubble}>
-							<Text style={styles.messageText}>
-								{parseMessageParts(mention.message).map((part, index) =>
-									part.isMention ? (
-										<Text key={index} style={styles.mentionTag}>
-											{part.text}
-										</Text>
-									) : (
-										<Text key={index}>{part.text}</Text>
-									)
+						{/* Message content */}
+						<View style={styles.messageContent}>
+							{/* Header */}
+							<View style={styles.messageHeader}>
+								<Text style={styles.authorName} numberOfLines={1}>
+									{message.authorName}
+								</Text>
+								{isAutomation && (
+									<View style={styles.automationBadge}>
+										<Text style={styles.automationBadgeText}>Automation</Text>
+									</View>
 								)}
-							</Text>
-						</View>
+								<Text style={styles.timestamp}>
+									{formatRelativeTime(message.createdAt)}
+								</Text>
+							</View>
 
-						{/* Attachments */}
-						{mention.hasAttachments && (
-							<AttachmentItem notificationId={mention._id} />
-						)}
+							{/* Message text with styled mentions */}
+							<View style={styles.messageBubble}>
+								<Text style={styles.messageText}>
+									{parseMessageParts(message.message).map((part, index) =>
+										part.isMention ? (
+											<Text key={index} style={styles.mentionTag}>
+												{part.text}
+											</Text>
+										) : (
+											<Text key={index}>{part.text}</Text>
+										)
+									)}
+								</Text>
+							</View>
+
+							{/* Attachments */}
+							{message.hasAttachments && (
+								<AttachmentItem teamMessageId={message._id} />
+							)}
+						</View>
 					</View>
-				</View>
-			))}
+				);
+			})}
 		</View>
 	);
 }
@@ -300,6 +306,17 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
+	},
+	automationBadge: {
+		backgroundColor: "rgba(139, 92, 246, 0.12)",
+		paddingHorizontal: 6,
+		paddingVertical: 2,
+		borderRadius: 4,
+	},
+	automationBadgeText: {
+		fontSize: 10,
+		fontFamily: fontFamily.semibold,
+		color: "#8b5cf6",
 	},
 	timestamp: {
 		fontSize: 11,
