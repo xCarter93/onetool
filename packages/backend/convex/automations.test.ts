@@ -275,6 +275,35 @@ describe("Automations", () => {
 		});
 	});
 
+	describe("send_notification record_owner recipient removed", () => {
+		it("rejects a record_owner recipient at create (validator boundary)", async () => {
+			const { asUser } = await setupUser();
+			// record_owner is no longer in the recipient union — the arg validator
+			// rejects it. Legacy stored configs (which Convex won't re-validate on
+			// read) are handled by the executor's defensive skip instead.
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Legacy owner notify",
+					trigger: clientTrigger,
+					nodes: [
+						{
+							id: "notify-1",
+							type: "action",
+							config: {
+								kind: "action",
+								action: {
+									type: "send_notification",
+									recipient: "record_owner",
+									message: "x",
+								},
+							},
+						},
+					] as never,
+				})
+			).rejects.toThrow();
+		});
+	});
+
 	describe("send_team_message validation (recipients retired) — C1", () => {
 		function teamMessageNode(
 			mention: { kind: "none" } | { kind: "created_by" }

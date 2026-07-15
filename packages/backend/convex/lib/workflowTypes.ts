@@ -224,7 +224,6 @@ export const sendNotificationActionValidator = v.object({
 	recipient: v.union(
 		v.literal("org_admins"),
 		v.literal("all_members"),
-		v.literal("record_owner"),
 		v.object({ userId: v.string() })
 	),
 	/**

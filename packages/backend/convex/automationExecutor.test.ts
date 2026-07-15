@@ -1909,11 +1909,7 @@ describe("automationExecutor (v2 engine)", () => {
 
 		function sendNotificationActionNode(
 			id: string,
-			recipient:
-				| "org_admins"
-				| "all_members"
-				| "record_owner"
-				| { userId: string },
+			recipient: "org_admins" | "all_members" | { userId: string },
 			message: string,
 			opts: { nextNodeId?: string; channels?: ("in_app" | "push")[] } = {}
 		) {

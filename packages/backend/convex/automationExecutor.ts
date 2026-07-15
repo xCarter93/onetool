@@ -3665,25 +3665,6 @@ async function notifyAutomationFailure(
 	}
 }
 
-/**
- * The user who "owns" the record in scope: a task's assignee, else the org
- * owner (no other entity carries an owner field).
- */
-async function resolveRecordOwner(
-	ctx: MutationCtx,
-	scopeRecord: ScopeRecord | undefined,
-	orgId: Id<"organizations">
-): Promise<Id<"users"> | null> {
-	if (scopeRecord?.type === "task") {
-		const assignee = scopeRecord.record.assigneeUserId as
-			| Id<"users">
-			| undefined;
-		if (assignee) return assignee;
-	}
-	const org = await ctx.db.get(orgId);
-	return org?.ownerUserId ?? null;
-}
-
 function automationActionUrl(scopeRecord: ScopeRecord | undefined): string {
 	return scopeRecord ? `/${scopeRecord.type}s/${scopeRecord.id}` : "/home";
 }
@@ -3706,16 +3687,14 @@ async function executeSendNotificationAction(
 		if (userIds.length === 0) {
 			return { success: true, skipped: true, error: "No members to notify" };
 		}
-	} else if (action.recipient === "record_owner") {
-		const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
-		if (!owner) {
-			return {
-				success: true,
-				skipped: true,
-				error: "No owner found for the record in scope",
-			};
-		}
-		userIds = [owner];
+	} else if (typeof action.recipient === "string") {
+		// Unknown string recipient (e.g. a legacy "record_owner" config predating
+		// its removal) — skip gracefully rather than crash or notify the wrong user.
+		return {
+			success: true,
+			skipped: true,
+			error: "Unknown recipient — reconfigure this notification",
+		};
 	} else {
 		const userId = action.recipient.userId as Id<"users">;
 		const membership = await getMembership(ctx, userId, env.orgId);
@@ -4426,16 +4405,13 @@ async function dryExecuteAction(
 					return { success: true, skipped: true, output: { note: "No members to notify" } };
 				}
 				count = ids.length;
-			} else if (action.recipient === "record_owner") {
-				const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
-				if (!owner) {
-					return {
-						success: true,
-						skipped: true,
-						output: { note: "No owner found for the record in scope" },
-					};
-				}
-				count = 1;
+			} else if (typeof action.recipient === "string") {
+				// Unknown string (e.g. legacy "record_owner") — preview as skipped.
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "Unknown recipient — reconfigure this notification" },
+				};
 			} else {
 				const membership = await getMembership(
 					ctx,

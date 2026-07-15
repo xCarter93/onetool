@@ -715,7 +715,17 @@ function SendNotificationFields({
 		update({ message })
 	);
 
-	const recipientValue = typeof action.recipient === "string" ? action.recipient : "specific_member";
+	// A stored legacy "record_owner" (now dropped from the union) would select a
+	// missing option and render the control blank — fall back the display to
+	// "org_admins". Display-only: nothing is committed until the user re-picks.
+	const derivedRecipient =
+		typeof action.recipient === "string" ? action.recipient : "specific_member";
+	const recipientValue =
+		derivedRecipient === "all_members" ||
+		derivedRecipient === "org_admins" ||
+		derivedRecipient === "specific_member"
+			? derivedRecipient
+			: "org_admins";
 
 	return (
 		<PanelSection title="Inputs">
@@ -723,11 +733,7 @@ function SendNotificationFields({
 				<Select
 					value={recipientValue}
 					onValueChange={(value) => {
-						if (
-							value === "org_admins" ||
-							value === "record_owner" ||
-							value === "all_members"
-						) {
+						if (value === "all_members" || value === "org_admins") {
 							update({ recipient: value });
 						} else {
 							update({ recipient: { userId: members?.[0]?._id ?? "" } });
@@ -740,7 +746,6 @@ function SendNotificationFields({
 					<SelectContent>
 						<SelectItem value="all_members">All members</SelectItem>
 						<SelectItem value="org_admins">Org admins</SelectItem>
-						<SelectItem value="record_owner">Record owner</SelectItem>
 						<SelectItem value="specific_member">Specific member</SelectItem>
 					</SelectContent>
 				</Select>
