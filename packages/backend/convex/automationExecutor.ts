@@ -932,7 +932,9 @@ function loopSummaryPatch(env: WalkEnv): LoopSummary[] | undefined {
  */
 function rollbackEntries(env: WalkEnv, mark: number): void {
 	env.nodesExecuted.length = mark;
-	env.logTruncated = env.nodesExecuted.length >= MAX_EXECUTED_ENTRIES;
+	// > not >=: the marker lives past index MAX, so an exactly-full log has
+	// no marker yet — latching true here would drop later entries unmarked.
+	env.logTruncated = env.nodesExecuted.length > MAX_EXECUTED_ENTRIES;
 }
 
 /**
@@ -1279,7 +1281,7 @@ export const resumeExecution = systemMutation({
 			nodesExecuted: [...execution.nodesExecuted],
 			// Derived, not reset: the log carries over from the previous chunk, so
 			// a false here makes every later chunk append its own truncation marker.
-			logTruncated: execution.nodesExecuted.length >= MAX_EXECUTED_ENTRIES,
+			logTruncated: execution.nodesExecuted.length > MAX_EXECUTED_ENTRIES,
 			dataTruncated: execution.dataTruncated ?? false,
 			loopSummaries: (execution.loopSummary ?? []).map((l) => ({
 				...l,

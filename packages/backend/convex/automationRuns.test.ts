@@ -1088,9 +1088,8 @@ describe("automation runs (test + manual)", () => {
 			expect(row?.resumeState).toBeUndefined();
 			expect(row?.currentNodeId).toBeUndefined();
 			expect(row?.completedAt).toBe(now);
-			// seeded 1000 + elapsed since checkpoint (>= 30min, per task instruction
-			// — avoid asserting the exact ms under fake timers).
-			expect(row?.pausedMs).toBeGreaterThanOrEqual(1000 + 30 * 60 * 1000);
+			// seeded 1000 + exact elapsed since checkpoint (fake timers freeze now).
+			expect(row?.pausedMs).toBe(1000 + (now - checkpointAt));
 		});
 
 		it("still marks a stranded run failed when its automation was deleted, without throwing or notifying", async () => {

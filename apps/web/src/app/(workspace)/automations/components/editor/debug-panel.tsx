@@ -169,7 +169,7 @@ function PartialProgressBanner({ execution }: { execution: ExecutionDoc }) {
 			{loopsWithFailures.map((summary) => {
 				const shown = summary.errors.slice(0, MAX_SHOWN);
 				const hiddenCount = summary.errors.length - shown.length;
-				const anyPartial = shown.some((e) => e.partial);
+				const anyPartial = summary.errors.some((e) => e.partial);
 				return (
 					<div
 						key={summary.nodeId}

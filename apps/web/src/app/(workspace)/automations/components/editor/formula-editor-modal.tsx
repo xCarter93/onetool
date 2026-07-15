@@ -10,6 +10,7 @@ import {
 	parseFormula,
 	runFormula,
 	FORMULA_FUNCTIONS,
+	isCalendarDateEpoch,
 	type FormulaFnDoc,
 	type Val,
 } from "@onetool/backend/convex/lib/formula";
@@ -90,9 +91,16 @@ function toFormulaVal(value: unknown): Val {
 	return null;
 }
 
-function formatPreviewValue(value: Val): string {
+function formatPreviewValue(value: Val, tz: string): string {
 	if (value === null) return "(empty)";
-	if (value instanceof Date) return value.toLocaleString();
+	if (value instanceof Date) {
+		// Match runtime display semantics: a calendar date reads in UTC
+		// (date-only), an instant in the tz the automation will run in —
+		// the browser's tz can be a day off for non-local users.
+		return isCalendarDateEpoch(value.getTime())
+			? value.toLocaleDateString(undefined, { timeZone: "UTC" })
+			: value.toLocaleString(undefined, { timeZone: tz });
+	}
 	if (typeof value === "boolean") return value ? "true" : "false";
 	return String(value);
 }
@@ -264,7 +272,7 @@ export function FormulaEditorModal({
 			}
 			try {
 				const value = runFormula(expression, { resolve, now: Date.now(), tz });
-				setPreview({ ok: true, text: formatPreviewValue(value) });
+				setPreview({ ok: true, text: formatPreviewValue(value, tz) });
 			} catch (err) {
 				setPreview({
 					ok: false,

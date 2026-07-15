@@ -34,7 +34,7 @@ export function RecentFailuresTimeline({ className }: { className?: string }) {
 			<FrameHeader>
 				<FrameTitle>Recent failures</FrameTitle>
 				<FrameDescription className="text-xs">
-					Production runs that failed, or finished with items skipped
+					Production runs that failed, or completed with item errors
 				</FrameDescription>
 			</FrameHeader>
 
@@ -120,7 +120,10 @@ export function RecentFailuresTimeline({ className }: { className?: string }) {
 										</span>
 									</div>
 									<p className="text-muted-foreground mt-1.5 line-clamp-3 text-xs leading-relaxed">
-										{failure.error ?? "Run failed."}
+										{failure.error ??
+											(failure.status === "completed_with_errors"
+												? "One or more items failed; the rest completed."
+												: "Run failed.")}
 									</p>
 								</TimelineContent>
 							</TimelineItem>
