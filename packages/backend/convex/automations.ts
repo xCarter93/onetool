@@ -515,12 +515,29 @@ function validateCreateRecordAction(
 	}
 
 	// Required fields must be supplied — either as a row or via the scope link.
-	// When linkToScope is set but the scope type is unknown (can't tell what it
-	// fills), defer to runtime rather than false-reject a valid automation.
+	// A row explicitly set to a static null/blank value doesn't satisfy it.
+	const relationFks = new Set(Object.values(RELATION_FIELD[objectType] ?? {}));
 	for (const def of getRequiredCreateFields(objectType)) {
-		if (action.fields.some((f) => f.field === def.key)) continue;
+		const row = action.fields.find((f) => f.field === def.key);
+		if (row) {
+			const blank =
+				row.value.kind === "static" &&
+				(row.value.value === null ||
+					(typeof row.value.value === "string" &&
+						row.value.value.trim() === ""));
+			if (blank) {
+				throw new Error(
+					`Node ${nodeId}: ${def.label} is required to create a ${objectType}`
+				);
+			}
+			continue;
+		}
 		if (linkedFk === def.key) continue;
-		if (action.linkToScope && !scopeObjectType) continue;
+		// When the scope type is unknown, only the relationship FK a link would
+		// fill is deferrable — other missing required fields are still missing.
+		if (action.linkToScope && !scopeObjectType && relationFks.has(def.key)) {
+			continue;
+		}
 		throw new Error(
 			`Node ${nodeId}: ${def.label} is required to create a ${objectType}`
 		);

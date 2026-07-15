@@ -712,6 +712,35 @@ describe("validateWorkflowForSave — update_fields (B2)", () => {
 		).toBe(true);
 	});
 
+	it("rejects a null value on a boolean row", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", [{ field: "isActive", value: null }]),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /set a value/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects an empty-string value on a boolean row", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", [{ field: "isActive", value: "" }]),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /set a value/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("accepts a false value on a boolean row", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", [{ field: "isActive", value: false }]),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
+	});
+
 	it("rejects a top-level update_fields on a scheduled trigger", () => {
 		const scheduled: TriggerConfig = {
 			type: "scheduled",

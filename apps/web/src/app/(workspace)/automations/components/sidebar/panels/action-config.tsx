@@ -495,7 +495,23 @@ function CreateRecordFields({
 				>
 					<Switch
 						checked={!!action.linkToScope}
+						aria-label={`Link the new ${OBJECT_TYPE_LABELS[objectType]} to the ${OBJECT_TYPE_LABELS[scopeObjectType]} in scope`}
 						onCheckedChange={toggleLink}
+					/>
+				</PanelField>
+			)}
+
+			{action.linkToScope && !(linkFk && scopeObjectType) && (
+				// linkToScope is on but the current scope has no matching FK (scope
+				// changed after it was set) — keep it removable so it can't get stuck.
+				<PanelField
+					label="Link to record in scope"
+					helper={`This step no longer has a matching record in scope to link the new ${OBJECT_TYPE_LABELS[objectType]} to. Turn it off to clear the stale link.`}
+				>
+					<Switch
+						checked
+						aria-label={`Clear the stale scope link on this new ${OBJECT_TYPE_LABELS[objectType]}`}
+						onCheckedChange={() => toggleLink(false)}
 					/>
 				</PanelField>
 			)}

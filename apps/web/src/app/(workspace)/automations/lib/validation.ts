@@ -333,7 +333,7 @@ function validateActionNode(
 				const isEmpty =
 					row.value.kind === "static" &&
 					(row.value.value === null || row.value.value === "");
-				if (field.type !== "boolean" && isEmpty) {
+				if (isEmpty) {
 					errors.push({
 						type: "missing_required_config",
 						message: `Set a value for ${field.label}`,
@@ -410,7 +410,7 @@ function validateActionNode(
 				const isEmpty =
 					row.value.kind === "static" &&
 					(row.value.value === null || row.value.value === "");
-				if (field.type !== "boolean" && isEmpty) {
+				if (isEmpty) {
 					errors.push({
 						type: "missing_required_config",
 						message: `Set a value for ${field.label}`,

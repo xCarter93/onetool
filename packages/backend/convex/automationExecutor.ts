@@ -884,6 +884,17 @@ const MAX_ITEM_ERROR_CHARS = 500;
 let cascadeEventSeq = 0;
 
 /**
+ * Correlation id for a cascade domain event. Date.now() is frozen inside a Convex
+ * transaction, so the per-module counter is what keeps ids unique when one run
+ * emits several cascade events (e.g. two sequential update_fields/create_record
+ * nodes) — without it the event bus could dedupe the second event by correlationId.
+ */
+function nextCascadeCorrelationId(executionChain: string[]): string {
+	cascadeEventSeq += 1;
+	return `cascade-${executionChain.join("-")}-${Date.now()}-${cascadeEventSeq}`;
+}
+
+/**
  * A throw that means the transaction is already doomed — every remaining item
  * would hit it too, and calling it "item 13 failed" would be a lie. These are
  * rethrown even when the loop is set to continue; everything else (a schema
@@ -2547,8 +2558,7 @@ async function applyStatusUpdate(
 			// Create correlation ID that includes chain info for the event bus.
 			// Date.now() is frozen within a Convex transaction, so a per-module
 			// counter keeps IDs unique when one run emits several cascade events.
-			cascadeEventSeq += 1;
-			const correlationId = `cascade-${executionChain.join("-")}-${Date.now()}-${cascadeEventSeq}`;
+			const correlationId = nextCascadeCorrelationId(executionChain);
 
 			await ctx.db.insert("domainEvents", {
 				orgId,
@@ -2914,7 +2924,7 @@ async function executeUpdateFieldsAction(
 						},
 					},
 					status: "pending",
-					correlationId: `cascade-${executionChain.join("-")}-${Date.now()}`,
+					correlationId: nextCascadeCorrelationId(executionChain),
 					createdAt: Date.now(),
 					attemptCount: 0,
 				});
@@ -3118,7 +3128,7 @@ async function executeCreateTaskAction(
 					},
 				},
 				status: "pending",
-				correlationId: `cascade-${env.executionChain.join("-")}-${Date.now()}`,
+				correlationId: nextCascadeCorrelationId(env.executionChain),
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
@@ -3277,7 +3287,7 @@ async function checkCreateRecordPlanCap(
 	payload: Record<string, unknown>,
 	orgId: Id<"organizations">
 ): Promise<string | null> {
-	if (objectType === "client") {
+	if (objectType === "client" && (payload.status as string | undefined) !== "archived") {
 		const clients = await ctx.db
 			.query("clients")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
@@ -3288,8 +3298,11 @@ async function checkCreateRecordPlanCap(
 		}
 	}
 	if (objectType === "project") {
+		// Only an active candidate (planned/in-progress) consumes a per-client slot.
+		const status = payload.status as string | undefined;
+		const projectActive = status === "planned" || status === "in-progress";
 		const clientId = payload.clientId as Id<"clients"> | undefined;
-		if (clientId) {
+		if (clientId && projectActive) {
 			const projects = await ctx.db
 				.query("projects")
 				.withIndex("by_client", (q) => q.eq("clientId", clientId))
@@ -3374,6 +3387,19 @@ async function buildCreateRecordPayload(
 		// null means "resolved to nothing" — leave it out so requiredOnCreate and
 		// defaults still apply (a supplied-but-empty row shouldn't defeat them).
 		if (coerced.value === null) continue;
+		// A required text field set to a blank/whitespace value doesn't satisfy the
+		// requirement — reject instead of marking it supplied.
+		if (
+			def.requiredOnCreate &&
+			def.type === "text" &&
+			typeof coerced.value === "string" &&
+			coerced.value.trim() === ""
+		) {
+			return {
+				ok: false,
+				error: `${def.label} is required to create a ${objectType}`,
+			};
+		}
 		if (def.refType) {
 			const fk = await resolveCreateFk(ctx, def.refType, coerced.value, env.orgId);
 			if (!fk.ok) return { ok: false, error: fk.error };
@@ -3508,7 +3534,7 @@ async function executeCreateRecordAction(
 					},
 				},
 				status: "pending",
-				correlationId: `cascade-${env.executionChain.join("-")}-${Date.now()}`,
+				correlationId: nextCascadeCorrelationId(env.executionChain),
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
@@ -4085,16 +4111,20 @@ async function dryUpdateFieldsAction(
 		if (!coerced.ok) {
 			return { success: false, error: coerced.error };
 		}
-		if (
-			field === "status" &&
-			typeof coerced.value === "string" &&
-			!isValidStatus(targetInfo.type, coerced.value)
-		) {
-			return {
-				success: false,
-				error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
-			};
-		}
+		if (field === "status") {
+				if (typeof coerced.value !== "string") {
+					return {
+						success: false,
+						error: `Status value for ${targetInfo.type} must be a string`,
+					};
+				}
+				if (!isValidStatus(targetInfo.type, coerced.value)) {
+					return {
+						success: false,
+						error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
+					};
+				}
+			}
 		writes.push({ field, value: coerced.value });
 	}
 

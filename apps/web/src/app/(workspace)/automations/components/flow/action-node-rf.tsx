@@ -43,18 +43,26 @@ function getSummary(config: ActionNodeConfig | undefined): {
 			if (rows.length === 0) {
 				return { title: "Update Record", description: "Choose a field...", isConfigured: false };
 			}
+			// Configured only when every row has a field and a non-empty value —
+			// mirrors save validation so the node's solid border matches what passes.
+			const isComplete = action.fields.every(
+				(row) =>
+					!!row.field &&
+					(row.value.kind !== "static" ||
+						(row.value.value !== null && row.value.value !== "")),
+			);
 			if (rows.length === 1) {
 				const value = rows[0].value.kind === "static" ? rows[0].value.value : "...";
 				return {
 					title: `Update ${rows[0].field}`,
 					description: `on ${targetLabel} → ${value ?? "..."}`,
-					isConfigured: true,
+					isConfigured: isComplete,
 				};
 			}
 			return {
 				title: `Update ${rows.length} fields`,
 				description: `on ${targetLabel} → ${rows.map((r) => r.field).join(", ")}`,
-				isConfigured: true,
+				isConfigured: isComplete,
 			};
 		}
 		case "create_task": {
