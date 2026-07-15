@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity, addMemberToOrg } from "./test.helpers";
 import { api, internal } from "./_generated/api";
-import { scanOrgRows } from "./automationExecutor";
+import { isFatalExecutionError, scanOrgRows } from "./automationExecutor";
 import { projectCountsAggregate } from "./aggregates";
 import type { Id } from "./_generated/dataModel";
 
@@ -39,6 +39,22 @@ function updateFieldActionNode(
 			},
 		},
 		nextNodeId: opts.nextNodeId,
+	};
+}
+
+/** A step a scheduled run can execute: no record scope needed. */
+function notifyNode(id: string, message = "Scheduled run fired") {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "send_notification" as const,
+				recipient: "org_admins" as const,
+				message,
+			},
+		},
 	};
 }
 
@@ -941,6 +957,162 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("update_field on a non-status field", () => {
+		it("non-status update_field emits record_updated so chained automations fire", async () => {
+			const { asUser } = await setupUser();
+
+			// A writes a non-status field. Only `status` writes went through
+			// applyStatusUpdate (which emits); this path used to patch silently.
+			await asUser.mutation(api.automations.create, {
+				name: "A \u2014 stamp notes on create",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "A wrote this")],
+				isActive: true,
+			});
+
+			// B chains on the field A writes. Without the emit it never fires.
+			await asUser.mutation(api.automations.create, {
+				name: "B \u2014 react to the notes change",
+				trigger: {
+					type: "record_updated",
+					objectType: "client",
+					fields: ["notes"],
+				},
+				nodes: [updateFieldActionNode("act-1", "companyDescription", "B ran")],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("A wrote this");
+			// The cascade's payoff: B's write only lands if A's write was announced.
+			expect(client?.companyDescription).toBe("B ran");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(2);
+			expect(executions.map((e) => e.status)).toEqual([
+				"completed",
+				"completed",
+			]);
+
+			const cascadeEvents = await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("eventType"), "entity.record_updated"),
+							q.eq(
+								q.field("eventSource"),
+								"automationExecutor.executeActionNodeV2"
+							)
+						)
+					)
+					.collect()
+			);
+			const notesCascade = cascadeEvents.find(
+				(e) => e.payload.field === "notes"
+			);
+			expect(notesCascade).toBeDefined();
+			expect(notesCascade?.payload.oldValue).toBeUndefined();
+			expect(notesCascade?.payload.newValue).toBe("A wrote this");
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const metadata = notesCascade?.payload.metadata as any;
+			expect(metadata?.changedFields).toEqual(["notes"]);
+			expect(metadata?.isCascade).toBe(true);
+		});
+
+		it("a no-op update_field (same value) emits no record_updated event", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Rewrite notes with the value already on the record",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [updateFieldActionNode("act-1", "notes", "Preset note")],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+				notes: "Preset note",
+			});
+
+			await drainEvents();
+
+			// The action ran \u2014 it just had nothing to announce.
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+
+			const cascadeEvents = await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("eventType"), "entity.record_updated"),
+							q.eq(
+								q.field("eventSource"),
+								"automationExecutor.executeActionNodeV2"
+							)
+						)
+					)
+					.collect()
+			);
+			expect(cascadeEvents).toHaveLength(0);
+		});
+	});
+
+	describe("date writes are normalized to the calendar-date encoding", () => {
+		it("stores an instant written into a date field as UTC midnight", async () => {
+			const { asUser } = await setupUser();
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			// A mid-afternoon instant, not a calendar date. A formula like
+			// ADDDAYS(NOW(), 3) produces exactly this shape.
+			const instant = Date.UTC(2026, 6, 4, 15, 30, 0);
+
+			await asUser.mutation(api.automations.create, {
+				name: "Stamp a start date",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [updateFieldActionNode("act-1", "startDate", instant)],
+				isActive: true,
+			});
+
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			// Written through unchanged, the stored value would be an instant, which
+			// the formula layer then reads as an instant forever after — and
+			// `startDate == TODAY()` would go quietly false for this record.
+			expect(project?.startDate).toBe(Date.UTC(2026, 6, 4));
+			expect((project?.startDate as number) % 86_400_000).toBe(0);
+		});
+	});
+
 	describe("org isolation", () => {
 		it("does not fire an org A automation for an org B record", async () => {
 			const orgA = await setupUser({
@@ -995,7 +1167,8 @@ describe("automationExecutor (v2 engine)", () => {
 				};
 				nodes?:
 					| ReturnType<typeof conditionNode>[]
-					| ReturnType<typeof updateFieldActionNode>[];
+					| ReturnType<typeof updateFieldActionNode>[]
+					| ReturnType<typeof notifyNode>[];
 				isActive?: boolean;
 			} = {}
 		) {
@@ -1009,7 +1182,9 @@ describe("automationExecutor (v2 engine)", () => {
 						time: "09:00",
 					},
 				},
-				nodes: overrides.nodes ?? [conditionNode("cond-1", "status", "equals", "active")],
+				// A scheduled run has no trigger record, so the default step must not
+				// need one — a top-level condition or update_field is rejected at save.
+				nodes: overrides.nodes ?? [notifyNode("notify-1")],
 				isActive: overrides.isActive,
 			};
 		}
@@ -1096,14 +1271,15 @@ describe("automationExecutor (v2 engine)", () => {
 			const switchedAway = await t.run(async (ctx) => ctx.db.get(id));
 			expect(switchedAway?.nextRunAt).toBeUndefined();
 
-			// Publishing a scheduled trigger sets it again.
+			// Publishing a scheduled trigger sets it again. The condition has to go:
+			// switching back to a schedule takes the trigger record away with it.
 			await asUser.mutation(api.automations.update, {
 				id,
 				trigger: {
 					type: "scheduled",
 					schedule: { frequency: "daily" as const, timezone: "UTC", time: "09:00" },
 				},
-				nodes: [conditionNode("cond-1", "status", "equals", "active")],
+				nodes: [notifyNode("notify-1")],
 			});
 			await asUser.mutation(api.automations.publish, { id });
 			const switchedBack = await t.run(async (ctx) => ctx.db.get(id));
@@ -1198,19 +1374,57 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(executions).toHaveLength(0);
 		});
 
-		it("a record-dependent action on a scheduled run fails with a clear error", async () => {
-			const { asUser, orgId } = await setupUser();
+		it("a record-dependent action on a scheduled trigger is rejected at save", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(
+					api.automations.create,
+					scheduledAutomation({
+						isActive: true,
+						nodes: [updateFieldActionNode("act-1", "notes", "Should not run")],
+					})
+				)
+			).rejects.toThrow(/no record to update/i);
+		});
+
+		it("a snapshot published before that rule still fails the run with a clear error", async () => {
+			// Rows published before the save-time rule landed can still carry a
+			// top-level update_field. The runtime guard is what protects them.
+			const { orgId } = await setupUser();
 			await makeOrgPremium(orgId);
 
-			const id = await asUser.mutation(
-				api.automations.create,
-				scheduledAutomation({
-					isActive: true,
-					nodes: [updateFieldActionNode("act-1", "notes", "Should not run")],
-				})
-			);
-			const past = Date.now() - 1000;
-			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+			const trigger = {
+				type: "scheduled" as const,
+				schedule: {
+					frequency: "daily" as const,
+					timezone: "UTC",
+					time: "09:00",
+				},
+			};
+			const nodes = [updateFieldActionNode("act-1", "notes", "Should not run")];
+
+			await t.run(async (ctx) => {
+				const user = await ctx.db.query("users").first();
+				const now = Date.now();
+				return ctx.db.insert("workflowAutomations", {
+					orgId,
+					name: "Legacy broken scheduled",
+					trigger,
+					nodes,
+					status: "active" as const,
+					publishedSnapshot: {
+						trigger,
+						nodes,
+						version: 1,
+						publishedAt: now,
+					},
+					nextRunAt: now - 1000,
+					createdBy: user!._id,
+					createdAt: now,
+					updatedAt: now,
+				});
+			});
 
 			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
 			await drainScheduled();
@@ -1324,13 +1538,48 @@ describe("automationExecutor (v2 engine)", () => {
 		function loopNode(
 			id: string,
 			sourceNodeId: string,
-			opts: { bodyStartNodeId?: string; nextNodeId?: string } = {}
+			opts: {
+				bodyStartNodeId?: string;
+				nextNodeId?: string;
+				onItemError?: "continue" | "abort";
+			} = {}
 		) {
 			return {
 				id,
 				type: "loop" as const,
-				config: { kind: "loop" as const, sourceNodeId },
+				config: {
+					kind: "loop" as const,
+					sourceNodeId,
+					onItemError: opts.onItemError,
+				},
 				bodyStartNodeId: opts.bodyStartNodeId,
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		/**
+		 * Writes a field from a variable path. Used to poison individual loop items:
+		 * driving project.status off the item's own title makes a project titled
+		 * "bogus" fail select coercion while its valid-status siblings succeed.
+		 */
+		function updateFieldFromVarNode(
+			id: string,
+			field: string,
+			path: string,
+			opts: { nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "update_field" as const,
+						target: "self" as const,
+						field,
+						value: { kind: "var" as const, path },
+					},
+				},
 				nextNodeId: opts.nextNodeId,
 			};
 		}
@@ -1873,6 +2122,306 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(result("avg")).toBeNull();
 			expect(result("min")).toBeNull();
 			expect(result("max")).toBeNull();
+		});
+
+		describe("scheduled triggers have no record (A1)", () => {
+			/** A condition whose left side is a scope value, not a record field. */
+			function varLeftConditionNode(
+				id: string,
+				path: string,
+				operator: string,
+				value: number,
+				opts: { nextNodeId?: string; elseNodeId?: string } = {}
+			) {
+				return {
+					id,
+					type: "condition" as const,
+					config: {
+						kind: "condition" as const,
+						logic: "and" as const,
+						groups: [
+							{
+								logic: "and" as const,
+								rules: [
+									{
+										field: "",
+										left: { kind: "var" as const, path },
+										// eslint-disable-next-line @typescript-eslint/no-explicit-any
+										operator: operator as any,
+										value: { kind: "static" as const, value },
+									},
+								],
+							},
+						],
+					},
+					nextNodeId: opts.nextNodeId,
+					elseNodeId: opts.elseNodeId,
+				};
+			}
+
+			async function seedInvoices(
+				orgId: Id<"organizations">,
+				clientId: Id<"clients">,
+				totals: number[]
+			) {
+				await t.run(async (ctx) => {
+					for (let i = 0; i < totals.length; i++) {
+						await ctx.db.insert("invoices", {
+							orgId,
+							clientId,
+							invoiceNumber: `INV-A1-${i}`,
+							status: "sent" as const,
+							subtotal: totals[i],
+							total: totals[i],
+							issuedDate: Date.now(),
+							dueDate: Date.now(),
+							publicToken: crypto.randomUUID(),
+						});
+					}
+				});
+			}
+
+			// The pattern A1 exists to unlock: a record-less run that branches on an
+			// aggregate. Before the var-left rule this was unbuildable — a condition
+			// could only read a record field, and a scheduled run has no record.
+			it("fetch -> aggregate -> condition on the aggregate -> notify", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await seedInvoices(orgId, clientId, [6000, 5000]); // sum 11,000
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Unpaid over 10k",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "invoice", [], { nextNodeId: "agg-1" }),
+						{
+							id: "agg-1",
+							type: "aggregate" as const,
+							config: {
+								kind: "aggregate" as const,
+								sourceNodeId: "fetch-1",
+								field: "total",
+								op: "sum" as const,
+							},
+							nextNodeId: "cond-1",
+						},
+						varLeftConditionNode(
+							"cond-1",
+							"node.agg-1.result",
+							"greater_than",
+							10000,
+							{ nextNodeId: "notify-1", elseNodeId: "end-1" }
+						),
+						sendNotificationActionNode(
+							"notify-1",
+							"org_admins",
+							"Unpaid invoices are over $10k",
+							{ nextNodeId: "end-1" }
+						),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+
+				const notifications = await t.run(async (ctx) =>
+					ctx.db.query("notifications").collect()
+				);
+				expect(notifications).toHaveLength(1);
+				expect(notifications[0].message).toMatch(/over \$10k/);
+			});
+
+			it("takes the else branch when the aggregate is under the threshold", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await seedInvoices(orgId, clientId, [1000]); // sum 1,000
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Unpaid over 10k",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "invoice", [], { nextNodeId: "agg-1" }),
+						{
+							id: "agg-1",
+							type: "aggregate" as const,
+							config: {
+								kind: "aggregate" as const,
+								sourceNodeId: "fetch-1",
+								field: "total",
+								op: "sum" as const,
+							},
+							nextNodeId: "cond-1",
+						},
+						varLeftConditionNode(
+							"cond-1",
+							"node.agg-1.result",
+							"greater_than",
+							10000,
+							{ nextNodeId: "notify-1", elseNodeId: "end-1" }
+						),
+						sendNotificationActionNode(
+							"notify-1",
+							"org_admins",
+							"Unpaid invoices are over $10k",
+							{ nextNodeId: "end-1" }
+						),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions[0].status).toBe("completed");
+				const notifications = await t.run(async (ctx) =>
+					ctx.db.query("notifications").collect()
+				);
+				expect(notifications).toHaveLength(0);
+			});
+
+			// Back-compat: the correctly-built scheduled shape (record scope comes
+			// from the loop, not the trigger) must keep validating AND running. The
+			// rejection rules key on loop-body membership; invert that and this
+			// breaks every working scheduled automation in production.
+			it("fetch -> loop -> update inside the loop still saves and runs", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				// Created through the API so aggregates initialise (see CLAUDE.md).
+				const projectIds = await Promise.all(
+					["Alpha", "Beta"].map((title) =>
+						asUser.mutation(api.projects.create, {
+							clientId,
+							title,
+							status: "planned",
+							projectType: "one-off",
+						})
+					)
+				);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Nightly project sweep",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						fetchNode("fetch-1", "project", [], { nextNodeId: "loop-1" }),
+						loopNode("loop-1", "fetch-1", {
+							bodyStartNodeId: "act-1",
+							nextNodeId: "end-1",
+						}),
+						updateFieldActionNode("act-1", "status", "in-progress"),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions[0].status).toBe("completed");
+
+				const projects = await t.run(async (ctx) =>
+					Promise.all(projectIds.map((id) => ctx.db.get(id)))
+				);
+				for (const project of projects) {
+					expect(project?.status).toBe("in-progress");
+				}
+			});
+
+			// The dead field: stored rows carry it, so it must still parse — and the
+			// run must stay record-less regardless.
+			it("a stored objectType is stripped on save and the run stays record-less", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Legacy scheduled with objectType",
+					trigger: {
+						type: "scheduled",
+						objectType: "quote",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [notifyNode("notify-1")],
+					isActive: true,
+				});
+
+				const stored = await t.run(async (ctx) => ctx.db.get(automationId));
+				expect(stored?.trigger).not.toHaveProperty("objectType");
+				expect(stored?.publishedSnapshot?.trigger).not.toHaveProperty(
+					"objectType"
+				);
+
+				await runScheduledOnce(automationId);
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions[0].status).toBe("completed");
+				expect(executions[0].triggerRecord).toBeUndefined();
+			});
+
+			it("startTestRun rejects a sample record on a scheduled automation", async () => {
+				const { asUser } = await setupUser();
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Scheduled test-run guard",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [notifyNode("notify-1")],
+				});
+
+				// Binding a record would make the dry run lie: production scheduled
+				// dispatch never has one.
+				await expect(
+					asUser.mutation(api.automationExecutor.startTestRun, {
+						automationId,
+						record: { entityType: "client", entityId: clientId },
+					})
+				).rejects.toThrow(/without a triggering record/);
+			});
 		});
 
 		it("adjust_time: shifts a base timestamp by a fixed offset (add and subtract)", async () => {
@@ -2832,6 +3381,306 @@ describe("automationExecutor (v2 engine)", () => {
 						isActive: false,
 					})
 				).rejects.toThrow(/only works inside a loop/);
+			});
+		});
+
+		describe("per-item error isolation (Phase A3)", () => {
+			it("isFatalExecutionError matches Convex's verbatim limit errors", () => {
+				// Wording from get-convex/convex-backend. These doom the whole
+				// transaction and must rethrow, not count as one item's failure.
+				const fatal = [
+					"Too many documents read in a single function execution (limit: 32000)",
+					"Too many bytes read in a single function execution",
+					"Too many bytes written in a single function execution",
+					"Too many writes in a single function execution",
+					"Too many functions scheduled by this mutation",
+					"Function execution timed out (maximum duration: 1s)",
+				];
+				for (const message of fatal) {
+					expect(isFatalExecutionError(new Error(message)), message).toBe(true);
+				}
+				expect(
+					isFatalExecutionError(new Error("Status bogus is not valid for project"))
+				).toBe(false);
+			});
+
+			/**
+			 * Projects whose titles are valid project statuses, plus poisoned ones
+			 * titled "bogus". The loop body writes status = {loop item's title}, so a
+			 * poisoned project fails select coercion and its siblings don't.
+			 *
+			 * `titles` is given in LOOP order. fetch_records returns newest-first, so
+			 * they're created back-to-front — otherwise every index assertion below
+			 * would be quietly testing the reverse of what it reads like.
+			 */
+			async function createProjects(
+				asUser: ReturnType<typeof t.withIdentity>,
+				titles: string[]
+			) {
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				for (const title of [...titles].reverse()) {
+					await asUser.mutation(api.projects.create, {
+						clientId,
+						title,
+						status: "planned",
+						projectType: "one-off",
+					});
+				}
+				return clientId;
+			}
+
+			function poisonedLoopNodes(onItemError?: "continue" | "abort") {
+				return [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1", limit: 100 }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "body-act",
+						nextNodeId: "end-1",
+						onItemError,
+					}),
+					updateFieldFromVarNode(
+						"body-act",
+						"status",
+						"loop.loop-1.item.title"
+					),
+					endNode("end-1"),
+				];
+			}
+
+			async function runPoisonedLoop(
+				titles: string[],
+				onItemError?: "continue" | "abort"
+			) {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+				await createProjects(asUser, titles);
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Advance every project",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: poisonedLoopNodes(onItemError),
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const execution = await t.run(async (ctx) => {
+					const rows = await ctx.db.query("workflowExecutions").collect();
+					return rows[0];
+				});
+				const projects = await t.run(async (ctx) =>
+					ctx.db.query("projects").collect()
+				);
+				return { execution, projects };
+			}
+
+			it("skips the failing item and finishes the rest — completed_with_errors names the record", async () => {
+				// 5 items: three advance, one is poisoned, one advances after it.
+				const { execution, projects } = await runPoisonedLoop(
+					["in-progress", "in-progress", "bogus", "in-progress", "completed"],
+					"continue"
+				);
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(execution.resumeState).toBeUndefined();
+
+				// The poisoned record is untouched; every other record was written.
+				const advanced = projects.filter((p) => p.status !== "planned");
+				expect(advanced).toHaveLength(4);
+				expect(
+					projects.find((p) => p.title === "bogus")?.status
+				).toBe("planned");
+
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toBeDefined();
+				expect(summary).toMatchObject({
+					total: 5,
+					succeeded: 4,
+					failed: 1,
+					skipped: 0,
+				});
+				expect(summary!.errors).toHaveLength(1);
+				expect(summary!.errors[0].label).toBe("bogus");
+				expect(summary!.errors[0].index).toBe(2);
+				expect(summary!.errors[0].error).toContain("not a valid value");
+			});
+
+			it("stamps loop identity on body entries so a failure traces to its record", async () => {
+				const { execution } = await runPoisonedLoop(
+					["in-progress", "bogus", "in-progress"],
+					"continue"
+				);
+
+				const bodyEntries = execution.nodesExecuted.filter(
+					(n) => n.nodeId === "body-act"
+				);
+				expect(bodyEntries).toHaveLength(3);
+				expect(bodyEntries.map((e) => e.loopIndex)).toEqual([0, 1, 2]);
+				expect(bodyEntries.every((e) => e.loopNodeId === "loop-1")).toBe(true);
+				expect(bodyEntries.every((e) => !!e.loopItemId)).toBe(true);
+
+				const failedEntry = bodyEntries.find((e) => e.result === "failed");
+				expect(failedEntry?.loopItemLabel).toBe("bogus");
+				expect(failedEntry?.loopIndex).toBe(1);
+
+				// The loop node's own entries carry no iteration identity.
+				const loopEntry = execution.nodesExecuted.find(
+					(n) => n.nodeId === "loop-1"
+				);
+				expect(loopEntry?.loopIndex).toBeUndefined();
+			});
+
+			it("a legacy loop (no onItemError) still aborts the whole run at the first failure", async () => {
+				// Field absent = "abort" — the semantics every snapshot published
+				// before onItemError existed actually had.
+				const { execution, projects } = await runPoisonedLoop([
+					"in-progress",
+					"bogus",
+					"in-progress",
+				]);
+
+				expect(execution.status).toBe("failed");
+				// Item 0 was written (its chunk committed); item 2 never ran.
+				expect(
+					projects.filter((p) => p.status === "in-progress")
+				).toHaveLength(1);
+				// Even a failed run reports what got through before it stopped, and
+				// names the record it died on.
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toMatchObject({ total: 3, succeeded: 1, failed: 1 });
+				expect(summary!.errors).toHaveLength(1);
+				expect(summary!.errors[0].label).toBe("bogus");
+			});
+
+			it('"abort" set explicitly behaves the same as the legacy absent field', async () => {
+				const { execution } = await runPoisonedLoop(
+					["in-progress", "bogus", "in-progress"],
+					"abort"
+				);
+				expect(execution.status).toBe("failed");
+			});
+
+			it("circuit breaker: the first 10 items all failing stops the run as a config problem", async () => {
+				// 12 poisoned records, none of which can ever succeed.
+				const { execution, projects } = await runPoisonedLoop(
+					Array.from({ length: 12 }, () => "bogus"),
+					"continue"
+				);
+
+				expect(execution.status).toBe("failed");
+				expect(execution.error).toContain("configuration problem");
+				// It stopped at 10 rather than grinding through all 12.
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toMatchObject({ total: 12, succeeded: 0, failed: 10 });
+				// Nothing was written.
+				expect(
+					projects.every((p) => p.status === "planned")
+				).toBe(true);
+			});
+
+			it("one success disarms the circuit breaker — later failures don't trip it", async () => {
+				// One good item first, then 12 poisoned ones: the breaker only fires
+				// when nothing at all has succeeded.
+				const titles = [
+					"in-progress",
+					...Array.from({ length: 12 }, () => "bogus"),
+				];
+				const { execution } = await runPoisonedLoop(titles, "continue");
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(
+					execution.loopSummary?.find((l) => l.nodeId === "loop-1")
+				).toMatchObject({ total: 13, succeeded: 1, failed: 12 });
+			});
+
+			it("compacts successful iterations past the log window but keeps every failure", async () => {
+				// 60 items (> the 50-iteration log window) with one poisoned item near
+				// the end. Without compaction the failure is exactly the kind of entry
+				// the 400-entry cap eats.
+				const titles = Array.from({ length: 60 }, (_, i) =>
+					i === 55 ? "bogus" : "in-progress"
+				);
+				const { execution } = await runPoisonedLoop(titles, "continue");
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(
+					execution.loopSummary?.find((l) => l.nodeId === "loop-1")
+				).toMatchObject({ total: 60, succeeded: 59, failed: 1 });
+
+				const bodyEntries = execution.nodesExecuted.filter(
+					(n) => n.nodeId === "body-act"
+				);
+				// The first 50 iterations are logged in full; later successes are
+				// dropped from the log (their outcome lives in loopSummary).
+				expect(bodyEntries.filter((e) => e.result === "success")).toHaveLength(
+					50
+				);
+				// The late failure survives regardless — that's the whole point.
+				const failures = bodyEntries.filter((e) => e.result === "failed");
+				expect(failures).toHaveLength(1);
+				expect(failures[0].loopIndex).toBe(55);
+				expect(failures[0].loopItemLabel).toBe("bogus");
+
+				// The log never hit the global truncation cap.
+				expect(
+					execution.nodesExecuted.some((e) =>
+						e.error?.includes("Execution log truncated")
+					)
+				).toBe(false);
+
+				// Exactly one note explains why the log stops short of the tally.
+				const notes = execution.nodesExecuted.filter((e) =>
+					String(
+						(e.output as { note?: string } | undefined)?.note ?? ""
+					).includes("Step-by-step log covers")
+				);
+				expect(notes).toHaveLength(1);
+			});
+
+			it("carries failures across a chunk boundary and still finishes", async () => {
+				// 30 items (> LOOP_CHUNK_SIZE of 25) with poison on both sides of the
+				// boundary — the tally has to survive the checkpoint/resume hop.
+				const titles = Array.from({ length: 30 }, (_, i) =>
+					i === 3 || i === 27 ? "bogus" : "in-progress"
+				);
+				const { execution, projects } = await runPoisonedLoop(
+					titles,
+					"continue"
+				);
+
+				expect(execution.status).toBe("completed_with_errors");
+				expect(execution.resumeState).toBeUndefined();
+				expect(
+					projects.filter((p) => p.status === "in-progress")
+				).toHaveLength(28);
+
+				const summary = execution.loopSummary?.find(
+					(l) => l.nodeId === "loop-1"
+				);
+				expect(summary).toMatchObject({
+					total: 30,
+					succeeded: 28,
+					failed: 2,
+					skipped: 0,
+				});
+				expect(summary!.errors.map((e) => e.index)).toEqual([3, 27]);
 			});
 		});
 

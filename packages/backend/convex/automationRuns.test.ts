@@ -889,4 +889,314 @@ describe("automation runs (test + manual)", () => {
 			expect(rows.prod?.status).toBe("running");
 		});
 	});
+
+	describe("failStaleProductionRuns", () => {
+		async function makeAutomation(
+			asUser: ReturnType<typeof t.withIdentity>,
+			name: string
+		) {
+			return await asUser.mutation(api.automations.create, {
+				name,
+				trigger: clientCreatedTrigger,
+				nodes: [
+					{ id: "end-1", type: "end" as const, config: { kind: "end" as const } },
+				],
+			});
+		}
+
+		async function automationFailedNotes(userId: Id<"users">) {
+			return await t.run(async (ctx) =>
+				ctx.db
+					.query("notifications")
+					.withIndex("by_user_read", (q) => q.eq("userId", userId))
+					.filter((q) =>
+						q.eq(q.field("notificationType"), "automation_failed")
+					)
+					.collect()
+			);
+		}
+
+		it("fails stuck production runs (mode unset or 'production'), notifies admins, and leaves fresh/parked-future/test/completed runs alone", async () => {
+			const { asUser, orgId, userId } = await setupUser();
+			const now = Date.now();
+			const STALE = 45 * 60 * 1000;
+
+			const recordTriggeredId = await makeAutomation(
+				asUser,
+				"Record-triggered watchdog target"
+			);
+			const stuckModeUnset = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: recordTriggeredId,
+					triggeredBy: "status_changed",
+					triggeredAt: now - STALE,
+					status: "running",
+					nodesExecuted: [],
+					// mode intentionally unset — record-triggered runs leave it unset.
+				})
+			);
+
+			const scheduledId = await makeAutomation(
+				asUser,
+				"Scheduled watchdog target"
+			);
+			const stuckModeProd = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: scheduledId,
+					triggeredBy: "schedule",
+					triggeredAt: now - STALE,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+				})
+			);
+
+			const parkedFutureAutomationId = await makeAutomation(
+				asUser,
+				"Parked future"
+			);
+			const parkedFuture = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: parkedFutureAutomationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - STALE,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					resumeState: {
+						resumeNodeId: "delay-1",
+						resumeAt: now + 60 * 60 * 1000,
+						checkpointAt: now - STALE,
+						fetchOutputs: [],
+					},
+				})
+			);
+
+			const freshAutomationId = await makeAutomation(asUser, "Fresh");
+			const fresh = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: freshAutomationId,
+					triggeredBy: "schedule",
+					triggeredAt: now,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+				})
+			);
+
+			const staleTestAutomationId = await makeAutomation(asUser, "Stale test");
+			const staleTest = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: staleTestAutomationId,
+					triggeredBy: "test:x",
+					triggeredAt: now - STALE,
+					status: "running",
+					mode: "test",
+					dryRun: true,
+					nodesExecuted: [],
+				})
+			);
+
+			const completedAutomationId = await makeAutomation(asUser, "Completed");
+			const oldCompleted = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: completedAutomationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - STALE,
+					status: "completed",
+					completedAt: now - STALE + 1000,
+					mode: "production",
+					nodesExecuted: [],
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			expect(result.failed).toBe(2);
+
+			const rows = await t.run(async (ctx) => ({
+				stuckModeUnset: await ctx.db.get(stuckModeUnset),
+				stuckModeProd: await ctx.db.get(stuckModeProd),
+				parkedFuture: await ctx.db.get(parkedFuture),
+				fresh: await ctx.db.get(fresh),
+				staleTest: await ctx.db.get(staleTest),
+				oldCompleted: await ctx.db.get(oldCompleted),
+			}));
+
+			expect(rows.stuckModeUnset?.status).toBe("failed");
+			expect(rows.stuckModeUnset?.error).toMatch(/stalled without completing/i);
+			expect(rows.stuckModeUnset?.completedAt).toBe(now);
+
+			expect(rows.stuckModeProd?.status).toBe("failed");
+			expect(rows.stuckModeProd?.error).toMatch(/stalled without completing/i);
+
+			expect(rows.parkedFuture?.status).toBe("running");
+			expect(rows.fresh?.status).toBe("running");
+			expect(rows.staleTest?.status).toBe("running");
+			expect(rows.oldCompleted?.status).toBe("completed");
+
+			const notes = await automationFailedNotes(userId);
+			expect(notes).toHaveLength(2);
+			expect(notes.map((n) => n.title).sort()).toEqual(
+				["Record-triggered watchdog target", "Scheduled watchdog target"].sort()
+			);
+		});
+
+		it("fails a parked run whose wake passed more than 30 minutes ago, folding the elapsed pause into pausedMs", async () => {
+			const { asUser, orgId } = await setupUser();
+			const now = Date.now();
+			const automationId = await makeAutomation(asUser, "Parked expired");
+
+			const checkpointAt = now - 2 * 60 * 60 * 1000; // parked 2h ago
+			const resumeAt = now - 45 * 60 * 1000; // wake was due 45min ago
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - 3 * 60 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					pausedMs: 1000,
+					resumeState: {
+						resumeNodeId: "delay-1",
+						resumeAt,
+						checkpointAt,
+						fetchOutputs: [],
+					},
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			expect(result.failed).toBe(1);
+
+			const row = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(row?.status).toBe("failed");
+			expect(row?.error).toMatch(/never woke/i);
+			expect(row?.resumeState).toBeUndefined();
+			expect(row?.currentNodeId).toBeUndefined();
+			expect(row?.completedAt).toBe(now);
+			// seeded 1000 + exact elapsed since checkpoint (fake timers freeze now).
+			expect(row?.pausedMs).toBe(1000 + (now - checkpointAt));
+		});
+
+		it("still marks a stranded run failed when its automation was deleted, without throwing or notifying", async () => {
+			const { asUser, orgId, userId } = await setupUser();
+			const now = Date.now();
+			const automationId = await makeAutomation(asUser, "Deleted mid-flight");
+
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - 45 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+				})
+			);
+			await t.run(async (ctx) => ctx.db.delete(automationId));
+
+			await expect(
+				t.mutation(internal.automationExecutor.failStaleProductionRuns, {})
+			).resolves.toEqual({ failed: 1 });
+
+			const row = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(row?.status).toBe("failed");
+
+			const notes = await automationFailedNotes(userId);
+			expect(notes).toHaveLength(0);
+		});
+
+		it("a late resume after the watchdog failed the run is a no-op", async () => {
+			const { asUser, orgId } = await setupUser();
+			const now = Date.now();
+			const automationId = await makeAutomation(asUser, "Late wake");
+
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - 3 * 60 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					pausedMs: 1000,
+					resumeState: {
+						resumeNodeId: "delay-1",
+						resumeAt: now - 45 * 60 * 1000,
+						checkpointAt: now - 2 * 60 * 60 * 1000,
+						fetchOutputs: [],
+					},
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			expect(result.failed).toBe(1);
+
+			const afterWatchdog = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(afterWatchdog?.status).toBe("failed");
+			const watchdogPausedMs = afterWatchdog?.pausedMs;
+
+			// The dropped scheduler hop finally fires — must not revive the run
+			// or re-accumulate pause time.
+			await t.mutation(internal.automationExecutor.resumeExecution, {
+				orgId,
+				executionId,
+				automationId,
+			});
+
+			const afterResume = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(afterResume?.status).toBe("failed");
+			expect(afterResume?.pausedMs).toBe(watchdogPausedMs);
+			expect(afterResume?.resumeState).toBeUndefined();
+		});
+
+		it("one sweep failing two stuck runs of the same automation notifies the admin only once (dedupe)", async () => {
+			const { asUser, orgId, userId } = await setupUser();
+			const now = Date.now();
+			const automationId = await makeAutomation(asUser, "Flapping");
+
+			for (let i = 0; i < 2; i++) {
+				await t.run(async (ctx) =>
+					ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: "status_changed",
+						triggeredAt: now - 45 * 60 * 1000,
+						status: "running",
+						mode: "production",
+						nodesExecuted: [],
+					})
+				);
+			}
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			expect(result.failed).toBe(2);
+
+			const notes = await automationFailedNotes(userId);
+			expect(notes).toHaveLength(1);
+			expect(notes[0].title).toBe("Flapping");
+		});
+	});
 });

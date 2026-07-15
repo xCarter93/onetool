@@ -14,6 +14,7 @@ import type {
 	WorkflowNode,
 	WorkflowNodeConfig,
 } from "./node-types";
+import { triggerScopeObjectType } from "./node-types";
 import { legacyNodeToV2 } from "./legacy-load";
 import { collectLoopBody } from "./graph-utils";
 import {
@@ -186,7 +187,7 @@ function resolveLoopBackSourceId(
 }
 
 function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
-	const triggerObjectType = trigger.objectType ?? null;
+	const triggerObjectType = triggerScopeObjectType(trigger);
 
 	if (isPlaceholderEntry(node)) {
 		return { nodeType: "placeholder" as const };
@@ -278,7 +279,7 @@ export function automationToReactFlow(
 			data: {
 				nodeType: "trigger",
 				trigger,
-				triggerObjectType: trigger.objectType ?? null,
+				triggerObjectType: triggerScopeObjectType(trigger),
 			},
 			position: { x: 0, y: 0 },
 		} as AppNode);

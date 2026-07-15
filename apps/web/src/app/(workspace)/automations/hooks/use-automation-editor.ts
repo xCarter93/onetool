@@ -8,6 +8,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import {
 	getStatusOptions,
+	triggerScopeObjectType,
 	type AutomationAction,
 	type AutomationTrigger,
 	type ConditionNodeConfig,
@@ -72,7 +73,7 @@ function buildTriggerFromType(
 	triggerType: string,
 	currentTrigger: TriggerConfig | null
 ): TriggerConfig {
-	const objectType = currentTrigger?.objectType ?? "quote";
+	const objectType = triggerScopeObjectType(currentTrigger) ?? "quote";
 	const nextType = triggerType as TriggerType;
 
 	if (nextType === "record_created" || nextType === "record_updated") {
@@ -80,9 +81,9 @@ function buildTriggerFromType(
 	}
 
 	if (nextType === "scheduled") {
+		// No objectType: a scheduled run has no triggering record.
 		return {
 			type: nextType,
-			objectType,
 			schedule: {
 				frequency: "daily",
 				timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -158,16 +159,25 @@ function buildFetchNode(
 		type: "fetch_records",
 		config: {
 			kind: "fetch_records",
-			objectType: trigger.objectType ?? "client",
+			objectType: triggerScopeObjectType(trigger) ?? "client",
 			filters: [],
 		},
 		nextNodeId: downstreamId,
 	};
 }
 
-/** Config (sourceNodeId) is set once the user picks a fetch_records step in the panel. */
+/**
+ * sourceNodeId is set once the user picks a fetch_records step in the panel.
+ * New loops are born with onItemError: "continue" (the builder's default);
+ * a loop published before this field existed has it absent, which means
+ * "abort" — see loopNodeConfigValidator in workflowTypes.ts.
+ */
 function buildLoopNode(id: string): WorkflowNode {
-	return { id, type: "loop" };
+	return {
+		id,
+		type: "loop",
+		config: { kind: "loop", sourceNodeId: "", onItemError: "continue" },
+	};
 }
 
 /** sourceNodeId/field are chosen once the user picks a Find records step in the panel. */
@@ -225,7 +235,7 @@ function buildNextItemNode(id: string): WorkflowNode {
 
 /** Build the v2 trigger arg accepted by automations.create/update. */
 function buildTriggerForSave(trigger: TriggerConfig) {
-	const objectType = trigger.objectType ?? "client";
+	const objectType = triggerScopeObjectType(trigger) ?? "client";
 	// Empty criteria are dropped so unused editors don't dirty the doc.
 	const entryCriteria =
 		trigger.entryCriteria && trigger.entryCriteria.groups.length > 0
@@ -247,7 +257,6 @@ function buildTriggerForSave(trigger: TriggerConfig) {
 		case "scheduled":
 			return {
 				type: "scheduled" as const,
-				objectType,
 				schedule: trigger.schedule ?? {
 					frequency: "daily" as const,
 					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -854,9 +863,10 @@ export function useAutomationEditor(automationId: string | null) {
 		[execution]
 	);
 	const isRunning = execution?.status === "running";
+	const sampleScopeObjectType = triggerScopeObjectType(trigger);
 	const sampleRecords = useQuery(
 		api.automationExecutor.getSampleRecords,
-		trigger?.objectType ? { objectType: trigger.objectType } : "skip"
+		sampleScopeObjectType ? { objectType: sampleScopeObjectType } : "skip"
 	);
 
 	/**
@@ -864,7 +874,7 @@ export function useAutomationEditor(automationId: string | null) {
 	 * or null if validation blocked the save. Shared by Save / Publish / Test.
 	 */
 	const persistWorkingCopy = useCallback(async (): Promise<string | null> => {
-		const validation = validateWorkflowForSave(trigger, nodes);
+		const validation = validateWorkflowForSave(trigger, nodes, formulas);
 		if (!validation.valid) {
 			toast.error(
 				"Validation Error",

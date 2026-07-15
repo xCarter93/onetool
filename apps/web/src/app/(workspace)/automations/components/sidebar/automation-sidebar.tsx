@@ -220,6 +220,7 @@ export function AutomationSidebar({
 				return (
 					<StepPicker
 						inLoop={inLoop}
+						triggerType={trigger?.type}
 						onSelect={(type, actionType) =>
 							onStepTypeSelect(type, mode.placeholderNodeId, actionType)
 						}

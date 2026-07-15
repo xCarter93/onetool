@@ -17,7 +17,13 @@ type ExecutedEntry = {
 };
 
 type ExecutionLike = {
-	status: "running" | "completed" | "failed" | "skipped" | "cancelled";
+	status:
+		| "running"
+		| "completed"
+		| "completed_with_errors"
+		| "failed"
+		| "skipped"
+		| "cancelled";
 	currentNodeId?: string;
 	nodesExecuted: ExecutedEntry[];
 };

@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity } from "./test.helpers";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { computeNextRunAt } from "./lib/schedule";
 
 // Valid v2 trigger: client statuses are lead/active/inactive/archived
@@ -117,6 +117,22 @@ function createTaskNode(
 	};
 }
 
+/** A step a scheduled run can execute: no record scope needed. */
+function notifyNode(id: string, message = "Scheduled run fired") {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "send_notification" as const,
+				recipient: "org_admins" as const,
+				message,
+			},
+		},
+	};
+}
+
 function actionNode(id: string, statusValue = "inactive") {
 	return {
 		id,
@@ -227,7 +243,7 @@ describe("Automations", () => {
 						time: "09:00",
 					},
 				},
-				nodes: [actionNode("act-1", "inactive")],
+				nodes: [notifyNode("notify-1")],
 				isActive: true,
 			});
 
@@ -433,6 +449,236 @@ describe("Automations", () => {
 			});
 			const automation = await asUser.query(api.automations.get, { id });
 			expect(automation?.status).toBe("draft");
+		});
+	});
+
+	describe("scheduled triggers have no record (A1)", () => {
+		const schedule = {
+			frequency: "daily" as const,
+			timezone: "UTC",
+			time: "09:00",
+		};
+		const scheduledTrigger = { type: "scheduled" as const, schedule };
+
+		/** A condition whose left side is a scope value, not a record field. */
+		function varLeftConditionNode(id: string, path: string) {
+			return {
+				id,
+				type: "condition" as const,
+				config: {
+					kind: "condition" as const,
+					logic: "and" as const,
+					groups: [
+						{
+							logic: "and" as const,
+							rules: [
+								{
+									field: "",
+									left: { kind: "var" as const, path },
+									operator: "greater_than" as const,
+									value: { kind: "static" as const, value: 100 },
+								},
+							],
+						},
+					],
+				},
+			};
+		}
+
+		it("rejects a top-level update_field on update, not just create", async () => {
+			const { asUser } = await setupUser();
+
+			// Starts life as a record trigger, where update_field(self) is fine.
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Switcher",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+			});
+
+			await expect(
+				asUser.mutation(api.automations.update, {
+					id,
+					trigger: scheduledTrigger,
+				})
+			).rejects.toThrow(/no record to update/i);
+		});
+
+		it("rejects a condition that reads a record field", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Record-reading condition",
+					trigger: scheduledTrigger,
+					nodes: [conditionNode("cond-1")],
+				})
+			).rejects.toThrow(/nothing to test/i);
+		});
+
+		it("accepts a top-level condition whose left side is a variable", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Aggregate threshold",
+				trigger: scheduledTrigger,
+				nodes: [varLeftConditionNode("cond-1", "node.agg-1.result")],
+			});
+
+			expect(await asUser.query(api.automations.get, { id })).toBeTruthy();
+		});
+
+		it("rejects a {{trigger.record.*}} token inside a message template", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Dead token in a template",
+					trigger: scheduledTrigger,
+					// Not a ValueRef — a path-only scan would sail right past this.
+					nodes: [notifyNode("notify-1", "Total: {{trigger.record.total}}")],
+				})
+			).rejects.toThrow(/always empty/i);
+		});
+
+		it("rejects a formula that reads the trigger record", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Dead formula",
+					trigger: scheduledTrigger,
+					nodes: [notifyNode("notify-1")],
+					formulas: [
+						{
+							id: "f1",
+							name: "Doubled",
+							returnType: "number" as const,
+							expression: "{trigger.record.budget} * 2",
+						},
+					],
+				})
+			).rejects.toThrow(/always empty/i);
+		});
+
+		it("rejects switching to a schedule when a stored formula reads the record", async () => {
+			const { asUser } = await setupUser();
+
+			// Formulas are automation-level: changing only the trigger has to
+			// re-check them, or a live formula is stranded reading nothing.
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Formula stranded by a trigger switch",
+				trigger: clientTrigger,
+				nodes: [notifyNode("notify-1")],
+				formulas: [
+					{
+						id: "f1",
+						name: "Doubled",
+						returnType: "number" as const,
+						expression: "{trigger.record.budget} * 2",
+					},
+				],
+			});
+
+			await expect(
+				asUser.mutation(api.automations.update, { id, trigger: scheduledTrigger })
+			).rejects.toThrow(/always empty/i);
+		});
+
+		it("rejects a variable left side in a fetch filter", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Var left in a filter",
+					trigger: scheduledTrigger,
+					nodes: [
+						{
+							id: "fetch-1",
+							type: "fetch_records" as const,
+							config: {
+								kind: "fetch_records" as const,
+								objectType: "client" as const,
+								filters: [
+									{
+										logic: "and" as const,
+										rules: [
+											{
+												field: "",
+												left: { kind: "var" as const, path: "node.x.count" },
+												operator: "greater_than" as const,
+												value: { kind: "static" as const, value: 1 },
+											},
+										],
+									},
+								],
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/must compare a field/i);
+		});
+
+		it("refuses to resume a snapshot that breaks the rules", async () => {
+			// toggleActive resumes the PUBLISHED snapshot. It never re-checked it, so
+			// an automation published before this rule landed could be switched back
+			// on and fail every tick.
+			const { asUser, orgId } = await setupUser();
+
+			const trigger = { type: "scheduled" as const, schedule };
+			const nodes = [actionNode("act-1")]; // update_field(self) — no record to act on
+
+			const id = await t.run(async (ctx) => {
+				const user = await ctx.db.query("users").first();
+				const now = Date.now();
+				return ctx.db.insert("workflowAutomations", {
+					orgId,
+					name: "Broken scheduled, paused",
+					trigger,
+					nodes,
+					status: "paused" as const,
+					publishedSnapshot: { trigger, nodes, version: 1, publishedAt: now },
+					createdBy: user!._id,
+					createdAt: now,
+					updatedAt: now,
+				});
+			});
+
+			await expect(
+				asUser.mutation(api.automations.toggleActive, { id })
+			).rejects.toThrow(/no record to update/i);
+
+			const after = await t.run(async (ctx) => ctx.db.get(id));
+			expect(after?.status).toBe("paused");
+		});
+
+		it("rejects a variable left side in trigger entry criteria", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Var left in entry criteria",
+					trigger: {
+						...clientTrigger,
+						entryCriteria: {
+							logic: "and" as const,
+							groups: [
+								{
+									logic: "and" as const,
+									rules: [
+										{
+											field: "",
+											left: { kind: "var" as const, path: "node.x.count" },
+											operator: "greater_than" as const,
+											value: { kind: "static" as const, value: 1 },
+										},
+									],
+								},
+							],
+						},
+					},
+					nodes: [notifyNode("notify-1")],
+				})
+			).rejects.toThrow(/must compare a field/i);
 		});
 	});
 
@@ -872,7 +1118,7 @@ describe("Automations", () => {
 			const id = await asUser.mutation(api.automations.create, {
 				name: "Resume trigger check",
 				trigger: { type: "scheduled", schedule: originalSchedule },
-				nodes: [actionNode("act-1")],
+				nodes: [notifyNode("notify-1")],
 				isActive: true,
 			});
 
@@ -973,6 +1219,109 @@ describe("Automations", () => {
 			);
 			expect(automation).toBeNull();
 			expect(execution).toBeNull();
+		});
+	});
+
+	describe("remove — batched execution cleanup", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("deletes an automation with >100 execution rows fully once scheduled batches finish, leaving only the 100-row inline batch gone right after remove", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Heavy history",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+				isActive: true,
+			});
+
+			const TOTAL_EXECUTIONS = 120;
+			await t.run(async (ctx) => {
+				for (let i = 0; i < TOTAL_EXECUTIONS; i++) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId: id,
+						triggeredBy: "status_changed",
+						triggeredAt: Date.now(),
+						status: "completed",
+						nodesExecuted: [],
+					});
+				}
+			});
+
+			await asUser.mutation(api.automations.remove, { id });
+
+			// Inline batch deletes exactly REMOVE_EXECUTIONS_BATCH (100) rows before
+			// the scheduled follow-up runs — 20 should remain right now.
+			const remainingAfterInline = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) => q.eq("automationId", id))
+					.collect()
+			);
+			expect(remainingAfterInline).toHaveLength(
+				TOTAL_EXECUTIONS - 100
+			);
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const [automation, remainingAfterDrain] = await t.run(async (ctx) =>
+				Promise.all([
+					ctx.db.get(id),
+					ctx.db
+						.query("workflowExecutions")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.collect(),
+				])
+			);
+			expect(automation).toBeNull();
+			expect(remainingAfterDrain).toHaveLength(0);
+		});
+
+		it("removeExecutionsBatch is a no-op guard when the automation still exists", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Still alive",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+				isActive: true,
+			});
+
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 5; i++) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId: id,
+						triggeredBy: "status_changed",
+						triggeredAt: Date.now(),
+						status: "completed",
+						nodesExecuted: [],
+					});
+				}
+			});
+
+			await t.mutation(internal.automations.removeExecutionsBatch, {
+				automationId: id,
+			});
+
+			const [automation, executions] = await t.run(async (ctx) =>
+				Promise.all([
+					ctx.db.get(id),
+					ctx.db
+						.query("workflowExecutions")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.collect(),
+				])
+			);
+			expect(automation).not.toBeNull();
+			expect(executions).toHaveLength(5);
 		});
 	});
 

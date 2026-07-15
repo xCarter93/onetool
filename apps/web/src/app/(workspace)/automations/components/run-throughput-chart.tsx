@@ -24,6 +24,7 @@ const WINDOW_DAYS = 30;
 const SERIES = [
 	{ key: "success", label: "Successful", color: "var(--primary)" },
 	{ key: "failed", label: "Failed", color: "var(--destructive)" },
+	{ key: "withErrors", label: "Completed with errors", color: "var(--warning)" },
 ] as const;
 
 const chartConfig: ChartConfig = Object.fromEntries(
@@ -41,7 +42,9 @@ function ThroughputTooltip({
 	payload,
 }: {
 	active?: boolean;
-	payload?: { payload: { day: number; success: number; failed: number } }[];
+	payload?: {
+		payload: { day: number; success: number; failed: number; withErrors: number };
+	}[];
 }) {
 	if (!active || !payload?.length) return null;
 	const point = payload[0].payload;
@@ -76,6 +79,7 @@ export function RunThroughputChart({ className }: { className?: string }) {
 	const patternPrefix = useId();
 	const SUCCESS_STRIPE_ID = stripeId(patternPrefix, 0);
 	const FAILED_STRIPE_ID = stripeId(patternPrefix, 1);
+	const WITH_ERRORS_STRIPE_ID = stripeId(patternPrefix, 2);
 	const raw = useQuery(api.automations.getRunThroughput, {
 		windowDays: WINDOW_DAYS,
 	});
@@ -83,11 +87,13 @@ export function RunThroughputChart({ className }: { className?: string }) {
 
 	const { data, total, delta, positive } = useMemo(() => {
 		// Skipped runs are excluded everywhere: bands, headline, and delta.
+		// completed_with_errors runs DID execute, so they count toward `runs`.
 		const points = (raw ?? []).map((d) => ({
 			day: d.day,
 			success: d.success,
 			failed: d.failed,
-			runs: d.success + d.failed,
+			withErrors: d.withErrors,
+			runs: d.success + d.failed + d.withErrors,
 		}));
 		const sum = points.reduce((s, p) => s + p.runs, 0);
 		const mid = Math.floor(points.length / 2);
@@ -166,7 +172,7 @@ export function RunThroughputChart({ className }: { className?: string }) {
 							>
 								<ChartStripeDefs
 									idPrefix={patternPrefix}
-									colors={["var(--primary)", "var(--destructive)"]}
+									colors={["var(--primary)", "var(--destructive)", "var(--warning)"]}
 								/>
 								<CartesianGrid
 									vertical={false}
@@ -190,6 +196,14 @@ export function RunThroughputChart({ className }: { className?: string }) {
 									dataKey="failed"
 									stackId="runs"
 									fill={`url(#${FAILED_STRIPE_ID})`}
+									stroke="transparent"
+									activeDot={false}
+								/>
+								<Area
+									type="monotone"
+									dataKey="withErrors"
+									stackId="runs"
+									fill={`url(#${WITH_ERRORS_STRIPE_ID})`}
 									stroke="transparent"
 									activeDot={false}
 								/>

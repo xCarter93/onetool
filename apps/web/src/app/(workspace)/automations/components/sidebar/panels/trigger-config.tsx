@@ -21,6 +21,7 @@ import {
 	describeSchedule,
 	getFilterableFields,
 	getStatusOptions,
+	triggerScopeObjectType,
 	validateSchedule,
 	type AutomationObjectType,
 	type AutomationSchedule,
@@ -95,7 +96,9 @@ export function TriggerConfigPanel({
 		toStatus: "",
 	};
 	const triggerType = currentTrigger.type || "status_changed";
-	const objectType = currentTrigger.objectType || "quote";
+	// A scheduled trigger has no record, so it has no object type. The fallback
+	// only seeds the pickers for the record trigger types below.
+	const objectType = triggerScopeObjectType(currentTrigger) ?? "quote";
 	const statusOptions = getStatusOptions(objectType);
 	const filterableFields = getFilterableFields(objectType);
 
@@ -106,7 +109,6 @@ export function TriggerConfigPanel({
 		} else if (newType === "scheduled") {
 			onTriggerChange({
 				type: "scheduled",
-				objectType,
 				schedule: currentTrigger.schedule ?? defaultSchedule(),
 			});
 		} else {
@@ -147,6 +149,7 @@ export function TriggerConfigPanel({
 	const handleObjectTypeChange = (value: string) => {
 		const newObjType = value as AutomationObjectType;
 		const newStatusOptions = getStatusOptions(newObjType);
+		if (currentTrigger.type === "scheduled") return;
 		onTriggerChange({
 			...currentTrigger,
 			objectType: newObjType,
@@ -211,30 +214,25 @@ export function TriggerConfigPanel({
 						</Select>
 					</PanelField>
 
-					<PanelField
-						label="Object type"
-						helper={
-							triggerType === "scheduled"
-								? "Sets the record context for later steps."
-								: undefined
-						}
-					>
-						<Select
-							value={objectType}
-							onValueChange={(value) => value && handleObjectTypeChange(value)}
-						>
-							<SelectTrigger>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{OBJECT_TYPE_OPTIONS.map((type) => (
-									<SelectItem key={type.value} value={type.value}>
-										{type.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</PanelField>
+					{triggerType !== "scheduled" && (
+						<PanelField label="Object type">
+							<Select
+								value={objectType}
+								onValueChange={(value) => value && handleObjectTypeChange(value)}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{OBJECT_TYPE_OPTIONS.map((type) => (
+										<SelectItem key={type.value} value={type.value}>
+											{type.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</PanelField>
+					)}
 
 					{triggerType === "status_changed" && (
 						<>

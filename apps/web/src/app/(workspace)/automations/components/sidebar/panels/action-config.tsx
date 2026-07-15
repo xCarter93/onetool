@@ -31,6 +31,7 @@ import {
 	type TriggerConfig,
 	type UpdateFieldAction,
 	type WorkflowNode,
+	triggerScopeObjectType,
 } from "../../../lib/node-types";
 import { getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
@@ -99,11 +100,28 @@ function UpdateFieldFields({
 	nodeId,
 	formulas,
 	commit,
-}: ActionFieldsProps<UpdateFieldAction> & { triggerObjectType: AutomationObjectType }) {
+}: ActionFieldsProps<UpdateFieldAction> & {
+	triggerObjectType: AutomationObjectType | null;
+}) {
 	// Inside a loop body, `target: "self"` (and its related FKs) resolve against
 	// the loop's fetched item, not the trigger record — mirror the engine.
 	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
-	const scopeObjectType = scope.objectType ?? triggerObjectType;
+	const scopeObjectType = scope.objectType;
+
+	// Both targets — self and related — resolve off the record in scope, so with
+	// no record there is nothing this action can update. The engine hard-fails on
+	// it, and save-time validation now rejects it.
+	if (!scopeObjectType) {
+		return (
+			<PanelSection title="Inputs">
+				<p className="text-xs text-muted-foreground">
+					This automation runs on a schedule, so there is no record to update.
+					Add a Find records step and move this action inside a Loop.
+				</p>
+			</PanelSection>
+		);
+	}
+
 	const targetOptions = getTargetOptions(scopeObjectType);
 	const targetValue = typeof action.target === "string" ? action.target : action.target.related;
 	const targetObjectType =
@@ -153,7 +171,7 @@ function UpdateFieldFields({
 							: undefined
 						: scope.inLoop
 							? `Updates the ${targetObjectType} linked to the current loop item.`
-							: `Updates the ${targetObjectType} linked to the triggering ${triggerObjectType}.`
+							: `Updates the ${targetObjectType} linked to the triggering ${scopeObjectType}.`
 				}
 			>
 				<Select
@@ -515,10 +533,16 @@ export function ActionConfigPanel({
 		);
 	}
 
-	const triggerObjectType: AutomationObjectType = trigger?.objectType || "quote";
-	const config =
-		(node.config as ActionNodeConfig | undefined) ?? defaultConfig(triggerObjectType);
+	const triggerObjectType = triggerScopeObjectType(trigger);
 	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
+	// null on a scheduled automation outside a loop. Seeding the default config
+	// off an arbitrary object type would render a "This Quote" target on an
+	// automation that has no quote — and no record at all.
+	const seedObjectType =
+		getScopeObjectType(workflowNodes, nodeId, triggerObjectType).objectType ??
+		"client";
+	const config =
+		(node.config as ActionNodeConfig | undefined) ?? defaultConfig(seedObjectType);
 	const meta = ACTION_META[config.action.type];
 
 	const commit = (next: ActionNodeConfig) => {

@@ -1011,6 +1011,13 @@ export const createFromQuote = userMutation({
 				client?.companyName || "Unknown Client"
 			);
 			await AggregateHelpers.addInvoice(ctx, invoice as InvoiceDocument);
+			await emitRecordCreatedEvent(
+				ctx,
+				invoice.orgId,
+				"invoice",
+				invoice._id,
+				"invoices.createFromQuote"
+			);
 		}
 
 		// Create default payment for the full invoice amount

@@ -118,6 +118,7 @@ describe("automation runs & latency (Slice 5)", () => {
 			mode?: "production" | "test";
 			nodesExecuted?: Doc<"workflowExecutions">["nodesExecuted"];
 			error?: string;
+			loopSummary?: Doc<"workflowExecutions">["loopSummary"];
 		}
 	): Promise<Id<"workflowExecutions">> {
 		return await t.run(async (ctx) =>
@@ -132,6 +133,7 @@ describe("automation runs & latency (Slice 5)", () => {
 				mode: fields.mode,
 				error: fields.error,
 				nodesExecuted: fields.nodesExecuted ?? [],
+				loopSummary: fields.loopSummary,
 			})
 		);
 	}
@@ -492,6 +494,40 @@ describe("automation runs & latency (Slice 5)", () => {
 			expect(m.avgActiveMs).toBe(0);
 			expect(m.p50ActiveMs).toBe(0);
 		});
+
+		it("counts completed_with_errors in withErrorsCount, excludes it from successCount, and it lowers successRate", async () => {
+			const now = 1_700_000_500_000;
+			vi.setSystemTime(now);
+			const { orgId, asUser } = await setupUser();
+			const auto = await asUser.mutation(api.automations.create, {
+				name: "Partial",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+
+			const b = now - 60_000;
+			await seedRun({ orgId, automationId: auto, triggeredAt: b, status: "completed", completedAt: b + 100 });
+			await seedRun({
+				orgId,
+				automationId: auto,
+				triggeredAt: b,
+				status: "completed_with_errors",
+				completedAt: b + 200,
+				loopSummary: [
+					{ nodeId: "loop-1", total: 5, succeeded: 3, failed: 2, skipped: 0, errors: [] },
+				],
+			});
+
+			const m = await asUser.query(api.automations.getRunMetrics, {});
+			expect(m.totalRuns).toBe(2);
+			expect(m.successCount).toBe(1);
+			expect(m.withErrorsCount).toBe(1);
+			expect(m.failedCount).toBe(0);
+			// successRate = successCount / (successCount + failedCount + withErrorsCount) = 1/2.
+			expect(m.successRate).toBeCloseTo(0.5);
+			// completed_with_errors runs DID complete — their latency joins the same distribution.
+			expect(m.avgActiveMs).toBe(150); // (100 + 200) / 2
+		});
 	});
 
 	describe("getRunThroughput", () => {
@@ -526,6 +562,41 @@ describe("automation runs & latency (Slice 5)", () => {
 			expect(buckets[1]).toMatchObject({ success: 0, failed: 0, skipped: 0 });
 			// 07-04: one success + one skipped (test excluded).
 			expect(buckets[2]).toMatchObject({ success: 1, failed: 0, skipped: 1 });
+		});
+
+		it("buckets a completed_with_errors run into withErrors and nowhere else", async () => {
+			const now = Date.UTC(2026, 6, 4, 12, 0, 0); // 2026-07-04T12:00Z
+			vi.setSystemTime(now);
+			const todayMidnight = Date.UTC(2026, 6, 4);
+
+			const { orgId, asUser } = await setupUser();
+			const auto = await asUser.mutation(api.automations.create, {
+				name: "Throughput partial",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+
+			await seedRun({
+				orgId,
+				automationId: auto,
+				triggeredAt: todayMidnight + 3600_000,
+				status: "completed_with_errors",
+				completedAt: todayMidnight + 3700_000,
+				loopSummary: [
+					{ nodeId: "loop-1", total: 3, succeeded: 2, failed: 1, skipped: 0, errors: [] },
+				],
+			});
+
+			const buckets = await asUser.query(api.automations.getRunThroughput, {
+				windowDays: 1,
+			});
+			expect(buckets).toHaveLength(1);
+			expect(buckets[0]).toMatchObject({
+				success: 0,
+				failed: 0,
+				withErrors: 1,
+				skipped: 0,
+			});
 		});
 	});
 
@@ -590,6 +661,44 @@ describe("automation runs & latency (Slice 5)", () => {
 
 			const asA = await orgA.asUser.query(api.automations.getRecentFailures, {});
 			expect(asA).toHaveLength(0);
+		});
+
+		it("includes completed_with_errors runs alongside failed runs, newest first, tagged with status", async () => {
+			const { orgId, asUser } = await setupUser();
+			const auto = await asUser.mutation(api.automations.create, {
+				name: "Mixed failures",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "x")],
+			});
+			const base = 1_700_000_000_000;
+
+			await seedRun({
+				orgId,
+				automationId: auto,
+				triggeredAt: base,
+				status: "failed",
+				completedAt: base + 5,
+				error: "boom",
+				nodesExecuted: [{ nodeId: "n1", result: "failed", error: "boom" }],
+			});
+			await seedRun({
+				orgId,
+				automationId: auto,
+				triggeredAt: base + 10,
+				status: "completed_with_errors",
+				completedAt: base + 15,
+				loopSummary: [
+					{ nodeId: "loop-1", total: 4, succeeded: 2, failed: 2, skipped: 0, errors: [] },
+				],
+			});
+
+			const failures = await asUser.query(api.automations.getRecentFailures, {});
+			expect(failures).toHaveLength(2);
+			// Newest first.
+			expect(failures[0].status).toBe("completed_with_errors");
+			expect(failures[0].error).toBe("2 of 4 items failed");
+			expect(failures[1].status).toBe("failed");
+			expect(failures[1].error).toBe("boom");
 		});
 	});
 

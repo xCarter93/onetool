@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import {
 	automationStatusValidator,
 	executedNodeValidator,
+	loopSummaryValidator,
 	formulaResourceValidator,
 	nodeConfigValidator,
 	nodeTypeValidator,
@@ -1329,6 +1330,9 @@ export default defineSchema({
 		status: v.union(
 			v.literal("running"),
 			v.literal("completed"),
+			// Ran to the end, but a loop configured to continue skipped one or
+			// more failing items. See loopSummary for which.
+			v.literal("completed_with_errors"),
 			v.literal("failed"),
 			v.literal("skipped"),
 			v.literal("cancelled")
@@ -1357,6 +1361,9 @@ export default defineSchema({
 		// True when any node in this run consumed a fetch scan that stopped at
 		// its scan cap with org rows still unscanned — results may be partial.
 		dataTruncated: v.optional(v.boolean()),
+		// Per-loop item tallies. Authoritative (nodesExecuted truncates and
+		// compacts); drives the partial-progress banner and the terminal status.
+		loopSummary: v.optional(v.array(loopSummaryValidator)),
 		// Test runs (dry-run) precompute the full walk, then reveal one entry
 		// per transaction so the getExecution subscription streams per-node
 		// status live. `plan` holds the remaining-and-revealed ordered entries;
@@ -1364,6 +1371,16 @@ export default defineSchema({
 		testCursor: v.optional(
 			v.object({
 				plan: v.array(executedNodeValidator),
+				// Decided when the plan is built: a failed entry no longer implies a
+				// failed run (a loop set to continue records it and carries on), and
+				// the revealed entries alone can't tell the two apart.
+				terminalStatus: v.optional(
+					v.union(
+						v.literal("completed"),
+						v.literal("completed_with_errors"),
+						v.literal("failed")
+					)
+				),
 			})
 		),
 		error: v.optional(v.string()),

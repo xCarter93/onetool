@@ -318,6 +318,33 @@ describe("Invoices", () => {
 			expect(invoice?.discountAmount).toBe(41.67);
 			expect(invoice?.total).toBeCloseTo(291.66, 2);
 		});
+
+		it("emits entity.record_created so invoice automations see the conversion", async () => {
+			// Regression: quote\u2192invoice conversion emitted nothing, so a
+			// record_created trigger on `invoice` never fired for converted quotes.
+			const { quoteId, clerkUserId, clerkOrgId } = await setupApprovedQuote({
+				discountEnabled: false,
+				total: 5000,
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const invoiceId = await asUser.mutation(api.invoices.createFromQuote, {
+				quoteId,
+			});
+
+			const events = await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) => q.eq(q.field("eventType"), "entity.record_created"))
+					.collect()
+			);
+			const invoiceCreated = events.find(
+				(e) => e.payload.entityId === invoiceId
+			);
+			expect(invoiceCreated).toBeDefined();
+			expect(invoiceCreated?.payload.entityType).toBe("invoice");
+			expect(invoiceCreated?.eventSource).toBe("invoices.createFromQuote");
+		});
 	});
 
 	describe("update", () => {

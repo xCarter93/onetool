@@ -208,9 +208,8 @@ export const TRIGGER_TYPE_OPTIONS: {
 	},
 ];
 
-export type TriggerConfig = {
-	type?: TriggerType;
-	objectType?: AutomationObjectType;
+/** Fields shared by every trigger draft, regardless of type. */
+type TriggerConfigBase = {
 	/** status_changed */
 	fromStatus?: string;
 	toStatus?: string;
@@ -227,6 +226,44 @@ export type TriggerConfig = {
 		dayOfMonth?: number;
 	};
 };
+
+/**
+ * The scheduled variant OMITS objectType — a scheduled run has no triggering
+ * record, so there is no object for it to name. Omission (not `objectType?:
+ * never`) is deliberate: `never` still typechecks on reads, so it would let
+ * every stale `trigger.objectType` site keep compiling. Absent means the
+ * compiler names them all.
+ */
+export type TriggerConfig =
+	| (TriggerConfigBase & {
+			type?: "status_changed" | "record_created" | "record_updated";
+			objectType?: AutomationObjectType;
+	  })
+	| (TriggerConfigBase & { type: "scheduled" });
+
+/**
+ * Operators offered when a condition rule's left side is a variable (a step
+ * result or a formula) rather than a record field. No registry entry exists to
+ * derive them from, so the set is fixed and deliberately conservative.
+ */
+export const VARIABLE_LEFT_OPERATORS = [
+	"equals",
+	"not_equals",
+	"greater_than",
+	"less_than",
+	"gte",
+	"lte",
+	"is_empty",
+	"is_not_empty",
+] as const;
+
+/** The object type bound to `trigger.record`, or null when there is none. */
+export function triggerScopeObjectType(
+	trigger: TriggerConfig | null | undefined
+): AutomationObjectType | null {
+	if (!trigger || trigger.type === "scheduled") return null;
+	return trigger.objectType ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // 6. Action target UI options (derived from the registry relations map)

@@ -3,6 +3,7 @@
 import React from "react";
 import {
 	conditionSentenceParts,
+	type VarLabelMap,
 } from "../../../lib/condition-sentence";
 import type {
 	AutomationObjectType,
@@ -19,13 +20,15 @@ export function ConditionSentenceSummary({
 	logic,
 	groups,
 	objectType,
+	varLabels,
 }: {
 	prefix: string;
 	logic: "and" | "or";
 	groups: ConditionGroup[];
 	objectType: AutomationObjectType | null;
+	varLabels?: VarLabelMap;
 }) {
-	const parts = conditionSentenceParts(logic, groups, objectType);
+	const parts = conditionSentenceParts(logic, groups, objectType, varLabels);
 	if (parts.length === 0) return null;
 
 	return (

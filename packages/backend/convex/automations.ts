@@ -1,4 +1,5 @@
-import { QueryCtx, MutationCtx } from "./_generated/server";
+import { QueryCtx, MutationCtx, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
@@ -21,8 +22,10 @@ import {
 	recordUpdatedTriggerValidator,
 	scheduledTriggerValidator,
 	statusChangedTriggerValidator,
+	triggerRecordObjectType,
 	type AutomationObjectType,
 	type AutomationTrigger,
+	type ConditionGroup,
 	type FormulaResource,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
@@ -195,21 +198,128 @@ function validateTrigger(trigger: AutomationTrigger): void {
 	}
 }
 
-function triggerObjectType(
-	trigger: AutomationTrigger
-): AutomationObjectType | undefined {
-	if ("objectType" in trigger && trigger.objectType) {
-		return trigger.objectType;
+function isScheduledTrigger(trigger: AutomationTrigger): boolean {
+	return "type" in trigger && trigger.type === "scheduled";
+}
+
+/**
+ * Scheduled triggers store no object type: it was never read at runtime, but
+ * the builder used to stamp one on every scheduled trigger, and anything that
+ * reads it starts claiming a record scope the run does not have. Stripping on
+ * write heals stored rows the next time they are saved.
+ */
+function sanitizeTrigger<T>(trigger: T): T {
+	if (
+		!trigger ||
+		typeof trigger !== "object" ||
+		(trigger as { type?: string }).type !== "scheduled" ||
+		!("objectType" in trigger)
+	) {
+		return trigger;
 	}
-	return undefined;
+	const rest = { ...(trigger as Record<string, unknown>) };
+	delete rest.objectType;
+	return rest as T;
+}
+
+const TEMPLATE_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
+
+/**
+ * Every scope path a config reads: `{kind:"var"}` refs plus `{{token}}`s inside
+ * static strings. A message template is not a ValueRef but resolves the same
+ * paths at runtime, so a path-only scan would miss `{{trigger.record.total}}`
+ * sitting in a notification body.
+ */
+function collectConfigPaths(value: unknown, out: string[] = []): string[] {
+	if (typeof value === "string") {
+		for (const match of value.matchAll(TEMPLATE_TOKEN)) {
+			out.push(match[1].trim());
+		}
+		return out;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) collectConfigPaths(item, out);
+		return out;
+	}
+	if (value !== null && typeof value === "object") {
+		const obj = value as Record<string, unknown>;
+		if (obj.kind === "var" && typeof obj.path === "string") {
+			out.push(obj.path);
+		}
+		for (const key of Object.keys(obj)) collectConfigPaths(obj[key], out);
+	}
+	return out;
+}
+
+/** Paths that only resolve when the run has a triggering record. */
+function readsTriggerRecord(path: string): boolean {
+	return /^trigger\.(record|event)\b/.test(path);
+}
+
+const NO_RECORD = "a scheduled automation has no triggering record";
+
+/**
+ * A scheduled run walks with `trigger.record` = {} — the dispatcher passes no
+ * record. So anything reading or acting on the trigger record is dead at
+ * runtime: an action hard-fails, a condition silently takes the wrong branch.
+ * Reject at save time and point at fetch + loop.
+ *
+ * Loop bodies are exempt — there the record in scope IS the loop item. The
+ * predicate is "not in a loop body", never "source === trigger": a legacy
+ * in-loop condition with no stored source works fine at runtime, and keying on
+ * source would refuse to save it.
+ */
+function validateScheduledRecordScope(
+	nodes: NodeArg[],
+	bodyScopeType: Map<string, AutomationObjectType | undefined>
+): void {
+	for (const node of nodes) {
+		for (const path of collectConfigPaths(node.config)) {
+			if (readsTriggerRecord(path)) {
+				throw new Error(
+					`Node ${node.id}: "${path}" is always empty — ${NO_RECORD}. Add a "Find records" step and read the loop item instead.`
+				);
+			}
+		}
+
+		if (bodyScopeType.has(node.id)) continue;
+
+		const config = node.config;
+		if (
+			config.kind === "condition" &&
+			config.groups.some((group) => group.rules.some((rule) => !rule.left))
+		) {
+			throw new Error(
+				`Node ${node.id}: this condition has nothing to test — ${NO_RECORD}. Compare a step result instead (a "Find records" count or an aggregate), or move the condition inside a loop.`
+			);
+		}
+		if (config.kind === "action") {
+			// Both update_field targets (self and related) resolve off the record in
+			// scope, so neither can work outside a loop.
+			if (config.action.type === "update_field") {
+				throw new Error(
+					`Node ${node.id}: there is no record to update — ${NO_RECORD}. Add a "Find records" step and put this action inside a loop.`
+				);
+			}
+			if (config.action.type === "create_task" && config.action.linkToRecord) {
+				throw new Error(
+					`Node ${node.id}: there is no record to link this task to — ${NO_RECORD}. Put it inside a loop, or turn off "Link to record".`
+				);
+			}
+		}
+	}
 }
 
 function validateConditionGroups(
 	nodeId: string,
-	groups: { logic: "and" | "or"; rules: { field: string; operator: string; value?: unknown }[] }[],
+	groups: ConditionGroup[],
 	objectType: AutomationObjectType | undefined,
-	context: string
+	context: "condition" | "filter" | "entry criteria"
 ): void {
+	// A variable left-hand side is only meaningful on a condition node. A fetch
+	// filter and trigger entry criteria both run against records being scanned,
+	// so their rules must name a real field.
+	const allowVarLeft = context === "condition";
 	if (groups.length > MAX_CONDITION_GROUPS) {
 		throw new Error(
 			`Node ${nodeId}: at most ${MAX_CONDITION_GROUPS} ${context} groups allowed`
@@ -222,21 +332,37 @@ function validateConditionGroups(
 			);
 		}
 		for (const rule of group.rules) {
-			if (!rule.field.trim()) {
-				throw new Error(`Node ${nodeId}: rule is missing a field`);
-			}
-			if (objectType) {
-				const def = getFieldDefinition(objectType, rule.field);
-				if (!def) {
+			if (rule.left) {
+				if (!allowVarLeft) {
 					throw new Error(
-						`Node ${nodeId}: unknown field "${rule.field}" for ${objectType}`
+						`Node ${nodeId}: ${context} rules must compare a field on the record`
 					);
 				}
-				const operators = operatorsForField(objectType, rule.field);
-				if (!operators.includes(rule.operator as never)) {
+				if (rule.left.kind !== "var") {
 					throw new Error(
-						`Node ${nodeId}: operator "${rule.operator}" is not valid for field "${rule.field}"`
+						`Node ${nodeId}: a condition's left side must be a variable`
 					);
+				}
+				if (!rule.left.path.trim()) {
+					throw new Error(`Node ${nodeId}: rule is missing a variable to test`);
+				}
+			} else {
+				if (!rule.field.trim()) {
+					throw new Error(`Node ${nodeId}: rule is missing a field`);
+				}
+				if (objectType) {
+					const def = getFieldDefinition(objectType, rule.field);
+					if (!def) {
+						throw new Error(
+							`Node ${nodeId}: unknown field "${rule.field}" for ${objectType}`
+						);
+					}
+					const operators = operatorsForField(objectType, rule.field);
+					if (!operators.includes(rule.operator as never)) {
+						throw new Error(
+							`Node ${nodeId}: operator "${rule.operator}" is not valid for field "${rule.field}"`
+						);
+					}
 				}
 			}
 			const valueless = (VALUELESS_OPERATORS as readonly string[]).includes(
@@ -340,7 +466,7 @@ function validateWorkflowDefinition(
 ): void {
 	validateTrigger(trigger);
 
-	const objectType = triggerObjectType(trigger);
+	const objectType = triggerRecordObjectType(trigger);
 	const nodeIds = new Set(nodes.map((n) => n.id));
 	if (nodeIds.size !== nodes.length) {
 		throw new Error("Node ids must be unique");
@@ -349,6 +475,10 @@ function validateWorkflowDefinition(
 	// Loop-body nodes act on the loop's fetched records, not the trigger
 	// record — validate their update_field configs against that object type.
 	const bodyScopeType = computeLoopBodyScopeTypes(nodes);
+
+	if (isScheduledTrigger(trigger)) {
+		validateScheduledRecordScope(nodes, bodyScopeType);
+	}
 
 	for (const node of nodes) {
 		const config = node.config;
@@ -680,8 +810,12 @@ function validateForActivation(
  * inputs are in scope) is handled in the builder; at runtime an out-of-scope
  * reference fails the run clearly.
  */
-function validateFormulas(formulas: FormulaResource[] | undefined): void {
+function validateFormulas(
+	formulas: FormulaResource[] | undefined,
+	trigger: AutomationTrigger
+): void {
 	if (!formulas || formulas.length === 0) return;
+	const scheduled = isScheduledTrigger(trigger);
 	if (formulas.length > MAX_FORMULAS) {
 		throw new Error(`An automation can have at most ${MAX_FORMULAS} formulas`);
 	}
@@ -704,6 +838,17 @@ function validateFormulas(formulas: FormulaResource[] | undefined): void {
 			const msg = err instanceof FormulaError ? err.message : "invalid expression";
 			throw new Error(`Formula "${f.name}" has a syntax error: ${msg}`);
 		}
+		// Formulas are automation-level, so a node-only scan never sees them: a
+		// formula reading the trigger record is dead at every use site.
+		if (scheduled) {
+			const dead = referenced.find(readsTriggerRecord);
+			if (dead) {
+				throw new Error(
+					`Formula "${f.name}" reads "${dead}", which is always empty — ${NO_RECORD}. Use a step result, or a loop item inside a loop.`
+				);
+			}
+		}
+
 		refs.set(
 			f.id,
 			referenced
@@ -765,7 +910,7 @@ function buildSnapshot(
 	>
 ): NonNullable<AutomationDocument["publishedSnapshot"]> {
 	return {
-		trigger: automation.trigger,
+		trigger: sanitizeTrigger(automation.trigger),
 		nodes: automation.nodes,
 		formulas: automation.formulas,
 		version: (automation.publishedSnapshot?.version ?? 0) + 1,
@@ -868,30 +1013,31 @@ export const create = userMutation({
 		} else {
 			validateWorkflowDefinition(args.trigger, args.nodes);
 		}
-		validateFormulas(args.formulas);
+		validateFormulas(args.formulas, args.trigger);
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const user = await getCurrentUserOrThrow(ctx);
 		const now = Date.now();
+		const trigger = sanitizeTrigger(args.trigger);
 
 		return await ctx.db.insert("workflowAutomations", {
 			orgId: userOrgId,
 			name: args.name.trim(),
 			description: args.description?.trim(),
-			trigger: args.trigger,
+			trigger,
 			nodes: args.nodes,
 			formulas: args.formulas,
 			status: activate ? "active" : "draft",
 			publishedSnapshot: activate
 				? {
-						trigger: args.trigger,
+						trigger,
 						nodes: args.nodes,
 						formulas: args.formulas,
 						version: 1,
 						publishedAt: now,
 					}
 				: undefined,
-			nextRunAt: scheduledNextRunAt(args.trigger, activate),
+			nextRunAt: scheduledNextRunAt(trigger, activate),
 			createdBy: user._id,
 			createdAt: now,
 			updatedAt: now,
@@ -924,8 +1070,9 @@ export const update = userMutation({
 			throw new Error("Automation name cannot be empty");
 		}
 
+		const nextTrigger = updates.trigger ?? automation.trigger;
+
 		if (updates.trigger !== undefined || updates.nodes !== undefined) {
-			const nextTrigger = updates.trigger ?? automation.trigger;
 			const nextNodes = (updates.nodes ?? automation.nodes) as NodeArg[];
 			if (updates.trigger !== undefined && !("type" in nextTrigger)) {
 				throw new Error("Legacy triggers can no longer be written");
@@ -942,8 +1089,10 @@ export const update = userMutation({
 			validateWorkflowDefinition(nextTrigger, nextNodes);
 		}
 
-		if (updates.formulas !== undefined) {
-			validateFormulas(updates.formulas);
+		// Also re-check stored formulas when the trigger changes: switching to a
+		// schedule can strand a formula that reads the trigger record.
+		if (updates.formulas !== undefined || updates.trigger !== undefined) {
+			validateFormulas(updates.formulas ?? automation.formulas, nextTrigger);
 		}
 
 		const patch: Partial<AutomationDocument> = { updatedAt: Date.now() };
@@ -952,7 +1101,9 @@ export const update = userMutation({
 		if (updates.description !== undefined) {
 			patch.description = updates.description.trim();
 		}
-		if (updates.trigger !== undefined) patch.trigger = updates.trigger;
+		if (updates.trigger !== undefined) {
+			patch.trigger = sanitizeTrigger(updates.trigger);
+		}
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.formulas !== undefined) patch.formulas = updates.formulas;
 
@@ -971,7 +1122,7 @@ export const publish = userMutation({
 		const automation = await getAutomationOrThrow(ctx, args.id);
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
-		validateFormulas(automation.formulas);
+		validateFormulas(automation.formulas, automation.trigger);
 
 		await ctx.db.patch(args.id, {
 			status: "active",
@@ -1012,12 +1163,16 @@ export const toggleActive = userMutation({
 
 		if (automation.publishedSnapshot) {
 			// Resume a previously-published automation on its published version.
+			// Re-validate it first: this path never re-checked the snapshot, so an
+			// automation published before a rule landed could be switched straight
+			// back on and fail every tick with nothing to stop it.
+			const snapshot = automation.publishedSnapshot;
+			validateForActivation(snapshot.trigger, snapshot.nodes as NodeArg[]);
+			validateFormulas(snapshot.formulas, snapshot.trigger);
+
 			await ctx.db.patch(args.id, {
 				status: "active",
-				nextRunAt: scheduledNextRunAt(
-					automation.publishedSnapshot.trigger,
-					true
-				),
+				nextRunAt: scheduledNextRunAt(snapshot.trigger, true),
 				updatedAt: Date.now(),
 			});
 			return args.id;
@@ -1025,7 +1180,7 @@ export const toggleActive = userMutation({
 
 		// Draft with no snapshot: publishing is the only way to go live.
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
-		validateFormulas(automation.formulas);
+		validateFormulas(automation.formulas, automation.trigger);
 		await ctx.db.patch(args.id, {
 			status: "active",
 			publishedSnapshot: buildSnapshot(automation),
@@ -1037,8 +1192,39 @@ export const toggleActive = userMutation({
 	},
 });
 
+/** Execution rows deleted per transaction while removing an automation. */
+const REMOVE_EXECUTIONS_BATCH = 100;
+
 /**
- * Delete an automation (hard delete)
+ * Delete one bounded batch of a removed automation's execution rows and
+ * reschedule while more remain. Rows still present during the handoff window
+ * render as "(deleted automation)" in run listings.
+ */
+async function deleteExecutionsBatch(
+	ctx: MutationCtx,
+	automationId: AutomationId
+): Promise<void> {
+	const batch = await ctx.db
+		.query("workflowExecutions")
+		.withIndex("by_automation", (q) => q.eq("automationId", automationId))
+		.take(REMOVE_EXECUTIONS_BATCH);
+	for (const execution of batch) {
+		await ctx.db.delete(execution._id);
+	}
+	if (batch.length === REMOVE_EXECUTIONS_BATCH) {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.automations.removeExecutionsBatch,
+			{ automationId }
+		);
+	}
+}
+
+/**
+ * Delete an automation (hard delete). The doc goes immediately — lists and
+ * the scheduled dispatcher stop seeing it in this transaction — but a
+ * long-lived automation's run history can exceed one transaction's limits,
+ * so it is chewed through in self-rescheduling batches.
  */
 export const remove = userMutation({
 	args: { id: v.id("workflowAutomations") },
@@ -1046,18 +1232,21 @@ export const remove = userMutation({
 		await ctx.requireLevel("automations", "delete");
 		await getAutomationOrThrow(ctx, args.id); // Validate access
 
-		// Also delete associated execution logs
-		const executions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_automation", (q) => q.eq("automationId", args.id))
-			.collect();
-
-		for (const execution of executions) {
-			await ctx.db.delete(execution._id);
-		}
-
 		await ctx.db.delete(args.id);
+		await deleteExecutionsBatch(ctx, args.id);
 		return args.id;
+	},
+});
+
+/** Follow-up batches for `remove` — only ever runs on orphaned rows. */
+export const removeExecutionsBatch = internalMutation({
+	args: { automationId: v.id("workflowAutomations") },
+	handler: async (ctx, args): Promise<void> => {
+		// Refuse to touch history of a live automation: this only cleans up
+		// after a hard delete, so a still-present doc means a bad caller.
+		const automation = await ctx.db.get(args.automationId);
+		if (automation) return;
+		await deleteExecutionsBatch(ctx, args.automationId);
 	},
 });
 
@@ -1077,6 +1266,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const executionStatusValidator = v.union(
 	v.literal("running"),
 	v.literal("completed"),
+	v.literal("completed_with_errors"),
 	v.literal("failed"),
 	v.literal("skipped"),
 	v.literal("cancelled")
@@ -1228,8 +1418,8 @@ export const listRuns = userQuery({
 
 /**
  * Windowed cumulative run metrics for the KPI tiles (production runs only).
- * successRate is over decided runs (completed + failed); skipped/running are
- * excluded from the denominator. Latency stats are over completed runs' active
+ * successRate is over decided runs (completed + completed_with_errors +
+ * failed); skipped/running are excluded from the denominator. Latency stats are over completed runs' active
  * time. `activeAutomationCount` is the count of currently-active automations.
  */
 export const getRunMetrics = userQuery({
@@ -1242,6 +1432,7 @@ export const getRunMetrics = userQuery({
 		successCount: number;
 		failedCount: number;
 		skippedCount: number;
+		withErrorsCount: number;
 		successRate: number;
 		avgActiveMs: number;
 		p50ActiveMs: number;
@@ -1264,6 +1455,7 @@ export const getRunMetrics = userQuery({
 		let successCount = 0;
 		let failedCount = 0;
 		let skippedCount = 0;
+		let withErrorsCount = 0;
 		const activeDurations: number[] = [];
 
 		for (const e of executions) {
@@ -1273,6 +1465,11 @@ export const getRunMetrics = userQuery({
 				successCount++;
 				const { activeMs } = deriveDurations(e);
 				if (activeMs != null) activeDurations.push(activeMs);
+			} else if (e.status === "completed_with_errors") {
+				withErrorsCount++;
+				// Ran to the end, so its latency counts toward the same distribution.
+				const { activeMs } = deriveDurations(e);
+				if (activeMs != null) activeDurations.push(activeMs);
 			} else if (e.status === "failed") {
 				failedCount++;
 			} else if (e.status === "skipped") {
@@ -1280,7 +1477,8 @@ export const getRunMetrics = userQuery({
 			}
 		}
 
-		const decided = successCount + failedCount;
+		// A partial run drags the rate down without counting as a full failure.
+		const decided = successCount + failedCount + withErrorsCount;
 		const successRate = decided > 0 ? successCount / decided : 0;
 
 		activeDurations.sort((a, b) => a - b);
@@ -1305,6 +1503,7 @@ export const getRunMetrics = userQuery({
 			successCount,
 			failedCount,
 			skippedCount,
+			withErrorsCount,
 			successRate,
 			avgActiveMs,
 			p50ActiveMs: percentile(activeDurations, 50),
@@ -1325,7 +1524,13 @@ export const getRunThroughput = userQuery({
 		ctx,
 		args
 	): Promise<
-		Array<{ day: number; success: number; failed: number; skipped: number }>
+		Array<{
+			day: number;
+			success: number;
+			failed: number;
+			withErrors: number;
+			skipped: number;
+		}>
 	> => {
 		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
@@ -1344,10 +1549,22 @@ export const getRunThroughput = userQuery({
 		// Seed every UTC day (incl. zero-count) in chronological order.
 		const buckets = new Map<
 			number,
-			{ day: number; success: number; failed: number; skipped: number }
+			{
+				day: number;
+				success: number;
+				failed: number;
+				withErrors: number;
+				skipped: number;
+			}
 		>();
 		for (let day = firstDay; day <= todayMidnight; day += DAY_MS) {
-			buckets.set(day, { day, success: 0, failed: 0, skipped: 0 });
+			buckets.set(day, {
+				day,
+				success: 0,
+				failed: 0,
+				withErrors: 0,
+				skipped: 0,
+			});
 		}
 
 		for (const e of executions) {
@@ -1357,6 +1574,7 @@ export const getRunThroughput = userQuery({
 			if (!bucket) continue; // outside the seeded window
 			if (e.status === "completed") bucket.success++;
 			else if (e.status === "failed") bucket.failed++;
+			else if (e.status === "completed_with_errors") bucket.withErrors++;
 			else if (e.status === "skipped") bucket.skipped++;
 		}
 
@@ -1365,9 +1583,28 @@ export const getRunThroughput = userQuery({
 });
 
 /**
- * The most recent failed PRODUCTION runs (org-scoped, newest first) for the
- * recent-failures timeline. failedNodeId = the last nodesExecuted entry whose
- * result is "failed" (undefined for pre-walk failures like a missing record).
+ * Sensible one-line message for a completed_with_errors run, which has no
+ * top-level `error` field — summed across every loop node's failed count.
+ */
+function deriveLoopSummaryError(
+	loopSummary: Doc<"workflowExecutions">["loopSummary"]
+): string {
+	if (!loopSummary || loopSummary.length === 0) return "Some items failed";
+	let total = 0;
+	let totalFailed = 0;
+	for (const s of loopSummary) {
+		total += s.total;
+		totalFailed += s.failed;
+	}
+	if (totalFailed === 0) return "Some items failed";
+	return `${totalFailed} of ${total} items failed`;
+}
+
+/**
+ * The most recent failed or partially-failed PRODUCTION runs (org-scoped,
+ * newest first) for the recent-failures timeline. failedNodeId = the last
+ * nodesExecuted entry whose result is "failed" (undefined for pre-walk
+ * failures like a missing record).
  */
 export const getRecentFailures = userQuery({
 	args: { limit: v.optional(v.number()) },
@@ -1379,6 +1616,7 @@ export const getRecentFailures = userQuery({
 			executionId: Id<"workflowExecutions">;
 			automationId: Id<"workflowAutomations">;
 			automationName: string;
+			status: "failed" | "completed_with_errors";
 			error: string;
 			failedNodeId?: string;
 			triggeredAt: number;
@@ -1397,17 +1635,38 @@ export const getRecentFailures = userQuery({
 			.filter((q) => q.neq(q.field("mode"), "test"))
 			.take(limit);
 
+		// A partially-failed run (loop continued past skipped items) also
+		// belongs in the recent-failures timeline.
+		const partialFailures = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_status_triggeredAt", (q) =>
+				q.eq("orgId", orgId).eq("status", "completed_with_errors")
+			)
+			.order("desc")
+			.filter((q) => q.neq(q.field("mode"), "test"))
+			.take(limit);
+
+		const merged = [...failures, ...partialFailures]
+			.sort((a, b) => b.triggeredAt - a.triggeredAt)
+			.slice(0, limit);
+
 		const resolveName = makeAutomationNameResolver(ctx, orgId);
 		const rows = [];
-		for (const e of failures) {
+		for (const e of merged) {
 			const failedNode = [...e.nodesExecuted]
 				.reverse()
 				.find((n) => n.result === "failed");
+			const status = e.status as "failed" | "completed_with_errors";
+			const error =
+				status === "completed_with_errors"
+					? deriveLoopSummaryError(e.loopSummary)
+					: (e.error ?? "Unknown error");
 			rows.push({
 				executionId: e._id,
 				automationId: e.automationId,
 				automationName: await resolveName(e.automationId),
-				error: e.error ?? "Unknown error",
+				status,
+				error,
 				failedNodeId: failedNode?.nodeId,
 				triggeredAt: e.triggeredAt,
 			});

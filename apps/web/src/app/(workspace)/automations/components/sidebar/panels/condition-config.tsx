@@ -4,11 +4,11 @@ import React from "react";
 import { GitBranch } from "lucide-react";
 import { NextStepTree } from "../next-step-tree";
 import type {
-	AutomationObjectType,
 	ConditionNodeConfig,
 	WorkflowNode,
 } from "../../../lib/node-types";
-import { getScopeObjectType } from "../../../lib/variables";
+import { triggerScopeObjectType } from "../../../lib/node-types";
+import { getAvailableVariables, getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
 import { DeleteStepButton, PanelSection } from "./panel-primitives";
@@ -40,14 +40,26 @@ export function ConditionConfigPanel({
 		);
 	}
 
-	const triggerObjectType: AutomationObjectType = trigger?.objectType || "quote";
+	const triggerObjectType = triggerScopeObjectType(trigger);
 	const config = (node.config as ConditionNodeConfig | undefined) ?? defaultConfig();
 	const workflowNodes = nodes.filter((n): n is WorkflowNode => n.type !== "placeholder");
 
 	// Inside a loop body, conditions read the loop's fetched item, not the
 	// trigger record — mirror the engine (automationExecutor.ts executeNodeV2).
+	// null on a scheduled automation outside a loop: nothing puts a record in
+	// scope, so the only thing left to test is a step result.
 	const scope = getScopeObjectType(workflowNodes, nodeId, triggerObjectType);
-	const objectType: AutomationObjectType = scope.objectType ?? triggerObjectType;
+	const objectType = scope.objectType;
+
+	// Step results and formulas can be tested without a record at all.
+	const availableVariables = trigger
+		? getAvailableVariables(workflowNodes, trigger, nodeId, formulas)
+		: [];
+	const variableLeftOptions = availableVariables.filter(
+		(o) => o.path.startsWith("node.") || o.path.startsWith("formula.")
+	);
+	const varLabels = new Map(availableVariables.map((o) => [o.path, o.label]));
+	const hasNothingToTest = !objectType && variableLeftOptions.length === 0;
 
 	const commit = (next: ConditionNodeConfig) => {
 		const source: ConditionNodeConfig["source"] =
@@ -67,8 +79,16 @@ export function ConditionConfigPanel({
 
 			<div className="flex-1">
 				<PanelSection title="Conditions">
+					{!objectType && (
+						<p className="text-xs text-muted-foreground">
+							{hasNothingToTest
+								? "This automation runs on a schedule, so there is no record to test. Add a Find records step, then test its result here — or move this condition inside a Loop to test each record."
+								: "This automation runs on a schedule, so there is no record to test. Compare a step result instead, or move this condition inside a Loop to test each record."}
+						</p>
+					)}
 					<FilterGroupsEditor
 						objectType={objectType}
+						variableLeftOptions={variableLeftOptions}
 						groups={config.groups}
 						onChange={(groups) => commit({ ...config, groups })}
 						topLevelLogic={{
@@ -85,6 +105,7 @@ export function ConditionConfigPanel({
 						logic={config.logic}
 						groups={config.groups}
 						objectType={objectType}
+						varLabels={varLabels}
 					/>
 				</PanelSection>
 			</div>

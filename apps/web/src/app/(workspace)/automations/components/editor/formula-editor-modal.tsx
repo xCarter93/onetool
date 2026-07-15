@@ -10,6 +10,7 @@ import {
 	parseFormula,
 	runFormula,
 	FORMULA_FUNCTIONS,
+	isCalendarDateEpoch,
 	type FormulaFnDoc,
 	type Val,
 } from "@onetool/backend/convex/lib/formula";
@@ -90,11 +91,32 @@ function toFormulaVal(value: unknown): Val {
 	return null;
 }
 
-function formatPreviewValue(value: Val): string {
+function formatPreviewValue(value: Val, tz: string): string {
 	if (value === null) return "(empty)";
-	if (value instanceof Date) return value.toLocaleString();
+	if (value instanceof Date) {
+		// Match runtime display semantics: a calendar date reads in UTC
+		// (date-only), an instant in the tz the automation will run in —
+		// the browser's tz can be a day off for non-local users.
+		return isCalendarDateEpoch(value.getTime())
+			? value.toLocaleDateString(undefined, { timeZone: "UTC" })
+			: value.toLocaleString(undefined, { timeZone: tz });
+	}
 	if (typeof value === "boolean") return value ? "true" : "false";
 	return String(value);
+}
+
+/**
+ * The IANA tz this automation's formulas evaluate in at run time. Must stay in
+ * lockstep with automationFormulaTz() in automationExecutor.ts: scheduled
+ * automations use their schedule's tz, everything else runs in UTC.
+ */
+function runtimeTimezone(trigger: TriggerConfig | AutomationTrigger | null): string {
+	if (!trigger || trigger.type !== "scheduled") return "UTC";
+	// A stale `schedule` can linger on the draft config after a type switch, so
+	// read it only once the trigger is actually scheduled.
+	return "schedule" in trigger && trigger.schedule?.timezone
+		? trigger.schedule.timezone
+		: "UTC";
 }
 
 /** Order-preserving group-by, shared by the Variables and Functions reference lists. */
@@ -189,7 +211,10 @@ export function FormulaEditorModal({
 		| null
 		| undefined;
 
-	const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+	// The tz the automation will ACTUALLY run in — mirrors automationFormulaTz on
+	// the backend. Previewing in the browser's tz made authoring-time results
+	// differ from production for every non-local user.
+	const tz = useMemo(() => runtimeTimezone(trigger), [trigger]);
 
 	// Formulas this one may reference — excludes itself (no self-reference).
 	const referenceFormulas = useMemo(
@@ -247,7 +272,7 @@ export function FormulaEditorModal({
 			}
 			try {
 				const value = runFormula(expression, { resolve, now: Date.now(), tz });
-				setPreview({ ok: true, text: formatPreviewValue(value) });
+				setPreview({ ok: true, text: formatPreviewValue(value, tz) });
 			} catch (err) {
 				setPreview({
 					ok: false,
@@ -368,7 +393,12 @@ export function FormulaEditorModal({
 
 						<div className="space-y-1.5 rounded-md border border-border bg-muted/30 p-3">
 							<div className="flex items-center justify-between gap-2">
-								<span className="text-xs font-medium text-muted-foreground">Preview</span>
+								<span className="text-xs font-medium text-muted-foreground">
+									Preview{" "}
+									<span className="font-normal">
+										· dates in {tz} (this automation&rsquo;s run timezone)
+									</span>
+								</span>
 								{sampleRecords.length > 1 && (
 									<Select
 										value={selectedSample?.entityId}

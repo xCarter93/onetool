@@ -12,7 +12,7 @@ import {
 	type AutomationObjectType,
 	type ConditionNodeConfig,
 } from "../../lib/node-types";
-import { conditionSentence } from "../../lib/condition-sentence";
+import { conditionSentence, describeVarPath } from "../../lib/condition-sentence";
 
 function getSummary(
 	config: ConditionNodeConfig | undefined,
@@ -27,10 +27,12 @@ function getSummary(
 		return { title: "Set a condition", description: "Configure condition...", isConfigured: false };
 	}
 
-	const firstField = allRules[0].field;
-	const title =
-		(objectType ? getFieldDefinition(objectType, firstField)?.label : undefined) ??
-		firstField;
+	const firstRule = allRules[0];
+	const title = firstRule.left?.kind === "var"
+		? describeVarPath(firstRule.left.path, objectType)
+		: ((objectType
+				? getFieldDefinition(objectType, firstRule.field)?.label
+				: undefined) ?? firstRule.field);
 	// Full plain-English readback (A5-1); the card truncates to one line.
 	const description =
 		conditionSentence(config.logic, config.groups, objectType) ||

@@ -11,11 +11,13 @@ import type { Val } from "./ast";
 import type { FormulaContext } from "./context";
 import { FormulaError } from "./errors";
 import {
+	calendarDayEpoch,
 	getZonedParts,
 	guardNumber,
 	guardStr,
+	isCalendarDateEpoch,
+	partsFor,
 	requireString,
-	startOfDayEpoch,
 	stringify,
 	toDate,
 	toInt,
@@ -388,13 +390,16 @@ const SPECS: FunctionSpec[] = [
 		category: "date",
 		minArgs: 0,
 		maxArgs: 0,
-		fn: (_args, ctx) => new Date(startOfDayEpoch(ctx.now, ctx.tz)),
+		// Returns today's calendar DATE (UTC-midnight encoded), not a local-midnight
+		// instant — so it compares equal to stored date fields, which use the same
+		// encoding. Which day it is, is still decided in the workflow timezone.
+		fn: (_args, ctx) => new Date(calendarDayEpoch(ctx.now, ctx.tz)),
 		doc: {
 			name: "TODAY",
 			category: "date",
 			signature: "TODAY()",
-			description: "Start of the current day in the workflow timezone.",
-			example: "TODAY() → 2026-07-04T00:00:00 (local midnight)",
+			description: "The current date in the workflow timezone.",
+			example: "TODAY() → 2026-07-04",
 		},
 	},
 	{
@@ -416,23 +421,22 @@ const SPECS: FunctionSpec[] = [
 		category: "date",
 		minArgs: 3,
 		maxArgs: 3,
-		fn: (args, ctx) => {
+		fn: (args) => {
 			const year = toInt(args[0], "DATE(year)");
 			const month = toInt(args[1], "DATE(month)");
 			const day = toInt(args[2], "DATE(day)");
-			// Bounds-check before the epoch can reach getZonedParts (raw RangeError guard).
-			guardEpoch(Date.UTC(year, month - 1, day, 0, 0, 0), "DATE(year, month, day)");
-			const epoch = zonedPartsToEpoch(
-				{ year, month, day, hour: 0, minute: 0, second: 0 },
-				ctx.tz
-			);
-			return new Date(epoch);
+			// A calendar date is UTC-midnight by construction. Building it from
+			// zoned parts also broke outright in zones where DST springs forward AT
+			// midnight (e.g. America/Santiago): local midnight doesn't exist there,
+			// so the epoch landed at 01:00 local and was never a calendar date.
+			const epoch = Date.UTC(year, month - 1, day);
+			return new Date(guardEpoch(epoch, "DATE(year, month, day)"));
 		},
 		doc: {
 			name: "DATE",
 			category: "date",
 			signature: "DATE(year, month, day)",
-			description: "Construct a date at midnight in the workflow timezone (month is 1-12).",
+			description: "Construct a calendar date (month is 1-12).",
 			example: "DATE(2026, 7, 4) → 2026-07-04",
 		},
 	},
@@ -444,21 +448,29 @@ const SPECS: FunctionSpec[] = [
 		fn: (args, ctx) => {
 			const date = toDate(args[0], "ADDDAYS(date)");
 			const n = toInt(args[1], "ADDDAYS(n)");
-			const p = getZonedParts(date.getTime(), ctx.tz);
+			const ms = date.getTime();
+			// A calendar date advances in UTC, which has no DST — so the result is
+			// still exactly UTC midnight. Preserving wall-clock in the run timezone
+			// (what an instant needs) would land it off-midnight across a DST
+			// boundary, silently reclassifying it as an instant and corrupting the
+			// field it gets written to.
+			if (isCalendarDateEpoch(ms)) {
+				return new Date(guardEpoch(ms + n * 86_400_000, "ADDDAYS result"));
+			}
+			const p = getZonedParts(ms, ctx.tz);
 			const parts = { ...p, day: p.day + n };
 			// Bounds-check before the epoch can reach getZonedParts (raw RangeError guard).
 			guardEpoch(
 				Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second),
 				"ADDDAYS result"
 			);
-			const epoch = zonedPartsToEpoch(parts, ctx.tz);
-			return new Date(epoch);
+			return new Date(zonedPartsToEpoch(parts, ctx.tz));
 		},
 		doc: {
 			name: "ADDDAYS",
 			category: "date",
 			signature: "ADDDAYS(date, n)",
-			description: "Add n whole days to a date (preserving wall-clock time).",
+			description: "Add n whole days to a date (a time of day, if any, is preserved).",
 			example: "ADDDAYS(DATE(2026,7,4), 3) → 2026-07-07",
 		},
 	},
@@ -470,8 +482,10 @@ const SPECS: FunctionSpec[] = [
 		fn: (args, ctx) => {
 			const a = toDate(args[0], "DAYS_BETWEEN(a)");
 			const b = toDate(args[1], "DAYS_BETWEEN(b)");
-			const midA = startOfDayEpoch(a.getTime(), ctx.tz);
-			const midB = startOfDayEpoch(b.getTime(), ctx.tz);
+			// Each side is read in its own day-space, so a calendar date and an
+			// instant diff correctly instead of coming out one day apart.
+			const midA = calendarDayEpoch(a.getTime(), ctx.tz);
+			const midB = calendarDayEpoch(b.getTime(), ctx.tz);
 			return Math.round((midB - midA) / 86_400_000);
 		},
 		doc: {
@@ -487,7 +501,7 @@ const SPECS: FunctionSpec[] = [
 		category: "date",
 		minArgs: 1,
 		maxArgs: 1,
-		fn: (args, ctx) => getZonedParts(toDate(args[0], "YEAR(date)").getTime(), ctx.tz).year,
+		fn: (args, ctx) => partsFor(toDate(args[0], "YEAR(date)").getTime(), ctx.tz).year,
 		doc: {
 			name: "YEAR",
 			category: "date",
@@ -501,7 +515,7 @@ const SPECS: FunctionSpec[] = [
 		category: "date",
 		minArgs: 1,
 		maxArgs: 1,
-		fn: (args, ctx) => getZonedParts(toDate(args[0], "MONTH(date)").getTime(), ctx.tz).month,
+		fn: (args, ctx) => partsFor(toDate(args[0], "MONTH(date)").getTime(), ctx.tz).month,
 		doc: {
 			name: "MONTH",
 			category: "date",
@@ -515,7 +529,7 @@ const SPECS: FunctionSpec[] = [
 		category: "date",
 		minArgs: 1,
 		maxArgs: 1,
-		fn: (args, ctx) => getZonedParts(toDate(args[0], "DAY(date)").getTime(), ctx.tz).day,
+		fn: (args, ctx) => partsFor(toDate(args[0], "DAY(date)").getTime(), ctx.tz).day,
 		doc: {
 			name: "DAY",
 			category: "date",

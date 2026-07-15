@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
 	CheckCircle2,
 	XCircle,
@@ -60,6 +60,72 @@ const RESULT_ICON: Record<ExecutedNode["result"], ReactNode> = {
 	),
 };
 
+// Worst-outcome ranking for a loop iteration's group icon — mirrors the
+// failure-wins merge in lib/run-status.ts, over the raw executed-entry result.
+const RESULT_RANK: Record<ExecutedNode["result"], number> = {
+	failed: 3,
+	running: 2,
+	success: 1,
+	skipped: 0,
+};
+
+function worstResult(results: ExecutedNode["result"][]): ExecutedNode["result"] {
+	return results.reduce((worst, r) =>
+		RESULT_RANK[r] > RESULT_RANK[worst] ? r : worst
+	);
+}
+
+/** One rendered row: a plain step, or a run of consecutive entries from the
+ * same loop iteration collapsed into a group. */
+type TimelineRow =
+	| { kind: "entry"; index: number }
+	| {
+			kind: "group";
+			key: string;
+			label: string;
+			worst: ExecutedNode["result"];
+			indexes: number[];
+	  };
+
+/**
+ * Consecutive entries sharing loopNodeId+loopIndex collapse into one
+ * iteration group so a mid-loop failure can be traced to its record.
+ * Everything else (trigger, fetch, the loop node's own summary entry,
+ * post-loop steps) has no loopNodeId and stays a flat top-level row.
+ */
+function groupEntries(entries: ExecutedNode[]): TimelineRow[] {
+	const rows: TimelineRow[] = [];
+	let i = 0;
+	while (i < entries.length) {
+		const entry = entries[i];
+		if (entry.loopNodeId != null && entry.loopIndex != null) {
+			const { loopNodeId, loopIndex } = entry;
+			const indexes: number[] = [];
+			let j = i;
+			while (
+				j < entries.length &&
+				entries[j].loopNodeId === loopNodeId &&
+				entries[j].loopIndex === loopIndex
+			) {
+				indexes.push(j);
+				j++;
+			}
+			rows.push({
+				kind: "group",
+				key: `${loopNodeId}:${loopIndex}`,
+				label: entry.loopItemLabel || `Item ${loopIndex + 1}`,
+				worst: worstResult(indexes.map((idx) => entries[idx].result)),
+				indexes,
+			});
+			i = j;
+		} else {
+			rows.push({ kind: "entry", index: i });
+			i++;
+		}
+	}
+	return rows;
+}
+
 /** The backend caps snapshots at ~4KB, replacing oversized payloads with a
  * { _truncated, preview } marker whose `preview` is a raw JSON prefix. */
 function isTruncated(v: unknown): v is { _truncated: true; preview?: string } {
@@ -112,114 +178,166 @@ export function DebugTimeline({
 	rfNodes,
 	onNavigateToNode,
 }: DebugTimelineProps) {
-	// One row open at a time keeps the 280px panel legible.
+	// One entry's detail pane open at a time keeps the 280px panel legible.
 	const [expanded, setExpanded] = useState<number | null>(null);
+	// Group open/closed overrides, keyed by "loopNodeId:loopIndex". A key
+	// absent here falls back to the failed-wins default, so a group that
+	// picks up a failure as a streaming test run continues auto-opens.
+	const [groupOverrides, setGroupOverrides] = useState<Record<string, boolean>>(
+		{}
+	);
+
+	const rows = useMemo(() => groupEntries(entries), [entries]);
+
 	if (entries.length === 0) return null;
 
-	return (
-		<ol className="space-y-0.5">
-			{entries.map((entry, i) => {
-				const isOpen = expanded === i;
-				const label = resolveLabel(entry.nodeId, rfNodes);
-				const duration =
-					entry.completedAt != null && entry.startedAt != null
-						? formatDuration(entry.completedAt - entry.startedAt)
-						: null;
-				const hasDetail =
-					entry.input !== undefined ||
-					entry.output !== undefined ||
-					entry.error != null ||
-					entry.recordsProcessed != null;
+	const renderEntry = (i: number) => {
+		const entry = entries[i];
+		const isOpen = expanded === i;
+		const label = resolveLabel(entry.nodeId, rfNodes);
+		const duration =
+			entry.completedAt != null && entry.startedAt != null
+				? formatDuration(entry.completedAt - entry.startedAt)
+				: null;
+		const hasDetail =
+			entry.input !== undefined ||
+			entry.output !== undefined ||
+			entry.error != null ||
+			entry.recordsProcessed != null;
 
-				return (
-					<li key={i}>
-						<div className={cn("rounded-md", isOpen && "bg-accent/40")}>
-							<div className="flex items-center gap-1">
-								<button
-									type="button"
-									aria-expanded={isOpen}
-									onClick={() => setExpanded(isOpen ? null : i)}
-									className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									<ChevronRight
-										className={cn(
-											"size-3 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-150",
-											isOpen && "rotate-90"
-										)}
-									/>
-									<span className="shrink-0">
-										{RESULT_ICON[entry.result] ?? RESULT_ICON.skipped}
-									</span>
-									<span className="min-w-0 flex-1 truncate text-sm">
-										<span className="tabular-nums text-muted-foreground">
-											{i + 1}.
-										</span>{" "}
-										{label}
-									</span>
-									{entry.truncated && (
-										<Tooltip>
-											<TooltipTrigger
-												render={
-													<Badge
-														variant="warning"
-														className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
-													/>
-												}
-											>
-												<AlertTriangle className="size-2.5" aria-hidden />
-												Truncated
-											</TooltipTrigger>
-											<TooltipContent side="top" className="max-w-xs">
-												This step stopped scanning at the{" "}
-												{FETCH_SCAN_CEILING.toLocaleString()} most recent
-												records; older records were not considered.
-											</TooltipContent>
-										</Tooltip>
-									)}
-									{duration && (
-										<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-											{duration}
-										</span>
-									)}
-								</button>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									onClick={() => onNavigateToNode(entry.nodeId)}
-									aria-label={`Focus ${label} on canvas`}
-									className="shrink-0 text-muted-foreground"
-								>
-									<Crosshair className="size-3.5" />
-								</Button>
-							</div>
+		return (
+			<li key={i}>
+				<div className={cn("rounded-md", isOpen && "bg-accent/40")}>
+					<div className="flex items-center gap-1">
+						<button
+							type="button"
+							aria-expanded={isOpen}
+							onClick={() => setExpanded(isOpen ? null : i)}
+							className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							<ChevronRight
+								className={cn(
+									"size-3 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-150",
+									isOpen && "rotate-90"
+								)}
+							/>
+							<span className="shrink-0">
+								{RESULT_ICON[entry.result] ?? RESULT_ICON.skipped}
+							</span>
+							<span className="min-w-0 flex-1 truncate text-sm">
+								<span className="tabular-nums text-muted-foreground">
+									{i + 1}.
+								</span>{" "}
+								{label}
+							</span>
+							{entry.truncated && (
+								<Tooltip>
+									<TooltipTrigger
+										render={
+											<Badge
+												variant="warning"
+												className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
+											/>
+										}
+									>
+										<AlertTriangle className="size-2.5" aria-hidden />
+										Truncated
+									</TooltipTrigger>
+									<TooltipContent side="top" className="max-w-xs">
+										This step stopped scanning at the{" "}
+										{FETCH_SCAN_CEILING.toLocaleString()} most recent
+										records; older records were not considered.
+									</TooltipContent>
+								</Tooltip>
+							)}
+							{duration && (
+								<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+									{duration}
+								</span>
+							)}
+						</button>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							onClick={() => onNavigateToNode(entry.nodeId)}
+							aria-label={`Focus ${label} on canvas`}
+							className="shrink-0 text-muted-foreground"
+						>
+							<Crosshair className="size-3.5" />
+						</Button>
+					</div>
 
-							{isOpen && (
-								<div className="space-y-2 pb-2 pl-7 pr-2">
-									{entry.error != null && (
-										<div className="rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-950/30 dark:text-red-300">
-											{entry.error}
-										</div>
-									)}
-									{entry.recordsProcessed != null && (
-										<div className="text-[11px] text-muted-foreground">
-											{entry.recordsProcessed} record
-											{entry.recordsProcessed === 1 ? "" : "s"} processed
-										</div>
-									)}
-									{entry.input !== undefined && (
-										<JsonBlock label="Input" value={entry.input} />
-									)}
-									{entry.output !== undefined && (
-										<JsonBlock label="Output" value={entry.output} />
-									)}
-									{!hasDetail && (
-										<div className="text-[11px] text-muted-foreground">
-											No data captured for this step.
-										</div>
-									)}
+					{isOpen && (
+						<div className="space-y-2 pb-2 pl-7 pr-2">
+							{entry.error != null && (
+								<div className="rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-950/30 dark:text-red-300">
+									{entry.error}
+								</div>
+							)}
+							{entry.recordsProcessed != null && (
+								<div className="text-[11px] text-muted-foreground">
+									{entry.recordsProcessed} record
+									{entry.recordsProcessed === 1 ? "" : "s"} processed
+								</div>
+							)}
+							{entry.input !== undefined && (
+								<JsonBlock label="Input" value={entry.input} />
+							)}
+							{entry.output !== undefined && (
+								<JsonBlock label="Output" value={entry.output} />
+							)}
+							{!hasDetail && (
+								<div className="text-[11px] text-muted-foreground">
+									No data captured for this step.
 								</div>
 							)}
 						</div>
+					)}
+				</div>
+			</li>
+		);
+	};
+
+	return (
+		<ol className="space-y-0.5">
+			{rows.map((row) => {
+				if (row.kind === "entry") return renderEntry(row.index);
+
+				const isGroupOpen = groupOverrides[row.key] ?? row.worst === "failed";
+				return (
+					<li key={row.key}>
+						<button
+							type="button"
+							aria-expanded={isGroupOpen}
+							onClick={() =>
+								setGroupOverrides((prev) => ({
+									...prev,
+									[row.key]: !isGroupOpen,
+								}))
+							}
+							className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							<ChevronRight
+								className={cn(
+									"size-3 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-150",
+									isGroupOpen && "rotate-90"
+								)}
+							/>
+							<span className="shrink-0">
+								{RESULT_ICON[row.worst] ?? RESULT_ICON.skipped}
+							</span>
+							<span className="min-w-0 flex-1 truncate text-sm font-medium">
+								{row.label}
+							</span>
+							<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+								{row.indexes.length} step{row.indexes.length === 1 ? "" : "s"}
+							</span>
+						</button>
+						{isGroupOpen && (
+							<ol className="ml-3.5 space-y-0.5 border-l border-border/60 pl-2">
+								{row.indexes.map((i) => renderEntry(i))}
+							</ol>
+						)}
 					</li>
 				);
 			})}

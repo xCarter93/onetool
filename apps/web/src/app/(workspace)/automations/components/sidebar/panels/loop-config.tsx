@@ -124,6 +124,38 @@ export function LoopConfigPanel({
 									}
 								/>
 							</PanelField>
+
+							<PanelField
+								label="If an item fails"
+								helper={
+									// Absent field = "abort", the behavior of every automation
+									// published before this control existed — don't imply that
+									// changed until the user picks something explicitly.
+									config.onItemError == null
+										? "This loop stops the whole run at the first item that fails."
+										: undefined
+								}
+							>
+								<Select
+									value={config.onItemError ?? "abort"}
+									onValueChange={(onItemError) =>
+										commit({
+											...config,
+											onItemError: onItemError as LoopNodeConfig["onItemError"],
+										})
+									}
+								>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="continue">
+											Skip it and continue with the remaining items
+										</SelectItem>
+										<SelectItem value="abort">Stop the whole run</SelectItem>
+									</SelectContent>
+								</Select>
+							</PanelField>
 						</>
 					)}
 				</PanelSection>

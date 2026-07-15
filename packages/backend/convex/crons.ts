@@ -55,4 +55,13 @@ crons.interval(
 	{}
 );
 
+// Watchdog: fail production runs stranded by a dropped scheduler hop —
+// stuck mid-walk or never woken from a parked delay/loop checkpoint.
+crons.interval(
+	"fail stale automation production runs",
+	{ minutes: 15 },
+	internal.automationExecutor.failStaleProductionRuns,
+	{}
+);
+
 export default crons;

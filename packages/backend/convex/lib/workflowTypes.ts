@@ -128,6 +128,15 @@ export const conditionRuleValidator = v.object({
 	field: v.string(),
 	operator: conditionOperatorValidator,
 	value: v.optional(valueRefValidator),
+	/**
+	 * Left-hand side. Absent => the rule reads `field` off the in-scope record.
+	 * Set => the rule compares a scope value (an aggregate result, a fetch count)
+	 * and `field` is ignored, which is the only way to branch without a record —
+	 * e.g. a scheduled automation asking "is unpaid total over $10k?".
+	 * Only legal on condition nodes: a fetch filter and trigger entry criteria
+	 * must name a real field, so both reject it.
+	 */
+	left: v.optional(valueRefValidator),
 });
 
 export const conditionGroupValidator = v.object({
@@ -242,6 +251,13 @@ export const loopNodeConfigValidator = v.object({
 	sourceNodeId: v.string(),
 	/** Engine enforces MAX_LOOP_ITERATIONS regardless. */
 	maxIterations: v.optional(v.number()),
+	/**
+	 * What a failing item does to the run. Absent = "abort", which is what every
+	 * snapshot published before this field existed did — so old automations keep
+	 * their exact semantics until someone changes this control by hand. The
+	 * builder writes "continue" on new loops.
+	 */
+	onItemError: v.optional(v.union(v.literal("continue"), v.literal("abort"))),
 });
 
 export const delayNodeConfigValidator = v.object({
@@ -438,8 +454,11 @@ export const scheduledTriggerValidator = v.object({
 	type: v.literal("scheduled"),
 	schedule: scheduleValidator,
 	/**
-	 * When set, the automation runs once per record matching the first
-	 * fetch_records node (or once with no record scope if none).
+	 * @deprecated Ignored. A scheduled run has no triggering record — the
+	 * dispatcher passes none, so `trigger.record` is `{}` for the whole walk.
+	 * Record scope comes from a fetch_records + loop instead. Still accepted so
+	 * stored rows parse; `triggerRecordObjectType()` returns undefined for
+	 * scheduled, and writes strip it.
 	 */
 	objectType: v.optional(objectTypeValidator),
 });
@@ -459,6 +478,24 @@ export type AutomationTriggerV2 =
 	| Infer<typeof recordCreatedTriggerValidator>
 	| Infer<typeof recordUpdatedTriggerValidator>
 	| Infer<typeof scheduledTriggerValidator>;
+
+/**
+ * The object type of the record the trigger binds to `trigger.record`, or
+ * undefined when there is none. Scheduled triggers always return undefined:
+ * their stored `objectType` is a dead field (see scheduledTriggerValidator).
+ *
+ * Single chokepoint — read the trigger's object type through this, never off
+ * the trigger directly, or scheduled automations start claiming a record scope
+ * the runtime never gives them.
+ */
+export function triggerRecordObjectType(
+	trigger: AutomationTrigger
+): AutomationObjectType | undefined {
+	if (!("type" in trigger) || trigger.type === "scheduled") return undefined;
+	return "objectType" in trigger && trigger.objectType
+		? trigger.objectType
+		: undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Formula resources — reusable named expressions (Slice 4.6). Defined once on
@@ -539,6 +576,48 @@ export const executedNodeValidator = v.object({
 	// Bounded (~4KB) input/output snapshots for the runs viewer.
 	input: v.optional(v.any()),
 	output: v.optional(v.any()),
+	// Set on entries pushed from inside a loop body: which loop, which iteration,
+	// and which record. Without these a mid-loop failure can't be traced back to
+	// the record that caused it.
+	loopNodeId: v.optional(v.string()),
+	loopIndex: v.optional(v.number()),
+	loopItemId: v.optional(v.string()),
+	loopItemLabel: v.optional(v.string()),
 });
 
 export type ExecutedNode = Infer<typeof executedNodeValidator>;
+
+// ---------------------------------------------------------------------------
+// Per-loop outcome tallies (workflowExecutions.loopSummary)
+// ---------------------------------------------------------------------------
+
+/** Item errors kept per loop node; the rest are counted, not listed. */
+export const MAX_LOOP_ITEM_ERRORS = 10;
+
+/**
+ * Authoritative per-item tallies for one loop node. The execution log is lossy
+ * (it truncates at MAX_EXECUTED_ENTRIES and compacts long loops), so counts
+ * live here instead of being re-derived from it at read time.
+ */
+export const loopSummaryValidator = v.object({
+	nodeId: v.string(),
+	/** Items the loop set out to process, frozen when the first chunk started. */
+	total: v.number(),
+	succeeded: v.number(),
+	failed: v.number(),
+	/** Items deleted between chunks — present in `total`, never processed. */
+	skipped: v.number(),
+	/** First MAX_LOOP_ITEM_ERRORS failures, in item order. */
+	errors: v.array(
+		v.object({
+			index: v.number(),
+			itemId: v.string(),
+			label: v.optional(v.string()),
+			error: v.string(),
+			/** True when earlier steps for this item were already applied. */
+			partial: v.optional(v.boolean()),
+		})
+	),
+});
+
+export type LoopSummary = Infer<typeof loopSummaryValidator>;

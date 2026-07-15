@@ -88,25 +88,87 @@ export function guardStr(s: string): string {
 	return s;
 }
 
+/* ------------------ calendar dates vs instants (day-space) ----------------- */
+
+const DAY_MS = 86_400_000;
+
+/**
+ * OneTool stores calendar dates (task.date, project.startDate/endDate,
+ * quote.validUntil, invoice.issuedDate/dueDate) as UTC-midnight epoch ms, while
+ * true instants (paidAt, sentAt, approvedAt, ...) carry a real time of day.
+ * That storage convention IS the type tag: a value landing exactly on UTC
+ * midnight is a calendar date, anything else is an instant. fieldRegistry has no
+ * date/datetime split yet, so this is how the formula layer tells them apart.
+ *
+ * The rule every date operation below obeys: read a value in its OWN day-space —
+ * UTC for a calendar date, the run timezone for an instant. Mixing the two is
+ * the off-by-one that made `dueDate == TODAY()` silently false.
+ *
+ * Known limit: an instant landing on exact UTC midnight misclassifies as a
+ * calendar date. Phase C's registry date/datetime split replaces this heuristic
+ * with real type information.
+ */
+export function isCalendarDateEpoch(epochMs: number): boolean {
+	return Number.isFinite(epochMs) && epochMs % DAY_MS === 0;
+}
+
+/** UTC wall-clock parts — the day-space calendar dates live in. */
+function getUtcParts(epochMs: number): ZonedParts {
+	const d = new Date(epochMs);
+	return {
+		year: d.getUTCFullYear(),
+		month: d.getUTCMonth() + 1,
+		day: d.getUTCDate(),
+		hour: d.getUTCHours(),
+		minute: d.getUTCMinutes(),
+		second: d.getUTCSeconds(),
+	};
+}
+
+/** Wall-clock parts in the value's own day-space (see isCalendarDateEpoch). */
+export function partsFor(epochMs: number, tz: string): ZonedParts {
+	return isCalendarDateEpoch(epochMs)
+		? getUtcParts(epochMs)
+		: getZonedParts(epochMs, tz);
+}
+
+/**
+ * The calendar day a value denotes, encoded the way OneTool stores calendar
+ * dates (UTC midnight). Idempotent on values that already are calendar dates.
+ */
+export function calendarDayEpoch(epochMs: number, tz: string): number {
+	const p = partsFor(epochMs, tz);
+	return Date.UTC(p.year, p.month - 1, p.day);
+}
+
 /* ------------------------- equality & comparison -------------------------- */
 
-/** An invalid date (NaN epoch) must error, not silently mis-compare. */
-function assertValidDate(d: Date): void {
-	if (Number.isNaN(d.getTime())) {
-		throw new FormulaError("TYPE", "Cannot compare an invalid date");
-	}
+/**
+ * Do two dates denote the same thing? Same kind (both calendar dates or both
+ * instants) compares the exact instant. Mixed compares the calendar day each
+ * one denotes — which is what makes `dueDate == TODAY()` true on the due day in
+ * every run timezone, and `paidAt == TODAY()` mean "paid today".
+ */
+function dateEquals(a: number, b: number, tz: string): boolean {
+	if (isCalendarDateEpoch(a) === isCalendarDateEpoch(b)) return a === b;
+	return calendarDayEpoch(a, tz) === calendarDayEpoch(b, tz);
 }
 
 /** Value equality for == / !=. See module notes for the exact rules. */
-export function valuesEqual(a: Val, b: Val): boolean {
+export function valuesEqual(a: Val, b: Val, tz: string): boolean {
 	if (a === null || b === null) return a === null && b === null;
 
 	const aDate = a instanceof Date;
 	const bDate = b instanceof Date;
 	if (aDate || bDate) {
-		if (aDate) assertValidDate(a);
-		if (bDate) assertValidDate(b);
-		return aDate && bDate && a.getTime() === b.getTime();
+		// Record date fields reach formulas as raw epoch numbers, so a date must
+		// coerce the other side rather than report a silent `false`. A boolean has
+		// no date reading; an unparseable string throws inside toDate (loud beats
+		// silently-wrong).
+		if (typeof a === "boolean" || typeof b === "boolean") return false;
+		const da = toDate(a, "Left side of the comparison");
+		const db = toDate(b, "Right side of the comparison");
+		return dateEquals(da.getTime(), db.getTime(), tz);
 	}
 
 	if (typeof a === "boolean" || typeof b === "boolean") {
@@ -130,19 +192,26 @@ export function valuesEqual(a: Val, b: Val): boolean {
 
 /**
  * Ordered comparison for < <= > >=. Returns negative/zero/positive.
- * Both dates -> epoch compare; otherwise numeric compare (numeric strings ok).
- * Any other mix -> TYPE error.
+ * A date on either side coerces the other and compares in date space (matching
+ * valuesEqual's granularity, so ordering and equality stay consistent);
+ * otherwise numeric compare (numeric strings ok). Any other mix -> TYPE error.
  */
-export function compareValues(a: Val, b: Val): number {
+export function compareValues(a: Val, b: Val, tz: string): number {
 	const aDate = a instanceof Date;
 	const bDate = b instanceof Date;
-	if (aDate && bDate) {
-		assertValidDate(a);
-		assertValidDate(b);
-		return a.getTime() - b.getTime();
-	}
 	if (aDate || bDate) {
-		throw new FormulaError("TYPE", "Cannot compare a date with a non-date");
+		if (a === null || b === null || typeof a === "boolean" || typeof b === "boolean") {
+			throw new FormulaError(
+				"TYPE",
+				`Cannot order-compare ${describe(a)} and ${describe(b)}`
+			);
+		}
+		const da = toDate(a, "Left side of the comparison").getTime();
+		const db = toDate(b, "Right side of the comparison").getTime();
+		// Granularity must match dateEquals or trichotomy breaks (a value could be
+		// neither equal to, less than, nor greater than another).
+		if (isCalendarDateEpoch(da) === isCalendarDateEpoch(db)) return da - db;
+		return calendarDayEpoch(da, tz) - calendarDayEpoch(db, tz);
 	}
 	const na = toNumberOrNull(a);
 	const nb = toNumberOrNull(b);

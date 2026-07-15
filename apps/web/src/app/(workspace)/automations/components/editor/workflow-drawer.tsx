@@ -27,6 +27,7 @@ import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
 import { getAvailableVariables, type VariableOption } from "../../lib/variables";
 import {
 	MAX_FORMULAS,
+	triggerScopeObjectType,
 	type FormulaResource,
 	type WorkflowNode,
 	type WorkflowNodeType,
@@ -487,7 +488,7 @@ export function WorkflowDrawer({
 					className="mt-0 min-h-0 flex-1 overflow-y-auto"
 				>
 					<DebugPanel
-						objectType={trigger?.objectType}
+						objectType={triggerScopeObjectType(trigger) ?? undefined}
 						triggerType={trigger?.type}
 						sampleRecords={sampleRecords}
 						execution={execution}

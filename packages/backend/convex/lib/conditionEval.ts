@@ -7,6 +7,7 @@ import type {
 } from "./workflowTypes";
 import {
 	evaluateFormula,
+	isCalendarDateEpoch,
 	parseFormula,
 	FormulaError,
 	type FormulaAst,
@@ -225,16 +226,21 @@ function applyFormulaReturnType(
  */
 const DATE_GLOBAL_PATHS = new Set(["workflow.now"]);
 
-/** Format an epoch-ms timestamp as a readable date/time in the given IANA tz. */
+/**
+ * Format an epoch-ms timestamp for display. A calendar date (UTC-midnight
+ * encoded) renders as a bare date read in UTC — rendering it in the run tz would
+ * show the PREVIOUS day plus a meaningless time (e.g. "Jul 13, 8:00 PM" for
+ * Jul 14). A real instant renders as a date and time in the run tz.
+ */
 function formatTimestampForDisplay(ms: number, tz: string): string {
+	const calendar = isCalendarDateEpoch(ms);
 	try {
 		return new Intl.DateTimeFormat("en-US", {
-			timeZone: tz,
+			timeZone: calendar ? "UTC" : tz,
 			year: "numeric",
 			month: "short",
 			day: "numeric",
-			hour: "numeric",
-			minute: "2-digit",
+			...(calendar ? {} : { hour: "numeric" as const, minute: "2-digit" as const }),
 		}).format(new Date(ms));
 	} catch {
 		// Invalid tz or ms — fall back to a stable ISO string rather than throw.
@@ -320,8 +326,9 @@ function compareNumeric(
 	return cmp(a, b);
 }
 
-/** Epoch ms from a number (as-is) or a string (Date.parse); else NaN. */
+/** Epoch ms from a Date, a number (as-is), or a string (Date.parse); else NaN. */
 function toEpochMs(value: unknown): number {
+	if (value instanceof Date) return value.getTime();
 	if (typeof value === "number") return value;
 	if (typeof value === "string") return Date.parse(value);
 	return NaN;
@@ -344,7 +351,12 @@ export function evaluateRule(
 	record: Record<string, unknown>,
 	scope: VariableScope
 ): boolean {
-	const fieldValue = record[rule.field];
+	// A rule with an explicit `left` compares a scope value (aggregate result,
+	// fetch count) and never touches the record — that is how a record-less run
+	// branches at all.
+	const fieldValue = rule.left
+		? resolveValueRef(rule.left, scope)
+		: record[rule.field];
 	const compareValue = rule.value
 		? resolveValueRef(rule.value, scope)
 		: undefined;

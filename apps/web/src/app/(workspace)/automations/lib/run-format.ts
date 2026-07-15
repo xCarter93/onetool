@@ -4,6 +4,7 @@ import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 export type RunStatus =
 	| "running"
 	| "completed"
+	| "completed_with_errors"
 	| "failed"
 	| "skipped"
 	| "cancelled";
@@ -22,6 +23,7 @@ export const RUN_STATUS_META: Record<
 > = {
 	running: { label: "Running", badge: "default" },
 	completed: { label: "Completed", badge: "success" },
+	completed_with_errors: { label: "Completed with errors", badge: "warning" },
 	failed: { label: "Failed", badge: "destructive" },
 	skipped: { label: "Skipped", badge: "outline" },
 	cancelled: { label: "Cancelled", badge: "warning" },
@@ -31,24 +33,11 @@ export const RUN_STATUS_META: Record<
 export const RUN_STATUS_FILTER_ORDER: RunStatus[] = [
 	"completed",
 	"failed",
+	"completed_with_errors",
 	"running",
 	"skipped",
 	"cancelled",
 ];
-
-/**
- * Status palette for the throughput chart. Validated with the dataviz
- * validate_palette.js six-checks (light + dark): success/failed carry ΔE 23
- * CVD separation; skipped is an intentional neutral gray with legend+icon relief.
- * These are reserved status colors — never reuse them for a categorical series.
- */
-export const RUN_CHART_SERIES = [
-	{ key: "success", label: "Completed", light: "#059669", dark: "#34d399" },
-	{ key: "failed", label: "Failed", light: "#dc2626", dark: "#f87171" },
-	{ key: "skipped", label: "Skipped", light: "#64748b", dark: "#94a3b8" },
-] as const;
-
-export type RunThroughputKey = (typeof RUN_CHART_SERIES)[number]["key"];
 
 /**
  * Human-readable duration. `ms` is an elapsed span (e.g. active execution time).
@@ -113,6 +102,20 @@ export function formatTriggerSource(triggeredBy: string | undefined): string {
 		default:
 			return triggeredBy.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 	}
+}
+
+/**
+ * Sum item totals/failures across every loop node in a run's `loopSummary`
+ * (a run can contain more than one loop). Zeroed out when there's no summary.
+ */
+export function summarizeLoopFailures(
+	loopSummary: Doc<"workflowExecutions">["loopSummary"]
+): { total: number; failed: number } {
+	if (!loopSummary || loopSummary.length === 0) return { total: 0, failed: 0 };
+	return loopSummary.reduce(
+		(acc, s) => ({ total: acc.total + s.total, failed: acc.failed + s.failed }),
+		{ total: 0, failed: 0 }
+	);
 }
 
 /**
