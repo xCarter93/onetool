@@ -1909,7 +1909,25 @@ describe("automationExecutor (v2 engine)", () => {
 
 		function sendNotificationActionNode(
 			id: string,
-			recipient: "org_admins" | "all_members" | { userId: string },
+			recipient:
+				| "org_admins"
+				| "all_members"
+				| { userId: string }
+				| {
+						recordField: {
+							target:
+								| "self"
+								| {
+										related:
+											| "client"
+											| "project"
+											| "quote"
+											| "invoice"
+											| "task";
+								  };
+							field: string;
+						};
+				  },
 			message: string,
 			opts: { nextNodeId?: string; channels?: ("in_app" | "push")[] } = {}
 		) {
@@ -2864,6 +2882,177 @@ describe("automationExecutor (v2 engine)", () => {
 			).filter((n) => n.notificationType === "automation_message");
 			expect(autoNotifs).toHaveLength(1);
 			expect(autoNotifs[0].userId).toBe(ownerId);
+		});
+
+		describe("send_notification recordField recipient", () => {
+			async function autoNotifs(orgId: Id<"organizations">) {
+				return (
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("notifications")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.collect()
+					)
+				).filter((n) => n.notificationType === "automation_message");
+			}
+
+			it("self single field (task.assigneeUserId) notifies that user", async () => {
+				const { asUser, orgId } = await setupUser();
+				const m1 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify assignee",
+					trigger: { type: "record_created", objectType: "task" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{ recordField: { target: "self", field: "assigneeUserId" } },
+							"task ping"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.tasks.create, {
+					title: "T",
+					date: Date.now(),
+					status: "pending",
+					type: "external",
+					clientId,
+					assigneeUserId: m1.userId,
+				});
+				await drainEvents();
+				const notifs = await autoNotifs(orgId);
+				expect(notifs).toHaveLength(1);
+				expect(notifs[0].userId).toBe(m1.userId);
+			});
+
+			it("self array field (project.assignedUserIds) notifies all assigned, deduped", async () => {
+				const { asUser, orgId } = await setupUser();
+				const m1 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				const m2 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify team",
+					trigger: { type: "record_created", objectType: "project" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{ recordField: { target: "self", field: "assignedUserIds" } },
+							"proj ping"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "P",
+					status: "planned",
+					projectType: "one-off",
+					assignedUserIds: [m1.userId, m2.userId, m1.userId],
+				});
+				await drainEvents();
+				const notifs = await autoNotifs(orgId);
+				const ids = notifs.map((n) => n.userId);
+				expect(notifs).toHaveLength(2);
+				expect(new Set(ids)).toEqual(new Set([m1.userId, m2.userId]));
+			});
+
+			it("related (quote → project.assignedUserIds) notifies the linked project team", async () => {
+				const { asUser, orgId } = await setupUser();
+				const m1 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify quote project team",
+					trigger: { type: "record_created", objectType: "quote" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{
+								recordField: {
+									target: { related: "project" },
+									field: "assignedUserIds",
+								},
+							},
+							"quote ping"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const projectId = await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "P",
+					status: "planned",
+					projectType: "one-off",
+					assignedUserIds: [m1.userId],
+				});
+				await asUser.mutation(api.quotes.create, {
+					clientId,
+					projectId,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+				await drainEvents();
+				const notifs = await autoNotifs(orgId);
+				expect(notifs).toHaveLength(1);
+				expect(notifs[0].userId).toBe(m1.userId);
+			});
+
+			it("valid relation but absent FK at runtime (quote with no linked project) skips gracefully, no crash", async () => {
+				const { asUser, orgId } = await setupUser();
+				// quote → project is a valid relation (passes save-time validation),
+				// but this quote has no projectId, so it resolves to no record.
+				await asUser.mutation(api.automations.create, {
+					name: "Notify missing project team",
+					trigger: { type: "record_created", objectType: "quote" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{
+								recordField: {
+									target: { related: "project" },
+									field: "assignedUserIds",
+								},
+							},
+							"x"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.quotes.create, {
+					clientId,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+				await drainEvents();
+				expect(await autoNotifs(orgId)).toHaveLength(0);
+			});
 		});
 
 		describe("send_notification delivery channels (B6-6)", () => {

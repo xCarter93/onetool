@@ -73,6 +73,7 @@ export {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
 	CREATABLE_OBJECT_TYPES,
+	USER_REF_RECIPIENT_FIELDS,
 	getFieldDefinition,
 	getWritableFields,
 	getFilterableFields,

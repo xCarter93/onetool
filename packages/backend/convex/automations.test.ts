@@ -304,6 +304,47 @@ describe("Automations", () => {
 		});
 	});
 
+	describe("send_notification recordField recipient validation", () => {
+		function recordFieldNode(target: "self", field: string) {
+			return {
+				id: "notify-1",
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "send_notification" as const,
+						recipient: { recordField: { target, field } },
+						message: "hi",
+					},
+				},
+			};
+		}
+
+		it("rejects a recordField whose field is invalid for the target type", async () => {
+			const { asUser } = await setupUser();
+			// clientTrigger scope = client; clients have no assignedUserIds field.
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad recordField",
+					trigger: clientTrigger,
+					nodes: [recordFieldNode("self", "assignedUserIds")],
+				})
+			).rejects.toThrow();
+		});
+
+		it("accepts + publishes a valid recordField (createdByUserId on client scope)", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Good recordField",
+				trigger: clientTrigger,
+				nodes: [recordFieldNode("self", "createdByUserId")],
+			});
+			await asUser.mutation(api.automations.publish, { id });
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot).toBeDefined();
+		});
+	});
+
 	describe("send_team_message validation (recipients retired) — C1", () => {
 		function teamMessageNode(
 			mention: { kind: "none" } | { kind: "created_by" }

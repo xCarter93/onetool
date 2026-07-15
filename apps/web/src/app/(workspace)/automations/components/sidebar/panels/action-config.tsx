@@ -24,6 +24,7 @@ import {
 	MAX_DUE_IN_DAYS,
 	OBJECT_TYPE_LABELS,
 	RELATION_FIELD,
+	USER_REF_RECIPIENT_FIELDS,
 	getCreatableFields,
 	getRequiredCreateFields,
 	getTargetOptions,
@@ -701,12 +702,15 @@ function CreateTaskFields({
 function SendNotificationFields({
 	config,
 	action,
+	triggerObjectType,
 	nodes,
 	trigger,
 	nodeId,
 	formulas,
 	commit,
-}: ActionFieldsProps<SendNotificationAction>) {
+}: ActionFieldsProps<SendNotificationAction> & {
+	triggerObjectType: AutomationObjectType | null;
+}) {
 	const members = useQuery(api.users.listByOrg);
 	const update = (patch: Partial<SendNotificationAction>) => {
 		commit({ ...config, action: { ...action, ...patch } });
@@ -715,17 +719,76 @@ function SendNotificationFields({
 		update({ message })
 	);
 
-	// A stored legacy "record_owner" (now dropped from the union) would select a
-	// missing option and render the control blank — fall back the display to
-	// "org_admins". Display-only: nothing is committed until the user re-picks.
-	const derivedRecipient =
-		typeof action.recipient === "string" ? action.recipient : "specific_member";
-	const recipientValue =
-		derivedRecipient === "all_members" ||
-		derivedRecipient === "org_admins" ||
-		derivedRecipient === "specific_member"
-			? derivedRecipient
-			: "org_admins";
+	// "From the record" reads a person off the record in scope — with no record
+	// (scheduled/record-agnostic) it can't resolve, so that one option disables
+	// while the record-agnostic options stay usable.
+	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
+	const scopeObjectType = scope.objectType;
+
+	const recipient = action.recipient;
+	const recordField =
+		typeof recipient !== "string" && "recordField" in recipient
+			? recipient.recordField
+			: undefined;
+
+	// A stored legacy "record_owner" (dropped from the union) or any unknown
+	// string falls the DISPLAY back to "org_admins" so the control never renders
+	// blank. Display-only: nothing is committed until the user re-picks.
+	const recipientValue:
+		| "all_members"
+		| "org_admins"
+		| "specific_member"
+		| "from_record" =
+		typeof recipient === "string"
+			? recipient === "all_members" || recipient === "org_admins"
+				? recipient
+				: "org_admins"
+			: "recordField" in recipient
+				? "from_record"
+				: "specific_member";
+
+	// recordField Target/Field derivation (only meaningful with a record in scope).
+	const targetOptions = scopeObjectType ? getTargetOptions(scopeObjectType) : [];
+	const rfTarget = recordField?.target ?? "self";
+	const rfTargetValue = typeof rfTarget === "string" ? rfTarget : rfTarget.related;
+	const rfTargetObjectType =
+		targetOptions.find((t) => t.value === rfTargetValue)?.objectType ??
+		scopeObjectType ??
+		undefined;
+	const fieldOptions = rfTargetObjectType
+		? USER_REF_RECIPIENT_FIELDS[rfTargetObjectType]
+		: [];
+	// Target changes can strand a field (a project field is invalid for a client
+	// target). Keep the value, surface the error, let publish validation block.
+	const fieldInvalid =
+		!!recordField &&
+		!!rfTargetObjectType &&
+		!fieldOptions.some((f) => f.key === recordField.field);
+
+	const selectFromRecord = () => {
+		if (!scopeObjectType) return;
+		const firstField = USER_REF_RECIPIENT_FIELDS[scopeObjectType][0]?.key ?? "";
+		update({ recipient: { recordField: { target: "self", field: firstField } } });
+	};
+
+	const updateRecordFieldTarget = (value: string) => {
+		const next = targetOptions.find((t) => t.value === value);
+		if (!next) return;
+		// Reseed the field to the new target type's first valid field.
+		const firstField = USER_REF_RECIPIENT_FIELDS[next.objectType][0]?.key ?? "";
+		update({
+			recipient: {
+				recordField: {
+					target: value === "self" ? "self" : { related: next.objectType },
+					field: firstField,
+				},
+			},
+		});
+	};
+
+	const updateRecordFieldField = (field: string) => {
+		update({ recipient: { recordField: { target: rfTarget, field } } });
+	};
 
 	return (
 		<PanelSection title="Inputs">
@@ -733,8 +796,11 @@ function SendNotificationFields({
 				<Select
 					value={recipientValue}
 					onValueChange={(value) => {
+						if (!value) return;
 						if (value === "all_members" || value === "org_admins") {
 							update({ recipient: value });
+						} else if (value === "from_record") {
+							selectFromRecord();
 						} else {
 							update({ recipient: { userId: members?.[0]?._id ?? "" } });
 						}
@@ -747,14 +813,23 @@ function SendNotificationFields({
 						<SelectItem value="all_members">All members</SelectItem>
 						<SelectItem value="org_admins">Org admins</SelectItem>
 						<SelectItem value="specific_member">Specific member</SelectItem>
+						<SelectItem value="from_record" disabled={!scopeObjectType}>
+							From the record
+						</SelectItem>
 					</SelectContent>
 				</Select>
+				{!scopeObjectType && (
+					<p className="mt-1.5 text-xs text-muted-foreground">
+						&quot;From the record&quot; needs a record in scope — unavailable on
+						a schedule with no record.
+					</p>
+				)}
 			</PanelField>
 
-			{typeof action.recipient !== "string" && (
+			{typeof recipient !== "string" && "userId" in recipient && (
 				<PanelField label="Member">
 					<Select
-						value={action.recipient.userId}
+						value={recipient.userId}
 						onValueChange={(userId) => userId && update({ recipient: { userId } })}
 					>
 						<SelectTrigger>
@@ -770,6 +845,75 @@ function SendNotificationFields({
 					</Select>
 				</PanelField>
 			)}
+
+			{recordField &&
+				(scopeObjectType ? (
+					<>
+						<PanelField
+							label="Target"
+							helper={
+								scope.inLoop
+									? rfTargetValue === "self"
+										? "Reads a person off the current loop item."
+										: `Reads a person off the ${rfTargetObjectType} linked to the current loop item.`
+									: rfTargetValue === "self"
+										? "Which record to read the recipient from."
+										: `Reads a person off the ${rfTargetObjectType} linked to the triggering ${scopeObjectType}.`
+							}
+						>
+							<Select
+								value={rfTargetValue}
+								onValueChange={(value) => value && updateRecordFieldTarget(value)}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{targetOptions.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.value === "self" && scope.inLoop
+												? "Current loop item"
+												: option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</PanelField>
+
+						<PanelField
+							label="From field"
+							helper="Which person on the target record to notify."
+						>
+							<Select
+								value={recordField.field}
+								onValueChange={(field) => field && updateRecordFieldField(field)}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder="Choose a field" />
+								</SelectTrigger>
+								<SelectContent>
+									{fieldOptions.map((f) => (
+										<SelectItem key={f.key} value={f.key}>
+											{f.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							{fieldInvalid && (
+								<p className="mt-1.5 text-xs text-destructive">
+									This field isn&apos;t available on the selected target. Pick
+									another field or change the target.
+								</p>
+							)}
+						</PanelField>
+					</>
+				) : (
+					<p className="text-xs text-destructive">
+						This recipient reads a person off the record in scope, but this
+						automation runs on a schedule with no record. Pick a different
+						recipient, or move this action inside a Loop.
+					</p>
+				))}
 
 			<div className="flex items-center justify-between gap-3">
 				<div className="space-y-0.5">
@@ -1204,6 +1348,7 @@ export function ActionConfigPanel({
 					<SendNotificationFields
 						config={config}
 						action={config.action}
+						triggerObjectType={triggerObjectType}
 						nodes={workflowNodes}
 						trigger={trigger}
 						nodeId={nodeId}

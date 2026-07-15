@@ -29,6 +29,7 @@ import {
 } from "./lib/planLimits";
 import {
 	RELATION_FIELD,
+	USER_REF_RECIPIENT_FIELDS,
 	getCreatableFields,
 	getFieldDefinition,
 	getRequiredCreateFields,
@@ -3669,6 +3670,64 @@ function automationActionUrl(scopeRecord: ScopeRecord | undefined): string {
 	return scopeRecord ? `/${scopeRecord.type}s/${scopeRecord.id}` : "/home";
 }
 
+/** Keep only org members from a list of candidate user ids, deduped. */
+async function validOrgMembers(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	ids: (Id<"users"> | undefined)[]
+): Promise<Id<"users">[]> {
+	const out: Id<"users">[] = [];
+	for (const id of ids) {
+		if (!id) continue;
+		const membership = await getMembership(ctx, id, orgId);
+		if (membership) out.push(id);
+	}
+	return Array.from(new Set(out));
+}
+
+/**
+ * Resolve a `recordField` recipient: follow the action target (self | related)
+ * to a record, then read its user-reference field. `resolved` is false when no
+ * target record exists (distinguishes "no record" from "field empty").
+ */
+async function resolveRecordFieldUsers(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	field: string,
+	scopeRecord: ScopeRecord | undefined,
+	orgId: Id<"organizations">
+): Promise<{
+	resolved: boolean;
+	users: Id<"users">[];
+	targetType: ObjectType | null;
+}> {
+	if (!scopeRecord) return { resolved: false, users: [], targetType: null };
+	const targetInfo = await resolveTargetV2(
+		ctx,
+		target,
+		scopeRecord.type,
+		scopeRecord.id,
+		scopeRecord.record,
+		orgId
+	);
+	if (!targetInfo) return { resolved: false, users: [], targetType: null };
+	const doc = await getObject(ctx, targetInfo.type, targetInfo.id, orgId);
+	if (!doc) {
+		return { resolved: false, users: [], targetType: targetInfo.type };
+	}
+	const raw = (doc as Record<string, unknown>)[field];
+	const ids: (Id<"users"> | undefined)[] = Array.isArray(raw)
+		? (raw as Id<"users">[])
+		: typeof raw === "string"
+			? [raw as Id<"users">]
+			: [];
+	return {
+		resolved: true,
+		users: await validOrgMembers(ctx, orgId, ids),
+		targetType: targetInfo.type,
+	};
+}
+
 async function executeSendNotificationAction(
 	ctx: MutationCtx,
 	action: Extract<AutomationAction, { type: "send_notification" }>,
@@ -3695,6 +3754,30 @@ async function executeSendNotificationAction(
 			skipped: true,
 			error: "Unknown recipient — reconfigure this notification",
 		};
+	} else if ("recordField" in action.recipient) {
+		const { target, field } = action.recipient.recordField;
+		const res = await resolveRecordFieldUsers(
+			ctx,
+			target,
+			field,
+			scopeRecord,
+			env.orgId
+		);
+		if (!res.resolved) {
+			return {
+				success: true,
+				skipped: true,
+				error: "No record in scope for the selected field",
+			};
+		}
+		if (res.users.length === 0) {
+			return {
+				success: true,
+				skipped: true,
+				error: "No user found for the selected field",
+			};
+		}
+		userIds = res.users;
 	} else {
 		const userId = action.recipient.userId as Id<"users">;
 		const membership = await getMembership(ctx, userId, env.orgId);
@@ -3788,21 +3871,8 @@ async function resolveTeamMessageMention(
 ): Promise<Id<"users">[]> {
 	if (!mention || mention.kind === "none") return [];
 
-	// Keep only org members, deduped.
-	const validMembers = async (
-		ids: (Id<"users"> | undefined)[]
-	): Promise<Id<"users">[]> => {
-		const out: Id<"users">[] = [];
-		for (const id of ids) {
-			if (!id) continue;
-			const membership = await getMembership(ctx, id, orgId);
-			if (membership) out.push(id);
-		}
-		return Array.from(new Set(out));
-	};
-
 	if (mention.kind === "user") {
-		return validMembers([mention.userId]);
+		return validOrgMembers(ctx, orgId, [mention.userId]);
 	}
 
 	const doc = await getObject(ctx, targetType, targetId, orgId);
@@ -3810,13 +3880,13 @@ async function resolveTeamMessageMention(
 
 	if (mention.kind === "created_by") {
 		const creator = (doc as { createdByUserId?: Id<"users"> }).createdByUserId;
-		return validMembers([creator]);
+		return validOrgMembers(ctx, orgId, [creator]);
 	}
 
 	// assigned_team
 	if (targetType === "project") {
 		const team = (doc as Doc<"projects">).assignedUserIds ?? [];
-		return validMembers(team);
+		return validOrgMembers(ctx, orgId, team);
 	}
 	if (targetType === "quote") {
 		const projectId = (doc as Doc<"quotes">).projectId;
@@ -3824,7 +3894,7 @@ async function resolveTeamMessageMention(
 		const project = await getObject(ctx, "project", projectId, orgId);
 		if (!project) return [];
 		const team = (project as Doc<"projects">).assignedUserIds ?? [];
-		return validMembers(team);
+		return validOrgMembers(ctx, orgId, team);
 	}
 	// client / anything else has no team.
 	return [];
@@ -4411,6 +4481,45 @@ async function dryExecuteAction(
 					success: true,
 					skipped: true,
 					output: { note: "Unknown recipient — reconfigure this notification" },
+				};
+			} else if ("recordField" in action.recipient) {
+				const { target, field } = action.recipient.recordField;
+				const res = await resolveRecordFieldUsers(
+					ctx,
+					target,
+					field,
+					scopeRecord,
+					env.orgId
+				);
+				if (!res.resolved) {
+					return {
+						success: true,
+						skipped: true,
+						output: { note: "No record in scope for the selected field" },
+					};
+				}
+				const message = interpolateTemplate(action.message, env.scope).trim();
+				if (!message) {
+					return {
+						success: false,
+						error: "Notification message resolved to an empty value",
+					};
+				}
+				const label =
+					(res.targetType
+						? USER_REF_RECIPIENT_FIELDS[res.targetType]
+						: undefined
+					)?.find((f) => f.key === field)?.label ?? field;
+				return {
+					success: true,
+					output: {
+						summary: `Would notify the ${label} of the ${res.targetType} (${res.users.length} recipient(s)): "${message}"`,
+					},
+					input: {
+						recipient: action.recipient,
+						message,
+						recipientCount: res.users.length,
+					},
 				};
 			} else {
 				const membership = await getMembership(

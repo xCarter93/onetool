@@ -588,6 +588,31 @@ export const RELATED_OBJECTS: Record<
 	task: ["project", "client"],
 };
 
+/**
+ * User-reference fields selectable as a `recordField` notification recipient,
+ * per object type. `isArray` distinguishes single-user fields from arrays
+ * (project team). Keys mirror schema.ts exactly. Shared with the web builder.
+ */
+export const USER_REF_RECIPIENT_FIELDS: Record<
+	AutomationObjectType,
+	Array<{ key: string; label: string; isArray: boolean }>
+> = {
+	project: [
+		{ key: "assignedUserIds", label: "Assigned team", isArray: true },
+		{ key: "createdByUserId", label: "Creator", isArray: false },
+	],
+	task: [
+		{ key: "assigneeUserId", label: "Assignee", isArray: false },
+		{ key: "createdByUserId", label: "Creator", isArray: false },
+	],
+	quote: [
+		{ key: "countersignerId", label: "Countersigner", isArray: false },
+		{ key: "createdByUserId", label: "Creator", isArray: false },
+	],
+	client: [{ key: "createdByUserId", label: "Creator", isArray: false }],
+	invoice: [{ key: "createdByUserId", label: "Creator", isArray: false }],
+};
+
 /** FK field on the source record used to resolve each relation. */
 export const RELATION_FIELD: Record<
 	AutomationObjectType,

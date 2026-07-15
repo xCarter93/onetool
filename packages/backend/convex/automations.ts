@@ -37,6 +37,7 @@ import {
 import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
+	USER_REF_RECIPIENT_FIELDS,
 	getFieldDefinition,
 	getRequiredCreateFields,
 	getStatusOptions,
@@ -388,6 +389,52 @@ function validateConditionGroups(
 	}
 }
 
+/**
+ * A send_notification `recordField` recipient targets a user-reference field off
+ * the scope record (self) or a related record. Mirrors validateUpdateFieldAction:
+ * a structural check holds even when the scope type is unresolvable; the
+ * relation + field-validity checks run once the target object type is known.
+ */
+function validateRecordFieldRecipient(
+	nodeId: string,
+	recordField: { target: "self" | { related: AutomationObjectType }; field: string },
+	scopeObjectType: AutomationObjectType | undefined
+): void {
+	const { target, field } = recordField;
+
+	// Best-effort structural check (scope-independent): the field must be a
+	// user-reference field known to at least one object type.
+	const knownKeys = new Set(
+		Object.values(USER_REF_RECIPIENT_FIELDS).flatMap((fields) =>
+			fields.map((f) => f.key)
+		)
+	);
+	if (!knownKeys.has(field)) {
+		throw new Error(
+			`Node ${nodeId}: "${field}" is not a valid user field for a notification recipient`
+		);
+	}
+
+	if (!scopeObjectType) return;
+
+	let targetObjectType: AutomationObjectType = scopeObjectType;
+	if (typeof target === "object") {
+		if (!RELATED_OBJECTS[scopeObjectType].includes(target.related)) {
+			throw new Error(
+				`Node ${nodeId}: ${scopeObjectType} records have no related ${target.related}`
+			);
+		}
+		targetObjectType = target.related;
+	}
+
+	const validKeys = USER_REF_RECIPIENT_FIELDS[targetObjectType].map((f) => f.key);
+	if (!validKeys.includes(field)) {
+		throw new Error(
+			`Node ${nodeId}: ${targetObjectType} records have no "${field}" user field to notify`
+		);
+	}
+}
+
 function validateUpdateFieldAction(
 	nodeId: string,
 	action: Extract<
@@ -689,11 +736,23 @@ function validateWorkflowDefinition(
 						);
 					}
 				}
-				if (
-					config.action.type === "send_notification" &&
-					!config.action.message.trim()
-				) {
-					throw new Error(`Node ${node.id}: notification message is required`);
+				if (config.action.type === "send_notification") {
+					if (!config.action.message.trim()) {
+						throw new Error(
+							`Node ${node.id}: notification message is required`
+						);
+					}
+					const recipient = config.action.recipient;
+					if (typeof recipient === "object" && "recordField" in recipient) {
+						const scopeType = bodyScopeType.has(node.id)
+							? bodyScopeType.get(node.id)
+							: objectType;
+						validateRecordFieldRecipient(
+							node.id,
+							recipient.recordField,
+							scopeType
+						);
+					}
 				}
 				if (config.action.type === "send_team_message") {
 					if (!config.action.message.trim()) {

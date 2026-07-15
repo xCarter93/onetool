@@ -224,7 +224,15 @@ export const sendNotificationActionValidator = v.object({
 	recipient: v.union(
 		v.literal("org_admins"),
 		v.literal("all_members"),
-		v.object({ userId: v.string() })
+		v.object({ userId: v.string() }),
+		// Resolves to the user(s) in a user-reference field off the target record
+		// (self or { related }). See USER_REF_RECIPIENT_FIELDS in fieldRegistry.
+		v.object({
+			recordField: v.object({
+				target: actionTargetValidator,
+				field: v.string(),
+			}),
+		})
 	),
 	/**
 	 * Delivery channels. Undefined = legacy in-app-only (bell, no push).

@@ -22,6 +22,7 @@ import {
 	MAX_LOOP_ITERATIONS,
 	VALUELESS_OPERATORS,
 	RELATION_FIELD,
+	USER_REF_RECIPIENT_FIELDS,
 	getCreatableFields,
 	getFieldDefinition,
 	getRequiredCreateFields,
@@ -517,12 +518,39 @@ function validateActionNode(
 					nodeId,
 				});
 			}
-			if (typeof action.recipient !== "string" && !action.recipient.userId) {
-				errors.push({
-					type: "missing_required_config",
-					message: "Choose who to notify",
-					nodeId,
-				});
+			const recipient = action.recipient;
+			if (typeof recipient !== "string") {
+				if ("recordField" in recipient) {
+					// Reads a person off the record in scope — needs a record.
+					if (!scopeObjectType) {
+						if (scheduledTopLevel) {
+							errors.push({
+								type: "no_trigger_record",
+								message:
+									"This automation runs on a schedule, so there is no record to read the recipient from. Choose a different recipient, or move this action inside a Loop.",
+								nodeId,
+							});
+						}
+						return;
+					}
+					const rf = recipient.recordField;
+					const targetType: AutomationObjectType =
+						rf.target === "self" ? scopeObjectType : rf.target.related;
+					const fields = USER_REF_RECIPIENT_FIELDS[targetType] ?? [];
+					if (!fields.some((f) => f.key === rf.field)) {
+						errors.push({
+							type: "missing_required_config",
+							message: "Choose a valid field to read the recipient from",
+							nodeId,
+						});
+					}
+				} else if (!recipient.userId) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Choose who to notify",
+						nodeId,
+					});
+				}
 			}
 			break;
 		}
