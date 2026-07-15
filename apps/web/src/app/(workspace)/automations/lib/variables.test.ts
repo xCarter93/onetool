@@ -80,6 +80,7 @@ describe("getAvailableVariables", () => {
 			label: "Trigger → Client ID",
 			group: "Trigger",
 			fieldType: "id",
+			refType: "client",
 		});
 	});
 
@@ -163,6 +164,7 @@ describe("getAvailableVariables", () => {
 			label: "Loop item → Project ID",
 			group: "Loop item",
 			fieldType: "id",
+			refType: "project",
 		});
 
 		const outsideBody = getAvailableVariables(nodes, statusChangedTrigger, "after1");

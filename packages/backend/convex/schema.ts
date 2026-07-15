@@ -853,7 +853,7 @@ export default defineSchema({
 		migratedFromNotificationId: v.optional(v.id("notifications")),
 	})
 		.index("by_org", ["orgId"])
-		.index("by_org_entity", ["orgId", "entityType", "entityId"])
+		.index("by_org_entity", ["orgId", "entityType", "entityId", "createdAt"])
 		.index("by_migrated_from", ["migratedFromNotificationId"]),
 
 	// Message Attachments - files attached to mention messages

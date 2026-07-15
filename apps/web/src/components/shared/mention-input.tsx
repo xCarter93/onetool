@@ -374,7 +374,8 @@ export function MentionInput({
 
 			// Resolve every mentioned user to a Convex user id (syncing from Clerk
 			// for anyone not yet in Convex). No mentions is allowed — that posts to
-			// the feed without notifying anyone.
+			// the feed without notifying anyone. But a mention that WAS typed and
+			// can't be resolved must abort the send, not post silently untagged.
 			const mentionedUserIds: Id<"users">[] = [];
 			for (const mentionedUser of mentionedUsers) {
 				const user = organizationUsers.find(
@@ -383,7 +384,11 @@ export function MentionInput({
 				);
 
 				if (!user) {
-					continue; // Skip if user not found
+					toast.error(
+						"Error",
+						`Couldn't find @${mentionedUser.name} — remove the mention and try again`
+					);
+					return;
 				}
 
 				let convexUserId = user.convexUserId;

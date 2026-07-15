@@ -182,7 +182,10 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 	// Pagination
 	const perPage = pageSize ?? messages.length;
 	const totalPages = Math.max(1, Math.ceil(messages.length / perPage));
-	const startIdx = (currentPage - 1) * perPage;
+	// currentPage can outlive a shrinking message set (or an entity switch) —
+	// clamp for slicing/display without touching state during render.
+	const effectivePage = Math.min(currentPage, totalPages);
+	const startIdx = (effectivePage - 1) * perPage;
 	const paginatedMessages = pageSize
 		? messages.slice(startIdx, startIdx + perPage)
 		: messages;
@@ -264,20 +267,18 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 					</span>
 					<div className="flex items-center gap-1">
 						<button
-							onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-							disabled={currentPage === 1}
+							onClick={() => setCurrentPage(Math.max(1, effectivePage - 1))}
+							disabled={effectivePage === 1}
 							className="p-1.5 rounded-md hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
 						>
 							<ChevronLeft className="h-4 w-4" />
 						</button>
 						<span className="text-xs text-muted-foreground px-2">
-							{currentPage} / {totalPages}
+							{effectivePage} / {totalPages}
 						</span>
 						<button
-							onClick={() =>
-								setCurrentPage((p) => Math.min(totalPages, p + 1))
-							}
-							disabled={currentPage === totalPages}
+							onClick={() => setCurrentPage(Math.min(totalPages, effectivePage + 1))}
+							disabled={effectivePage === totalPages}
 							className="p-1.5 rounded-md hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
 						>
 							<ChevronRight className="h-4 w-4" />

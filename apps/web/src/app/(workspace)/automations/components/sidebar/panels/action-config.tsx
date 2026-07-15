@@ -1098,7 +1098,7 @@ function SendTeamMessageFields({
 	};
 
 	let tagContext: string | undefined;
-	if (tag.kind === "none") {
+	if (tag.kind === "none" && hasFeed) {
 		tagContext = "The message will appear on the feed. No one is notified.";
 	} else if (tag.kind === "created_by") {
 		tagContext = "If the creator can't be resolved, the message posts without a tag.";

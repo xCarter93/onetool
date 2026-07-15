@@ -89,8 +89,12 @@ function varFallbackTypeError(
 			return typeof fb === "number" ? null : "fallback must be a number";
 		case "date":
 			return typeof fb === "number" ? null : "fallback must be a date";
+		case "text":
+		case "select":
+		case "id":
+			return typeof fb === "string" ? null : "fallback must be text";
 		default:
-			return null; // text / select / id accept a string fallback
+			return null; // unknown field type — nothing to check
 	}
 }
 
@@ -534,6 +538,21 @@ function validateActionNode(
 						return;
 					}
 					const rf = recipient.recordField;
+					// A {related} target with no FK from the scope type (per the
+					// registry's relation map) can never resolve — flag it before
+					// the field lookup, which would otherwise check the wrong type's
+					// fields and surface a confusing "invalid field" error instead.
+					if (
+						rf.target !== "self" &&
+						!RELATION_FIELD[scopeObjectType]?.[rf.target.related]
+					) {
+						errors.push({
+							type: "missing_required_config",
+							message: `This record has no related ${rf.target.related} to read the recipient from`,
+							nodeId,
+						});
+						return;
+					}
 					const targetType: AutomationObjectType =
 						rf.target === "self" ? scopeObjectType : rf.target.related;
 					const fields = USER_REF_RECIPIENT_FIELDS[targetType] ?? [];
@@ -578,6 +597,22 @@ function validateActionNode(
 				});
 			}
 
+			// A {related} target with no FK from the scope type (per the registry's
+			// relation map) can never resolve — flag it before mention validation,
+			// which would otherwise check the wrong type's rules.
+			if (
+				action.target &&
+				action.target !== "self" &&
+				!RELATION_FIELD[scopeObjectType]?.[action.target.related]
+			) {
+				errors.push({
+					type: "missing_required_config",
+					message: `This record has no related ${action.target.related} to post to`,
+					nodeId,
+				});
+				return;
+			}
+
 			const targetObjectType: AutomationObjectType =
 				!action.target || action.target === "self"
 					? scopeObjectType
@@ -599,6 +634,23 @@ function validateActionNode(
 				errors.push({
 					type: "missing_required_config",
 					message: "Choose a member to tag, or set Tag to No one",
+					nodeId,
+				});
+			}
+
+			// client/project/quote have a Team Communication feed; other targets
+			// (task/invoice via "self") are notify-only at run time — with nobody
+			// tagged, this step would post nothing and notify nobody.
+			const targetHasFeed =
+				targetObjectType === "client" ||
+				targetObjectType === "project" ||
+				targetObjectType === "quote";
+			const nobodyTagged = !mention || mention.kind === "none";
+			if (!targetHasFeed && nobodyTagged) {
+				errors.push({
+					type: "missing_required_config",
+					message:
+						"Nothing to send — this target has no Team Communication feed and nobody is tagged",
 					nodeId,
 				});
 			}

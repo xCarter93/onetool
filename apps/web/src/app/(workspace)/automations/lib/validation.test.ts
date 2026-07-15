@@ -920,4 +920,139 @@ describe("validateWorkflowForSave — typed variable fallback (B3)", () => {
 		]);
 		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
 	});
+
+	it("rejects a boolean fallback on a text field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "notes", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: true,
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /must be text/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects a number fallback on a text field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "notes", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: 5,
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /must be text/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects a boolean fallback on a select field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "status", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: true,
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /must be text/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects a number fallback on a select field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "status", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: 5,
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /must be text/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("accepts a string fallback on a select field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "status", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: "active",
+			}),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
+	});
+
+	// id destinations have no writable field in the registry, so exercise
+	// create_record's creatable id field (project.clientId) instead.
+	function createRecordWithClientIdNode(
+		id: string,
+		clientIdValue: ValueRef
+	): WorkflowNode {
+		return {
+			id,
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "create_record",
+					objectType: "project",
+					fields: [
+						{ field: "title", value: { kind: "static", value: "New project" } },
+						{ field: "clientId", value: clientIdValue },
+					],
+				},
+			},
+		};
+	}
+
+	it("rejects a boolean fallback on an id field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			createRecordWithClientIdNode("act1", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: true,
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /must be text/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects a number fallback on an id field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			createRecordWithClientIdNode("act1", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: 5,
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /must be text/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("accepts a string fallback on an id field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			createRecordWithClientIdNode("act1", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: "k17abc",
+			}),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
+	});
 });

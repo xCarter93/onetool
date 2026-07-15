@@ -66,8 +66,11 @@ export async function insertTeamMessage(
 	});
 }
 
+// Feed is capped to the newest N by createdAt (by_org_entity index's trailing field).
+const TEAM_MESSAGE_FEED_LIMIT = 200;
+
 /**
- * List Team Communication messages for a specific entity, newest first, with
+ * List the newest 200 Team Communication messages for a specific entity, with
  * author identity resolved for rendering.
  */
 export const listByEntity = optionalUserQuery({
@@ -91,7 +94,8 @@ export const listByEntity = optionalUserQuery({
 					.eq("entityType", args.entityType)
 					.eq("entityId", args.entityId)
 			)
-			.collect();
+			.order("desc")
+			.take(TEAM_MESSAGE_FEED_LIMIT);
 
 		const items = await Promise.all(
 			messages.map(async (m): Promise<TeamMessageFeedItem> => {

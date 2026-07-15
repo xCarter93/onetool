@@ -29,7 +29,6 @@ import {
 } from "./lib/planLimits";
 import {
 	RELATION_FIELD,
-	USER_REF_RECIPIENT_FIELDS,
 	getCreatableFields,
 	getFieldDefinition,
 	getRequiredCreateFields,
@@ -3802,6 +3801,13 @@ async function executeSendNotificationAction(
 	// bell row, so push-only (no in_app) has no row to reference and the popover
 	// can't hide it — skip it until a product decision (see B6-6 report).
 	const channels = action.channels ?? ["in_app"];
+	if (channels.length === 0) {
+		return {
+			success: true,
+			skipped: true,
+			error: "No delivery channels configured",
+		};
+	}
 	const wantInApp = channels.includes("in_app");
 	const wantPush = channels.includes("push");
 	if (wantPush && !wantInApp) {
@@ -3900,6 +3906,31 @@ async function resolveTeamMessageMention(
 	return [];
 }
 
+/**
+ * Resolve send_team_message's legacy `recipients` union (all_members/admins/
+ * explicit userIds) to concrete, org-membership-checked userIds. Shared by
+ * the production executor and the dry-run preview.
+ */
+async function resolveTeamMessageRecipients(
+	ctx: MutationCtx,
+	recipients: Extract<AutomationAction, { type: "send_team_message" }>["recipients"],
+	orgId: Id<"organizations">
+): Promise<Id<"users">[]> {
+	if (recipients === "all_members") {
+		return resolveMemberUserIds(ctx, orgId, false);
+	}
+	if (recipients === "admins") {
+		return resolveMemberUserIds(ctx, orgId, true);
+	}
+	const valid: Id<"users">[] = [];
+	for (const raw of recipients.userIds) {
+		const userId = raw as Id<"users">;
+		const membership = await getMembership(ctx, userId, orgId);
+		if (membership) valid.push(userId);
+	}
+	return valid;
+}
+
 async function executeSendTeamMessageAction(
 	ctx: MutationCtx,
 	action: Extract<AutomationAction, { type: "send_team_message" }>,
@@ -3907,20 +3938,11 @@ async function executeSendTeamMessageAction(
 	env: WalkEnv
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
 	// Broadcast recipients (bell + push), unchanged from the legacy behavior.
-	let recipientIds: Id<"users">[];
-	if (action.recipients === "all_members") {
-		recipientIds = await resolveMemberUserIds(ctx, env.orgId, false);
-	} else if (action.recipients === "admins") {
-		recipientIds = await resolveMemberUserIds(ctx, env.orgId, true);
-	} else {
-		const valid: Id<"users">[] = [];
-		for (const raw of action.recipients.userIds) {
-			const userId = raw as Id<"users">;
-			const membership = await getMembership(ctx, userId, env.orgId);
-			if (membership) valid.push(userId);
-		}
-		recipientIds = valid;
-	}
+	const recipientIds = await resolveTeamMessageRecipients(
+		ctx,
+		action.recipients,
+		env.orgId
+	);
 
 	const title =
 		interpolateTemplate(action.title, env.scope).trim() ||
@@ -4498,29 +4520,14 @@ async function dryExecuteAction(
 						output: { note: "No record in scope for the selected field" },
 					};
 				}
-				const message = interpolateTemplate(action.message, env.scope).trim();
-				if (!message) {
+				if (res.users.length === 0) {
 					return {
-						success: false,
-						error: "Notification message resolved to an empty value",
+						success: true,
+						skipped: true,
+						output: { note: "No user found for the selected field" },
 					};
 				}
-				const label =
-					(res.targetType
-						? USER_REF_RECIPIENT_FIELDS[res.targetType]
-						: undefined
-					)?.find((f) => f.key === field)?.label ?? field;
-				return {
-					success: true,
-					output: {
-						summary: `Would notify the ${label} of the ${res.targetType} (${res.users.length} recipient(s)): "${message}"`,
-					},
-					input: {
-						recipient: action.recipient,
-						message,
-						recipientCount: res.users.length,
-					},
-				};
+				count = res.users.length;
 			} else {
 				const membership = await getMembership(
 					ctx,
@@ -4543,6 +4550,13 @@ async function dryExecuteAction(
 				};
 			}
 			const channels = action.channels ?? ["in_app"];
+			if (channels.length === 0) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "No delivery channels configured" },
+				};
+			}
 			if (channels.includes("push") && !channels.includes("in_app")) {
 				return {
 					success: true,
@@ -4571,13 +4585,17 @@ async function dryExecuteAction(
 			if (!message) {
 				return { success: false, error: "Message resolved to an empty value" };
 			}
+			const recipientIds = await resolveTeamMessageRecipients(
+				ctx,
+				action.recipients,
+				env.orgId
+			);
 			// Mirror the real action: resolve target (default self) + mentions.
 			let post: {
 				entityType: "client" | "project" | "quote";
 				entityId: string;
 			} | null = null;
 			let mentionIds: Id<"users">[] = [];
-			let hadTarget = false;
 			if (scopeRecord) {
 				const targetInfo = await resolveTargetV2(
 					ctx,
@@ -4588,7 +4606,6 @@ async function dryExecuteAction(
 					env.orgId
 				);
 				if (targetInfo) {
-					hadTarget = true;
 					if (
 						targetInfo.type === "client" ||
 						targetInfo.type === "project" ||
@@ -4605,16 +4622,21 @@ async function dryExecuteAction(
 					);
 				}
 			}
-			if (!hadTarget) {
+			// Bell recipients = broadcast recipients ∪ resolved mentions (deduped),
+			// mirroring the production executor exactly.
+			const bellIds = Array.from(
+				new Set<Id<"users">>([...recipientIds, ...mentionIds])
+			);
+			if (!post && bellIds.length === 0) {
 				return {
 					success: true,
 					skipped: true,
-					output: { note: "No record in scope — skipped" },
+					output: { note: "No recipients to message" },
 				};
 			}
 			const summary = post
-				? `Would post to ${post.entityType} ${post.entityId}'s Team Communication feed, tagging ${mentionIds.length} member(s)`
-				: `No feed for this target — would notify ${mentionIds.length} tagged member(s)`;
+				? `Would post to ${post.entityType} ${post.entityId}'s Team Communication feed, notifying ${bellIds.length} member(s)`
+				: `No feed for this target — would notify ${bellIds.length} member(s)`;
 			return {
 				success: true,
 				output: { summary },
@@ -4623,7 +4645,9 @@ async function dryExecuteAction(
 					mention: action.mention ?? { kind: "none" },
 					message,
 					posted: post !== null,
+					recipientCount: recipientIds.length,
 					mentionCount: mentionIds.length,
+					bellCount: bellIds.length,
 				},
 			};
 		}

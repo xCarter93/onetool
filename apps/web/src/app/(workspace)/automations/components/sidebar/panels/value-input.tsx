@@ -101,18 +101,28 @@ function fallbackTypeError(
 			return typeof fallback === "number" ? null : "Fallback must be a number.";
 		case "date":
 			return typeof fallback === "number" ? null : "Fallback must be a date.";
+		case "text":
+		case "select":
+		case "id":
+			return typeof fallback === "string" ? null : "Fallback must be text.";
 		default:
-			return null; // text / select / id accept a string
+			return null; // unknown field type — nothing to check
 	}
 }
 
 /**
- * A variable of `optionType` feeding a `target` field: does the picker flag it
+ * A variable of `optionType` (and, for id fields, `optionRefType`) feeding a
+ * `target` field (with destination `targetRefType`): does the picker flag it
  * as needing conversion? Soft hint only — incompatible options stay selectable
  * (formulas/interpolation can convert), just sorted last and greyed. Unknown
  * option types are never flagged.
  */
-function variableNeedsConversion(target: FieldType, optionType?: FieldType): boolean {
+function variableNeedsConversion(
+	target: FieldType,
+	optionType?: FieldType,
+	targetRefType?: FieldDefinition["refType"],
+	optionRefType?: FieldDefinition["refType"]
+): boolean {
 	if (!optionType) return false;
 	switch (target) {
 		case "boolean":
@@ -123,7 +133,10 @@ function variableNeedsConversion(target: FieldType, optionType?: FieldType): boo
 		case "date":
 			return optionType !== "date";
 		case "id":
-			return optionType !== "id";
+			return (
+				optionType !== "id" ||
+				(!!targetRefType && !!optionRefType && targetRefType !== optionRefType)
+			);
 		case "select":
 			return optionType !== "select" && optionType !== "text";
 		default:
@@ -217,7 +230,7 @@ function IdValueControl({
 				<span className="truncate">{triggerLabel}</span>
 				<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
 			</PopoverTrigger>
-			<PopoverContent align="start" className="w-[--anchor-width] min-w-56 p-0">
+			<PopoverContent align="start" className="w-(--anchor-width) min-w-56 p-0">
 				<Command>
 					<CommandInput placeholder={`Search ${refType}s...`} />
 					<CommandList>
@@ -529,15 +542,31 @@ export function ValueInput({
 									// selectable but sort last and render greyed with a hint.
 									const sorted = [...options].sort(
 										(a, b) =>
-											Number(variableNeedsConversion(field.type, a.fieldType)) -
-											Number(variableNeedsConversion(field.type, b.fieldType))
+											Number(
+												variableNeedsConversion(
+													field.type,
+													a.fieldType,
+													field.refType,
+													a.refType
+												)
+											) -
+											Number(
+												variableNeedsConversion(
+													field.type,
+													b.fieldType,
+													field.refType,
+													b.refType
+												)
+											)
 									);
 									return (
 										<CommandGroup key={group} heading={group}>
 											{sorted.map((option) => {
 												const needsConversion = variableNeedsConversion(
 													field.type,
-													option.fieldType
+													option.fieldType,
+													field.refType,
+													option.refType
 												);
 												return (
 													<CommandItem

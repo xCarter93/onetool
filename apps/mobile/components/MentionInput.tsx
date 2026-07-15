@@ -304,7 +304,12 @@ export function MentionInput({
 						u.convexUserId === mentionedUser.id || u.id === mentionedUser.id
 				);
 
-				if (!user) continue;
+				if (!user) {
+					// Abort rather than silently posting without tagging them.
+					throw new Error(
+						`Could not find "${mentionedUser.name}" to tag. Remove the mention and try again.`
+					);
+				}
 
 				let convexUserId = user.convexUserId;
 

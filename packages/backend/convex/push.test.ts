@@ -260,6 +260,17 @@ describe("push", () => {
 				)[0];
 				expect(legacyMsg.body).toBe("legacy mobile");
 				expect(legacyMsg.title).toContain("mentioned you in Acme Co");
+
+				// The deprecated taggedUserId arg still folds into exactly one
+				// teamMessages feed post (not a separate/duplicate write path).
+				const allPosts = await t.run(async (ctx) =>
+					ctx.db.query("teamMessages").collect()
+				);
+				const legacyPosts = allPosts.filter((m) => m.message === "legacy mobile");
+				expect(legacyPosts).toHaveLength(1);
+				expect(legacyPosts[0].entityType).toBe("client");
+				expect(legacyPosts[0].entityId).toBe(clientId);
+				expect(legacyPosts[0].mentionedUserIds).toContain(taggedId);
 		});
 	});
 

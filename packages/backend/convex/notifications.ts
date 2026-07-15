@@ -958,6 +958,10 @@ export const createMention = userMutation({
 				...(args.taggedUserId ? [args.taggedUserId] : []),
 			])
 		);
+		const MAX_MENTIONS = 25;
+		if (mentionedUserIds.length > MAX_MENTIONS) {
+			throw new Error(`Maximum ${MAX_MENTIONS} tagged members per message`);
+		}
 		// Validate every mentioned user is in the same organization
 		for (const uid of mentionedUserIds) {
 			await validateUserAccess(ctx, uid, userOrgId);

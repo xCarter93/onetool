@@ -102,7 +102,19 @@ export const backfillTeamMessagesFromNotifications = internalMutation({
 				continue;
 			}
 
+			const hasAttachments = notification.hasAttachments ?? false;
+
 			if (dryRun) {
+				// Mirror the real-run attachment count below so dry-run reporting is accurate.
+				if (hasAttachments) {
+					const attachments = await ctx.db
+						.query("messageAttachments")
+						.withIndex("by_notification", (q) =>
+							q.eq("notificationId", notification._id)
+						)
+						.collect();
+					attachmentsRelinked += attachments.length;
+				}
 				migrated++;
 				continue;
 			}
@@ -110,7 +122,6 @@ export const backfillTeamMessagesFromNotifications = internalMutation({
 			const { authorUserId, message } = parseAuthorComposite(
 				notification.message
 			);
-			const hasAttachments = notification.hasAttachments ?? false;
 
 			const teamMessageId = await ctx.db.insert("teamMessages", {
 				orgId: notification.orgId,

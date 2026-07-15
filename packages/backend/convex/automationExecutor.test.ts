@@ -3130,6 +3130,71 @@ describe("automationExecutor (v2 engine)", () => {
 				expect(bells).toHaveLength(1);
 				expect(fetchSpy).not.toHaveBeenCalled();
 			});
+
+			it("channels []: skipped — no bell, no push (validator now blocks this at create/update; exercises the executor's own defense-in-depth guard on an already-stored config)", async () => {
+				const { asUser, orgId, userId: ownerId } = await setupUser();
+				await t.run(async (ctx) =>
+					ctx.db.insert("pushTokens", {
+						userId: ownerId,
+						token: "ExponentPushToken[EMPTY]",
+						platform: "ios",
+						lastSeenAt: Date.now(),
+					})
+				);
+				const automationId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowAutomations", {
+						orgId,
+						name: "Notify me empty channels",
+						status: "active" as const,
+						trigger: {
+							type: "record_created" as const,
+							objectType: "client" as const,
+						},
+						nodes: [
+							sendNotificationActionNode(
+								"notify-1",
+								{ userId: ownerId },
+								"ping",
+								{ channels: [] }
+							),
+						],
+						createdBy: ownerId,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					})
+				);
+
+				await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await drainEvents();
+
+				const bells = (
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("notifications")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.collect()
+					)
+				).filter((n) => n.notificationType === "automation_message");
+				expect(bells).toHaveLength(0);
+				expect(fetchSpy).not.toHaveBeenCalled();
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				const execution = executions.find(
+					(e) => e.automationId === automationId
+				);
+				// Skip returns success:true/skipped:true (pushEntry maps that combo to
+				// "success", same as every other skipped-notification case in this
+				// file) — the error text is the reliable skip signal here.
+				expect(execution?.nodesExecuted[0]?.error).toBe(
+					"No delivery channels configured"
+				);
+			});
 		});
 
 		it("send_team_message with recipients.userIds: only in-org members are notified", async () => {
@@ -5121,6 +5186,74 @@ describe("automationExecutor (v2 engine)", () => {
 					isActive: true,
 				})
 			).rejects.toThrow(/not a valid value/i);
+		});
+	});
+
+	describe("action fallback type validation (server-side var-fallback check)", () => {
+		it("rejects an update_field var value whose fallback type doesn't match the field (boolean field, string fallback)", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad fallback",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						{
+							id: "act-1",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "update_field" as const,
+									target: "self" as const,
+									field: "isActive",
+									value: {
+										kind: "var" as const,
+										path: "trigger.record.companyName",
+										fallback: "not-a-boolean",
+									},
+								},
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/fallback/i);
+		});
+
+		it("rejects a create_record var value whose fallback type doesn't match the field (date field, boolean fallback)", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad create fallback",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						{
+							id: "act-1",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "create_record" as const,
+									objectType: "task" as const,
+									fields: [
+										{
+											field: "title",
+											value: { kind: "static" as const, value: "X" },
+										},
+										{
+											field: "date",
+											value: {
+												kind: "var" as const,
+												path: "trigger.record.companyName",
+												fallback: true,
+											},
+										},
+									],
+								},
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/fallback/i);
 		});
 	});
 });
