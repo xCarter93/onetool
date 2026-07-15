@@ -129,7 +129,15 @@ function buildAction(actionType?: string): AutomationAction {
 		case "create_task":
 			return { type: "create_task", title: { kind: "static", value: "" } };
 		case "send_notification":
-			return { type: "send_notification", recipient: "org_admins", message: "" };
+			// New notifications default to in-app + push (product intent: a
+			// notification should actually alert). Legacy configs leave `channels`
+			// undefined = in-app-only until the user toggles push.
+			return {
+				type: "send_notification",
+				recipient: "org_admins",
+				message: "",
+				channels: ["in_app", "push"],
+			};
 		case "send_team_message":
 			return {
 				// Record-linked model (B6): posts to the in-scope record's Team

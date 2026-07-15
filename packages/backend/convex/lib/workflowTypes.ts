@@ -227,6 +227,14 @@ export const sendNotificationActionValidator = v.object({
 		v.literal("record_owner"),
 		v.object({ userId: v.string() })
 	),
+	/**
+	 * Delivery channels. Undefined = legacy in-app-only (bell, no push).
+	 * New panel seeds ["in_app", "push"]. "push" rides on the persisted bell row,
+	 * so push-only (["push"] alone) is not supported yet — the executor skips it.
+	 */
+	channels: v.optional(
+		v.array(v.union(v.literal("in_app"), v.literal("push")))
+	),
 	/** Supports {{trigger.record.<field>}} / {{loop.<id>.item.<field>}} interpolation. */
 	message: v.string(),
 });

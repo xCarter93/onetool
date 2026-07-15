@@ -1915,7 +1915,7 @@ describe("automationExecutor (v2 engine)", () => {
 				| "record_owner"
 				| { userId: string },
 			message: string,
-			opts: { nextNodeId?: string } = {}
+			opts: { nextNodeId?: string; channels?: ("in_app" | "push")[] } = {}
 		) {
 			return {
 				id,
@@ -1925,6 +1925,7 @@ describe("automationExecutor (v2 engine)", () => {
 					action: {
 						type: "send_notification" as const,
 						recipient,
+						...(opts.channels ? { channels: opts.channels } : {}),
 						message,
 					},
 				},
@@ -2867,6 +2868,83 @@ describe("automationExecutor (v2 engine)", () => {
 			).filter((n) => n.notificationType === "automation_message");
 			expect(autoNotifs).toHaveLength(1);
 			expect(autoNotifs[0].userId).toBe(ownerId);
+		});
+
+		describe("send_notification delivery channels (B6-6)", () => {
+			let fetchSpy: ReturnType<typeof vi.fn>;
+
+			beforeEach(() => {
+				fetchSpy = vi.fn(
+					async () =>
+						({
+							ok: true,
+							json: async () => ({ data: [{ status: "ok", id: "r1" }] }),
+						}) as unknown as Response
+				);
+				vi.stubGlobal("fetch", fetchSpy);
+			});
+
+			afterEach(() => {
+				vi.unstubAllGlobals();
+			});
+
+			async function runNotify(channels?: ("in_app" | "push")[]) {
+				const { asUser, orgId, userId: ownerId } = await setupUser();
+				await t.run(async (ctx) =>
+					ctx.db.insert("pushTokens", {
+						userId: ownerId,
+						token: "ExponentPushToken[N]",
+						platform: "ios",
+						lastSeenAt: Date.now(),
+					})
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify me",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						sendNotificationActionNode(
+							"notify-1",
+							{ userId: ownerId },
+							"ping",
+							channels ? { channels } : {}
+						),
+					],
+					isActive: true,
+				});
+				await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await drainEvents();
+				const bells = (
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("notifications")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.collect()
+					)
+				).filter((n) => n.notificationType === "automation_message");
+				return { bells };
+			}
+
+			it("undefined channels: in-app bell only, no push (legacy preserved)", async () => {
+				const { bells } = await runNotify(undefined);
+				expect(bells).toHaveLength(1);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
+
+			it("channels [in_app, push]: bell row AND push per recipient", async () => {
+				const { bells } = await runNotify(["in_app", "push"]);
+				expect(bells).toHaveLength(1);
+				expect(fetchSpy).toHaveBeenCalled();
+			});
+
+			it("channels [in_app]: bell, no push", async () => {
+				const { bells } = await runNotify(["in_app"]);
+				expect(bells).toHaveLength(1);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
 		});
 
 		it("send_team_message with recipients.userIds: only in-org members are notified", async () => {

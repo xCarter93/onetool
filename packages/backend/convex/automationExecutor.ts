@@ -3736,9 +3736,28 @@ async function executeSendNotificationAction(
 		};
 	}
 
+	// Undefined = legacy in-app-only (bell, no push). Push rides on the persisted
+	// bell row, so push-only (no in_app) has no row to reference and the popover
+	// can't hide it — skip it until a product decision (see B6-6 report).
+	const channels = action.channels ?? ["in_app"];
+	const wantInApp = channels.includes("in_app");
+	const wantPush = channels.includes("push");
+	if (wantPush && !wantInApp) {
+		return {
+			success: true,
+			skipped: true,
+			error: "Push-only delivery is not supported yet (needs a bell row)",
+		};
+	}
+
+	const pushUrl = automationActionUrl(scopeRecord);
+	const clerkOrgId = wantPush
+		? ((await ctx.db.get(env.orgId))?.clerkOrganizationId ?? "")
+		: "";
+
 	try {
 		for (const userId of userIds) {
-			await ctx.db.insert("notifications", {
+			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
 				notificationType: "automation_message",
@@ -3751,6 +3770,17 @@ async function executeSendNotificationAction(
 				sentVia: "in_app",
 				sentAt: Date.now(),
 			});
+			if (wantPush) {
+				await enqueuePush(ctx, {
+					notificationType: "automation_message",
+					taggedUserId: userId,
+					title: env.automation.name,
+					body: message,
+					url: pushUrl,
+					notificationId,
+					orgId: clerkOrgId,
+				});
+			}
 		}
 		return { success: true };
 	} catch (error) {
@@ -4427,10 +4457,28 @@ async function dryExecuteAction(
 					error: "Notification message resolved to an empty value",
 				};
 			}
+			const channels = action.channels ?? ["in_app"];
+			if (channels.includes("push") && !channels.includes("in_app")) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "Push-only delivery is not supported yet" },
+				};
+			}
+			const channelLabel = channels
+				.map((c) => (c === "in_app" ? "in-app" : "push"))
+				.join(" + ");
 			return {
 				success: true,
-				output: { summary: `Would notify ${count} recipient(s): "${message}"` },
-				input: { recipient: action.recipient, message, recipientCount: count },
+				output: {
+					summary: `Would notify ${count} recipient(s) via ${channelLabel}: "${message}"`,
+				},
+				input: {
+					recipient: action.recipient,
+					channels,
+					message,
+					recipientCount: count,
+				},
 			};
 		}
 		case "send_team_message": {

@@ -766,6 +766,25 @@ function SendNotificationFields({
 				</PanelField>
 			)}
 
+			<div className="flex items-center justify-between gap-3">
+				<div className="space-y-0.5">
+					<Label htmlFor="send-notification-push-toggle" className="text-sm font-medium">
+						Send mobile push
+					</Label>
+					<p className="text-xs text-muted-foreground">
+						Notifications always show in the app. Turn on to also alert
+						recipients by mobile push.
+					</p>
+				</div>
+				<Switch
+					id="send-notification-push-toggle"
+					checked={action.channels?.includes("push") ?? false}
+					onCheckedChange={(on) =>
+						update({ channels: on ? ["in_app", "push"] : ["in_app"] })
+					}
+				/>
+			</div>
+
 			<PanelField
 				label="Message"
 				helper="Insert variable adds a placeholder that's filled in from the record when this runs."
