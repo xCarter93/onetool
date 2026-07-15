@@ -21,12 +21,18 @@ import {
 } from "@/components/ui/select";
 import { MultiSelector } from "@/components/shared/multi-selector";
 import {
+	CREATABLE_OBJECT_TYPE_OPTIONS,
 	MAX_DUE_IN_DAYS,
+	OBJECT_TYPE_LABELS,
+	RELATION_FIELD,
+	getCreatableFields,
+	getRequiredCreateFields,
 	getTargetOptions,
 	getWritableFields,
 	type ActionNodeConfig,
 	type AutomationObjectType,
 	type AutomationTrigger,
+	type CreateRecordAction,
 	type CreateTaskAction,
 	type FormulaResource,
 	type SendNotificationAction,
@@ -312,6 +318,250 @@ function UpdateFieldsFields({
 					})}
 
 					{action.fields.length < writableFields.length && (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={addRow}
+							className="w-full gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
+						>
+							<Plus className="h-3.5 w-3.5" /> Add field
+						</Button>
+					)}
+				</div>
+			</PanelField>
+		</PanelSection>
+	);
+}
+
+function CreateRecordFields({
+	config,
+	action,
+	triggerObjectType,
+	nodes,
+	trigger,
+	nodeId,
+	formulas,
+	commit,
+}: ActionFieldsProps<CreateRecordAction> & {
+	triggerObjectType: AutomationObjectType | null;
+}) {
+	const objectType = action.objectType;
+	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
+	const scopeObjectType = scope.objectType;
+
+	const creatableFields = getCreatableFields(objectType);
+	const requiredKeys = new Set(
+		getRequiredCreateFields(objectType).map((f) => f.key)
+	);
+
+	// linkToScope is offered only when a record is in scope AND the new record
+	// has a direct FK to that type (e.g. a project → its client).
+	const linkFk = scopeObjectType
+		? RELATION_FIELD[objectType]?.[scopeObjectType]
+		: undefined;
+	// The FK a live link fills is hidden from the field rows so it can't be
+	// double-set.
+	const linkedFk = action.linkToScope ? linkFk : undefined;
+	const availableFields = creatableFields.filter((f) => f.key !== linkedFk);
+	const chosenFields = new Set(action.fields.map((row) => row.field));
+
+	const commitAction = (next: CreateRecordAction) => {
+		commit({ ...config, action: next });
+	};
+
+	const defaultValueFor = (field?: { type: string }) => ({
+		kind: "static" as const,
+		value: field?.type === "boolean" ? false : null,
+	});
+
+	const seedRequiredRows = (nextType: AutomationObjectType) =>
+		getRequiredCreateFields(nextType).map((f) => ({
+			field: f.key,
+			value: defaultValueFor(f),
+		}));
+
+	const updateObjectType = (value: string) => {
+		const nextType = value as AutomationObjectType;
+		if (nextType === objectType) return;
+		// Rows name the old type's fields (and a link may no longer apply) —
+		// reseed from scratch with the new type's required rows.
+		commitAction({
+			type: "create_record",
+			objectType: nextType,
+			fields: seedRequiredRows(nextType),
+		});
+	};
+
+	const toggleLink = (on: boolean) => {
+		if (on) {
+			// The link supplies the FK; drop any manual row for it.
+			const fields = linkFk
+				? action.fields.filter((r) => r.field !== linkFk)
+				: action.fields;
+			commitAction({ ...action, linkToScope: true, fields });
+			return;
+		}
+		// Turning off: restore an empty row for a required FK the link had covered.
+		let fields = action.fields;
+		if (
+			linkFk &&
+			requiredKeys.has(linkFk) &&
+			!fields.some((r) => r.field === linkFk)
+		) {
+			fields = [
+				...fields,
+				{
+					field: linkFk,
+					value: defaultValueFor(creatableFields.find((f) => f.key === linkFk)),
+				},
+			];
+		}
+		commitAction({ type: "create_record", objectType, fields });
+	};
+
+	const updateRowField = (index: number, field: string) => {
+		const nextField = creatableFields.find((f) => f.key === field);
+		commitAction({
+			...action,
+			fields: action.fields.map((row, i) =>
+				i === index ? { field, value: defaultValueFor(nextField) } : row
+			),
+		});
+	};
+
+	const updateRowValue = (
+		index: number,
+		value: CreateRecordAction["fields"][number]["value"]
+	) => {
+		commitAction({
+			...action,
+			fields: action.fields.map((row, i) =>
+				i === index ? { ...row, value } : row
+			),
+		});
+	};
+
+	const addRow = () => {
+		const nextField = availableFields.find((f) => !chosenFields.has(f.key));
+		if (!nextField) return;
+		commitAction({
+			...action,
+			fields: [
+				...action.fields,
+				{ field: nextField.key, value: defaultValueFor(nextField) },
+			],
+		});
+	};
+
+	const removeRow = (index: number) => {
+		commitAction({
+			...action,
+			fields: action.fields.filter((_, i) => i !== index),
+		});
+	};
+
+	return (
+		<PanelSection title="Create">
+			<PanelField
+				label="Record type"
+				helper="A brand-new record is created each time this step runs."
+			>
+				<Select
+					value={objectType}
+					onValueChange={(value) => value && updateObjectType(value)}
+				>
+					<SelectTrigger>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{CREATABLE_OBJECT_TYPE_OPTIONS.map((option) => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</PanelField>
+
+			{linkFk && scopeObjectType && (
+				<PanelField
+					label={`Link to ${OBJECT_TYPE_LABELS[scopeObjectType]}`}
+					helper={
+						scope.inLoop
+							? `Sets the new ${OBJECT_TYPE_LABELS[objectType]}'s ${OBJECT_TYPE_LABELS[scopeObjectType]} to the current loop item.`
+							: `Sets the new ${OBJECT_TYPE_LABELS[objectType]}'s ${OBJECT_TYPE_LABELS[scopeObjectType]} to the triggering ${OBJECT_TYPE_LABELS[scopeObjectType]}.`
+					}
+				>
+					<Switch
+						checked={!!action.linkToScope}
+						onCheckedChange={toggleLink}
+					/>
+				</PanelField>
+			)}
+
+			<PanelField label="Fields">
+				<div className="space-y-2">
+					{action.fields.map((row, index) => {
+						const fieldDef = creatableFields.find((f) => f.key === row.field);
+						const isRequired = requiredKeys.has(row.field);
+						return (
+							<div key={index} className="flex items-start gap-2">
+								<div className="flex-1 space-y-2">
+									<Select
+										value={row.field}
+										disabled={isRequired}
+										onValueChange={(value) =>
+											value && updateRowField(index, value)
+										}
+									>
+										<SelectTrigger>
+											<SelectValue placeholder="Select field" />
+										</SelectTrigger>
+										<SelectContent>
+											{availableFields.map((field) => (
+												<SelectItem
+													key={field.key}
+													value={field.key}
+													disabled={
+														field.key !== row.field &&
+														chosenFields.has(field.key)
+													}
+												>
+													{field.label}
+													{requiredKeys.has(field.key) ? " *" : ""}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+
+									{fieldDef && (
+										<ValueInput
+											field={fieldDef}
+											value={row.value}
+											onChange={(value) => updateRowValue(index, value)}
+											nodes={nodes}
+											trigger={trigger}
+											targetNodeId={nodeId}
+											formulas={formulas}
+										/>
+									)}
+								</div>
+								{!isRequired && (
+									<button
+										type="button"
+										onClick={() => removeRow(index)}
+										className="mt-2 text-muted-foreground hover:text-destructive"
+										aria-label="Remove field"
+									>
+										<X className="h-3.5 w-3.5" />
+									</button>
+								)}
+							</div>
+						);
+					})}
+
+					{action.fields.length < availableFields.length && (
 						<Button
 							type="button"
 							variant="outline"
@@ -667,6 +917,18 @@ export function ActionConfigPanel({
 			<div className="flex-1">
 				{config.action.type === "update_fields" && (
 					<UpdateFieldsFields
+						config={config}
+						action={config.action}
+						triggerObjectType={triggerObjectType}
+						nodes={workflowNodes}
+						trigger={trigger}
+						nodeId={nodeId}
+						formulas={formulas}
+						commit={commit}
+					/>
+				)}
+				{config.action.type === "create_record" && (
+					<CreateRecordFields
 						config={config}
 						action={config.action}
 						triggerObjectType={triggerObjectType}

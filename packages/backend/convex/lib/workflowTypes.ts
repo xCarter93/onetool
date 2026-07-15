@@ -197,6 +197,28 @@ export const createTaskActionValidator = v.object({
 	linkToRecord: v.optional(v.boolean()),
 });
 
+/**
+ * Generic record creation. Unlike update_fields there is no record in scope to
+ * write to — a brand-new record of `objectType` is inserted. Only object types
+ * the field registry marks creatable (client/project/task at launch) are
+ * accepted; publish validation rejects the rest, so the validator stays wide
+ * enough to grow into quote/invoice later without a schema migration.
+ * `linkToScope` sets the new record's FK to the in-scope record (e.g. a project
+ * created off a client automation gets that client) via the registry relation
+ * map — and, like create_task's linkToRecord, needs a record in scope.
+ */
+export const createRecordActionValidator = v.object({
+	type: v.literal("create_record"),
+	objectType: objectTypeValidator,
+	fields: v.array(
+		v.object({
+			field: v.string(),
+			value: valueRefValidator,
+		})
+	),
+	linkToScope: v.optional(v.boolean()),
+});
+
 export const sendNotificationActionValidator = v.object({
 	type: v.literal("send_notification"),
 	recipient: v.union(
@@ -224,6 +246,7 @@ export const actionValidator = v.union(
 	updateFieldActionValidator,
 	updateFieldsActionValidator,
 	createTaskActionValidator,
+	createRecordActionValidator,
 	sendNotificationActionValidator,
 	sendTeamMessageActionValidator
 );

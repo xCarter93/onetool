@@ -7,6 +7,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import {
+	getRequiredCreateFields,
 	getStatusOptions,
 	triggerScopeObjectType,
 	type AutomationAction,
@@ -114,6 +115,17 @@ function buildConditionNode(id: string): WorkflowNode {
 
 function buildAction(actionType?: string): AutomationAction {
 	switch (actionType) {
+		case "create_record":
+			// Born as a client create with its required rows pre-seeded; the panel
+			// reseeds when the object type changes.
+			return {
+				type: "create_record",
+				objectType: "client",
+				fields: getRequiredCreateFields("client").map((f) => ({
+					field: f.key,
+					value: { kind: "static", value: null },
+				})),
+			};
 		case "create_task":
 			return { type: "create_task", title: { kind: "static", value: "" } };
 		case "send_notification":

@@ -724,3 +724,97 @@ describe("validateWorkflowForSave — update_fields (B2)", () => {
 		expect(error?.type).toBe("no_trigger_record");
 	});
 });
+
+describe("validateWorkflowForSave — create_record (Phase B1)", () => {
+	const taskTrigger: TriggerConfig = {
+		type: "record_created",
+		objectType: "task",
+	};
+	const clientTrigger: TriggerConfig = {
+		type: "record_created",
+		objectType: "client",
+	};
+	const scheduled: TriggerConfig = {
+		type: "scheduled",
+		schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+	};
+
+	function createRecordNode(
+		id: string,
+		objectType: "client" | "project" | "quote" | "invoice" | "task",
+		fields: Array<{ field: string; value: string | number | boolean | null }>,
+		linkToScope?: boolean
+	): WorkflowNode {
+		return {
+			id,
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "create_record",
+					objectType,
+					fields: fields.map((f) => ({
+						field: f.field,
+						value: { kind: "static", value: f.value },
+					})),
+					linkToScope,
+				},
+			},
+		};
+	}
+
+	it("accepts a task create with a title", () => {
+		const result = validateWorkflowForSave(taskTrigger, [
+			createRecordNode("act1", "task", [{ field: "title", value: "Do it" }]),
+		]);
+		expect(result.errors.some((e) => e.nodeId === "act1")).toBe(false);
+	});
+
+	it("rejects a project create missing its required client", () => {
+		const result = validateWorkflowForSave(taskTrigger, [
+			createRecordNode("act1", "project", [{ field: "title", value: "X" }]),
+		]);
+		const error = result.errors.find((e) => e.nodeId === "act1");
+		expect(error?.message).toMatch(/client is required/i);
+	});
+
+	it("accepts a project create when linkToScope supplies the client", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			createRecordNode(
+				"act1",
+				"project",
+				[{ field: "title", value: "X" }],
+				true
+			),
+		]);
+		expect(result.errors.some((e) => e.nodeId === "act1")).toBe(false);
+	});
+
+	it("rejects a non-creatable object type (quote)", () => {
+		const result = validateWorkflowForSave(taskTrigger, [
+			createRecordNode("act1", "quote", [{ field: "title", value: "X" }]),
+		]);
+		const error = result.errors.find((e) => e.nodeId === "act1");
+		expect(error?.message).toMatch(/isn't supported/i);
+	});
+
+	it("rejects linkToScope on a scheduled top-level create", () => {
+		const result = validateWorkflowForSave(scheduled, [
+			createRecordNode(
+				"act1",
+				"task",
+				[{ field: "title", value: "X" }],
+				true
+			),
+		]);
+		const error = result.errors.find((e) => e.nodeId === "act1");
+		expect(error?.type).toBe("no_trigger_record");
+	});
+
+	it("allows an unlinked create on a scheduled top-level", () => {
+		const result = validateWorkflowForSave(scheduled, [
+			createRecordNode("act1", "task", [{ field: "title", value: "X" }]),
+		]);
+		expect(result.errors.some((e) => e.nodeId === "act1")).toBe(false);
+	});
+});

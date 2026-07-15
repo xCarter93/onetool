@@ -65,6 +65,23 @@ function getSummary(config: ActionNodeConfig | undefined): {
 				isConfigured: action.title.kind === "var" || !!title,
 			};
 		}
+		case "create_record": {
+			const label = OBJECT_TYPE_LABELS[action.objectType];
+			const rows = action.fields.filter((row) => row.field);
+			const linked = action.linkToScope ? " · linked to record in scope" : "";
+			if (rows.length === 0 && !action.linkToScope) {
+				return {
+					title: `Create ${label}`,
+					description: "Choose fields to set...",
+					isConfigured: false,
+				};
+			}
+			return {
+				title: `Create ${label}`,
+				description: `${rows.map((r) => r.field).join(", ")}${linked}`.trim(),
+				isConfigured: true,
+			};
+		}
 		case "send_notification":
 			return {
 				title: "Send Notification",

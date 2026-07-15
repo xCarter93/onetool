@@ -10,6 +10,7 @@ import {
 	Search,
 	X,
 	ListTodo,
+	FilePlus,
 	Bell,
 	MessagesSquare,
 	Timer,
@@ -66,6 +67,13 @@ export const STEP_GROUPS: StepGroup[] = [
 				actionType: "create_task",
 				label: "Create Task",
 				icon: ListTodo,
+				color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
+			},
+			{
+				type: "action",
+				actionType: "create_record",
+				label: "Create Record",
+				icon: FilePlus,
 				color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
 			},
 			{

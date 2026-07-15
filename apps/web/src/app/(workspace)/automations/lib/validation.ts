@@ -21,8 +21,12 @@ import {
 	MAX_FETCH_LIMIT,
 	MAX_LOOP_ITERATIONS,
 	VALUELESS_OPERATORS,
+	RELATION_FIELD,
+	getCreatableFields,
 	getFieldDefinition,
+	getRequiredCreateFields,
 	getWritableFields,
+	isCreatableObjectType,
 	operatorsForField,
 	validateSchedule,
 	type ActionNodeConfig,
@@ -337,6 +341,98 @@ function validateActionNode(
 					});
 					return;
 				}
+			}
+			break;
+		}
+		case "create_record": {
+			const objectType = action.objectType;
+			if (!isCreatableObjectType(objectType)) {
+				errors.push({
+					type: "missing_required_config",
+					message: `Creating ${objectType} records from automations isn't supported yet`,
+					nodeId,
+				});
+				return;
+			}
+
+			// linkToScope needs a record in scope; on a scheduled top-level step
+			// there is none.
+			if (action.linkToScope && !scopeObjectType) {
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message: `This automation runs on a schedule, so there is no record to link this new ${objectType} to. Turn off "Link to record", or move this inside a Loop.`,
+						nodeId,
+					});
+					return;
+				}
+			}
+
+			const creatable = getCreatableFields(objectType);
+			const requiredKeys = new Set(
+				getRequiredCreateFields(objectType).map((f) => f.key)
+			);
+			const linkFk =
+				action.linkToScope && scopeObjectType
+					? RELATION_FIELD[objectType]?.[scopeObjectType]
+					: undefined;
+			if (action.linkToScope && scopeObjectType && !linkFk) {
+				errors.push({
+					type: "missing_required_config",
+					message: `A new ${objectType} can't be linked to a ${scopeObjectType}`,
+					nodeId,
+				});
+				return;
+			}
+
+			const seen = new Set<string>();
+			for (const row of action.fields) {
+				if (row.field && seen.has(row.field)) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Field "${row.field}" appears more than once — remove one of the rows`,
+						nodeId,
+					});
+					return;
+				}
+				if (row.field) seen.add(row.field);
+
+				const field = creatable.find((f) => f.key === row.field);
+				if (!field) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Choose a field to set",
+						nodeId,
+					});
+					return;
+				}
+
+				const isEmpty =
+					row.value.kind === "static" &&
+					(row.value.value === null || row.value.value === "");
+				if (field.type !== "boolean" && isEmpty) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Set a value for ${field.label}`,
+						nodeId,
+					});
+					return;
+				}
+			}
+
+			// Required fields must be supplied as a row or via the scope link.
+			for (const key of requiredKeys) {
+				if (action.fields.some((r) => r.field === key)) continue;
+				if (linkFk === key) continue;
+				// An unresolved link (scope type unknown) may still fill it — defer.
+				if (action.linkToScope && !scopeObjectType) continue;
+				const def = creatable.find((f) => f.key === key);
+				errors.push({
+					type: "missing_required_config",
+					message: `${def?.label ?? key} is required to create a ${objectType}`,
+					nodeId,
+				});
+				return;
 			}
 			break;
 		}

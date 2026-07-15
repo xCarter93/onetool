@@ -36,8 +36,11 @@ import {
 } from "./lib/formula";
 import {
 	RELATED_OBJECTS,
+	RELATION_FIELD,
 	getFieldDefinition,
+	getRequiredCreateFields,
 	getStatusOptions,
+	isCreatableObjectType,
 	operatorsForField,
 } from "./lib/fieldRegistry";
 import { computeNextRunAt, validateSchedule } from "./lib/schedule";
@@ -309,6 +312,11 @@ function validateScheduledRecordScope(
 					`Node ${node.id}: there is no record to link this task to — ${NO_RECORD}. Put it inside a loop, or turn off "Link to record".`
 				);
 			}
+			if (config.action.type === "create_record" && config.action.linkToScope) {
+				throw new Error(
+					`Node ${node.id}: there is no record to link this new ${config.action.objectType} to — ${NO_RECORD}. Put it inside a loop, or turn off "Link to record".`
+				);
+			}
 		}
 	}
 }
@@ -448,6 +456,77 @@ function validateUpdateFieldAction(
 	}
 }
 
+function validateCreateRecordAction(
+	nodeId: string,
+	action: Extract<
+		Extract<WorkflowNodeConfig, { kind: "action" }>["action"],
+		{ type: "create_record" }
+	>,
+	scopeObjectType: AutomationObjectType | undefined
+): void {
+	const objectType = action.objectType;
+	if (!isCreatableObjectType(objectType)) {
+		throw new Error(
+			`Node ${nodeId}: creating ${objectType} records from automations isn't supported yet`
+		);
+	}
+
+	// The FK linkToScope would fill — only resolvable when the scope type is known.
+	let linkedFk: string | undefined;
+	if (action.linkToScope && scopeObjectType) {
+		linkedFk = RELATION_FIELD[objectType]?.[scopeObjectType];
+		if (!linkedFk) {
+			throw new Error(
+				`Node ${nodeId}: a new ${objectType} can't be linked to a ${scopeObjectType}`
+			);
+		}
+	}
+
+	const seen = new Set<string>();
+	for (const { field, value } of action.fields) {
+		if (seen.has(field)) {
+			throw new Error(
+				`Node ${nodeId}: field "${field}" appears more than once`
+			);
+		}
+		seen.add(field);
+		if (field === linkedFk) {
+			throw new Error(
+				`Node ${nodeId}: field "${field}" is already set by linking to the record in scope`
+			);
+		}
+		const def = getFieldDefinition(objectType, field);
+		if (!def || !def.creatable) {
+			throw new Error(
+				`Node ${nodeId}: "${field}" can't be set when creating a ${objectType}`
+			);
+		}
+		if (
+			def.type === "select" &&
+			value.kind === "static" &&
+			typeof value.value === "string" &&
+			def.options &&
+			!def.options.some((o) => o.value === value.value)
+		) {
+			throw new Error(
+				`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${field}"`
+			);
+		}
+	}
+
+	// Required fields must be supplied — either as a row or via the scope link.
+	// When linkToScope is set but the scope type is unknown (can't tell what it
+	// fills), defer to runtime rather than false-reject a valid automation.
+	for (const def of getRequiredCreateFields(objectType)) {
+		if (action.fields.some((f) => f.field === def.key)) continue;
+		if (linkedFk === def.key) continue;
+		if (action.linkToScope && !scopeObjectType) continue;
+		throw new Error(
+			`Node ${nodeId}: ${def.label} is required to create a ${objectType}`
+		);
+	}
+}
+
 /**
  * Full structural validation of a workflow definition. Used on every write;
  * activation additionally requires at least one node (see validateForActivation).
@@ -566,6 +645,12 @@ function validateWorkflowDefinition(
 						? bodyScopeType.get(node.id)
 						: objectType;
 					validateUpdateFieldAction(node.id, config.action, scopeType);
+				}
+				if (config.action.type === "create_record") {
+					const scopeType = bodyScopeType.has(node.id)
+						? bodyScopeType.get(node.id)
+						: objectType;
+					validateCreateRecordAction(node.id, config.action, scopeType);
 				}
 				if (config.action.type === "create_task") {
 					const title = config.action.title;

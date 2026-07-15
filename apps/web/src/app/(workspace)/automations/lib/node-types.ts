@@ -18,7 +18,10 @@ import type {
 	ConditionGroup,
 } from "@onetool/backend/convex/lib/workflowTypes";
 import { AUTOMATION_OBJECT_TYPES } from "@onetool/backend/convex/lib/workflowTypes";
-import { RELATED_OBJECTS } from "@onetool/backend/convex/lib/fieldRegistry";
+import {
+	RELATED_OBJECTS,
+	CREATABLE_OBJECT_TYPES,
+} from "@onetool/backend/convex/lib/fieldRegistry";
 
 // ---------------------------------------------------------------------------
 // 1. Shared model re-exports
@@ -68,9 +71,13 @@ export {
 	OPERATORS_BY_TYPE,
 	RELATED_OBJECTS,
 	RELATION_FIELD,
+	CREATABLE_OBJECT_TYPES,
 	getFieldDefinition,
 	getWritableFields,
 	getFilterableFields,
+	getCreatableFields,
+	getRequiredCreateFields,
+	isCreatableObjectType,
 	operatorsForField,
 	getStatusOptions,
 } from "@onetool/backend/convex/lib/fieldRegistry";
@@ -104,6 +111,15 @@ export const OBJECT_TYPE_OPTIONS: {
 	value: AutomationObjectType;
 	label: string;
 }[] = AUTOMATION_OBJECT_TYPES.map((value) => ({
+	value,
+	label: OBJECT_TYPE_LABELS[value],
+}));
+
+/** Object types a create_record action may insert (client/project/task today). */
+export const CREATABLE_OBJECT_TYPE_OPTIONS: {
+	value: AutomationObjectType;
+	label: string;
+}[] = CREATABLE_OBJECT_TYPES.map((value) => ({
 	value,
 	label: OBJECT_TYPE_LABELS[value],
 }));
@@ -143,6 +159,10 @@ export type UpdateFieldsAction = Extract<
 	{ type: "update_fields" }
 >;
 export type CreateTaskAction = Extract<AutomationAction, { type: "create_task" }>;
+export type CreateRecordAction = Extract<
+	AutomationAction,
+	{ type: "create_record" }
+>;
 export type SendNotificationAction = Extract<
 	AutomationAction,
 	{ type: "send_notification" }

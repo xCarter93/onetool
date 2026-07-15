@@ -24,8 +24,11 @@ import {
 import { calendarDayEpoch, toEpochMs } from "./lib/formula";
 import {
 	RELATION_FIELD,
+	getCreatableFields,
 	getFieldDefinition,
+	getRequiredCreateFields,
 	getStatusOptions,
+	isCreatableObjectType,
 	type FieldDefinition,
 } from "./lib/fieldRegistry";
 import {
@@ -2698,6 +2701,8 @@ async function executeActionNodeV2(
 			);
 		case "create_task":
 			return executeCreateTaskAction(ctx, action, scopeRecord, env);
+		case "create_record":
+			return executeCreateRecordAction(ctx, action, scopeRecord, env);
 		case "send_notification":
 			return executeSendNotificationAction(ctx, action, scopeRecord, env);
 		case "send_team_message":
@@ -3176,6 +3181,348 @@ async function resolveTaskLink(
 	}
 
 	return { projectId, clientId };
+}
+
+// ---------------------------------------------------------------------------
+// create_record: generic record creation (client / project / task)
+// ---------------------------------------------------------------------------
+
+/**
+ * Free-plan ceilings, mirrored from apps/web/src/lib/plan-limits.ts (the values
+ * live only in the web app — the backend never enforced them). A create_record
+ * on a free org honors the same caps the UI shows so an automation can't be a
+ * back door around them.
+ */
+const FREE_MAX_CLIENTS = 10;
+const FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT = 3;
+
+/**
+ * Resolve a supplied FK value on a create_record field against the org. The
+ * executor runs unscoped, so an arbitrary id string must be checked before it
+ * becomes a stored relationship (cross-tenant or garbage ids are rejected).
+ */
+async function resolveCreateFk(
+	ctx: MutationCtx,
+	refType: NonNullable<FieldDefinition["refType"]>,
+	rawId: unknown,
+	orgId: Id<"organizations">
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+	const raw = String(rawId);
+	const table =
+		refType === "user" ? "users" : refType === "client" ? "clients" : "projects";
+	const normalized = ctx.db.normalizeId(table, raw);
+	if (!normalized) {
+		return { ok: false, error: `Referenced ${refType} is not a valid id` };
+	}
+	if (refType === "user") {
+		const membership = await getMembership(
+			ctx,
+			normalized as Id<"users">,
+			orgId
+		);
+		if (!membership) {
+			return {
+				ok: false,
+				error: "Assignee is not a member of this organization",
+			};
+		}
+		return { ok: true, id: normalized };
+	}
+	const doc = await ctx.db.get(normalized as Id<"clients"> | Id<"projects">);
+	if (!doc || doc.orgId !== orgId) {
+		return { ok: false, error: `Referenced ${refType} was not found` };
+	}
+	return { ok: true, id: normalized };
+}
+
+/**
+ * Schema-required fields that have a sensible code default (so they are NOT
+ * requiredOnCreate). Applied only when the user didn't supply the field.
+ */
+function applyCreateDefaults(
+	objectType: AutomationObjectType,
+	payload: Record<string, unknown>,
+	supplied: Set<string>,
+	tz: string
+): void {
+	const setDefault = (key: string, value: unknown) => {
+		if (!supplied.has(key)) {
+			payload[key] = value;
+			supplied.add(key);
+		}
+	};
+	switch (objectType) {
+		case "client":
+			setDefault("status", "lead");
+			break;
+		case "project":
+			setDefault("status", "planned");
+			setDefault("projectType", "one-off");
+			break;
+		case "task":
+			setDefault("status", "pending");
+			setDefault("type", "internal");
+			setDefault("date", calendarDayEpoch(Date.now(), tz));
+			break;
+	}
+}
+
+/**
+ * Free-plan cap check for a create_record. Returns an error string when the
+ * insert would exceed a ceiling, or null when it's allowed. Reads only.
+ */
+async function checkCreateRecordPlanCap(
+	ctx: MutationCtx,
+	objectType: AutomationObjectType,
+	payload: Record<string, unknown>,
+	orgId: Id<"organizations">
+): Promise<string | null> {
+	if (objectType === "client") {
+		const clients = await ctx.db
+			.query("clients")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+		const active = clients.filter((c) => c.status !== "archived").length;
+		if (active >= FREE_MAX_CLIENTS) {
+			return `Your plan is limited to ${FREE_MAX_CLIENTS} clients — upgrade to add more.`;
+		}
+	}
+	if (objectType === "project") {
+		const clientId = payload.clientId as Id<"clients"> | undefined;
+		if (clientId) {
+			const projects = await ctx.db
+				.query("projects")
+				.withIndex("by_client", (q) => q.eq("clientId", clientId))
+				.collect();
+			const active = projects.filter(
+				(p) => p.status === "planned" || p.status === "in-progress"
+			).length;
+			if (active >= FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT) {
+				return `Your plan allows ${FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT} active projects per client — upgrade to add more.`;
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * Validate + assemble the insert payload for a create_record action. Shared by
+ * the real executor and the dry mirror, so a test run surfaces the exact same
+ * failures (missing required field, bad FK, unsupported field) the run would.
+ * Reads only — never writes. `orgId` is included; `portalAccessId` is added at
+ * insert time (it's generated, not a user field).
+ */
+async function buildCreateRecordPayload(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_record" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: { orgId: Id<"organizations">; scope: VariableScope }
+): Promise<
+	| { ok: true; payload: Record<string, unknown> }
+	| { ok: false; error: string }
+> {
+	const objectType = action.objectType;
+	const tz = env.scope.workflow?.tz ?? "UTC";
+	const payload: Record<string, unknown> = { orgId: env.orgId };
+	const supplied = new Set<string>();
+
+	// linkToScope: set the new record's FK to the record in scope via the
+	// registry relation map (e.g. a project created off a client gets clientId).
+	let linkedFk: string | undefined;
+	if (action.linkToScope) {
+		if (!scopeRecord) {
+			return {
+				ok: false,
+				error: `There is no record in scope to link this new ${objectType} to`,
+			};
+		}
+		linkedFk = RELATION_FIELD[objectType]?.[scopeRecord.type];
+		if (!linkedFk) {
+			return {
+				ok: false,
+				error: `A new ${objectType} can't be linked to a ${scopeRecord.type}`,
+			};
+		}
+		payload[linkedFk] = scopeRecord.id;
+		supplied.add(linkedFk);
+	}
+
+	const seen = new Set<string>();
+	for (const { field, value } of action.fields) {
+		if (seen.has(field)) {
+			return { ok: false, error: `Field "${field}" appears more than once` };
+		}
+		seen.add(field);
+		if (field === linkedFk) {
+			return {
+				ok: false,
+				error: `Field "${field}" is already set by linking to the record in scope`,
+			};
+		}
+		const def = getFieldDefinition(objectType, field);
+		if (!def || !def.creatable) {
+			return {
+				ok: false,
+				error: `Field "${field}" can't be set when creating a ${objectType}`,
+			};
+		}
+		const raw = resolveValueRef(value, env.scope);
+		const coerced = coerceFieldValue(def, raw, tz);
+		if (!coerced.ok) {
+			return { ok: false, error: coerced.error };
+		}
+		// null means "resolved to nothing" — leave it out so requiredOnCreate and
+		// defaults still apply (a supplied-but-empty row shouldn't defeat them).
+		if (coerced.value === null) continue;
+		if (def.refType) {
+			const fk = await resolveCreateFk(ctx, def.refType, coerced.value, env.orgId);
+			if (!fk.ok) return { ok: false, error: fk.error };
+			payload[field] = fk.id;
+		} else {
+			payload[field] = coerced.value;
+		}
+		supplied.add(field);
+	}
+
+	applyCreateDefaults(objectType, payload, supplied, tz);
+
+	for (const def of getRequiredCreateFields(objectType)) {
+		if (!supplied.has(def.key)) {
+			return {
+				ok: false,
+				error: `${def.label} is required to create a ${objectType}`,
+			};
+		}
+	}
+
+	// Domain rule mirrored from tasks.ts: an external task must name a client.
+	if (
+		objectType === "task" &&
+		payload.type === "external" &&
+		!payload.clientId
+	) {
+		return { ok: false, error: "External tasks require a client" };
+	}
+
+	return { ok: true, payload };
+}
+
+async function executeCreateRecordAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_record" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const objectType = action.objectType;
+	if (!isCreatableObjectType(objectType)) {
+		return {
+			success: false,
+			error: `Creating ${objectType} records from automations isn't supported`,
+		};
+	}
+
+	const built = await buildCreateRecordPayload(ctx, action, scopeRecord, env);
+	if (!built.ok) return { success: false, error: built.error };
+	const { payload } = built;
+
+	const org = await ctx.db.get(env.orgId);
+	if (!orgHasPremiumPlan(org)) {
+		const capError = await checkCreateRecordPlanCap(
+			ctx,
+			objectType,
+			payload,
+			env.orgId
+		);
+		if (capError) return { success: false, error: capError };
+	}
+
+	try {
+		let newId: Id<"clients"> | Id<"projects"> | Id<"tasks">;
+		switch (objectType) {
+			case "client":
+				// Portal links need an access id; the create mutation takes a
+				// caller-supplied one for retry-determinism, harmless to mint here.
+				payload.portalAccessId = crypto.randomUUID();
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				newId = await ctx.db.insert("clients", payload as any);
+				break;
+			case "project":
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				newId = await ctx.db.insert("projects", payload as any);
+				break;
+			case "task":
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				newId = await ctx.db.insert("tasks", payload as any);
+				break;
+			default:
+				return {
+					success: false,
+					error: `Creating ${objectType} records from automations isn't supported`,
+				};
+		}
+
+		const doc = await ctx.db.get(newId);
+		if (doc) {
+			// Attribute the activity to the automation's creator — a scheduled (cron)
+			// run has no ambient authenticated user, so createActivity's default
+			// getCurrentUserOrThrow would throw and fail the create. If that creator
+			// has since left the org, fall back to the org owner.
+			const creatorId = env.automation.createdBy;
+			const creatorMembership = await getMembership(ctx, creatorId, env.orgId);
+			const actor = {
+				userId: creatorMembership ? creatorId : (org?.ownerUserId ?? creatorId),
+				orgId: env.orgId,
+			};
+			switch (objectType) {
+				case "client":
+					await ActivityHelpers.clientCreated(ctx, doc as Doc<"clients">, actor);
+					await AggregateHelpers.addClient(ctx, doc as Doc<"clients">);
+					break;
+				case "project":
+					await ActivityHelpers.projectCreated(
+						ctx,
+						doc as Doc<"projects">,
+						actor
+					);
+					await AggregateHelpers.addProject(ctx, doc as Doc<"projects">);
+					break;
+				case "task":
+					// Tasks have no aggregate.
+					await ActivityHelpers.taskCreated(ctx, doc as Doc<"tasks">, actor);
+					break;
+			}
+
+			// Emit record_created with the execution chain in metadata so cascading
+			// automations keep recursion protection (mirrors executeCreateTaskAction).
+			await ctx.db.insert("domainEvents", {
+				orgId: env.orgId,
+				eventType: "entity.record_created",
+				eventSource: "automationExecutor.executeCreateRecordAction",
+				payload: {
+					entityType: objectType,
+					entityId: newId,
+					metadata: {
+						executionChain: env.executionChain,
+						recursionDepth: env.recursionDepth,
+						isCascade: true,
+					},
+				},
+				status: "pending",
+				correlationId: `cascade-${env.executionChain.join("-")}-${Date.now()}`,
+				createdAt: Date.now(),
+				attemptCount: 0,
+			});
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		}
+
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to create record",
+		};
+	}
 }
 
 /** List org member user ids, optionally restricted to admins. */
@@ -3766,6 +4113,47 @@ async function dryUpdateFieldsAction(
 }
 
 /**
+ * Dry mirror of executeCreateRecordAction: same validation and cap checks (all
+ * reads), no insert/emit. Previews the assembled field set.
+ */
+async function dryCreateRecordAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_record" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: DryEnv
+): Promise<DryNodeResult> {
+	const objectType = action.objectType;
+	if (!isCreatableObjectType(objectType)) {
+		return {
+			success: false,
+			error: `Creating ${objectType} records from automations isn't supported`,
+		};
+	}
+	const built = await buildCreateRecordPayload(ctx, action, scopeRecord, env);
+	if (!built.ok) return { success: false, error: built.error };
+
+	const org = await ctx.db.get(env.orgId);
+	if (!orgHasPremiumPlan(org)) {
+		const capError = await checkCreateRecordPlanCap(
+			ctx,
+			objectType,
+			built.payload,
+			env.orgId
+		);
+		if (capError) return { success: false, error: capError };
+	}
+
+	// Preview the field set without orgId (internal) — portalAccessId isn't set
+	// until insert.
+	const { orgId: _orgId, ...preview } = built.payload;
+	return {
+		success: true,
+		output: { summary: `Would create a ${objectType}` },
+		input: { objectType, fields: preview },
+	};
+}
+
+/**
  * Describe (without executing) what an action would do. Mirrors the real
  * executors' validation so a test surfaces the same failures/skips, but never
  * writes, emits events, or touches aggregates.
@@ -3818,6 +4206,8 @@ async function dryExecuteAction(
 				input: { title, assigneeUserId: action.assigneeUserId },
 			};
 		}
+		case "create_record":
+			return dryCreateRecordAction(ctx, action, scopeRecord, env);
 		case "send_notification": {
 			let count: number;
 			if (action.recipient === "org_admins") {
