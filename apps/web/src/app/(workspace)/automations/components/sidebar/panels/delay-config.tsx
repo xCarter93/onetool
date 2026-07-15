@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Timer, CalendarClock } from "lucide-react";
-import { NextStepTree } from "../next-step-tree";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -42,9 +41,6 @@ export function DelayConfig({
 	nodes,
 	onNodeChange,
 	onDeleteNode,
-	onNavigateToNode,
-	rfNodes,
-	rfEdges,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -109,18 +105,6 @@ export function DelayConfig({
 				</PanelSection>
 			</div>
 
-			{/* Next steps tree */}
-			{nodeId && rfNodes && rfEdges && onNavigateToNode && (
-				<div className="border-t border-border pt-4 mt-2">
-					<NextStepTree
-						currentNodeId={nodeId}
-						nodes={rfNodes}
-						edges={rfEdges}
-						onNavigateToNode={onNavigateToNode}
-					/>
-				</div>
-			)}
-
 			{onDeleteNode && (
 				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
 			)}
@@ -139,9 +123,6 @@ export function DelayUntilConfig({
 	formulas,
 	onNodeChange,
 	onDeleteNode,
-	onNavigateToNode,
-	rfNodes,
-	rfEdges,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -189,18 +170,6 @@ export function DelayUntilConfig({
 					</PanelField>
 				</PanelSection>
 			</div>
-
-			{/* Next steps tree */}
-			{nodeId && rfNodes && rfEdges && onNavigateToNode && (
-				<div className="border-t border-border pt-4 mt-2">
-					<NextStepTree
-						currentNodeId={nodeId}
-						nodes={rfNodes}
-						edges={rfEdges}
-						onNavigateToNode={onNavigateToNode}
-					/>
-				</div>
-			)}
 
 			{onDeleteNode && (
 				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />

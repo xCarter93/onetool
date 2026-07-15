@@ -6,7 +6,6 @@ import { Plus, X } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ACTION_META } from "../../../lib/action-meta";
 import { normalizeNodeConfig } from "../../../lib/legacy-load";
-import { NextStepTree } from "../next-step-tree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -885,9 +884,6 @@ export function ActionConfigPanel({
 	formulas,
 	onNodeChange,
 	onDeleteNode,
-	onNavigateToNode,
-	rfNodes,
-	rfEdges,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -989,18 +985,6 @@ export function ActionConfigPanel({
 					/>
 				)}
 			</div>
-
-			{/* Next steps tree */}
-			{nodeId && rfNodes && rfEdges && onNavigateToNode && (
-				<div className="border-t border-border pt-4 mt-2">
-					<NextStepTree
-						currentNodeId={nodeId}
-						nodes={rfNodes}
-						edges={rfEdges}
-						onNavigateToNode={onNavigateToNode}
-					/>
-				</div>
-			)}
 
 			{onDeleteNode && (
 				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />

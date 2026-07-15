@@ -64,6 +64,11 @@
 
 :root {
 	--radius: 0.5rem;
+	/* Vertical room the bottom-anchored assistant notch (.assistant-notch,
+	   min-height 40px) needs above it. Consumed by the automations editor's
+	   floating right panel bottom inset so it clears the notch tab; keep >= the
+	   notch height plus a little breathing room. */
+	--assistant-notch-clearance: 3.5rem;
 	--bg: oklch(0.97 0 0);
 	--fg: oklch(0.141 0.005 285.823);
 	--background: var(--bg);

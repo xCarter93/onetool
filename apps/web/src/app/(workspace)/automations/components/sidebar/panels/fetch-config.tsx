@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Database } from "lucide-react";
-import { NextStepTree } from "../next-step-tree";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -36,9 +35,6 @@ export function FetchConfigPanel({
 	formulas,
 	onNodeChange,
 	onDeleteNode,
-	onNavigateToNode,
-	rfNodes,
-	rfEdges,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -129,18 +125,6 @@ export function FetchConfigPanel({
 					/>
 				</PanelSection>
 			</div>
-
-			{/* Next steps tree */}
-			{nodeId && rfNodes && rfEdges && onNavigateToNode && (
-				<div className="border-t border-border pt-4 mt-2">
-					<NextStepTree
-						currentNodeId={nodeId}
-						nodes={rfNodes}
-						edges={rfEdges}
-						onNavigateToNode={onNavigateToNode}
-					/>
-				</div>
-			)}
 
 			{onDeleteNode && (
 				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />

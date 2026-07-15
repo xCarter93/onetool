@@ -9,6 +9,7 @@ import {
   useStore,
   useReactFlow,
   type PanelProps,
+  type FitViewOptions,
 } from "@xyflow/react";
 
 import { Slider } from "@/components/ui/slider";
@@ -18,9 +19,12 @@ import { cn } from "@/lib/utils";
 export function ZoomSlider({
   className,
   orientation = "horizontal",
+  fitViewOptions,
   ...props
 }: Omit<PanelProps, "children"> & {
   orientation?: "horizontal" | "vertical";
+  /** Options for the "fit view" button so it respects overlay padding/zoom caps. */
+  fitViewOptions?: FitViewOptions;
 }) {
   const { zoom } = useViewport();
   const { zoomTo, zoomIn, zoomOut, fitView } = useReactFlow();
@@ -86,7 +90,7 @@ export function ZoomSlider({
       <Button
         variant="ghost"
         size="icon-sm"
-        onClick={() => fitView({ duration: 300 })}
+        onClick={() => fitView(fitViewOptions ?? { duration: 300 })}
       >
         <Maximize className="h-4 w-4" />
       </Button>
