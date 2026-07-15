@@ -158,6 +158,30 @@ const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
 		group: "Globals",
 		fieldType: "text",
 	},
+	{
+		path: "run.automationName",
+		label: "Automation name",
+		group: "Globals",
+		fieldType: "text",
+	},
+	{
+		path: "run.automationId",
+		label: "Automation ID",
+		group: "Globals",
+		fieldType: "text",
+	},
+	{
+		path: "run.executionId",
+		label: "Run ID (empty in test preview)",
+		group: "Globals",
+		fieldType: "text",
+	},
+	{
+		path: "run.triggerType",
+		label: "Trigger type",
+		group: "Globals",
+		fieldType: "text",
+	},
 ];
 
 /** " ID" suffix for id-type fields (e.g. "Client" -> "Client ID") disambiguates FK references. */
@@ -328,7 +352,19 @@ export function getAvailableVariables(
 		}
 		options.push({
 			path: `loop.${node.id}.index`,
-			label: "Loop item → Index",
+			label: "Loop item → Index (0-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.position`,
+			label: "Loop item → Position (1-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.count`,
+			label: "Loop → Total item count",
 			group: "Loop item",
 			fieldType: "number",
 		});
@@ -429,7 +465,19 @@ export function getAllVariableOptions(
 		}
 		options.push({
 			path: `loop.${node.id}.index`,
-			label: "Loop item → Index",
+			label: "Loop item → Index (0-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.position`,
+			label: "Loop item → Position (1-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.count`,
+			label: "Loop → Total item count",
 			group: "Loop item",
 			fieldType: "number",
 		});

@@ -49,11 +49,13 @@ export interface FieldDefinition {
 	 */
 	requiredOnCreate?: boolean;
 	/**
-	 * For a creatable `id` field, the entity it points at. Used to org-validate
-	 * a supplied FK before insert (the executor runs unscoped, so an arbitrary
-	 * id string must be checked against the org). "user" resolves via membership.
+	 * For an `id` field, the entity it points at. On creatable FKs it drives
+	 * org-validation before insert (the executor runs unscoped, so an arbitrary
+	 * id string must be checked against the org; "user" resolves via membership).
+	 * On read-only FKs it lets the builder render a record picker instead of a
+	 * raw-id text box in condition/filter rules.
 	 */
-	refType?: "client" | "project" | "user";
+	refType?: "client" | "project" | "user" | "quote";
 }
 
 const opt = (value: string, label: string) => ({ value, label });
@@ -268,6 +270,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "clientId",
 			label: "Client",
 			type: "id",
+			refType: "client",
 			writable: false,
 			writeExclusionReason: "Relationship set when the quote is created",
 			filterable: true,
@@ -276,6 +279,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "projectId",
 			label: "Project",
 			type: "id",
+			refType: "project",
 			writable: false,
 			writeExclusionReason: "Relationship set when the quote is created",
 			filterable: true,
@@ -367,6 +371,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "clientId",
 			label: "Client",
 			type: "id",
+			refType: "client",
 			writable: false,
 			writeExclusionReason: "Relationship set when the invoice is created",
 			filterable: true,
@@ -375,6 +380,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "projectId",
 			label: "Project",
 			type: "id",
+			refType: "project",
 			writable: false,
 			writeExclusionReason: "Relationship set when the invoice is created",
 			filterable: true,
@@ -383,6 +389,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "quoteId",
 			label: "Quote",
 			type: "id",
+			refType: "quote",
 			writable: false,
 			writeExclusionReason: "Set when the invoice is created from a quote",
 			filterable: true,

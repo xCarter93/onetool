@@ -70,6 +70,7 @@ import type * as lib_organization from "../lib/organization.js";
 import type * as lib_payments from "../lib/payments.js";
 import type * as lib_permissionKeys from "../lib/permissionKeys.js";
 import type * as lib_permissions from "../lib/permissions.js";
+import type * as lib_planLimits from "../lib/planLimits.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
 import type * as lib_reportFields from "../lib/reportFields.js";
@@ -200,6 +201,7 @@ declare const fullApi: ApiFromModules<{
   "lib/payments": typeof lib_payments;
   "lib/permissionKeys": typeof lib_permissionKeys;
   "lib/permissions": typeof lib_permissions;
+  "lib/planLimits": typeof lib_planLimits;
   "lib/queries": typeof lib_queries;
   "lib/quoteTotals": typeof lib_quoteTotals;
   "lib/reportFields": typeof lib_reportFields;

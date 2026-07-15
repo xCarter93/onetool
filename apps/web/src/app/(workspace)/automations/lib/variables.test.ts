@@ -153,6 +153,9 @@ describe("getAvailableVariables", () => {
 		expect(item).toBeDefined();
 		expect(item?.label).toBe("Loop item → Title");
 		expect(insideBody.some((o) => o.path === "loop.loop1.index")).toBe(true);
+		// B4-3: 1-based position + total count alongside the 0-based index.
+		expect(insideBody.some((o) => o.path === "loop.loop1.position")).toBe(true);
+		expect(insideBody.some((o) => o.path === "loop.loop1.count")).toBe(true);
 
 		const loopItemId = insideBody.find((o) => o.path === "loop.loop1.item._id");
 		expect(loopItemId).toEqual({
@@ -174,6 +177,21 @@ describe("getAvailableVariables", () => {
 		const options = getAvailableVariables([target], statusChangedTrigger, "a1");
 		const userName = options.find((o) => o.path === "user.name");
 		expect(userName?.label).toContain("(empty on scheduled runs)");
+	});
+
+	it("offers run.* metadata globals (B4-1)", () => {
+		const target = actionNode("a1");
+		const options = getAvailableVariables([target], statusChangedTrigger, "a1");
+		for (const path of [
+			"run.automationName",
+			"run.automationId",
+			"run.executionId",
+			"run.triggerType",
+		]) {
+			const opt = options.find((o) => o.path === path);
+			expect(opt, path).toBeDefined();
+			expect(opt?.group).toBe("Globals");
+		}
 	});
 
 	it("offers a formula referencing only trigger fields anywhere, but not one referencing a loop item outside the loop", () => {

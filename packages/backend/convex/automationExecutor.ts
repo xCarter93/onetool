@@ -23,6 +23,10 @@ import {
 } from "./lib/conditionEval";
 import { calendarDayEpoch, toEpochMs } from "./lib/formula";
 import {
+	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
+	FREE_MAX_CLIENTS,
+} from "./lib/planLimits";
+import {
 	RELATION_FIELD,
 	getCreatableFields,
 	getFieldDefinition,
@@ -136,18 +140,21 @@ function deriveTriggerEventValues(trigger: AutomationTrigger): {
 
 /**
  * Built-in globals available to every run: workflow.now (execution start),
- * org.id/name, and the triggering user. The user is parsed from triggeredBy
- * for manual/test runs and is empty for scheduled/event runs (no actor).
+ * org.id/name, the triggering user, and run.* metadata (this automation's
+ * identity + how it fired). The user is parsed from triggeredBy for manual/test
+ * runs and is empty for scheduled/event runs (no actor).
  */
 async function buildGlobalsScope(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	nowMs: number,
 	tz: string,
-	triggeredBy: string
-): Promise<Pick<VariableScope, "workflow" | "org" | "user">> {
-	const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
+	triggeredBy: string,
+	run: NonNullable<VariableScope["run"]>
+): Promise<Pick<VariableScope, "workflow" | "org" | "user" | "run">> {
+	const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
 		workflow: { now: nowMs, tz },
+		run,
 	};
 	const org = await ctx.db.get(orgId);
 	if (org) globals.org = { id: orgId, name: org.name };
@@ -160,6 +167,20 @@ async function buildGlobalsScope(
 		}
 	}
 	return globals;
+}
+
+/** run.* metadata for a live execution — automation identity + how it fired. */
+function runMetadata(
+	automation: AutomationDoc,
+	executionId: Id<"workflowExecutions">,
+	trigger: AutomationTrigger
+): NonNullable<VariableScope["run"]> {
+	return {
+		automationName: automation.name,
+		automationId: automation._id,
+		executionId,
+		triggerType: "type" in trigger ? trigger.type : "status_changed",
+	};
 }
 
 function isValidStatus(objectType: ObjectType, status: string): boolean {
@@ -1074,7 +1095,8 @@ export const executeAutomation = systemMutation({
 			automation.orgId,
 			execution.triggeredAt,
 			automationFormulaTz(definition.trigger),
-			execution.triggeredBy
+			execution.triggeredBy,
+			runMetadata(automation, args.executionId, definition.trigger)
 		);
 
 		const env: WalkEnv = {
@@ -1269,7 +1291,8 @@ export const resumeExecution = systemMutation({
 			automation.orgId,
 			execution.triggeredAt,
 			automationFormulaTz(definition.trigger),
-			execution.triggeredBy
+			execution.triggeredBy,
+			runMetadata(automation, args.executionId, definition.trigger)
 		);
 
 		const env: WalkEnv = {
@@ -1805,7 +1828,9 @@ async function runLoopNode(
 			const { item, index } = queue[qi];
 			const itemId = String(item._id);
 			const label = sampleRecordLabel(source.objectType, item);
-			env.scope.loops[node.id] = { item, index };
+			// summary.total is the authoritative loop size (set on the first chunk,
+			// restored on resume) so loop.<id>.count is stable across chunk boundaries.
+			env.scope.loops[node.id] = { item, index, count: summary.total };
 			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -3198,15 +3223,6 @@ async function resolveTaskLink(
 // ---------------------------------------------------------------------------
 
 /**
- * Free-plan ceilings, mirrored from apps/web/src/lib/plan-limits.ts (the values
- * live only in the web app — the backend never enforced them). A create_record
- * on a free org honors the same caps the UI shows so an automation can't be a
- * back door around them.
- */
-const FREE_MAX_CLIENTS = 10;
-const FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT = 3;
-
-/**
  * Resolve a supplied FK value on a create_record field against the org. The
  * executor runs unscoped, so an arbitrary id string must be checked before it
  * becomes a stored relationship (cross-tenant or garbage ids are rejected).
@@ -3218,8 +3234,12 @@ async function resolveCreateFk(
 	orgId: Id<"organizations">
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
 	const raw = String(rawId);
-	const table =
-		refType === "user" ? "users" : refType === "client" ? "clients" : "projects";
+	const table = {
+		user: "users",
+		client: "clients",
+		project: "projects",
+		quote: "quotes",
+	}[refType] as "users" | "clients" | "projects" | "quotes";
 	const normalized = ctx.db.normalizeId(table, raw);
 	if (!normalized) {
 		return { ok: false, error: `Referenced ${refType} is not a valid id` };
@@ -3238,7 +3258,9 @@ async function resolveCreateFk(
 		}
 		return { ok: true, id: normalized };
 	}
-	const doc = await ctx.db.get(normalized as Id<"clients"> | Id<"projects">);
+	const doc = await ctx.db.get(
+		normalized as Id<"clients"> | Id<"projects"> | Id<"quotes">
+	);
 	if (!doc || doc.orgId !== orgId) {
 		return { ok: false, error: `Referenced ${refType} was not found` };
 	}
@@ -4435,7 +4457,9 @@ async function dryRunLoopNode(
 			const item = source.records[index];
 			const itemId = String(item._id);
 			const label = sampleRecordLabel(source.objectType, item);
-			env.scope.loops[node.id] = { item, index };
+			// `total` (full match), not `sampled`: loop.<id>.count is a data value —
+			// the count production would iterate, matching the real loop.index shown.
+			env.scope.loops[node.id] = { item, index, count: total };
 			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -4677,7 +4701,7 @@ async function buildDryPlan(
 	triggerObject: Record<string, unknown>,
 	eventOldValue: string | undefined,
 	eventNewValue: string | undefined,
-	globals: Pick<VariableScope, "workflow" | "org" | "user">
+	globals: Pick<VariableScope, "workflow" | "org" | "user" | "run">
 ): Promise<{
 	plan: ExecutedNode[];
 	/** The walk stopped on a failure, rather than running past skipped items. */
@@ -4798,10 +4822,17 @@ export const startTestRun = userMutation({
 		const now = Date.now();
 		// The tester is always the actor for a dry run.
 		const testerOrg = await ctx.db.get(ctx.orgId);
-		const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
+		const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
 			workflow: { now, tz: automationFormulaTz(trigger) },
 			org: testerOrg ? { id: ctx.orgId, name: testerOrg.name } : undefined,
 			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
+			// executionId is omitted — the workflowExecutions row isn't inserted until
+			// after the dry plan is built, so a preview has no final id yet.
+			run: {
+				automationName: automation.name,
+				automationId: automation._id,
+				triggerType: "type" in trigger ? trigger.type : "status_changed",
+			},
 		};
 
 		const { plan, aborted, loopSummaries } = await buildDryPlan(

@@ -6,6 +6,7 @@ import type {
 	FetchNodeConfig,
 	LoopNodeConfig,
 	TriggerConfig,
+	ValueRef,
 	WorkflowNode,
 } from "./node-types";
 
@@ -845,5 +846,78 @@ describe("validateWorkflowForSave — create_record (Phase B1)", () => {
 			createRecordNode("act1", "task", [{ field: "title", value: "X" }]),
 		]);
 		expect(result.errors.some((e) => e.nodeId === "act1")).toBe(false);
+	});
+});
+
+describe("validateWorkflowForSave — typed variable fallback (B3)", () => {
+	const clientTrigger: TriggerConfig = {
+		type: "record_created",
+		objectType: "client",
+	};
+
+	function updateNode(
+		id: string,
+		field: string,
+		value: ValueRef
+	): WorkflowNode {
+		return {
+			id,
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "update_fields",
+					target: "self",
+					fields: [{ field, value }],
+				},
+			},
+		};
+	}
+
+	it("rejects a string fallback on a boolean field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "isActive", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: "yes",
+			}),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /true or false/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("accepts a boolean fallback on a boolean field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "isActive", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: false,
+			}),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
+	});
+
+	it("accepts a var with no fallback on a boolean field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "isActive", {
+				kind: "var",
+				path: "node.n1.result",
+			}),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
+	});
+
+	it("accepts a string fallback on a text field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateNode("act1", "notes", {
+				kind: "var",
+				path: "node.n1.result",
+				fallback: "n/a",
+			}),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
 	});
 });

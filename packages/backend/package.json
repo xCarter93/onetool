@@ -37,6 +37,10 @@
       "types": "./convex/lib/fieldRegistry.ts",
       "default": "./convex/lib/fieldRegistry.ts"
     },
+    "./convex/lib/planLimits": {
+      "types": "./convex/lib/planLimits.ts",
+      "default": "./convex/lib/planLimits.ts"
+    },
     "./convex/lib/schedule": {
       "types": "./convex/lib/schedule.ts",
       "default": "./convex/lib/schedule.ts"

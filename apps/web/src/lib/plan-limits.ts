@@ -4,6 +4,11 @@
  * Defines the limits and features available for different subscription tiers
  */
 
+import {
+	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
+	FREE_MAX_CLIENTS,
+} from "@onetool/backend/convex/lib/planLimits";
+
 export type PlanType = "free" | "premium";
 
 export interface PlanLimits {
@@ -21,8 +26,8 @@ export interface PlanLimits {
  * Free plan limits - for users without premium_feature_access
  */
 export const FREE_PLAN_LIMITS: PlanLimits = {
-	clients: 10,
-	activeProjectsPerClient: 3,
+	clients: FREE_MAX_CLIENTS,
+	activeProjectsPerClient: FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
 	esignaturesPerMonth: 5,
 	canCreateCustomSkus: false,
 	canSaveOrganizationDocuments: false,

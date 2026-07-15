@@ -40,7 +40,7 @@ describe("resolveValueRef", () => {
 			event: { oldValue: "lead", newValue: "active" },
 		},
 		loops: {
-			loop1: { item: { title: "Task A", done: false }, index: 3 },
+			loop1: { item: { title: "Task A", done: false }, index: 3, count: 12 },
 		},
 		nodes: {
 			fetch1: { count: 7 },
@@ -49,6 +49,12 @@ describe("resolveValueRef", () => {
 		workflow: { now: 1_700_000_000_000 },
 		org: { id: "org123", name: "Acme Co" },
 		user: { id: "user123", name: "Ada", email: "ada@acme.test" },
+		run: {
+			automationName: "Nightly cleanup",
+			automationId: "auto123",
+			executionId: "exec123",
+			triggerType: "scheduled",
+		},
 	};
 
 	it("returns static values as-is", () => {
@@ -92,6 +98,31 @@ describe("resolveValueRef", () => {
 		expect(
 			resolveValueRef({ kind: "var", path: "loop.loop1.index" }, scope)
 		).toBe(3);
+	});
+
+	it("resolves loop.<id>.position (1-based) and loop.<id>.count", () => {
+		// position is index + 1; count is the loop's total item size.
+		expect(
+			resolveValueRef({ kind: "var", path: "loop.loop1.position" }, scope)
+		).toBe(4);
+		expect(
+			resolveValueRef({ kind: "var", path: "loop.loop1.count" }, scope)
+		).toBe(12);
+	});
+
+	it("resolves run.* metadata globals", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "run.automationName" }, scope)
+		).toBe("Nightly cleanup");
+		expect(
+			resolveValueRef({ kind: "var", path: "run.automationId" }, scope)
+		).toBe("auto123");
+		expect(
+			resolveValueRef({ kind: "var", path: "run.executionId" }, scope)
+		).toBe("exec123");
+		expect(
+			resolveValueRef({ kind: "var", path: "run.triggerType" }, scope)
+		).toBe("scheduled");
 	});
 
 	it("resolves node.<id>.count", () => {
@@ -193,7 +224,9 @@ describe("resolveValueRef", () => {
 		).toBe("active");
 	});
 
-	it("does not apply the fallback to a resolved null", () => {
+	it("applies the fallback to a resolved null (B4-4)", () => {
+		// Optional Convex fields make null the common "missing" shape, so a null
+		// resolution takes the fallback just like undefined does.
 		const nullScope: VariableScope = {
 			trigger: { record: { status: null } },
 		};
@@ -202,7 +235,29 @@ describe("resolveValueRef", () => {
 				{ kind: "var", path: "trigger.record.status", fallback: "default" },
 				nullScope
 			)
+		).toBe("default");
+	});
+
+	it("returns null (not the value coerced) when null resolves without a fallback", () => {
+		const nullScope: VariableScope = {
+			trigger: { record: { status: null } },
+		};
+		expect(
+			resolveValueRef({ kind: "var", path: "trigger.record.status" }, nullScope)
 		).toBe(null);
+	});
+
+	it("never overrides a resolved empty string with the fallback (B4-4)", () => {
+		// An empty string is a real value (a cleared field), not "missing".
+		const emptyStringScope: VariableScope = {
+			trigger: { record: { status: "" } },
+		};
+		expect(
+			resolveValueRef(
+				{ kind: "var", path: "trigger.record.status", fallback: "default" },
+				emptyStringScope
+			)
+		).toBe("");
 	});
 });
 

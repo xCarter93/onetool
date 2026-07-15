@@ -38,9 +38,11 @@ import {
 	type DelayNodeConfig,
 	type DelayUntilNodeConfig,
 	type FetchNodeConfig,
+	type FieldType,
 	type LoopNodeConfig,
 	type FormulaResource,
 	type TriggerConfig,
+	type ValueRef,
 	type WorkflowNode,
 	triggerScopeObjectType,
 } from "./node-types";
@@ -66,6 +68,30 @@ export type ValidationResult = {
 		nodeId?: string;
 	}>;
 };
+
+/**
+ * A `var` value whose fallback's stored type can't satisfy the field it feeds
+ * (e.g. a boolean field with a "yes" fallback). Returns a message or null. The
+ * typed fallback control prevents new mismatches; this catches legacy configs.
+ */
+function varFallbackTypeError(
+	fieldType: FieldType,
+	value: ValueRef | undefined
+): string | null {
+	if (!value || value.kind !== "var" || value.fallback === undefined) return null;
+	const fb = value.fallback;
+	switch (fieldType) {
+		case "boolean":
+			return typeof fb === "boolean" ? null : "fallback must be true or false";
+		case "number":
+		case "currency":
+			return typeof fb === "number" ? null : "fallback must be a number";
+		case "date":
+			return typeof fb === "number" ? null : "fallback must be a date";
+		default:
+			return null; // text / select / id accept a string fallback
+	}
+}
 
 function isRuleComplete(
 	objectType: AutomationObjectType | null,
@@ -341,6 +367,16 @@ function validateActionNode(
 					});
 					return;
 				}
+
+				const fbErr = varFallbackTypeError(field.type, row.value);
+				if (fbErr) {
+					errors.push({
+						type: "missing_required_config",
+						message: `${field.label}: ${fbErr}`,
+						nodeId,
+					});
+					return;
+				}
 			}
 			break;
 		}
@@ -414,6 +450,16 @@ function validateActionNode(
 					errors.push({
 						type: "missing_required_config",
 						message: `Set a value for ${field.label}`,
+						nodeId,
+					});
+					return;
+				}
+
+				const fbErr = varFallbackTypeError(field.type, row.value);
+				if (fbErr) {
+					errors.push({
+						type: "missing_required_config",
+						message: `${field.label}: ${fbErr}`,
 						nodeId,
 					});
 					return;

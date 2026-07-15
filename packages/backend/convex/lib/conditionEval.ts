@@ -29,7 +29,10 @@ export type VariableScope = {
 		record: Record<string, unknown>;
 		event?: { oldValue?: unknown; newValue?: unknown };
 	};
-	loops?: Record<string, { item: Record<string, unknown>; index: number }>;
+	loops?: Record<
+		string,
+		{ item: Record<string, unknown>; index: number; count?: number }
+	>;
 	/** Per-node outputs: fetch → count; aggregate/adjust-time → result. */
 	nodes?: Record<string, { count?: number; result?: unknown }>;
 	// Built-in globals, populated at run start (see automationExecutor).
@@ -39,6 +42,13 @@ export type VariableScope = {
 	org?: { id?: string; name?: string };
 	/** Actor: set on manual/test runs and user-caused record/status events; empty on scheduled runs and system-caused events (webhooks, portal). */
 	user?: { id?: string; name?: string; email?: string };
+	/** Run metadata — this automation's identity + how it fired. Populated at run start; executionId is empty during a test-run preview (the row isn't inserted yet). */
+	run?: {
+		automationName?: string;
+		automationId?: string;
+		executionId?: string;
+		triggerType?: string;
+	};
 	/** Formula resource definitions, resolved lazily via `formula.<id>` paths. */
 	formulas?: FormulaResource[];
 	/**
@@ -57,20 +67,26 @@ export type VariableScope = {
  *   trigger.record.<field>
  *   trigger.event.oldValue | trigger.event.newValue
  *   loop.<loopNodeId>.item.<field>
- *   loop.<loopNodeId>.index
+ *   loop.<loopNodeId>.index | loop.<loopNodeId>.position | loop.<loopNodeId>.count
  *   node.<nodeId>.count
  *   node.<nodeId>.result
  *   workflow.now
  *   org.id | org.name
  *   user.id | user.name | user.email
+ *   run.automationName | run.automationId | run.executionId | run.triggerType
  *   formula.<id>   (evaluates a formula resource against the current scope)
  *
- * Unknown or missing paths resolve to the fallback if provided, else undefined.
+ * A path that resolves to `undefined` OR `null` takes the fallback when one is
+ * provided (optional Convex fields make null the common "missing" shape, so
+ * treating it like undefined avoids a foot-gun). An empty string is a real
+ * value and is never overridden. Absent fallback preserves the resolved value.
  */
 export function resolveValueRef(ref: ValueRef, scope: VariableScope): unknown {
 	if (ref.kind === "static") return ref.value;
 	const resolved = resolvePath(ref.path, scope);
-	if (resolved === undefined) return ref.fallback ?? undefined;
+	if (resolved === undefined || resolved === null) {
+		return ref.fallback ?? resolved;
+	}
 	return resolved;
 }
 
@@ -96,6 +112,10 @@ function resolvePath(
 	if (path === "user.id") return scope.user?.id;
 	if (path === "user.name") return scope.user?.name;
 	if (path === "user.email") return scope.user?.email;
+	if (path === "run.automationName") return scope.run?.automationName;
+	if (path === "run.automationId") return scope.run?.automationId;
+	if (path === "run.executionId") return scope.run?.executionId;
+	if (path === "run.triggerType") return scope.run?.triggerType;
 
 	const LOOP = "loop.";
 	if (path.startsWith(LOOP)) {
@@ -108,6 +128,9 @@ function resolvePath(
 		const loop = scope.loops?.[loopNodeId];
 		if (!loop) return undefined;
 		if (tail === "index") return loop.index;
+		// 1-based position for human-facing copy ("item 3 of 12"); index stays 0-based.
+		if (tail === "position") return loop.index + 1;
+		if (tail === "count") return loop.count;
 		const ITEM = "item.";
 		if (tail.startsWith(ITEM)) {
 			const field = tail.slice(ITEM.length);
