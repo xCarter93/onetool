@@ -3700,6 +3700,12 @@ async function executeSendNotificationAction(
 		if (userIds.length === 0) {
 			return { success: true, skipped: true, error: "No admins to notify" };
 		}
+	} else if (action.recipient === "all_members") {
+		// Org-wide broadcast — same member resolution send_team_message uses.
+		userIds = await resolveMemberUserIds(ctx, env.orgId, false);
+		if (userIds.length === 0) {
+			return { success: true, skipped: true, error: "No members to notify" };
+		}
 	} else if (action.recipient === "record_owner") {
 		const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
 		if (!owner) {
@@ -4382,6 +4388,12 @@ async function dryExecuteAction(
 				const ids = await resolveMemberUserIds(ctx, env.orgId, true);
 				if (ids.length === 0) {
 					return { success: true, skipped: true, output: { note: "No admins to notify" } };
+				}
+				count = ids.length;
+			} else if (action.recipient === "all_members") {
+				const ids = await resolveMemberUserIds(ctx, env.orgId, false);
+				if (ids.length === 0) {
+					return { success: true, skipped: true, output: { note: "No members to notify" } };
 				}
 				count = ids.length;
 			} else if (action.recipient === "record_owner") {

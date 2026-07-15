@@ -1909,7 +1909,11 @@ describe("automationExecutor (v2 engine)", () => {
 
 		function sendNotificationActionNode(
 			id: string,
-			recipient: "org_admins" | "record_owner" | { userId: string },
+			recipient:
+				| "org_admins"
+				| "all_members"
+				| "record_owner"
+				| { userId: string },
 			message: string,
 			opts: { nextNodeId?: string } = {}
 		) {
@@ -2786,6 +2790,83 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(autoNotifs).toHaveLength(1);
 			expect(autoNotifs[0].title).toBe("Notify admins on new client");
 			expect(autoNotifs[0].message).toBe("New client: Acme Co");
+		});
+
+		it("send_notification recipient all_members: one bell per member, deduped (B6-4)", async () => {
+			const { asUser, orgId, userId: ownerId } = await setupUser();
+			const m1 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { role: "member" })
+			);
+			const m2 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { role: "member" })
+			);
+
+			await asUser.mutation(api.automations.create, {
+				name: "Broadcast on new client",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					sendNotificationActionNode(
+						"notify-1",
+						"all_members",
+						"Everyone: {{trigger.record.companyName}}"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const autoNotifs = (
+				await t.run(async (ctx) =>
+					ctx.db
+						.query("notifications")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				)
+			).filter((n) => n.notificationType === "automation_message");
+			const notifiedUserIds = autoNotifs.map((n) => n.userId);
+			const expected = [ownerId, m1.userId, m2.userId];
+			// One bell per distinct member (deduped — no member notified twice).
+			expect(autoNotifs).toHaveLength(expected.length);
+			expect(new Set(notifiedUserIds)).toEqual(new Set(expected));
+			expect(notifiedUserIds.length).toBe(new Set(notifiedUserIds).size);
+			expect(autoNotifs[0].message).toBe("Everyone: Acme Co");
+		});
+
+		it("send_notification all_members on a solo-member org: single bell, no crash (B6-4)", async () => {
+			const { asUser, orgId, userId: ownerId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Solo broadcast",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [sendNotificationActionNode("notify-1", "all_members", "Hi")],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Solo Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const autoNotifs = (
+				await t.run(async (ctx) =>
+					ctx.db
+						.query("notifications")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				)
+			).filter((n) => n.notificationType === "automation_message");
+			expect(autoNotifs).toHaveLength(1);
+			expect(autoNotifs[0].userId).toBe(ownerId);
 		});
 
 		it("send_team_message with recipients.userIds: only in-org members are notified", async () => {

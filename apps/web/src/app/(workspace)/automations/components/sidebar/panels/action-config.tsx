@@ -723,7 +723,11 @@ function SendNotificationFields({
 				<Select
 					value={recipientValue}
 					onValueChange={(value) => {
-						if (value === "org_admins" || value === "record_owner") {
+						if (
+							value === "org_admins" ||
+							value === "record_owner" ||
+							value === "all_members"
+						) {
 							update({ recipient: value });
 						} else {
 							update({ recipient: { userId: members?.[0]?._id ?? "" } });
@@ -734,6 +738,7 @@ function SendNotificationFields({
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
+						<SelectItem value="all_members">All members</SelectItem>
 						<SelectItem value="org_admins">Org admins</SelectItem>
 						<SelectItem value="record_owner">Record owner</SelectItem>
 						<SelectItem value="specific_member">Specific member</SelectItem>
