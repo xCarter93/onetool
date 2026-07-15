@@ -1558,7 +1558,6 @@ export const getRunThroughput = userQuery({
 			success: number;
 			failed: number;
 			withErrors: number;
-			skipped: number;
 		}>
 	> => {
 		await ctx.requireLevel("automations", "view");
@@ -1583,7 +1582,6 @@ export const getRunThroughput = userQuery({
 				success: number;
 				failed: number;
 				withErrors: number;
-				skipped: number;
 			}
 		>();
 		for (let day = firstDay; day <= todayMidnight; day += DAY_MS) {
@@ -1592,7 +1590,6 @@ export const getRunThroughput = userQuery({
 				success: 0,
 				failed: 0,
 				withErrors: 0,
-				skipped: 0,
 			});
 		}
 
@@ -1601,10 +1598,11 @@ export const getRunThroughput = userQuery({
 			const day = Math.floor(e.triggeredAt / DAY_MS) * DAY_MS;
 			const bucket = buckets.get(day);
 			if (!bucket) continue; // outside the seeded window
+			// Skipped runs are deliberately not returned — the throughput chart
+			// tracks executed runs only.
 			if (e.status === "completed") bucket.success++;
 			else if (e.status === "failed") bucket.failed++;
 			else if (e.status === "completed_with_errors") bucket.withErrors++;
-			else if (e.status === "skipped") bucket.skipped++;
 		}
 
 		return Array.from(buckets.values());

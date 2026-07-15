@@ -338,12 +338,12 @@ describe("Invoices", () => {
 					.filter((q) => q.eq(q.field("eventType"), "entity.record_created"))
 					.collect()
 			);
-			const invoiceCreated = events.find(
+			const invoiceEvents = events.filter(
 				(e) => e.payload.entityId === invoiceId
 			);
-			expect(invoiceCreated).toBeDefined();
-			expect(invoiceCreated?.payload.entityType).toBe("invoice");
-			expect(invoiceCreated?.eventSource).toBe("invoices.createFromQuote");
+			expect(invoiceEvents).toHaveLength(1);
+			expect(invoiceEvents[0].payload.entityType).toBe("invoice");
+			expect(invoiceEvents[0].eventSource).toBe("invoices.createFromQuote");
 		});
 	});
 

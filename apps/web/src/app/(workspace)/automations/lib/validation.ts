@@ -220,6 +220,11 @@ function validateActionNode(
 	// The object type `target: "self"` resolves to at this node — the loop item
 	// inside a loop body, else the trigger record (see getScopeObjectType).
 	scopeObjectType: AutomationObjectType | null,
+	// True for a scheduled trigger outside a loop — the one null-scope case that
+	// deserves the "runs on a schedule" guidance. The others (no trigger, record
+	// trigger without an object type, unconfigured fetch feeding a loop) are
+	// already flagged at their own source.
+	scheduledTopLevel: boolean,
 	errors: ValidationResult["errors"]
 ): void {
 	if (!config) {
@@ -236,14 +241,16 @@ function validateActionNode(
 	switch (action.type) {
 		case "update_field": {
 			if (!scopeObjectType) {
-				// Reached on a scheduled automation outside a loop — the trigger is
-				// fine, there is simply no record for the action to touch.
-				errors.push({
-					type: "no_trigger_record",
-					message:
-						"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
-					nodeId,
-				});
+				if (scheduledTopLevel) {
+					// The trigger is fine — there is simply no record for the action
+					// to touch.
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
+						nodeId,
+					});
+				}
 				return;
 			}
 
@@ -274,12 +281,14 @@ function validateActionNode(
 		}
 		case "update_fields": {
 			if (!scopeObjectType) {
-				errors.push({
-					type: "no_trigger_record",
-					message:
-						"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
-					nodeId,
-				});
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
+						nodeId,
+					});
+				}
 				return;
 			}
 
@@ -844,14 +853,17 @@ export function validateWorkflowForSave(
 				);
 				break;
 			}
-			case "action":
+			case "action": {
+				const scope = getScopeObjectType(workflowNodes, node.id, objectType);
 				validateActionNode(
 					node.id,
 					config as ActionNodeConfig | undefined,
-					getScopeObjectType(workflowNodes, node.id, objectType).objectType,
+					scope.objectType,
+					trigger?.type === "scheduled" && !scope.inLoop,
 					errors
 				);
 				break;
+			}
 			case "fetch_records":
 				validateFetchNode(
 					node.id,

@@ -9,6 +9,7 @@ import {
 	evaluateFormula,
 	isCalendarDateEpoch,
 	parseFormula,
+	toEpochMs,
 	FormulaError,
 	type FormulaAst,
 	type FormulaContext,
@@ -324,14 +325,6 @@ function compareNumeric(
 	const b = Number(compareValue);
 	if (Number.isNaN(a) || Number.isNaN(b)) return false;
 	return cmp(a, b);
-}
-
-/** Epoch ms from a Date, a number (as-is), or a string (Date.parse); else NaN. */
-function toEpochMs(value: unknown): number {
-	if (value instanceof Date) return value.getTime();
-	if (typeof value === "number") return value;
-	if (typeof value === "string") return Date.parse(value);
-	return NaN;
 }
 
 function compareDates(

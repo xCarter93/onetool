@@ -92,6 +92,14 @@ export function guardStr(s: string): string {
 
 const DAY_MS = 86_400_000;
 
+/** Epoch ms from a Date, a number (as-is), or a parseable date string; else NaN. */
+export function toEpochMs(value: unknown): number {
+	if (value instanceof Date) return value.getTime();
+	if (typeof value === "number") return value;
+	if (typeof value === "string") return Date.parse(value);
+	return NaN;
+}
+
 /**
  * OneTool stores calendar dates (task.date, project.startDate/endDate,
  * quote.validUntil, invoice.issuedDate/dueDate) as UTC-midnight epoch ms, while

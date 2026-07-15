@@ -21,7 +21,7 @@ import {
 	resolveValueRef,
 	type VariableScope,
 } from "./lib/conditionEval";
-import { calendarDayEpoch } from "./lib/formula";
+import { calendarDayEpoch, toEpochMs } from "./lib/formula";
 import {
 	RELATION_FIELD,
 	getFieldDefinition,
@@ -876,6 +876,9 @@ const LOOP_FAILURE_CIRCUIT_BREAK = 10;
 
 /** Stored error strings are display copy; keep one item's error from bloating the row. */
 const MAX_ITEM_ERROR_CHARS = 500;
+
+/** Uniquifies cascade correlationIds within a transaction (Date.now() is frozen there). */
+let cascadeEventSeq = 0;
 
 /**
  * A throw that means the transaction is already doomed — every remaining item
@@ -2184,14 +2187,6 @@ function roundCents(n: number): number {
 	return Math.round(n * 100) / 100;
 }
 
-/** Epoch ms from a Date, a number (as-is), or a parseable date string; else NaN. */
-function valueToEpochMs(value: unknown): number {
-	if (value instanceof Date) return value.getTime();
-	if (typeof value === "number") return value;
-	if (typeof value === "string") return Date.parse(value);
-	return NaN;
-}
-
 /**
  * Aggregate a fetched collection's numeric field. Sums/averages are computed in
  * integer cents to keep currency math exact. Writes node.<id>.result. Read-only
@@ -2249,7 +2244,7 @@ function runAdjustTimeNode(
 	nodeId: string,
 	config: Extract<WorkflowNodeConfig, { kind: "adjust_time" }>
 ): { ok: true; value: number } | { ok: false; error: string } {
-	const baseMs = valueToEpochMs(resolveValueRef(config.base, scope));
+	const baseMs = toEpochMs(resolveValueRef(config.base, scope));
 	if (Number.isNaN(baseMs)) {
 		return {
 			ok: false,
@@ -2292,7 +2287,7 @@ function computeDelayResume(
 		return { ok: true, resumeAt: Date.now() + ms };
 	}
 
-	const resumeAt = valueToEpochMs(resolveValueRef(config.until, scope));
+	const resumeAt = toEpochMs(resolveValueRef(config.until, scope));
 	if (Number.isNaN(resumeAt)) {
 		return {
 			ok: false,
@@ -2546,8 +2541,11 @@ async function applyStatusUpdate(
 		// Emit cascading status change event with execution chain context
 		// The event bus will handle dispatching to automation handler with recursion protection
 		if (oldStatus && oldStatus !== newStatus) {
-			// Create correlation ID that includes chain info for the event bus
-			const correlationId = `cascade-${executionChain.join("-")}-${Date.now()}`;
+			// Create correlation ID that includes chain info for the event bus.
+			// Date.now() is frozen within a Convex transaction, so a per-module
+			// counter keeps IDs unique when one run emits several cascade events.
+			cascadeEventSeq += 1;
+			const correlationId = `cascade-${executionChain.join("-")}-${Date.now()}-${cascadeEventSeq}`;
 
 			await ctx.db.insert("domainEvents", {
 				orgId,
