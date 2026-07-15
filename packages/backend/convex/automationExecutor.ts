@@ -21,11 +21,14 @@ import {
 	resolveValueRef,
 	type VariableScope,
 } from "./lib/conditionEval";
-import { calendarDayEpoch } from "./lib/formula";
+import { calendarDayEpoch, toEpochMs } from "./lib/formula";
 import {
 	RELATION_FIELD,
+	getCreatableFields,
 	getFieldDefinition,
+	getRequiredCreateFields,
 	getStatusOptions,
+	isCreatableObjectType,
 	type FieldDefinition,
 } from "./lib/fieldRegistry";
 import {
@@ -41,6 +44,7 @@ import {
 	triggerRecordObjectType,
 	type ActionTarget,
 	type AutomationAction,
+	type ValueRef,
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type ExecutedNode,
@@ -875,6 +879,20 @@ const LOOP_FAILURE_CIRCUIT_BREAK = 10;
 
 /** Stored error strings are display copy; keep one item's error from bloating the row. */
 const MAX_ITEM_ERROR_CHARS = 500;
+
+/** Uniquifies cascade correlationIds within a transaction (Date.now() is frozen there). */
+let cascadeEventSeq = 0;
+
+/**
+ * Correlation id for a cascade domain event. Date.now() is frozen inside a Convex
+ * transaction, so the per-module counter is what keeps ids unique when one run
+ * emits several cascade events (e.g. two sequential update_fields/create_record
+ * nodes) — without it the event bus could dedupe the second event by correlationId.
+ */
+function nextCascadeCorrelationId(executionChain: string[]): string {
+	cascadeEventSeq += 1;
+	return `cascade-${executionChain.join("-")}-${Date.now()}-${cascadeEventSeq}`;
+}
 
 /**
  * A throw that means the transaction is already doomed — every remaining item
@@ -2183,14 +2201,6 @@ function roundCents(n: number): number {
 	return Math.round(n * 100) / 100;
 }
 
-/** Epoch ms from a Date, a number (as-is), or a parseable date string; else NaN. */
-function valueToEpochMs(value: unknown): number {
-	if (value instanceof Date) return value.getTime();
-	if (typeof value === "number") return value;
-	if (typeof value === "string") return Date.parse(value);
-	return NaN;
-}
-
 /**
  * Aggregate a fetched collection's numeric field. Sums/averages are computed in
  * integer cents to keep currency math exact. Writes node.<id>.result. Read-only
@@ -2248,7 +2258,7 @@ function runAdjustTimeNode(
 	nodeId: string,
 	config: Extract<WorkflowNodeConfig, { kind: "adjust_time" }>
 ): { ok: true; value: number } | { ok: false; error: string } {
-	const baseMs = valueToEpochMs(resolveValueRef(config.base, scope));
+	const baseMs = toEpochMs(resolveValueRef(config.base, scope));
 	if (Number.isNaN(baseMs)) {
 		return {
 			ok: false,
@@ -2291,7 +2301,7 @@ function computeDelayResume(
 		return { ok: true, resumeAt: Date.now() + ms };
 	}
 
-	const resumeAt = valueToEpochMs(resolveValueRef(config.until, scope));
+	const resumeAt = toEpochMs(resolveValueRef(config.until, scope));
 	if (Number.isNaN(resumeAt)) {
 		return {
 			ok: false,
@@ -2545,8 +2555,10 @@ async function applyStatusUpdate(
 		// Emit cascading status change event with execution chain context
 		// The event bus will handle dispatching to automation handler with recursion protection
 		if (oldStatus && oldStatus !== newStatus) {
-			// Create correlation ID that includes chain info for the event bus
-			const correlationId = `cascade-${executionChain.join("-")}-${Date.now()}`;
+			// Create correlation ID that includes chain info for the event bus.
+			// Date.now() is frozen within a Convex transaction, so a per-module
+			// counter keeps IDs unique when one run emits several cascade events.
+			const correlationId = nextCascadeCorrelationId(executionChain);
 
 			await ctx.db.insert("domainEvents", {
 				orgId,
@@ -2681,9 +2693,26 @@ async function executeActionNodeV2(
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
 	switch (action.type) {
 		case "update_field":
-			break; // handled below
+			// Legacy single-field variant: same engine as update_fields, one row.
+			return executeUpdateFieldsAction(
+				ctx,
+				action.target,
+				[{ field: action.field, value: action.value }],
+				scopeRecord,
+				env
+			);
+		case "update_fields":
+			return executeUpdateFieldsAction(
+				ctx,
+				action.target,
+				action.fields,
+				scopeRecord,
+				env
+			);
 		case "create_task":
 			return executeCreateTaskAction(ctx, action, scopeRecord, env);
+		case "create_record":
+			return executeCreateRecordAction(ctx, action, scopeRecord, env);
 		case "send_notification":
 			return executeSendNotificationAction(ctx, action, scopeRecord, env);
 		case "send_team_message":
@@ -2693,7 +2722,25 @@ async function executeActionNodeV2(
 			return _exhaustive;
 		}
 	}
+}
 
+/**
+ * Shared engine behind update_field / update_fields. Every row is validated
+ * and coerced BEFORE the first write so a bad row can't leave a half-updated
+ * record. Non-status fields land in one ctx.db.patch and emit one
+ * record_updated — changedFields carries the full set, and field/oldValue/
+ * newValue are included only when exactly one field changed, so a one-row
+ * action emits the same event a legacy update_field always did. A status row
+ * goes through applyStatusUpdate's validation + aggregate + cascade flow,
+ * exactly once, after the field patch.
+ */
+async function executeUpdateFieldsAction(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	fields: Array<{ field: string; value: ValueRef }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
 	if (!scopeRecord) {
 		return { success: false, error: NO_SCOPE_RECORD_ERROR };
 	}
@@ -2702,7 +2749,7 @@ async function executeActionNodeV2(
 
 	const targetInfo = await resolveTargetV2(
 		ctx,
-		action.target,
+		target,
 		objectType,
 		objectId,
 		triggerObject,
@@ -2712,140 +2759,199 @@ async function executeActionNodeV2(
 	if (!targetInfo) {
 		// Target not found - skip this action (e.g., task has no client)
 		console.warn(
-			`[AutomationExecutor] Target not found: target=${JSON.stringify(action.target)}, objectType=${objectType}, objectId=${objectId}`
+			`[AutomationExecutor] Target not found: target=${JSON.stringify(target)}, objectType=${objectType}, objectId=${objectId}`
 		);
 		return { success: true, skipped: true };
 	}
 
-	const fieldDef = getFieldDefinition(targetInfo.type, action.field);
-	if (!fieldDef) {
-		return {
-			success: false,
-			error: `Unknown field "${action.field}" for ${targetInfo.type}`,
-		};
-	}
-	if (!fieldDef.writable) {
-		return {
-			success: false,
-			error: `Field "${action.field}" is not writable${
-				fieldDef.writeExclusionReason ? `: ${fieldDef.writeExclusionReason}` : ""
-			}`,
-		};
+	if (fields.length === 0) {
+		return { success: false, error: "No fields to update" };
 	}
 
-	const rawValue = resolveValueRef(action.value, env.scope);
-	const coerced = coerceFieldValue(
-		fieldDef,
-		rawValue,
-		env.scope.workflow?.tz ?? "UTC"
-	);
-	if (!coerced.ok) {
-		return { success: false, error: coerced.error };
+	const writes: Array<{ field: string; value: unknown }> = [];
+	const seen = new Set<string>();
+	for (const { field, value } of fields) {
+		if (seen.has(field)) {
+			return {
+				success: false,
+				error: `Field "${field}" appears more than once`,
+			};
+		}
+		seen.add(field);
+
+		const fieldDef = getFieldDefinition(targetInfo.type, field);
+		if (!fieldDef) {
+			return {
+				success: false,
+				error: `Unknown field "${field}" for ${targetInfo.type}`,
+			};
+		}
+		if (!fieldDef.writable) {
+			return {
+				success: false,
+				error: `Field "${field}" is not writable${
+					fieldDef.writeExclusionReason ? `: ${fieldDef.writeExclusionReason}` : ""
+				}`,
+			};
+		}
+
+		const rawValue = resolveValueRef(value, env.scope);
+		const coerced = coerceFieldValue(
+			fieldDef,
+			rawValue,
+			env.scope.workflow?.tz ?? "UTC"
+		);
+		if (!coerced.ok) {
+			return { success: false, error: coerced.error };
+		}
+		writes.push({ field, value: coerced.value });
 	}
 
-	// Status writes reuse the existing validation + aggregate + cascade flow.
-	if (action.field === "status") {
-		if (typeof coerced.value !== "string") {
+	// Status is fully special-cased below; validate it up front — after the
+	// non-status patch commits it would be too late to fail atomically.
+	const statusWrite = writes.find((w) => w.field === "status");
+	if (statusWrite) {
+		if (typeof statusWrite.value !== "string") {
 			return {
 				success: false,
 				error: `Status value for ${targetInfo.type} must be a string`,
 			};
 		}
+		if (!isValidStatus(targetInfo.type, statusWrite.value)) {
+			return {
+				success: false,
+				error: `Invalid status "${statusWrite.value}" for ${targetInfo.type}`,
+			};
+		}
+	}
+	const fieldWrites = writes.filter((w) => w.field !== "status");
+
+	if (fieldWrites.length > 0) {
+		const targetObject = await getObject(
+			ctx,
+			targetInfo.type,
+			targetInfo.id,
+			orgId
+		);
+		if (!targetObject) {
+			return { success: false, error: "Target object not found" };
+		}
+
+		try {
+			const updatePayload: Record<string, any> = {};
+			const changed: Array<{
+				field: string;
+				oldValue: unknown;
+				newValue: unknown;
+			}> = [];
+			for (const write of fieldWrites) {
+				updatePayload[write.field] = write.value;
+				const previousValue = (targetObject as Record<string, unknown>)[
+					write.field
+				];
+				if (previousValue !== write.value) {
+					changed.push({
+						field: write.field,
+						oldValue: previousValue,
+						newValue: write.value,
+					});
+				}
+			}
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await ctx.db.patch(targetInfo.id, updatePayload as any);
+
+			const updatedObject = await ctx.db.get(targetInfo.id);
+			if (!updatedObject) {
+				return {
+					success: false,
+					error: "Target object was deleted during update",
+				};
+			}
+
+			// Keep aggregates in sync; each helper no-ops unless a field it
+			// tracks (status/completedAt/approvedAt/paidAt/total) changed.
+			switch (targetInfo.type) {
+				case "project":
+					await AggregateHelpers.updateProject(
+						ctx,
+						targetObject as Doc<"projects">,
+						updatedObject as Doc<"projects">
+					);
+					break;
+				case "quote":
+					await AggregateHelpers.updateQuote(
+						ctx,
+						targetObject as Doc<"quotes">,
+						updatedObject as Doc<"quotes">
+					);
+					break;
+				case "invoice":
+					await AggregateHelpers.updateInvoice(
+						ctx,
+						targetObject as Doc<"invoices">,
+						updatedObject as Doc<"invoices">
+					);
+					break;
+				// Clients and tasks don't have aggregate field tracking
+			}
+
+			// Emit record_updated so automations chained on these fields actually
+			// fire (a status row emits its own event via applyStatusUpdate below).
+			// The chain rides in metadata — the emitRecordUpdatedEvent helper would
+			// drop it and defeat the recursion guard. One event per action, so a
+			// trigger watching any of the changed fields fires exactly once.
+			if (changed.length > 0) {
+				const single = changed.length === 1 ? changed[0] : undefined;
+				await ctx.db.insert("domainEvents", {
+					orgId,
+					eventType: "entity.record_updated",
+					eventSource: "automationExecutor.executeActionNodeV2",
+					payload: {
+						entityType: targetInfo.type,
+						entityId: targetInfo.id,
+						...(single
+							? {
+									field: single.field,
+									oldValue: single.oldValue,
+									newValue: single.newValue,
+								}
+							: {}),
+						metadata: {
+							changedFields: changed.map((c) => c.field),
+							executionChain,
+							recursionDepth,
+							isCascade: true,
+						},
+					},
+					status: "pending",
+					correlationId: nextCascadeCorrelationId(executionChain),
+					createdAt: Date.now(),
+					attemptCount: 0,
+				});
+				await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			}
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error ? error.message : "Failed to update field",
+			};
+		}
+	}
+
+	// Status writes reuse the existing validation + aggregate + cascade flow.
+	if (statusWrite) {
 		return applyStatusUpdate(
 			ctx,
 			targetInfo,
-			coerced.value,
+			statusWrite.value as string,
 			orgId,
 			executionChain,
 			recursionDepth
 		);
 	}
 
-	const targetObject = await getObject(ctx, targetInfo.type, targetInfo.id, orgId);
-	if (!targetObject) {
-		return { success: false, error: "Target object not found" };
-	}
-	const previousValue = (targetObject as Record<string, unknown>)[action.field];
-
-	try {
-		const updatePayload: Record<string, any> = {
-			[action.field]: coerced.value,
-		};
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		await ctx.db.patch(targetInfo.id, updatePayload as any);
-
-		const updatedObject = await ctx.db.get(targetInfo.id);
-		if (!updatedObject) {
-			return {
-				success: false,
-				error: "Target object was deleted during update",
-			};
-		}
-
-		// Keep aggregates in sync; each helper no-ops unless a field it
-		// tracks (status/completedAt/approvedAt/paidAt/total) changed.
-		switch (targetInfo.type) {
-			case "project":
-				await AggregateHelpers.updateProject(
-					ctx,
-					targetObject as Doc<"projects">,
-					updatedObject as Doc<"projects">
-				);
-				break;
-			case "quote":
-				await AggregateHelpers.updateQuote(
-					ctx,
-					targetObject as Doc<"quotes">,
-					updatedObject as Doc<"quotes">
-				);
-				break;
-			case "invoice":
-				await AggregateHelpers.updateInvoice(
-					ctx,
-					targetObject as Doc<"invoices">,
-					updatedObject as Doc<"invoices">
-				);
-				break;
-			// Clients and tasks don't have aggregate field tracking
-		}
-
-		// Emit record_updated so automations chained on this field actually fire
-		// (status writes emit their own event via applyStatusUpdate). The chain
-		// rides in metadata — the emitRecordUpdatedEvent helper would drop it and
-		// defeat the recursion guard. Same shape as the create_task emit below.
-		if (previousValue !== coerced.value) {
-			await ctx.db.insert("domainEvents", {
-				orgId,
-				eventType: "entity.record_updated",
-				eventSource: "automationExecutor.executeActionNodeV2",
-				payload: {
-					entityType: targetInfo.type,
-					entityId: targetInfo.id,
-					field: action.field,
-					oldValue: previousValue,
-					newValue: coerced.value,
-					metadata: {
-						changedFields: [action.field],
-						executionChain,
-						recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId: `cascade-${executionChain.join("-")}-${Date.now()}`,
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-		}
-
-		return { success: true };
-	} catch (error) {
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : "Failed to update field",
-		};
-	}
+	return { success: true };
 }
 
 /**
@@ -3022,7 +3128,7 @@ async function executeCreateTaskAction(
 					},
 				},
 				status: "pending",
-				correlationId: `cascade-${env.executionChain.join("-")}-${Date.now()}`,
+				correlationId: nextCascadeCorrelationId(env.executionChain),
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
@@ -3085,6 +3191,364 @@ async function resolveTaskLink(
 	}
 
 	return { projectId, clientId };
+}
+
+// ---------------------------------------------------------------------------
+// create_record: generic record creation (client / project / task)
+// ---------------------------------------------------------------------------
+
+/**
+ * Free-plan ceilings, mirrored from apps/web/src/lib/plan-limits.ts (the values
+ * live only in the web app — the backend never enforced them). A create_record
+ * on a free org honors the same caps the UI shows so an automation can't be a
+ * back door around them.
+ */
+const FREE_MAX_CLIENTS = 10;
+const FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT = 3;
+
+/**
+ * Resolve a supplied FK value on a create_record field against the org. The
+ * executor runs unscoped, so an arbitrary id string must be checked before it
+ * becomes a stored relationship (cross-tenant or garbage ids are rejected).
+ */
+async function resolveCreateFk(
+	ctx: MutationCtx,
+	refType: NonNullable<FieldDefinition["refType"]>,
+	rawId: unknown,
+	orgId: Id<"organizations">
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+	const raw = String(rawId);
+	const table =
+		refType === "user" ? "users" : refType === "client" ? "clients" : "projects";
+	const normalized = ctx.db.normalizeId(table, raw);
+	if (!normalized) {
+		return { ok: false, error: `Referenced ${refType} is not a valid id` };
+	}
+	if (refType === "user") {
+		const membership = await getMembership(
+			ctx,
+			normalized as Id<"users">,
+			orgId
+		);
+		if (!membership) {
+			return {
+				ok: false,
+				error: "Assignee is not a member of this organization",
+			};
+		}
+		return { ok: true, id: normalized };
+	}
+	const doc = await ctx.db.get(normalized as Id<"clients"> | Id<"projects">);
+	if (!doc || doc.orgId !== orgId) {
+		return { ok: false, error: `Referenced ${refType} was not found` };
+	}
+	return { ok: true, id: normalized };
+}
+
+/**
+ * Schema-required fields that have a sensible code default (so they are NOT
+ * requiredOnCreate). Applied only when the user didn't supply the field.
+ */
+function applyCreateDefaults(
+	objectType: AutomationObjectType,
+	payload: Record<string, unknown>,
+	supplied: Set<string>,
+	tz: string
+): void {
+	const setDefault = (key: string, value: unknown) => {
+		if (!supplied.has(key)) {
+			payload[key] = value;
+			supplied.add(key);
+		}
+	};
+	switch (objectType) {
+		case "client":
+			setDefault("status", "lead");
+			break;
+		case "project":
+			setDefault("status", "planned");
+			setDefault("projectType", "one-off");
+			break;
+		case "task":
+			setDefault("status", "pending");
+			setDefault("type", "internal");
+			setDefault("date", calendarDayEpoch(Date.now(), tz));
+			break;
+	}
+}
+
+/**
+ * Free-plan cap check for a create_record. Returns an error string when the
+ * insert would exceed a ceiling, or null when it's allowed. Reads only.
+ */
+async function checkCreateRecordPlanCap(
+	ctx: MutationCtx,
+	objectType: AutomationObjectType,
+	payload: Record<string, unknown>,
+	orgId: Id<"organizations">
+): Promise<string | null> {
+	if (objectType === "client" && (payload.status as string | undefined) !== "archived") {
+		const clients = await ctx.db
+			.query("clients")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+		const active = clients.filter((c) => c.status !== "archived").length;
+		if (active >= FREE_MAX_CLIENTS) {
+			return `Your plan is limited to ${FREE_MAX_CLIENTS} clients — upgrade to add more.`;
+		}
+	}
+	if (objectType === "project") {
+		// Only an active candidate (planned/in-progress) consumes a per-client slot.
+		const status = payload.status as string | undefined;
+		const projectActive = status === "planned" || status === "in-progress";
+		const clientId = payload.clientId as Id<"clients"> | undefined;
+		if (clientId && projectActive) {
+			const projects = await ctx.db
+				.query("projects")
+				.withIndex("by_client", (q) => q.eq("clientId", clientId))
+				.collect();
+			const active = projects.filter(
+				(p) => p.status === "planned" || p.status === "in-progress"
+			).length;
+			if (active >= FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT) {
+				return `Your plan allows ${FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT} active projects per client — upgrade to add more.`;
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * Validate + assemble the insert payload for a create_record action. Shared by
+ * the real executor and the dry mirror, so a test run surfaces the exact same
+ * failures (missing required field, bad FK, unsupported field) the run would.
+ * Reads only — never writes. `orgId` is included; `portalAccessId` is added at
+ * insert time (it's generated, not a user field).
+ */
+async function buildCreateRecordPayload(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_record" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: { orgId: Id<"organizations">; scope: VariableScope }
+): Promise<
+	| { ok: true; payload: Record<string, unknown> }
+	| { ok: false; error: string }
+> {
+	const objectType = action.objectType;
+	const tz = env.scope.workflow?.tz ?? "UTC";
+	const payload: Record<string, unknown> = { orgId: env.orgId };
+	const supplied = new Set<string>();
+
+	// linkToScope: set the new record's FK to the record in scope via the
+	// registry relation map (e.g. a project created off a client gets clientId).
+	let linkedFk: string | undefined;
+	if (action.linkToScope) {
+		if (!scopeRecord) {
+			return {
+				ok: false,
+				error: `There is no record in scope to link this new ${objectType} to`,
+			};
+		}
+		linkedFk = RELATION_FIELD[objectType]?.[scopeRecord.type];
+		if (!linkedFk) {
+			return {
+				ok: false,
+				error: `A new ${objectType} can't be linked to a ${scopeRecord.type}`,
+			};
+		}
+		payload[linkedFk] = scopeRecord.id;
+		supplied.add(linkedFk);
+	}
+
+	const seen = new Set<string>();
+	for (const { field, value } of action.fields) {
+		if (seen.has(field)) {
+			return { ok: false, error: `Field "${field}" appears more than once` };
+		}
+		seen.add(field);
+		if (field === linkedFk) {
+			return {
+				ok: false,
+				error: `Field "${field}" is already set by linking to the record in scope`,
+			};
+		}
+		const def = getFieldDefinition(objectType, field);
+		if (!def || !def.creatable) {
+			return {
+				ok: false,
+				error: `Field "${field}" can't be set when creating a ${objectType}`,
+			};
+		}
+		const raw = resolveValueRef(value, env.scope);
+		const coerced = coerceFieldValue(def, raw, tz);
+		if (!coerced.ok) {
+			return { ok: false, error: coerced.error };
+		}
+		// null means "resolved to nothing" — leave it out so requiredOnCreate and
+		// defaults still apply (a supplied-but-empty row shouldn't defeat them).
+		if (coerced.value === null) continue;
+		// A required text field set to a blank/whitespace value doesn't satisfy the
+		// requirement — reject instead of marking it supplied.
+		if (
+			def.requiredOnCreate &&
+			def.type === "text" &&
+			typeof coerced.value === "string" &&
+			coerced.value.trim() === ""
+		) {
+			return {
+				ok: false,
+				error: `${def.label} is required to create a ${objectType}`,
+			};
+		}
+		if (def.refType) {
+			const fk = await resolveCreateFk(ctx, def.refType, coerced.value, env.orgId);
+			if (!fk.ok) return { ok: false, error: fk.error };
+			payload[field] = fk.id;
+		} else {
+			payload[field] = coerced.value;
+		}
+		supplied.add(field);
+	}
+
+	applyCreateDefaults(objectType, payload, supplied, tz);
+
+	for (const def of getRequiredCreateFields(objectType)) {
+		if (!supplied.has(def.key)) {
+			return {
+				ok: false,
+				error: `${def.label} is required to create a ${objectType}`,
+			};
+		}
+	}
+
+	// Domain rule mirrored from tasks.ts: an external task must name a client.
+	if (
+		objectType === "task" &&
+		payload.type === "external" &&
+		!payload.clientId
+	) {
+		return { ok: false, error: "External tasks require a client" };
+	}
+
+	return { ok: true, payload };
+}
+
+async function executeCreateRecordAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_record" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const objectType = action.objectType;
+	if (!isCreatableObjectType(objectType)) {
+		return {
+			success: false,
+			error: `Creating ${objectType} records from automations isn't supported`,
+		};
+	}
+
+	const built = await buildCreateRecordPayload(ctx, action, scopeRecord, env);
+	if (!built.ok) return { success: false, error: built.error };
+	const { payload } = built;
+
+	const org = await ctx.db.get(env.orgId);
+	if (!orgHasPremiumPlan(org)) {
+		const capError = await checkCreateRecordPlanCap(
+			ctx,
+			objectType,
+			payload,
+			env.orgId
+		);
+		if (capError) return { success: false, error: capError };
+	}
+
+	try {
+		let newId: Id<"clients"> | Id<"projects"> | Id<"tasks">;
+		switch (objectType) {
+			case "client":
+				// Portal links need an access id; the create mutation takes a
+				// caller-supplied one for retry-determinism, harmless to mint here.
+				payload.portalAccessId = crypto.randomUUID();
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				newId = await ctx.db.insert("clients", payload as any);
+				break;
+			case "project":
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				newId = await ctx.db.insert("projects", payload as any);
+				break;
+			case "task":
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				newId = await ctx.db.insert("tasks", payload as any);
+				break;
+			default:
+				return {
+					success: false,
+					error: `Creating ${objectType} records from automations isn't supported`,
+				};
+		}
+
+		const doc = await ctx.db.get(newId);
+		if (doc) {
+			// Attribute the activity to the automation's creator — a scheduled (cron)
+			// run has no ambient authenticated user, so createActivity's default
+			// getCurrentUserOrThrow would throw and fail the create. If that creator
+			// has since left the org, fall back to the org owner.
+			const creatorId = env.automation.createdBy;
+			const creatorMembership = await getMembership(ctx, creatorId, env.orgId);
+			const actor = {
+				userId: creatorMembership ? creatorId : (org?.ownerUserId ?? creatorId),
+				orgId: env.orgId,
+			};
+			switch (objectType) {
+				case "client":
+					await ActivityHelpers.clientCreated(ctx, doc as Doc<"clients">, actor);
+					await AggregateHelpers.addClient(ctx, doc as Doc<"clients">);
+					break;
+				case "project":
+					await ActivityHelpers.projectCreated(
+						ctx,
+						doc as Doc<"projects">,
+						actor
+					);
+					await AggregateHelpers.addProject(ctx, doc as Doc<"projects">);
+					break;
+				case "task":
+					// Tasks have no aggregate.
+					await ActivityHelpers.taskCreated(ctx, doc as Doc<"tasks">, actor);
+					break;
+			}
+
+			// Emit record_created with the execution chain in metadata so cascading
+			// automations keep recursion protection (mirrors executeCreateTaskAction).
+			await ctx.db.insert("domainEvents", {
+				orgId: env.orgId,
+				eventType: "entity.record_created",
+				eventSource: "automationExecutor.executeCreateRecordAction",
+				payload: {
+					entityType: objectType,
+					entityId: newId,
+					metadata: {
+						executionChain: env.executionChain,
+						recursionDepth: env.recursionDepth,
+						isCascade: true,
+					},
+				},
+				status: "pending",
+				correlationId: nextCascadeCorrelationId(env.executionChain),
+				createdAt: Date.now(),
+				attemptCount: 0,
+			});
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		}
+
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to create record",
+		};
+	}
 }
 
 /** List org member user ids, optionally restricted to admins. */
@@ -3577,6 +4041,149 @@ type DryNodeResult = {
 };
 
 /**
+ * Dry mirror of executeUpdateFieldsAction: same per-row validation and
+ * coercion, no writes. A one-row action previews with the exact summary and
+ * input shape legacy update_field test runs always produced.
+ */
+async function dryUpdateFieldsAction(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	fields: Array<{ field: string; value: ValueRef }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: DryEnv
+): Promise<DryNodeResult> {
+	if (!scopeRecord) {
+		return { success: false, error: NO_SCOPE_RECORD_ERROR };
+	}
+	const targetInfo = await resolveTargetV2(
+		ctx,
+		target,
+		scopeRecord.type,
+		scopeRecord.id,
+		scopeRecord.record,
+		env.orgId
+	);
+	if (!targetInfo) {
+		return {
+			success: true,
+			skipped: true,
+			output: { note: "Related record not found — would skip" },
+		};
+	}
+	if (fields.length === 0) {
+		return { success: false, error: "No fields to update" };
+	}
+
+	const writes: Array<{ field: string; value: unknown }> = [];
+	const seen = new Set<string>();
+	for (const { field, value } of fields) {
+		if (seen.has(field)) {
+			return {
+				success: false,
+				error: `Field "${field}" appears more than once`,
+			};
+		}
+		seen.add(field);
+
+		const fieldDef = getFieldDefinition(targetInfo.type, field);
+		if (!fieldDef) {
+			return {
+				success: false,
+				error: `Unknown field "${field}" for ${targetInfo.type}`,
+			};
+		}
+		if (!fieldDef.writable) {
+			return {
+				success: false,
+				error: `Field "${field}" is not writable${
+					fieldDef.writeExclusionReason
+						? `: ${fieldDef.writeExclusionReason}`
+						: ""
+				}`,
+			};
+		}
+		const raw = resolveValueRef(value, env.scope);
+		const coerced = coerceFieldValue(
+			fieldDef,
+			raw,
+			env.scope.workflow?.tz ?? "UTC"
+		);
+		if (!coerced.ok) {
+			return { success: false, error: coerced.error };
+		}
+		if (field === "status") {
+				if (typeof coerced.value !== "string") {
+					return {
+						success: false,
+						error: `Status value for ${targetInfo.type} must be a string`,
+					};
+				}
+				if (!isValidStatus(targetInfo.type, coerced.value)) {
+					return {
+						success: false,
+						error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
+					};
+				}
+			}
+		writes.push({ field, value: coerced.value });
+	}
+
+	return {
+		success: true,
+		output: {
+			summary: `Would set ${writes
+				.map((w) => `${w.field} to ${JSON.stringify(w.value)}`)
+				.join(", ")} on the ${targetInfo.type}`,
+		},
+		input:
+			writes.length === 1
+				? { target, field: writes[0].field, value: writes[0].value }
+				: { target, fields: writes },
+	};
+}
+
+/**
+ * Dry mirror of executeCreateRecordAction: same validation and cap checks (all
+ * reads), no insert/emit. Previews the assembled field set.
+ */
+async function dryCreateRecordAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "create_record" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: DryEnv
+): Promise<DryNodeResult> {
+	const objectType = action.objectType;
+	if (!isCreatableObjectType(objectType)) {
+		return {
+			success: false,
+			error: `Creating ${objectType} records from automations isn't supported`,
+		};
+	}
+	const built = await buildCreateRecordPayload(ctx, action, scopeRecord, env);
+	if (!built.ok) return { success: false, error: built.error };
+
+	const org = await ctx.db.get(env.orgId);
+	if (!orgHasPremiumPlan(org)) {
+		const capError = await checkCreateRecordPlanCap(
+			ctx,
+			objectType,
+			built.payload,
+			env.orgId
+		);
+		if (capError) return { success: false, error: capError };
+	}
+
+	// Preview the field set without orgId (internal) — portalAccessId isn't set
+	// until insert.
+	const { orgId: _orgId, ...preview } = built.payload;
+	return {
+		success: true,
+		output: { summary: `Would create a ${objectType}` },
+		input: { objectType, fields: preview },
+	};
+}
+
+/**
  * Describe (without executing) what an action would do. Mirrors the real
  * executors' validation so a test surfaces the same failures/skips, but never
  * writes, emits events, or touches aggregates.
@@ -3588,73 +4195,23 @@ async function dryExecuteAction(
 	env: DryEnv
 ): Promise<DryNodeResult> {
 	switch (action.type) {
-		case "update_field": {
-			if (!scopeRecord) {
-				return { success: false, error: NO_SCOPE_RECORD_ERROR };
-			}
-			const targetInfo = await resolveTargetV2(
+		case "update_field":
+			// Legacy single-field variant: same dry engine, one row.
+			return dryUpdateFieldsAction(
 				ctx,
 				action.target,
-				scopeRecord.type,
-				scopeRecord.id,
-				scopeRecord.record,
-				env.orgId
+				[{ field: action.field, value: action.value }],
+				scopeRecord,
+				env
 			);
-			if (!targetInfo) {
-				return {
-					success: true,
-					skipped: true,
-					output: { note: "Related record not found — would skip" },
-				};
-			}
-			const fieldDef = getFieldDefinition(targetInfo.type, action.field);
-			if (!fieldDef) {
-				return {
-					success: false,
-					error: `Unknown field "${action.field}" for ${targetInfo.type}`,
-				};
-			}
-			if (!fieldDef.writable) {
-				return {
-					success: false,
-					error: `Field "${action.field}" is not writable${
-						fieldDef.writeExclusionReason
-							? `: ${fieldDef.writeExclusionReason}`
-							: ""
-					}`,
-				};
-			}
-			const raw = resolveValueRef(action.value, env.scope);
-			const coerced = coerceFieldValue(
-				fieldDef,
-				raw,
-				env.scope.workflow?.tz ?? "UTC"
+		case "update_fields":
+			return dryUpdateFieldsAction(
+				ctx,
+				action.target,
+				action.fields,
+				scopeRecord,
+				env
 			);
-			if (!coerced.ok) {
-				return { success: false, error: coerced.error };
-			}
-			if (
-				action.field === "status" &&
-				typeof coerced.value === "string" &&
-				!isValidStatus(targetInfo.type, coerced.value)
-			) {
-				return {
-					success: false,
-					error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
-				};
-			}
-			return {
-				success: true,
-				output: {
-					summary: `Would set ${action.field} to ${JSON.stringify(coerced.value)} on the ${targetInfo.type}`,
-				},
-				input: {
-					target: action.target,
-					field: action.field,
-					value: coerced.value,
-				},
-			};
-		}
 		case "create_task": {
 			const title = resolveTextValue(action.title, env.scope);
 			if (!title) {
@@ -3679,6 +4236,8 @@ async function dryExecuteAction(
 				input: { title, assigneeUserId: action.assigneeUserId },
 			};
 		}
+		case "create_record":
+			return dryCreateRecordAction(ctx, action, scopeRecord, env);
 		case "send_notification": {
 			let count: number;
 			if (action.recipient === "org_admins") {

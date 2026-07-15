@@ -263,6 +263,60 @@ describe("automation runs (test + manual)", () => {
 			expect(tasks).toHaveLength(0);
 		});
 
+		it("previews update_fields without writing and lists every field (B2)", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Multi-field preview",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					{
+						id: "act-1",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "update_fields" as const,
+								target: "self" as const,
+								fields: [
+									{
+										field: "notes",
+										value: { kind: "static" as const, value: "hello" },
+									},
+									{
+										field: "companyDescription",
+										value: { kind: "static" as const, value: "desc" },
+									},
+								],
+							},
+						},
+					},
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			expect(done?.nodesExecuted[0].result).toBe("success");
+			expect(
+				(done?.nodesExecuted[0].output as { summary?: string })?.summary
+			).toBe(
+				'Would set notes to "hello", companyDescription to "desc" on the client'
+			);
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
+			expect(client?.companyDescription).toBeUndefined();
+		});
+
 		it("reveals only the taken branch of a condition", async () => {
 			const { asUser } = await setupUser();
 			const clientId = await makeClient(asUser, "Globex");

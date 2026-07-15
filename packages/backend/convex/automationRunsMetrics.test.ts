@@ -557,11 +557,13 @@ describe("automation runs & latency (Slice 5)", () => {
 			expect(buckets[0].day).toBe(todayMidnight - 2 * DAY_MS);
 			expect(buckets[2].day).toBe(todayMidnight);
 			// 07-02: one failed.
-			expect(buckets[0]).toMatchObject({ success: 0, failed: 1, skipped: 0 });
+			expect(buckets[0]).toMatchObject({ success: 0, failed: 1 });
 			// 07-03: empty (zero-count day present).
-			expect(buckets[1]).toMatchObject({ success: 0, failed: 0, skipped: 0 });
-			// 07-04: one success + one skipped (test excluded).
-			expect(buckets[2]).toMatchObject({ success: 1, failed: 0, skipped: 1 });
+			expect(buckets[1]).toMatchObject({ success: 0, failed: 0 });
+			// 07-04: one success; the skipped run (and the test run) is excluded —
+			// the chart tracks executed runs only.
+			expect(buckets[2]).toMatchObject({ success: 1, failed: 0 });
+			expect(buckets[2]).not.toHaveProperty("skipped");
 		});
 
 		it("buckets a completed_with_errors run into withErrors and nowhere else", async () => {
@@ -595,7 +597,6 @@ describe("automation runs & latency (Slice 5)", () => {
 				success: 0,
 				failed: 0,
 				withErrors: 1,
-				skipped: 0,
 			});
 		});
 	});

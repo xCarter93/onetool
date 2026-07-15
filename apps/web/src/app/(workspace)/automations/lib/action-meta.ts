@@ -1,5 +1,6 @@
 import {
 	Bell,
+	FilePlus,
 	ListTodo,
 	MessagesSquare,
 	Play,
@@ -36,6 +37,17 @@ export const ACTION_META: Record<
 		name: "Update Record",
 		description: "Set a field on the record in scope.",
 	},
+	// The multi-field successor; the editor upgrades update_field to this on
+	// load, so it shares Update Record's identity.
+	update_fields: {
+		icon: Play,
+		bg: "bg-green-100 dark:bg-green-400/15",
+		fg: "text-green-700 dark:text-green-300",
+		accent: "border-l-green-500 dark:border-l-green-400",
+		badge: "Actions",
+		name: "Update Record",
+		description: "Set one or more fields on the record in scope.",
+	},
 	create_task: {
 		icon: ListTodo,
 		bg: "bg-green-100 dark:bg-green-400/15",
@@ -44,6 +56,15 @@ export const ACTION_META: Record<
 		badge: "Actions",
 		name: "Create Task",
 		description: "Add a task to your workspace.",
+	},
+	create_record: {
+		icon: FilePlus,
+		bg: "bg-green-100 dark:bg-green-400/15",
+		fg: "text-green-700 dark:text-green-300",
+		accent: "border-l-green-500 dark:border-l-green-400",
+		badge: "Actions",
+		name: "Create Record",
+		description: "Create a new client, project, or task.",
 	},
 	send_notification: {
 		icon: Bell,

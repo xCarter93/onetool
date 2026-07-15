@@ -36,14 +36,32 @@ export interface FieldDefinition {
 	writeExclusionReason?: string;
 	/** Whether the field can be used in condition rules / fetch filters. */
 	filterable: boolean;
+	/**
+	 * Whether a create_record action may set this field at insert time. Distinct
+	 * from `writable`: relationship FKs (clientId, projectId) are set-on-create
+	 * only, never editable afterwards, so they are `creatable` but not `writable`.
+	 */
+	creatable?: boolean;
+	/**
+	 * A creatable field the record can't be inserted without (and that has no
+	 * sensible code default). The executor and publish validation both require
+	 * it to be supplied — unless a `linkToScope` link satisfies the relation.
+	 */
+	requiredOnCreate?: boolean;
+	/**
+	 * For a creatable `id` field, the entity it points at. Used to org-validate
+	 * a supplied FK before insert (the executor runs unscoped, so an arbitrary
+	 * id string must be checked against the org). "user" resolves via membership.
+	 */
+	refType?: "client" | "project" | "user";
 }
 
 const opt = (value: string, label: string) => ({ value, label });
 
 export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 	client: [
-		{ key: "companyName", label: "Company Name", type: "text", writable: true, filterable: true },
-		{ key: "companyDescription", label: "Company Description", type: "text", writable: true, filterable: true },
+		{ key: "companyName", label: "Company Name", type: "text", writable: true, filterable: true, creatable: true, requiredOnCreate: true },
+		{ key: "companyDescription", label: "Company Description", type: "text", writable: true, filterable: true, creatable: true },
 		{
 			key: "status",
 			label: "Status",
@@ -56,6 +74,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
 		{
 			key: "leadSource",
@@ -74,8 +93,9 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
-		{ key: "isActive", label: "Is Active", type: "boolean", writable: true, filterable: true },
+		{ key: "isActive", label: "Is Active", type: "boolean", writable: true, filterable: true, creatable: true },
 		{
 			key: "communicationPreference",
 			label: "Communication Preference",
@@ -83,8 +103,9 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			options: [opt("email", "Email"), opt("phone", "Phone"), opt("both", "Both")],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
-		{ key: "notes", label: "Notes", type: "text", writable: true, filterable: true },
+		{ key: "notes", label: "Notes", type: "text", writable: true, filterable: true, creatable: true },
 		{
 			key: "archivedAt",
 			label: "Archived At",
@@ -96,8 +117,8 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 	],
 
 	project: [
-		{ key: "title", label: "Title", type: "text", writable: true, filterable: true },
-		{ key: "description", label: "Description", type: "text", writable: true, filterable: true },
+		{ key: "title", label: "Title", type: "text", writable: true, filterable: true, creatable: true, requiredOnCreate: true },
+		{ key: "description", label: "Description", type: "text", writable: true, filterable: true, creatable: true },
 		{
 			key: "projectNumber",
 			label: "Project Number",
@@ -118,6 +139,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
 		{
 			key: "projectType",
@@ -126,9 +148,10 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			options: [opt("one-off", "One-off"), opt("recurring", "Recurring")],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
-		{ key: "startDate", label: "Start Date", type: "date", writable: true, filterable: true },
-		{ key: "endDate", label: "End Date", type: "date", writable: true, filterable: true },
+		{ key: "startDate", label: "Start Date", type: "date", writable: true, filterable: true, creatable: true },
+		{ key: "endDate", label: "End Date", type: "date", writable: true, filterable: true, creatable: true },
 		{
 			key: "completedAt",
 			label: "Completed At",
@@ -144,6 +167,9 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			writable: false,
 			writeExclusionReason: "Relationship set when the project is created",
 			filterable: true,
+			creatable: true,
+			requiredOnCreate: true,
+			refType: "client",
 		},
 	],
 
@@ -364,8 +390,8 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 	],
 
 	task: [
-		{ key: "title", label: "Title", type: "text", writable: true, filterable: true },
-		{ key: "description", label: "Description", type: "text", writable: true, filterable: true },
+		{ key: "title", label: "Title", type: "text", writable: true, filterable: true, creatable: true, requiredOnCreate: true },
+		{ key: "description", label: "Description", type: "text", writable: true, filterable: true, creatable: true },
 		{
 			key: "type",
 			label: "Type",
@@ -373,6 +399,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			options: [opt("internal", "Internal"), opt("external", "External")],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
 		{
 			key: "status",
@@ -386,8 +413,9 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			],
 			writable: true,
 			filterable: true,
+			creatable: true,
 		},
-		{ key: "date", label: "Date", type: "date", writable: true, filterable: true },
+		{ key: "date", label: "Date", type: "date", writable: true, filterable: true, creatable: true },
 		{ key: "startTime", label: "Start Time", type: "text", writable: true, filterable: true },
 		{ key: "endTime", label: "End Time", type: "text", writable: true, filterable: true },
 		{
@@ -420,6 +448,8 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			writable: false,
 			writeExclusionReason: "References a user record; assign via dedicated actions",
 			filterable: true,
+			creatable: true,
+			refType: "user",
 		},
 		{
 			key: "projectId",
@@ -428,6 +458,8 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			writable: false,
 			writeExclusionReason: "Relationship set when the task is created",
 			filterable: true,
+			creatable: true,
+			refType: "project",
 		},
 		{
 			key: "clientId",
@@ -436,6 +468,8 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			writable: false,
 			writeExclusionReason: "Relationship set when the task is created",
 			filterable: true,
+			creatable: true,
+			refType: "client",
 		},
 	],
 };
@@ -479,6 +513,36 @@ export function getWritableFields(
 	objectType: AutomationObjectType
 ): FieldDefinition[] {
 	return FIELD_REGISTRY[objectType].filter((f) => f.writable);
+}
+
+/**
+ * Object types a create_record action can insert. Derived from the registry:
+ * a type with at least one creatable field. Quote/invoice have none (their
+ * required subtotal/total are computed from line items), so they're excluded
+ * until the line-item creation story exists.
+ */
+export const CREATABLE_OBJECT_TYPES: AutomationObjectType[] = (
+	Object.keys(FIELD_REGISTRY) as AutomationObjectType[]
+).filter((t) => FIELD_REGISTRY[t].some((f) => f.creatable));
+
+export function isCreatableObjectType(
+	objectType: AutomationObjectType
+): boolean {
+	return CREATABLE_OBJECT_TYPES.includes(objectType);
+}
+
+export function getCreatableFields(
+	objectType: AutomationObjectType
+): FieldDefinition[] {
+	return FIELD_REGISTRY[objectType].filter((f) => f.creatable);
+}
+
+export function getRequiredCreateFields(
+	objectType: AutomationObjectType
+): FieldDefinition[] {
+	return FIELD_REGISTRY[objectType].filter(
+		(f) => f.creatable && f.requiredOnCreate
+	);
 }
 
 export function getFilterableFields(

@@ -36,8 +36,11 @@ import {
 } from "./lib/formula";
 import {
 	RELATED_OBJECTS,
+	RELATION_FIELD,
 	getFieldDefinition,
+	getRequiredCreateFields,
 	getStatusOptions,
+	isCreatableObjectType,
 	operatorsForField,
 } from "./lib/fieldRegistry";
 import { computeNextRunAt, validateSchedule } from "./lib/schedule";
@@ -296,7 +299,10 @@ function validateScheduledRecordScope(
 		if (config.kind === "action") {
 			// Both update_field targets (self and related) resolve off the record in
 			// scope, so neither can work outside a loop.
-			if (config.action.type === "update_field") {
+			if (
+				config.action.type === "update_field" ||
+				config.action.type === "update_fields"
+			) {
 				throw new Error(
 					`Node ${node.id}: there is no record to update — ${NO_RECORD}. Add a "Find records" step and put this action inside a loop.`
 				);
@@ -304,6 +310,11 @@ function validateScheduledRecordScope(
 			if (config.action.type === "create_task" && config.action.linkToRecord) {
 				throw new Error(
 					`Node ${node.id}: there is no record to link this task to — ${NO_RECORD}. Put it inside a loop, or turn off "Link to record".`
+				);
+			}
+			if (config.action.type === "create_record" && config.action.linkToScope) {
+				throw new Error(
+					`Node ${node.id}: there is no record to link this new ${config.action.objectType} to — ${NO_RECORD}. Put it inside a loop, or turn off "Link to record".`
 				);
 			}
 		}
@@ -381,10 +392,32 @@ function validateUpdateFieldAction(
 	nodeId: string,
 	action: Extract<
 		Extract<WorkflowNodeConfig, { kind: "action" }>["action"],
-		{ type: "update_field" }
+		{ type: "update_field" } | { type: "update_fields" }
 	>,
 	scopeObjectType: AutomationObjectType | undefined
 ): void {
+	const fields =
+		action.type === "update_field"
+			? [{ field: action.field, value: action.value }]
+			: action.fields;
+
+	// Shape rules hold even when the scope type is unresolvable (e.g. a loop
+	// whose fetch node is missing) — an empty or duplicated row is never valid.
+	if (action.type === "update_fields") {
+		if (fields.length === 0) {
+			throw new Error(`Node ${nodeId}: add at least one field to update`);
+		}
+		const seen = new Set<string>();
+		for (const { field } of fields) {
+			if (seen.has(field)) {
+				throw new Error(
+					`Node ${nodeId}: field "${field}" appears more than once`
+				);
+			}
+			seen.add(field);
+		}
+	}
+
 	if (!scopeObjectType) return;
 
 	let targetObjectType: AutomationObjectType = scopeObjectType;
@@ -397,27 +430,116 @@ function validateUpdateFieldAction(
 		targetObjectType = action.target.related;
 	}
 
-	const def = getFieldDefinition(targetObjectType, action.field);
-	if (!def) {
+	for (const { field, value } of fields) {
+		const def = getFieldDefinition(targetObjectType, field);
+		if (!def) {
+			throw new Error(
+				`Node ${nodeId}: unknown field "${field}" for ${targetObjectType}`
+			);
+		}
+		if (!def.writable) {
+			throw new Error(
+				`Node ${nodeId}: field "${field}" cannot be updated${def.writeExclusionReason ? ` (${def.writeExclusionReason})` : ""}`
+			);
+		}
+		if (
+			def.type === "select" &&
+			value.kind === "static" &&
+			typeof value.value === "string" &&
+			def.options &&
+			!def.options.some((o) => o.value === value.value)
+		) {
+			throw new Error(
+				`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${field}"`
+			);
+		}
+	}
+}
+
+function validateCreateRecordAction(
+	nodeId: string,
+	action: Extract<
+		Extract<WorkflowNodeConfig, { kind: "action" }>["action"],
+		{ type: "create_record" }
+	>,
+	scopeObjectType: AutomationObjectType | undefined
+): void {
+	const objectType = action.objectType;
+	if (!isCreatableObjectType(objectType)) {
 		throw new Error(
-			`Node ${nodeId}: unknown field "${action.field}" for ${targetObjectType}`
+			`Node ${nodeId}: creating ${objectType} records from automations isn't supported yet`
 		);
 	}
-	if (!def.writable) {
-		throw new Error(
-			`Node ${nodeId}: field "${action.field}" cannot be updated${def.writeExclusionReason ? ` (${def.writeExclusionReason})` : ""}`
-		);
+
+	// The FK linkToScope would fill — only resolvable when the scope type is known.
+	let linkedFk: string | undefined;
+	if (action.linkToScope && scopeObjectType) {
+		linkedFk = RELATION_FIELD[objectType]?.[scopeObjectType];
+		if (!linkedFk) {
+			throw new Error(
+				`Node ${nodeId}: a new ${objectType} can't be linked to a ${scopeObjectType}`
+			);
+		}
 	}
-	const value = action.value;
-	if (
-		def.type === "select" &&
-		value.kind === "static" &&
-		typeof value.value === "string" &&
-		def.options &&
-		!def.options.some((o) => o.value === value.value)
-	) {
+
+	const seen = new Set<string>();
+	for (const { field, value } of action.fields) {
+		if (seen.has(field)) {
+			throw new Error(
+				`Node ${nodeId}: field "${field}" appears more than once`
+			);
+		}
+		seen.add(field);
+		if (field === linkedFk) {
+			throw new Error(
+				`Node ${nodeId}: field "${field}" is already set by linking to the record in scope`
+			);
+		}
+		const def = getFieldDefinition(objectType, field);
+		if (!def || !def.creatable) {
+			throw new Error(
+				`Node ${nodeId}: "${field}" can't be set when creating a ${objectType}`
+			);
+		}
+		if (
+			def.type === "select" &&
+			value.kind === "static" &&
+			typeof value.value === "string" &&
+			def.options &&
+			!def.options.some((o) => o.value === value.value)
+		) {
+			throw new Error(
+				`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${field}"`
+			);
+		}
+	}
+
+	// Required fields must be supplied — either as a row or via the scope link.
+	// A row explicitly set to a static null/blank value doesn't satisfy it.
+	const relationFks = new Set(Object.values(RELATION_FIELD[objectType] ?? {}));
+	for (const def of getRequiredCreateFields(objectType)) {
+		const row = action.fields.find((f) => f.field === def.key);
+		if (row) {
+			const blank =
+				row.value.kind === "static" &&
+				(row.value.value === null ||
+					(typeof row.value.value === "string" &&
+						row.value.value.trim() === ""));
+			if (blank) {
+				throw new Error(
+					`Node ${nodeId}: ${def.label} is required to create a ${objectType}`
+				);
+			}
+			continue;
+		}
+		if (linkedFk === def.key) continue;
+		// When the scope type is unknown, only the relationship FK a link would
+		// fill is deferrable — other missing required fields are still missing.
+		if (action.linkToScope && !scopeObjectType && relationFks.has(def.key)) {
+			continue;
+		}
 		throw new Error(
-			`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${action.field}"`
+			`Node ${nodeId}: ${def.label} is required to create a ${objectType}`
 		);
 	}
 }
@@ -532,11 +654,20 @@ function validateWorkflowDefinition(
 				break;
 			}
 			case "action": {
-				if (config.action.type === "update_field") {
+				if (
+					config.action.type === "update_field" ||
+					config.action.type === "update_fields"
+				) {
 					const scopeType = bodyScopeType.has(node.id)
 						? bodyScopeType.get(node.id)
 						: objectType;
 					validateUpdateFieldAction(node.id, config.action, scopeType);
+				}
+				if (config.action.type === "create_record") {
+					const scopeType = bodyScopeType.has(node.id)
+						? bodyScopeType.get(node.id)
+						: objectType;
+					validateCreateRecordAction(node.id, config.action, scopeType);
 				}
 				if (config.action.type === "create_task") {
 					const title = config.action.title;
@@ -1529,7 +1660,6 @@ export const getRunThroughput = userQuery({
 			success: number;
 			failed: number;
 			withErrors: number;
-			skipped: number;
 		}>
 	> => {
 		await ctx.requireLevel("automations", "view");
@@ -1554,7 +1684,6 @@ export const getRunThroughput = userQuery({
 				success: number;
 				failed: number;
 				withErrors: number;
-				skipped: number;
 			}
 		>();
 		for (let day = firstDay; day <= todayMidnight; day += DAY_MS) {
@@ -1563,7 +1692,6 @@ export const getRunThroughput = userQuery({
 				success: 0,
 				failed: 0,
 				withErrors: 0,
-				skipped: 0,
 			});
 		}
 
@@ -1572,10 +1700,11 @@ export const getRunThroughput = userQuery({
 			const day = Math.floor(e.triggeredAt / DAY_MS) * DAY_MS;
 			const bucket = buckets.get(day);
 			if (!bucket) continue; // outside the seeded window
+			// Skipped runs are deliberately not returned — the throughput chart
+			// tracks executed runs only.
 			if (e.status === "completed") bucket.success++;
 			else if (e.status === "failed") bucket.failed++;
 			else if (e.status === "completed_with_errors") bucket.withErrors++;
-			else if (e.status === "skipped") bucket.skipped++;
 		}
 
 		return Array.from(buckets.values());

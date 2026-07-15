@@ -168,7 +168,9 @@ function PartialProgressBanner({ execution }: { execution: ExecutionDoc }) {
 		<div className="space-y-2">
 			{loopsWithFailures.map((summary) => {
 				const shown = summary.errors.slice(0, MAX_SHOWN);
-				const hiddenCount = summary.errors.length - shown.length;
+				// Count against `failed`, not `errors` — the server caps the stored
+				// error list, so failures past the cap have no entry here.
+				const hiddenCount = summary.failed - shown.length;
 				const anyPartial = summary.errors.some((e) => e.partial);
 				return (
 					<div

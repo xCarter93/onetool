@@ -353,9 +353,9 @@ describe("Community Pages", () => {
 				.filter((q) => q.eq(q.field("eventType"), "entity.record_created"))
 				.collect()
 		);
-		const taskCreated = events.find((e) => e.payload.entityId === taskId);
-		expect(taskCreated).toBeDefined();
-		expect(taskCreated?.payload.entityType).toBe("task");
+		const taskEvents = events.filter((e) => e.payload.entityId === taskId);
+		expect(taskEvents).toHaveLength(1);
+		expect(taskEvents[0].payload.entityType).toBe("task");
 	});
 
 	it("submitInterest assigns task to org admin", async () => {

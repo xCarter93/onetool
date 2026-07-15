@@ -169,6 +169,23 @@ export const updateFieldActionValidator = v.object({
 	value: valueRefValidator,
 });
 
+/**
+ * Multi-field successor to update_field: one target, one atomic patch. The
+ * single-field variant stays valid forever — published snapshots keep running
+ * unmodified, and the web editor upgrades legacy configs to a one-row
+ * update_fields on load/save (symmetrically, so signatures stay stable).
+ */
+export const updateFieldsActionValidator = v.object({
+	type: v.literal("update_fields"),
+	target: actionTargetValidator,
+	fields: v.array(
+		v.object({
+			field: v.string(),
+			value: valueRefValidator,
+		})
+	),
+});
+
 export const createTaskActionValidator = v.object({
 	type: v.literal("create_task"),
 	title: valueRefValidator,
@@ -178,6 +195,28 @@ export const createTaskActionValidator = v.object({
 	assigneeUserId: v.optional(v.string()),
 	/** Link the task to the in-scope record's project/client when resolvable. */
 	linkToRecord: v.optional(v.boolean()),
+});
+
+/**
+ * Generic record creation. Unlike update_fields there is no record in scope to
+ * write to — a brand-new record of `objectType` is inserted. Only object types
+ * the field registry marks creatable (client/project/task at launch) are
+ * accepted; publish validation rejects the rest, so the validator stays wide
+ * enough to grow into quote/invoice later without a schema migration.
+ * `linkToScope` sets the new record's FK to the in-scope record (e.g. a project
+ * created off a client automation gets that client) via the registry relation
+ * map — and, like create_task's linkToRecord, needs a record in scope.
+ */
+export const createRecordActionValidator = v.object({
+	type: v.literal("create_record"),
+	objectType: objectTypeValidator,
+	fields: v.array(
+		v.object({
+			field: v.string(),
+			value: valueRefValidator,
+		})
+	),
+	linkToScope: v.optional(v.boolean()),
 });
 
 export const sendNotificationActionValidator = v.object({
@@ -205,7 +244,9 @@ export const sendTeamMessageActionValidator = v.object({
 
 export const actionValidator = v.union(
 	updateFieldActionValidator,
+	updateFieldsActionValidator,
 	createTaskActionValidator,
+	createRecordActionValidator,
 	sendNotificationActionValidator,
 	sendTeamMessageActionValidator
 );

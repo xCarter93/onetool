@@ -25,4 +25,4 @@ export type { FormulaFnDoc } from "./functions";
 
 // Calendar-date vs instant classification. Callers that read or write date
 // fields need it to stay in the same day-space the formula layer uses.
-export { calendarDayEpoch, isCalendarDateEpoch } from "./coerce";
+export { calendarDayEpoch, isCalendarDateEpoch, toEpochMs } from "./coerce";

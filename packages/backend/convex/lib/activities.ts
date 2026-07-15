@@ -23,6 +23,7 @@ export async function createActivity(
 		description,
 		metadata,
 		isVisible = true,
+		actor,
 	}: {
 		activityType: ActivityType;
 		entityType: EntityType;
@@ -31,10 +32,24 @@ export async function createActivity(
 		description: string;
 		metadata?: Record<string, unknown>;
 		isVisible?: boolean;
+		/**
+		 * Explicit actor + org for system contexts (e.g. automation runs) that have
+		 * no ambient authenticated user. When omitted, the acting user and org are
+		 * resolved from auth as before.
+		 */
+		actor?: { userId: Id<"users">; orgId: Id<"organizations"> };
 	}
 ): Promise<Id<"activities"> | null> {
-	const user = await getCurrentUserOrThrow(ctx);
-	const orgId = await getOptionalOrgId(ctx);
+	let userId: Id<"users">;
+	let orgId: Id<"organizations"> | null | undefined;
+	if (actor) {
+		userId = actor.userId;
+		orgId = actor.orgId;
+	} else {
+		const user = await getCurrentUserOrThrow(ctx);
+		userId = user._id;
+		orgId = await getOptionalOrgId(ctx);
+	}
 
 	// Skip activity logging for users without organizations
 	if (!orgId) {
@@ -43,7 +58,7 @@ export async function createActivity(
 
 	return await ctx.db.insert("activities", {
 		orgId,
-		userId: user._id,
+		userId,
 		activityType,
 		entityType,
 		entityId,
@@ -59,13 +74,18 @@ export async function createActivity(
  * Helper functions for common activity types
  */
 export const ActivityHelpers = {
-	async clientCreated(ctx: MutationCtx, client: Doc<"clients">) {
+	async clientCreated(
+		ctx: MutationCtx,
+		client: Doc<"clients">,
+		actor?: { userId: Id<"users">; orgId: Id<"organizations"> }
+	) {
 		return createActivity(ctx, {
 			activityType: "client_created",
 			entityType: "client",
 			entityId: client._id,
 			entityName: client.companyName,
 			description: `Created new client: ${client.companyName}`,
+			actor,
 		});
 	},
 
@@ -89,13 +109,18 @@ export const ActivityHelpers = {
 		});
 	},
 
-	async projectCreated(ctx: MutationCtx, project: Doc<"projects">) {
+	async projectCreated(
+		ctx: MutationCtx,
+		project: Doc<"projects">,
+		actor?: { userId: Id<"users">; orgId: Id<"organizations"> }
+	) {
 		return createActivity(ctx, {
 			activityType: "project_created",
 			entityType: "project",
 			entityId: project._id,
 			entityName: project.title,
 			description: `Created new project: ${project.title}`,
+			actor,
 		});
 	},
 
@@ -279,13 +304,18 @@ export const ActivityHelpers = {
 		});
 	},
 
-	async taskCreated(ctx: MutationCtx, task: Doc<"tasks">) {
+	async taskCreated(
+		ctx: MutationCtx,
+		task: Doc<"tasks">,
+		actor?: { userId: Id<"users">; orgId: Id<"organizations"> }
+	) {
 		return createActivity(ctx, {
 			activityType: "task_created",
 			entityType: "task",
 			entityId: task._id,
 			entityName: task.title,
 			description: `Created task: ${task.title}`,
+			actor,
 		});
 	},
 

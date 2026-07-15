@@ -20,7 +20,7 @@ function getSummary(config: ActionNodeConfig | undefined): {
 
 	const action = config.action;
 	const targetLabel =
-		action.type === "update_field"
+		action.type === "update_field" || action.type === "update_fields"
 			? action.target === "self"
 				? "this record"
 				: OBJECT_TYPE_LABELS[action.target.related]
@@ -38,12 +38,56 @@ function getSummary(config: ActionNodeConfig | undefined): {
 				isConfigured: true,
 			};
 		}
+		case "update_fields": {
+			const rows = action.fields.filter((row) => row.field);
+			if (rows.length === 0) {
+				return { title: "Update Record", description: "Choose a field...", isConfigured: false };
+			}
+			// Configured only when every row has a field and a non-empty value —
+			// mirrors save validation so the node's solid border matches what passes.
+			const isComplete = action.fields.every(
+				(row) =>
+					!!row.field &&
+					(row.value.kind !== "static" ||
+						(row.value.value !== null && row.value.value !== "")),
+			);
+			if (rows.length === 1) {
+				const value = rows[0].value.kind === "static" ? rows[0].value.value : "...";
+				return {
+					title: `Update ${rows[0].field}`,
+					description: `on ${targetLabel} → ${value ?? "..."}`,
+					isConfigured: isComplete,
+				};
+			}
+			return {
+				title: `Update ${rows.length} fields`,
+				description: `on ${targetLabel} → ${rows.map((r) => r.field).join(", ")}`,
+				isConfigured: isComplete,
+			};
+		}
 		case "create_task": {
 			const title = action.title.kind === "static" ? action.title.value : undefined;
 			return {
 				title: "Create Task",
 				description: title ? String(title) : "Choose a task title...",
 				isConfigured: action.title.kind === "var" || !!title,
+			};
+		}
+		case "create_record": {
+			const label = OBJECT_TYPE_LABELS[action.objectType];
+			const rows = action.fields.filter((row) => row.field);
+			const linked = action.linkToScope ? " · linked to record in scope" : "";
+			if (rows.length === 0 && !action.linkToScope) {
+				return {
+					title: `Create ${label}`,
+					description: "Choose fields to set...",
+					isConfigured: false,
+				};
+			}
+			return {
+				title: `Create ${label}`,
+				description: `${rows.map((r) => r.field).join(", ")}${linked}`.trim(),
+				isConfigured: true,
 			};
 		}
 		case "send_notification":

@@ -21,8 +21,12 @@ import {
 	MAX_FETCH_LIMIT,
 	MAX_LOOP_ITERATIONS,
 	VALUELESS_OPERATORS,
+	RELATION_FIELD,
+	getCreatableFields,
 	getFieldDefinition,
+	getRequiredCreateFields,
 	getWritableFields,
+	isCreatableObjectType,
 	operatorsForField,
 	validateSchedule,
 	type ActionNodeConfig,
@@ -220,6 +224,11 @@ function validateActionNode(
 	// The object type `target: "self"` resolves to at this node — the loop item
 	// inside a loop body, else the trigger record (see getScopeObjectType).
 	scopeObjectType: AutomationObjectType | null,
+	// True for a scheduled trigger outside a loop — the one null-scope case that
+	// deserves the "runs on a schedule" guidance. The others (no trigger, record
+	// trigger without an object type, unconfigured fetch feeding a loop) are
+	// already flagged at their own source.
+	scheduledTopLevel: boolean,
 	errors: ValidationResult["errors"]
 ): void {
 	if (!config) {
@@ -236,14 +245,16 @@ function validateActionNode(
 	switch (action.type) {
 		case "update_field": {
 			if (!scopeObjectType) {
-				// Reached on a scheduled automation outside a loop — the trigger is
-				// fine, there is simply no record for the action to touch.
-				errors.push({
-					type: "no_trigger_record",
-					message:
-						"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
-					nodeId,
-				});
+				if (scheduledTopLevel) {
+					// The trigger is fine — there is simply no record for the action
+					// to touch.
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
+						nodeId,
+					});
+				}
 				return;
 			}
 
@@ -269,6 +280,159 @@ function validateActionNode(
 					message: "Set a value to update the field to",
 					nodeId,
 				});
+			}
+			break;
+		}
+		case "update_fields": {
+			if (!scopeObjectType) {
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
+						nodeId,
+					});
+				}
+				return;
+			}
+
+			if (action.fields.length === 0) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Add at least one field to update",
+					nodeId,
+				});
+				return;
+			}
+
+			const targetObjectType: AutomationObjectType =
+				action.target === "self" ? scopeObjectType : action.target.related;
+			const writable = getWritableFields(targetObjectType);
+			const seen = new Set<string>();
+			for (const row of action.fields) {
+				if (row.field && seen.has(row.field)) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Field "${row.field}" appears more than once — remove one of the rows`,
+						nodeId,
+					});
+					return;
+				}
+				if (row.field) seen.add(row.field);
+
+				const field = writable.find((f) => f.key === row.field);
+				if (!field) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Choose a field to update",
+						nodeId,
+					});
+					return;
+				}
+
+				const isEmpty =
+					row.value.kind === "static" &&
+					(row.value.value === null || row.value.value === "");
+				if (isEmpty) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Set a value for ${field.label}`,
+						nodeId,
+					});
+					return;
+				}
+			}
+			break;
+		}
+		case "create_record": {
+			const objectType = action.objectType;
+			if (!isCreatableObjectType(objectType)) {
+				errors.push({
+					type: "missing_required_config",
+					message: `Creating ${objectType} records from automations isn't supported yet`,
+					nodeId,
+				});
+				return;
+			}
+
+			// linkToScope needs a record in scope; on a scheduled top-level step
+			// there is none.
+			if (action.linkToScope && !scopeObjectType) {
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message: `This automation runs on a schedule, so there is no record to link this new ${objectType} to. Turn off "Link to record", or move this inside a Loop.`,
+						nodeId,
+					});
+					return;
+				}
+			}
+
+			const creatable = getCreatableFields(objectType);
+			const requiredKeys = new Set(
+				getRequiredCreateFields(objectType).map((f) => f.key)
+			);
+			const linkFk =
+				action.linkToScope && scopeObjectType
+					? RELATION_FIELD[objectType]?.[scopeObjectType]
+					: undefined;
+			if (action.linkToScope && scopeObjectType && !linkFk) {
+				errors.push({
+					type: "missing_required_config",
+					message: `A new ${objectType} can't be linked to a ${scopeObjectType}`,
+					nodeId,
+				});
+				return;
+			}
+
+			const seen = new Set<string>();
+			for (const row of action.fields) {
+				if (row.field && seen.has(row.field)) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Field "${row.field}" appears more than once — remove one of the rows`,
+						nodeId,
+					});
+					return;
+				}
+				if (row.field) seen.add(row.field);
+
+				const field = creatable.find((f) => f.key === row.field);
+				if (!field) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Choose a field to set",
+						nodeId,
+					});
+					return;
+				}
+
+				const isEmpty =
+					row.value.kind === "static" &&
+					(row.value.value === null || row.value.value === "");
+				if (isEmpty) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Set a value for ${field.label}`,
+						nodeId,
+					});
+					return;
+				}
+			}
+
+			// Required fields must be supplied as a row or via the scope link.
+			for (const key of requiredKeys) {
+				if (action.fields.some((r) => r.field === key)) continue;
+				if (linkFk === key) continue;
+				// An unresolved link (scope type unknown) may still fill it — defer.
+				if (action.linkToScope && !scopeObjectType) continue;
+				const def = creatable.find((f) => f.key === key);
+				errors.push({
+					type: "missing_required_config",
+					message: `${def?.label ?? key} is required to create a ${objectType}`,
+					nodeId,
+				});
+				return;
 			}
 			break;
 		}
@@ -785,14 +949,17 @@ export function validateWorkflowForSave(
 				);
 				break;
 			}
-			case "action":
+			case "action": {
+				const scope = getScopeObjectType(workflowNodes, node.id, objectType);
 				validateActionNode(
 					node.id,
 					config as ActionNodeConfig | undefined,
-					getScopeObjectType(workflowNodes, node.id, objectType).objectType,
+					scope.objectType,
+					trigger?.type === "scheduled" && !scope.inLoop,
 					errors
 				);
 				break;
+			}
 			case "fetch_records":
 				validateFetchNode(
 					node.id,

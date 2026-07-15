@@ -59,7 +59,7 @@ function emptyVariableRule(path: string): ConditionRule {
 	return {
 		field: "",
 		left: { kind: "var", path },
-		operator: "greater_than",
+		operator: "equals",
 		value: { kind: "static", value: "" },
 	};
 }
@@ -349,7 +349,7 @@ export function FilterGroupsEditor({
 				</div>
 			))}
 
-			{groups.length < MAX_CONDITION_GROUPS && (
+			{canAddRule && groups.length < MAX_CONDITION_GROUPS && (
 				<Button
 					type="button"
 					variant="outline"

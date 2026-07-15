@@ -1074,6 +1074,278 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("update_fields — multi-field update (Phase B2)", () => {
+		function updateFieldsActionNode(
+			id: string,
+			fields: Array<{ field: string; value: string | number | boolean }>,
+			opts: { nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "update_fields" as const,
+						target: "self" as const,
+						fields: fields.map(({ field, value }) => ({
+							field,
+							value: { kind: "static" as const, value },
+						})),
+					},
+				},
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		async function makeProject(asUser: ReturnType<typeof t.withIdentity>) {
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			return await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+		}
+
+		async function recordUpdatedCascades() {
+			return await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("eventType"), "entity.record_updated"),
+							q.eq(
+								q.field("eventSource"),
+								"automationExecutor.executeActionNodeV2"
+							)
+						)
+					)
+					.collect()
+			);
+		}
+
+		it("writes every field in one action; a chained automation watching one of them fires exactly once", async () => {
+			const { asUser } = await setupUser();
+			const startDate = Date.UTC(2026, 6, 20);
+
+			await asUser.mutation(api.automations.create, {
+				name: "A — stamp description and start date",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					updateFieldsActionNode("act-1", [
+						{ field: "description", value: "Multi ran" },
+						{ field: "startDate", value: startDate },
+					]),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "B — react to the start date",
+				trigger: {
+					type: "record_updated",
+					objectType: "project",
+					fields: ["startDate"],
+				},
+				nodes: [updateFieldActionNode("act-1", "title", "B ran")],
+				isActive: true,
+			});
+
+			const projectId = await makeProject(asUser);
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.description).toBe("Multi ran");
+			expect(project?.startDate).toBe(startDate);
+			// B saw A's one emit and ran exactly once.
+			expect(project?.title).toBe("B ran");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(2);
+			expect(executions.every((e) => e.status === "completed")).toBe(true);
+
+			const cascadeEvents = await recordUpdatedCascades();
+			const multi = cascadeEvents.find(
+				(e) =>
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					((e.payload.metadata as any)?.changedFields ?? []).length === 2
+			);
+			expect(multi).toBeDefined();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((multi?.payload.metadata as any)?.changedFields).toEqual([
+				"description",
+				"startDate",
+			]);
+			// With more than one changed field there is no single field to name.
+			expect(multi?.payload.field).toBeUndefined();
+		});
+
+		it("a status row cascades once and the rest emit one record_updated", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Complete and describe",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					updateFieldsActionNode("act-1", [
+						{ field: "status", value: "completed" },
+						{ field: "description", value: "done" },
+					]),
+				],
+				isActive: true,
+			});
+
+			const projectId = await makeProject(asUser);
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.status).toBe("completed");
+			expect(project?.description).toBe("done");
+			expect(project?.completedAt).toBeDefined();
+
+			const statusEvents = await t.run(async (ctx) =>
+				ctx.db
+					.query("domainEvents")
+					.filter((q) => q.eq(q.field("eventType"), "entity.status_changed"))
+					.collect()
+			);
+			const projectStatus = statusEvents.filter(
+				(e) => e.payload.entityId === projectId
+			);
+			expect(projectStatus).toHaveLength(1);
+			expect(projectStatus[0].payload.oldValue).toBe("planned");
+			expect(projectStatus[0].payload.newValue).toBe("completed");
+
+			const updatedEvents = await recordUpdatedCascades();
+			expect(updatedEvents).toHaveLength(1);
+			// Status rides its own status_changed event, never record_updated.
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((updatedEvents[0].payload.metadata as any)?.changedFields).toEqual([
+				"description",
+			]);
+
+			// Aggregate replace fired: the project now counts as "completed".
+			const completedCount = await t.run(async (ctx) =>
+				projectCountsAggregate.count(ctx, {
+					namespace: orgId,
+					bounds: {
+						lower: { key: ["completed", 0], inclusive: true },
+						upper: {
+							key: ["completed", Number.MAX_SAFE_INTEGER],
+							inclusive: true,
+						},
+					},
+				})
+			);
+			expect(completedCount).toBe(1);
+		});
+
+		it("a bad row fails the whole action before anything is written", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Good field, bad date",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					updateFieldsActionNode("act-1", [
+						{ field: "description", value: "should not land" },
+						{ field: "endDate", value: "not-a-date" },
+					]),
+				],
+				isActive: true,
+			});
+
+			const projectId = await makeProject(asUser);
+			await drainEvents();
+
+			// Rows validate before the first write — the good row must not land.
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.description).toBeUndefined();
+			expect(project?.endDate).toBeUndefined();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("failed");
+			expect(executions[0].error).toMatch(/not a valid date/i);
+
+			const cascadeEvents = await recordUpdatedCascades();
+			expect(cascadeEvents).toHaveLength(0);
+		});
+
+		it("a one-row update_fields emits the legacy single-field event shape", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "One row",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					updateFieldsActionNode("act-1", [{ field: "notes", value: "hello" }]),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const cascadeEvents = await recordUpdatedCascades();
+			expect(cascadeEvents).toHaveLength(1);
+			expect(cascadeEvents[0].payload.field).toBe("notes");
+			expect(cascadeEvents[0].payload.oldValue).toBeUndefined();
+			expect(cascadeEvents[0].payload.newValue).toBe("hello");
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((cascadeEvents[0].payload.metadata as any)?.changedFields).toEqual([
+				"notes",
+			]);
+		});
+
+		it("rows whose value already matches are left out of the emit", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Half no-op",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					updateFieldsActionNode("act-1", [
+						{ field: "notes", value: "Preset note" },
+						{ field: "companyDescription", value: "fresh" },
+					]),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+				notes: "Preset note",
+			});
+			await drainEvents();
+
+			const cascadeEvents = await recordUpdatedCascades();
+			expect(cascadeEvents).toHaveLength(1);
+			// Only the real change is announced — and with exactly one change the
+			// event names it, same as a single-field write.
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((cascadeEvents[0].payload.metadata as any)?.changedFields).toEqual([
+				"companyDescription",
+			]);
+			expect(cascadeEvents[0].payload.field).toBe("companyDescription");
+		});
+	});
+
 	describe("date writes are normalized to the calendar-date encoding", () => {
 		it("stores an instant written into a date field as UTC midnight", async () => {
 			const { asUser } = await setupUser();
@@ -4086,6 +4358,364 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(execution?.status).toBe("running");
 			const client = await t.run(async (ctx) => ctx.db.get(clientId));
 			expect(client?.notes).toBeUndefined();
+		});
+	});
+
+	describe("create_record — generic record creation (Phase B1)", () => {
+		function createRecordActionNode(
+			id: string,
+			opts: {
+				objectType: "client" | "project" | "quote" | "invoice" | "task";
+				fields?: Array<{
+					field: string;
+					value:
+						| { kind: "static"; value: string | number | boolean | null }
+						| { kind: "var"; path: string };
+				}>;
+				linkToScope?: boolean;
+				nextNodeId?: string;
+			}
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "create_record" as const,
+						objectType: opts.objectType,
+						fields: opts.fields ?? [],
+						linkToScope: opts.linkToScope,
+					},
+				},
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		async function makeOrgPremium(orgId: Id<"organizations">) {
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, {
+					clerkPlanSlug: "onetool_business_plan_org",
+					subscriptionStatus: "active",
+				})
+			);
+		}
+
+		async function runScheduledOnce(automationId: Id<"workflowAutomations">) {
+			await t.run(async (ctx) =>
+				ctx.db.patch(automationId, { nextRunAt: Date.now() - 1000 })
+			);
+			await t.mutation(
+				internal.automationExecutor.dispatchScheduledAutomations,
+				{}
+			);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		}
+
+		it("creates a project linked to the scope client, with defaults, activity, aggregate, and a record_created emit", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Onboard project",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					createRecordActionNode("act-1", {
+						objectType: "project",
+						linkToScope: true,
+						fields: [
+							{ field: "title", value: { kind: "static", value: "Onboarding" } },
+						],
+					}),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+
+			await drainEvents();
+
+			const projects = await t.run(async (ctx) =>
+				ctx.db.query("projects").collect()
+			);
+			expect(projects).toHaveLength(1);
+			const project = projects[0];
+			expect(project.clientId).toBe(clientId);
+			expect(project.title).toBe("Onboarding");
+			expect(project.status).toBe("planned");
+			expect(project.projectType).toBe("one-off");
+			expect(project.orgId).toBe(orgId);
+
+			// Aggregate kept in sync: the new planned project is counted.
+			const count = await t.run(async (ctx) =>
+				projectCountsAggregate.count(ctx, {
+					namespace: orgId,
+					bounds: {
+						lower: { key: ["planned", 0], inclusive: true },
+						upper: {
+							key: ["planned", Number.MAX_SAFE_INTEGER],
+							inclusive: true,
+						},
+					},
+				})
+			);
+			expect(count).toBe(1);
+
+			// Activity logged.
+			const activities = await t.run(async (ctx) =>
+				ctx.db.query("activities").collect()
+			);
+			expect(
+				activities.some(
+					(a) => a.activityType === "project_created" && a.entityId === project._id
+				)
+			).toBe(true);
+
+			// record_created emitted for the new project so cascades can fire.
+			const events = await t.run(async (ctx) =>
+				ctx.db.query("domainEvents").collect()
+			);
+			expect(
+				events.some(
+					(e) =>
+						e.eventType === "entity.record_created" &&
+						e.payload.entityType === "project" &&
+						e.payload.entityId === project._id
+				)
+			).toBe(true);
+		});
+
+		it("creates an unlinked task at a scheduled top-level, defaulting type/status/date", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Daily task",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					createRecordActionNode("act-1", {
+						objectType: "task",
+						fields: [
+							{ field: "title", value: { kind: "static", value: "Standup" } },
+						],
+					}),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const tasks = await t.run(async (ctx) => ctx.db.query("tasks").collect());
+			expect(tasks).toHaveLength(1);
+			const task = tasks[0];
+			expect(task.title).toBe("Standup");
+			expect(task.type).toBe("internal");
+			expect(task.status).toBe("pending");
+			expect(task.clientId).toBeUndefined();
+			expect(task.date % 86_400_000).toBe(0);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+		});
+
+		it("enforces the free-plan client cap: an 11th create_record client fails without inserting", async () => {
+			const { asUser } = await setupUser(); // free org (no premium)
+
+			// Ten clients already exist.
+			for (let i = 0; i < 10; i++) {
+				await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: `Client ${i}`,
+					status: "active",
+				});
+			}
+			const anchorClient = await t.run(async (ctx) => {
+				const rows = await ctx.db.query("clients").collect();
+				return rows[0]._id;
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Overflow client",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					createRecordActionNode("act-1", {
+						objectType: "client",
+						fields: [
+							{
+								field: "companyName",
+								value: { kind: "static", value: "Eleventh" },
+							},
+						],
+					}),
+				],
+				isActive: true,
+			});
+
+			// Firing a project create drives the automation.
+			await asUser.mutation(api.projects.create, {
+				clientId: anchorClient,
+				title: "Trigger",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await drainEvents();
+
+			const clients = await t.run(async (ctx) =>
+				ctx.db.query("clients").collect()
+			);
+			expect(clients).toHaveLength(10); // no 11th
+			expect(clients.some((c) => c.companyName === "Eleventh")).toBe(false);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("failed");
+			expect(executions[0].error ?? "").toMatch(/limit|plan|upgrade/i);
+		});
+
+		it("rejects a cross-tenant FK: a supplied clientId from another org is not found", async () => {
+			const { asUser } = await setupUser();
+			const other = await setupUser({
+				clerkUserId: "user-other",
+				clerkOrgId: "org-other",
+			});
+			const foreignClient = await other.asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Foreign Co",
+				status: "active",
+			});
+
+			const anchorClient = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Home Co",
+				status: "active",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Bad FK task",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					createRecordActionNode("act-1", {
+						objectType: "task",
+						fields: [
+							{ field: "title", value: { kind: "static", value: "T" } },
+							{
+								field: "clientId",
+								value: { kind: "static", value: foreignClient },
+							},
+						],
+					}),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.projects.create, {
+				clientId: anchorClient,
+				title: "Trigger",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await drainEvents();
+
+			const tasks = await t.run(async (ctx) => ctx.db.query("tasks").collect());
+			expect(tasks).toHaveLength(0);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions[0].status).toBe("failed");
+			expect(executions[0].error ?? "").toMatch(/client.*not found/i);
+		});
+
+		it("publish validation rejects a project create missing its required client", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad project create",
+					trigger: { type: "record_created", objectType: "task" },
+					nodes: [
+						createRecordActionNode("act-1", {
+							objectType: "project",
+							fields: [
+								{ field: "title", value: { kind: "static", value: "X" } },
+							],
+						}),
+					],
+					isActive: true,
+				})
+			).rejects.toThrow(/client is required/i);
+		});
+
+		it("publish validation rejects creating a non-creatable object type (quote)", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad quote create",
+					trigger: { type: "record_created", objectType: "task" },
+					nodes: [
+						createRecordActionNode("act-1", {
+							objectType: "quote",
+							fields: [
+								{ field: "title", value: { kind: "static", value: "X" } },
+							],
+						}),
+					],
+					isActive: true,
+				})
+			).rejects.toThrow(/isn't supported/i);
+		});
+
+		it("publish validation rejects a non-creatable field and an invalid select option", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad field",
+					trigger: { type: "record_created", objectType: "task" },
+					nodes: [
+						createRecordActionNode("act-1", {
+							objectType: "task",
+							fields: [
+								{ field: "title", value: { kind: "static", value: "X" } },
+								{
+									field: "completedAt",
+									value: { kind: "static", value: 0 },
+								},
+							],
+						}),
+					],
+					isActive: true,
+				})
+			).rejects.toThrow(/completedAt.*can't be set/i);
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad status",
+					trigger: { type: "record_created", objectType: "task" },
+					nodes: [
+						createRecordActionNode("act-1", {
+							objectType: "task",
+							fields: [
+								{ field: "title", value: { kind: "static", value: "X" } },
+								{
+									field: "status",
+									value: { kind: "static", value: "nonsense" },
+								},
+							],
+						}),
+					],
+					isActive: true,
+				})
+			).rejects.toThrow(/not a valid value/i);
 		});
 	});
 });

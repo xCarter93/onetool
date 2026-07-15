@@ -429,8 +429,22 @@ const SPECS: FunctionSpec[] = [
 			// zoned parts also broke outright in zones where DST springs forward AT
 			// midnight (e.g. America/Santiago): local midnight doesn't exist there,
 			// so the epoch landed at 01:00 local and was never a calendar date.
-			const epoch = Date.UTC(year, month - 1, day);
-			return new Date(guardEpoch(epoch, "DATE(year, month, day)"));
+			// setUTCFullYear keeps a literal year 0-99 (Date.UTC would read 50 as
+			// 1950); the round-trip check rejects out-of-range parts instead of
+			// letting DATE(2026, 13, 1) silently roll into January 2027.
+			const d = new Date(0);
+			d.setUTCFullYear(year, month - 1, day);
+			if (
+				d.getUTCFullYear() !== year ||
+				d.getUTCMonth() !== month - 1 ||
+				d.getUTCDate() !== day
+			) {
+				throw new FormulaError(
+					"TYPE",
+					`DATE(${year}, ${month}, ${day}) is not a real calendar date`
+				);
+			}
+			return new Date(guardEpoch(d.getTime(), "DATE(year, month, day)"));
 		},
 		doc: {
 			name: "DATE",
