@@ -635,7 +635,10 @@ export const create = userMutation({
 		}
 
 		// Type assertion needed because schema still has deprecated publicToken field
-		const quoteId = await createQuoteWithOrg(ctx, args as any);
+		const quoteId = await createQuoteWithOrg(ctx, {
+			...args,
+			createdByUserId: ctx.user._id,
+		} as any);
 
 		// Get the created quote for activity logging and aggregates
 		const quote = await ctx.db.get(quoteId);

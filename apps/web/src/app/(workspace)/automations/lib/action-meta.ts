@@ -73,7 +73,7 @@ export const ACTION_META: Record<
 		accent: "border-l-pink-500 dark:border-l-pink-400",
 		badge: "Communication",
 		name: "Send Notification",
-		description: "Notify an admin, the record owner, or a teammate.",
+		description: "Send a bell alert to admins, a specific person, or the record owner.",
 	},
 	send_team_message: {
 		icon: MessagesSquare,
@@ -82,6 +82,6 @@ export const ACTION_META: Record<
 		accent: "border-l-pink-500 dark:border-l-pink-400",
 		badge: "Communication",
 		name: "Send Team Message",
-		description: "Broadcast a message to your team.",
+		description: "Post a message on this record and @mention your team (in-app + push).",
 	},
 };

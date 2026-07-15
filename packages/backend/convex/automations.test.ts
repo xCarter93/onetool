@@ -275,6 +275,51 @@ describe("Automations", () => {
 		});
 	});
 
+	describe("send_team_message validation (recipients retired) — C1", () => {
+		function teamMessageNode(
+			mention: { kind: "none" } | { kind: "created_by" }
+		) {
+			return {
+				id: "msg-1",
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "send_team_message" as const,
+						recipients: { userIds: [] as string[] },
+						mention,
+						title: "Ping",
+						message: "hello team",
+					},
+				},
+			};
+		}
+
+		it("saves + publishes with empty recipients and mention none", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Team msg none",
+				trigger: clientTrigger,
+				nodes: [teamMessageNode({ kind: "none" })],
+			});
+			await asUser.mutation(api.automations.publish, { id });
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot).toBeDefined();
+		});
+
+		it("saves + publishes with mention created_by", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Team msg created_by",
+				trigger: clientTrigger,
+				nodes: [teamMessageNode({ kind: "created_by" })],
+			});
+			await asUser.mutation(api.automations.publish, { id });
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot).toBeDefined();
+		});
+	});
+
 	describe("formulas", () => {
 		it("stores formulas on create and snapshots them on publish", async () => {
 			const { asUser } = await setupUser();

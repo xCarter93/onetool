@@ -699,14 +699,11 @@ function validateWorkflowDefinition(
 					if (!config.action.message.trim()) {
 						throw new Error(`Node ${node.id}: message is required`);
 					}
-					if (
-						typeof config.action.recipients === "object" &&
-						config.action.recipients.userIds.length === 0
-					) {
-						throw new Error(
-							`Node ${node.id}: pick at least one recipient`
-						);
+					const mention = config.action.mention;
+					if (mention?.kind === "user" && !mention.userId) {
+						throw new Error(`Node ${node.id}: choose a member to tag`);
 					}
+					// recipients retired for team messages — no recipient requirement.
 				}
 				break;
 			}

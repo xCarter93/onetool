@@ -2842,6 +2842,67 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(nonMemberNotifs).toHaveLength(0);
 		});
 
+		it("send_team_message on a feedless task target: mention created_by notifies the creator, no feed post (H3)", async () => {
+			const { asUser, userId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Task ping",
+				trigger: { type: "record_created", objectType: "task" },
+				nodes: [
+					{
+						id: "msg-1",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "send_team_message" as const,
+								recipients: { userIds: [] as string[] },
+								mention: { kind: "created_by" as const },
+								title: "Task made",
+								message: "A task was created",
+							},
+						},
+					},
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			// Task creator = acting user (createdByUserId stamped on create).
+			await asUser.mutation(api.tasks.create, {
+				title: "Do it",
+				date: Date.now(),
+				status: "pending",
+				type: "external",
+				clientId,
+			});
+
+			await drainEvents();
+
+			// Creator is notified even though a task has no feed.
+			const creatorNotifs = await t.run(async (ctx) =>
+				ctx.db
+					.query("notifications")
+					.filter((q) => q.eq(q.field("userId"), userId))
+					.collect()
+			);
+			const teamMsgNotifs = creatorNotifs.filter(
+				(n) => n.notificationType === "automation_message"
+			);
+			expect(teamMsgNotifs).toHaveLength(1);
+			expect(teamMsgNotifs[0].message).toBe("A task was created");
+
+			// No feed post is written for a feedless (task) target.
+			const posts = await t.run(async (ctx) =>
+				ctx.db.query("teamMessages").collect()
+			);
+			expect(posts).toHaveLength(0);
+		});
+
 		describe("delay checkpoint + resume", () => {
 			it("checkpoints into resumeState mid-run, then resumeExecution completes the post-delay step", async () => {
 				const { orgId, asUser } = await setupUser();

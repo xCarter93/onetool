@@ -2,8 +2,9 @@
 
 import React, { useRef } from "react";
 import { useQuery } from "convex/react";
-import { Plus, X } from "lucide-react";
+import { Info, Plus, X } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ACTION_META } from "../../../lib/action-meta";
 import { normalizeNodeConfig } from "../../../lib/legacy-load";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { MultiSelector } from "@/components/shared/multi-selector";
 import {
 	CREATABLE_OBJECT_TYPE_OPTIONS,
 	MAX_DUE_IN_DAYS,
@@ -786,94 +786,303 @@ function SendNotificationFields({
 	);
 }
 
+/** Which @mention kind is selected — mirrors the four teamMessageMentionValidator arms. */
+type TagKind = "none" | "user" | "created_by" | "assigned_team";
+
+/**
+ * The Tag to display for a loaded config. `mention` (new model) wins. When it's
+ * absent we read the legacy broadcast `recipients` for a lossless pre-select:
+ * a specific-members list surfaces as Tag = Specific member (first id). This is
+ * display-only — nothing is committed until the user saves.
+ */
+function displayTag(action: SendTeamMessageAction): { kind: TagKind; userId: string } {
+	const mention = action.mention;
+	if (mention) {
+		return { kind: mention.kind, userId: mention.kind === "user" ? mention.userId : "" };
+	}
+	const recipients = action.recipients;
+	if (typeof recipients !== "string" && recipients.userIds.length > 0) {
+		return { kind: "user", userId: recipients.userIds[0] };
+	}
+	return { kind: "none", userId: "" };
+}
+
 function SendTeamMessageFields({
 	config,
 	action,
+	triggerObjectType,
 	nodes,
 	trigger,
 	nodeId,
 	formulas,
 	commit,
-}: ActionFieldsProps<SendTeamMessageAction>) {
+}: ActionFieldsProps<SendTeamMessageAction> & {
+	triggerObjectType: AutomationObjectType | null;
+}) {
 	const members = useQuery(api.users.listByOrg);
+
+	// Both target arms resolve off the record in scope (trigger record, or the
+	// loop item inside a loop body) — with no record there is nothing to post to.
+	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
+	const scopeObjectType = scope.objectType;
+
+	// Saving through this panel is the acknowledgment that retires the legacy
+	// broadcast: every commit neutralizes `recipients` to an empty audience so
+	// the new record-linked `mention` is the single source of who's notified.
+	//
+	// A legacy config (mention undefined) renders a tag *derived* from
+	// `recipients` via displayTag. Since we blank `recipients` on commit, that
+	// derived tag would be lost unless we write it into `mention` in the SAME
+	// commit — otherwise editing the Message would visibly show a tagged member
+	// while silently saving "tag no one". Materialize it on the first edit so
+	// the committed config always matches what's displayed. Untouched legacy
+	// nodes never commit, so their `recipients` back-compat stays intact.
 	const update = (patch: Partial<SendTeamMessageAction>) => {
-		commit({ ...config, action: { ...action, ...patch } });
+		const derived = displayTag(action);
+		const materialized: Partial<SendTeamMessageAction> =
+			action.mention === undefined && patch.mention === undefined
+				? {
+						mention:
+							derived.kind === "user"
+								? { kind: "user", userId: derived.userId as Id<"users"> }
+								: { kind: "none" },
+					}
+				: {};
+		commit({
+			...config,
+			action: {
+				...action,
+				...materialized,
+				...patch,
+				recipients: { userIds: [] },
+			},
+		});
 	};
 	const { ref: messageRef, insert } = useMessageInsertion(action.message, (message) =>
 		update({ message })
 	);
 
-	const recipientsValue = typeof action.recipients === "string" ? action.recipients : "specific_members";
-	const memberOptions = (members ?? []).map((member) => ({
-		value: member._id as string,
-		label: member.name || member.email,
-	}));
+	if (!scopeObjectType) {
+		return (
+			<PanelSection title="Post to">
+				<p className="text-xs text-muted-foreground">
+					This automation runs on a schedule, so there is no record to post to.
+					Add a Find records step and move this action inside a Loop.
+				</p>
+			</PanelSection>
+		);
+	}
+
+	const targetOptions = getTargetOptions(scopeObjectType);
+	const target = action.target ?? "self";
+	const targetValue = typeof target === "string" ? target : target.related;
+	const targetObjectType =
+		targetOptions.find((t) => t.value === targetValue)?.objectType ?? scopeObjectType;
+
+	// client/project/quote have a Team Communication feed; other targets fall
+	// back to notify-only at run time (nothing is posted to a feed).
+	const hasFeed =
+		targetObjectType === "client" ||
+		targetObjectType === "project" ||
+		targetObjectType === "quote";
+	const createdByOk = hasFeed;
+	// assigned_team resolves for a project (its team) or a quote (its linked
+	// project's team) — never for a client or feedless target.
+	const assignedTeamOk =
+		targetObjectType === "project" || targetObjectType === "quote";
+
+	const tag = displayTag(action);
+
+	// Legacy broadcast audiences ("all_members"/"admins") can't be mapped to a
+	// tag — surface an unobtrusive notice, default the Tag to No one.
+	const isLossyLegacy =
+		action.mention === undefined && typeof action.recipients === "string";
+
+	// A target change can strand a previously-valid tag (e.g. project → client
+	// with Assigned team selected). Keep the value, surface the error, let
+	// publish validation block.
+	const assignedTeamInvalid = tag.kind === "assigned_team" && !assignedTeamOk;
+	const createdByInvalid = tag.kind === "created_by" && !createdByOk;
+	const userInvalid = tag.kind === "user" && !tag.userId;
+
+	const updateTarget = (value: string) => {
+		const next = targetOptions.find((t) => t.value === value);
+		if (!next) return;
+		update({ target: value === "self" ? "self" : { related: next.objectType } });
+	};
+
+	const updateTag = (value: string) => {
+		if (value === "user") {
+			const userId = tag.kind === "user" && tag.userId ? tag.userId : members?.[0]?._id ?? "";
+			update({ mention: { kind: "user", userId: userId as Id<"users"> } });
+		} else if (value === "none") {
+			update({ mention: { kind: "none" } });
+		} else if (value === "created_by") {
+			update({ mention: { kind: "created_by" } });
+		} else if (value === "assigned_team") {
+			update({ mention: { kind: "assigned_team" } });
+		}
+	};
+
+	let tagContext: string | undefined;
+	if (tag.kind === "none") {
+		tagContext = "The message will appear on the feed. No one is notified.";
+	} else if (tag.kind === "created_by") {
+		tagContext = "If the creator can't be resolved, the message posts without a tag.";
+	} else if (tag.kind === "assigned_team" && targetObjectType === "quote") {
+		tagContext =
+			"Resolves through the quote's linked project. If there's no linked project, the message posts without tags.";
+	}
 
 	return (
-		<PanelSection title="Inputs">
-			<PanelField label="Recipients">
-				<Select
-					value={recipientsValue}
-					onValueChange={(value) => {
-						if (value === "all_members" || value === "admins") {
-							update({ recipients: value });
-						} else {
-							update({ recipients: { userIds: [] } });
-						}
-					}}
-				>
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all_members">All members</SelectItem>
-						<SelectItem value="admins">Admins</SelectItem>
-						<SelectItem value="specific_members">Specific members</SelectItem>
-					</SelectContent>
-				</Select>
-			</PanelField>
+		<>
+			<PanelSection title="Post to">
+				{isLossyLegacy && (
+					<div className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+						<Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+						<span>
+							This step used a broadcast audience. Broadcasts now live in the
+							Send Notification action — choose who to tag below; saving replaces
+							the old setting.
+						</span>
+					</div>
+				)}
 
-			{typeof action.recipients !== "string" && (
-				<PanelField label="Members">
-					<MultiSelector
-						options={memberOptions}
-						value={action.recipients.userIds}
-						onValueChange={(userIds) => update({ recipients: { userIds } })}
-						placeholder="Choose members"
+				<PanelField
+					label="Target"
+					helper={
+						scope.inLoop
+							? targetValue === "self"
+								? "Posts to the current record in the loop's feed."
+								: `Posts to the ${targetObjectType} linked to the current loop item.`
+							: targetValue === "self"
+								? "Which record's Team Communication feed this message posts to."
+								: `Posts to the ${targetObjectType} linked to the triggering ${scopeObjectType}.`
+					}
+				>
+					<Select
+						value={targetValue}
+						onValueChange={(value) => value && updateTarget(value)}
+					>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{targetOptions.map((option) => (
+								<SelectItem key={option.value} value={option.value}>
+									{option.value === "self" && scope.inLoop
+										? "Current loop item"
+										: option.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</PanelField>
+
+				{!hasFeed && (
+					<p className="text-xs text-muted-foreground">
+						This record type has no Team Communication feed — tagged people are
+						still notified, but nothing is posted to a feed.
+					</p>
+				)}
+
+				<PanelField
+					label="Tag"
+					helper="Tagged people are @mentioned on the post and notified in-app and by push."
+				>
+					<Select value={tag.kind} onValueChange={(value) => value && updateTag(value)}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="none">No one</SelectItem>
+							<SelectItem value="user">Specific member</SelectItem>
+							<SelectItem value="created_by" disabled={!createdByOk}>
+								Record creator
+							</SelectItem>
+							<SelectItem value="assigned_team" disabled={!assignedTeamOk}>
+								Assigned team
+							</SelectItem>
+						</SelectContent>
+					</Select>
+					{tagContext && (
+						<p className="mt-1.5 text-xs text-muted-foreground">{tagContext}</p>
+					)}
+					{assignedTeamInvalid && (
+						<p className="mt-1.5 text-xs text-destructive">
+							Assigned team is available for project and quote targets. Pick
+							another tag or change the target.
+						</p>
+					)}
+					{createdByInvalid && (
+						<p className="mt-1.5 text-xs text-destructive">
+							Record creator isn&apos;t available for this target. Pick another
+							tag or change the target.
+						</p>
+					)}
+				</PanelField>
+
+				{tag.kind === "user" && (
+					<PanelField label="Member">
+						<Select
+							value={tag.userId}
+							onValueChange={(userId) =>
+								userId &&
+								update({ mention: { kind: "user", userId: userId as Id<"users"> } })
+							}
+						>
+							<SelectTrigger>
+								<SelectValue placeholder="Choose a member" />
+							</SelectTrigger>
+							<SelectContent>
+								{members?.map((member) => (
+									<SelectItem key={member._id} value={member._id}>
+										{member.name || member.email}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						{userInvalid && (
+							<p className="mt-1.5 text-xs text-destructive">
+								Choose a member, or set Tag to &quot;No one&quot;.
+							</p>
+						)}
+					</PanelField>
+				)}
+			</PanelSection>
+
+			<PanelSection title="Message">
+				<PanelField label="Title">
+					<Input
+						value={action.title}
+						onChange={(e) => update({ title: e.target.value })}
+						placeholder="Message title"
 					/>
 				</PanelField>
-			)}
 
-			<PanelField label="Title">
-				<Input
-					value={action.title}
-					onChange={(e) => update({ title: e.target.value })}
-					placeholder="Message title"
-				/>
-			</PanelField>
-
-			<PanelField
-				label="Message"
-				helper="Insert variable adds a placeholder that's filled in from the record when this runs."
-			>
-				<div className="space-y-1.5">
-					<Textarea
-						ref={messageRef}
-						value={action.message}
-						onChange={(e) => update({ message: e.target.value })}
-						rows={4}
-						placeholder="Write your message..."
-					/>
-					<VariableInsertButton
-						nodes={nodes}
-						trigger={trigger}
-						targetNodeId={nodeId}
-						formulas={formulas}
-						onInsert={insert}
-					/>
-				</div>
-			</PanelField>
-		</PanelSection>
+				<PanelField
+					label="Message"
+					helper="Insert variable adds a placeholder that's filled in from the record when this runs."
+				>
+					<div className="space-y-1.5">
+						<Textarea
+							ref={messageRef}
+							value={action.message}
+							onChange={(e) => update({ message: e.target.value })}
+							rows={4}
+							placeholder="Write your message..."
+						/>
+						<VariableInsertButton
+							nodes={nodes}
+							trigger={trigger}
+							targetNodeId={nodeId}
+							formulas={formulas}
+							onInsert={insert}
+						/>
+					</div>
+				</PanelField>
+			</PanelSection>
+		</>
 	);
 }
 
@@ -977,6 +1186,7 @@ export function ActionConfigPanel({
 					<SendTeamMessageFields
 						config={config}
 						action={config.action}
+						triggerObjectType={triggerObjectType}
 						nodes={workflowNodes}
 						trigger={trigger}
 						nodeId={nodeId}

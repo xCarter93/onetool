@@ -220,6 +220,57 @@ export const listByNotificationWithUrls = optionalUserQuery({
 });
 
 /**
+ * Get attachments for a team message with download URLs.
+ * Mirror of listByNotificationWithUrls, keyed off teamMessageId.
+ */
+export const listByTeamMessageWithUrls = optionalUserQuery({
+	args: {
+		teamMessageId: v.id("teamMessages"),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<(MessageAttachment & { downloadUrl: string | null })[]> => {
+		const userOrgId = await getOptionalOrgId(ctx);
+		if (!userOrgId) {
+			return [];
+		}
+
+		// Validate team message access
+		const teamMessage = await ctx.db.get(args.teamMessageId);
+		if (!teamMessage || teamMessage.orgId !== userOrgId) {
+			return [];
+		}
+
+		const attachments = await ctx.db
+			.query("messageAttachments")
+			.withIndex("by_teamMessage", (q) =>
+				q.eq("teamMessageId", args.teamMessageId)
+			)
+			.collect();
+
+		// Filter by org (extra safety)
+		const filtered = attachments.filter((a) => a.orgId === userOrgId);
+
+		// Fetch download URLs for all attachments in parallel
+		const withUrls = await Promise.all(
+			filtered.map(async (attachment) => {
+				const downloadUrl = await StorageHelpers.getStorageUrl(
+					ctx,
+					attachment.storageId
+				);
+				return {
+					...attachment,
+					downloadUrl,
+				};
+			})
+		);
+
+		return withUrls;
+	},
+});
+
+/**
  * Get all attachments for a specific entity (client, project, or quote)
  * Includes download URLs to avoid N+1 query problem
  */
@@ -371,19 +422,31 @@ export const remove = userMutation({
 		// Delete the record
 		await ctx.db.delete(args.id);
 
-		// Check if notification still has other attachments
-		const remainingAttachments = await ctx.db
-			.query("messageAttachments")
-			.withIndex("by_notification", (q) =>
-				q.eq("notificationId", attachment.notificationId)
-			)
-			.collect();
-
-		// Update notification flag if no more attachments
-		if (remainingAttachments.length === 0) {
-			await ctx.db.patch(attachment.notificationId, {
-				hasAttachments: false,
-			});
+		// Clear each parent's hasAttachments flag when its last attachment goes.
+		// A migrated attachment carries BOTH keys — clear both independently.
+		const parentNotificationId = attachment.notificationId;
+		const parentTeamMessageId = attachment.teamMessageId;
+		if (parentNotificationId) {
+			const remaining = await ctx.db
+				.query("messageAttachments")
+				.withIndex("by_notification", (q) =>
+					q.eq("notificationId", parentNotificationId)
+				)
+				.collect();
+			if (remaining.length === 0) {
+				await ctx.db.patch(parentNotificationId, { hasAttachments: false });
+			}
+		}
+		if (parentTeamMessageId) {
+			const remaining = await ctx.db
+				.query("messageAttachments")
+				.withIndex("by_teamMessage", (q) =>
+					q.eq("teamMessageId", parentTeamMessageId)
+				)
+				.collect();
+			if (remaining.length === 0) {
+				await ctx.db.patch(parentTeamMessageId, { hasAttachments: false });
+			}
 		}
 
 		return args.id;

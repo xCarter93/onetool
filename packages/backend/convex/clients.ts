@@ -508,7 +508,10 @@ export const create = userMutation({
 	handler: async (ctx, args): Promise<ClientId> => {
 		await ctx.requireLevel("clients", "modify");
 		// Type assertion needed because schema still has deprecated fields
-		const clientId = await createClientWithOrg(ctx, args as any);
+		const clientId = await createClientWithOrg(ctx, {
+			...args,
+			createdByUserId: ctx.user._id,
+		} as any);
 
 		// Get the created client for activity logging and aggregates
 		const client = await ctx.db.get(clientId);
@@ -649,7 +652,7 @@ export const bulkCreate = userMutation({
 				// Type assertion needed because schema still has deprecated fields
 				const clientId = await createClientWithOrg(
 					ctx,
-					clientFields as any
+					{ ...clientFields, createdByUserId: ctx.user._id } as any
 				);
 
 				// Get the created client for activity logging and aggregates

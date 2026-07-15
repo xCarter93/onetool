@@ -527,6 +527,21 @@ function validateActionNode(
 			break;
 		}
 		case "send_team_message": {
+			// Record-linked model (B6): the message posts to the target record's
+			// feed, so a scheduled top-level step with no record can't run. Legacy
+			// broadcast `recipients` is retired and never blocks publish.
+			if (!scopeObjectType) {
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"This automation runs on a schedule, so there is no record to post to. Add a Find records step and move this action inside a Loop.",
+						nodeId,
+					});
+				}
+				return;
+			}
+
 			if (!action.message.trim()) {
 				errors.push({
 					type: "missing_required_config",
@@ -534,13 +549,28 @@ function validateActionNode(
 					nodeId,
 				});
 			}
+
+			const targetObjectType: AutomationObjectType =
+				!action.target || action.target === "self"
+					? scopeObjectType
+					: action.target.related;
+			const mention = action.mention;
 			if (
-				typeof action.recipients !== "string" &&
-				action.recipients.userIds.length === 0
+				mention?.kind === "assigned_team" &&
+				targetObjectType !== "project" &&
+				targetObjectType !== "quote"
 			) {
 				errors.push({
 					type: "missing_required_config",
-					message: "Choose who to message",
+					message:
+						"Assigned team can only be tagged on a project or quote target",
+					nodeId,
+				});
+			}
+			if (mention?.kind === "user" && !mention.userId) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Choose a member to tag, or set Tag to No one",
 					nodeId,
 				});
 			}

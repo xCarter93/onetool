@@ -197,7 +197,7 @@ describe("push", () => {
 
 			// CLIENT case
 			await asAuthor.mutation(api.notifications.createMention, {
-				taggedUserId: taggedId,
+				mentionedUserIds: [taggedId],
 				message: "hey look",
 				entityType: "client",
 				entityId: clientId,
@@ -225,7 +225,7 @@ describe("push", () => {
 			// "quote_mention" is in PUSHABLE_TYPES, not hardcoded "client_mention".
 			fetchSpy.mockClear();
 			await asAuthor.mutation(api.notifications.createMention, {
-				taggedUserId: taggedId,
+				mentionedUserIds: [taggedId],
 				message: "q",
 				entityType: "quote",
 				entityId: quoteId,
@@ -240,6 +240,26 @@ describe("push", () => {
 			// The quote path is exercised (not the client literal): the url
 			// carries the quotes actionUrl for this id.
 			expect(quoteMessages[0].data.url).toContain(quoteId);
+
+				// DEPRECATED taggedUserId path (live mobile binary): a single
+				// taggedUserId still folds into one post + one push to that user.
+				fetchSpy.mockClear();
+				await asAuthor.mutation(api.notifications.createMention, {
+					taggedUserId: taggedId,
+					message: "legacy mobile",
+					entityType: "client",
+					entityId: clientId,
+					entityName: "Acme Co",
+				});
+				await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
+				const legacyBody = JSON.parse(fetchSpy.mock.calls.at(-1)![1].body);
+				const legacyMsg = (
+					Array.isArray(legacyBody) ? legacyBody : [legacyBody]
+				)[0];
+				expect(legacyMsg.body).toBe("legacy mobile");
+				expect(legacyMsg.title).toContain("mentioned you in Acme Co");
 		});
 	});
 

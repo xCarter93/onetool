@@ -15,6 +15,7 @@ import { computeNextRunAt } from "./lib/schedule";
 import { isAdminRole, orgHasPremiumPlan } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import { enqueuePush } from "./push";
+import { insertTeamMessage } from "./teamMessages";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -48,6 +49,7 @@ import {
 	triggerRecordObjectType,
 	type ActionTarget,
 	type AutomationAction,
+	type TeamMessageMention,
 	type ValueRef,
 	type AutomationObjectType,
 	type AutomationTrigger,
@@ -3120,6 +3122,7 @@ async function executeCreateTaskAction(
 	}
 
 	try {
+		// No acting user — createdByUserId left unset (automation-created).
 		const taskId = await ctx.db.insert("tasks", {
 			orgId: env.orgId,
 			title,
@@ -3486,6 +3489,7 @@ async function executeCreateRecordAction(
 
 	try {
 		let newId: Id<"clients"> | Id<"projects"> | Id<"tasks">;
+		// No acting user — createdByUserId left unset (automation-created).
 		switch (objectType) {
 			case "client":
 				// Portal links need an access id; the create mutation takes a
@@ -3752,17 +3756,77 @@ async function executeSendNotificationAction(
 	}
 }
 
+/**
+ * Resolve a send_team_message mention config to concrete member userIds against
+ * the RESOLVED target record. All ids are org-membership-checked and deduped.
+ * `none` -> nobody; `user` -> an explicit member; `created_by` -> the target's
+ * creator (unset on historical/system rows -> nobody); `assigned_team` -> a
+ * project's assigned team (a project target directly, a quote target via its
+ * linked project; clients/anything else have no team -> nobody).
+ */
+async function resolveTeamMessageMention(
+	ctx: MutationCtx,
+	mention: TeamMessageMention | undefined,
+	targetType: ObjectType,
+	targetId: string,
+	orgId: Id<"organizations">
+): Promise<Id<"users">[]> {
+	if (!mention || mention.kind === "none") return [];
+
+	// Keep only org members, deduped.
+	const validMembers = async (
+		ids: (Id<"users"> | undefined)[]
+	): Promise<Id<"users">[]> => {
+		const out: Id<"users">[] = [];
+		for (const id of ids) {
+			if (!id) continue;
+			const membership = await getMembership(ctx, id, orgId);
+			if (membership) out.push(id);
+		}
+		return Array.from(new Set(out));
+	};
+
+	if (mention.kind === "user") {
+		return validMembers([mention.userId]);
+	}
+
+	const doc = await getObject(ctx, targetType, targetId, orgId);
+	if (!doc) return [];
+
+	if (mention.kind === "created_by") {
+		const creator = (doc as { createdByUserId?: Id<"users"> }).createdByUserId;
+		return validMembers([creator]);
+	}
+
+	// assigned_team
+	if (targetType === "project") {
+		const team = (doc as Doc<"projects">).assignedUserIds ?? [];
+		return validMembers(team);
+	}
+	if (targetType === "quote") {
+		const projectId = (doc as Doc<"quotes">).projectId;
+		if (!projectId) return [];
+		const project = await getObject(ctx, "project", projectId, orgId);
+		if (!project) return [];
+		const team = (project as Doc<"projects">).assignedUserIds ?? [];
+		return validMembers(team);
+	}
+	// client / anything else has no team.
+	return [];
+}
+
 async function executeSendTeamMessageAction(
 	ctx: MutationCtx,
 	action: Extract<AutomationAction, { type: "send_team_message" }>,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-	let userIds: Id<"users">[];
+	// Broadcast recipients (bell + push), unchanged from the legacy behavior.
+	let recipientIds: Id<"users">[];
 	if (action.recipients === "all_members") {
-		userIds = await resolveMemberUserIds(ctx, env.orgId, false);
+		recipientIds = await resolveMemberUserIds(ctx, env.orgId, false);
 	} else if (action.recipients === "admins") {
-		userIds = await resolveMemberUserIds(ctx, env.orgId, true);
+		recipientIds = await resolveMemberUserIds(ctx, env.orgId, true);
 	} else {
 		const valid: Id<"users">[] = [];
 		for (const raw of action.recipients.userIds) {
@@ -3770,10 +3834,7 @@ async function executeSendTeamMessageAction(
 			const membership = await getMembership(ctx, userId, env.orgId);
 			if (membership) valid.push(userId);
 		}
-		userIds = valid;
-	}
-	if (userIds.length === 0) {
-		return { success: true, skipped: true, error: "No recipients to message" };
+		recipientIds = valid;
 	}
 
 	const title =
@@ -3784,20 +3845,75 @@ async function executeSendTeamMessageAction(
 		return { success: false, error: "Message resolved to an empty value" };
 	}
 
+	// Resolve the target (default self). Mentions resolve for ANY resolved target
+	// so tagged users are notified even on feedless targets (task/invoice) — only
+	// the feed POST is limited to client/project/quote.
+	let post: { entityType: "client" | "project" | "quote"; entityId: string } | null =
+		null;
+	let mentionIds: Id<"users">[] = [];
+	if (scopeRecord) {
+		const targetInfo = await resolveTargetV2(
+			ctx,
+			action.target ?? "self",
+			scopeRecord.type,
+			scopeRecord.id,
+			scopeRecord.record,
+			env.orgId
+		);
+		if (targetInfo) {
+			if (
+				targetInfo.type === "client" ||
+				targetInfo.type === "project" ||
+				targetInfo.type === "quote"
+			) {
+				post = { entityType: targetInfo.type, entityId: targetInfo.id };
+			}
+			mentionIds = await resolveTeamMessageMention(
+				ctx,
+				action.mention,
+				targetInfo.type,
+				targetInfo.id,
+				env.orgId
+			);
+		}
+	}
+
+	// Bell recipients = broadcast recipients ∪ resolved mentions (deduped).
+	const bellIds = Array.from(
+		new Set<Id<"users">>([...recipientIds, ...mentionIds])
+	);
+
+	if (!post && bellIds.length === 0) {
+		return { success: true, skipped: true, error: "No recipients to message" };
+	}
+
 	const org = await ctx.db.get(env.orgId);
 	const clerkOrgId = org?.clerkOrganizationId ?? "";
-	const actionUrl = automationActionUrl(scopeRecord);
+	const actionUrl = post
+		? `/${post.entityType}s/${post.entityId}`
+		: automationActionUrl(scopeRecord);
 
 	try {
-		for (const userId of userIds) {
+		if (post) {
+			await insertTeamMessage(ctx, {
+				orgId: env.orgId,
+				entityType: post.entityType,
+				entityId: post.entityId,
+				message,
+				authorType: "automation",
+				automationId: env.automation._id,
+				mentionedUserIds: mentionIds,
+			});
+		}
+		for (const userId of bellIds) {
 			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
 				notificationType: "automation_message",
 				title,
 				message,
-				entityType: scopeRecord?.type,
-				entityId: scopeRecord?.id,
+				entityType: post?.entityType ?? scopeRecord?.type,
+				entityId: post?.entityId ?? scopeRecord?.id,
 				actionUrl,
 				isRead: false,
 				sentVia: "in_app",
@@ -4306,37 +4422,63 @@ async function dryExecuteAction(
 			};
 		}
 		case "send_team_message": {
-			let userIds: Id<"users">[];
-			if (action.recipients === "all_members") {
-				userIds = await resolveMemberUserIds(ctx, env.orgId, false);
-			} else if (action.recipients === "admins") {
-				userIds = await resolveMemberUserIds(ctx, env.orgId, true);
-			} else {
-				const valid: Id<"users">[] = [];
-				for (const raw of action.recipients.userIds) {
-					const membership = await getMembership(ctx, raw as Id<"users">, env.orgId);
-					if (membership) valid.push(raw as Id<"users">);
-				}
-				userIds = valid;
-			}
-			if (userIds.length === 0) {
-				return {
-					success: true,
-					skipped: true,
-					output: { note: "No recipients to message" },
-				};
-			}
 			const message = interpolateTemplate(action.message, env.scope).trim();
 			if (!message) {
 				return { success: false, error: "Message resolved to an empty value" };
 			}
+			// Mirror the real action: resolve target (default self) + mentions.
+			let post: {
+				entityType: "client" | "project" | "quote";
+				entityId: string;
+			} | null = null;
+			let mentionIds: Id<"users">[] = [];
+			let hadTarget = false;
+			if (scopeRecord) {
+				const targetInfo = await resolveTargetV2(
+					ctx,
+					action.target ?? "self",
+					scopeRecord.type,
+					scopeRecord.id,
+					scopeRecord.record,
+					env.orgId
+				);
+				if (targetInfo) {
+					hadTarget = true;
+					if (
+						targetInfo.type === "client" ||
+						targetInfo.type === "project" ||
+						targetInfo.type === "quote"
+					) {
+						post = { entityType: targetInfo.type, entityId: targetInfo.id };
+					}
+					mentionIds = await resolveTeamMessageMention(
+						ctx,
+						action.mention,
+						targetInfo.type,
+						targetInfo.id,
+						env.orgId
+					);
+				}
+			}
+			if (!hadTarget) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "No record in scope — skipped" },
+				};
+			}
+			const summary = post
+				? `Would post to ${post.entityType} ${post.entityId}'s Team Communication feed, tagging ${mentionIds.length} member(s)`
+				: `No feed for this target — would notify ${mentionIds.length} tagged member(s)`;
 			return {
 				success: true,
-				output: { summary: `Would send team message to ${userIds.length} member(s)` },
+				output: { summary },
 				input: {
-					recipients: action.recipients,
+					target: action.target ?? "self",
+					mention: action.mention ?? { kind: "none" },
 					message,
-					recipientCount: userIds.length,
+					posted: post !== null,
+					mentionCount: mentionIds.length,
 				},
 			};
 		}

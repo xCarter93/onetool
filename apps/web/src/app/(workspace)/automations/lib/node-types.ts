@@ -54,6 +54,7 @@ export type {
 	AutomationStatus,
 	AutomationAction,
 	ActionTarget,
+	TeamMessageMention,
 	ConditionOperator,
 	ConditionRule,
 	ConditionGroup,

@@ -9,7 +9,7 @@ import {
 	formatRelativeTime,
 	parseMessageParts,
 } from "@/lib/notification-utils";
-import { MessageSquare, Download, FileIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { MessageSquare, Download, FileIcon, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import Image from "next/image";
@@ -22,15 +22,15 @@ interface MentionFeedProps {
 
 // Component to display attachments
 function AttachmentItem({
-	notificationId,
+	teamMessageId,
 }: {
-	notificationId: Id<"notifications">;
+	teamMessageId: Id<"teamMessages">;
 }) {
 	// Fetch attachments with download URLs in bulk to avoid N+1 query problem
 	const attachments = useQuery(
-		api.messageAttachments.listByNotificationWithUrls,
+		api.messageAttachments.listByTeamMessageWithUrls,
 		{
-			notificationId,
+			teamMessageId,
 		}
 	);
 
@@ -135,7 +135,7 @@ function AttachmentDownloadLink({
 }
 
 export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps) {
-	const mentions = useQuery(api.notifications.listByEntity, {
+	const messages = useQuery(api.teamMessages.listByEntity, {
 		entityType,
 		entityId,
 	});
@@ -151,7 +151,7 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 	};
 
 	// Loading state
-	if (mentions === undefined) {
+	if (messages === undefined) {
 		return (
 			<div className="space-y-4 animate-pulse">
 				{[1, 2, 3].map((i) => (
@@ -168,90 +168,99 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 	}
 
 	// Empty state
-	if (mentions.length === 0) {
+	if (messages.length === 0) {
 		return (
 			<EmptyState
 				size="sm"
 				icon={<MessageSquare />}
 				title="No messages yet"
-				description="Start a conversation by mentioning a team member with @ in the input above."
+				description="Post an update below — @mention a teammate to notify them, or just leave a note."
 			/>
 		);
 	}
 
 	// Pagination
-	const perPage = pageSize ?? mentions.length;
-	const totalPages = Math.max(1, Math.ceil(mentions.length / perPage));
+	const perPage = pageSize ?? messages.length;
+	const totalPages = Math.max(1, Math.ceil(messages.length / perPage));
 	const startIdx = (currentPage - 1) * perPage;
-	const paginatedMentions = pageSize
-		? mentions.slice(startIdx, startIdx + perPage)
-		: mentions;
+	const paginatedMessages = pageSize
+		? messages.slice(startIdx, startIdx + perPage)
+		: messages;
 
 	return (
 		<div className="space-y-6">
-			{paginatedMentions.map((mention) => (
-				<div key={mention._id} className="flex gap-3">
-					{/* Avatar - showing the author (person who sent the message) */}
-					<Avatar className="h-10 w-10 shrink-0">
-						<AvatarImage
-							src={mention.author?.image ?? undefined}
-							alt={mention.author?.name || mention.author?.email || "User"}
-						/>
-						<AvatarFallback className="text-sm">
-							{mention.author?.name
-								? getInitials(mention.author.name)
-								: mention.author?.email
-									? mention.author.email.substring(0, 2).toUpperCase()
-									: "??"}
-						</AvatarFallback>
-					</Avatar>
-
-					{/* Message content */}
-					<div className="flex-1 min-w-0">
-						<div className="flex items-center gap-2 mb-1">
-							<span className="text-sm font-semibold text-gray-900 dark:text-white">
-								{mention.author?.name ||
-									mention.author?.email ||
-									"Unknown User"}
-							</span>
-							<span className="text-xs text-gray-500 dark:text-gray-400">
-								{formatRelativeTime(mention._creationTime)}
-							</span>
-						</div>
-
-						{/* Message text with styled mentions */}
-						<div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-700">
-							<div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap break-words">
-								{parseMessageParts(mention.message).map((part, index) =>
-									part.isMention ? (
-										<Badge
-											key={index}
-											variant="secondary"
-											className="inline-flex mx-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium"
-										>
-											{part.text}
-										</Badge>
-									) : (
-										<span key={index}>{part.text}</span>
-									)
+			{paginatedMessages.map((message) => {
+				const isAutomation = message.authorType === "automation";
+				return (
+					<div key={message._id} className="flex gap-3">
+						{/* Avatar - the author (person, or the automation that posted) */}
+						<Avatar className="h-10 w-10 shrink-0">
+							<AvatarImage
+								src={message.authorImageUrl ?? undefined}
+								alt={message.authorName}
+							/>
+							<AvatarFallback className="text-sm">
+								{isAutomation ? (
+									<Sparkles className="h-4 w-4" />
+								) : (
+									getInitials(message.authorName)
 								)}
-							</div>
-						</div>
+							</AvatarFallback>
+						</Avatar>
 
-						{/* Attachments - rendered outside the message bubble */}
-						{mention.hasAttachments && (
-							<AttachmentItem notificationId={mention._id} />
-						)}
+						{/* Message content */}
+						<div className="flex-1 min-w-0">
+							<div className="flex items-center gap-2 mb-1">
+								<span className="text-sm font-semibold text-gray-900 dark:text-white">
+									{message.authorName}
+								</span>
+								{isAutomation && (
+									<Badge
+										variant="secondary"
+										className="text-[10px] px-1.5 py-0 h-4 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
+									>
+										Automation
+									</Badge>
+								)}
+								<span className="text-xs text-gray-500 dark:text-gray-400">
+									{formatRelativeTime(message.createdAt)}
+								</span>
+							</div>
+
+							{/* Message text with styled mentions */}
+							<div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-700">
+								<div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap break-words">
+									{parseMessageParts(message.message).map((part, index) =>
+										part.isMention ? (
+											<Badge
+												key={index}
+												variant="secondary"
+												className="inline-flex mx-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium"
+											>
+												{part.text}
+											</Badge>
+										) : (
+											<span key={index}>{part.text}</span>
+										)
+									)}
+								</div>
+							</div>
+
+							{/* Attachments - rendered outside the message bubble */}
+							{message.hasAttachments && (
+								<AttachmentItem teamMessageId={message._id} />
+							)}
+						</div>
 					</div>
-				</div>
-			))}
+				);
+			})}
 
 			{/* Pagination */}
 			{pageSize && totalPages > 1 && (
 				<div className="flex items-center justify-between pt-4 mt-4 border-t border-border">
 					<span className="text-xs text-muted-foreground">
-						{startIdx + 1}–{Math.min(startIdx + perPage, mentions.length)} of{" "}
-						{mentions.length}
+						{startIdx + 1}–{Math.min(startIdx + perPage, messages.length)} of{" "}
+						{messages.length}
 					</span>
 					<div className="flex items-center gap-1">
 						<button

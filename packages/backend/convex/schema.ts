@@ -223,6 +223,9 @@ export default defineSchema({
 
 		// Archive functionality
 		archivedAt: v.optional(v.number()), // Timestamp when client was archived
+
+		// Creator (optional — unset on historical + system-created rows)
+		createdByUserId: v.optional(v.id("users")),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_status", ["orgId", "status"])
@@ -312,6 +315,9 @@ export default defineSchema({
 
 		// Team
 		assignedUserIds: v.optional(v.array(v.id("users"))),
+
+		// Creator (optional — unset on historical + system-created rows)
+		createdByUserId: v.optional(v.id("users")),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
@@ -356,6 +362,9 @@ export default defineSchema({
 		),
 		repeatUntil: v.optional(v.number()),
 		parentTaskId: v.optional(v.id("tasks")), // Links recurring task instances to parent
+
+		// Creator (optional — unset on historical + system-created rows)
+		createdByUserId: v.optional(v.id("users")),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_project", ["projectId"])
@@ -424,6 +433,9 @@ export default defineSchema({
 		signingOrder: v.optional(
 			v.union(v.literal("client_first"), v.literal("org_first"))
 		),
+
+		// Creator (optional — unset on historical + system-created rows)
+		createdByUserId: v.optional(v.id("users")),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
@@ -526,6 +538,9 @@ export default defineSchema({
 		stripePaymentIntentId: v.optional(v.string()),
 
 		publicToken: v.string(), // For client payment access
+
+		// Creator (optional — unset on historical + system-created rows)
+		createdByUserId: v.optional(v.id("users")),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
@@ -816,10 +831,38 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_org_active", ["orgId", "isActive"]),
 
+	// Team Communication messages (feed on client/project/quote detail pages).
+	// Go-forward home for both the human mention write path and the automation
+	// send_team_message action. Bell notifications still live in `notifications`.
+	teamMessages: defineTable({
+		orgId: v.id("organizations"),
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("project"),
+			v.literal("quote")
+		),
+		entityId: v.string(),
+		message: v.string(), // RAW message (no authorId prefix)
+		authorType: v.union(v.literal("user"), v.literal("automation")),
+		authorUserId: v.optional(v.id("users")), // set when authorType === "user"
+		automationId: v.optional(v.id("workflowAutomations")), // set when authorType === "automation"
+		mentionedUserIds: v.optional(v.array(v.id("users"))),
+		hasAttachments: v.optional(v.boolean()),
+		createdAt: v.number(),
+		// Set only by the one-shot notifications backfill; enables idempotent re-runs.
+		migratedFromNotificationId: v.optional(v.id("notifications")),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_entity", ["orgId", "entityType", "entityId"])
+		.index("by_migrated_from", ["migratedFromNotificationId"]),
+
 	// Message Attachments - files attached to mention messages
 	messageAttachments: defineTable({
 		orgId: v.id("organizations"),
-		notificationId: v.id("notifications"),
+		// Legacy attachments key off notificationId; new attachments key off
+		// teamMessageId. Exactly one is set.
+		notificationId: v.optional(v.id("notifications")),
+		teamMessageId: v.optional(v.id("teamMessages")),
 		uploadedBy: v.id("users"),
 
 		// Entity reference (denormalized from notification for efficient querying)
@@ -842,6 +885,7 @@ export default defineSchema({
 		uploadedAt: v.number(),
 	})
 		.index("by_notification", ["notificationId"])
+		.index("by_teamMessage", ["teamMessageId"])
 		.index("by_org", ["orgId"])
 		.index("by_uploader", ["uploadedBy"])
 		.index("by_entity", ["entityType", "entityId"]) // NEW: Efficient lookup for "all attachments on entity X"
