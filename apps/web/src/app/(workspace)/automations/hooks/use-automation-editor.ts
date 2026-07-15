@@ -126,12 +126,14 @@ function buildAction(actionType?: string): AutomationAction {
 				message: "",
 			};
 		case "update_field":
+		case "update_fields":
 		default:
+			// New Update Record steps are always born multi-field; the legacy
+			// single-field shape only exists in already-stored automations.
 			return {
-				type: "update_field",
+				type: "update_fields",
 				target: "self",
-				field: "",
-				value: { kind: "static", value: null },
+				fields: [{ field: "", value: { kind: "static", value: null } }],
 			};
 	}
 }

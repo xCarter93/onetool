@@ -169,6 +169,23 @@ export const updateFieldActionValidator = v.object({
 	value: valueRefValidator,
 });
 
+/**
+ * Multi-field successor to update_field: one target, one atomic patch. The
+ * single-field variant stays valid forever — published snapshots keep running
+ * unmodified, and the web editor upgrades legacy configs to a one-row
+ * update_fields on load/save (symmetrically, so signatures stay stable).
+ */
+export const updateFieldsActionValidator = v.object({
+	type: v.literal("update_fields"),
+	target: actionTargetValidator,
+	fields: v.array(
+		v.object({
+			field: v.string(),
+			value: valueRefValidator,
+		})
+	),
+});
+
 export const createTaskActionValidator = v.object({
 	type: v.literal("create_task"),
 	title: valueRefValidator,
@@ -205,6 +222,7 @@ export const sendTeamMessageActionValidator = v.object({
 
 export const actionValidator = v.union(
 	updateFieldActionValidator,
+	updateFieldsActionValidator,
 	createTaskActionValidator,
 	sendNotificationActionValidator,
 	sendTeamMessageActionValidator

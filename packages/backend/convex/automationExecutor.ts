@@ -41,6 +41,7 @@ import {
 	triggerRecordObjectType,
 	type ActionTarget,
 	type AutomationAction,
+	type ValueRef,
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type ExecutedNode,
@@ -2681,7 +2682,22 @@ async function executeActionNodeV2(
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
 	switch (action.type) {
 		case "update_field":
-			break; // handled below
+			// Legacy single-field variant: same engine as update_fields, one row.
+			return executeUpdateFieldsAction(
+				ctx,
+				action.target,
+				[{ field: action.field, value: action.value }],
+				scopeRecord,
+				env
+			);
+		case "update_fields":
+			return executeUpdateFieldsAction(
+				ctx,
+				action.target,
+				action.fields,
+				scopeRecord,
+				env
+			);
 		case "create_task":
 			return executeCreateTaskAction(ctx, action, scopeRecord, env);
 		case "send_notification":
@@ -2693,7 +2709,25 @@ async function executeActionNodeV2(
 			return _exhaustive;
 		}
 	}
+}
 
+/**
+ * Shared engine behind update_field / update_fields. Every row is validated
+ * and coerced BEFORE the first write so a bad row can't leave a half-updated
+ * record. Non-status fields land in one ctx.db.patch and emit one
+ * record_updated — changedFields carries the full set, and field/oldValue/
+ * newValue are included only when exactly one field changed, so a one-row
+ * action emits the same event a legacy update_field always did. A status row
+ * goes through applyStatusUpdate's validation + aggregate + cascade flow,
+ * exactly once, after the field patch.
+ */
+async function executeUpdateFieldsAction(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	fields: Array<{ field: string; value: ValueRef }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
 	if (!scopeRecord) {
 		return { success: false, error: NO_SCOPE_RECORD_ERROR };
 	}
@@ -2702,7 +2736,7 @@ async function executeActionNodeV2(
 
 	const targetInfo = await resolveTargetV2(
 		ctx,
-		action.target,
+		target,
 		objectType,
 		objectId,
 		triggerObject,
@@ -2712,140 +2746,199 @@ async function executeActionNodeV2(
 	if (!targetInfo) {
 		// Target not found - skip this action (e.g., task has no client)
 		console.warn(
-			`[AutomationExecutor] Target not found: target=${JSON.stringify(action.target)}, objectType=${objectType}, objectId=${objectId}`
+			`[AutomationExecutor] Target not found: target=${JSON.stringify(target)}, objectType=${objectType}, objectId=${objectId}`
 		);
 		return { success: true, skipped: true };
 	}
 
-	const fieldDef = getFieldDefinition(targetInfo.type, action.field);
-	if (!fieldDef) {
-		return {
-			success: false,
-			error: `Unknown field "${action.field}" for ${targetInfo.type}`,
-		};
-	}
-	if (!fieldDef.writable) {
-		return {
-			success: false,
-			error: `Field "${action.field}" is not writable${
-				fieldDef.writeExclusionReason ? `: ${fieldDef.writeExclusionReason}` : ""
-			}`,
-		};
+	if (fields.length === 0) {
+		return { success: false, error: "No fields to update" };
 	}
 
-	const rawValue = resolveValueRef(action.value, env.scope);
-	const coerced = coerceFieldValue(
-		fieldDef,
-		rawValue,
-		env.scope.workflow?.tz ?? "UTC"
-	);
-	if (!coerced.ok) {
-		return { success: false, error: coerced.error };
+	const writes: Array<{ field: string; value: unknown }> = [];
+	const seen = new Set<string>();
+	for (const { field, value } of fields) {
+		if (seen.has(field)) {
+			return {
+				success: false,
+				error: `Field "${field}" appears more than once`,
+			};
+		}
+		seen.add(field);
+
+		const fieldDef = getFieldDefinition(targetInfo.type, field);
+		if (!fieldDef) {
+			return {
+				success: false,
+				error: `Unknown field "${field}" for ${targetInfo.type}`,
+			};
+		}
+		if (!fieldDef.writable) {
+			return {
+				success: false,
+				error: `Field "${field}" is not writable${
+					fieldDef.writeExclusionReason ? `: ${fieldDef.writeExclusionReason}` : ""
+				}`,
+			};
+		}
+
+		const rawValue = resolveValueRef(value, env.scope);
+		const coerced = coerceFieldValue(
+			fieldDef,
+			rawValue,
+			env.scope.workflow?.tz ?? "UTC"
+		);
+		if (!coerced.ok) {
+			return { success: false, error: coerced.error };
+		}
+		writes.push({ field, value: coerced.value });
 	}
 
-	// Status writes reuse the existing validation + aggregate + cascade flow.
-	if (action.field === "status") {
-		if (typeof coerced.value !== "string") {
+	// Status is fully special-cased below; validate it up front — after the
+	// non-status patch commits it would be too late to fail atomically.
+	const statusWrite = writes.find((w) => w.field === "status");
+	if (statusWrite) {
+		if (typeof statusWrite.value !== "string") {
 			return {
 				success: false,
 				error: `Status value for ${targetInfo.type} must be a string`,
 			};
 		}
+		if (!isValidStatus(targetInfo.type, statusWrite.value)) {
+			return {
+				success: false,
+				error: `Invalid status "${statusWrite.value}" for ${targetInfo.type}`,
+			};
+		}
+	}
+	const fieldWrites = writes.filter((w) => w.field !== "status");
+
+	if (fieldWrites.length > 0) {
+		const targetObject = await getObject(
+			ctx,
+			targetInfo.type,
+			targetInfo.id,
+			orgId
+		);
+		if (!targetObject) {
+			return { success: false, error: "Target object not found" };
+		}
+
+		try {
+			const updatePayload: Record<string, any> = {};
+			const changed: Array<{
+				field: string;
+				oldValue: unknown;
+				newValue: unknown;
+			}> = [];
+			for (const write of fieldWrites) {
+				updatePayload[write.field] = write.value;
+				const previousValue = (targetObject as Record<string, unknown>)[
+					write.field
+				];
+				if (previousValue !== write.value) {
+					changed.push({
+						field: write.field,
+						oldValue: previousValue,
+						newValue: write.value,
+					});
+				}
+			}
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await ctx.db.patch(targetInfo.id, updatePayload as any);
+
+			const updatedObject = await ctx.db.get(targetInfo.id);
+			if (!updatedObject) {
+				return {
+					success: false,
+					error: "Target object was deleted during update",
+				};
+			}
+
+			// Keep aggregates in sync; each helper no-ops unless a field it
+			// tracks (status/completedAt/approvedAt/paidAt/total) changed.
+			switch (targetInfo.type) {
+				case "project":
+					await AggregateHelpers.updateProject(
+						ctx,
+						targetObject as Doc<"projects">,
+						updatedObject as Doc<"projects">
+					);
+					break;
+				case "quote":
+					await AggregateHelpers.updateQuote(
+						ctx,
+						targetObject as Doc<"quotes">,
+						updatedObject as Doc<"quotes">
+					);
+					break;
+				case "invoice":
+					await AggregateHelpers.updateInvoice(
+						ctx,
+						targetObject as Doc<"invoices">,
+						updatedObject as Doc<"invoices">
+					);
+					break;
+				// Clients and tasks don't have aggregate field tracking
+			}
+
+			// Emit record_updated so automations chained on these fields actually
+			// fire (a status row emits its own event via applyStatusUpdate below).
+			// The chain rides in metadata — the emitRecordUpdatedEvent helper would
+			// drop it and defeat the recursion guard. One event per action, so a
+			// trigger watching any of the changed fields fires exactly once.
+			if (changed.length > 0) {
+				const single = changed.length === 1 ? changed[0] : undefined;
+				await ctx.db.insert("domainEvents", {
+					orgId,
+					eventType: "entity.record_updated",
+					eventSource: "automationExecutor.executeActionNodeV2",
+					payload: {
+						entityType: targetInfo.type,
+						entityId: targetInfo.id,
+						...(single
+							? {
+									field: single.field,
+									oldValue: single.oldValue,
+									newValue: single.newValue,
+								}
+							: {}),
+						metadata: {
+							changedFields: changed.map((c) => c.field),
+							executionChain,
+							recursionDepth,
+							isCascade: true,
+						},
+					},
+					status: "pending",
+					correlationId: `cascade-${executionChain.join("-")}-${Date.now()}`,
+					createdAt: Date.now(),
+					attemptCount: 0,
+				});
+				await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			}
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error ? error.message : "Failed to update field",
+			};
+		}
+	}
+
+	// Status writes reuse the existing validation + aggregate + cascade flow.
+	if (statusWrite) {
 		return applyStatusUpdate(
 			ctx,
 			targetInfo,
-			coerced.value,
+			statusWrite.value as string,
 			orgId,
 			executionChain,
 			recursionDepth
 		);
 	}
 
-	const targetObject = await getObject(ctx, targetInfo.type, targetInfo.id, orgId);
-	if (!targetObject) {
-		return { success: false, error: "Target object not found" };
-	}
-	const previousValue = (targetObject as Record<string, unknown>)[action.field];
-
-	try {
-		const updatePayload: Record<string, any> = {
-			[action.field]: coerced.value,
-		};
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		await ctx.db.patch(targetInfo.id, updatePayload as any);
-
-		const updatedObject = await ctx.db.get(targetInfo.id);
-		if (!updatedObject) {
-			return {
-				success: false,
-				error: "Target object was deleted during update",
-			};
-		}
-
-		// Keep aggregates in sync; each helper no-ops unless a field it
-		// tracks (status/completedAt/approvedAt/paidAt/total) changed.
-		switch (targetInfo.type) {
-			case "project":
-				await AggregateHelpers.updateProject(
-					ctx,
-					targetObject as Doc<"projects">,
-					updatedObject as Doc<"projects">
-				);
-				break;
-			case "quote":
-				await AggregateHelpers.updateQuote(
-					ctx,
-					targetObject as Doc<"quotes">,
-					updatedObject as Doc<"quotes">
-				);
-				break;
-			case "invoice":
-				await AggregateHelpers.updateInvoice(
-					ctx,
-					targetObject as Doc<"invoices">,
-					updatedObject as Doc<"invoices">
-				);
-				break;
-			// Clients and tasks don't have aggregate field tracking
-		}
-
-		// Emit record_updated so automations chained on this field actually fire
-		// (status writes emit their own event via applyStatusUpdate). The chain
-		// rides in metadata — the emitRecordUpdatedEvent helper would drop it and
-		// defeat the recursion guard. Same shape as the create_task emit below.
-		if (previousValue !== coerced.value) {
-			await ctx.db.insert("domainEvents", {
-				orgId,
-				eventType: "entity.record_updated",
-				eventSource: "automationExecutor.executeActionNodeV2",
-				payload: {
-					entityType: targetInfo.type,
-					entityId: targetInfo.id,
-					field: action.field,
-					oldValue: previousValue,
-					newValue: coerced.value,
-					metadata: {
-						changedFields: [action.field],
-						executionChain,
-						recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId: `cascade-${executionChain.join("-")}-${Date.now()}`,
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-		}
-
-		return { success: true };
-	} catch (error) {
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : "Failed to update field",
-		};
-	}
+	return { success: true };
 }
 
 /**
@@ -3577,6 +3670,104 @@ type DryNodeResult = {
 };
 
 /**
+ * Dry mirror of executeUpdateFieldsAction: same per-row validation and
+ * coercion, no writes. A one-row action previews with the exact summary and
+ * input shape legacy update_field test runs always produced.
+ */
+async function dryUpdateFieldsAction(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	fields: Array<{ field: string; value: ValueRef }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: DryEnv
+): Promise<DryNodeResult> {
+	if (!scopeRecord) {
+		return { success: false, error: NO_SCOPE_RECORD_ERROR };
+	}
+	const targetInfo = await resolveTargetV2(
+		ctx,
+		target,
+		scopeRecord.type,
+		scopeRecord.id,
+		scopeRecord.record,
+		env.orgId
+	);
+	if (!targetInfo) {
+		return {
+			success: true,
+			skipped: true,
+			output: { note: "Related record not found — would skip" },
+		};
+	}
+	if (fields.length === 0) {
+		return { success: false, error: "No fields to update" };
+	}
+
+	const writes: Array<{ field: string; value: unknown }> = [];
+	const seen = new Set<string>();
+	for (const { field, value } of fields) {
+		if (seen.has(field)) {
+			return {
+				success: false,
+				error: `Field "${field}" appears more than once`,
+			};
+		}
+		seen.add(field);
+
+		const fieldDef = getFieldDefinition(targetInfo.type, field);
+		if (!fieldDef) {
+			return {
+				success: false,
+				error: `Unknown field "${field}" for ${targetInfo.type}`,
+			};
+		}
+		if (!fieldDef.writable) {
+			return {
+				success: false,
+				error: `Field "${field}" is not writable${
+					fieldDef.writeExclusionReason
+						? `: ${fieldDef.writeExclusionReason}`
+						: ""
+				}`,
+			};
+		}
+		const raw = resolveValueRef(value, env.scope);
+		const coerced = coerceFieldValue(
+			fieldDef,
+			raw,
+			env.scope.workflow?.tz ?? "UTC"
+		);
+		if (!coerced.ok) {
+			return { success: false, error: coerced.error };
+		}
+		if (
+			field === "status" &&
+			typeof coerced.value === "string" &&
+			!isValidStatus(targetInfo.type, coerced.value)
+		) {
+			return {
+				success: false,
+				error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
+			};
+		}
+		writes.push({ field, value: coerced.value });
+	}
+
+	return {
+		success: true,
+		output: {
+			summary: `Would set ${writes
+				.map((w) => `${w.field} to ${JSON.stringify(w.value)}`)
+				.join(", ")} on the ${targetInfo.type}`,
+		},
+		input:
+			writes.length === 1
+				? { target, field: writes[0].field, value: writes[0].value }
+				: { target, fields: writes },
+	};
+}
+
+/**
  * Describe (without executing) what an action would do. Mirrors the real
  * executors' validation so a test surfaces the same failures/skips, but never
  * writes, emits events, or touches aggregates.
@@ -3588,73 +3779,23 @@ async function dryExecuteAction(
 	env: DryEnv
 ): Promise<DryNodeResult> {
 	switch (action.type) {
-		case "update_field": {
-			if (!scopeRecord) {
-				return { success: false, error: NO_SCOPE_RECORD_ERROR };
-			}
-			const targetInfo = await resolveTargetV2(
+		case "update_field":
+			// Legacy single-field variant: same dry engine, one row.
+			return dryUpdateFieldsAction(
 				ctx,
 				action.target,
-				scopeRecord.type,
-				scopeRecord.id,
-				scopeRecord.record,
-				env.orgId
+				[{ field: action.field, value: action.value }],
+				scopeRecord,
+				env
 			);
-			if (!targetInfo) {
-				return {
-					success: true,
-					skipped: true,
-					output: { note: "Related record not found — would skip" },
-				};
-			}
-			const fieldDef = getFieldDefinition(targetInfo.type, action.field);
-			if (!fieldDef) {
-				return {
-					success: false,
-					error: `Unknown field "${action.field}" for ${targetInfo.type}`,
-				};
-			}
-			if (!fieldDef.writable) {
-				return {
-					success: false,
-					error: `Field "${action.field}" is not writable${
-						fieldDef.writeExclusionReason
-							? `: ${fieldDef.writeExclusionReason}`
-							: ""
-					}`,
-				};
-			}
-			const raw = resolveValueRef(action.value, env.scope);
-			const coerced = coerceFieldValue(
-				fieldDef,
-				raw,
-				env.scope.workflow?.tz ?? "UTC"
+		case "update_fields":
+			return dryUpdateFieldsAction(
+				ctx,
+				action.target,
+				action.fields,
+				scopeRecord,
+				env
 			);
-			if (!coerced.ok) {
-				return { success: false, error: coerced.error };
-			}
-			if (
-				action.field === "status" &&
-				typeof coerced.value === "string" &&
-				!isValidStatus(targetInfo.type, coerced.value)
-			) {
-				return {
-					success: false,
-					error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
-				};
-			}
-			return {
-				success: true,
-				output: {
-					summary: `Would set ${action.field} to ${JSON.stringify(coerced.value)} on the ${targetInfo.type}`,
-				},
-				input: {
-					target: action.target,
-					field: action.field,
-					value: coerced.value,
-				},
-			};
-		}
 		case "create_task": {
 			const title = resolveTextValue(action.title, env.scope);
 			if (!title) {

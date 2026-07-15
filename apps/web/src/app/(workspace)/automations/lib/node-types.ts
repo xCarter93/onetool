@@ -138,6 +138,10 @@ export type DelayUntilNodeConfig = Extract<
 
 /** Per-action-type aliases (narrowed from the shared action union). */
 export type UpdateFieldAction = Extract<AutomationAction, { type: "update_field" }>;
+export type UpdateFieldsAction = Extract<
+	AutomationAction,
+	{ type: "update_fields" }
+>;
 export type CreateTaskAction = Extract<AutomationAction, { type: "create_task" }>;
 export type SendNotificationAction = Extract<
 	AutomationAction,

@@ -56,6 +56,7 @@ export const STEP_GROUPS: StepGroup[] = [
 		items: [
 			{
 				type: "action",
+				actionType: "update_fields",
 				label: "Update Record",
 				icon: Play,
 				color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
@@ -181,7 +182,9 @@ export function StepPicker({
 				return item.label.toLowerCase().includes(lowerSearch);
 			})
 			.map((item) =>
-				noRecordInScope && item.type === "action" && !item.actionType
+				noRecordInScope &&
+				item.type === "action" &&
+				(!item.actionType || item.actionType === "update_fields")
 					? {
 							...item,
 							disabledReason: "Needs a record — add Find Records, then a Loop",

@@ -24,23 +24,27 @@ const makeTrigger = (overrides?: Partial<TriggerConfig>): TriggerConfig => ({
 	...overrides,
 });
 
+// The canonical editor shape — legacy single-field update_field configs are
+// upgraded to this on load/save, so round-trip fixtures use it directly.
 const updateStatusAction = (newStatus: string): ActionNodeConfig => ({
 	kind: "action",
 	action: {
-		type: "update_field",
+		type: "update_fields",
 		target: "self",
-		field: "status",
-		value: { kind: "static", value: newStatus },
+		fields: [
+			{ field: "status", value: { kind: "static", value: newStatus } },
+		],
 	},
 });
 
 const updateClientStatusAction = (newStatus: string): ActionNodeConfig => ({
 	kind: "action",
 	action: {
-		type: "update_field",
+		type: "update_fields",
 		target: { related: "client" },
-		field: "status",
-		value: { kind: "static", value: newStatus },
+		fields: [
+			{ field: "status", value: { kind: "static", value: newStatus } },
+		],
 	},
 });
 

@@ -15,7 +15,7 @@ import type {
 	WorkflowNodeConfig,
 } from "./node-types";
 import { triggerScopeObjectType } from "./node-types";
-import { legacyNodeToV2 } from "./legacy-load";
+import { legacyNodeToV2, normalizeNodeConfig } from "./legacy-load";
 import { collectLoopBody } from "./graph-utils";
 import {
 	computeDerivedLayout,
@@ -531,7 +531,9 @@ export function serializeEditorNodes(nodes: EditorNode[]): WorkflowNode[] {
 			return {
 				id: node.id,
 				type: node.type,
-				config: node.config,
+				// Same canonicalization as load (legacyNodeToV2) — the saved and
+				// working signatures must hash identical configs.
+				config: normalizeNodeConfig(node.config),
 				nextNodeId: node.nextNodeId,
 				elseNodeId: node.elseNodeId,
 				bodyStartNodeId: node.bodyStartNodeId,

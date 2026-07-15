@@ -26,12 +26,35 @@ export type DbWorkflowNode = {
 	position?: { x: number; y: number };
 };
 
+/**
+ * Canonicalize a config for the editor: a legacy single-field update_field
+ * becomes a one-row update_fields. Applied symmetrically on load
+ * (legacyNodeToV2) and save (serializeEditorNodes) — normalizing on only one
+ * side would make every stored single-field automation read as permanently
+ * dirty, exactly like the scheduled-trigger objectType drop below.
+ */
+export function normalizeNodeConfig(
+	config: WorkflowNodeConfig | undefined
+): WorkflowNodeConfig | undefined {
+	if (config?.kind === "action" && config.action.type === "update_field") {
+		return {
+			kind: "action",
+			action: {
+				type: "update_fields",
+				target: config.action.target,
+				fields: [{ field: config.action.field, value: config.action.value }],
+			},
+		};
+	}
+	return config;
+}
+
 /** Adapt a stored DB / in-editor node to the editor's WorkflowNode. */
 export function legacyNodeToV2(node: DbWorkflowNode): WorkflowNode {
 	return {
 		id: node.id,
 		type: node.type,
-		config: node.config,
+		config: normalizeNodeConfig(node.config),
 		nextNodeId: node.nextNodeId,
 		elseNodeId: node.elseNodeId,
 		bodyStartNodeId: node.bodyStartNodeId,

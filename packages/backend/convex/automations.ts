@@ -296,7 +296,10 @@ function validateScheduledRecordScope(
 		if (config.kind === "action") {
 			// Both update_field targets (self and related) resolve off the record in
 			// scope, so neither can work outside a loop.
-			if (config.action.type === "update_field") {
+			if (
+				config.action.type === "update_field" ||
+				config.action.type === "update_fields"
+			) {
 				throw new Error(
 					`Node ${node.id}: there is no record to update — ${NO_RECORD}. Add a "Find records" step and put this action inside a loop.`
 				);
@@ -381,10 +384,32 @@ function validateUpdateFieldAction(
 	nodeId: string,
 	action: Extract<
 		Extract<WorkflowNodeConfig, { kind: "action" }>["action"],
-		{ type: "update_field" }
+		{ type: "update_field" } | { type: "update_fields" }
 	>,
 	scopeObjectType: AutomationObjectType | undefined
 ): void {
+	const fields =
+		action.type === "update_field"
+			? [{ field: action.field, value: action.value }]
+			: action.fields;
+
+	// Shape rules hold even when the scope type is unresolvable (e.g. a loop
+	// whose fetch node is missing) — an empty or duplicated row is never valid.
+	if (action.type === "update_fields") {
+		if (fields.length === 0) {
+			throw new Error(`Node ${nodeId}: add at least one field to update`);
+		}
+		const seen = new Set<string>();
+		for (const { field } of fields) {
+			if (seen.has(field)) {
+				throw new Error(
+					`Node ${nodeId}: field "${field}" appears more than once`
+				);
+			}
+			seen.add(field);
+		}
+	}
+
 	if (!scopeObjectType) return;
 
 	let targetObjectType: AutomationObjectType = scopeObjectType;
@@ -397,28 +422,29 @@ function validateUpdateFieldAction(
 		targetObjectType = action.target.related;
 	}
 
-	const def = getFieldDefinition(targetObjectType, action.field);
-	if (!def) {
-		throw new Error(
-			`Node ${nodeId}: unknown field "${action.field}" for ${targetObjectType}`
-		);
-	}
-	if (!def.writable) {
-		throw new Error(
-			`Node ${nodeId}: field "${action.field}" cannot be updated${def.writeExclusionReason ? ` (${def.writeExclusionReason})` : ""}`
-		);
-	}
-	const value = action.value;
-	if (
-		def.type === "select" &&
-		value.kind === "static" &&
-		typeof value.value === "string" &&
-		def.options &&
-		!def.options.some((o) => o.value === value.value)
-	) {
-		throw new Error(
-			`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${action.field}"`
-		);
+	for (const { field, value } of fields) {
+		const def = getFieldDefinition(targetObjectType, field);
+		if (!def) {
+			throw new Error(
+				`Node ${nodeId}: unknown field "${field}" for ${targetObjectType}`
+			);
+		}
+		if (!def.writable) {
+			throw new Error(
+				`Node ${nodeId}: field "${field}" cannot be updated${def.writeExclusionReason ? ` (${def.writeExclusionReason})` : ""}`
+			);
+		}
+		if (
+			def.type === "select" &&
+			value.kind === "static" &&
+			typeof value.value === "string" &&
+			def.options &&
+			!def.options.some((o) => o.value === value.value)
+		) {
+			throw new Error(
+				`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${field}"`
+			);
+		}
 	}
 }
 
@@ -532,7 +558,10 @@ function validateWorkflowDefinition(
 				break;
 			}
 			case "action": {
-				if (config.action.type === "update_field") {
+				if (
+					config.action.type === "update_field" ||
+					config.action.type === "update_fields"
+				) {
 					const scopeType = bodyScopeType.has(node.id)
 						? bodyScopeType.get(node.id)
 						: objectType;

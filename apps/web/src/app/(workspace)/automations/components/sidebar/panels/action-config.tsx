@@ -2,9 +2,12 @@
 
 import React, { useRef } from "react";
 import { useQuery } from "convex/react";
+import { Plus, X } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ACTION_META } from "../../../lib/action-meta";
+import { normalizeNodeConfig } from "../../../lib/legacy-load";
 import { NextStepTree } from "../next-step-tree";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -29,7 +32,7 @@ import {
 	type SendNotificationAction,
 	type SendTeamMessageAction,
 	type TriggerConfig,
-	type UpdateFieldAction,
+	type UpdateFieldsAction,
 	type WorkflowNode,
 	triggerScopeObjectType,
 } from "../../../lib/node-types";
@@ -48,10 +51,17 @@ function defaultConfig(objectType: AutomationObjectType): ActionNodeConfig {
 	return {
 		kind: "action",
 		action: {
-			type: "update_field",
+			type: "update_fields",
 			target: "self",
-			field: firstWritable?.key ?? "",
-			value: { kind: "static", value: firstWritable?.type === "boolean" ? false : null },
+			fields: [
+				{
+					field: firstWritable?.key ?? "",
+					value: {
+						kind: "static",
+						value: firstWritable?.type === "boolean" ? false : null,
+					},
+				},
+			],
 		},
 	};
 }
@@ -91,7 +101,7 @@ interface ActionFieldsProps<TAction> {
 	commit: (next: ActionNodeConfig) => void;
 }
 
-function UpdateFieldFields({
+function UpdateFieldsFields({
 	config,
 	action,
 	triggerObjectType,
@@ -100,7 +110,7 @@ function UpdateFieldFields({
 	nodeId,
 	formulas,
 	commit,
-}: ActionFieldsProps<UpdateFieldAction> & {
+}: ActionFieldsProps<UpdateFieldsAction> & {
 	triggerObjectType: AutomationObjectType | null;
 }) {
 	// Inside a loop body, `target: "self"` (and its related FKs) resolve against
@@ -110,7 +120,7 @@ function UpdateFieldFields({
 
 	// Both targets — self and related — resolve off the record in scope, so with
 	// no record there is nothing this action can update. The engine hard-fails on
-	// it, and save-time validation now rejects it.
+	// it, and save-time validation rejects it.
 	if (!scopeObjectType) {
 		return (
 			<PanelSection title="Inputs">
@@ -127,37 +137,87 @@ function UpdateFieldFields({
 	const targetObjectType =
 		targetOptions.find((t) => t.value === targetValue)?.objectType ?? scopeObjectType;
 	const writableFields = getWritableFields(targetObjectType);
-	const fieldDef = writableFields.find((f) => f.key === action.field);
+	const chosenFields = new Set(action.fields.map((row) => row.field));
+
+	const commitAction = (next: UpdateFieldsAction) => {
+		commit({ ...config, action: next });
+	};
+
+	const seedRow = (objectType: AutomationObjectType) => {
+		const first = getWritableFields(objectType)[0];
+		return {
+			field: first?.key ?? "",
+			value: {
+				kind: "static" as const,
+				value: first?.type === "boolean" ? false : null,
+			},
+		};
+	};
 
 	const updateTarget = (value: string) => {
 		const nextTarget = targetOptions.find((t) => t.value === value);
 		if (!nextTarget) return;
-		const nextWritable = getWritableFields(nextTarget.objectType);
-		commit({
-			...config,
-			action: {
-				...action,
-				target: value === "self" ? "self" : { related: nextTarget.objectType },
-				field: nextWritable[0]?.key ?? "",
-				value: { kind: "static", value: nextWritable[0]?.type === "boolean" ? false : null },
-			},
+		// The rows name fields on the old target's type — reseed with one row.
+		commitAction({
+			...action,
+			target: value === "self" ? "self" : { related: nextTarget.objectType },
+			fields: [seedRow(nextTarget.objectType)],
 		});
 	};
 
-	const updateField = (field: string) => {
+	const updateRowField = (index: number, field: string) => {
 		const nextField = writableFields.find((f) => f.key === field);
-		commit({
-			...config,
-			action: {
-				...action,
-				field,
-				value: { kind: "static", value: nextField?.type === "boolean" ? false : null },
-			},
+		commitAction({
+			...action,
+			fields: action.fields.map((row, i) =>
+				i === index
+					? {
+							field,
+							value: {
+								kind: "static",
+								value: nextField?.type === "boolean" ? false : null,
+							},
+						}
+					: row
+			),
 		});
 	};
 
-	const updateValue = (value: UpdateFieldAction["value"]) => {
-		commit({ ...config, action: { ...action, value } });
+	const updateRowValue = (
+		index: number,
+		value: UpdateFieldsAction["fields"][number]["value"]
+	) => {
+		commitAction({
+			...action,
+			fields: action.fields.map((row, i) =>
+				i === index ? { ...row, value } : row
+			),
+		});
+	};
+
+	const addRow = () => {
+		const nextField = writableFields.find((f) => !chosenFields.has(f.key));
+		if (!nextField) return;
+		commitAction({
+			...action,
+			fields: [
+				...action.fields,
+				{
+					field: nextField.key,
+					value: {
+						kind: "static",
+						value: nextField.type === "boolean" ? false : null,
+					},
+				},
+			],
+		});
+	};
+
+	const removeRow = (index: number) => {
+		commitAction({
+			...action,
+			fields: action.fields.filter((_, i) => i !== index),
+		});
 	};
 
 	return (
@@ -193,37 +253,77 @@ function UpdateFieldFields({
 				</Select>
 			</PanelField>
 
-			<PanelField label="Field">
-				<Select
-					value={action.field}
-					onValueChange={(value) => value && updateField(value)}
-				>
-					<SelectTrigger>
-						<SelectValue placeholder="Select field" />
-					</SelectTrigger>
-					<SelectContent>
-						{writableFields.map((field) => (
-							<SelectItem key={field.key} value={field.key}>
-								{field.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</PanelField>
+			<PanelField label="Fields">
+				<div className="space-y-2">
+					{action.fields.map((row, index) => {
+						const fieldDef = writableFields.find((f) => f.key === row.field);
+						return (
+							<div key={index} className="flex items-start gap-2">
+								<div className="flex-1 space-y-2">
+									<Select
+										value={row.field}
+										onValueChange={(value) =>
+											value && updateRowField(index, value)
+										}
+									>
+										<SelectTrigger>
+											<SelectValue placeholder="Select field" />
+										</SelectTrigger>
+										<SelectContent>
+											{writableFields.map((field) => (
+												<SelectItem
+													key={field.key}
+													value={field.key}
+													disabled={
+														field.key !== row.field &&
+														chosenFields.has(field.key)
+													}
+												>
+													{field.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
 
-			{fieldDef && (
-				<PanelField label="Set value to">
-					<ValueInput
-						field={fieldDef}
-						value={action.value}
-						onChange={updateValue}
-						nodes={nodes}
-						trigger={trigger}
-						targetNodeId={nodeId}
-						formulas={formulas}
-					/>
-				</PanelField>
-			)}
+									{fieldDef && (
+										<ValueInput
+											field={fieldDef}
+											value={row.value}
+											onChange={(value) => updateRowValue(index, value)}
+											nodes={nodes}
+											trigger={trigger}
+											targetNodeId={nodeId}
+											formulas={formulas}
+										/>
+									)}
+								</div>
+								{action.fields.length > 1 && (
+									<button
+										type="button"
+										onClick={() => removeRow(index)}
+										className="mt-2 text-muted-foreground hover:text-destructive"
+										aria-label="Remove field"
+									>
+										<X className="h-3.5 w-3.5" />
+									</button>
+								)}
+							</div>
+						);
+					})}
+
+					{action.fields.length < writableFields.length && (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={addRow}
+							className="w-full gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
+						>
+							<Plus className="h-3.5 w-3.5" /> Add field
+						</Button>
+					)}
+				</div>
+			</PanelField>
 		</PanelSection>
 	);
 }
@@ -541,8 +641,12 @@ export function ActionConfigPanel({
 	const seedObjectType =
 		getScopeObjectType(workflowNodes, nodeId, triggerObjectType).objectType ??
 		"client";
+	// normalizeNodeConfig upgrades a legacy single-field update_field to a
+	// one-row update_fields; load already does this, so it only bites if a
+	// config reached editor state some other way.
 	const config =
-		(node.config as ActionNodeConfig | undefined) ?? defaultConfig(seedObjectType);
+		(normalizeNodeConfig(node.config) as ActionNodeConfig | undefined) ??
+		defaultConfig(seedObjectType);
 	const meta = ACTION_META[config.action.type];
 
 	const commit = (next: ActionNodeConfig) => {
@@ -561,8 +665,8 @@ export function ActionConfigPanel({
 			/>
 
 			<div className="flex-1">
-				{config.action.type === "update_field" && (
-					<UpdateFieldFields
+				{config.action.type === "update_fields" && (
+					<UpdateFieldsFields
 						config={config}
 						action={config.action}
 						triggerObjectType={triggerObjectType}

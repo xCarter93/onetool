@@ -638,3 +638,89 @@ describe("validateWorkflowForSave — scheduled triggers have no record (A1)", (
 		expect(result.errors.some((e) => e.type === "no_trigger_record")).toBe(false);
 	});
 });
+
+describe("validateWorkflowForSave — update_fields (B2)", () => {
+	const clientTrigger: TriggerConfig = {
+		type: "record_created",
+		objectType: "client",
+	};
+
+	function updateFieldsNode(
+		id: string,
+		fields: Array<{ field: string; value: string | number | boolean | null }>
+	): WorkflowNode {
+		return {
+			id,
+			type: "action",
+			config: {
+				kind: "action",
+				action: {
+					type: "update_fields",
+					target: "self",
+					fields: fields.map(({ field, value }) => ({
+						field,
+						value: { kind: "static", value },
+					})),
+				},
+			},
+		};
+	}
+
+	it("accepts a multi-field update", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", [
+				{ field: "notes", value: "swept" },
+				{ field: "status", value: "inactive" },
+			]),
+		]);
+		expect(result.errors.filter((e) => e.nodeId === "act1")).toHaveLength(0);
+	});
+
+	it("rejects a duplicated field", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", [
+				{ field: "notes", value: "a" },
+				{ field: "notes", value: "b" },
+			]),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /more than once/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects an empty row list", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", []),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /at least one field/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects an empty value on a non-boolean row", () => {
+		const result = validateWorkflowForSave(clientTrigger, [
+			updateFieldsNode("act1", [{ field: "notes", value: null }]),
+		]);
+		expect(
+			result.errors.some(
+				(e) => e.nodeId === "act1" && /set a value/i.test(e.message)
+			)
+		).toBe(true);
+	});
+
+	it("rejects a top-level update_fields on a scheduled trigger", () => {
+		const scheduled: TriggerConfig = {
+			type: "scheduled",
+			schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+		};
+		const result = validateWorkflowForSave(scheduled, [
+			updateFieldsNode("act1", [{ field: "notes", value: "x" }]),
+		]);
+		const error = result.errors.find((e) => e.nodeId === "act1");
+		expect(error?.type).toBe("no_trigger_record");
+	});
+});

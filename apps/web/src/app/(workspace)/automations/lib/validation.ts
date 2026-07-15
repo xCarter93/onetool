@@ -272,6 +272,65 @@ function validateActionNode(
 			}
 			break;
 		}
+		case "update_fields": {
+			if (!scopeObjectType) {
+				errors.push({
+					type: "no_trigger_record",
+					message:
+						"This automation runs on a schedule, so there is no record to update. Add a Find records step and move this action inside a Loop.",
+					nodeId,
+				});
+				return;
+			}
+
+			if (action.fields.length === 0) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Add at least one field to update",
+					nodeId,
+				});
+				return;
+			}
+
+			const targetObjectType: AutomationObjectType =
+				action.target === "self" ? scopeObjectType : action.target.related;
+			const writable = getWritableFields(targetObjectType);
+			const seen = new Set<string>();
+			for (const row of action.fields) {
+				if (row.field && seen.has(row.field)) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Field "${row.field}" appears more than once — remove one of the rows`,
+						nodeId,
+					});
+					return;
+				}
+				if (row.field) seen.add(row.field);
+
+				const field = writable.find((f) => f.key === row.field);
+				if (!field) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Choose a field to update",
+						nodeId,
+					});
+					return;
+				}
+
+				const isEmpty =
+					row.value.kind === "static" &&
+					(row.value.value === null || row.value.value === "");
+				if (field.type !== "boolean" && isEmpty) {
+					errors.push({
+						type: "missing_required_config",
+						message: `Set a value for ${field.label}`,
+						nodeId,
+					});
+					return;
+				}
+			}
+			break;
+		}
 		case "create_task": {
 			const title = action.title;
 			const titleEmpty =

@@ -3,8 +3,9 @@ import { definitionSignature } from "./editor-signature";
 import {
 	automationToReactFlow,
 	reactFlowToFlatArray,
+	serializeEditorNodes,
 } from "./flow-adapter";
-import { legacyTriggerToDraft } from "./legacy-load";
+import { legacyNodeToV2, legacyTriggerToDraft } from "./legacy-load";
 import type {
 	AutomationTrigger,
 	ConditionNodeConfig,
@@ -213,8 +214,13 @@ describe("definitionSignature — load round-trip stability", () => {
 	];
 
 	it("keeps the signature stable across automationToReactFlow -> reactFlowToFlatArray", () => {
-		// Load-time signature (editor state right after the row loads).
-		const loadedSig = definitionSignature(invoiceTrigger, nodes);
+		// Load-time signature (editor state right after the row loads — the real
+		// editor always maps stored nodes through legacyNodeToV2 first, which
+		// canonicalizes legacy configs).
+		const loadedSig = definitionSignature(
+			invoiceTrigger,
+			nodes.map(legacyNodeToV2)
+		);
 
 		// Working signature: what the editor re-signs after the RF round-trip.
 		const { nodes: rfNodes, edges: rfEdges } = automationToReactFlow(
@@ -263,5 +269,51 @@ describe("stored scheduled triggers with a legacy objectType (A1)", () => {
 			nodes
 		);
 		expect(legacySig).toBe(cleanSig);
+	});
+});
+
+describe("stored single-field update_field upgrades (B2)", () => {
+	it("signs identically at load and at save — never permanently dirty", () => {
+		// The editor upgrades a legacy single-field config to a one-row
+		// update_fields. Load (legacyNodeToV2) and save (serializeEditorNodes)
+		// must BOTH apply it, or every stored automation with an update_field
+		// wears an "unsaved changes" badge it can never shed.
+		const stored = node("n1");
+		const loaded = [legacyNodeToV2(stored)];
+		const savedSig = definitionSignature(trigger, loaded);
+		const workingSig = definitionSignature(
+			trigger,
+			serializeEditorNodes(loaded)
+		);
+		expect(workingSig).toBe(savedSig);
+
+		// And the upgrade really happened: both sides sign the multi-field shape.
+		const upgraded: WorkflowNode = {
+			...stored,
+			config: {
+				kind: "action",
+				action: {
+					type: "update_fields",
+					target: "self",
+					fields: [{ field: "notes", value: { kind: "static", value: "hi" } }],
+				},
+			},
+		};
+		expect(savedSig).toBe(definitionSignature(trigger, [upgraded]));
+	});
+
+	it("save normalizes even when a raw update_field sneaks into editor state", () => {
+		// serializeEditorNodes must canonicalize on its own — signature symmetry
+		// cannot depend on every state producer having gone through load.
+		const raw = node("n1");
+		const serialized = serializeEditorNodes([raw]);
+		expect(serialized[0].config).toEqual({
+			kind: "action",
+			action: {
+				type: "update_fields",
+				target: "self",
+				fields: [{ field: "notes", value: { kind: "static", value: "hi" } }],
+			},
+		});
 	});
 });

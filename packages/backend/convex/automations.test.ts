@@ -149,6 +149,27 @@ function actionNode(id: string, statusValue = "inactive") {
 	};
 }
 
+function updateFieldsNode(
+	id: string,
+	fields: Array<{ field: string; value: string | number | boolean }>
+) {
+	return {
+		id,
+		type: "action" as const,
+		config: {
+			kind: "action" as const,
+			action: {
+				type: "update_fields" as const,
+				target: "self" as const,
+				fields: fields.map(({ field, value }) => ({
+					field,
+					value: { kind: "static" as const, value },
+				})),
+			},
+		},
+	};
+}
+
 describe("Automations", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
@@ -346,6 +367,83 @@ describe("Automations", () => {
 			).rejects.toThrow(/not a valid value/i);
 		});
 
+		it("accepts a multi-field update_fields action (Phase B2)", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Multi-field update",
+				trigger: clientTrigger,
+				nodes: [
+					updateFieldsNode("act-1", [
+						{ field: "notes", value: "swept" },
+						{ field: "status", value: "inactive" },
+					]),
+				],
+			});
+
+			expect(await asUser.query(api.automations.get, { id })).toBeTruthy();
+		});
+
+		it("rejects update_fields with a duplicated field", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Twice the notes",
+					trigger: clientTrigger,
+					nodes: [
+						updateFieldsNode("act-1", [
+							{ field: "notes", value: "a" },
+							{ field: "notes", value: "b" },
+						]),
+					],
+				})
+			).rejects.toThrow(/appears more than once/i);
+		});
+
+		it("rejects update_fields with no rows", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Empty update",
+					trigger: clientTrigger,
+					nodes: [updateFieldsNode("act-1", [])],
+				})
+			).rejects.toThrow(/at least one field/i);
+		});
+
+		it("rejects update_fields writing a non-writable field", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Hands off completedAt",
+					trigger: { type: "record_created", objectType: "project" },
+					nodes: [
+						updateFieldsNode("act-1", [
+							{ field: "description", value: "fine" },
+							{ field: "completedAt", value: 0 },
+						]),
+					],
+				})
+			).rejects.toThrow(/cannot be updated/i);
+		});
+
+		it("rejects an invalid static select value in update_fields", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bogus status",
+					trigger: clientTrigger,
+					nodes: [
+						updateFieldsNode("act-1", [{ field: "status", value: "bogus" }]),
+					],
+				})
+			).rejects.toThrow(/not a valid value/i);
+		});
+
 		it("rejects a scheduled trigger with an invalid IANA timezone", async () => {
 			const { asUser } = await setupUser();
 
@@ -501,6 +599,37 @@ describe("Automations", () => {
 					trigger: scheduledTrigger,
 				})
 			).rejects.toThrow(/no record to update/i);
+		});
+
+		it("rejects a top-level update_fields, same as update_field (B2)", async () => {
+			const { asUser } = await setupUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Multi on a schedule",
+					trigger: scheduledTrigger,
+					nodes: [updateFieldsNode("act-1", [{ field: "notes", value: "x" }])],
+				})
+			).rejects.toThrow(/no record to update/i);
+		});
+
+		it("accepts update_fields inside a fetch → loop body (B2)", async () => {
+			const { asUser } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Bulk sweep on a schedule",
+				trigger: scheduledTrigger,
+				nodes: [
+					fetchNode("fetch-1", "project", { nextNodeId: "loop-1" }),
+					loopNode("loop-1", "fetch-1", { bodyStartNodeId: "upd-1" }),
+					updateFieldsNode("upd-1", [
+						{ field: "description", value: "swept" },
+						{ field: "title", value: "Renamed" },
+					]),
+				],
+			});
+
+			expect(await asUser.query(api.automations.get, { id })).toBeTruthy();
 		});
 
 		it("rejects a condition that reads a record field", async () => {

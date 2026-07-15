@@ -20,7 +20,7 @@ function getSummary(config: ActionNodeConfig | undefined): {
 
 	const action = config.action;
 	const targetLabel =
-		action.type === "update_field"
+		action.type === "update_field" || action.type === "update_fields"
 			? action.target === "self"
 				? "this record"
 				: OBJECT_TYPE_LABELS[action.target.related]
@@ -35,6 +35,25 @@ function getSummary(config: ActionNodeConfig | undefined): {
 			return {
 				title: `Update ${action.field}`,
 				description: `on ${targetLabel} → ${value ?? "..."}`,
+				isConfigured: true,
+			};
+		}
+		case "update_fields": {
+			const rows = action.fields.filter((row) => row.field);
+			if (rows.length === 0) {
+				return { title: "Update Record", description: "Choose a field...", isConfigured: false };
+			}
+			if (rows.length === 1) {
+				const value = rows[0].value.kind === "static" ? rows[0].value.value : "...";
+				return {
+					title: `Update ${rows[0].field}`,
+					description: `on ${targetLabel} → ${value ?? "..."}`,
+					isConfigured: true,
+				};
+			}
+			return {
+				title: `Update ${rows.length} fields`,
+				description: `on ${targetLabel} → ${rows.map((r) => r.field).join(", ")}`,
 				isConfigured: true,
 			};
 		}
