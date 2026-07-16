@@ -933,6 +933,92 @@ describe("automationExecutor (v2 engine)", () => {
 			]);
 		});
 
+		// The delay path resolves its own continuation (delayNextNodeId) before
+		// parking, so a branch tail that ends in a delay must checkpoint AT the
+		// merge and resume there an hour later.
+		it("a branch tail ending in a delay parks at the merge and resumes into it", async () => {
+			const { orgId, asUser } = await setupUser();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Delay on the true branch",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					conditionNode("cond-1", "companyName", "contains", "Acme", {
+						nextNodeId: "delay-1",
+						mergeNodeId: "merge-1",
+					}),
+					{
+						id: "delay-1",
+						type: "delay" as const,
+						config: {
+							kind: "delay" as const,
+							amount: 1,
+							unit: "hours" as const,
+						},
+						// No nextNodeId: the branch dangles, so the delay's
+						// continuation is the condition's merge.
+					},
+					updateFieldActionNode("merge-1", "companyDescription", "Merge ran"),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+
+			// Drive executeAutomation directly so the parked state is observable
+			// (see the delay checkpoint suite for why draining won't stop here).
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: clientId,
+					triggeredAt: Date.now(),
+					status: "running",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+
+			await t.mutation(internal.automationExecutor.executeAutomation, {
+				orgId,
+				executionId,
+				automationId,
+				objectType: "client",
+				objectId: clientId,
+				executionChain: [automationId],
+				recursionDepth: 1,
+			});
+
+			const midExecution = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(midExecution?.status).toBe("running");
+			expect(midExecution?.resumeState?.resumeNodeId).toBe("merge-1");
+			expect(midExecution?.nodesExecuted.map((n) => n.nodeId)).toEqual([
+				"cond-1",
+				"delay-1",
+			]);
+
+			await t.mutation(internal.automationExecutor.resumeExecution, {
+				orgId,
+				executionId,
+				automationId,
+			});
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.companyDescription).toBe("Merge ran");
+			const finalExecution = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(finalExecution?.status).toBe("completed");
+			expect(finalExecution?.nodesExecuted.map((n) => n.nodeId)).toEqual([
+				"cond-1",
+				"delay-1",
+				"merge-1",
+			]);
+		});
+
 		it("a false branch with no elseNodeId continues directly into the merge chain", async () => {
 			const { asUser } = await setupUser();
 

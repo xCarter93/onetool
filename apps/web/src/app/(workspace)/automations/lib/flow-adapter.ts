@@ -246,7 +246,9 @@ function resolveLoopBackSourceId(
 			if (mergeConditionIds?.has(bodyNode.id)) {
 				return mergeIdForCondition(bodyNode.id);
 			}
-			return `${TERMINAL_PREFIX}${bodyNode.id}-yes`;
+			// No merge: both branches stop (end/next_item), so nothing falls out
+			// of the condition — there is no tail to return from.
+			return "";
 		}
 		if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) {
 			return loopBackSourceId;
@@ -603,12 +605,14 @@ export function automationToReactFlow(
 				});
 			}
 
-			// Loop-back edge: from last body node (or empty terminal) back to loop header
-			{
-				const loopBackSourceId = node.bodyStartNodeId
-					? resolveLoopBackSourceId(node.bodyStartNodeId, nodes, mergeConditionIds)
-					: ghostIdFor(node.id, "each");
-
+			// Loop-back edge: from last body node (or empty terminal) back to loop
+			// header. Omitted when the body has no live tail (every path ends in
+			// end/next_item) — an edge from a node that doesn't exist would be
+			// silently dropped by React Flow anyway.
+			const loopBackSourceId = node.bodyStartNodeId
+				? resolveLoopBackSourceId(node.bodyStartNodeId, nodes, mergeConditionIds)
+				: ghostIdFor(node.id, "each");
+			if (loopBackSourceId) {
 				rfEdges.push({
 					id: `e-loopback-${node.id}`,
 					source: loopBackSourceId,

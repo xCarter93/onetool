@@ -640,8 +640,8 @@ describe("flow-adapter", () => {
 		const mergeIns = rf.edges.filter((e) => e.data?.branchType === "merge_in");
 		expect(mergeIns.map((e) => e.source)).toEqual(["__ghost__cond1-no"]);
 
-		// Both branches stop → no merge at all; loop-back falls back to the
-		// yes terminal.
+		// Both branches stop → no merge at all, and no loop-back: nothing falls
+		// out of the condition, so there is no tail to return from.
 		const rf2 = automationToReactFlow(makeTrigger(), [
 			{ ...base[0] },
 			{ ...base[1], elseNodeId: "end2" } as EditorNode,
@@ -649,8 +649,17 @@ describe("flow-adapter", () => {
 			{ id: "end2", type: "end", config: { kind: "end" } },
 		]);
 		expect(rf2.nodes.find((n) => n.id.startsWith("__merge__"))).toBeUndefined();
-		const loopBack2 = rf2.edges.find((e) => e.data?.branchType === "loop_back");
-		expect(loopBack2?.source).toBe("__terminal__cond1-yes");
+		expect(
+			rf2.edges.find((e) => e.data?.branchType === "loop_back")
+		).toBeUndefined();
+
+		// Every emitted edge must resolve to a real node — React Flow silently
+		// drops edges whose endpoints don't exist.
+		const nodeIds = new Set(rf2.nodes.map((n) => n.id));
+		for (const e of rf2.edges) {
+			expect(nodeIds.has(e.source)).toBe(true);
+			expect(nodeIds.has(e.target)).toBe(true);
+		}
 	});
 
 	it("chains nested condition merges into the outer merge", () => {

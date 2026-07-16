@@ -332,6 +332,9 @@ export function toSavableNodes(nodes: WorkflowNode[]) {
 			...(node.bodyStartNodeId !== undefined
 				? { bodyStartNodeId: node.bodyStartNodeId }
 				: {}),
+			...(node.mergeNodeId !== undefined
+				? { mergeNodeId: node.mergeNodeId }
+				: {}),
 		};
 	});
 }
@@ -760,16 +763,23 @@ export function useAutomationEditor(automationId: string | null) {
 			pushHistory();
 
 			if (nodeToDelete.type === "condition") {
-				const subtreeIds = collectSubtree(nodeId, nodes);
+				// Both branches go with the condition, but its merge continuation
+				// is downstream of it — splice that chain onto the parent instead
+				// of deleting it (same shape as a loop's After-Last child below).
+				const subtreeIds = collectSubtree(nodeId, nodes, {
+					excludeRootMerge: true,
+				});
+				const continuationId = nodeToDelete.mergeNodeId;
 
 				setNodes((prev) => {
 					const remaining = prev.filter((node) => !subtreeIds.has(node.id));
 					return remaining.map((node) => {
 						if (node.id !== parentId) return node;
-						if (branch === "else") return { ...node, elseNodeId: undefined };
-						if (branch === "body") return { ...node, bodyStartNodeId: undefined };
-						if (branch === "merge") return { ...node, mergeNodeId: undefined };
-						return { ...node, nextNodeId: undefined };
+						if (branch === "else") return { ...node, elseNodeId: continuationId };
+						if (branch === "body")
+							return { ...node, bodyStartNodeId: continuationId };
+						if (branch === "merge") return { ...node, mergeNodeId: continuationId };
+						return { ...node, nextNodeId: continuationId };
 					});
 				});
 

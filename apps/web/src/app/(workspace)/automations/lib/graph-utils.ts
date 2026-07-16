@@ -15,12 +15,18 @@ export type GraphNode = {
 
 /**
  * Collect all node IDs in the subtree rooted at startNodeId.
- * Follows both nextNodeId and elseNodeId pointers via BFS.
+ * Follows nextNodeId, elseNodeId, and mergeNodeId pointers via BFS.
  * Always includes startNodeId itself, even if not found in the nodes array.
+ *
+ * `excludeRootMerge` stops at the ROOT's merge continuation — the steps after
+ * its branches converge are downstream of the condition, not part of it (the
+ * same reason collectLoopBody never walks a loop's own After-Last path).
+ * Descendants' merge chains still belong to the subtree and are collected.
  */
 export function collectSubtree(
 	startNodeId: string,
-	nodes: GraphNode[]
+	nodes: GraphNode[],
+	options?: { excludeRootMerge?: boolean }
 ): Set<string> {
 	const nodeMap = new Map<string, GraphNode>();
 	for (const node of nodes) {
@@ -44,7 +50,11 @@ export function collectSubtree(
 		if (node.elseNodeId && !visited.has(node.elseNodeId)) {
 			queue.push(node.elseNodeId);
 		}
-		if (node.mergeNodeId && !visited.has(node.mergeNodeId)) {
+		if (
+			node.mergeNodeId &&
+			!visited.has(node.mergeNodeId) &&
+			!(options?.excludeRootMerge && current === startNodeId)
+		) {
 			queue.push(node.mergeNodeId);
 		}
 	}

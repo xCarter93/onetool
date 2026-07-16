@@ -1536,41 +1536,64 @@ async function finishWalk(
  * means "next item"), and a dangle inside a condition's own merge chain
  * continues at the ANCESTORS' merges, not back at that condition.
  */
+type ParentLink = {
+	parent: AutomationNode;
+	via: "branch" | "merge" | "body" | "next";
+};
+
+/**
+ * Reverse parent index (child id -> parent + the pointer that reaches it),
+ * cached per node map. A definition's nodesById is built once per execution
+ * and never mutated, so the index stays valid for the whole walk; without it
+ * every ancestor hop rescans all nodes.
+ */
+const parentIndexCache = new WeakMap<
+	Map<string, AutomationNode>,
+	Map<string, ParentLink>
+>();
+
+function parentIndexFor(
+	nodesById: Map<string, AutomationNode>
+): Map<string, ParentLink> {
+	const cached = parentIndexCache.get(nodesById);
+	if (cached) return cached;
+
+	const index = new Map<string, ParentLink>();
+	// First writer wins, matching the linear scan this replaces: a malformed
+	// stored graph with a multi-parented node resolves to the same parent it
+	// did before (writes reject those, but legacy rows may predate the check).
+	const link = (childId: string | undefined, parent: AutomationNode, via: ParentLink["via"]) => {
+		if (childId && !index.has(childId)) index.set(childId, { parent, via });
+	};
+	for (const candidate of nodesById.values()) {
+		link(candidate.bodyStartNodeId, candidate, "body");
+		link(candidate.mergeNodeId, candidate, "merge");
+		link(candidate.elseNodeId, candidate, "branch");
+		// A condition's nextNodeId IS its true branch; every other node's
+		// nextNodeId is a plain chain link.
+		link(
+			candidate.nextNodeId,
+			candidate,
+			candidate.type === "condition" ? "branch" : "next"
+		);
+	}
+
+	parentIndexCache.set(nodesById, index);
+	return index;
+}
+
 function mergeContinuationFor(
 	nodesById: Map<string, AutomationNode>,
 	nodeId: string
 ): string | undefined {
+	const parents = parentIndexFor(nodesById);
 	let currentId = nodeId;
 	const seen = new Set<string>();
 	while (!seen.has(currentId)) {
 		seen.add(currentId);
-		let parent: AutomationNode | undefined;
-		let via: "branch" | "merge" | "body" | "next" | undefined;
-		for (const candidate of nodesById.values()) {
-			if (candidate.bodyStartNodeId === currentId) {
-				parent = candidate;
-				via = "body";
-				break;
-			}
-			if (candidate.mergeNodeId === currentId) {
-				parent = candidate;
-				via = "merge";
-				break;
-			}
-			if (candidate.elseNodeId === currentId) {
-				parent = candidate;
-				via = "branch";
-				break;
-			}
-			if (candidate.nextNodeId === currentId) {
-				parent = candidate;
-				// A condition's nextNodeId IS its true branch; every other
-				// node's nextNodeId is a plain chain link.
-				via = candidate.type === "condition" ? "branch" : "next";
-				break;
-			}
-		}
-		if (!parent) return undefined;
+		const link = parents.get(currentId);
+		if (!link) return undefined;
+		const { parent, via } = link;
 		if (via === "body") return undefined;
 		if (via === "branch" && parent.type === "condition" && parent.mergeNodeId) {
 			return parent.mergeNodeId;
