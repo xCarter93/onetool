@@ -11,7 +11,11 @@ const clientTrigger = {
 	toStatus: "active",
 } as const;
 
-function conditionNode(id: string, nextNodeId?: string) {
+function conditionNode(
+	id: string,
+	nextNodeId?: string,
+	opts: { elseNodeId?: string; mergeNodeId?: string } = {}
+) {
 	return {
 		id,
 		type: "condition" as const,
@@ -32,6 +36,8 @@ function conditionNode(id: string, nextNodeId?: string) {
 			],
 		},
 		nextNodeId,
+		elseNodeId: opts.elseNodeId,
+		mergeNodeId: opts.mergeNodeId,
 	};
 }
 
@@ -641,6 +647,71 @@ describe("Automations", () => {
 					],
 				})
 			).rejects.toThrow(/cycle/i);
+		});
+
+		describe("mergeNodeId (branch convergence)", () => {
+			it("rejects mergeNodeId on a non-condition node", async () => {
+				const { asUser } = await setupUser();
+
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "Merge on an action",
+						trigger: clientTrigger,
+						nodes: [
+							{ ...actionNode("act-1"), mergeNodeId: "act-2" },
+							actionNode("act-2"),
+						],
+					})
+				).rejects.toThrow(/only conditions can have a merge continuation/i);
+			});
+
+			it("rejects a mergeNodeId referencing a missing node", async () => {
+				const { asUser } = await setupUser();
+
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "Merge to nowhere",
+						trigger: clientTrigger,
+						nodes: [
+							conditionNode("cond-1", "act-1", { mergeNodeId: "ghost" }),
+							actionNode("act-1"),
+						],
+					})
+				).rejects.toThrow(/references missing node/i);
+			});
+
+			it("rejects a merge target that is also reachable via another node's nextNodeId", async () => {
+				const { asUser } = await setupUser();
+
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "Double-parented merge target",
+						trigger: clientTrigger,
+						nodes: [
+							conditionNode("cond-1", "act-1", { mergeNodeId: "merge-1" }),
+							actionNode("act-1"),
+							{ ...actionNode("other-1"), nextNodeId: "merge-1" },
+							actionNode("merge-1"),
+						],
+					})
+				).rejects.toThrow(/already reachable from another step/i);
+			});
+
+			it("rejects a cycle formed through a mergeNodeId pointing back to the condition", async () => {
+				const { asUser } = await setupUser();
+
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "Merge cycle",
+						trigger: clientTrigger,
+						nodes: [
+							conditionNode("cond-1", "act-1", { mergeNodeId: "merge-1" }),
+							actionNode("act-1"),
+							{ ...actionNode("merge-1"), nextNodeId: "cond-1" },
+						],
+					})
+				).rejects.toThrow(/cycle/i);
+			});
 		});
 
 		it("rejects activating with zero nodes but allows a zero-node draft", async () => {

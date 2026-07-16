@@ -188,6 +188,8 @@ export interface WorkflowNode {
 	elseNodeId?: string;
 	/** Loop body entry point. */
 	bodyStartNodeId?: string;
+	/** Condition continuation: where flow resumes after either branch completes. */
+	mergeNodeId?: string;
 	/** Persisted UI position from manual drag. */
 	position?: { x: number; y: number };
 }
@@ -398,6 +400,29 @@ export type TerminalNodeData = {
 	nodeType: "terminal";
 };
 
+/**
+ * Ghost "Choose a step" card rendered in an empty condition branch or empty
+ * loop body — the same affordance a transient placeholder shows, so lanes
+ * look identical whether or not an insert has started. Clicking it inserts
+ * a placeholder via its incoming edge. Display-only — never serialized.
+ */
+export type BranchGhostNodeData = {
+	nodeType: "branchGhost";
+	/** The incoming branch edge id, used to route the insert. */
+	edgeId: string;
+	onInsertNode?: (edgeId: string, nodeType: string, actionType?: string) => void;
+};
+
+/**
+ * Synthetic join point rendered below a condition inside a loop body: both
+ * branch tails reconverge here before the loop-back edge returns to the loop
+ * header. Display-only — never serialized.
+ */
+export type MergeNodeData = {
+	nodeType: "merge";
+	conditionId: string;
+};
+
 /** Non-interactive dotted frame rendered behind a loop's body (derived layout). */
 export type LoopContainerNodeData = {
 	nodeType: "loopContainer";
@@ -427,6 +452,8 @@ export type EndRFNode = Node<EndNodeData, "endNode">;
 export type NextItemRFNode = Node<NextItemNodeData, "nextItemNode">;
 export type PlaceholderRFNode = Node<PlaceholderNodeData, "placeholderNode">;
 export type TerminalRFNode = Node<TerminalNodeData, "terminalNode">;
+export type MergeRFNode = Node<MergeNodeData, "mergeNode">;
+export type BranchGhostRFNode = Node<BranchGhostNodeData, "branchGhostNode">;
 export type LoopContainerRFNode = Node<LoopContainerNodeData, "loopContainerNode">;
 
 export type AppNode =
@@ -444,13 +471,23 @@ export type AppNode =
 	| NextItemRFNode
 	| PlaceholderRFNode
 	| TerminalRFNode
+	| MergeRFNode
+	| BranchGhostRFNode
 	| LoopContainerRFNode;
 
 // ---------------------------------------------------------------------------
 // 9. AppEdge type
 // ---------------------------------------------------------------------------
 
-export type BranchType = "next" | "yes" | "no" | "each" | "after" | "loop_back";
+export type BranchType =
+	| "next"
+	| "yes"
+	| "no"
+	| "each"
+	| "after"
+	| "loop_back"
+	| "merge_in"
+	| "merge";
 
 export type EdgeData = {
 	branchType?: BranchType;
@@ -467,6 +504,12 @@ export type EdgeData = {
 	routeRightX?: number;
 	/** X of the loop-back edge's vertical run (derived layout, loop edges only). */
 	routeLeftX?: number;
+	/** Merge-in edge starts at a terminal stub — offset below its "+" button. */
+	fromTerminalStub?: boolean;
+	/** Edge targets a ghost "Choose a step" card — the card is the insert affordance, hide the edge "+". */
+	ghostTarget?: boolean;
+	/** Edge lives inside a loop body — renders in the loop's accent color. */
+	inLoop?: boolean;
 	/** actionType selects the action variant when nodeType is "action". */
 	onInsertNode?: (edgeId: string, nodeType: string, actionType?: string) => void;
 };

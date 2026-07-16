@@ -10,7 +10,7 @@ import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NextItemMarker } from "./next-item-marker";
-import { EDGE_STYLE } from "./edge-style";
+import { EDGE_STYLE, LOOP_EDGE_STYLE } from "./edge-style";
 
 export function PlusButtonEdge(props: EdgeProps) {
 	const {
@@ -24,6 +24,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 	} = props;
 	const isTerminal = data?.isTerminal === true;
 	const impliedNextItem = data?.impliedNextItem === true;
+	const edgeStyle = data?.inLoop === true ? LOOP_EDGE_STYLE : EDGE_STYLE;
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
@@ -43,7 +44,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 
 		return (
 			<>
-				<BaseEdge path={edgePath} style={{ ...style, ...EDGE_STYLE }} />
+				<BaseEdge path={edgePath} style={{ ...style, ...edgeStyle }} />
 				<EdgeLabelRenderer>
 					<div
 						className="nodrag nopan pointer-events-auto absolute"
@@ -73,7 +74,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 	return (
 		<RFButtonEdge
 			{...props}
-			style={{ ...style, ...EDGE_STYLE }}
+			style={{ ...style, ...edgeStyle }}
 		>
 			<button
 				onClick={(e) => {

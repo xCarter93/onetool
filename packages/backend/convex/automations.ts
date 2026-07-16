@@ -76,6 +76,7 @@ const nodeArgValidator = v.object({
 	nextNodeId: v.optional(v.string()),
 	elseNodeId: v.optional(v.string()),
 	bodyStartNodeId: v.optional(v.string()),
+	mergeNodeId: v.optional(v.string()),
 	position: v.optional(v.object({ x: v.number(), y: v.number() })),
 });
 
@@ -86,6 +87,7 @@ type NodeArg = {
 	nextNodeId?: string;
 	elseNodeId?: string;
 	bodyStartNodeId?: string;
+	mergeNodeId?: string;
 	position?: { x: number; y: number };
 };
 
@@ -672,6 +674,7 @@ function computeLoopBodyScopeTypes(
 			const member = byId.get(id);
 			if (member?.nextNodeId !== undefined) stack.push(member.nextNodeId);
 			if (member?.elseNodeId !== undefined) stack.push(member.elseNodeId);
+			if (member?.mergeNodeId !== undefined) stack.push(member.mergeNodeId);
 		}
 	}
 	return bodyScopeType;
@@ -710,6 +713,7 @@ function validateWorkflowDefinition(
 			node.nextNodeId,
 			node.elseNodeId,
 			node.bodyStartNodeId,
+			node.mergeNodeId,
 		]) {
 			if (ref !== undefined) {
 				if (!nodeIds.has(ref)) {
@@ -720,6 +724,33 @@ function validateWorkflowDefinition(
 				if (ref === node.id) {
 					throw new Error(`Node ${node.id}: references itself`);
 				}
+			}
+		}
+
+		if (node.mergeNodeId !== undefined) {
+			if (node.type !== "condition") {
+				throw new Error(
+					`Node ${node.id}: only conditions can have a merge continuation`
+				);
+			}
+			// The merge chain must be single-parented — a target also reachable
+			// via another pointer would execute twice (and breaks the canvas
+			// tree). Cycles through mergeNodeId are caught by the DFS below.
+			let referenceCount = 0;
+			for (const other of nodes) {
+				for (const ref of [
+					other.nextNodeId,
+					other.elseNodeId,
+					other.bodyStartNodeId,
+					other.mergeNodeId,
+				]) {
+					if (ref === node.mergeNodeId) referenceCount++;
+				}
+			}
+			if (referenceCount > 1) {
+				throw new Error(
+					`Node ${node.id}: merge continuation target "${node.mergeNodeId}" is already reachable from another step`
+				);
 			}
 		}
 
@@ -966,7 +997,7 @@ function validateWorkflowDefinition(
 		}
 	}
 
-	// Reject cycles across nextNodeId/elseNodeId/bodyStartNodeId — the
+	// Reject cycles across nextNodeId/elseNodeId/bodyStartNodeId/mergeNodeId — the
 	// executor walks these links and must terminate. (The builder UI cannot
 	// produce cycles; this guards direct API writes.)
 	const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -983,6 +1014,7 @@ function validateWorkflowDefinition(
 			node?.nextNodeId,
 			node?.elseNodeId,
 			node?.bodyStartNodeId,
+			node?.mergeNodeId,
 		]) {
 			if (ref !== undefined) visit(ref);
 		}
@@ -995,7 +1027,7 @@ function validateWorkflowDefinition(
 
 /**
  * Structural rules for loop bodies (walked from bodyStartNodeId via
- * nextNodeId/elseNodeId):
+ * nextNodeId/elseNodeId/mergeNodeId):
  * - no nested loops and no delay steps inside a body (the walk engine can't
  *   checkpoint mid-loop);
  * - a node can belong to at most one loop body and must not also be
@@ -1019,6 +1051,7 @@ function validateLoopBodies(
 			// is per-loop, and nested loops are rejected below anyway.
 			if (node.nextNodeId !== undefined) stack.push(node.nextNodeId);
 			if (node.elseNodeId !== undefined) stack.push(node.elseNodeId);
+			if (node.mergeNodeId !== undefined) stack.push(node.mergeNodeId);
 		}
 		return found;
 	};

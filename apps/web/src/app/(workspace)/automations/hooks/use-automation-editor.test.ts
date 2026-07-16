@@ -69,6 +69,32 @@ describe("toSavableNodes condition source derivation", () => {
 		const saved = toSavableNodes([staleCondition]);
 		expect(saved[0].config).toMatchObject({ source: "trigger" });
 	});
+
+	// Regression: toSavableNodes is the real save path (serializeEditorNodes
+	// only feeds it). Dropping mergeNodeId here silently discarded every
+	// condition continuation on save AND left the automation permanently dirty
+	// — the editor signature keeps the field the round-trip loses.
+	it("persists a condition's mergeNodeId continuation", () => {
+		const saved = toSavableNodes([
+			{
+				...conditionInLoop,
+				id: "cond3",
+				nextNodeId: "a1",
+				elseNodeId: "a2",
+				mergeNodeId: "m1",
+			} as unknown as WorkflowNode,
+		]);
+		expect(saved[0]).toMatchObject({
+			nextNodeId: "a1",
+			elseNodeId: "a2",
+			mergeNodeId: "m1",
+		});
+	});
+
+	it("omits mergeNodeId entirely when a condition has no continuation", () => {
+		const saved = toSavableNodes([conditionInLoop]);
+		expect("mergeNodeId" in saved[0]).toBe(false);
+	});
 });
 
 describe("multi-level undo/redo", () => {

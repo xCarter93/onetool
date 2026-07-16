@@ -10,6 +10,7 @@ import type { CSSProperties } from "react";
 export const EDGE_STYLE: CSSProperties = {
 	stroke: "color-mix(in oklch, var(--muted-foreground) 60%, transparent)",
 	strokeWidth: 1.5,
+	strokeDasharray: "6 3",
 };
 
 /** Loop iteration lanes (each / loop-back / after-last) — dashed orange, dark-safe. */

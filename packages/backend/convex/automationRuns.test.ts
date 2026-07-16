@@ -63,7 +63,7 @@ function conditionNode(
 	field: string,
 	operator: string,
 	value: string,
-	opts: { nextNodeId?: string; elseNodeId?: string } = {}
+	opts: { nextNodeId?: string; elseNodeId?: string; mergeNodeId?: string } = {}
 ) {
 	return {
 		id,
@@ -87,6 +87,7 @@ function conditionNode(
 		},
 		nextNodeId: opts.nextNodeId,
 		elseNodeId: opts.elseNodeId,
+		mergeNodeId: opts.mergeNodeId,
 	};
 }
 
@@ -227,6 +228,49 @@ describe("automation runs (test + manual)", () => {
 			// Dry run must not have touched the client.
 			const client = await t.run(async (ctx) => ctx.db.get(clientId));
 			expect(client?.status).toBe("lead");
+		});
+
+		// The dry-run walk duplicates the production walk, so merge routing has
+		// to be asserted on both sides or the two silently drift.
+		it("routes a dangling branch tail into the merge chain, same as production", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Dry-run merge convergence",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					// True branch dangles into the merge; the false branch has no
+					// elseNodeId, so it converges straight onto it.
+					conditionNode("cond-1", "companyName", "contains", "Acme", {
+						nextNodeId: "act-true",
+						mergeNodeId: "merge-1",
+					}),
+					notesActionNode("act-true", "branch ran"),
+					statusActionNode("merge-1", "inactive"),
+				],
+			});
+
+			const executionId = await asUser.mutation(
+				api.automationExecutor.startTestRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const done = await asUser.query(api.automationExecutor.getExecution, {
+				executionId,
+			});
+			expect(done?.status).toBe("completed");
+			expect(done?.nodesExecuted.map((n) => n.nodeId)).toEqual([
+				"cond-1",
+				"act-true",
+				"merge-1",
+			]);
+
+			// Still a dry run: nothing written.
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.status).toBe("lead");
+			expect(client?.notes).toBeUndefined();
 		});
 
 		it("simulates create_task without creating a task", async () => {

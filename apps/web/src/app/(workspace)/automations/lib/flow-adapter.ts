@@ -27,6 +27,8 @@ export const TRIGGER_NODE_ID = "__trigger__";
 export const TRIGGER_PLACEHOLDER_ID = "__trigger_placeholder__";
 export const TERMINAL_PREFIX = "__terminal__";
 export const CONTAINER_PREFIX = "__container__";
+export const MERGE_PREFIX = "__merge__";
+export const GHOST_PREFIX = "__ghost__";
 
 /** React Flow node type names (must match nodeTypes object keys) */
 export const RF_NODE_TYPES = {
@@ -44,6 +46,8 @@ export const RF_NODE_TYPES = {
 	next_item: "nextItemNode",
 	placeholder: "placeholderNode",
 	terminal: "terminalNode",
+	merge: "mergeNode",
+	branchGhost: "branchGhostNode",
 } as const;
 
 /** React Flow edge type names (must match edgeTypes object keys) */
@@ -52,6 +56,7 @@ export const RF_EDGE_TYPES = {
 	branchLabel: "branchLabelEdge",
 	loopBack: "loopBackEdge",
 	afterLast: "afterLastEdge",
+	mergeIn: "mergeInEdge",
 } as const;
 
 /**
@@ -66,6 +71,8 @@ export type PlaceholderEntry = {
 	elseNodeId?: string;
 	/** Never set on placeholders (only loop nodes have a body); present for GraphNode-shape compatibility. */
 	bodyStartNodeId?: string;
+	/** Never set on placeholders (only conditions merge); present for GraphNode-shape compatibility. */
+	mergeNodeId?: string;
 	position?: { x: number; y: number };
 };
 
@@ -84,6 +91,24 @@ export function isTerminalId(id: string): boolean {
 /** Check if a node ID is a loop-container frame (not a real workflow node) */
 export function isContainerId(id: string): boolean {
 	return id.startsWith(CONTAINER_PREFIX);
+}
+
+/** Check if a node ID is a synthetic branch-merge dot (not a real workflow node) */
+export function isMergeId(id: string): boolean {
+	return id.startsWith(MERGE_PREFIX);
+}
+
+export function mergeIdForCondition(conditionId: string): string {
+	return `${MERGE_PREFIX}${conditionId}`;
+}
+
+/** Check if a node ID is a ghost "Choose a step" card (not a real workflow node) */
+export function isGhostId(id: string): boolean {
+	return id.startsWith(GHOST_PREFIX);
+}
+
+export function ghostIdFor(sourceId: string, handle: string): string {
+	return `${GHOST_PREFIX}${sourceId}-${handle}`;
 }
 
 export function containerIdForLoop(loopId: string): string {
@@ -162,9 +187,43 @@ function addTerminalStub(
 	} as AppEdge);
 }
 
+/**
+ * Ghost "Choose a step" card + branch edge for an EMPTY condition branch or
+ * loop body — the lane shows the same card a transient placeholder would,
+ * instead of a bare "+" stub.
+ */
+function addBranchGhost(
+	rfNodes: AppNode[],
+	rfEdges: AppEdge[],
+	sourceId: string,
+	sourceHandle: string,
+	edgeData: Record<string, unknown>
+) {
+	const ghostId = ghostIdFor(sourceId, sourceHandle);
+	const edgeId = `e-${sourceId}-${sourceHandle}-${ghostId}`;
+
+	rfNodes.push({
+		id: ghostId,
+		type: RF_NODE_TYPES.branchGhost,
+		data: { nodeType: "branchGhost", edgeId },
+		position: { x: 0, y: 0 },
+		draggable: false,
+	} as AppNode);
+
+	rfEdges.push({
+		id: edgeId,
+		source: sourceId,
+		target: ghostId,
+		sourceHandle,
+		type: RF_EDGE_TYPES.branchLabel,
+		data: { ...edgeData, ghostTarget: true },
+	} as AppEdge);
+}
+
 function resolveLoopBackSourceId(
 	startNodeId: string | undefined,
-	nodes: EditorNode[]
+	nodes: EditorNode[],
+	mergeConditionIds?: Set<string>
 ): string {
 	if (!startNodeId) {
 		return "";
@@ -176,14 +235,100 @@ function resolveLoopBackSourceId(
 	while (true) {
 		visited.add(loopBackSourceId);
 		const bodyNode = nodes.find((n) => n.id === loopBackSourceId);
-		if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) {
-			if (bodyNode?.type === "condition") {
-				return `${TERMINAL_PREFIX}${bodyNode.id}-yes`;
+		// A condition's nextNodeId is the YES BRANCH, not a continuation.
+		// Branch lanes reconverge at its merge dot; if a merge chain exists
+		// the walk continues along it, otherwise the dot is the tail.
+		if (bodyNode?.type === "condition") {
+			if (bodyNode.mergeNodeId && !visited.has(bodyNode.mergeNodeId)) {
+				loopBackSourceId = bodyNode.mergeNodeId;
+				continue;
 			}
+			if (mergeConditionIds?.has(bodyNode.id)) {
+				return mergeIdForCondition(bodyNode.id);
+			}
+			// No merge: both branches stop (end/next_item), so nothing falls out
+			// of the condition — there is no tail to return from.
+			return "";
+		}
+		if (!bodyNode?.nextNodeId || visited.has(bodyNode.nextNodeId)) {
 			return loopBackSourceId;
 		}
 		loopBackSourceId = bodyNode.nextNodeId;
 	}
+}
+
+/** Where a branch-tail's outgoing merge connector starts. */
+type MergeExit = { sourceId: string; fromTerminalStub: boolean };
+
+/**
+ * Plan a merge dot per condition (Salesforce-style): both branch lanes
+ * reconverge below the condition, and flow continues at the condition's
+ * mergeNodeId chain when one is configured. A branch exits via its dangling
+ * tail's terminal "+" stub, a nested condition's merge SUBTREE exit (its
+ * chain tail when a continuation exists, else its dot's "+" stub), a tail
+ * loop's After-Last stub, or an empty branch's ghost card; explicit
+ * end/next_item tails stop the flow and feed nothing. A condition whose
+ * branches both stop gets no merge dot unless a continuation is configured.
+ */
+function planConditionMerges(nodes: EditorNode[]): Map<string, MergeExit[]> {
+	const byId = new Map(nodes.map((n) => [n.id, n]));
+	const merges = new Map<string, MergeExit[]>();
+	const planned = new Set<string>();
+
+	function chainExit(startId: string): MergeExit | null {
+		let currentId = startId;
+		const visited = new Set<string>();
+		while (true) {
+			visited.add(currentId);
+			const node = byId.get(currentId);
+			if (!node) return null;
+			if (node.type === "end" || node.type === "next_item") return null;
+			if (node.type === "condition") return conditionExit(node);
+			if (!node.nextNodeId || visited.has(node.nextNodeId)) {
+				const suffix = node.type === "loop" ? "-after" : "";
+				return {
+					sourceId: `${TERMINAL_PREFIX}${node.id}${suffix}`,
+					fromTerminalStub: true,
+				};
+			}
+			currentId = node.nextNodeId;
+		}
+	}
+
+	function conditionExit(cond: EditorNode): MergeExit | null {
+		if (cond.type !== "condition") return null;
+		if (!planned.has(cond.id)) {
+			planned.add(cond.id);
+			const inputs: MergeExit[] = [];
+			// An empty branch renders a ghost "Choose a step" card; the merge
+			// connector departs from the ghost's bottom.
+			const yes = cond.nextNodeId
+				? chainExit(cond.nextNodeId)
+				: { sourceId: ghostIdFor(cond.id, "yes"), fromTerminalStub: false };
+			const no = cond.elseNodeId
+				? chainExit(cond.elseNodeId)
+				: { sourceId: ghostIdFor(cond.id, "no"), fromTerminalStub: false };
+			if (yes) inputs.push(yes);
+			if (no) inputs.push(no);
+			// A configured continuation keeps the dot even with no live inputs
+			// (both branches stop) — the chain must stay visible/editable.
+			if (inputs.length > 0 || cond.mergeNodeId) merges.set(cond.id, inputs);
+		}
+		if (!merges.has(cond.id)) return null;
+		// The condition subtree's exit: the merge chain's tail when a
+		// continuation exists, else the dot's own "+" stub.
+		const mergeNodeId = (cond as WorkflowNode).mergeNodeId;
+		if (mergeNodeId) return chainExit(mergeNodeId);
+		return {
+			sourceId: `${TERMINAL_PREFIX}${mergeIdForCondition(cond.id)}`,
+			fromTerminalStub: true,
+		};
+	}
+
+	for (const node of nodes) {
+		if (node.type === "condition") conditionExit(node);
+	}
+	return merges;
 }
 
 function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
@@ -306,7 +451,6 @@ export function automationToReactFlow(
 	// the canvas says so, except where the loop-back edge already makes the
 	// return visible.
 	const bodyNodeIds = new Set<string>();
-	const loopBackSourceIds = new Set<string>();
 	for (const node of nodes) {
 		if (node.type === "loop" && node.bodyStartNodeId) {
 			for (const id of collectLoopBody(node.id, nodes)) {
@@ -314,22 +458,42 @@ export function automationToReactFlow(
 				// outer loop's body count (a top-level loop's After-Last just ends).
 				if (id !== node.id) bodyNodeIds.add(id);
 			}
-			loopBackSourceIds.add(resolveLoopBackSourceId(node.bodyStartNodeId, nodes));
+		}
+	}
+
+	// Every condition gets a merge dot where its branch lanes reconverge;
+	// flow continues at the condition's mergeNodeId chain when configured.
+	const merges = planConditionMerges(nodes);
+	const mergeConditionIds = new Set(merges.keys());
+	const mergeFedIds = new Set<string>();
+	for (const inputs of merges.values()) {
+		for (const input of inputs) mergeFedIds.add(input.sourceId);
+	}
+
+	const loopBackSourceIds = new Set<string>();
+	for (const node of nodes) {
+		if (node.type === "loop" && node.bodyStartNodeId) {
+			loopBackSourceIds.add(
+				resolveLoopBackSourceId(node.bodyStartNodeId, nodes, mergeConditionIds)
+			);
 		}
 	}
 	const impliedNextItemData = (sourceId: string, terminalId: string) =>
 		bodyNodeIds.has(sourceId) &&
 		!loopBackSourceIds.has(sourceId) &&
-		!loopBackSourceIds.has(terminalId)
+		!loopBackSourceIds.has(terminalId) &&
+		// A stub that flows onward into a merge dot already shows its return path.
+		!mergeFedIds.has(terminalId)
 			? { impliedNextItem: true }
 			: {};
 
-	// 2. Find root node (not referenced by any other node's nextNodeId or elseNodeId)
+	// 2. Find root node (not referenced by any other node's pointers)
 	const referencedIds = new Set<string>();
 	for (const node of nodes) {
 		if (node.nextNodeId) referencedIds.add(node.nextNodeId);
 		if (node.elseNodeId) referencedIds.add(node.elseNodeId);
 		if (node.bodyStartNodeId) referencedIds.add(node.bodyStartNodeId);
+		if (node.mergeNodeId) referencedIds.add(node.mergeNodeId);
 	}
 	const rootNode = nodes.find((n) => !referencedIds.has(n.id));
 
@@ -375,11 +539,10 @@ export function automationToReactFlow(
 					data: { label: "Yes", variant: "yes", branchType: "yes" as const },
 				} as AppEdge);
 			} else {
-				addTerminalStub(rfNodes, rfEdges, node.id, "yes", RF_EDGE_TYPES.branchLabel, {
+				addBranchGhost(rfNodes, rfEdges, node.id, "yes", {
 					label: "Yes",
 					variant: "yes",
 					branchType: "yes" as const,
-					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}-yes`),
 				});
 			}
 
@@ -394,11 +557,10 @@ export function automationToReactFlow(
 					data: { label: "No", variant: "no", branchType: "no" as const },
 				} as AppEdge);
 			} else {
-				addTerminalStub(rfNodes, rfEdges, node.id, "no", RF_EDGE_TYPES.branchLabel, {
+				addBranchGhost(rfNodes, rfEdges, node.id, "no", {
 					label: "No",
 					variant: "no",
 					branchType: "no" as const,
-					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}-no`),
 				});
 			}
 
@@ -415,7 +577,7 @@ export function automationToReactFlow(
 					data: { label: "For Each", variant: "yes", branchType: "each" as const },
 				} as AppEdge);
 			} else {
-				addTerminalStub(rfNodes, rfEdges, node.id, "each", RF_EDGE_TYPES.branchLabel, {
+				addBranchGhost(rfNodes, rfEdges, node.id, "each", {
 					label: "For Each",
 					variant: "yes",
 					branchType: "each" as const,
@@ -443,12 +605,14 @@ export function automationToReactFlow(
 				});
 			}
 
-			// Loop-back edge: from last body node (or empty terminal) back to loop header
-			{
-				const loopBackSourceId = node.bodyStartNodeId
-					? resolveLoopBackSourceId(node.bodyStartNodeId, nodes)
-					: `${TERMINAL_PREFIX}${node.id}-each`;
-
+			// Loop-back edge: from last body node (or empty terminal) back to loop
+			// header. Omitted when the body has no live tail (every path ends in
+			// end/next_item) — an edge from a node that doesn't exist would be
+			// silently dropped by React Flow anyway.
+			const loopBackSourceId = node.bodyStartNodeId
+				? resolveLoopBackSourceId(node.bodyStartNodeId, nodes, mergeConditionIds)
+				: ghostIdFor(node.id, "each");
+			if (loopBackSourceId) {
 				rfEdges.push({
 					id: `e-loopback-${node.id}`,
 					source: loopBackSourceId,
@@ -484,6 +648,74 @@ export function automationToReactFlow(
 					...impliedNextItemData(node.id, `${TERMINAL_PREFIX}${node.id}`),
 				});
 			}
+		}
+	}
+
+	// Merge dots + their incoming connectors. The dot itself is display-only
+	// (never serialized), but its OUTGOING edge is real: the condition's
+	// mergeNodeId continuation chain, or an insertable "+" stub to start one.
+	for (const [conditionId, inputs] of merges) {
+		const mergeId = mergeIdForCondition(conditionId);
+		rfNodes.push({
+			id: mergeId,
+			type: RF_NODE_TYPES.merge,
+			data: { nodeType: "merge", conditionId },
+			position: { x: 0, y: 0 },
+			draggable: false,
+			selectable: false,
+			focusable: false,
+		} as AppNode);
+		for (const input of inputs) {
+			rfEdges.push({
+				id: `e-mergein-${input.sourceId}-${mergeId}`,
+				source: input.sourceId,
+				target: mergeId,
+				type: RF_EDGE_TYPES.mergeIn,
+				data: {
+					branchType: "merge_in" as const,
+					fromTerminalStub: input.fromTerminalStub,
+				},
+			} as AppEdge);
+		}
+
+		const condition = nodes.find((n) => n.id === conditionId);
+		const mergeTargetId =
+			condition && !isPlaceholderEntry(condition)
+				? condition.mergeNodeId
+				: undefined;
+		if (mergeTargetId) {
+			rfEdges.push({
+				id: `e-${mergeId}-merge-${mergeTargetId}`,
+				source: mergeId,
+				target: mergeTargetId,
+				type: RF_EDGE_TYPES.straight,
+				data: { branchType: "merge" as const },
+			} as AppEdge);
+		} else {
+			addTerminalStub(rfNodes, rfEdges, mergeId, undefined, RF_EDGE_TYPES.straight, {
+				branchType: "merge" as const,
+			});
+		}
+	}
+
+	// Edges sourced inside a loop body render in the loop's accent color.
+	// Synthetic sources (terminal stubs, ghosts, merge points — possibly
+	// stacked, e.g. a merge point's terminal stub) resolve to the real node
+	// that owns them.
+	const syntheticOwnerId = (sourceId: string): string => {
+		let id = sourceId;
+		if (id.startsWith(TERMINAL_PREFIX)) {
+			id = id.slice(TERMINAL_PREFIX.length).replace(/-(after|yes|no)$/, "");
+		}
+		if (id.startsWith(GHOST_PREFIX)) {
+			id = id.slice(GHOST_PREFIX.length).replace(/-(each|yes|no)$/, "");
+		}
+		if (id.startsWith(MERGE_PREFIX)) id = id.slice(MERGE_PREFIX.length);
+		return id;
+	};
+	for (const e of rfEdges) {
+		if (bodyNodeIds.has(syntheticOwnerId(e.source))) {
+			e.data = { ...e.data, inLoop: true };
 		}
 	}
 
@@ -537,6 +769,7 @@ export function serializeEditorNodes(nodes: EditorNode[]): WorkflowNode[] {
 				nextNodeId: node.nextNodeId,
 				elseNodeId: node.elseNodeId,
 				bodyStartNodeId: node.bodyStartNodeId,
+				mergeNodeId: node.mergeNodeId,
 			};
 		});
 }
@@ -566,6 +799,8 @@ export function reactFlowToFlatArray(
 		if (rfNode.id === TRIGGER_PLACEHOLDER_ID) continue;
 		if (isTerminalId(rfNode.id)) continue;
 		if (isContainerId(rfNode.id)) continue;
+		if (isMergeId(rfNode.id)) continue;
+		if (isGhostId(rfNode.id)) continue;
 		// Filter out placeholder nodes -- they are frontend-only transient state
 		if ((rfNode.data as { nodeType?: string })?.nodeType === "placeholder")
 			continue;
@@ -580,10 +815,26 @@ export function reactFlowToFlatArray(
 		let nextNodeId: string | undefined;
 		let elseNodeId: string | undefined;
 		let bodyStartNodeId: string | undefined;
+		let mergeNodeId: string | undefined;
+
+		// The condition's continuation edge hangs off its synthetic merge dot,
+		// not the condition node itself.
+		if (dbType === "condition") {
+			const mergeOut = rfEdges.find(
+				(e) =>
+					e.source === mergeIdForCondition(rfNode.id) &&
+					e.data?.branchType === "merge" &&
+					!isTerminalId(e.target)
+			);
+			if (mergeOut) mergeNodeId = mergeOut.target;
+		}
 
 		for (const edge of outEdges) {
 			if (isTerminalId(edge.target)) continue;
+			if (isMergeId(edge.target)) continue;
+			if (isGhostId(edge.target)) continue;
 			if (edge.data?.branchType === "loop_back") continue;
+			if (edge.data?.branchType === "merge_in") continue;
 
 			const branchType = edge.data?.branchType as string | undefined;
 
@@ -617,6 +868,7 @@ export function reactFlowToFlatArray(
 			nextNodeId,
 			elseNodeId,
 			bodyStartNodeId,
+			mergeNodeId,
 		});
 	}
 

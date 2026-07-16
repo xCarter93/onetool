@@ -56,6 +56,43 @@ describe("graph-utils", () => {
 			expect(result).toEqual(new Set(["c1", "a1", "a2", "a3"]));
 		});
 
+		// Regression: deleting a condition must not take its merge continuation
+		// with it — those steps run after the branches converge, so they belong
+		// to the parent chain (same rule as a loop's After-Last path).
+		it("excludeRootMerge keeps the root's continuation but still collects nested merges", () => {
+			const nodes: WorkflowNode[] = [
+				{
+					id: "c1",
+					type: "condition",
+					config: condition("active"),
+					nextNodeId: "c2",
+					elseNodeId: "a2",
+					mergeNodeId: "keep1",
+				},
+				{
+					id: "c2",
+					type: "condition",
+					config: condition("done"),
+					nextNodeId: "a1",
+					// A nested condition's continuation IS inside c1's true branch.
+					mergeNodeId: "nested1",
+				},
+				{ id: "a1", type: "action", config: action("done") },
+				{ id: "a2", type: "action", config: action("inactive") },
+				{ id: "nested1", type: "action", config: action("active") },
+				{ id: "keep1", type: "action", config: action("active"), nextNodeId: "keep2" },
+				{ id: "keep2", type: "action", config: action("done") },
+			];
+
+			expect(collectSubtree("c1", nodes, { excludeRootMerge: true })).toEqual(
+				new Set(["c1", "c2", "a1", "a2", "nested1"])
+			);
+			// Without the flag the continuation chain is part of the subtree.
+			expect(collectSubtree("c1", nodes)).toEqual(
+				new Set(["c1", "c2", "a1", "a2", "nested1", "keep1", "keep2"])
+			);
+		});
+
 		it("returns only the node itself for a leaf node", () => {
 			const nodes: WorkflowNode[] = [
 				{

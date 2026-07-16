@@ -309,7 +309,7 @@ describe("computeDerivedLayout", () => {
 		);
 	});
 
-	it("keeps yes and no branches ordered — yes on the spine, no strictly to its right", () => {
+	it("fans yes and no branches out symmetrically around the condition's spine", () => {
 		const nodes = [
 			N("__trigger__", "triggerNode"),
 			N("cond", "conditionNode"),
@@ -327,8 +327,46 @@ describe("computeDerivedLayout", () => {
 		const cond = rectOf("cond", nodes, positions);
 		const y = rectOf("y", nodes, positions);
 		const n = rectOf("n", nodes, positions);
-		// Yes inherits the condition's spine; No is strictly to the right.
-		expect(y.x + y.width / 2).toBeCloseTo(cond.x + cond.width / 2);
-		expect(n.x).toBeGreaterThan(y.x + y.width);
+		const condCx = cond.x + cond.width / 2;
+		// Yes lane left of the spine, No lane right, BRANCH_H_GAP centered on it.
+		expect(y.x + y.width / 2).toBeLessThan(condCx);
+		expect(n.x + n.width / 2).toBeGreaterThan(condCx);
+		expect(n.x - (y.x + y.width)).toBeCloseTo(BRANCH_H_GAP);
+		expect(condCx - (y.x + y.width)).toBeCloseTo(BRANCH_H_GAP / 2);
+	});
+
+	it("places a condition's merge dot on the spine below the taller lane", () => {
+		const nodes = [
+			N("__trigger__", "triggerNode"),
+			N("loop", "loopNode"),
+			N("cond", "conditionNode"),
+			N("a"),
+			N("__merge__cond", "mergeNode"),
+		];
+		const edges = [
+			edge("__trigger__", "loop"),
+			edge("loop", "cond", "each"),
+			edge("cond", "a", "yes"),
+			edge("a", "__terminal__a"),
+			edge("cond", "__terminal__cond-no", "no"),
+			edge("__terminal__a", "__merge__cond", "merge_in"),
+			edge("__terminal__cond-no", "__merge__cond", "merge_in"),
+			edge("loop", "__terminal__loop-after", "after"),
+		];
+		const { positions, containers } = computeDerivedLayout(
+			nodes,
+			edges,
+			"__trigger__",
+			defaultSizes
+		);
+		const cond = rectOf("cond", nodes, positions);
+		const merge = rectOf("__merge__cond", nodes, positions);
+		const a = rectOf("a", nodes, positions);
+		// Centered on the condition's spine, below the taller (yes) lane.
+		expect(merge.x + merge.width / 2).toBeCloseTo(cond.x + cond.width / 2);
+		expect(merge.y).toBeGreaterThan(a.y + a.height + TERMINAL_DROP);
+		// The merge dot stays inside the loop container.
+		const container = containers.get("loop")!;
+		expect(merge.y + merge.height).toBeLessThan(container.y + container.height);
 	});
 });

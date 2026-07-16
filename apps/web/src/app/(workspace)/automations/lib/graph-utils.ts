@@ -9,16 +9,24 @@ export type GraphNode = {
 	elseNodeId?: string;
 	/** Loop body entry point. */
 	bodyStartNodeId?: string;
+	/** Condition continuation ("after the branches converge"). */
+	mergeNodeId?: string;
 };
 
 /**
  * Collect all node IDs in the subtree rooted at startNodeId.
- * Follows both nextNodeId and elseNodeId pointers via BFS.
+ * Follows nextNodeId, elseNodeId, and mergeNodeId pointers via BFS.
  * Always includes startNodeId itself, even if not found in the nodes array.
+ *
+ * `excludeRootMerge` stops at the ROOT's merge continuation — the steps after
+ * its branches converge are downstream of the condition, not part of it (the
+ * same reason collectLoopBody never walks a loop's own After-Last path).
+ * Descendants' merge chains still belong to the subtree and are collected.
  */
 export function collectSubtree(
 	startNodeId: string,
-	nodes: GraphNode[]
+	nodes: GraphNode[],
+	options?: { excludeRootMerge?: boolean }
 ): Set<string> {
 	const nodeMap = new Map<string, GraphNode>();
 	for (const node of nodes) {
@@ -41,6 +49,13 @@ export function collectSubtree(
 		}
 		if (node.elseNodeId && !visited.has(node.elseNodeId)) {
 			queue.push(node.elseNodeId);
+		}
+		if (
+			node.mergeNodeId &&
+			!visited.has(node.mergeNodeId) &&
+			!(options?.excludeRootMerge && current === startNodeId)
+		) {
+			queue.push(node.mergeNodeId);
 		}
 	}
 
@@ -71,8 +86,9 @@ export function collectLoopBody(
 		return visited;
 	}
 
-	// BFS following nextNodeId and elseNodeId from body nodes (the loop
-	// node's own nextNodeId -- the "After Last" path -- is never queued).
+	// BFS following nextNodeId, elseNodeId, and mergeNodeId from body nodes
+	// (the loop node's own nextNodeId -- the "After Last" path -- is never
+	// queued).
 	const queue: string[] = [loopNode.bodyStartNodeId];
 
 	while (queue.length > 0) {
@@ -89,6 +105,9 @@ export function collectLoopBody(
 		if (node.elseNodeId && !visited.has(node.elseNodeId)) {
 			queue.push(node.elseNodeId);
 		}
+		if (node.mergeNodeId && !visited.has(node.mergeNodeId)) {
+			queue.push(node.mergeNodeId);
+		}
 	}
 
 	return visited;
@@ -103,7 +122,10 @@ export function collectLoopBody(
 export function findParent(
 	nodeId: string,
 	nodes: GraphNode[]
-): { parentId: string | null; branch: "next" | "else" | "body" | null } {
+): {
+	parentId: string | null;
+	branch: "next" | "else" | "body" | "merge" | null;
+} {
 	for (const node of nodes) {
 		if (node.nextNodeId === nodeId) {
 			return { parentId: node.id, branch: "next" };
@@ -113,6 +135,9 @@ export function findParent(
 		}
 		if (node.bodyStartNodeId === nodeId) {
 			return { parentId: node.id, branch: "body" };
+		}
+		if (node.mergeNodeId === nodeId) {
+			return { parentId: node.id, branch: "merge" };
 		}
 	}
 

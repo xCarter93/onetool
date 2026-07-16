@@ -367,26 +367,33 @@ describe("flow-adapter", () => {
 		expect(triggerEdge!.type).toBe(RF_EDGE_TYPES.straight);
 	});
 
-	it("terminal stub edges inherit branchType", () => {
+	it("empty branch ghost edges inherit branchType and sourceHandle", () => {
 		const trigger = makeTrigger();
 		const nodes: EditorNode[] = [
 			{
 				id: "c1",
 				type: "condition",
 				config: statusEqualsCondition("active"),
-				// No nextNodeId or elseNodeId - both are terminal stubs
+				// No nextNodeId or elseNodeId — both branches render ghost cards
 			},
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
-		const terminalEdges = result.edges.filter((e) => e.data?.isTerminal === true && e.source === "c1");
-		expect(terminalEdges).toHaveLength(2);
+		const ghostEdges = result.edges.filter(
+			(e) => e.data?.ghostTarget === true && e.source === "c1"
+		);
+		expect(ghostEdges).toHaveLength(2);
 
-		const yesTerminal = terminalEdges.find((e) => e.sourceHandle === "yes");
-		const noTerminal = terminalEdges.find((e) => e.sourceHandle === "no");
+		const yesGhost = ghostEdges.find((e) => e.sourceHandle === "yes");
+		const noGhost = ghostEdges.find((e) => e.sourceHandle === "no");
 
-		expect(yesTerminal!.data?.branchType).toBe("yes");
-		expect(noTerminal!.data?.branchType).toBe("no");
+		expect(yesGhost!.data?.branchType).toBe("yes");
+		expect(yesGhost!.target).toBe("__ghost__c1-yes");
+		expect(noGhost!.data?.branchType).toBe("no");
+		expect(noGhost!.target).toBe("__ghost__c1-no");
+
+		// Ghost cards render as nodes but never serialize.
+		expect(result.nodes.filter((n) => n.id.startsWith("__ghost__"))).toHaveLength(2);
 	});
 
 	it("edge IDs include sourceHandle for condition branches", () => {
@@ -483,7 +490,7 @@ describe("flow-adapter", () => {
 		expect(after1).toBeDefined();
 	});
 
-	it("routes loop-back from a condition's yes terminal when the loop body ends at a condition", () => {
+	it("routes loop-back from the condition's merge dot when the loop body ends at a condition", () => {
 		const trigger = makeTrigger();
 		const nodes: EditorNode[] = [
 			{
@@ -499,18 +506,226 @@ describe("flow-adapter", () => {
 		];
 
 		const result = automationToReactFlow(trigger, nodes);
-		const loopBackEdge = result.edges.find((e) => e.data?.branchType === "loop_back");
 
+		// Both empty branch ghost cards reconverge at the condition's merge dot…
+		const mergeNode = result.nodes.find((n) => n.id === "__merge__cond1");
+		expect(mergeNode?.type).toBe("mergeNode");
+		const mergeIns = result.edges.filter(
+			(e) => e.data?.branchType === "merge_in"
+		);
+		expect(mergeIns.map((e) => e.source).sort()).toEqual([
+			"__ghost__cond1-no",
+			"__ghost__cond1-yes",
+		]);
+		expect(mergeIns.every((e) => e.target === "__merge__cond1")).toBe(true);
+
+		// …and the loop-back departs from the merge, not a branch terminal.
+		const loopBackEdge = result.edges.find((e) => e.data?.branchType === "loop_back");
 		expect(loopBackEdge).toBeDefined();
-		expect(loopBackEdge!.source).toBe("__terminal__cond1-yes");
+		expect(loopBackEdge!.source).toBe("__merge__cond1");
 		expect(loopBackEdge!.target).toBe("loop1");
 	});
 
-	it("RF_EDGE_TYPES has straight, branchLabel, loopBack, and afterLast", () => {
+	it("tags every edge sourced inside a loop body with inLoop (accent styling)", () => {
+		const trigger = makeTrigger();
+		const nodes: EditorNode[] = [
+			{
+				id: "loop1",
+				type: "loop",
+				config: { kind: "loop", sourceNodeId: "loop1" },
+				bodyStartNodeId: "cond1",
+				nextNodeId: "after1",
+			},
+			{
+				id: "cond1",
+				type: "condition",
+				config: statusEqualsCondition("active"),
+				nextNodeId: "act1",
+				mergeNodeId: "chain1",
+			},
+			{ id: "act1", type: "action", config: updateStatusAction("done") },
+			{ id: "chain1", type: "action", config: updateStatusAction("done") },
+			{ id: "after1", type: "action", config: updateClientStatusAction("active") },
+		];
+
+		const rf = automationToReactFlow(trigger, nodes);
+
+		// Everything owned by a body node is tagged — including edges from
+		// synthetic sources (act1's terminal stub, the empty-No ghost, the
+		// merge point itself).
+		const bodySources = [
+			"cond1",
+			"act1",
+			"__terminal__act1",
+			"__ghost__cond1-no",
+			"__merge__cond1",
+			"chain1",
+		];
+		for (const source of bodySources) {
+			const sourced = rf.edges.filter((e) => e.source === source);
+			expect(sourced.length).toBeGreaterThan(0);
+			for (const e of sourced) expect(e.data?.inLoop).toBe(true);
+		}
+
+		// Edges outside the body (trigger spine, loop header lanes, after-loop
+		// chain) stay untagged — loop lanes get their accent from the edge type.
+		for (const source of ["__trigger__", "loop1", "after1"]) {
+			for (const e of rf.edges.filter((x) => x.source === source)) {
+				expect(e.data?.inLoop).toBeUndefined();
+			}
+		}
+	});
+
+	it("gives a top-level condition a merge dot with an insertable continuation stub", () => {
+		const rf = automationToReactFlow(makeTrigger(), [
+			{ id: "condTop", type: "condition", config: statusEqualsCondition("active") },
+		]);
+		// Merges are universal: every condition converges, and with no
+		// mergeNodeId chain the dot carries an insertable "+" stub whose
+		// insert writes the condition's continuation.
+		expect(rf.nodes.find((n) => n.id === "__merge__condTop")).toBeDefined();
+		expect(
+			rf.edges.filter((e) => e.data?.branchType === "merge_in")
+		).toHaveLength(2);
+		const stubEdge = rf.edges.find(
+			(e) =>
+				e.source === "__merge__condTop" &&
+				e.data?.isTerminal &&
+				e.data?.branchType === "merge"
+		);
+		expect(stubEdge).toBeDefined();
+	});
+
+	it("renders a configured merge continuation chain below the dot and round-trips it", () => {
+		const nodes: EditorNode[] = [
+			{
+				id: "cond1",
+				type: "condition",
+				config: statusEqualsCondition("active"),
+				mergeNodeId: "after1",
+			},
+			{ id: "after1", type: "action", config: updateStatusAction("done") },
+		];
+		const rf = automationToReactFlow(makeTrigger(), nodes);
+
+		// Dot → chain head is a real, insertable edge (branchType "merge").
+		const mergeOut = rf.edges.find(
+			(e) => e.source === "__merge__cond1" && e.target === "after1"
+		);
+		expect(mergeOut?.data?.branchType).toBe("merge");
+		// The chain head is NOT the root (it's referenced via mergeNodeId).
+		const triggerEdge = rf.edges.find((e) => e.source === "__trigger__");
+		expect(triggerEdge?.target).toBe("cond1");
+
+		// Round-trip reconstructs mergeNodeId from the dot's outgoing edge.
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+		const cond = result.nodes.find((n) => n.id === "cond1");
+		expect(cond!.mergeNodeId).toBe("after1");
+	});
+
+	it("excludes end/next_item branch tails from the merge; drops the merge when both stop", () => {
+		const base: EditorNode[] = [
+			{ id: "loop1", type: "loop", bodyStartNodeId: "cond1" },
+			{
+				id: "cond1",
+				type: "condition",
+				config: statusEqualsCondition("active"),
+				nextNodeId: "end1",
+			},
+			{ id: "end1", type: "end", config: { kind: "end" } },
+		];
+
+		// yes → end (stops), no → dangling ghost: the merge has exactly one input.
+		const rf = automationToReactFlow(makeTrigger(), base);
+		const mergeIns = rf.edges.filter((e) => e.data?.branchType === "merge_in");
+		expect(mergeIns.map((e) => e.source)).toEqual(["__ghost__cond1-no"]);
+
+		// Both branches stop → no merge at all, and no loop-back: nothing falls
+		// out of the condition, so there is no tail to return from.
+		const rf2 = automationToReactFlow(makeTrigger(), [
+			{ ...base[0] },
+			{ ...base[1], elseNodeId: "end2" } as EditorNode,
+			{ ...base[2] },
+			{ id: "end2", type: "end", config: { kind: "end" } },
+		]);
+		expect(rf2.nodes.find((n) => n.id.startsWith("__merge__"))).toBeUndefined();
+		expect(
+			rf2.edges.find((e) => e.data?.branchType === "loop_back")
+		).toBeUndefined();
+
+		// Every emitted edge must resolve to a real node — React Flow silently
+		// drops edges whose endpoints don't exist.
+		const nodeIds = new Set(rf2.nodes.map((n) => n.id));
+		for (const e of rf2.edges) {
+			expect(nodeIds.has(e.source)).toBe(true);
+			expect(nodeIds.has(e.target)).toBe(true);
+		}
+	});
+
+	it("chains nested condition merges into the outer merge", () => {
+		const nodes: EditorNode[] = [
+			{ id: "loop1", type: "loop", bodyStartNodeId: "cond1" },
+			{
+				id: "cond1",
+				type: "condition",
+				config: statusEqualsCondition("active"),
+				nextNodeId: "cond2",
+			},
+			{
+				id: "cond2",
+				type: "condition",
+				config: statusEqualsCondition("draft"),
+			},
+		];
+		const rf = automationToReactFlow(makeTrigger(), nodes);
+
+		const mergeIns = rf.edges.filter((e) => e.data?.branchType === "merge_in");
+		// Inner merge collects cond2's two empty-branch ghosts; the outer merge
+		// collects the inner merge's "+" stub (every dot carries an insertable
+		// continuation stub) plus cond1's no-ghost.
+		const bySource = new Map(mergeIns.map((e) => [e.source, e.target]));
+		expect(bySource.get("__ghost__cond2-yes")).toBe("__merge__cond2");
+		expect(bySource.get("__ghost__cond2-no")).toBe("__merge__cond2");
+		expect(bySource.get("__terminal____merge__cond2")).toBe("__merge__cond1");
+		expect(bySource.get("__ghost__cond1-no")).toBe("__merge__cond1");
+
+		const loopBack = rf.edges.find((e) => e.data?.branchType === "loop_back");
+		expect(loopBack?.source).toBe("__merge__cond1");
+	});
+
+	it("filters merge dots and their connectors from the save path", () => {
+		const nodes: EditorNode[] = [
+			{ id: "loop1", type: "loop", bodyStartNodeId: "cond1", nextNodeId: "after1" },
+			{
+				id: "cond1",
+				type: "condition",
+				config: statusEqualsCondition("active"),
+				nextNodeId: "a1",
+			},
+			{ id: "a1", type: "action", config: updateStatusAction("done") },
+			{ id: "after1", type: "action", config: updateClientStatusAction("active") },
+		];
+		const rf = automationToReactFlow(makeTrigger(), nodes);
+		const result = reactFlowToFlatArray(rf.nodes, rf.edges);
+
+		expect(result.nodes.find((n) => n.id.startsWith("__merge__"))).toBeUndefined();
+		expect(result.nodes.find((n) => n.id.startsWith("__ghost__"))).toBeUndefined();
+		expect(result.nodes).toHaveLength(4);
+		const cond = result.nodes.find((n) => n.id === "cond1");
+		expect(cond!.nextNodeId).toBe("a1");
+		// The empty no-branch renders a ghost card, which must never leak into
+		// elseNodeId on save.
+		expect(cond!.elseNodeId).toBeUndefined();
+		const a1 = result.nodes.find((n) => n.id === "a1");
+		expect(a1!.nextNodeId).toBeUndefined();
+	});
+
+	it("RF_EDGE_TYPES has straight, branchLabel, loopBack, afterLast, and mergeIn", () => {
 		expect(RF_EDGE_TYPES.straight).toBe("straightEdge");
 		expect(RF_EDGE_TYPES.branchLabel).toBe("branchLabelEdge");
 		expect(RF_EDGE_TYPES.loopBack).toBe("loopBackEdge");
 		expect(RF_EDGE_TYPES.afterLast).toBe("afterLastEdge");
+		expect(RF_EDGE_TYPES.mergeIn).toBe("mergeInEdge");
 		// plusButton should not exist
 		expect((RF_EDGE_TYPES as Record<string, string>).plusButton).toBeUndefined();
 	});
@@ -661,7 +876,7 @@ describe("derived layout integration", () => {
 		expect(result.nodes[0].position).toBeUndefined();
 	});
 
-	it("marks dangling condition branches inside a loop with impliedNextItem", () => {
+	it("suppresses next-item markers on condition branches inside a loop — the merge shows the return", () => {
 		const nodes: EditorNode[] = [
 			{
 				id: "loop1",
@@ -673,31 +888,38 @@ describe("derived layout integration", () => {
 		];
 		const rf = automationToReactFlow(makeTrigger(), nodes);
 
-		// The yes-terminal carries the loop-back edge (return already visible);
-		// the no-terminal is the invisible dead-end that gets the marker.
+		// Both empty branches render ghost "Choose a step" cards that flow
+		// onward into the merge dot — no "↩ Next item" marker needed on either.
 		const yesEdge = rf.edges.find(
-			(e) => e.data?.branchType === "yes" && e.data?.isTerminal
+			(e) => e.data?.branchType === "yes" && e.data?.ghostTarget
 		);
 		const noEdge = rf.edges.find(
-			(e) => e.data?.branchType === "no" && e.data?.isTerminal
+			(e) => e.data?.branchType === "no" && e.data?.ghostTarget
 		);
+		expect(yesEdge?.target).toBe("__ghost__cond1-yes");
+		expect(noEdge?.target).toBe("__ghost__cond1-no");
 		expect(yesEdge?.data?.impliedNextItem).toBeUndefined();
-		expect(noEdge?.data?.impliedNextItem).toBe(true);
+		expect(noEdge?.data?.impliedNextItem).toBeUndefined();
+		expect(
+			rf.edges.filter((e) => e.data?.branchType === "merge_in")
+		).toHaveLength(2);
 
-		// Outside a loop, a dangling branch just ends the run — no marker.
+		// Outside a loop, a dangling branch just ends the run — ghost card,
+		// no merge, no marker.
 		const rf2 = automationToReactFlow(makeTrigger(), [
 			{ id: "condTop", type: "condition", config: statusEqualsCondition("active") },
 		]);
 		const topNo = rf2.edges.find(
-			(e) => e.data?.branchType === "no" && e.data?.isTerminal
+			(e) => e.data?.branchType === "no" && e.data?.ghostTarget
 		);
+		expect(topNo).toBeDefined();
 		expect(topNo?.data?.impliedNextItem).toBeUndefined();
 	});
 
-	it("marks dangling LEAF stubs inside a loop (e.g. steps under a branched condition)", () => {
+	it("routes branch leaf stubs into the merge instead of marking them (steps under a branched condition)", () => {
 		// The realistic shape: condition in a body with a step on each branch.
-		// a1 carries the loop-back edge (return visible); b1 dead-ends silently
-		// and must get the marker on its plain next-stub.
+		// Both leaves reconverge at the condition's merge, which carries the
+		// loop-back — neither stub gets a marker.
 		const nodes: EditorNode[] = [
 			{
 				id: "loop1",
@@ -720,7 +942,14 @@ describe("derived layout integration", () => {
 		const stubFor = (sourceId: string) =>
 			rf.edges.find((e) => e.source === sourceId && e.data?.isTerminal);
 		expect(stubFor("a1")?.data?.impliedNextItem).toBeUndefined();
-		expect(stubFor("b1")?.data?.impliedNextItem).toBe(true);
+		expect(stubFor("b1")?.data?.impliedNextItem).toBeUndefined();
+		const mergeIns = rf.edges.filter((e) => e.data?.branchType === "merge_in");
+		expect(mergeIns.map((e) => e.source).sort()).toEqual([
+			"__terminal__a1",
+			"__terminal__b1",
+		]);
+		const loopBack = rf.edges.find((e) => e.data?.branchType === "loop_back");
+		expect(loopBack?.source).toBe("__merge__cond1");
 
 		// A top-level (non-nested) loop's dangling After-Last gets no marker.
 		const afterStub = rf.edges.find(
