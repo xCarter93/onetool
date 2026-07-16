@@ -22,7 +22,10 @@ import {
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
 	automationToReactFlow,
+	isGhostId,
+	isMergeId,
 	isTerminalId,
+	MERGE_PREFIX,
 	serializeEditorNodes,
 	type EditorNode,
 	type PlaceholderEntry,
@@ -518,12 +521,20 @@ export function useAutomationEditor(automationId: string | null) {
 			const targetId = edge.target;
 			const branchType = (edge.data?.branchType as string) || "next";
 			// "no" (condition) -> elseNodeId; "each" (loop body entry) -> bodyStartNodeId;
+			// "merge" (a condition's merge dot) -> mergeNodeId on the OWNING
+			// condition (the dot is synthetic — resolve it to its condition);
 			// everything else (incl. loop's "after") is a plain nextNodeId continuation.
 			const isElseBranch = branchType === "no";
 			const isBodyBranch = branchType === "each";
-			const isTerminalTarget = isTerminalId(targetId);
+			const isMergeBranch = branchType === "merge" && isMergeId(sourceId);
+			const pointerOwnerId = isMergeBranch
+				? sourceId.slice(MERGE_PREFIX.length)
+				: sourceId;
+			// Terminal stubs and ghost cards are synthetic — inserting on their
+			// edge means "append", never "point at the synthetic node".
+			const isSyntheticTarget = isTerminalId(targetId) || isGhostId(targetId);
 			const realTargetId =
-				!isTerminalTarget &&
+				!isSyntheticTarget &&
 				targetId !== TRIGGER_NODE_ID &&
 				targetId !== TRIGGER_PLACEHOLDER_ID
 					? targetId
@@ -541,10 +552,12 @@ export function useAutomationEditor(automationId: string | null) {
 					const condNode = buildConditionNode(newId);
 					condNode.nextNodeId = yesPlaceholderId;
 					condNode.elseNodeId = noPlaceholderId;
+					// Downstream steps run after EITHER branch — they continue
+					// at the merge, not inside the Yes branch.
+					condNode.mergeNodeId = downstreamId;
 					const yesPlaceholder: PlaceholderEntry = {
 						id: yesPlaceholderId,
 						type: "placeholder",
-						nextNodeId: downstreamId,
 					};
 					const noPlaceholder: PlaceholderEntry = {
 						id: noPlaceholderId,
@@ -604,8 +617,11 @@ export function useAutomationEditor(automationId: string | null) {
 					if (sourceId === TRIGGER_NODE_ID || sourceId === TRIGGER_PLACEHOLDER_ID) {
 						return node;
 					}
-					if (node.id !== sourceId) {
+					if (node.id !== pointerOwnerId) {
 						return node;
+					}
+					if (isMergeBranch) {
+						return { ...node, mergeNodeId: newId };
 					}
 					if (isBodyBranch) {
 						return { ...node, bodyStartNodeId: newId };
@@ -643,8 +659,11 @@ export function useAutomationEditor(automationId: string | null) {
 							const condNode = buildConditionNode(nodeId);
 							condNode.nextNodeId = yesPlaceholderId;
 							condNode.elseNodeId = noPlaceholderId;
+							// Downstream steps run after EITHER branch — they
+							// continue at the merge, not inside the Yes branch.
+							condNode.mergeNodeId = downstreamId;
 							extraNodes.push(
-								{ id: yesPlaceholderId, type: "placeholder", nextNodeId: downstreamId },
+								{ id: yesPlaceholderId, type: "placeholder" },
 								{ id: noPlaceholderId, type: "placeholder" }
 							);
 							return condNode;
@@ -749,6 +768,7 @@ export function useAutomationEditor(automationId: string | null) {
 						if (node.id !== parentId) return node;
 						if (branch === "else") return { ...node, elseNodeId: undefined };
 						if (branch === "body") return { ...node, bodyStartNodeId: undefined };
+						if (branch === "merge") return { ...node, mergeNodeId: undefined };
 						return { ...node, nextNodeId: undefined };
 					});
 				});
@@ -771,6 +791,7 @@ export function useAutomationEditor(automationId: string | null) {
 						if (node.id !== parentId) return node;
 						if (branch === "else") return { ...node, elseNodeId: afterLastChildId };
 						if (branch === "body") return { ...node, bodyStartNodeId: afterLastChildId };
+						if (branch === "merge") return { ...node, mergeNodeId: afterLastChildId };
 						return { ...node, nextNodeId: afterLastChildId };
 					});
 				});
@@ -790,6 +811,7 @@ export function useAutomationEditor(automationId: string | null) {
 					if (node.id !== parentId) return node;
 					if (branch === "else") return { ...node, elseNodeId: childNodeId };
 					if (branch === "body") return { ...node, bodyStartNodeId: childNodeId };
+					if (branch === "merge") return { ...node, mergeNodeId: childNodeId };
 					return { ...node, nextNodeId: childNodeId };
 				});
 			});

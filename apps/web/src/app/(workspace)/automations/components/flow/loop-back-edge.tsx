@@ -19,7 +19,8 @@ export function LoopBackEdge({
 		typeof data?.routeLeftX === "number" ? (data.routeLeftX as number) : undefined;
 	const leftX = routeLeftX ?? Math.min(sourceX, targetX) - offsetX;
 	const cornerRadius = 16;
-	// Extend below source to clear the terminal "+" stub button (50px below source)
+	// Extend below source to clear the terminal "+" stub button (50px below
+	// source) — plain chain tails and merge dots both carry one.
 	const extendBelow = 70;
 	const bottomY = sourceY + extendBelow;
 

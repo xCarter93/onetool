@@ -22,6 +22,9 @@ const workflowNodeValidator = v.object({
 	elseNodeId: v.optional(v.string()),
 	// Loop body entry point (v2)
 	bodyStartNodeId: v.optional(v.string()),
+	// Condition continuation: where flow resumes after either branch chain
+	// completes ("after the branches converge"). Conditions only.
+	mergeNodeId: v.optional(v.string()),
 	// UI position (persisted for manual drag positioning)
 	position: v.optional(
 		v.object({

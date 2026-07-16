@@ -63,7 +63,7 @@ function conditionNode(
 	field: string,
 	operator: string,
 	value: string | number | boolean,
-	opts: { nextNodeId?: string; elseNodeId?: string } = {}
+	opts: { nextNodeId?: string; elseNodeId?: string; mergeNodeId?: string } = {}
 ) {
 	return {
 		id,
@@ -87,6 +87,7 @@ function conditionNode(
 		},
 		nextNodeId: opts.nextNodeId,
 		elseNodeId: opts.elseNodeId,
+		mergeNodeId: opts.mergeNodeId,
 	};
 }
 
@@ -885,6 +886,127 @@ describe("automationExecutor (v2 engine)", () => {
 			await drainEvents();
 			const falseClient = await t.run(async (ctx) => ctx.db.get(falseId));
 			expect(falseClient?.notes).toBe("No match");
+		});
+	});
+
+	describe("condition mergeNodeId (branch convergence)", () => {
+		function endNode(id: string) {
+			return { id, type: "end" as const, config: { kind: "end" as const } };
+		}
+
+		it("a dangling true-branch action continues into the merge chain", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Merge after true branch",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					conditionNode("cond-1", "companyName", "contains", "Acme", {
+						nextNodeId: "act-true",
+						mergeNodeId: "merge-1",
+					}),
+					updateFieldActionNode("act-true", "notes", "Branch ran"),
+					updateFieldActionNode("merge-1", "companyDescription", "Merge ran"),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBe("Branch ran");
+			expect(client?.companyDescription).toBe("Merge ran");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].nodesExecuted.map((n) => n.nodeId)).toEqual([
+				"cond-1",
+				"act-true",
+				"merge-1",
+			]);
+		});
+
+		it("a false branch with no elseNodeId continues directly into the merge chain", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Merge after empty false branch",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					conditionNode("cond-1", "companyName", "contains", "Acme", {
+						nextNodeId: "act-true",
+						// No elseNodeId: the false path has no branch of its own.
+						mergeNodeId: "merge-1",
+					}),
+					updateFieldActionNode("act-true", "notes", "Branch ran"),
+					updateFieldActionNode("merge-1", "companyDescription", "Merge ran"),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Other Co",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.notes).toBeUndefined();
+			expect(client?.companyDescription).toBe("Merge ran");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].nodesExecuted.map((n) => n.nodeId)).toEqual([
+				"cond-1",
+				"merge-1",
+			]);
+		});
+
+		it("a branch ending in an explicit end node does not continue to the merge chain", async () => {
+			const { asUser } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "End node short-circuits the merge",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					conditionNode("cond-1", "companyName", "contains", "Acme", {
+						nextNodeId: "end-1",
+						mergeNodeId: "merge-1",
+					}),
+					endNode("end-1"),
+					updateFieldActionNode("merge-1", "companyDescription", "Merge ran"),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Corp",
+				status: "lead",
+			});
+			await drainEvents();
+
+			const client = await t.run(async (ctx) => ctx.db.get(clientId));
+			expect(client?.companyDescription).toBeUndefined();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const nodeIds = executions[0].nodesExecuted.map((n) => n.nodeId);
+			expect(nodeIds).toEqual(["cond-1", "end-1"]);
+			expect(nodeIds).not.toContain("merge-1");
 		});
 	});
 
@@ -1866,7 +1988,11 @@ describe("automationExecutor (v2 engine)", () => {
 			field: string,
 			operator: string,
 			value: string | number | boolean,
-			opts: { nextNodeId?: string; elseNodeId?: string } = {}
+			opts: {
+				nextNodeId?: string;
+				elseNodeId?: string;
+				mergeNodeId?: string;
+			} = {}
 		) {
 			return {
 				id,
@@ -1879,6 +2005,7 @@ describe("automationExecutor (v2 engine)", () => {
 				},
 				nextNodeId: opts.nextNodeId,
 				elseNodeId: opts.elseNodeId,
+				mergeNodeId: opts.mergeNodeId,
 			};
 		}
 
@@ -2142,6 +2269,109 @@ describe("automationExecutor (v2 engine)", () => {
 				(n) => n.nodeId === "loop-1"
 			);
 			expect(loopEntry?.recordsProcessed).toBe(2);
+		});
+
+		it("loop-scoped condition mergeNodeId: the merge action runs once per item, both branches converge, and the loop advances past the dangling merge chain", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const keep1Id = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Keep A",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const keep2Id = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Keep B",
+				status: "planned",
+				projectType: "one-off",
+			});
+			const skipId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Skip me",
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Merge convergence inside loop body",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[filterGroup("status", "equals", "planned")],
+						{ nextNodeId: "loop-1" }
+					),
+					loopNode("loop-1", "fetch-1", {
+						bodyStartNodeId: "cond-1",
+						nextNodeId: "end-1",
+					}),
+					// No elseNodeId: the false path converges straight into mergeNodeId,
+					// same as the true branch once body-act dangles.
+					loopConditionNode("cond-1", "loop-1", "title", "contains", "Keep", {
+						nextNodeId: "body-act",
+						mergeNodeId: "merge-act",
+					}),
+					updateFieldActionNode("body-act", "status", "in-progress", {
+						target: "self",
+					}),
+					updateFieldActionNode("merge-act", "description", "merged", {
+						target: "self",
+					}),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const [keep1, keep2, skip] = await t.run(async (ctx) =>
+				Promise.all([
+					ctx.db.get(keep1Id),
+					ctx.db.get(keep2Id),
+					ctx.db.get(skipId),
+				])
+			);
+			// body-act only ran for the matching items.
+			expect(keep1?.status).toBe("in-progress");
+			expect(keep2?.status).toBe("in-progress");
+			expect(skip?.status).toBe("planned");
+			// merge-act converges both branches: every item gets it.
+			expect(keep1?.description).toBe("merged");
+			expect(keep2?.description).toBe("merged");
+			expect(skip?.description).toBe("merged");
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			const execution = executions[0];
+			expect(execution.status).toBe("completed");
+			const loopEntry = execution.nodesExecuted.find(
+				(n) => n.nodeId === "loop-1"
+			);
+			expect(loopEntry?.recordsProcessed).toBe(3);
+			expect(
+				execution.nodesExecuted.filter((n) => n.nodeId === "body-act")
+			).toHaveLength(2);
+			expect(
+				execution.nodesExecuted.filter((n) => n.nodeId === "merge-act")
+			).toHaveLength(3);
+			// The dangling merge chain never escapes the loop body: the run still
+			// reaches the post-loop end node exactly once.
+			expect(
+				execution.nodesExecuted.filter((n) => n.nodeId === "end-1")
+			).toHaveLength(1);
 		});
 
 		it("var-kind fetch filter: cancel client cascades to only its own tasks", async () => {

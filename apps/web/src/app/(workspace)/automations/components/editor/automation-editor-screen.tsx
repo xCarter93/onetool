@@ -11,6 +11,7 @@ import { useSidebarState } from "../../hooks/use-sidebar-state";
 import {
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
+	isGhostId,
 	isTerminalId,
 } from "../../lib/flow-adapter";
 import { EditorTopBar } from "./editor-top-bar";
@@ -80,16 +81,21 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		[editor.layoutedEdges, handleEdgeInsert]
 	);
 
-	// Paint each node's live run status onto its React Flow wrapper (ring/pulse).
+	// Paint each node's live run status onto its React Flow wrapper (ring/pulse);
+	// ghost "Choose a step" cards get the insert callback (they insert via
+	// their incoming branch edge, same flow as the "+" buttons).
 	const flowNodes = useMemo(
 		() =>
 			editor.layoutedNodes.map((node) => {
+				const withInsert = isGhostId(node.id)
+					? { ...node, data: { ...node.data, onInsertNode: handleEdgeInsert } }
+					: node;
 				const ring = runStatusRingClass(editor.runStatuses[node.id]);
 				return ring
-					? { ...node, className: cn(node.className, ring) }
-					: node;
+					? { ...withInsert, className: cn(withInsert.className, ring) }
+					: withInsert;
 			}),
-		[editor.layoutedNodes, editor.runStatuses]
+		[editor.layoutedNodes, editor.runStatuses, handleEdgeInsert]
 	);
 
 	const handleNodeClick = useCallback(

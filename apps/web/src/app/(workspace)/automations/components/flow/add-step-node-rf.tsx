@@ -14,12 +14,12 @@ export const TerminalNodeRF = memo((_props: NodeProps) => {
 			<Handle
 				type="target"
 				position={Position.Top}
-				className="bg-transparent! w-0! h-0! border-0!"
+				className="bg-transparent! w-0! h-0! min-w-0! min-h-0! border-0!"
 			/>
 			<Handle
 				type="source"
 				position={Position.Bottom}
-				className="bg-transparent! w-0! h-0! border-0!"
+				className="bg-transparent! w-0! h-0! min-w-0! min-h-0! border-0!"
 			/>
 		</div>
 	);

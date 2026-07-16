@@ -23,6 +23,7 @@ export type DbWorkflowNode = {
 	nextNodeId?: string;
 	elseNodeId?: string;
 	bodyStartNodeId?: string;
+	mergeNodeId?: string;
 	position?: { x: number; y: number };
 };
 
@@ -58,6 +59,7 @@ export function legacyNodeToV2(node: DbWorkflowNode): WorkflowNode {
 		nextNodeId: node.nextNodeId,
 		elseNodeId: node.elseNodeId,
 		bodyStartNodeId: node.bodyStartNodeId,
+		mergeNodeId: node.mergeNodeId,
 		position: node.position,
 	};
 }

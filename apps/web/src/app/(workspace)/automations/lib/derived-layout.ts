@@ -20,6 +20,8 @@
 export const V_GAP = 80;
 /** Minimum horizontal gap between a yes-subtree's right extent and the no-subtree's left extent. */
 export const BRANCH_H_GAP = 80;
+/** Drop from the taller branch lane's bottom to a condition's merge dot. */
+export const MERGE_DROP = 40;
 /** Terminal "+" stub: edge is a fixed 50px drop, button is a 28px circle. */
 export const TERMINAL_DROP = 50;
 /** Half-width reserved for a terminal stub ("+" button plus an optional "↩ Next item" marker). */
@@ -66,6 +68,8 @@ const DEFAULT_SIZES: Record<string, NodeSize> = {
 	nextItemNode: { width: 280, height: 46 },
 	placeholderNode: { width: 280, height: 56 },
 	terminalNode: { width: 1, height: 1 },
+	mergeNode: { width: 1, height: 1 },
+	branchGhostNode: { width: 280, height: 56 },
 };
 
 export function getDefaultNodeSize(rfType: string | undefined): NodeSize {
@@ -148,7 +152,9 @@ function buildChildMap(edges: LayoutEdgeInput[]): Map<string, ChildMap> {
 	const children = new Map<string, ChildMap>();
 	for (const edge of edges) {
 		const branchType = edge.data?.branchType;
-		if (branchType === "loop_back") continue;
+		// Loop-back and merge connectors would re-converge the tree (their
+		// targets already have a parent); both are placed by other means.
+		if (branchType === "loop_back" || branchType === "merge_in") continue;
 		const entry = children.get(edge.source) ?? {};
 		const ref: ChildRef = { id: edge.target, isTerminal: isTerminalRef(edge) };
 		switch (branchType) {
@@ -204,8 +210,11 @@ export function computeDerivedLayout(
 		string,
 		{ containerLeft: number; containerRight: number; containerBottom: number }
 	>();
-	// Per-condition horizontal offset of the no-branch spine from the condition spine.
-	const noSpineDx = new Map<string, number>();
+	// Per-condition metadata captured during measurement, consumed at place time.
+	const condMeta = new Map<
+		string,
+		{ yesDx: number; noDx: number; branchesBottom: number; mergeId?: string }
+	>();
 	const measuring = new Set<string>(); // cycle guard (defensive; graph is a tree)
 
 	function measureChild(ref: ChildRef | undefined): Extent | null {
@@ -235,29 +244,49 @@ export function computeDerivedLayout(
 		let extent: Extent;
 
 		if (kids.yes || kids.no) {
-			// Condition: yes-subtree continues on the spine, no-subtree sits to
-			// the right of everything the yes side occupies.
+			// Condition: symmetric fan-out — yes lane left of the spine, no lane
+			// right, gap centered. A lone branch stays on the spine.
 			const yesE = measureChild(kids.yes);
 			const noE = measureChild(kids.no);
 			const yesGap = kids.yes ? gapAbove(kids.yes) : 0;
 			const noGap = kids.no ? gapAbove(kids.no) : 0;
 
-			const spineRight = Math.max(half, yesE?.right ?? 0);
-			let right = spineRight;
-			if (noE && kids.no) {
-				const dx = spineRight + BRANCH_H_GAP + noE.left;
-				noSpineDx.set(nodeId, dx);
-				right = Math.max(right, dx + noE.right);
-			}
+			const bothLanes = !!(yesE && noE);
+			const yesDx = bothLanes && yesE ? -(BRANCH_H_GAP / 2 + yesE.right) : 0;
+			const noDx = bothLanes && noE ? BRANCH_H_GAP / 2 + noE.left : 0;
+			const branchesBottom = Math.max(
+				yesE ? yesGap + yesE.height : 0,
+				noE ? noGap + noE.height : 0
+			);
+
+			// A merge dot exists when the adapter synthesized one for this
+			// condition; it sits on the spine below the taller lane, and its
+			// continuation chain (or "+" stub) hangs below it as a regular
+			// subtree.
+			const mergeId = `__merge__${nodeId}`;
+			const mergeE = nodeTypes.has(mergeId) ? measure(mergeId) : null;
+			condMeta.set(nodeId, {
+				yesDx,
+				noDx,
+				branchesBottom,
+				mergeId: mergeE ? mergeId : undefined,
+			});
+
 			extent = {
-				left: Math.max(half, yesE?.left ?? 0),
-				right,
+				left: Math.max(
+					half,
+					yesE ? -yesDx + yesE.left : 0,
+					mergeE?.left ?? 0
+				),
+				right: Math.max(
+					half,
+					noE ? noDx + noE.right : 0,
+					mergeE?.right ?? 0
+				),
 				height:
 					size.height +
-					Math.max(
-						yesE ? yesGap + yesE.height : 0,
-						noE ? noGap + noE.height : 0
-					),
+					branchesBottom +
+					(mergeE ? MERGE_DROP + mergeE.height : 0),
 			};
 		} else if (kids.each || kids.after) {
 			// Loop: body nested in a container on the spine; After-Last target
@@ -323,10 +352,15 @@ export function computeDerivedLayout(
 		const kids = children.get(nodeId) ?? {};
 
 		if (kids.yes || kids.no) {
-			if (kids.yes) placeChild(kids.yes, spineX, bottom + gapAbove(kids.yes));
-			if (kids.no) {
-				const dx = noSpineDx.get(nodeId) ?? BRANCH_H_GAP;
-				placeChild(kids.no, spineX + dx, bottom + gapAbove(kids.no));
+			const meta = condMeta.get(nodeId);
+			const yesDx = meta?.yesDx ?? 0;
+			const noDx = meta?.noDx ?? BRANCH_H_GAP;
+			if (kids.yes)
+				placeChild(kids.yes, spineX + yesDx, bottom + gapAbove(kids.yes));
+			if (kids.no) placeChild(kids.no, spineX + noDx, bottom + gapAbove(kids.no));
+			if (meta?.mergeId) {
+				// place() recurses into the dot's continuation chain/stub.
+				place(meta.mergeId, spineX, bottom + meta.branchesBottom + MERGE_DROP);
 			}
 			return;
 		}

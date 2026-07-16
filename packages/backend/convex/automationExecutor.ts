@@ -1423,7 +1423,13 @@ export const resumeExecution = systemMutation({
 					remainingItemIds: resume.loop.remainingItemIds,
 				});
 				if (outcome.kind === "chain_done") {
-					outcome = await runWalk(ctx, env, loopNode.nextNodeId, scopeRecord);
+					outcome = await runWalk(
+						ctx,
+						env,
+						loopNode.nextNodeId ??
+							mergeContinuationFor(env.nodesById, loopNode.id),
+						scopeRecord
+					);
 				}
 			} else {
 				outcome = await runWalk(ctx, env, resume.resumeNodeId, scopeRecord);
@@ -1524,6 +1530,57 @@ async function finishWalk(
 }
 
 /**
+ * Continuation for a dangling chain tail: the nearest enclosing condition's
+ * mergeNodeId ("after the branches converge"). Ascends the static parent
+ * tree. Boundaries: never escapes a loop body (a dangling body leaf still
+ * means "next item"), and a dangle inside a condition's own merge chain
+ * continues at the ANCESTORS' merges, not back at that condition.
+ */
+function mergeContinuationFor(
+	nodesById: Map<string, AutomationNode>,
+	nodeId: string
+): string | undefined {
+	let currentId = nodeId;
+	const seen = new Set<string>();
+	while (!seen.has(currentId)) {
+		seen.add(currentId);
+		let parent: AutomationNode | undefined;
+		let via: "branch" | "merge" | "body" | "next" | undefined;
+		for (const candidate of nodesById.values()) {
+			if (candidate.bodyStartNodeId === currentId) {
+				parent = candidate;
+				via = "body";
+				break;
+			}
+			if (candidate.mergeNodeId === currentId) {
+				parent = candidate;
+				via = "merge";
+				break;
+			}
+			if (candidate.elseNodeId === currentId) {
+				parent = candidate;
+				via = "branch";
+				break;
+			}
+			if (candidate.nextNodeId === currentId) {
+				parent = candidate;
+				// A condition's nextNodeId IS its true branch; every other
+				// node's nextNodeId is a plain chain link.
+				via = candidate.type === "condition" ? "branch" : "next";
+				break;
+			}
+		}
+		if (!parent) return undefined;
+		if (via === "body") return undefined;
+		if (via === "branch" && parent.type === "condition" && parent.mergeNodeId) {
+			return parent.mergeNodeId;
+		}
+		currentId = parent.id;
+	}
+	return undefined;
+}
+
+/**
  * Walk a node chain from startNodeId. Loop bodies recurse with the loop item
  * as the scope record; delays checkpoint and return "waiting".
  */
@@ -1577,7 +1634,8 @@ async function runWalk(
 				recordsProcessed: fetched.output.count,
 				truncated: fetched.output.truncated,
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -1598,7 +1656,8 @@ async function runWalk(
 				output: { result: result.value },
 				truncated: result.truncated,
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -1617,7 +1676,8 @@ async function runWalk(
 				result: "success",
 				output: { result: result.value },
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -1629,7 +1689,8 @@ async function runWalk(
 			}
 			const outcome = await runLoopNode(ctx, env, node, config);
 			if (outcome.kind !== "chain_done") return outcome;
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -1653,18 +1714,20 @@ async function runWalk(
 				result: "success",
 				output: { resumeAt: resume.resumeAt },
 			});
+			const delayNextNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			// Nothing to wait for: already due, or no downstream steps.
-			if (resume.resumeAt <= Date.now() || !node.nextNodeId) {
-				currentNodeId = node.nextNodeId;
+			if (resume.resumeAt <= Date.now() || !delayNextNodeId) {
+				currentNodeId = delayNextNodeId;
 				continue;
 			}
 			await ctx.db.patch(env.executionId, {
 				nodesExecuted: env.nodesExecuted,
 				dataTruncated: env.dataTruncated,
 				loopSummary: loopSummaryPatch(env),
-				currentNodeId: node.nextNodeId,
+				currentNodeId: delayNextNodeId,
 				resumeState: {
-					resumeNodeId: node.nextNodeId,
+					resumeNodeId: delayNextNodeId,
 					resumeAt: resume.resumeAt,
 					// Parked-at timestamp; resume adds (now - checkpointAt) to pausedMs.
 					checkpointAt: Date.now(),
@@ -1735,10 +1798,10 @@ async function runWalk(
 
 		currentNodeId =
 			node.type === "condition"
-				? result.conditionMet
-					? node.nextNodeId
-					: node.elseNodeId
-				: node.nextNodeId;
+				? ((result.conditionMet ? node.nextNodeId : node.elseNodeId) ??
+					node.mergeNodeId ??
+					mergeContinuationFor(env.nodesById, node.id))
+				: (node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id));
 	}
 
 	return { kind: "chain_done" };
@@ -4863,7 +4926,8 @@ async function dryRunWalk(
 				},
 				output: { count: fetched.output.count },
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -4890,7 +4954,8 @@ async function dryRunWalk(
 				},
 				output: { result: result.value },
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -4915,7 +4980,8 @@ async function dryRunWalk(
 				},
 				output: { result: result.value },
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -4927,7 +4993,8 @@ async function dryRunWalk(
 			}
 			const outcome = await dryRunLoopNode(ctx, env, node, config);
 			if (outcome !== "chain_done") return outcome;
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -4952,7 +5019,8 @@ async function dryRunWalk(
 						: { until: config.until },
 				output: { wouldWaitUntil: resume.resumeAt, dryRunSkipped: true },
 			});
-			currentNodeId = node.nextNodeId;
+			currentNodeId =
+				node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id);
 			continue;
 		}
 
@@ -4987,10 +5055,10 @@ async function dryRunWalk(
 
 		currentNodeId =
 			node.type === "condition"
-				? result.conditionMet
-					? node.nextNodeId
-					: node.elseNodeId
-				: node.nextNodeId;
+				? ((result.conditionMet ? node.nextNodeId : node.elseNodeId) ??
+					node.mergeNodeId ??
+					mergeContinuationFor(env.nodesById, node.id))
+				: (node.nextNodeId ?? mergeContinuationFor(env.nodesById, node.id));
 	}
 
 	return "chain_done";

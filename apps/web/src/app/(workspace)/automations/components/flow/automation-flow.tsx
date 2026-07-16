@@ -18,6 +18,8 @@ import { ZoomSlider } from "@/components/zoom-slider";
 import {
 	applyDerivedLayout,
 	isContainerId,
+	isGhostId,
+	isMergeId,
 	isTerminalId,
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
@@ -44,10 +46,13 @@ import { TerminalNodeRF } from "./add-step-node-rf";
 import { TriggerPlaceholderNodeRF } from "./trigger-placeholder-node-rf";
 import { PlaceholderNodeRF } from "./placeholder-node-rf";
 import { LoopContainerNodeRF } from "./loop-container-node-rf";
+import { MergeNodeRF } from "./merge-node-rf";
+import { BranchGhostNodeRF } from "./branch-ghost-node-rf";
 import { PlusButtonEdge } from "./plus-button-edge";
 import { BranchLabelEdge } from "./branch-label-edge";
 import { LoopBackEdge } from "./loop-back-edge";
 import { AfterLastEdge } from "./after-last-edge";
+import { MergeInEdge } from "./merge-in-edge";
 
 // CRITICAL: Define outside component to avoid React Flow re-render warnings
 const nodeTypes = {
@@ -66,6 +71,8 @@ const nodeTypes = {
 	triggerPlaceholderNode: TriggerPlaceholderNodeRF,
 	placeholderNode: PlaceholderNodeRF,
 	loopContainerNode: LoopContainerNodeRF,
+	mergeNode: MergeNodeRF,
+	branchGhostNode: BranchGhostNodeRF,
 };
 
 const edgeTypes = {
@@ -73,6 +80,7 @@ const edgeTypes = {
 	branchLabelEdge: BranchLabelEdge,
 	loopBackEdge: LoopBackEdge,
 	afterLastEdge: AfterLastEdge,
+	mergeInEdge: MergeInEdge,
 };
 
 const LAYOUT_ANIMATION_MS = 220;
@@ -291,7 +299,9 @@ function AutomationFlowInner({
 
 	const handleNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {
-			if (isContainerId(node.id)) return;
+			// Ghost cards handle their own click (insert via their edge).
+			if (isContainerId(node.id) || isMergeId(node.id) || isGhostId(node.id))
+				return;
 			onNodeClick?.(node.id);
 		},
 		[onNodeClick]
@@ -313,8 +323,14 @@ function AutomationFlowInner({
 	const handleNodeContextMenu = useCallback(
 		(event: React.MouseEvent, node: Node) => {
 			event.preventDefault();
-			// Don't show context menu for terminal stubs or container frames
-			if (isTerminalId(node.id) || isContainerId(node.id)) return;
+			// Don't show context menu for synthetic nodes (stubs, frames, merges, ghosts)
+			if (
+				isTerminalId(node.id) ||
+				isContainerId(node.id) ||
+				isMergeId(node.id) ||
+				isGhostId(node.id)
+			)
+				return;
 			setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
 		},
 		[]
