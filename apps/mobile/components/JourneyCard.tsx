@@ -18,6 +18,9 @@ export function JourneyCard() {
 	const pct = Math.round((completed / total) * 100);
 	const loading = progress === undefined;
 
+	// null = caller lacks the view grants behind the checklist (RBAC) — hide it.
+	if (progress === null) return null;
+
 	return (
 		<Pressable
 			onPress={() => router.push("/journey" as Href)}

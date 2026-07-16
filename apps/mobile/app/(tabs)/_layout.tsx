@@ -8,6 +8,10 @@ import { resolveAuthDestination } from "@/lib/postAuthRouting";
 import { useDevice } from "@/lib/use-device";
 import { IpadShell } from "@/components/ipad/ipad-shell";
 
+// Tab-level error boundary: a screen throw (e.g. a Convex FORBIDDEN) recovers
+// here without tearing down the root providers/auth session.
+export { ErrorScreen as ErrorBoundary } from "@/components/ErrorScreen";
+
 export default function TabLayout() {
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
   const { organization, isLoaded: orgLoaded } = useOrganization();

@@ -5,7 +5,12 @@ import {
 	useOrganization,
 } from "@clerk/expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { ConvexReactClient, useMutation, useQuery } from "convex/react";
+import {
+	ConvexReactClient,
+	useConvexAuth,
+	useMutation,
+	useQuery,
+} from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
@@ -45,18 +50,22 @@ SplashScreen.setOptions({
 
 const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
 
+// Root error boundary (expo-router convention): catches any render throw in the
+// app — including Convex useQuery errors, which throw during render — and shows
+// a recoverable error screen instead of hard-crashing the app.
+export { ErrorScreen as ErrorBoundary } from "@/components/ErrorScreen";
+
 function ConvexClerkProvider({ children }: PropsWithChildren) {
 	const { organization } = useOrganization();
-	const [convexKey, setConvexKey] = useState(0);
 
-	// Force ConvexProvider to reinitialize when organization changes
-	// This ensures we get a fresh auth token with the new organization context
-	useEffect(() => {
-		setConvexKey((prevKey) => prevKey + 1);
-	}, [organization?.id]);
-
+	// Keying on the active org id remounts the provider on org change, so we get
+	// a fresh auth token with the new organization context.
 	return (
-		<ConvexProviderWithClerk key={convexKey} client={convex} useAuth={useAuth}>
+		<ConvexProviderWithClerk
+			key={organization?.id ?? "no-org"}
+			client={convex}
+			useAuth={useAuth}
+		>
 			{children as any}
 		</ConvexProviderWithClerk>
 	);
@@ -69,6 +78,7 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 // notifications screen is open — PUSH-06). Remounts harmlessly on org switch.
 function PushConvexChild() {
 	const { registerMarkRead, pushToken } = usePushBridge();
+	const { isAuthenticated } = useConvexAuth();
 	const registerToken = useMutation(api.push.registerToken);
 	const markRead = useMutation(api.notifications.markRead);
 	const notificationData = useQuery(api.notifications.listForCurrentUser, {
@@ -82,10 +92,12 @@ function PushConvexChild() {
 	}, [registerMarkRead, markRead]);
 
 	// Idempotent upsert-by-token — a remount-driven re-write is harmless (plan 01).
+	// registerToken is a raw mutation that throws when unauthenticated, so wait
+	// for the Convex identity to attach (a cached push token can resolve first).
 	useEffect(() => {
-		if (!pushToken) return;
+		if (!pushToken || !isAuthenticated) return;
 		void registerToken({ token: pushToken, platform: "ios" });
-	}, [pushToken, registerToken]);
+	}, [pushToken, registerToken, isAuthenticated]);
 
 	// TODO(cross-org badge): unreadCount is ACTIVE-ORG scoped (Pitfall 5), so a
 	// multi-org user sees only the active org's unread count. A cross-org
