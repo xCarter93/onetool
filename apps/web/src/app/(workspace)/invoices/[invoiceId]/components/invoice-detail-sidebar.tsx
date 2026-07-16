@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
+import { formatCurrency } from "@/lib/money";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -53,15 +54,6 @@ function formatDate(timestamp?: number) {
 		day: "numeric",
 		year: "numeric",
 	});
-}
-
-function formatCurrency(amount: number) {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
 }
 
 const STATUS_OPTIONS = [

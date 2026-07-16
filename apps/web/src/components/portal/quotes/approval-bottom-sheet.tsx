@@ -15,6 +15,7 @@ import { Check, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
+import { formatMoney } from "@/lib/portal/format";
 import {
 	SignatureCard,
 	type SignaturePayload,
@@ -67,13 +68,6 @@ const NON_USABLE: SignaturePayload = {
 	rawData: null,
 	isUsable: false,
 };
-
-function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
-}
 
 export function ApprovalBottomSheet({
 	quote,

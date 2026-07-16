@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/money";
 import PaymentSuccessMessage from "../components/success-message";
 
 type PaymentResponse = {
@@ -55,13 +56,6 @@ type LegacyInvoiceResponse = {
 type PaymentData =
 	| { type: "payment"; data: PaymentResponse }
 	| { type: "invoice"; data: LegacyInvoiceResponse };
-
-function formatCurrency(amount: number): string {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-	}).format(amount);
-}
 
 // Security shield icon
 function ShieldCheckIcon({ className }: { className?: string }) {

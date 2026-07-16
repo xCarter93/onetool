@@ -14,6 +14,7 @@ import { useQuery } from "convex/react";
 import { ArrowRight, Search } from "lucide-react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
+import { formatMoney } from "@/lib/portal/format";
 
 type Filter = "all" | "sent" | "approved" | "declined" | "expired";
 
@@ -24,13 +25,6 @@ const FILTERS: Array<{ value: Filter; label: string }> = [
 	{ value: "declined", label: "Declined" },
 	{ value: "expired", label: "Expired" },
 ];
-
-function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
-}
 
 function formatDate(ts?: number): string {
 	if (!ts) return "—";

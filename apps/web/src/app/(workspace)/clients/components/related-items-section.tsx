@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/empty";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpen, Receipt, FileText, ClipboardList } from "lucide-react";
+import { formatCurrency } from "@/lib/money";
 
 // Helper function to format status for display
 function formatStatus(status: string): string {
@@ -159,7 +160,7 @@ export function RelatedItemsSection({
 													{formatStatus(quote.status)}
 												</Badge>
 												<p className="text-sm font-medium text-gray-900 dark:text-white">
-													${quote.total.toLocaleString()}
+													{formatCurrency(quote.total)}
 												</p>
 											</div>
 										</div>
@@ -213,7 +214,7 @@ export function RelatedItemsSection({
 													{formatStatus(invoice.status)}
 												</Badge>
 												<p className="text-sm font-medium text-gray-900 dark:text-white">
-													${invoice.total.toLocaleString()}
+													{formatCurrency(invoice.total)}
 												</p>
 											</div>
 										</div>

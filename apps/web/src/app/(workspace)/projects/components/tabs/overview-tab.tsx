@@ -11,6 +11,7 @@ import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } from "lucide-react";
+import { formatCurrency } from "@/lib/money";
 
 interface OverviewTabProps {
 	projectId: Id<"projects">;
@@ -22,13 +23,6 @@ interface OverviewTabProps {
 	tasks: Doc<"tasks">[] | undefined;
 	quotes: Doc<"quotes">[] | undefined;
 	invoices: Doc<"invoices">[] | undefined;
-}
-
-function formatCurrency(amount: number) {
-	return "$" + amount.toLocaleString(undefined, {
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	});
 }
 
 function formatDate(timestamp?: number) {

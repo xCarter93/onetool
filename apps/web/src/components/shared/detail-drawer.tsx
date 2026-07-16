@@ -163,14 +163,6 @@ export function DrawerField({
 	);
 }
 
-export function formatCurrency(n: number): string {
-	return new Intl.NumberFormat(undefined, {
-		style: "currency",
-		currency: "USD",
-		maximumFractionDigits: 0,
-	}).format(n);
-}
-
 export function formatActivityTime(ts: number): string {
 	return new Date(ts).toLocaleString(undefined, {
 		month: "short",

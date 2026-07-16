@@ -51,8 +51,8 @@ import {
 	DrawerSkeleton,
 	RelatedRow,
 	formatActivityTime,
-	formatCurrency,
 } from "@/components/shared/detail-drawer";
+import { formatCurrency } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
 import { SendClientEmailPopover } from "./send-client-email-popover";
 

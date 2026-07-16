@@ -8,6 +8,7 @@
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id, Doc } from "../_generated/dataModel";
 import { getCurrentUserOrgId } from "./auth";
+import { calculateLineItemAmount, sumMoney } from "./money";
 
 // ============================================================================
 // Types
@@ -73,9 +74,13 @@ export function validateBaseLineItemFields(
 		}
 	}
 
-	// Quantity validation
-	if (data.quantity !== undefined && data.quantity <= 0) {
-		throw new Error(`${prefix}Quantity must be positive`);
+	// Quantity validation (isFinite also rejects NaN, which slips past `<= 0`
+	// and would poison the stored amount and every roll-up above it)
+	if (
+		data.quantity !== undefined &&
+		(!Number.isFinite(data.quantity) || data.quantity <= 0)
+	) {
+		throw new Error(`${prefix}Quantity must be a positive number`);
 	}
 
 	// Sort order validation
@@ -106,13 +111,13 @@ export function validateQuoteLineItemFields(
 	}
 
 	// Rate validation
-	if (data.rate !== undefined && data.rate < 0) {
-		throw new Error(`${prefix}Rate cannot be negative`);
+	if (data.rate !== undefined && (!Number.isFinite(data.rate) || data.rate < 0)) {
+		throw new Error(`${prefix}Rate must be a non-negative number`);
 	}
 
 	// Cost validation
-	if (data.cost !== undefined && data.cost < 0) {
-		throw new Error(`${prefix}Cost cannot be negative`);
+	if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
+		throw new Error(`${prefix}Cost must be a non-negative number`);
 	}
 }
 
@@ -129,8 +134,11 @@ export function validateInvoiceLineItemFields(
 	validateBaseLineItemFields(data, context);
 
 	// Unit price validation
-	if (data.unitPrice !== undefined && data.unitPrice < 0) {
-		throw new Error(`${prefix}Unit price cannot be negative`);
+	if (
+		data.unitPrice !== undefined &&
+		(!Number.isFinite(data.unitPrice) || data.unitPrice < 0)
+	) {
+		throw new Error(`${prefix}Unit price must be a non-negative number`);
 	}
 }
 
@@ -145,7 +153,7 @@ export function calculateQuoteLineItemAmount(
 	quantity: number,
 	rate: number
 ): number {
-	return Math.round(quantity * rate * 100) / 100;
+	return calculateLineItemAmount(quantity, rate);
 }
 
 /**
@@ -155,7 +163,7 @@ export function calculateInvoiceLineItemTotal(
 	quantity: number,
 	unitPrice: number
 ): number {
-	return Math.round(quantity * unitPrice * 100) / 100;
+	return calculateLineItemAmount(quantity, unitPrice);
 }
 
 /**
@@ -209,10 +217,10 @@ export function calculateLineItemStats<
 >(items: T[], totalField: "total" | "amount" = "total"): LineItemStats {
 	return {
 		totalItems: items.length,
-		totalAmount: items.reduce(
-			(sum, item) =>
-				sum + ((item as Record<string, number | undefined>)[totalField] ?? 0),
-			0
+		totalAmount: sumMoney(
+			items.map(
+				(item) => (item as Record<string, number | undefined>)[totalField] ?? 0
+			)
 		),
 		totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
 	};

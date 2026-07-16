@@ -18,6 +18,8 @@ import {
 import { emptyListResult } from "./lib/queries";
 import { emitStatusChangeEvent } from "./eventBus";
 import { applyMarkPaidCascade } from "./lib/payments";
+import { calculateInvoiceTotals } from "./lib/invoiceTotals";
+import { dollarsToCents, roundCents, sumMoney } from "./lib/money";
 import {
 	optionalUserQuery,
 	systemMutation,
@@ -81,35 +83,12 @@ async function calculateInvoiceTotalFromLineItems(
 	ctx: QueryCtx | MutationCtx,
 	invoiceId: InvoiceId
 ): Promise<number> {
-	const invoice = await ctx.db.get(invoiceId);
-	if (!invoice) {
-		throw new Error("Invoice not found");
-	}
-
-	// Get all line items for the invoice
-	const lineItems = await ctx.db
-		.query("invoiceLineItems")
-		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
-		.collect();
-
-	// If no line items, fall back to stored invoice total (for backwards compatibility)
-	if (lineItems.length === 0) {
-		return Math.round(invoice.total * 100) / 100;
-	}
-
-	// Calculate subtotal from line items
-	const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-
-	// Calculate total with discount and tax
-	let total = subtotal;
-	if (invoice.discountAmount) {
-		total -= invoice.discountAmount;
-	}
-	if (invoice.taxAmount) {
-		total += invoice.taxAmount;
-	}
-
-	return Math.round(total * 100) / 100;
+	// Shared roll-up; falls back to the stored invoice.total when no line items
+	// exist (legacy invoices created before line items were required).
+	const { total } = await calculateInvoiceTotals(ctx, invoiceId, {
+		emptyFallback: "stored",
+	});
+	return total;
 }
 
 /**
@@ -129,11 +108,10 @@ async function validatePaymentSum(
 	// Calculate actual invoice total from line items (source of truth)
 	const invoiceTotal = await calculateInvoiceTotalFromLineItems(ctx, invoiceId);
 
-	const sum = paymentAmounts.reduce((acc, amount) => acc + amount, 0);
-	// Use rounding to handle floating point precision issues
-	const roundedSum = Math.round(sum * 100) / 100;
-	const roundedTotal = Math.round(invoiceTotal * 100) / 100;
-	const difference = Math.round((roundedSum - roundedTotal) * 100) / 100;
+	// Sum in integer cents so float drift can never fail a valid payment split
+	const roundedSum = sumMoney(paymentAmounts);
+	const roundedTotal = roundCents(invoiceTotal);
+	const difference = roundCents(roundedSum - roundedTotal);
 
 	return {
 		valid: difference === 0,
@@ -296,9 +274,11 @@ export const getByPublicToken = query({
 
 		const sortedPayments = allPayments.sort((a, b) => a.sortOrder - b.sortOrder);
 		const paymentIndex = sortedPayments.findIndex((p) => p._id === payment._id);
-		const totalPaid = sortedPayments
-			.filter((p) => p.status === "paid")
-			.reduce((sum, p) => sum + p.paymentAmount, 0);
+		const totalPaid = sumMoney(
+			sortedPayments
+				.filter((p) => p.status === "paid")
+				.map((p) => p.paymentAmount)
+		);
 
 		return {
 			payment: {
@@ -336,7 +316,7 @@ export const getByPublicToken = query({
 				paymentNumber: paymentIndex + 1,
 				totalPayments: sortedPayments.length,
 				totalPaid,
-				totalRemaining: invoice.total - totalPaid,
+				totalRemaining: roundCents(invoice.total - totalPaid),
 			},
 		};
 	},
@@ -382,17 +362,14 @@ export const getInvoiceSummary = optionalUserQuery({
 				p.status === "pending" || p.status === "sent" || p.status === "overdue"
 		);
 
-		const paidAmount = paidPayments.reduce(
-			(sum, p) => sum + p.paymentAmount,
-			0
-		);
+		const paidAmount = sumMoney(paidPayments.map((p) => p.paymentAmount));
 
 		return {
 			totalPayments: payments.length,
 			paidCount: paidPayments.length,
 			pendingCount: pendingPayments.length,
 			paidAmount,
-			remainingAmount: (invoice?.total ?? 0) - paidAmount,
+			remainingAmount: roundCents((invoice?.total ?? 0) - paidAmount),
 			invoiceTotal: invoice?.total ?? 0,
 		};
 	},
@@ -981,7 +958,7 @@ export const markPaidFromWebhookInternal = systemMutation({
 		// without changing the outcome. Treat as terminal — log loudly and
 		// return so the event is acked, leaving the payment un-marked-paid
 		// for manual investigation.
-		const expectedCents = Math.round(payment.paymentAmount * 100);
+		const expectedCents = dollarsToCents(payment.paymentAmount);
 		if (args.amountTotal !== expectedCents) {
 			console.error(
 				`markPaidFromWebhookInternal: amount mismatch on session ${args.sessionId} — ` +
@@ -1114,7 +1091,7 @@ export const markPaidFromPaymentIntentWebhookInternal = systemMutation({
 		if (payment.status === "paid") {
 			return null;
 		}
-		const expectedCents = Math.round(payment.paymentAmount * 100);
+		const expectedCents = dollarsToCents(payment.paymentAmount);
 		if (args.amountReceived !== expectedCents) {
 			// Deterministic for a given PI: throwing would loop ~70 Stripe
 			// retries over days without changing the outcome. Match the

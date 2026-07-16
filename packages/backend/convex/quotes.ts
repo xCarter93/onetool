@@ -4,8 +4,8 @@ import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
-import { BusinessUtils } from "./lib/shared";
-import { calculateQuoteTotals } from "./lib/quoteTotals";
+import { calculateQuoteTotals, syncQuoteTotals } from "./lib/quoteTotals";
+import { computeQuoteTotals } from "./lib/money";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -260,36 +260,19 @@ export const list = optionalUserQuery({
 		const quotesWithCalculatedTotals = quotes.map((quote) => {
 			const lineItems = lineItemsByQuote.get(quote._id) || [];
 
-			// Calculate subtotal
-			const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
-
-			// Apply discount if enabled
-			let discountedSubtotal = subtotal;
-			if (quote.discountEnabled && quote.discountAmount) {
-				discountedSubtotal = BusinessUtils.applyDiscount(
-					subtotal,
-					quote.discountAmount,
-					quote.discountType === "percentage"
-				);
-			}
-
-			// Calculate tax
-			let taxAmount = 0;
-			if (quote.taxEnabled && quote.taxRate) {
-				taxAmount = BusinessUtils.calculateTax(
-					discountedSubtotal,
-					quote.taxRate
-				);
-			}
-
-			// Calculate total
-			const total = discountedSubtotal + taxAmount;
+			// Shared roll-up (lib/money.ts) — same math as quotes.get and the portal
+			const totals = computeQuoteTotals({
+				lineAmounts: lineItems.map((item) => item.amount),
+				discountEnabled: quote.discountEnabled,
+				discountAmount: quote.discountAmount,
+				discountType: quote.discountType,
+				taxEnabled: quote.taxEnabled,
+				taxRate: quote.taxRate,
+			});
 
 			return {
 				...quote,
-				subtotal,
-				total,
-				taxAmount,
+				...totals,
 			};
 		});
 
@@ -891,19 +874,8 @@ export const recalculateTotals = userMutation({
 			)
 		);
 
-		const totals = await calculateQuoteTotals(ctx, args.id, {
-			discountEnabled: quote.discountEnabled,
-			discountAmount: quote.discountAmount,
-			discountType: quote.discountType,
-			taxEnabled: quote.taxEnabled,
-			taxRate: quote.taxRate,
-		});
-
-		await ctx.db.patch(args.id, {
-			subtotal: totals.subtotal,
-			taxAmount: totals.taxAmount,
-			total: totals.total,
-		});
+		// Recompute + persist totals and keep aggregates in step
+		await syncQuoteTotals(ctx, args.id);
 
 		return args.id;
 	},

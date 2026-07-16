@@ -15,6 +15,7 @@ import {
 	type FormulaContext,
 	type Val,
 } from "./formula";
+import { roundCents } from "./money";
 
 /**
  * Pure condition/filter evaluation engine for workflow automations v2.
@@ -231,7 +232,7 @@ function applyFormulaReturnType(
 	switch (returnType) {
 		case "currency":
 			// Dollars, rounded to cents (matches CLAUDE.md money convention).
-			return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+			return typeof value === "number" ? roundCents(value) : value;
 		case "date":
 			// Epoch ms, consistent with date fields / adjust_time / delay_until.
 			return value instanceof Date ? value.getTime() : value;

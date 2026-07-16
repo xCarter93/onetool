@@ -18,20 +18,13 @@ import {
 	TimelineDate,
 	TimelineTitle,
 } from "@/components/reui/timeline";
+import { formatCurrency } from "@/lib/money";
 
 interface PaymentsFlowProps {
 	platformFeeDollars?: number;
 }
 
 const AMOUNT_PRESETS = [100, 500, 2500, 10000];
-
-const fmt = (n: number) =>
-	n.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
-
-const fmt0 = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 
 type Tone = "neutral" | "primary" | "amber" | "emerald";
 
@@ -107,7 +100,7 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 		{
 			icon: CreditCard,
 			label: "Customer pays",
-			amount: fmt(amount),
+			amount: formatCurrency(amount),
 			sublabel: "Full invoice amount, charged at checkout",
 			pct: 100,
 			tone: "neutral",
@@ -115,7 +108,7 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 		{
 			icon: Receipt,
 			label: "Stripe processing",
-			amount: `−${fmt(stripeFee)}`,
+			amount: `−${formatCurrency(stripeFee)}`,
 			sublabel: "2.9% + $0.30 per charge",
 			pct: stripePct,
 			tone: "primary",
@@ -123,15 +116,15 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 		{
 			icon: Sparkles,
 			label: "OneTool fee",
-			amount: `−${fmt(platformFeeDollars)}`,
-			sublabel: `${fmt(platformFeeDollars)} per charge`,
+			amount: `−${formatCurrency(platformFeeDollars)}`,
+			sublabel: `${formatCurrency(platformFeeDollars)} per charge`,
 			pct: otPct,
 			tone: "amber",
 		},
 		{
 			icon: Wallet,
 			label: "Your balance",
-			amount: fmt(balance),
+			amount: formatCurrency(balance),
 			sublabel: "Available in your OneTool balance right away",
 			pct: keepPct,
 			tone: "emerald",
@@ -140,7 +133,7 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 		{
 			icon: Landmark,
 			label: "Bank payout",
-			amount: fmt(balance),
+			amount: formatCurrency(balance),
 			sublabel: "+2 business days (US)",
 			pct: keepPct,
 			tone: "emerald",
@@ -201,7 +194,7 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 												: "text-muted-foreground hover:text-foreground",
 										)}
 									>
-										{fmt0(p)}
+										{formatCurrency(p, { whole: true })}
 									</button>
 								);
 							})}
@@ -307,17 +300,17 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 									<LegendRow
 										dotClass="bg-emerald-500"
 										label="Your payout"
-										amount={fmt(balance)}
+										amount={formatCurrency(balance)}
 									/>
 									<LegendRow
 										dotClass="bg-primary"
 										label="Stripe processing"
-										amount={`−${fmt(stripeFee)}`}
+										amount={`−${formatCurrency(stripeFee)}`}
 									/>
 									<LegendRow
 										dotClass="bg-amber-500"
 										label="OneTool fee"
-										amount={`−${fmt(platformFeeDollars)}`}
+										amount={`−${formatCurrency(platformFeeDollars)}`}
 									/>
 								</div>
 							</div>
@@ -366,8 +359,8 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 			</div>
 
 			<p className="text-xs leading-relaxed text-muted-foreground">
-				Example based on a {fmt(amount)} invoice with a{" "}
-				{fmt(platformFeeDollars)} platform fee. Actual Stripe fees vary by
+				Example based on a {formatCurrency(amount)} invoice with a{" "}
+				{formatCurrency(platformFeeDollars)} platform fee. Actual Stripe fees vary by
 				card type and region — see Stripe pricing for current rates.
 			</p>
 		</section>

@@ -7,6 +7,7 @@ import Stripe from "stripe";
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
+import { dollarsToCents } from "../lib/money";
 
 const REUSE_BUFFER_MS = 60_000;
 
@@ -107,7 +108,7 @@ export const createPaymentIntent = action({
 		}
 
 		const attemptId = (resolved.payment.checkoutAttemptCounter ?? 0) + 1;
-		const amountCents = Math.round(resolved.payment.paymentAmount * 100);
+		const amountCents = dollarsToCents(resolved.payment.paymentAmount);
 		if (amountCents <= 0) {
 			throw new ConvexError({ code: "INVALID_AMOUNT" });
 		}

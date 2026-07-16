@@ -22,6 +22,7 @@ import { StatusBadge } from "@/components/domain/status-badge";
 import ActivityChangesTooltip, {
 	type FieldChange,
 } from "./activity-changes-tooltip";
+import { formatCurrency } from "@/lib/money";
 
 // Real activity data from Convex
 export interface ActivityWithUser extends Doc<"activities"> {
@@ -215,7 +216,7 @@ function getActivityAmount(activity: ActivityWithUser): string | null {
 	if (activity.metadata && typeof activity.metadata === "object") {
 		const metadata = activity.metadata as Record<string, unknown>;
 		if (typeof metadata.total === "number") {
-			return `$${metadata.total.toLocaleString()}`;
+			return formatCurrency(metadata.total);
 		}
 	}
 	return null;

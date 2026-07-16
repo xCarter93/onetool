@@ -143,7 +143,7 @@ export default function MoneyScreen({
 				selected={isSelected}
 				right={
 					<Text style={[styles.amount, { color: t.ink }]}>
-						{formatCurrency(item.total)}
+						{formatCurrency(item.total, { exact: true })}
 					</Text>
 				}
 				onPress={() =>
@@ -207,7 +207,7 @@ export default function MoneyScreen({
 						{formatDocumentDate(item._creationTime)}
 					</Text>
 					<Text style={[styles.quoteAmount, { color: t.accent }]}>
-						{formatCurrency(item.total)}
+						{formatCurrency(item.total, { exact: true })}
 					</Text>
 				</View>
 			</Pressable>

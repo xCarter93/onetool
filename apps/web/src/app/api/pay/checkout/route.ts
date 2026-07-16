@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
 import { getStripeClient } from "@/lib/stripe";
+import { dollarsToCents } from "@/lib/money";
 import { env } from "@/env";
 
 // Avoid reusing a Checkout URL too close to expiration.
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
 
 			const amountInCents = Math.max(
 				0,
-				Math.round((paymentData.payment.paymentAmount ?? 0) * 100)
+				dollarsToCents(paymentData.payment.paymentAmount ?? 0)
 			);
 			if (!amountInCents) {
 				return NextResponse.json(
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
 
 		const amountInCents = Math.max(
 			0,
-			Math.round((invoiceData.invoice.total ?? 0) * 100)
+			dollarsToCents(invoiceData.invoice.total ?? 0)
 		);
 		if (!amountInCents) {
 			return NextResponse.json(

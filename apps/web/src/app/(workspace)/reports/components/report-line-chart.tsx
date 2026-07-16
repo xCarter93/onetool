@@ -17,6 +17,7 @@ import {
 import { CHART_CATEGORICAL } from "@/lib/chart-colors";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
+import { formatCurrency } from "@/lib/money";
 
 interface DataPoint {
 	name: string;
@@ -62,12 +63,7 @@ export function ReportLineChart({
 	const formatValue = (value: number) => {
 		if (entityType === "invoices" || entityType === "quotes") {
 			if (total > 1000) {
-				return new Intl.NumberFormat("en-US", {
-					style: "currency",
-					currency: "USD",
-					notation: "compact",
-					maximumFractionDigits: 1,
-				}).format(value);
+				return formatCurrency(value, { compact: true });
 			}
 		}
 		return value.toString();

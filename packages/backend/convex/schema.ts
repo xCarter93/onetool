@@ -392,17 +392,20 @@ export default defineSchema({
 			v.literal("expired")
 		),
 
-		// Financial
-		subtotal: v.number(),
+		// Financial — all money fields are DOLLARS (see lib/money.ts).
+		// Stored subtotal/taxAmount/total are kept in sync with line items by
+		// syncQuoteTotals (lib/quoteTotals.ts).
+		subtotal: v.number(), // dollars
 		discountEnabled: v.optional(v.boolean()),
+		// Percent (0-100) when discountType is "percentage", otherwise dollars
 		discountAmount: v.optional(v.number()),
 		discountType: v.optional(
 			v.union(v.literal("percentage"), v.literal("fixed"))
 		),
 		taxEnabled: v.optional(v.boolean()),
 		taxRate: v.optional(v.number()), // Percentage
-		taxAmount: v.optional(v.number()),
-		total: v.number(),
+		taxAmount: v.optional(v.number()), // dollars
+		total: v.number(), // dollars
 
 		// Terms and messaging
 		validUntil: v.optional(v.number()),
@@ -472,9 +475,9 @@ export default defineSchema({
 				sortOrder: v.number(),
 			})
 		),
-		subtotalSnapshot: v.number(),
-		taxSnapshot: v.number(),
-		totalSnapshot: v.number(),
+		subtotalSnapshot: v.number(), // dollars
+		taxSnapshot: v.number(), // dollars
+		totalSnapshot: v.number(), // dollars
 		termsSnapshot: v.optional(v.string()),
 		// termsAcceptedAt is OPTIONAL: only meaningful on approval rows.
 		// Decline rows omit this field — decline does not require terms acceptance
@@ -494,9 +497,9 @@ export default defineSchema({
 		description: v.string(),
 		quantity: v.number(),
 		unit: v.string(), // e.g., "hour", "item", "day"
-		rate: v.number(), // Unit price
-		amount: v.number(), // quantity * rate
-		cost: v.optional(v.number()), // Cost per unit for margin calculation
+		rate: v.number(), // Unit price, dollars
+		amount: v.number(), // quantity * rate, dollars (cent-rounded)
+		cost: v.optional(v.number()), // Cost per unit for margin calculation, dollars
 
 		sortOrder: v.number(), // For ordering items
 	})
@@ -522,11 +525,13 @@ export default defineSchema({
 			v.literal("cancelled")
 		),
 
-		// Financial
-		subtotal: v.number(),
-		discountAmount: v.optional(v.number()),
-		taxAmount: v.optional(v.number()),
-		total: v.number(),
+		// Financial — all DOLLARS. Unlike quotes, discountAmount/taxAmount are
+		// stored pre-computed in dollars. Stored subtotal/total are kept in sync
+		// with line items by syncInvoiceTotals (lib/invoiceTotals.ts).
+		subtotal: v.number(), // dollars
+		discountAmount: v.optional(v.number()), // dollars
+		taxAmount: v.optional(v.number()), // dollars
+		total: v.number(), // dollars
 
 		// Dates
 		issuedDate: v.number(),
@@ -557,8 +562,8 @@ export default defineSchema({
 
 		description: v.string(),
 		quantity: v.number(),
-		unitPrice: v.number(),
-		total: v.number(), // quantity * unitPrice
+		unitPrice: v.number(), // dollars
+		total: v.number(), // quantity * unitPrice, dollars (cent-rounded)
 
 		sortOrder: v.number(),
 	})
@@ -571,7 +576,7 @@ export default defineSchema({
 		invoiceId: v.id("invoices"),
 
 		// Payment details
-		paymentAmount: v.number(),
+		paymentAmount: v.number(), // dollars (Stripe cents only at the API edge)
 		dueDate: v.number(),
 		description: v.optional(v.string()), // e.g., "Deposit", "Final Payment", "Milestone 1"
 
@@ -818,8 +823,8 @@ export default defineSchema({
 		// SKU details
 		name: v.string(), // Acts as description when used in quotes
 		unit: v.string(), // Default unit (e.g., "hour", "item", "day")
-		rate: v.number(), // Default price/rate
-		cost: v.optional(v.number()), // Optional cost for margin calculation
+		rate: v.number(), // Default price/rate, dollars
+		cost: v.optional(v.number()), // Optional cost for margin calculation, dollars
 
 		// Status
 		isActive: v.boolean(), // Allow soft deletion

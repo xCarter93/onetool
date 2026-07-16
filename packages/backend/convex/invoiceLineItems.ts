@@ -15,6 +15,7 @@ import {
 	optionalUserQuery,
 	userMutation,
 } from "./lib/factories";
+import { syncInvoiceTotals } from "./lib/invoiceTotals";
 
 /**
  * Invoice Line Item operations
@@ -180,6 +181,9 @@ export const create = userMutation({
 			total,
 		});
 
+		// Keep stored invoice totals (and aggregates) in sync with line items
+		await syncInvoiceTotals(ctx, args.invoiceId);
+
 		return lineItemId;
 	},
 });
@@ -250,6 +254,15 @@ export const update = userMutation({
 
 		await ctx.db.patch(id, filteredUpdates);
 
+		// Keep stored totals in sync — both invoices when the item was reassigned
+		await syncInvoiceTotals(ctx, currentLineItem.invoiceId);
+		if (
+			filteredUpdates.invoiceId &&
+			filteredUpdates.invoiceId !== currentLineItem.invoiceId
+		) {
+			await syncInvoiceTotals(ctx, filteredUpdates.invoiceId);
+		}
+
 		return id;
 	},
 });
@@ -276,6 +289,7 @@ export const remove = userMutation({
 			)
 		);
 		await ctx.db.delete(args.id);
+		await syncInvoiceTotals(ctx, lineItem.invoiceId);
 		return args.id;
 	},
 });
@@ -332,6 +346,8 @@ export const bulkCreate = userMutation({
 
 			createdIds.push(lineItemId);
 		}
+
+		await syncInvoiceTotals(ctx, args.invoiceId);
 
 		return createdIds;
 	},
@@ -414,6 +430,8 @@ export const duplicate = userMutation({
 			total: originalItem.total,
 			sortOrder: newSortOrder,
 		});
+
+		await syncInvoiceTotals(ctx, originalItem.invoiceId);
 
 		return duplicateId;
 	},

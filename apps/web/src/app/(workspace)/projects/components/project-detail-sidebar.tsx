@@ -41,6 +41,7 @@ import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Badge } from "@/components/ui/badge";
 import { ProjectDocumentsSection } from "./project-documents-section";
+import { formatCurrency } from "@/lib/money";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
@@ -48,13 +49,6 @@ function formatDate(timestamp?: number) {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
-	});
-}
-
-function formatCurrency(cents: number) {
-	return "$" + cents.toLocaleString(undefined, {
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
 	});
 }
 

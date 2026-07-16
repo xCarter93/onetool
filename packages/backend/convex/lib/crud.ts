@@ -12,6 +12,7 @@
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Doc, Id, TableNames } from "../_generated/dataModel";
 import { getCurrentUserOrgId } from "./auth";
+import { calculateLineItemAmount } from "./money";
 
 // ============================================================================
 // Parent Entity Validation
@@ -187,7 +188,7 @@ export function validateLineItemFields(
  * Calculate line item total (quantity * rate or quantity * unitPrice)
  */
 export function calculateLineItemTotal(quantity: number, rate: number): number {
-	return Math.round(quantity * rate * 100) / 100;
+	return calculateLineItemAmount(quantity, rate);
 }
 
 // ============================================================================

@@ -8,6 +8,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { AggregateHelpers } from "./lib/aggregates";
+import { roundCents, sumMoney } from "./lib/money";
 import { ActivityHelpers } from "./lib/activities";
 import { ENTITY_PERMISSION_OBJECT } from "./activities";
 import { systemMutation, userMutation, userQuery } from "./lib/factories";
@@ -2223,11 +2224,6 @@ async function runFetchNode(
 	}
 }
 
-/** Rounds a dollar amount to whole cents to avoid IEEE-754 drift. */
-function roundCents(n: number): number {
-	return Math.round(n * 100) / 100;
-}
-
 /**
  * Aggregate a fetched collection's numeric field. Sums/averages are computed in
  * integer cents to keep currency math exact. Writes node.<id>.result. Read-only
@@ -2263,9 +2259,8 @@ function runAggregateNode(
 		// a real 0.
 		value = config.op === "sum" ? 0 : null;
 	} else if (config.op === "sum" || config.op === "avg") {
-		const cents = nums.reduce((acc, n) => acc + Math.round(n * 100), 0);
-		value =
-			config.op === "sum" ? cents / 100 : roundCents(cents / 100 / nums.length);
+		const sum = sumMoney(nums);
+		value = config.op === "sum" ? sum : roundCents(sum / nums.length);
 	} else if (config.op === "min") {
 		value = Math.min(...nums);
 	} else {

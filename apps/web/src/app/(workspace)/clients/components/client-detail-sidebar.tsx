@@ -39,6 +39,7 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import { Badge } from "@/components/ui/badge";
 import { ClientDocumentsSection } from "./client-documents-section";
+import { formatCurrency } from "@/lib/money";
 
 function formatLeadSource(leadSource?: string): string {
 	if (!leadSource) return "Not specified";
@@ -585,7 +586,7 @@ export function ClientDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Billed</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
-							${totalBilled.toLocaleString()}
+							{formatCurrency(totalBilled)}
 						</span>
 					</div>
 				</div>
@@ -594,7 +595,7 @@ export function ClientDetailSidebar({
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Outstanding</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
-							${outstanding.toLocaleString()}
+							{formatCurrency(outstanding)}
 						</span>
 					</div>
 				</div>

@@ -47,8 +47,8 @@ import {
 	DrawerSection,
 	DrawerSkeleton,
 	formatActivityTime,
-	formatCurrency,
 } from "@/components/shared/detail-drawer";
+import { formatCurrency } from "@/lib/money";
 
 type QuoteStatus = Doc<"quotes">["status"];
 

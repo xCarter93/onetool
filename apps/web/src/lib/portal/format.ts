@@ -1,8 +1,8 @@
+import { formatCurrency } from "@/lib/money";
+
+/** Portal-facing alias for the shared formatter — `amount` is dollars. */
 export function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
+	return formatCurrency(amount);
 }
 
 export function formatDate(ts?: number | null): string {
