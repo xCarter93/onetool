@@ -963,7 +963,7 @@ export interface JourneyProgress {
 
 export const getJourneyProgress = optionalUserQuery({
 	args: {},
-	handler: async (ctx): Promise<JourneyProgress> => {
+	handler: async (ctx): Promise<JourneyProgress | null> => {
 		if (!ctx.orgId) {
 			return {
 				hasOrganization: false,
@@ -977,11 +977,17 @@ export const getJourneyProgress = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
-		await ctx.requireLevel("projects", "view");
-		await ctx.requireLevel("quotes", "view");
-		await ctx.requireLevel("documents", "view");
-		await ctx.requireLevel("invoices", "view");
+		// Cross-object onboarding checklist: callers missing any view grant get
+		// null (checklist hidden) instead of FORBIDDEN — mobile/web render it
+		// unconditionally and older shipped mobile builds can't skip-guard.
+		const gates = await Promise.all([
+			ctx.gateRead("clients"),
+			ctx.gateRead("projects"),
+			ctx.gateRead("quotes"),
+			ctx.gateRead("documents"),
+			ctx.gateRead("invoices"),
+		]);
+		if (gates.some((ok) => !ok)) return null;
 
 		// Get organization to check metadata completion and Stripe Connect
 		const organization = await ctx.db.get(userOrgId);

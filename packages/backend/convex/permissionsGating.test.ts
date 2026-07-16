@@ -715,4 +715,44 @@ describe("granular RBAC domain-function gating", () => {
 			scope: true,
 		});
 	});
+
+	// ── homeStats.getJourneyProgress: cross-object read degrades to null ──
+	// Regression for the mobile launch crash: shipped clients render the journey
+	// checklist unconditionally, so missing view grants must yield null, never
+	// FORBIDDEN.
+
+	it("enforced: member with default permissions gets null from getJourneyProgress (no FORBIDDEN)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { asMember } = await seedOrgWithMember(
+			"org_journey_1",
+			"user_journey_1"
+		);
+
+		await expect(
+			asMember.query(api.homeStats.getJourneyProgress, {})
+		).resolves.toBeNull();
+	});
+
+	it("enforced: admin still gets full journey progress", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { asAdmin } = await seedOrgWithMember(
+			"org_journey_2",
+			"user_journey_2"
+		);
+
+		await expect(
+			asAdmin.query(api.homeStats.getJourneyProgress, {})
+		).resolves.toMatchObject({ hasClient: false, hasOrganization: false });
+	});
+
+	it("shadow: member with default permissions still gets journey progress", async () => {
+		const { asMember } = await seedOrgWithMember(
+			"org_journey_3",
+			"user_journey_3"
+		);
+
+		await expect(
+			asMember.query(api.homeStats.getJourneyProgress, {})
+		).resolves.toMatchObject({ hasClient: false });
+	});
 });
