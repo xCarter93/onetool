@@ -15,6 +15,7 @@ import { computeNextRunAt } from "./lib/schedule";
 import { isAdminRole, orgHasPremiumPlan } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import { enqueuePush } from "./push";
+import { insertTeamMessage } from "./teamMessages";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -22,6 +23,10 @@ import {
 	type VariableScope,
 } from "./lib/conditionEval";
 import { calendarDayEpoch, toEpochMs } from "./lib/formula";
+import {
+	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
+	FREE_MAX_CLIENTS,
+} from "./lib/planLimits";
 import {
 	RELATION_FIELD,
 	getCreatableFields,
@@ -44,6 +49,7 @@ import {
 	triggerRecordObjectType,
 	type ActionTarget,
 	type AutomationAction,
+	type TeamMessageMention,
 	type ValueRef,
 	type AutomationObjectType,
 	type AutomationTrigger,
@@ -136,18 +142,21 @@ function deriveTriggerEventValues(trigger: AutomationTrigger): {
 
 /**
  * Built-in globals available to every run: workflow.now (execution start),
- * org.id/name, and the triggering user. The user is parsed from triggeredBy
- * for manual/test runs and is empty for scheduled/event runs (no actor).
+ * org.id/name, the triggering user, and run.* metadata (this automation's
+ * identity + how it fired). The user is parsed from triggeredBy for manual/test
+ * runs and is empty for scheduled/event runs (no actor).
  */
 async function buildGlobalsScope(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	nowMs: number,
 	tz: string,
-	triggeredBy: string
-): Promise<Pick<VariableScope, "workflow" | "org" | "user">> {
-	const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
+	triggeredBy: string,
+	run: NonNullable<VariableScope["run"]>
+): Promise<Pick<VariableScope, "workflow" | "org" | "user" | "run">> {
+	const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
 		workflow: { now: nowMs, tz },
+		run,
 	};
 	const org = await ctx.db.get(orgId);
 	if (org) globals.org = { id: orgId, name: org.name };
@@ -160,6 +169,20 @@ async function buildGlobalsScope(
 		}
 	}
 	return globals;
+}
+
+/** run.* metadata for a live execution — automation identity + how it fired. */
+function runMetadata(
+	automation: AutomationDoc,
+	executionId: Id<"workflowExecutions">,
+	trigger: AutomationTrigger
+): NonNullable<VariableScope["run"]> {
+	return {
+		automationName: automation.name,
+		automationId: automation._id,
+		executionId,
+		triggerType: "type" in trigger ? trigger.type : "status_changed",
+	};
 }
 
 function isValidStatus(objectType: ObjectType, status: string): boolean {
@@ -1074,7 +1097,8 @@ export const executeAutomation = systemMutation({
 			automation.orgId,
 			execution.triggeredAt,
 			automationFormulaTz(definition.trigger),
-			execution.triggeredBy
+			execution.triggeredBy,
+			runMetadata(automation, args.executionId, definition.trigger)
 		);
 
 		const env: WalkEnv = {
@@ -1269,7 +1293,8 @@ export const resumeExecution = systemMutation({
 			automation.orgId,
 			execution.triggeredAt,
 			automationFormulaTz(definition.trigger),
-			execution.triggeredBy
+			execution.triggeredBy,
+			runMetadata(automation, args.executionId, definition.trigger)
 		);
 
 		const env: WalkEnv = {
@@ -1805,7 +1830,9 @@ async function runLoopNode(
 			const { item, index } = queue[qi];
 			const itemId = String(item._id);
 			const label = sampleRecordLabel(source.objectType, item);
-			env.scope.loops[node.id] = { item, index };
+			// summary.total is the authoritative loop size (set on the first chunk,
+			// restored on resume) so loop.<id>.count is stable across chunk boundaries.
+			env.scope.loops[node.id] = { item, index, count: summary.total };
 			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -3095,6 +3122,7 @@ async function executeCreateTaskAction(
 	}
 
 	try {
+		// No acting user — createdByUserId left unset (automation-created).
 		const taskId = await ctx.db.insert("tasks", {
 			orgId: env.orgId,
 			title,
@@ -3198,15 +3226,6 @@ async function resolveTaskLink(
 // ---------------------------------------------------------------------------
 
 /**
- * Free-plan ceilings, mirrored from apps/web/src/lib/plan-limits.ts (the values
- * live only in the web app — the backend never enforced them). A create_record
- * on a free org honors the same caps the UI shows so an automation can't be a
- * back door around them.
- */
-const FREE_MAX_CLIENTS = 10;
-const FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT = 3;
-
-/**
  * Resolve a supplied FK value on a create_record field against the org. The
  * executor runs unscoped, so an arbitrary id string must be checked before it
  * becomes a stored relationship (cross-tenant or garbage ids are rejected).
@@ -3218,8 +3237,12 @@ async function resolveCreateFk(
 	orgId: Id<"organizations">
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
 	const raw = String(rawId);
-	const table =
-		refType === "user" ? "users" : refType === "client" ? "clients" : "projects";
+	const table = {
+		user: "users",
+		client: "clients",
+		project: "projects",
+		quote: "quotes",
+	}[refType] as "users" | "clients" | "projects" | "quotes";
 	const normalized = ctx.db.normalizeId(table, raw);
 	if (!normalized) {
 		return { ok: false, error: `Referenced ${refType} is not a valid id` };
@@ -3238,7 +3261,9 @@ async function resolveCreateFk(
 		}
 		return { ok: true, id: normalized };
 	}
-	const doc = await ctx.db.get(normalized as Id<"clients"> | Id<"projects">);
+	const doc = await ctx.db.get(
+		normalized as Id<"clients"> | Id<"projects"> | Id<"quotes">
+	);
 	if (!doc || doc.orgId !== orgId) {
 		return { ok: false, error: `Referenced ${refType} was not found` };
 	}
@@ -3464,6 +3489,7 @@ async function executeCreateRecordAction(
 
 	try {
 		let newId: Id<"clients"> | Id<"projects"> | Id<"tasks">;
+		// No acting user — createdByUserId left unset (automation-created).
 		switch (objectType) {
 			case "client":
 				// Portal links need an access id; the create mutation takes a
@@ -3639,27 +3665,66 @@ async function notifyAutomationFailure(
 	}
 }
 
-/**
- * The user who "owns" the record in scope: a task's assignee, else the org
- * owner (no other entity carries an owner field).
- */
-async function resolveRecordOwner(
-	ctx: MutationCtx,
-	scopeRecord: ScopeRecord | undefined,
-	orgId: Id<"organizations">
-): Promise<Id<"users"> | null> {
-	if (scopeRecord?.type === "task") {
-		const assignee = scopeRecord.record.assigneeUserId as
-			| Id<"users">
-			| undefined;
-		if (assignee) return assignee;
-	}
-	const org = await ctx.db.get(orgId);
-	return org?.ownerUserId ?? null;
-}
-
 function automationActionUrl(scopeRecord: ScopeRecord | undefined): string {
 	return scopeRecord ? `/${scopeRecord.type}s/${scopeRecord.id}` : "/home";
+}
+
+/** Keep only org members from a list of candidate user ids, deduped. */
+async function validOrgMembers(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	ids: (Id<"users"> | undefined)[]
+): Promise<Id<"users">[]> {
+	const out: Id<"users">[] = [];
+	for (const id of ids) {
+		if (!id) continue;
+		const membership = await getMembership(ctx, id, orgId);
+		if (membership) out.push(id);
+	}
+	return Array.from(new Set(out));
+}
+
+/**
+ * Resolve a `recordField` recipient: follow the action target (self | related)
+ * to a record, then read its user-reference field. `resolved` is false when no
+ * target record exists (distinguishes "no record" from "field empty").
+ */
+async function resolveRecordFieldUsers(
+	ctx: MutationCtx,
+	target: ActionTarget,
+	field: string,
+	scopeRecord: ScopeRecord | undefined,
+	orgId: Id<"organizations">
+): Promise<{
+	resolved: boolean;
+	users: Id<"users">[];
+	targetType: ObjectType | null;
+}> {
+	if (!scopeRecord) return { resolved: false, users: [], targetType: null };
+	const targetInfo = await resolveTargetV2(
+		ctx,
+		target,
+		scopeRecord.type,
+		scopeRecord.id,
+		scopeRecord.record,
+		orgId
+	);
+	if (!targetInfo) return { resolved: false, users: [], targetType: null };
+	const doc = await getObject(ctx, targetInfo.type, targetInfo.id, orgId);
+	if (!doc) {
+		return { resolved: false, users: [], targetType: targetInfo.type };
+	}
+	const raw = (doc as Record<string, unknown>)[field];
+	const ids: (Id<"users"> | undefined)[] = Array.isArray(raw)
+		? (raw as Id<"users">[])
+		: typeof raw === "string"
+			? [raw as Id<"users">]
+			: [];
+	return {
+		resolved: true,
+		users: await validOrgMembers(ctx, orgId, ids),
+		targetType: targetInfo.type,
+	};
 }
 
 async function executeSendNotificationAction(
@@ -3674,16 +3739,44 @@ async function executeSendNotificationAction(
 		if (userIds.length === 0) {
 			return { success: true, skipped: true, error: "No admins to notify" };
 		}
-	} else if (action.recipient === "record_owner") {
-		const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
-		if (!owner) {
+	} else if (action.recipient === "all_members") {
+		// Org-wide broadcast — same member resolution send_team_message uses.
+		userIds = await resolveMemberUserIds(ctx, env.orgId, false);
+		if (userIds.length === 0) {
+			return { success: true, skipped: true, error: "No members to notify" };
+		}
+	} else if (typeof action.recipient === "string") {
+		// Unknown string recipient (e.g. a legacy "record_owner" config predating
+		// its removal) — skip gracefully rather than crash or notify the wrong user.
+		return {
+			success: true,
+			skipped: true,
+			error: "Unknown recipient — reconfigure this notification",
+		};
+	} else if ("recordField" in action.recipient) {
+		const { target, field } = action.recipient.recordField;
+		const res = await resolveRecordFieldUsers(
+			ctx,
+			target,
+			field,
+			scopeRecord,
+			env.orgId
+		);
+		if (!res.resolved) {
 			return {
 				success: true,
 				skipped: true,
-				error: "No owner found for the record in scope",
+				error: "No record in scope for the selected field",
 			};
 		}
-		userIds = [owner];
+		if (res.users.length === 0) {
+			return {
+				success: true,
+				skipped: true,
+				error: "No user found for the selected field",
+			};
+		}
+		userIds = res.users;
 	} else {
 		const userId = action.recipient.userId as Id<"users">;
 		const membership = await getMembership(ctx, userId, env.orgId);
@@ -3704,9 +3797,35 @@ async function executeSendNotificationAction(
 		};
 	}
 
+	// Undefined = legacy in-app-only (bell, no push). Push rides on the persisted
+	// bell row, so push-only (no in_app) has no row to reference and the popover
+	// can't hide it — skip it until a product decision (see B6-6 report).
+	const channels = action.channels ?? ["in_app"];
+	if (channels.length === 0) {
+		return {
+			success: true,
+			skipped: true,
+			error: "No delivery channels configured",
+		};
+	}
+	const wantInApp = channels.includes("in_app");
+	const wantPush = channels.includes("push");
+	if (wantPush && !wantInApp) {
+		return {
+			success: true,
+			skipped: true,
+			error: "Push-only delivery is not supported yet (needs a bell row)",
+		};
+	}
+
+	const pushUrl = automationActionUrl(scopeRecord);
+	const clerkOrgId = wantPush
+		? ((await ctx.db.get(env.orgId))?.clerkOrganizationId ?? "")
+		: "";
+
 	try {
 		for (const userId of userIds) {
-			await ctx.db.insert("notifications", {
+			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
 				notificationType: "automation_message",
@@ -3719,6 +3838,17 @@ async function executeSendNotificationAction(
 				sentVia: "in_app",
 				sentAt: Date.now(),
 			});
+			if (wantPush) {
+				await enqueuePush(ctx, {
+					notificationType: "automation_message",
+					taggedUserId: userId,
+					title: env.automation.name,
+					body: message,
+					url: pushUrl,
+					notificationId,
+					orgId: clerkOrgId,
+				});
+			}
 		}
 		return { success: true };
 	} catch (error) {
@@ -3730,29 +3860,89 @@ async function executeSendNotificationAction(
 	}
 }
 
+/**
+ * Resolve a send_team_message mention config to concrete member userIds against
+ * the RESOLVED target record. All ids are org-membership-checked and deduped.
+ * `none` -> nobody; `user` -> an explicit member; `created_by` -> the target's
+ * creator (unset on historical/system rows -> nobody); `assigned_team` -> a
+ * project's assigned team (a project target directly, a quote target via its
+ * linked project; clients/anything else have no team -> nobody).
+ */
+async function resolveTeamMessageMention(
+	ctx: MutationCtx,
+	mention: TeamMessageMention | undefined,
+	targetType: ObjectType,
+	targetId: string,
+	orgId: Id<"organizations">
+): Promise<Id<"users">[]> {
+	if (!mention || mention.kind === "none") return [];
+
+	if (mention.kind === "user") {
+		return validOrgMembers(ctx, orgId, [mention.userId]);
+	}
+
+	const doc = await getObject(ctx, targetType, targetId, orgId);
+	if (!doc) return [];
+
+	if (mention.kind === "created_by") {
+		const creator = (doc as { createdByUserId?: Id<"users"> }).createdByUserId;
+		return validOrgMembers(ctx, orgId, [creator]);
+	}
+
+	// assigned_team
+	if (targetType === "project") {
+		const team = (doc as Doc<"projects">).assignedUserIds ?? [];
+		return validOrgMembers(ctx, orgId, team);
+	}
+	if (targetType === "quote") {
+		const projectId = (doc as Doc<"quotes">).projectId;
+		if (!projectId) return [];
+		const project = await getObject(ctx, "project", projectId, orgId);
+		if (!project) return [];
+		const team = (project as Doc<"projects">).assignedUserIds ?? [];
+		return validOrgMembers(ctx, orgId, team);
+	}
+	// client / anything else has no team.
+	return [];
+}
+
+/**
+ * Resolve send_team_message's legacy `recipients` union (all_members/admins/
+ * explicit userIds) to concrete, org-membership-checked userIds. Shared by
+ * the production executor and the dry-run preview.
+ */
+async function resolveTeamMessageRecipients(
+	ctx: MutationCtx,
+	recipients: Extract<AutomationAction, { type: "send_team_message" }>["recipients"],
+	orgId: Id<"organizations">
+): Promise<Id<"users">[]> {
+	if (recipients === "all_members") {
+		return resolveMemberUserIds(ctx, orgId, false);
+	}
+	if (recipients === "admins") {
+		return resolveMemberUserIds(ctx, orgId, true);
+	}
+	const valid: Id<"users">[] = [];
+	for (const raw of recipients.userIds) {
+		const userId = raw as Id<"users">;
+		const membership = await getMembership(ctx, userId, orgId);
+		if (membership) valid.push(userId);
+	}
+	return valid;
+}
+
 async function executeSendTeamMessageAction(
 	ctx: MutationCtx,
 	action: Extract<AutomationAction, { type: "send_team_message" }>,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-	let userIds: Id<"users">[];
-	if (action.recipients === "all_members") {
-		userIds = await resolveMemberUserIds(ctx, env.orgId, false);
-	} else if (action.recipients === "admins") {
-		userIds = await resolveMemberUserIds(ctx, env.orgId, true);
-	} else {
-		const valid: Id<"users">[] = [];
-		for (const raw of action.recipients.userIds) {
-			const userId = raw as Id<"users">;
-			const membership = await getMembership(ctx, userId, env.orgId);
-			if (membership) valid.push(userId);
-		}
-		userIds = valid;
-	}
-	if (userIds.length === 0) {
-		return { success: true, skipped: true, error: "No recipients to message" };
-	}
+	// Broadcast recipients (bell + push), unchanged from the legacy behavior.
+	const recipientIds = await resolveTeamMessageRecipients(
+		ctx,
+		action.recipients,
+		env.orgId
+	);
 
 	const title =
 		interpolateTemplate(action.title, env.scope).trim() ||
@@ -3762,20 +3952,75 @@ async function executeSendTeamMessageAction(
 		return { success: false, error: "Message resolved to an empty value" };
 	}
 
+	// Resolve the target (default self). Mentions resolve for ANY resolved target
+	// so tagged users are notified even on feedless targets (task/invoice) — only
+	// the feed POST is limited to client/project/quote.
+	let post: { entityType: "client" | "project" | "quote"; entityId: string } | null =
+		null;
+	let mentionIds: Id<"users">[] = [];
+	if (scopeRecord) {
+		const targetInfo = await resolveTargetV2(
+			ctx,
+			action.target ?? "self",
+			scopeRecord.type,
+			scopeRecord.id,
+			scopeRecord.record,
+			env.orgId
+		);
+		if (targetInfo) {
+			if (
+				targetInfo.type === "client" ||
+				targetInfo.type === "project" ||
+				targetInfo.type === "quote"
+			) {
+				post = { entityType: targetInfo.type, entityId: targetInfo.id };
+			}
+			mentionIds = await resolveTeamMessageMention(
+				ctx,
+				action.mention,
+				targetInfo.type,
+				targetInfo.id,
+				env.orgId
+			);
+		}
+	}
+
+	// Bell recipients = broadcast recipients ∪ resolved mentions (deduped).
+	const bellIds = Array.from(
+		new Set<Id<"users">>([...recipientIds, ...mentionIds])
+	);
+
+	if (!post && bellIds.length === 0) {
+		return { success: true, skipped: true, error: "No recipients to message" };
+	}
+
 	const org = await ctx.db.get(env.orgId);
 	const clerkOrgId = org?.clerkOrganizationId ?? "";
-	const actionUrl = automationActionUrl(scopeRecord);
+	const actionUrl = post
+		? `/${post.entityType}s/${post.entityId}`
+		: automationActionUrl(scopeRecord);
 
 	try {
-		for (const userId of userIds) {
+		if (post) {
+			await insertTeamMessage(ctx, {
+				orgId: env.orgId,
+				entityType: post.entityType,
+				entityId: post.entityId,
+				message,
+				authorType: "automation",
+				automationId: env.automation._id,
+				mentionedUserIds: mentionIds,
+			});
+		}
+		for (const userId of bellIds) {
 			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
 				notificationType: "automation_message",
 				title,
 				message,
-				entityType: scopeRecord?.type,
-				entityId: scopeRecord?.id,
+				entityType: post?.entityType ?? scopeRecord?.type,
+				entityId: post?.entityId ?? scopeRecord?.id,
 				actionUrl,
 				isRead: false,
 				sentVia: "in_app",
@@ -4246,16 +4491,43 @@ async function dryExecuteAction(
 					return { success: true, skipped: true, output: { note: "No admins to notify" } };
 				}
 				count = ids.length;
-			} else if (action.recipient === "record_owner") {
-				const owner = await resolveRecordOwner(ctx, scopeRecord, env.orgId);
-				if (!owner) {
+			} else if (action.recipient === "all_members") {
+				const ids = await resolveMemberUserIds(ctx, env.orgId, false);
+				if (ids.length === 0) {
+					return { success: true, skipped: true, output: { note: "No members to notify" } };
+				}
+				count = ids.length;
+			} else if (typeof action.recipient === "string") {
+				// Unknown string (e.g. legacy "record_owner") — preview as skipped.
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "Unknown recipient — reconfigure this notification" },
+				};
+			} else if ("recordField" in action.recipient) {
+				const { target, field } = action.recipient.recordField;
+				const res = await resolveRecordFieldUsers(
+					ctx,
+					target,
+					field,
+					scopeRecord,
+					env.orgId
+				);
+				if (!res.resolved) {
 					return {
 						success: true,
 						skipped: true,
-						output: { note: "No owner found for the record in scope" },
+						output: { note: "No record in scope for the selected field" },
 					};
 				}
-				count = 1;
+				if (res.users.length === 0) {
+					return {
+						success: true,
+						skipped: true,
+						output: { note: "No user found for the selected field" },
+					};
+				}
+				count = res.users.length;
 			} else {
 				const membership = await getMembership(
 					ctx,
@@ -4277,44 +4549,105 @@ async function dryExecuteAction(
 					error: "Notification message resolved to an empty value",
 				};
 			}
+			const channels = action.channels ?? ["in_app"];
+			if (channels.length === 0) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "No delivery channels configured" },
+				};
+			}
+			if (channels.includes("push") && !channels.includes("in_app")) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "Push-only delivery is not supported yet" },
+				};
+			}
+			const channelLabel = channels
+				.map((c) => (c === "in_app" ? "in-app" : "push"))
+				.join(" + ");
 			return {
 				success: true,
-				output: { summary: `Would notify ${count} recipient(s): "${message}"` },
-				input: { recipient: action.recipient, message, recipientCount: count },
+				output: {
+					summary: `Would notify ${count} recipient(s) via ${channelLabel}: "${message}"`,
+				},
+				input: {
+					recipient: action.recipient,
+					channels,
+					message,
+					recipientCount: count,
+				},
 			};
 		}
 		case "send_team_message": {
-			let userIds: Id<"users">[];
-			if (action.recipients === "all_members") {
-				userIds = await resolveMemberUserIds(ctx, env.orgId, false);
-			} else if (action.recipients === "admins") {
-				userIds = await resolveMemberUserIds(ctx, env.orgId, true);
-			} else {
-				const valid: Id<"users">[] = [];
-				for (const raw of action.recipients.userIds) {
-					const membership = await getMembership(ctx, raw as Id<"users">, env.orgId);
-					if (membership) valid.push(raw as Id<"users">);
-				}
-				userIds = valid;
+			const message = interpolateTemplate(action.message, env.scope).trim();
+			if (!message) {
+				return { success: false, error: "Message resolved to an empty value" };
 			}
-			if (userIds.length === 0) {
+			const recipientIds = await resolveTeamMessageRecipients(
+				ctx,
+				action.recipients,
+				env.orgId
+			);
+			// Mirror the real action: resolve target (default self) + mentions.
+			let post: {
+				entityType: "client" | "project" | "quote";
+				entityId: string;
+			} | null = null;
+			let mentionIds: Id<"users">[] = [];
+			if (scopeRecord) {
+				const targetInfo = await resolveTargetV2(
+					ctx,
+					action.target ?? "self",
+					scopeRecord.type,
+					scopeRecord.id,
+					scopeRecord.record,
+					env.orgId
+				);
+				if (targetInfo) {
+					if (
+						targetInfo.type === "client" ||
+						targetInfo.type === "project" ||
+						targetInfo.type === "quote"
+					) {
+						post = { entityType: targetInfo.type, entityId: targetInfo.id };
+					}
+					mentionIds = await resolveTeamMessageMention(
+						ctx,
+						action.mention,
+						targetInfo.type,
+						targetInfo.id,
+						env.orgId
+					);
+				}
+			}
+			// Bell recipients = broadcast recipients ∪ resolved mentions (deduped),
+			// mirroring the production executor exactly.
+			const bellIds = Array.from(
+				new Set<Id<"users">>([...recipientIds, ...mentionIds])
+			);
+			if (!post && bellIds.length === 0) {
 				return {
 					success: true,
 					skipped: true,
 					output: { note: "No recipients to message" },
 				};
 			}
-			const message = interpolateTemplate(action.message, env.scope).trim();
-			if (!message) {
-				return { success: false, error: "Message resolved to an empty value" };
-			}
+			const summary = post
+				? `Would post to ${post.entityType} ${post.entityId}'s Team Communication feed, notifying ${bellIds.length} member(s)`
+				: `No feed for this target — would notify ${bellIds.length} member(s)`;
 			return {
 				success: true,
-				output: { summary: `Would send team message to ${userIds.length} member(s)` },
+				output: { summary },
 				input: {
-					recipients: action.recipients,
+					target: action.target ?? "self",
+					mention: action.mention ?? { kind: "none" },
 					message,
-					recipientCount: userIds.length,
+					posted: post !== null,
+					recipientCount: recipientIds.length,
+					mentionCount: mentionIds.length,
+					bellCount: bellIds.length,
 				},
 			};
 		}
@@ -4435,7 +4768,9 @@ async function dryRunLoopNode(
 			const item = source.records[index];
 			const itemId = String(item._id);
 			const label = sampleRecordLabel(source.objectType, item);
-			env.scope.loops[node.id] = { item, index };
+			// `total` (full match), not `sampled`: loop.<id>.count is a data value —
+			// the count production would iterate, matching the real loop.index shown.
+			env.scope.loops[node.id] = { item, index, count: total };
 			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -4677,7 +5012,7 @@ async function buildDryPlan(
 	triggerObject: Record<string, unknown>,
 	eventOldValue: string | undefined,
 	eventNewValue: string | undefined,
-	globals: Pick<VariableScope, "workflow" | "org" | "user">
+	globals: Pick<VariableScope, "workflow" | "org" | "user" | "run">
 ): Promise<{
 	plan: ExecutedNode[];
 	/** The walk stopped on a failure, rather than running past skipped items. */
@@ -4798,10 +5133,17 @@ export const startTestRun = userMutation({
 		const now = Date.now();
 		// The tester is always the actor for a dry run.
 		const testerOrg = await ctx.db.get(ctx.orgId);
-		const globals: Pick<VariableScope, "workflow" | "org" | "user"> = {
+		const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
 			workflow: { now, tz: automationFormulaTz(trigger) },
 			org: testerOrg ? { id: ctx.orgId, name: testerOrg.name } : undefined,
 			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
+			// executionId is omitted — the workflowExecutions row isn't inserted until
+			// after the dry plan is built, so a preview has no final id yet.
+			run: {
+				automationName: automation.name,
+				automationId: automation._id,
+				triggerType: "type" in trigger ? trigger.type : "status_changed",
+			},
 		};
 
 		const { plan, aborted, loopSummaries } = await buildDryPlan(

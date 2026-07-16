@@ -1909,9 +1909,27 @@ describe("automationExecutor (v2 engine)", () => {
 
 		function sendNotificationActionNode(
 			id: string,
-			recipient: "org_admins" | "record_owner" | { userId: string },
+			recipient:
+				| "org_admins"
+				| "all_members"
+				| { userId: string }
+				| {
+						recordField: {
+							target:
+								| "self"
+								| {
+										related:
+											| "client"
+											| "project"
+											| "quote"
+											| "invoice"
+											| "task";
+								  };
+							field: string;
+						};
+				  },
 			message: string,
-			opts: { nextNodeId?: string } = {}
+			opts: { nextNodeId?: string; channels?: ("in_app" | "push")[] } = {}
 		) {
 			return {
 				id,
@@ -1921,6 +1939,7 @@ describe("automationExecutor (v2 engine)", () => {
 					action: {
 						type: "send_notification" as const,
 						recipient,
+						...(opts.channels ? { channels: opts.channels } : {}),
 						message,
 					},
 				},
@@ -2788,6 +2807,396 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(autoNotifs[0].message).toBe("New client: Acme Co");
 		});
 
+		it("send_notification recipient all_members: one bell per member, deduped (B6-4)", async () => {
+			const { asUser, orgId, userId: ownerId } = await setupUser();
+			const m1 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { role: "member" })
+			);
+			const m2 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { role: "member" })
+			);
+
+			await asUser.mutation(api.automations.create, {
+				name: "Broadcast on new client",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [
+					sendNotificationActionNode(
+						"notify-1",
+						"all_members",
+						"Everyone: {{trigger.record.companyName}}"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const autoNotifs = (
+				await t.run(async (ctx) =>
+					ctx.db
+						.query("notifications")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				)
+			).filter((n) => n.notificationType === "automation_message");
+			const notifiedUserIds = autoNotifs.map((n) => n.userId);
+			const expected = [ownerId, m1.userId, m2.userId];
+			// One bell per distinct member (deduped — no member notified twice).
+			expect(autoNotifs).toHaveLength(expected.length);
+			expect(new Set(notifiedUserIds)).toEqual(new Set(expected));
+			expect(notifiedUserIds.length).toBe(new Set(notifiedUserIds).size);
+			expect(autoNotifs[0].message).toBe("Everyone: Acme Co");
+		});
+
+		it("send_notification all_members on a solo-member org: single bell, no crash (B6-4)", async () => {
+			const { asUser, orgId, userId: ownerId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Solo broadcast",
+				trigger: { type: "record_created", objectType: "client" },
+				nodes: [sendNotificationActionNode("notify-1", "all_members", "Hi")],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Solo Co",
+				status: "lead",
+			});
+
+			await drainEvents();
+
+			const autoNotifs = (
+				await t.run(async (ctx) =>
+					ctx.db
+						.query("notifications")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				)
+			).filter((n) => n.notificationType === "automation_message");
+			expect(autoNotifs).toHaveLength(1);
+			expect(autoNotifs[0].userId).toBe(ownerId);
+		});
+
+		describe("send_notification recordField recipient", () => {
+			async function autoNotifs(orgId: Id<"organizations">) {
+				return (
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("notifications")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.collect()
+					)
+				).filter((n) => n.notificationType === "automation_message");
+			}
+
+			it("self single field (task.assigneeUserId) notifies that user", async () => {
+				const { asUser, orgId } = await setupUser();
+				const m1 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify assignee",
+					trigger: { type: "record_created", objectType: "task" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{ recordField: { target: "self", field: "assigneeUserId" } },
+							"task ping"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.tasks.create, {
+					title: "T",
+					date: Date.now(),
+					status: "pending",
+					type: "external",
+					clientId,
+					assigneeUserId: m1.userId,
+				});
+				await drainEvents();
+				const notifs = await autoNotifs(orgId);
+				expect(notifs).toHaveLength(1);
+				expect(notifs[0].userId).toBe(m1.userId);
+			});
+
+			it("self array field (project.assignedUserIds) notifies all assigned, deduped", async () => {
+				const { asUser, orgId } = await setupUser();
+				const m1 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				const m2 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify team",
+					trigger: { type: "record_created", objectType: "project" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{ recordField: { target: "self", field: "assignedUserIds" } },
+							"proj ping"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "P",
+					status: "planned",
+					projectType: "one-off",
+					assignedUserIds: [m1.userId, m2.userId, m1.userId],
+				});
+				await drainEvents();
+				const notifs = await autoNotifs(orgId);
+				const ids = notifs.map((n) => n.userId);
+				expect(notifs).toHaveLength(2);
+				expect(new Set(ids)).toEqual(new Set([m1.userId, m2.userId]));
+			});
+
+			it("related (quote → project.assignedUserIds) notifies the linked project team", async () => {
+				const { asUser, orgId } = await setupUser();
+				const m1 = await t.run(async (ctx) =>
+					addMemberToOrg(ctx, orgId, { role: "member" })
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify quote project team",
+					trigger: { type: "record_created", objectType: "quote" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{
+								recordField: {
+									target: { related: "project" },
+									field: "assignedUserIds",
+								},
+							},
+							"quote ping"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const projectId = await asUser.mutation(api.projects.create, {
+					clientId,
+					title: "P",
+					status: "planned",
+					projectType: "one-off",
+					assignedUserIds: [m1.userId],
+				});
+				await asUser.mutation(api.quotes.create, {
+					clientId,
+					projectId,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+				await drainEvents();
+				const notifs = await autoNotifs(orgId);
+				expect(notifs).toHaveLength(1);
+				expect(notifs[0].userId).toBe(m1.userId);
+			});
+
+			it("valid relation but absent FK at runtime (quote with no linked project) skips gracefully, no crash", async () => {
+				const { asUser, orgId } = await setupUser();
+				// quote → project is a valid relation (passes save-time validation),
+				// but this quote has no projectId, so it resolves to no record.
+				await asUser.mutation(api.automations.create, {
+					name: "Notify missing project team",
+					trigger: { type: "record_created", objectType: "quote" },
+					nodes: [
+						sendNotificationActionNode(
+							"n1",
+							{
+								recordField: {
+									target: { related: "project" },
+									field: "assignedUserIds",
+								},
+							},
+							"x"
+						),
+					],
+					isActive: true,
+				});
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await asUser.mutation(api.quotes.create, {
+					clientId,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+				await drainEvents();
+				expect(await autoNotifs(orgId)).toHaveLength(0);
+			});
+		});
+
+		describe("send_notification delivery channels (B6-6)", () => {
+			let fetchSpy: ReturnType<typeof vi.fn>;
+
+			beforeEach(() => {
+				fetchSpy = vi.fn(
+					async () =>
+						({
+							ok: true,
+							json: async () => ({ data: [{ status: "ok", id: "r1" }] }),
+						}) as unknown as Response
+				);
+				vi.stubGlobal("fetch", fetchSpy);
+			});
+
+			afterEach(() => {
+				vi.unstubAllGlobals();
+			});
+
+			async function runNotify(channels?: ("in_app" | "push")[]) {
+				const { asUser, orgId, userId: ownerId } = await setupUser();
+				await t.run(async (ctx) =>
+					ctx.db.insert("pushTokens", {
+						userId: ownerId,
+						token: "ExponentPushToken[N]",
+						platform: "ios",
+						lastSeenAt: Date.now(),
+					})
+				);
+				await asUser.mutation(api.automations.create, {
+					name: "Notify me",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						sendNotificationActionNode(
+							"notify-1",
+							{ userId: ownerId },
+							"ping",
+							channels ? { channels } : {}
+						),
+					],
+					isActive: true,
+				});
+				await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await drainEvents();
+				const bells = (
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("notifications")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.collect()
+					)
+				).filter((n) => n.notificationType === "automation_message");
+				return { bells };
+			}
+
+			it("undefined channels: in-app bell only, no push (legacy preserved)", async () => {
+				const { bells } = await runNotify(undefined);
+				expect(bells).toHaveLength(1);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
+
+			it("channels [in_app, push]: bell row AND push per recipient", async () => {
+				const { bells } = await runNotify(["in_app", "push"]);
+				expect(bells).toHaveLength(1);
+				expect(fetchSpy).toHaveBeenCalled();
+			});
+
+			it("channels [in_app]: bell, no push", async () => {
+				const { bells } = await runNotify(["in_app"]);
+				expect(bells).toHaveLength(1);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
+
+			it("channels []: skipped — no bell, no push (validator now blocks this at create/update; exercises the executor's own defense-in-depth guard on an already-stored config)", async () => {
+				const { asUser, orgId, userId: ownerId } = await setupUser();
+				await t.run(async (ctx) =>
+					ctx.db.insert("pushTokens", {
+						userId: ownerId,
+						token: "ExponentPushToken[EMPTY]",
+						platform: "ios",
+						lastSeenAt: Date.now(),
+					})
+				);
+				const automationId = await t.run(async (ctx) =>
+					ctx.db.insert("workflowAutomations", {
+						orgId,
+						name: "Notify me empty channels",
+						status: "active" as const,
+						trigger: {
+							type: "record_created" as const,
+							objectType: "client" as const,
+						},
+						nodes: [
+							sendNotificationActionNode(
+								"notify-1",
+								{ userId: ownerId },
+								"ping",
+								{ channels: [] }
+							),
+						],
+						createdBy: ownerId,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					})
+				);
+
+				await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await drainEvents();
+
+				const bells = (
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("notifications")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.collect()
+					)
+				).filter((n) => n.notificationType === "automation_message");
+				expect(bells).toHaveLength(0);
+				expect(fetchSpy).not.toHaveBeenCalled();
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				const execution = executions.find(
+					(e) => e.automationId === automationId
+				);
+				// Skip returns success:true/skipped:true (pushEntry maps that combo to
+				// "success", same as every other skipped-notification case in this
+				// file) — the error text is the reliable skip signal here.
+				expect(execution?.nodesExecuted[0]?.error).toBe(
+					"No delivery channels configured"
+				);
+			});
+		});
+
 		it("send_team_message with recipients.userIds: only in-org members are notified", async () => {
 			const { asUser, orgId } = await setupUser();
 			const { userId: memberId } = await t.run(async (ctx) =>
@@ -2840,6 +3249,67 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(memberNotifs[0].title).toBe("New client");
 			expect(memberNotifs[0].message).toBe("New client: Acme Co");
 			expect(nonMemberNotifs).toHaveLength(0);
+		});
+
+		it("send_team_message on a feedless task target: mention created_by notifies the creator, no feed post (H3)", async () => {
+			const { asUser, userId } = await setupUser();
+
+			await asUser.mutation(api.automations.create, {
+				name: "Task ping",
+				trigger: { type: "record_created", objectType: "task" },
+				nodes: [
+					{
+						id: "msg-1",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "send_team_message" as const,
+								recipients: { userIds: [] as string[] },
+								mention: { kind: "created_by" as const },
+								title: "Task made",
+								message: "A task was created",
+							},
+						},
+					},
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			// Task creator = acting user (createdByUserId stamped on create).
+			await asUser.mutation(api.tasks.create, {
+				title: "Do it",
+				date: Date.now(),
+				status: "pending",
+				type: "external",
+				clientId,
+			});
+
+			await drainEvents();
+
+			// Creator is notified even though a task has no feed.
+			const creatorNotifs = await t.run(async (ctx) =>
+				ctx.db
+					.query("notifications")
+					.filter((q) => q.eq(q.field("userId"), userId))
+					.collect()
+			);
+			const teamMsgNotifs = creatorNotifs.filter(
+				(n) => n.notificationType === "automation_message"
+			);
+			expect(teamMsgNotifs).toHaveLength(1);
+			expect(teamMsgNotifs[0].message).toBe("A task was created");
+
+			// No feed post is written for a feedless (task) target.
+			const posts = await t.run(async (ctx) =>
+				ctx.db.query("teamMessages").collect()
+			);
+			expect(posts).toHaveLength(0);
 		});
 
 		describe("delay checkpoint + resume", () => {
@@ -4716,6 +5186,74 @@ describe("automationExecutor (v2 engine)", () => {
 					isActive: true,
 				})
 			).rejects.toThrow(/not a valid value/i);
+		});
+	});
+
+	describe("action fallback type validation (server-side var-fallback check)", () => {
+		it("rejects an update_field var value whose fallback type doesn't match the field (boolean field, string fallback)", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad fallback",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						{
+							id: "act-1",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "update_field" as const,
+									target: "self" as const,
+									field: "isActive",
+									value: {
+										kind: "var" as const,
+										path: "trigger.record.companyName",
+										fallback: "not-a-boolean",
+									},
+								},
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/fallback/i);
+		});
+
+		it("rejects a create_record var value whose fallback type doesn't match the field (date field, boolean fallback)", async () => {
+			const { asUser } = await setupUser();
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad create fallback",
+					trigger: { type: "record_created", objectType: "client" },
+					nodes: [
+						{
+							id: "act-1",
+							type: "action" as const,
+							config: {
+								kind: "action" as const,
+								action: {
+									type: "create_record" as const,
+									objectType: "task" as const,
+									fields: [
+										{
+											field: "title",
+											value: { kind: "static" as const, value: "X" },
+										},
+										{
+											field: "date",
+											value: {
+												kind: "var" as const,
+												path: "trigger.record.companyName",
+												fallback: true,
+											},
+										},
+									],
+								},
+							},
+						},
+					],
+				})
+			).rejects.toThrow(/fallback/i);
 		});
 	});
 });

@@ -208,6 +208,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onPaneClick={handlePaneClick}
 							onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
+						configPanelOpen={sidebar.isOpen}
 					/>
 					{/* Floats over the canvas so the dotted background runs behind it. */}
 					<WorkflowDrawer
@@ -244,11 +245,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 					{editor.undoBanner && (
 						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
 					)}
-				</div>
-				<div
-					className={`w-[360px] shrink-0 overflow-y-auto border-l border-border bg-sidebar transition-transform duration-200 ease-out ${sidebar.isOpen ? "translate-x-0" : "translate-x-full"}`}
-					style={{ marginRight: sidebar.isOpen ? 0 : -360 }}
-				>
+					{/* Floating config panel — right-side twin of the WorkflowDrawer, over the canvas. */}
 					<AutomationSidebar
 						isOpen={sidebar.isOpen}
 						mode={sidebar.mode}

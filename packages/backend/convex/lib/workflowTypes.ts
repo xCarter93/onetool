@@ -223,12 +223,44 @@ export const sendNotificationActionValidator = v.object({
 	type: v.literal("send_notification"),
 	recipient: v.union(
 		v.literal("org_admins"),
-		v.literal("record_owner"),
-		v.object({ userId: v.string() })
+		v.literal("all_members"),
+		v.object({ userId: v.string() }),
+		// Resolves to the user(s) in a user-reference field off the target record
+		// (self or { related }). See USER_REF_RECIPIENT_FIELDS in fieldRegistry.
+		v.object({
+			recordField: v.object({
+				target: actionTargetValidator,
+				field: v.string(),
+			}),
+		})
+	),
+	/**
+	 * Delivery channels. Undefined = legacy in-app-only (bell, no push).
+	 * New panel seeds ["in_app", "push"]. "push" rides on the persisted bell row,
+	 * so push-only (["push"] alone) is not supported yet — the executor skips it.
+	 */
+	channels: v.optional(
+		v.array(v.union(v.literal("in_app"), v.literal("push")))
 	),
 	/** Supports {{trigger.record.<field>}} / {{loop.<id>.item.<field>}} interpolation. */
 	message: v.string(),
 });
+
+/**
+ * Optional @-mention for a team message, resolved at run time against the
+ * resolved target record. `none` (default) posts with no bell mention;
+ * `user` tags an explicit member; `created_by` tags the target's creator;
+ * `assigned_team` tags a project's assigned team (directly for a project
+ * target, or via the linked project for a quote target).
+ */
+export const teamMessageMentionValidator = v.union(
+	v.object({ kind: v.literal("none") }),
+	v.object({ kind: v.literal("user"), userId: v.id("users") }),
+	v.object({ kind: v.literal("created_by") }),
+	v.object({ kind: v.literal("assigned_team") })
+);
+
+export type TeamMessageMention = Infer<typeof teamMessageMentionValidator>;
 
 export const sendTeamMessageActionValidator = v.object({
 	type: v.literal("send_team_message"),
@@ -237,6 +269,10 @@ export const sendTeamMessageActionValidator = v.object({
 		v.literal("admins"),
 		v.object({ userIds: v.array(v.string()) })
 	),
+	/** Which record the posted message attaches to. Defaults to "self". */
+	target: v.optional(actionTargetValidator),
+	/** Optional @-mention resolved at run time. Defaults to no mention. */
+	mention: v.optional(teamMessageMentionValidator),
 	title: v.string(),
 	/** Supports variable interpolation like send_notification. */
 	message: v.string(),

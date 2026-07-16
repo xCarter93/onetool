@@ -155,6 +155,7 @@ async function createTaskWithOrg(
 	const taskData = {
 		...data,
 		orgId: ctx.orgId,
+		createdByUserId: ctx.user._id,
 	};
 
 	return await ctx.db.insert("tasks", taskData);

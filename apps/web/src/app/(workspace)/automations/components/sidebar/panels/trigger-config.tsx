@@ -3,7 +3,6 @@
 import React from "react";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NextStepTree } from "../next-step-tree";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
 import {
 	Select,
@@ -83,9 +82,6 @@ export function TriggerConfigPanel({
 	formulas,
 	onTriggerChange,
 	onDeleteTrigger,
-	onNavigateToNode,
-	rfNodes,
-	rfEdges,
 }: ConfigPanelProps) {
 	// Captured once per mount: describeSchedule only needs a reference instant
 	// for the timezone label, and render-time Date.now() violates purity rules.
@@ -475,18 +471,6 @@ export function TriggerConfigPanel({
 					Changes are saved automatically
 				</div>
 			</div>
-
-			{/* Next steps tree */}
-			{rfNodes && rfEdges && onNavigateToNode && (
-				<div className="border-t border-border pt-4 mt-2">
-					<NextStepTree
-						currentNodeId={TRIGGER_NODE_ID}
-						nodes={rfNodes}
-						edges={rfEdges}
-						onNavigateToNode={onNavigateToNode}
-					/>
-				</div>
-			)}
 
 			{onDeleteTrigger && (
 				<DeleteStepButton label="Delete trigger" onDelete={onDeleteTrigger} />

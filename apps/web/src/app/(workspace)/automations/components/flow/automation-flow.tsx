@@ -77,6 +77,15 @@ const edgeTypes = {
 
 const LAYOUT_ANIMATION_MS = 220;
 
+// Per-side fitView padding so auto-fit keeps nodes clear of the floating chrome:
+// the left WorkflowDrawer (~280px), the right config panel (~380px), and the
+// bottom assistant notch. maxZoom:1 means small graphs re-center rather than shrink.
+export const FIT_VIEW_OPTIONS = {
+	padding: { top: "24px", right: "400px", bottom: "72px", left: "300px" },
+	duration: 300,
+	maxZoom: 1,
+} as const;
+
 interface AutomationFlowProps {
 	nodes: Node[];
 	edges: Edge[];
@@ -85,6 +94,9 @@ interface AutomationFlowProps {
 	onDeleteNode?: (nodeId: string) => void;
 	/** Callback ref that receives a navigate function once React Flow is ready */
 	onNavigateReady?: (navigateFn: (nodeId: string) => void) => void;
+	/** When the floating config panel is open it covers the bottom-right corner,
+	    so the zoom slider shifts left to stay visible. */
+	configPanelOpen?: boolean;
 }
 
 interface ContextMenuState {
@@ -100,6 +112,7 @@ function AutomationFlowInner({
 	onPaneClick,
 	onDeleteNode,
 	onNavigateReady,
+	configPanelOpen,
 }: AutomationFlowProps) {
 	const { fitView, setCenter } = useReactFlow();
 	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
@@ -160,7 +173,7 @@ function AutomationFlowInner({
 				if (pendingFitRef.current) {
 					pendingFitRef.current = false;
 					requestAnimationFrame(() => {
-						fitView({ padding: 0.2, duration: 300, maxZoom: 1 });
+						fitView(FIT_VIEW_OPTIONS);
 					});
 				}
 			};
@@ -332,7 +345,7 @@ function AutomationFlowInner({
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				fitView
-				fitViewOptions={{ padding: 0.2, duration: 300, maxZoom: 1 }}
+				fitViewOptions={FIT_VIEW_OPTIONS}
 				nodesDraggable={false}
 				nodesFocusable={true}
 				edgesFocusable={true}
@@ -351,8 +364,17 @@ function AutomationFlowInner({
 					size={1}
 					className="text-muted-foreground/15! dark:text-muted-foreground/10!"
 				/>
-				{/* bottom-right: the workflow drawer overlays the bottom-left corner */}
-				<ZoomSlider position="bottom-right" orientation="vertical" />
+				{/* bottom-right: the workflow drawer overlays the bottom-left corner.
+				    Shift left when the floating config panel is open so it stays visible. */}
+				<ZoomSlider
+					position="bottom-right"
+					orientation="vertical"
+					fitViewOptions={FIT_VIEW_OPTIONS}
+					style={{
+						transform: configPanelOpen ? "translateX(-25rem)" : undefined,
+						transition: "transform 200ms ease-out",
+					}}
+				/>
 			</ReactFlow>
 			{contextMenu && (
 				<div

@@ -36,18 +36,25 @@ export function PanelSection({
 export function PanelField({
 	label,
 	helper,
+	error,
 	children,
 }: {
 	label: string;
 	helper?: string;
+	/** Inline per-field error; shown in place of the helper when present. */
+	error?: string;
 	children: React.ReactNode;
 }) {
 	return (
 		<div>
 			<Label className="text-sm font-medium">{label}</Label>
 			<div className="mt-1.5">{children}</div>
-			{helper && (
-				<p className="text-xs text-muted-foreground mt-1.5">{helper}</p>
+			{error ? (
+				<p className="text-xs text-destructive mt-1.5">{error}</p>
+			) : (
+				helper && (
+					<p className="text-xs text-muted-foreground mt-1.5">{helper}</p>
+				)
 			)}
 		</div>
 	);

@@ -275,6 +275,121 @@ describe("Automations", () => {
 		});
 	});
 
+	describe("send_notification record_owner recipient removed", () => {
+		it("rejects a record_owner recipient at create (validator boundary)", async () => {
+			const { asUser } = await setupUser();
+			// record_owner is no longer in the recipient union — the arg validator
+			// rejects it. Legacy stored configs (which Convex won't re-validate on
+			// read) are handled by the executor's defensive skip instead.
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Legacy owner notify",
+					trigger: clientTrigger,
+					nodes: [
+						{
+							id: "notify-1",
+							type: "action",
+							config: {
+								kind: "action",
+								action: {
+									type: "send_notification",
+									recipient: "record_owner",
+									message: "x",
+								},
+							},
+						},
+					] as never,
+				})
+			).rejects.toThrow();
+		});
+	});
+
+	describe("send_notification recordField recipient validation", () => {
+		function recordFieldNode(target: "self", field: string) {
+			return {
+				id: "notify-1",
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "send_notification" as const,
+						recipient: { recordField: { target, field } },
+						message: "hi",
+					},
+				},
+			};
+		}
+
+		it("rejects a recordField whose field is invalid for the target type", async () => {
+			const { asUser } = await setupUser();
+			// clientTrigger scope = client; clients have no assignedUserIds field.
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Bad recordField",
+					trigger: clientTrigger,
+					nodes: [recordFieldNode("self", "assignedUserIds")],
+				})
+			).rejects.toThrow();
+		});
+
+		it("accepts + publishes a valid recordField (createdByUserId on client scope)", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Good recordField",
+				trigger: clientTrigger,
+				nodes: [recordFieldNode("self", "createdByUserId")],
+			});
+			await asUser.mutation(api.automations.publish, { id });
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot).toBeDefined();
+		});
+	});
+
+	describe("send_team_message validation (recipients retired) — C1", () => {
+		function teamMessageNode(
+			mention: { kind: "none" } | { kind: "created_by" }
+		) {
+			return {
+				id: "msg-1",
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "send_team_message" as const,
+						recipients: { userIds: [] as string[] },
+						mention,
+						title: "Ping",
+						message: "hello team",
+					},
+				},
+			};
+		}
+
+		it("saves + publishes with empty recipients and mention none", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Team msg none",
+				trigger: clientTrigger,
+				nodes: [teamMessageNode({ kind: "none" })],
+			});
+			await asUser.mutation(api.automations.publish, { id });
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot).toBeDefined();
+		});
+
+		it("saves + publishes with mention created_by", async () => {
+			const { asUser } = await setupUser();
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Team msg created_by",
+				trigger: clientTrigger,
+				nodes: [teamMessageNode({ kind: "created_by" })],
+			});
+			await asUser.mutation(api.automations.publish, { id });
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.publishedSnapshot).toBeDefined();
+		});
+	});
+
 	describe("formulas", () => {
 		it("stores formulas on create and snapshots them on publish", async () => {
 			const { asUser } = await setupUser();

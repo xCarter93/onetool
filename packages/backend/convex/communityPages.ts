@@ -604,6 +604,7 @@ export const submitInterest = mutation({
 		}
 		nextDay.setHours(9, 0, 0, 0);
 
+		// No acting user — createdByUserId left unset (public lead capture).
 		const taskId = await ctx.db.insert("tasks", {
 			orgId: page.orgId,
 			title: `Follow up: ${sanitizedName}`,

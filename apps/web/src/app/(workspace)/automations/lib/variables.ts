@@ -9,6 +9,7 @@ import {
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type FetchNodeConfig,
+	type FieldDefinition,
 	type FieldType,
 	type FormulaResource,
 	type LoopNodeConfig,
@@ -32,6 +33,8 @@ export type VariableOption = {
 	label: string;
 	group: string;
 	fieldType?: FieldType;
+	/** For an `id`-typed option, the entity it points at — lets the picker flag e.g. a client id fed into a user id field. */
+	refType?: FieldDefinition["refType"];
 };
 
 function childrenOf(node: WorkflowNode): string[] {
@@ -158,11 +161,49 @@ const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
 		group: "Globals",
 		fieldType: "text",
 	},
+	{
+		path: "run.automationName",
+		label: "Automation name",
+		group: "Globals",
+		fieldType: "text",
+	},
+	{
+		path: "run.automationId",
+		label: "Automation ID",
+		group: "Globals",
+		fieldType: "text",
+	},
+	{
+		path: "run.executionId",
+		label: "Run ID (empty in test preview)",
+		group: "Globals",
+		fieldType: "text",
+	},
+	{
+		path: "run.triggerType",
+		label: "Trigger type",
+		group: "Globals",
+		fieldType: "text",
+	},
 ];
 
 /** " ID" suffix for id-type fields (e.g. "Client" -> "Client ID") disambiguates FK references. */
 function fieldOptionLabel(prefix: string, field: { label: string; type: FieldType }): string {
 	return `${prefix} → ${field.label}${field.type === "id" ? " ID" : ""}`;
+}
+
+/**
+ * A record's own `_id` option is refType-compatible with a destination `id`
+ * field pointing at the same object type — but task/invoice aren't valid
+ * `refType` values (no id field ever points at one), so those fall back to
+ * undefined, same as any other unknown ref type: never flagged.
+ */
+function asRefType(
+	objectType: AutomationObjectType
+): FieldDefinition["refType"] {
+	return objectType === "task" || objectType === "invoice"
+		? undefined
+		: objectType;
 }
 
 /** trigger.record.<field> + trigger.event.oldValue/newValue — shared by both functions. */
@@ -186,6 +227,7 @@ function triggerVariableOptions(
 			label: `Trigger → ${OBJECT_TYPE_LABELS[triggerObjectType]} ID`,
 			group: "Trigger",
 			fieldType: "id",
+			refType: asRefType(triggerObjectType),
 		});
 		for (const field of getFilterableFields(triggerObjectType)) {
 			options.push({
@@ -193,6 +235,7 @@ function triggerVariableOptions(
 				label: fieldOptionLabel("Trigger", field),
 				group: "Trigger",
 				fieldType: field.type,
+				refType: field.refType,
 			});
 		}
 	}
@@ -317,6 +360,7 @@ export function getAvailableVariables(
 			label: `Loop item → ${OBJECT_TYPE_LABELS[sourceObjectType]} ID`,
 			group: "Loop item",
 			fieldType: "id",
+			refType: asRefType(sourceObjectType),
 		});
 		for (const field of getFilterableFields(sourceObjectType)) {
 			options.push({
@@ -324,11 +368,24 @@ export function getAvailableVariables(
 				label: fieldOptionLabel("Loop item", field),
 				group: "Loop item",
 				fieldType: field.type,
+				refType: field.refType,
 			});
 		}
 		options.push({
 			path: `loop.${node.id}.index`,
-			label: "Loop item → Index",
+			label: "Loop item → Index (0-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.position`,
+			label: "Loop item → Position (1-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.count`,
+			label: "Loop → Total item count",
 			group: "Loop item",
 			fieldType: "number",
 		});
@@ -418,6 +475,7 @@ export function getAllVariableOptions(
 			label: `Loop item → ${OBJECT_TYPE_LABELS[sourceObjectType]} ID`,
 			group: "Loop item",
 			fieldType: "id",
+			refType: asRefType(sourceObjectType),
 		});
 		for (const field of getFilterableFields(sourceObjectType)) {
 			options.push({
@@ -425,11 +483,24 @@ export function getAllVariableOptions(
 				label: fieldOptionLabel("Loop item", field),
 				group: "Loop item",
 				fieldType: field.type,
+				refType: field.refType,
 			});
 		}
 		options.push({
 			path: `loop.${node.id}.index`,
-			label: "Loop item → Index",
+			label: "Loop item → Index (0-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.position`,
+			label: "Loop item → Position (1-based)",
+			group: "Loop item",
+			fieldType: "number",
+		});
+		options.push({
+			path: `loop.${node.id}.count`,
+			label: "Loop → Total item count",
 			group: "Loop item",
 			fieldType: "number",
 		});

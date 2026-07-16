@@ -22,6 +22,7 @@ import {
 	MAX_LOOP_ITERATIONS,
 	VALUELESS_OPERATORS,
 	RELATION_FIELD,
+	USER_REF_RECIPIENT_FIELDS,
 	getCreatableFields,
 	getFieldDefinition,
 	getRequiredCreateFields,
@@ -38,9 +39,11 @@ import {
 	type DelayNodeConfig,
 	type DelayUntilNodeConfig,
 	type FetchNodeConfig,
+	type FieldType,
 	type LoopNodeConfig,
 	type FormulaResource,
 	type TriggerConfig,
+	type ValueRef,
 	type WorkflowNode,
 	triggerScopeObjectType,
 } from "./node-types";
@@ -66,6 +69,34 @@ export type ValidationResult = {
 		nodeId?: string;
 	}>;
 };
+
+/**
+ * A `var` value whose fallback's stored type can't satisfy the field it feeds
+ * (e.g. a boolean field with a "yes" fallback). Returns a message or null. The
+ * typed fallback control prevents new mismatches; this catches legacy configs.
+ */
+function varFallbackTypeError(
+	fieldType: FieldType,
+	value: ValueRef | undefined
+): string | null {
+	if (!value || value.kind !== "var" || value.fallback === undefined) return null;
+	const fb = value.fallback;
+	switch (fieldType) {
+		case "boolean":
+			return typeof fb === "boolean" ? null : "fallback must be true or false";
+		case "number":
+		case "currency":
+			return typeof fb === "number" ? null : "fallback must be a number";
+		case "date":
+			return typeof fb === "number" ? null : "fallback must be a date";
+		case "text":
+		case "select":
+		case "id":
+			return typeof fb === "string" ? null : "fallback must be text";
+		default:
+			return null; // unknown field type — nothing to check
+	}
+}
 
 function isRuleComplete(
 	objectType: AutomationObjectType | null,
@@ -341,6 +372,16 @@ function validateActionNode(
 					});
 					return;
 				}
+
+				const fbErr = varFallbackTypeError(field.type, row.value);
+				if (fbErr) {
+					errors.push({
+						type: "missing_required_config",
+						message: `${field.label}: ${fbErr}`,
+						nodeId,
+					});
+					return;
+				}
 			}
 			break;
 		}
@@ -418,6 +459,16 @@ function validateActionNode(
 					});
 					return;
 				}
+
+				const fbErr = varFallbackTypeError(field.type, row.value);
+				if (fbErr) {
+					errors.push({
+						type: "missing_required_config",
+						message: `${field.label}: ${fbErr}`,
+						nodeId,
+					});
+					return;
+				}
 			}
 
 			// Required fields must be supplied as a row or via the scope link.
@@ -471,16 +522,73 @@ function validateActionNode(
 					nodeId,
 				});
 			}
-			if (typeof action.recipient !== "string" && !action.recipient.userId) {
-				errors.push({
-					type: "missing_required_config",
-					message: "Choose who to notify",
-					nodeId,
-				});
+			const recipient = action.recipient;
+			if (typeof recipient !== "string") {
+				if ("recordField" in recipient) {
+					// Reads a person off the record in scope — needs a record.
+					if (!scopeObjectType) {
+						if (scheduledTopLevel) {
+							errors.push({
+								type: "no_trigger_record",
+								message:
+									"This automation runs on a schedule, so there is no record to read the recipient from. Choose a different recipient, or move this action inside a Loop.",
+								nodeId,
+							});
+						}
+						return;
+					}
+					const rf = recipient.recordField;
+					// A {related} target with no FK from the scope type (per the
+					// registry's relation map) can never resolve — flag it before
+					// the field lookup, which would otherwise check the wrong type's
+					// fields and surface a confusing "invalid field" error instead.
+					if (
+						rf.target !== "self" &&
+						!RELATION_FIELD[scopeObjectType]?.[rf.target.related]
+					) {
+						errors.push({
+							type: "missing_required_config",
+							message: `This record has no related ${rf.target.related} to read the recipient from`,
+							nodeId,
+						});
+						return;
+					}
+					const targetType: AutomationObjectType =
+						rf.target === "self" ? scopeObjectType : rf.target.related;
+					const fields = USER_REF_RECIPIENT_FIELDS[targetType] ?? [];
+					if (!fields.some((f) => f.key === rf.field)) {
+						errors.push({
+							type: "missing_required_config",
+							message: "Choose a valid field to read the recipient from",
+							nodeId,
+						});
+					}
+				} else if (!recipient.userId) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Choose who to notify",
+						nodeId,
+					});
+				}
 			}
 			break;
 		}
 		case "send_team_message": {
+			// Record-linked model (B6): the message posts to the target record's
+			// feed, so a scheduled top-level step with no record can't run. Legacy
+			// broadcast `recipients` is retired and never blocks publish.
+			if (!scopeObjectType) {
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"This automation runs on a schedule, so there is no record to post to. Add a Find records step and move this action inside a Loop.",
+						nodeId,
+					});
+				}
+				return;
+			}
+
 			if (!action.message.trim()) {
 				errors.push({
 					type: "missing_required_config",
@@ -488,13 +596,61 @@ function validateActionNode(
 					nodeId,
 				});
 			}
+
+			// A {related} target with no FK from the scope type (per the registry's
+			// relation map) can never resolve — flag it before mention validation,
+			// which would otherwise check the wrong type's rules.
 			if (
-				typeof action.recipients !== "string" &&
-				action.recipients.userIds.length === 0
+				action.target &&
+				action.target !== "self" &&
+				!RELATION_FIELD[scopeObjectType]?.[action.target.related]
 			) {
 				errors.push({
 					type: "missing_required_config",
-					message: "Choose who to message",
+					message: `This record has no related ${action.target.related} to post to`,
+					nodeId,
+				});
+				return;
+			}
+
+			const targetObjectType: AutomationObjectType =
+				!action.target || action.target === "self"
+					? scopeObjectType
+					: action.target.related;
+			const mention = action.mention;
+			if (
+				mention?.kind === "assigned_team" &&
+				targetObjectType !== "project" &&
+				targetObjectType !== "quote"
+			) {
+				errors.push({
+					type: "missing_required_config",
+					message:
+						"Assigned team can only be tagged on a project or quote target",
+					nodeId,
+				});
+			}
+			if (mention?.kind === "user" && !mention.userId) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Choose a member to tag, or set Tag to No one",
+					nodeId,
+				});
+			}
+
+			// client/project/quote have a Team Communication feed; other targets
+			// (task/invoice via "self") are notify-only at run time — with nobody
+			// tagged, this step would post nothing and notify nobody.
+			const targetHasFeed =
+				targetObjectType === "client" ||
+				targetObjectType === "project" ||
+				targetObjectType === "quote";
+			const nobodyTagged = !mention || mention.kind === "none";
+			if (!targetHasFeed && nobodyTagged) {
+				errors.push({
+					type: "missing_required_config",
+					message:
+						"Nothing to send — this target has no Team Communication feed and nobody is tagged",
 					nodeId,
 				});
 			}

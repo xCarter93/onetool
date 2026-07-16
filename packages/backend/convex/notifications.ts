@@ -15,6 +15,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { insertTeamMessage } from "./teamMessages";
 import { enqueuePush } from "./push";
 import {
 	optionalUserQuery,
@@ -898,7 +899,10 @@ export const createWebhookNotificationInternal = systemMutation({
  */
 export const createMention = userMutation({
 	args: {
-		taggedUserId: v.id("users"),
+		// Empty/omitted = untagged post (feed row created, zero bell notifications).
+		mentionedUserIds: v.optional(v.array(v.id("users"))),
+		// taggedUserId: deprecated, kept for the live mobile binary — folded into mentionedUserIds.
+		taggedUserId: v.optional(v.id("users")),
 		message: v.string(),
 		entityType: v.union(
 			v.literal("client"),
@@ -919,7 +923,7 @@ export const createMention = userMutation({
 			)
 		),
 	},
-	handler: async (ctx, args): Promise<NotificationId> => {
+	handler: async (ctx, args): Promise<Id<"teamMessages">> => {
 		// Get current user
 		const currentUser = await ctx.auth.getUserIdentity();
 		if (!currentUser) {
@@ -945,8 +949,23 @@ export const createMention = userMutation({
 			throw new Error("Message cannot be empty");
 		}
 
-		// Validate tagged user exists and is in same organization
-		await validateUserAccess(ctx, args.taggedUserId, userOrgId);
+		// Effective mention set: new array arg unioned with the deprecated single
+		// taggedUserId (live mobile binary), deduped. Used for the post's
+		// mentionedUserIds and the bell+push loop below.
+		const mentionedUserIds = Array.from(
+			new Set([
+				...(args.mentionedUserIds ?? []),
+				...(args.taggedUserId ? [args.taggedUserId] : []),
+			])
+		);
+		const MAX_MENTIONS = 25;
+		if (mentionedUserIds.length > MAX_MENTIONS) {
+			throw new Error(`Maximum ${MAX_MENTIONS} tagged members per message`);
+		}
+		// Validate every mentioned user is in the same organization
+		for (const uid of mentionedUserIds) {
+			await validateUserAccess(ctx, uid, userOrgId);
+		}
 
 		// Validate attachments if provided
 		if (args.attachments && args.attachments.length > 0) {
@@ -1020,86 +1039,57 @@ export const createMention = userMutation({
 		// Generate action URL
 		const actionUrl = `/${args.entityType}s/${args.entityId}`;
 
-		// Determine notification type
+		// Mention notification type — bell popover UX unchanged.
 		const notificationTypeMap = {
 			client: "client_mention" as const,
 			project: "project_mention" as const,
 			quote: "quote_mention" as const,
 		};
-
 		const notificationType = notificationTypeMap[args.entityType];
 
-		// Create title with author name
 		const title = `${author.name} mentioned you in ${args.entityName}`;
-
-		// Store the author's ID in the title field temporarily
-		// We'll use a special format: "authorId:message"
+		// Bell rows keep the legacy "authorId:message" composite so the bell
+		// popover author-strip (stripAuthorIdFromMessage) still works. The feed
+		// reads teamMessages instead and stores the raw message.
 		const messageWithAuthor = `${author._id}:${args.message}`;
 
-		const hasAttachments = args.attachments && args.attachments.length > 0;
+		const hasAttachments = !!(args.attachments && args.attachments.length > 0);
 
-		// Create the notification
-		// Note: We create the notification FIRST to get the notificationId needed for attachments
-		// If attachment creation fails, we'll clean up by deleting the notification
-		const notificationId = await createNotificationWithOrg(ctx, {
-			userId: args.taggedUserId,
-			notificationType,
-			title,
-			message: messageWithAuthor, // Store author ID with message
+		// One call = one feed post. Create it FIRST so attachments key off
+		// teamMessageId; roll it back if any attachment insert fails.
+		const teamMessageId = await insertTeamMessage(ctx, {
+			orgId: userOrgId,
 			entityType: args.entityType,
 			entityId: args.entityId,
-			actionUrl,
-			isRead: false,
-			sentVia: "in_app",
-			sentAt: Date.now(),
+			message: args.message, // RAW message, no author prefix
+			authorType: "user",
+			authorUserId: author._id,
+			mentionedUserIds,
 			hasAttachments,
 		});
 
-		// Create attachment records if any
-		// If this fails, delete the notification to maintain consistency
+		// Convex mutations roll back atomically on throw — a failed attachment
+		// insert discards the post above, so no manual cleanup is needed.
 		if (hasAttachments) {
-			try {
-				for (const attachment of args.attachments!) {
-					await ctx.db.insert("messageAttachments", {
-						orgId: userOrgId,
-						notificationId,
-						uploadedBy: author._id,
-						entityType: args.entityType,
-						entityId: args.entityId,
-						fileName: attachment.fileName,
-						fileSize: attachment.fileSize,
-						mimeType: attachment.mimeType,
-						storageId: attachment.storageId,
-						uploadedAt: Date.now(),
-					});
-				}
-			} catch (error) {
-				// Rollback: delete the notification we just created
-				await ctx.db.delete(notificationId);
-
-				// Clean up any partial attachments that might have been created
-				const partialAttachments = await ctx.db
-					.query("messageAttachments")
-					.withIndex("by_notification", (q) =>
-						q.eq("notificationId", notificationId)
-					)
-					.collect();
-
-				for (const attachment of partialAttachments) {
-					await ctx.db.delete(attachment._id);
-				}
-
-				// Re-throw the error after cleanup
-				throw error;
+			for (const attachment of args.attachments!) {
+				await ctx.db.insert("messageAttachments", {
+					orgId: userOrgId,
+					teamMessageId,
+					uploadedBy: author._id,
+					entityType: args.entityType,
+					entityId: args.entityId,
+					fileName: attachment.fileName,
+					fileSize: attachment.fileSize,
+					mimeType: attachment.mimeType,
+					storageId: attachment.storageId,
+					uploadedAt: Date.now(),
+				});
 			}
 		}
 
-		// Enqueue the device push AFTER the rollback block — a rolled-back mention
-		// (which throws above) never reaches here. enqueuePush self-gates on
-		// PUSHABLE_TYPES. Future notification types push by calling this same helper
-		// at their creation site once their type is added to PUSHABLE_TYPES.
-		// clerkOrgId is the Clerk active-org id (for plan 03's setActive), NOT the
-		// Convex organizations._id — mirrors resolveCurrentUserOrgId in lib/auth.
+		// Bell notification + push per mentioned user. No mentions => post only.
+		// Attachments now live on the teamMessage (shown in the feed), so bell rows
+		// don't claim attachments.
 		const clerkIdentity = currentUser as typeof currentUser & {
 			activeOrgId?: string;
 			orgId?: string | null;
@@ -1110,16 +1100,31 @@ export const createMention = userMutation({
 			clerkIdentity.orgId ??
 			clerkIdentity.org_id ??
 			"";
-		await enqueuePush(ctx, {
-			notificationType, // COMPUTED notificationTypeMap[entityType] — NOT a literal
-			taggedUserId: args.taggedUserId,
-			title,
-			body: args.message, // RAW text, not the authorId:message composite
-			url: actionUrl,
-			notificationId,
-			orgId: clerkOrgId,
-		});
 
-		return notificationId;
+		for (const uid of mentionedUserIds) {
+			const notificationId = await createNotificationWithOrg(ctx, {
+				userId: uid,
+				notificationType,
+				title,
+				message: messageWithAuthor,
+				entityType: args.entityType,
+				entityId: args.entityId,
+				actionUrl,
+				isRead: false,
+				sentVia: "in_app",
+				sentAt: Date.now(),
+			});
+			await enqueuePush(ctx, {
+				notificationType,
+				taggedUserId: uid,
+				title,
+				body: args.message,
+				url: actionUrl,
+				notificationId,
+				orgId: clerkOrgId,
+			});
+		}
+
+		return teamMessageId;
 	},
 });

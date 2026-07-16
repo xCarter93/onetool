@@ -23,10 +23,12 @@ import {
 	scheduledTriggerValidator,
 	statusChangedTriggerValidator,
 	triggerRecordObjectType,
+	type ActionTarget,
 	type AutomationObjectType,
 	type AutomationTrigger,
 	type ConditionGroup,
 	type FormulaResource,
+	type ValueRef,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
 import {
@@ -37,11 +39,13 @@ import {
 import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
+	USER_REF_RECIPIENT_FIELDS,
 	getFieldDefinition,
 	getRequiredCreateFields,
 	getStatusOptions,
 	isCreatableObjectType,
 	operatorsForField,
+	type FieldType,
 } from "./lib/fieldRegistry";
 import { computeNextRunAt, validateSchedule } from "./lib/schedule";
 
@@ -388,6 +392,95 @@ function validateConditionGroups(
 	}
 }
 
+/**
+ * Resolves a `self`/`{related}` action target to a concrete object type,
+ * validating relation reachability from the scope type. Shared by
+ * send_notification's recordField recipient and send_team_message's target.
+ */
+function resolveActionTargetType(
+	nodeId: string,
+	target: ActionTarget,
+	scopeObjectType: AutomationObjectType
+): AutomationObjectType {
+	if (typeof target !== "object") return scopeObjectType;
+	if (!RELATED_OBJECTS[scopeObjectType].includes(target.related)) {
+		throw new Error(
+			`Node ${nodeId}: ${scopeObjectType} records have no related ${target.related}`
+		);
+	}
+	return target.related;
+}
+
+/**
+ * A send_notification `recordField` recipient targets a user-reference field off
+ * the scope record (self) or a related record. Mirrors validateUpdateFieldAction:
+ * a structural check holds even when the scope type is unresolvable; the
+ * relation + field-validity checks run once the target object type is known.
+ */
+function validateRecordFieldRecipient(
+	nodeId: string,
+	recordField: { target: ActionTarget; field: string },
+	scopeObjectType: AutomationObjectType | undefined
+): void {
+	const { target, field } = recordField;
+
+	// Best-effort structural check (scope-independent): the field must be a
+	// user-reference field known to at least one object type.
+	const knownKeys = new Set(
+		Object.values(USER_REF_RECIPIENT_FIELDS).flatMap((fields) =>
+			fields.map((f) => f.key)
+		)
+	);
+	if (!knownKeys.has(field)) {
+		throw new Error(
+			`Node ${nodeId}: "${field}" is not a valid user field for a notification recipient`
+		);
+	}
+
+	if (!scopeObjectType) return;
+
+	const targetObjectType = resolveActionTargetType(nodeId, target, scopeObjectType);
+
+	const validKeys = USER_REF_RECIPIENT_FIELDS[targetObjectType].map((f) => f.key);
+	if (!validKeys.includes(field)) {
+		throw new Error(
+			`Node ${nodeId}: ${targetObjectType} records have no "${field}" user field to notify`
+		);
+	}
+}
+
+/**
+ * A `var` value's fallback is a raw JS literal used when the path resolves to
+ * nothing — validated against the destination field's type so a mismatched
+ * fallback (e.g. a string for a currency field) fails at save time.
+ */
+function validateFallbackType(
+	nodeId: string,
+	field: string,
+	value: ValueRef,
+	fieldType: FieldType
+): void {
+	if (value.kind !== "var" || value.fallback === undefined) return;
+	const fallback = value.fallback;
+	const label =
+		fieldType === "boolean"
+			? "a boolean"
+			: fieldType === "number" || fieldType === "currency"
+				? "a number"
+				: fieldType === "date"
+					? "a date"
+					: "text";
+	const ok =
+		fieldType === "boolean"
+			? typeof fallback === "boolean"
+			: fieldType === "number" || fieldType === "currency" || fieldType === "date"
+				? typeof fallback === "number"
+				: typeof fallback === "string";
+	if (!ok) {
+		throw new Error(`Node ${nodeId}: fallback for "${field}" must be ${label}`);
+	}
+}
+
 function validateUpdateFieldAction(
 	nodeId: string,
 	action: Extract<
@@ -453,6 +546,7 @@ function validateUpdateFieldAction(
 				`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${field}"`
 			);
 		}
+		validateFallbackType(nodeId, field, value, def.type);
 	}
 }
 
@@ -512,6 +606,7 @@ function validateCreateRecordAction(
 				`Node ${nodeId}: "${String(value.value)}" is not a valid value for "${field}"`
 			);
 		}
+		validateFallbackType(nodeId, field, value, def.type);
 	}
 
 	// Required fields must be supplied — either as a row or via the scope link.
@@ -689,23 +784,69 @@ function validateWorkflowDefinition(
 						);
 					}
 				}
-				if (
-					config.action.type === "send_notification" &&
-					!config.action.message.trim()
-				) {
-					throw new Error(`Node ${node.id}: notification message is required`);
+				if (config.action.type === "send_notification") {
+					if (!config.action.message.trim()) {
+						throw new Error(
+							`Node ${node.id}: notification message is required`
+						);
+					}
+					if (
+						config.action.channels !== undefined &&
+						config.action.channels.length === 0
+					) {
+						throw new Error(
+							`Node ${node.id}: pick at least one delivery channel`
+						);
+					}
+					const recipient = config.action.recipient;
+					if (typeof recipient === "object" && "recordField" in recipient) {
+						const scopeType = bodyScopeType.has(node.id)
+							? bodyScopeType.get(node.id)
+							: objectType;
+						validateRecordFieldRecipient(
+							node.id,
+							recipient.recordField,
+							scopeType
+						);
+					}
 				}
 				if (config.action.type === "send_team_message") {
 					if (!config.action.message.trim()) {
 						throw new Error(`Node ${node.id}: message is required`);
 					}
+					const mention = config.action.mention;
+					if (mention?.kind === "user" && !mention.userId) {
+						throw new Error(`Node ${node.id}: choose a member to tag`);
+					}
+					// recipients retired for team messages — no recipient requirement.
+
+					const scopeType = bodyScopeType.has(node.id)
+						? bodyScopeType.get(node.id)
+						: objectType;
+					const target = config.action.target ?? "self";
+					const targetType = scopeType
+						? resolveActionTargetType(node.id, target, scopeType)
+						: undefined;
+
+					// No-op guard: a feedless target (task/invoice) with no mention and
+					// no legacy recipients has nowhere for the message to go.
 					if (
-						typeof config.action.recipients === "object" &&
-						config.action.recipients.userIds.length === 0
+						targetType &&
+						targetType !== "client" &&
+						targetType !== "project" &&
+						targetType !== "quote"
 					) {
-						throw new Error(
-							`Node ${node.id}: pick at least one recipient`
-						);
+						const noMention = !mention || mention.kind === "none";
+						const recipients = config.action.recipients;
+						const noRecipients =
+							!recipients ||
+							(typeof recipients === "object" &&
+								recipients.userIds.length === 0);
+						if (noMention && noRecipients) {
+							throw new Error(
+								`Node ${node.id}: nothing to send — this target has no Team Communication feed and nobody is tagged`
+							);
+						}
 					}
 				}
 				break;

@@ -129,11 +129,25 @@ function buildAction(actionType?: string): AutomationAction {
 		case "create_task":
 			return { type: "create_task", title: { kind: "static", value: "" } };
 		case "send_notification":
-			return { type: "send_notification", recipient: "org_admins", message: "" };
+			// New notifications default to in-app + push (product intent: a
+			// notification should actually alert). Legacy configs leave `channels`
+			// undefined = in-app-only until the user toggles push.
+			return {
+				type: "send_notification",
+				recipient: "org_admins",
+				message: "",
+				channels: ["in_app", "push"],
+			};
 		case "send_team_message":
 			return {
+				// Record-linked model (B6): posts to the in-scope record's Team
+				// Communication feed with no @mention by default. `recipients` is a
+				// required back-compat field on the validator — seed it empty (no
+				// broadcast) rather than the retired "all_members" audience.
 				type: "send_team_message",
-				recipients: "all_members",
+				target: "self",
+				mention: { kind: "none" },
+				recipients: { userIds: [] },
 				title: "",
 				message: "",
 			};

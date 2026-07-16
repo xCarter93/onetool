@@ -275,7 +275,13 @@ export function AutomationSidebar({
 	}
 
 	return (
-		<div className="w-[380px] h-full flex flex-col bg-background border-l border-border">
+		<div
+			// Insets via inline style (not Tailwind arbitrary classes) so top+bottom
+			// reliably bound the height — a bounded root is what lets the content
+			// below scroll. bottom clears the assistant notch via the shared var.
+			style={{ top: "0.75rem", right: "0.75rem", bottom: "var(--assistant-notch-clearance)" }}
+			className="absolute z-10 flex w-[380px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
+		>
 			{/* Header -- only shown for node-config modes; pickers have their own headers */}
 			{mode.mode === "node-config" && (
 				<div className="flex items-center justify-between px-6 py-5 border-b border-border">
@@ -291,8 +297,9 @@ export function AutomationSidebar({
 				</div>
 			)}
 
-			{/* Content */}
-			<div ref={contentRef} className="flex-1 overflow-auto px-6 py-5 motion-safe:transition-opacity motion-safe:duration-150">
+			{/* Content — min-h-0 lets this flex child shrink below its content so
+			    overflow-auto actually scrolls inside the bounded floating panel. */}
+			<div ref={contentRef} className="flex-1 min-h-0 overflow-auto px-6 py-5 motion-safe:transition-opacity motion-safe:duration-150">
 				{renderContent()}
 			</div>
 		</div>

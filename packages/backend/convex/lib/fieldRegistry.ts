@@ -49,11 +49,13 @@ export interface FieldDefinition {
 	 */
 	requiredOnCreate?: boolean;
 	/**
-	 * For a creatable `id` field, the entity it points at. Used to org-validate
-	 * a supplied FK before insert (the executor runs unscoped, so an arbitrary
-	 * id string must be checked against the org). "user" resolves via membership.
+	 * For an `id` field, the entity it points at. On creatable FKs it drives
+	 * org-validation before insert (the executor runs unscoped, so an arbitrary
+	 * id string must be checked against the org; "user" resolves via membership).
+	 * On read-only FKs it lets the builder render a record picker instead of a
+	 * raw-id text box in condition/filter rules.
 	 */
-	refType?: "client" | "project" | "user";
+	refType?: "client" | "project" | "user" | "quote";
 }
 
 const opt = (value: string, label: string) => ({ value, label });
@@ -268,6 +270,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "clientId",
 			label: "Client",
 			type: "id",
+			refType: "client",
 			writable: false,
 			writeExclusionReason: "Relationship set when the quote is created",
 			filterable: true,
@@ -276,6 +279,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "projectId",
 			label: "Project",
 			type: "id",
+			refType: "project",
 			writable: false,
 			writeExclusionReason: "Relationship set when the quote is created",
 			filterable: true,
@@ -367,6 +371,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "clientId",
 			label: "Client",
 			type: "id",
+			refType: "client",
 			writable: false,
 			writeExclusionReason: "Relationship set when the invoice is created",
 			filterable: true,
@@ -375,6 +380,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "projectId",
 			label: "Project",
 			type: "id",
+			refType: "project",
 			writable: false,
 			writeExclusionReason: "Relationship set when the invoice is created",
 			filterable: true,
@@ -383,6 +389,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			key: "quoteId",
 			label: "Quote",
 			type: "id",
+			refType: "quote",
 			writable: false,
 			writeExclusionReason: "Set when the invoice is created from a quote",
 			filterable: true,
@@ -579,6 +586,31 @@ export const RELATED_OBJECTS: Record<
 	quote: ["client", "project"],
 	invoice: ["client", "project", "quote"],
 	task: ["project", "client"],
+};
+
+/**
+ * User-reference fields selectable as a `recordField` notification recipient,
+ * per object type. `isArray` distinguishes single-user fields from arrays
+ * (project team). Keys mirror schema.ts exactly. Shared with the web builder.
+ */
+export const USER_REF_RECIPIENT_FIELDS: Record<
+	AutomationObjectType,
+	Array<{ key: string; label: string; isArray: boolean }>
+> = {
+	project: [
+		{ key: "assignedUserIds", label: "Assigned team", isArray: true },
+		{ key: "createdByUserId", label: "Creator", isArray: false },
+	],
+	task: [
+		{ key: "assigneeUserId", label: "Assignee", isArray: false },
+		{ key: "createdByUserId", label: "Creator", isArray: false },
+	],
+	quote: [
+		{ key: "countersignerId", label: "Countersigner", isArray: false },
+		{ key: "createdByUserId", label: "Creator", isArray: false },
+	],
+	client: [{ key: "createdByUserId", label: "Creator", isArray: false }],
+	invoice: [{ key: "createdByUserId", label: "Creator", isArray: false }],
 };
 
 /** FK field on the source record used to resolve each relation. */

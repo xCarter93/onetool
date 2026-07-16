@@ -552,6 +552,7 @@ export const create = userMutation({
 		const projectId = await createProjectWithOrg(ctx, {
 			...args,
 			assignedUserIds,
+			createdByUserId: ctx.user._id,
 		});
 
 		// Get the created project for activity logging and aggregates
@@ -680,6 +681,7 @@ export const bulkCreate = userMutation({
 					...projectCreateData,
 					clientId,
 					assignedUserIds,
+					createdByUserId: ctx.user._id,
 				});
 
 				// Get the created project for activity logging and aggregate updates

@@ -372,33 +372,27 @@ export function MentionInput({
 					mimeType: a.file.type,
 				}));
 
-			// Process mentioned users if there are any
-			if (mentionedUsers.length === 0) {
-				// No mentions - show helpful message
-				toast.error(
-					"No recipients",
-					"Please @mention a team member to notify them about this message"
-				);
-				return;
-			}
-
-			// Process each mentioned user
+			// Resolve every mentioned user to a Convex user id (syncing from Clerk
+			// for anyone not yet in Convex). No mentions is allowed — that posts to
+			// the feed without notifying anyone. But a mention that WAS typed and
+			// can't be resolved must abort the send, not post silently untagged.
+			const mentionedUserIds: Id<"users">[] = [];
 			for (const mentionedUser of mentionedUsers) {
-				// Find the user in our organization list
 				const user = organizationUsers.find(
 					(u) =>
 						u.convexUserId === mentionedUser.id || u.id === mentionedUser.id
 				);
 
 				if (!user) {
-					continue; // Skip if user not found
+					toast.error(
+						"Error",
+						`Couldn't find @${mentionedUser.name} — remove the mention and try again`
+					);
+					return;
 				}
 
-				// If user doesn't have a Convex ID yet, sync them from Clerk first
 				let convexUserId = user.convexUserId;
-
 				if (!convexUserId) {
-					// Sync the user from Clerk to Convex
 					convexUserId = await syncUserFromClerk({
 						clerkUserId: user.id,
 						name: user.name,
@@ -406,17 +400,19 @@ export function MentionInput({
 						imageUrl: user.image,
 					});
 				}
-
-				// Create the mention with the Convex user ID and attachments
-				await createMention({
-					taggedUserId: convexUserId,
-					message: message, // Message is stored with @[username] format
-					entityType,
-					entityId,
-					entityName,
-					attachments: attachmentData.length > 0 ? attachmentData : undefined,
-				});
+				mentionedUserIds.push(convexUserId);
 			}
+
+			// One call = one feed post. Bell alerts + push go only to tagged users.
+			await createMention({
+				mentionedUserIds:
+					mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
+				message, // stored with @[username] markup
+				entityType,
+				entityId,
+				entityName,
+				attachments: attachmentData.length > 0 ? attachmentData : undefined,
+			});
 
 			// Clear form
 			if (contentEditableRef.current) {

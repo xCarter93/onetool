@@ -448,7 +448,10 @@ export const create = userMutation({
 			throw new Error("Due date must be after issued date");
 		}
 
-		const invoiceId = await createInvoiceWithOrg(ctx, args);
+		const invoiceId = await createInvoiceWithOrg(ctx, {
+			...args,
+			createdByUserId: ctx.user._id,
+		});
 
 		// Get the created invoice for activity logging and aggregates
 		const invoice = await ctx.db.get(invoiceId);
@@ -965,6 +968,7 @@ export const createFromQuote = userMutation({
 		// Create invoice from quote
 		const invoiceId = await ctx.db.insert("invoices", {
 			orgId: ctx.orgId,
+			createdByUserId: ctx.user._id,
 			clientId: quote.clientId,
 			projectId: quote.projectId,
 			quoteId: args.quoteId,

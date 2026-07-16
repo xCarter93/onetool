@@ -294,22 +294,22 @@ export function MentionInput({
 					mimeType: a.mimeType,
 				}));
 
-			if (mentionedUsers.length === 0) {
-				Alert.alert(
-					"No recipients",
-					"Please @mention a team member to notify them about this message"
-				);
-				return;
-			}
-
-			// Process each mentioned user
+			// Resolve every mentioned user to a Convex user id (syncing from Clerk
+			// for anyone not yet in Convex). No mentions is allowed — that posts to
+			// the feed without notifying anyone.
+			const mentionedUserIds: Id<"users">[] = [];
 			for (const mentionedUser of mentionedUsers) {
 				const user = organizationUsers.find(
 					(u) =>
 						u.convexUserId === mentionedUser.id || u.id === mentionedUser.id
 				);
 
-				if (!user) continue;
+				if (!user) {
+					// Abort rather than silently posting without tagging them.
+					throw new Error(
+						`Could not find "${mentionedUser.name}" to tag. Remove the mention and try again.`
+					);
+				}
 
 				let convexUserId = user.convexUserId;
 
@@ -322,15 +322,19 @@ export function MentionInput({
 					});
 				}
 
-				await createMention({
-					taggedUserId: convexUserId,
-					message: message,
-					entityType,
-					entityId,
-					entityName,
-					attachments: attachmentData.length > 0 ? attachmentData : undefined,
-				});
+				mentionedUserIds.push(convexUserId);
 			}
+
+			// One call = one feed post. Bell alerts + push go only to tagged users.
+			await createMention({
+				mentionedUserIds:
+					mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
+				message,
+				entityType,
+				entityId,
+				entityName,
+				attachments: attachmentData.length > 0 ? attachmentData : undefined,
+			});
 
 			// Clear form
 			setMessage("");
