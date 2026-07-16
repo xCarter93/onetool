@@ -11,9 +11,19 @@
  * summation, tax, or discount math inline.
  */
 
-/** Round a dollar amount to the nearest cent. */
+/**
+ * Dollars → integer cents with decimal-safe half-cent handling. `x * 100`
+ * carries binary representation error (1.005 * 100 === 100.49999999999999),
+ * which would make half-cent values round down or up depending on the value;
+ * fixing the representation first makes them all round half-up.
+ */
+function toCents(dollars: number): number {
+	return Math.round(Number((dollars * 100).toFixed(4)));
+}
+
+/** Round a dollar amount to the nearest cent (half-cents round up). */
 export function roundCents(dollars: number): number {
-	return Math.round(dollars * 100) / 100;
+	return toCents(dollars) / 100;
 }
 
 /**
@@ -21,13 +31,13 @@ export function roundCents(dollars: number): number {
  * line-item lists (0.1 + 0.2 style errors never accumulate).
  */
 export function sumMoney(values: number[]): number {
-	const cents = values.reduce((acc, value) => acc + Math.round(value * 100), 0);
+	const cents = values.reduce((acc, value) => acc + toCents(value), 0);
 	return cents / 100;
 }
 
 /** Dollars → integer cents. The ONLY sanctioned Stripe-bound conversion. */
 export function dollarsToCents(dollars: number): number {
-	return Math.round(dollars * 100);
+	return toCents(dollars);
 }
 
 /** Integer cents (from Stripe) → dollars. */
@@ -58,7 +68,7 @@ export function applyDiscount(
 	isPercentage: boolean
 ): number {
 	if (isPercentage) {
-		return roundCents(amount * (1 - discount / 100));
+		return Math.max(0, roundCents(amount * (1 - discount / 100)));
 	}
 	return Math.max(0, roundCents(amount - discount));
 }
@@ -127,14 +137,10 @@ export function computeInvoiceTotals(input: InvoiceTotalsInput): {
 	total: number;
 } {
 	const subtotal = sumMoney(input.lineTotals);
-	let total = subtotal;
-	if (input.discountAmount) {
-		total -= input.discountAmount;
-	}
-	if (input.taxAmount) {
-		total += input.taxAmount;
-	}
-	return { subtotal, total: roundCents(total) };
+	// Floor at 0 like applyDiscount — a stale dollar discount larger than the
+	// remaining line items must not persist (and bill) a negative total.
+	const discounted = Math.max(0, subtotal - (input.discountAmount ?? 0));
+	return { subtotal, total: roundCents(discounted + (input.taxAmount ?? 0)) };
 }
 
 /** Format a dollar amount for backend-generated text (notifications, errors). */

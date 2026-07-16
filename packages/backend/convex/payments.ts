@@ -274,9 +274,11 @@ export const getByPublicToken = query({
 
 		const sortedPayments = allPayments.sort((a, b) => a.sortOrder - b.sortOrder);
 		const paymentIndex = sortedPayments.findIndex((p) => p._id === payment._id);
-		const totalPaid = sortedPayments
-			.filter((p) => p.status === "paid")
-			.reduce((sum, p) => sum + p.paymentAmount, 0);
+		const totalPaid = sumMoney(
+			sortedPayments
+				.filter((p) => p.status === "paid")
+				.map((p) => p.paymentAmount)
+		);
 
 		return {
 			payment: {
@@ -314,7 +316,7 @@ export const getByPublicToken = query({
 				paymentNumber: paymentIndex + 1,
 				totalPayments: sortedPayments.length,
 				totalPaid,
-				totalRemaining: invoice.total - totalPaid,
+				totalRemaining: roundCents(invoice.total - totalPaid),
 			},
 		};
 	},
@@ -360,17 +362,14 @@ export const getInvoiceSummary = optionalUserQuery({
 				p.status === "pending" || p.status === "sent" || p.status === "overdue"
 		);
 
-		const paidAmount = paidPayments.reduce(
-			(sum, p) => sum + p.paymentAmount,
-			0
-		);
+		const paidAmount = sumMoney(paidPayments.map((p) => p.paymentAmount));
 
 		return {
 			totalPayments: payments.length,
 			paidCount: paidPayments.length,
 			pendingCount: pendingPayments.length,
 			paidAmount,
-			remainingAmount: (invoice?.total ?? 0) - paidAmount,
+			remainingAmount: roundCents((invoice?.total ?? 0) - paidAmount),
 			invoiceTotal: invoice?.total ?? 0,
 		};
 	},

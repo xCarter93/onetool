@@ -30,8 +30,11 @@ describe("money", () => {
 		expect(dollarsToCents(0.1 + 0.2)).toBe(30);
 	});
 
-	it("rounds to cents", () => {
+	it("rounds to cents, half-cents up regardless of binary representation", () => {
 		expect(roundCents(0.1 + 0.2)).toBe(0.3);
 		expect(roundCents(10.005)).toBe(10.01);
+		// 1.005 * 100 === 100.49999999999999 — naive rounding gives 1.00
+		expect(roundCents(1.005)).toBe(1.01);
+		expect(dollarsToCents(1.005)).toBe(101);
 	});
 });

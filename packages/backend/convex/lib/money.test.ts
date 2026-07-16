@@ -29,6 +29,12 @@ describe("money", () => {
 			expect(roundCents(10.004)).toBe(10.0);
 			expect(roundCents(0.1 + 0.2)).toBe(0.3);
 		});
+
+		it("rounds half-cents up regardless of binary representation", () => {
+			// 1.005 * 100 === 100.49999999999999 — naive rounding gives 1.00
+			expect(roundCents(1.005)).toBe(1.01);
+			expect(roundCents(0.075)).toBe(0.08);
+		});
 	});
 
 	describe("sumMoney", () => {
@@ -42,12 +48,17 @@ describe("money", () => {
 			expect(sumMoney([])).toBe(0);
 			expect(sumMoney(Array(1000).fill(19.99))).toBe(19990);
 		});
+
+		it("rounds half-cent values up per element", () => {
+			expect(sumMoney([1.005])).toBe(1.01);
+		});
 	});
 
 	describe("Stripe boundary", () => {
 		it("converts dollars to integer cents and back", () => {
 			expect(dollarsToCents(19.99)).toBe(1999);
 			expect(dollarsToCents(0.1 + 0.2)).toBe(30);
+			expect(dollarsToCents(1.005)).toBe(101);
 			expect(centsToDollars(1999)).toBe(19.99);
 		});
 	});
@@ -76,6 +87,10 @@ describe("money", () => {
 		it("applies fixed discounts, floored at zero", () => {
 			expect(applyDiscount(200, 50, false)).toBe(150);
 			expect(applyDiscount(30, 50, false)).toBe(0);
+		});
+
+		it("floors percentage discounts over 100% at zero", () => {
+			expect(applyDiscount(200, 150, true)).toBe(0);
 		});
 	});
 
@@ -155,6 +170,16 @@ describe("money", () => {
 				lineTotals: Array(100).fill(0.1),
 			});
 			expect(totals).toEqual({ subtotal: 10, total: 10 });
+		});
+
+		it("floors an over-large stale discount at zero before adding tax", () => {
+			// e.g. a $200 fixed discount left behind after line items shrank to $50
+			const totals = computeInvoiceTotals({
+				lineTotals: [50],
+				discountAmount: 200,
+				taxAmount: 10,
+			});
+			expect(totals).toEqual({ subtotal: 50, total: 10 });
 		});
 	});
 });

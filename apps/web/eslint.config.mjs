@@ -78,7 +78,7 @@ const eslintConfig = [
 				"error",
 				{
 					selector:
-						"FunctionDeclaration[id.name=/^(formatCurrency|formatMoney)$/]",
+						"FunctionDeclaration[id.name=/^(formatCurrency|formatMoney|currencyFormatter)$/]",
 					message:
 						"Do not define a local currency formatter. Import { formatCurrency } from '@/lib/money' (portal components: { formatMoney } from '@/lib/portal/format').",
 				},

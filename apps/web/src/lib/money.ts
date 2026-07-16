@@ -47,9 +47,19 @@ export function formatCurrency(
 	return centsFormatter.format(dollars);
 }
 
-/** Round a dollar amount to the nearest cent. */
+/**
+ * Dollars → integer cents with decimal-safe half-cent handling. `x * 100`
+ * carries binary representation error (1.005 * 100 === 100.49999999999999),
+ * which would make half-cent values round down or up depending on the value;
+ * fixing the representation first makes them all round half-up.
+ */
+function toCents(dollars: number): number {
+	return Math.round(Number((dollars * 100).toFixed(4)));
+}
+
+/** Round a dollar amount to the nearest cent (half-cents round up). */
 export function roundCents(dollars: number): number {
-	return Math.round(dollars * 100) / 100;
+	return toCents(dollars) / 100;
 }
 
 /**
@@ -64,5 +74,5 @@ export function parseCurrencyInput(raw: string): number {
 
 /** Dollars → integer cents. The ONLY sanctioned Stripe-bound conversion. */
 export function dollarsToCents(dollars: number): number {
-	return Math.round(dollars * 100);
+	return toCents(dollars);
 }
