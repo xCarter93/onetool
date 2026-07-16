@@ -2,7 +2,7 @@
   "expo": {
     "name": "OneTool",
     "slug": "onetool-mg3hyu",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "onetool",
     "orientation": "default",
     "icon": "./assets/icon.png",
