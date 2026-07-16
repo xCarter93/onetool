@@ -21,6 +21,7 @@ import {
 	usesLegacyDispatch,
 } from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
+import { formatCurrency } from "@/lib/money";
 
 export type EntityType =
 	| "clients"
@@ -257,12 +258,7 @@ export function formatReportValue(
 	if (!isCurrency) {
 		return value.toLocaleString("en-US");
 	}
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		notation: options.compact ? "compact" : "standard",
-		maximumFractionDigits: options.compact ? 1 : 0,
-	}).format(value);
+	return formatCurrency(value, options.compact ? { compact: true } : { whole: true });
 }
 
 // Canonical defaults live in the backend field registry (shared with the

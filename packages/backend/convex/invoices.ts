@@ -22,6 +22,8 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
+import { roundCents, sumMoney } from "./lib/money";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -82,44 +84,6 @@ async function createInvoiceWithOrg(
 	};
 
 	return await ctx.db.insert("invoices", invoiceData);
-}
-
-/**
- * Calculate invoice totals based on line items
- * This ensures totals are always accurate by calculating from line items (source of truth)
- */
-async function calculateInvoiceTotals(
-	ctx: QueryCtx | MutationCtx,
-	invoiceId: Id<"invoices">
-): Promise<{ subtotal: number; total: number }> {
-	// Get all line items for the invoice
-	const lineItems = await ctx.db
-		.query("invoiceLineItems")
-		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
-		.collect();
-
-	// Calculate subtotal from line items
-	const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-
-	// Get invoice to check for discount and tax
-	const invoice = await ctx.db.get(invoiceId);
-	if (!invoice) {
-		throw new Error("Invoice not found");
-	}
-
-	// Calculate total with discount and tax
-	let total = subtotal;
-	if (invoice.discountAmount) {
-		total -= invoice.discountAmount;
-	}
-	if (invoice.taxAmount) {
-		total += invoice.taxAmount;
-	}
-
-	return {
-		subtotal,
-		total,
-	};
 }
 
 // Define specific types for invoice operations
@@ -853,14 +817,8 @@ export const recalculateTotals = userMutation({
 			)
 		);
 
-		// Calculate totals from line items
-		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
-
-		// Update the invoice with calculated totals
-		await ctx.db.patch(args.id, {
-			subtotal,
-			total,
-		});
+		// Recompute + persist totals and keep aggregates in step
+		await syncInvoiceTotals(ctx, args.id);
 	},
 });
 
@@ -953,15 +911,14 @@ export const createFromQuote = userMutation({
 		// Gate on discountEnabled: turning a discount off sends discountAmount:
 		// undefined, which `filterUndefined` drops from the patch, so the old amount
 		// stays on the doc. Quote totals ignore it; billing it here would under-charge.
-		const lineItemSubtotal = quoteLineItems.reduce(
-			(sum, item) => sum + item.amount,
-			0
+		const lineItemSubtotal = sumMoney(
+			quoteLineItems.map((item) => item.amount)
 		);
 		const discountAmount =
 			quote.discountEnabled && quote.discountAmount
 				? quote.discountType === "percentage"
 					? // Round to cents — payments must sum exactly to the invoice total.
-						Math.round(lineItemSubtotal * quote.discountAmount) / 100
+						roundCents(lineItemSubtotal * (quote.discountAmount / 100))
 					: quote.discountAmount
 				: undefined;
 

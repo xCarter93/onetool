@@ -77,6 +77,7 @@ import { QuoteDetailDrawer } from "./components/quote-detail-drawer";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/money";
 
 type QuoteWithClient = Doc<"quotes"> & {
 	clientName: string;
@@ -139,15 +140,6 @@ const formatStatus = (status: Doc<"quotes">["status"]) => {
 		default:
 			return status;
 	}
-};
-
-const formatCurrency = (amount: number) => {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
 };
 
 const formatQuoteDate = (timestamp?: number) => {

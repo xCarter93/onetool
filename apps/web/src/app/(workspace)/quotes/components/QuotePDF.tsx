@@ -8,6 +8,7 @@ import {
 	Image,
 } from "@react-pdf/renderer";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { formatCurrency } from "@/lib/money";
 
 type QuoteLineItem = {
 	_id: Id<"quoteLineItems">;
@@ -300,11 +301,6 @@ const styles = StyleSheet.create({
 		color: "#FFFFFF",
 	},
 });
-
-const formatCurrency = (amount: number) =>
-	new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
-		amount
-	);
 
 const formatDate = (timestamp: number) =>
 	new Date(timestamp).toLocaleDateString("en-US", {

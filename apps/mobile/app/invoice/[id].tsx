@@ -117,19 +117,22 @@ export function InvoiceDetailBody({
 	// Discount/Tax rows are conditional on the raw dollar figures (invoices store
 	// no taxRate/enabled flags), so the Tax label has no percentage.
 	const totalsRows: { label: string; value: string; negative?: boolean }[] = [
-		{ label: "Subtotal", value: formatCurrency(invoice.subtotal) },
+		{
+			label: "Subtotal",
+			value: formatCurrency(invoice.subtotal, { exact: true }),
+		},
 	];
 	if (invoice.discountAmount) {
 		totalsRows.push({
 			label: "Discount",
-			value: formatCurrency(invoice.discountAmount ?? 0),
+			value: formatCurrency(invoice.discountAmount ?? 0, { exact: true }),
 			negative: true,
 		});
 	}
 	if (invoice.taxAmount) {
 		totalsRows.push({
 			label: "Tax",
-			value: formatCurrency(invoice.taxAmount ?? 0),
+			value: formatCurrency(invoice.taxAmount ?? 0, { exact: true }),
 		});
 	}
 
@@ -225,11 +228,12 @@ export function InvoiceDetailBody({
 											{item.description}
 										</Text>
 										<Text style={[styles.itemSub, { color: t.sub }]}>
-											{item.quantity} × {formatCurrency(item.unitPrice)}
+											{item.quantity} ×{" "}
+											{formatCurrency(item.unitPrice, { exact: true })}
 										</Text>
 									</View>
 									<Text style={[styles.itemAmount, { color: t.ink }]}>
-										{formatCurrency(item.total)}
+										{formatCurrency(item.total, { exact: true })}
 									</Text>
 								</View>
 							))
@@ -242,7 +246,10 @@ export function InvoiceDetailBody({
 					<Card>
 						<TotalsBlock
 							rows={totalsRows}
-							total={{ label: "Total", value: formatCurrency(invoice.total) }}
+							total={{
+								label: "Total",
+								value: formatCurrency(invoice.total, { exact: true }),
+							}}
 						/>
 					</Card>
 				</View>
@@ -273,22 +280,22 @@ export function InvoiceDetailBody({
 							<View style={[styles.barSkeleton, { backgroundColor: t.muted }]} />
 						) : hasRows && summary ? (
 							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								Paid {formatCurrency(summary.paidAmount)} of{" "}
-								{formatCurrency(summaryTotal)}
+								Paid {formatCurrency(summary.paidAmount, { exact: true })} of{" "}
+								{formatCurrency(summaryTotal, { exact: true })}
 								{summary.remainingAmount > 0
-									? ` · ${formatCurrency(summary.remainingAmount)} outstanding`
+									? ` · ${formatCurrency(summary.remainingAmount, { exact: true })} outstanding`
 									: ""}
 							</Text>
 						) : isPaid ? (
 							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								Paid in full {formatCurrency(summaryTotal)}
+								Paid in full {formatCurrency(summaryTotal, { exact: true })}
 								{invoice.paidAt
 									? ` · ${formatDocumentDate(invoice.paidAt)}`
 									: ""}
 							</Text>
 						) : (
 							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								{formatCurrency(summaryTotal)} outstanding
+								{formatCurrency(summaryTotal, { exact: true })} outstanding
 							</Text>
 						)}
 
@@ -319,7 +326,9 @@ export function InvoiceDetailBody({
 										</View>
 										<View style={styles.payRight}>
 											<Text style={[styles.payAmount, { color: t.ink }]}>
-												{formatCurrency(payment.paymentAmount)}
+												{formatCurrency(payment.paymentAmount, {
+													exact: true,
+												})}
 											</Text>
 											<Badge status={payment.status} />
 										</View>

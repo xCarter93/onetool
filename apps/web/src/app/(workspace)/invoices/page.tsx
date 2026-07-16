@@ -75,6 +75,7 @@ import { InvoiceDetailDrawer } from "./components/invoice-detail-drawer";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/money";
 
 type InvoiceStatus = Doc<"invoices">["status"];
 
@@ -152,15 +153,6 @@ const formatStatus = (status: InvoiceStatus) => {
 		default:
 			return status;
 	}
-};
-
-const formatCurrency = (amount: number) => {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
 };
 
 const formatInvoiceDate = (timestamp?: number) => {

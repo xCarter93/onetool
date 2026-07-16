@@ -67,6 +67,42 @@ const eslintConfig = [
 			],
 		},
 	},
+	// MONEY: all amounts are dollars; formatting goes through src/lib/money.ts
+	// (portal components via lib/portal/format.ts). Local currency formatters are
+	// how past 100x cents-vs-dollars display bugs crept in — this blocks new ones.
+	{
+		files: ["src/**/*.{ts,tsx}"],
+		ignores: ["src/lib/money.ts", "src/lib/portal/format.ts"],
+		rules: {
+			"no-restricted-syntax": [
+				"error",
+				{
+					selector:
+						"FunctionDeclaration[id.name=/^(formatCurrency|formatMoney)$/]",
+					message:
+						"Do not define a local currency formatter. Import { formatCurrency } from '@/lib/money' (portal components: { formatMoney } from '@/lib/portal/format').",
+				},
+				{
+					selector:
+						"VariableDeclarator[id.name=/^(formatCurrency|formatMoney|currencyFormatter)$/]",
+					message:
+						"Do not define a local currency formatter. Import { formatCurrency } from '@/lib/money' (portal components: { formatMoney } from '@/lib/portal/format').",
+				},
+				{
+					selector:
+						"NewExpression[callee.object.name='Intl'][callee.property.name='NumberFormat'] Property[key.name='style'][value.value='currency']",
+					message:
+						"Currency Intl.NumberFormat instances live only in src/lib/money.ts. Import { formatCurrency } from '@/lib/money'.",
+				},
+				{
+					selector:
+						"CallExpression[callee.property.name='toLocaleString'] Property[key.name='style'][value.value='currency']",
+					message:
+						"Currency toLocaleString is banned. Import { formatCurrency } from '@/lib/money'.",
+				},
+			],
+		},
+	},
 	// PORTAL-05: portal route group, lib/portal/**, and ConvexPortalProvider must
 	// run with no Clerk dependency. This rule mechanically blocks any Clerk import
 	// from leaking into the portal bundle (CI fails red on violation).

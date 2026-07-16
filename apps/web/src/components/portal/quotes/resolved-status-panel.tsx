@@ -12,6 +12,8 @@
 
 import { Check, X } from "lucide-react";
 
+import { formatMoney } from "@/lib/portal/format";
+
 export interface ResolvedStatusPanelProps {
 	action: "approved" | "declined";
 	resolvedAt: number;
@@ -24,13 +26,6 @@ function formatDate(ms: number): string {
 		year: "numeric",
 		month: "short",
 		day: "numeric",
-	});
-}
-
-function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
 	});
 }
 

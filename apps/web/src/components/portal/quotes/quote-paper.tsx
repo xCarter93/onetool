@@ -7,6 +7,8 @@
 
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 
+import { formatMoney } from "@/lib/portal/format";
+
 export interface QuotePaperLineItem {
 	description: string;
 	quantity: number;
@@ -28,13 +30,6 @@ export interface QuotePaperProps {
 	>;
 	lineItems: QuotePaperLineItem[];
 	businessName: string;
-}
-
-function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
 }
 
 export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) {

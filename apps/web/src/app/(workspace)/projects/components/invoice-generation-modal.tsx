@@ -13,21 +13,13 @@ import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Loader2, Receipt } from "lucide-react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ApprovedQuote } from "@/types/quote";
+import { formatCurrency } from "@/lib/money";
 
 interface InvoiceGenerationModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	approvedQuotes: ApprovedQuote[];
 }
-
-const formatCurrency = (amount: number) => {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
-};
 
 const formatDate = (timestamp: number) => {
 	return new Date(timestamp).toLocaleDateString("en-US", {

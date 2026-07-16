@@ -14,6 +14,7 @@ import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, useTokens, STATUS } from "@/lib/theme";
+import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
@@ -40,14 +41,6 @@ const STATUS_OPTIONS = [
 	// client. The list still hides archived from its default view (Plan 03).
 	{ value: "archived", label: "Archived" },
 ];
-
-const formatCurrency = (amount: number) =>
-	new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
 
 // Body extracted (P26 Option B) so the iPad pane can render this without the
 // route shell. headerMode DEFAULTS to "root" → the iPhone route wrapper below is
@@ -488,7 +481,7 @@ export function ClientDetailBody({
 								<ListRow
 									key={quote._id}
 									title={quote.title || `Quote #${quote.quoteNumber}`}
-									sub={formatCurrency(quote.total)}
+									sub={formatCurrency(quote.total, { exact: true })}
 									status={quote.status}
 									showChevron={false}
 									onPress={() =>
@@ -516,7 +509,7 @@ export function ClientDetailBody({
 								<ListRow
 									key={invoice._id}
 									title={`Invoice #${invoice.invoiceNumber}`}
-									sub={formatCurrency(invoice.total)}
+									sub={formatCurrency(invoice.total, { exact: true })}
 									status={invoice.status}
 									showChevron={false}
 									onPress={() =>

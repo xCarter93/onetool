@@ -20,6 +20,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import Modal from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency, parseCurrencyInput } from "@/lib/money";
 
 // ============================================================================
 // Types
@@ -69,15 +70,6 @@ const mapExistingPayments = (
 		sortOrder: p.sortOrder,
 	}));
 
-const formatCurrency = (amount: number): string => {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	}).format(amount);
-};
-
 const formatCurrencyInput = (value: string): string => {
 	// Remove all non-numeric characters except decimal
 	const numericValue = value.replace(/[^\d.]/g, "");
@@ -91,11 +83,6 @@ const formatCurrencyInput = (value: string): string => {
 		return parts[0] + "." + parts[1].slice(0, 2);
 	}
 	return numericValue;
-};
-
-const parseCurrencyInput = (value: string): number => {
-	const parsed = parseFloat(value);
-	return isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
 };
 
 const formatDueDate = (date: Date): string => {

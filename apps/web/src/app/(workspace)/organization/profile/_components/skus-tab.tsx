@@ -31,6 +31,7 @@ import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { SectionHeading } from "./settings-card";
+import { formatCurrency } from "@/lib/money";
 
 // SKU Type - will be generated after Convex schema update
 type SKUDoc = {
@@ -218,15 +219,6 @@ export function SKUsTab() {
 			const userMessage = getUserFriendlyErrorMessage(error);
 			toast.error("Deactivate failed", userMessage);
 		}
-	};
-
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2,
-		}).format(amount);
 	};
 
 	const calculateMargin = (rate: number, cost?: number) => {

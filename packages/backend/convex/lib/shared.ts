@@ -2,6 +2,7 @@
  * Shared utilities that are truly reusable across all document types
  * Only contains table-agnostic helper functions
  */
+import { applyDiscount, calculateTax, formatCurrency } from "./money";
 
 /**
  * Generate a random public token for public access
@@ -161,33 +162,27 @@ export const BusinessUtils = {
 	},
 
 	/**
-	 * Format currency (basic formatting)
+	 * Format currency (delegates to lib/money.ts — amounts are dollars)
 	 */
 	formatCurrency(amount: number, currency = "USD"): string {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency,
-		}).format(amount);
+		return formatCurrency(amount, currency);
 	},
 
 	/**
-	 * Calculate tax amount
+	 * Calculate tax amount (delegates to lib/money.ts)
 	 */
 	calculateTax(subtotal: number, taxRate: number): number {
-		return Math.round(subtotal * (taxRate / 100) * 100) / 100;
+		return calculateTax(subtotal, taxRate);
 	},
 
 	/**
-	 * Apply discount
+	 * Apply discount (delegates to lib/money.ts)
 	 */
 	applyDiscount(
 		amount: number,
 		discount: number,
 		isPercentage: boolean
 	): number {
-		if (isPercentage) {
-			return Math.round(amount * (1 - discount / 100) * 100) / 100;
-		}
-		return Math.max(0, amount - discount);
+		return applyDiscount(amount, discount, isPercentage);
 	},
 };

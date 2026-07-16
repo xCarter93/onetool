@@ -4,6 +4,7 @@ import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyStripeSession } from "./lib/stripe";
+import { dollarsToCents } from "./lib/money";
 
 /**
  * Verify payment with Stripe and mark as paid.
@@ -43,7 +44,7 @@ export const verifyAndMarkPaid = action({
 				`Session metadata.publicToken mismatch: expected ${args.publicToken}`
 			);
 		}
-		const expectedCents = Math.round(payment.paymentAmount * 100);
+		const expectedCents = dollarsToCents(payment.paymentAmount);
 		if (result.amountTotal !== expectedCents) {
 			throw new Error(
 				`Session amount mismatch: expected ${expectedCents} cents, got ${result.amountTotal}`
@@ -103,7 +104,7 @@ export const verifyAndMarkInvoicePaid = action({
 				`Session metadata.publicToken mismatch: expected ${args.publicToken}`
 			);
 		}
-		const expectedCents = Math.round(invoice.total * 100);
+		const expectedCents = dollarsToCents(invoice.total);
 		if (result.amountTotal !== expectedCents) {
 			throw new Error(
 				`Session amount mismatch: expected ${expectedCents} cents, got ${result.amountTotal}`

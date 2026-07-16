@@ -45,8 +45,8 @@ import {
 	DrawerSection,
 	DrawerSkeleton,
 	formatActivityTime,
-	formatCurrency,
 } from "@/components/shared/detail-drawer";
+import { formatCurrency } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
 
 type InvoiceStatus = Doc<"invoices">["status"];

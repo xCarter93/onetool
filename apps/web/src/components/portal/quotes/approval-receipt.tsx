@@ -14,6 +14,8 @@
 import { useState, useSyncExternalStore } from "react";
 import { CheckCircle2, ChevronDown } from "lucide-react";
 
+import { formatMoney } from "@/lib/portal/format";
+
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 function subscribeReducedMotion(callback: () => void) {
@@ -44,13 +46,6 @@ export interface ApprovalReceiptProps {
 	clientName: string;
 	clientEmail: string;
 	ipAddress?: string;
-}
-
-function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
 }
 
 function formatDateTime(ts: number): { date: string; time: string } {

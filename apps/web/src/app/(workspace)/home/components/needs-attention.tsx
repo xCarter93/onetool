@@ -25,6 +25,7 @@ import {
 import Link from "next/link";
 import { Task } from "@/types/task";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { formatCurrency } from "@/lib/money";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,13 +49,6 @@ function getDaysUntil(dateTimestamp: number): number {
 		today.getDate(),
 	);
 	return Math.floor((dateTimestamp - todayUTC) / (24 * 60 * 60 * 1000));
-}
-
-function formatCurrency(amount: number): string {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-	}).format(amount);
 }
 
 function formatTime(time?: string): string | null {

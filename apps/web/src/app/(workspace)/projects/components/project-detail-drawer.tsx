@@ -53,8 +53,8 @@ import {
 	DrawerSkeleton,
 	RelatedRow,
 	formatActivityTime,
-	formatCurrency,
 } from "@/components/shared/detail-drawer";
+import { formatCurrency } from "@/lib/money";
 
 type ProjectStatus = Doc<"projects">["status"];
 

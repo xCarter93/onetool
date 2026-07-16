@@ -15,6 +15,7 @@ import { DateRange } from "react-day-picker";
 import { endOfDay, startOfDay, startOfMonth } from "date-fns";
 import { OverviewPanel } from "./overview/overview-panel";
 import { OVERVIEW_METRIC_ORDER } from "./overview/metric-visuals";
+import { formatCurrency } from "@/lib/money";
 
 type ChartInput = Array<{
 	date: string;
@@ -39,11 +40,6 @@ type RangeTotals = {
 	changeType: "increase" | "decrease" | "neutral";
 	addedInRange: number;
 };
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-	style: "currency",
-	currency: "USD",
-});
 
 const processDataForChart = (
 	data: ChartInput,
@@ -360,7 +356,7 @@ export default function HomeStatsReal() {
 				label: "Revenue",
 				value: revenueTotal,
 				previousValue: safeNumber(homeStats?.revenueGoal.target),
-				format: (val: number) => currencyFormatter.format(val),
+				format: (val: number) => formatCurrency(val),
 				changeType:
 					homeStats?.revenueGoal.changePercentage === undefined
 						? "neutral"

@@ -17,6 +17,7 @@ import {
 	Ban,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/money";
 
 type PaymentStatus = "pending" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -56,15 +57,6 @@ const paymentStatusConfig: Record<
 		className: "line-through opacity-60",
 	},
 };
-
-function formatCurrency(amount: number) {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
-}
 
 function formatPaymentDueDate(timestamp: number): string {
 	return new Date(timestamp).toLocaleDateString("en-US", {

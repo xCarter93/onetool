@@ -13,6 +13,7 @@ import {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { formatCurrency, parseCurrencyInput } from "@/lib/money";
 
 export default function RevenueGoalSetter() {
 	const [isEditing, setIsEditing] = useState(false);
@@ -54,17 +55,6 @@ export default function RevenueGoalSetter() {
 	const handleCancel = () => {
 		setTempValue("");
 		setIsEditing(false);
-	};
-
-	const formatCurrency = (value: string) => {
-		const num = parseFloat(value.replace(/,/g, ""));
-		if (isNaN(num)) return "$0";
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(num);
 	};
 
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -171,7 +161,7 @@ export default function RevenueGoalSetter() {
 						<div className="flex items-center justify-between">
 							<div className="space-y-1">
 								<div className="text-3xl font-bold text-foreground">
-									{formatCurrency(goalValue)}
+									{formatCurrency(parseCurrencyInput(goalValue), { whole: true })}
 								</div>
 								<div className="text-sm text-muted-foreground">
 									Current monthly target
@@ -197,8 +187,8 @@ export default function RevenueGoalSetter() {
 									/>
 								</div>
 								<div className="text-xs text-muted-foreground">
-									{formatCurrency(revenueGoalProgress.current.toString())} of{" "}
-									{formatCurrency(revenueGoalProgress.target.toString())}{" "}
+									{formatCurrency(revenueGoalProgress.current, { whole: true })} of{" "}
+									{formatCurrency(revenueGoalProgress.target, { whole: true })}{" "}
 									achieved
 								</div>
 							</div>

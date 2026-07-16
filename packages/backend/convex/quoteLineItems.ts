@@ -18,6 +18,7 @@ import {
 	optionalUserQuery,
 	userMutation,
 } from "./lib/factories";
+import { syncQuoteTotals } from "./lib/quoteTotals";
 
 /**
  * Quote Line Item operations
@@ -233,6 +234,9 @@ export const create = userMutation({
 			amount,
 		});
 
+		// Keep stored quote totals (and aggregates) in sync with line items
+		await syncQuoteTotals(ctx, args.quoteId);
+
 		return lineItemId;
 	},
 });
@@ -298,6 +302,15 @@ export const update = userMutation({
 
 		await ctx.db.patch(id, filteredUpdates);
 
+		// Keep stored totals in sync — both quotes when the item was reassigned
+		await syncQuoteTotals(ctx, currentLineItem.quoteId);
+		if (
+			filteredUpdates.quoteId &&
+			filteredUpdates.quoteId !== currentLineItem.quoteId
+		) {
+			await syncQuoteTotals(ctx, filteredUpdates.quoteId);
+		}
+
 		return id;
 	},
 });
@@ -321,6 +334,7 @@ export const remove = userMutation({
 		);
 
 		await ctx.db.delete(args.id);
+		await syncQuoteTotals(ctx, lineItem.quoteId);
 		return args.id;
 	},
 });
@@ -377,6 +391,8 @@ export const bulkCreate = userMutation({
 
 			createdIds.push(lineItemId);
 		}
+
+		await syncQuoteTotals(ctx, args.quoteId);
 
 		return createdIds;
 	},
@@ -456,6 +472,8 @@ export const duplicate = userMutation({
 			cost: originalItem.cost,
 			sortOrder: nextSortOrder,
 		});
+
+		await syncQuoteTotals(ctx, originalItem.quoteId);
 
 		return duplicateId;
 	},

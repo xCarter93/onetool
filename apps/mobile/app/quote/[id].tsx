@@ -119,19 +119,22 @@ export function QuoteDetailBody({
 
 	// Build the TotalsBlock rows: Subtotal always · Discount/Tax conditional.
 	const totalsRows: { label: string; value: string; negative?: boolean }[] = [
-		{ label: "Subtotal", value: formatCurrency(quote.subtotal) },
+		{
+			label: "Subtotal",
+			value: formatCurrency(quote.subtotal, { exact: true }),
+		},
 	];
 	if (quote.discountEnabled && quote.discountAmount) {
 		totalsRows.push({
 			label: "Discount",
-			value: formatCurrency(discountDollars),
+			value: formatCurrency(discountDollars, { exact: true }),
 			negative: true,
 		});
 	}
 	if (quote.taxEnabled) {
 		totalsRows.push({
 			label: `Tax (${quote.taxRate ?? 0}%)`,
-			value: formatCurrency(quote.taxAmount ?? 0),
+			value: formatCurrency(quote.taxAmount ?? 0, { exact: true }),
 		});
 	}
 
@@ -230,11 +233,11 @@ export function QuoteDetailBody({
 											{item.unit ? ` · ${item.unit}` : ""}
 										</Text>
 										<Text style={[styles.lineSub, { color: t.faint }]}>
-											{item.quantity} × {formatCurrency(item.rate)}
+											{item.quantity} × {formatCurrency(item.rate, { exact: true })}
 										</Text>
 									</View>
 									<Text style={[styles.lineAmount, { color: t.ink }]}>
-										{formatCurrency(item.amount)}
+										{formatCurrency(item.amount, { exact: true })}
 									</Text>
 								</View>
 							))}
@@ -247,7 +250,10 @@ export function QuoteDetailBody({
 					<View style={styles.totalsWrap}>
 						<TotalsBlock
 							rows={totalsRows}
-							total={{ label: "Total", value: formatCurrency(quote.total) }}
+							total={{
+								label: "Total",
+								value: formatCurrency(quote.total, { exact: true }),
+							}}
 						/>
 					</View>
 

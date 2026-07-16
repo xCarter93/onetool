@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { centsToDollars } from "./lib/money";
 
 type StripeClient = InstanceType<typeof StripeImport>;
 // Test seam: tests pass a mock via runHandleEvent; production resolves at call-time.
@@ -253,7 +254,7 @@ export const handleEvent = internalAction({
 				}
 				case "payout.paid": {
 					const payout = args.data.object as Stripe.Payout;
-					const dollars = (payout.amount / 100).toFixed(2);
+					const dollars = centsToDollars(payout.amount).toFixed(2);
 					const arrival = new Date(payout.arrival_date * 1000)
 						.toISOString()
 						.slice(0, 10);
@@ -270,7 +271,7 @@ export const handleEvent = internalAction({
 				}
 				case "payout.failed": {
 					const payout = args.data.object as Stripe.Payout;
-					const dollars = (payout.amount / 100).toFixed(2);
+					const dollars = centsToDollars(payout.amount).toFixed(2);
 					const reason = payout.failure_code
 						? `${payout.failure_code}: ${payout.failure_message ?? "no message"}`
 						: "Unknown reason";

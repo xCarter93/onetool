@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Package, Search } from "lucide-react";
+import { formatCurrency } from "@/lib/money";
 
 // Define SKU type - will be generated after Convex schema update
 type SKU = {
@@ -31,15 +32,6 @@ interface SKUSelectorProps {
 	onSelect: (sku: SKU) => void;
 	disabled?: boolean;
 }
-
-const formatCurrency = (amount: number) => {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	}).format(amount);
-};
 
 export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
 	const [open, setOpen] = useState(false);

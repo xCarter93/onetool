@@ -23,6 +23,7 @@ import { Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
+import { formatMoney } from "@/lib/portal/format";
 import {
 	SignatureCard,
 	type SignaturePayload,
@@ -96,13 +97,6 @@ const NON_USABLE: SignaturePayload = {
 	rawData: null,
 	isUsable: false,
 };
-
-function formatMoney(amount: number): string {
-	return amount.toLocaleString("en-US", {
-		style: "currency",
-		currency: "USD",
-	});
-}
 
 function daysRemaining(validUntil?: number): number | null {
 	if (!validUntil) return null;

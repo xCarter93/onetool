@@ -31,6 +31,7 @@ import {
 	Eye,
 } from "lucide-react";
 import { SKUSelector } from "@/components/shared/sku-selector";
+import { formatCurrency } from "@/lib/money";
 
 type LineItem = {
 	_id: Id<"quoteLineItems">;
@@ -60,15 +61,6 @@ const formatStatus = (status: string) => {
 		default:
 			return status;
 	}
-};
-
-const formatCurrency = (amount: number) => {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 0,
-		maximumFractionDigits: 0,
-	}).format(amount);
 };
 
 function QuoteLineEditorPageContent() {

@@ -10,6 +10,7 @@ import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
 import { FolderOpen, DollarSign, TrendingUp, FileText, Receipt, Pencil, Check, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/money";
 
 interface OverviewTabProps {
 	projects: Doc<"projects">[] | undefined;
@@ -18,13 +19,6 @@ interface OverviewTabProps {
 	notes: string;
 	clientId: string;
 	clientName: string;
-}
-
-function formatCurrency(amount: number) {
-	return "$" + amount.toLocaleString(undefined, {
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	});
 }
 
 function formatDate(timestamp?: number) {
