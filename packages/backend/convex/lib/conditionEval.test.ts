@@ -507,6 +507,30 @@ describe("evaluateRule", () => {
 				).toBe(false);
 			});
 
+			it("two arrays match when they share at least one member", () => {
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "equals", teamRef),
+						{ assignedUserIds: ["u2", "u9"] },
+						teamScope
+					)
+				).toBe(true);
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "equals", teamRef),
+						{ assignedUserIds: ["u8", "u9"] },
+						teamScope
+					)
+				).toBe(false);
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "equals", teamRef),
+						{ assignedUserIds: [] },
+						teamScope
+					)
+				).toBe(false);
+			});
+
 			it("an empty array value matches nothing", () => {
 				expect(
 					evaluateRule(

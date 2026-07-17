@@ -457,9 +457,10 @@ export interface ValueInputProps {
 	/**
 	 * How an array variable feeding this single-valued field resolves — action
 	 * writes coerce to the first element ("first"); condition/filter compares
-	 * match on membership ("any"). Drives the picker hint only.
+	 * match on membership ("any"); operators with neither behavior ("none")
+	 * show no hint. Drives the picker hint only.
 	 */
-	arrayResolution?: "first" | "any";
+	arrayResolution?: "first" | "any" | "none";
 }
 
 /**
@@ -590,7 +591,9 @@ export function ValueInput({
 												// per arrayResolution — say so rather than let the
 												// author assume all of them land.
 												const arrayHint =
-													option.isArray && !needsConversion
+													option.isArray &&
+													!needsConversion &&
+													arrayResolution !== "none"
 														? arrayResolution === "first"
 															? "uses first"
 															: "matches any"

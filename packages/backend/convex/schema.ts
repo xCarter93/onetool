@@ -9,6 +9,7 @@ import {
 	nodeTypeValidator,
 	objectTypeValidator,
 	triggerValidator,
+	triggerableObjectTypeValidator,
 } from "./lib/workflowTypes";
 
 // v2 workflow node shape: each node carries the unified `config` union
@@ -1464,15 +1465,7 @@ export default defineSchema({
 				checkpointAt: v.optional(v.number()),
 				eventOldValue: v.optional(v.string()),
 				eventNewValue: v.optional(v.string()),
-				objectType: v.optional(
-					v.union(
-						v.literal("client"),
-						v.literal("project"),
-						v.literal("quote"),
-						v.literal("invoice"),
-						v.literal("task")
-					)
-				),
+				objectType: v.optional(triggerableObjectTypeValidator),
 				objectId: v.optional(v.string()),
 				fetchOutputs: v.array(
 					v.object({

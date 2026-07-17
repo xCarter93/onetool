@@ -320,7 +320,12 @@ export function FilterGroupsEditor({
 											trigger={trigger}
 											targetNodeId={targetNodeId}
 											formulas={formulas}
-											arrayResolution="any"
+											arrayResolution={
+												rule.operator === "equals" ||
+												rule.operator === "not_equals"
+													? "any"
+													: "none"
+											}
 										/>
 									)}
 								</div>

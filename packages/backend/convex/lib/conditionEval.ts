@@ -313,6 +313,11 @@ function looseEquals(a: unknown, b: unknown): boolean {
 	if (Array.isArray(b) && !Array.isArray(a)) {
 		return b.some((element) => looseEquals(a, element));
 	}
+	// Both arrays ("Assigned team equals {{trigger.record.assignedUserIds}}"):
+	// match when the two share at least one member.
+	if (Array.isArray(a) && Array.isArray(b)) {
+		return a.some((element) => b.some((other) => looseEquals(element, other)));
+	}
 	if (typeof a === "number" && typeof b === "string") {
 		return numericStringToNumber(b) === a;
 	}

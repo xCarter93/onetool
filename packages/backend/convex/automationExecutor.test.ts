@@ -2844,10 +2844,10 @@ describe("automationExecutor (v2 engine)", () => {
 					total: 0,
 				});
 
-				// Totals 0.10, 0.20, 100 -> sum 100.30 exactly (same cent-rounding
-				// case the invoice aggregate test above exercises).
+				// 0.1 + 0.2 float-sums to 0.30000000000000004, so an exact 0.3
+				// only comes out of the integer-cents sum path.
 				await t.run(async (ctx) => {
-					const amounts = [0.1, 0.2, 100];
+					const amounts = [0.1, 0.2, 0];
 					for (let i = 0; i < amounts.length; i++) {
 						await ctx.db.insert("quoteLineItems", {
 							quoteId: targetQuoteId,
@@ -2906,7 +2906,7 @@ describe("automationExecutor (v2 engine)", () => {
 				const sumOutput = executions[0].nodesExecuted.find(
 					(n) => n.nodeId === "sum"
 				)?.output as { result: number } | undefined;
-				expect(sumOutput?.result).toBe(100.3);
+				expect(sumOutput?.result).toBe(0.3);
 			});
 
 			it("fetch invoice_line_item filtered to a parent invoice, then sum(total) is cent-exact", async () => {
@@ -2933,7 +2933,8 @@ describe("automationExecutor (v2 engine)", () => {
 				);
 
 				await t.run(async (ctx) => {
-					const totals = [0.1, 0.2, 100];
+					// Same float trap as the quote test: 0.1 + 0.2 !== 0.3 in doubles.
+					const totals = [0.1, 0.2, 0];
 					for (let i = 0; i < totals.length; i++) {
 						await ctx.db.insert("invoiceLineItems", {
 							invoiceId,
@@ -2976,7 +2977,7 @@ describe("automationExecutor (v2 engine)", () => {
 				const sumOutput = executions[0].nodesExecuted.find(
 					(n) => n.nodeId === "sum"
 				)?.output as { result: number } | undefined;
-				expect(sumOutput?.result).toBe(100.3);
+				expect(sumOutput?.result).toBe(0.3);
 			});
 
 			it("org isolation: a fetch never returns another org's line items", async () => {
