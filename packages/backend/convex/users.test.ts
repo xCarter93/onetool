@@ -241,6 +241,45 @@ describe("Users", () => {
 
 	describe("Internal Mutations", () => {
 		describe("upsertFromClerk", () => {
+			it("mirrors the premium override, and clears it on the null-shaped revoke (B0)", async () => {
+				// The admin console revokes by writing the key back as null rather than
+				// deleting it. If that didn't clear the doc mirror, a revoked user would
+				// keep premium in every identity-less context (the automation cron).
+				await t.mutation(internal.users.upsertFromClerk, {
+					data: {
+						id: "clerk_user_override",
+						first_name: "Over",
+						last_name: "Ride",
+						email_addresses: [{ email_address: "over@example.com" }],
+						image_url: "https://example.com/o.jpg",
+						public_metadata: { has_premium_feature_access: true },
+					} as any,
+				});
+
+				const readUser = async () =>
+					await t.run(async (ctx) =>
+						ctx.db
+							.query("users")
+							.filter((q) => q.eq(q.field("externalId"), "clerk_user_override"))
+							.first()
+					);
+
+				expect((await readUser())?.hasPremiumFeatureAccess).toBe(true);
+
+				await t.mutation(internal.users.upsertFromClerk, {
+					data: {
+						id: "clerk_user_override",
+						first_name: "Over",
+						last_name: "Ride",
+						email_addresses: [{ email_address: "over@example.com" }],
+						image_url: "https://example.com/o.jpg",
+						public_metadata: { has_premium_feature_access: null },
+					} as any,
+				});
+
+				expect((await readUser())?.hasPremiumFeatureAccess).toBe(false);
+			});
+
 			it("should create a new user from Clerk webhook data", async () => {
 				await t.mutation(internal.users.upsertFromClerk, {
 					data: {

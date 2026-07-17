@@ -46,6 +46,11 @@ export default defineSchema({
 		// Onboarding
 		hasSeenTour: v.optional(v.boolean()), // Track if user has completed the product tour
 
+		// Mirror of Clerk public_metadata.has_premium_feature_access, synced by the
+		// user.created/user.updated webhook. Exists so identity-less contexts (cron)
+		// can honor the override, which otherwise only reaches us via the JWT.
+		hasPremiumFeatureAccess: v.optional(v.boolean()),
+
 		// Subscription (user-level status only, billing handled at org level)
 		subscriptionStatus: v.optional(
 			v.union(
@@ -98,6 +103,12 @@ export default defineSchema({
 		clerkSubscriptionId: v.optional(v.string()), // Clerk subscription ID
 		clerkPlanId: v.optional(v.string()), // Clerk plan identifier
 		clerkPlanSlug: v.optional(v.string()), // Active paid plan slug from webhook items[] (plan gate source of truth)
+
+		// Mirror of Clerk public_metadata.has_premium_feature_access, synced by the
+		// organization.created/organization.updated webhook. Grants premium to every
+		// member; see the user-level twin for single-user overrides.
+		hasPremiumFeatureAccess: v.optional(v.boolean()),
+
 		subscriptionStatus: v.optional(
 			v.union(
 				v.literal("active"),

@@ -13,7 +13,11 @@ import { ActivityHelpers } from "./lib/activities";
 import { ENTITY_PERMISSION_OBJECT } from "./activities";
 import { systemMutation, userMutation, userQuery } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
-import { isAdminRole, orgHasPremiumPlan } from "./lib/permissions";
+import {
+	isAdminRole,
+	orgHasPremiumPlan,
+	userHasPremiumOverride,
+} from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import { enqueuePush } from "./push";
 import { insertTeamMessage } from "./teamMessages";
@@ -680,8 +684,14 @@ export const dispatchScheduledAutomations = internalMutation({
 
 				// Plan gate: the automations UI is premium-gated, but a downgraded
 				// org's schedules keep coming due — skip visibly instead of running.
+				// Cron has no identity, so both premium overrides are read from the
+				// webhook-synced doc mirrors: the org's, else the creator's (a user-level
+				// override follows the automations that user built).
 				const org = await ctx.db.get(automation.orgId);
-				if (!orgHasPremiumPlan(org)) {
+				const premium =
+					orgHasPremiumPlan(org) ||
+					userHasPremiumOverride(await ctx.db.get(automation.createdBy));
+				if (!premium) {
 					await ctx.db.insert("workflowExecutions", {
 						orgId: automation.orgId,
 						automationId: automation._id,
