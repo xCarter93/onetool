@@ -16,6 +16,7 @@ import {
 	secondsToMilliseconds,
 } from "./lib/webhooks";
 import { resend } from "./email/durableResend";
+import { readPremiumOverride } from "./lib/permissions";
 
 const http = httpRouter();
 
@@ -94,6 +95,9 @@ http.route({
 						name: orgData.name,
 						ownerClerkUserId: orgData.created_by,
 						logoUrl: orgData.image_url || undefined,
+						hasPremiumFeatureAccess: readPremiumOverride(
+							orgData.public_metadata
+						),
 					});
 					logWebhookSuccess("Clerk", "organization.created", orgData.id);
 				} catch (error) {
@@ -120,6 +124,9 @@ http.route({
 						clerkOrganizationId: orgData.id,
 						name: orgData.name,
 						logoUrl: orgData.image_url || undefined,
+						hasPremiumFeatureAccess: readPremiumOverride(
+							orgData.public_metadata
+						),
 					});
 					logWebhookSuccess("Clerk", "organization.updated", orgData.id);
 				} catch (error) {

@@ -91,6 +91,7 @@ import type * as migrations_addReceivingAddresses from "../migrations/addReceivi
 import type * as migrations_backfillCreatedByFromOrgOwner from "../migrations/backfillCreatedByFromOrgOwner.js";
 import type * as migrations_backfillEmailThreads from "../migrations/backfillEmailThreads.js";
 import type * as migrations_backfillMemberPermissions from "../migrations/backfillMemberPermissions.js";
+import type * as migrations_backfillPremiumOverrides from "../migrations/backfillPremiumOverrides.js";
 import type * as migrations_backfillTeamMessagesFromNotifications from "../migrations/backfillTeamMessagesFromNotifications.js";
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
@@ -227,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillCreatedByFromOrgOwner": typeof migrations_backfillCreatedByFromOrgOwner;
   "migrations/backfillEmailThreads": typeof migrations_backfillEmailThreads;
   "migrations/backfillMemberPermissions": typeof migrations_backfillMemberPermissions;
+  "migrations/backfillPremiumOverrides": typeof migrations_backfillPremiumOverrides;
   "migrations/backfillTeamMessagesFromNotifications": typeof migrations_backfillTeamMessagesFromNotifications;
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;

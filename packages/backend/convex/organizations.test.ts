@@ -1384,6 +1384,44 @@ describe("Organizations", () => {
 
 				// Test passes if no error is thrown
 			});
+
+			it("syncs the premium override on, then back off when revoked (B0)", async () => {
+				// The doc mirror is what identity-less contexts (the scheduled-automation
+				// cron) read, so a revoke that failed to propagate would leave an org
+				// premium forever.
+				const { orgId } = await t.run(async (ctx) => {
+					const userId = await ctx.db.insert("users", {
+						name: "Owner User",
+						email: "owner@example.com",
+						image: "https://example.com/owner.jpg",
+						externalId: "user_override",
+					});
+					const orgId = await ctx.db.insert("organizations", {
+						clerkOrganizationId: "org_override",
+						name: "Override Org",
+						ownerUserId: userId,
+					});
+					return { orgId };
+				});
+
+				await t.mutation(internal.organizations.updateFromClerk, {
+					clerkOrganizationId: "org_override",
+					name: "Override Org",
+					hasPremiumFeatureAccess: true,
+				});
+				expect(
+					(await t.run(async (ctx) => ctx.db.get(orgId)))?.hasPremiumFeatureAccess
+				).toBe(true);
+
+				await t.mutation(internal.organizations.updateFromClerk, {
+					clerkOrganizationId: "org_override",
+					name: "Override Org",
+					hasPremiumFeatureAccess: false,
+				});
+				expect(
+					(await t.run(async (ctx) => ctx.db.get(orgId)))?.hasPremiumFeatureAccess
+				).toBe(false);
+			});
 		});
 
 		describe("deleteFromClerk", () => {

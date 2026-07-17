@@ -79,25 +79,65 @@ export const debugAuthToken = query({
 
 export const PREMIUM_PLAN_SLUG = "onetool_business_plan_org";
 
+/** The Clerk public_metadata key carrying the manual premium override. */
+export const PREMIUM_OVERRIDE_METADATA_KEY = "has_premium_feature_access";
+
+/**
+ * Read the premium override out of a Clerk public_metadata bag. Strict `=== true`
+ * is load-bearing: the admin console revokes by writing the key back as `null`
+ * (not by deleting it), so anything other than `true` must read as false or a
+ * revoke would never propagate.
+ */
+export function readPremiumOverride(
+	publicMetadata: unknown
+): boolean {
+	if (typeof publicMetadata !== "object" || publicMetadata === null) {
+		return false;
+	}
+	return (
+		(publicMetadata as Record<string, unknown>)[
+			PREMIUM_OVERRIDE_METADATA_KEY
+		] === true
+	);
+}
+
 // Statuses under which a subscription grants access (free trials arrive as
 // "active" with is_free_trial on the item, so "trialing" rarely appears).
 const PREMIUM_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
 
 /**
  * Plan check from the org doc alone, for system/cron contexts with no request
- * identity. Cannot see the has_premium_feature_access metadata overrides
- * (those live in the JWT) — identity-scoped callers use hasPremiumAccess.
+ * identity. Honors the ORG-level has_premium_feature_access override via the
+ * webhook-synced `hasPremiumFeatureAccess` mirror. A USER-level override is not
+ * visible here: callers that hold a specific user (e.g. cron dispatch, which has
+ * the automation's creator) OR this with userHasPremiumOverride. Identity-scoped
+ * callers should use hasPremiumAccess instead, which reads the live JWT.
  */
 export function orgHasPremiumPlan(
 	org: {
 		clerkPlanSlug?: string;
 		subscriptionStatus?: string;
+		hasPremiumFeatureAccess?: boolean;
 	} | null
 ): boolean {
+	if (org?.hasPremiumFeatureAccess === true) {
+		return true;
+	}
 	return (
 		org?.clerkPlanSlug === PREMIUM_PLAN_SLUG &&
 		PREMIUM_SUBSCRIPTION_STATUSES.has(org.subscriptionStatus ?? "")
 	);
+}
+
+/**
+ * User-level premium override, from the webhook-synced mirror. For identity-less
+ * contexts that have a specific user in hand (e.g. a scheduled automation's
+ * creator). Grants premium to that user only, never to the whole org.
+ */
+export function userHasPremiumOverride(
+	user: { hasPremiumFeatureAccess?: boolean } | null
+): boolean {
+	return user?.hasPremiumFeatureAccess === true;
 }
 
 /**

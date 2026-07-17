@@ -81,6 +81,7 @@ export const createFromClerk = internalMutation({
 		name: v.string(),
 		ownerClerkUserId: v.string(),
 		logoUrl: v.optional(v.string()),
+		hasPremiumFeatureAccess: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		// Find the owner user by Clerk ID
@@ -117,6 +118,7 @@ export const createFromClerk = internalMutation({
 			name: args.name,
 			ownerUserId: ownerUser._id,
 			logoUrl: args.logoUrl,
+			hasPremiumFeatureAccess: args.hasPremiumFeatureAccess ?? false,
 			isMetadataComplete: false, // User needs to complete additional setup
 			// Generate unique receiving address for this organization
 			receivingAddress: `org-${crypto
@@ -231,6 +233,7 @@ export const updateFromClerk = internalMutation({
 		clerkOrganizationId: v.string(),
 		name: v.string(),
 		logoUrl: v.optional(v.string()),
+		hasPremiumFeatureAccess: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const organization = await ctx.db
@@ -248,13 +251,23 @@ export const updateFromClerk = internalMutation({
 		}
 
 		// Update the organization name and logo URL
-		const updates: { name: string; logoUrl?: string } = {
+		const updates: {
+			name: string;
+			logoUrl?: string;
+			hasPremiumFeatureAccess?: boolean;
+		} = {
 			name: args.name,
 		};
 
 		// Only update logoUrl if provided (Clerk might not always include it)
 		if (args.logoUrl !== undefined && args.logoUrl !== null) {
 			updates.logoUrl = args.logoUrl;
+		}
+
+		// The webhook always resolves this to a concrete boolean, so a revoke lands
+		// as false. Skipped only for legacy callers that omit it entirely.
+		if (args.hasPremiumFeatureAccess !== undefined) {
+			updates.hasPremiumFeatureAccess = args.hasPremiumFeatureAccess;
 		}
 
 		await ctx.db.patch(organization._id, updates);

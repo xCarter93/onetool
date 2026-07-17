@@ -16,6 +16,7 @@ import {
 	removeMembership,
 } from "./lib/memberships";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import { readPremiumOverride } from "./lib/permissions";
 
 export const current = optionalUserQuery({
 	args: {},
@@ -77,6 +78,8 @@ export const upsertFromClerk = internalMutation({
 			image: data.image_url || "",
 			lastSignedInDate: Date.now(),
 			externalId: data.id,
+			// Always written, so a revoke (metadata key set back to null) clears it.
+			hasPremiumFeatureAccess: readPremiumOverride(data.public_metadata),
 		};
 
 		const user = await userByExternalId(ctx, data.id);

@@ -1824,6 +1824,56 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(executions[0].error).toMatch(/premium/i);
 		});
 
+		it("dispatches for an org premium via the metadata override, not a paid plan", async () => {
+			// Regression (B0): the override lives in Clerk public_metadata and reaches
+			// identity-scoped code via the JWT, which cron has no access to. Before the
+			// doc mirror, every scheduled run for an override-premium org was silently
+			// skipped while the UI showed the user as fully premium.
+			const { asUser, orgId } = await setupUser();
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: true })
+			);
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: Date.now() - 1000 }));
+
+			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
+			await drainScheduled();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+		});
+
+		it("dispatches when only the automation's creator holds a user-level override", async () => {
+			// A user-level override follows the automations that user built; the org
+			// itself stays non-premium.
+			const { asUser, userId } = await setupUser();
+			await t.run(async (ctx) =>
+				ctx.db.patch(userId, { hasPremiumFeatureAccess: true })
+			);
+
+			const id = await asUser.mutation(
+				api.automations.create,
+				scheduledAutomation({ isActive: true })
+			);
+			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: Date.now() - 1000 }));
+
+			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
+			await drainScheduled();
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+		});
+
 		it("clears a stale nextRunAt pointer when the trigger is no longer scheduled, with no execution", async () => {
 			const { asUser } = await setupUser();
 

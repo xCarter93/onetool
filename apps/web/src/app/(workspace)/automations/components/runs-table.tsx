@@ -93,9 +93,24 @@ export function RunsTable() {
 						status === "completed_with_errors"
 							? summarizeLoopFailures(row.original.loopSummary).failed
 							: 0;
+					// A skip records WHY in `error`, but the badge alone reads like an
+					// engine fault — surface the stored reason on hover.
+					const skipReason =
+						status === "skipped" ? row.original.error : undefined;
 					return (
 						<div className="flex flex-wrap items-center gap-1.5">
-							<RunStatusBadge status={status} />
+							{skipReason ? (
+								<Tooltip>
+									<TooltipTrigger render={<span tabIndex={0} />}>
+										<RunStatusBadge status={status} />
+									</TooltipTrigger>
+									<TooltipContent side="top" className="max-w-xs">
+										{skipReason}
+									</TooltipContent>
+								</Tooltip>
+							) : (
+								<RunStatusBadge status={status} />
+							)}
 							{row.original.dataTruncated && (
 								<Tooltip>
 									<TooltipTrigger render={<Badge variant="warning" className="gap-1" />}>
