@@ -2793,8 +2793,21 @@ function coerceFieldValue(
 			// instant from then on.
 			return { ok: true, value: calendarDayEpoch(n, tz) };
 		}
-		case "id":
+		case "id": {
+			// An array-valued source (project.assignedUserIds) feeding a
+			// single-id destination (task.assigneeUserId) takes the first
+			// element; empty means "not supplied", not the string "".
+			// Without this, String(raw) yields "u1,u2" and FK resolution fails.
+			if (Array.isArray(raw)) {
+				if (raw.length === 0) return { ok: true, value: null };
+				const [first] = raw;
+				if (first === undefined || first === null) {
+					return { ok: true, value: null };
+				}
+				return { ok: true, value: String(first) };
+			}
 			return { ok: true, value: String(raw) };
+		}
 		default: {
 			const _exhaustive: never = fieldDef.type;
 			return _exhaustive;

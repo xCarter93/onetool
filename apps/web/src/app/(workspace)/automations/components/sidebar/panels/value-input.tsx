@@ -568,6 +568,11 @@ export function ValueInput({
 													field.refType,
 													option.refType
 												);
+												// An array feeding this single-valued field resolves to
+												// its first element — say so rather than let the author
+												// assume all of them land.
+												const usesFirstMember =
+													!!option.isArray && !needsConversion;
 												return (
 													<CommandItem
 														key={option.path}
@@ -589,6 +594,11 @@ export function ValueInput({
 														{needsConversion && (
 															<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
 																needs conversion
+															</span>
+														)}
+														{usesFirstMember && (
+															<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+																uses first
 															</span>
 														)}
 													</CommandItem>

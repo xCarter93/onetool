@@ -5553,6 +5553,90 @@ describe("automationExecutor (v2 engine)", () => {
 				})
 			).rejects.toThrow(/not a valid value/i);
 		});
+
+		it("regression: an array-valued loop item field (project.assignedUserIds) feeding a single-id create_record field (task.assigneeUserId) takes the first element", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const member1 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { userName: "Alice" })
+			);
+			const member2 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { userName: "Bob" })
+			);
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+				assignedUserIds: [member1.userId, member2.userId],
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Assign follow-up task to project assignee",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					{
+						id: "fetch-1",
+						type: "fetch_records" as const,
+						config: {
+							kind: "fetch_records" as const,
+							objectType: "project" as const,
+							filters: [],
+						},
+						nextNodeId: "loop-1",
+					},
+					{
+						id: "loop-1",
+						type: "loop" as const,
+						config: {
+							kind: "loop" as const,
+							sourceNodeId: "fetch-1",
+						},
+						bodyStartNodeId: "act-1",
+						nextNodeId: "end-1",
+					},
+					createRecordActionNode("act-1", {
+						objectType: "task",
+						fields: [
+							{ field: "title", value: { kind: "static", value: "Follow up" } },
+							{
+								field: "assigneeUserId",
+								value: {
+									kind: "var",
+									path: "loop.loop-1.item.assignedUserIds",
+								},
+							},
+						],
+					}),
+					{ id: "end-1", type: "end" as const, config: { kind: "end" as const } },
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const tasks = await t.run(async (ctx) => ctx.db.query("tasks").collect());
+			expect(tasks).toHaveLength(1);
+			expect(tasks[0].title).toBe("Follow up");
+			// String(["m1","m2"]) => "m1,m2" would fail FK resolution; the fix
+			// takes the array's first element instead.
+			expect(tasks[0].assigneeUserId).toBe(member1.userId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions[0].status).toBe("completed");
+		});
 	});
 
 	describe("action fallback type validation (server-side var-fallback check)", () => {

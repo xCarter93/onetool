@@ -35,6 +35,8 @@ export type VariableOption = {
 	fieldType?: FieldType;
 	/** For an `id`-typed option, the entity it points at — lets the picker flag e.g. a client id fed into a user id field. */
 	refType?: FieldDefinition["refType"];
+	/** The option holds an array — feeding it a single-valued field uses the first element. */
+	isArray?: boolean;
 };
 
 function childrenOf(node: WorkflowNode): string[] {
@@ -236,6 +238,7 @@ function triggerVariableOptions(
 				group: "Trigger",
 				fieldType: field.type,
 				refType: field.refType,
+				isArray: field.isArray,
 			});
 		}
 	}
@@ -369,6 +372,7 @@ export function getAvailableVariables(
 				group: "Loop item",
 				fieldType: field.type,
 				refType: field.refType,
+				isArray: field.isArray,
 			});
 		}
 		options.push({
@@ -484,6 +488,7 @@ export function getAllVariableOptions(
 				group: "Loop item",
 				fieldType: field.type,
 				refType: field.refType,
+				isArray: field.isArray,
 			});
 		}
 		options.push({

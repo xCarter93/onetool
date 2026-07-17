@@ -401,6 +401,65 @@ describe("evaluateRule", () => {
 				evaluateRule(rule("amount", "not_equals", staticRef("100")), record, emptyScope)
 			).toBe(false);
 		});
+
+		describe("array-valued fields match on membership (B8)", () => {
+			// project.assignedUserIds is an array; "Assigned team equals Alice"
+			// has to mean "Alice is on the team", not "the array IS Alice".
+			const team = { assignedUserIds: ["u1", "u2"], empty: [] as string[] };
+
+			it("equals is true for any member, false for a non-member", () => {
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "equals", staticRef("u1")),
+						team,
+						emptyScope
+					)
+				).toBe(true);
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "equals", staticRef("u2")),
+						team,
+						emptyScope
+					)
+				).toBe(true);
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "equals", staticRef("u3")),
+						team,
+						emptyScope
+					)
+				).toBe(false);
+			});
+
+			it("not_equals negates membership", () => {
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "not_equals", staticRef("u3")),
+						team,
+						emptyScope
+					)
+				).toBe(true);
+				expect(
+					evaluateRule(
+						rule("assignedUserIds", "not_equals", staticRef("u1")),
+						team,
+						emptyScope
+					)
+				).toBe(false);
+			});
+
+			it("an empty array matches nothing and reads as empty", () => {
+				expect(
+					evaluateRule(rule("empty", "equals", staticRef("u1")), team, emptyScope)
+				).toBe(false);
+				expect(evaluateRule(rule("empty", "is_empty"), team, emptyScope)).toBe(
+					true
+				);
+				expect(
+					evaluateRule(rule("assignedUserIds", "is_empty"), team, emptyScope)
+				).toBe(false);
+			});
+		});
 	});
 
 	describe("contains / not_contains", () => {

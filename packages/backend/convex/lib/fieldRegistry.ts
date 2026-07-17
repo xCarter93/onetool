@@ -56,6 +56,12 @@ export interface FieldDefinition {
 	 * raw-id text box in condition/filter rules.
 	 */
 	refType?: "client" | "project" | "user" | "quote";
+	/**
+	 * The field holds an array of `type` values, not one. Filters match on
+	 * membership (`equals` = "is one of them"), and feeding one into a
+	 * single-valued destination takes the first element.
+	 */
+	isArray?: boolean;
 }
 
 const opt = (value: string, label: string) => ({ value, label });
@@ -172,6 +178,16 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 			creatable: true,
 			requiredOnCreate: true,
 			refType: "client",
+		},
+		{
+			key: "assignedUserIds",
+			label: "Assigned team",
+			type: "id",
+			writable: false,
+			writeExclusionReason: "References user records; assign from the project",
+			filterable: true,
+			refType: "user",
+			isArray: true,
 		},
 	],
 

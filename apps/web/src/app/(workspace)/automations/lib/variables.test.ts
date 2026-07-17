@@ -174,6 +174,32 @@ describe("getAvailableVariables", () => {
 		expect(atLoopItself.some((o) => o.path.startsWith("loop.loop1."))).toBe(false);
 	});
 
+	// B8: the picker half of "create a task per project, assigned to the
+	// project's assignee" — the option has to be offered at all, and carry
+	// isArray so the value input can say it resolves to the first member.
+	it("offers a project's assigned team as a loop-item variable, flagged as an array", () => {
+		const nodes = [
+			fetchNode("f1", "project"),
+			loopNode("loop1", "f1", { bodyStartNodeId: "body1" }),
+			actionNode("body1"),
+		];
+
+		const option = getAvailableVariables(
+			nodes,
+			statusChangedTrigger,
+			"body1"
+		).find((o) => o.path === "loop.loop1.item.assignedUserIds");
+
+		expect(option).toEqual({
+			path: "loop.loop1.item.assignedUserIds",
+			label: "Loop item → Assigned team ID",
+			group: "Loop item",
+			fieldType: "id",
+			refType: "user",
+			isArray: true,
+		});
+	});
+
 	it("caveats user.* globals as empty on scheduled runs (populated on manual + user-caused event runs since Phase 1.4)", () => {
 		const target = actionNode("a1");
 		const options = getAvailableVariables([target], statusChangedTrigger, "a1");

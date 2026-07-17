@@ -302,6 +302,12 @@ export function interpolateTemplate(
 /** Strict equality, except a number compares equal to its numeric string. */
 function looseEquals(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
+	// An array-valued field (project.assignedUserIds) matches on membership:
+	// "Assigned team equals Alice" means Alice is on the team. Without this a
+	// rule on an array field silently never matches.
+	if (Array.isArray(a) && !Array.isArray(b)) {
+		return a.some((element) => looseEquals(element, b));
+	}
 	if (typeof a === "number" && typeof b === "string") {
 		return numericStringToNumber(b) === a;
 	}
