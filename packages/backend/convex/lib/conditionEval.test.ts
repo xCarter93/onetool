@@ -460,6 +460,66 @@ describe("evaluateRule", () => {
 				).toBe(false);
 			});
 		});
+
+		describe("array compare values match on membership (B8 symmetric)", () => {
+			// The array can sit on the value side too: "task.assigneeUserId
+			// equals {{loop.x.item.assignedUserIds}}" means "assignee is one of
+			// the team", not strict equality against the array.
+			const teamScope: VariableScope = {
+				trigger: { record: { assignedUserIds: ["u1", "u2"], noTeam: [] } },
+			};
+			const teamRef: ValueRef = {
+				kind: "var",
+				path: "trigger.record.assignedUserIds",
+			};
+
+			it("equals is true for a member field, false for a non-member", () => {
+				expect(
+					evaluateRule(
+						rule("assigneeUserId", "equals", teamRef),
+						{ assigneeUserId: "u2" },
+						teamScope
+					)
+				).toBe(true);
+				expect(
+					evaluateRule(
+						rule("assigneeUserId", "equals", teamRef),
+						{ assigneeUserId: "u3" },
+						teamScope
+					)
+				).toBe(false);
+			});
+
+			it("not_equals negates membership", () => {
+				expect(
+					evaluateRule(
+						rule("assigneeUserId", "not_equals", teamRef),
+						{ assigneeUserId: "u3" },
+						teamScope
+					)
+				).toBe(true);
+				expect(
+					evaluateRule(
+						rule("assigneeUserId", "not_equals", teamRef),
+						{ assigneeUserId: "u1" },
+						teamScope
+					)
+				).toBe(false);
+			});
+
+			it("an empty array value matches nothing", () => {
+				expect(
+					evaluateRule(
+						rule("assigneeUserId", "equals", {
+							kind: "var",
+							path: "trigger.record.noTeam",
+						}),
+						{ assigneeUserId: "u1" },
+						teamScope
+					)
+				).toBe(false);
+			});
+		});
 	});
 
 	describe("contains / not_contains", () => {

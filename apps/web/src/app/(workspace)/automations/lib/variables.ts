@@ -132,10 +132,11 @@ export function getScopeObjectType(
 		// A fetch-only source (line items) can't be a scope record — publish
 		// validation rejects the loop; report no scope rather than a type
 		// actions can't act on.
-		const scopeType: TriggerableObjectType | null =
-			sourceType && !isFetchOnlyObjectType(sourceType) ? sourceType : null;
+		if (sourceType && isFetchOnlyObjectType(sourceType)) {
+			return { objectType: null, inLoop: true, loopNodeId: node.id };
+		}
 		return {
-			objectType: scopeType ?? triggerObjectType,
+			objectType: sourceType ?? triggerObjectType,
 			inLoop: true,
 			loopNodeId: node.id,
 		};
@@ -201,8 +202,12 @@ const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
 ];
 
 /** " ID" suffix for id-type fields (e.g. "Client" -> "Client ID") disambiguates FK references. */
-function fieldOptionLabel(prefix: string, field: { label: string; type: FieldType }): string {
-	return `${prefix} → ${field.label}${field.type === "id" ? " ID" : ""}`;
+function fieldOptionLabel(
+	prefix: string,
+	field: { label: string; type: FieldType; isArray?: boolean }
+): string {
+	const suffix = field.type === "id" ? (field.isArray ? " IDs" : " ID") : "";
+	return `${prefix} → ${field.label}${suffix}`;
 }
 
 /**
@@ -372,7 +377,9 @@ export function getAvailableVariables(
 		const sourceNode = byId.get(config.sourceNodeId);
 		const sourceObjectType = (sourceNode?.config as FetchNodeConfig | undefined)
 			?.objectType;
-		if (!sourceObjectType) continue;
+		// A fetch-only source (line items) can't drive a loop — publish rejects
+		// it, so don't offer item variables that could never resolve.
+		if (!sourceObjectType || isFetchOnlyObjectType(sourceObjectType)) continue;
 
 		// Runtime resolves _id by raw property lookup on the loop item; offer it explicitly.
 		options.push({
@@ -489,7 +496,9 @@ export function getAllVariableOptions(
 		const sourceNode = nodes.find((n) => n.id === config.sourceNodeId);
 		const sourceObjectType = (sourceNode?.config as FetchNodeConfig | undefined)
 			?.objectType;
-		if (!sourceObjectType) continue;
+		// A fetch-only source (line items) can't drive a loop — publish rejects
+		// it, so don't offer item variables that could never resolve.
+		if (!sourceObjectType || isFetchOnlyObjectType(sourceObjectType)) continue;
 
 		options.push({
 			path: `loop.${node.id}.item._id`,

@@ -320,6 +320,7 @@ export function FilterGroupsEditor({
 											trigger={trigger}
 											targetNodeId={targetNodeId}
 											formulas={formulas}
+											arrayResolution="any"
 										/>
 									)}
 								</div>

@@ -454,6 +454,12 @@ export interface ValueInputProps {
 	className?: string;
 	/** Inline error shown beneath the control (per-rule save feedback). */
 	error?: string;
+	/**
+	 * How an array variable feeding this single-valued field resolves — action
+	 * writes coerce to the first element ("first"); condition/filter compares
+	 * match on membership ("any"). Drives the picker hint only.
+	 */
+	arrayResolution?: "first" | "any";
 }
 
 /**
@@ -473,6 +479,7 @@ export function ValueInput({
 	placeholder,
 	className,
 	error,
+	arrayResolution = "first",
 }: ValueInputProps) {
 	const [open, setOpen] = useState(false);
 	const { variables, groups } = useGroupedVariables(nodes, trigger, targetNodeId, formulas);
@@ -579,11 +586,15 @@ export function ValueInput({
 													field.refType,
 													option.refType
 												);
-												// An array feeding this single-valued field resolves to
-												// its first element — say so rather than let the author
-												// assume all of them land.
-												const usesFirstMember =
-													!!option.isArray && !needsConversion;
+												// An array feeding this single-valued field resolves
+												// per arrayResolution — say so rather than let the
+												// author assume all of them land.
+												const arrayHint =
+													option.isArray && !needsConversion
+														? arrayResolution === "first"
+															? "uses first"
+															: "matches any"
+														: null;
 												return (
 													<CommandItem
 														key={option.path}
@@ -607,9 +618,9 @@ export function ValueInput({
 																needs conversion
 															</span>
 														)}
-														{usesFirstMember && (
+														{arrayHint && (
 															<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
-																uses first
+																{arrayHint}
 															</span>
 														)}
 													</CommandItem>

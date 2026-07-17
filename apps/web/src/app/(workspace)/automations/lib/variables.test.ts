@@ -192,7 +192,7 @@ describe("getAvailableVariables", () => {
 
 		expect(option).toEqual({
 			path: "loop.loop1.item.assignedUserIds",
-			label: "Loop item → Assigned team ID",
+			label: "Loop item → Assigned team IDs",
 			group: "Loop item",
 			fieldType: "id",
 			refType: "user",
@@ -336,6 +336,32 @@ describe("getScopeObjectType", () => {
 			inLoop: false,
 			loopNodeId: null,
 		});
+	});
+
+	it("reports no scope (not the trigger type) for a fetch-only loop source", () => {
+		const lineItemFetch = fetchNode("f2", "quote_line_item");
+		const lineItemLoop = loopNode("loop3", "f2", { bodyStartNodeId: "b1" });
+		const body = actionNode("b1");
+		expect(
+			getScopeObjectType([lineItemFetch, lineItemLoop, body], "b1", "client")
+		).toEqual({
+			objectType: null,
+			inLoop: true,
+			loopNodeId: "loop3",
+		});
+	});
+
+	it("offers no loop-item variables for a fetch-only loop source", () => {
+		const lineItemFetch = fetchNode("f2", "quote_line_item");
+		const lineItemLoop = loopNode("loop3", "f2", { bodyStartNodeId: "b1" });
+		const body = actionNode("b1");
+		const nodes = [lineItemFetch, lineItemLoop, body];
+
+		const scoped = getAvailableVariables(nodes, statusChangedTrigger, "b1");
+		expect(scoped.some((o) => o.path.startsWith("loop.loop3."))).toBe(false);
+
+		const all = getAllVariableOptions(nodes, statusChangedTrigger);
+		expect(all.some((o) => o.path.startsWith("loop.loop3."))).toBe(false);
 	});
 
 	it("stays in-loop but falls back to the trigger type when the fetch source is unresolved", () => {

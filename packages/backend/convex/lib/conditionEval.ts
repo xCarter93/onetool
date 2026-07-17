@@ -308,6 +308,11 @@ function looseEquals(a: unknown, b: unknown): boolean {
 	if (Array.isArray(a) && !Array.isArray(b)) {
 		return a.some((element) => looseEquals(element, b));
 	}
+	// Symmetric: an array compare value ({{loop.x.item.assignedUserIds}})
+	// matches a scalar field on membership too — "assignee is one of them".
+	if (Array.isArray(b) && !Array.isArray(a)) {
+		return b.some((element) => looseEquals(a, element));
+	}
 	if (typeof a === "number" && typeof b === "string") {
 		return numericStringToNumber(b) === a;
 	}
