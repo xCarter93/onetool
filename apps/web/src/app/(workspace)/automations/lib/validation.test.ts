@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { validateWorkflowForSave } from "./validation";
+import { LOOP_FETCH_ONLY_ERROR } from "./node-types";
 import type {
 	AggregateNodeConfig,
+	AutomationObjectType,
 	ConditionNodeConfig,
 	FetchNodeConfig,
 	LoopNodeConfig,
@@ -288,6 +290,67 @@ describe("validateWorkflowForSave — condition node loop scope", () => {
 				(e) => e.nodeId === "cond1" && e.message === "Finish configuring the condition"
 			)
 		).toBe(true);
+	});
+});
+
+describe("validateWorkflowForSave — loops over fetch-only types (B7)", () => {
+	// Line items are fetch+aggregate only. A loop hands each item to actions as
+	// the record in scope, which a line item can never be — so the loop itself
+	// is rejected. Parity with the backend publish validator, which throws the
+	// same shared LOOP_FETCH_ONLY_ERROR string.
+	const scheduledTrigger: TriggerConfig = {
+		type: "scheduled",
+		schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+	};
+
+	function loopOverNodes(objectType: AutomationObjectType): WorkflowNode[] {
+		return [
+			{
+				id: "fetch1",
+				type: "fetch_records",
+				config: { kind: "fetch_records", objectType, filters: [] },
+			},
+			{
+				id: "loop1",
+				type: "loop",
+				config: { kind: "loop", sourceNodeId: "fetch1" } satisfies LoopNodeConfig,
+				bodyStartNodeId: "act1",
+			},
+			{
+				id: "act1",
+				type: "action",
+				config: {
+					kind: "action",
+					action: {
+						type: "send_notification",
+						recipient: { allMembers: true },
+						message: "hi",
+					},
+				},
+			},
+		] as WorkflowNode[];
+	}
+
+	it.each(["quote_line_item", "invoice_line_item"] as const)(
+		"rejects a loop whose source fetches %s",
+		(objectType) => {
+			const result = validateWorkflowForSave(
+				scheduledTrigger,
+				loopOverNodes(objectType)
+			);
+			expect(
+				result.errors.some(
+					(e) => e.nodeId === "loop1" && e.message === LOOP_FETCH_ONLY_ERROR
+				)
+			).toBe(true);
+		}
+	);
+
+	it("still allows a loop over a normal fetched type", () => {
+		const result = validateWorkflowForSave(scheduledTrigger, loopOverNodes("task"));
+		expect(
+			result.errors.some((e) => e.message === LOOP_FETCH_ONLY_ERROR)
+		).toBe(false);
 	});
 });
 

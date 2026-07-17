@@ -1,4 +1,8 @@
-import type { AutomationObjectType, ConditionOperator } from "./workflowTypes";
+import type {
+	AutomationObjectType,
+	ConditionOperator,
+	TriggerableObjectType,
+} from "./workflowTypes";
 
 /**
  * Shared entity field registry for workflow automations.
@@ -55,7 +59,7 @@ export interface FieldDefinition {
 	 * On read-only FKs it lets the builder render a record picker instead of a
 	 * raw-id text box in condition/filter rules.
 	 */
-	refType?: "client" | "project" | "user" | "quote";
+	refType?: "client" | "project" | "user" | "quote" | "invoice";
 	/**
 	 * The field holds an array of `type` values, not one. Filters match on
 	 * membership (`equals` = "is one of them"), and feeding one into a
@@ -412,6 +416,117 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		},
 	],
 
+	/**
+	 * Line items are FETCH+AGGREGATE only: every field is writable:false and none
+	 * is creatable, so getWritableFields()/CREATABLE_OBJECT_TYPES exclude them
+	 * with no type-level guard needed. Aggregating over amount/total — the
+	 * headline use case — needs no engine change beyond the fetch switch.
+	 * Field names differ per table: quotes use rate/amount, invoices unitPrice/total.
+	 */
+	quote_line_item: [
+		{
+			key: "description",
+			label: "Description",
+			type: "text",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "quantity",
+			label: "Quantity",
+			type: "number",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "unit",
+			label: "Unit",
+			type: "text",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "rate",
+			label: "Rate",
+			type: "currency",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "amount",
+			label: "Amount",
+			type: "currency",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "cost",
+			label: "Cost",
+			type: "currency",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "quoteId",
+			label: "Quote",
+			type: "id",
+			refType: "quote",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+	],
+
+	invoice_line_item: [
+		{
+			key: "description",
+			label: "Description",
+			type: "text",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "quantity",
+			label: "Quantity",
+			type: "number",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "unitPrice",
+			label: "Unit Price",
+			type: "currency",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "total",
+			label: "Total",
+			type: "currency",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+		{
+			key: "invoiceId",
+			label: "Invoice",
+			type: "id",
+			refType: "invoice",
+			writable: false,
+			writeExclusionReason: "Line items can be read and aggregated; editing them from automations isn't supported yet",
+			filterable: true,
+		},
+	],
+
 	task: [
 		{ key: "title", label: "Title", type: "text", writable: true, filterable: true, creatable: true, requiredOnCreate: true },
 		{ key: "description", label: "Description", type: "text", writable: true, filterable: true, creatable: true },
@@ -595,13 +710,16 @@ export function getStatusOptions(
  */
 export const RELATED_OBJECTS: Record<
 	AutomationObjectType,
-	AutomationObjectType[]
+	TriggerableObjectType[]
 > = {
 	client: [],
 	project: ["client"],
 	quote: ["client", "project"],
 	invoice: ["client", "project", "quote"],
 	task: ["project", "client"],
+	// Direct FK only — item -> parent -> client is two-hop traversal (Item 13).
+	quote_line_item: ["quote"],
+	invoice_line_item: ["invoice"],
 };
 
 /**
@@ -627,6 +745,8 @@ export const USER_REF_RECIPIENT_FIELDS: Record<
 	],
 	client: [{ key: "createdByUserId", label: "Creator", isArray: false }],
 	invoice: [{ key: "createdByUserId", label: "Creator", isArray: false }],
+	quote_line_item: [],
+	invoice_line_item: [],
 };
 
 /** FK field on the source record used to resolve each relation. */
@@ -639,4 +759,6 @@ export const RELATION_FIELD: Record<
 	quote: { client: "clientId", project: "projectId" },
 	invoice: { client: "clientId", project: "projectId", quote: "quoteId" },
 	task: { project: "projectId", client: "clientId" },
+	quote_line_item: { quote: "quoteId" },
+	invoice_line_item: { invoice: "invoiceId" },
 };

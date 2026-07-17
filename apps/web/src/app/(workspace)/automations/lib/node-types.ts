@@ -13,11 +13,15 @@ import type { Node, Edge } from "@xyflow/react";
 import type {
 	AutomationAction,
 	AutomationObjectType,
+	TriggerableObjectType,
 	WorkflowNodeConfig,
 	WorkflowNodeType,
 	ConditionGroup,
 } from "@onetool/backend/convex/lib/workflowTypes";
-import { AUTOMATION_OBJECT_TYPES } from "@onetool/backend/convex/lib/workflowTypes";
+import {
+	AUTOMATION_OBJECT_TYPES,
+	TRIGGERABLE_OBJECT_TYPES,
+} from "@onetool/backend/convex/lib/workflowTypes";
 import {
 	RELATED_OBJECTS,
 	CREATABLE_OBJECT_TYPES,
@@ -29,6 +33,9 @@ import {
 
 export {
 	AUTOMATION_OBJECT_TYPES,
+	TRIGGERABLE_OBJECT_TYPES,
+	isFetchOnlyObjectType,
+	LOOP_FETCH_ONLY_ERROR,
 	CONDITION_OPERATORS,
 	VALUELESS_OPERATORS,
 	NODE_TYPES,
@@ -49,6 +56,7 @@ export {
 
 export type {
 	AutomationObjectType,
+	TriggerableObjectType,
 	AutomationTrigger,
 	AutomationTriggerV2,
 	AutomationStatus,
@@ -107,12 +115,28 @@ export const OBJECT_TYPE_LABELS: Record<AutomationObjectType, string> = {
 	quote: "Quote",
 	invoice: "Invoice",
 	task: "Task",
+	quote_line_item: "Quote line item",
+	invoice_line_item: "Invoice line item",
 };
 
+/** Everything selectable as a "Find records" source — line items included. */
 export const OBJECT_TYPE_OPTIONS: {
 	value: AutomationObjectType;
 	label: string;
 }[] = AUTOMATION_OBJECT_TYPES.map((value) => ({
+	value,
+	label: OBJECT_TYPE_LABELS[value],
+}));
+
+/**
+ * Object types an automation can trigger on. Distinct from OBJECT_TYPE_OPTIONS:
+ * line items are fetch+aggregate only, so they must never reach the trigger
+ * picker (the backend validator rejects them, but the option shouldn't exist).
+ */
+export const TRIGGERABLE_OBJECT_TYPE_OPTIONS: {
+	value: TriggerableObjectType;
+	label: string;
+}[] = TRIGGERABLE_OBJECT_TYPES.map((value) => ({
 	value,
 	label: OBJECT_TYPE_LABELS[value],
 }));
@@ -265,7 +289,7 @@ type TriggerConfigBase = {
 export type TriggerConfig =
 	| (TriggerConfigBase & {
 			type?: "status_changed" | "record_created" | "record_updated";
-			objectType?: AutomationObjectType;
+			objectType?: TriggerableObjectType;
 	  })
 	| (TriggerConfigBase & { type: "scheduled" });
 
@@ -288,7 +312,7 @@ export const VARIABLE_LEFT_OPERATORS = [
 /** The object type bound to `trigger.record`, or null when there is none. */
 export function triggerScopeObjectType(
 	trigger: TriggerConfig | null | undefined
-): AutomationObjectType | null {
+): TriggerableObjectType | null {
 	if (!trigger || trigger.type === "scheduled") return null;
 	return trigger.objectType ?? null;
 }
@@ -299,14 +323,14 @@ export function triggerScopeObjectType(
 
 export type ActionTargetOption = {
 	/** "self" or the related object type. */
-	value: "self" | AutomationObjectType;
+	value: "self" | TriggerableObjectType;
 	label: string;
 	/** The object type the target resolves to (drives field pickers). */
-	objectType: AutomationObjectType;
+	objectType: TriggerableObjectType;
 };
 
 export function getTargetOptions(
-	objectType: AutomationObjectType
+	objectType: TriggerableObjectType
 ): ActionTargetOption[] {
 	return [
 		{
@@ -329,7 +353,7 @@ export function getTargetOptions(
 export type TriggerNodeData = {
 	nodeType: "trigger";
 	trigger: TriggerConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type TriggerPlaceholderNodeData = {
@@ -339,49 +363,49 @@ export type TriggerPlaceholderNodeData = {
 export type ConditionNodeData = {
 	nodeType: "condition";
 	config?: ConditionNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type ActionNodeData = {
 	nodeType: "action";
 	config?: ActionNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type FetchNodeData = {
 	nodeType: "fetch_records";
 	config?: FetchNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type LoopNodeData = {
 	nodeType: "loop";
 	config?: LoopNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type AggregateNodeData = {
 	nodeType: "aggregate";
 	config?: AggregateNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type AdjustTimeNodeData = {
 	nodeType: "adjust_time";
 	config?: AdjustTimeNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type DelayNodeData = {
 	nodeType: "delay";
 	config?: DelayNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type DelayUntilNodeData = {
 	nodeType: "delay_until";
 	config?: DelayUntilNodeConfig;
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 };
 
 export type EndNodeData = {

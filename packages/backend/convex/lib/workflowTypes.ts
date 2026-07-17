@@ -33,11 +33,68 @@ export const AUTOMATION_OBJECT_TYPES = [
 	"quote",
 	"invoice",
 	"task",
+	"quote_line_item",
+	"invoice_line_item",
 ] as const;
 
 export type AutomationObjectType = (typeof AUTOMATION_OBJECT_TYPES)[number];
 
+/**
+ * Types that can only be read (fetched + aggregated), never triggered on,
+ * created, or written. Line items are financial rows whose `amount`/`total`
+ * and whose parent's subtotal/total are recomputed by dedicated domain
+ * mutations; a raw automation write would skip both and silently drift an
+ * invoice. Every read-only surface derives from this list.
+ */
+export const FETCH_ONLY_OBJECT_TYPES = [
+	"quote_line_item",
+	"invoice_line_item",
+] as const;
+
+export type FetchOnlyObjectType = (typeof FETCH_ONLY_OBJECT_TYPES)[number];
+
+/** An object type an automation can trigger on / target a record of. */
+export type TriggerableObjectType = Exclude<
+	AutomationObjectType,
+	FetchOnlyObjectType
+>;
+
+export const TRIGGERABLE_OBJECT_TYPES = AUTOMATION_OBJECT_TYPES.filter(
+	(t): t is TriggerableObjectType =>
+		!(FETCH_ONLY_OBJECT_TYPES as readonly string[]).includes(t)
+);
+
+/**
+ * Rejecting a loop over a fetch-only type. Shared by publish validation
+ * (backend + web) and the executor's runtime backstop so they can't drift.
+ */
+export const LOOP_FETCH_ONLY_ERROR =
+	"Line items can be read and aggregated, but looping over them isn't supported";
+
+export function isFetchOnlyObjectType(
+	objectType: AutomationObjectType
+): objectType is FetchOnlyObjectType {
+	return (FETCH_ONLY_OBJECT_TYPES as readonly string[]).includes(objectType);
+}
+
+/** Every object type — fetch/aggregate sources included. */
 export const objectTypeValidator = v.union(
+	v.literal("client"),
+	v.literal("project"),
+	v.literal("quote"),
+	v.literal("invoice"),
+	v.literal("task"),
+	v.literal("quote_line_item"),
+	v.literal("invoice_line_item")
+);
+
+/**
+ * Triggerable types only. Triggers use this rather than the wide validator so
+ * a line-item trigger is unrepresentable rather than merely rejected — the
+ * executor's getObject() has a silent `default: return null`, so a bad stored
+ * trigger would no-op instead of erroring.
+ */
+export const triggerableObjectTypeValidator = v.union(
 	v.literal("client"),
 	v.literal("project"),
 	v.literal("quote"),
@@ -157,7 +214,7 @@ export const actionTargetValidator = v.union(
 	v.literal("self"),
 	// A record related to the one in scope (resolved via the field registry
 	// relations map, e.g. a task's project, a quote's client).
-	v.object({ related: objectTypeValidator })
+	v.object({ related: triggerableObjectTypeValidator })
 );
 
 export type ActionTarget = Infer<typeof actionTargetValidator>;
@@ -507,7 +564,7 @@ export const entryCriteriaValidator = v.object({
 
 export const statusChangedTriggerValidator = v.object({
 	type: v.literal("status_changed"),
-	objectType: objectTypeValidator,
+	objectType: triggerableObjectTypeValidator,
 	fromStatus: v.optional(v.string()),
 	toStatus: v.string(),
 	entryCriteria: v.optional(entryCriteriaValidator),
@@ -515,13 +572,13 @@ export const statusChangedTriggerValidator = v.object({
 
 export const recordCreatedTriggerValidator = v.object({
 	type: v.literal("record_created"),
-	objectType: objectTypeValidator,
+	objectType: triggerableObjectTypeValidator,
 	entryCriteria: v.optional(entryCriteriaValidator),
 });
 
 export const recordUpdatedTriggerValidator = v.object({
 	type: v.literal("record_updated"),
-	objectType: objectTypeValidator,
+	objectType: triggerableObjectTypeValidator,
 	/** Fire only when one of these fields changed; any field if omitted/empty. */
 	fields: v.optional(v.array(v.string())),
 	entryCriteria: v.optional(entryCriteriaValidator),
@@ -537,7 +594,7 @@ export const scheduledTriggerValidator = v.object({
 	 * stored rows parse; `triggerRecordObjectType()` returns undefined for
 	 * scheduled, and writes strip it.
 	 */
-	objectType: v.optional(objectTypeValidator),
+	objectType: v.optional(triggerableObjectTypeValidator),
 });
 
 export const triggerValidator = v.union(

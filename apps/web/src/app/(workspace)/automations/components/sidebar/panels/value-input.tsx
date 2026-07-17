@@ -148,6 +148,7 @@ const REF_PLACEHOLDER: Record<NonNullable<FieldDefinition["refType"]>, string> =
 	client: "Select a client",
 	project: "Select a project",
 	user: "Select a member",
+	invoice: "Select an invoice",
 	quote: "Select a quote",
 };
 
@@ -175,6 +176,10 @@ function IdValueControl({
 	const projects = useQuery(api.projects.list, refType === "project" ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, refType === "user" ? {} : "skip");
 	const quotes = useQuery(api.quotes.list, refType === "quote" ? {} : "skip");
+	const invoices = useQuery(
+		api.invoices.list,
+		refType === "invoice" ? {} : "skip"
+	);
 
 	const options = useMemo<{ id: string; label: string }[]>(() => {
 		switch (refType) {
@@ -192,16 +197,22 @@ function IdValueControl({
 					id: q._id,
 					label: q.title || `Quote #${q.quoteNumber}`,
 				}));
+			case "invoice":
+				return (invoices ?? []).map((i) => ({
+					id: i._id,
+					label: `Invoice #${i.invoiceNumber}`,
+				}));
 			default:
 				return [];
 		}
-	}, [refType, clients, projects, users, quotes]);
+	}, [refType, clients, projects, users, quotes, invoices]);
 
 	const loading =
 		(refType === "client" && clients === undefined) ||
 		(refType === "project" && projects === undefined) ||
 		(refType === "user" && users === undefined) ||
-		(refType === "quote" && quotes === undefined);
+		(refType === "quote" && quotes === undefined) ||
+		(refType === "invoice" && invoices === undefined);
 
 	const selected = value ? options.find((o) => o.id === value) : undefined;
 	const triggerLabel = selected

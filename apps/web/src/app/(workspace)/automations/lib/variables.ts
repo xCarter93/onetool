@@ -6,7 +6,9 @@ import { collectLoopBody } from "./graph-utils";
 import {
 	OBJECT_TYPE_LABELS,
 	getFilterableFields,
+	isFetchOnlyObjectType,
 	type AutomationObjectType,
+	type TriggerableObjectType,
 	type AutomationTrigger,
 	type FetchNodeConfig,
 	type FieldDefinition,
@@ -107,9 +109,9 @@ export function getUpstreamFetchNodes(
 export function getScopeObjectType(
 	nodes: WorkflowNode[],
 	targetNodeId: string,
-	triggerObjectType: AutomationObjectType | null
+	triggerObjectType: TriggerableObjectType | null
 ): {
-	objectType: AutomationObjectType | null;
+	objectType: TriggerableObjectType | null;
 	inLoop: boolean;
 	loopNodeId: string | null;
 } {
@@ -127,7 +129,16 @@ export function getScopeObjectType(
 		const sourceType = (sourceNode?.config as FetchNodeConfig | undefined)
 			?.objectType;
 		// Nested loops are rejected, so a node belongs to at most one body.
-		return { objectType: sourceType ?? triggerObjectType, inLoop: true, loopNodeId: node.id };
+		// A fetch-only source (line items) can't be a scope record — publish
+		// validation rejects the loop; report no scope rather than a type
+		// actions can't act on.
+		const scopeType: TriggerableObjectType | null =
+			sourceType && !isFetchOnlyObjectType(sourceType) ? sourceType : null;
+		return {
+			objectType: scopeType ?? triggerObjectType,
+			inLoop: true,
+			loopNodeId: node.id,
+		};
 	}
 	return { objectType: triggerObjectType, inLoop: false, loopNodeId: null };
 }
@@ -196,16 +207,22 @@ function fieldOptionLabel(prefix: string, field: { label: string; type: FieldTyp
 
 /**
  * A record's own `_id` option is refType-compatible with a destination `id`
- * field pointing at the same object type — but task/invoice aren't valid
- * `refType` values (no id field ever points at one), so those fall back to
- * undefined, same as any other unknown ref type: never flagged.
+ * field pointing at the same object type — but `task` and the line-item types
+ * aren't valid `refType` values (no id field ever points at one), so those fall
+ * back to undefined, same as any other unknown ref type: never flagged.
  */
 function asRefType(
 	objectType: AutomationObjectType
 ): FieldDefinition["refType"] {
-	return objectType === "task" || objectType === "invoice"
-		? undefined
-		: objectType;
+	switch (objectType) {
+		case "client":
+		case "project":
+		case "quote":
+		case "invoice":
+			return objectType;
+		default:
+			return undefined;
+	}
 }
 
 /** trigger.record.<field> + trigger.event.oldValue/newValue — shared by both functions. */

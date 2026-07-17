@@ -7,6 +7,7 @@ import {
 	formulaResourceValidator,
 	nodeConfigValidator,
 	nodeTypeValidator,
+	objectTypeValidator,
 	triggerValidator,
 } from "./lib/workflowTypes";
 
@@ -1476,13 +1477,7 @@ export default defineSchema({
 				fetchOutputs: v.array(
 					v.object({
 						nodeId: v.string(),
-						objectType: v.union(
-							v.literal("client"),
-							v.literal("project"),
-							v.literal("quote"),
-							v.literal("invoice"),
-							v.literal("task")
-						),
+						objectType: objectTypeValidator,
 						recordIds: v.array(v.string()),
 						count: v.number(),
 					})

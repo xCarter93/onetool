@@ -6,11 +6,18 @@ import {
 	RELATION_FIELD,
 	getFieldDefinition,
 	getWritableFields,
+	getCreatableFields,
 	getFilterableFields,
+	isCreatableObjectType,
 	operatorsForField,
 	getStatusOptions,
 } from "./fieldRegistry";
-import { AUTOMATION_OBJECT_TYPES } from "./workflowTypes";
+import {
+	AUTOMATION_OBJECT_TYPES,
+	FETCH_ONLY_OBJECT_TYPES,
+	TRIGGERABLE_OBJECT_TYPES,
+	isFetchOnlyObjectType,
+} from "./workflowTypes";
 
 /**
  * Expected field keys hardcoded from schema.ts table validators. If the schema
@@ -106,6 +113,26 @@ const SCHEMA_KEYS = {
 		"repeatUntil",
 		"parentTaskId",
 	],
+	quote_line_item: [
+		"quoteId",
+		"orgId",
+		"description",
+		"quantity",
+		"unit",
+		"rate",
+		"amount",
+		"cost",
+		"sortOrder",
+	],
+	invoice_line_item: [
+		"invoiceId",
+		"orgId",
+		"description",
+		"quantity",
+		"unitPrice",
+		"total",
+		"sortOrder",
+	],
 } as const;
 
 /** Exact status enum values from schema.ts, in declaration order. */
@@ -115,6 +142,9 @@ const SCHEMA_STATUS_VALUES = {
 	quote: ["draft", "sent", "approved", "declined", "expired"],
 	invoice: ["draft", "sent", "paid", "overdue", "cancelled"],
 	task: ["pending", "in-progress", "completed", "cancelled"],
+	// Line items have no status — nothing to transition, nothing to trigger on.
+	quote_line_item: [],
+	invoice_line_item: [],
 } as const;
 
 describe("FIELD_REGISTRY", () => {
@@ -307,5 +337,44 @@ describe("relations", () => {
 				).toContain(fkField);
 			}
 		}
+	});
+});
+
+describe("line items are fetch+aggregate only (B7)", () => {
+	it.each(FETCH_ONLY_OBJECT_TYPES)(
+		"%s has no writable or creatable fields",
+		(objectType) => {
+			expect(getWritableFields(objectType)).toEqual([]);
+			expect(getCreatableFields(objectType)).toEqual([]);
+			expect(isCreatableObjectType(objectType)).toBe(false);
+		}
+	);
+
+	it("TRIGGERABLE_OBJECT_TYPES excludes both line-item types", () => {
+		expect(TRIGGERABLE_OBJECT_TYPES).not.toContain("quote_line_item");
+		expect(TRIGGERABLE_OBJECT_TYPES).not.toContain("invoice_line_item");
+		expect(TRIGGERABLE_OBJECT_TYPES).toEqual([
+			"client",
+			"project",
+			"quote",
+			"invoice",
+			"task",
+		]);
+	});
+
+	it("isFetchOnlyObjectType is true only for line-item types", () => {
+		for (const objectType of AUTOMATION_OBJECT_TYPES) {
+			const expected = (FETCH_ONLY_OBJECT_TYPES as readonly string[]).includes(
+				objectType
+			);
+			expect(isFetchOnlyObjectType(objectType)).toBe(expected);
+		}
+		expect(isFetchOnlyObjectType("quote_line_item")).toBe(true);
+		expect(isFetchOnlyObjectType("invoice_line_item")).toBe(true);
+		expect(isFetchOnlyObjectType("client")).toBe(false);
+		expect(isFetchOnlyObjectType("project")).toBe(false);
+		expect(isFetchOnlyObjectType("quote")).toBe(false);
+		expect(isFetchOnlyObjectType("invoice")).toBe(false);
+		expect(isFetchOnlyObjectType("task")).toBe(false);
 	});
 });
