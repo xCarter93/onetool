@@ -302,6 +302,22 @@ export function interpolateTemplate(
 /** Strict equality, except a number compares equal to its numeric string. */
 function looseEquals(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
+	// An array-valued field (project.assignedUserIds) matches on membership:
+	// "Assigned team equals Alice" means Alice is on the team. Without this a
+	// rule on an array field silently never matches.
+	if (Array.isArray(a) && !Array.isArray(b)) {
+		return a.some((element) => looseEquals(element, b));
+	}
+	// Symmetric: an array compare value ({{loop.x.item.assignedUserIds}})
+	// matches a scalar field on membership too — "assignee is one of them".
+	if (Array.isArray(b) && !Array.isArray(a)) {
+		return b.some((element) => looseEquals(a, element));
+	}
+	// Both arrays ("Assigned team equals {{trigger.record.assignedUserIds}}"):
+	// match when the two share at least one member.
+	if (Array.isArray(a) && Array.isArray(b)) {
+		return a.some((element) => b.some((other) => looseEquals(element, other)));
+	}
 	if (typeof a === "number" && typeof b === "string") {
 		return numericStringToNumber(b) === a;
 	}

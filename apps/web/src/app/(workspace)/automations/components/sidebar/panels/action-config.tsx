@@ -31,6 +31,7 @@ import {
 	getWritableFields,
 	type ActionNodeConfig,
 	type AutomationObjectType,
+	type TriggerableObjectType,
 	type AutomationTrigger,
 	type CreateRecordAction,
 	type CreateTaskAction,
@@ -117,7 +118,7 @@ function UpdateFieldsFields({
 	formulas,
 	commit,
 }: ActionFieldsProps<UpdateFieldsAction> & {
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 }) {
 	// Inside a loop body, `target: "self"` (and its related FKs) resolve against
 	// the loop's fetched item, not the trigger record — mirror the engine.
@@ -344,7 +345,7 @@ function CreateRecordFields({
 	formulas,
 	commit,
 }: ActionFieldsProps<CreateRecordAction> & {
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 }) {
 	const objectType = action.objectType;
 	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
@@ -709,7 +710,7 @@ function SendNotificationFields({
 	formulas,
 	commit,
 }: ActionFieldsProps<SendNotificationAction> & {
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 }) {
 	const members = useQuery(api.users.listByOrg);
 	const update = (patch: Partial<SendNotificationAction>) => {
@@ -990,7 +991,7 @@ function SendTeamMessageFields({
 	formulas,
 	commit,
 }: ActionFieldsProps<SendTeamMessageAction> & {
-	triggerObjectType: AutomationObjectType | null;
+	triggerObjectType: TriggerableObjectType | null;
 }) {
 	const members = useQuery(api.users.listByOrg);
 

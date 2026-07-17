@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
 	FORMULA_RETURN_TYPES,
-	type AutomationObjectType,
+	type TriggerableObjectType,
 	type AutomationTrigger,
 	type FormulaResource,
 	type FormulaReturnType,
@@ -40,7 +40,7 @@ import { getAllVariableOptions } from "../../lib/variables";
 
 /** A record the formula preview can resolve trigger.record.<field> against. */
 export type SampleRecord = {
-	entityType: AutomationObjectType;
+	entityType: TriggerableObjectType;
 	entityId: string;
 	label: string;
 };

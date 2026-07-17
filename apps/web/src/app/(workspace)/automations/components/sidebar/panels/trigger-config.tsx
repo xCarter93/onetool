@@ -15,14 +15,14 @@ import { Input } from "@/components/ui/input";
 import ComboBox from "@/components/ui/combo-box";
 import {
 	DEFAULT_SCHEDULE_TIME,
-	OBJECT_TYPE_OPTIONS,
+	TRIGGERABLE_OBJECT_TYPE_OPTIONS,
 	TRIGGER_TYPE_OPTIONS,
 	describeSchedule,
 	getFilterableFields,
 	getStatusOptions,
 	triggerScopeObjectType,
 	validateSchedule,
-	type AutomationObjectType,
+	type TriggerableObjectType,
 	type AutomationSchedule,
 	type TriggerConfig,
 	type TriggerType,
@@ -143,7 +143,7 @@ export function TriggerConfigPanel({
 	};
 
 	const handleObjectTypeChange = (value: string) => {
-		const newObjType = value as AutomationObjectType;
+		const newObjType = value as TriggerableObjectType;
 		const newStatusOptions = getStatusOptions(newObjType);
 		if (currentTrigger.type === "scheduled") return;
 		onTriggerChange({
@@ -220,7 +220,7 @@ export function TriggerConfigPanel({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{OBJECT_TYPE_OPTIONS.map((type) => (
+									{TRIGGERABLE_OBJECT_TYPE_OPTIONS.map((type) => (
 										<SelectItem key={type.value} value={type.value}>
 											{type.label}
 										</SelectItem>

@@ -8,6 +8,8 @@ import { userMutation, userQuery } from "./lib/factories";
 import {
 	AUTOMATION_OBJECT_TYPES,
 	DELAY_UNIT_MS,
+	LOOP_FETCH_ONLY_ERROR,
+	isFetchOnlyObjectType,
 	MAX_CONDITION_GROUPS,
 	MAX_DELAY_MS,
 	MAX_DUE_IN_DAYS,
@@ -905,6 +907,12 @@ function validateWorkflowDefinition(
 					throw new Error(
 						`Node ${node.id}: loops must reference a "Find records" node`
 					);
+				}
+				// A loop hands each item to actions as the record in scope, and a
+				// line item can't be one (fetch+aggregate only). The executor has
+				// the same guard for already-published snapshots.
+				if (isFetchOnlyObjectType(source.config.objectType)) {
+					throw new Error(`Node ${node.id}: ${LOOP_FETCH_ONLY_ERROR}`);
 				}
 				break;
 			}

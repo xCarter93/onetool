@@ -7,6 +7,10 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { systemMutation } from "./lib/factories";
+import {
+	triggerableObjectTypeValidator,
+	type TriggerableObjectType,
+} from "./lib/workflowTypes";
 
 /**
  * Emitters accept any MutationCtx; when called from a userMutation the
@@ -45,7 +49,14 @@ const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000; // 5 seconds
 const BATCH_SIZE = 50; // Events to process per batch
 
-type EntityType = "client" | "project" | "quote" | "invoice" | "task";
+/**
+ * The entity types that emit domain events. Derived from AutomationObjectType
+ * so the two enums can't drift — but fetch-only line items are excluded rather
+ * than aliased in: they never emit events (their parent quote/invoice does),
+ * and a bare alias would silently make emitStatusChangeEvent(…, "quote_line_item")
+ * type-check.
+ */
+type EntityType = TriggerableObjectType;
 
 /**
  * Publish an event to the event bus
@@ -56,13 +67,7 @@ export const publishEvent = systemMutation({
 		eventType: v.string(),
 		eventSource: v.string(),
 		payload: v.object({
-			entityType: v.union(
-				v.literal("client"),
-				v.literal("project"),
-				v.literal("quote"),
-				v.literal("invoice"),
-				v.literal("task")
-			),
+			entityType: triggerableObjectTypeValidator,
 			entityId: v.string(),
 			field: v.optional(v.string()),
 			oldValue: v.optional(v.any()),

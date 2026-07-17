@@ -50,13 +50,17 @@ import {
 	MAX_FETCH_LIMIT,
 	MAX_LOOP_ITEM_ERRORS,
 	MAX_LOOP_ITERATIONS,
+	isFetchOnlyObjectType,
+	LOOP_FETCH_ONLY_ERROR,
 	objectTypeValidator,
+	triggerableObjectTypeValidator,
 	triggerRecordObjectType,
 	type ActionTarget,
 	type AutomationAction,
 	type TeamMessageMention,
 	type ValueRef,
 	type AutomationObjectType,
+	type TriggerableObjectType,
 	type AutomationTrigger,
 	type ExecutedNode,
 	type FormulaResource,
@@ -79,7 +83,12 @@ import {
  */
 
 // Type definitions
-type ObjectType = AutomationObjectType;
+/**
+ * A record type the engine can act on: trigger, target, emit events about,
+ * link a notification to. Excludes fetch-only line items by construction — the
+ * fetch/aggregate surfaces below say AutomationObjectType explicitly.
+ */
+type ObjectType = TriggerableObjectType;
 type AutomationNode = Doc<"workflowAutomations">["nodes"][number];
 type AutomationDoc = Doc<"workflowAutomations">;
 
@@ -541,13 +550,7 @@ async function matchAndScheduleAutomations(
 export const handleStatusChangeEvent = systemMutation({
 	args: {
 		eventId: v.id("domainEvents"),
-		entityType: v.union(
-			v.literal("client"),
-			v.literal("project"),
-			v.literal("quote"),
-			v.literal("invoice"),
-			v.literal("task")
-		),
+		entityType: triggerableObjectTypeValidator,
 		entityId: v.string(),
 		fromStatus: v.string(),
 		toStatus: v.string(),
@@ -797,13 +800,13 @@ export const dispatchScheduledAutomations = internalMutation({
 
 /** The record a node operates on: the trigger record, or a loop item. */
 type ScopeRecord = {
-	type: ObjectType;
+	type: TriggerableObjectType;
 	id: string;
 	record: Record<string, unknown>;
 };
 
 type FetchOutput = {
-	objectType: ObjectType;
+	objectType: AutomationObjectType;
 	records: Record<string, unknown>[];
 	count: number;
 	/** True when the scan stopped at its cap with org rows still unscanned. */
@@ -1869,6 +1872,14 @@ async function runLoopNode(
 		pushEntry(env, { nodeId: node.id, result: "failed", error });
 		return { kind: "failed", error };
 	}
+	// Line items are fetch+aggregate only: they can't be a scope record, so a
+	// loop can't hand one to an action. Publish validation rejects this too;
+	// this is the runtime backstop for already-published snapshots.
+	if (isFetchOnlyObjectType(source.objectType)) {
+		const error = LOOP_FETCH_ONLY_ERROR;
+		pushEntry(env, { nodeId: node.id, result: "failed", error });
+		return { kind: "failed", error };
+	}
 
 	const summary = loopSummaryFor(env, node.id);
 
@@ -2129,7 +2140,7 @@ type OrgRow = Record<string, unknown> & { _creationTime: number };
  */
 async function takeOrgPage(
 	ctx: { db: QueryCtx["db"] },
-	objectType: ObjectType,
+	objectType: AutomationObjectType,
 	orgId: Id<"organizations">,
 	before: number | undefined,
 	count: number
@@ -2180,6 +2191,24 @@ async function takeOrgPage(
 				})
 				.order("desc")
 				.take(count);
+		case "quote_line_item":
+			return await ctx.db
+				.query("quoteLineItems")
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
+				.order("desc")
+				.take(count);
+		case "invoice_line_item":
+			return await ctx.db
+				.query("invoiceLineItems")
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lt("_creationTime", before);
+				})
+				.order("desc")
+				.take(count);
 		default: {
 			const _exhaustive: never = objectType;
 			return _exhaustive;
@@ -2199,7 +2228,7 @@ async function takeOrgPage(
  */
 export async function scanOrgRows(
 	ctx: { db: QueryCtx["db"] },
-	objectType: ObjectType,
+	objectType: AutomationObjectType,
 	orgId: Id<"organizations">,
 	opts: {
 		predicate?: (row: Record<string, unknown>) => boolean;
@@ -2437,7 +2466,7 @@ function computeDelayResume(
  */
 async function getObject(
 	ctx: { db: QueryCtx["db"] },
-	objectType: ObjectType,
+	objectType: AutomationObjectType,
 	objectId: string,
 	orgId: Id<"organizations">
 ): Promise<
@@ -2446,6 +2475,8 @@ async function getObject(
 	| Doc<"quotes">
 	| Doc<"invoices">
 	| Doc<"tasks">
+	| Doc<"quoteLineItems">
+	| Doc<"invoiceLineItems">
 	| null
 > {
 	let doc:
@@ -2454,6 +2485,8 @@ async function getObject(
 		| Doc<"quotes">
 		| Doc<"invoices">
 		| Doc<"tasks">
+		| Doc<"quoteLineItems">
+		| Doc<"invoiceLineItems">
 		| null;
 	switch (objectType) {
 		case "client":
@@ -2471,8 +2504,16 @@ async function getObject(
 		case "task":
 			doc = await ctx.db.get(objectId as Id<"tasks">);
 			break;
-		default:
-			return null;
+		case "quote_line_item":
+			doc = await ctx.db.get(objectId as Id<"quoteLineItems">);
+			break;
+		case "invoice_line_item":
+			doc = await ctx.db.get(objectId as Id<"invoiceLineItems">);
+			break;
+		default: {
+			const _exhaustive: never = objectType;
+			return _exhaustive;
+		}
 	}
 	if (doc && doc.orgId !== orgId) {
 		console.warn(
@@ -2793,8 +2834,21 @@ function coerceFieldValue(
 			// instant from then on.
 			return { ok: true, value: calendarDayEpoch(n, tz) };
 		}
-		case "id":
+		case "id": {
+			// An array-valued source (project.assignedUserIds) feeding a
+			// single-id destination (task.assigneeUserId) takes the first
+			// element; empty means "not supplied", not the string "".
+			// Without this, String(raw) yields "u1,u2" and FK resolution fails.
+			if (Array.isArray(raw)) {
+				if (raw.length === 0) return { ok: true, value: null };
+				const [first] = raw;
+				if (first === undefined || first === null) {
+					return { ok: true, value: null };
+				}
+				return { ok: true, value: String(first) };
+			}
 			return { ok: true, value: String(raw) };
+		}
 		default: {
 			const _exhaustive: never = fieldDef.type;
 			return _exhaustive;
@@ -3333,7 +3387,8 @@ async function resolveCreateFk(
 		client: "clients",
 		project: "projects",
 		quote: "quotes",
-	}[refType] as "users" | "clients" | "projects" | "quotes";
+		invoice: "invoices",
+	}[refType] as "users" | "clients" | "projects" | "quotes" | "invoices";
 	const normalized = ctx.db.normalizeId(table, raw);
 	if (!normalized) {
 		return { ok: false, error: `Referenced ${refType} is not a valid id` };
@@ -4341,7 +4396,7 @@ function pushDry(env: DryEnv, entry: ExecutedNode): void {
 
 /** Human label for a record, used in the run's triggerRecord + sample picker. */
 function sampleRecordLabel(
-	objectType: ObjectType,
+	objectType: AutomationObjectType,
 	record: Record<string, unknown>
 ): string {
 	switch (objectType) {
@@ -4359,6 +4414,9 @@ function sampleRecordLabel(
 				: "Invoice";
 		case "task":
 			return String(record.title ?? "Task");
+		case "quote_line_item":
+		case "invoice_line_item":
+			return String(record.description ?? "Line item");
 		default: {
 			const _exhaustive: never = objectType;
 			return _exhaustive;
@@ -4809,6 +4867,14 @@ async function dryRunLoopNode(
 		pushDry(env, { nodeId: node.id, result: "failed", error });
 		return "failed";
 	}
+	// Line items are fetch+aggregate only: they can't be a scope record, so a
+	// loop can't hand one to an action. Publish validation rejects this too;
+	// this is the runtime backstop for already-published snapshots.
+	if (isFetchOnlyObjectType(source.objectType)) {
+		const error = LOOP_FETCH_ONLY_ERROR;
+		pushDry(env, { nodeId: node.id, result: "failed", error });
+		return "failed";
+	}
 
 	const total = Math.min(
 		source.records.length,
@@ -5158,7 +5224,10 @@ export const startTestRun = userMutation({
 	args: {
 		automationId: v.id("workflowAutomations"),
 		record: v.optional(
-			v.object({ entityType: objectTypeValidator, entityId: v.string() })
+			v.object({
+				entityType: triggerableObjectTypeValidator,
+				entityId: v.string(),
+			})
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
@@ -5390,7 +5459,10 @@ export const startManualRun = userMutation({
 	args: {
 		automationId: v.id("workflowAutomations"),
 		record: v.optional(
-			v.object({ entityType: objectTypeValidator, entityId: v.string() })
+			v.object({
+				entityType: triggerableObjectTypeValidator,
+				entityId: v.string(),
+			})
 		),
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
@@ -5513,7 +5585,7 @@ export const getExecution = userQuery({
 export const getSampleRecords = userQuery({
 	args: {
 		automationId: v.optional(v.id("workflowAutomations")),
-		objectType: v.optional(objectTypeValidator),
+		objectType: v.optional(triggerableObjectTypeValidator),
 	},
 	handler: async (
 		ctx,

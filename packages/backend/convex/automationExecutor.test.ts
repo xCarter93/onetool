@@ -4,6 +4,7 @@ import { createTestOrg, createTestIdentity, addMemberToOrg } from "./test.helper
 import { api, internal } from "./_generated/api";
 import { isFatalExecutionError, scanOrgRows } from "./automationExecutor";
 import { projectCountsAggregate } from "./aggregates";
+import { LOOP_FETCH_ONLY_ERROR } from "./lib/workflowTypes";
 import type { Id } from "./_generated/dataModel";
 
 /**
@@ -2781,6 +2782,345 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(result("max")).toBeNull();
 		});
 
+		describe("line items — fetch + aggregate only (B7)", () => {
+			/** fetchNode above is typed to the 5 triggerable object types; line items need their own. */
+			function lineItemFetchNode(
+				id: string,
+				objectType: "quote_line_item" | "invoice_line_item",
+				filters: ReturnType<typeof filterGroup>[] = [],
+				opts: { nextNodeId?: string } = {}
+			) {
+				return {
+					id,
+					type: "fetch_records" as const,
+					config: {
+						kind: "fetch_records" as const,
+						objectType,
+						filters,
+					},
+					nextNodeId: opts.nextNodeId,
+				};
+			}
+
+			function lineItemAggNode(
+				id: string,
+				sourceNodeId: string,
+				field: string,
+				op: "sum" | "avg" | "min" | "max",
+				next?: string
+			) {
+				return {
+					id,
+					type: "aggregate" as const,
+					config: {
+						kind: "aggregate" as const,
+						sourceNodeId,
+						field,
+						op,
+					},
+					nextNodeId: next,
+				};
+			}
+
+			it("fetch quote_line_item filtered to a parent quote, then sum(amount) is cent-exact and excludes other quotes", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const targetQuoteId = await asUser.mutation(api.quotes.create, {
+					clientId,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+				const otherQuoteId = await asUser.mutation(api.quotes.create, {
+					clientId,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+
+				// 0.1 + 0.2 float-sums to 0.30000000000000004, so an exact 0.3
+				// only comes out of the integer-cents sum path.
+				await t.run(async (ctx) => {
+					const amounts = [0.1, 0.2, 0];
+					for (let i = 0; i < amounts.length; i++) {
+						await ctx.db.insert("quoteLineItems", {
+							quoteId: targetQuoteId,
+							orgId,
+							description: `Item ${i}`,
+							quantity: 1,
+							unit: "item",
+							rate: amounts[i],
+							amount: amounts[i],
+							sortOrder: i,
+						});
+					}
+					// Belongs to a different quote — must not leak into the filtered sum.
+					await ctx.db.insert("quoteLineItems", {
+						quoteId: otherQuoteId,
+						orgId,
+						description: "Other quote's item",
+						quantity: 1,
+						unit: "item",
+						rate: 9999,
+						amount: 9999,
+						sortOrder: 0,
+					});
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Quote line item total",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						lineItemFetchNode(
+							"fetch-1",
+							"quote_line_item",
+							[filterGroup("quoteId", "equals", targetQuoteId)],
+							{ nextNodeId: "sum" }
+						),
+						lineItemAggNode("sum", "fetch-1", "amount", "sum", "end-1"),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+				const fetchEntry = executions[0].nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				expect(fetchEntry?.recordsProcessed).toBe(3);
+				const sumOutput = executions[0].nodesExecuted.find(
+					(n) => n.nodeId === "sum"
+				)?.output as { result: number } | undefined;
+				expect(sumOutput?.result).toBe(0.3);
+			});
+
+			it("fetch invoice_line_item filtered to a parent invoice, then sum(total) is cent-exact", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const invoiceId = await t.run(async (ctx) =>
+					ctx.db.insert("invoices", {
+						orgId,
+						clientId,
+						invoiceNumber: "INV-100",
+						status: "sent" as const,
+						subtotal: 0,
+						total: 0,
+						issuedDate: Date.now(),
+						dueDate: Date.now(),
+						publicToken: crypto.randomUUID(),
+					})
+				);
+
+				await t.run(async (ctx) => {
+					// Same float trap as the quote test: 0.1 + 0.2 !== 0.3 in doubles.
+					const totals = [0.1, 0.2, 0];
+					for (let i = 0; i < totals.length; i++) {
+						await ctx.db.insert("invoiceLineItems", {
+							invoiceId,
+							orgId,
+							description: `Item ${i}`,
+							quantity: 1,
+							unitPrice: totals[i],
+							total: totals[i],
+							sortOrder: i,
+						});
+					}
+				});
+
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Invoice line item total",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						lineItemFetchNode(
+							"fetch-1",
+							"invoice_line_item",
+							[filterGroup("invoiceId", "equals", invoiceId)],
+							{ nextNodeId: "sum" }
+						),
+						lineItemAggNode("sum", "fetch-1", "total", "sum", "end-1"),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await runScheduledOnce(automationId);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+				const sumOutput = executions[0].nodesExecuted.find(
+					(n) => n.nodeId === "sum"
+				)?.output as { result: number } | undefined;
+				expect(sumOutput?.result).toBe(0.3);
+			});
+
+			it("org isolation: a fetch never returns another org's line items", async () => {
+				const orgA = await setupUser({
+					clerkUserId: "user_orgA_lineitems",
+					clerkOrgId: "org_orgA_lineitems",
+				});
+				await makeOrgPremium(orgA.orgId);
+				const orgB = await setupUser({
+					clerkUserId: "user_orgB_lineitems",
+					clerkOrgId: "org_orgB_lineitems",
+				});
+
+				const clientA = await orgA.asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Org A Client",
+					status: "active",
+				});
+				const quoteA = await orgA.asUser.mutation(api.quotes.create, {
+					clientId: clientA,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+				const clientB = await orgB.asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Org B Client",
+					status: "active",
+				});
+				const quoteB = await orgB.asUser.mutation(api.quotes.create, {
+					clientId: clientB,
+					status: "draft",
+					subtotal: 0,
+					total: 0,
+				});
+
+				await t.run(async (ctx) => {
+					await ctx.db.insert("quoteLineItems", {
+						quoteId: quoteA,
+						orgId: orgA.orgId,
+						description: "Org A item",
+						quantity: 1,
+						unit: "item",
+						rate: 10,
+						amount: 10,
+						sortOrder: 0,
+					});
+					await ctx.db.insert("quoteLineItems", {
+						quoteId: quoteA,
+						orgId: orgA.orgId,
+						description: "Org A item 2",
+						quantity: 1,
+						unit: "item",
+						rate: 20,
+						amount: 20,
+						sortOrder: 1,
+					});
+					// Org B's line item must never surface in org A's fetch/aggregate.
+					await ctx.db.insert("quoteLineItems", {
+						quoteId: quoteB,
+						orgId: orgB.orgId,
+						description: "Org B item",
+						quantity: 1,
+						unit: "item",
+						rate: 999,
+						amount: 999,
+						sortOrder: 0,
+					});
+				});
+
+				// No filter — every quote_line_item in the caller's org, unscoped by quote.
+				const automationId = await orgA.asUser.mutation(api.automations.create, {
+					name: "Org A line item total",
+					trigger: {
+						type: "scheduled",
+						schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+					},
+					nodes: [
+						lineItemFetchNode("fetch-1", "quote_line_item", [], {
+							nextNodeId: "sum",
+						}),
+						lineItemAggNode("sum", "fetch-1", "amount", "sum", "end-1"),
+						endNode("end-1"),
+					],
+					isActive: true,
+				});
+
+				await t.run(async (ctx) =>
+					ctx.db.patch(automationId, { nextRunAt: Date.now() - 1000 })
+				);
+				await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
+				await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+				const fetchEntry = executions[0].nodesExecuted.find(
+					(n) => n.nodeId === "fetch-1"
+				);
+				// Only org A's 2 items — org B's 999-amount item is excluded.
+				expect(fetchEntry?.recordsProcessed).toBe(2);
+				const sumOutput = executions[0].nodesExecuted.find(
+					(n) => n.nodeId === "sum"
+				)?.output as { result: number } | undefined;
+				expect(sumOutput?.result).toBe(30);
+			});
+
+			it("rejects at publish: looping over a quote_line_item fetch source", async () => {
+				const { asUser } = await setupUser();
+
+				await expect(
+					asUser.mutation(api.automations.create, {
+						name: "Loop over line items",
+						trigger: {
+							type: "scheduled",
+							schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+						},
+						nodes: [
+							lineItemFetchNode("fetch-1", "quote_line_item", [], {
+								nextNodeId: "loop-1",
+							}),
+							{
+								id: "loop-1",
+								type: "loop" as const,
+								config: { kind: "loop" as const, sourceNodeId: "fetch-1" },
+								bodyStartNodeId: "body-end",
+								nextNodeId: "end-1",
+							},
+							{
+								id: "body-end",
+								type: "next_item" as const,
+								config: { kind: "next_item" as const },
+							},
+							endNode("end-1"),
+						],
+						isActive: false,
+					})
+				).rejects.toThrow(LOOP_FETCH_ONLY_ERROR);
+			});
+		});
+
 		describe("scheduled triggers have no record (A1)", () => {
 			/** A condition whose left side is a scope value, not a record field. */
 			function varLeftConditionNode(
@@ -5552,6 +5892,90 @@ describe("automationExecutor (v2 engine)", () => {
 					isActive: true,
 				})
 			).rejects.toThrow(/not a valid value/i);
+		});
+
+		it("regression: an array-valued loop item field (project.assignedUserIds) feeding a single-id create_record field (task.assigneeUserId) takes the first element", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			const member1 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { userName: "Alice" })
+			);
+			const member2 = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { userName: "Bob" })
+			);
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "active",
+			});
+			await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+				assignedUserIds: [member1.userId, member2.userId],
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Assign follow-up task to project assignee",
+				trigger: {
+					type: "scheduled",
+					schedule: { frequency: "daily", timezone: "UTC", time: "09:00" },
+				},
+				nodes: [
+					{
+						id: "fetch-1",
+						type: "fetch_records" as const,
+						config: {
+							kind: "fetch_records" as const,
+							objectType: "project" as const,
+							filters: [],
+						},
+						nextNodeId: "loop-1",
+					},
+					{
+						id: "loop-1",
+						type: "loop" as const,
+						config: {
+							kind: "loop" as const,
+							sourceNodeId: "fetch-1",
+						},
+						bodyStartNodeId: "act-1",
+						nextNodeId: "end-1",
+					},
+					createRecordActionNode("act-1", {
+						objectType: "task",
+						fields: [
+							{ field: "title", value: { kind: "static", value: "Follow up" } },
+							{
+								field: "assigneeUserId",
+								value: {
+									kind: "var",
+									path: "loop.loop-1.item.assignedUserIds",
+								},
+							},
+						],
+					}),
+					{ id: "end-1", type: "end" as const, config: { kind: "end" as const } },
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const tasks = await t.run(async (ctx) => ctx.db.query("tasks").collect());
+			expect(tasks).toHaveLength(1);
+			expect(tasks[0].title).toBe("Follow up");
+			// String(["m1","m2"]) => "m1,m2" would fail FK resolution; the fix
+			// takes the array's first element instead.
+			expect(tasks[0].assigneeUserId).toBe(member1.userId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions[0].status).toBe("completed");
 		});
 	});
 

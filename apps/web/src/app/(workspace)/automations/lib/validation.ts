@@ -38,6 +38,8 @@ import {
 	type ConditionRule,
 	type DelayNodeConfig,
 	type DelayUntilNodeConfig,
+	isFetchOnlyObjectType,
+	LOOP_FETCH_ONLY_ERROR,
 	type FetchNodeConfig,
 	type FieldType,
 	type LoopNodeConfig,
@@ -721,6 +723,22 @@ function validateLoopNode(
 		errors.push({
 			type: "missing_required_config",
 			message: 'Loops need a "Find records" step to run earlier in the workflow',
+			nodeId,
+		});
+		return;
+	}
+
+	// Parity with the backend publish validator: a loop hands each item to
+	// actions as the record in scope, which a line item can never be.
+	const sourceObjectType = (
+		workflowNodes.find((n) => n.id === config.sourceNodeId)?.config as
+			| FetchNodeConfig
+			| undefined
+	)?.objectType;
+	if (sourceObjectType && isFetchOnlyObjectType(sourceObjectType)) {
+		errors.push({
+			type: "missing_required_config",
+			message: LOOP_FETCH_ONLY_ERROR,
 			nodeId,
 		});
 		return;

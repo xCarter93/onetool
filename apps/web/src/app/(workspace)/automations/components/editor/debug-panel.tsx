@@ -27,9 +27,10 @@ import { cn } from "@/lib/utils";
 import type { RunRecordRef } from "../../hooks/use-automation-editor";
 import { DebugTimeline } from "./debug-timeline";
 import { summarizeLoopFailures, type RunStatus } from "../../lib/run-format";
+import type { TriggerableObjectType } from "../../lib/node-types";
 
 type SampleRecord = {
-	entityType: "client" | "project" | "quote" | "invoice" | "task";
+	entityType: TriggerableObjectType;
 	entityId: string;
 	label: string;
 };

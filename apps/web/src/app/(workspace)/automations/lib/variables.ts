@@ -6,7 +6,9 @@ import { collectLoopBody } from "./graph-utils";
 import {
 	OBJECT_TYPE_LABELS,
 	getFilterableFields,
+	isFetchOnlyObjectType,
 	type AutomationObjectType,
+	type TriggerableObjectType,
 	type AutomationTrigger,
 	type FetchNodeConfig,
 	type FieldDefinition,
@@ -35,6 +37,8 @@ export type VariableOption = {
 	fieldType?: FieldType;
 	/** For an `id`-typed option, the entity it points at — lets the picker flag e.g. a client id fed into a user id field. */
 	refType?: FieldDefinition["refType"];
+	/** The option holds an array — feeding it a single-valued field uses the first element. */
+	isArray?: boolean;
 };
 
 function childrenOf(node: WorkflowNode): string[] {
@@ -105,9 +109,9 @@ export function getUpstreamFetchNodes(
 export function getScopeObjectType(
 	nodes: WorkflowNode[],
 	targetNodeId: string,
-	triggerObjectType: AutomationObjectType | null
+	triggerObjectType: TriggerableObjectType | null
 ): {
-	objectType: AutomationObjectType | null;
+	objectType: TriggerableObjectType | null;
 	inLoop: boolean;
 	loopNodeId: string | null;
 } {
@@ -125,7 +129,17 @@ export function getScopeObjectType(
 		const sourceType = (sourceNode?.config as FetchNodeConfig | undefined)
 			?.objectType;
 		// Nested loops are rejected, so a node belongs to at most one body.
-		return { objectType: sourceType ?? triggerObjectType, inLoop: true, loopNodeId: node.id };
+		// A fetch-only source (line items) can't be a scope record — publish
+		// validation rejects the loop; report no scope rather than a type
+		// actions can't act on.
+		if (sourceType && isFetchOnlyObjectType(sourceType)) {
+			return { objectType: null, inLoop: true, loopNodeId: node.id };
+		}
+		return {
+			objectType: sourceType ?? triggerObjectType,
+			inLoop: true,
+			loopNodeId: node.id,
+		};
 	}
 	return { objectType: triggerObjectType, inLoop: false, loopNodeId: null };
 }
@@ -188,22 +202,32 @@ const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
 ];
 
 /** " ID" suffix for id-type fields (e.g. "Client" -> "Client ID") disambiguates FK references. */
-function fieldOptionLabel(prefix: string, field: { label: string; type: FieldType }): string {
-	return `${prefix} → ${field.label}${field.type === "id" ? " ID" : ""}`;
+function fieldOptionLabel(
+	prefix: string,
+	field: { label: string; type: FieldType; isArray?: boolean }
+): string {
+	const suffix = field.type === "id" ? (field.isArray ? " IDs" : " ID") : "";
+	return `${prefix} → ${field.label}${suffix}`;
 }
 
 /**
  * A record's own `_id` option is refType-compatible with a destination `id`
- * field pointing at the same object type — but task/invoice aren't valid
- * `refType` values (no id field ever points at one), so those fall back to
- * undefined, same as any other unknown ref type: never flagged.
+ * field pointing at the same object type — but `task` and the line-item types
+ * aren't valid `refType` values (no id field ever points at one), so those fall
+ * back to undefined, same as any other unknown ref type: never flagged.
  */
 function asRefType(
 	objectType: AutomationObjectType
 ): FieldDefinition["refType"] {
-	return objectType === "task" || objectType === "invoice"
-		? undefined
-		: objectType;
+	switch (objectType) {
+		case "client":
+		case "project":
+		case "quote":
+		case "invoice":
+			return objectType;
+		default:
+			return undefined;
+	}
 }
 
 /** trigger.record.<field> + trigger.event.oldValue/newValue — shared by both functions. */
@@ -236,6 +260,7 @@ function triggerVariableOptions(
 				group: "Trigger",
 				fieldType: field.type,
 				refType: field.refType,
+				isArray: field.isArray,
 			});
 		}
 	}
@@ -352,7 +377,9 @@ export function getAvailableVariables(
 		const sourceNode = byId.get(config.sourceNodeId);
 		const sourceObjectType = (sourceNode?.config as FetchNodeConfig | undefined)
 			?.objectType;
-		if (!sourceObjectType) continue;
+		// A fetch-only source (line items) can't drive a loop — publish rejects
+		// it, so don't offer item variables that could never resolve.
+		if (!sourceObjectType || isFetchOnlyObjectType(sourceObjectType)) continue;
 
 		// Runtime resolves _id by raw property lookup on the loop item; offer it explicitly.
 		options.push({
@@ -369,6 +396,7 @@ export function getAvailableVariables(
 				group: "Loop item",
 				fieldType: field.type,
 				refType: field.refType,
+				isArray: field.isArray,
 			});
 		}
 		options.push({
@@ -468,7 +496,9 @@ export function getAllVariableOptions(
 		const sourceNode = nodes.find((n) => n.id === config.sourceNodeId);
 		const sourceObjectType = (sourceNode?.config as FetchNodeConfig | undefined)
 			?.objectType;
-		if (!sourceObjectType) continue;
+		// A fetch-only source (line items) can't drive a loop — publish rejects
+		// it, so don't offer item variables that could never resolve.
+		if (!sourceObjectType || isFetchOnlyObjectType(sourceObjectType)) continue;
 
 		options.push({
 			path: `loop.${node.id}.item._id`,
@@ -484,6 +514,7 @@ export function getAllVariableOptions(
 				group: "Loop item",
 				fieldType: field.type,
 				refType: field.refType,
+				isArray: field.isArray,
 			});
 		}
 		options.push({
