@@ -526,6 +526,225 @@ describe("calendar dates vs instants", () => {
 	});
 });
 
+/* ---------------------- C2-4 date functions (PRD) -------------------------- */
+
+describe("HOUR / MINUTE / WEEKDAY", () => {
+	it("reads an instant's time in ctx.tz", () => {
+		const t = Date.UTC(2026, 6, 4, 15, 30, 0);
+		expect(run("HOUR({t})", { t }, { tz: "UTC" })).toBe(15);
+		expect(run("MINUTE({t})", { t }, { tz: "UTC" })).toBe(30);
+		// 2026-07-04T02:15Z is 2026-07-03 22:15 in New York (UTC-4 DST).
+		const nearBoundary = Date.UTC(2026, 6, 4, 2, 15, 0);
+		expect(run("HOUR({t})", { t: nearBoundary }, { tz: "America/New_York" })).toBe(22);
+		expect(run("MINUTE({t})", { t: nearBoundary }, { tz: "America/New_York" })).toBe(15);
+	});
+
+	it("returns 0 for a calendar date (it has no time), in any tz", () => {
+		expect(run("HOUR(DATE(2026,7,4))", {}, { tz: "America/New_York" })).toBe(0);
+		expect(run("MINUTE(DATE(2026,7,4))", {}, { tz: "America/New_York" })).toBe(0);
+	});
+
+	it("WEEKDAY is 0-6 with 0 = Sunday, on the day the value denotes", () => {
+		expect(run("WEEKDAY(DATE(2026,7,4))")).toBe(6); // Saturday
+		expect(run("WEEKDAY(DATE(2026,7,5))")).toBe(0); // Sunday
+		expect(run("WEEKDAY(DATE(2026,7,6))")).toBe(1); // Monday
+		// 2026-07-05T02:00Z is still Sat Jul 4 in New York, but Sun Jul 5 in UTC.
+		const lateJul4NY = Date.UTC(2026, 6, 5, 2, 0, 0);
+		expect(run("WEEKDAY({t})", { t: lateJul4NY }, { tz: "America/New_York" })).toBe(6);
+		expect(run("WEEKDAY({t})", { t: lateJul4NY }, { tz: "UTC" })).toBe(0);
+	});
+});
+
+describe("FORMAT_DATE", () => {
+	it("formats numeric and padded tokens", () => {
+		expect(run('FORMAT_DATE(DATE(2026,7,4), "YYYY-MM-DD")')).toBe("2026-07-04");
+		expect(run('FORMAT_DATE(DATE(2026,7,4), "M/D/YYYY")')).toBe("7/4/2026");
+	});
+
+	it("formats month and weekday names (longest token wins)", () => {
+		expect(run('FORMAT_DATE(DATE(2026,7,4), "dddd, MMMM D, YYYY")')).toBe(
+			"Saturday, July 4, 2026"
+		);
+		expect(run('FORMAT_DATE(DATE(2026,7,4), "ddd MMM D")')).toBe("Sat Jul 4");
+	});
+
+	it("formats 24-hour, 12-hour and AM/PM from an instant in ctx.tz", () => {
+		const t = Date.UTC(2026, 6, 4, 15, 30, 0);
+		expect(run('FORMAT_DATE({t}, "HH:mm")', { t }, { tz: "UTC" })).toBe("15:30");
+		expect(run('FORMAT_DATE({t}, "h:mm A")', { t }, { tz: "UTC" })).toBe("3:30 PM");
+		// Same instant is 11:30 AM in New York.
+		expect(run('FORMAT_DATE({t}, "h:mm A")', { t }, { tz: "America/New_York" })).toBe(
+			"11:30 AM"
+		);
+		// 12-hour edge cases: midnight and noon are both 12.
+		const midnight = Date.UTC(2026, 6, 4, 0, 30, 0);
+		const noon = Date.UTC(2026, 6, 4, 12, 0, 0);
+		expect(run('FORMAT_DATE({t}, "h A")', { t: midnight }, { tz: "UTC" })).toBe("12 AM");
+		expect(run('FORMAT_DATE({t}, "h A")', { t: noon }, { tz: "UTC" })).toBe("12 PM");
+	});
+
+	it("renders the calendar day the value denotes (calendar UTC, instant in tz)", () => {
+		// 2026-07-04T02:00Z is Jul 3 in New York — an instant formats as Jul 3 there...
+		const t = Date.UTC(2026, 6, 4, 2, 0, 0);
+		expect(run('FORMAT_DATE({t}, "YYYY-MM-DD")', { t }, { tz: "America/New_York" })).toBe(
+			"2026-07-03"
+		);
+		// ...but a calendar DATE stays Jul 4 in every run timezone.
+		expect(
+			run('FORMAT_DATE(DATE(2026,7,4), "YYYY-MM-DD")', {}, { tz: "America/New_York" })
+		).toBe("2026-07-04");
+	});
+
+	it("rejects a non-string pattern (TYPE)", () => {
+		expect(code(() => run("FORMAT_DATE(DATE(2026,7,4), 5)"))).toBe("TYPE");
+	});
+});
+
+describe("START_OF", () => {
+	const DAY = 86_400_000;
+
+	it("day: snaps an instant to the calendar date of its day", () => {
+		const t = Date.UTC(2026, 6, 4, 15, 30, 0);
+		const d = run('START_OF({t}, "day")', { t }, { tz: "UTC" }) as Date;
+		expect(d.toISOString()).toBe("2026-07-04T00:00:00.000Z");
+		expect(d.getTime() % DAY).toBe(0); // stays a calendar date
+	});
+
+	it("week: goes back to Sunday (documented week start)", () => {
+		// Sat Jul 4 → Sun Jun 28; Sun Jul 5 is already a week start.
+		expect((run('START_OF(DATE(2026,7,4), "week")') as Date).toISOString()).toBe(
+			"2026-06-28T00:00:00.000Z"
+		);
+		expect((run('START_OF(DATE(2026,7,5), "week")') as Date).toISOString()).toBe(
+			"2026-07-05T00:00:00.000Z"
+		);
+	});
+
+	it("month: first of the month, resolved on the day the value denotes", () => {
+		expect((run('START_OF(DATE(2026,7,31), "month")') as Date).toISOString()).toBe(
+			"2026-07-01T00:00:00.000Z"
+		);
+		// 2026-07-01T02:00Z is still Jun 30 in New York → start of JUNE there.
+		const t = Date.UTC(2026, 6, 1, 2, 0, 0);
+		expect(
+			(run('START_OF({t}, "month")', { t }, { tz: "America/New_York" }) as Date).toISOString()
+		).toBe("2026-06-01T00:00:00.000Z");
+	});
+
+	it("unit is case-insensitive; unknown unit throws TYPE", () => {
+		expect((run('START_OF(DATE(2026,7,4), "WEEK")') as Date).toISOString()).toBe(
+			"2026-06-28T00:00:00.000Z"
+		);
+		expect(code(() => run('START_OF(DATE(2026,7,4), "year")'))).toBe("TYPE");
+		expect(code(() => run("START_OF(DATE(2026,7,4), 1)"))).toBe("TYPE");
+	});
+});
+
+describe("WORKDAY_ADD / WORKDAY_DIFF", () => {
+	const DAY = 86_400_000;
+
+	it("WORKDAY_ADD skips weekends in both directions", () => {
+		// Fri Jul 3 + 1 working day → Mon Jul 6.
+		expect((run("WORKDAY_ADD(DATE(2026,7,3), 1)") as Date).toISOString()).toBe(
+			"2026-07-06T00:00:00.000Z"
+		);
+		// Mon Jul 6 + 5 → next Mon Jul 13; Mon Jul 6 - 1 → Fri Jul 3.
+		expect((run("WORKDAY_ADD(DATE(2026,7,6), 5)") as Date).toISOString()).toBe(
+			"2026-07-13T00:00:00.000Z"
+		);
+		expect((run("WORKDAY_ADD(DATE(2026,7,6), -1)") as Date).toISOString()).toBe(
+			"2026-07-03T00:00:00.000Z"
+		);
+		// From a Saturday, +1 lands on Monday and -1 on Friday.
+		expect((run("WORKDAY_ADD(DATE(2026,7,4), 1)") as Date).toISOString()).toBe(
+			"2026-07-06T00:00:00.000Z"
+		);
+		expect((run("WORKDAY_ADD(DATE(2026,7,4), -1)") as Date).toISOString()).toBe(
+			"2026-07-03T00:00:00.000Z"
+		);
+	});
+
+	it("WORKDAY_ADD with n = 0 returns the same calendar day (even a weekend)", () => {
+		expect((run("WORKDAY_ADD(DATE(2026,7,4), 0)") as Date).toISOString()).toBe(
+			"2026-07-04T00:00:00.000Z"
+		);
+	});
+
+	it("WORKDAY_ADD operates on the day an instant denotes and returns a calendar date", () => {
+		// 2026-07-04T02:00Z is Fri Jul 3 in New York → +1 working day = Mon Jul 6.
+		const t = Date.UTC(2026, 6, 4, 2, 0, 0);
+		const d = run("WORKDAY_ADD({t}, 1)", { t }, { tz: "America/New_York" }) as Date;
+		expect(d.toISOString()).toBe("2026-07-06T00:00:00.000Z");
+		expect(d.getTime() % DAY).toBe(0);
+	});
+
+	it("WORKDAY_ADD guards an out-of-range result (TYPE, not a hang or RangeError)", () => {
+		expect(code(() => run("WORKDAY_ADD(DATE(2026,7,4), 100000000000000)"))).toBe("TYPE");
+	});
+
+	it("WORKDAY_DIFF counts both endpoints (Airtable semantics)", () => {
+		// Mon Jul 6 .. Fri Jul 10 → 5; Fri Jul 3 .. Mon Jul 6 → 2 (Fri + Mon).
+		expect(run("WORKDAY_DIFF(DATE(2026,7,6), DATE(2026,7,10))")).toBe(5);
+		expect(run("WORKDAY_DIFF(DATE(2026,7,3), DATE(2026,7,6))")).toBe(2);
+		// Fri Jul 3 .. Tue Jul 7 spans a weekend → Fri, Mon, Tue = 3.
+		expect(run("WORKDAY_DIFF(DATE(2026,7,3), DATE(2026,7,7))")).toBe(3);
+		// Same weekday → 1; same Saturday → 0.
+		expect(run("WORKDAY_DIFF(DATE(2026,7,6), DATE(2026,7,6))")).toBe(1);
+		expect(run("WORKDAY_DIFF(DATE(2026,7,4), DATE(2026,7,4))")).toBe(0);
+	});
+
+	it("WORKDAY_DIFF is negated when b is before a", () => {
+		expect(run("WORKDAY_DIFF(DATE(2026,7,10), DATE(2026,7,6))")).toBe(-5);
+	});
+
+	it("WORKDAY_DIFF reads an instant on the day it denotes in ctx.tz", () => {
+		// paidAt mid-Monday (instant) to Fri Jul 10 (calendar) → 5.
+		const paidAt = Date.UTC(2026, 6, 6, 15, 0, 0);
+		expect(
+			run("WORKDAY_DIFF({paidAt}, DATE(2026,7,10))", { paidAt }, { tz: "UTC" })
+		).toBe(5);
+	});
+});
+
+describe("IS_BEFORE / IS_AFTER", () => {
+	it("compares two calendar dates exactly", () => {
+		expect(run("IS_BEFORE(DATE(2026,7,1), DATE(2026,7,4))")).toBe(true);
+		expect(run("IS_BEFORE(DATE(2026,7,4), DATE(2026,7,1))")).toBe(false);
+		expect(run("IS_AFTER(DATE(2026,7,4), DATE(2026,7,1))")).toBe(true);
+		expect(run("IS_AFTER(DATE(2026,7,1), DATE(2026,7,4))")).toBe(false);
+	});
+
+	it("compares two instants at exact-instant granularity", () => {
+		const a = Date.UTC(2026, 6, 4, 9, 0, 0);
+		const b = Date.UTC(2026, 6, 4, 15, 0, 0);
+		expect(run("IS_BEFORE({a}, {b})", { a, b })).toBe(true);
+		expect(run("IS_AFTER({b}, {a})", { a, b })).toBe(true);
+	});
+
+	it("mixed kind compares by calendar day in ctx.tz (matches ==/< semantics)", () => {
+		// An instant during Jul 4 vs TODAY() (Jul 4): same day, so neither before nor after.
+		const midJul4 = Date.UTC(2026, 6, 4, 15, 30, 0);
+		const opts = { now: midJul4, tz: "UTC" };
+		expect(run("IS_BEFORE({paidAt}, TODAY())", { paidAt: midJul4 }, opts)).toBe(false);
+		expect(run("IS_AFTER({paidAt}, TODAY())", { paidAt: midJul4 }, opts)).toBe(false);
+		// 2026-07-04T02:00Z denotes Jul 3 in New York → before the Jul 4 calendar date.
+		const t = Date.UTC(2026, 6, 4, 2, 0, 0);
+		expect(
+			run("IS_BEFORE({t}, DATE(2026,7,4))", { t }, { tz: "America/New_York" })
+		).toBe(true);
+		expect(run("IS_BEFORE({t}, DATE(2026,7,4))", { t }, { tz: "UTC" })).toBe(false);
+	});
+
+	it("coerces epoch numbers and ISO strings; non-dates throw TYPE", () => {
+		expect(
+			run("IS_BEFORE({d}, DATE(2026,7,4))", { d: Date.UTC(2026, 6, 1) })
+		).toBe(true);
+		expect(run('IS_AFTER("2026-07-05T00:00:00Z", DATE(2026,7,4))')).toBe(true);
+		expect(code(() => run("IS_BEFORE(true, DATE(2026,7,4))"))).toBe("TYPE");
+		expect(code(() => run('IS_BEFORE("not-a-date", DATE(2026,7,4))'))).toBe("TYPE");
+	});
+});
+
 /* ------------------------ date range / invalid dates ---------------------- */
 
 describe("date range and invalid-date guards", () => {

@@ -64,6 +64,51 @@ function guardEpoch(ms: number, label: string): number {
 	return ms;
 }
 
+const DAY_MS = 86_400_000;
+
+const MONTH_NAMES = [
+	"January", "February", "March", "April", "May", "June",
+	"July", "August", "September", "October", "November", "December",
+];
+const WEEKDAY_NAMES = [
+	"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
+
+/** 0-6 (0 = Sunday) for a UTC-midnight calendar-day epoch. */
+function dayOfWeek(dayEpoch: number): number {
+	return new Date(dayEpoch).getUTCDay();
+}
+
+function isWeekendDay(dayEpoch: number): boolean {
+	const dow = dayOfWeek(dayEpoch);
+	return dow === 0 || dow === 6;
+}
+
+/** Working days from startDay to endDay inclusive (UTC-midnight epochs, start <= end). O(1) in the span. */
+function countWorkdaysInclusive(startDay: number, endDay: number): number {
+	const totalDays = Math.round((endDay - startDay) / DAY_MS) + 1;
+	const fullWeeks = Math.floor(totalDays / 7);
+	let count = fullWeeks * 5;
+	const startDow = dayOfWeek(startDay);
+	for (let i = fullWeeks * 7; i < totalDays; i++) {
+		const dow = (startDow + i) % 7;
+		if (dow !== 0 && dow !== 6) count++;
+	}
+	return count;
+}
+
+/**
+ * Signed ordering delta matching the engine's compareValues rule for dates:
+ * same kind (both calendar dates or both instants) compares exact epochs,
+ * mixed compares the calendar day each side denotes in the run timezone.
+ */
+function dateOrderDelta(a: Val, b: Val, tz: string, label: string): number {
+	const da = toDate(a, `${label}(a)`).getTime();
+	const db = toDate(b, `${label}(b)`).getTime();
+	if (isCalendarDateEpoch(da) === isCalendarDateEpoch(db)) return da - db;
+	return calendarDayEpoch(da, tz) - calendarDayEpoch(db, tz);
+}
+
 const SPECS: FunctionSpec[] = [
 	/* ------------------------------- number -------------------------------- */
 	{
@@ -550,6 +595,217 @@ const SPECS: FunctionSpec[] = [
 			signature: "DAY(date)",
 			description: "Day of the month in the workflow timezone.",
 			example: "DAY(DATE(2026,7,4)) → 4",
+		},
+	},
+	{
+		name: "HOUR",
+		category: "date",
+		minArgs: 1,
+		maxArgs: 1,
+		// partsFor reads a calendar date in UTC (hour 0) and an instant in ctx.tz.
+		fn: (args, ctx) => partsFor(toDate(args[0], "HOUR(date)").getTime(), ctx.tz).hour,
+		doc: {
+			name: "HOUR",
+			category: "date",
+			signature: "HOUR(date)",
+			description: "Hour of day (0-23) in the workflow timezone. 0 for a plain date (it has no time).",
+			example: "HOUR(NOW()) → 14",
+		},
+	},
+	{
+		name: "MINUTE",
+		category: "date",
+		minArgs: 1,
+		maxArgs: 1,
+		fn: (args, ctx) => partsFor(toDate(args[0], "MINUTE(date)").getTime(), ctx.tz).minute,
+		doc: {
+			name: "MINUTE",
+			category: "date",
+			signature: "MINUTE(date)",
+			description: "Minute of the hour (0-59) in the workflow timezone. 0 for a plain date (it has no time).",
+			example: "MINUTE(NOW()) → 30",
+		},
+	},
+	{
+		name: "WEEKDAY",
+		category: "date",
+		minArgs: 1,
+		maxArgs: 1,
+		fn: (args, ctx) =>
+			dayOfWeek(calendarDayEpoch(toDate(args[0], "WEEKDAY(date)").getTime(), ctx.tz)),
+		doc: {
+			name: "WEEKDAY",
+			category: "date",
+			signature: "WEEKDAY(date)",
+			description: "Day of the week as a number 0-6, where 0 is Sunday (Airtable convention).",
+			example: "WEEKDAY(DATE(2026,7,4)) → 6",
+		},
+	},
+	{
+		name: "FORMAT_DATE",
+		category: "date",
+		minArgs: 2,
+		maxArgs: 2,
+		fn: (args, ctx) => {
+			const ms = toDate(args[0], "FORMAT_DATE(date)").getTime();
+			const pattern = requireString(args[1], "FORMAT_DATE(pattern)");
+			const p = partsFor(ms, ctx.tz);
+			const weekday = dayOfWeek(calendarDayEpoch(ms, ctx.tz));
+			const pad = (n: number) => String(n).padStart(2, "0");
+			// Alternation is ordered longest-first so MMMM never reads as MM + MM.
+			const out = pattern.replace(
+				/YYYY|MMMM|MMM|MM|M|dddd|ddd|DD|D|HH|mm|h|A/g,
+				(tok) => {
+					switch (tok) {
+						case "YYYY": return String(p.year);
+						case "MMMM": return MONTH_NAMES[p.month - 1];
+						case "MMM": return MONTH_NAMES[p.month - 1].slice(0, 3);
+						case "MM": return pad(p.month);
+						case "M": return String(p.month);
+						case "dddd": return WEEKDAY_NAMES[weekday];
+						case "ddd": return WEEKDAY_NAMES[weekday].slice(0, 3);
+						case "DD": return pad(p.day);
+						case "D": return String(p.day);
+						case "HH": return pad(p.hour);
+						case "mm": return pad(p.minute);
+						case "h": return String(p.hour % 12 === 0 ? 12 : p.hour % 12);
+						case "A": return p.hour < 12 ? "AM" : "PM";
+						default: return tok;
+					}
+				}
+			);
+			return guardStr(out);
+		},
+		doc: {
+			name: "FORMAT_DATE",
+			category: "date",
+			signature: "FORMAT_DATE(date, pattern)",
+			description:
+				"Format a date as text (English). Tokens: YYYY, MMMM, MMM, MM, M, DD, D, dddd, ddd, HH, mm, h (12-hour), A (AM/PM). Times read in the workflow timezone.",
+			example: "FORMAT_DATE(DATE(2026,7,4), \"MMMM D, YYYY\") → \"July 4, 2026\"",
+		},
+	},
+	{
+		name: "START_OF",
+		category: "date",
+		minArgs: 2,
+		maxArgs: 2,
+		fn: (args, ctx) => {
+			const date = toDate(args[0], "START_OF(date)");
+			const unit = requireString(args[1], "START_OF(unit)").trim().toLowerCase();
+			// Resolve on the calendar day the value denotes, then snap in UTC day-space
+			// so the result is a calendar DATE (UTC-midnight encoded).
+			const dayMs = calendarDayEpoch(date.getTime(), ctx.tz);
+			if (unit === "day") {
+				return new Date(guardEpoch(dayMs, "START_OF result"));
+			}
+			if (unit === "week") {
+				return new Date(guardEpoch(dayMs - dayOfWeek(dayMs) * DAY_MS, "START_OF result"));
+			}
+			if (unit === "month") {
+				const d = new Date(dayMs);
+				return new Date(
+					guardEpoch(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), "START_OF result")
+				);
+			}
+			throw new FormulaError(
+				"TYPE",
+				`START_OF unit must be "day", "week", or "month", got "${unit}"`
+			);
+		},
+		doc: {
+			name: "START_OF",
+			category: "date",
+			signature: "START_OF(date, unit)",
+			description:
+				"The date at the start of the period containing the given day. Unit is \"day\", \"week\", or \"month\"; weeks start on Sunday.",
+			example: "START_OF(DATE(2026,7,4), \"month\") → 2026-07-01",
+		},
+	},
+	{
+		name: "WORKDAY_ADD",
+		category: "date",
+		minArgs: 2,
+		maxArgs: 2,
+		fn: (args, ctx) => {
+			const date = toDate(args[0], "WORKDAY_ADD(date)");
+			const n = toInt(args[1], "WORKDAY_ADD(n)");
+			let ms = calendarDayEpoch(date.getTime(), ctx.tz);
+			if (n !== 0) {
+				const step = n > 0 ? 1 : -1;
+				const total = Math.abs(n);
+				// Jump whole weeks (dow-preserving, exactly 5 workdays each), then walk
+				// the last 1-5 working days — O(1) in n, and correct from a weekend start.
+				const fullWeeks = Math.floor((total - 1) / 5);
+				let rem = total - fullWeeks * 5;
+				ms = guardEpoch(ms + step * fullWeeks * 7 * DAY_MS, "WORKDAY_ADD result");
+				while (rem > 0) {
+					ms += step * DAY_MS;
+					if (!isWeekendDay(ms)) rem--;
+				}
+			}
+			return new Date(guardEpoch(ms, "WORKDAY_ADD result"));
+		},
+		doc: {
+			name: "WORKDAY_ADD",
+			category: "date",
+			signature: "WORKDAY_ADD(date, n)",
+			description:
+				"Shift a date by n working days, skipping Saturdays and Sundays (no holiday support). n may be negative; n = 0 returns the same calendar day.",
+			example: "WORKDAY_ADD(DATE(2026,7,3), 1) → 2026-07-06",
+		},
+	},
+	{
+		name: "WORKDAY_DIFF",
+		category: "date",
+		minArgs: 2,
+		maxArgs: 2,
+		fn: (args, ctx) => {
+			const a = toDate(args[0], "WORKDAY_DIFF(a)");
+			const b = toDate(args[1], "WORKDAY_DIFF(b)");
+			const dayA = calendarDayEpoch(a.getTime(), ctx.tz);
+			const dayB = calendarDayEpoch(b.getTime(), ctx.tz);
+			return dayB >= dayA
+				? countWorkdaysInclusive(dayA, dayB)
+				: -countWorkdaysInclusive(dayB, dayA);
+		},
+		doc: {
+			name: "WORKDAY_DIFF",
+			category: "date",
+			signature: "WORKDAY_DIFF(a, b)",
+			description:
+				"Working days (Mon-Fri) from a to b, counting BOTH endpoints (Airtable semantics): Monday to Friday of one week → 5. Negative when b is before a; 0 only when both fall on the same weekend day.",
+			example: "WORKDAY_DIFF(DATE(2026,7,6), DATE(2026,7,10)) → 5",
+		},
+	},
+	{
+		name: "IS_BEFORE",
+		category: "date",
+		minArgs: 2,
+		maxArgs: 2,
+		fn: (args, ctx) => dateOrderDelta(args[0], args[1], ctx.tz, "IS_BEFORE") < 0,
+		doc: {
+			name: "IS_BEFORE",
+			category: "date",
+			signature: "IS_BEFORE(a, b)",
+			description:
+				"True if a is before b. Two plain dates (or two timestamps) compare exactly; a date against a timestamp compares by calendar day in the workflow timezone.",
+			example: "IS_BEFORE({dueDate}, TODAY()) → true when overdue",
+		},
+	},
+	{
+		name: "IS_AFTER",
+		category: "date",
+		minArgs: 2,
+		maxArgs: 2,
+		fn: (args, ctx) => dateOrderDelta(args[0], args[1], ctx.tz, "IS_AFTER") > 0,
+		doc: {
+			name: "IS_AFTER",
+			category: "date",
+			signature: "IS_AFTER(a, b)",
+			description:
+				"True if a is after b. Two plain dates (or two timestamps) compare exactly; a date against a timestamp compares by calendar day in the workflow timezone.",
+			example: "IS_AFTER(TODAY(), {dueDate}) → true when overdue",
 		},
 	},
 ];
