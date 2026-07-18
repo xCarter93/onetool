@@ -8,6 +8,7 @@
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 
 import { formatMoney } from "@/lib/portal/format";
+import { TotalsBreakdown } from "@/components/portal/totals-breakdown";
 
 export interface QuotePaperLineItem {
 	description: string;
@@ -27,6 +28,9 @@ export interface QuotePaperProps {
 		| "taxAmount"
 		| "total"
 		| "terms"
+		| "discountEnabled"
+		| "discountAmount"
+		| "discountType"
 	>;
 	lineItems: QuotePaperLineItem[];
 	businessName: string;
@@ -36,6 +40,14 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 	const subtotal = quote.subtotal ?? 0;
 	const tax = quote.taxAmount ?? 0;
 	const total = quote.total ?? 0;
+	// Discount applies before tax: total = (subtotal - discount) + tax, so the
+	// display discount is derived from the resolved totals — never re-derived
+	// from discountType math (backend never emits discount dollars directly).
+	const discountDollars = subtotal + tax - total;
+	const discountLabel =
+		quote.discountEnabled && quote.discountType === "percentage"
+			? `Discount (${quote.discountAmount}%)`
+			: "Discount";
 
 	return (
 		<div className="mx-auto max-w-[760px] rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">
@@ -94,22 +106,15 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 				</table>
 			</div>
 
-			<div className="mt-6 border-t-2 border-foreground pt-4 flex flex-col items-end gap-1.5">
-				<div className="flex items-center gap-8 text-[14px]">
-					<span className="text-muted-foreground">Subtotal</span>
-					<span className="tabular-nums">{formatMoney(subtotal)}</span>
-				</div>
-				{tax > 0 && (
-					<div className="flex items-center gap-8 text-[14px]">
-						<span className="text-muted-foreground">Estimated tax</span>
-						<span className="tabular-nums">{formatMoney(tax)}</span>
-					</div>
-				)}
-				<div className="flex items-center gap-8 text-[16px] font-semibold border-t border-foreground pt-2 mt-1">
-					<span>Total</span>
-					<span className="tabular-nums">{formatMoney(total)}</span>
-				</div>
-			</div>
+			<TotalsBreakdown
+				className="mt-6"
+				subtotal={subtotal}
+				discount={discountDollars}
+				discountLabel={discountLabel}
+				tax={tax}
+				taxLabel="Estimated tax"
+				total={total}
+			/>
 
 			{quote.terms ? (
 				<div className="mt-10 pt-6 border-t border-dashed border-border">

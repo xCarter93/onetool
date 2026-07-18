@@ -1,8 +1,37 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 
+import { Card, CardContent } from "@/components/ui/card";
+import { Item, ItemMedia } from "@/components/ui/item";
+import { Separator } from "@/components/ui/separator";
+import { StatusBadge } from "@/components/domain/status-badge";
+import { cn } from "@/lib/utils";
 import { formatDate, formatMoney } from "@/lib/portal/format";
+
+import { TotalsBreakdown } from "../totals-breakdown";
+
+export type InvoiceDisplayStatus = "awaiting" | "partial" | "paid" | "overdue";
+
+// Single source of truth for portal invoice status colors/labels — the list
+// view imports these so list and detail never disagree.
+export const INVOICE_STATUS_ROLE: Record<
+	InvoiceDisplayStatus,
+	"success" | "warning" | "danger" | "info"
+> = {
+	paid: "success",
+	partial: "warning",
+	overdue: "danger",
+	awaiting: "info",
+};
+
+export const INVOICE_STATUS_LABEL: Record<InvoiceDisplayStatus, string> = {
+	paid: "Paid",
+	partial: "Partially paid",
+	overdue: "Overdue",
+	awaiting: "Awaiting payment",
+};
 
 export interface InvoicePaperLineItem {
 	_id?: string;
@@ -19,7 +48,15 @@ export interface InvoicePaperInvoice {
 	dueDate: number;
 	subtotal: number;
 	taxAmount: number | null;
+	discountAmount: number | null;
 	total: number;
+	paidAt: number | null;
+}
+
+export interface InvoicePaperPaymentSummary {
+	totalPaid: number;
+	totalRemaining: number;
+	installmentCount: number;
 }
 
 export interface InvoicePaperProps {
@@ -29,6 +66,10 @@ export interface InvoicePaperProps {
 	businessLogoUrl: string | null;
 	clientName: string;
 	clientEmail: string;
+	displayStatus: InvoiceDisplayStatus;
+	paymentSummary: InvoicePaperPaymentSummary;
+	/** Installment list + Stripe pay surface (desktop) — mounted unchanged. */
+	paySlot: ReactNode;
 }
 
 export function InvoicePaper({
@@ -38,125 +79,196 @@ export function InvoicePaper({
 	businessLogoUrl,
 	clientName,
 	clientEmail,
+	displayStatus,
+	paymentSummary,
+	paySlot,
 }: InvoicePaperProps) {
-	const tax = invoice.taxAmount ?? 0;
+	const heroIsPaid = displayStatus === "paid";
+	const heroLabel = heroIsPaid ? "Total paid" : "Total due";
+	const heroAmount = heroIsPaid ? invoice.total : paymentSummary.totalRemaining;
+	const showProgress =
+		!heroIsPaid &&
+		paymentSummary.totalPaid > 0 &&
+		paymentSummary.installmentCount > 1;
+
+	return (
+		<Card data-portal-paper-invoice className="mx-auto w-full max-w-4xl">
+			<CardContent>
+				<div className="grid grid-cols-1 gap-8 md:grid-cols-[18rem_minmax(0,1fr)] md:gap-10">
+					{/* Sidebar: brand + status, hero total, metadata, pay surface */}
+					<aside className="flex flex-col gap-5 md:border-r md:border-border md:pr-8">
+						<div className="flex items-center justify-between gap-3">
+							<div className="flex min-w-0 items-center gap-3">
+								<Item
+									variant="muted"
+									size="sm"
+									className="size-9 shrink-0 items-center justify-center overflow-hidden rounded-md p-0"
+									aria-hidden="true"
+								>
+									<ItemMedia variant="image" className="size-full">
+										{businessLogoUrl ? (
+											<Image
+												src={businessLogoUrl}
+												alt=""
+												width={36}
+												height={36}
+												className="size-full object-contain"
+												unoptimized
+											/>
+										) : null}
+									</ItemMedia>
+								</Item>
+								<span className="truncate text-[14px] font-semibold text-foreground">
+									{businessName}
+								</span>
+							</div>
+							<StatusBadge role={INVOICE_STATUS_ROLE[displayStatus]}>
+								{INVOICE_STATUS_LABEL[displayStatus]}
+							</StatusBadge>
+						</div>
+
+						<div className="flex flex-col gap-1.5">
+							<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+								{heroLabel}
+							</span>
+							<span className="text-3xl leading-none font-bold tracking-tight tabular-nums text-foreground md:text-4xl">
+								{formatMoney(heroAmount)}
+							</span>
+							{heroIsPaid && invoice.paidAt ? (
+								<span className="text-xs text-muted-foreground">
+									on {formatDate(invoice.paidAt)}
+								</span>
+							) : null}
+						</div>
+
+						<Separator />
+
+						<div className="flex flex-col gap-4">
+							<MetaSection label="Invoice">
+								<p className="font-mono text-sm tabular-nums text-foreground">
+									#{invoice.invoiceNumber}
+								</p>
+							</MetaSection>
+							<MetaSection label="Issued">
+								<p className="text-sm font-medium text-foreground">
+									{formatDate(invoice.issuedDate)}
+								</p>
+							</MetaSection>
+							<MetaSection label="Due">
+								<p className="text-sm font-medium text-foreground">
+									{formatDate(invoice.dueDate)}
+								</p>
+							</MetaSection>
+							<MetaSection label="Bill To">
+								<p className="text-sm font-medium text-foreground">
+									{clientName}
+								</p>
+								{clientEmail ? (
+									<p className="text-xs text-muted-foreground">{clientEmail}</p>
+								) : null}
+							</MetaSection>
+							{showProgress ? (
+								<MetaSection label="Payment Progress">
+									<p className="text-sm font-medium text-foreground">
+										{formatMoney(paymentSummary.totalPaid)} paid
+									</p>
+									<p className="text-xs text-muted-foreground">
+										{formatMoney(paymentSummary.totalRemaining)} remaining
+									</p>
+								</MetaSection>
+							) : null}
+						</div>
+
+						<Separator />
+
+						{paySlot}
+					</aside>
+
+					{/* Main: line items + totals */}
+					<div className="flex min-w-0 flex-col gap-6">
+						<div className="flex flex-col gap-4">
+							<div className="flex items-baseline justify-between gap-3">
+								<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+									Line Items
+								</span>
+								<span className="text-xs text-muted-foreground">
+									{lineItems.length}{" "}
+									{lineItems.length === 1 ? "item" : "items"}
+								</span>
+							</div>
+							<div className="flex flex-col divide-y divide-border">
+								{lineItems.map((li, i) => (
+									<LineItemRow
+										key={li._id ?? i}
+										item={li}
+										isFirst={i === 0}
+										isLast={i === lineItems.length - 1}
+									/>
+								))}
+							</div>
+						</div>
+
+						<Separator />
+
+						<TotalsBreakdown
+							subtotal={invoice.subtotal}
+							discount={invoice.discountAmount}
+							tax={invoice.taxAmount}
+							total={invoice.total}
+							className="sm:ml-auto sm:w-72"
+						/>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
+
+function MetaSection({
+	label,
+	children,
+}: {
+	label: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="text-[0.625rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+				{label}
+			</span>
+			<div className="flex flex-col gap-0.5">{children}</div>
+		</div>
+	);
+}
+
+function LineItemRow({
+	item,
+	isFirst,
+	isLast,
+}: {
+	item: InvoicePaperLineItem;
+	isFirst: boolean;
+	isLast: boolean;
+}) {
 	return (
 		<div
-			data-portal-paper-invoice
-			className="mx-auto max-w-[760px] rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9"
+			className={cn(
+				"flex items-start justify-between gap-4",
+				isFirst ? "pt-0" : "pt-4",
+				isLast ? "pb-0" : "pb-4",
+			)}
 		>
-			<div className="flex items-start justify-between gap-6">
-				<div className="flex items-center gap-3">
-					{businessLogoUrl ? (
-						<Image
-							src={businessLogoUrl}
-							alt=""
-							width={40}
-							height={40}
-							className="h-10 w-10 rounded-md object-contain"
-							unoptimized
-						/>
-					) : (
-						<div className="h-10 w-10 rounded-md bg-muted" aria-hidden="true" />
-					)}
-					<div>
-						<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-							INVOICE #{invoice.invoiceNumber}
-						</p>
-						<div className="mt-1 text-[16px] font-semibold leading-[1.15]">
-							{businessName}
-						</div>
-					</div>
-				</div>
-				<div className="text-right text-[12px] text-muted-foreground">
-					<div>Bill to</div>
-					<div className="mt-1 font-medium text-foreground">{clientName}</div>
-					{clientEmail ? <div className="mt-0.5">{clientEmail}</div> : null}
-				</div>
+			<div className="min-w-0 flex-1">
+				<p className="text-sm font-semibold text-foreground">
+					{item.description}
+				</p>
+				<p className="mt-0.5 text-xs text-muted-foreground">
+					Qty {item.quantity} · {formatMoney(item.unitPrice)} each
+				</p>
 			</div>
-
-			<div className="mt-6 grid grid-cols-2 gap-6 border-y border-border py-4">
-				<div>
-					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-						Issued
-					</p>
-					<p className="mt-1 text-[14px] font-medium">
-						{formatDate(invoice.issuedDate)}
-					</p>
-				</div>
-				<div className="text-right">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-						Due
-					</p>
-					<p className="mt-1 text-[14px] font-medium">
-						{formatDate(invoice.dueDate)}
-					</p>
-				</div>
-			</div>
-
-			<div className="mt-6">
-				<table className="w-full border-collapse">
-					<thead>
-						<tr className="border-b-2 border-foreground">
-							<th className="text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5">
-								Description
-							</th>
-							<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[60px]">
-								Qty
-							</th>
-							<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
-								Unit Price
-							</th>
-							<th className="text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
-								Amount
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{lineItems.map((li, i) => (
-							<tr
-								key={li._id ?? i}
-								className="border-b border-border last:border-b-0"
-							>
-								<td className="py-4 align-top">
-									<div className="text-[14px] font-semibold">
-										{li.description}
-									</div>
-								</td>
-								<td className="py-4 align-top text-right text-[14px] tabular-nums">
-									{li.quantity}
-								</td>
-								<td className="py-4 align-top text-right text-[14px] tabular-nums">
-									{formatMoney(li.unitPrice)}
-								</td>
-								<td className="py-4 align-top text-right text-[14px] font-semibold tabular-nums">
-									{formatMoney(li.total)}
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
-
-			<div className="mt-6 border-t-2 border-foreground pt-4 flex flex-col items-end gap-1.5">
-				<div className="flex items-center gap-8 text-[14px]">
-					<span className="text-muted-foreground">Subtotal</span>
-					<span className="tabular-nums">{formatMoney(invoice.subtotal)}</span>
-				</div>
-				{tax > 0 ? (
-					<div className="flex items-center gap-8 text-[14px]">
-						<span className="text-muted-foreground">Tax</span>
-						<span className="tabular-nums">{formatMoney(tax)}</span>
-					</div>
-				) : null}
-				<div
-					data-paper-total
-					className="flex items-center gap-8 text-[16px] font-semibold border-t border-foreground pt-2 mt-1"
-				>
-					<span>Total</span>
-					<span className="tabular-nums">{formatMoney(invoice.total)}</span>
-				</div>
-			</div>
+			<span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+				{formatMoney(item.total)}
+			</span>
 		</div>
 	);
 }

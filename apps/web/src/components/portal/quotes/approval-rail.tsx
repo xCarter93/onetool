@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * ApprovalRail — desktop sticky right rail (380px). Owns the local form
- * state (signature, terms, intent, declineReason) and delegates submission
- * to the shared `useQuoteDecision` hook.
+ * ApprovalRail — desktop approval actions. Owns the local form state
+ * (signature, terms, intent, declineReason) and delegates submission to the
+ * shared `useQuoteDecision` hook. Rendered inside the "Next Step" block of
+ * the sticky Quote Journey panel (quote-detail-island.tsx) — the quote
+ * total/validUntil are shown in the page hero, not repeated here.
  *
  * Branches:
  *  - effectiveReceipt (= submitted receipt or REVIEWS-mandated initialReceipt)
@@ -23,7 +25,6 @@ import { Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
-import { formatMoney } from "@/lib/portal/format";
 import {
 	SignatureCard,
 	type SignaturePayload,
@@ -98,12 +99,6 @@ const NON_USABLE: SignaturePayload = {
 	isUsable: false,
 };
 
-function daysRemaining(validUntil?: number): number | null {
-	if (!validUntil) return null;
-	const ms = validUntil - Date.now();
-	return Math.ceil(ms / (1000 * 60 * 60 * 24));
-}
-
 export function ApprovalRail({
 	quote,
 	latestDocument,
@@ -174,14 +169,6 @@ export function ApprovalRail({
 		documentDrifted,
 	]);
 
-	const days = daysRemaining(quote.validUntil);
-	const expiresLine =
-		quote.validUntil && days !== null
-			? days > 0
-				? `Expires in ${days} day${days === 1 ? "" : "s"}`
-				: "Expired"
-			: undefined;
-
 	const handleApprove = async () => {
 		if (!signaturePayload.isUsable) return;
 		await submitApprove({
@@ -212,26 +199,8 @@ export function ApprovalRail({
 	};
 
 	return (
-		<aside
-			className="w-full self-start border-l-0 border-t border-border bg-card md:border-l md:border-t-0 md:sticky md:top-[68px] md:h-[calc(100vh-68px)] md:overflow-y-auto"
-			aria-label="Quote approval"
-		>
-			<div className="flex flex-col gap-8 p-6 md:gap-9 md:p-7">
-				{/* Quote total — flat top section */}
-				<div className="border-b border-border pb-6">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-						Quote total
-					</p>
-					<p className="mt-2 text-[36px] font-semibold tracking-[-0.025em] leading-[1] tabular-nums">
-						{formatMoney(quote.total)}
-					</p>
-					{expiresLine && (
-						<p className="mt-2 text-[13px] text-muted-foreground">
-							{expiresLine}
-						</p>
-					)}
-				</div>
-
+		<div className="flex w-full flex-col gap-6" aria-label="Quote approval">
+			<div className="flex flex-col gap-8">
 				{/* Branches */}
 				{effectiveReceipt ? (
 					<ApprovalReceipt
@@ -370,6 +339,6 @@ export function ApprovalRail({
 				onConfirm={handleDecline}
 				businessName={businessName}
 			/>
-		</aside>
+		</div>
 	);
 }

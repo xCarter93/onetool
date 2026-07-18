@@ -7,7 +7,6 @@ import { ArrowLeft } from "lucide-react";
 
 import { readSessionCookie } from "@/lib/portal/cookie";
 import { InvoiceDetailIsland } from "@/components/portal/invoices/invoice-detail-island";
-import { HeaderActionsClient } from "@/components/portal/invoices/header-actions-client";
 
 export default async function InvoiceDetailPage({
 	params,
@@ -50,7 +49,7 @@ export default async function InvoiceDetailPage({
 		<div className="-mx-6 md:-mx-9 -my-6 flex flex-col">
 			<header
 				data-sticky-detail-header
-				className="sticky top-0 z-20 flex h-[68px] items-center justify-between gap-4 border-b border-border bg-background px-6 md:px-9"
+				className="sticky top-0 z-20 flex h-[68px] items-center gap-4 border-b border-border bg-background px-6 md:px-9"
 			>
 				<div className="flex min-w-0 items-center gap-3">
 					<Link
@@ -65,7 +64,6 @@ export default async function InvoiceDetailPage({
 						Invoice #{data.invoice.invoiceNumber}
 					</h2>
 				</div>
-				<HeaderActionsClient invoiceId={invoiceId} hasPdf={hasPdf} />
 			</header>
 
 			{/* Mobile-only title block */}

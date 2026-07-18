@@ -235,7 +235,7 @@ export default function OtpForm({
 				<button
 					type="submit"
 					disabled={loading}
-					className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+					className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm outline-none transition-all hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{loading ? "Sending..." : "Send code"}
 					{!loading ? (
@@ -318,7 +318,7 @@ export default function OtpForm({
 						? loading
 						: cellsDisabled || code.length !== 6
 				}
-				className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+				className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm outline-none transition-all hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{attemptsRemaining === 0
 					? "Send a new code"
@@ -330,7 +330,7 @@ export default function OtpForm({
 			<div className="flex flex-col items-start gap-1.5">
 				<button
 					type="button"
-					className="text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+					className="cursor-pointer rounded-sm text-sm font-medium text-primary outline-none underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50"
 					onClick={handleResend}
 					disabled={resendCooldown > 0 || loading}
 				>
@@ -340,7 +340,7 @@ export default function OtpForm({
 				</button>
 				<button
 					type="button"
-					className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+					className="cursor-pointer rounded-sm text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50"
 					onClick={handleUseDifferentEmail}
 					disabled={loading}
 				>

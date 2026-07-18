@@ -133,7 +133,7 @@ export function WelcomeContent({
 							</div>
 							<Link
 								href={viewAllHref}
-								className="text-[13px] font-medium text-primary hover:text-primary/80"
+								className="cursor-pointer rounded-sm text-[13px] font-medium text-primary outline-none transition-colors hover:text-primary/80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 							>
 								View all →
 							</Link>
@@ -277,7 +277,7 @@ function AttentionCard({
 					{awaitingQuotesCount > 0 && (
 						<Link
 							href={quoteHref}
-							className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[13px] font-medium text-foreground shadow-xs hover:bg-muted"
+							className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[13px] font-medium text-foreground shadow-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 						>
 							{awaitingQuotesCount === 1 ? "Review quote" : "Review quotes"}
 						</Link>
@@ -285,7 +285,7 @@ function AttentionCard({
 					{outstandingCount > 0 && (
 						<Link
 							href={invoiceHref}
-							className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+							className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground shadow-sm outline-none transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 						>
 							Pay {formatMoney(outstandingTotal)}
 							<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
