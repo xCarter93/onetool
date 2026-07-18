@@ -22,6 +22,9 @@ import { SocialLinks } from "./components/social-links";
 import { BusinessHoursCard } from "./components/business-hours-card";
 import { FloatingCTA } from "./components/floating-cta";
 
+// PUB-16: public near-static content — cache rendered pages for 60s
+export const revalidate = 60;
+
 interface PageProps {
 	params: Promise<{ slug: string }>;
 }

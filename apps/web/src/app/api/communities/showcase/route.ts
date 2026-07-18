@@ -9,7 +9,12 @@ export async function GET() {
 			limit: 12,
 		});
 
-		return NextResponse.json(data);
+		// PUB-16: public near-static data — CDN-cache for 60s
+		return NextResponse.json(data, {
+			headers: {
+				"Cache-Control": "public, s-maxage=60, stale-while-revalidate=60",
+			},
+		});
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : "Failed to load showcase";

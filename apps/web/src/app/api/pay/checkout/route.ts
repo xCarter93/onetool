@@ -3,10 +3,24 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
 import { getStripeClient } from "@/lib/stripe";
 import { dollarsToCents } from "@/lib/money";
+import { getRequestIp } from "@/lib/portal/ip";
 import { env } from "@/env";
 
 // Avoid reusing a Checkout URL too close to expiration.
 const REUSE_BUFFER_MS = 60_000;
+
+// PUB-06: this route is public, so the Origin header is attacker-forgeable.
+// Only honor it when it exactly matches the configured app URL; otherwise fall
+// back to the trusted env value. This keeps Stripe's success/cancel redirects
+// pinned to our own origin rather than an attacker-supplied one.
+function resolveRedirectOrigin(request: NextRequest): string | null {
+	const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+	const headerOrigin = request.headers.get("origin");
+	if (appUrl && headerOrigin === appUrl) {
+		return headerOrigin;
+	}
+	return appUrl ?? null;
+}
 
 export async function POST(request: NextRequest) {
 	try {
@@ -21,19 +35,31 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		const origin =
-			request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL;
+		const origin = resolveRedirectOrigin(request);
 		if (!origin) {
 			return NextResponse.json(
 				{
 					error:
-						"Origin is missing. Provide an Origin header or set NEXT_PUBLIC_APP_URL.",
+						"Origin is missing. Set NEXT_PUBLIC_APP_URL.",
 				},
 				{ status: 400 }
 			);
 		}
 
 		const convex = getConvexClient();
+
+		// PUB-11: throttle Stripe session minting per pay-link token and per
+		// client IP before any lookup or mint.
+		const rateLimit = await convex.mutation(
+			api.payments.checkCheckoutRateLimit,
+			{ token: body.token, ip: getRequestIp(request) }
+		);
+		if (!rateLimit.ok) {
+			return NextResponse.json(
+				{ error: "Too many attempts. Please try again shortly." },
+				{ status: 429 }
+			);
+		}
 
 		// First, try to find a payment by token (new payment splitting flow)
 		const paymentData = await convex.query(api.payments.getByPublicToken, {
@@ -60,19 +86,6 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
-			// Reuse an active Checkout Session instead of minting duplicate attempts.
-			const now = Date.now();
-			const reusableUrl = paymentData.payment.pendingCheckoutSessionUrl;
-			const reusableExpiresAt =
-				paymentData.payment.pendingCheckoutSessionExpiresAt;
-			if (
-				reusableUrl &&
-				reusableExpiresAt &&
-				now < reusableExpiresAt - REUSE_BUFFER_MS
-			) {
-				return NextResponse.json({ url: reusableUrl });
-			}
-
 			const amountInCents = Math.max(
 				0,
 				dollarsToCents(paymentData.payment.paymentAmount ?? 0)
@@ -84,6 +97,50 @@ export async function POST(request: NextRequest) {
 				);
 			}
 
+			const stripe = getStripeClient();
+
+			// Reuse an active Checkout Session instead of minting duplicate attempts.
+			// PUB-01: the cached URL/id is persisted through a public mutation, so it
+			// cannot be trusted blindly. Re-fetch the session scoped to THIS org's
+			// connected account (retrieve 404s for any session minted elsewhere) and
+			// reuse it only when it is still open, its amount matches, AND its
+			// metadata binds it to THIS pay link (flow + publicToken) — so a valid
+			// same-account session for a different payment cannot be substituted in.
+			const now = Date.now();
+			const reusableUrl = paymentData.payment.pendingCheckoutSessionUrl;
+			const reusableSessionId =
+				paymentData.payment.pendingCheckoutSessionId;
+			const reusableExpiresAt =
+				paymentData.payment.pendingCheckoutSessionExpiresAt;
+			if (
+				reusableUrl &&
+				reusableSessionId &&
+				reusableExpiresAt &&
+				now < reusableExpiresAt - REUSE_BUFFER_MS
+			) {
+				try {
+					const cached = await stripe.checkout.sessions.retrieve(
+						reusableSessionId,
+						undefined,
+						{ stripeAccount: accountId }
+					);
+					if (
+						cached.status === "open" &&
+						cached.url &&
+						cached.amount_total === amountInCents &&
+						cached.metadata?.flow === "payment" &&
+						cached.metadata?.publicToken ===
+							paymentData.payment.publicToken
+					) {
+						return NextResponse.json({ url: cached.url });
+					}
+					// Otherwise fall through and mint a fresh session.
+				} catch {
+					// retrieve() throws if the session isn't under this connected
+					// account (poisoned cache) or has expired — mint a fresh one.
+				}
+			}
+
 			// Compute the next attempt id without committing it. Counter only
 			// advances if Stripe actually mints a session — otherwise a
 			// transient failure here would burn a key the customer never used,
@@ -91,8 +148,6 @@ export async function POST(request: NextRequest) {
 			// retrying that failure cleanly.
 			const attemptId =
 				(paymentData.payment.checkoutAttemptCounter ?? 0) + 1;
-
-			const stripe = getStripeClient();
 
 			// Build descriptive name for the line item
 			const paymentDescription = paymentData.payment.description
@@ -122,12 +177,14 @@ export async function POST(request: NextRequest) {
 					payment_intent_data: {
 						application_fee_amount: env.STRIPE_APPLICATION_FEE_CENTS,
 						metadata: {
+							flow: "payment",
 							publicToken: paymentData.payment.publicToken,
 							paymentId: paymentData.payment._id,
 							invoiceNumber: paymentData.invoice.invoiceNumber ?? "",
 						},
 					},
 					metadata: {
+						flow: "payment",
 						publicToken: paymentData.payment.publicToken,
 						paymentId: paymentData.payment._id,
 						invoiceId: paymentData.invoice._id,
@@ -161,7 +218,7 @@ export async function POST(request: NextRequest) {
 					}
 				);
 				await convex.mutation(
-					api.payments.incrementCheckoutAttemptCounterInternal,
+					api.payments.incrementCheckoutAttemptCounter,
 					{ publicToken: paymentData.payment.publicToken }
 				);
 			}
@@ -184,6 +241,8 @@ export async function POST(request: NextRequest) {
 				{ status: 400 }
 			);
 		}
+		// PUB-35: draft/cancelled invoices are rejected at the trust boundary —
+		// invoices.getByPublicToken returns null for them, so they never reach here.
 
 		const accountId = invoiceData.org?.stripeConnectAccountId;
 		if (!accountId) {
@@ -234,11 +293,13 @@ export async function POST(request: NextRequest) {
 				payment_intent_data: {
 					application_fee_amount: env.STRIPE_APPLICATION_FEE_CENTS,
 					metadata: {
+						flow: "invoice",
 						publicToken: invoiceData.invoice.publicToken,
 						invoiceNumber: invoiceData.invoice.invoiceNumber ?? "",
 					},
 				},
 				metadata: {
+					flow: "invoice",
 					publicToken: invoiceData.invoice.publicToken,
 					invoiceId: invoiceData.invoice._id,
 				},
@@ -259,8 +320,11 @@ export async function POST(request: NextRequest) {
 
 		return NextResponse.json({ url: session.url });
 	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Failed to start checkout";
-		return NextResponse.json({ error: message }, { status: 500 });
+		// PUB-15: never echo raw SDK errors to unauthenticated callers.
+		console.error("[pay/checkout] error:", error);
+		return NextResponse.json(
+			{ error: "Failed to start checkout. Please try again." },
+			{ status: 500 }
+		);
 	}
 }

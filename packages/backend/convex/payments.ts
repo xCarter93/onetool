@@ -16,6 +16,9 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
+import { rateLimiter } from "./rateLimits";
+import { hasPremiumAccess } from "./lib/permissions";
+import { getCurrentUserOrgIdOrNull } from "./lib/auth";
 import { emitStatusChangeEvent } from "./eventBus";
 import { applyMarkPaidCascade } from "./lib/payments";
 import { calculateInvoiceTotals } from "./lib/invoiceTotals";
@@ -813,8 +816,9 @@ export const markAsOverdue = userMutation({
 /**
  * Increment the checkout attempt counter used in Stripe idempotency keys.
  */
-// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
-export const incrementCheckoutAttemptCounterInternal = mutation({
+// PUB-17: intentionally public — pay-link route helper called by the
+// unauthenticated ConvexHttpClient (renamed off the misleading *Internal suffix).
+export const incrementCheckoutAttemptCounter = mutation({
 	args: { publicToken: v.string() },
 	returns: v.number(),
 	handler: async (ctx, args): Promise<number> => {
@@ -844,6 +848,13 @@ export const incrementCheckoutAttemptCounterInternal = mutation({
  */
 const STRIPE_CHECKOUT_URL_PREFIX = "https://checkout.stripe.com/";
 const STRIPE_CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
+// PUB-01: the format guards below constrain the shape of the URL/id but NOT its
+// ownership — a session minted under an attacker's own Stripe account passes
+// both. The real fix lives in /api/pay/checkout, which now re-verifies the
+// cached session against the org's connected account before reusing it. Here we
+// additionally clamp the expiry so a poisoned cache entry cannot be pinned open
+// far into the future.
+const MAX_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 // Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
 export const persistPendingCheckoutSessionInternal = mutation({
 	args: {
@@ -860,6 +871,9 @@ export const persistPendingCheckoutSessionInternal = mutation({
 		if (!STRIPE_CHECKOUT_SESSION_ID.test(args.pendingCheckoutSessionId)) {
 			throw new Error("Invalid checkout session ID format");
 		}
+		if (args.pendingCheckoutSessionExpiresAt > Date.now() + MAX_SESSION_TTL_MS) {
+			throw new Error("Checkout session expiry out of range");
+		}
 		const payment = await ctx.db
 			.query("payments")
 			.withIndex("by_public_token", (q) =>
@@ -875,6 +889,130 @@ export const persistPendingCheckoutSessionInternal = mutation({
 			pendingCheckoutSessionExpiresAt: args.pendingCheckoutSessionExpiresAt,
 		});
 		return null;
+	},
+});
+
+// ============================================================================
+// Public-surface rate limiting (PUB-11 / PUB-12)
+// ============================================================================
+
+const rateLimitResult = v.object({
+	ok: v.boolean(),
+	retryAfter: v.optional(v.number()),
+});
+type RateLimitResult = { ok: boolean; retryAfter?: number };
+
+// PUB-11: pre-mint throttle for /api/pay/checkout, keyed per pay-link token
+// and per client IP.
+// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
+export const checkCheckoutRateLimit = mutation({
+	args: { token: v.string(), ip: v.string() },
+	returns: rateLimitResult,
+	handler: async (ctx, args): Promise<RateLimitResult> => {
+		const perToken = await rateLimiter.limit(ctx, "payCheckoutPerToken", {
+			key: args.token,
+		});
+		if (!perToken.ok) {
+			return { ok: false, retryAfter: perToken.retryAfter };
+		}
+		const perIp = await rateLimiter.limit(ctx, "payCheckoutPerIp", {
+			key: args.ip,
+		});
+		if (!perIp.ok) {
+			return { ok: false, retryAfter: perIp.retryAfter };
+		}
+		return { ok: true };
+	},
+});
+
+// PUB-11: per-IP throttle for the public token-lookup reads
+// (/api/pay/invoice, /api/pay/payment).
+// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
+export const checkPayReadRateLimit = mutation({
+	args: { ip: v.string() },
+	returns: rateLimitResult,
+	handler: async (ctx, args): Promise<RateLimitResult> => {
+		const rl = await rateLimiter.limit(ctx, "payReadPerIp", {
+			key: args.ip,
+		});
+		return rl.ok ? { ok: true } : { ok: false, retryAfter: rl.retryAfter };
+	},
+});
+
+// PUB-11: /api/pay/confirm triggers server-side Stripe verification; throttle
+// per token as well as per IP.
+// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
+export const checkPayConfirmRateLimit = mutation({
+	args: { token: v.string(), ip: v.string() },
+	returns: rateLimitResult,
+	handler: async (ctx, args): Promise<RateLimitResult> => {
+		const perToken = await rateLimiter.limit(ctx, "payConfirmPerToken", {
+			key: args.token,
+		});
+		if (!perToken.ok) {
+			return { ok: false, retryAfter: perToken.retryAfter };
+		}
+		const perIp = await rateLimiter.limit(ctx, "payReadPerIp", {
+			key: args.ip,
+		});
+		if (!perIp.ok) {
+			return { ok: false, retryAfter: perIp.retryAfter };
+		}
+		return { ok: true };
+	},
+});
+
+// PUB-12a: per-IP throttle for the public /api/schedule-demo Resend route.
+// Stays raw — called by the unauthenticated marketing route's ConvexHttpClient.
+export const checkScheduleDemoRateLimit = mutation({
+	args: { ip: v.string() },
+	returns: rateLimitResult,
+	handler: async (ctx, args): Promise<RateLimitResult> => {
+		const rl = await rateLimiter.limit(ctx, "scheduleDemoPerIp", {
+			key: args.ip,
+		});
+		return rl.ok ? { ok: true } : { ok: false, retryAfter: rl.retryAfter };
+	},
+});
+
+const llmAccessResult = v.object({
+	ok: v.boolean(),
+	reason: v.optional(
+		v.union(v.literal("forbidden"), v.literal("rate_limited"))
+	),
+	retryAfter: v.optional(v.number()),
+});
+type LlmAccessResult = {
+	ok: boolean;
+	reason?: "forbidden" | "rate_limited";
+	retryAfter?: number;
+};
+
+// PUB-12b: plan gate + per-org throttle for LLM-backed web API routes.
+// Mirrors the assistant's hasPremiumAccess gate (assistantChat.ts); the caller
+// must forward the Clerk "convex" JWT or this denies as unauthenticated.
+export const checkLlmAccess = mutation({
+	args: {
+		bucket: v.union(
+			v.literal("llmCsvAnalyze"),
+			v.literal("llmMastraReport")
+		),
+	},
+	returns: llmAccessResult,
+	handler: async (ctx, args): Promise<LlmAccessResult> => {
+		if (!(await hasPremiumAccess(ctx))) {
+			return { ok: false, reason: "forbidden" };
+		}
+		// Key per org; a premium user-override without an active org falls back
+		// to their identity subject.
+		const orgId = await getCurrentUserOrgIdOrNull(ctx);
+		const key =
+			orgId ?? (await ctx.auth.getUserIdentity())?.subject ?? "anonymous";
+		const rl = await rateLimiter.limit(ctx, args.bucket, { key });
+		if (!rl.ok) {
+			return { ok: false, reason: "rate_limited", retryAfter: rl.retryAfter };
+		}
+		return { ok: true };
 	},
 });
 
@@ -936,10 +1074,12 @@ export const markPaidFromWebhookInternal = systemMutation({
 		}
 
 		if (!payment) {
-			console.warn(
+			// PUB-34: a lookup miss must NOT be silently acked. Throwing propagates
+			// to markEventFailed so Stripe retries instead of permanently marking
+			// the event processed against a payment that never resolved.
+			throw new Error(
 				`markPaidFromWebhookInternal: no payment found for session ${args.sessionId}`
 			);
-			return null;
 		}
 
 		// The publicToken lookup is global, so assert org scope here.

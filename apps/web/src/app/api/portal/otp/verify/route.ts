@@ -10,6 +10,7 @@ import {
 	COOKIE_TTL_SECONDS,
 } from "@/lib/portal/cookie";
 import { hashIp, getRequestIp } from "@/lib/portal/ip";
+import { isSameOrigin } from "@/lib/portal/quotes/map-convex-error";
 
 function randomUUID(): string {
 	return crypto.randomUUID();
@@ -38,6 +39,27 @@ function safeRedirect(
 }
 
 export async function POST(req: NextRequest) {
+	// PUB-02: this is the one portal route that mints a session and sets the
+	// portal_session cookie. Without an origin check it is vulnerable to login
+	// CSRF / session fixation (SameSite=Lax does not block a cross-site POST
+	// from setting a cookie). Match the guard the five sibling routes use.
+	if (
+		!isSameOrigin(
+			req.headers.get("origin"),
+			req.headers.get("referer"),
+			new URL(req.url).origin,
+		)
+	) {
+		return NextResponse.json(
+			{
+				error: "Invalid origin",
+				code: "INVALID_ORIGIN",
+				remainingAttempts: null,
+			},
+			{ status: 403 },
+		);
+	}
+
 	let body: unknown;
 	try {
 		body = await req.json();

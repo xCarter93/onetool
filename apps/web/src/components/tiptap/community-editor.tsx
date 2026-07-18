@@ -65,6 +65,8 @@ export function CommunityEditor({
 			}),
 			Link.configure({
 				openOnClick: false,
+				// [PUB-20] Explicit allowlist; don't rely on library defaults.
+				protocols: ["http", "https", "mailto", "tel"],
 				HTMLAttributes: {
 					class: "text-primary underline hover:text-primary/80 cursor-pointer",
 				},
@@ -651,6 +653,8 @@ export function CommunityPageContent({
 			}),
 			Link.configure({
 				openOnClick: true,
+				// [PUB-20] Explicit allowlist; don't rely on library defaults.
+				protocols: ["http", "https", "mailto", "tel"],
 				HTMLAttributes: {
 					class: "text-primary underline hover:text-primary/80",
 					target: "_blank",

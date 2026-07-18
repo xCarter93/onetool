@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
+import { getRequestIp } from "@/lib/portal/ip";
 
 export async function GET(request: NextRequest) {
 	try {
@@ -15,6 +16,19 @@ export async function GET(request: NextRequest) {
 		}
 
 		const client = getConvexClient();
+
+		// PUB-11: per-IP throttle before the token lookup.
+		const rateLimit = await client.mutation(
+			api.payments.checkPayReadRateLimit,
+			{ ip: getRequestIp(request) }
+		);
+		if (!rateLimit.ok) {
+			return NextResponse.json(
+				{ error: "Too many attempts. Please try again shortly." },
+				{ status: 429 }
+			);
+		}
+
 		const data = await client.query(api.invoices.getByPublicToken, {
 			publicToken: token,
 		});
@@ -25,8 +39,11 @@ export async function GET(request: NextRequest) {
 
 		return NextResponse.json(data);
 	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Failed to load invoice";
-		return NextResponse.json({ error: message }, { status: 500 });
+		// PUB-15: never echo raw SDK errors to unauthenticated callers.
+		console.error("[pay/invoice] error:", error);
+		return NextResponse.json(
+			{ error: "Failed to load invoice. Please try again." },
+			{ status: 500 }
+		);
 	}
 }

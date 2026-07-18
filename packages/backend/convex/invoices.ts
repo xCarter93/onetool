@@ -23,7 +23,7 @@ import {
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
-import { roundCents, sumMoney } from "./lib/money";
+import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -280,6 +280,12 @@ export const getByPublicToken = query({
 			return null;
 		}
 
+		// PUB-35: draft/cancelled invoices are not payable and their existence
+		// must not leak — masquerade as not-found, matching the portal paths.
+		if (invoice.status === "draft" || invoice.status === "cancelled") {
+			return null;
+		}
+
 		const org = await ctx.db.get(invoice.orgId);
 
 		return {
@@ -296,7 +302,6 @@ export const getByPublicToken = query({
 				taxAmount: invoice.taxAmount,
 				dueDate: invoice.dueDate,
 				issuedDate: invoice.issuedDate,
-				description: invoice.status,
 			},
 			org: org
 				? {
@@ -363,6 +368,100 @@ export const getByPublicTokenInternal = internalQuery({
 	args: { publicToken: v.string() },
 	handler: async (ctx, args) => {
 		return await getInvoiceByPublicToken(ctx, args.publicToken);
+	},
+});
+
+/**
+ * PUB-34: mark a legacy-invoice-flow Checkout Session paid from the Stripe
+ * webhook. The pay-by-link legacy branch stamps the Checkout metadata with an
+ * `invoices` publicToken (flow: "invoice"); the payments-table webhook handler
+ * would never resolve it, so it silently no-oped and the invoice stayed unpaid
+ * forever. This mirrors the payments-path verification: exact amount match,
+ * required paymentIntent, org-scope assertion, and a RETRYABLE throw on a
+ * genuine lookup miss so Stripe keeps retrying rather than the event being
+ * acked against nothing.
+ */
+export const markInvoicePaidFromWebhookInternal = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		sessionId: v.string(),
+		amountTotal: v.number(),
+		metadata: v.any(),
+		paymentIntentId: v.union(v.string(), v.null()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const publicToken =
+			typeof args.metadata?.publicToken === "string"
+				? args.metadata.publicToken
+				: undefined;
+		if (!publicToken) {
+			console.error(
+				`markInvoicePaidFromWebhookInternal: missing publicToken on session ${args.sessionId}; acking as terminal.`
+			);
+			return null;
+		}
+
+		const invoice = await getInvoiceByPublicToken(ctx, publicToken);
+		if (!invoice) {
+			// Retryable: the row may not be visible yet, or metadata is wrong.
+			throw new Error(
+				`markInvoicePaidFromWebhookInternal: no invoice for session ${args.sessionId}`
+			);
+		}
+
+		if (invoice.orgId !== args.orgId) {
+			// Deterministic for a given session — terminal, not retryable.
+			console.error(
+				`markInvoicePaidFromWebhookInternal: organization mismatch for session ${args.sessionId}; acking as terminal.`
+			);
+			return null;
+		}
+
+		// Idempotent: /api/pay/confirm may have already marked it.
+		if (invoice.status === "paid") {
+			return null;
+		}
+
+		// Stripe sends amount_total in cents; invoice totals are stored in dollars.
+		// A mismatch is deterministic for a given session — terminal, not retryable.
+		const expectedCents = dollarsToCents(invoice.total ?? 0);
+		if (args.amountTotal !== expectedCents) {
+			console.error(
+				`markInvoicePaidFromWebhookInternal: amount mismatch on session ${args.sessionId} — ` +
+					`expected ${expectedCents} cents, got ${args.amountTotal} cents. ` +
+					`Invoice left in status=${invoice.status}; investigate manually.`
+			);
+			return null;
+		}
+
+		if (!args.paymentIntentId) {
+			console.error(
+				`markInvoicePaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}. ` +
+					`Invoice left in status=${invoice.status}; investigate manually.`
+			);
+			return null;
+		}
+
+		await ctx.db.patch(invoice._id, {
+			status: "paid",
+			stripeSessionId: args.sessionId,
+			stripePaymentIntentId: args.paymentIntentId,
+			paidAt: Date.now(),
+		});
+
+		try {
+			const client = await ctx.db.get(invoice.clientId);
+			await ActivityHelpers.invoicePaid(
+				ctx,
+				invoice,
+				client?.companyName || "Unknown Client"
+			);
+		} catch (err) {
+			console.warn("Invoice paid activity logging skipped:", err);
+		}
+
+		return null;
 	},
 });
 

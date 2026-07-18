@@ -15,10 +15,12 @@ export async function hashIp(ip: string): Promise<string> {
  * forwarded headers; otherwise the fallback collapses to a shared bucket.
  */
 export function getRequestIp(req: NextRequest): string {
-	const cf = req.headers.get("cf-connecting-ip");
-	if (cf) return cf.trim();
+	// [PUB-24] Vercel-set header first — not client-spoofable at the edge,
+	// unlike x-forwarded-for / x-real-ip below.
 	const vercel = req.headers.get("x-vercel-forwarded-for");
 	if (vercel) return vercel.split(",")[0]!.trim();
+	const cf = req.headers.get("cf-connecting-ip");
+	if (cf) return cf.trim();
 	const fly = req.headers.get("fly-client-ip");
 	if (fly) return fly.trim();
 

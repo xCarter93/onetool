@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
+import { getRequestIp } from "@/lib/portal/ip";
 
 export async function POST(request: NextRequest) {
 	try {
@@ -17,6 +18,18 @@ export async function POST(request: NextRequest) {
 		}
 
 		const convex = getConvexClient();
+
+		// PUB-11: throttle per token and per IP before any lookup or Stripe call.
+		const rateLimit = await convex.mutation(
+			api.payments.checkPayConfirmRateLimit,
+			{ token: body.token, ip: getRequestIp(request) }
+		);
+		if (!rateLimit.ok) {
+			return NextResponse.json(
+				{ error: "Too many attempts. Please try again shortly." },
+				{ status: 429 }
+			);
+		}
 
 		// First, try to find a payment by token (new payment splitting flow)
 		const paymentData = await convex.query(api.payments.getByPublicToken, {
@@ -62,8 +75,11 @@ export async function POST(request: NextRequest) {
 
 		return NextResponse.json({ status: "paid" });
 	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Failed to confirm payment";
-		return NextResponse.json({ error: message }, { status: 500 });
+		// PUB-15: never echo raw SDK errors to unauthenticated callers.
+		console.error("[pay/confirm] error:", error);
+		return NextResponse.json(
+			{ error: "Failed to confirm payment. Please try again." },
+			{ status: 500 }
+		);
 	}
 }

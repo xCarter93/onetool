@@ -6,6 +6,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	communityInterest: { kind: "fixed window", rate: 10, period: MINUTE },
 	// Limit per-email submissions to prevent the same address flooding the task queue
 	communityInterestPerEmail: { kind: "fixed window", rate: 2, period: HOUR },
+	// PUB-18/PUB-19: distributed per-IP throttle so an attacker rotating emails
+	// cannot exhaust a slug's shared quota and block legitimate leads.
+	communityInterestPerIp: { kind: "token bucket", rate: 20, period: HOUR, capacity: 20 },
 
 	portalOtpSend: { kind: "token bucket", rate: 3, period: HOUR, capacity: 3 },
 
@@ -58,6 +61,73 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// LLM generation on top of the assistant message that triggered it, and
 	// the model may retry a few times within one turn.
 	reportConfigGeneration: {
+		kind: "token bucket",
+		rate: 30,
+		period: HOUR,
+		capacity: 10,
+	},
+
+	// PUB-11: pay-by-link has no auth; throttle Stripe session minting per token
+	// (carding/abuse signal) and per IP. Token bucket over a short window.
+	payCheckoutPerToken: {
+		kind: "token bucket",
+		rate: 10,
+		period: 10 * MINUTE,
+		capacity: 10,
+	},
+	payCheckoutPerIp: {
+		kind: "token bucket",
+		rate: 30,
+		period: 10 * MINUTE,
+		capacity: 30,
+	},
+	// PUB-11: the rest of the /api/pay/* surface — token-lookup reads and the
+	// Stripe-verifying confirm endpoint.
+	payReadPerIp: {
+		kind: "token bucket",
+		rate: 120,
+		period: 10 * MINUTE,
+		capacity: 60,
+	},
+	payConfirmPerToken: {
+		kind: "token bucket",
+		rate: 10,
+		period: 10 * MINUTE,
+		capacity: 10,
+	},
+
+	// PUB-28: bound touchSession write amplification per session row.
+	portalSessionTouch: {
+		kind: "token bucket",
+		rate: 10,
+		period: HOUR,
+		capacity: 10,
+	},
+
+	// PUB-16: bound bulk scraping of public community pages per IP.
+	communityGetBySlugPerIp: {
+		kind: "token bucket",
+		rate: 120,
+		period: HOUR,
+		capacity: 60,
+	},
+
+	// PUB-12: schedule-demo sends real email via Resend; cap per IP.
+	scheduleDemoPerIp: {
+		kind: "token bucket",
+		rate: 5,
+		period: HOUR,
+		capacity: 5,
+	},
+
+	// PUB-12: LLM-backed routes (analyze-csv, mastra/report) — bound spend per org.
+	llmCsvAnalyze: {
+		kind: "token bucket",
+		rate: 30,
+		period: HOUR,
+		capacity: 10,
+	},
+	llmMastraReport: {
 		kind: "token bucket",
 		rate: 30,
 		period: HOUR,

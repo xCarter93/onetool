@@ -109,6 +109,9 @@ export const requestOtp = internalMutation({
 			)
 			.unique();
 		if (!client) return { ok: true };
+		// PUB-10: archived clients cannot start a new portal session. Mirror the
+		// unknown-portal response exactly so archival is not an enumeration oracle.
+		if (client.status === "archived") return { ok: true };
 
 		const contact = await ctx.db
 			.query("clientContacts")
@@ -229,7 +232,15 @@ export const verifyOtpCode = internalMutation({
 				q.eq("clientPortalId", clientPortalId).eq("email", normalizedEmail)
 			)
 			.first();
-		if (!otpRow) throw otpError("OTP_INVALID", null);
+		if (!otpRow) {
+			// PUB-09: when no OTP row exists (e.g. probing an email that is not a
+			// real client contact) the response must be indistinguishable from a
+			// wrong-code attempt against a real contact — which returns a NUMERIC
+			// remainingAttempts. Returning null here leaked contact existence.
+			// Burn a comparable hash first so latency does not become the oracle.
+			await hashOtp(code, normalizedEmail);
+			throw otpError("OTP_INVALID", MAX_ATTEMPTS - 1);
+		}
 
 		if (otpRow.expiresAt <= Date.now()) {
 			await ctx.db.delete(otpRow._id);
@@ -246,11 +257,17 @@ export const verifyOtpCode = internalMutation({
 			await ctx.db.delete(otpRow._id);
 			throw otpError("OTP_CROSS_PORTAL", null);
 		}
+		// PUB-10: refuse verification for an archived client.
+		if (client.status === "archived") {
+			await ctx.db.delete(otpRow._id);
+			throw otpError("OTP_INVALID", MAX_ATTEMPTS - 1);
+		}
 
 		const contact = await ctx.db.get(otpRow.clientContactId);
 		if (!contact || contact.email?.trim().toLowerCase() !== normalizedEmail) {
 			await ctx.db.delete(otpRow._id);
-			throw otpError("OTP_INVALID", null);
+			// PUB-09: numeric decoy — indistinguishable from a wrong-code attempt.
+			throw otpError("OTP_INVALID", MAX_ATTEMPTS - 1);
 		}
 
 		const submittedHash = await hashOtp(code, otpRow.salt);

@@ -19,11 +19,32 @@ async function checkAdminAccess() {
 	return { authorized: true };
 }
 
+// [PUB-30] CSRF guard for state-changing admin routes. Fail CLOSED: block
+// unless there is an affirmative same-origin signal, since a missing Origin
+// AND missing Sec-Fetch-Site would otherwise sail through on a forged request.
+function isCrossSite(request: Request): boolean {
+	const secFetchSite = request.headers.get("sec-fetch-site");
+	if (secFetchSite) {
+		return secFetchSite !== "same-origin" && secFetchSite !== "same-site";
+	}
+	// Older UA without Sec-Fetch-Site: require a matching Origin, else block.
+	const origin = request.headers.get("origin");
+	if (!origin) return true;
+	try {
+		return new URL(origin).origin !== new URL(request.url).origin;
+	} catch {
+		return true;
+	}
+}
+
 // POST: Set has_premium_feature_access = true
 export async function POST(
-	_request: Request,
+	request: Request,
 	{ params }: { params: Promise<{ userId: string }> }
 ) {
+	if (isCrossSite(request)) {
+		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+	}
 	const accessCheck = await checkAdminAccess();
 	if (!accessCheck.authorized) {
 		return NextResponse.json(
@@ -54,9 +75,12 @@ export async function POST(
 
 // DELETE: Remove has_premium_feature_access
 export async function DELETE(
-	_request: Request,
+	request: Request,
 	{ params }: { params: Promise<{ userId: string }> }
 ) {
+	if (isCrossSite(request)) {
+		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+	}
 	const accessCheck = await checkAdminAccess();
 	if (!accessCheck.authorized) {
 		return NextResponse.json(

@@ -7,6 +7,8 @@ import { verifySessionJwt, signConvexAccessToken } from "@/lib/portal/jwt";
 
 // Called by ConvexPortalProvider. Mints a short-lived browser token while the
 // long-lived portal session stays in the httpOnly cookie.
+// PUB-28: no distributed limiter here — unauthenticated callers 401 on local
+// JWT verify, and a Convex write per mint would cost more than what it guards.
 export async function GET() {
 	const cookieToken = await readSessionCookie();
 	if (!cookieToken)
