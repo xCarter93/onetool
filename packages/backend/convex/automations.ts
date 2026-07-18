@@ -1253,6 +1253,35 @@ function scheduledNextRunAt(
 /**
  * Get all automations for the current user's organization
  */
+/**
+ * Overlay live run counters from automationRunStats onto automation docs.
+ * Writes go to the stats table (automationExecutor.bumpTriggerStats); the
+ * deprecated on-doc lastTriggeredAt/triggerCount are the pre-split fallback
+ * for automations that haven't completed a run since.
+ */
+async function withRunStats(
+	ctx: QueryCtx,
+	automations: AutomationDocument[]
+): Promise<AutomationDocument[]> {
+	return Promise.all(
+		automations.map(async (automation) => {
+			const stats = await ctx.db
+				.query("automationRunStats")
+				.withIndex("by_automation", (q) =>
+					q.eq("automationId", automation._id)
+				)
+				.unique();
+			return stats
+				? {
+						...automation,
+						lastTriggeredAt: stats.lastTriggeredAt,
+						triggerCount: stats.triggerCount,
+					}
+				: automation;
+		})
+	);
+}
+
 export const list = userQuery({
 	args: {},
 	handler: async (ctx): Promise<AutomationDocument[]> => {
@@ -1265,7 +1294,10 @@ export const list = userQuery({
 			.collect();
 
 		// Sort by name alphabetically
-		return automations.sort((a, b) => a.name.localeCompare(b.name));
+		return withRunStats(
+			ctx,
+			automations.sort((a, b) => a.name.localeCompare(b.name))
+		);
 	},
 });
 
@@ -1285,7 +1317,10 @@ export const listActive = userQuery({
 			)
 			.collect();
 
-		return automations.sort((a, b) => a.name.localeCompare(b.name));
+		return withRunStats(
+			ctx,
+			automations.sort((a, b) => a.name.localeCompare(b.name))
+		);
 	},
 });
 
@@ -1296,7 +1331,9 @@ export const get = userQuery({
 	args: { id: v.id("workflowAutomations") },
 	handler: async (ctx, args): Promise<AutomationDocument | null> => {
 		await ctx.requireLevel("automations", "view");
-		return await getAutomationWithOrgValidation(ctx, args.id);
+		const automation = await getAutomationWithOrgValidation(ctx, args.id);
+		if (!automation) return null;
+		return (await withRunStats(ctx, [automation]))[0];
 	},
 });
 
@@ -1549,6 +1586,13 @@ export const remove = userMutation({
 		await getAutomationOrThrow(ctx, args.id); // Validate access
 
 		await ctx.db.delete(args.id);
+		const stats = await ctx.db
+			.query("automationRunStats")
+			.withIndex("by_automation", (q) => q.eq("automationId", args.id))
+			.unique();
+		if (stats) {
+			await ctx.db.delete(stats._id);
+		}
 		await deleteExecutionsBatch(ctx, args.id);
 		return args.id;
 	},

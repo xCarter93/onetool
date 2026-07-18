@@ -801,6 +801,18 @@ export const dispatchScheduledAutomations = internalMutation({
 			}
 		}
 
+		// A full batch means more rows may already be due — catch up now instead
+		// of drifting a further 15 minutes per tick. Claim-first nextRunAt
+		// advances (or clears, on failure) above, so the follow-up sees only
+		// still-unclaimed rows and the chain terminates.
+		if (due.length === SCHEDULED_DISPATCH_BATCH) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.dispatchScheduledAutomations,
+				{}
+			);
+		}
+
 		return { due: due.length, dispatched };
 	},
 });
@@ -1522,9 +1534,14 @@ async function finishWalk(
 		return;
 	}
 
-	await ctx.db.patch(env.automation._id, {
-		lastTriggeredAt: Date.now(),
-		triggerCount: (env.automation.triggerCount || 0) + 1,
+	// Run counters live on automationRunStats, bumped in a tiny deferred
+	// mutation: every walk chunk reads the automation doc, so patching counters
+	// onto it here would OCC-invalidate all in-flight runs of a burst-triggered
+	// automation.
+	await ctx.scheduler.runAfter(0, internal.automationExecutor.bumpTriggerStats, {
+		automationId: env.automation._id,
+		orgId: env.automation.orgId,
+		triggeredAt: Date.now(),
 	});
 
 	// The walk reached the end, but a loop may have skipped past failing items.
@@ -2140,7 +2157,13 @@ async function checkpointLoopChunk(
 const FETCH_SCAN_BATCH = 500;
 /**
  * Shared scan budget across every fetch in one walk, so multi-fetch workflows
- * stay under Convex's per-transaction read limits (32k docs / 16 MiB).
+ * stay under Convex's per-transaction read limits — verified against the
+ * production limits docs (2026-07-18): 32,000 documents scanned / 16 MiB read
+ * / 4,096 index ranges per transaction. At 10k rows the binding constraint is
+ * data read, not document count: headroom holds while the average scanned doc
+ * stays under ~1.6 KiB, which fits the fetchable object types (rows with long
+ * free-text notes are the ones to watch). Paging at FETCH_SCAN_BATCH=500
+ * costs ~20 index ranges per exhausted budget, far under the 4,096 cap.
  */
 const WALK_SCAN_BUDGET = 10_000;
 
@@ -4256,6 +4279,45 @@ async function executeSendTeamMessageAction(
 	}
 }
 
+/**
+ * Deferred run-counter bump — deliberately its own tiny mutation (see the
+ * finishWalk comment). Conflicts between concurrent completions retry a
+ * two-read patch instead of a whole walk chunk. Seeds from the deprecated
+ * on-doc counters so pre-split history carries over.
+ */
+export const bumpTriggerStats = internalMutation({
+	args: {
+		automationId: v.id("workflowAutomations"),
+		orgId: v.id("organizations"),
+		triggeredAt: v.number(),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const existing = await ctx.db
+			.query("automationRunStats")
+			.withIndex("by_automation", (q) =>
+				q.eq("automationId", args.automationId)
+			)
+			.unique();
+		if (existing) {
+			await ctx.db.patch(existing._id, {
+				lastTriggeredAt: Math.max(existing.lastTriggeredAt, args.triggeredAt),
+				triggerCount: existing.triggerCount + 1,
+			});
+			return;
+		}
+		const automation = await ctx.db.get(args.automationId);
+		await ctx.db.insert("automationRunStats", {
+			orgId: args.orgId,
+			automationId: args.automationId,
+			lastTriggeredAt: Math.max(
+				automation?.lastTriggeredAt ?? 0,
+				args.triggeredAt
+			),
+			triggerCount: (automation?.triggerCount ?? 0) + 1,
+		});
+	},
+});
+
 // Cleanup configuration
 const EXECUTION_LOG_RETENTION_DAYS = 30;
 
@@ -4274,28 +4336,39 @@ export const cleanupOldExecutions = internalMutation({
 
 		const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
-		// Get completed/failed executions older than retention period
-		// We keep "running" ones in case they're still active
+		// Terminal rows only — "running" rows are left for the stale-run
+		// watchdogs. Status-partitioned index ranges land directly on deletable
+		// rows, so stuck old "running" rows are never re-scanned pass after pass.
+		const terminalStatuses = [
+			"completed",
+			"completed_with_errors",
+			"failed",
+			"skipped",
+			"cancelled",
+		] as const;
+
 		let deleted = 0;
-		let hasMore = true;
+		for (const status of terminalStatuses) {
+			while (deleted < batchSize) {
+				const oldExecutions = await ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_status_triggeredAt", (q) =>
+						q.eq("status", status).lt("triggeredAt", cutoffTime)
+					)
+					.take(Math.min(100, batchSize - deleted));
 
-		while (hasMore && deleted < batchSize) {
-			const oldExecutions = await ctx.db
-				.query("workflowExecutions")
-				.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoffTime))
-				.filter((q) => q.neq(q.field("status"), "running"))
-				.take(100);
+				if (oldExecutions.length === 0) {
+					break;
+				}
 
-			if (oldExecutions.length === 0) {
-				hasMore = false;
-				break;
-			}
-
-			for (const execution of oldExecutions) {
-				await ctx.db.delete(execution._id);
-				deleted++;
+				for (const execution of oldExecutions) {
+					await ctx.db.delete(execution._id);
+					deleted++;
+				}
 			}
 		}
+
+		const hasMore = deleted >= batchSize;
 
 		console.log(
 			`Cleaned up ${deleted} old automation execution logs (older than ${retentionDays} days)`

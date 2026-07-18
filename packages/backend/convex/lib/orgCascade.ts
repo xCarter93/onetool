@@ -40,6 +40,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"activities",
 	"notifications",
 	"workflowExecutions",
+	"automationRunStats",
 	"workflowAutomations",
 	"domainEvents",
 	"reports",

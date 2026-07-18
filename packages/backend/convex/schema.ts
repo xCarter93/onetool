@@ -1387,12 +1387,28 @@ export default defineSchema({
 		createdBy: v.id("users"),
 		createdAt: v.number(),
 		updatedAt: v.number(),
+		// DEPRECATED run counters — superseded by automationRunStats (writes go
+		// there; reads overlay stats onto these docs). Kept as the seed/fallback
+		// for automations that haven't run since the split.
 		lastTriggeredAt: v.optional(v.number()),
 		triggerCount: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_org_status", ["orgId", "status"])
 		.index("by_status_nextRunAt", ["status", "nextRunAt"]),
+
+	// Per-automation run counters, kept OFF workflowAutomations: every walk
+	// chunk reads its automation doc, so counter writes there OCC-invalidate
+	// all in-flight runs of a burst-triggered automation. One row per
+	// automation, bumped by automationExecutor.bumpTriggerStats.
+	automationRunStats: defineTable({
+		orgId: v.id("organizations"),
+		automationId: v.id("workflowAutomations"),
+		lastTriggeredAt: v.number(),
+		triggerCount: v.number(),
+	})
+		.index("by_automation", ["automationId"])
+		.index("by_org", ["orgId"]),
 
 	// Workflow Execution Logs - tracks automation execution history
 	workflowExecutions: defineTable({
@@ -1508,7 +1524,10 @@ export default defineSchema({
 		.index("by_automation", ["automationId"])
 		.index("by_org_triggeredAt", ["orgId", "triggeredAt"])
 		.index("by_org_status_triggeredAt", ["orgId", "status", "triggeredAt"])
-		.index("by_triggeredAt", ["triggeredAt"]),
+		.index("by_triggeredAt", ["triggeredAt"])
+		// Retention cleanup: lets terminal-status rows be ranged by age without
+		// re-scanning stuck "running" rows on every pass.
+		.index("by_status_triggeredAt", ["status", "triggeredAt"]),
 
 	// Client Documents - files uploaded directly to client records
 	clientDocuments: defineTable({
