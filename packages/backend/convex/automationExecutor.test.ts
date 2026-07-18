@@ -1594,6 +1594,86 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("org timezone drives event-trigger formula evaluation (C2-2a)", () => {
+		/** record_created(project) -> write TODAY() into startDate. */
+		function stampTodayAutomation() {
+			return {
+				name: "Stamp today",
+				trigger: {
+					type: "record_created" as const,
+					objectType: "project" as const,
+				},
+				formulas: [
+					{
+						id: "today",
+						name: "Today",
+						returnType: "date" as const,
+						expression: "TODAY()",
+					},
+				],
+				nodes: [
+					{
+						id: "act-1",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "update_field" as const,
+								target: "self" as const,
+								field: "startDate",
+								value: { kind: "var" as const, path: "formula.today" },
+							},
+						},
+					},
+				],
+				isActive: true,
+			};
+		}
+
+		async function createProject(asUser: ReturnType<typeof t.withIdentity>) {
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+			return asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+		}
+
+		it("evaluates TODAY() in the org timezone", async () => {
+			const { orgId, asUser } = await setupUser();
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { timezone: "America/New_York" })
+			);
+			// 02:00 UTC on Jul 4 is still Jul 3 in New York — the two clocks
+			// disagree about the calendar day.
+			vi.setSystemTime(Date.UTC(2026, 6, 4, 2, 0));
+
+			await asUser.mutation(api.automations.create, stampTodayAutomation());
+			const projectId = await createProject(asUser);
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.startDate).toBe(Date.UTC(2026, 6, 3));
+		});
+
+		it("falls back to UTC when the org has no timezone", async () => {
+			const { asUser } = await setupUser();
+			vi.setSystemTime(Date.UTC(2026, 6, 4, 2, 0));
+
+			await asUser.mutation(api.automations.create, stampTodayAutomation());
+			const projectId = await createProject(asUser);
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.startDate).toBe(Date.UTC(2026, 6, 4));
+		});
+	});
+
 	describe("org isolation", () => {
 		it("does not fire an org A automation for an org B record", async () => {
 			const orgA = await setupUser({

@@ -3,6 +3,7 @@
 import React from "react";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TIMEZONES, browserTimezone } from "@/lib/timezones";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
 import {
 	Select,
@@ -60,18 +61,10 @@ const DAY_OF_MONTH_OPTIONS = Array.from({ length: 31 }, (_, i) => ({
 	label: `The ${ordinal(i + 1)}`,
 }));
 
-const TIMEZONES: string[] = (() => {
-	try {
-		return Intl.supportedValuesOf("timeZone");
-	} catch {
-		return ["UTC"];
-	}
-})();
-
 function defaultSchedule(): AutomationSchedule {
 	return {
 		frequency: "daily",
-		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+		timezone: browserTimezone(),
 		time: DEFAULT_SCHEDULE_TIME,
 	};
 }

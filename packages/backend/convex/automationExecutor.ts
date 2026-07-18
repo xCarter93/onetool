@@ -117,13 +117,17 @@ function executableDefinition(automation: AutomationDoc): {
 
 /**
  * IANA timezone for formula date math. Scheduled automations use their schedule
- * timezone; everything else defaults to UTC (there is no per-org tz field).
+ * timezone; event triggers use the org timezone (auto-detected at onboarding,
+ * editable in org settings), falling back to UTC for orgs that never set one.
  */
-function automationFormulaTz(trigger: AutomationTrigger): string {
+function automationFormulaTz(
+	trigger: AutomationTrigger,
+	orgTimezone: string | undefined
+): string {
 	if ("type" in trigger && trigger.type === "scheduled") {
 		return trigger.schedule.timezone;
 	}
-	return "UTC";
+	return orgTimezone ?? "UTC";
 }
 
 /** Extract a user id from a "manual:"/"test:"/"actor:" triggeredBy marker. */
@@ -164,15 +168,15 @@ async function buildGlobalsScope(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	nowMs: number,
-	tz: string,
+	trigger: AutomationTrigger,
 	triggeredBy: string,
 	run: NonNullable<VariableScope["run"]>
 ): Promise<Pick<VariableScope, "workflow" | "org" | "user" | "run">> {
+	const org = await ctx.db.get(orgId);
 	const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
-		workflow: { now: nowMs, tz },
+		workflow: { now: nowMs, tz: automationFormulaTz(trigger, org?.timezone) },
 		run,
 	};
-	const org = await ctx.db.get(orgId);
 	if (org) globals.org = { id: orgId, name: org.name };
 
 	const actorUserId = parseActorUserId(ctx, triggeredBy);
@@ -338,7 +342,10 @@ export const findMatchingAutomations = internalQuery({
 							? { oldValue: args.fromStatus, newValue: args.toStatus }
 							: undefined,
 				},
-				workflow: { now: Date.now(), tz: automationFormulaTz(trigger) },
+				workflow: {
+					now: Date.now(),
+					tz: automationFormulaTz(trigger, org?.timezone),
+				},
 				org: org ? { id: args.orgId, name: org.name } : undefined,
 				user: actor
 					? { id: actor._id, name: actor.name, email: actor.email }
@@ -1110,7 +1117,7 @@ export const executeAutomation = systemMutation({
 			ctx,
 			automation.orgId,
 			execution.triggeredAt,
-			automationFormulaTz(definition.trigger),
+			definition.trigger,
 			execution.triggeredBy,
 			runMetadata(automation, args.executionId, definition.trigger)
 		);
@@ -1306,7 +1313,7 @@ export const resumeExecution = systemMutation({
 			ctx,
 			automation.orgId,
 			execution.triggeredAt,
-			automationFormulaTz(definition.trigger),
+			definition.trigger,
 			execution.triggeredBy,
 			runMetadata(automation, args.executionId, definition.trigger)
 		);
@@ -5299,7 +5306,7 @@ export const startTestRun = userMutation({
 		// The tester is always the actor for a dry run.
 		const testerOrg = await ctx.db.get(ctx.orgId);
 		const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
-			workflow: { now, tz: automationFormulaTz(trigger) },
+			workflow: { now, tz: automationFormulaTz(trigger, testerOrg?.timezone) },
 			org: testerOrg ? { id: ctx.orgId, name: testerOrg.name } : undefined,
 			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
 			// executionId is omitted — the workflowExecutions row isn't inserted until

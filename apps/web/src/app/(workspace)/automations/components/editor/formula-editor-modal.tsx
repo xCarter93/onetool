@@ -108,10 +108,14 @@ function formatPreviewValue(value: Val, tz: string): string {
 /**
  * The IANA tz this automation's formulas evaluate in at run time. Must stay in
  * lockstep with automationFormulaTz() in automationExecutor.ts: scheduled
- * automations use their schedule's tz, everything else runs in UTC.
+ * automations use their schedule's tz, everything else runs in the org
+ * timezone, falling back to UTC.
  */
-function runtimeTimezone(trigger: TriggerConfig | AutomationTrigger | null): string {
-	if (!trigger || trigger.type !== "scheduled") return "UTC";
+function runtimeTimezone(
+	trigger: TriggerConfig | AutomationTrigger | null,
+	orgTimezone: string | undefined
+): string {
+	if (!trigger || trigger.type !== "scheduled") return orgTimezone ?? "UTC";
 	// A stale `schedule` can linger on the draft config after a type switch, so
 	// read it only once the trigger is actually scheduled.
 	return "schedule" in trigger && trigger.schedule?.timezone
@@ -211,10 +215,15 @@ export function FormulaEditorModal({
 		| null
 		| undefined;
 
+	const organization = useQuery(api.organizations.get);
+
 	// The tz the automation will ACTUALLY run in — mirrors automationFormulaTz on
 	// the backend. Previewing in the browser's tz made authoring-time results
 	// differ from production for every non-local user.
-	const tz = useMemo(() => runtimeTimezone(trigger), [trigger]);
+	const tz = useMemo(
+		() => runtimeTimezone(trigger, organization?.timezone),
+		[trigger, organization?.timezone]
+	);
 
 	// Formulas this one may reference — excludes itself (no self-reference).
 	const referenceFormulas = useMemo(
