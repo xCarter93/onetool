@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { Wrench } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
+import { SectionShell } from "./section-shell";
 
 interface ServicesSectionProps {
 	servicesContent: JSONContent | undefined;
@@ -16,22 +18,18 @@ export const ServicesSection = React.memo(function ServicesSection({
 	sectionRef,
 }: ServicesSectionProps) {
 	return (
-		<section
+		<SectionShell
 			id="services"
-			ref={sectionRef}
-			className="scroll-mt-44"
+			sectionRef={sectionRef}
+			icon={Wrench}
+			title="Services"
+			description="Describe your services and what clients can expect."
 		>
-			<div className="mb-4">
-				<h2 className="text-lg font-semibold text-fg">Services</h2>
-				<p className="text-sm text-muted-fg">
-					Describe your services and what clients can expect.
-				</p>
-			</div>
 			<CommunityEditor
 				content={servicesContent}
 				onChange={setServicesContent}
 				placeholder="List services, specialties, and service areas..."
 			/>
-		</section>
+		</SectionShell>
 	);
 });

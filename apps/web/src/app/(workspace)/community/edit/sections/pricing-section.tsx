@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Tags } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
-import { Label } from "@/components/ui/label";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +13,7 @@ import {
 	PillTabsTrigger,
 } from "@/components/shared/pill-tabs";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
+import { SectionShell } from "./section-shell";
 import type { PricingMode, PricingTier } from "../use-community-page-form";
 
 interface PricingSectionProps {
@@ -35,17 +36,14 @@ export const PricingSection = React.memo(function PricingSection({
 	sectionRef,
 }: PricingSectionProps) {
 	return (
-		<section
+		<SectionShell
 			id="pricing"
-			ref={sectionRef}
-			className="scroll-mt-44 pb-12"
+			sectionRef={sectionRef}
+			icon={Tags}
+			title="Pricing"
+			description="Choose structured tiers or a rich-text pricing section."
+			contentClassName="space-y-6 pb-12"
 		>
-			<div className="mb-4">
-				<h2 className="text-lg font-semibold text-fg">Pricing</h2>
-				<p className="text-sm text-muted-fg">
-					Choose structured tiers or a rich-text pricing section.
-				</p>
-			</div>
 			<PillTabs
 				value={pricingMode}
 				onValueChange={(v) =>
@@ -68,7 +66,7 @@ export const PricingSection = React.memo(function PricingSection({
 					{pricingTiers.map((tier, index) => (
 						<div
 							key={index}
-							className="rounded-xl border border-border/60 overflow-hidden bg-background"
+							className="rounded-xl border border-border/60 overflow-hidden bg-background transition-colors hover:border-border"
 						>
 							<div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b border-border/40">
 								<div className="flex items-center gap-3">
@@ -79,23 +77,23 @@ export const PricingSection = React.memo(function PricingSection({
 										{tier.name || "Untitled Tier"}
 									</span>
 								</div>
-								<Button
-									variant="destructive"
-									size="sm"
+								<button
+									type="button"
+									aria-label="Remove tier"
 									onClick={() =>
 										setPricingTiers((prev) =>
 											prev.filter((_, i) => i !== index),
 										)
 									}
+									className="size-8 rounded-lg flex items-center justify-center text-muted-fg cursor-pointer transition-colors hover:bg-danger/10 hover:text-danger"
 								>
-									<Trash2 className="size-3.5 mr-1.5" />
-									Remove
-								</Button>
+									<Trash2 className="size-4" />
+								</button>
 							</div>
 							<div className="p-4 space-y-3">
 								<div className="grid gap-3 sm:grid-cols-2">
-									<div className="space-y-2">
-										<Label className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</Label>
+									<Field>
+										<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</FieldLabel>
 										<Input
 											value={tier.name}
 											onChange={(e) =>
@@ -109,9 +107,9 @@ export const PricingSection = React.memo(function PricingSection({
 											}
 											placeholder="e.g. Starter Package"
 										/>
-									</div>
-									<div className="space-y-2">
-										<Label className="text-xs uppercase tracking-wider text-muted-fg">Price</Label>
+									</Field>
+									<Field>
+										<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">Price</FieldLabel>
 										<Input
 											value={tier.price}
 											onChange={(e) =>
@@ -125,10 +123,10 @@ export const PricingSection = React.memo(function PricingSection({
 											}
 											placeholder="$199 / month"
 										/>
-									</div>
+									</Field>
 								</div>
-								<div className="space-y-2">
-									<Label className="text-xs uppercase tracking-wider text-muted-fg">Description</Label>
+								<Field>
+									<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">Description</FieldLabel>
 									<Input
 										value={tier.description}
 										onChange={(e) =>
@@ -142,7 +140,7 @@ export const PricingSection = React.memo(function PricingSection({
 										}
 										placeholder="Brief description of what's included"
 									/>
-								</div>
+								</Field>
 							</div>
 						</div>
 					))}
@@ -166,6 +164,6 @@ export const PricingSection = React.memo(function PricingSection({
 					placeholder="Describe your pricing options, packages, and custom quotes..."
 				/>
 			)}
-		</section>
+		</SectionShell>
 	);
 });

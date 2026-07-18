@@ -5,21 +5,23 @@ import Image from "next/image";
 import {
 	Upload,
 	Trash2,
-	Globe,
-	GlobeLock,
-	Copy,
-	Check,
-	ExternalLink,
 	Loader2,
 	ImageIcon,
+	Sparkles,
 } from "lucide-react";
-import type { JSONContent } from "@tiptap/react";
 
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupText,
+	InputGroupInput,
+} from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { SectionShell } from "./section-shell";
 
 interface MainSettingsSectionProps {
 	pageTitle: string;
@@ -55,7 +57,6 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 	slug,
 	metaDescription,
 	setMetaDescription,
-	bannerStorageId,
 	avatarStorageId,
 	bannerUrl,
 	avatarUrl,
@@ -69,40 +70,36 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 	slugError,
 	debouncedSlug,
 	isSlugAvailable,
-	copied,
-	handleCopyUrl,
 	organization,
 	bannerInputRef,
 	avatarInputRef,
 	sectionRef,
 }: MainSettingsSectionProps) {
-	const publicUrl = `${
-		typeof window !== "undefined" ? window.location.origin : ""
-	}/communities/${slug}`;
+	// still checking (debounce hasn't settled or query in flight)
+	const isChecking =
+		slug.length >= 3 &&
+		(debouncedSlug !== slug || isSlugAvailable === undefined);
+	// debounce settled and query returned
+	const hasAvailability =
+		slug.length >= 3 &&
+		debouncedSlug === slug &&
+		isSlugAvailable !== undefined;
 
 	return (
-		<section
+		<SectionShell
 			id="mainSettings"
-			ref={sectionRef}
-			className="scroll-mt-44 space-y-10"
+			sectionRef={sectionRef}
+			icon={Sparkles}
+			title="Main Page Settings"
+			description="Configure branding, URL, and SEO information."
+			first
 		>
-			<div>
-				<h2 className="text-lg font-semibold text-fg">
-					Main Page Settings
-				</h2>
-				<p className="text-sm text-muted-fg">
-					Configure branding, URL, and SEO information.
-				</p>
-			</div>
-
 			<div className="space-y-4">
-				<h3 className="text-base font-semibold text-fg">
-					Banner Image
-				</h3>
+				<h3 className="text-base font-semibold text-fg">Banner Image</h3>
 				<div
 					className={cn(
-						"relative w-full aspect-[4.8/1] rounded-2xl overflow-hidden border border-border/60 bg-muted/20",
-						"hover:border-primary/50 transition-colors cursor-pointer group",
+						"relative w-full aspect-[4.8/1] rounded-xl overflow-hidden border border-dashed border-border bg-muted/20",
+						"hover:border-primary/50 hover:bg-muted/30 transition-colors duration-200 cursor-pointer group",
 						isUploadingBanner && "opacity-50 pointer-events-none",
 					)}
 					onClick={() => bannerInputRef.current?.click()}
@@ -116,7 +113,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 								className="object-cover"
 							/>
 							<div
-								className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4"
+								className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-4"
 								onClick={(e) => e.stopPropagation()}
 							>
 								<Button
@@ -138,12 +135,14 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 							</div>
 						</>
 					) : (
-						<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-fg group-hover:text-fg transition-colors">
+						<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-fg group-hover:text-fg transition-colors duration-200">
 							{isUploadingBanner ? (
 								<Loader2 className="size-8 animate-spin" />
 							) : (
 								<>
-									<ImageIcon className="size-10 mb-2 opacity-50 group-hover:opacity-100 transition-opacity" />
+									<div className="flex size-10 items-center justify-center rounded-lg bg-muted/60 mb-1">
+										<ImageIcon className="size-5 opacity-70 group-hover:opacity-100 transition-opacity duration-200" />
+									</div>
 									<span className="text-sm font-medium">
 										Click to upload banner image
 									</span>
@@ -167,14 +166,12 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 			</div>
 
 			<div className="space-y-4">
-				<h3 className="text-base font-semibold text-fg">
-					Avatar / Logo
-				</h3>
+				<h3 className="text-base font-semibold text-fg">Avatar / Logo</h3>
 				<div className="flex items-center gap-6">
 					<div
 						className={cn(
-							"relative size-24 rounded-2xl overflow-hidden border border-border/60 bg-muted/20",
-							"hover:border-primary/50 transition-colors cursor-pointer group",
+							"relative size-24 rounded-xl overflow-hidden border border-dashed border-border bg-muted/20",
+							"hover:border-primary/50 hover:bg-muted/30 transition-colors duration-200 cursor-pointer group",
 							isUploadingAvatar && "opacity-50 pointer-events-none",
 						)}
 						onClick={() => avatarInputRef.current?.click()}
@@ -187,7 +184,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 									fill
 									className="object-cover"
 								/>
-								<div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+								<div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
 									<Upload className="size-5 text-white" />
 								</div>
 							</>
@@ -196,7 +193,9 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 								{isUploadingAvatar ? (
 									<Loader2 className="size-6 animate-spin" />
 								) : (
-									<ImageIcon className="size-8 opacity-50" />
+									<div className="flex size-8 items-center justify-center rounded-lg bg-muted/60">
+										<ImageIcon className="size-4 opacity-70" />
+									</div>
 								)}
 							</div>
 						)}
@@ -212,11 +211,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 							Upload Avatar
 						</Button>
 						{avatarStorageId && (
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={handleDeleteAvatar}
-							>
+							<Button variant="ghost" size="sm" onClick={handleDeleteAvatar}>
 								<Trash2 className="size-4 mr-2" />
 								Use Organization Logo
 							</Button>
@@ -237,83 +232,80 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 			</div>
 
 			<div className="grid gap-8 lg:grid-cols-2">
-				<div className="space-y-3">
-					<Label htmlFor="pageTitle">Page Title</Label>
+				<Field>
+					<FieldLabel htmlFor="pageTitle">Page Title</FieldLabel>
 					<Input
 						id="pageTitle"
 						value={pageTitle}
 						onChange={(e) => setPageTitle(e.target.value)}
 						placeholder={organization?.name || "Your Business Name"}
 					/>
-				</div>
+				</Field>
 
-				<div className="space-y-3">
-					<Label htmlFor="slug">Page URL</Label>
-					<div className="flex items-center gap-3">
-						<div className="flex">
-							<div className="flex shrink-0 items-center rounded-l-md bg-muted/50 px-3 py-2 text-sm text-muted-fg border border-r-0 border-border">
+				<Field>
+					<FieldLabel htmlFor="slug">Page URL</FieldLabel>
+					<InputGroup>
+						<InputGroupAddon align="inline-start">
+							<InputGroupText className="font-mono text-xs">
 								onetool.biz/communities/
-							</div>
-							<input
-								id="slug"
-								type="text"
-								value={slug}
-								onChange={handleSlugChange}
-								placeholder="your-business-name"
-								className={cn(
-									"block w-full sm:w-48 rounded-r-md border border-border bg-background px-3 py-2 text-sm text-fg placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent",
-									slugError && "border-danger focus:ring-danger",
-									!slugError &&
-										isSlugAvailable === false &&
-										"border-danger focus:ring-danger",
-								)}
-							/>
-						</div>
-						{slugError ? (
-							<span className="text-sm text-danger">{slugError}</span>
-						) : slug.length >= 3 &&
-						  (debouncedSlug !== slug ||
-								isSlugAvailable === undefined) ? (
-							<Loader2 className="size-4 animate-spin text-muted-fg" />
-						) : slug.length >= 3 &&
-						  debouncedSlug === slug &&
-						  isSlugAvailable !== undefined ? (
-							<div className="flex items-center gap-1.5">
-								<span
-									className={cn(
-										"size-2 rounded-full",
-										isSlugAvailable ? "bg-emerald-500" : "bg-red-500",
-									)}
-								/>
-								<span
-									className={cn(
-										"text-sm font-medium",
-										isSlugAvailable
-											? "text-emerald-600 dark:text-emerald-400"
-											: "text-red-600 dark:text-red-400",
-									)}
-								>
-									{isSlugAvailable ? "Available" : "Taken"}
-								</span>
-							</div>
-						) : null}
-					</div>
-				</div>
+							</InputGroupText>
+						</InputGroupAddon>
+						<InputGroupInput
+							id="slug"
+							value={slug}
+							onChange={handleSlugChange}
+							placeholder="your-business-name"
+							aria-invalid={
+								!!slugError || (!slugError && isSlugAvailable === false)
+							}
+						/>
+						<InputGroupAddon align="inline-end">
+							{isChecking ? (
+								<Loader2 className="size-4 animate-spin text-muted-fg" />
+							) : hasAvailability ? (
+								<InputGroupText className="gap-1.5">
+									<span
+										className={cn(
+											"size-2 rounded-full",
+											isSlugAvailable ? "bg-emerald-500" : "bg-red-500",
+										)}
+									/>
+									<span
+										className={cn(
+											"text-xs font-medium",
+											isSlugAvailable
+												? "text-emerald-600 dark:text-emerald-400"
+												: "text-red-600 dark:text-red-400",
+										)}
+									>
+										{isSlugAvailable ? "Available" : "Taken"}
+									</span>
+								</InputGroupText>
+							) : null}
+						</InputGroupAddon>
+					</InputGroup>
+					{slugError && (
+						<FieldDescription className="text-danger">
+							{slugError}
+						</FieldDescription>
+					)}
+				</Field>
 
-				<div className="space-y-3 lg:col-span-2">
-					<Label htmlFor="metaDescription">SEO Description</Label>
+				<Field className="lg:col-span-2">
+					<FieldLabel htmlFor="metaDescription">
+						SEO Description
+					</FieldLabel>
 					<Input
 						id="metaDescription"
 						value={metaDescription}
 						onChange={(e) => setMetaDescription(e.target.value)}
 						placeholder="A brief description for search engines (optional)"
 					/>
-					<p className="text-xs text-muted-fg">
+					<FieldDescription>
 						{metaDescription.length}/160 characters recommended
-					</p>
-				</div>
+					</FieldDescription>
+				</Field>
 			</div>
-
-		</section>
+		</SectionShell>
 	);
 });

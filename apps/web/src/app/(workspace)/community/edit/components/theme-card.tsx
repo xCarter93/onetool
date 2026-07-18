@@ -60,7 +60,7 @@ export function ThemeCard({
 			type="button"
 			onClick={onSelect}
 			className={cn(
-				"relative w-full text-left rounded-xl border-2 p-4 transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+				"relative w-full text-left rounded-xl border-2 p-4 cursor-pointer transition-colors duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
 				isSelected
 					? "border-primary ring-2 ring-primary/20 shadow-sm"
 					: "border-border hover:border-border/80",

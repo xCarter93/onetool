@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { TagsInput } from "@/components/shared/tags-input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -24,6 +25,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { SectionShell } from "./section-shell";
 import type { DaySchedule, SocialLinks } from "../use-community-page-form";
 import { isValidUrl } from "@/lib/validators";
 
@@ -141,9 +143,7 @@ const SocialLinkInput = React.memo(function SocialLinkInput({
 			<div className="flex-1">
 				<div
 					className={
-						invalid
-							? "rounded-md ring-2 ring-red-500 ring-offset-0"
-							: undefined
+						invalid ? "rounded-md ring-2 ring-danger ring-offset-0" : undefined
 					}
 				>
 					<Input
@@ -153,7 +153,7 @@ const SocialLinkInput = React.memo(function SocialLinkInput({
 					/>
 				</div>
 				{invalid && (
-					<p className="text-xs text-red-600 dark:text-red-400 mt-1">
+					<p className="text-xs text-danger mt-1">
 						Please enter a valid URL (e.g. https://example.com)
 					</p>
 				)}
@@ -198,43 +198,46 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 		);
 	};
 
-	return (
-		<section id="businessInfo" ref={sectionRef} className="scroll-mt-48">
-			<h2 className="text-lg font-semibold text-fg mb-6">Business Info</h2>
+	const sublabelClass =
+		"text-[11px] font-semibold uppercase tracking-wider text-muted-fg";
 
+	return (
+		<SectionShell
+			id="businessInfo"
+			sectionRef={sectionRef}
+			icon={BadgeCheck}
+			title="Business Info"
+			description="Tell clients who they'll be working with."
+		>
 			{/* Owner Info */}
-			<div className="space-y-4 mb-8">
-				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
-					Owner Info
-				</h3>
+			<div className="space-y-4">
+				<h3 className={sublabelClass}>Owner Info</h3>
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-					<div className="space-y-1.5">
-						<Label htmlFor="ownerName">Your Name</Label>
+					<Field>
+						<FieldLabel htmlFor="ownerName">Your Name</FieldLabel>
 						<Input
 							id="ownerName"
 							placeholder="e.g., Jane Doe"
 							value={ownerName}
 							onChange={(e) => setOwnerName(e.target.value)}
 						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label htmlFor="ownerTitle">Your Title</Label>
+					</Field>
+					<Field>
+						<FieldLabel htmlFor="ownerTitle">Your Title</FieldLabel>
 						<Input
 							id="ownerTitle"
 							placeholder="e.g., Owner & Operator"
 							value={ownerTitle}
 							onChange={(e) => setOwnerTitle(e.target.value)}
 						/>
-					</div>
+					</Field>
 				</div>
 			</div>
 
 			{/* Credentials */}
-			<div className="space-y-4 mb-8">
-				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
-					Credentials
-				</h3>
-				<div className="flex flex-wrap gap-4">
+			<div className="space-y-4 border-t border-border/40 pt-6">
+				<h3 className={sublabelClass}>Credentials</h3>
+				<div className="flex flex-wrap gap-3">
 					{([
 						{ label: "Licensed", icon: ShieldCheck, checked: isLicensed, toggle: setIsLicensed },
 						{ label: "Bonded", icon: Handshake, checked: isBonded, toggle: setIsBonded },
@@ -244,19 +247,19 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 							key={cred.label}
 							type="button"
 							onClick={() => cred.toggle(!cred.checked)}
-							className={`group relative flex flex-col items-center justify-center w-28 sm:w-32 p-5 rounded-2xl border transition-all duration-300 ease-in-out transform hover:scale-105 hover:z-10 shadow-sm hover:shadow-md cursor-pointer select-none ${
+							className={`group relative flex flex-col items-center justify-center w-28 sm:w-32 p-4 rounded-xl border cursor-pointer select-none transition-colors duration-200 ${
 								cred.checked
-									? "bg-gradient-to-br from-primary/15 to-primary/25 border-primary/50 ring-2 ring-primary/30 shadow-primary/10"
-									: "bg-card/80 border-border/60 hover:border-primary/30 hover:bg-card/90"
+									? "border-primary/40 bg-primary/10"
+									: "border-border/60 bg-card/60 hover:border-primary/30 hover:bg-card/90"
 							}`}
 						>
 							{cred.checked && (
-								<div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center shadow-md ring-2 ring-background">
-									<Check className="w-3.5 h-3.5 text-primary-foreground" />
+								<div className="absolute -top-2 -right-2 size-5 bg-primary rounded-full flex items-center justify-center ring-2 ring-background">
+									<Check className="size-3 text-primary-foreground" />
 								</div>
 							)}
 							<cred.icon
-								className={`w-8 h-8 mb-2 transition-all duration-300 ${
+								className={`size-7 mb-2 transition-colors duration-200 ${
 									cred.checked
 										? "text-primary"
 										: "text-muted-fg group-hover:text-primary"
@@ -275,8 +278,8 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					))}
 				</div>
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-					<div className="space-y-1.5">
-						<Label htmlFor="yearEstablished">Year Established</Label>
+					<Field>
+						<FieldLabel htmlFor="yearEstablished">Year Established</FieldLabel>
 						<Input
 							id="yearEstablished"
 							type="number"
@@ -294,33 +297,31 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 								}
 							}}
 						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label htmlFor="licenseNumber">License Number</Label>
+					</Field>
+					<Field>
+						<FieldLabel htmlFor="licenseNumber">License Number</FieldLabel>
 						<Input
 							id="licenseNumber"
 							placeholder="e.g., ABC-123456"
 							value={licenseNumber}
 							onChange={(e) => setLicenseNumber(e.target.value)}
 						/>
-					</div>
+					</Field>
 				</div>
-				<div className="space-y-1.5">
-					<Label>Additional Certifications</Label>
+				<Field>
+					<FieldLabel>Additional Certifications</FieldLabel>
 					<TagsInput
 						tags={certifications}
 						setTags={setCertifications}
 						placeholder="Type a certification and press Enter"
 					/>
-				</div>
+				</Field>
 			</div>
 
 			{/* Business Hours */}
-			<div className="space-y-4 mb-8">
-				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
-					Business Hours
-				</h3>
-				<div className="flex items-center gap-3 mb-4">
+			<div className="space-y-4 border-t border-border/40 pt-6">
+				<h3 className={sublabelClass}>Business Hours</h3>
+				<div className="flex items-center gap-3">
 					<Switch
 						checked={byAppointmentOnly}
 						onCheckedChange={setByAppointmentOnly}
@@ -390,10 +391,8 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 			</div>
 
 			{/* Social Links */}
-			<div className="space-y-4">
-				<h3 className="text-sm font-medium text-muted-fg uppercase tracking-wider">
-					Social Links
-				</h3>
+			<div className="space-y-4 border-t border-border/40 pt-6">
+				<h3 className={sublabelClass}>Social Links</h3>
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 					{SOCIAL_PLATFORMS.map((platform) => (
 						<SocialLinkInput
@@ -411,6 +410,6 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 					))}
 				</div>
 			</div>
-		</section>
+		</SectionShell>
 	);
 });
