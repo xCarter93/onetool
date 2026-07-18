@@ -11,49 +11,16 @@ import { LegalPageLayout } from "../components/legal-page-layout";
 
 export default function DataSecurityPage() {
 	return (
-		<LegalPageLayout title="Data Security" lastUpdated="January 1, 2026">
+		<LegalPageLayout title="Data Security" lastUpdated="July 17, 2026">
 			<div className="space-y-8">
 				<section>
 					<p className="text-muted-foreground leading-relaxed mb-8">
-						At OneTool, data security and your trust are our highest priorities.
-						This document outlines our comprehensive security practices,
-						infrastructure safeguards, and the measures we implement to protect
-						your business data from unauthorized access, alteration, and loss.
-						We are committed to maintaining the confidentiality, integrity, and
-						availability of your information.
+						This page describes how OneTool actually protects your data: the
+						security measures built into the application, and the
+						infrastructure providers we rely on. We believe in describing our
+						security honestly — what we do ourselves, what our providers do,
+						and where responsibility sits with you.
 					</p>
-				</section>
-
-				<section>
-					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						1. Security Architecture Overview
-					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						OneTool is built on a modern, secure architecture with multiple
-						layers of defense:
-					</p>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>
-							<strong>Zero-Trust Architecture:</strong> All access is verified,
-							regardless of location or device.
-						</li>
-						<li>
-							<strong>Defense in Depth:</strong> Multiple security layers
-							prevent single points of failure.
-						</li>
-						<li>
-							<strong>Encryption Everywhere:</strong> All data is encrypted in
-							transit and at rest.
-						</li>
-						<li>
-							<strong>Continuous Monitoring:</strong> Real-time threat detection
-							and response.
-						</li>
-						<li>
-							<strong>Regular Audits:</strong> Third-party security assessments
-							and penetration testing.
-						</li>
-					</ul>
 				</section>
 
 				<section className="bg-card border border-border rounded-lg p-6">
@@ -63,50 +30,38 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Infrastructure Security
+								Infrastructure
 							</h2>
 							<p className="text-muted-foreground leading-relaxed mb-4">
-								OneTool is hosted on enterprise-grade, SOC 2 Type II certified
-								infrastructure with multiple layers of security controls:
+								OneTool is built on managed cloud infrastructure rather than
+								servers we operate ourselves. Our providers maintain their own
+								independent security programs and certifications:
 							</p>
 							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 								<li>
-									<strong>Cloud Hosting:</strong> Vercel for web application,
-									Convex Cloud for serverless backend with built-in redundancy.
+									<strong>Vercel</strong> hosts the web application and serves
+									all traffic over HTTPS.
 								</li>
 								<li>
-									<strong>Geographic Distribution:</strong> Data centers in
-									multiple regions for redundancy and disaster recovery.
+									<strong>Convex</strong> provides our database and file
+									storage, with encryption at rest and automated backups
+									managed by Convex.
 								</li>
 								<li>
-									<strong>99.9% Uptime SLA:</strong> Service level agreement
-									with automatic failover and load balancing.
+									<strong>Clerk</strong> handles authentication — OneTool never
+									stores or sees your password.
 								</li>
 								<li>
-									<strong>SOC 2 Type II Certified:</strong> All infrastructure
-									providers maintain SOC 2 Type II certification.
-								</li>
-								<li>
-									<strong>ISO 27001 Compliant:</strong> Information security
-									management system compliance across infrastructure.
-								</li>
-								<li>
-									<strong>DDoS Protection:</strong> Distributed
-									denial-of-service protection and mitigation built into CDN.
-								</li>
-								<li>
-									<strong>Firewalls and IDS:</strong> Web Application Firewalls
-									(WAF) and intrusion detection/prevention systems.
-								</li>
-								<li>
-									<strong>24/7 Monitoring:</strong> Automated alerts and
-									incident response team on standby.
-								</li>
-								<li>
-									<strong>Regular Patching:</strong> Automated security patches
-									and vulnerability management.
+									<strong>Stripe</strong>, a PCI DSS Level 1 certified payment
+									processor, handles all card and bank data. Full card numbers
+									and bank credentials never touch OneTool&apos;s systems.
 								</li>
 							</ul>
+							<p className="text-muted-foreground leading-relaxed mt-4">
+								OneTool itself does not currently hold certifications such as
+								SOC 2 or ISO 27001. Where our providers hold certifications,
+								those apply to their services, not to OneTool as a whole.
+							</p>
 						</div>
 					</div>
 				</section>
@@ -118,41 +73,28 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Encryption & Data Protection
+								Encryption
 							</h2>
-							<p className="text-muted-foreground leading-relaxed mb-4">
-								Your data is encrypted using industry-standard cryptographic
-								protocols:
-							</p>
 							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 								<li>
-									<strong>In Transit:</strong> All data transmissions use TLS
-									1.3 (HTTPS) with perfect forward secrecy.
+									<strong>In Transit:</strong> All traffic between your browser
+									or mobile device and OneTool is encrypted with HTTPS/TLS.
 								</li>
 								<li>
-									<strong>At Rest:</strong> Data stored in Convex is encrypted
-									using AES-256 encryption standards.
+									<strong>At Rest:</strong> Data stored in our database and
+									file storage is encrypted at rest by Convex, our
+									infrastructure provider.
 								</li>
 								<li>
-									<strong>Key Management:</strong> Encryption keys managed by
-									cloud provider key management services.
+									<strong>Payment Data:</strong> Card and bank details are
+									encrypted and held by Stripe; OneTool stores only card brand
+									and last four digits, and bank name and last four digits for
+									payout accounts.
 								</li>
 								<li>
-									<strong>Certificates:</strong> SSL/TLS certificates from
-									trusted certificate authorities with automatic renewal.
-								</li>
-								<li>
-									<strong>Payment Data:</strong> Payment information encrypted
-									and processed through PCI DSS Level 1 compliant processors
-									(Stripe).
-								</li>
-								<li>
-									<strong>Database Encryption:</strong> Convex provides
-									transparent encryption of all stored data.
-								</li>
-								<li>
-									<strong>Backup Encryption:</strong> All backups are encrypted
-									and stored in secure locations.
+									<strong>Portal Verification Codes:</strong> The one-time
+									codes used for client portal sign-in are stored only as
+									salted hashes, never in plain text.
 								</li>
 							</ul>
 						</div>
@@ -166,51 +108,36 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Authentication & Access Control
+								Authentication &amp; Access Control
 							</h2>
-							<p className="text-muted-foreground leading-relaxed mb-4">
-								We implement strict authentication and access control measures:
-							</p>
 							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 								<li>
-									<strong>Auth Provider:</strong> Enterprise-grade
-									authentication powered by Clerk.
+									<strong>Sign-In:</strong> Authentication is handled by Clerk,
+									including OAuth sign-in options. OneTool never stores
+									passwords.
 								</li>
 								<li>
-									<strong>Multi-Factor Authentication:</strong> MFA available
-									for all users to add extra security.
+									<strong>Role-Based Access:</strong> Admins and members have
+									different capabilities, with granular per-member permissions
+									controlling access to areas of the Service.
 								</li>
 								<li>
-									<strong>Single Sign-On:</strong> SAML 2.0 and OpenID Connect
-									support for enterprise customers.
+									<strong>Organization Isolation:</strong> Every backend
+									function verifies the caller&apos;s organization and scopes
+									all reads and writes to it. Users cannot access another
+									organization&apos;s data.
 								</li>
 								<li>
-									<strong>Role-Based Access:</strong> Fine-grained permissions
-									(admin vs. member) limit data visibility.
+									<strong>Client Portal:</strong> Your clients sign in to their
+									portal with a one-time email code. Portal sessions are
+									short-lived, tracked server-side, and can be revoked — a
+									stolen token alone is not enough to keep a session alive.
 								</li>
 								<li>
-									<strong>Organization Isolation:</strong> Users can only access
-									data within their assigned organization.
-								</li>
-								<li>
-									<strong>Session Management:</strong> Automatic timeout after
-									30 minutes of inactivity; sessions invalidated on logout.
-								</li>
-								<li>
-									<strong>Password Policy:</strong> Minimum 8 characters with
-									enforcement of strong passwords.
-								</li>
-								<li>
-									<strong>Password Storage:</strong> Passwords hashed using
-									bcrypt with random salts.
-								</li>
-								<li>
-									<strong>Token Management:</strong> Secure, short-lived access
-									tokens with automatic expiration.
-								</li>
-								<li>
-									<strong>Audit Logging:</strong> All authentication events
-									logged and retained for 30 days minimum.
+									<strong>Rate Limiting:</strong> Sensitive operations —
+									portal sign-in codes, quote approvals, payment initiation,
+									and public form submissions — are rate limited to slow abuse
+									and brute-force attempts.
 								</li>
 							</ul>
 						</div>
@@ -224,51 +151,32 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Data Backup & Disaster Recovery
+								Backups &amp; Data Deletion
 							</h2>
-							<p className="text-muted-foreground leading-relaxed mb-4">
-								Your data is continuously backed up and protected against loss:
-							</p>
 							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 								<li>
-									<strong>Automated Backups:</strong> Convex performs automated
-									backups at regular intervals.
+									<strong>Backups:</strong> Database backups are managed by
+									Convex as part of its platform. We recommend you also keep
+									your own copies of critical business documents.
 								</li>
 								<li>
-									<strong>Point-in-Time Recovery:</strong> Ability to restore
-									data to specific points in time (typically last 30 days).
+									<strong>Deletion:</strong> When you delete your organization
+									or account, an automated cascade permanently removes your
+									organization&apos;s records — clients, contacts, quotes,
+									invoices, emails, documents — and deletes the underlying
+									files (attachments, PDFs, signatures) from storage.
 								</li>
 								<li>
-									<strong>Geographic Redundancy:</strong> Backups stored in
-									geographically distributed locations.
+									<strong>Orphan Sweep:</strong> A daily automated job checks
+									for and removes any data left behind by incomplete
+									deletions.
 								</li>
 								<li>
-									<strong>Backup Encryption:</strong> All backups are encrypted
-									at rest using AES-256.
-								</li>
-								<li>
-									<strong>Integrity Testing:</strong> Regular backup integrity
-									testing and recovery drills.
-								</li>
-								<li>
-									<strong>30-Day Retention:</strong> Backup retention for
-									disaster recovery scenarios.
-								</li>
-								<li>
-									<strong>Recovery Time Objective (RTO):</strong> Less than 4
-									hours for critical data recovery.
-								</li>
-								<li>
-									<strong>Recovery Point Objective (RPO):</strong> Less than 1
-									hour minimizing data loss.
-								</li>
-								<li>
-									<strong>Business Continuity:</strong> Documented procedures
-									for rapid recovery from outages.
-								</li>
-								<li>
-									<strong>Data Export:</strong> You can export your data at any
-									time for your own backup purposes.
+									<strong>Provider Data:</strong> Data already held by our
+									service providers (for example Stripe transaction records or
+									signed documents in BoldSign) is retained under their
+									policies; contact us if you need help requesting deletion
+									from a provider.
 								</li>
 							</ul>
 						</div>
@@ -282,43 +190,26 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Data Isolation & Multi-Tenancy
+								Multi-Tenant Data Isolation
 							</h2>
 							<p className="text-muted-foreground leading-relaxed mb-4">
-								We ensure strict isolation of your data from other customers:
+								OneTool is multi-tenant: many businesses share the same
+								infrastructure, isolated at the application layer.
 							</p>
 							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 								<li>
-									<strong>Logical Isolation:</strong> Organization-based data
-									partitioning prevents cross-organization access.
+									<strong>Enforced Scoping:</strong> Every database query and
+									mutation is filtered by organization ID. This is a hard
+									requirement of our backend architecture, not a convention.
 								</li>
 								<li>
-									<strong>Row-Level Security:</strong> Database queries filtered
-									by organization ID to ensure data isolation.
+									<strong>Deny by Default:</strong> Requests without a valid
+									authenticated organization context are rejected.
 								</li>
 								<li>
-									<strong>No Cross-Tenant Access:</strong> System prevents any
-									access to data from other organizations.
-								</li>
-								<li>
-									<strong>Employee Access Control:</strong> OneTool employees
-									cannot access production data without authorization.
-								</li>
-								<li>
-									<strong>Access Logging:</strong> All data access logged with
-									timestamp, user, and action for audit purposes.
-								</li>
-								<li>
-									<strong>Limited Admin Access:</strong> Only designated
-									security personnel can approve employee data access.
-								</li>
-								<li>
-									<strong>Data Minimization:</strong> Employees access only data
-									necessary for their role.
-								</li>
-								<li>
-									<strong>Regular Audits:</strong> Monthly audits of employee
-									data access.
+									<strong>Operational Access:</strong> Access to production
+									data is limited to what is necessary to operate the Service
+									and provide support.
 								</li>
 							</ul>
 						</div>
@@ -332,56 +223,29 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Compliance & Certifications
+								Application Security Practices
 							</h2>
-							<p className="text-muted-foreground leading-relaxed mb-4">
-								OneTool adheres to industry standards and international
-								regulations:
-							</p>
 							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 								<li>
-									<strong>GDPR Compliant:</strong> Full compliance with General
-									Data Protection Regulation for European users.
+									<strong>Webhook Verification:</strong> Every inbound webhook
+									(Clerk, Stripe, Resend, BoldSign) is cryptographically
+									verified before processing; unverified requests are
+									rejected.
 								</li>
 								<li>
-									<strong>CCPA Compliant:</strong> California Consumer Privacy
-									Act compliance with user rights implementation.
+									<strong>Content Sanitization:</strong> Inbound email HTML is
+									sanitized before rendering to protect against injected
+									scripts.
 								</li>
 								<li>
-									<strong>CPRA Compliant:</strong> California Privacy Rights Act
-									compliance.
+									<strong>Signature Audit Trail:</strong> Quote approvals are
+									recorded append-only with the signed content snapshot,
+									signer identity, IP address, and timestamp, so approval
+									records cannot be silently altered.
 								</li>
 								<li>
-									<strong>Other State Laws:</strong> Compliance with Virginia,
-									Colorado, Connecticut, and Utah privacy laws.
-								</li>
-								<li>
-									<strong>PCI DSS Compliant:</strong> Payment processing through
-									PCI DSS Level 1 certified provider (Stripe).
-								</li>
-								<li>
-									<strong>SOC 2 Type II:</strong> Infrastructure providers
-									maintain SOC 2 Type II certification.
-								</li>
-								<li>
-									<strong>ISO 27001:</strong> Information security management
-									aligned with ISO 27001 standards.
-								</li>
-								<li>
-									<strong>HIPAA Available:</strong> Business Associate Agreement
-									available for healthcare customers.
-								</li>
-								<li>
-									<strong>Third-Party Audits:</strong> Annual security
-									assessments by independent security firms.
-								</li>
-								<li>
-									<strong>Penetration Testing:</strong> Regular penetration
-									testing and vulnerability scanning.
-								</li>
-								<li>
-									<strong>Patch Management:</strong> Rapid patching of
-									vulnerabilities within 7 days (critical) or 30 days (high).
+									<strong>Dependency Updates:</strong> We keep dependencies
+									updated and apply security patches as they become available.
 								</li>
 							</ul>
 						</div>
@@ -395,179 +259,83 @@ export default function DataSecurityPage() {
 						</div>
 						<div>
 							<h2 className="text-2xl font-semibold text-foreground mb-4">
-								Third-Party Security
+								Service Providers
 							</h2>
 							<p className="text-muted-foreground leading-relaxed mb-4">
-								We carefully vet and monitor all third-party service providers:
+								The full list of third-party providers we use, and what data
+								each receives, is in our Privacy Policy. In summary: Clerk
+								(authentication), Convex (database and storage), Vercel
+								(hosting), Stripe (payments), Resend (email), BoldSign
+								(e-signatures), PostHog (web analytics), OpenAI (AI features),
+								Mapbox (address search), and Expo (mobile services).
 							</p>
-							<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-								<li>
-									<strong>Clerk (Authentication):</strong> SOC 2 Type II
-									certified secure authentication infrastructure.
-								</li>
-								<li>
-									<strong>Convex (Database):</strong> SOC 2 Type II certified
-									with encrypted data storage and backups.
-								</li>
-								<li>
-									<strong>Stripe (Payments):</strong> PCI DSS Level 1 compliant
-									industry-leading payment security.
-								</li>
-								<li>
-									<strong>BoldSign (E-Signatures):</strong> Secure document
-									signing with encryption and audit trails.
-								</li>
-								<li>
-									<strong>Resend (Email):</strong> Secure email delivery with
-									encryption and rate limiting.
-								</li>
-								<li>
-									<strong>PostHog (Analytics):</strong> Privacy-conscious
-									analytics with optional data anonymization.
-								</li>
-								<li>
-									<strong>OpenAI (AI):</strong> Data processing agreements in
-									place for AI feature usage.
-								</li>
-								<li>
-									<strong>Vercel (Hosting):</strong> SOC 2 Type II certified
-									with DDoS protection and CDN.
-								</li>
-								<li>
-									<strong>Data Processing Agreements:</strong> Contracts with
-									all vendors requiring adequate security.
-								</li>
-								<li>
-									<strong>Regular Assessments:</strong> Annual review of
-									third-party security certifications.
-								</li>
-							</ul>
 						</div>
 					</div>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						2. Vulnerability Disclosure
+						Vulnerability Disclosure
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						We appreciate responsible security research:
+						We appreciate responsible security research. If you find a
+						vulnerability:
 					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Responsible Disclosure:</strong> Report security
-							vulnerabilities to support@onetool.com.
+							Report it to support@onetool.biz with enough detail to reproduce
+							it.
 						</li>
 						<li>
-							<strong>No Unauthorized Access:</strong> Do not access or modify
-							data that does not belong to you.
+							Do not access or modify data that does not belong to you, and do
+							not disrupt the Service.
 						</li>
 						<li>
-							<strong>Good Faith:</strong> We will not pursue legal action
-							against researchers acting in good faith.
+							We will not pursue legal action against researchers acting in
+							good faith within these guidelines.
 						</li>
 						<li>
-							<strong>Prompt Response:</strong> We will acknowledge receipt
-							within 48 hours.
-						</li>
-						<li>
-							<strong>Coordinated Disclosure:</strong> We will work with you to
-							coordinate public disclosure after patching.
-						</li>
-						<li>
-							<strong>Patching Timeline:</strong> Critical vulnerabilities
-							patched within 7 days; high-priority within 30 days.
+							We will acknowledge your report, prioritize a fix based on
+							severity, and coordinate disclosure with you.
 						</li>
 					</ul>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						3. Security Incident Response
-					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						In the unlikely event of a security incident, we have established
-						procedures to respond quickly:
-					</p>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>
-							<strong>Immediate Detection:</strong> 24/7 monitoring for
-							suspicious activity.
-						</li>
-						<li>
-							<strong>Rapid Response:</strong> Incident response team activated
-							immediately upon detection.
-						</li>
-						<li>
-							<strong>Containment:</strong> Affected systems isolated to prevent
-							further unauthorized access.
-						</li>
-						<li>
-							<strong>Investigation:</strong> Thorough investigation to
-							determine scope and impact.
-						</li>
-						<li>
-							<strong>Notification:</strong> We will notify affected users
-							within 72 hours of discovering a breach (as required by GDPR).
-						</li>
-						<li>
-							<strong>Transparency:</strong> Clear communication about what
-							happened and remediation steps.
-						</li>
-						<li>
-							<strong>Recovery:</strong> Systems restored from clean backups
-							after remediation.
-						</li>
-					</ul>
-				</section>
-
-				<section>
-					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						4. Your Security Responsibilities
-					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						While we implement comprehensive security measures, your vigilance
-						is also important:
-					</p>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>
-							Use strong, unique passwords (12+ characters with mixed case,
-							numbers, symbols)
-						</li>
-						<li>
-							Enable multi-factor authentication (2FA/MFA) on your account
-						</li>
-						<li>Keep your login credentials confidential</li>
-						<li>Review and manage user access within your organization</li>
-						<li>
-							Report suspicious activity immediately to support@onetool.com
-						</li>
-						<li>
-							Keep your devices and browsers up to date with security patches
-						</li>
-						<li>Avoid accessing OneTool on unsecured public WiFi</li>
-						<li>
-							Be cautious of phishing emails; verify URLs before entering
-							credentials
-						</li>
-						<li>
-							Maintain your own independent backups of critical business
-							information
-						</li>
-					</ul>
-				</section>
-
-				<section>
-					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						5. Updates to This Security Policy
+						Security Incidents
 					</h2>
 					<p className="text-muted-foreground leading-relaxed">
-						We regularly update our security practices to address new threats
-						and incorporate industry best practices. This Security Policy will
-						be updated as needed. We will notify users of material security
-						changes via email. Your continued use of OneTool constitutes
-						acceptance of updated practices.
+						If we become aware of a security incident affecting your data, we
+						will investigate promptly, take steps to contain and remediate it,
+						and notify affected customers without undue delay, consistent with
+						applicable law. We will be transparent about what happened and what
+						we are doing about it.
 					</p>
+				</section>
+
+				<section>
+					<h2 className="text-2xl font-semibold text-foreground mb-4">
+						Your Security Responsibilities
+					</h2>
+					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
+						<li>Use a strong, unique password for your account</li>
+						<li>Keep your login credentials confidential</li>
+						<li>
+							Review who has access to your organization and remove members who
+							no longer need it
+						</li>
+						<li>
+							Report suspicious activity immediately to support@onetool.biz
+						</li>
+						<li>Keep your devices and browsers up to date</li>
+						<li>
+							Be cautious of phishing; verify URLs before entering credentials
+						</li>
+						<li>
+							Keep your own copies of critical business documents and records
+						</li>
+					</ul>
 				</section>
 
 				<section>
@@ -575,17 +343,12 @@ export default function DataSecurityPage() {
 						Questions or Concerns?
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						If you have questions about our security practices or want to report
-						a security concern, please contact our security team:
+						If you have questions about our security practices or want to
+						report a security concern:
 					</p>
 					<div className="bg-card border border-border rounded-lg p-4 text-muted-foreground">
-						<p className="font-semibold text-foreground mb-2">
-							OneTool Security Team
-						</p>
-						<p>Email: support@onetool.com</p>
-						<p className="text-xs text-muted-foreground mt-4">
-							We aim to respond to security inquiries within 24 hours.
-						</p>
+						<p className="font-semibold text-foreground mb-2">OneTool</p>
+						<p>Email: support@onetool.biz</p>
 					</div>
 				</section>
 			</div>

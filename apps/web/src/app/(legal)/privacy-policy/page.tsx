@@ -2,29 +2,40 @@ import { LegalPageLayout } from "../components/legal-page-layout";
 
 export default function PrivacyPolicyPage() {
 	return (
-		<LegalPageLayout title="Privacy Policy" lastUpdated="January 1, 2026">
+		<LegalPageLayout title="Privacy Policy" lastUpdated="July 17, 2026">
 			<div className="space-y-8">
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
 						1. Introduction
 					</h2>
 					<p className="text-muted-foreground leading-relaxed">
-						OneTool (&quot;we,&quot; &quot;our,&quot; &quot;us,&quot; or
-						&quot;Company&quot;) is committed to protecting your privacy and
-						ensuring transparency about how we collect, use, disclose, and
-						safeguard your information. This Privacy Policy describes our
-						practices regarding personal data and information collected when you
-						access or use our web and mobile applications, as well as related
-						services (collectively, the &quot;Service&quot;). This policy
-						applies to all users, including field-service business owners, team
-						members, and any third parties whose information may be collected
-						through the Service.
+						OneTool (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;) provides
+						a business management platform for small field-service businesses.
+						This Privacy Policy describes what information we collect through
+						our web and mobile applications and related services (the
+						&quot;Service&quot;), how we use it, and the choices you have.
 					</p>
 					<p className="text-muted-foreground leading-relaxed mt-4">
-						Please read this Privacy Policy carefully. By accessing or using
-						OneTool, you acknowledge that you have read, understood, and agree
-						to the practices described here. If you do not agree with our
-						privacy practices, please do not use the Service.
+						Two different kinds of personal information flow through OneTool,
+						and we treat them differently:
+					</p>
+					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4 mt-4">
+						<li>
+							<strong>Your account information</strong> — information about you
+							and your team members (names, emails, login activity). For this
+							data, OneTool decides how and why it is processed.
+						</li>
+						<li>
+							<strong>Your business records</strong> — information you enter
+							about your own clients and business (client contacts, addresses,
+							quotes, invoices, emails, signatures). For this data, you and your
+							organization control what is collected and why; we process it only
+							to provide the Service to you.
+						</li>
+					</ul>
+					<p className="text-muted-foreground leading-relaxed mt-4">
+						If you do not agree with the practices described here, please do not
+						use the Service.
 					</p>
 				</section>
 
@@ -32,48 +43,50 @@ export default function PrivacyPolicyPage() {
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
 						2. Information We Collect
 					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						We collect information from multiple sources to provide and improve
-						the Service:
-					</p>
 
 					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
 						2.1 Information You Provide Directly
 					</h3>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Account Registration:</strong> When you create an account,
-							we collect your name, email address, phone number (optional), and
-							organization details. This information is processed through Clerk,
-							our authentication provider.
+							<strong>Account Registration:</strong> Your name, email address,
+							and organization details (business name, address, phone, website).
+							Sign-in and account identity are handled by Clerk, our
+							authentication provider.
 						</li>
 						<li>
-							<strong>Business Information:</strong> Client names, email
-							addresses, phone numbers, physical addresses, and property
-							information; project details, descriptions, and status; quote line
-							items, pricing, and customer details; invoice information, payment
-							amounts, and transaction history; task descriptions, schedules,
-							and assignments.
+							<strong>Business Records:</strong> Client and contact details
+							(names, email addresses, phone numbers, job titles), property and
+							service addresses, project and task details, quote and invoice
+							line items, pricing, notes, and tags. When you enter an address,
+							we may geocode it (via Mapbox) and store the resulting map
+							coordinates.
 						</li>
 						<li>
-							<strong>Communication Data:</strong> Emails you send through the
-							Service, inbound client emails, message content and attachments,
-							and communication history and metadata.
+							<strong>Email and Messages:</strong> Emails you send through the
+							Service and inbound emails received at your organization&apos;s
+							OneTool receiving address, including subject lines, full message
+							bodies, sender and recipient details, and attachments; internal
+							team chat messages and their attachments.
 						</li>
 						<li>
-							<strong>File Uploads:</strong> CSV files imported for bulk
-							operations, quote and invoice PDFs, signed documents from
-							BoldSign, and user-uploaded attachments.
+							<strong>Files:</strong> Documents, images, and CSV files you
+							upload, generated quote and invoice PDFs, and signed documents.
 						</li>
 						<li>
-							<strong>Payment Information:</strong> Payment method details
-							(processed securely through Stripe, not stored on our servers),
-							billing address, and transaction history.
+							<strong>E-Signature Records:</strong> When a client approves a
+							quote through the client portal, we record the signature (typed or
+							drawn), the approver&apos;s name and email, the IP address and
+							browser information of the device used to sign, a snapshot of the
+							approved line items and terms, and timestamps. This creates a
+							tamper-evident approval record.
 						</li>
 						<li>
-							<strong>Support Communications:</strong> Any messages you send to
-							our support team, feedback, and information you provide when
-							reporting issues.
+							<strong>Payment Records:</strong> We store payment amounts, status,
+							and limited card details (brand and last four digits only) and, for
+							payout accounts, the bank name and last four digits of the account.
+							Full card numbers and bank credentials are collected and held by
+							Stripe, never by OneTool.
 						</li>
 					</ul>
 
@@ -82,643 +95,500 @@ export default function PrivacyPolicyPage() {
 					</h3>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Device Information:</strong> IP address, browser type and
-							version, operating system, device type, and device identifiers.
+							<strong>Usage Analytics (web app only):</strong> We use PostHog to
+							understand how the web application is used. This includes pages
+							visited, clicks and form interactions (autocapture), heatmap data,
+							performance metrics, and application errors. Analytics is tied to
+							your account (name, email, role, organization, and plan type) so
+							we can understand usage per customer. PostHog receives your IP
+							address as part of standard event delivery. We do not use session
+							recording in our analytics configuration, and our mobile app
+							contains no analytics.
 						</li>
 						<li>
-							<strong>Usage Data:</strong> Pages visited, features accessed,
-							time spent in the application, actions performed, and interaction
-							patterns collected through PostHog analytics.
+							<strong>Log Data:</strong> Our hosting and backend providers
+							(Vercel, Convex) generate standard server logs, including access
+							times, requests, and error messages.
 						</li>
 						<li>
-							<strong>Log Data:</strong> Server logs including access times,
-							page requests, error messages, and referrer information.
+							<strong>Cookies and Local Storage:</strong> Authentication cookies
+							set by Clerk, a session cookie for the client portal, and PostHog
+							analytics identifiers (see Section 10).
 						</li>
 						<li>
-							<strong>Cookies and Similar Technologies:</strong> Session cookies
-							for authentication, preference cookies for storing your settings,
-							and analytics cookies to track usage patterns (see Section 9 for
-							details).
-						</li>
-						<li>
-							<strong>Location Information:</strong> We may collect approximate
-							location data from IP addresses. We do not collect precise GPS
-							location data unless you explicitly enable location services
-							within the mobile app.
+							<strong>Location:</strong> We do not collect GPS location from your
+							device. Map coordinates in the Service come from geocoding
+							addresses you type in. The IP address recorded at quote signing
+							implies an approximate location.
 						</li>
 					</ul>
 
 					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						2.3 Information from Third Parties
+						2.3 Mobile App
 					</h3>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							Information provided by Clerk regarding your account and
-							organization membership.
+							<strong>Push Notifications:</strong> If you enable notifications,
+							we store your device push token, platform, and device name to
+							deliver notifications.
 						</li>
 						<li>
-							Payment information from Stripe related to subscription and
-							invoice payments.
+							<strong>Camera and Photos:</strong> Used only when you choose to
+							attach an image or document; we access only what you select.
 						</li>
-						<li>E-signature and document signing information from BoldSign.</li>
-						<li>Email event data from Resend (delivery, opens, clicks).</li>
-						<li>Analytics data from PostHog regarding your usage patterns.</li>
+						<li>
+							<strong>Face ID:</strong> Used on-device to keep you signed in.
+							Biometric data never leaves your device and is never sent to us.
+						</li>
+					</ul>
+
+					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
+						2.4 Information from Third Parties
+					</h3>
+					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
+						<li>
+							Account and organization membership information from Clerk.
+						</li>
+						<li>
+							Payment, payout, and dispute status from Stripe (including card
+							brand/last four and bank name/last four).
+						</li>
+						<li>Signature status and signed documents from BoldSign.</li>
+						<li>
+							Email delivery events from Resend (delivered, bounced,
+							complained), and inbound email content addressed to your
+							organization&apos;s receiving address — including mail from
+							senders who are not yet in your client list.
+						</li>
 					</ul>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						3. How We Use Your Information
+						3. How We Use Information
 					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						We use the information we collect for the following purposes:
-					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
 							<strong>Service Delivery:</strong> To provide, maintain, and
 							operate the Service and its features.
 						</li>
 						<li>
-							<strong>Account Management:</strong> To create and manage your
-							account, authenticate users, and manage organization access and
-							permissions.
+							<strong>Account Management:</strong> To authenticate users and
+							manage organization access, roles, and permissions.
 						</li>
 						<li>
-							<strong>Communication:</strong> To send you transactional emails
-							(account confirmation, password reset, billing notifications),
-							support responses, and system alerts.
+							<strong>Communication:</strong> To send transactional emails
+							(billing notifications, signature requests, system alerts) and
+							respond to support requests.
 						</li>
 						<li>
 							<strong>Payment Processing:</strong> To process subscription
-							payments, invoice payments, and handle billing inquiries.
+							payments and facilitate invoice payments to your business through
+							Stripe.
 						</li>
 						<li>
-							<strong>Feature Improvements:</strong> To analyze usage patterns,
-							identify trends, and improve the Service based on user behavior
-							and feedback.
+							<strong>Product Improvement:</strong> To analyze how the web app
+							is used, diagnose errors, and improve the Service.
 						</li>
 						<li>
-							<strong>Analytics and Reporting:</strong> To generate business
-							reports, usage statistics, and analytics for you and our team to
-							understand platform usage.
-						</li>
-						<li>
-							<strong>AI-Powered Features:</strong> To power CSV import and
-							report generation features using OpenAI APIs (you control whether
-							to use these features).
-						</li>
-						<li>
-							<strong>Security and Fraud Prevention:</strong> To detect,
-							prevent, and address technical issues, security threats, fraud,
-							abuse, and unauthorized access.
+							<strong>Security and Fraud Prevention:</strong> To detect and
+							address abuse, unauthorized access, and technical issues,
+							including rate limiting and webhook verification.
 						</li>
 						<li>
 							<strong>Legal Compliance:</strong> To comply with legal
-							obligations, enforce our Terms of Service, and protect the rights
-							and safety of our users and company.
-						</li>
-						<li>
-							<strong>Product Development:</strong> To develop new features,
-							conduct research, and test improvements to the Service.
+							obligations and enforce our Terms of Service.
 						</li>
 					</ul>
+					<p className="text-muted-foreground leading-relaxed mt-4">
+						We do not use your business records for advertising, and we do not
+						sell personal information.
+					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						4. How We Share Your Information
+						4. AI Features
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						We do not sell, rent, or trade your personal information to third
-						parties for their independent marketing purposes. However, we may
-						share information in the following circumstances:
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						4.1 Third-Party Service Providers
-					</h3>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						We share information with third parties that provide essential
-						services to operate the Service:
+						Some features of OneTool are powered by OpenAI&apos;s API:
 					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Clerk:</strong> Authentication provider - receives user
-							email and account information for authentication and organization
-							management.
+							<strong>The AI assistant</strong> answers questions about your
+							business data. To do this, relevant records from your organization
+							— which can include client names, contact details, addresses,
+							quotes, invoices, and the contents of email threads — are sent to
+							OpenAI as context for generating responses.
 						</li>
 						<li>
-							<strong>Convex:</strong> Backend database provider - stores all
-							user and business data with encryption.
-						</li>
-						<li>
-							<strong>Stripe:</strong> Payment processor - receives payment
-							information for subscription and invoice payments; also processes
-							direct client payments through Stripe Connect.
-						</li>
-						<li>
-							<strong>BoldSign:</strong> E-signature provider - receives
-							quote/document details and client email addresses for signature
-							requests.
-						</li>
-						<li>
-							<strong>Resend:</strong> Email delivery provider - receives email
-							content and recipient addresses for sending and tracking
-							transactional emails.
-						</li>
-						<li>
-							<strong>PostHog:</strong> Analytics provider - receives usage data
-							and user behavior information (anonymized where possible) to help
-							us understand how you use the Service.
-						</li>
-						<li>
-							<strong>OpenAI:</strong> AI provider - receives CSV file contents
-							and report parameters only when you explicitly use AI-powered
-							features.
+							<strong>AI-assisted import and report generation</strong> send the
+							data you provide for those features (such as CSV contents or your
+							report request) to OpenAI.
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
-						These service providers are contractually obligated to use your
-						information only as necessary to provide services to OneTool and to
-						maintain the confidentiality and security of your data. Each
-						provider has its own privacy policy; we recommend reviewing them to
-						understand their data practices.
+						Under OpenAI&apos;s API terms, data submitted via the API is not
+						used to train OpenAI&apos;s models by default, and we have not opted
+						in to training. OpenAI may retain API data for a limited period for
+						abuse monitoring under its policies. AI features run only when you
+						invoke them; if you do not use them, your data is not sent to
+						OpenAI.
+					</p>
+				</section>
+
+				<section>
+					<h2 className="text-2xl font-semibold text-foreground mb-4">
+						5. How We Share Information
+					</h2>
+					<p className="text-muted-foreground leading-relaxed mb-4">
+						We do not sell or rent personal information. We share information
+						only with the service providers that operate the Service
+						(&quot;subprocessors&quot;), within your organization, and where
+						required by law.
 					</p>
 
 					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						4.2 Organization Members
+						5.1 Service Providers
 					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						Any information you create within your organization (clients,
-						projects, quotes, invoices, tasks) is visible to other members of
-						your organization who have appropriate access permissions. You
-						control who can access your organization and what data they can see
-						through role-based access controls (admin vs. member).
+					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
+						<li>
+							<strong>Clerk</strong> — authentication and organization
+							management: your name, email, and sign-in activity.
+						</li>
+						<li>
+							<strong>Convex</strong> — our database and file storage: all data
+							stored in the Service.
+						</li>
+						<li>
+							<strong>Vercel</strong> — web hosting and delivery: standard
+							request data and server logs.
+						</li>
+						<li>
+							<strong>Stripe</strong> — payment processing (including Stripe
+							Connect payouts to your business): payment details, and identity
+							information you provide during Stripe&apos;s onboarding.
+						</li>
+						<li>
+							<strong>Resend</strong> — email sending and receiving: message
+							content, recipient addresses, and delivery events.
+						</li>
+						<li>
+							<strong>BoldSign</strong> — e-signatures: documents sent for
+							signature and signer names and email addresses.
+						</li>
+						<li>
+							<strong>PostHog</strong> — web analytics: usage events and your
+							account identity (name, email, role, organization, plan), plus IP
+							address on event delivery.
+						</li>
+						<li>
+							<strong>OpenAI</strong> — AI features: the data described in
+							Section 4, only when you use those features.
+						</li>
+						<li>
+							<strong>Mapbox</strong> — address search and geocoding: the
+							addresses you type into address fields.
+						</li>
+						<li>
+							<strong>Expo</strong> — mobile app services and push notification
+							delivery: device push tokens.
+						</li>
+					</ul>
+					<p className="text-muted-foreground leading-relaxed mt-4">
+						Each provider processes data under its own terms and privacy policy,
+						and several hold their own security certifications (for example,
+						Stripe is a PCI DSS Level 1 certified payment processor). We share
+						with them only what is needed to provide their function.
 					</p>
 
 					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						4.3 Legal Requirements and Protection
+						5.2 Within Your Organization
 					</h3>
 					<p className="text-muted-foreground leading-relaxed">
-						We may disclose your information if required by law, court order,
+						Data you create in your organization is visible to other members of
+						your organization according to their role and permissions. Admins
+						control membership and access.
+					</p>
+
+					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
+						5.3 Legal Requirements
+					</h3>
+					<p className="text-muted-foreground leading-relaxed">
+						We may disclose information if required by law, court order, or
 						government request, or when we believe in good faith that disclosure
-						is necessary to:
+						is necessary to protect the safety, rights, or property of OneTool,
+						our users, or the public, or to enforce our Terms of Service.
 					</p>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>Comply with applicable laws, regulations, or legal process.</li>
-						<li>
-							Protect the safety, rights, and property of OneTool, our users,
-							and the public.
-						</li>
-						<li>
-							Detect, investigate, or address fraud, security issues, or
-							technical problems.
-						</li>
-						<li>Enforce our Terms of Service and other agreements.</li>
-					</ul>
 
 					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						4.4 Business Transfers
+						5.4 Business Transfers
 					</h3>
 					<p className="text-muted-foreground leading-relaxed">
-						If OneTool is involved in a merger, acquisition, bankruptcy,
-						dissolution, restructuring, or similar transaction or proceeding,
+						If OneTool is involved in a merger, acquisition, or sale of assets,
 						your information may be transferred as part of that transaction. We
-						will provide notice and opportunity to opt out where required by
-						law.
+						will provide notice where required by law.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						5. Data Security
+						6. Data Security
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						We implement comprehensive technical, administrative, and physical
-						security measures to protect your personal information from
-						unauthorized access, alteration, disclosure, or destruction:
+						We take reasonable technical and organizational measures to protect
+						your information, described in more detail on our Data Security
+						page:
 					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Encryption:</strong> All data is encrypted in transit
-							using TLS 1.3 (HTTPS) and at rest using AES-256 encryption.
+							Data is encrypted in transit (HTTPS/TLS) and encrypted at rest by
+							our infrastructure providers.
 						</li>
 						<li>
-							<strong>Authentication:</strong> Strong user authentication
-							powered by Clerk with optional multi-factor authentication (MFA).
+							Authentication is handled by Clerk; passwords are never stored by
+							OneTool.
 						</li>
 						<li>
-							<strong>Access Control:</strong> Role-based access controls
-							limiting data visibility within organizations; employee access to
-							production data is strictly controlled and audited.
+							Every query and change is scoped to your organization — the
+							application enforces organization-level isolation on all business
+							data.
 						</li>
 						<li>
-							<strong>Infrastructure Security:</strong> Secure cloud
-							infrastructure with DDoS protection, firewalls, and intrusion
-							detection systems.
+							Role-based permissions limit what members of your organization can
+							see and do.
 						</li>
 						<li>
-							<strong>Monitoring:</strong> Continuous monitoring and automated
-							alerts for suspicious activity and security incidents.
-						</li>
-						<li>
-							<strong>Data Isolation:</strong> Logical isolation of data by
-							organization preventing cross-organization access.
-						</li>
-						<li>
-							<strong>Regular Audits:</strong> Regular security audits,
-							vulnerability assessments, and penetration testing.
-						</li>
-						<li>
-							<strong>Incident Response:</strong> Established procedures to
-							respond to security incidents quickly and notify affected users.
+							Client portal access uses short-lived, server-revocable sessions
+							with email verification codes, and sensitive endpoints are rate
+							limited.
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
-						However, no method of transmission over the internet or electronic
-						storage is 100% secure. While we implement robust security measures,
-						we cannot guarantee absolute security. We encourage you to protect
-						your login credentials and notify us immediately of any unauthorized
+						No method of transmission or storage is completely secure, and we
+						cannot guarantee absolute security. Please protect your login
+						credentials and notify us immediately of any suspected unauthorized
 						access.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						6. Data Retention
+						7. Data Retention and Deletion
 					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						We retain your information for as long as necessary to provide the
-						Service and for legitimate business purposes:
-					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Account Data:</strong> While your account is active. After
-							cancellation, we retain your data for 30 days to allow recovery
-							before permanent deletion.
+							<strong>While your account is active:</strong> We retain your data
+							so the Service can function. Cancelling a paid subscription does
+							not delete your data; your account continues on the free plan.
 						</li>
 						<li>
-							<strong>Usage Analytics:</strong> Retained for up to 12 months for
-							analytics and improvement purposes.
+							<strong>When you delete your organization or account:</strong>{" "}
+							Deletion of your organization (available in your organization
+							settings) or your account permanently deletes your
+							organization&apos;s data from our database and file storage —
+							including clients, contacts, quotes, invoices, emails,
+							attachments, documents, and signatures. Deletion begins
+							immediately and completes shortly after, with a daily automated
+							job that sweeps for and removes any remaining records.
 						</li>
 						<li>
-							<strong>Email Communications:</strong> Retained for the duration
-							of your account and 30 days post-cancellation.
+							<strong>Archived clients:</strong> Clients you archive are
+							permanently deleted 7 days after archiving.
 						</li>
 						<li>
-							<strong>Payment Records:</strong> Retained for 7 years as required
-							for tax and legal compliance purposes.
+							<strong>Internal system logs:</strong> Automation execution logs
+							are deleted after 30 days and internal change events after 7
+							days.
 						</li>
 						<li>
-							<strong>Backups:</strong> Encrypted backups may be retained for up
-							to 30 days for disaster recovery purposes.
-						</li>
-						<li>
-							<strong>Legal Holds:</strong> If required by law, we may retain
-							information for longer periods.
+							<strong>Data held by service providers:</strong> Our service
+							providers retain data under their own policies. For example,
+							Stripe retains transaction records to meet its legal obligations,
+							BoldSign retains signed documents, Resend retains email logs, and
+							analytics events already sent to PostHog are retained under
+							PostHog&apos;s retention settings and are not automatically
+							erased when you delete your account.
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
-						You can request deletion of your account and associated data at any
-						time. Upon request, we will delete your data within 30 days, except
-						where retention is required by law. You may request data export
-						before deletion.
+						If you want us to request deletion of data held by a service
+						provider on your behalf, contact us and we will make reasonable
+						efforts to do so.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						7. Your Privacy Rights and Choices
+						8. Your Rights and Choices
 					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						You have the following rights regarding your personal information:
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.1 Access and Portability
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						You have the right to access and receive a copy of your personal
-						information in a machine-readable format (JSON or CSV). Contact
-						support@onetool.com to request your data.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.2 Correction and Update
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						You can correct, update, or modify your account information directly
-						through the Service settings. For data you cannot modify yourself,
-						contact support@onetool.com.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.3 Deletion
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						You have the right to request deletion of your account and
-						associated data. Upon cancellation, we will delete your data after
-						30 days. You can expedite deletion by requesting it through your
-						account settings or contacting support@onetool.com. Deletion removes
-						you from the Service, though legal obligations may require us to
-						retain certain information.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.4 Restrict Processing
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						You may request restrictions on how we process your data, though
-						this may limit our ability to provide the Service. Contact
-						support@onetool.com with specific restrictions you request.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.5 Marketing Communications
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						We send transactional emails required for the Service. For
-						non-essential communications, you can opt out by clicking the
-						unsubscribe link in emails or adjusting notification preferences in
-						your account settings.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.6 Cookie Preferences
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						You can control cookies through your browser settings, though
-						disabling essential cookies may affect Service functionality. See
-						Section 9 for more details.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						7.7 Exercising Your Rights
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						To exercise any of these rights, contact us at support@onetool.com.
-						We will respond to verified requests within 30 days (45 days if
-						complex). We may request identification to verify your request and
-						ensure we are disclosing data only to the data subject.
-					</p>
-				</section>
-
-				<section>
-					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						8. International Data Transfers
-					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						Your information is processed and stored in the United States and
-						may be transferred to, stored in, and processed in other countries.
-						These countries may have data protection laws different from your
-						country of origin.
-					</p>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						By using OneTool, you consent to the transfer of your information to
-						countries outside your country of residence, which may have
-						different data protection rules. We implement safeguards to protect
-						your information during international transfers, including:
-					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>Encryption of data in transit and at rest.</li>
 						<li>
-							Standard contractual clauses approved by regulatory authorities.
+							<strong>Access and Correction:</strong> You can view and edit
+							nearly all of your data directly in the Service. For anything you
+							cannot change yourself, contact us.
 						</li>
 						<li>
-							Binding data transfer agreements with our service providers.
+							<strong>Deletion:</strong> You can delete your organization from
+							your organization settings (web) or delete your account from the
+							mobile app, or contact us to request deletion. See Section 7 for
+							what deletion covers.
+						</li>
+						<li>
+							<strong>Copy of Your Data:</strong> The Service does not currently
+							include a self-serve bulk export. If you need a copy of your data,
+							contact us and we will provide it in a commonly used format
+							within a reasonable time.
+						</li>
+						<li>
+							<strong>Notifications:</strong> You can disable mobile push
+							notifications in your device settings. Transactional emails are
+							required to operate the Service.
+						</li>
+						<li>
+							<strong>Analytics:</strong> You can block analytics using browser
+							tools or content blockers without affecting core functionality.
+							Our web app does not currently respond to &quot;Do Not
+							Track&quot; browser signals.
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
-						If you reside in the European Economic Area (EEA), United Kingdom,
-						or Switzerland, additional privacy rights may apply under GDPR and
-						similar laws. We process your data on the legal basis of contractual
-						necessity (to provide the Service) and, where applicable, your
-						consent or our legitimate interests in operating and improving the
-						Service.
+						We extend these rights to all users regardless of where you live. To
+						exercise any of them, contact us using the details in Section 14. We
+						may need to verify your identity before acting on a request, and we
+						aim to respond within 30 days.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						9. Cookies and Tracking Technologies
+						9. Your Clients&apos; Information
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						We use cookies and similar tracking technologies to enhance your
-						experience with the Service:
+						The client contacts, addresses, emails, and signatures in your
+						OneTool organization belong to your business relationship with your
+						clients. You are responsible for having the right to enter that
+						information into the Service, and we process it only on your behalf
+						to provide the Service.
 					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						9.1 Types of Cookies We Use
-					</h3>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>
-							<strong>Essential Cookies:</strong> Required for the Service to
-							function (authentication, security, session management).
-						</li>
-						<li>
-							<strong>Preference Cookies:</strong> Remember your settings and
-							preferences (theme, language, layout).
-						</li>
-						<li>
-							<strong>Analytics Cookies:</strong> Track usage patterns through
-							PostHog to understand how users interact with the Service.
-						</li>
-					</ul>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						9.2 Your Cookie Choices
-					</h3>
 					<p className="text-muted-foreground leading-relaxed">
-						You can control cookies through your browser settings. Most browsers
-						allow you to:
-					</p>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>View cookies and delete them.</li>
-						<li>Block all cookies or only third-party cookies.</li>
-						<li>Set preferences to be notified when cookies are set.</li>
-					</ul>
-					<p className="text-muted-foreground leading-relaxed mt-4">
-						Note that disabling essential cookies may impair Service
-						functionality. Analytics cookies are non-essential and can be
-						disabled without affecting core functionality.
-					</p>
-
-					<h3 className="text-xl font-semibold text-foreground mb-3 mt-6">
-						9.3 Do Not Track
-					</h3>
-					<p className="text-muted-foreground leading-relaxed">
-						Some browsers include a Do Not Track feature. We honor Do Not Track
-						signals by not loading PostHog analytics when DNT is enabled in your
-						browser.
+						If one of your clients contacts us directly about their personal
+						information, we will refer them to you, since you control that data.
+						We will assist you in fulfilling access or deletion requests from
+						your clients — deleting a client record in the Service removes that
+						client&apos;s data, and Section 7 describes full deletion.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						10. Children&apos;s Privacy (COPPA Compliance)
+						10. Cookies and Similar Technologies
 					</h2>
-					<p className="text-muted-foreground leading-relaxed">
-						OneTool is not intended for children under 13 years of age, and we
-						do not knowingly collect personal information from children under
-						13. If we become aware that we have collected information from a
-						child under 13 without parental consent, we will take immediate
-						steps to delete such information and terminate the child&apos;s
-						account.
-					</p>
-					<p className="text-muted-foreground leading-relaxed mt-4">
-						Our Service is designed for business owners and team members of
-						field-service businesses. If you believe we have collected
-						information from a child under 13, please contact
-						support@onetool.com immediately.
-					</p>
-				</section>
-
-				<section>
-					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						11. Third-Party Links and Services
-					</h2>
-					<p className="text-muted-foreground leading-relaxed">
-						OneTool may contain links to third-party websites and services that
-						are not operated by us. This Privacy Policy applies only to
-						information collected through the Service. We are not responsible
-						for the privacy practices of third parties. We recommend reviewing
-						the privacy policies of any third-party services before providing
-						your information or using their services. Your use of third-party
-						integrations (Stripe, BoldSign, Resend, etc.) is governed by their
-						respective privacy policies.
-					</p>
-				</section>
-
-				<section>
-					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						12. Data Processing in California and Other US States
-					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						If you are a California resident, you have additional privacy rights
-						under the California Consumer Privacy Act (CCPA):
-					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							Right to know what personal information we collect and how we use
-							it.
+							<strong>Essential:</strong> Authentication cookies set by Clerk to
+							keep you signed in, and a secure, HTTP-only session cookie for the
+							client portal (24-hour lifetime).
 						</li>
 						<li>
-							Right to delete personal information (with limited exceptions).
-						</li>
-						<li>
-							Right to opt-out of the sale of personal information (we do not
-							sell personal information).
-						</li>
-						<li>
-							Right to non-discrimination for exercising your CCPA rights.
+							<strong>Analytics:</strong> PostHog stores an anonymous identifier
+							in cookies and local storage to associate usage events with your
+							session and account.
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
-						To exercise these rights, contact support@onetool.com. If you are a
-						California resident and have other questions about CCPA, you may
-						contact the California Attorney General.
-					</p>
-					<p className="text-muted-foreground leading-relaxed mt-4">
-						Other US states with comprehensive privacy laws (Virginia, Colorado,
-						Connecticut, Utah) have similar rights. We comply with these laws
-						and honor similar requests from residents of these states.
+						You can control or delete cookies through your browser settings.
+						Blocking essential cookies will prevent sign-in; blocking analytics
+						cookies does not affect core functionality. We do not use
+						advertising cookies.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						13. GDPR Compliance for European Users
+						11. Children&apos;s Privacy
+					</h2>
+					<p className="text-muted-foreground leading-relaxed">
+						OneTool is a business tool and is not directed to children under 13.
+						We do not knowingly collect personal information from children under
+						13. If you believe we have, contact us and we will delete it.
+					</p>
+				</section>
+
+				<section>
+					<h2 className="text-2xl font-semibold text-foreground mb-4">
+						12. US State Privacy Laws
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						If you are located in the European Economic Area, United Kingdom, or
-						Switzerland, you have rights under the General Data Protection
-						Regulation (GDPR) and similar laws. Key information:
+						Several US states (including California, Virginia, Colorado,
+						Connecticut, Texas, and Utah) have comprehensive privacy laws that
+						grant residents rights such as access, correction, deletion, and
+						opting out of the sale of personal information. Given OneTool&apos;s
+						current size, many of these laws&apos; applicability thresholds may
+						not yet apply to us — but as a matter of policy we extend the rights
+						in Section 8 to all users, and:
 					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
+						<li>We do not sell or share personal information for advertising.</li>
+						<li>We do not use personal information for targeted advertising.</li>
 						<li>
-							<strong>Data Controller:</strong> OneTool is the data controller
-							for personal information we collect about you.
-						</li>
-						<li>
-							<strong>Legal Basis:</strong> We process your data based on
-							contractual necessity (to provide the Service) and your consent.
-						</li>
-						<li>
-							<strong>Rights:</strong> You have rights to access, correct,
-							delete, restrict processing, port your data, and object to
-							processing.
-						</li>
-						<li>
-							<strong>Data Protection Officer:</strong> Contact
-							support@onetool.com for any GDPR-related inquiries.
-						</li>
-						<li>
-							<strong>Withdrawal of Consent:</strong> You can withdraw consent
-							at any time by contacting support@onetool.com (though this may
-							limit our ability to provide the Service).
-						</li>
-						<li>
-							<strong>Complaints:</strong> You have the right to lodge a
-							complaint with your local data protection authority.
+							We will not discriminate against you for exercising any privacy
+							right.
 						</li>
 					</ul>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						14. Updates to This Privacy Policy
+						13. International Users
 					</h2>
-					<p className="text-muted-foreground leading-relaxed mb-4">
-						We may update this Privacy Policy from time to time to reflect
-						changes in our practices, technology, legal requirements, or other
-						factors. When we make material changes, we will:
-					</p>
-					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-						<li>
-							Post the updated Privacy Policy on this page with an updated
-							effective date.
-						</li>
-						<li>
-							Notify you via email if the changes materially affect how we use
-							your personal information.
-						</li>
-						<li>
-							Require your consent or provide opt-out options if required by
-							law.
-						</li>
-					</ul>
-					<p className="text-muted-foreground leading-relaxed mt-4">
-						Your continued use of the Service after changes become effective
-						constitutes your acceptance of the updated Privacy Policy. We
-						encourage you to review this policy regularly to stay informed about
-						how we protect your information.
+					<p className="text-muted-foreground leading-relaxed">
+						OneTool is operated from the United States and is designed for and
+						marketed to US-based businesses. Your information is processed and
+						stored in the United States. We do not target or market the Service
+						to individuals in the European Union, United Kingdom, or other
+						regions, and we do not claim compliance with the GDPR or similar
+						non-US regimes. If you access the Service from outside the United
+						States, you do so understanding that your data will be processed in
+						the United States, and the rights in Section 8 are available to
+						you.
 					</p>
 				</section>
 
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
-						15. Contact Us
+						14. Contact Us
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
-						If you have questions, concerns, or requests regarding this Privacy
-						Policy or our privacy practices, please contact us:
+						If you have questions or requests regarding this Privacy Policy or
+						our data practices, contact us:
 					</p>
 					<div className="bg-card border border-border rounded-lg p-4 text-muted-foreground">
-						<p className="font-semibold text-foreground mb-2">
-							OneTool Privacy Team
-						</p>
-						<p>Email: support@onetool.com</p>
+						<p className="font-semibold text-foreground mb-2">OneTool</p>
+						<p>Email: support@onetool.biz</p>
 						<p className="text-xs text-muted-foreground mt-4">
-							Response time: We will respond to privacy requests within 30 days.
+							We aim to respond to privacy requests within 30 days.
 						</p>
 					</div>
 				</section>
 
+				<section>
+					<h2 className="text-2xl font-semibold text-foreground mb-4">
+						15. Changes to This Policy
+					</h2>
+					<p className="text-muted-foreground leading-relaxed">
+						We may update this Privacy Policy as the Service or our practices
+						change. We will post updates on this page with a new effective
+						date, and for material changes we will make reasonable efforts to
+						notify you (for example, by email or an in-app notice). Your
+						continued use of the Service after changes take effect constitutes
+						acceptance of the updated policy.
+					</p>
+				</section>
+
 				<section className="pt-4 border-t border-border mt-8">
 					<p className="text-xs text-muted-foreground">
-						This Privacy Policy is effective as of January 1, 2026. Your
-						continued use of OneTool after any modifications to this policy
-						constitutes your acceptance of the revised terms.
+						This Privacy Policy is effective as of July 17, 2026.
 					</p>
 				</section>
 			</div>
