@@ -79,7 +79,7 @@ function badgeVariantFor(status: string): "success-light" | "outline" | "info-li
 function statusLabelFor(status: string): string {
 	switch (status) {
 		case "approved":
-			return "Approved";
+			return "Accepted";
 		case "declined":
 			return "Declined";
 		case "expired":
@@ -143,7 +143,7 @@ function buildJourneySteps(
 		});
 		steps.push({
 			id: "resolution",
-			title: "Approved",
+			title: "Accepted",
 			timestamp: formatDate(quote.approvedAt),
 			meta: latestApproval ? `Signed by ${clientName}` : undefined,
 			status: "complete",
@@ -180,7 +180,7 @@ function buildJourneySteps(
 		});
 		steps.push({
 			id: "resolution",
-			title: "Approved or declined",
+			title: "Accepted or declined",
 			status: "upcoming",
 		});
 	}
@@ -334,7 +334,13 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 				}
 			: undefined;
 
-	const journeySteps = buildJourneySteps(quote, latestApproval, clientName);
+	// CR-02 alignment: the journey's "Signed by" meta must come from the same
+	// validated receipt the approval surfaces use, not the raw audit row.
+	const journeySteps = buildJourneySteps(
+		quote,
+		effectiveInitialReceipt,
+		clientName,
+	);
 	const currentStepIndex = journeySteps.findIndex(
 		(step) => step.status === "current",
 	);
@@ -451,7 +457,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 
 					{/* Two-pane: Quote Journey (sticky) + Quote Details */}
 					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-8">
-						<Card className="lg:sticky lg:top-6">
+						<Card className="lg:sticky lg:top-[calc(68px+1.5rem)]">
 							<CardHeader>
 								<CardTitle className="text-base">Quote Journey</CardTitle>
 							</CardHeader>
@@ -535,7 +541,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 				</div>
 			</div>
 
-			{!isDesktop && (
+			{isDesktop === false && (
 				<ApprovalBottomSheet key={approvalKey} {...approvalRailProps} />
 			)}
 		</div>

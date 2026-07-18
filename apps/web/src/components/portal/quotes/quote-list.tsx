@@ -74,7 +74,8 @@ function expiryLineFor(q: QuoteListRow): string {
 		return `Approved ${formatDate(q.approvedAt)}`;
 	if (q.status === "declined" && q.declinedAt)
 		return `Declined ${formatDate(q.declinedAt)}`;
-	if (q.status === "expired") return `Expired ${formatDate(q.validUntil)}`;
+	if (q.status === "expired")
+		return q.validUntil ? `Expired ${formatDate(q.validUntil)}` : "Expired";
 	return "";
 }
 

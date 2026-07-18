@@ -15,12 +15,16 @@ import {
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import { Download, Receipt, Search } from "lucide-react";
+import { Receipt, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/domain/empty-state";
-import { StatusBadge, type StatusRole } from "@/components/domain/status-badge";
+import { StatusBadge } from "@/components/domain/status-badge";
+import {
+	INVOICE_STATUS_LABEL,
+	INVOICE_STATUS_ROLE,
+} from "./invoice-paper";
 import {
 	Frame,
 	FrameDescription,
@@ -63,24 +67,6 @@ const FILTERS: Array<{ value: Filter; label: string }> = [
 	{ value: "paid", label: "Paid" },
 ];
 
-type DisplayStatus = PortalInvoiceListItem["paymentSummary"]["displayStatus"];
-
-// "awaiting"/"partial" aren't domain StatusKeys in status-badge.tsx, so these
-// map to the same semantic roles (warning/info) via the `role` override
-// rather than inventing new colors.
-const DISPLAY_STATUS_ROLE: Record<DisplayStatus, StatusRole> = {
-	paid: "success",
-	overdue: "danger",
-	partial: "info",
-	awaiting: "warning",
-};
-
-const DISPLAY_STATUS_LABEL: Record<DisplayStatus, string> = {
-	paid: "Paid",
-	overdue: "Overdue",
-	partial: "Partially paid",
-	awaiting: "Awaiting payment",
-};
 
 function createColumns(
 	clientPortalId: string,
@@ -128,8 +114,8 @@ function createColumns(
 			cell: ({ row }) => {
 				const displayStatus = row.original.paymentSummary.displayStatus;
 				return (
-					<StatusBadge role={DISPLAY_STATUS_ROLE[displayStatus]} appearance="soft">
-						{DISPLAY_STATUS_LABEL[displayStatus]}
+					<StatusBadge role={INVOICE_STATUS_ROLE[displayStatus]} appearance="soft">
+						{INVOICE_STATUS_LABEL[displayStatus]}
 					</StatusBadge>
 				);
 			},
@@ -171,8 +157,7 @@ function createColumns(
 								onKeyDown={(e) => e.stopPropagation()}
 								className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground"
 							>
-								<Download className="h-3.5 w-3.5" aria-hidden="true" />
-								PDF
+								View
 							</Link>
 						)}
 					</div>

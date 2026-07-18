@@ -14,7 +14,9 @@ import { TotalsBreakdown } from "../totals-breakdown";
 
 export type InvoiceDisplayStatus = "awaiting" | "partial" | "paid" | "overdue";
 
-const STATUS_ROLE: Record<
+// Single source of truth for portal invoice status colors/labels — the list
+// view imports these so list and detail never disagree.
+export const INVOICE_STATUS_ROLE: Record<
 	InvoiceDisplayStatus,
 	"success" | "warning" | "danger" | "info"
 > = {
@@ -24,7 +26,7 @@ const STATUS_ROLE: Record<
 	awaiting: "info",
 };
 
-const STATUS_LABEL: Record<InvoiceDisplayStatus, string> = {
+export const INVOICE_STATUS_LABEL: Record<InvoiceDisplayStatus, string> = {
 	paid: "Paid",
 	partial: "Partially paid",
 	overdue: "Overdue",
@@ -120,8 +122,8 @@ export function InvoicePaper({
 									{businessName}
 								</span>
 							</div>
-							<StatusBadge role={STATUS_ROLE[displayStatus]}>
-								{STATUS_LABEL[displayStatus]}
+							<StatusBadge role={INVOICE_STATUS_ROLE[displayStatus]}>
+								{INVOICE_STATUS_LABEL[displayStatus]}
 							</StatusBadge>
 						</div>
 
