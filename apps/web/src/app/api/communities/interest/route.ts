@@ -43,8 +43,19 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// Reject present-but-non-string optional fields before any .trim() below
+		if (phone != null && typeof phone !== "string") {
+			return NextResponse.json(
+				{ error: "Invalid phone number" },
+				{ status: 400 }
+			);
+		}
+		if (message != null && typeof message !== "string") {
+			return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+		}
+
 		// Validate phone format if provided
-		if (phone && typeof phone === "string" && phone.trim().length > 0) {
+		if (phone && phone.trim().length > 0) {
 			// Allow various phone formats but require at least 7 digits
 			const digitsOnly = phone.replace(/\D/g, "");
 			if (digitsOnly.length < 7 || digitsOnly.length > 15) {

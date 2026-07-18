@@ -9,6 +9,10 @@ export function buildPortalInvoiceUrl(options: {
 	portalAccessId: string;
 	invoiceId: string;
 }): string {
-	const origin = process.env.PORTAL_JWT_ISSUER;
+	const issuer = process.env.PORTAL_JWT_ISSUER;
+	if (!issuer) {
+		throw new Error("PORTAL_JWT_ISSUER is not set");
+	}
+	const origin = issuer.replace(/\/+$/, "");
 	return `${origin}/portal/c/${options.portalAccessId}/invoices/${options.invoiceId}`;
 }

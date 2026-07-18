@@ -57,6 +57,9 @@ export const _loadInvoiceEmailData = internalQuery({
 	handler: async (ctx, { invoiceId }): Promise<InvoiceEmailLookupResult> => {
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice) return { ok: false, reason: "invoice not found" };
+		if (invoice.status !== "sent" && invoice.status !== "overdue") {
+			return { ok: false, reason: `invoice status is ${invoice.status}` };
+		}
 
 		const org = await ctx.db.get(invoice.orgId);
 		if (!org) return { ok: false, reason: "organization not found" };

@@ -524,7 +524,8 @@ async function generateNextQuoteNumber(ctx, orgId) {
 ### Client Quote Access
 
 - Quotes are viewed and approved through the authenticated client portal only
-- The old unauthenticated public quote token surface was REMOVED — do not rebuild it (PUB-37); only invoices/payments retain `publicToken`
+- The old unauthenticated public quote token surface was REMOVED — do not rebuild it (PUB-37)
+- Invoice/payment `publicToken` survives only on existing legacy rows: no new tokens are minted, and no public route or current payment flow reads them — invoices are viewed and paid through the authenticated client portal
 
 ---
 

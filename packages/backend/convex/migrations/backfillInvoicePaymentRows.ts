@@ -12,41 +12,52 @@ import { internalMutation } from "../_generated/server";
 export const backfillInvoicePaymentRows = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		const invoices = await ctx.db.query("invoices").collect();
-		const payable = invoices.filter(
-			(inv) => inv.status === "sent" || inv.status === "overdue"
-		);
-
+		let payable = 0;
 		let seeded = 0;
 		let skipped = 0;
 
-		for (const invoice of payable) {
-			const existing = await ctx.db
-				.query("payments")
-				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
-				.collect();
+		// Cursor-batched so we never hold the whole invoices table in memory.
+		let cursor: string | null = null;
+		for (;;) {
+			const { page, isDone, continueCursor } = await ctx.db
+				.query("invoices")
+				.paginate({ numItems: 100, cursor });
 
-			if (existing.length > 0) {
-				skipped++;
-				continue;
+			for (const invoice of page) {
+				if (invoice.status !== "sent" && invoice.status !== "overdue") {
+					continue;
+				}
+				payable++;
+
+				const existing = await ctx.db
+					.query("payments")
+					.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+					.first();
+				if (existing) {
+					skipped++;
+					continue;
+				}
+
+				await ctx.db.insert("payments", {
+					orgId: invoice.orgId,
+					invoiceId: invoice._id,
+					paymentAmount: invoice.total,
+					dueDate: invoice.dueDate,
+					description: "Full Payment",
+					sortOrder: 0,
+					status: "pending",
+				});
+				seeded++;
 			}
 
-			await ctx.db.insert("payments", {
-				orgId: invoice.orgId,
-				invoiceId: invoice._id,
-				paymentAmount: invoice.total,
-				dueDate: invoice.dueDate,
-				description: "Full Payment",
-				sortOrder: 0,
-				status: "pending",
-			});
-			seeded++;
+			if (isDone) break;
+			cursor = continueCursor;
 		}
 
 		console.log(
-			`backfillInvoicePaymentRows: seeded ${seeded}, skipped ${skipped} (of ${payable.length} payable invoices)`
+			`backfillInvoicePaymentRows: seeded ${seeded}, skipped ${skipped} (of ${payable} payable invoices)`
 		);
 
-		return { payable: payable.length, seeded, skipped };
+		return { payable, seeded, skipped };
 	},
 });

@@ -350,6 +350,10 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 			paidAt: Date.now(),
 		});
 
+		// Settle installment payment rows like the workspace paid paths do, so a
+		// webhook-paid invoice never leaves pending rows behind.
+		await settleOutstandingPaymentsForInvoice(ctx, invoice._id);
+
 		try {
 			const client = await ctx.db.get(invoice.clientId);
 			await ActivityHelpers.invoicePaid(
@@ -663,7 +667,7 @@ export const sendToClient = userMutation({
 			.query("payments")
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
 			.collect();
-		if (existingPayments.length === 0) {
+		if (existingPayments.length === 0 && invoice.total > 0) {
 			await ctx.db.insert("payments", {
 				orgId: invoice.orgId,
 				invoiceId: invoice._id,

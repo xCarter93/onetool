@@ -22,7 +22,7 @@ const cspReportOnly = [
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' https: data: blob:",
 	"font-src 'self' data:",
-	`connect-src 'self' https: wss:${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}`,
+	`connect-src 'self'${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}`,
 	"frame-src https://js.stripe.com https://hooks.stripe.com",
 	"frame-ancestors 'none'",
 	"base-uri 'self'",

@@ -154,7 +154,7 @@ export const createPaymentIntent = action({
 		);
 		// Counter only advances after a successful Stripe mint.
 		await ctx.runMutation(
-			api.payments.incrementCheckoutAttemptCounter,
+			internal.payments.incrementCheckoutAttemptCounter,
 			{ paymentId: resolved.payment._id },
 		);
 

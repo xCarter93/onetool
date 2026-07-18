@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { render } from "@react-email/render";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
-import { getRequestIp } from "@/lib/portal/ip";
+import { getRequestIp, hashIp } from "@/lib/portal/ip";
 import { ScheduleDemoRequestEmail } from "@/emails/schedule-demo-request";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 		// PUB-12: this route is fully public and sends real email; throttle per IP.
 		const rateLimit = await getConvexClient().mutation(
 			api.payments.checkScheduleDemoRateLimit,
-			{ ip: getRequestIp(request) }
+			{ ip: await hashIp(getRequestIp(request)) }
 		);
 		if (!rateLimit.ok) {
 			return NextResponse.json(

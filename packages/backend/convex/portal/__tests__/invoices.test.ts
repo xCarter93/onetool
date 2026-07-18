@@ -601,6 +601,7 @@ describe("portal.invoices", () => {
 			expect(createBody.currency).toBe("usd");
 			// PI metadata correlates by paymentId now (publicToken retired).
 			expect(createBody.metadata.paymentId).toBe(paymentId);
+			expect(createBody.metadata.publicToken).toBeUndefined();
 			// stripeAccount lives in the REQUEST OPTIONS object, never the create body.
 			expect(createBody.stripeAccount).toBeUndefined();
 			expect(requestOpts).toEqual({

@@ -35,6 +35,44 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// Size/shape caps: this payload is interpolated into an LLM prompt, so
+		// bound header count, row count, row width, and cell length up front.
+		const MAX_HEADERS = 100;
+		const MAX_SAMPLE_ROWS = 50;
+		const MAX_CELL_LENGTH = 2000;
+		if (
+			headers.length > MAX_HEADERS ||
+			headers.some(
+				(h: unknown) => typeof h !== "string" || h.length > MAX_CELL_LENGTH
+			)
+		) {
+			return NextResponse.json(
+				{ error: "CSV headers are too large or malformed" },
+				{ status: 400 }
+			);
+		}
+		const rowsMalformed =
+			sampleRows.length > MAX_SAMPLE_ROWS ||
+			sampleRows.some((row: unknown) => {
+				if (typeof row !== "object" || row === null || Array.isArray(row)) {
+					return true;
+				}
+				const entries = Object.entries(row);
+				return (
+					entries.length > MAX_HEADERS ||
+					entries.some(
+						([, value]) =>
+							typeof value !== "string" || value.length > MAX_CELL_LENGTH
+					)
+				);
+			});
+		if (rowsMalformed) {
+			return NextResponse.json(
+				{ error: "Sample rows are too large or malformed" },
+				{ status: 400 }
+			);
+		}
+
 		if (entityType && !["clients", "projects"].includes(entityType)) {
 			return NextResponse.json(
 				{ error: 'Entity type must be "clients" or "projects"' },

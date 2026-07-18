@@ -299,12 +299,12 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		const attempt1 = await t.mutation(
-			api.payments.incrementCheckoutAttemptCounter,
+			internal.payments.incrementCheckoutAttemptCounter,
 			{ paymentId }
 		);
 		expect(attempt1).toBe(1);
 		const attempt2 = await t.mutation(
-			api.payments.incrementCheckoutAttemptCounter,
+			internal.payments.incrementCheckoutAttemptCounter,
 			{ paymentId }
 		);
 		expect(attempt2).toBe(2);

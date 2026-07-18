@@ -8,7 +8,7 @@ import {
 	COOKIE_TTL_SECONDS,
 } from "@/lib/portal/cookie";
 import { signSessionJwt, verifySessionJwt } from "@/lib/portal/jwt";
-import { isSameOrigin } from "@/lib/portal/quotes/map-convex-error";
+import { isSameOrigin } from "@/lib/portal/origin";
 
 export async function POST(req: NextRequest) {
 	if (

@@ -713,6 +713,7 @@ export const submitInterest = mutation({
 			// PUB-13: strip non-phone chars and cap length before interpolating
 			const sanitizedPhone = args.phone
 				.replace(/[^0-9+().x\-\s]/gi, "")
+				.replace(/\s+/g, " ")
 				.trim()
 				.substring(0, 40);
 			if (sanitizedPhone) {

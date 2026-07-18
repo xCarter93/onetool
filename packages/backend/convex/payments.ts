@@ -703,9 +703,9 @@ export const markAsOverdue = userMutation({
 /**
  * Increment the checkout attempt counter used in Stripe idempotency keys.
  */
-// PUB-17: intentionally public — pay-link route helper called by the
-// unauthenticated ConvexHttpClient (renamed off the misleading *Internal suffix).
-export const incrementCheckoutAttemptCounter = mutation({
+// Internal-only: advancing the counter shifts the Stripe idempotency key, so
+// only the portal PI mint (portal/invoicesActions.ts) may call it.
+export const incrementCheckoutAttemptCounter = internalMutation({
 	args: { paymentId: v.id("payments") },
 	returns: v.number(),
 	handler: async (ctx, args): Promise<number> => {

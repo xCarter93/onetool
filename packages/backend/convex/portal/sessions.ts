@@ -61,6 +61,10 @@ export const getActiveSessionByJti = query({
 		if (row.expiresAt < now) return null;
 		if (row.createdAt + ABSOLUTE_MAX_MS < now) return null;
 		if (row.lastActivityAt + IDLE_MAX_MS < now) return null;
+		// PUB-10 parity with getPortalSessionOrThrow: an archived client's
+		// sessions must not mint browser tokens.
+		const client = await ctx.db.get(row.clientId);
+		if (!client || client.status === "archived") return null;
 		return {
 			orgId: row.orgId,
 			clientContactId: row.clientContactId,

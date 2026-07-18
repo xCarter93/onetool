@@ -10,7 +10,7 @@ import {
 	COOKIE_TTL_SECONDS,
 } from "@/lib/portal/cookie";
 import { hashIp, getRequestIp } from "@/lib/portal/ip";
-import { isSameOrigin } from "@/lib/portal/quotes/map-convex-error";
+import { isSameOrigin } from "@/lib/portal/origin";
 
 function randomUUID(): string {
 	return crypto.randomUUID();
