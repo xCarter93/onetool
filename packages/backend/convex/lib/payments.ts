@@ -55,6 +55,46 @@ export async function updateInvoiceStatusIfFullyPaid(
 	}
 }
 
+/**
+ * Reverse of the per-payment cascade: when an invoice is marked paid by any
+ * means outside the portal (e.g. cash/check via the workspace "Mark as Paid"),
+ * settle every still-outstanding installment so the portal reflects it as
+ * completed and never offers a Pay button on an already-paid invoice. Rows
+ * settled here are tagged recordedOutsidePortal so the portal can label them.
+ */
+export async function settleOutstandingPaymentsForInvoice(
+	ctx: MutationCtx,
+	invoiceId: Id<"invoices">,
+): Promise<void> {
+	const rows = await ctx.db
+		.query("payments")
+		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
+		.collect();
+	const now = Date.now();
+	for (const p of rows) {
+		if (
+			p.status === "paid" ||
+			p.status === "cancelled" ||
+			p.status === "refunded"
+		) {
+			continue;
+		}
+		await ctx.db.patch(p._id, {
+			status: "paid",
+			paidAt: now,
+			recordedOutsidePortal: true,
+			// Drop any stale in-flight Stripe cache so the portal can't resume a
+			// mint against a now-settled row.
+			pendingPaymentIntentId: undefined,
+			pendingPaymentIntentClientSecret: undefined,
+			pendingPaymentIntentExpiresAt: undefined,
+			pendingCheckoutSessionId: undefined,
+			pendingCheckoutSessionUrl: undefined,
+			pendingCheckoutSessionExpiresAt: undefined,
+		});
+	}
+}
+
 export async function applyMarkPaidCascade(
 	ctx: MutationCtx,
 	args: ApplyMarkPaidCascadeArgs,

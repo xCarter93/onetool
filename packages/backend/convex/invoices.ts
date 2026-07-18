@@ -24,6 +24,7 @@ import {
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
+import { settleOutstandingPaymentsForInvoice } from "./lib/payments";
 import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
@@ -605,6 +606,12 @@ export const update = userMutation({
 
 		await ctx.db.patch(id, filteredUpdates);
 
+		// Settle outstanding installments when this transition marks the invoice
+		// paid, so a payment taken outside the portal reflects there as completed.
+		if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
+			await settleOutstandingPaymentsForInvoice(ctx, id);
+		}
+
 		// Log appropriate activity based on status change and update aggregates
 		const updatedInvoice = await ctx.db.get(id);
 		if (updatedInvoice) {
@@ -793,6 +800,9 @@ export const markPaid = userMutation({
 			status: "paid",
 			paidAt: Date.now(),
 		});
+		// Settle any outstanding installments so the portal shows this invoice as
+		// paid and never offers a Pay button for a payment taken outside it.
+		await settleOutstandingPaymentsForInvoice(ctx, args.id);
 
 		// Log activity
 		const updatedInvoice = await ctx.db.get(args.id);

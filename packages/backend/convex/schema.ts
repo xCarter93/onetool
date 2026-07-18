@@ -609,6 +609,9 @@ export default defineSchema({
 			v.literal("cancelled")
 		),
 		paidAt: v.optional(v.number()),
+		// True when settled outside the portal (e.g. cash/check reconciled via
+		// the workspace "Mark as Paid"), so the portal can label it as such.
+		recordedOutsidePortal: v.optional(v.boolean()),
 
 		// Public access token for payment URL
 		publicToken: v.string(),

@@ -14,6 +14,7 @@ export interface ReceiptPayment {
 	cardBrand: string | null;
 	cardLast4: string | null;
 	receiptUrl: string | null;
+	recordedOutsidePortal?: boolean;
 }
 
 export interface PaymentReceiptProps {
@@ -61,25 +62,33 @@ export function PaymentReceipt({ payment }: PaymentReceiptProps) {
 					data-payment-receipt-details
 					className={`mt-3 border-t border-emerald-100 pt-3 text-[13px] dark:border-emerald-900 ${transitionClass}`}
 				>
-					{payment.cardBrand && payment.cardLast4 ? (
-						<p className="text-foreground">
-							{payment.cardBrand.toUpperCase()} ···· {payment.cardLast4}
+					{payment.recordedOutsidePortal ? (
+						<p className="text-muted-foreground">
+							Recorded outside the portal (e.g. cash or check).
 						</p>
-					) : null}
-					{payment.receiptUrl ? (
-						<a
-							href={payment.receiptUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="mt-1.5 inline-flex items-center gap-1 text-emerald-800 hover:underline dark:text-emerald-200"
-						>
-							View full receipt
-							<ExternalLink className="h-3 w-3" aria-hidden="true" />
-						</a>
 					) : (
-						<p className="mt-1.5 text-muted-foreground">
-							Receipt details not yet available.
-						</p>
+						<>
+							{payment.cardBrand && payment.cardLast4 ? (
+								<p className="text-foreground">
+									{payment.cardBrand.toUpperCase()} ···· {payment.cardLast4}
+								</p>
+							) : null}
+							{payment.receiptUrl ? (
+								<a
+									href={payment.receiptUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="mt-1.5 inline-flex items-center gap-1 text-emerald-800 hover:underline dark:text-emerald-200"
+								>
+									View full receipt
+									<ExternalLink className="h-3 w-3" aria-hidden="true" />
+								</a>
+							) : (
+								<p className="mt-1.5 text-muted-foreground">
+									Receipt details not yet available.
+								</p>
+							)}
+						</>
 					)}
 				</div>
 			) : null}

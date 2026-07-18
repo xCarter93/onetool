@@ -28,6 +28,7 @@ function row(overrides: Partial<InstallmentRow> = {}): InstallmentRow {
 		cardLast4: overrides.cardLast4 ?? null,
 		cardBrand: overrides.cardBrand ?? null,
 		receiptUrl: overrides.receiptUrl ?? null,
+		recordedOutsidePortal: overrides.recordedOutsidePortal ?? false,
 	};
 }
 

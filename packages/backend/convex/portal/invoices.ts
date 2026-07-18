@@ -32,6 +32,8 @@ export type PortalPaymentPublic = {
 	cardLast4: string | null;
 	cardBrand: string | null;
 	receiptUrl: string | null;
+	// True when this installment was settled outside the portal (cash/check).
+	recordedOutsidePortal: boolean;
 };
 
 export type PortalPaymentSummary = {
@@ -114,6 +116,7 @@ const portalPaymentPublicValidator = v.object({
 	cardLast4: v.union(v.string(), v.null()),
 	cardBrand: v.union(v.string(), v.null()),
 	receiptUrl: v.union(v.string(), v.null()),
+	recordedOutsidePortal: v.boolean(),
 });
 
 const portalInvoiceStatusValidator = v.union(
@@ -203,6 +206,7 @@ function toPortalPaymentPublic(row: Doc<"payments">): PortalPaymentPublic {
 		cardLast4: isPaid ? row.cardLast4 ?? null : null,
 		cardBrand: isPaid ? row.cardBrand ?? null : null,
 		receiptUrl: isPaid ? row.stripeReceiptUrl ?? null : null,
+		recordedOutsidePortal: row.recordedOutsidePortal ?? false,
 	};
 }
 
@@ -548,6 +552,11 @@ export const _getPaymentTargetInternal = internalQuery({
 		}
 		if (invoice.status === "draft" || invoice.status === "cancelled") {
 			throw new ConvexError({ code: "NOT_FOUND" });
+		}
+		// Defensive backstop: a paid invoice is never payable, even if a payment
+		// row somehow lagged behind the invoice status.
+		if (invoice.status === "paid") {
+			throw new ConvexError({ code: "NO_ACTIVE_PAYMENT" });
 		}
 
 		const allPayments = await ctx.db
