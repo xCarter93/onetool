@@ -10,7 +10,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
 import {
 	type ColumnDef,
 	getCoreRowModel,
@@ -18,7 +17,6 @@ import {
 } from "@tanstack/react-table";
 import { ArrowRight, FileText, Search } from "lucide-react";
 
-import { api } from "@onetool/backend/convex/_generated/api";
 import { formatDate, formatMoney } from "@/lib/portal/format";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -38,7 +36,9 @@ import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 
 type QuoteStatus = "sent" | "approved" | "declined" | "expired";
 
-interface QuoteListRow {
+// Mirror of the api.portal.quotes.list item shape — data is fetched
+// server-side in quotes/page.tsx (same pattern as the invoice list).
+export interface QuoteListRow {
 	_id: string;
 	quoteNumber?: string;
 	title?: string;
@@ -174,22 +174,18 @@ function createColumns(
 
 export interface QuoteListProps {
 	businessName: string;
+	quotes: QuoteListRow[];
 }
 
-export function QuoteList({ businessName }: QuoteListProps) {
+export function QuoteList({ businessName, quotes }: QuoteListProps) {
 	const params = useParams<{ clientPortalId: string }>();
 	const router = useRouter();
 	const clientPortalId = params?.clientPortalId ?? "";
-
-	const quotes = useQuery(api.portal.quotes.list, {}) as
-		| QuoteListRow[]
-		| undefined;
 
 	const [search, setSearch] = useState("");
 	const [filter, setFilter] = useState<Filter>("all");
 
 	const filtered = useMemo(() => {
-		if (!quotes) return [];
 		const q = search.trim().toLowerCase();
 		return quotes.filter((row) => {
 			if (filter !== "all" && row.status !== filter) return false;
@@ -201,9 +197,8 @@ export function QuoteList({ businessName }: QuoteListProps) {
 		});
 	}, [quotes, search, filter]);
 
-	const isLoading = quotes === undefined;
-	const isEmpty = !isLoading && (quotes?.length ?? 0) === 0;
-	const isFilterEmpty = !isLoading && !isEmpty && filtered.length === 0;
+	const isEmpty = quotes.length === 0;
+	const isFilterEmpty = !isEmpty && filtered.length === 0;
 
 	const columns = useMemo(
 		() => createColumns(clientPortalId),
@@ -279,7 +274,7 @@ export function QuoteList({ businessName }: QuoteListProps) {
 				<DataGrid
 					table={table}
 					recordCount={filtered.length}
-					isLoading={isLoading}
+					isLoading={false}
 					onRowClick={(row) =>
 						router.push(`/portal/c/${clientPortalId}/quotes/${row._id}`)
 					}

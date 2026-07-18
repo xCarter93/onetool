@@ -92,9 +92,9 @@ export function InvoicePaper({
 		paymentSummary.installmentCount > 1;
 
 	return (
-		<Card data-portal-paper-invoice className="mx-auto w-full max-w-4xl">
+		<Card data-portal-paper-invoice className="mx-auto w-full">
 			<CardContent>
-				<div className="grid grid-cols-1 gap-8 md:grid-cols-[18rem_minmax(0,1fr)] md:gap-10">
+				<div className="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] md:gap-10">
 					{/* Sidebar: brand + status, hero total, metadata, pay surface */}
 					<aside className="flex flex-col gap-5 md:border-r md:border-border md:pr-8">
 						<div className="flex items-center justify-between gap-3">

@@ -50,7 +50,7 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 			: "Discount";
 
 	return (
-		<div className="mx-auto max-w-[760px] rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">
+		<div className="w-full rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">
 			<div className="flex items-start justify-between gap-6">
 				<div>
 					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">

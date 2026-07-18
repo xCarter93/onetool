@@ -242,7 +242,7 @@ export function InvoiceDetailIsland({
 					paymentSummary={data.paymentSummary}
 					paySlot={rightRail}
 				/>
-				<div className="mx-auto mt-6 flex w-full max-w-4xl flex-wrap items-center justify-center gap-2">
+				<div className="mx-auto mt-6 flex w-full flex-wrap items-center justify-center gap-2">
 					<DownloadPdfButton invoiceId={data.invoice._id} hasPdf={hasPdf} />
 					<PrintButton />
 				</div>
