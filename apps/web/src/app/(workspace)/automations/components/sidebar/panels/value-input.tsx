@@ -4,6 +4,10 @@ import React, { useMemo, useState } from "react";
 import { Braces, Check, ChevronsUpDown, X } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import {
+	utcMidnightMsToLocalDate,
+	localDateToUtcMidnightMs,
+} from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,18 +79,6 @@ export type ValueInputFieldSpec = {
 /** A resolved static/fallback primitive. `null` means "cleared / no value". */
 type PrimitiveValue = string | number | boolean | null;
 
-// Calendar dates are stored as UTC-midnight epoch ms (the A2 invariant, checked
-// at runtime by isCalendarDateEpoch). The DatePicker speaks a wall-clock Date,
-// so convert at the boundary: read/write the UTC calendar day via LOCAL parts so
-// the picker shows the right day and storage stays UTC-midnight in every tz.
-function utcMidnightMsToLocalDate(ms: number): Date {
-	const d = new Date(ms);
-	return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
-function localDateToUtcMidnightMs(d: Date): number {
-	return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
 /** A stored fallback that doesn't match the field's type (legacy / hand-authored). */
 function fallbackTypeError(
 	type: FieldType,
@@ -101,6 +93,10 @@ function fallbackTypeError(
 			return typeof fallback === "number" ? null : "Fallback must be a number.";
 		case "date":
 			return typeof fallback === "number" ? null : "Fallback must be a date.";
+		case "datetime":
+			return typeof fallback === "number"
+				? null
+				: "Fallback must be a date and time.";
 		case "text":
 		case "select":
 		case "id":
@@ -130,8 +126,11 @@ function variableNeedsConversion(
 		case "number":
 		case "currency":
 			return optionType !== "number" && optionType !== "currency";
+		// A datetime feeding a date field is normalized to the day by the engine,
+		// so date and datetime are interchangeable in both directions.
 		case "date":
-			return optionType !== "date";
+		case "datetime":
+			return optionType !== "date" && optionType !== "datetime";
 		case "id":
 			return (
 				optionType !== "id" ||
@@ -390,6 +389,60 @@ function TypedPrimitiveControl({
 				className={cn("w-full", invalid && "border-destructive")}
 				placeholder={placeholder}
 			/>
+		);
+	}
+
+	if (field.type === "datetime") {
+		// Datetime stores an exact epoch-ms instant, composed/decomposed in the
+		// browser's local zone (plain Date getters — the UTC helpers above are
+		// for calendar dates only).
+		const current =
+			typeof value === "number" && !Number.isNaN(value)
+				? new Date(value)
+				: null;
+		const timeText = current
+			? `${String(current.getHours()).padStart(2, "0")}:${String(
+					current.getMinutes()
+				).padStart(2, "0")}`
+			: "";
+		const compose = (day: Date, hours: number, minutes: number) =>
+			new Date(
+				day.getFullYear(),
+				day.getMonth(),
+				day.getDate(),
+				hours,
+				minutes
+			).getTime();
+		return (
+			<div className="flex items-center gap-1.5">
+				<DatePicker
+					value={current ?? undefined}
+					onChange={(d) =>
+						onChange(
+							d
+								? compose(d, current?.getHours() ?? 0, current?.getMinutes() ?? 0)
+								: null
+						)
+					}
+					className={cn("flex-1 min-w-0", invalid && "border-destructive")}
+					placeholder={placeholder}
+				/>
+				<Input
+					type="time"
+					aria-label="Time"
+					aria-invalid={invalid || undefined}
+					value={timeText}
+					onChange={(e) => {
+						// "".split(":") yields [""] -> m === undefined, which
+						// Number.isNaN misses and compose() would turn into NaN.
+						if (!e.target.value) return;
+						const [h, m] = e.target.value.split(":").map(Number);
+						if (Number.isNaN(h) || Number.isNaN(m)) return;
+						onChange(compose(current ?? new Date(), h, m));
+					}}
+					className="w-28 shrink-0"
+				/>
+			</div>
 		);
 	}
 

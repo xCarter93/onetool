@@ -47,6 +47,7 @@ import {
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
 import { formatCurrency } from "@/lib/money";
+import { utcMidnightMsToLocalDate } from "@/lib/dates";
 import { useToast } from "@/hooks/use-toast";
 
 type InvoiceStatus = Doc<"invoices">["status"];
@@ -80,6 +81,12 @@ function formatDate(ts: number | null | undefined): string {
 		day: "numeric",
 		year: "numeric",
 	});
+}
+
+/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
+function formatCalendarDate(ts: number | null | undefined): string {
+	if (!ts) return "—";
+	return formatDate(utcMidnightMsToLocalDate(ts).getTime());
 }
 
 // Overdue is computed from a past-due "sent" invoice. Reads the clock inside a
@@ -289,7 +296,7 @@ export function InvoiceDetailDrawer({
 												{payment.description ?? "Payment"}
 											</span>
 											<span className="text-muted-foreground text-xs">
-												Due {formatDate(payment.dueDate)}
+												Due {formatCalendarDate(payment.dueDate)}
 												{payment.paidAt
 													? ` · Paid ${formatDate(payment.paidAt)}`
 													: ""}
@@ -321,9 +328,11 @@ export function InvoiceDetailDrawer({
 							</DrawerField>
 							<DrawerField label="Project">{project?.title ?? "—"}</DrawerField>
 							<DrawerField label="Issued">
-								{formatDate(invoice.issuedDate)}
+								{formatCalendarDate(invoice.issuedDate)}
 							</DrawerField>
-							<DrawerField label="Due">{formatDate(invoice.dueDate)}</DrawerField>
+							<DrawerField label="Due">
+								{formatCalendarDate(invoice.dueDate)}
+							</DrawerField>
 							<DrawerField label="From quote">
 								{data.sourceQuote?.quoteNumber
 									? `#${data.sourceQuote.quoteNumber}`

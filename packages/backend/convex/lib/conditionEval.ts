@@ -1,11 +1,14 @@
 import type {
+	AutomationObjectType,
 	ConditionGroup,
 	ConditionRule,
 	FormulaResource,
 	FormulaReturnType,
 	ValueRef,
 } from "./workflowTypes";
+import { getFieldDefinition } from "./fieldRegistry";
 import {
+	calendarDayEpoch,
 	evaluateFormula,
 	isCalendarDateEpoch,
 	parseFormula,
@@ -32,7 +35,12 @@ export type VariableScope = {
 	};
 	loops?: Record<
 		string,
-		{ item: Record<string, unknown>; index: number; count?: number }
+		{
+			item: Record<string, unknown>;
+			index: number;
+			count?: number;
+			objectType?: AutomationObjectType;
+		}
 	>;
 	/** Per-node outputs: fetch → count; aggregate/adjust-time → result. */
 	nodes?: Record<string, { count?: number; result?: unknown }>;
@@ -367,22 +375,52 @@ function compareNumeric(
 	return cmp(a, b);
 }
 
-function compareDates(
+/**
+ * "on (day)": both values denote the same calendar day in the run tz.
+ * calendarDayEpoch reads calendar-date epochs as UTC parts and instants as
+ * zoned parts, so `dueDate on TODAY()` and `paidAt on <date>` both work.
+ */
+function onSameDay(
 	fieldValue: unknown,
 	compareValue: unknown,
+	tz: string
+): boolean {
+	const a = toEpochMs(fieldValue);
+	const b = toEpochMs(compareValue);
+	if (Number.isNaN(a) || Number.isNaN(b)) return false;
+	return calendarDayEpoch(a, tz) === calendarDayEpoch(b, tz);
+}
+
+/**
+ * Granularity-matched comparison shared by before/after and date equality
+ * (mirrors formula compareValues/dateEquals): same kind (both calendar dates
+ * or both instants) compares exact epochs; mixed compares the calendar day
+ * each denotes in the run tz. Without this, `dueDate before NOW()` flips
+ * depending on the hour the run happens to fire.
+ */
+function zonedDateCmp(
+	fieldValue: unknown,
+	compareValue: unknown,
+	tz: string,
 	cmp: (a: number, b: number) => boolean
 ): boolean {
 	const a = toEpochMs(fieldValue);
 	const b = toEpochMs(compareValue);
 	if (Number.isNaN(a) || Number.isNaN(b)) return false;
-	return cmp(a, b);
+	if (isCalendarDateEpoch(a) === isCalendarDateEpoch(b)) return cmp(a, b);
+	return cmp(calendarDayEpoch(a, tz), calendarDayEpoch(b, tz));
 }
 
-/** Evaluate one rule against a record. */
+/**
+ * Evaluate one rule against a record. `objectType` (when the caller knows the
+ * record's type) makes equals/before/after registry-aware for date-typed
+ * fields; without it they keep the raw exact-value semantics.
+ */
 export function evaluateRule(
 	rule: ConditionRule,
 	record: Record<string, unknown>,
-	scope: VariableScope
+	scope: VariableScope,
+	objectType?: AutomationObjectType
 ): boolean {
 	// A rule with an explicit `left` compares a scope value (aggregate result,
 	// fetch count) and never touches the record — that is how a record-less run
@@ -394,10 +432,25 @@ export function evaluateRule(
 		? resolveValueRef(rule.value, scope)
 		: undefined;
 
+	const tz = scope.workflow?.tz ?? "UTC";
+	// Date-typed fields get zoned, granularity-matched semantics; a scope-left
+	// rule (rule.left) or unknown objectType falls back to raw comparison.
+	const fieldDateKind =
+		objectType && !rule.left
+			? getFieldDefinition(objectType, rule.field)?.type
+			: undefined;
+	const isDateField = fieldDateKind === "date" || fieldDateKind === "datetime";
+
 	switch (rule.operator) {
 		case "equals":
+			if (isDateField && fieldValue != null && compareValue != null) {
+				return zonedDateCmp(fieldValue, compareValue, tz, (a, b) => a === b);
+			}
 			return looseEquals(fieldValue, compareValue);
 		case "not_equals":
+			if (isDateField && fieldValue != null && compareValue != null) {
+				return !zonedDateCmp(fieldValue, compareValue, tz, (a, b) => a === b);
+			}
 			return !looseEquals(fieldValue, compareValue);
 		case "contains":
 			return contains(fieldValue, compareValue);
@@ -420,9 +473,11 @@ export function evaluateRule(
 		case "is_false":
 			return fieldValue === false;
 		case "before":
-			return compareDates(fieldValue, compareValue, (a, b) => a < b);
+			return zonedDateCmp(fieldValue, compareValue, tz, (a, b) => a < b);
 		case "after":
-			return compareDates(fieldValue, compareValue, (a, b) => a > b);
+			return zonedDateCmp(fieldValue, compareValue, tz, (a, b) => a > b);
+		case "on":
+			return onSameDay(fieldValue, compareValue, tz);
 		default: {
 			const _exhaustive: never = rule.operator;
 			return _exhaustive;
@@ -434,12 +489,13 @@ export function evaluateRule(
 export function evaluateGroup(
 	group: ConditionGroup,
 	record: Record<string, unknown>,
-	scope: VariableScope
+	scope: VariableScope,
+	objectType?: AutomationObjectType
 ): boolean {
 	if (group.rules.length === 0) return true;
 	return group.logic === "and"
-		? group.rules.every((rule) => evaluateRule(rule, record, scope))
-		: group.rules.some((rule) => evaluateRule(rule, record, scope));
+		? group.rules.every((rule) => evaluateRule(rule, record, scope, objectType))
+		: group.rules.some((rule) => evaluateRule(rule, record, scope, objectType));
 }
 
 /** Evaluate groups combined with top-level logic; empty groups => true. */
@@ -447,10 +503,11 @@ export function evaluateConditionGroups(
 	logic: "and" | "or",
 	groups: ConditionGroup[],
 	record: Record<string, unknown>,
-	scope: VariableScope
+	scope: VariableScope,
+	objectType?: AutomationObjectType
 ): boolean {
 	if (groups.length === 0) return true;
 	return logic === "and"
-		? groups.every((group) => evaluateGroup(group, record, scope))
-		: groups.some((group) => evaluateGroup(group, record, scope));
+		? groups.every((group) => evaluateGroup(group, record, scope, objectType))
+		: groups.some((group) => evaluateGroup(group, record, scope, objectType));
 }

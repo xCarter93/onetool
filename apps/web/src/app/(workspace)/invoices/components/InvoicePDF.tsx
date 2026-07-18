@@ -345,6 +345,15 @@ const formatDate = (timestamp: number) =>
 		day: "2-digit",
 	});
 
+// Calendar-date fields (issued/due) are stored as UTC-midnight epochs; format in UTC so the day never shifts.
+const formatCalendarDate = (timestamp: number) =>
+	new Date(timestamp).toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		timeZone: "UTC",
+	});
+
 export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 	invoice,
 	client,
@@ -407,11 +416,15 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 					</View>
 					<View style={styles.metaItem}>
 						<Text style={styles.metaLabel}>Issued</Text>
-						<Text style={styles.metaValue}>{formatDate(invoice.issuedDate)}</Text>
+						<Text style={styles.metaValue}>
+							{formatCalendarDate(invoice.issuedDate)}
+						</Text>
 					</View>
 					<View style={styles.metaItem}>
 						<Text style={styles.metaLabel}>Due Date</Text>
-						<Text style={styles.metaValue}>{formatDate(invoice.dueDate)}</Text>
+						<Text style={styles.metaValue}>
+							{formatCalendarDate(invoice.dueDate)}
+						</Text>
 					</View>
 				</View>
 
@@ -525,7 +538,7 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 											{formatCurrency(payment.paymentAmount)}
 										</Text>
 										<Text style={styles.colPayDueDate}>
-											{formatDate(payment.dueDate)}
+											{formatCalendarDate(payment.dueDate)}
 										</Text>
 									</View>
 								))}
@@ -545,7 +558,7 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 								{formatCurrency(invoice.total)}
 							</Text>
 							<Text style={styles.amountDueDate}>
-								Payment due by {formatDate(invoice.dueDate)}
+								Payment due by {formatCalendarDate(invoice.dueDate)}
 							</Text>
 						</View>
 					)}

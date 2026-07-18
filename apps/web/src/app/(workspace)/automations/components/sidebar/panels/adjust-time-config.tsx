@@ -103,7 +103,10 @@ export function AdjustTimeConfigPanel({
 						/>
 					</PanelField>
 
-					<PanelField label="Adjust by">
+					<PanelField
+						label="Adjust by"
+						helper="Days and weeks follow the calendar in the automation's timezone (daylight saving safe); minutes and hours are exact offsets."
+					>
 						<div className="flex items-center gap-2">
 							<Input
 								type="number"

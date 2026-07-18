@@ -309,6 +309,15 @@ const formatDate = (timestamp: number) =>
 		day: "2-digit",
 	});
 
+// validUntil is stored as a UTC-midnight epoch; format in UTC so the day never shifts.
+const formatCalendarDate = (timestamp: number) =>
+	new Date(timestamp).toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		timeZone: "UTC",
+	});
+
 export const QuotePDF: React.FC<QuotePDFProps> = ({
 	quote,
 	client,
@@ -377,7 +386,9 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 					{quote.validUntil && (
 						<View style={styles.metaItem}>
 							<Text style={styles.metaLabel}>Valid Until</Text>
-							<Text style={styles.metaValue}>{formatDate(quote.validUntil)}</Text>
+							<Text style={styles.metaValue}>
+								{formatCalendarDate(quote.validUntil)}
+							</Text>
 						</View>
 					)}
 				</View>

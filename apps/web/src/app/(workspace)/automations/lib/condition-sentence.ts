@@ -28,6 +28,7 @@ export const OPERATOR_LABELS: Record<ConditionOperator, string> = {
 	is_false: "is false",
 	before: "is before",
 	after: "is after",
+	on: "is on (day)",
 };
 
 export type SentencePart = { kind: "rule" | "text"; text: string };

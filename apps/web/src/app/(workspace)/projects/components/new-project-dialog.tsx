@@ -31,6 +31,7 @@ import {
 import { MultiSelector } from "@/components/shared/multi-selector";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
+import { localDateToUtcMidnightMs } from "@/lib/dates";
 
 type ClientId = Id<"clients">;
 type UserId = Id<"users">;
@@ -103,8 +104,12 @@ export function NewProjectDialog({
 					description: value.description.trim() || undefined,
 					status: "planned",
 					projectType: value.projectType,
-					startDate: value.startDate?.getTime(),
-					endDate: value.endDate?.getTime(),
+					startDate: value.startDate
+						? localDateToUtcMidnightMs(value.startDate)
+						: undefined,
+					endDate: value.endDate
+						? localDateToUtcMidnightMs(value.endDate)
+						: undefined,
 					assignedUserIds: value.assignedUserIds.length
 						? (value.assignedUserIds as UserId[])
 						: undefined,

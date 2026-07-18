@@ -55,11 +55,17 @@ describe("portal helpers jti-validation", () => {
 	});
 
 	it("getPortalSessionOrThrow accepts both convex-portal and convex-portal-access audiences (Review fix #4)", () => {
-		const path = resolve(__dirname, "./helpers.ts");
-		const src = readFileSync(path, "utf-8");
-		expect(src).toContain('"convex-portal"');
-		expect(src).toContain('"convex-portal-access"');
+		const src = readFileSync(resolve(__dirname, "./helpers.ts"), "utf-8");
+		// helpers.ts derives its accepted set from the shared audience list
+		// (PR #258); the literals live in portal/audiences.ts.
+		expect(src).toContain("PORTAL_JWT_AUDIENCES");
 		expect(src).toContain("ACCEPTED_AUDIENCES");
 		expect(src).toContain("sessionJti");
+		const audiences = readFileSync(
+			resolve(__dirname, "./audiences.ts"),
+			"utf-8"
+		);
+		expect(audiences).toContain('"convex-portal"');
+		expect(audiences).toContain('"convex-portal-access"');
 	});
 });

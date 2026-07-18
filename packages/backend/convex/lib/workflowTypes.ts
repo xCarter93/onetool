@@ -150,6 +150,7 @@ export const CONDITION_OPERATORS = [
 	"is_false",
 	"before",
 	"after",
+	"on",
 ] as const;
 
 export type ConditionOperator = (typeof CONDITION_OPERATORS)[number];
@@ -168,7 +169,8 @@ export const conditionOperatorValidator = v.union(
 	v.literal("is_true"),
 	v.literal("is_false"),
 	v.literal("before"),
-	v.literal("after")
+	v.literal("after"),
+	v.literal("on")
 );
 
 /** Operators that do not take a comparison value. */

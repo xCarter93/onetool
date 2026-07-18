@@ -154,7 +154,7 @@ function effectiveTriggerType(
 
 /** Built-in globals, resolved on every run — shared by both variable-listing functions. */
 const GLOBAL_VARIABLE_OPTIONS: VariableOption[] = [
-	{ path: "workflow.now", label: "Current time", group: "Globals", fieldType: "date" },
+	{ path: "workflow.now", label: "Current time", group: "Globals", fieldType: "datetime" },
 	{ path: "org.id", label: "Organization ID", group: "Globals", fieldType: "text" },
 	{ path: "org.name", label: "Organization name", group: "Globals", fieldType: "text" },
 	{
@@ -360,7 +360,7 @@ export function getAvailableVariables(
 					? "Aggregate result"
 					: "Adjusted time result",
 			group: "Computed",
-			fieldType: node.type === "aggregate" ? "number" : "date",
+			fieldType: node.type === "aggregate" ? "number" : "datetime",
 		});
 	}
 
@@ -484,7 +484,7 @@ export function getAllVariableOptions(
 					? "Aggregate result"
 					: "Adjusted time result",
 			group: "Computed",
-			fieldType: node.type === "aggregate" ? "number" : "date",
+			fieldType: node.type === "aggregate" ? "number" : "datetime",
 		});
 	}
 

@@ -1594,6 +1594,86 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 	});
 
+	describe("org timezone drives event-trigger formula evaluation (C2-2a)", () => {
+		/** record_created(project) -> write TODAY() into startDate. */
+		function stampTodayAutomation() {
+			return {
+				name: "Stamp today",
+				trigger: {
+					type: "record_created" as const,
+					objectType: "project" as const,
+				},
+				formulas: [
+					{
+						id: "today",
+						name: "Today",
+						returnType: "date" as const,
+						expression: "TODAY()",
+					},
+				],
+				nodes: [
+					{
+						id: "act-1",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "update_field" as const,
+								target: "self" as const,
+								field: "startDate",
+								value: { kind: "var" as const, path: "formula.today" },
+							},
+						},
+					},
+				],
+				isActive: true,
+			};
+		}
+
+		async function createProject(asUser: ReturnType<typeof t.withIdentity>) {
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+			return asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Kitchen remodel",
+				status: "planned",
+				projectType: "one-off",
+			});
+		}
+
+		it("evaluates TODAY() in the org timezone", async () => {
+			const { orgId, asUser } = await setupUser();
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { timezone: "America/New_York" })
+			);
+			// 02:00 UTC on Jul 4 is still Jul 3 in New York — the two clocks
+			// disagree about the calendar day.
+			vi.setSystemTime(Date.UTC(2026, 6, 4, 2, 0));
+
+			await asUser.mutation(api.automations.create, stampTodayAutomation());
+			const projectId = await createProject(asUser);
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.startDate).toBe(Date.UTC(2026, 6, 3));
+		});
+
+		it("falls back to UTC when the org has no timezone", async () => {
+			const { asUser } = await setupUser();
+			vi.setSystemTime(Date.UTC(2026, 6, 4, 2, 0));
+
+			await asUser.mutation(api.automations.create, stampTodayAutomation());
+			const projectId = await createProject(asUser);
+			await drainEvents();
+
+			const project = await t.run(async (ctx) => ctx.db.get(projectId));
+			expect(project?.startDate).toBe(Date.UTC(2026, 6, 4));
+		});
+	});
+
 	describe("org isolation", () => {
 		it("does not fire an org A automation for an org B record", async () => {
 			const orgA = await setupUser({
@@ -3473,6 +3553,64 @@ describe("automationExecutor (v2 engine)", () => {
 				)?.result;
 			expect(result("plus")).toBe(base + 5 * 86_400_000);
 			expect(result("minus")).toBe(base - 2 * 3_600_000);
+		});
+
+		it("adjust_time: whole-day shifts preserve wall-clock across DST (C2-3)", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			// Mar 7 2026 12:00 EST; +3 days crosses the Mar 8 spring-forward.
+			const instantBase = Date.UTC(2026, 2, 7, 17, 0);
+			// A calendar date advances in pure UTC and must stay UTC midnight.
+			const calendarBase = Date.UTC(2026, 2, 7);
+
+			const adjustNode = (id: string, base: number, next: string) => ({
+				id,
+				type: "adjust_time" as const,
+				config: {
+					kind: "adjust_time" as const,
+					base: { kind: "static" as const, value: base },
+					amount: 3,
+					unit: "days" as const,
+					direction: "add" as const,
+				},
+				nextNodeId: next,
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "DST shift",
+				trigger: {
+					type: "scheduled",
+					schedule: {
+						frequency: "daily",
+						timezone: "America/New_York",
+						time: "09:00",
+					},
+				},
+				nodes: [
+					adjustNode("instant", instantBase, "calendar"),
+					adjustNode("calendar", calendarBase, "end-1"),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const result = (nodeId: string) =>
+				(
+					executions[0].nodesExecuted.find((n) => n.nodeId === nodeId)
+						?.output as { result: number } | undefined
+				)?.result;
+			// Still 12:00 on the wall in New York — now EDT, i.e. 16:00 UTC.
+			// Fixed-ms math would return 17:00 UTC (a 1pm wall time).
+			expect(result("instant")).toBe(Date.UTC(2026, 2, 10, 16, 0));
+			expect(result("calendar")).toBe(Date.UTC(2026, 2, 10));
 		});
 
 		it("send_notification recipient org_admins: creates an automation_message notification per admin", async () => {

@@ -49,6 +49,7 @@ import {
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
 import { formatCurrency } from "@/lib/money";
+import { utcMidnightMsToLocalDate } from "@/lib/dates";
 
 type QuoteStatus = Doc<"quotes">["status"];
 
@@ -75,6 +76,12 @@ function formatDate(ts: number | null | undefined): string {
 		day: "numeric",
 		year: "numeric",
 	});
+}
+
+/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
+function formatCalendarDate(ts: number | null | undefined): string {
+	if (!ts) return "—";
+	return formatDate(utcMidnightMsToLocalDate(ts).getTime());
 }
 
 export interface QuoteDetailDrawerProps {
@@ -338,7 +345,7 @@ export function QuoteDetailDrawer({
 								{data.project?.title ?? "—"}
 							</DrawerField>
 							<DrawerField label="Valid Until">
-								{formatDate(quote.validUntil)}
+								{formatCalendarDate(quote.validUntil)}
 							</DrawerField>
 							{quote.sentAt ? (
 								<DrawerField label="Sent">

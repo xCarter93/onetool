@@ -27,7 +27,13 @@ import {
 	resolveValueRef,
 	type VariableScope,
 } from "./lib/conditionEval";
-import { calendarDayEpoch, toEpochMs } from "./lib/formula";
+import {
+	calendarDayEpoch,
+	getZonedParts,
+	isCalendarDateEpoch,
+	toEpochMs,
+	zonedPartsToEpoch,
+} from "./lib/formula";
 import {
 	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
 	FREE_MAX_CLIENTS,
@@ -117,13 +123,17 @@ function executableDefinition(automation: AutomationDoc): {
 
 /**
  * IANA timezone for formula date math. Scheduled automations use their schedule
- * timezone; everything else defaults to UTC (there is no per-org tz field).
+ * timezone; event triggers use the org timezone (auto-detected at onboarding,
+ * editable in org settings), falling back to UTC for orgs that never set one.
  */
-function automationFormulaTz(trigger: AutomationTrigger): string {
+function automationFormulaTz(
+	trigger: AutomationTrigger,
+	orgTimezone: string | undefined
+): string {
 	if ("type" in trigger && trigger.type === "scheduled") {
 		return trigger.schedule.timezone;
 	}
-	return "UTC";
+	return orgTimezone ?? "UTC";
 }
 
 /** Extract a user id from a "manual:"/"test:"/"actor:" triggeredBy marker. */
@@ -164,15 +174,15 @@ async function buildGlobalsScope(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	nowMs: number,
-	tz: string,
+	trigger: AutomationTrigger,
 	triggeredBy: string,
 	run: NonNullable<VariableScope["run"]>
 ): Promise<Pick<VariableScope, "workflow" | "org" | "user" | "run">> {
+	const org = await ctx.db.get(orgId);
 	const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
-		workflow: { now: nowMs, tz },
+		workflow: { now: nowMs, tz: automationFormulaTz(trigger, org?.timezone) },
 		run,
 	};
-	const org = await ctx.db.get(orgId);
 	if (org) globals.org = { id: orgId, name: org.name };
 
 	const actorUserId = parseActorUserId(ctx, triggeredBy);
@@ -338,7 +348,10 @@ export const findMatchingAutomations = internalQuery({
 							? { oldValue: args.fromStatus, newValue: args.toStatus }
 							: undefined,
 				},
-				workflow: { now: Date.now(), tz: automationFormulaTz(trigger) },
+				workflow: {
+					now: Date.now(),
+					tz: automationFormulaTz(trigger, org?.timezone),
+				},
 				org: org ? { id: args.orgId, name: org.name } : undefined,
 				user: actor
 					? { id: actor._id, name: actor.name, email: actor.email }
@@ -349,7 +362,8 @@ export const findMatchingAutomations = internalQuery({
 				criteria.logic,
 				criteria.groups,
 				record,
-				scope
+				scope,
+				args.objectType
 			);
 		});
 	},
@@ -1110,7 +1124,7 @@ export const executeAutomation = systemMutation({
 			ctx,
 			automation.orgId,
 			execution.triggeredAt,
-			automationFormulaTz(definition.trigger),
+			definition.trigger,
 			execution.triggeredBy,
 			runMetadata(automation, args.executionId, definition.trigger)
 		);
@@ -1306,7 +1320,7 @@ export const resumeExecution = systemMutation({
 			ctx,
 			automation.orgId,
 			execution.triggeredAt,
-			automationFormulaTz(definition.trigger),
+			definition.trigger,
 			execution.triggeredBy,
 			runMetadata(automation, args.executionId, definition.trigger)
 		);
@@ -2302,7 +2316,13 @@ async function runFetchNode(
 			env.orgId,
 			{
 				predicate: (row) =>
-					evaluateConditionGroups("and", config.filters, row, env.scope),
+					evaluateConditionGroups(
+						"and",
+						config.filters,
+						row,
+						env.scope,
+						config.objectType
+					),
 				// Sorting needs every match in range; without one, rows already
 				// arrive newest-first so the scan can stop at the node's limit.
 				stopAfterMatches: config.sortBy ? undefined : limit,
@@ -2413,8 +2433,30 @@ function runAdjustTimeNode(
 		};
 	}
 	const sign = config.direction === "subtract" ? -1 : 1;
-	const value =
-		baseMs + sign * config.amount * ADJUST_TIME_UNIT_MS[config.unit];
+	const days =
+		config.unit === "days"
+			? sign * config.amount
+			: config.unit === "weeks"
+				? sign * config.amount * 7
+				: null;
+	let value: number;
+	if (days !== null && Number.isInteger(days)) {
+		// Whole-day math mirrors ADDDAYS: a calendar date advances in UTC (no
+		// DST there, result stays exactly UTC midnight); an instant preserves
+		// its wall-clock time in the run tz across DST transitions. Fixed-ms
+		// day math would drift an hour over a DST boundary.
+		if (isCalendarDateEpoch(baseMs)) {
+			value = baseMs + days * 86_400_000;
+		} else {
+			const tz = scope.workflow?.tz ?? "UTC";
+			const parts = getZonedParts(baseMs, tz);
+			value = zonedPartsToEpoch({ ...parts, day: parts.day + days }, tz);
+		}
+	} else {
+		// Minutes/hours are absolute offsets; fractional day amounts keep the
+		// legacy fixed-ms behavior (parts math needs whole days).
+		value = baseMs + sign * config.amount * ADJUST_TIME_UNIT_MS[config.unit];
+	}
 	scope.nodes ??= {};
 	scope.nodes[nodeId] = { ...scope.nodes[nodeId], result: value };
 	return { ok: true, value };
@@ -2562,6 +2604,7 @@ async function executeNodeV2(
 	switch (config.kind) {
 		case "condition": {
 			let record: Record<string, unknown>;
+			let recordType: AutomationObjectType | undefined;
 			if (config.source && typeof config.source === "object") {
 				const loopScope = env.scope.loops?.[config.source.loopNodeId];
 				if (!loopScope) {
@@ -2571,14 +2614,17 @@ async function executeNodeV2(
 					};
 				}
 				record = loopScope.item;
+				recordType = loopScope.objectType;
 			} else {
 				record = scopeRecord?.record ?? {};
+				recordType = scopeRecord?.type;
 			}
 			const conditionMet = evaluateConditionGroups(
 				config.logic,
 				config.groups,
 				record,
-				env.scope
+				env.scope,
+				recordType
 			);
 			return { success: true, conditionMet };
 		}
@@ -2833,6 +2879,24 @@ function coerceFieldValue(
 			// from writing one into a date field, where it would be misread as an
 			// instant from then on.
 			return { ok: true, value: calendarDayEpoch(n, tz) };
+		}
+		case "datetime": {
+			// An instant field stores the exact moment — no day normalization.
+			// (All datetime fields are writable:false today; this keeps the
+			// switch exhaustive and correct if one ever opens up.)
+			const n =
+				raw instanceof Date
+					? raw.getTime()
+					: typeof raw === "number"
+						? raw
+						: Date.parse(String(raw));
+			if (Number.isNaN(n)) {
+				return {
+					ok: false,
+					error: `"${String(raw)}" is not a valid date for field "${fieldDef.key}"`,
+				};
+			}
+			return { ok: true, value: n };
 		}
 		case "id": {
 			// An array-valued source (project.assignedUserIds) feeding a
@@ -4817,6 +4881,7 @@ async function dryExecuteNode(
 	const config = node.config;
 	if (config?.kind === "condition") {
 		let record: Record<string, unknown>;
+		let recordType: AutomationObjectType | undefined;
 		if (config.source && typeof config.source === "object") {
 			const loopScope = env.scope.loops?.[config.source.loopNodeId];
 			if (!loopScope) {
@@ -4826,14 +4891,17 @@ async function dryExecuteNode(
 				};
 			}
 			record = loopScope.item;
+			recordType = loopScope.objectType;
 		} else {
 			record = scopeRecord?.record ?? {};
+			recordType = scopeRecord?.type;
 		}
 		const conditionMet = evaluateConditionGroups(
 			config.logic,
 			config.groups,
 			record,
-			env.scope
+			env.scope,
+			recordType
 		);
 		return {
 			success: true,
@@ -5299,7 +5367,7 @@ export const startTestRun = userMutation({
 		// The tester is always the actor for a dry run.
 		const testerOrg = await ctx.db.get(ctx.orgId);
 		const globals: Pick<VariableScope, "workflow" | "org" | "user" | "run"> = {
-			workflow: { now, tz: automationFormulaTz(trigger) },
+			workflow: { now, tz: automationFormulaTz(trigger, testerOrg?.timezone) },
 			org: testerOrg ? { id: ctx.orgId, name: testerOrg.name } : undefined,
 			user: { id: ctx.user._id, name: ctx.user.name, email: ctx.user.email },
 			// executionId is omitted — the workflowExecutions row isn't inserted until

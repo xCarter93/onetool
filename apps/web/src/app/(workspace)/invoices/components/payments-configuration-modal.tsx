@@ -21,6 +21,10 @@ import Modal from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency, parseCurrencyInput } from "@/lib/money";
+import {
+	localDateToUtcMidnightMs,
+	utcMidnightMsToLocalDate,
+} from "@/lib/dates";
 
 // ============================================================================
 // Types
@@ -231,9 +235,16 @@ function PaymentRow({
 								Due Date
 							</label>
 							<DatePicker
-								value={payment.dueDate ? new Date(payment.dueDate) : undefined}
+								value={
+									payment.dueDate
+										? utcMidnightMsToLocalDate(payment.dueDate)
+										: undefined
+								}
 								onChange={(date) =>
-									date && onUpdate(payment.id, { dueDate: date.getTime() })
+									date &&
+									onUpdate(payment.id, {
+										dueDate: localDateToUtcMidnightMs(date),
+									})
 								}
 								disabled={payment.isPaid}
 								formatDate={formatDueDate}
@@ -450,7 +461,8 @@ export function PaymentsConfigurationModal({
 		const newPayment: LocalPayment = {
 			id: generateLocalId(),
 			paymentAmount: Math.round(remaining * 100) / 100,
-			dueDate: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days from now
+			dueDate:
+				localDateToUtcMidnightMs(new Date()) + 30 * 24 * 60 * 60 * 1000, // 30 days from today
 			description: `Payment ${unpaidPayments.length + 1}`,
 			isPaid: false,
 			sortOrder: maxSortOrder + 1,

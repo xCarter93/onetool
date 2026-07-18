@@ -471,13 +471,16 @@ function validateFallbackType(
 			? "a boolean"
 			: fieldType === "number" || fieldType === "currency"
 				? "a number"
-				: fieldType === "date"
+				: fieldType === "date" || fieldType === "datetime"
 					? "a date"
 					: "text";
 	const ok =
 		fieldType === "boolean"
 			? typeof fallback === "boolean"
-			: fieldType === "number" || fieldType === "currency" || fieldType === "date"
+			: fieldType === "number" ||
+					fieldType === "currency" ||
+					fieldType === "date" ||
+					fieldType === "datetime"
 				? typeof fallback === "number"
 				: typeof fallback === "string";
 	if (!ok) {

@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
+import { todayUtcMidnightMs } from "@/lib/dates";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
@@ -111,7 +112,7 @@ const getEffectiveStatus = (
 	status: InvoiceStatus,
 	dueDate: number
 ): InvoiceStatus =>
-	status === "sent" && dueDate < Date.now() ? "overdue" : status;
+	status === "sent" && dueDate < todayUtcMidnightMs() ? "overdue" : status;
 
 // appearance chosen to match the legacy statusVariant() boldness: solid for the
 // primary/positive status, soft for the mid-weight statuses, outline for the rest.
@@ -155,9 +156,10 @@ const formatStatus = (status: InvoiceStatus) => {
 	}
 };
 
+// Calendar-date fields are stored as UTC-midnight epochs; format in UTC so the day never shifts.
 const formatInvoiceDate = (timestamp?: number) => {
 	if (!timestamp) return "Not set";
-	return new Date(timestamp).toLocaleDateString();
+	return new Date(timestamp).toLocaleDateString(undefined, { timeZone: "UTC" });
 };
 
 const createColumns = (
@@ -216,7 +218,7 @@ const createColumns = (
 		header: "Issued",
 		cell: ({ row }) => (
 			<span className="text-foreground">
-				{new Date(row.original.issuedDate).toLocaleDateString()}
+				{formatInvoiceDate(row.original.issuedDate)}
 			</span>
 		),
 	},
@@ -224,8 +226,9 @@ const createColumns = (
 		accessorKey: "dueDate",
 		header: "Due Date",
 		cell: ({ row }) => {
-			const d = new Date(row.original.dueDate);
-			const isOverdue = d < new Date() && row.original.status !== "paid";
+			const isOverdue =
+				row.original.dueDate < todayUtcMidnightMs() &&
+				row.original.status !== "paid";
 			return (
 				<span
 					className={cn(
@@ -233,7 +236,7 @@ const createColumns = (
 						isOverdue && "text-destructive font-medium"
 					)}
 				>
-					{d.toLocaleDateString()}
+					{formatInvoiceDate(row.original.dueDate)}
 				</span>
 			);
 		},
@@ -645,7 +648,9 @@ function InvoicesPageContent() {
 						? undefined
 						: `${
 								data.filter(
-									(inv) => inv.status === "sent" && inv.dueDate < Date.now()
+									(inv) =>
+										inv.status === "sent" &&
+										inv.dueDate < todayUtcMidnightMs()
 								).length
 							} overdue · ${formatCurrency(
 								data
@@ -840,7 +845,7 @@ function InvoicesPageContent() {
 																	<span aria-hidden>·</span>
 																	<span
 																		className={cn(
-																			item.dueDate < Date.now() &&
+																			item.dueDate < todayUtcMidnightMs() &&
 																				item.status !== "paid" &&
 																				"text-destructive font-medium"
 																		)}

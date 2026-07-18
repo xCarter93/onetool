@@ -37,6 +37,8 @@ import {
 	type AddressData,
 } from "@/components/ui/address-autocomplete";
 import SelectService from "@/components/shared/choice-set";
+import ComboBox from "@/components/ui/combo-box";
+import { TIMEZONES } from "@/lib/timezones";
 import {
 	Frame,
 	FrameHeader,
@@ -89,6 +91,7 @@ type BusinessFormState = {
 	latitude: number | null;
 	longitude: number | null;
 	companySize: string;
+	timezone: string;
 	logoInvertInDarkMode: boolean;
 };
 
@@ -104,6 +107,7 @@ const initialBusinessForm: BusinessFormState = {
 	latitude: null,
 	longitude: null,
 	companySize: "",
+	timezone: "",
 	logoInvertInDarkMode: true,
 };
 
@@ -184,6 +188,7 @@ export function BusinessInfoTab() {
 				latitude: organization?.latitude ?? null,
 				longitude: organization?.longitude ?? null,
 				companySize: organization?.companySize ?? "",
+				timezone: organization?.timezone ?? "",
 				logoInvertInDarkMode: organization?.logoInvertInDarkMode ?? true,
 			});
 		}
@@ -267,6 +272,7 @@ export function BusinessInfoTab() {
 				latitude: businessForm.latitude ?? undefined,
 				longitude: businessForm.longitude ?? undefined,
 				companySize: businessForm.companySize as "1-10" | "10-100" | "100+",
+				timezone: businessForm.timezone || undefined,
 				logoUrl: clerkOrgImageUrl ?? undefined,
 				logoInvertInDarkMode: businessForm.logoInvertInDarkMode,
 			});
@@ -316,6 +322,7 @@ export function BusinessInfoTab() {
 			latitude: organization?.latitude ?? null,
 			longitude: organization?.longitude ?? null,
 			companySize: organization?.companySize ?? "",
+			timezone: organization?.timezone ?? "",
 			logoInvertInDarkMode: organization?.logoInvertInDarkMode ?? true,
 		});
 		setBusinessDirty(false);
@@ -624,6 +631,31 @@ export function BusinessInfoTab() {
 										Please select your company size.
 									</FieldError>
 								)}
+							</Field>
+
+							<Field className="mt-4">
+								<FieldLabel>Timezone</FieldLabel>
+								<ComboBox
+									options={TIMEZONES}
+									value={businessForm.timezone}
+									placeholder="Search timezones..."
+									disabled={controlsDisabled}
+									// Not clearable: organizations.update drops undefined, so a
+									// cleared field would revert on reload while showing empty.
+									clearable={false}
+									onSelect={(tz) => {
+										if (!tz) return;
+										setBusinessDirty(true);
+										setBusinessForm((prev) => ({
+											...prev,
+											timezone: tz,
+										}));
+									}}
+								/>
+								<FieldDescription>
+									Used for date and time calculations in automations and
+									reports.
+								</FieldDescription>
 							</Field>
 						</FramePanel>
 					</Frame>

@@ -11,9 +11,12 @@ describe("portal auth provider", () => {
 		const path = resolve(__dirname, "../auth.config.ts");
 		const src = readFileSync(path, "utf-8");
 
-		// Both provider applicationIDs must be present.
+		// The Clerk provider is declared literally; the portal providers are
+		// generated from the shared audience list (PR #258: single source of
+		// truth in portal/audiences.ts).
 		expect(src).toContain('applicationID: "convex"');
-		expect(src).toContain('applicationID: "convex-portal"');
+		expect(src).toContain("PORTAL_JWT_AUDIENCES.map");
+		expect(src).toContain("applicationID: audience");
 
 		// The portal provider issuer must read from the server-only env var.
 		expect(src).toContain("process.env.PORTAL_JWT_ISSUER");

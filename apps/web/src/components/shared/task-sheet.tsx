@@ -36,6 +36,10 @@ import {
 	Loader2,
 } from "lucide-react";
 import { Task } from "@/types/task";
+import {
+	localDateToUtcMidnightMs,
+	utcMidnightMsToLocalDate,
+} from "@/lib/dates";
 
 interface TaskSheetProps {
 	task?: Task | null;
@@ -130,11 +134,13 @@ export function TaskSheet({
 				type: task.type || "external",
 				clientId: task.clientId || "",
 				projectId: task.projectId || "",
-				date: new Date(task.date),
+				date: utcMidnightMsToLocalDate(task.date),
 				assigneeUserId: task.assigneeUserId || "",
 				status: task.status,
 				repeat: task.repeat || "none",
-				repeatUntil: task.repeatUntil ? new Date(task.repeatUntil) : undefined,
+				repeatUntil: task.repeatUntil
+					? utcMidnightMsToLocalDate(task.repeatUntil)
+					: undefined,
 			});
 		} else if (isCreateMode) {
 			const today = new Date();
@@ -193,20 +199,9 @@ export function TaskSheet({
 		setIsSubmitting(true);
 
 		try {
-			// Normalize dates to midnight UTC to avoid timezone issues
-			const normalizeDate = (date: Date): number => {
-				const normalized = new Date(date);
-				// Get the date components in local timezone
-				const year = normalized.getFullYear();
-				const month = normalized.getMonth();
-				const day = normalized.getDate();
-				// Create a new date in UTC with these components
-				return Date.UTC(year, month, day);
-			};
-
-			const taskDate = normalizeDate(formData.date);
+			const taskDate = localDateToUtcMidnightMs(formData.date);
 			const repeatUntil = formData.repeatUntil
-				? normalizeDate(formData.repeatUntil)
+				? localDateToUtcMidnightMs(formData.repeatUntil)
 				: undefined;
 
 			const taskData = {

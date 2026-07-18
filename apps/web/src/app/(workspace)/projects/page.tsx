@@ -157,12 +157,13 @@ const formatStatus = (status: Doc<"projects">["status"]) => {
 	}
 };
 
+// Calendar-date fields are stored as UTC-midnight epochs; format in UTC so the day never shifts.
 const formatProjectDate = (timestamp?: number) => {
 	if (!timestamp) {
 		return "Not set";
 	}
 	const date = new Date(timestamp);
-	return date.toLocaleDateString();
+	return date.toLocaleDateString(undefined, { timeZone: "UTC" });
 };
 
 const createColumns = (
@@ -215,8 +216,9 @@ const createColumns = (
 			const startDate = row.original.startDate;
 			if (!startDate)
 				return <span className="text-muted-foreground">Not set</span>;
-			const d = new Date(startDate);
-			return <span className="text-foreground">{d.toLocaleDateString()}</span>;
+			return (
+				<span className="text-foreground">{formatProjectDate(startDate)}</span>
+			);
 		},
 	},
 	{
