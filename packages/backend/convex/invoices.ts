@@ -5,6 +5,7 @@ import {
 	QueryCtx,
 	MutationCtx,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
@@ -665,6 +666,98 @@ export const update = userMutation({
 		}
 
 		return id;
+	},
+});
+
+/**
+ * Send an invoice to the client: flips draft→sent and schedules a branded
+ * portal-invite email deep-linking to the invoice in the client portal.
+ * The portal is the payment surface; no bearer pay-link is generated.
+ */
+export const sendToClient = userMutation({
+	args: { id: v.id("invoices") },
+	returns: v.id("invoices"),
+	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "modify");
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+
+		if (invoice.status === "paid" || invoice.status === "cancelled") {
+			throw new Error(`Cannot send a ${invoice.status} invoice to the client.`);
+		}
+
+		// The client must be reachable in the portal: portal access enabled and a
+		// primary contact with an email to receive the invite.
+		const client = await ctx.db.get(invoice.clientId);
+		if (!client || client.orgId !== invoice.orgId) {
+			throw new Error("Invoice client not found.");
+		}
+		if (!client.portalAccessId) {
+			throw new Error(
+				"This client has no portal access yet. Enable it on the client before sending."
+			);
+		}
+		const primaryContact = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q: any) =>
+				q.eq("clientId", client._id).eq("isPrimary", true)
+			)
+			.first();
+		const recipientEmail = primaryContact?.email?.trim();
+		if (!recipientEmail) {
+			throw new Error(
+				"Add an email to this client's primary contact before sending."
+			);
+		}
+
+		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
+		// invoices can be re-sent without a status change.
+		if (invoice.status === "draft") {
+			const changes = computeFieldChanges(
+				"invoice",
+				invoice as unknown as Record<string, unknown>,
+				{ status: "sent" }
+			);
+			await ctx.db.patch(invoice._id, { status: "sent" });
+			const updated = await ctx.db.get(invoice._id);
+			if (updated) {
+				await AggregateHelpers.updateInvoice(
+					ctx,
+					invoice as InvoiceDocument,
+					updated as InvoiceDocument
+				);
+				await ActivityHelpers.invoiceSent(
+					ctx,
+					updated as InvoiceDocument,
+					client.companyName || "Unknown Client",
+					changes
+				);
+				await emitStatusChangeEvent(
+					ctx,
+					updated.orgId,
+					"invoice",
+					updated._id,
+					"draft",
+					"sent",
+					"invoices.sendToClient"
+				);
+			}
+		}
+
+		// Fire-and-forget the branded portal-invite email.
+		await ctx.scheduler.runAfter(
+			0,
+			internal.portal.invoiceEmail.sendInvoiceReadyEmail,
+			{ invoiceId: invoice._id }
+		);
+
+		return invoice._id;
 	},
 });
 

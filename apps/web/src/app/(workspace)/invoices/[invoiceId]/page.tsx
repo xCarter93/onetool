@@ -98,6 +98,7 @@ function InvoiceDetailPageContent() {
 
 	// Mutations
 	const updateInvoice = useMutation(api.invoices.update);
+	const sendToClient = useMutation(api.invoices.sendToClient);
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
 
@@ -153,6 +154,20 @@ function InvoiceDetailPageContent() {
 		// Success toast + modal close are owned by DeleteConfirmationModal;
 		// let errors propagate so the modal shows a single error toast.
 		await updateInvoice({ id: invoiceId, status: "cancelled" });
+	};
+
+	const handleSendToClient = async () => {
+		try {
+			await sendToClient({ id: invoiceId });
+			toast.success(
+				"Invoice sent",
+				"Your client will get an email to view and pay it in the portal."
+			);
+		} catch (err) {
+			const message =
+				err instanceof Error ? err.message : "Failed to send invoice";
+			toast.error("Couldn't send invoice", message);
+		}
 	};
 
 	const handleGeneratePdf = async () => {
@@ -303,13 +318,7 @@ function InvoiceDetailPageContent() {
 					currentStatus={currentStatus}
 					onStatusChange={handleStatusChange}
 					onMarkPaid={handleMarkPaid}
-					onSendToClient={() => {
-						// TODO: Implement send email sheet for invoices
-						toast.info(
-							"Coming soon",
-							"Email sending for invoices is coming soon."
-						);
-					}}
+					onSendToClient={handleSendToClient}
 					onGeneratePdf={handleGeneratePdf}
 					onCancel={() => setIsCancelModalOpen(true)}
 				/>
