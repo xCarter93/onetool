@@ -9,6 +9,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { formatMoney } from "@/lib/portal/format";
 
+import { DownloadPdfButton } from "./download-pdf-button";
 import { InvoicePaper } from "./invoice-paper";
 import {
 	InstallmentList,
@@ -18,6 +19,7 @@ import { PaidStatusPanel } from "./paid-status-panel";
 import { PaidSuccessOverlay } from "./paid-success-overlay";
 import { PaymentBottomSheet } from "./payment-bottom-sheet";
 import { PaymentRail } from "./payment-rail";
+import { PrintButton } from "./print-button";
 
 const CELEBRATION_DURATION_MS = 1900;
 
@@ -141,17 +143,6 @@ export function InvoiceDetailIsland({
 		return () => clearTimeout(timer);
 	}, [celebration]);
 
-	const paper = (
-		<InvoicePaper
-			invoice={data.invoice}
-			lineItems={data.lineItems}
-			businessName={data.businessName}
-			businessLogoUrl={data.businessLogoUrl}
-			clientName={data.clientName}
-			clientEmail={data.clientEmail}
-		/>
-	);
-
 	// Zero-payment-row invoices fall through to the normal render: an empty
 	// installment list with no pay surface (view-only).
 	const baseRail = (() => {
@@ -239,15 +230,22 @@ export function InvoiceDetailIsland({
 
 	return (
 		<>
-			<div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_480px]">
-				<div className="px-6 py-8 pb-24 md:px-9 md:pb-10">{paper}</div>
-				{isDesktop !== false ? (
-					<aside className="border-l border-border bg-card px-6 py-8 md:min-h-[calc(100vh-68px)] md:px-7">
-						{rightRail}
-					</aside>
-				) : (
-					<div className="px-6 pb-10">{rightRail}</div>
-				)}
+			<div className="px-6 py-8 pb-28 md:px-9 md:pb-10">
+				<InvoicePaper
+					invoice={data.invoice}
+					lineItems={data.lineItems}
+					businessName={data.businessName}
+					businessLogoUrl={data.businessLogoUrl}
+					clientName={data.clientName}
+					clientEmail={data.clientEmail}
+					displayStatus={data.paymentSummary.displayStatus}
+					paymentSummary={data.paymentSummary}
+					paySlot={rightRail}
+				/>
+				<div className="mx-auto mt-6 flex w-full max-w-4xl flex-wrap items-center justify-center gap-2">
+					<DownloadPdfButton invoiceId={data.invoice._id} hasPdf={hasPdf} />
+					<PrintButton />
+				</div>
 			</div>
 			{mobileSheet}
 		</>
