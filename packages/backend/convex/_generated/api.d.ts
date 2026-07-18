@@ -107,6 +107,7 @@ import type * as organizationDocuments from "../organizationDocuments.js";
 import type * as organizations from "../organizations.js";
 import type * as payments from "../payments.js";
 import type * as permissions from "../permissions.js";
+import type * as portal_audiences from "../portal/audiences.js";
 import type * as portal_branding from "../portal/branding.js";
 import type * as portal_email from "../portal/email.js";
 import type * as portal_helpers from "../portal/helpers.js";
@@ -247,6 +248,7 @@ declare const fullApi: ApiFromModules<{
   organizations: typeof organizations;
   payments: typeof payments;
   permissions: typeof permissions;
+  "portal/audiences": typeof portal_audiences;
   "portal/branding": typeof portal_branding;
   "portal/email": typeof portal_email;
   "portal/helpers": typeof portal_helpers;
