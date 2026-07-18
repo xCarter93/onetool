@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { PORTAL_JWT_AUDIENCES } from "./audiences";
 
 /**
  * Validated portal session — what `getPortalSessionOrThrow` resolves a JWT
@@ -15,10 +16,7 @@ export type PortalSession = {
 	tokenJti: string;
 };
 
-const ACCEPTED_AUDIENCES = new Set([
-	"convex-portal",
-	"convex-portal-access",
-]);
+const ACCEPTED_AUDIENCES = new Set<string>(PORTAL_JWT_AUDIENCES);
 
 // PUB-07: portal sessions previously slid indefinitely — touchSession and the
 // 20h background ping re-anchored expiry to `now` on every request, so a stolen
@@ -55,17 +53,20 @@ export async function getPortalSessionOrThrow(
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
-	// PUB-08: require the aud claim. Convex's customJwt provider enforces
-	// issuer/algorithm/signature but NOT audience, so this ad-hoc check is the
-	// only audience binding — a signed token that simply omitted `aud` would
-	// otherwise bypass it entirely (fail-open).
+	// PUB-08 (corrected): Convex's customJwt provider DOES enforce audience —
+	// `applicationID` must equal the token's `aud` for the provider to match at
+	// all, so a token with a missing/wrong aud never yields an identity (the
+	// !identity throw above covers it). Real deployments then strip `aud` from
+	// the surfaced identity as a housekeeping claim, so it is normally
+	// undefined here; requiring it bricked every prod portal session. When a
+	// runtime (e.g. convex-test identities) does surface aud, still pin it to
+	// the accepted portal audiences.
 	const aud = claims.aud;
-	if (aud === undefined || aud === null) {
-		throw new ConvexError({ code: "UNAUTHENTICATED" });
-	}
-	const audValues = Array.isArray(aud) ? aud : [aud];
-	if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
-		throw new ConvexError({ code: "UNAUTHENTICATED" });
+	if (aud !== undefined) {
+		const audValues = Array.isArray(aud) ? aud : [aud];
+		if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
+			throw new ConvexError({ code: "UNAUTHENTICATED" });
+		}
 	}
 
 	const orgId = claims.orgId;
