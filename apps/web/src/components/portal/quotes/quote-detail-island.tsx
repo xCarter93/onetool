@@ -225,9 +225,9 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 					<div className="h-5 w-32 animate-pulse rounded bg-muted" />
 				</div>
 				<div className="px-6 py-8 md:px-9">
-					<div className="mx-auto max-w-5xl">
+					<div className="mx-auto w-full">
 						<div className="mb-6 h-28 animate-pulse rounded-2xl border border-border bg-card md:mb-8" />
-						<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-8">
+						<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-8">
 							<div className="h-64 animate-pulse rounded-2xl border border-border bg-card" />
 							<div className="h-96 animate-pulse rounded-2xl border border-border bg-card" />
 						</div>
@@ -407,7 +407,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 			)}
 
 			<div className="px-6 py-8 pb-24 md:px-9 md:pb-10">
-				<div className="mx-auto max-w-5xl">
+				<div className="mx-auto w-full">
 					{/* Hero: status + quote id/title + business + total */}
 					<Card className="mb-6 md:mb-8">
 						<CardContent>
@@ -456,7 +456,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 					</Card>
 
 					{/* Two-pane: Quote Journey (sticky) + Quote Details */}
-					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-8">
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-8">
 						<Card className="lg:sticky lg:top-[calc(68px+1.5rem)]">
 							<CardHeader>
 								<CardTitle className="text-base">Quote Journey</CardTitle>
