@@ -6,6 +6,7 @@ import type {
 	ValueRef,
 } from "./workflowTypes";
 import {
+	calendarDayEpoch,
 	evaluateFormula,
 	isCalendarDateEpoch,
 	parseFormula,
@@ -378,6 +379,22 @@ function compareDates(
 	return cmp(a, b);
 }
 
+/**
+ * "on (day)": both values denote the same calendar day in the run tz.
+ * calendarDayEpoch reads calendar-date epochs as UTC parts and instants as
+ * zoned parts, so `dueDate on TODAY()` and `paidAt on <date>` both work.
+ */
+function onSameDay(
+	fieldValue: unknown,
+	compareValue: unknown,
+	tz: string
+): boolean {
+	const a = toEpochMs(fieldValue);
+	const b = toEpochMs(compareValue);
+	if (Number.isNaN(a) || Number.isNaN(b)) return false;
+	return calendarDayEpoch(a, tz) === calendarDayEpoch(b, tz);
+}
+
 /** Evaluate one rule against a record. */
 export function evaluateRule(
 	rule: ConditionRule,
@@ -423,6 +440,8 @@ export function evaluateRule(
 			return compareDates(fieldValue, compareValue, (a, b) => a < b);
 		case "after":
 			return compareDates(fieldValue, compareValue, (a, b) => a > b);
+		case "on":
+			return onSameDay(fieldValue, compareValue, scope.workflow?.tz ?? "UTC");
 		default: {
 			const _exhaustive: never = rule.operator;
 			return _exhaustive;

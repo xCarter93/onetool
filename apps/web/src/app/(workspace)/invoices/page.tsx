@@ -155,9 +155,10 @@ const formatStatus = (status: InvoiceStatus) => {
 	}
 };
 
+// Calendar-date fields are stored as UTC-midnight epochs; format in UTC so the day never shifts.
 const formatInvoiceDate = (timestamp?: number) => {
 	if (!timestamp) return "Not set";
-	return new Date(timestamp).toLocaleDateString();
+	return new Date(timestamp).toLocaleDateString(undefined, { timeZone: "UTC" });
 };
 
 const createColumns = (
@@ -216,7 +217,7 @@ const createColumns = (
 		header: "Issued",
 		cell: ({ row }) => (
 			<span className="text-foreground">
-				{new Date(row.original.issuedDate).toLocaleDateString()}
+				{formatInvoiceDate(row.original.issuedDate)}
 			</span>
 		),
 	},

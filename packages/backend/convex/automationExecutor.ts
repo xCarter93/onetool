@@ -2841,6 +2841,24 @@ function coerceFieldValue(
 			// instant from then on.
 			return { ok: true, value: calendarDayEpoch(n, tz) };
 		}
+		case "datetime": {
+			// An instant field stores the exact moment — no day normalization.
+			// (All datetime fields are writable:false today; this keeps the
+			// switch exhaustive and correct if one ever opens up.)
+			const n =
+				raw instanceof Date
+					? raw.getTime()
+					: typeof raw === "number"
+						? raw
+						: Date.parse(String(raw));
+			if (Number.isNaN(n)) {
+				return {
+					ok: false,
+					error: `"${String(raw)}" is not a valid date for field "${fieldDef.key}"`,
+				};
+			}
+			return { ok: true, value: n };
+		}
 		case "id": {
 			// An array-valued source (project.assignedUserIds) feeding a
 			// single-id destination (task.assigneeUserId) takes the first

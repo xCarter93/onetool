@@ -772,6 +772,72 @@ describe("evaluateRule", () => {
 		});
 	});
 
+	describe("on (same calendar day, C2-1)", () => {
+		const nyScope: VariableScope = {
+			workflow: { now: Date.UTC(2026, 6, 4, 12, 0), tz: "America/New_York" },
+		};
+		const utcScope: VariableScope = {
+			workflow: { now: Date.UTC(2026, 6, 4, 12, 0), tz: "UTC" },
+		};
+		// Calendar dates are UTC-midnight epochs; anything off-midnight is an instant.
+		const calJul4 = Date.UTC(2026, 6, 4);
+		const calJul3 = Date.UTC(2026, 6, 3);
+		const record = {
+			dueDate: calJul4,
+			// 02:00 UTC on Jul 4 — still Jul 3 in New York.
+			paidAt: Date.UTC(2026, 6, 4, 2, 0),
+			// A legacy local-midnight write from a New York browser: "Jul 18"
+			// stored as Jul 18 04:00 UTC. Not a calendar-date epoch, so it is
+			// read as an instant in the run tz — which lands on the right day.
+			legacyLocalMidnight: Date.UTC(2026, 6, 18, 4, 0),
+			bad: "not a date",
+		};
+
+		it("matches two calendar dates exactly", () => {
+			expect(
+				evaluateRule(rule("dueDate", "on", staticRef(calJul4)), record, nyScope)
+			).toBe(true);
+			expect(
+				evaluateRule(rule("dueDate", "on", staticRef(calJul3)), record, nyScope)
+			).toBe(false);
+		});
+
+		it("an instant matches the calendar day it falls on in the run tz", () => {
+			// 02:00 UTC Jul 4: "paid on Jul 4" in UTC, "paid on Jul 3" in New York.
+			expect(
+				evaluateRule(rule("paidAt", "on", staticRef(calJul4)), record, utcScope)
+			).toBe(true);
+			expect(
+				evaluateRule(rule("paidAt", "on", staticRef(calJul4)), record, nyScope)
+			).toBe(false);
+			expect(
+				evaluateRule(rule("paidAt", "on", staticRef(calJul3)), record, nyScope)
+			).toBe(true);
+		});
+
+		it("tolerates legacy local-midnight calendar writes in the org tz", () => {
+			expect(
+				evaluateRule(
+					rule("legacyLocalMidnight", "on", staticRef(Date.UTC(2026, 6, 18))),
+					record,
+					nyScope
+				)
+			).toBe(true);
+		});
+
+		it("defaults to UTC without a scope tz and rejects invalid dates", () => {
+			expect(
+				evaluateRule(rule("paidAt", "on", staticRef(calJul4)), record, emptyScope)
+			).toBe(true);
+			expect(
+				evaluateRule(rule("bad", "on", staticRef(calJul4)), record, nyScope)
+			).toBe(false);
+			expect(
+				evaluateRule(rule("dueDate", "on", staticRef("junk")), record, nyScope)
+			).toBe(false);
+		});
+	});
+
 	describe("var comparison values", () => {
 		it("compares a record field against a trigger event value", () => {
 			const scope: VariableScope = {

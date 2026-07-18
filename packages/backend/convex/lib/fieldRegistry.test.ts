@@ -254,6 +254,7 @@ describe("operatorsForField", () => {
 
 	it("returns date operators for date fields", () => {
 		expect(operatorsForField("task", "date")).toEqual([
+			"on",
 			"before",
 			"after",
 			"is_empty",
@@ -376,5 +377,49 @@ describe("line items are fetch+aggregate only (B7)", () => {
 		expect(isFetchOnlyObjectType("quote")).toBe(false);
 		expect(isFetchOnlyObjectType("invoice")).toBe(false);
 		expect(isFetchOnlyObjectType("task")).toBe(false);
+	});
+});
+
+describe("date/datetime split (C2-1)", () => {
+	const instants: [string, string][] = [
+		["client", "archivedAt"],
+		["project", "completedAt"],
+		["quote", "sentAt"],
+		["quote", "approvedAt"],
+		["quote", "declinedAt"],
+		["invoice", "paidAt"],
+		["task", "completedAt"],
+	];
+
+	it("classifies code-written timestamps as datetime", () => {
+		for (const [objectType, key] of instants) {
+			expect(
+				getFieldDefinition(objectType as never, key)?.type,
+				`${objectType}.${key}`
+			).toBe("datetime");
+		}
+	});
+
+	it("keeps calendar dates as date", () => {
+		for (const [objectType, key] of [
+			["project", "startDate"],
+			["project", "endDate"],
+			["quote", "validUntil"],
+			["invoice", "issuedDate"],
+			["invoice", "dueDate"],
+			["task", "date"],
+		] as [string, string][]) {
+			expect(
+				getFieldDefinition(objectType as never, key)?.type,
+				`${objectType}.${key}`
+			).toBe("date");
+		}
+	});
+
+	it("offers the on operator for both date kinds", () => {
+		expect(OPERATORS_BY_TYPE.date).toContain("on");
+		expect(OPERATORS_BY_TYPE.datetime).toContain("on");
+		expect(operatorsForField("invoice", "paidAt")).toContain("on");
+		expect(operatorsForField("invoice", "dueDate")).toContain("on");
 	});
 });

@@ -42,6 +42,10 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { Badge } from "@/components/ui/badge";
 import { ProjectDocumentsSection } from "./project-documents-section";
 import { formatCurrency } from "@/lib/money";
+import {
+	localDateToUtcMidnightMs,
+	utcMidnightMsToLocalDate,
+} from "@/lib/dates";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
@@ -50,6 +54,12 @@ function formatDate(timestamp?: number) {
 		day: "numeric",
 		year: "numeric",
 	});
+}
+
+/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
+function formatCalendarDate(timestamp?: number) {
+	if (!timestamp) return "\u2014";
+	return formatDate(utcMidnightMsToLocalDate(timestamp).getTime());
 }
 
 const STATUS_OPTIONS = [
@@ -110,7 +120,9 @@ export function ProjectDetailSidebar({
 	const startEditingDate = (field: "startDate" | "endDate", currentTimestamp?: number) => {
 		if (!canModify) return;
 		setEditingField(field);
-		setEditDateValue(currentTimestamp ? new Date(currentTimestamp) : undefined);
+		setEditDateValue(
+			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined
+		);
 	};
 
 	const startEditingAssignedUsers = () => {
@@ -323,7 +335,7 @@ export function ProjectDetailSidebar({
 								value={editDateValue}
 								onChange={(date) => {
 									if (date) {
-										saveField("startDate", date.getTime());
+										saveField("startDate", localDateToUtcMidnightMs(date));
 									}
 								}}
 								formatDate={(date) => formatDate(date.getTime())}
@@ -332,7 +344,7 @@ export function ProjectDetailSidebar({
 							/>
 						) : (
 							<span className="text-sm text-foreground">
-								{project.startDate ? formatDate(project.startDate) : <span className="text-muted-foreground italic">Not set</span>}
+								{project.startDate ? formatCalendarDate(project.startDate) : <span className="text-muted-foreground italic">Not set</span>}
 							</span>
 						)}
 					</div>
@@ -354,13 +366,12 @@ export function ProjectDetailSidebar({
 								value={editDateValue}
 								onChange={(date) => {
 									if (date) {
-										saveField("endDate", date.getTime());
+										saveField("endDate", localDateToUtcMidnightMs(date));
 									}
 								}}
 								disabledDates={(date) => {
 									if (!project.startDate) return false;
-									const start = new Date(project.startDate);
-									start.setHours(0, 0, 0, 0);
+									const start = utcMidnightMsToLocalDate(project.startDate);
 									const checkDate = new Date(date);
 									checkDate.setHours(0, 0, 0, 0);
 									return checkDate < start;
@@ -371,7 +382,7 @@ export function ProjectDetailSidebar({
 							/>
 						) : (
 							<span className="text-sm text-foreground">
-								{project.endDate ? formatDate(project.endDate) : <span className="text-muted-foreground italic">Not set</span>}
+								{project.endDate ? formatCalendarDate(project.endDate) : <span className="text-muted-foreground italic">Not set</span>}
 							</span>
 						)}
 					</div>

@@ -45,6 +45,10 @@ import {
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency } from "@/lib/money";
+import {
+	localDateToUtcMidnightMs,
+	utcMidnightMsToLocalDate,
+} from "@/lib/dates";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -55,6 +59,12 @@ function formatDate(timestamp?: number) {
 		day: "numeric",
 		year: "numeric",
 	});
+}
+
+/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
+function formatCalendarDate(timestamp?: number) {
+	if (!timestamp) return "\u2014";
+	return formatDate(utcMidnightMsToLocalDate(timestamp).getTime());
 }
 
 const STATUS_OPTIONS = [
@@ -135,7 +145,7 @@ export function QuoteDetailSidebar({
 		if (!canModify) return;
 		setEditingField(field);
 		setEditDateValue(
-			currentTimestamp ? new Date(currentTimestamp) : undefined
+			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined
 		);
 	};
 
@@ -351,7 +361,7 @@ export function QuoteDetailSidebar({
 									if (date) {
 										saveField(
 											"validUntil",
-											date.getTime()
+											localDateToUtcMidnightMs(date)
 										);
 									}
 								}}
@@ -362,7 +372,7 @@ export function QuoteDetailSidebar({
 						) : (
 							<span className="text-sm text-foreground">
 								{quote.validUntil ? (
-									formatDate(quote.validUntil)
+									formatCalendarDate(quote.validUntil)
 								) : (
 									<span className="text-muted-foreground italic">
 										Not set

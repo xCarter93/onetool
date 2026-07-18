@@ -55,6 +55,7 @@ import {
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
 import { formatCurrency } from "@/lib/money";
+import { utcMidnightMsToLocalDate } from "@/lib/dates";
 
 type ProjectStatus = Doc<"projects">["status"];
 
@@ -79,6 +80,12 @@ function formatDate(ts: number | null | undefined): string {
 		day: "numeric",
 		year: "numeric",
 	});
+}
+
+/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
+function formatCalendarDate(ts: number | null | undefined): string {
+	if (!ts) return "—";
+	return formatDate(utcMidnightMsToLocalDate(ts).getTime());
 }
 
 // Share of the start→due window that has elapsed, or null if not schedulable.
@@ -234,13 +241,13 @@ export function ProjectDetailDrawer({
 							<div className="flex flex-col">
 								<span className="text-muted-foreground text-xs">Start</span>
 								<span className="text-foreground text-sm font-medium">
-									{formatDate(project.startDate)}
+									{formatCalendarDate(project.startDate)}
 								</span>
 							</div>
 							<div className="flex flex-col text-right">
 								<span className="text-muted-foreground text-xs">Due</span>
 								<span className="text-foreground text-sm font-medium">
-									{formatDate(project.endDate)}
+									{formatCalendarDate(project.endDate)}
 								</span>
 							</div>
 						</div>

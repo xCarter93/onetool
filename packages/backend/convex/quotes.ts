@@ -1,3 +1,4 @@
+import { calendarDayEpoch } from "./lib/formula";
 import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
@@ -612,9 +613,14 @@ export const create = userMutation({
 			throw new Error("Tax rate cannot be negative");
 		}
 
-		// Validate expiration date
-		if (args.validUntil && args.validUntil <= Date.now()) {
-			throw new Error("Valid until date must be in the future");
+		// validUntil is a calendar date (UTC-midnight epoch): the quote is valid
+		// through that day. Compare day-to-day in the org tz — an exact-instant
+		// check rejects "tomorrow" picked in the evening west of UTC.
+		if (args.validUntil) {
+			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
+			if (args.validUntil < calendarDayEpoch(Date.now(), tz)) {
+				throw new Error("Valid until date cannot be in the past");
+			}
 		}
 
 		// Type assertion needed because schema still has deprecated publicToken field
@@ -723,9 +729,12 @@ export const update = userMutation({
 			throw new Error("Tax rate cannot be negative");
 		}
 
-		// Validate expiration date
-		if (updates.validUntil && updates.validUntil <= Date.now()) {
-			throw new Error("Valid until date must be in the future");
+		// Same calendar-day semantics as create (see comment there).
+		if (updates.validUntil) {
+			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
+			if (updates.validUntil < calendarDayEpoch(Date.now(), tz)) {
+				throw new Error("Valid until date cannot be in the past");
+			}
 		}
 
 		// Validate countersignature settings

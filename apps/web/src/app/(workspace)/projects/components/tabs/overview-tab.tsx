@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
+import { utcMidnightMsToLocalDate } from "@/lib/dates";
 
 interface OverviewTabProps {
 	projectId: Id<"projects">;
@@ -25,12 +26,14 @@ interface OverviewTabProps {
 	invoices: Doc<"invoices">[] | undefined;
 }
 
+// start/end dates are stored as UTC-midnight epochs; format in UTC so the day never shifts.
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
 	return new Date(timestamp).toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
+		timeZone: "UTC",
 	});
 }
 
@@ -62,6 +65,7 @@ function formatDisplayDate(timestamp?: number) {
 		year: "numeric",
 		month: "long",
 		day: "numeric",
+		timeZone: "UTC",
 	});
 }
 
@@ -124,7 +128,7 @@ export function OverviewTab({
 	};
 
 	const initialCalendarDate = startDate
-		? new Date(startDate)
+		? utcMidnightMsToLocalDate(startDate)
 		: new Date();
 	const [calendarDate, setCalendarDate] = useState(
 		new Date(initialCalendarDate.getFullYear(), initialCalendarDate.getMonth(), 1)
@@ -353,21 +357,18 @@ export function OverviewTab({
 							if (currentDayDate) currentDayDate.setHours(0, 0, 0, 0);
 
 							if (day && startDate && currentDayDate) {
-								const start = new Date(startDate);
-								start.setHours(0, 0, 0, 0);
+								const start = utcMidnightMsToLocalDate(startDate);
 								isStart = currentDayDate.getTime() === start.getTime();
 
 								if (endDate && !isStart) {
-									const end = new Date(endDate);
-									end.setHours(0, 0, 0, 0);
+									const end = utcMidnightMsToLocalDate(endDate);
 									isInRange =
 										currentDayDate > start && currentDayDate < end;
 								}
 							}
 
 							if (day && endDate && currentDayDate) {
-								const end = new Date(endDate);
-								end.setHours(0, 0, 0, 0);
+								const end = utcMidnightMsToLocalDate(endDate);
 								isEnd = currentDayDate.getTime() === end.getTime();
 							}
 

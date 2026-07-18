@@ -24,6 +24,7 @@ export type FieldType =
 	| "number"
 	| "boolean"
 	| "date"
+	| "datetime"
 	| "select"
 	| "currency"
 	| "id";
@@ -121,7 +122,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "archivedAt",
 			label: "Archived At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Set by archive/unarchive code alongside status",
 			filterable: true,
@@ -167,7 +168,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "completedAt",
 			label: "Completed At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Set automatically when status changes to completed",
 			filterable: true,
@@ -265,7 +266,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "sentAt",
 			label: "Sent At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Timestamp set by code when the quote is sent",
 			filterable: true,
@@ -273,7 +274,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "approvedAt",
 			label: "Approved At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Timestamp set by code on client approval",
 			filterable: true,
@@ -281,7 +282,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "declinedAt",
 			label: "Declined At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Timestamp set by code on client decline",
 			filterable: true,
@@ -366,7 +367,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "paidAt",
 			label: "Paid At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Set by code when payment is recorded",
 			filterable: true,
@@ -559,7 +560,7 @@ export const FIELD_REGISTRY: Record<AutomationObjectType, FieldDefinition[]> = {
 		{
 			key: "completedAt",
 			label: "Completed At",
-			type: "date",
+			type: "datetime",
 			writable: false,
 			writeExclusionReason: "Set automatically when status changes to completed",
 			filterable: true,
@@ -635,7 +636,8 @@ export const OPERATORS_BY_TYPE: Record<FieldType, ConditionOperator[]> = {
 		"is_not_empty",
 	],
 	boolean: ["is_true", "is_false"],
-	date: ["before", "after", "is_empty", "is_not_empty"],
+	date: ["on", "before", "after", "is_empty", "is_not_empty"],
+	datetime: ["on", "before", "after", "is_empty", "is_not_empty"],
 	select: ["equals", "not_equals", "is_empty", "is_not_empty"],
 	id: ["equals", "not_equals", "is_empty", "is_not_empty"],
 };

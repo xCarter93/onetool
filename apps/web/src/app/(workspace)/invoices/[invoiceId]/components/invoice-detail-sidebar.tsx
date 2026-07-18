@@ -44,6 +44,10 @@ import {
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency } from "@/lib/money";
+import {
+	localDateToUtcMidnightMs,
+	utcMidnightMsToLocalDate,
+} from "@/lib/dates";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -54,6 +58,12 @@ function formatDate(timestamp?: number) {
 		day: "numeric",
 		year: "numeric",
 	});
+}
+
+/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
+function formatCalendarDate(timestamp?: number) {
+	if (!timestamp) return "\u2014";
+	return formatDate(utcMidnightMsToLocalDate(timestamp).getTime());
 }
 
 const STATUS_OPTIONS = [
@@ -143,7 +153,7 @@ export function InvoiceDetailSidebar({
 		if (!canModify) return;
 		setEditingField(field);
 		setEditDateValue(
-			currentTimestamp ? new Date(currentTimestamp) : undefined
+			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined
 		);
 	};
 
@@ -307,7 +317,7 @@ export function InvoiceDetailSidebar({
 									if (date) {
 										saveField(
 											"dueDate",
-											date.getTime()
+											localDateToUtcMidnightMs(date)
 										);
 									}
 								}}
@@ -324,7 +334,7 @@ export function InvoiceDetailSidebar({
 								}`}
 							>
 								{invoice.dueDate ? (
-									formatDate(invoice.dueDate)
+									formatCalendarDate(invoice.dueDate)
 								) : (
 									<span className="text-muted-foreground italic">
 										Not set
@@ -357,7 +367,7 @@ export function InvoiceDetailSidebar({
 					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm text-foreground">
-							{formatDate(invoice.issuedDate)}
+							{formatCalendarDate(invoice.issuedDate)}
 						</span>
 					</div>
 				</div>

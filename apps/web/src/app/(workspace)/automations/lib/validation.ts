@@ -91,6 +91,8 @@ function varFallbackTypeError(
 			return typeof fb === "number" ? null : "fallback must be a number";
 		case "date":
 			return typeof fb === "number" ? null : "fallback must be a date";
+		case "datetime":
+			return typeof fb === "number" ? null : "fallback must be a date and time";
 		case "text":
 		case "select":
 		case "id":

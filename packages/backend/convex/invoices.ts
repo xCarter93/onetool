@@ -1,3 +1,4 @@
+import { calendarDayEpoch } from "./lib/formula";
 import {
 	query,
 	internalMutation,
@@ -1019,9 +1020,14 @@ export const createFromQuote = userMutation({
 
 		const invoiceNumber = `INV-${String(maxNumber + 1).padStart(6, "0")}`;
 
-		// Set default dates if not provided
-		const issuedDate = args.issuedDate || Date.now();
-		const dueDate = args.dueDate || Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days default
+		// Default dates are calendar dates (UTC-midnight epochs), not instants —
+		// today / today+30d as seen from the org timezone.
+		const todayUtcMidnight = calendarDayEpoch(
+			Date.now(),
+			(await ctx.db.get(ctx.orgId))?.timezone ?? "UTC"
+		);
+		const issuedDate = args.issuedDate || todayUtcMidnight;
+		const dueDate = args.dueDate || todayUtcMidnight + 30 * 24 * 60 * 60 * 1000;
 
 		const quoteLineItems = await ctx.db
 			.query("quoteLineItems")

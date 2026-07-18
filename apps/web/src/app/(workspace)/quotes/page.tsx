@@ -142,9 +142,10 @@ const formatStatus = (status: Doc<"quotes">["status"]) => {
 	}
 };
 
+// Calendar-date fields are stored as UTC-midnight epochs; format in UTC so the day never shifts.
 const formatQuoteDate = (timestamp?: number) => {
 	if (!timestamp) return "Not set";
-	return new Date(timestamp).toLocaleDateString();
+	return new Date(timestamp).toLocaleDateString(undefined, { timeZone: "UTC" });
 };
 
 const createColumns = (
@@ -206,7 +207,7 @@ const createColumns = (
 			const isExpired = d < new Date();
 			return (
 				<span className={cn("text-foreground", isExpired && "text-destructive")}>
-					{d.toLocaleDateString()}
+					{formatQuoteDate(row.original.validUntil)}
 				</span>
 			);
 		},

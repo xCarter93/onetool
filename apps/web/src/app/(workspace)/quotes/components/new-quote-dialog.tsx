@@ -28,6 +28,7 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
+import { localDateToUtcMidnightMs } from "@/lib/dates";
 
 const DEFAULT_TERMS = "Payment due within 30 days of acceptance";
 
@@ -108,7 +109,9 @@ export function NewQuoteDialog({
 					status: "draft",
 					subtotal: 0, // Line items are added in the line editor.
 					total: 0,
-					validUntil: value.validUntil ? value.validUntil.getTime() : undefined,
+					validUntil: value.validUntil
+						? localDateToUtcMidnightMs(value.validUntil)
+						: undefined,
 					clientMessage: value.clientMessage.trim() || undefined,
 					terms: value.terms.trim() || undefined,
 					pdfSettings: {

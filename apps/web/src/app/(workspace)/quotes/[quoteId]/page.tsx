@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
+import { localDateToUtcMidnightMs } from "@/lib/dates";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -154,10 +155,12 @@ function QuoteDetailPageContent() {
 		if (isConverting) return;
 		setIsConverting(true);
 		try {
+			// Default dates as UTC-midnight calendar days (issued today, due in 30 days)
+			const issuedDate = localDateToUtcMidnightMs(new Date());
 			const invoiceId = await createInvoiceFromQuote({
 				quoteId,
-				issuedDate: Date.now(),
-				dueDate: Date.now() + 30 * 24 * 60 * 60 * 1000,
+				issuedDate,
+				dueDate: issuedDate + 30 * 24 * 60 * 60 * 1000,
 			});
 			toast.success(
 				"Invoice Created",

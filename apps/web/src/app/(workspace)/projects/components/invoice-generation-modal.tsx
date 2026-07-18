@@ -14,6 +14,7 @@ import { Loader2, Receipt } from "lucide-react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ApprovedQuote } from "@/types/quote";
 import { formatCurrency } from "@/lib/money";
+import { localDateToUtcMidnightMs } from "@/lib/dates";
 
 interface InvoiceGenerationModalProps {
 	isOpen: boolean;
@@ -59,11 +60,12 @@ export function InvoiceGenerationModal({
 				"Converting quote to invoice..."
 			);
 
-			// Create invoice with default dates (issued now, due in 30 days)
+			// Create invoice with default dates (issued today, due in 30 days) as UTC-midnight calendar days
+			const issuedDate = localDateToUtcMidnightMs(new Date());
 			const invoiceId = await createInvoiceFromQuote({
 				quoteId: selectedQuoteId,
-				issuedDate: Date.now(),
-				dueDate: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days from now
+				issuedDate,
+				dueDate: issuedDate + 30 * 24 * 60 * 60 * 1000,
 			});
 
 			toast.removeToast(loadingId);
