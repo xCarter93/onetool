@@ -2,7 +2,7 @@ import { LegalPageLayout } from "../components/legal-page-layout";
 
 export default function TermsOfServicePage() {
 	return (
-		<LegalPageLayout title="Terms of Service" lastUpdated="January 1, 2026">
+		<LegalPageLayout title="Terms of Service" lastUpdated="July 17, 2026">
 			<div className="space-y-8">
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
@@ -45,6 +45,10 @@ export default function TermsOfServicePage() {
 						</li>
 						<li>Email communication and threading with client records</li>
 						<li>Analytics and reporting for business insights</li>
+						<li>
+							AI-powered features, including an assistant and report
+							generation (see our Privacy Policy for how these process data)
+						</li>
 						<li>CSV import functionality for bulk data migration</li>
 						<li>Integration with Stripe for payment processing</li>
 					</ul>
@@ -262,7 +266,7 @@ export default function TermsOfServicePage() {
 					</h2>
 					<p className="text-muted-foreground leading-relaxed mb-4">
 						You may cancel your subscription at any time through your account
-						settings or by contacting support@onetool.com. Cancellation terms
+						settings or by contacting support@onetool.biz. Cancellation terms
 						are as follows:
 					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
@@ -271,16 +275,17 @@ export default function TermsOfServicePage() {
 							billing period
 						</li>
 						<li>
-							You will retain access to all features until the end of that
+							You will retain access to paid features until the end of that
 							billing period
 						</li>
 						<li>
-							After cancellation, your account and associated data will be
-							retained for 30 days before permanent deletion
+							Cancelling a paid subscription does not delete your data — your
+							account continues on the free plan with your data intact
 						</li>
 						<li>
-							You can request immediate data export at any time prior to
-							deletion
+							If you want your data permanently deleted, delete your
+							organization from your organization settings or contact us (see
+							Section 20)
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
@@ -589,7 +594,7 @@ export default function TermsOfServicePage() {
 					</p>
 					<p className="text-muted-foreground leading-relaxed mt-4">
 						Before pursuing arbitration, you agree to attempt to resolve
-						disputes informally by contacting us at support@onetool.com with
+						disputes informally by contacting us at support@onetool.biz with
 						written notice of the dispute.
 					</p>
 				</section>
@@ -661,9 +666,10 @@ export default function TermsOfServicePage() {
 						Upon termination, all licenses and rights to use the Service will
 						immediately cease. We will provide reasonable notice in most
 						circumstances, except where termination is necessary to prevent harm
-						or comply with legal requirements. Upon account termination, your
-						data will be retained for 30 days, after which it will be deleted.
-						You may request data export before deletion.
+						or comply with legal requirements. Upon account or organization
+						deletion, your data is permanently deleted as described in our
+						Privacy Policy. If your account is suspended or terminated by us,
+						you may contact us to request a copy of your data before deletion.
 					</p>
 				</section>
 
@@ -672,13 +678,13 @@ export default function TermsOfServicePage() {
 						20. Data Portability and Export
 					</h2>
 					<p className="text-muted-foreground leading-relaxed">
-						You have the right to request an export of your data at any time. We
-						will provide your data in a machine-readable format (JSON or CSV)
-						within 30 days of your request. For specific data export requests,
-						please contact support@onetool.com. This right exists whether your
-						account is active, suspended, or terminated (within 30 days of
-						termination). Upon termination or deletion of your account, your
-						data will be permanently deleted after the 30-day retention period.
+						The Service does not currently include a self-serve bulk export
+						feature. You may request a copy of your data at any time by
+						contacting support@onetool.biz, and we will provide it in a
+						commonly used format within a reasonable time. When you delete
+						your organization or account, your data is permanently deleted
+						from our systems as described in our Privacy Policy — please
+						request any copy you need before deleting.
 					</p>
 				</section>
 
@@ -696,12 +702,8 @@ export default function TermsOfServicePage() {
 							date
 						</li>
 						<li>
-							Sending you an email notification at least 30 days before the
-							change takes effect (for material changes)
-						</li>
-						<li>
-							Requiring your explicit acceptance of updated Terms upon next
-							login (for significant changes)
+							Making reasonable efforts to notify you in advance of material
+							changes (for example, by email or an in-app notice)
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
@@ -751,13 +753,13 @@ export default function TermsOfServicePage() {
 						<p className="font-semibold text-foreground mb-2">
 							OneTool Legal Support
 						</p>
-						<p>Email: support@onetool.com</p>
+						<p>Email: support@onetool.biz</p>
 					</div>
 				</section>
 
 				<section className="pt-4 border-t border-border mt-8">
 					<p className="text-xs text-muted-foreground">
-						These Terms of Service are effective as of January 1, 2026. Please
+						These Terms of Service are effective as of July 17, 2026. Please
 						review this document regularly as we may update it. Your continued
 						use of OneTool constitutes acceptance of these terms.
 					</p>
