@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Download } from "lucide-react";
 import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -40,8 +41,14 @@ import { ApprovalRail } from "./approval-rail";
 import { ApprovalBottomSheet } from "./approval-bottom-sheet";
 import { StaleVersionBanner } from "./stale-version-banner";
 
+export type QuoteDetailData = NonNullable<
+	FunctionReturnType<typeof api.portal.quotes.get>
+>;
+
 export interface QuoteDetailIslandProps {
 	quoteId: Id<"quotes">;
+	/** Server-fetched snapshot; the reactive query layers on top of it. */
+	initialData: QuoteDetailData;
 }
 
 type JourneyStepStatus = "complete" | "current" | "upcoming";
@@ -188,7 +195,10 @@ function buildJourneySteps(
 	return steps;
 }
 
-export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
+export function QuoteDetailIsland({
+	quoteId,
+	initialData,
+}: QuoteDetailIslandProps) {
 	const params = useParams<{ clientPortalId: string }>();
 	const clientPortalId = params?.clientPortalId ?? "";
 
@@ -196,7 +206,10 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	// impure Date.now() during render while keeping the same fallback value.
 	const [mountedAt] = useState(() => Date.now());
 
-	const data = useQuery(api.portal.quotes.get, { quoteId });
+	// Subscribes for live updates (approval receipt, document re-send); the
+	// SSR snapshot guarantees content on first paint even if this stays pending.
+	const liveData = useQuery(api.portal.quotes.get, { quoteId });
+	const data: QuoteDetailData = liveData ?? initialData;
 	// Plan 14-08 Gap 4: aligned to PortalShell's md (768px) boundary so the
 	// rail/sheet split matches the desktop-sidebar/mobile-chrome split — no
 	// 256px no-mans-land between PortalShell mobile chrome and the detail-page
@@ -215,45 +228,6 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 	);
 	if (pinnedDocumentId === null && data?.latestDocument?._id) {
 		setPinnedDocumentId(data.latestDocument._id);
-	}
-
-	// Loading
-	if (data === undefined) {
-		return (
-			<div className="-mx-6 md:-mx-9 -my-6 flex flex-col">
-				<div className="sticky top-0 z-20 flex h-[68px] items-center border-b border-border bg-background px-6">
-					<div className="h-5 w-32 animate-pulse rounded bg-muted" />
-				</div>
-				<div className="px-6 py-8 md:px-9">
-					<div className="mx-auto w-full">
-						<div className="mb-6 h-28 animate-pulse rounded-2xl border border-border bg-card md:mb-8" />
-						<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-8">
-							<div className="h-64 animate-pulse rounded-2xl border border-border bg-card" />
-							<div className="h-96 animate-pulse rounded-2xl border border-border bg-card" />
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	// Missing
-	if (data === null) {
-		return (
-			<div className="mx-auto max-w-2xl py-12 text-center">
-				<h1 className="text-[24px] font-semibold">Quote not found</h1>
-				<p className="mt-2 text-muted-foreground">
-					This quote may have been removed or you no longer have access.
-				</p>
-				<Link
-					href={`/portal/c/${clientPortalId}/quotes`}
-					className="mt-4 inline-flex items-center gap-1.5 text-primary hover:underline"
-				>
-					<ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-					Back to quotes
-				</Link>
-			</div>
-		);
 	}
 
 	const {
@@ -442,7 +416,7 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 									<span className="text-muted-foreground text-xs font-medium tracking-[0.16em] uppercase">
 										Total
 									</span>
-									<span className="text-foreground text-2xl leading-none font-semibold tracking-tight tabular-nums md:text-3xl">
+									<span className="text-foreground text-3xl leading-none font-semibold tracking-tight tabular-nums md:text-4xl">
 										{formatMoney(quote.total)}
 									</span>
 									{quote.validUntil && (
@@ -456,10 +430,10 @@ export function QuoteDetailIsland({ quoteId }: QuoteDetailIslandProps) {
 					</Card>
 
 					{/* Two-pane: Quote Journey (sticky) + Quote Details */}
-					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-8">
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-8">
 						<Card className="lg:sticky lg:top-[calc(68px+1.5rem)]">
 							<CardHeader>
-								<CardTitle className="text-base">Quote Journey</CardTitle>
+								<CardTitle className="text-lg">Quote Journey</CardTitle>
 							</CardHeader>
 							<CardContent className="flex flex-col gap-5">
 								<Timeline defaultValue={timelineDefaultStep} className="gap-0">

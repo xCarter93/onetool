@@ -119,7 +119,7 @@ describe("QuoteDetailIsland — Download PDF button (Plan 14.1-03)", () => {
 		);
 		vi.stubGlobal("fetch", mockFetch);
 
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		const btn = await screen.findByRole("button", {
 			name: /Download PDF/i,
 		});
@@ -150,7 +150,7 @@ describe("QuoteDetailIsland — Download PDF button (Plan 14.1-03)", () => {
 			latestApproval: null,
 		});
 
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		expect(
 			screen.queryByRole("button", { name: /Download PDF/i }),
 		).not.toBeInTheDocument();
@@ -180,7 +180,7 @@ describe("QuoteDetailIsland — Download PDF button (Plan 14.1-03)", () => {
 		);
 		vi.stubGlobal("fetch", mockFetch);
 
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		const btn = await screen.findByRole("button", {
 			name: /Download PDF/i,
 		});
