@@ -228,11 +228,12 @@ export async function emitRecordUpdatedEvent(
  * Pick the next batch of pending events with per-org fairness.
  *
  * The old global oldest-first FIFO let one org's bulk import delay every other
- * org's triggers. Instead: skip-scan by_org_status for distinct orgIds (one
- * probe per org with rows in the table), take up to PER_ORG_BATCH pending
- * events per org (oldest first within the org), then top up the remainder
- * from the global-oldest FIFO — so age-based progress is still guaranteed
- * when active orgs outnumber the discovery budget.
+ * org's triggers. Instead: skip-scan by_status_org for distinct orgIds that
+ * have pending work (every probe lands on an org with a queued event), take
+ * up to PER_ORG_BATCH pending events per org (oldest first within the org),
+ * then top up the remainder from the global-oldest FIFO — so age-based
+ * progress is still guaranteed when pending orgs outnumber the discovery
+ * budget.
  */
 async function selectFairBatch(
 	ctx: MutationCtx
@@ -250,10 +251,15 @@ async function selectFairBatch(
 		const cursor: Id<"organizations"> | null = orgCursor;
 		const nextOrgRow: Doc<"domainEvents"> | null =
 			cursor === null
-				? await ctx.db.query("domainEvents").withIndex("by_org_status").first()
+				? await ctx.db
+						.query("domainEvents")
+						.withIndex("by_status_org", (q) => q.eq("status", "pending"))
+						.first()
 				: await ctx.db
 						.query("domainEvents")
-						.withIndex("by_org_status", (q) => q.gt("orgId", cursor))
+						.withIndex("by_status_org", (q) =>
+							q.eq("status", "pending").gt("orgId", cursor)
+						)
 						.first();
 		if (!nextOrgRow) break;
 		orgCursor = nextOrgRow.orgId;

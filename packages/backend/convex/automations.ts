@@ -1263,23 +1263,26 @@ async function withRunStats(
 	ctx: QueryCtx,
 	automations: AutomationDocument[]
 ): Promise<AutomationDocument[]> {
-	return Promise.all(
-		automations.map(async (automation) => {
-			const stats = await ctx.db
-				.query("automationRunStats")
-				.withIndex("by_automation", (q) =>
-					q.eq("automationId", automation._id)
-				)
-				.unique();
-			return stats
-				? {
-						...automation,
-						lastTriggeredAt: stats.lastTriggeredAt,
-						triggerCount: stats.triggerCount,
-					}
-				: automation;
-		})
+	if (automations.length === 0) return automations;
+	// One by_org scan instead of a per-automation index lookup (all callers
+	// pass automations from a single org).
+	const statsRows = await ctx.db
+		.query("automationRunStats")
+		.withIndex("by_org", (q) => q.eq("orgId", automations[0].orgId))
+		.collect();
+	const statsByAutomation = new Map(
+		statsRows.map((row) => [row.automationId, row])
 	);
+	return automations.map((automation) => {
+		const stats = statsByAutomation.get(automation._id);
+		return stats
+			? {
+					...automation,
+					lastTriggeredAt: stats.lastTriggeredAt,
+					triggerCount: stats.triggerCount,
+				}
+			: automation;
+	});
 }
 
 export const list = userQuery({

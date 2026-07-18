@@ -1346,6 +1346,8 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_org_status", ["orgId", "status"])
 		.index("by_status", ["status", "createdAt"])
+		// Fair-batch org discovery: skip-scan distinct orgIds WITH pending work.
+		.index("by_status_org", ["status", "orgId"])
 		.index("by_type_status", ["eventType", "status"])
 		.index("by_correlation", ["correlationId"]),
 

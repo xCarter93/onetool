@@ -4306,6 +4306,9 @@ export const bumpTriggerStats = internalMutation({
 			return;
 		}
 		const automation = await ctx.db.get(args.automationId);
+		// remove() deletes the automation and its stats row atomically; a bump
+		// still in the scheduler queue must not resurrect an orphaned row.
+		if (!automation) return;
 		await ctx.db.insert("automationRunStats", {
 			orgId: args.orgId,
 			automationId: args.automationId,

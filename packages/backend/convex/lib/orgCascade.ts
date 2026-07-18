@@ -274,6 +274,19 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
+	// automationRunStats
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("automationRunStats")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
 	// workflowAutomations
 	{
 		if (remaining <= 0) return { done: false };

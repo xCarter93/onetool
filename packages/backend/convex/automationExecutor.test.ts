@@ -6376,6 +6376,32 @@ describe("automationExecutor (v2 engine)", () => {
 				expect(orphan).toBeNull();
 			});
 
+			it("a bump racing a hard delete does not resurrect an orphaned stats row", async () => {
+				// remove() deletes the automation + stats row atomically, but a
+				// bump scheduled by a just-finished run lands in its own later
+				// transaction and must become a no-op.
+				const { asUser, orgId } = await setupUser();
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledAutomationArgs("Deleted before bump")
+				);
+				await asUser.mutation(api.automations.remove, { id });
+
+				await t.mutation(internal.automationExecutor.bumpTriggerStats, {
+					automationId: id,
+					orgId,
+					triggeredAt: Date.now(),
+				});
+
+				const orphan = await t.run(async (ctx) =>
+					ctx.db
+						.query("automationRunStats")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.unique()
+				);
+				expect(orphan).toBeNull();
+			});
+
 			it("a completed production run bumps the stats row and leaves the automation doc unwritten", async () => {
 				const { asUser, orgId } = await setupUser();
 				await makeOrgPremium(orgId);
