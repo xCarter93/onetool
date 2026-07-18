@@ -48,6 +48,9 @@ export const EVENT_TYPES = {
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000; // 5 seconds
 const BATCH_SIZE = 50; // Events to process per batch
+const PER_ORG_BATCH = 10; // Fairness cap: max events one org gets from a batch's round-robin share
+const ORG_DISCOVERY_LIMIT = 32; // Max distinct-org index probes per batch
+const FIFO_RESERVE = 10; // Batch share always filled globally-oldest-first
 
 /**
  * The entity types that emit domain events. Derived from AutomationObjectType
@@ -222,18 +225,84 @@ export async function emitRecordUpdatedEvent(
 }
 
 /**
+ * Pick the next batch of pending events with per-org fairness.
+ *
+ * The old global oldest-first FIFO let one org's bulk import delay every other
+ * org's triggers. Instead: skip-scan by_status_org for distinct orgIds that
+ * have pending work (every probe lands on an org with a queued event), take
+ * up to PER_ORG_BATCH pending events per org (oldest first within the org),
+ * then top up the remainder from the global-oldest FIFO — so age-based
+ * progress is still guaranteed when pending orgs outnumber the discovery
+ * budget.
+ */
+async function selectFairBatch(
+	ctx: MutationCtx
+): Promise<Doc<"domainEvents">[]> {
+	const selected: Doc<"domainEvents">[] = [];
+	const selectedIds = new Set<string>();
+	const roundRobinShare = BATCH_SIZE - FIFO_RESERVE;
+
+	let orgCursor: Id<"organizations"> | null = null;
+	for (
+		let probes = 0;
+		probes < ORG_DISCOVERY_LIMIT && selected.length < roundRobinShare;
+		probes++
+	) {
+		const cursor: Id<"organizations"> | null = orgCursor;
+		const nextOrgRow: Doc<"domainEvents"> | null =
+			cursor === null
+				? await ctx.db
+						.query("domainEvents")
+						.withIndex("by_status_org", (q) => q.eq("status", "pending"))
+						.first()
+				: await ctx.db
+						.query("domainEvents")
+						.withIndex("by_status_org", (q) =>
+							q.eq("status", "pending").gt("orgId", cursor)
+						)
+						.first();
+		if (!nextOrgRow) break;
+		orgCursor = nextOrgRow.orgId;
+
+		const pending = await ctx.db
+			.query("domainEvents")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", nextOrgRow.orgId).eq("status", "pending")
+			)
+			.take(Math.min(PER_ORG_BATCH, roundRobinShare - selected.length));
+		for (const event of pending) {
+			selected.push(event);
+			selectedIds.add(event._id);
+		}
+	}
+
+	// Starvation guard / top-up: the globally oldest pending events fill the
+	// rest of the batch, deduped against the round-robin picks.
+	if (selected.length < BATCH_SIZE) {
+		const oldest = await ctx.db
+			.query("domainEvents")
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
+			.order("asc")
+			.take(BATCH_SIZE);
+		for (const event of oldest) {
+			if (selected.length >= BATCH_SIZE) break;
+			if (!selectedIds.has(event._id)) {
+				selected.push(event);
+			}
+		}
+	}
+
+	return selected;
+}
+
+/**
  * Process pending events from the queue
  * This is the event loop that picks up and dispatches events
  */
 export const processEvents = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		// Get pending events, oldest first
-		const pendingEvents = await ctx.db
-			.query("domainEvents")
-			.withIndex("by_status", (q) => q.eq("status", "pending"))
-			.order("asc")
-			.take(BATCH_SIZE);
+		const pendingEvents = await selectFairBatch(ctx);
 
 		if (pendingEvents.length === 0) {
 			return { processed: 0 };

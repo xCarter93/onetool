@@ -40,6 +40,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"activities",
 	"notifications",
 	"workflowExecutions",
+	"automationRunStats",
 	"workflowAutomations",
 	"domainEvents",
 	"reports",
@@ -265,6 +266,19 @@ export async function cascadeDeleteOrgDataPage(
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query("workflowExecutions")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// automationRunStats
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("automationRunStats")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {

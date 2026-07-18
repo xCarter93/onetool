@@ -6184,4 +6184,430 @@ describe("automationExecutor (v2 engine)", () => {
 			).rejects.toThrow(/fallback/i);
 		});
 	});
+
+	describe("Phase C5 — engine scale", () => {
+		async function makeOrgPremium(orgId: Id<"organizations">) {
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, {
+					clerkPlanSlug: "onetool_business_plan_org",
+					subscriptionStatus: "active",
+				})
+			);
+		}
+
+		async function drainScheduled() {
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		}
+
+		function scheduledAutomationArgs(name: string) {
+			return {
+				name,
+				trigger: {
+					type: "scheduled" as const,
+					schedule: {
+						frequency: "daily" as const,
+						timezone: "UTC",
+						time: "09:00",
+					},
+				},
+				nodes: [notifyNode("notify-1")],
+				isActive: true,
+			};
+		}
+
+		describe("C5-2 scheduled dispatch catch-up", () => {
+			it("a full batch self-reschedules until every due automation is claimed in one tick", async () => {
+				// Non-premium org: each due row just records a skipped execution,
+				// which keeps a 52-automation batch cheap while still counting claims.
+				const { asUser } = await setupUser();
+
+				const firstId = await asUser.mutation(
+					api.automations.create,
+					scheduledAutomationArgs("Batch seed")
+				);
+				const past = Date.now() - 1000;
+				await t.run(async (ctx) => {
+					const template = await ctx.db.get(firstId);
+					if (!template) throw new Error("seed automation missing");
+					const { _id, _creationTime, ...rest } = template;
+					void _id;
+					void _creationTime;
+					await ctx.db.patch(firstId, { nextRunAt: past });
+					for (let i = 0; i < 51; i++) {
+						await ctx.db.insert("workflowAutomations", {
+							...rest,
+							name: `Batch clone ${i}`,
+							nextRunAt: past,
+						});
+					}
+				});
+
+				const result = await t.mutation(
+					internal.automationExecutor.dispatchScheduledAutomations,
+					{}
+				);
+				expect(result.due).toBe(50);
+
+				// The follow-up dispatch runs as a scheduled function, no cron tick.
+				await drainScheduled();
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(52);
+				expect(executions.every((e) => e.status === "skipped")).toBe(true);
+
+				const unclaimed = await t.run(async (ctx) => {
+					const automations = await ctx.db
+						.query("workflowAutomations")
+						.collect();
+					return automations.filter(
+						(a) => (a.nextRunAt ?? Infinity) <= Date.now()
+					);
+				});
+				expect(unclaimed).toHaveLength(0);
+			});
+		});
+
+		describe("C5-1 event-bus org fairness", () => {
+			it("one org's event burst does not starve another org's newer event out of the batch", async () => {
+				const orgA = await setupUser();
+				const orgB = await setupUser({
+					clerkUserId: "user_fairness_b",
+					clerkOrgId: "org_fairness_b",
+				});
+
+				// 60 older pending events for org A, then 1 newer one for org B —
+				// a global oldest-first FIFO would fill the whole 50-event batch
+				// with org A and leave org B waiting behind the burst.
+				const base = Date.now() - 60_000;
+				const burstEvent = (
+					orgId: Id<"organizations">,
+					createdAt: number
+				) => ({
+					orgId,
+					eventType: "automation.completed",
+					eventSource: "test.fairness",
+					payload: { entityType: "client" as const, entityId: "rec_x" },
+					status: "pending" as const,
+					attemptCount: 0,
+					createdAt,
+				});
+				const orgBEventId = await t.run(async (ctx) => {
+					for (let i = 0; i < 60; i++) {
+						await ctx.db.insert(
+							"domainEvents",
+							burstEvent(orgA.orgId, base + i)
+						);
+					}
+					return ctx.db.insert(
+						"domainEvents",
+						burstEvent(orgB.orgId, base + 10_000)
+					);
+				});
+
+				const result = await t.mutation(internal.eventBus.processEvents, {});
+				expect(result.processed).toBe(50);
+
+				const orgBEvent = await t.run(async (ctx) => ctx.db.get(orgBEventId));
+				expect(orgBEvent?.status).toBe("completed");
+
+				// The burst org keeps draining via the self-rescheduled follow-ups.
+				await drainScheduled();
+				const leftoverPending = await t.run(async (ctx) =>
+					ctx.db
+						.query("domainEvents")
+						.withIndex("by_status", (q) => q.eq("status", "pending"))
+						.collect()
+				);
+				expect(leftoverPending).toHaveLength(0);
+			});
+		});
+
+		describe("C5-3 trigger stats off the automation doc", () => {
+			it("bumpTriggerStats seeds from the legacy on-doc counters, increments, and never regresses lastTriggeredAt", async () => {
+				const { asUser, orgId } = await setupUser();
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledAutomationArgs("Stats automation")
+				);
+				await t.run(async (ctx) =>
+					ctx.db.patch(id, { triggerCount: 5, lastTriggeredAt: 1_000 })
+				);
+
+				const at = Date.now();
+				await t.mutation(internal.automationExecutor.bumpTriggerStats, {
+					automationId: id,
+					orgId,
+					triggeredAt: at,
+				});
+				// An out-of-order (older) completion must not move lastTriggeredAt back.
+				await t.mutation(internal.automationExecutor.bumpTriggerStats, {
+					automationId: id,
+					orgId,
+					triggeredAt: at - 500,
+				});
+
+				const stats = await t.run(async (ctx) =>
+					ctx.db
+						.query("automationRunStats")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.unique()
+				);
+				expect(stats?.triggerCount).toBe(7);
+				expect(stats?.lastTriggeredAt).toBe(at);
+
+				// Reads overlay the stats row; the deprecated doc counters are frozen.
+				const listed = await asUser.query(api.automations.list, {});
+				const row = listed.find((a) => a._id === id);
+				expect(row?.triggerCount).toBe(7);
+				expect(row?.lastTriggeredAt).toBe(at);
+				const rawDoc = await t.run(async (ctx) => ctx.db.get(id));
+				expect(rawDoc?.triggerCount).toBe(5);
+
+				// Hard delete takes the stats row with it.
+				await asUser.mutation(api.automations.remove, { id });
+				const orphan = await t.run(async (ctx) =>
+					ctx.db
+						.query("automationRunStats")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.unique()
+				);
+				expect(orphan).toBeNull();
+			});
+
+			it("a bump racing a hard delete does not resurrect an orphaned stats row", async () => {
+				// remove() deletes the automation + stats row atomically, but a
+				// bump scheduled by a just-finished run lands in its own later
+				// transaction and must become a no-op.
+				const { asUser, orgId } = await setupUser();
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledAutomationArgs("Deleted before bump")
+				);
+				await asUser.mutation(api.automations.remove, { id });
+
+				await t.mutation(internal.automationExecutor.bumpTriggerStats, {
+					automationId: id,
+					orgId,
+					triggeredAt: Date.now(),
+				});
+
+				const orphan = await t.run(async (ctx) =>
+					ctx.db
+						.query("automationRunStats")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.unique()
+				);
+				expect(orphan).toBeNull();
+			});
+
+			it("a completed production run bumps the stats row and leaves the automation doc unwritten", async () => {
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledAutomationArgs("Completed run stats")
+				);
+				await t.run(async (ctx) =>
+					ctx.db.patch(id, { nextRunAt: Date.now() - 1000 })
+				);
+				await t.mutation(
+					internal.automationExecutor.dispatchScheduledAutomations,
+					{}
+				);
+				await drainScheduled();
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+
+				const stats = await t.run(async (ctx) =>
+					ctx.db
+						.query("automationRunStats")
+						.withIndex("by_automation", (q) => q.eq("automationId", id))
+						.unique()
+				);
+				expect(stats?.triggerCount).toBe(1);
+				expect(stats?.lastTriggeredAt).toBeTypeOf("number");
+
+				const doc = await t.run(async (ctx) => ctx.db.get(id));
+				expect(doc?.triggerCount).toBeUndefined();
+				expect(doc?.lastTriggeredAt).toBeUndefined();
+			});
+		});
+
+		describe("C5-4 cleanup index fix", () => {
+			it("deletes old terminal executions without touching old running rows, and honors batchSize", async () => {
+				const { asUser, orgId } = await setupUser();
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledAutomationArgs("Cleanup automation")
+				);
+
+				const old = Date.now() - 40 * 24 * 60 * 60 * 1000;
+				const executionRow = (
+					status:
+						| "running"
+						| "completed"
+						| "completed_with_errors"
+						| "failed"
+						| "skipped"
+						| "cancelled",
+					triggeredAt: number
+				) => ({
+					orgId,
+					automationId: id,
+					triggeredBy: "schedule",
+					triggeredAt,
+					status,
+					mode: "production" as const,
+					nodesExecuted: [],
+				});
+				await t.run(async (ctx) => {
+					await ctx.db.insert("workflowExecutions", executionRow("completed", old));
+					await ctx.db.insert("workflowExecutions", executionRow("failed", old + 1));
+					await ctx.db.insert(
+						"workflowExecutions",
+						executionRow("completed_with_errors", old + 2)
+					);
+					// Stuck old running row: watchdog territory, cleanup must skip it.
+					await ctx.db.insert("workflowExecutions", executionRow("running", old + 3));
+					// Recent terminal row: inside retention.
+					await ctx.db.insert(
+						"workflowExecutions",
+						executionRow("completed", Date.now() - 1000)
+					);
+				});
+
+				const limited = await t.mutation(
+					internal.automationExecutor.cleanupOldExecutions,
+					{ batchSize: 1 }
+				);
+				expect(limited.deleted).toBe(1);
+				expect(limited.hasMore).toBe(true);
+
+				const rest = await t.mutation(
+					internal.automationExecutor.cleanupOldExecutions,
+					{}
+				);
+				expect(rest.deleted).toBe(2);
+
+				const remaining = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(remaining).toHaveLength(2);
+				const statuses = remaining.map((e) => e.status).sort();
+				expect(statuses).toEqual(["completed", "running"]);
+				expect(
+					remaining.find((e) => e.status === "running")?.triggeredAt
+				).toBe(old + 3);
+			});
+		});
+
+		describe("C5-4b fetch-heavy walk at scan-budget scale", () => {
+			it("two fetches page through 3,000 rows each in one walk, sharing the budget without truncation", async () => {
+				// convex-test does not enforce Convex's production transaction
+				// limits (32k docs scanned / 16 MiB read / 4,096 index ranges), so
+				// this proves paging + shared-budget accounting at real row counts;
+				// empirical prod-limit headroom needs a dev-deploy load run (see
+				// the WALK_SCAN_BUDGET comment for the verified arithmetic).
+				const { asUser, orgId } = await setupUser();
+				await makeOrgPremium(orgId);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Bulk Co",
+					status: "active",
+				});
+				await t.run(async (ctx) => {
+					for (let i = 0; i < 3000; i++) {
+						await ctx.db.insert("invoices", {
+							orgId,
+							clientId,
+							invoiceNumber: `INV-${i}`,
+							status: i < 5 ? ("paid" as const) : ("draft" as const),
+							subtotal: 10,
+							total: 10,
+							issuedDate: Date.now(),
+							dueDate: Date.now(),
+							publicToken: crypto.randomUUID(),
+						});
+					}
+				});
+
+				// Nearly-no-match filter: each fetch must page through all 3,000
+				// org rows (6 pages of 500) to find its 5 matches.
+				const fetchPaid = (id: string, next: string) => ({
+					id,
+					type: "fetch_records" as const,
+					config: {
+						kind: "fetch_records" as const,
+						objectType: "invoice" as const,
+						filters: [
+							{
+								logic: "and" as const,
+								rules: [
+									{
+										field: "status",
+										operator: "equals" as const,
+										value: { kind: "static" as const, value: "paid" },
+									},
+								],
+							},
+						],
+					},
+					nextNodeId: next,
+				});
+				const id = await asUser.mutation(api.automations.create, {
+					name: "Scan budget walk",
+					trigger: {
+						type: "scheduled" as const,
+						schedule: {
+							frequency: "daily" as const,
+							timezone: "UTC",
+							time: "09:00",
+						},
+					},
+					nodes: [
+						fetchPaid("fetch-1", "fetch-2"),
+						fetchPaid("fetch-2", "end-1"),
+						{
+							id: "end-1",
+							type: "end" as const,
+							config: { kind: "end" as const },
+						},
+					],
+					isActive: true,
+				});
+
+				await t.run(async (ctx) =>
+					ctx.db.patch(id, { nextRunAt: Date.now() - 1000 })
+				);
+				await t.mutation(
+					internal.automationExecutor.dispatchScheduledAutomations,
+					{}
+				);
+				await drainScheduled();
+
+				const executions = await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				);
+				expect(executions).toHaveLength(1);
+				expect(executions[0].status).toBe("completed");
+				expect(executions[0].dataTruncated).toBeFalsy();
+				for (const nodeId of ["fetch-1", "fetch-2"]) {
+					const entry = executions[0].nodesExecuted.find(
+						(n) => n.nodeId === nodeId
+					);
+					expect(entry?.result).toBe("success");
+					expect(entry?.recordsProcessed).toBe(5);
+					expect(entry?.truncated).toBeFalsy();
+				}
+			});
+		});
+	});
 });
