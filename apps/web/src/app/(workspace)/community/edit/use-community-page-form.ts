@@ -688,6 +688,12 @@ export function useCommunityPageForm() {
 		[dirtyBySection],
 	);
 
+	// Slug availability still debouncing or query in flight — treat as
+	// unresolved so save/publish can't race a taken slug.
+	const isCheckingSlug =
+		slug.length >= 3 &&
+		(debouncedSlug !== slug || isSlugAvailable === undefined);
+
 	const hasPublishableContent = useMemo(
 		() =>
 			!!bioContent ||
@@ -1084,6 +1090,7 @@ export function useCommunityPageForm() {
 			hasInvalidSocialUrls,
 			slugError,
 			isSlugAvailable,
+			isCheckingSlug,
 		},
 		// Section navigation
 		activeSection,

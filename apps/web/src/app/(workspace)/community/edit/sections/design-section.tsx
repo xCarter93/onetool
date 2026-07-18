@@ -1,5 +1,8 @@
 "use client";
 
+import { Palette } from "lucide-react";
+
+import { SectionShell } from "./section-shell";
 import { ThemeCard } from "../components/theme-card";
 
 interface DesignSectionProps {
@@ -32,18 +35,13 @@ export function DesignSection({
 	sectionRef,
 }: DesignSectionProps) {
 	return (
-		<section
+		<SectionShell
 			id="design"
-			ref={sectionRef}
-			className="border-t border-border/40 pt-12 space-y-6"
+			sectionRef={sectionRef}
+			icon={Palette}
+			title="Design"
+			description="Choose a visual style for your public page."
 		>
-			<div>
-				<h2 className="text-lg font-semibold text-fg">Page Design</h2>
-				<p className="text-sm text-muted-fg mt-1">
-					Choose a visual style for your public page.
-				</p>
-			</div>
-
 			<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 				{THEMES.map((t) => (
 					<ThemeCard
@@ -56,6 +54,6 @@ export function DesignSection({
 					/>
 				))}
 			</div>
-		</section>
+		</SectionShell>
 	);
 }

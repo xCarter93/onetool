@@ -6,6 +6,7 @@ import {
 	Trash2,
 	Loader2,
 	ImageIcon,
+	Images,
 	ChevronUp,
 	ChevronDown,
 	Plus,
@@ -13,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
+import { SectionShell } from "./section-shell";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { MAX_GALLERY_IMAGES, type GalleryItem } from "../use-community-page-form";
 
@@ -36,39 +38,38 @@ export const GallerySection = React.memo(function GallerySection({
 	sectionRef,
 }: GallerySectionProps) {
 	return (
-		<section
+		<SectionShell
 			id="imageGallery"
-			ref={sectionRef}
-			className="scroll-mt-44"
-		>
-			<div className="mb-4 flex items-start justify-between gap-4">
+			sectionRef={sectionRef}
+			icon={Images}
+			title="Image Gallery"
+			description="Show off recent work with photos."
+			headerAccessory={
 				<div className="flex items-center gap-3">
-					<h2 className="text-lg font-semibold text-fg">
-						Image Gallery
-					</h2>
 					<Badge
 						variant={galleryItems.length >= MAX_GALLERY_IMAGES ? "warning" : "default"}
 						className="transition-all duration-200"
 					>
 						{galleryItems.length}/{MAX_GALLERY_IMAGES}
 					</Badge>
+					{galleryItems.length > 0 && galleryItems.length < MAX_GALLERY_IMAGES && (
+						<Button
+							variant="secondary"
+							size="sm"
+							onClick={() => galleryInputRef.current?.click()}
+							disabled={isUploadingGallery}
+						>
+							{isUploadingGallery ? (
+								<Loader2 className="size-4 mr-2 animate-spin" />
+							) : (
+								<Plus className="size-4 mr-2" />
+							)}
+							Add Image
+						</Button>
+					)}
 				</div>
-				{galleryItems.length > 0 && galleryItems.length < MAX_GALLERY_IMAGES && (
-					<Button
-						variant="secondary"
-						size="sm"
-						onClick={() => galleryInputRef.current?.click()}
-						disabled={isUploadingGallery}
-					>
-						{isUploadingGallery ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
-						) : (
-							<Plus className="size-4 mr-2" />
-						)}
-						Add Image
-					</Button>
-				)}
-			</div>
+			}
+		>
 			<input
 				ref={galleryInputRef}
 				type="file"
@@ -82,9 +83,11 @@ export const GallerySection = React.memo(function GallerySection({
 			/>
 
 			{galleryItems.length === 0 ? (
-				<div
-					className="rounded-xl border-2 border-dashed border-border/70 bg-muted/10 p-12 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all group"
+				<button
+					type="button"
+					className="w-full rounded-xl border-2 border-dashed border-border/70 bg-muted/10 p-12 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 					onClick={() => galleryInputRef.current?.click()}
+					disabled={isUploadingGallery}
 				>
 					{isUploadingGallery ? (
 						<Loader2 className="size-10 mx-auto animate-spin text-muted-fg mb-3" />
@@ -93,7 +96,7 @@ export const GallerySection = React.memo(function GallerySection({
 					)}
 					<p className="text-sm font-medium text-fg">Add photos of your work</p>
 					<p className="text-xs text-muted-fg mt-1">Up to {MAX_GALLERY_IMAGES} images, 5MB each</p>
-				</div>
+				</button>
 			) : (
 				<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 					{galleryItems.map((item, index) => (
@@ -114,8 +117,8 @@ export const GallerySection = React.memo(function GallerySection({
 										<Loader2 className="size-5 animate-spin" />
 									</div>
 								)}
-								<div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-								<div className="absolute bottom-0 inset-x-0 p-3 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+								<div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200" />
+								<div className="absolute bottom-0 inset-x-0 p-3 flex items-end justify-between opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200">
 									<span className="text-xs font-medium text-white/90 bg-black/30 backdrop-blur-sm rounded-md px-2 py-1">
 										{index + 1} of {galleryItems.length}
 									</span>
@@ -124,7 +127,8 @@ export const GallerySection = React.memo(function GallerySection({
 											type="button"
 											onClick={() => moveGalleryItem(index, -1)}
 											disabled={index === 0}
-											className="size-8 rounded-lg bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+											aria-label="Move image earlier"
+											className="size-8 rounded-lg bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
 										>
 											<ChevronUp className="size-4" />
 										</button>
@@ -132,14 +136,16 @@ export const GallerySection = React.memo(function GallerySection({
 											type="button"
 											onClick={() => moveGalleryItem(index, 1)}
 											disabled={index === galleryItems.length - 1}
-											className="size-8 rounded-lg bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+											aria-label="Move image later"
+											className="size-8 rounded-lg bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
 										>
 											<ChevronDown className="size-4" />
 										</button>
 										<button
 											type="button"
 											onClick={() => removeGalleryItem(item.storageId)}
-											className="size-8 rounded-lg bg-red-500/80 backdrop-blur-sm text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+											aria-label="Remove image"
+											className="size-8 rounded-lg bg-danger/80 backdrop-blur-sm text-white flex items-center justify-center hover:bg-danger transition-colors cursor-pointer"
 										>
 											<Trash2 className="size-4" />
 										</button>
@@ -165,6 +171,6 @@ export const GallerySection = React.memo(function GallerySection({
 					)}
 				</div>
 			)}
-		</section>
+		</SectionShell>
 	);
 });
