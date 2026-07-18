@@ -3555,6 +3555,64 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(result("minus")).toBe(base - 2 * 3_600_000);
 		});
 
+		it("adjust_time: whole-day shifts preserve wall-clock across DST (C2-3)", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			// Mar 7 2026 12:00 EST; +3 days crosses the Mar 8 spring-forward.
+			const instantBase = Date.UTC(2026, 2, 7, 17, 0);
+			// A calendar date advances in pure UTC and must stay UTC midnight.
+			const calendarBase = Date.UTC(2026, 2, 7);
+
+			const adjustNode = (id: string, base: number, next: string) => ({
+				id,
+				type: "adjust_time" as const,
+				config: {
+					kind: "adjust_time" as const,
+					base: { kind: "static" as const, value: base },
+					amount: 3,
+					unit: "days" as const,
+					direction: "add" as const,
+				},
+				nextNodeId: next,
+			});
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "DST shift",
+				trigger: {
+					type: "scheduled",
+					schedule: {
+						frequency: "daily",
+						timezone: "America/New_York",
+						time: "09:00",
+					},
+				},
+				nodes: [
+					adjustNode("instant", instantBase, "calendar"),
+					adjustNode("calendar", calendarBase, "end-1"),
+					endNode("end-1"),
+				],
+				isActive: true,
+			});
+
+			await runScheduledOnce(automationId);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const result = (nodeId: string) =>
+				(
+					executions[0].nodesExecuted.find((n) => n.nodeId === nodeId)
+						?.output as { result: number } | undefined
+				)?.result;
+			// Still 12:00 on the wall in New York — now EDT, i.e. 16:00 UTC.
+			// Fixed-ms math would return 17:00 UTC (a 1pm wall time).
+			expect(result("instant")).toBe(Date.UTC(2026, 2, 10, 16, 0));
+			expect(result("calendar")).toBe(Date.UTC(2026, 2, 10));
+		});
+
 		it("send_notification recipient org_admins: creates an automation_message notification per admin", async () => {
 			const { asUser, orgId } = await setupUser();
 

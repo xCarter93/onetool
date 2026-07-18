@@ -27,7 +27,13 @@ import {
 	resolveValueRef,
 	type VariableScope,
 } from "./lib/conditionEval";
-import { calendarDayEpoch, toEpochMs } from "./lib/formula";
+import {
+	calendarDayEpoch,
+	getZonedParts,
+	isCalendarDateEpoch,
+	toEpochMs,
+	zonedPartsToEpoch,
+} from "./lib/formula";
 import {
 	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
 	FREE_MAX_CLIENTS,
@@ -2420,8 +2426,30 @@ function runAdjustTimeNode(
 		};
 	}
 	const sign = config.direction === "subtract" ? -1 : 1;
-	const value =
-		baseMs + sign * config.amount * ADJUST_TIME_UNIT_MS[config.unit];
+	const days =
+		config.unit === "days"
+			? sign * config.amount
+			: config.unit === "weeks"
+				? sign * config.amount * 7
+				: null;
+	let value: number;
+	if (days !== null && Number.isInteger(days)) {
+		// Whole-day math mirrors ADDDAYS: a calendar date advances in UTC (no
+		// DST there, result stays exactly UTC midnight); an instant preserves
+		// its wall-clock time in the run tz across DST transitions. Fixed-ms
+		// day math would drift an hour over a DST boundary.
+		if (isCalendarDateEpoch(baseMs)) {
+			value = baseMs + days * 86_400_000;
+		} else {
+			const tz = scope.workflow?.tz ?? "UTC";
+			const parts = getZonedParts(baseMs, tz);
+			value = zonedPartsToEpoch({ ...parts, day: parts.day + days }, tz);
+		}
+	} else {
+		// Minutes/hours are absolute offsets; fractional day amounts keep the
+		// legacy fixed-ms behavior (parts math needs whole days).
+		value = baseMs + sign * config.amount * ADJUST_TIME_UNIT_MS[config.unit];
+	}
 	scope.nodes ??= {};
 	scope.nodes[nodeId] = { ...scope.nodes[nodeId], result: value };
 	return { ok: true, value };
