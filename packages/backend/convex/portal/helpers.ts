@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { PORTAL_JWT_AUDIENCES } from "./audiences";
 
 /**
  * Validated portal session — what `getPortalSessionOrThrow` resolves a JWT
@@ -15,10 +16,7 @@ export type PortalSession = {
 	tokenJti: string;
 };
 
-const ACCEPTED_AUDIENCES = new Set([
-	"convex-portal",
-	"convex-portal-access",
-]);
+const ACCEPTED_AUDIENCES = new Set<string>(PORTAL_JWT_AUDIENCES);
 
 // PUB-07: portal sessions previously slid indefinitely — touchSession and the
 // 20h background ping re-anchored expiry to `now` on every request, so a stolen
@@ -64,7 +62,7 @@ export async function getPortalSessionOrThrow(
 	// runtime (e.g. convex-test identities) does surface aud, still pin it to
 	// the accepted portal audiences.
 	const aud = claims.aud;
-	if (aud !== undefined && aud !== null) {
+	if (aud !== undefined) {
 		const audValues = Array.isArray(aud) ? aud : [aud];
 		if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
 			throw new ConvexError({ code: "UNAUTHENTICATED" });

@@ -157,7 +157,7 @@ describe("portal sessions", () => {
 	it("succeeds when the identity carries no aud claim (real Convex strips aud after enforcing it against applicationID at provider match)", async () => {
 		const seed = await seedClientPortal(t);
 		const jti = "test-jti-no-aud";
-		await seedSession(t, seed, jti);
+		const sessionId = await seedSession(t, seed, jti);
 
 		const { aud: _aud, ...identityWithoutAud } = portalIdentity(seed, jti);
 		const asPortal = t.withIdentity(identityWithoutAud);
@@ -165,7 +165,7 @@ describe("portal sessions", () => {
 			api.portal.sessions.touchSession,
 			{ tokenJti: jti, newExpiresAt: Date.now() + 1000 }
 		);
-		expect(result).toBeDefined();
+		expect(result).toBe(sessionId);
 	});
 
 	it("throws when no portalSessions row exists for the JWT's jti", async () => {
