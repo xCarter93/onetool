@@ -17,3 +17,13 @@ export function utcMidnightMsToLocalDate(ms: number): Date {
 export function localDateToUtcMidnightMs(d: Date): number {
 	return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
 }
+
+/**
+ * UTC-midnight epoch of the viewer's current local calendar day. Compare stored
+ * calendar-date epochs against this (`stored < todayUtcMidnightMs()` = "past"),
+ * never against `Date.now()` — the raw instant flips at UTC midnight, hours off
+ * from the viewer's day.
+ */
+export function todayUtcMidnightMs(): number {
+	return localDateToUtcMidnightMs(new Date());
+}

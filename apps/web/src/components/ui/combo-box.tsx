@@ -8,6 +8,8 @@ interface ComboBoxProps {
 	value?: string;
 	onSelect?: (option: string | null) => void;
 	disabled?: boolean;
+	/** Hide the clear (×) button for fields where "no selection" is not a valid state. */
+	clearable?: boolean;
 }
 
 const ComboBox = ({
@@ -16,6 +18,7 @@ const ComboBox = ({
 	value,
 	onSelect,
 	disabled = false,
+	clearable = true,
 }: ComboBoxProps) => {
 	const [inputValue, setInputValue] = useState<string>(value || "");
 	const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -183,7 +186,7 @@ const ComboBox = ({
 						highlightedIndex >= 0 ? `option-${highlightedIndex}` : undefined
 					}
 				/>
-				{selectedOption && !disabled && (
+				{clearable && selectedOption && !disabled && (
 					<button
 						type="button"
 						onClick={handleClearSelection}

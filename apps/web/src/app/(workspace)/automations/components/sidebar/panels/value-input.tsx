@@ -433,6 +433,9 @@ function TypedPrimitiveControl({
 					aria-invalid={invalid || undefined}
 					value={timeText}
 					onChange={(e) => {
+						// "".split(":") yields [""] -> m === undefined, which
+						// Number.isNaN misses and compose() would turn into NaN.
+						if (!e.target.value) return;
 						const [h, m] = e.target.value.split(":").map(Number);
 						if (Number.isNaN(h) || Number.isNaN(m)) return;
 						onChange(compose(current ?? new Date(), h, m));

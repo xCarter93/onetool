@@ -362,7 +362,8 @@ export const findMatchingAutomations = internalQuery({
 				criteria.logic,
 				criteria.groups,
 				record,
-				scope
+				scope,
+				args.objectType
 			);
 		});
 	},
@@ -2315,7 +2316,13 @@ async function runFetchNode(
 			env.orgId,
 			{
 				predicate: (row) =>
-					evaluateConditionGroups("and", config.filters, row, env.scope),
+					evaluateConditionGroups(
+						"and",
+						config.filters,
+						row,
+						env.scope,
+						config.objectType
+					),
 				// Sorting needs every match in range; without one, rows already
 				// arrive newest-first so the scan can stop at the node's limit.
 				stopAfterMatches: config.sortBy ? undefined : limit,

@@ -46,6 +46,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency } from "@/lib/money";
 import {
 	localDateToUtcMidnightMs,
+	todayUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
 
@@ -130,13 +131,14 @@ export function InvoiceDetailSidebar({
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
 		undefined
 	);
-	// Capture "now" once at mount to keep the overdue check pure across renders
-	const [now] = useState(() => Date.now());
+	// Capture today's calendar-day start once at mount to keep the overdue
+	// check pure across renders; dueDate is a UTC-midnight calendar epoch.
+	const [todayStart] = useState(() => todayUtcMidnightMs());
 
 	const currentStatus =
 		invoice.status === "sent" &&
 		invoice.dueDate &&
-		invoice.dueDate < now
+		invoice.dueDate < todayStart
 			? "overdue"
 			: (invoice.status as InvoiceStatus);
 

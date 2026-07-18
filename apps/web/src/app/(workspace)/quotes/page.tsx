@@ -57,6 +57,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
+import { todayUtcMidnightMs } from "@/lib/dates";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
@@ -203,8 +204,10 @@ const createColumns = (
 			if (!row.original.validUntil) {
 				return <span className="text-muted-foreground">Not set</span>;
 			}
-			const d = new Date(row.original.validUntil);
-			const isExpired = d < new Date();
+			// Calendar-day compare: validUntil is a UTC-midnight epoch, so an
+			// instant compare would mark it expired at UTC midnight, hours into
+			// the viewer's validUntil day.
+			const isExpired = row.original.validUntil < todayUtcMidnightMs();
 			return (
 				<span className={cn("text-foreground", isExpired && "text-destructive")}>
 					{formatQuoteDate(row.original.validUntil)}

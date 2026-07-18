@@ -640,9 +640,10 @@ export function BusinessInfoTab() {
 									value={businessForm.timezone}
 									placeholder="Search timezones..."
 									disabled={controlsDisabled}
+									// Not clearable: organizations.update drops undefined, so a
+									// cleared field would revert on reload while showing empty.
+									clearable={false}
 									onSelect={(tz) => {
-										// Ignore the clear action: organizations.update drops
-										// undefined, so "cleared" would silently revert on reload.
 										if (!tz) return;
 										setBusinessDirty(true);
 										setBusinessForm((prev) => ({
