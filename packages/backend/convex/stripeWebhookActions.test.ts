@@ -286,13 +286,11 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(payment?.status).toBe("pending");
 	});
 
-	it("W-4 pending-session lifecycle: increment + persist mutations match the route contract", async () => {
-		// The route-level "called twice, mock fires once" test belongs in
-		// apps/web (route harness — see SUMMARY note on test location).
-		// Here we pin the BACKEND mutation contract that backs the W-4 flow:
-		// incrementCheckoutAttemptCounterInternal returns monotonically
-		// increasing values and persistPendingCheckoutSessionInternal writes
-		// the three pending-session fields back to the payment row.
+	it("W-4: incrementCheckoutAttemptCounter is monotonic (keyed by paymentId); checkout.session.completed clears pending session fields", async () => {
+		// The legacy /pay/checkout route is retired. incrementCheckoutAttemptCounter
+		// now backs the portal PaymentIntent mint and is keyed by paymentId. The
+		// checkout.session.completed webhook is kept for any in-flight legacy
+		// session and still clears the pending-session cache on the row.
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
 			orgId,
@@ -301,31 +299,28 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		});
 
 		const attempt1 = await t.mutation(
-			api.payments.incrementCheckoutAttemptCounterInternal,
-			{ publicToken: "tok_w4_1" }
+			internal.payments.incrementCheckoutAttemptCounter,
+			{ paymentId }
 		);
 		expect(attempt1).toBe(1);
 		const attempt2 = await t.mutation(
-			api.payments.incrementCheckoutAttemptCounterInternal,
-			{ publicToken: "tok_w4_1" }
+			internal.payments.incrementCheckoutAttemptCounter,
+			{ paymentId }
 		);
 		expect(attempt2).toBe(2);
+		const counted = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(counted?.checkoutAttemptCounter).toBe(2);
 
+		// Seed a pending Checkout Session directly — the persist mutation is retired
+		// with the /pay route, but the webhook still clears these fields on a match.
 		const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-		await t.mutation(api.payments.persistPendingCheckoutSessionInternal, {
-			publicToken: "tok_w4_1",
-			pendingCheckoutSessionId: "cs_test_w4abc1",
-			pendingCheckoutSessionUrl: "https://checkout.stripe.com/cs_test_w4abc1",
-			pendingCheckoutSessionExpiresAt: expiresAt,
-		});
-
-		const payment = await t.run((ctx) => ctx.db.get(paymentId));
-		expect(payment?.pendingCheckoutSessionId).toBe("cs_test_w4abc1");
-		expect(payment?.pendingCheckoutSessionUrl).toBe(
-			"https://checkout.stripe.com/cs_test_w4abc1"
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, {
+				pendingCheckoutSessionId: "cs_test_w4abc1",
+				pendingCheckoutSessionUrl: "https://checkout.stripe.com/cs_test_w4abc1",
+				pendingCheckoutSessionExpiresAt: expiresAt,
+			})
 		);
-		expect(payment?.pendingCheckoutSessionExpiresAt).toBe(expiresAt);
-		expect(payment?.checkoutAttemptCounter).toBe(2);
 
 		// `markPaidFromWebhookInternal` clears the three pending fields when
 		// session.id matches — confirm via a happy-path webhook event.
@@ -671,5 +666,153 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 
 		const org = await t.run((ctx) => ctx.db.get(orgId));
 		expect(org?.stripeChargesEnabled).toBe(false);
+	});
+});
+
+
+/**
+ * Regression tests for PRD-public-surface-security §4.
+ *
+ * PUB-34 — legacy invoice-flow Checkout Sessions must be confirmed server-side
+ * (they were silently no-oped against the payments table and acked, leaving the
+ * customer's money captured but the invoice unpaid forever), and a genuine
+ * lookup miss must be RETRYABLE (event marked failed), not "processed".
+ */
+describe("PUB-34 public-surface security regression", () => {
+	let t: ReturnType<typeof convexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function seedLegacyInvoice(
+		tt: ReturnType<typeof convexTest>,
+		args: { orgId: Id<"organizations">; publicToken: string; total: number }
+	) {
+		return await tt.run(async (ctx) => {
+			const clientId = await ctx.db.insert("clients", {
+				orgId: args.orgId,
+				companyName: "Legacy Invoice Client",
+				status: "lead",
+			});
+			const invoiceId = await ctx.db.insert("invoices", {
+				orgId: args.orgId,
+				clientId,
+				invoiceNumber: "INV-LEGACY-1",
+				status: "sent",
+				subtotal: args.total,
+				total: args.total,
+				issuedDate: Date.now(),
+				dueDate: Date.now() + 86400000,
+				publicToken: args.publicToken,
+			});
+			return { clientId, invoiceId };
+		});
+	}
+
+	it("PUB-34: legacy invoice-flow checkout.session.completed marks the invoice paid", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const invToken = "tok_legacy_inv_paid";
+		const { invoiceId } = await seedLegacyInvoice(t, {
+			orgId,
+			publicToken: invToken,
+			total: 100,
+		});
+
+		const event = buildStripeEvent({
+			id: "evt_legacy_inv_paid",
+			type: "checkout.session.completed",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "cs_legacy_inv_paid",
+					payment_intent: "pi_legacy_inv_paid",
+					amount_total: 10000,
+					metadata: { flow: "invoice", publicToken: invToken },
+				} as never,
+			},
+		});
+
+		const res = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		expect(res).toEqual({ duplicate: false, orgFound: true });
+
+		const invoice = await t.run((ctx) => ctx.db.get(invoiceId));
+		expect(invoice?.status).toBe("paid");
+		expect(invoice?.stripePaymentIntentId).toBe("pi_legacy_inv_paid");
+		expect(invoice?.paidAt).toBeGreaterThan(0);
+
+		const rows = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(
+			rows.find((r) => r.stripeEventId === "evt_legacy_inv_paid")?.status
+		).toBe("processed");
+	});
+
+	it("PUB-34: invoice-flow session with no matching invoice is retryable (event failed, not processed)", async () => {
+		await seedConnectedOrg(t);
+
+		const event = buildStripeEvent({
+			id: "evt_legacy_inv_miss",
+			type: "checkout.session.completed",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "cs_legacy_inv_miss",
+					payment_intent: "pi_legacy_inv_miss",
+					amount_total: 10000,
+					metadata: { flow: "invoice", publicToken: "tok_no_such_invoice" },
+				} as never,
+			},
+		});
+
+		await expect(
+			t.action(
+				internal.stripeWebhookActions.handleEvent,
+				buildHandleEventArgs(event)
+			)
+		).rejects.toThrow();
+
+		const rows = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(
+			rows.find((r) => r.stripeEventId === "evt_legacy_inv_miss")?.status
+		).toBe("failed");
+	});
+
+	it("PUB-34: payment-flow session with no matching payment is retryable (not silently acked)", async () => {
+		await seedConnectedOrg(t);
+
+		const event = buildStripeEvent({
+			id: "evt_pay_miss",
+			type: "checkout.session.completed",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "cs_pay_miss",
+					payment_intent: "pi_pay_miss",
+					amount_total: 10000,
+					metadata: { flow: "payment", publicToken: "tok_no_such_payment" },
+				} as never,
+			},
+		});
+
+		await expect(
+			t.action(
+				internal.stripeWebhookActions.handleEvent,
+				buildHandleEventArgs(event)
+			)
+		).rejects.toThrow();
+
+		const rows = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(
+			rows.find((r) => r.stripeEventId === "evt_pay_miss")?.status
+		).toBe("failed");
 	});
 });

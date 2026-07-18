@@ -20,6 +20,14 @@ const ACCEPTED_AUDIENCES = new Set([
 	"convex-portal-access",
 ]);
 
+// PUB-07: portal sessions previously slid indefinitely — touchSession and the
+// 20h background ping re-anchored expiry to `now` on every request, so a stolen
+// cookie could be kept alive forever. Bound sessions two ways, enforced from the
+// DB row (never a JWT claim): an absolute ceiling from createdAt, and an idle
+// timeout from lastActivityAt.
+export const ABSOLUTE_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+export const IDLE_MAX_MS = 60 * 60 * 1000; // 60 minutes
+
 type IdentityWithPortalClaims = {
 	issuer?: string;
 	aud?: string | string[];
@@ -47,12 +55,17 @@ export async function getPortalSessionOrThrow(
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
+	// PUB-08: require the aud claim. Convex's customJwt provider enforces
+	// issuer/algorithm/signature but NOT audience, so this ad-hoc check is the
+	// only audience binding — a signed token that simply omitted `aud` would
+	// otherwise bypass it entirely (fail-open).
 	const aud = claims.aud;
-	if (aud !== undefined && aud !== null) {
-		const audValues = Array.isArray(aud) ? aud : [aud];
-		if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
-			throw new ConvexError({ code: "UNAUTHENTICATED" });
-		}
+	if (aud === undefined || aud === null) {
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
+	}
+	const audValues = Array.isArray(aud) ? aud : [aud];
+	if (!audValues.some((a) => ACCEPTED_AUDIENCES.has(a))) {
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 
 	const orgId = claims.orgId;
@@ -71,7 +84,16 @@ export async function getPortalSessionOrThrow(
 	if (!row) {
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
-	if (row.expiresAt < Date.now()) {
+	const now = Date.now();
+	if (row.expiresAt < now) {
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
+	}
+	// PUB-07: absolute ceiling and idle timeout, both anchored to durable row
+	// fields rather than the sliding expiresAt.
+	if (row.createdAt + ABSOLUTE_MAX_MS < now) {
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
+	}
+	if (row.lastActivityAt + IDLE_MAX_MS < now) {
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 	if (
@@ -79,6 +101,13 @@ export async function getPortalSessionOrThrow(
 		row.clientContactId !== (clientContactId as Id<"clientContacts">) ||
 		row.clientPortalId !== clientPortalId
 	) {
+		throw new ConvexError({ code: "UNAUTHENTICATED" });
+	}
+
+	// PUB-10: an archived client's existing sessions must stop working
+	// immediately, not just be blocked from creating new ones.
+	const client = await ctx.db.get(row.clientId);
+	if (!client || client.status === "archived") {
 		throw new ConvexError({ code: "UNAUTHENTICATED" });
 	}
 

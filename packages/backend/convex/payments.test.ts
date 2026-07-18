@@ -55,7 +55,8 @@ describe("Payments", () => {
 				sortOrder: 0,
 				status: "pending",
 			});
-			expect(payment?.publicToken).toBeDefined();
+			// publicToken is retired: no longer generated for net-new payment rows.
+			expect(payment?.publicToken).toBeUndefined();
 		});
 
 		it("should create a payment without description", async () => {
@@ -675,113 +676,6 @@ describe("Payments", () => {
 			});
 
 			expect(payments).toEqual([]);
-		});
-	});
-
-	describe("getByPublicToken", () => {
-		it("should return payment with invoice and org context", async () => {
-			const { paymentToken, invoiceNumber, orgName } = await t.run(
-				async (ctx) => {
-					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx, {
-						orgName: "Test Business LLC",
-					});
-					const clientId = await createTestClient(ctx, orgId);
-					const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
-						invoiceNumber: "INV-12345",
-						total: 1000,
-					});
-
-					const paymentToken = `public_token_${Date.now()}`;
-					await ctx.db.insert("payments", {
-						orgId,
-						invoiceId,
-						paymentAmount: 500,
-						dueDate: Date.now() + 30 * 24 * 60 * 60 * 1000,
-						description: "Deposit",
-						sortOrder: 0,
-						status: "pending",
-						publicToken: paymentToken,
-					});
-
-					return { paymentToken, invoiceNumber: "INV-12345", orgName: "Test Business LLC" };
-				}
-			);
-
-			// No authentication required for public token access
-			const result = await t.query(api.payments.getByPublicToken, {
-				publicToken: paymentToken,
-			});
-
-			expect(result).not.toBeNull();
-			expect(result?.payment.publicToken).toBe(paymentToken);
-			expect(result?.payment.paymentAmount).toBe(500);
-			expect(result?.payment.status).toBe("pending");
-			expect(result?.invoice.invoiceNumber).toBe(invoiceNumber);
-			expect(result?.invoice.total).toBe(1000);
-			expect(result?.org?.name).toBe(orgName);
-			expect(result?.paymentContext.paymentNumber).toBe(1);
-			expect(result?.paymentContext.totalPayments).toBe(1);
-		});
-
-		it("should return null for non-existent token", async () => {
-			const result = await t.query(api.payments.getByPublicToken, {
-				publicToken: "non_existent_token",
-			});
-
-			expect(result).toBeNull();
-		});
-
-		it("should include payment context with multiple payments", async () => {
-			const { paymentToken2 } = await t.run(async (ctx) => {
-				const { orgId } = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, orgId);
-				const invoiceId = await createTestInvoice(ctx, orgId, clientId, {
-					total: 1000,
-				});
-
-				await ctx.db.insert("payments", {
-					orgId,
-					invoiceId,
-					paymentAmount: 300,
-					dueDate: Date.now(),
-					sortOrder: 0,
-					status: "paid",
-					paidAt: Date.now(),
-					publicToken: `token_1_${Date.now()}`,
-				});
-
-				const paymentToken2 = `token_2_${Date.now()}`;
-				await ctx.db.insert("payments", {
-					orgId,
-					invoiceId,
-					paymentAmount: 400,
-					dueDate: Date.now(),
-					sortOrder: 1,
-					status: "pending",
-					publicToken: paymentToken2,
-				});
-
-				await ctx.db.insert("payments", {
-					orgId,
-					invoiceId,
-					paymentAmount: 300,
-					dueDate: Date.now(),
-					sortOrder: 2,
-					status: "pending",
-					publicToken: `token_3_${Date.now()}`,
-				});
-
-				return { paymentToken2 };
-			});
-
-			const result = await t.query(api.payments.getByPublicToken, {
-				publicToken: paymentToken2,
-			});
-
-			expect(result?.paymentContext.paymentNumber).toBe(2);
-			expect(result?.paymentContext.totalPayments).toBe(3);
-			expect(result?.paymentContext.totalPaid).toBe(300);
-			expect(result?.paymentContext.totalRemaining).toBe(700);
 		});
 	});
 

@@ -28,6 +28,7 @@ function row(overrides: Partial<InstallmentRow> = {}): InstallmentRow {
 		cardLast4: overrides.cardLast4 ?? null,
 		cardBrand: overrides.cardBrand ?? null,
 		receiptUrl: overrides.receiptUrl ?? null,
+		recordedOutsidePortal: overrides.recordedOutsidePortal ?? false,
 	};
 }
 
@@ -95,7 +96,7 @@ describe("InstallmentList", () => {
 		expect(expandedText).toContain("4242");
 	});
 
-	it("legacy invoices do not render installment rows — the legacy notice replaces the installment list entirely (empty installments renders an empty state, not rows)", () => {
+	it("zero-payment-row invoices render an empty state, not installment rows (view-only backstop)", () => {
 		const { container } = render(
 			<InstallmentList installments={[]} activeIndex={null} />,
 		);
@@ -103,9 +104,9 @@ describe("InstallmentList", () => {
 		expect(
 			container.querySelectorAll("[data-installment-row]").length,
 		).toBe(0);
-		// The component renders an empty-state placeholder. Parent island
-		// substitutes LegacyInvoiceNotice for InstallmentList for legacy invoices;
-		// this empty branch is the defensive backstop.
+		// The component renders an empty-state placeholder. For zero-payment-row
+		// invoices the parent island falls through to this empty InstallmentList
+		// (view-only) — this empty branch is the backstop.
 		expect(container.querySelector("[data-installment-empty]")).not.toBeNull();
 	});
 });

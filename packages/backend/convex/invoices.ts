@@ -5,11 +5,11 @@ import {
 	QueryCtx,
 	MutationCtx,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
-import { generatePublicToken } from "./lib/shared";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -23,7 +23,8 @@ import {
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
-import { roundCents, sumMoney } from "./lib/money";
+import { settleOutstandingPaymentsForInvoice } from "./lib/payments";
+import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -80,7 +81,6 @@ async function createInvoiceWithOrg(
 	const invoiceData = {
 		...data,
 		orgId: ctx.orgId,
-		publicToken: generatePublicToken(),
 	};
 
 	return await ctx.db.insert("invoices", invoiceData);
@@ -267,79 +267,93 @@ export const get = optionalUserQuery({
 	},
 });
 
-/**
- * Get an invoice by public token (for client access)
- */
-// INTENTIONAL: raw public query — unauthenticated public invoice-token access.
-// Caller has no Clerk identity; org is discovered from the invoice row.
-export const getByPublicToken = query({
-	args: { publicToken: v.string() },
-	handler: async (ctx, args) => {
-		const invoice = await getInvoiceByPublicToken(ctx, args.publicToken);
-		if (!invoice) {
-			return null;
-		}
-
-		const org = await ctx.db.get(invoice.orgId);
-
-		return {
-			invoice: {
-				_id: invoice._id,
-				publicToken: invoice.publicToken,
-				status: invoice.status,
-				invoiceNumber: invoice.invoiceNumber,
-				clientId: invoice.clientId,
-				projectId: invoice.projectId,
-				total: invoice.total,
-				subtotal: invoice.subtotal,
-				discountAmount: invoice.discountAmount,
-				taxAmount: invoice.taxAmount,
-				dueDate: invoice.dueDate,
-				issuedDate: invoice.issuedDate,
-				description: invoice.status,
-			},
-			org: org
-				? {
-						stripeConnectAccountId: org.stripeConnectAccountId,
-						name: org.name,
-				  }
-				: null,
-		};
-	},
-});
-
 // ============================================================================
 // Mutations
 // ============================================================================
 
 /**
- * Internal: mark an invoice as paid after Stripe verification.
- * Called only from the verifyAndMarkInvoicePaid action.
+ * PUB-34: mark a legacy-invoice-flow Checkout Session paid from the Stripe
+ * webhook. The pay-by-link legacy branch stamps the Checkout metadata with an
+ * `invoices` publicToken (flow: "invoice"); the payments-table webhook handler
+ * would never resolve it, so it silently no-oped and the invoice stayed unpaid
+ * forever. This mirrors the payments-path verification: exact amount match,
+ * required paymentIntent, org-scope assertion, and a RETRYABLE throw on a
+ * genuine lookup miss so Stripe keeps retrying rather than the event being
+ * acked against nothing.
  */
-export const markPaidByPublicTokenInternal = internalMutation({
+export const markInvoicePaidFromWebhookInternal = internalMutation({
 	args: {
-		publicToken: v.string(),
-		stripeSessionId: v.string(),
-		stripePaymentIntentId: v.string(),
+		orgId: v.id("organizations"),
+		sessionId: v.string(),
+		amountTotal: v.number(),
+		metadata: v.any(),
+		paymentIntentId: v.union(v.string(), v.null()),
 	},
-	handler: async (ctx, args) => {
-		const invoice = await getInvoiceByPublicToken(ctx, args.publicToken);
-		if (!invoice) {
-			throw new Error("Invoice not found");
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const publicToken =
+			typeof args.metadata?.publicToken === "string"
+				? args.metadata.publicToken
+				: undefined;
+		if (!publicToken) {
+			console.error(
+				`markInvoicePaidFromWebhookInternal: missing publicToken on session ${args.sessionId}; acking as terminal.`
+			);
+			return null;
 		}
 
+		const invoice = await getInvoiceByPublicToken(ctx, publicToken);
+		if (!invoice) {
+			// Retryable: the row may not be visible yet, or metadata is wrong.
+			throw new Error(
+				`markInvoicePaidFromWebhookInternal: no invoice for session ${args.sessionId}`
+			);
+		}
+
+		if (invoice.orgId !== args.orgId) {
+			// Deterministic for a given session — terminal, not retryable.
+			console.error(
+				`markInvoicePaidFromWebhookInternal: organization mismatch for session ${args.sessionId}; acking as terminal.`
+			);
+			return null;
+		}
+
+		// Idempotent: /api/pay/confirm may have already marked it.
 		if (invoice.status === "paid") {
-			return invoice._id;
+			return null;
+		}
+
+		// Stripe sends amount_total in cents; invoice totals are stored in dollars.
+		// A mismatch is deterministic for a given session — terminal, not retryable.
+		const expectedCents = dollarsToCents(invoice.total ?? 0);
+		if (args.amountTotal !== expectedCents) {
+			console.error(
+				`markInvoicePaidFromWebhookInternal: amount mismatch on session ${args.sessionId} — ` +
+					`expected ${expectedCents} cents, got ${args.amountTotal} cents. ` +
+					`Invoice left in status=${invoice.status}; investigate manually.`
+			);
+			return null;
+		}
+
+		if (!args.paymentIntentId) {
+			console.error(
+				`markInvoicePaidFromWebhookInternal: missing payment_intent for session ${args.sessionId}. ` +
+					`Invoice left in status=${invoice.status}; investigate manually.`
+			);
+			return null;
 		}
 
 		await ctx.db.patch(invoice._id, {
 			status: "paid",
-			stripeSessionId: args.stripeSessionId,
-			stripePaymentIntentId: args.stripePaymentIntentId,
+			stripeSessionId: args.sessionId,
+			stripePaymentIntentId: args.paymentIntentId,
 			paidAt: Date.now(),
 		});
 
-		// Public flow: avoid requiring an authenticated user to log activity.
+		// Settle installment payment rows like the workspace paid paths do, so a
+		// webhook-paid invoice never leaves pending rows behind.
+		await settleOutstandingPaymentsForInvoice(ctx, invoice._id);
+
 		try {
 			const client = await ctx.db.get(invoice.clientId);
 			await ActivityHelpers.invoicePaid(
@@ -351,18 +365,7 @@ export const markPaidByPublicTokenInternal = internalMutation({
 			console.warn("Invoice paid activity logging skipped:", err);
 		}
 
-		return invoice._id;
-	},
-});
-
-/**
- * Internal query: get invoice by public token (for use in actions)
- */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getByPublicTokenInternal = internalQuery({
-	args: { publicToken: v.string() },
-	handler: async (ctx, args) => {
-		return await getInvoiceByPublicToken(ctx, args.publicToken);
+		return null;
 	},
 });
 
@@ -505,6 +508,12 @@ export const update = userMutation({
 
 		await ctx.db.patch(id, filteredUpdates);
 
+		// Settle outstanding installments when this transition marks the invoice
+		// paid, so a payment taken outside the portal reflects there as completed.
+		if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
+			await settleOutstandingPaymentsForInvoice(ctx, id);
+		}
+
 		// Log appropriate activity based on status change and update aggregates
 		const updatedInvoice = await ctx.db.get(id);
 		if (updatedInvoice) {
@@ -570,6 +579,118 @@ export const update = userMutation({
 });
 
 /**
+ * Send an invoice to the client: flips draft→sent and schedules a branded
+ * portal-invite email deep-linking to the invoice in the client portal.
+ * The portal is the payment surface; no bearer pay-link is generated.
+ */
+export const sendToClient = userMutation({
+	args: { id: v.id("invoices") },
+	returns: v.id("invoices"),
+	handler: async (ctx, args): Promise<InvoiceId> => {
+		await ctx.requireLevel("invoices", "modify");
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+
+		if (invoice.status === "paid" || invoice.status === "cancelled") {
+			throw new Error(`Cannot send a ${invoice.status} invoice to the client.`);
+		}
+
+		// The client must be reachable in the portal: portal access enabled and a
+		// primary contact with an email to receive the invite.
+		const client = await ctx.db.get(invoice.clientId);
+		if (!client || client.orgId !== invoice.orgId) {
+			throw new Error("Invoice client not found.");
+		}
+		if (!client.portalAccessId) {
+			throw new Error(
+				"This client has no portal access yet. Enable it on the client before sending."
+			);
+		}
+		const primaryContact = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q: any) =>
+				q.eq("clientId", client._id).eq("isPrimary", true)
+			)
+			.first();
+		const recipientEmail = primaryContact?.email?.trim();
+		if (!recipientEmail) {
+			throw new Error(
+				"Add an email to this client's primary contact before sending."
+			);
+		}
+
+		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
+		// invoices can be re-sent without a status change.
+		if (invoice.status === "draft") {
+			const changes = computeFieldChanges(
+				"invoice",
+				invoice as unknown as Record<string, unknown>,
+				{ status: "sent" }
+			);
+			await ctx.db.patch(invoice._id, { status: "sent" });
+			const updated = await ctx.db.get(invoice._id);
+			if (updated) {
+				await AggregateHelpers.updateInvoice(
+					ctx,
+					invoice as InvoiceDocument,
+					updated as InvoiceDocument
+				);
+				await ActivityHelpers.invoiceSent(
+					ctx,
+					updated as InvoiceDocument,
+					client.companyName || "Unknown Client",
+					changes
+				);
+				await emitStatusChangeEvent(
+					ctx,
+					updated.orgId,
+					"invoice",
+					updated._id,
+					"draft",
+					"sent",
+					"invoices.sendToClient"
+				);
+			}
+		}
+
+		// Guarantee portal payability: the portal's native Elements flow pays against
+		// payment rows, so an invoice with none is view-only. Quote-derived invoices
+		// already carry a "Full Payment" row; manual invoices (invoices.create) do not.
+		// Backfill one at send time so every sent invoice is payable in the portal.
+		const existingPayments = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+			.collect();
+		if (existingPayments.length === 0 && invoice.total > 0) {
+			await ctx.db.insert("payments", {
+				orgId: invoice.orgId,
+				invoiceId: invoice._id,
+				paymentAmount: invoice.total,
+				dueDate: invoice.dueDate,
+				description: "Full Payment",
+				sortOrder: 0,
+				status: "pending",
+			});
+		}
+
+		// Fire-and-forget the branded portal-invite email.
+		await ctx.scheduler.runAfter(
+			0,
+			internal.portal.invoiceEmail.sendInvoiceReadyEmail,
+			{ invoiceId: invoice._id }
+		);
+
+		return invoice._id;
+	},
+});
+
+/**
  * Mark an invoice as paid
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -601,6 +722,9 @@ export const markPaid = userMutation({
 			status: "paid",
 			paidAt: Date.now(),
 		});
+		// Settle any outstanding installments so the portal shows this invoice as
+		// paid and never offers a Pay button for a payment taken outside it.
+		await settleOutstandingPaymentsForInvoice(ctx, args.id);
 
 		// Log activity
 		const updatedInvoice = await ctx.db.get(args.id);
@@ -937,7 +1061,6 @@ export const createFromQuote = userMutation({
 			total: quote.total,
 			issuedDate,
 			dueDate,
-			publicToken: generatePublicToken(),
 		});
 
 		// Copy quote line items to invoice line items
@@ -990,7 +1113,6 @@ export const createFromQuote = userMutation({
 			description: "Full Payment",
 			sortOrder: 0,
 			status: "pending",
-			publicToken: generatePublicToken(),
 		});
 
 		return invoiceId;

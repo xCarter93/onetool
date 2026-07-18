@@ -76,7 +76,8 @@ export const sendPortalOtpEmail = internalAction({
 		await resend.sendEmail(ctx, {
 			from: FROM_ADDRESS,
 			to,
-			subject: `Your ${businessName} sign-in code: ${code}`,
+			// [PUB-22] Keep the code out of the subject (lock-screen/inbox previews).
+			subject: `Your ${businessName} sign-in code`,
 			html,
 		});
 

@@ -14,7 +14,6 @@ import {
 	InstallmentList,
 	type InstallmentRow,
 } from "./installment-list";
-import { LegacyInvoiceNotice } from "./legacy-invoice-notice";
 import { PaidStatusPanel } from "./paid-status-panel";
 import { PaidSuccessOverlay } from "./paid-success-overlay";
 import { PaymentBottomSheet } from "./payment-bottom-sheet";
@@ -54,8 +53,6 @@ export interface PortalInvoiceGetData {
 		installmentCount: number;
 	};
 	activePaymentPublic: InstallmentRow | null;
-	isLegacy: boolean;
-	legacyPayUrl: string | null;
 	businessName: string;
 	businessLogoUrl: string | null;
 	stripeChargesEnabled: boolean;
@@ -83,9 +80,11 @@ export function InvoiceDetailIsland({
 	}) as PortalInvoiceGetData | undefined;
 	const data: PortalInvoiceGetData = liveData ?? ssrData;
 
-	const activeIndex = data.isLegacy ? null : firstUnpaidIndex(data.payments);
+	const activeIndex = data.paymentSummary.isLegacy
+		? null
+		: firstUnpaidIndex(data.payments);
 	const allPaid =
-		!data.isLegacy && data.paymentSummary.totalRemaining === 0;
+		!data.paymentSummary.isLegacy && data.paymentSummary.totalRemaining === 0;
 
 	const [celebration, setCelebration] = useState<{
 		message: string;
@@ -153,16 +152,9 @@ export function InvoiceDetailIsland({
 		/>
 	);
 
-	// Decision A: legacy invoices NEVER reach the rail/sheet — render notice only.
+	// Zero-payment-row invoices fall through to the normal render: an empty
+	// installment list with no pay surface (view-only).
 	const baseRail = (() => {
-		if (data.isLegacy) {
-			return (
-				<LegacyInvoiceNotice
-					legacyPayUrl={data.legacyPayUrl ?? ""}
-					businessName={data.businessName}
-				/>
-			);
-		}
 		if (allPaid) {
 			return (
 				<PaidStatusPanel
@@ -226,7 +218,7 @@ export function InvoiceDetailIsland({
 	// Mobile-only: docked bottom-sheet hosts the payment surface for non-legacy,
 	// non-paid invoices with an active payment row.
 	const mobileSheet =
-		!data.isLegacy &&
+		!data.paymentSummary.isLegacy &&
 		!allPaid &&
 		data.activePaymentPublic &&
 		isDesktop === false ? (

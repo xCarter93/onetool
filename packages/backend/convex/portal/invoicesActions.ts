@@ -125,7 +125,8 @@ export const createPaymentIntent = action({
 				receipt_email: resolved.contact.email,
 				automatic_payment_methods: { enabled: true },
 				metadata: {
-					publicToken: resolved.payment.publicToken,
+					// Correlation key for the payment_intent.succeeded webhook. publicToken
+					// is retired (no longer stamped); the webhook keys off paymentId.
 					paymentId: resolved.payment._id,
 					invoiceId: resolved.invoice._id,
 					orgId: resolved.org._id,
@@ -145,7 +146,7 @@ export const createPaymentIntent = action({
 		await ctx.runMutation(
 			internal.payments.persistPendingPaymentIntentInternal,
 			{
-				publicToken: resolved.payment.publicToken,
+				paymentId: resolved.payment._id,
 				pendingPaymentIntentId: pi.id,
 				pendingPaymentIntentClientSecret: pi.client_secret,
 				pendingPaymentIntentExpiresAt: now + 24 * 60 * 60 * 1000,
@@ -153,8 +154,8 @@ export const createPaymentIntent = action({
 		);
 		// Counter only advances after a successful Stripe mint.
 		await ctx.runMutation(
-			api.payments.incrementCheckoutAttemptCounterInternal,
-			{ publicToken: resolved.payment.publicToken },
+			internal.payments.incrementCheckoutAttemptCounter,
+			{ paymentId: resolved.payment._id },
 		);
 
 		return {

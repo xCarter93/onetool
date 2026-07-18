@@ -1,54 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
+import { getRequestIp, hashIp } from "@/lib/portal/ip";
 
-// Simple in-memory rate limiting (use Redis in production for multi-instance deployments)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-
-// Clean up old entries periodically to prevent memory leaks
-setInterval(
-	() => {
-		const now = Date.now();
-		for (const [key, value] of rateLimitMap.entries()) {
-			if (now > value.resetTime) {
-				rateLimitMap.delete(key);
-			}
-		}
-	},
-	60 * 1000
-); // Clean up every minute
+// PUB-19: no in-memory rate limiting here — it is per-process and useless on
+// serverless. Convex's rateLimiter inside submitInterest is the real control;
+// this route feeds it a trusted server-derived IP hash for the per-IP bucket.
 
 export async function POST(request: NextRequest) {
 	try {
-		// Rate limiting by IP
-		const ip =
-			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-			request.headers.get("x-real-ip") ||
-			"unknown";
-		const now = Date.now();
-		const windowMs = 60 * 1000; // 1 minute window
-		const maxRequests = 5; // 5 requests per minute
-
-		const rateLimit = rateLimitMap.get(ip);
-
-		if (rateLimit) {
-			if (now < rateLimit.resetTime) {
-				if (rateLimit.count >= maxRequests) {
-					return NextResponse.json(
-						{ error: "Too many requests. Please try again later." },
-						{ status: 429 }
-					);
-				}
-				rateLimit.count++;
-			} else {
-				rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
-			}
-		} else {
-			rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
-		}
-
 		const body = await request.json();
-		const { slug, name, email, phone, message } = body;
+		const { slug, name, email, phone, message, website } = body;
 
 		// Validate required fields
 		if (!slug || typeof slug !== "string") {
@@ -81,8 +43,19 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// Reject present-but-non-string optional fields before any .trim() below
+		if (phone != null && typeof phone !== "string") {
+			return NextResponse.json(
+				{ error: "Invalid phone number" },
+				{ status: 400 }
+			);
+		}
+		if (message != null && typeof message !== "string") {
+			return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+		}
+
 		// Validate phone format if provided
-		if (phone && typeof phone === "string" && phone.trim().length > 0) {
+		if (phone && phone.trim().length > 0) {
 			// Allow various phone formats but require at least 7 digits
 			const digitsOnly = phone.replace(/\D/g, "");
 			if (digitsOnly.length < 7 || digitsOnly.length > 15) {
@@ -93,6 +66,8 @@ export async function POST(request: NextRequest) {
 			}
 		}
 
+		const ipHash = await hashIp(getRequestIp(request));
+
 		const client = getConvexClient();
 		await client.mutation(api.communityPages.submitInterest, {
 			slug: slug.trim(),
@@ -100,6 +75,10 @@ export async function POST(request: NextRequest) {
 			email: email.trim().toLowerCase(),
 			phone: phone?.trim() || undefined,
 			message: message?.trim() || undefined,
+			// PUB-18: honeypot passthrough — the mutation drops non-empty values
+			website: typeof website === "string" ? website : undefined,
+			// PUB-19: per-IP throttle key (server-derived, not client-supplied)
+			ipHash,
 		});
 
 		return NextResponse.json({ success: true });

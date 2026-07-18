@@ -15,6 +15,7 @@ export interface InstallmentRow {
 	cardLast4: string | null;
 	cardBrand: string | null;
 	receiptUrl: string | null;
+	recordedOutsidePortal: boolean;
 }
 
 export interface InstallmentListProps {
@@ -119,6 +120,7 @@ export function InstallmentList({
 										cardBrand: row.cardBrand,
 										cardLast4: row.cardLast4,
 										receiptUrl: row.receiptUrl,
+										recordedOutsidePortal: row.recordedOutsidePortal,
 									}}
 								/>
 							</div>

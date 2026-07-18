@@ -4,10 +4,8 @@ import { fetchAction } from "convex/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { readSessionCookie } from "@/lib/portal/cookie";
-import {
-	mapConvexError,
-	isSameOrigin,
-} from "@/lib/portal/quotes/map-convex-error";
+import { mapConvexError } from "@/lib/portal/quotes/map-convex-error";
+import { isSameOrigin } from "@/lib/portal/origin";
 
 export async function POST(
 	req: NextRequest,

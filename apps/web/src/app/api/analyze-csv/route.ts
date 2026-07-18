@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { fetchMutation } from "convex/nextjs";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { mapCsvSchema, validateCsvData } from "@/lib/csv-analysis";
 import type { CsvAnalysisResult } from "@/types/csv-import";
 
@@ -7,7 +9,7 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
 	// Auth guard — unauthenticated requests get 401
-	const { userId } = await auth();
+	const { userId, getToken } = await auth();
 	if (!userId) {
 		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 	}
@@ -16,7 +18,9 @@ export async function POST(request: NextRequest) {
 		const body = await request.json();
 		const { headers, sampleRows, entityType } = body;
 
-		// Validate input — expects headers + sampleRows, not full CSV content
+		// Validate input — expects headers + sampleRows, not full CSV content.
+		// PUB-12 (CodeRabbit): validate BEFORE consuming the LLM rate limit so a
+		// malformed request cannot burn an org's allowance without a model call.
 		if (!headers || !Array.isArray(headers) || headers.length === 0) {
 			return NextResponse.json(
 				{ error: "CSV headers array is required" },
@@ -31,10 +35,72 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// Size/shape caps: this payload is interpolated into an LLM prompt, so
+		// bound header count, row count, row width, and cell length up front.
+		const MAX_HEADERS = 100;
+		const MAX_SAMPLE_ROWS = 50;
+		const MAX_CELL_LENGTH = 2000;
+		if (
+			headers.length > MAX_HEADERS ||
+			headers.some(
+				(h: unknown) => typeof h !== "string" || h.length > MAX_CELL_LENGTH
+			)
+		) {
+			return NextResponse.json(
+				{ error: "CSV headers are too large or malformed" },
+				{ status: 400 }
+			);
+		}
+		const rowsMalformed =
+			sampleRows.length > MAX_SAMPLE_ROWS ||
+			sampleRows.some((row: unknown) => {
+				if (typeof row !== "object" || row === null || Array.isArray(row)) {
+					return true;
+				}
+				const entries = Object.entries(row);
+				return (
+					entries.length > MAX_HEADERS ||
+					entries.some(
+						([, value]) =>
+							typeof value !== "string" || value.length > MAX_CELL_LENGTH
+					)
+				);
+			});
+		if (rowsMalformed) {
+			return NextResponse.json(
+				{ error: "Sample rows are too large or malformed" },
+				{ status: 400 }
+			);
+		}
+
 		if (entityType && !["clients", "projects"].includes(entityType)) {
 			return NextResponse.json(
 				{ error: 'Entity type must be "clients" or "projects"' },
 				{ status: 400 }
+			);
+		}
+
+		// PUB-12: LLM-backed route — enforce the assistant's paid-plan gate plus a
+		// per-org rate limit before any model call (but after payload validation).
+		const convexToken = await getToken({ template: "convex" });
+		if (!convexToken) {
+			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		}
+		const access = await fetchMutation(
+			api.payments.checkLlmAccess,
+			{ bucket: "llmCsvAnalyze" },
+			{ token: convexToken }
+		);
+		if (!access.ok) {
+			if (access.reason === "rate_limited") {
+				return NextResponse.json(
+					{ error: "Too many requests. Please try again later." },
+					{ status: 429 }
+				);
+			}
+			return NextResponse.json(
+				{ error: "Your plan does not include AI-assisted import." },
+				{ status: 403 }
 			);
 		}
 
@@ -84,12 +150,10 @@ export async function POST(request: NextRequest) {
 
 		return NextResponse.json(analysisResult);
 	} catch (error) {
+		// PUB-15: don't echo raw SDK errors to callers.
 		console.error("Error analyzing CSV:", error);
 		return NextResponse.json(
-			{
-				error: "Failed to analyze CSV",
-				details: error instanceof Error ? error.message : "Unknown error",
-			},
+			{ error: "Failed to analyze CSV. Please try again." },
 			{ status: 500 }
 		);
 	}

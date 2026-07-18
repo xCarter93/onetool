@@ -558,7 +558,10 @@ export default defineSchema({
 		stripeSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 
-		publicToken: v.string(), // For client payment access
+		// Legacy pay-by-link token. Retired: no longer generated for new invoices
+		// (portal payments correlate by paymentId). Optional so existing rows keep
+		// theirs while net-new rows omit it.
+		publicToken: v.optional(v.string()),
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
@@ -609,9 +612,14 @@ export default defineSchema({
 			v.literal("cancelled")
 		),
 		paidAt: v.optional(v.number()),
+		// True when settled outside the portal (e.g. cash/check reconciled via
+		// the workspace "Mark as Paid"), so the portal can label it as such.
+		recordedOutsidePortal: v.optional(v.boolean()),
 
-		// Public access token for payment URL
-		publicToken: v.string(),
+		// Legacy pay-by-link token. Retired: no longer generated for new payment
+		// rows (portal PaymentIntents correlate by paymentId). Optional so existing
+		// rows keep theirs while net-new rows omit it.
+		publicToken: v.optional(v.string()),
 
 		// Stripe integration
 		stripeSessionId: v.optional(v.string()),

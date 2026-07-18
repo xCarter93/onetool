@@ -6,10 +6,8 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { getRequestIp } from "@/lib/portal/ip";
 import { readSessionCookie } from "@/lib/portal/cookie";
 import { approveBodySchema } from "@/lib/portal/quotes/normalize-signature-payload";
-import {
-	mapConvexError,
-	isSameOrigin,
-} from "@/lib/portal/quotes/map-convex-error";
+import { mapConvexError } from "@/lib/portal/quotes/map-convex-error";
+import { isSameOrigin } from "@/lib/portal/origin";
 
 export async function POST(
 	req: NextRequest,

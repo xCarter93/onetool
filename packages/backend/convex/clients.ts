@@ -871,6 +871,54 @@ export const archive = userMutation({
 });
 
 /**
+ * PUB-10: Revoke a client's portal access. Deletes every portal session and
+ * pending OTP for the client's contacts (signs out all devices) and rotates
+ * portalAccessId so existing pay/portal links stop resolving. Use when a link
+ * or device is compromised or a relationship ends. The workspace UI affordance
+ * is a separate task; this mutation is the backend lever.
+ */
+export const revokePortalAccess = userMutation({
+	args: { id: v.id("clients") },
+	handler: async (ctx, args): Promise<{ portalAccessId: string }> => {
+		await ctx.requireLevel("clients", "modify");
+		await ctx.orgEntity("clients", args.id);
+		await ctx.requireRecordScope("clients", () =>
+			ctx.actorScope().then((sc) => sc.clientIds.has(args.id))
+		);
+
+		const contacts = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_client", (q) => q.eq("clientId", args.id))
+			.collect();
+
+		for (const contact of contacts) {
+			const sessions = await ctx.db
+				.query("portalSessions")
+				.withIndex("by_contact", (q) =>
+					q.eq("clientContactId", contact._id)
+				)
+				.collect();
+			for (const session of sessions) {
+				await ctx.db.delete(session._id);
+			}
+			const otps = await ctx.db
+				.query("portalOtpCodes")
+				.withIndex("by_contact", (q) =>
+					q.eq("clientContactId", contact._id)
+				)
+				.collect();
+			for (const otp of otps) {
+				await ctx.db.delete(otp._id);
+			}
+		}
+
+		const portalAccessId = crypto.randomUUID();
+		await ctx.db.patch(args.id, { portalAccessId });
+		return { portalAccessId };
+	},
+});
+
+/**
  * Restore an archived client back to active status
  */
 export const restore = userMutation({
@@ -975,6 +1023,27 @@ async function permanentlyDeleteSystemHandler(
 
 	// Delete all related records
 	for (const contact of contacts) {
+		// PUB-23: sweep portal auth rows for this contact so a permanent client
+		// delete does not leave orphaned session/OTP PII behind (previously only
+		// the org-delete cascade cleared these tables).
+		const portalSessions = await ctx.db
+			.query("portalSessions")
+			.withIndex("by_contact", (q) =>
+				q.eq("clientContactId", contact._id)
+			)
+			.collect();
+		for (const session of portalSessions) {
+			await ctx.db.delete(session._id);
+		}
+		const portalOtpCodes = await ctx.db
+			.query("portalOtpCodes")
+			.withIndex("by_contact", (q) =>
+				q.eq("clientContactId", contact._id)
+			)
+			.collect();
+		for (const otp of portalOtpCodes) {
+			await ctx.db.delete(otp._id);
+		}
 		await ctx.db.delete(contact._id);
 	}
 

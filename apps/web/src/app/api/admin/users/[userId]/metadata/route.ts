@@ -1,5 +1,6 @@
 import { clerkClient, auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isCrossSite } from "@/lib/csrf";
 
 async function checkAdminAccess() {
 	const { userId } = await auth();
@@ -21,9 +22,12 @@ async function checkAdminAccess() {
 
 // POST: Set has_premium_feature_access = true
 export async function POST(
-	_request: Request,
+	request: Request,
 	{ params }: { params: Promise<{ userId: string }> }
 ) {
+	if (isCrossSite(request)) {
+		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+	}
 	const accessCheck = await checkAdminAccess();
 	if (!accessCheck.authorized) {
 		return NextResponse.json(
@@ -54,9 +58,12 @@ export async function POST(
 
 // DELETE: Remove has_premium_feature_access
 export async function DELETE(
-	_request: Request,
+	request: Request,
 	{ params }: { params: Promise<{ userId: string }> }
 ) {
+	if (isCrossSite(request)) {
+		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+	}
 	const accessCheck = await checkAdminAccess();
 	if (!accessCheck.authorized) {
 		return NextResponse.json(

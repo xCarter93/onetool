@@ -106,19 +106,42 @@ export const handleEvent = internalAction({
 			switch (args.eventType) {
 				case "checkout.session.completed": {
 					const session = args.data.object as Stripe.Checkout.Session;
-					await ctx.runMutation(
-						internal.payments.markPaidFromWebhookInternal,
-						{
-							orgId: org!._id,
-							sessionId: session.id,
-							amountTotal: session.amount_total ?? 0,
-							metadata: session.metadata ?? {},
-							paymentIntentId:
-								typeof session.payment_intent === "string"
-									? session.payment_intent
-									: (session.payment_intent?.id ?? null),
-						}
-					);
+					const paymentIntentId =
+						typeof session.payment_intent === "string"
+							? session.payment_intent
+							: (session.payment_intent?.id ?? null);
+					// PUB-34: route by the flow discriminator stamped at session
+					// creation. Legacy invoice-flow sessions resolve against the
+					// invoices table; installment payments against the payments
+					// table. Absent flow (in-flight legacy sessions) defaults to
+					// the payments path, its prior behavior.
+					const flow =
+						typeof session.metadata?.flow === "string"
+							? session.metadata.flow
+							: undefined;
+					if (flow === "invoice") {
+						await ctx.runMutation(
+							internal.invoices.markInvoicePaidFromWebhookInternal,
+							{
+								orgId: org!._id,
+								sessionId: session.id,
+								amountTotal: session.amount_total ?? 0,
+								metadata: session.metadata ?? {},
+								paymentIntentId,
+							}
+						);
+					} else {
+						await ctx.runMutation(
+							internal.payments.markPaidFromWebhookInternal,
+							{
+								orgId: org!._id,
+								sessionId: session.id,
+								amountTotal: session.amount_total ?? 0,
+								metadata: session.metadata ?? {},
+								paymentIntentId,
+							}
+						);
+					}
 					break;
 				}
 				case "payment_intent.payment_failed": {

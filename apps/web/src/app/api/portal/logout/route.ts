@@ -7,7 +7,7 @@ import {
 	clearSessionCookieOnResponse,
 } from "@/lib/portal/cookie";
 import { verifySessionJwt } from "@/lib/portal/jwt";
-import { isSameOrigin } from "@/lib/portal/quotes/map-convex-error";
+import { isSameOrigin } from "@/lib/portal/origin";
 
 export async function POST(req: NextRequest) {
 	if (

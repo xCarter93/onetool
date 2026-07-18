@@ -24,9 +24,7 @@ export function PortalOtpEmail({
 	return (
 		<Html>
 			<Head />
-			<Preview>
-				Your {businessName} sign-in code: {code}
-			</Preview>
+			<Preview>Your {businessName} sign-in code</Preview>
 			<Body style={styles.body}>
 				<Container style={styles.container}>
 					<Section style={styles.content}>

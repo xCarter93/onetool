@@ -471,7 +471,7 @@ if (isUserMember && currentUserId) {
 - **PDF Generation**: Professional quote PDFs
 - **E-Signature Integration**: Send quotes for client approval via BoldSign
 - **Status Tracking**: Draft → Sent → Approved → Declined → Expired
-- **Public Token Access**: Clients can view quotes via public URL
+- **Portal Access**: Clients view and approve quotes via the authenticated client portal (email OTP)
 - **Sequential Numbering**: Auto-generated quote numbers (Q-000001)
 - **Quote to Invoice**: Convert approved quotes to invoices
 - **Version Tracking**: Multiple PDF versions per quote
@@ -521,11 +521,11 @@ async function generateNextQuoteNumber(ctx, orgId) {
 }
 ```
 
-### Public Quote Access
+### Client Quote Access
 
-- Public token generation for client access
-- No authentication required for viewing
-- Approval workflow via public token
+- Quotes are viewed and approved through the authenticated client portal only
+- The old unauthenticated public quote token surface was REMOVED — do not rebuild it (PUB-37)
+- Invoice/payment `publicToken` survives only on existing legacy rows: no new tokens are minted, and no public route or current payment flow reads them — invoices are viewed and paid through the authenticated client portal
 
 ---
 

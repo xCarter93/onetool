@@ -25,6 +25,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 		email: "",
 		phone: "",
 		message: "",
+		website: "", // PUB-18: honeypot — humans never see or fill this
 	});
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -45,6 +46,7 @@ export function ContactForm({ slug }: ContactFormProps) {
 					email: formState.email,
 					phone: formState.phone || undefined,
 					message: formState.message || undefined,
+					website: formState.website,
 				}),
 			});
 
@@ -54,7 +56,13 @@ export function ContactForm({ slug }: ContactFormProps) {
 			}
 
 			setSubmitSuccess(true);
-			setFormState({ name: "", email: "", phone: "", message: "" });
+			setFormState({
+				name: "",
+				email: "",
+				phone: "",
+				message: "",
+				website: "",
+			});
 		} catch (err) {
 			setSubmitError(
 				err instanceof Error ? err.message : "Something went wrong"
@@ -92,6 +100,24 @@ export function ContactForm({ slug }: ContactFormProps) {
 					</div>
 				) : (
 					<form onSubmit={handleSubmit} className="space-y-4">
+						{/* PUB-18: honeypot field, invisible to humans */}
+						<div aria-hidden="true" className="sr-only">
+							<label htmlFor="website">Website</label>
+							<input
+								id="website"
+								name="website"
+								type="text"
+								tabIndex={-1}
+								autoComplete="off"
+								value={formState.website}
+								onChange={(e) =>
+									setFormState((s) => ({
+										...s,
+										website: e.target.value,
+									}))
+								}
+							/>
+						</div>
 						<div className="space-y-2">
 							<Label htmlFor="name" className="text-sm font-medium">
 								Name <span className="text-danger">*</span>
