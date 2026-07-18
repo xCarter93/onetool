@@ -94,7 +94,7 @@ export function InvoicePaper({
 	return (
 		<Card data-portal-paper-invoice className="mx-auto w-full">
 			<CardContent>
-				<div className="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] md:gap-10">
+				<div className="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] md:gap-10">
 					{/* Sidebar: brand + status, hero total, metadata, pay surface */}
 					<aside className="flex flex-col gap-5 md:border-r md:border-border md:pr-8">
 						<div className="flex items-center justify-between gap-3">
@@ -118,7 +118,7 @@ export function InvoicePaper({
 										) : null}
 									</ItemMedia>
 								</Item>
-								<span className="truncate text-[14px] font-semibold text-foreground">
+								<span className="truncate text-[15px] font-semibold text-foreground">
 									{businessName}
 								</span>
 							</div>
@@ -128,10 +128,10 @@ export function InvoicePaper({
 						</div>
 
 						<div className="flex flex-col gap-1.5">
-							<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+							<span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
 								{heroLabel}
 							</span>
-							<span className="text-3xl leading-none font-bold tracking-tight tabular-nums text-foreground md:text-4xl">
+							<span className="text-4xl leading-none font-bold tracking-tight tabular-nums text-foreground md:text-5xl">
 								{formatMoney(heroAmount)}
 							</span>
 							{heroIsPaid && invoice.paidAt ? (
@@ -145,22 +145,22 @@ export function InvoicePaper({
 
 						<div className="flex flex-col gap-4">
 							<MetaSection label="Invoice">
-								<p className="font-mono text-sm tabular-nums text-foreground">
+								<p className="font-mono text-[15px] tabular-nums text-foreground">
 									#{invoice.invoiceNumber}
 								</p>
 							</MetaSection>
 							<MetaSection label="Issued">
-								<p className="text-sm font-medium text-foreground">
+								<p className="text-[15px] font-medium text-foreground">
 									{formatDate(invoice.issuedDate)}
 								</p>
 							</MetaSection>
 							<MetaSection label="Due">
-								<p className="text-sm font-medium text-foreground">
+								<p className="text-[15px] font-medium text-foreground">
 									{formatDate(invoice.dueDate)}
 								</p>
 							</MetaSection>
 							<MetaSection label="Bill To">
-								<p className="text-sm font-medium text-foreground">
+								<p className="text-[15px] font-medium text-foreground">
 									{clientName}
 								</p>
 								{clientEmail ? (
@@ -169,7 +169,7 @@ export function InvoicePaper({
 							</MetaSection>
 							{showProgress ? (
 								<MetaSection label="Payment Progress">
-									<p className="text-sm font-medium text-foreground">
+									<p className="text-[15px] font-medium text-foreground">
 										{formatMoney(paymentSummary.totalPaid)} paid
 									</p>
 									<p className="text-xs text-muted-foreground">
@@ -188,7 +188,7 @@ export function InvoicePaper({
 					<div className="flex min-w-0 flex-col gap-6">
 						<div className="flex flex-col gap-4">
 							<div className="flex items-baseline justify-between gap-3">
-								<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+								<span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
 									Line Items
 								</span>
 								<span className="text-xs text-muted-foreground">
@@ -215,7 +215,7 @@ export function InvoicePaper({
 							discount={invoice.discountAmount}
 							tax={invoice.taxAmount}
 							total={invoice.total}
-							className="sm:ml-auto sm:w-72"
+							className="sm:ml-auto sm:w-80"
 						/>
 					</div>
 				</div>
@@ -233,7 +233,7 @@ function MetaSection({
 }) {
 	return (
 		<div className="flex flex-col gap-1">
-			<span className="text-[0.625rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+			<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
 				{label}
 			</span>
 			<div className="flex flex-col gap-0.5">{children}</div>
@@ -259,14 +259,14 @@ function LineItemRow({
 			)}
 		>
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-semibold text-foreground">
+				<p className="text-[15px] font-semibold text-foreground">
 					{item.description}
 				</p>
 				<p className="mt-0.5 text-xs text-muted-foreground">
 					Qty {item.quantity} · {formatMoney(item.unitPrice)} each
 				</p>
 			</div>
-			<span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+			<span className="shrink-0 text-[15px] font-semibold tabular-nums text-foreground">
 				{formatMoney(item.total)}
 			</span>
 		</div>

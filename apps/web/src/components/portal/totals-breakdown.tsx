@@ -43,12 +43,12 @@ export function TotalsBreakdown({
 				className
 			)}
 		>
-			<div className="flex items-center gap-8 text-[14px]">
+			<div className="flex items-center gap-8 text-[15px]">
 				<dt className="text-muted-foreground">Subtotal</dt>
 				<dd className="tabular-nums">{formatMoney(subtotal)}</dd>
 			</div>
 			{discountValue > 0 && (
-				<div className="flex items-center gap-8 text-[14px]">
+				<div className="flex items-center gap-8 text-[15px]">
 					<dt className="text-muted-foreground">{discountLabel}</dt>
 					<dd className="tabular-nums text-emerald-600 dark:text-emerald-400">
 						-{formatMoney(discountValue)}
@@ -56,14 +56,14 @@ export function TotalsBreakdown({
 				</div>
 			)}
 			{taxValue > 0 && (
-				<div className="flex items-center gap-8 text-[14px]">
+				<div className="flex items-center gap-8 text-[15px]">
 					<dt className="text-muted-foreground">{taxLabel}</dt>
 					<dd className="tabular-nums">{formatMoney(taxValue)}</dd>
 				</div>
 			)}
 			<div
 				data-paper-total
-				className="flex items-center gap-8 text-[16px] font-semibold border-t border-foreground pt-2 mt-1"
+				className="flex items-center gap-8 text-[17px] font-semibold border-t border-foreground pt-2 mt-1"
 			>
 				<dt>{totalLabel}</dt>
 				<dd className="tabular-nums">{formatMoney(total)}</dd>

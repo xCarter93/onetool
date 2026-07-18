@@ -104,7 +104,7 @@ describe("QuoteDetailIsland — Gap 6 fallback gate", () => {
 			clientEmail: "jane@example.com",
 			latestApproval: null,
 		});
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		// Resolved panel role=status with "Approved" label inside.
 		const statusRegion = screen.getByRole("status");
 		expect(statusRegion).toHaveTextContent(/Approved/i);
@@ -127,7 +127,7 @@ describe("QuoteDetailIsland — Gap 6 fallback gate", () => {
 			clientEmail: "jane@example.com",
 			latestApproval: null,
 		});
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		const statusRegion = screen.getByRole("status");
 		expect(statusRegion).toHaveTextContent(/Declined/i);
 		expect(
@@ -153,7 +153,7 @@ describe("QuoteDetailIsland — Gap 6 fallback gate", () => {
 				signatureUrl: "https://example.com/sig.png",
 			},
 		});
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		// ApprovalReceipt-specific text — "Approved by Jane" is rendered in the
 		// always-visible header (clientEmail is collapsed behind the expandable
 		// receipt view; we don't depend on that detail here).
@@ -185,7 +185,7 @@ describe("QuoteDetailIsland — Gap 6 fallback gate", () => {
 				signatureUrl: "https://example.com/sig.png",
 			},
 		});
-		render(<QuoteDetailIsland quoteId={"q1" as any} />);
+		render(<QuoteDetailIsland quoteId={"q1" as any} initialData={{} as any} />);
 		const statusRegion = screen.getByRole("status");
 		expect(statusRegion).toHaveTextContent(/Approved/i);
 		expect(
