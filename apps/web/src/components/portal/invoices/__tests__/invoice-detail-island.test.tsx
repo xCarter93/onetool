@@ -6,7 +6,7 @@
 //  3. Route-suppresses MobileTabBar on invoice-detail route
 //  4. Paid-in-full panel when totalRemaining === 0
 //  5. Online-payment-not-available copy when stripeChargesEnabled !== true
-//  6. Legacy invoice (Decision A): notice only, no PaymentRail/Sheet, no PI mint
+//  6. Zero-payment-row invoice: view-only, no pay link, no PaymentRail/Sheet, no PI mint
 //  7. Mobile bottom-sheet defers PI mint until the sheet opens
 
 import * as React from "react";
@@ -160,6 +160,7 @@ function buildData(
 				cardLast4: null,
 				cardBrand: null,
 				receiptUrl: null,
+				recordedOutsidePortal: false,
 			},
 		],
 		paymentSummary: {
@@ -180,9 +181,8 @@ function buildData(
 			cardLast4: null,
 			cardBrand: null,
 			receiptUrl: null,
+			recordedOutsidePortal: false,
 		},
-		isLegacy: false,
-		legacyPayUrl: null,
 		businessName: "Acme Landscape",
 		businessLogoUrl: null,
 		stripeChargesEnabled: true,
@@ -283,6 +283,7 @@ describe("InvoiceDetailIsland", () => {
 					cardLast4: "4242",
 					cardBrand: "visa",
 					receiptUrl: null,
+					recordedOutsidePortal: false,
 				},
 			],
 			activePaymentPublic: null,
@@ -318,11 +319,9 @@ describe("InvoiceDetailIsland", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("Test 6: legacy invoice renders LegacyInvoiceNotice with /pay/{publicToken} anchor; no rail/sheet, no PI mint", async () => {
+	it("Test 6: zero-payment-row invoice is view-only — no pay link, no rail/sheet, no PI mint", async () => {
 		setMatchMedia(true);
 		const data = buildData({
-			isLegacy: true,
-			legacyPayUrl: "/pay/tok_abc",
 			activePaymentPublic: null,
 			payments: [],
 			paymentSummary: {
@@ -340,11 +339,18 @@ describe("InvoiceDetailIsland", () => {
 				hasPdf={false}
 			/>,
 		);
+		// Invoice still renders (view-only), but no legacy /pay link surfaces.
+		await waitFor(() =>
+			expect(
+				container.querySelector("[data-portal-paper-invoice]"),
+			).toBeInTheDocument(),
+		);
 		expect(
-			await screen.findByText(/Pay via your invoice email link/i),
-		).toBeInTheDocument();
-		const link = screen.getByRole("link", { name: /Open payment page/i });
-		expect(link).toHaveAttribute("href", "/pay/tok_abc");
+			screen.queryByText(/Pay via your invoice email link/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: /Open payment page/i }),
+		).not.toBeInTheDocument();
 		// No rail/sheet.
 		expect(
 			container.querySelector("[data-sheet-docked]"),
@@ -386,6 +392,7 @@ describe("InvoiceDetailIsland", () => {
 					cardLast4: null,
 					cardBrand: null,
 					receiptUrl: null,
+					recordedOutsidePortal: false,
 				},
 				{
 					_id: "pmt_2",
@@ -398,6 +405,7 @@ describe("InvoiceDetailIsland", () => {
 					cardLast4: null,
 					cardBrand: null,
 					receiptUrl: null,
+					recordedOutsidePortal: false,
 				},
 			],
 			paymentSummary: {
@@ -418,6 +426,7 @@ describe("InvoiceDetailIsland", () => {
 				cardLast4: null,
 				cardBrand: null,
 				receiptUrl: null,
+				recordedOutsidePortal: false,
 			},
 		});
 		const { rerender } = render(

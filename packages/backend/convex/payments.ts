@@ -9,7 +9,6 @@ import {
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { generatePublicToken } from "./lib/shared";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -62,19 +61,6 @@ async function validateInvoiceAccess(
 		"Invoice",
 		existingOrgId
 	);
-}
-
-/**
- * Get payment by public token (no auth required - for public payment page)
- */
-async function getPaymentByPublicTokenInternal(
-	ctx: QueryCtx,
-	publicToken: string
-): Promise<PaymentDocument | null> {
-	return await ctx.db
-		.query("payments")
-		.withIndex("by_public_token", (q) => q.eq("publicToken", publicToken))
-		.unique();
 }
 
 /**
@@ -246,86 +232,6 @@ export const get = optionalUserQuery({
 });
 
 /**
- * Get payment by public token (for public payment page - no auth required)
- * Returns payment, invoice, and org information
- */
-// INTENTIONAL: raw public query — unauthenticated public payment-token access.
-// Caller has no Clerk identity; org is discovered from the payment row.
-export const getByPublicToken = query({
-	args: { publicToken: v.string() },
-	handler: async (ctx, args) => {
-		const payment = await getPaymentByPublicTokenInternal(
-			ctx,
-			args.publicToken
-		);
-		if (!payment) {
-			return null;
-		}
-
-		const invoice = await ctx.db.get(payment.invoiceId);
-		if (!invoice) {
-			return null;
-		}
-
-		const org = await ctx.db.get(payment.orgId);
-
-		// Get all payments for context (how many payments, how much paid)
-		const allPayments = await ctx.db
-			.query("payments")
-			.withIndex("by_invoice", (q) => q.eq("invoiceId", payment.invoiceId))
-			.collect();
-
-		const sortedPayments = allPayments.sort((a, b) => a.sortOrder - b.sortOrder);
-		const paymentIndex = sortedPayments.findIndex((p) => p._id === payment._id);
-		const totalPaid = sumMoney(
-			sortedPayments
-				.filter((p) => p.status === "paid")
-				.map((p) => p.paymentAmount)
-		);
-
-		return {
-			payment: {
-				_id: payment._id,
-				publicToken: payment.publicToken,
-				status: payment.status,
-				paymentAmount: payment.paymentAmount,
-				dueDate: payment.dueDate,
-				description: payment.description,
-				sortOrder: payment.sortOrder,
-				paidAt: payment.paidAt,
-				// Pending Checkout Session fields support retry reuse.
-				pendingCheckoutSessionId: payment.pendingCheckoutSessionId,
-				pendingCheckoutSessionUrl: payment.pendingCheckoutSessionUrl,
-				pendingCheckoutSessionExpiresAt:
-					payment.pendingCheckoutSessionExpiresAt,
-				// The route uses (counter + 1) for Stripe's idempotency key so
-				// failed attempts don't burn future keys.
-				checkoutAttemptCounter: payment.checkoutAttemptCounter ?? 0,
-			},
-			invoice: {
-				_id: invoice._id,
-				invoiceNumber: invoice.invoiceNumber,
-				total: invoice.total,
-				clientId: invoice.clientId,
-				status: invoice.status,
-			},
-			org: org
-				? {
-						name: org.name,
-						stripeConnectAccountId: org.stripeConnectAccountId,
-					}
-				: null,
-			paymentContext: {
-				paymentNumber: paymentIndex + 1,
-				totalPayments: sortedPayments.length,
-				totalPaid,
-				totalRemaining: roundCents(invoice.total - totalPaid),
-			},
-		};
-	},
-});
-
-/**
  * Get payment summary for an invoice
  */
 export const getInvoiceSummary = optionalUserQuery({
@@ -417,7 +323,6 @@ export const create = userMutation({
 			description: args.description,
 			sortOrder: args.sortOrder,
 			status: "pending",
-			publicToken: generatePublicToken(),
 		});
 
 		return paymentId;
@@ -589,7 +494,6 @@ export const configurePayments = userMutation({
 				description: paymentData.description,
 				sortOrder: paymentData.sortOrder,
 				status: "pending",
-				publicToken: generatePublicToken(),
 			});
 
 			createdIds.push(paymentId);
@@ -636,7 +540,6 @@ export const createDefaultPayment = userMutation({
 			description: "Full Payment",
 			sortOrder: 0,
 			status: "pending",
-			publicToken: generatePublicToken(),
 		});
 
 		return paymentId;
@@ -681,22 +584,6 @@ export const markPaidByPublicTokenInternal = internalMutation({
 			source: args.source ?? "confirm",
 			stripeSessionId: args.stripeSessionId,
 		});
-	},
-});
-
-/**
- * Internal query: get payment by public token (for use in actions)
- */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getByPublicTokenInternal = internalQuery({
-	args: { publicToken: v.string() },
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("payments")
-			.withIndex("by_public_token", (q) =>
-				q.eq("publicToken", args.publicToken)
-			)
-			.unique();
 	},
 });
 
@@ -819,76 +706,16 @@ export const markAsOverdue = userMutation({
 // PUB-17: intentionally public — pay-link route helper called by the
 // unauthenticated ConvexHttpClient (renamed off the misleading *Internal suffix).
 export const incrementCheckoutAttemptCounter = mutation({
-	args: { publicToken: v.string() },
+	args: { paymentId: v.id("payments") },
 	returns: v.number(),
 	handler: async (ctx, args): Promise<number> => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_public_token", (q) =>
-				q.eq("publicToken", args.publicToken)
-			)
-			.unique();
+		const payment = await ctx.db.get(args.paymentId);
 		if (!payment) {
 			throw new Error("Payment not found");
 		}
 		const next = (payment.checkoutAttemptCounter ?? 0) + 1;
 		await ctx.db.patch(payment._id, { checkoutAttemptCounter: next });
 		return next;
-	},
-});
-
-/**
- * Persist the active Checkout Session so retries can reuse its URL.
- *
- * This stays a `mutation` because the /api/pay/checkout route calls it via
- * unauthenticated ConvexHttpClient (the customer hitting a pay link is not
- * a platform user). The format guards below block the phishing vector: an
- * authenticated platform user could otherwise call this with a publicToken
- * leaked from a pay-link URL and overwrite the cached URL with anything.
- */
-const STRIPE_CHECKOUT_URL_PREFIX = "https://checkout.stripe.com/";
-const STRIPE_CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
-// PUB-01: the format guards below constrain the shape of the URL/id but NOT its
-// ownership — a session minted under an attacker's own Stripe account passes
-// both. The real fix lives in /api/pay/checkout, which now re-verifies the
-// cached session against the org's connected account before reusing it. Here we
-// additionally clamp the expiry so a poisoned cache entry cannot be pinned open
-// far into the future.
-const MAX_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
-export const persistPendingCheckoutSessionInternal = mutation({
-	args: {
-		publicToken: v.string(),
-		pendingCheckoutSessionId: v.string(),
-		pendingCheckoutSessionUrl: v.string(),
-		pendingCheckoutSessionExpiresAt: v.number(),
-	},
-	returns: v.null(),
-	handler: async (ctx, args): Promise<null> => {
-		if (!args.pendingCheckoutSessionUrl.startsWith(STRIPE_CHECKOUT_URL_PREFIX)) {
-			throw new Error("Invalid checkout URL: must be a Stripe-hosted URL");
-		}
-		if (!STRIPE_CHECKOUT_SESSION_ID.test(args.pendingCheckoutSessionId)) {
-			throw new Error("Invalid checkout session ID format");
-		}
-		if (args.pendingCheckoutSessionExpiresAt > Date.now() + MAX_SESSION_TTL_MS) {
-			throw new Error("Checkout session expiry out of range");
-		}
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_public_token", (q) =>
-				q.eq("publicToken", args.publicToken)
-			)
-			.unique();
-		if (!payment) {
-			throw new Error("Payment not found");
-		}
-		await ctx.db.patch(payment._id, {
-			pendingCheckoutSessionId: args.pendingCheckoutSessionId,
-			pendingCheckoutSessionUrl: args.pendingCheckoutSessionUrl,
-			pendingCheckoutSessionExpiresAt: args.pendingCheckoutSessionExpiresAt,
-		});
-		return null;
 	},
 });
 
@@ -901,66 +728,6 @@ const rateLimitResult = v.object({
 	retryAfter: v.optional(v.number()),
 });
 type RateLimitResult = { ok: boolean; retryAfter?: number };
-
-// PUB-11: pre-mint throttle for /api/pay/checkout, keyed per pay-link token
-// and per client IP.
-// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
-export const checkCheckoutRateLimit = mutation({
-	args: { token: v.string(), ip: v.string() },
-	returns: rateLimitResult,
-	handler: async (ctx, args): Promise<RateLimitResult> => {
-		const perToken = await rateLimiter.limit(ctx, "payCheckoutPerToken", {
-			key: args.token,
-		});
-		if (!perToken.ok) {
-			return { ok: false, retryAfter: perToken.retryAfter };
-		}
-		const perIp = await rateLimiter.limit(ctx, "payCheckoutPerIp", {
-			key: args.ip,
-		});
-		if (!perIp.ok) {
-			return { ok: false, retryAfter: perIp.retryAfter };
-		}
-		return { ok: true };
-	},
-});
-
-// PUB-11: per-IP throttle for the public token-lookup reads
-// (/api/pay/invoice, /api/pay/payment).
-// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
-export const checkPayReadRateLimit = mutation({
-	args: { ip: v.string() },
-	returns: rateLimitResult,
-	handler: async (ctx, args): Promise<RateLimitResult> => {
-		const rl = await rateLimiter.limit(ctx, "payReadPerIp", {
-			key: args.ip,
-		});
-		return rl.ok ? { ok: true } : { ok: false, retryAfter: rl.retryAfter };
-	},
-});
-
-// PUB-11: /api/pay/confirm triggers server-side Stripe verification; throttle
-// per token as well as per IP.
-// Stays raw — pay-link route helper called by unauthenticated ConvexHttpClient.
-export const checkPayConfirmRateLimit = mutation({
-	args: { token: v.string(), ip: v.string() },
-	returns: rateLimitResult,
-	handler: async (ctx, args): Promise<RateLimitResult> => {
-		const perToken = await rateLimiter.limit(ctx, "payConfirmPerToken", {
-			key: args.token,
-		});
-		if (!perToken.ok) {
-			return { ok: false, retryAfter: perToken.retryAfter };
-		}
-		const perIp = await rateLimiter.limit(ctx, "payReadPerIp", {
-			key: args.ip,
-		});
-		if (!perIp.ok) {
-			return { ok: false, retryAfter: perIp.retryAfter };
-		}
-		return { ok: true };
-	},
-});
 
 // PUB-12a: per-IP throttle for the public /api/schedule-demo Resend route.
 // Stays raw — called by the unauthenticated marketing route's ConvexHttpClient.
@@ -1128,6 +895,15 @@ export const markPaidFromWebhookInternal = systemMutation({
 			});
 		}
 
+		// Legacy Checkout path: only tokened rows ever reach here (new rows never
+		// create Checkout Sessions). Narrow the now-optional token.
+		if (!payment.publicToken) {
+			console.error(
+				`markPaidFromWebhookInternal: payment ${payment._id} has no publicToken ` +
+					`(session ${args.sessionId}); cannot resolve legacy row. Ack and skip.`
+			);
+			return null;
+		}
 		await ctx.runMutation(internal.payments.markPaidByPublicTokenInternal, {
 			publicToken: payment.publicToken,
 			stripeSessionId: args.sessionId,
@@ -1143,19 +919,14 @@ export const markPaidFromWebhookInternal = systemMutation({
  */
 export const persistPendingPaymentIntentInternal = internalMutation({
 	args: {
-		publicToken: v.string(),
+		paymentId: v.id("payments"),
 		pendingPaymentIntentId: v.string(),
 		pendingPaymentIntentClientSecret: v.string(),
 		pendingPaymentIntentExpiresAt: v.number(),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_public_token", (q) =>
-				q.eq("publicToken", args.publicToken)
-			)
-			.unique();
+		const payment = await ctx.db.get(args.paymentId);
 		if (!payment) {
 			throw new ConvexError({ code: "PAYMENT_NOT_FOUND" });
 		}
@@ -1170,7 +941,7 @@ export const persistPendingPaymentIntentInternal = internalMutation({
 
 /**
  * payment_intent.succeeded webhook → mark-paid cascade. Three-assertion gauntlet
- * (publicToken match, amount_received vs paymentAmount cents, paymentIntentId
+ * (paymentId/publicToken correlation, amount_received vs paymentAmount cents, paymentIntentId
  * non-empty) runs before the cascade. No ctx.runMutation here —
  * applyMarkPaidCascade is the canonical writer and runs in this mutation's
  * context.
@@ -1196,25 +967,34 @@ export const markPaidFromPaymentIntentWebhookInternal = systemMutation({
 			);
 			return null;
 		}
+		// Correlate by paymentId (durable row id, stamped in PI metadata at mint)
+		// with a publicToken fallback for any PaymentIntent minted before the token
+		// was retired from the mint path.
+		const paymentIdRaw =
+			typeof args.metadata?.paymentId === "string"
+				? args.metadata.paymentId
+				: undefined;
 		const publicToken =
 			typeof args.metadata?.publicToken === "string"
 				? args.metadata.publicToken
 				: undefined;
-		if (!publicToken) {
-			console.error(
-				`markPaidFromPaymentIntentInternal: PI ${args.paymentIntentId} has no metadata.publicToken — ` +
-					`likely a PaymentIntent created outside this app's flow. Ack and skip.`
-			);
-			return null;
+		let payment: PaymentDocument | null = null;
+		if (paymentIdRaw) {
+			const normalized = ctx.db.normalizeId("payments", paymentIdRaw);
+			if (normalized) {
+				payment = await ctx.db.get(normalized);
+			}
 		}
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_public_token", (q) => q.eq("publicToken", publicToken))
-			.unique();
+		if (!payment && publicToken) {
+			payment = await ctx.db
+				.query("payments")
+				.withIndex("by_public_token", (q) => q.eq("publicToken", publicToken))
+				.unique();
+		}
 		if (!payment) {
 			console.error(
-				`markPaidFromPaymentIntentInternal: no payment row for publicToken=${publicToken} ` +
-					`(PI ${args.paymentIntentId}). Row may have been deleted; ack and skip.`
+				`markPaidFromPaymentIntentInternal: no payment row for PI ${args.paymentIntentId} ` +
+					`(metadata paymentId=${paymentIdRaw ?? "none"}, publicToken=${publicToken ?? "none"}). Ack and skip.`
 			);
 			return null;
 		}

@@ -83,8 +83,6 @@ export type PortalInvoiceGetResponse = {
 	payments: PortalPaymentPublic[];
 	paymentSummary: PortalPaymentSummary;
 	activePaymentPublic: PortalPaymentPublic | null;
-	isLegacy: boolean;
-	legacyPayUrl: string | null;
 	businessName: string;
 	businessLogoUrl: string | null;
 	stripeChargesEnabled: boolean;
@@ -177,11 +175,6 @@ const portalInvoiceGetValidator = v.object({
 	payments: v.array(portalPaymentPublicValidator),
 	paymentSummary: portalPaymentSummaryValidator,
 	activePaymentPublic: v.union(portalPaymentPublicValidator, v.null()),
-	isLegacy: v.boolean(),
-	// Field is always present; null on non-legacy invoices, "/pay/{publicToken}"
-	// on legacy. v.union(string,null) — NOT v.optional — so undefined/missing
-	// is impossible by validator.
-	legacyPayUrl: v.union(v.string(), v.null()),
 	businessName: v.string(),
 	businessLogoUrl: v.union(v.string(), v.null()),
 	stripeChargesEnabled: v.boolean(),
@@ -371,28 +364,21 @@ export const get = query({
 			.sort((a, b) => a.sortOrder - b.sortOrder);
 
 		const summary = deriveSummary(invoice, sortedPayments);
-		const isLegacy = sortedPayments.length === 0;
 
-		const paymentsPublic: PortalPaymentPublic[] = isLegacy
-			? []
-			: sortedPayments.map(toPortalPaymentPublic);
+		const paymentsPublic: PortalPaymentPublic[] = sortedPayments.map(
+			toPortalPaymentPublic,
+		);
 
-		const firstUnpaid = isLegacy
-			? null
-			: sortedPayments.find(
-					(p) =>
-						p.status !== "paid" &&
-						p.status !== "cancelled" &&
-						p.status !== "refunded",
-				) ?? null;
+		const firstUnpaid =
+			sortedPayments.find(
+				(p) =>
+					p.status !== "paid" &&
+					p.status !== "cancelled" &&
+					p.status !== "refunded",
+			) ?? null;
 
-		const activePaymentPublic: PortalPaymentPublic | null =
-			isLegacy || !firstUnpaid ? null : toPortalPaymentPublic(firstUnpaid);
-
-		// legacyPayUrl: server-side construction; the bare publicToken is never
-		// returned as its own field on the DTO.
-		const legacyPayUrl: string | null = isLegacy
-			? `/pay/${invoice.publicToken}`
+		const activePaymentPublic: PortalPaymentPublic | null = firstUnpaid
+			? toPortalPaymentPublic(firstUnpaid)
 			: null;
 
 		const org = await ctx.db.get(invoice.orgId);
@@ -434,8 +420,6 @@ export const get = query({
 			payments: paymentsPublic,
 			paymentSummary: summary,
 			activePaymentPublic,
-			isLegacy,
-			legacyPayUrl,
 			businessName,
 			businessLogoUrl,
 			stripeChargesEnabled,

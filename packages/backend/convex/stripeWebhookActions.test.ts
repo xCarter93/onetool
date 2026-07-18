@@ -286,13 +286,11 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(payment?.status).toBe("pending");
 	});
 
-	it("W-4 pending-session lifecycle: increment + persist mutations match the route contract", async () => {
-		// The route-level "called twice, mock fires once" test belongs in
-		// apps/web (route harness — see SUMMARY note on test location).
-		// Here we pin the BACKEND mutation contract that backs the W-4 flow:
-		// incrementCheckoutAttemptCounter returns monotonically
-		// increasing values and persistPendingCheckoutSessionInternal writes
-		// the three pending-session fields back to the payment row.
+	it("W-4: incrementCheckoutAttemptCounter is monotonic (keyed by paymentId); checkout.session.completed clears pending session fields", async () => {
+		// The legacy /pay/checkout route is retired. incrementCheckoutAttemptCounter
+		// now backs the portal PaymentIntent mint and is keyed by paymentId. The
+		// checkout.session.completed webhook is kept for any in-flight legacy
+		// session and still clears the pending-session cache on the row.
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
 			orgId,
@@ -302,30 +300,27 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 
 		const attempt1 = await t.mutation(
 			api.payments.incrementCheckoutAttemptCounter,
-			{ publicToken: "tok_w4_1" }
+			{ paymentId }
 		);
 		expect(attempt1).toBe(1);
 		const attempt2 = await t.mutation(
 			api.payments.incrementCheckoutAttemptCounter,
-			{ publicToken: "tok_w4_1" }
+			{ paymentId }
 		);
 		expect(attempt2).toBe(2);
+		const counted = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(counted?.checkoutAttemptCounter).toBe(2);
 
+		// Seed a pending Checkout Session directly — the persist mutation is retired
+		// with the /pay route, but the webhook still clears these fields on a match.
 		const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-		await t.mutation(api.payments.persistPendingCheckoutSessionInternal, {
-			publicToken: "tok_w4_1",
-			pendingCheckoutSessionId: "cs_test_w4abc1",
-			pendingCheckoutSessionUrl: "https://checkout.stripe.com/cs_test_w4abc1",
-			pendingCheckoutSessionExpiresAt: expiresAt,
-		});
-
-		const payment = await t.run((ctx) => ctx.db.get(paymentId));
-		expect(payment?.pendingCheckoutSessionId).toBe("cs_test_w4abc1");
-		expect(payment?.pendingCheckoutSessionUrl).toBe(
-			"https://checkout.stripe.com/cs_test_w4abc1"
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, {
+				pendingCheckoutSessionId: "cs_test_w4abc1",
+				pendingCheckoutSessionUrl: "https://checkout.stripe.com/cs_test_w4abc1",
+				pendingCheckoutSessionExpiresAt: expiresAt,
+			})
 		);
-		expect(payment?.pendingCheckoutSessionExpiresAt).toBe(expiresAt);
-		expect(payment?.checkoutAttemptCounter).toBe(2);
 
 		// `markPaidFromWebhookInternal` clears the three pending fields when
 		// session.id matches — confirm via a happy-path webhook event.
@@ -682,13 +677,8 @@ describe("stripeWebhookActions.handleEvent integration", () => {
  * (they were silently no-oped against the payments table and acked, leaving the
  * customer's money captured but the invoice unpaid forever), and a genuine
  * lookup miss must be RETRYABLE (event marked failed), not "processed".
- *
- * PUB-01 — persistPendingCheckoutSessionInternal must clamp the attacker-chosen
- * expiry and reject non-Stripe URLs / malformed session ids. (The cross-account
- * cache-reuse rejection lives in the /api/pay/checkout route and is exercised in
- * apps/web, since it depends on a live stripe.checkout.sessions.retrieve.)
  */
-describe("PUB-34 / PUB-01 public-surface security regression", () => {
+describe("PUB-34 public-surface security regression", () => {
 	let t: ReturnType<typeof convexTest>;
 
 	beforeEach(() => {
@@ -824,53 +814,5 @@ describe("PUB-34 / PUB-01 public-surface security regression", () => {
 		expect(
 			rows.find((r) => r.stripeEventId === "evt_pay_miss")?.status
 		).toBe("failed");
-	});
-
-	it("PUB-01: persistPendingCheckoutSessionInternal rejects an expiry beyond 24h", async () => {
-		const { orgId } = await seedConnectedOrg(t);
-		await seedPayment(t, {
-			orgId,
-			publicToken: "tok_pub01_expiry",
-			paymentAmount: 50,
-		});
-
-		await expect(
-			t.mutation(api.payments.persistPendingCheckoutSessionInternal, {
-				publicToken: "tok_pub01_expiry",
-				pendingCheckoutSessionId: "cs_test_pub01exp",
-				pendingCheckoutSessionUrl:
-					"https://checkout.stripe.com/c/pay/cs_test_pub01exp",
-				pendingCheckoutSessionExpiresAt: Date.now() + 25 * 60 * 60 * 1000,
-			})
-		).rejects.toThrow(/expiry out of range/i);
-	});
-
-	it("PUB-01: persistPendingCheckoutSessionInternal rejects non-Stripe URL and malformed session id", async () => {
-		const { orgId } = await seedConnectedOrg(t);
-		await seedPayment(t, {
-			orgId,
-			publicToken: "tok_pub01_fmt",
-			paymentAmount: 50,
-		});
-
-		await expect(
-			t.mutation(api.payments.persistPendingCheckoutSessionInternal, {
-				publicToken: "tok_pub01_fmt",
-				pendingCheckoutSessionId: "cs_live_abc123",
-				// Non-Stripe host — must be rejected even though the id is well-formed.
-				pendingCheckoutSessionUrl: "https://evil.example/c/pay/cs_live_abc123",
-				pendingCheckoutSessionExpiresAt: Date.now() + 1000,
-			})
-		).rejects.toThrow(/Stripe-hosted URL/i);
-
-		await expect(
-			t.mutation(api.payments.persistPendingCheckoutSessionInternal, {
-				publicToken: "tok_pub01_fmt",
-				pendingCheckoutSessionId: "not_a_session_id",
-				pendingCheckoutSessionUrl:
-					"https://checkout.stripe.com/c/pay/whatever",
-				pendingCheckoutSessionExpiresAt: Date.now() + 1000,
-			})
-		).rejects.toThrow(/session ID format/i);
 	});
 });

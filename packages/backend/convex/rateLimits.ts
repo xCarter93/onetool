@@ -67,35 +67,6 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 10,
 	},
 
-	// PUB-11: pay-by-link has no auth; throttle Stripe session minting per token
-	// (carding/abuse signal) and per IP. Token bucket over a short window.
-	payCheckoutPerToken: {
-		kind: "token bucket",
-		rate: 10,
-		period: 10 * MINUTE,
-		capacity: 10,
-	},
-	payCheckoutPerIp: {
-		kind: "token bucket",
-		rate: 30,
-		period: 10 * MINUTE,
-		capacity: 30,
-	},
-	// PUB-11: the rest of the /api/pay/* surface — token-lookup reads and the
-	// Stripe-verifying confirm endpoint.
-	payReadPerIp: {
-		kind: "token bucket",
-		rate: 120,
-		period: 10 * MINUTE,
-		capacity: 60,
-	},
-	payConfirmPerToken: {
-		kind: "token bucket",
-		rate: 10,
-		period: 10 * MINUTE,
-		capacity: 10,
-	},
-
 	// PUB-28: bound touchSession write amplification per session row.
 	portalSessionTouch: {
 		kind: "token bucket",

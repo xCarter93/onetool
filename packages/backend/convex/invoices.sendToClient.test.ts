@@ -122,6 +122,66 @@ describe("invoices.sendToClient", () => {
 		).rejects.toThrow(/email/i);
 	});
 
+	it("seeds a 'Full Payment' row when a manual invoice has none, so it is portal-payable", async () => {
+		// invoices.create adds no payment rows (unlike createFromQuote). Without a
+		// row the portal can't mint a PaymentIntent, so sendToClient backfills one.
+		const { asUser, invoiceId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+
+		const before = await t.run(async (ctx) =>
+			(await ctx.db.query("payments").collect()).filter(
+				(p) => p.invoiceId === invoiceId
+			)
+		);
+		expect(before.length).toBe(0);
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const after = await t.run(async (ctx) =>
+			(await ctx.db.query("payments").collect()).filter(
+				(p) => p.invoiceId === invoiceId
+			)
+		);
+		expect(after.length).toBe(1);
+		expect(after[0]!.paymentAmount).toBe(1000);
+		expect(after[0]!.description).toBe("Full Payment");
+		expect(after[0]!.status).toBe("pending");
+	});
+
+	it("does not add a second row when the invoice already has one", async () => {
+		const { asUser, invoiceId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		// Seed an existing installment row.
+		await t.run(async (ctx) =>
+			ctx.db.insert("payments", {
+				orgId,
+				invoiceId,
+				paymentAmount: 1000,
+				dueDate: Date.now() + 7 * 24 * 60 * 60 * 1000,
+				description: "Deposit",
+				sortOrder: 0,
+				status: "pending",
+				publicToken: `tok_${Math.random().toString(36).slice(2)}`,
+			})
+		);
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const rows = await t.run(async (ctx) =>
+			(await ctx.db.query("payments").collect()).filter(
+				(p) => p.invoiceId === invoiceId
+			)
+		);
+		expect(rows.length).toBe(1);
+		expect(rows[0]!.description).toBe("Deposit");
+	});
+
 	it("refuses to send a paid invoice", async () => {
 		const { asUser, invoiceId } = await seed({
 			portalAccess: true,

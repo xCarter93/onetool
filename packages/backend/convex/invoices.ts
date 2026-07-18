@@ -10,7 +10,6 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
-import { generatePublicToken } from "./lib/shared";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -82,7 +81,6 @@ async function createInvoiceWithOrg(
 	const invoiceData = {
 		...data,
 		orgId: ctx.orgId,
-		publicToken: generatePublicToken(),
 	};
 
 	return await ctx.db.insert("invoices", invoiceData);
@@ -269,109 +267,9 @@ export const get = optionalUserQuery({
 	},
 });
 
-/**
- * Get an invoice by public token (for client access)
- */
-// INTENTIONAL: raw public query — unauthenticated public invoice-token access.
-// Caller has no Clerk identity; org is discovered from the invoice row.
-export const getByPublicToken = query({
-	args: { publicToken: v.string() },
-	handler: async (ctx, args) => {
-		const invoice = await getInvoiceByPublicToken(ctx, args.publicToken);
-		if (!invoice) {
-			return null;
-		}
-
-		// PUB-35: draft/cancelled invoices are not payable and their existence
-		// must not leak — masquerade as not-found, matching the portal paths.
-		if (invoice.status === "draft" || invoice.status === "cancelled") {
-			return null;
-		}
-
-		const org = await ctx.db.get(invoice.orgId);
-
-		return {
-			invoice: {
-				_id: invoice._id,
-				publicToken: invoice.publicToken,
-				status: invoice.status,
-				invoiceNumber: invoice.invoiceNumber,
-				clientId: invoice.clientId,
-				projectId: invoice.projectId,
-				total: invoice.total,
-				subtotal: invoice.subtotal,
-				discountAmount: invoice.discountAmount,
-				taxAmount: invoice.taxAmount,
-				dueDate: invoice.dueDate,
-				issuedDate: invoice.issuedDate,
-			},
-			org: org
-				? {
-						stripeConnectAccountId: org.stripeConnectAccountId,
-						name: org.name,
-				  }
-				: null,
-		};
-	},
-});
-
 // ============================================================================
 // Mutations
 // ============================================================================
-
-/**
- * Internal: mark an invoice as paid after Stripe verification.
- * Called only from the verifyAndMarkInvoicePaid action.
- */
-export const markPaidByPublicTokenInternal = internalMutation({
-	args: {
-		publicToken: v.string(),
-		stripeSessionId: v.string(),
-		stripePaymentIntentId: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const invoice = await getInvoiceByPublicToken(ctx, args.publicToken);
-		if (!invoice) {
-			throw new Error("Invoice not found");
-		}
-
-		if (invoice.status === "paid") {
-			return invoice._id;
-		}
-
-		await ctx.db.patch(invoice._id, {
-			status: "paid",
-			stripeSessionId: args.stripeSessionId,
-			stripePaymentIntentId: args.stripePaymentIntentId,
-			paidAt: Date.now(),
-		});
-
-		// Public flow: avoid requiring an authenticated user to log activity.
-		try {
-			const client = await ctx.db.get(invoice.clientId);
-			await ActivityHelpers.invoicePaid(
-				ctx,
-				invoice,
-				client?.companyName || "Unknown Client"
-			);
-		} catch (err) {
-			console.warn("Invoice paid activity logging skipped:", err);
-		}
-
-		return invoice._id;
-	},
-});
-
-/**
- * Internal query: get invoice by public token (for use in actions)
- */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getByPublicTokenInternal = internalQuery({
-	args: { publicToken: v.string() },
-	handler: async (ctx, args) => {
-		return await getInvoiceByPublicToken(ctx, args.publicToken);
-	},
-});
 
 /**
  * PUB-34: mark a legacy-invoice-flow Checkout Session paid from the Stripe
@@ -757,6 +655,26 @@ export const sendToClient = userMutation({
 			}
 		}
 
+		// Guarantee portal payability: the portal's native Elements flow pays against
+		// payment rows, so an invoice with none is view-only. Quote-derived invoices
+		// already carry a "Full Payment" row; manual invoices (invoices.create) do not.
+		// Backfill one at send time so every sent invoice is payable in the portal.
+		const existingPayments = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+			.collect();
+		if (existingPayments.length === 0) {
+			await ctx.db.insert("payments", {
+				orgId: invoice.orgId,
+				invoiceId: invoice._id,
+				paymentAmount: invoice.total,
+				dueDate: invoice.dueDate,
+				description: "Full Payment",
+				sortOrder: 0,
+				status: "pending",
+			});
+		}
+
 		// Fire-and-forget the branded portal-invite email.
 		await ctx.scheduler.runAfter(
 			0,
@@ -1139,7 +1057,6 @@ export const createFromQuote = userMutation({
 			total: quote.total,
 			issuedDate,
 			dueDate,
-			publicToken: generatePublicToken(),
 		});
 
 		// Copy quote line items to invoice line items
@@ -1192,7 +1109,6 @@ export const createFromQuote = userMutation({
 			description: "Full Payment",
 			sortOrder: 0,
 			status: "pending",
-			publicToken: generatePublicToken(),
 		});
 
 		return invoiceId;

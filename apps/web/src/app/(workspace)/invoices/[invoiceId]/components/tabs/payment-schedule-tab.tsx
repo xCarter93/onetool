@@ -8,15 +8,12 @@ import { Separator } from "@/components/ui/separator";
 import {
 	CreditCard,
 	Settings,
-	Copy,
-	ExternalLink,
 	Clock,
 	Mail,
 	CheckCircle,
 	AlertCircle,
 	Ban,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/money";
 
 type PaymentStatus = "pending" | "sent" | "paid" | "overdue" | "cancelled";
@@ -88,35 +85,6 @@ export function PaymentScheduleTab({
 	organization,
 	onConfigurePayments,
 }: PaymentScheduleTabProps) {
-	const toast = useToast();
-
-	const getPaymentUrl = (publicToken: string): string => {
-		const origin =
-			typeof window !== "undefined"
-				? window.location.origin
-				: (process.env.NEXT_PUBLIC_APP_URL ?? "");
-		return origin ? `${origin}/pay/${publicToken}` : "";
-	};
-
-	const handleCopyPaymentLink = (
-		paymentUrl: string,
-		paymentDescription?: string
-	) => {
-		navigator.clipboard
-			.writeText(paymentUrl)
-			.then(() =>
-				toast.success(
-					"Link copied",
-					paymentDescription
-						? `Payment link for "${paymentDescription}" copied.`
-						: "Payment link copied."
-				)
-			)
-			.catch(() =>
-				toast.error("Copy failed", "Unable to copy the link.")
-			);
-	};
-
 	return (
 		<div className="space-y-8">
 			<div>
@@ -200,9 +168,6 @@ export function PaymentScheduleTab({
 										paymentStatusConfig[
 											payment.status as PaymentStatus
 										];
-									const paymentUrl = getPaymentUrl(
-										payment.publicToken
-									);
 
 									return (
 										<div
@@ -256,43 +221,6 @@ export function PaymentScheduleTab({
 													)}
 												</span>
 											</div>
-
-											{/* Payment Actions */}
-											{payment.status !== "paid" &&
-												payment.status !==
-													"cancelled" && (
-													<div className="flex gap-2 pt-3 border-t border-border/50">
-														<Button
-															variant="outline"
-															size="sm"
-															className="flex-1"
-															onClick={() =>
-																handleCopyPaymentLink(
-																	paymentUrl,
-																	payment.description
-																)
-															}
-														>
-															<Copy className="h-3 w-3 mr-1" />
-															Copy Link
-														</Button>
-														<Button
-															variant="outline"
-															size="sm"
-															className="flex-1"
-															onClick={() => {
-																window.open(
-																	paymentUrl,
-																	"_blank",
-																	"noopener,noreferrer"
-																);
-															}}
-														>
-															<ExternalLink className="h-3 w-3 mr-1" />
-															Open
-														</Button>
-													</div>
-												)}
 										</div>
 									);
 								}

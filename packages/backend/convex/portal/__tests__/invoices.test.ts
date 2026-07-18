@@ -417,27 +417,26 @@ describe("portal.invoices", () => {
 		}
 	});
 
-	it("get: legacy single-token invoice (zero payments rows) returns isLegacy: true at response top level, payments: [], activePaymentPublic: null AND legacyPayUrl === `/pay/${invoice.publicToken}`", async () => {
+	it("get: zero-payment-row invoice returns payments: [] and activePaymentPublic: null (view-only, no pay link)", async () => {
 		const s = await seedOrg(t, "p-get-legacy");
 		const jti = "g-legacy";
 		await seedSession(t, s, jti);
-		const TOKEN = "legacy-public-tok-12345";
 		const invId = await insertInvoice(t, s, {
 			status: "sent",
-			publicToken: TOKEN,
+			publicToken: "legacy-public-tok-12345",
 		});
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const result = await asPortal.query(api.portal.invoices.get, {
 			invoiceId: invId,
 		});
-		expect(result.isLegacy).toBe(true);
 		expect(result.payments).toEqual([]);
 		expect(result.activePaymentPublic).toBeNull();
-		expect(result.legacyPayUrl).toBe(`/pay/${TOKEN}`);
+		// paymentSummary.isLegacy remains the pay-now gating signal.
+		expect(result.paymentSummary.isLegacy).toBe(true);
 	});
 
-	it("get: NON-legacy invoice (at least one payment row) returns legacyPayUrl === null AND isLegacy === false", async () => {
+	it("get: invoice with a payment row exposes activePaymentPublic and paymentSummary.isLegacy === false", async () => {
 		const s = await seedOrg(t, "p-get-non-legacy");
 		const jti = "g-non-legacy";
 		await seedSession(t, s, jti);
@@ -452,8 +451,9 @@ describe("portal.invoices", () => {
 		const result = await asPortal.query(api.portal.invoices.get, {
 			invoiceId: invId,
 		});
-		expect(result.isLegacy).toBe(false);
-		expect(result.legacyPayUrl).toBe(null);
+		expect(result.payments).toHaveLength(1);
+		expect(result.activePaymentPublic).not.toBeNull();
+		expect(result.paymentSummary.isLegacy).toBe(false);
 	});
 
 	// -------------------------------------------------------------------------
@@ -599,7 +599,8 @@ describe("portal.invoices", () => {
 			const [createBody, requestOpts] = create.mock.calls[0]!;
 			expect(createBody.amount).toBe(10000);
 			expect(createBody.currency).toBe("usd");
-			expect(createBody.metadata.publicToken).toBe("ptok_mint_1");
+			// PI metadata correlates by paymentId now (publicToken retired).
+			expect(createBody.metadata.paymentId).toBe(paymentId);
 			// stripeAccount lives in the REQUEST OPTIONS object, never the create body.
 			expect(createBody.stripeAccount).toBeUndefined();
 			expect(requestOpts).toEqual({

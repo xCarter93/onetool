@@ -5,10 +5,9 @@ const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 const convexHostname = convexUrl ? new URL(convexUrl).hostname : null;
 
 // PUB-03 (partial) / PUB-27: baseline security headers. These need no CSP soak
-// and ship immediately. `Referrer-Policy` in particular stops the full
-// /pay/{token} URL (a bearer credential) leaking to cross-origin subresources
-// via the Referer header. A full Content-Security-Policy is deferred to a
-// Report-Only soak (see PRD Phase 3).
+// and ship immediately. `Referrer-Policy` in particular limits how much of a
+// URL leaks to cross-origin subresources via the Referer header. A full
+// Content-Security-Policy is deferred to a Report-Only soak (see PRD Phase 3).
 // PUB-03 (full CSP): shipped as Content-Security-Policy-REPORT-ONLY first so it
 // never blocks — it only surfaces what each of Convex (WebSocket), Clerk,
 // Stripe.js, and Mapbox actually needs. Tune from the browser violation reports,
@@ -53,15 +52,6 @@ const nextConfig: NextConfig = {
 			{
 				source: "/:path*",
 				headers: securityHeaders,
-			},
-			{
-				// PUB-04: bearer-credential routes must be crawlable-but-noindexed
-				// (an HTTP header, not a robots.txt Disallow) so crawlers see the
-				// directive and drop them instead of URL-only listing them.
-				source: "/pay/:path*",
-				headers: [
-					{ key: "X-Robots-Tag", value: "noindex, nofollow" },
-				],
 			},
 			{
 				source: "/portal/:path*",
