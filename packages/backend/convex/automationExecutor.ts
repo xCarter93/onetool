@@ -2569,6 +2569,7 @@ async function executeNodeV2(
 	switch (config.kind) {
 		case "condition": {
 			let record: Record<string, unknown>;
+			let recordType: AutomationObjectType | undefined;
 			if (config.source && typeof config.source === "object") {
 				const loopScope = env.scope.loops?.[config.source.loopNodeId];
 				if (!loopScope) {
@@ -2578,14 +2579,17 @@ async function executeNodeV2(
 					};
 				}
 				record = loopScope.item;
+				recordType = loopScope.objectType;
 			} else {
 				record = scopeRecord?.record ?? {};
+				recordType = scopeRecord?.type;
 			}
 			const conditionMet = evaluateConditionGroups(
 				config.logic,
 				config.groups,
 				record,
-				env.scope
+				env.scope,
+				recordType
 			);
 			return { success: true, conditionMet };
 		}
@@ -4842,6 +4846,7 @@ async function dryExecuteNode(
 	const config = node.config;
 	if (config?.kind === "condition") {
 		let record: Record<string, unknown>;
+		let recordType: AutomationObjectType | undefined;
 		if (config.source && typeof config.source === "object") {
 			const loopScope = env.scope.loops?.[config.source.loopNodeId];
 			if (!loopScope) {
@@ -4851,14 +4856,17 @@ async function dryExecuteNode(
 				};
 			}
 			record = loopScope.item;
+			recordType = loopScope.objectType;
 		} else {
 			record = scopeRecord?.record ?? {};
+			recordType = scopeRecord?.type;
 		}
 		const conditionMet = evaluateConditionGroups(
 			config.logic,
 			config.groups,
 			record,
-			env.scope
+			env.scope,
+			recordType
 		);
 		return {
 			success: true,

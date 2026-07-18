@@ -720,12 +720,23 @@ describe("evaluateRule", () => {
 			nothing: null,
 		};
 
-		it("compares epoch numbers", () => {
+		it("compares epoch numbers (granularity-matched, C2-2b)", () => {
+			// dueEpoch is a calendar date (UTC midnight); jan1±1000 are instants on
+			// the same/previous calendar day, so mixed compares work in day space:
+			// "before an instant later the same day" is false, not true.
 			expect(
 				evaluateRule(rule("dueEpoch", "before", staticRef(jan1 + 1000)), record, emptyScope)
-			).toBe(true);
+			).toBe(false);
 			expect(
 				evaluateRule(rule("dueEpoch", "after", staticRef(jan1 - 1000)), record, emptyScope)
+			).toBe(true);
+			// Same kind (both calendar dates) stays exact.
+			expect(
+				evaluateRule(
+					rule("dueEpoch", "before", staticRef(jan1 + 86_400_000)),
+					record,
+					emptyScope
+				)
 			).toBe(true);
 			expect(
 				evaluateRule(rule("dueEpoch", "before", staticRef(jan1)), record, emptyScope)
@@ -834,6 +845,78 @@ describe("evaluateRule", () => {
 			).toBe(false);
 			expect(
 				evaluateRule(rule("dueDate", "on", staticRef("junk")), record, nyScope)
+			).toBe(false);
+		});
+	});
+
+	describe("registry-aware date equality (C2-2b)", () => {
+		const nyScope: VariableScope = {
+			workflow: { now: Date.UTC(2026, 6, 4, 12, 0), tz: "America/New_York" },
+		};
+		const calJul4 = Date.UTC(2026, 6, 4);
+		const instantJul4Utc = Date.UTC(2026, 6, 4, 2, 0); // Jul 3 in New York
+		const invoice = { dueDate: calJul4, total: 0, notes: null };
+
+		it("equals on a date field compares calendar days for mixed kinds", () => {
+			// Same kind: exact.
+			expect(
+				evaluateRule(
+					rule("dueDate", "equals", staticRef(calJul4)),
+					invoice,
+					nyScope,
+					"invoice"
+				)
+			).toBe(true);
+			// Mixed kind: the instant is Jul 3 in the run tz, the date is Jul 4.
+			expect(
+				evaluateRule(
+					rule("dueDate", "equals", staticRef(instantJul4Utc)),
+					invoice,
+					nyScope,
+					"invoice"
+				)
+			).toBe(false);
+			expect(
+				evaluateRule(
+					rule("dueDate", "not_equals", staticRef(instantJul4Utc)),
+					invoice,
+					nyScope,
+					"invoice"
+				)
+			).toBe(true);
+		});
+
+		it("non-date fields never get day semantics", () => {
+			// 0 and one hour later are the same UTC day, but total is a number
+			// field — day-equality here would corrupt numeric comparisons.
+			expect(
+				evaluateRule(
+					rule("total", "equals", staticRef(3_600_000)),
+					invoice,
+					nyScope,
+					"invoice"
+				)
+			).toBe(false);
+		});
+
+		it("null on either side keeps loose semantics", () => {
+			expect(
+				evaluateRule(
+					rule("notes", "equals", staticRef(null)),
+					invoice,
+					nyScope,
+					"invoice"
+				)
+			).toBe(true);
+		});
+
+		it("without objectType equals stays exact (legacy callers)", () => {
+			expect(
+				evaluateRule(
+					rule("dueDate", "equals", staticRef(instantJul4Utc)),
+					invoice,
+					nyScope
+				)
 			).toBe(false);
 		});
 	});
