@@ -246,6 +246,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 						<button
 							key={cred.label}
 							type="button"
+							aria-pressed={cred.checked}
 							onClick={() => cred.toggle(!cred.checked)}
 							className={`group relative flex flex-col items-center justify-center w-28 sm:w-32 p-4 rounded-xl border cursor-pointer select-none transition-colors duration-200 ${
 								cred.checked

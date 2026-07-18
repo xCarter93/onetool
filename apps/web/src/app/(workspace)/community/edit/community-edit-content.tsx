@@ -118,6 +118,7 @@ export default function CommunityEditContent() {
 		actions.isPublishing ||
 		!!actions.slugError ||
 		actions.isSlugAvailable === false ||
+		actions.isCheckingSlug ||
 		actions.hasInvalidSocialUrls ||
 		(!actions.hasUnsavedChanges && !mainSettings.isPublic);
 
@@ -231,6 +232,7 @@ export default function CommunityEditContent() {
 										!actions.hasPublishableContent ||
 										!!actions.slugError ||
 										actions.isSlugAvailable === false ||
+										actions.isCheckingSlug ||
 										actions.hasInvalidSocialUrls
 									}
 								>

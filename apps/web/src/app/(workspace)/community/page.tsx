@@ -97,7 +97,9 @@ const SECTION_CHECKLIST: Array<{
 		label: "Bio",
 		blurb: "Tell your story",
 		icon: FileText,
-		isComplete: (p) => !!p.draftBioContent || !!p.draftContent,
+		isComplete: (p) =>
+			hasRichTextContent(p.draftBioContent) ||
+			hasRichTextContent(p.draftContent),
 	},
 	{
 		id: "imageGallery",
@@ -111,7 +113,7 @@ const SECTION_CHECKLIST: Array<{
 		label: "Services",
 		blurb: "What you offer",
 		icon: Wrench,
-		isComplete: (p) => !!p.draftServicesContent,
+		isComplete: (p) => hasRichTextContent(p.draftServicesContent),
 	},
 	{
 		id: "pricing",
@@ -119,7 +121,8 @@ const SECTION_CHECKLIST: Array<{
 		blurb: "Tiers or a custom write-up",
 		icon: Tags,
 		isComplete: (p) =>
-			(p.draftPricingTiers?.length ?? 0) > 0 || !!p.draftPricingContent,
+			(p.draftPricingTiers?.length ?? 0) > 0 ||
+			hasRichTextContent(p.draftPricingContent),
 	},
 ];
 
@@ -143,6 +146,17 @@ const CREATE_PROOF_POINTS = [
 			"Visitors submit interest forms that land in your tasks automatically.",
 	},
 ] as const;
+
+/** True when TipTap JSON actually contains text or media, not just empty nodes. */
+function hasRichTextContent(doc: unknown): boolean {
+	if (!doc || typeof doc !== "object") return false;
+	const node = doc as { type?: string; text?: string; content?: unknown[] };
+	if (node.type === "text") return !!node.text?.trim();
+	if (node.type === "image") return true;
+	return (
+		Array.isArray(node.content) && node.content.some(hasRichTextContent)
+	);
+}
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return null;
@@ -375,8 +389,10 @@ function CommunityPageContent() {
 		toast.success("URL copied", "Share this link with your audience");
 	}, [communitySlug, toast]);
 
-	const pageUrl = communityPage?.slug
-		? `${typeof window !== "undefined" ? window.location.origin : ""}/communities/${communityPage.slug}`
+	// Relative path keeps SSR/client markup identical; the absolute URL is only
+	// built inside handleCopyUrl where window is guaranteed.
+	const pagePath = communityPage?.slug
+		? `/communities/${communityPage.slug}`
 		: "";
 
 	// Loading state
@@ -479,12 +495,7 @@ function CommunityPageContent() {
 										size="lg"
 										className="w-full justify-center"
 										onClick={handleCreatePage}
-										disabled={
-											isCreating ||
-											!slug ||
-											!!slugError ||
-											isSlugAvailable === false
-										}
+										disabled={isCreating || slugStatus !== "available"}
 									>
 										{isCreating ? (
 											<Loader2 className="size-4 mr-2 animate-spin" />
@@ -582,12 +593,21 @@ function CommunityPageContent() {
 									</>
 								)}
 							</Button>
-							<a href={pageUrl} target="_blank" rel="noopener noreferrer">
-								<Button variant="outline" size="sm">
-									<ExternalLink className="size-4 mr-2" />
-									View live
-								</Button>
-							</a>
+							<Button
+								variant="outline"
+								size="sm"
+								nativeButton={false}
+								render={
+									<a
+										href={pagePath}
+										target="_blank"
+										rel="noopener noreferrer"
+									/>
+								}
+							>
+								<ExternalLink className="size-4 mr-2" />
+								View live
+							</Button>
 							<Button
 								variant="default"
 								size="sm"
@@ -694,18 +714,16 @@ function CommunityPageContent() {
 								<div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
 									{isLive ? (
 										<a
-											href={pageUrl}
+											href={pagePath}
 											target="_blank"
 											rel="noopener noreferrer"
 											className="flex items-center gap-1 font-mono text-xs hover:text-foreground hover:underline transition-colors"
 										>
-											{pageUrl || `/communities/${communityPage.slug}`}
+											{pagePath}
 											<ExternalLink className="size-3" />
 										</a>
 									) : (
-										<span className="font-mono text-xs">
-											{pageUrl || `/communities/${communityPage.slug}`}
-										</span>
+										<span className="font-mono text-xs">{pagePath}</span>
 									)}
 									<span className="text-xs">
 										{isLive

@@ -83,9 +83,11 @@ export const GallerySection = React.memo(function GallerySection({
 			/>
 
 			{galleryItems.length === 0 ? (
-				<div
-					className="rounded-xl border-2 border-dashed border-border/70 bg-muted/10 p-12 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all group"
+				<button
+					type="button"
+					className="w-full rounded-xl border-2 border-dashed border-border/70 bg-muted/10 p-12 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 					onClick={() => galleryInputRef.current?.click()}
+					disabled={isUploadingGallery}
 				>
 					{isUploadingGallery ? (
 						<Loader2 className="size-10 mx-auto animate-spin text-muted-fg mb-3" />
@@ -94,7 +96,7 @@ export const GallerySection = React.memo(function GallerySection({
 					)}
 					<p className="text-sm font-medium text-fg">Add photos of your work</p>
 					<p className="text-xs text-muted-fg mt-1">Up to {MAX_GALLERY_IMAGES} images, 5MB each</p>
-				</div>
+				</button>
 			) : (
 				<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 					{galleryItems.map((item, index) => (

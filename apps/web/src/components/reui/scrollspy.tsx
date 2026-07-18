@@ -13,7 +13,6 @@ type ScrollspyProps = {
   className?: string
   dataAttribute?: string
   history?: boolean
-  throttleTime?: number
 }
 
 export function Scrollspy({
@@ -44,7 +43,9 @@ export function Scrollspy({
       })
       if (onUpdate) onUpdate(sectionId)
       if (history && (force || prevIdTracker.current !== sectionId)) {
-        window.history.replaceState({}, "", `#${sectionId}`)
+        // Preserve existing history state — Next.js App Router stores router
+        // state there; replacing it with {} breaks back/forward navigation.
+        window.history.replaceState(window.history.state, "", `#${sectionId}`)
       }
       prevIdTracker.current = sectionId
     },
@@ -198,10 +199,14 @@ export function Scrollspy({
       )
     }
 
-    const currentAnchors = anchorElementsRef.current
-    currentAnchors?.forEach((item) => {
-      item.addEventListener("click", scrollTo(item as HTMLElement))
-    })
+    // Hold the exact handler references so cleanup removes what was added —
+    // scrollTo(item) returns a fresh closure on every call.
+    const handlerPairs =
+      anchorElementsRef.current?.map((item) => {
+        const handler = scrollTo(item as HTMLElement)
+        item.addEventListener("click", handler)
+        return { item, handler } as const
+      }) ?? []
 
     const onScroll = (event: Event) => {
       const scrollElement =
@@ -230,8 +235,8 @@ export function Scrollspy({
 
     return () => {
       window.removeEventListener("scroll", onScroll, true)
-      currentAnchors?.forEach((item) => {
-        item.removeEventListener("click", scrollTo(item as HTMLElement))
+      handlerPairs.forEach(({ item, handler }) => {
+        item.removeEventListener("click", handler)
       })
       clearTimeout(initialTimeout)
     }

@@ -58,6 +58,7 @@ export function ThemeCard({
 	return (
 		<button
 			type="button"
+			aria-pressed={isSelected}
 			onClick={onSelect}
 			className={cn(
 				"relative w-full text-left rounded-xl border-2 p-4 cursor-pointer transition-colors duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",

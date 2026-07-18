@@ -93,8 +93,9 @@ export const PricingSection = React.memo(function PricingSection({
 							<div className="p-4 space-y-3">
 								<div className="grid gap-3 sm:grid-cols-2">
 									<Field>
-										<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</FieldLabel>
+										<FieldLabel htmlFor={`pricing-tier-${index}-name`} className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</FieldLabel>
 										<Input
+											id={`pricing-tier-${index}-name`}
 											value={tier.name}
 											onChange={(e) =>
 												setPricingTiers((prev) =>
@@ -109,8 +110,9 @@ export const PricingSection = React.memo(function PricingSection({
 										/>
 									</Field>
 									<Field>
-										<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">Price</FieldLabel>
+										<FieldLabel htmlFor={`pricing-tier-${index}-price`} className="text-xs uppercase tracking-wider text-muted-fg">Price</FieldLabel>
 										<Input
+											id={`pricing-tier-${index}-price`}
 											value={tier.price}
 											onChange={(e) =>
 												setPricingTiers((prev) =>
@@ -126,8 +128,9 @@ export const PricingSection = React.memo(function PricingSection({
 									</Field>
 								</div>
 								<Field>
-									<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">Description</FieldLabel>
+									<FieldLabel htmlFor={`pricing-tier-${index}-description`} className="text-xs uppercase tracking-wider text-muted-fg">Description</FieldLabel>
 									<Input
+										id={`pricing-tier-${index}-description`}
 										value={tier.description}
 										onChange={(e) =>
 											setPricingTiers((prev) =>

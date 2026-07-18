@@ -100,9 +100,23 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 					className={cn(
 						"relative w-full aspect-[4.8/1] rounded-xl overflow-hidden border border-dashed border-border bg-muted/20",
 						"hover:border-primary/50 hover:bg-muted/30 transition-colors duration-200 cursor-pointer group",
+						"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
 						isUploadingBanner && "opacity-50 pointer-events-none",
 					)}
 					onClick={() => bannerInputRef.current?.click()}
+					// Keyboard-operable only when empty; with an image, the focusable
+					// Replace/Remove overlay buttons take over (no nested interactives).
+					{...(!bannerUrl && {
+						role: "button",
+						tabIndex: 0,
+						"aria-label": "Upload banner image",
+						onKeyDown: (e: React.KeyboardEvent) => {
+							if (e.key === "Enter" || e.key === " ") {
+								e.preventDefault();
+								bannerInputRef.current?.click();
+							}
+						},
+					})}
 				>
 					{bannerUrl ? (
 						<>
@@ -113,7 +127,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 								className="object-cover"
 							/>
 							<div
-								className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-4"
+								className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-4"
 								onClick={(e) => e.stopPropagation()}
 							>
 								<Button
@@ -172,9 +186,21 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 						className={cn(
 							"relative size-24 rounded-xl overflow-hidden border border-dashed border-border bg-muted/20",
 							"hover:border-primary/50 hover:bg-muted/30 transition-colors duration-200 cursor-pointer group",
+							"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
 							isUploadingAvatar && "opacity-50 pointer-events-none",
 						)}
 						onClick={() => avatarInputRef.current?.click()}
+						role="button"
+						tabIndex={0}
+						aria-label={
+							avatarUrl ? "Replace avatar image" : "Upload avatar image"
+						}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === " ") {
+								e.preventDefault();
+								avatarInputRef.current?.click();
+							}
+						}}
 					>
 						{avatarUrl ? (
 							<>
@@ -184,7 +210,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 									fill
 									className="object-cover"
 								/>
-								<div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+								<div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-200 flex items-center justify-center">
 									<Upload className="size-5 text-white" />
 								</div>
 							</>
