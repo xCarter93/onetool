@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -49,6 +50,7 @@ function InvoiceDetailPageContent() {
 	const params = useParams();
 	const toast = useToast();
 	const invoiceId = params.invoiceId as Id<"invoices">;
+	const { can } = usePermissions();
 
 	// State
 	const [activeTab, setActiveTab] = useState("overview");
@@ -75,15 +77,17 @@ function InvoiceDetailPageContent() {
 		invoiceId,
 	});
 	const organization = useQuery(api.organizations.get, {});
+	// Skip document queries without the documents grant — they call
+	// requireLevel("documents","view") server-side and throw FORBIDDEN otherwise.
 	const latestDocument = useQuery(
 		api.documents.getLatest,
-		invoice
+		invoice && can("documents")
 			? { documentType: "invoice", documentId: invoice._id }
 			: "skip"
 	);
 	const allDocumentVersions = useQuery(
 		api.documents.getAllVersions,
-		invoice
+		invoice && can("documents")
 			? { documentType: "invoice", documentId: invoice._id }
 			: "skip"
 	);
@@ -114,7 +118,9 @@ function InvoiceDetailPageContent() {
 
 	const selectedDocumentUrl = useQuery(
 		api.documents.getDocumentUrl,
-		selectedDocument ? { id: selectedDocument._id } : "skip"
+		selectedDocument && can("documents")
+			? { id: selectedDocument._id }
+			: "skip"
 	);
 
 	// Handlers

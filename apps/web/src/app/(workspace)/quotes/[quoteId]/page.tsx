@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -53,6 +54,7 @@ function QuoteDetailPageContent() {
 	const toast = useToast();
 	const convex = useConvex();
 	const quoteId = params.quoteId as Id<"quotes">;
+	const { can } = usePermissions();
 
 	// State
 	const [activeTab, setActiveTab] = useState("overview");
@@ -76,13 +78,19 @@ function QuoteDetailPageContent() {
 	);
 	const lineItems = useQuery(api.quoteLineItems.listByQuote, { quoteId });
 	const organization = useQuery(api.organizations.get, {});
+	// Skip document queries without the documents grant — they call
+	// requireLevel("documents","view") server-side and throw FORBIDDEN otherwise.
 	const latestDocument = useQuery(
 		api.documents.getLatest,
-		quote ? { documentType: "quote", documentId: quote._id } : "skip"
+		quote && can("documents")
+			? { documentType: "quote", documentId: quote._id }
+			: "skip"
 	);
 	const allDocumentVersions = useQuery(
 		api.documents.getAllVersions,
-		quote ? { documentType: "quote", documentId: quote._id } : "skip"
+		quote && can("documents")
+			? { documentType: "quote", documentId: quote._id }
+			: "skip"
 	);
 	const primaryContact = useQuery(
 		api.clientContacts.getPrimaryContact,
@@ -94,7 +102,9 @@ function QuoteDetailPageContent() {
 	);
 	const documentsWithSignatures = useQuery(
 		api.documents.getAllDocumentsWithSignatures,
-		quote ? { documentType: "quote", documentId: quote._id } : "skip"
+		quote && can("documents")
+			? { documentType: "quote", documentId: quote._id }
+			: "skip"
 	);
 	const countersigner = useQuery(
 		api.users.get,
@@ -133,7 +143,9 @@ function QuoteDetailPageContent() {
 
 	const selectedDocumentUrl = useQuery(
 		api.documents.getDocumentUrl,
-		selectedDocument ? { id: selectedDocument._id } : "skip"
+		selectedDocument && can("documents")
+			? { id: selectedDocument._id }
+			: "skip"
 	);
 
 	// Handlers
