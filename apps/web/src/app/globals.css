@@ -2,6 +2,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./reui-nova.css";
+@import "./illustrations.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -158,6 +159,16 @@
 	--info-foreground: var(--color-violet-900);
 	--warning-foreground: var(--color-yellow-900);
 	--invert-foreground: var(--color-zinc-50);
+
+	/* Empty-state illustrations. Aliases only — these resolve at use time, so
+	   .dark redefining the referenced tokens flips the artwork with no per-SVG work. */
+	--illo-surface: var(--muted);
+	--illo-line: var(--muted-foreground);
+	--illo-accent: var(--primary);
+	--illo-celebrate: var(--success);
+	/* Knockout fill for shapes that punch through to the surface behind. Override
+	   on a wrapper when an illustration sits on something other than a card. */
+	--illo-knockout: var(--card);
 }
 
 .dark {
