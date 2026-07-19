@@ -280,7 +280,7 @@ export function AutomationSidebar({
 			// reliably bound the height — a bounded root is what lets the content
 			// below scroll. bottom clears the assistant notch via the shared var.
 			style={{ top: "0.75rem", right: "0.75rem", bottom: "var(--assistant-notch-clearance)" }}
-			className="absolute z-10 flex w-[380px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
+			className="absolute z-10 flex w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
 		>
 			{/* Header -- only shown for node-config modes; pickers have their own headers */}
 			{mode.mode === "node-config" && (

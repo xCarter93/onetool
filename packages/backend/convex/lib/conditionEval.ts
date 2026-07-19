@@ -6,7 +6,7 @@ import type {
 	FormulaReturnType,
 	ValueRef,
 } from "./workflowTypes";
-import { getFieldDefinition } from "./fieldRegistry";
+import { getFieldDefinitionForKey } from "./fieldRegistry";
 import {
 	calendarDayEpoch,
 	evaluateFormula,
@@ -28,10 +28,18 @@ import { roundCents } from "./money";
  * (and from the web app via @onetool/backend).
  */
 
+/**
+ * One-hop related records pre-hydrated by the executor, keyed by relation name
+ * (RELATED_OBJECTS). `null` records a relation that was looked up but had no
+ * FK / a deleted target, so resolution stays a clean `undefined` → fallback.
+ */
+export type RelatedRecords = Record<string, Record<string, unknown> | null>;
+
 export type VariableScope = {
 	trigger?: {
 		record: Record<string, unknown>;
 		event?: { oldValue?: unknown; newValue?: unknown };
+		related?: RelatedRecords;
 	};
 	loops?: Record<
 		string,
@@ -40,6 +48,7 @@ export type VariableScope = {
 			index: number;
 			count?: number;
 			objectType?: AutomationObjectType;
+			related?: RelatedRecords;
 		}
 	>;
 	/** Per-node outputs: fetch → count; aggregate/adjust-time → result. */
@@ -74,8 +83,10 @@ export type VariableScope = {
  *
  * Var paths (matched by prefix so field keys containing dots still resolve):
  *   trigger.record.<field>
+ *   trigger.record.<relation>.<field>   (one hop, via pre-hydrated related docs)
  *   trigger.event.oldValue | trigger.event.newValue
  *   loop.<loopNodeId>.item.<field>
+ *   loop.<loopNodeId>.item.<relation>.<field>
  *   loop.<loopNodeId>.index | loop.<loopNodeId>.position | loop.<loopNodeId>.count
  *   node.<nodeId>.count
  *   node.<nodeId>.result
@@ -99,6 +110,25 @@ export function resolveValueRef(ref: ValueRef, scope: VariableScope): unknown {
 	return resolved;
 }
 
+/**
+ * Flat-first field lookup with a one-hop relation fallback: an existing flat
+ * key always wins (field keys may contain dots — long-standing behavior);
+ * otherwise `client.companyName` reads the pre-hydrated related record. A
+ * relation that wasn't hydrated (old snapshot, unknown name) or resolved to
+ * null yields undefined, feeding the normal fallback machinery.
+ */
+function resolveRecordField(
+	field: string,
+	record: Record<string, unknown> | undefined,
+	related: RelatedRecords | undefined
+): unknown {
+	if (record && field in record) return record[field];
+	if (!related) return undefined;
+	const dot = field.indexOf(".");
+	if (dot === -1) return undefined;
+	return related[field.slice(0, dot)]?.[field.slice(dot + 1)];
+}
+
 function resolvePath(
 	path: string,
 	scope: VariableScope,
@@ -109,7 +139,7 @@ function resolvePath(
 	if (path.startsWith(TRIGGER_RECORD)) {
 		const field = path.slice(TRIGGER_RECORD.length);
 		if (field === "") return undefined;
-		return scope.trigger?.record?.[field];
+		return resolveRecordField(field, scope.trigger?.record, scope.trigger?.related);
 	}
 	if (path === "trigger.event.oldValue") return scope.trigger?.event?.oldValue;
 	if (path === "trigger.event.newValue") return scope.trigger?.event?.newValue;
@@ -144,7 +174,7 @@ function resolvePath(
 		if (tail.startsWith(ITEM)) {
 			const field = tail.slice(ITEM.length);
 			if (field === "") return undefined;
-			return loop.item?.[field];
+			return resolveRecordField(field, loop.item, loop.related);
 		}
 		return undefined;
 	}
@@ -420,14 +450,15 @@ export function evaluateRule(
 	rule: ConditionRule,
 	record: Record<string, unknown>,
 	scope: VariableScope,
-	objectType?: AutomationObjectType
+	objectType?: AutomationObjectType,
+	related?: RelatedRecords
 ): boolean {
 	// A rule with an explicit `left` compares a scope value (aggregate result,
 	// fetch count) and never touches the record — that is how a record-less run
 	// branches at all.
 	const fieldValue = rule.left
 		? resolveValueRef(rule.left, scope)
-		: record[rule.field];
+		: resolveRecordField(rule.field, record, related);
 	const compareValue = rule.value
 		? resolveValueRef(rule.value, scope)
 		: undefined;
@@ -437,7 +468,7 @@ export function evaluateRule(
 	// rule (rule.left) or unknown objectType falls back to raw comparison.
 	const fieldDateKind =
 		objectType && !rule.left
-			? getFieldDefinition(objectType, rule.field)?.type
+			? getFieldDefinitionForKey(objectType, rule.field)?.type
 			: undefined;
 	const isDateField = fieldDateKind === "date" || fieldDateKind === "datetime";
 
@@ -490,12 +521,17 @@ export function evaluateGroup(
 	group: ConditionGroup,
 	record: Record<string, unknown>,
 	scope: VariableScope,
-	objectType?: AutomationObjectType
+	objectType?: AutomationObjectType,
+	related?: RelatedRecords
 ): boolean {
 	if (group.rules.length === 0) return true;
 	return group.logic === "and"
-		? group.rules.every((rule) => evaluateRule(rule, record, scope, objectType))
-		: group.rules.some((rule) => evaluateRule(rule, record, scope, objectType));
+		? group.rules.every((rule) =>
+				evaluateRule(rule, record, scope, objectType, related)
+			)
+		: group.rules.some((rule) =>
+				evaluateRule(rule, record, scope, objectType, related)
+			);
 }
 
 /** Evaluate groups combined with top-level logic; empty groups => true. */
@@ -504,10 +540,15 @@ export function evaluateConditionGroups(
 	groups: ConditionGroup[],
 	record: Record<string, unknown>,
 	scope: VariableScope,
-	objectType?: AutomationObjectType
+	objectType?: AutomationObjectType,
+	related?: RelatedRecords
 ): boolean {
 	if (groups.length === 0) return true;
 	return logic === "and"
-		? groups.every((group) => evaluateGroup(group, record, scope, objectType))
-		: groups.some((group) => evaluateGroup(group, record, scope, objectType));
+		? groups.every((group) =>
+				evaluateGroup(group, record, scope, objectType, related)
+			)
+		: groups.some((group) =>
+				evaluateGroup(group, record, scope, objectType, related)
+			);
 }

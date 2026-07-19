@@ -32,7 +32,18 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { getAvailableVariables, type VariableOption } from "../../../lib/variables";
+import {
+	getAvailableVariables,
+	partitionVariableGroups,
+	type VariableOption,
+} from "../../../lib/variables";
+import {
+	VariableDrillList,
+	type DrillGroup,
+	type DrillItem,
+	type DrillPage,
+} from "./variable-drill-list";
+import { PickerChip } from "./picker-chip";
 import type {
 	AutomationTrigger,
 	FieldDefinition,
@@ -43,29 +54,58 @@ import type {
 	WorkflowNode,
 } from "../../../lib/node-types";
 
-/** Shared variable lookup + grouping for the popover used by ValueInput and VariableInsertButton. */
-function useGroupedVariables(
+/** Shared variable lookup for the popover used by ValueInput and VariableInsertButton. */
+function useAvailableVariables(
 	nodes: WorkflowNode[],
 	trigger: TriggerConfig | AutomationTrigger | null,
 	targetNodeId: string,
 	formulas?: FormulaResource[]
-): { variables: VariableOption[]; groups: [string, VariableOption[]][] } {
-	const variables = useMemo(
+): VariableOption[] {
+	return useMemo(
 		() => (trigger ? getAvailableVariables(nodes, trigger, targetNodeId, formulas) : []),
 		[nodes, trigger, targetNodeId, formulas]
 	);
+}
 
-	const groups = useMemo(() => {
-		const map = new Map<string, VariableOption[]>();
-		for (const option of variables) {
-			const list = map.get(option.group) ?? [];
-			list.push(option);
-			map.set(option.group, list);
-		}
-		return Array.from(map.entries());
-	}, [variables]);
-
-	return { variables, groups };
+/**
+ * Builds the drill-down model (root groups + relation pages) from variable
+ * options. `decorate` adds per-row styling/hints; `sortWithin` orders a group's
+ * rows (used to float compatible-type options first).
+ */
+function buildVariableDrill(
+	variables: VariableOption[],
+	onPick: (option: VariableOption) => void,
+	decorate?: (
+		option: VariableOption
+	) => { className?: string; trailing?: React.ReactNode },
+	sortWithin?: (options: VariableOption[]) => VariableOption[]
+): { rootGroups: DrillGroup[]; pages: DrillPage[] } {
+	const { rootGroups, relationPages } = partitionVariableGroups(variables);
+	const toItem = (option: VariableOption): DrillItem => {
+		const decoration = decorate?.(option);
+		return {
+			id: option.path,
+			value: `${option.group} ${option.label}`,
+			label: option.label,
+			className: decoration?.className,
+			trailing: decoration?.trailing,
+			onSelect: () => onPick(option),
+		};
+	};
+	const order = (options: VariableOption[]) =>
+		(sortWithin ? sortWithin(options) : options).map(toItem);
+	return {
+		rootGroups: rootGroups.map(([group, options]) => ({
+			id: group,
+			heading: group,
+			items: order(options),
+		})),
+		pages: relationPages.map((page) => ({
+			id: page.id,
+			navLabel: page.navLabel,
+			items: order(page.options),
+		})),
+	};
 }
 
 /** The subset of FieldDefinition ValueInput needs to pick a static control. */
@@ -536,7 +576,7 @@ export function ValueInput({
 	arrayResolution = "first",
 }: ValueInputProps) {
 	const [open, setOpen] = useState(false);
-	const { variables, groups } = useGroupedVariables(nodes, trigger, targetNodeId, formulas);
+	const variables = useAvailableVariables(nodes, trigger, targetNodeId, formulas);
 
 	if (value?.kind === "var") {
 		const selected = variables.find((v) => v.path === value.path);
@@ -544,9 +584,8 @@ export function ValueInput({
 
 		return (
 			<div className={cn("space-y-2", className)}>
-				<div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-sm">
-					<Braces className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-					<span className="flex-1 truncate">{selected?.label ?? value.path}</span>
+				<div className="flex min-h-9 items-center justify-between gap-1.5 rounded-md border border-input px-2 py-1 text-sm">
+					<PickerChip icon={Braces} label={selected?.label ?? value.path} />
 					<button
 						type="button"
 						aria-label="Remove variable"
@@ -604,15 +643,48 @@ export function ValueInput({
 					>
 						<Braces className="h-4 w-4" />
 					</PopoverTrigger>
-					<PopoverContent align="end" className="w-72 p-0">
-						<Command>
-							<CommandInput placeholder="Search variables..." />
-							<CommandList>
-								<CommandEmpty>No variables available yet.</CommandEmpty>
-								{groups.map(([group, options]) => {
-									// Compatible-type variables first; incompatible ones stay
-									// selectable but sort last and render greyed with a hint.
-									const sorted = [...options].sort(
+					<PopoverContent align="end" className="w-80 p-0">
+						{(() => {
+							const { rootGroups, pages } = buildVariableDrill(
+								variables,
+								(option) => {
+									onChange({ kind: "var", path: option.path });
+									setOpen(false);
+								},
+								(option) => {
+									const needsConversion = variableNeedsConversion(
+										field.type,
+										option.fieldType,
+										field.refType,
+										option.refType
+									);
+									// An array feeding this single-valued field resolves per
+									// arrayResolution — say so rather than let the author assume
+									// all of them land.
+									const arrayHint =
+										option.isArray &&
+										!needsConversion &&
+										arrayResolution !== "none"
+											? arrayResolution === "first"
+												? "uses first"
+												: "matches any"
+											: null;
+									return {
+										// Incompatible-type options stay selectable but render greyed.
+										className: needsConversion
+											? "text-muted-foreground"
+											: undefined,
+										trailing:
+											needsConversion || arrayHint ? (
+												<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+													{needsConversion ? "needs conversion" : arrayHint}
+												</span>
+											) : undefined,
+									};
+								},
+								// Compatible-type options first within each group/page.
+								(options) =>
+									[...options].sort(
 										(a, b) =>
 											Number(
 												variableNeedsConversion(
@@ -630,63 +702,18 @@ export function ValueInput({
 													b.refType
 												)
 											)
-									);
-									return (
-										<CommandGroup key={group} heading={group}>
-											{sorted.map((option) => {
-												const needsConversion = variableNeedsConversion(
-													field.type,
-													option.fieldType,
-													field.refType,
-													option.refType
-												);
-												// An array feeding this single-valued field resolves
-												// per arrayResolution — say so rather than let the
-												// author assume all of them land.
-												const arrayHint =
-													option.isArray &&
-													!needsConversion &&
-													arrayResolution !== "none"
-														? arrayResolution === "first"
-															? "uses first"
-															: "matches any"
-														: null;
-												return (
-													<CommandItem
-														key={option.path}
-														value={`${option.group} ${option.label}`}
-														onSelect={() => {
-															onChange({ kind: "var", path: option.path });
-															setOpen(false);
-														}}
-														className="cursor-pointer"
-													>
-														<span
-															className={cn(
-																"flex-1 truncate",
-																needsConversion && "text-muted-foreground"
-															)}
-														>
-															{option.label}
-														</span>
-														{needsConversion && (
-															<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
-																needs conversion
-															</span>
-														)}
-														{arrayHint && (
-															<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
-																{arrayHint}
-															</span>
-														)}
-													</CommandItem>
-												);
-											})}
-										</CommandGroup>
-									);
-								})}
-							</CommandList>
-						</Command>
+									)
+							);
+							return (
+								<VariableDrillList
+									rootGroups={rootGroups}
+									pages={pages}
+									open={open}
+									emptyText="No variables available yet."
+									placeholder="Search variables..."
+								/>
+							);
+						})()}
 					</PopoverContent>
 				</Popover>
 			</div>
@@ -717,7 +744,11 @@ export function VariableInsertButton({
 	className?: string;
 }) {
 	const [open, setOpen] = useState(false);
-	const { groups } = useGroupedVariables(nodes, trigger, targetNodeId, formulas);
+	const variables = useAvailableVariables(nodes, trigger, targetNodeId, formulas);
+	const { rootGroups, pages } = buildVariableDrill(variables, (option) => {
+		onInsert(option.path);
+		setOpen(false);
+	});
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -734,30 +765,14 @@ export function VariableInsertButton({
 				<Braces className="h-3.5 w-3.5" />
 				Insert variable
 			</PopoverTrigger>
-			<PopoverContent align="start" className="w-72 p-0">
-				<Command>
-					<CommandInput placeholder="Search variables..." />
-					<CommandList>
-						<CommandEmpty>No variables available yet.</CommandEmpty>
-						{groups.map(([group, options]) => (
-							<CommandGroup key={group} heading={group}>
-								{options.map((option) => (
-									<CommandItem
-										key={option.path}
-										value={`${option.group} ${option.label}`}
-										onSelect={() => {
-											onInsert(option.path);
-											setOpen(false);
-										}}
-										className="cursor-pointer"
-									>
-										{option.label}
-									</CommandItem>
-								))}
-							</CommandGroup>
-						))}
-					</CommandList>
-				</Command>
+			<PopoverContent align="start" className="w-80 p-0">
+				<VariableDrillList
+					rootGroups={rootGroups}
+					pages={pages}
+					open={open}
+					emptyText="No variables available yet."
+					placeholder="Search variables..."
+				/>
 			</PopoverContent>
 		</Popover>
 	);

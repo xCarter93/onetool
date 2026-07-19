@@ -5,13 +5,27 @@
 
 import {
 	VALUELESS_OPERATORS,
-	getFieldDefinition,
+	OBJECT_TYPE_LABELS,
+	getFieldDefinitionForKey,
+	parseRelationKey,
 	type AutomationObjectType,
 	type ConditionGroup,
 	type ConditionOperator,
 	type ConditionRule,
 	type ValueRef,
 } from "./node-types";
+
+/** Field label for a flat or one-hop relation-qualified key ("client.companyName" -> "Client → Company name"). */
+function fieldLabelForKey(
+	objectType: AutomationObjectType,
+	key: string
+): string | undefined {
+	const relation = parseRelationKey(objectType, key);
+	if (relation) {
+		return `${OBJECT_TYPE_LABELS[relation.relation]} → ${relation.field.label}`;
+	}
+	return getFieldDefinitionForKey(objectType, key)?.label;
+}
 
 export const OPERATOR_LABELS: Record<ConditionOperator, string> = {
 	equals: "equals",
@@ -82,7 +96,7 @@ export function describeVarPath(
 	if (path.startsWith(prefix)) {
 		const field = path.slice(prefix.length);
 		if (field === "_id") return "Trigger record ID"; // not in the field registry
-		const label = objectType ? getFieldDefinition(objectType, field)?.label : undefined;
+		const label = objectType ? fieldLabelForKey(objectType, field) : undefined;
 		// With no record in scope there is no field to name it after. Say so
 		// rather than leaking a raw path that reads like it resolves.
 		if (!label) return objectType ? field : "the triggering record";
@@ -110,7 +124,7 @@ function describeValue(
 ): string {
 	if (value.kind === "var") return describeVarPath(value.path, objectType, varLabels);
 
-	const fieldDef = objectType ? getFieldDefinition(objectType, field) : undefined;
+	const fieldDef = objectType ? getFieldDefinitionForKey(objectType, field) : undefined;
 	if (fieldDef?.type === "select") {
 		const option = fieldDef.options?.find((o) => o.value === value.value);
 		return option?.label ?? String(value.value ?? "");
@@ -124,14 +138,13 @@ function ruleText(
 	objectType: AutomationObjectType | null,
 	varLabels?: VarLabelMap
 ): string {
-	const fieldDef = objectType ? getFieldDefinition(objectType, rule.field) : undefined;
 	const fieldLabel = rule.left
 		? describeVarPath(
 				rule.left.kind === "var" ? rule.left.path : String(rule.left.value),
 				objectType,
 				varLabels
 			)
-		: (fieldDef?.label ?? rule.field);
+		: ((objectType && fieldLabelForKey(objectType, rule.field)) ?? rule.field);
 	const opLabel = OPERATOR_LABELS[rule.operator] ?? rule.operator;
 
 	if (isValueless(rule.operator) || rule.value === undefined) {

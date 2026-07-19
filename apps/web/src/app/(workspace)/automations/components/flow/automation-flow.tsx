@@ -86,10 +86,10 @@ const edgeTypes = {
 const LAYOUT_ANIMATION_MS = 220;
 
 // Per-side fitView padding so auto-fit keeps nodes clear of the floating chrome:
-// the left WorkflowDrawer (~280px), the right config panel (~380px), and the
+// the left WorkflowDrawer (~320px), the right config panel (~440px), and the
 // bottom assistant notch. maxZoom:1 means small graphs re-center rather than shrink.
 export const FIT_VIEW_OPTIONS = {
-	padding: { top: "24px", right: "400px", bottom: "72px", left: "300px" },
+	padding: { top: "24px", right: "460px", bottom: "72px", left: "340px" },
 	duration: 300,
 	maxZoom: 1,
 } as const;
@@ -387,7 +387,7 @@ function AutomationFlowInner({
 					orientation="vertical"
 					fitViewOptions={FIT_VIEW_OPTIONS}
 					style={{
-						transform: configPanelOpen ? "translateX(-25rem)" : undefined,
+						transform: configPanelOpen ? "translateX(-28.75rem)" : undefined,
 						transition: "transform 200ms ease-out",
 					}}
 				/>

@@ -25,6 +25,7 @@ import {
 	PanelField,
 	PanelSection,
 } from "./panel-primitives";
+import { PickerChip } from "./picker-chip";
 
 const OPERATION_LABELS: Record<AggregateOperation, string> = {
 	sum: "Sum",
@@ -123,13 +124,20 @@ export function AggregateConfigPanel({
 									onValueChange={(field) => field && commit({ ...config, field })}
 								>
 									<SelectTrigger>
-										<SelectValue
-											placeholder={
-												sourceObjectType
-													? "Choose a numeric field"
-													: "Pick a source first"
-											}
-										/>
+										{(() => {
+											const selected = numericFields.find(
+												(f) => f.key === config.field
+											);
+											return selected ? (
+												<PickerChip label={selected.label} />
+											) : (
+												<span className="truncate text-muted-foreground">
+													{sourceObjectType
+														? "Choose a numeric field"
+														: "Pick a source first"}
+												</span>
+											);
+										})()}
 									</SelectTrigger>
 									<SelectContent>
 										{numericFields.map((field) => (

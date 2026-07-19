@@ -215,6 +215,18 @@ export function FormulaEditorModal({
 		| null
 		| undefined;
 
+	// One-hop related fields (C6): trigger.record.<relation>.<field> in the
+	// preview. Additive alongside the per-type .get queries above.
+	const relatedFields = useQuery(
+		api.automations.getSampleRelatedFields,
+		selectedSample
+			? {
+					entityType: selectedSample.entityType,
+					entityId: selectedSample.entityId,
+				}
+			: "skip"
+	);
+
 	const organization = useQuery(api.organizations.get);
 
 	// The tz the automation will ACTUALLY run in — mirrors automationFormulaTz on
@@ -242,6 +254,16 @@ export function FormulaEditorModal({
 		function resolvePath(path: string, resolving: Set<string>): Val {
 			if (path.startsWith("trigger.record.")) {
 				const field = path.slice("trigger.record.".length);
+				// Flat key first — the runtime resolver gives flat keys (which may
+				// contain dots) precedence over the one-hop relation form.
+				if (recordFields && field in recordFields) {
+					return toFormulaVal(recordFields[field]);
+				}
+				const dot = field.indexOf(".");
+				if (dot !== -1) {
+					const related = relatedFields?.[field.slice(0, dot)];
+					return toFormulaVal(related?.[field.slice(dot + 1)]);
+				}
 				return toFormulaVal(recordFields?.[field]);
 			}
 			if (path === "workflow.now") return Date.now();
@@ -266,7 +288,7 @@ export function FormulaEditorModal({
 			return null;
 		}
 		return (path: string) => resolvePath(path, new Set());
-	}, [recordFields, formulasById, tz]);
+	}, [recordFields, relatedFields, formulasById, tz]);
 
 	// Debounced validate + preview. Never blocks typing.
 	useEffect(() => {

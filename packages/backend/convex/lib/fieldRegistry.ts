@@ -695,9 +695,43 @@ export function operatorsForField(
 	objectType: AutomationObjectType,
 	key: string
 ): ConditionOperator[] {
-	const field = getFieldDefinition(objectType, key);
+	const field = getFieldDefinitionForKey(objectType, key);
 	if (!field) return [];
 	return OPERATORS_BY_TYPE[field.type];
+}
+
+/**
+ * Split a relation-qualified field key ("client.companyName") into its
+ * relation + related-type field, validated against RELATED_OBJECTS and the
+ * related type's registry. Returns undefined for flat keys: an existing flat
+ * key always wins (field keys may themselves contain dots), and an unknown
+ * relation segment stays a flat key rather than erroring.
+ */
+export function parseRelationKey(
+	objectType: AutomationObjectType,
+	key: string
+):
+	| { relation: TriggerableObjectType; fieldKey: string; field: FieldDefinition }
+	| undefined {
+	if (getFieldDefinition(objectType, key)) return undefined;
+	const dot = key.indexOf(".");
+	if (dot === -1) return undefined;
+	const relation = key.slice(0, dot) as TriggerableObjectType;
+	if (!RELATED_OBJECTS[objectType]?.includes(relation)) return undefined;
+	const fieldKey = key.slice(dot + 1);
+	const field = getFieldDefinition(relation, fieldKey);
+	if (!field) return undefined;
+	return { relation, fieldKey, field };
+}
+
+/** Field definition for a flat OR one-hop relation-qualified key. */
+export function getFieldDefinitionForKey(
+	objectType: AutomationObjectType,
+	key: string
+): FieldDefinition | undefined {
+	return (
+		getFieldDefinition(objectType, key) ?? parseRelationKey(objectType, key)?.field
+	);
 }
 
 export function getStatusOptions(
