@@ -216,7 +216,7 @@ export default function ActivityFeed({
 							</div>
 						) : currentPageActivities.length === 0 ? (
 							<EmptyState
-								icon={<Activity />}
+								illustration="activity-none"
 								title="No recent activity"
 								description="Activity will appear here as you work"
 								className="h-32"

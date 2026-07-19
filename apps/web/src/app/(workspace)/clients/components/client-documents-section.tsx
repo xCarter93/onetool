@@ -8,9 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
 	FileIcon,
 	Upload,
-	FolderOpen,
 	Loader2,
 } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 import { ClientDocumentsModal } from "./client-documents-modal";
 
 export type UnifiedClientDocument = {
@@ -214,10 +214,10 @@ export function ClientDocumentsSection({ clientId }: ClientDocumentsSectionProps
 			</div>
 
 			{totalCount === 0 ? (
-				<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-					<FolderOpen className="h-4 w-4" />
-					<span>No documents yet</span>
-				</div>
+				<EmptyState
+					illustration="documents-none"
+					title="No documents yet"
+				/>
 			) : (
 				<div className="space-y-2">
 					{/* Most recent document */}

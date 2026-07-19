@@ -17,7 +17,6 @@ import {
 	Loader2,
 	Lock,
 	ShieldCheck,
-	UserX,
 } from "lucide-react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -395,7 +394,7 @@ export default function MemberAccessPage() {
 			<div className="flex min-h-[50vh] items-center justify-center p-6">
 				<EmptyState
 					size="md"
-					icon={<Lock className="h-6 w-6" aria-hidden="true" />}
+					illustration="access-restricted"
 					title="Admin access required"
 					description="Only organization admins can manage member access."
 				/>
@@ -408,7 +407,7 @@ export default function MemberAccessPage() {
 			<div className="flex min-h-[50vh] items-center justify-center p-6">
 				<EmptyState
 					size="md"
-					icon={<UserX className="h-6 w-6" aria-hidden="true" />}
+					illustration="app-error"
 					title="Member not found"
 					description="They may have been removed from the organization."
 					action={

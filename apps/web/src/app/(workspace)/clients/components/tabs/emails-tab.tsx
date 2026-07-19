@@ -11,8 +11,8 @@ import {
 	ChevronRight,
 	Mail,
 	MailOpen,
-	MessageSquare,
 } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -51,13 +51,12 @@ export function EmailsTab({
 			<Separator className="mb-4" />
 
 			{totalThreads === 0 ? (
-				<div className="px-4 py-10 text-center text-sm text-muted-foreground">
-					<MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
-					<p>No email threads yet</p>
-					<p className="text-xs mt-1">
-						Compose an email to start a conversation
-					</p>
-				</div>
+				<EmptyState
+					size="md"
+					illustration="messages-none"
+					title="No email threads yet"
+					description="Compose an email to start a conversation"
+				/>
 			) : (
 				<div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
 					{paginated.map((thread) => (

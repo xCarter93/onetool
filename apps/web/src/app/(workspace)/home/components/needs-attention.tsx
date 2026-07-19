@@ -504,7 +504,7 @@ export function NeedsAttention() {
 				</div>
 				<div role="status">
 					<EmptyState
-						icon={<CheckCircle2 />}
+						illustration="all-caught-up"
 						title="You're all caught up"
 						description="No overdue items, tasks, or pending signatures need your attention right now."
 						size="md"

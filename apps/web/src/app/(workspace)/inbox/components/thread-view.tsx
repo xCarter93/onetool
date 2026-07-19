@@ -5,14 +5,8 @@ import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { ArrowLeft, Archive, MailMinus, Mail } from "lucide-react";
-import {
-	Empty,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-	EmptyDescription,
-} from "@/components/ui/empty";
+import { ArrowLeft, Archive, MailMinus } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -277,17 +271,12 @@ function MessageSkeleton() {
 export function ThreadViewEmpty() {
 	return (
 		<div className="flex h-full items-center justify-center p-6">
-			<Empty className="border-none">
-				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<Mail aria-hidden="true" />
-					</EmptyMedia>
-					<EmptyTitle>Select a conversation</EmptyTitle>
-					<EmptyDescription>
-						Choose a thread on the left to read and reply.
-					</EmptyDescription>
-				</EmptyHeader>
-			</Empty>
+			<EmptyState
+				size="md"
+				illustration="select-conversation"
+				title="Select a conversation"
+				description="Choose a thread on the left to read and reply."
+			/>
 		</div>
 	);
 }

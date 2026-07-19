@@ -20,8 +20,9 @@ import {
 	TimelineTitle,
 } from "@/components/reui/timeline";
 import { Badge } from "@/components/ui/badge";
-import { XCircle, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { XCircle, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/domain/empty-state";
 import { formatRelativeTime } from "@/lib/notification-utils";
 
 export function RecentFailuresTimeline({ className }: { className?: string }) {
@@ -49,17 +50,13 @@ export function RecentFailuresTimeline({ className }: { className?: string }) {
 						))}
 					</div>
 				) : failures.length === 0 ? (
-					<div className="flex grow flex-col items-center justify-center gap-2 py-8 text-center">
-						<span className="flex size-10 items-center justify-center rounded-full bg-emerald-500/10">
-							<CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
-						</span>
-						<p className="text-sm font-medium text-foreground">
-							No recent failures
-						</p>
-						<p className="text-muted-foreground text-xs">
-							Every production run has completed cleanly.
-						</p>
-					</div>
+					<EmptyState
+						illustration="all-caught-up"
+						size="sm"
+						className="grow"
+						title="No recent failures"
+						description="Every production run has completed cleanly."
+					/>
 				) : (
 					<Timeline>
 						{failures.map((failure, index) => (

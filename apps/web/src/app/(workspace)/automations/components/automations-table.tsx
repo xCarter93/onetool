@@ -18,6 +18,7 @@ import { ArrowRight, Pencil, Power, PowerOff, Search, Trash2 } from "lucide-reac
 
 import { Badge } from "@/components/reui/badge";
 import { StatusBadge } from "@/components/domain/status-badge";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -309,7 +310,19 @@ export function AutomationsTable() {
 				recordCount={data.length}
 				isLoading={automations === undefined}
 				emptyMessage={
-					search ? "No automations match your search." : "No automations yet."
+					search ? (
+						<EmptyState
+							size="md"
+							illustration="no-filter-match"
+							title="No automations match your search"
+						/>
+					) : (
+						<EmptyState
+							size="md"
+							illustration="automations-none"
+							title="No automations yet"
+						/>
+					)
 				}
 				tableLayout={{ dense: true, headerSticky: true }}
 			>

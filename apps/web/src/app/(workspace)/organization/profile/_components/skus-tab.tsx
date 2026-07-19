@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
-	Building2,
 	Check,
 	Pencil,
 	Plus,
@@ -32,6 +31,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { SectionHeading } from "./settings-card";
 import { formatCurrency } from "@/lib/money";
+import { EmptyState } from "@/components/domain/empty-state";
 
 // SKU Type - will be generated after Convex schema update
 type SKUDoc = {
@@ -345,23 +345,21 @@ export function SKUsTab() {
 					</div>
 				</div>
 			) : skus.length === 0 && !isEditing ? (
-				<div className="rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
-					<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-						<Building2 className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<h3 className="mb-2 text-lg font-semibold text-foreground">
-						No SKUs created yet
-					</h3>
-					<p className="mx-auto mb-6 max-w-sm text-muted-foreground">
-						Create your first SKU to streamline your quote creation process
-						with reusable line items.
-					</p>
-					{canModify && (
-						<Button size="lg" onClick={handleCreate}>
-							<Plus className="h-5 w-5" />
-							Create Your First SKU
-						</Button>
-					)}
+				<div className="rounded-xl border border-dashed border-border bg-muted/20">
+					<EmptyState
+						illustration="skus-none"
+						size="md"
+						title="No SKUs created yet"
+						description="Save your common services and products as reusable line items, then drop them into any quote."
+						action={
+							canModify ? (
+								<Button onClick={handleCreate}>
+									<Plus className="size-4" />
+									Create your first SKU
+								</Button>
+							) : undefined
+						}
+					/>
 				</div>
 			) : (
 				<Frame variant="default" className="w-full">

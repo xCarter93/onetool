@@ -1,12 +1,12 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { EmptyState } from "@/components/domain/empty-state";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-	CreditCard,
 	Settings,
 	Clock,
 	Mail,
@@ -228,18 +228,12 @@ export function PaymentScheduleTab({
 						</div>
 					</>
 				) : (
-					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mb-3">
-							<CreditCard className="h-6 w-6 text-muted-foreground" />
-						</div>
-						<p className="text-sm text-muted-foreground mb-3">
-							No payments configured
-						</p>
-						<Button variant="outline" size="sm" onClick={onConfigurePayments}>
-							<Settings className="h-4 w-4" />
-							Configure Payments
-						</Button>
-					</div>
+					<EmptyState
+						size="md"
+						illustration="payments-none"
+						title="No payments configured"
+						description="Use Configure above to split this invoice into scheduled payments."
+					/>
 				)}
 			</div>
 		</div>

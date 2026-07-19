@@ -5,17 +5,10 @@ import { formatDistanceToNow } from "date-fns";
 import {
 	ChevronDown,
 	ChevronRight,
-	Inbox as InboxIcon,
 	Search,
 	X,
 } from "lucide-react";
-import {
-	Empty,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-	EmptyDescription,
-} from "@/components/ui/empty";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { cn } from "@/lib/utils";
@@ -113,25 +106,16 @@ export function ThreadList({
 					<ThreadListSkeleton />
 				) : groups.length === 0 ? (
 					<div className="flex h-full items-center p-4">
-						<Empty className="border-none">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									{searching ? (
-										<Search aria-hidden="true" />
-									) : (
-										<InboxIcon aria-hidden="true" />
-									)}
-								</EmptyMedia>
-								<EmptyTitle>
-									{searching ? "No matches" : EMPTY_COPY[filter].title}
-								</EmptyTitle>
-								<EmptyDescription>
-									{searching
-										? `Nothing matches “${searchQuery.trim()}”.`
-										: EMPTY_COPY[filter].description}
-								</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
+						<EmptyState
+							size="sm"
+							illustration={searching ? "no-filter-match" : "messages-none"}
+							title={searching ? "No matches" : EMPTY_COPY[filter].title}
+							description={
+								searching
+									? `Nothing matches “${searchQuery.trim()}”.`
+									: EMPTY_COPY[filter].description
+							}
+						/>
 					</div>
 				) : (
 					<div className="py-1">

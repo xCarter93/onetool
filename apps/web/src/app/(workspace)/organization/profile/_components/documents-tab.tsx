@@ -20,6 +20,7 @@ import {
 	FrameTitle,
 } from "@/components/reui/frame";
 import { SectionHeading } from "./settings-card";
+import { EmptyState } from "@/components/domain/empty-state";
 
 const DROPZONE_TEXTURE =
 	"text-primary opacity-90 [mask-image:radial-gradient(150%_150%_at_50%_0%,black,transparent_88%)] [-webkit-mask-image:radial-gradient(150%_150%_at_50%_0%,black,transparent_88%)]";
@@ -263,14 +264,13 @@ export function DocumentsTab() {
 					<div className="h-16 animate-pulse rounded-xl bg-muted/50" />
 				</div>
 			) : documents.length === 0 ? (
-				<div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 py-12 text-center">
-					<FileText className="size-8 text-muted-foreground/60" />
-					<p className="text-sm font-medium text-foreground">
-						No documents uploaded yet
-					</p>
-					<p className="text-xs text-muted-foreground">
-						Upload your first document to get started.
-					</p>
+				<div className="rounded-xl border border-dashed border-border bg-muted/20">
+					<EmptyState
+						illustration="documents-none"
+						size="md"
+						title="No documents uploaded yet"
+						description="Keep licences, insurance certificates and W-9s here so they're on hand when a client asks."
+					/>
 				</div>
 			) : (
 				<Frame>

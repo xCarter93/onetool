@@ -14,6 +14,7 @@ import {
 import { Lock, ShieldCheck, Trash2, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	Avatar,
 	AvatarImage,
@@ -375,7 +376,13 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 			<DataGrid
 				table={memberTable}
 				recordCount={members.length}
-				emptyMessage="No members yet."
+				emptyMessage={
+					<EmptyState
+						illustration="team-members-none"
+						title="No members yet"
+						description="Invite a teammate to give them access to this workspace."
+					/>
+				}
 				tableLayout={{ width: "auto", headerBackground: true }}
 			>
 				<FramePanel className="p-0">

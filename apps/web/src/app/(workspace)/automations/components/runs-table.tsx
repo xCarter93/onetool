@@ -12,6 +12,7 @@ import {
 
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/reui/badge";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -211,9 +212,22 @@ export function RunsTable() {
 			recordCount={data.length}
 			isLoading={isFirstLoad}
 			emptyMessage={
-				statusFilter === ALL
-					? "No runs yet."
-					: `No ${RUN_STATUS_META[statusFilter as RunStatus].label.toLowerCase()} runs.`
+				statusFilter === ALL ? (
+					<EmptyState
+						size="md"
+						illustration="automations-none"
+						title="No runs yet"
+						description="Runs appear here once an automation fires."
+					/>
+				) : (
+					<EmptyState
+						size="md"
+						illustration="no-filter-match"
+						title={`No ${RUN_STATUS_META[
+							statusFilter as RunStatus
+						].label.toLowerCase()} runs`}
+					/>
+				)
 			}
 			tableLayout={{ dense: true, headerSticky: true }}
 		>

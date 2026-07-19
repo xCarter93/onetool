@@ -10,7 +10,8 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { Mail, MailOpen, MessageSquare, Loader2 } from "lucide-react";
+import { Mail, MailOpen, Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { EmailThreadSheet } from "./email-thread-sheet";
@@ -72,13 +73,11 @@ export function EmailThreadListPopover({
 									</span>
 								</div>
 							) : threads.length === 0 ? (
-								<div className="px-4 py-8 text-center text-sm text-muted-foreground">
-									<MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-									<p>No email threads yet</p>
-									<p className="text-xs mt-1">
-										Send an email to start a conversation
-									</p>
-								</div>
+								<EmptyState
+									illustration="messages-none"
+									title="No email threads yet"
+									description="Send an email to start a conversation"
+								/>
 							) : (
 								<div className="divide-y divide-border">
 									{threads.map((thread) => (

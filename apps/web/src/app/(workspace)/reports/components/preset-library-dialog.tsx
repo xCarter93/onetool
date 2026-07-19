@@ -17,7 +17,7 @@ import {
 	ItemMedia,
 	ItemTitle,
 } from "@/components/ui/item";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Badge } from "@/components/reui/badge";
 import { entityLabels } from "../report-config";
 import {
@@ -223,16 +223,13 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 							<div className="flex flex-col gap-2 px-5 pb-5">
 								{visiblePresets.length === 0 ? (
 									<div className="flex min-h-[280px] items-center justify-center">
-										<Empty className="max-w-sm gap-2 rounded-none border-0 bg-transparent p-0 text-left md:p-0">
-											<EmptyHeader className="items-start gap-2 text-left">
-												<EmptyTitle className="text-base font-semibold tracking-tight">
-													No presets match
-												</EmptyTitle>
-												<EmptyDescription className="text-sm/relaxed">
-													Try a different search, or switch to another category.
-												</EmptyDescription>
-											</EmptyHeader>
-										</Empty>
+										<EmptyState
+											size="sm"
+											illustration="no-filter-match"
+											title="No presets match"
+											description="Try a different search, or switch to another category."
+											className="max-w-sm"
+										/>
 									</div>
 								) : (
 									visiblePresets.map((preset) => (

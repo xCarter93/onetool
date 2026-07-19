@@ -9,7 +9,6 @@ import {
 	Crown,
 	FileText,
 	LayoutGrid,
-	Lock,
 	ShieldCheck,
 	Tags,
 	Users,
@@ -324,7 +323,7 @@ export default function OrganizationProfilePage() {
 									<div className="flex min-h-[40vh] items-center justify-center">
 										<EmptyState
 											size="md"
-											icon={<Lock className="h-6 w-6" aria-hidden="true" />}
+											illustration="access-restricted"
 											title="You don't have access to this area"
 											description={
 												activeTab === "team"

@@ -10,6 +10,7 @@ import {
 } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -285,7 +286,15 @@ function IdValueControl({
 					<CommandInput placeholder={`Search ${refType}s...`} />
 					<CommandList>
 						<CommandEmpty>
-							{loading ? "Loading…" : "No records found."}
+							{loading ? (
+								"Loading…"
+							) : (
+								<EmptyState
+									size="sm"
+									illustration="no-filter-match"
+									title="No records found"
+								/>
+							)}
 						</CommandEmpty>
 						<CommandGroup>
 							{value && (

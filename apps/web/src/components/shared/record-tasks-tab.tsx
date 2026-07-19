@@ -12,6 +12,7 @@ import { TaskSheet } from "@/components/shared/task-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	DataGrid,
 	DataGridContainer,
@@ -34,7 +35,6 @@ import {
 	FolderOpen,
 	Edit,
 	Trash2,
-	ClipboardList,
 } from "lucide-react";
 import { Task } from "@/types/task";
 import { isTerminalStatus } from "@/lib/tasks";
@@ -539,16 +539,14 @@ export function RecordTasksTab({
 					))}
 				</div>
 			) : (
-				<div className="flex flex-col items-center justify-center py-12 text-center">
-					<div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mb-3">
-						<ClipboardList className="h-6 w-6 text-muted-foreground" />
-					</div>
-					<p className="text-sm text-muted-foreground">
-						{searchQuery
+				<EmptyState
+					illustration={searchQuery ? "no-filter-match" : "tasks-none"}
+					title={
+						searchQuery
 							? "No tasks match your search."
-							: `No tasks for this ${entityType} yet.`}
-					</p>
-				</div>
+							: `No tasks for this ${entityType} yet.`
+					}
+				/>
 			)}
 
 			{/* Edit Task Sheet */}

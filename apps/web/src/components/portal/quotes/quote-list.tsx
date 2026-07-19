@@ -15,7 +15,7 @@ import {
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import { ArrowRight, FileText, Search } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
 import { Input } from "@/components/ui/input";
@@ -285,14 +285,14 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 						{isEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<FileText />}
+								illustration="quotes-none"
 								title="No quotes yet"
 								description={`When ${businessName} sends you a quote, it will show up here.`}
 							/>
 						) : isFilterEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<Search />}
+								illustration="no-filter-match"
 								title="Nothing here right now"
 								description="Try a different filter, or clear the search."
 							/>

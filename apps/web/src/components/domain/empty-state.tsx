@@ -9,9 +9,21 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
+import { Illustration } from "@/components/illustrations";
+import type {
+	IllustrationName,
+	IllustrationSize,
+} from "@/components/illustrations";
 
 export interface EmptyStateProps {
 	icon?: React.ReactNode;
+	/**
+	 * Preferred over `icon`. Renders in its own media slot that skips the icon
+	 * size clamp, so the artwork keeps its own canvas width.
+	 */
+	illustration?: IllustrationName;
+	/** Defaults to sm for size="sm" and md for size="md". */
+	illustrationSize?: IllustrationSize;
 	title: React.ReactNode;
 	description?: React.ReactNode;
 	/** Optional CTA rendered under the description */
@@ -30,6 +42,8 @@ export interface EmptyStateProps {
  */
 export function EmptyState({
 	icon,
+	illustration,
+	illustrationSize,
 	title,
 	description,
 	action,
@@ -37,6 +51,8 @@ export function EmptyState({
 	className,
 }: EmptyStateProps) {
 	const compact = size === "sm";
+	const resolvedIllustrationSize: IllustrationSize =
+		illustrationSize ?? (compact ? "sm" : "md");
 	return (
 		<Empty
 			className={cn(
@@ -46,17 +62,26 @@ export function EmptyState({
 			)}
 		>
 			<EmptyHeader className={compact ? "gap-0.5" : undefined}>
-				{icon != null && (
-					<EmptyMedia
-						className={cn(
-							"text-muted-foreground",
-							compact
-								? "mb-1 [&_svg:not([class*='size-'])]:size-6"
-								: "mb-2 [&_svg:not([class*='size-'])]:size-8"
-						)}
-					>
-						{icon}
+				{illustration != null ? (
+					<EmptyMedia className={compact ? "mb-2" : "mb-4"}>
+						<Illustration
+							name={illustration}
+							size={resolvedIllustrationSize}
+						/>
 					</EmptyMedia>
+				) : (
+					icon != null && (
+						<EmptyMedia
+							className={cn(
+								"text-muted-foreground",
+								compact
+									? "mb-1 [&_svg:not([class*='size-'])]:size-6"
+									: "mb-2 [&_svg:not([class*='size-'])]:size-8"
+							)}
+						>
+							{icon}
+						</EmptyMedia>
+					)
 				)}
 				<EmptyTitle
 					className={cn(
