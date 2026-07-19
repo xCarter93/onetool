@@ -222,11 +222,15 @@ export const completeMetadata = userMutation({
 			await ActivityHelpers.organizationUpdated(ctx, updatedOrganization);
 		}
 
-		await trackServerEvent(ctx, {
-			event: SERVER_EVENTS.ONBOARDING_COMPLETED,
-			orgId: userOrgId,
-			actorUserId: user._id,
-		});
+		// Metadata can be re-saved from settings — only the first completion is
+		// the onboarding event.
+		if (!organization.isMetadataComplete) {
+			await trackServerEvent(ctx, {
+				event: SERVER_EVENTS.ONBOARDING_COMPLETED,
+				orgId: userOrgId,
+				actorUserId: user._id,
+			});
+		}
 
 		return userOrgId;
 	},

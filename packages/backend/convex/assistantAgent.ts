@@ -80,7 +80,7 @@ export const recordUsage = internalMutation({
 			userId = meta.userId;
 		}
 
-		await ctx.db.insert("agentUsage", {
+		const usageId = await ctx.db.insert("agentUsage", {
 			orgId,
 			userId,
 			threadId: args.threadId,
@@ -93,12 +93,13 @@ export const recordUsage = internalMutation({
 		});
 
 		// LLM observability: thread id groups a conversation into one PostHog
-		// trace; thread-less one-shots get a per-call trace id.
+		// trace; thread-less one-shots get a per-call trace id (usage row id —
+		// Date.now() is per-transaction in Convex, so it can collide).
 		await trackAiGeneration(ctx, {
 			orgId,
 			userId,
 			traceId:
-				args.threadId ?? `oneshot-${args.agentName ?? "agent"}-${Date.now()}`,
+				args.threadId ?? `oneshot-${args.agentName ?? "agent"}-${usageId}`,
 			spanName: args.agentName,
 			model: args.model,
 			provider: args.provider,

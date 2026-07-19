@@ -236,6 +236,8 @@ export async function mapCsvSchema(
 			: (PROJECT_SCHEMA_FIELDS as unknown as SchemaFields);
 
 	const startedAt = Date.now();
+	// Exactly one $ai_generation event per call, whichever path exits.
+	let tracked = false;
 	try {
 		const { output, usage } = await generateText({
 			model: openai("gpt-5.4-nano"),
@@ -246,16 +248,26 @@ export async function mapCsvSchema(
 			abortSignal: AbortSignal.timeout(45_000),
 		});
 
+		if (!output) {
+			// Tokens were still consumed — record them on the error event.
+			await trackCsvMappingGeneration({
+				distinctId,
+				startedAt,
+				inputTokens: usage.inputTokens ?? 0,
+				outputTokens: usage.outputTokens ?? 0,
+				error: "LLM returned no structured output",
+			});
+			tracked = true;
+			throw new Error("LLM returned no structured output");
+		}
+
 		await trackCsvMappingGeneration({
 			distinctId,
 			startedAt,
 			inputTokens: usage.inputTokens ?? 0,
 			outputTokens: usage.outputTokens ?? 0,
 		});
-
-		if (!output) {
-			throw new Error("LLM returned no structured output");
-		}
+		tracked = true;
 
 		return {
 			...postProcessMappings(output, headers, schema),
@@ -264,13 +276,15 @@ export async function mapCsvSchema(
 	} catch (error) {
 		// LLM failure -- return all columns as unmapped (user maps manually)
 		console.error("mapCsvSchema LLM error:", error);
-		await trackCsvMappingGeneration({
-			distinctId,
-			startedAt,
-			inputTokens: 0,
-			outputTokens: 0,
-			error,
-		});
+		if (!tracked) {
+			await trackCsvMappingGeneration({
+				distinctId,
+				startedAt,
+				inputTokens: 0,
+				outputTokens: 0,
+				error,
+			});
+		}
 		return {
 			mappings: [],
 			unmappedColumns: [...headers],
