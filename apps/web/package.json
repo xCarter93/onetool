@@ -33,6 +33,7 @@
 		"@mapbox/search-js-react": "^1.5.1",
 		"@number-flow/react": "^0.5.10",
 		"@onetool/backend": "workspace:*",
+		"@posthog/nextjs-config": "^1.9.68",
 		"@react-email/components": "^1.0.1",
 		"@react-email/render": "^2.0.0",
 		"@react-pdf/renderer": "^4.3.0",
