@@ -47,6 +47,9 @@ export const AnalyticsEvents = {
 	REPORT_GENERATED: "report_generated",
 	STRIPE_CONNECTED: "stripe_connected",
 
+	// Marketing
+	DEMO_REQUEST_SUBMITTED: "demo_request_submitted",
+
 	// Onboarding
 	ONBOARDING_STARTED: "onboarding_started",
 	ONBOARDING_COMPLETED: "onboarding_completed",

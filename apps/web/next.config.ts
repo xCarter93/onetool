@@ -23,7 +23,7 @@ const cspReportOnly = [
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' https: data: blob:",
 	"font-src 'self' data:",
-	`connect-src 'self'${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}`,
+	`connect-src 'self'${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}${process.env.NEXT_PUBLIC_POSTHOG_HOST ? ` ${process.env.NEXT_PUBLIC_POSTHOG_HOST}` : ""}`, 
 	"frame-src https://js.stripe.com https://hooks.stripe.com",
 	"frame-ancestors 'none'",
 	"base-uri 'self'",
@@ -60,8 +60,12 @@ const nextConfig: NextConfig = {
 				destination: "https://us-assets.i.posthog.com/static/:path*",
 			},
 			{
+				source: "/ingest/array/:path*",
+				destination: "https://us-assets.i.posthog.com/array/:path*",
+			},
+			{
 				source: "/ingest/:path*",
-				destination: "https://us.i.posthog.com/:path*",
+				destination: `${process.env.NEXT_PUBLIC_POSTHOG_HOST}/:path*`,
 			},
 		];
 	},

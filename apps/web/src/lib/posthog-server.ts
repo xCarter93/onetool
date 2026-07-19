@@ -10,7 +10,7 @@ let client: PostHog | null = null;
 export function getPostHogServer(): PostHog {
 	if (!client) {
 		client = new PostHog(env.NEXT_PUBLIC_POSTHOG_KEY, {
-			host: "https://us.i.posthog.com",
+			host: env.NEXT_PUBLIC_POSTHOG_HOST,
 			// Serverless: no long-lived process to batch in.
 			flushAt: 1,
 			flushInterval: 0,

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { trackEvent } from "@/lib/analytics";
+import { AnalyticsEvents } from "@/lib/analytics-events";
 
 interface ScheduleDemoModalProps {
 	isOpen: boolean;
@@ -64,6 +66,12 @@ export default function ScheduleDemoModal({
 			if (!response.ok) {
 				throw new Error(data.error || "Failed to send demo request");
 			}
+
+			trackEvent(AnalyticsEvents.DEMO_REQUEST_SUBMITTED, {
+				has_company: Boolean(formData.company.trim()),
+				has_phone: Boolean(formData.phone.trim()),
+				has_message: Boolean(formData.message.trim()),
+			});
 
 			setFormStatus({
 				type: "success",
