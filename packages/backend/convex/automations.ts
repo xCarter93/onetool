@@ -30,6 +30,7 @@ import {
 	type AutomationTrigger,
 	type ConditionGroup,
 	type FormulaResource,
+	type TriggerableObjectType,
 	type ValueRef,
 	type WorkflowNodeConfig,
 } from "./lib/workflowTypes";
@@ -38,11 +39,13 @@ import {
 	parseFormula,
 	FormulaError,
 } from "./lib/formula";
+import { ENTITY_PERMISSION_OBJECT } from "./activities";
 import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
 	USER_REF_RECIPIENT_FIELDS,
 	getFieldDefinition,
+	getFieldDefinitionForKey,
 	getRequiredCreateFields,
 	getStatusOptions,
 	isCreatableObjectType,
@@ -370,7 +373,9 @@ function validateConditionGroups(
 					throw new Error(`Node ${nodeId}: rule is missing a field`);
 				}
 				if (objectType) {
-					const def = getFieldDefinition(objectType, rule.field);
+					// Relation-qualified keys ("client.companyName") are valid rule
+					// fields (C6); writes elsewhere stay flat-key only.
+					const def = getFieldDefinitionForKey(objectType, rule.field);
 					if (!def) {
 						throw new Error(
 							`Node ${nodeId}: unknown field "${rule.field}" for ${objectType}`
@@ -2035,3 +2040,93 @@ export const getRecentFailures = userQuery({
 		return rows;
 	},
 });
+
+/** TriggerableObjectType -> its Convex table. Mirrors resolveCreateFk's map (automationExecutor.ts). */
+const OBJECT_TYPE_TABLE: Record<
+	TriggerableObjectType,
+	"clients" | "projects" | "quotes" | "invoices" | "tasks"
+> = {
+	client: "clients",
+	project: "projects",
+	quote: "quotes",
+	invoice: "invoices",
+	task: "tasks",
+};
+
+/**
+ * One-hop related-record fields for the formula editor's live preview (C6).
+ * Additive alongside the individual per-type `.get` queries the modal already
+ * calls for `trigger.record.<field>` — this supplies
+ * `trigger.record.<relation>.<field>`. Read-only preview data already gated by
+ * automations:view, so it stays permission-light: org-checked `ctx.db.get`
+ * rather than the full per-entity RBAC scoping those `.get` queries do.
+ * Capped at one hop via RELATED_OBJECTS (source record + up to
+ * RELATED_OBJECTS[entityType].length relations — at most 3 gets total).
+ */
+export const getSampleRelatedFields = userQuery({
+	args: {
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("project"),
+			v.literal("quote"),
+			v.literal("invoice"),
+			v.literal("task")
+		),
+		entityId: v.string(),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<Record<string, Record<string, unknown>>> => {
+		await ctx.requireLevel("automations", "view");
+
+		const relations = RELATED_OBJECTS[args.entityType] ?? [];
+		if (relations.length === 0) return {};
+		// Per-entity read gates (shadow-aware), matching the per-type sample
+		// queries the modal already calls: a relation the caller can't view is
+		// simply omitted from the preview.
+		if (!(await ctx.gateRead(ENTITY_PERMISSION_OBJECT[args.entityType]!))) {
+			return {};
+		}
+
+		const sourceTable = OBJECT_TYPE_TABLE[args.entityType];
+		const sourceId = ctx.db.normalizeId(sourceTable, args.entityId);
+		if (!sourceId) return {};
+		const source = await ctx.db.get(sourceId);
+		if (!source || source.orgId !== ctx.orgId) return {};
+
+		const result: Record<string, Record<string, unknown>> = {};
+		for (const relation of relations) {
+			if (!(await ctx.gateRead(ENTITY_PERMISSION_OBJECT[relation]!))) continue;
+			const fk = RELATION_FIELD[args.entityType]?.[relation];
+			if (!fk) continue;
+			let relatedRaw = (source as Record<string, unknown>)[fk];
+			// Same indirect client-via-project resolution the runtime uses
+			// (hydrateRelations/resolveTargetV2) so the preview matches the run.
+			if (typeof relatedRaw !== "string" && relation === "client") {
+				const projectFk = RELATION_FIELD[args.entityType]?.project;
+				const projectRaw = projectFk
+					? (source as Record<string, unknown>)[projectFk]
+					: undefined;
+				const projectId =
+					typeof projectRaw === "string"
+						? ctx.db.normalizeId("projects", projectRaw)
+						: null;
+				const project = projectId ? await ctx.db.get(projectId) : null;
+				if (project && project.orgId === ctx.orgId) {
+					relatedRaw = project.clientId;
+				}
+			}
+			if (typeof relatedRaw !== "string") continue;
+			const relatedTable = OBJECT_TYPE_TABLE[relation];
+			const relatedId = ctx.db.normalizeId(relatedTable, relatedRaw);
+			if (!relatedId) continue;
+			const doc = await ctx.db.get(relatedId);
+			if (doc && doc.orgId === ctx.orgId) {
+				result[relation] = doc as unknown as Record<string, unknown>;
+			}
+		}
+		return result;
+	},
+});
+

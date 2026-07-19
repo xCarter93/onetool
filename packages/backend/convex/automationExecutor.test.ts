@@ -6610,4 +6610,364 @@ describe("automationExecutor (v2 engine)", () => {
 			});
 		});
 	});
+	describe("Phase C6 — one-hop related-field traversal", () => {
+		/** update_field writing from a var path with a fallback. */
+		function updateFromVarWithFallback(
+			id: string,
+			field: string,
+			path: string,
+			fallback: string
+		) {
+			return {
+				id,
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "update_field" as const,
+						target: "self" as const,
+						field,
+						value: { kind: "var" as const, path, fallback },
+					},
+				},
+			};
+		}
+
+		function fetchNode(
+			id: string,
+			objectType: "project",
+			filters: {
+				logic: "and";
+				rules: {
+					field: string;
+					operator: "equals";
+					value: { kind: "static"; value: string };
+				}[];
+			}[],
+			opts: { nextNodeId?: string } = {}
+		) {
+			return {
+				id,
+				type: "fetch_records" as const,
+				config: { kind: "fetch_records" as const, objectType, filters },
+				nextNodeId: opts.nextNodeId,
+			};
+		}
+
+		async function createClientWithProject(
+			asUser: ReturnType<typeof t.withIdentity>,
+			companyName: string,
+			clientStatus: "lead" | "active" = "active"
+		) {
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName,
+				status: clientStatus,
+			});
+			const projectId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: `${companyName} project`,
+				status: "planned",
+				projectType: "one-off",
+			});
+			return { clientId, projectId };
+		}
+
+		it("interpolates trigger.record.<relation>.<field> in notification messages", async () => {
+			const { asUser } = await setupUser();
+			const { projectId } = await createClientWithProject(asUser, "Acme Co");
+
+			await asUser.mutation(api.automations.create, {
+				name: "Notify with client name",
+				trigger: {
+					type: "record_updated",
+					objectType: "project",
+					fields: ["title"],
+				},
+				nodes: [
+					notifyNode("act-1", "Client: {{trigger.record.client.companyName}}"),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.projects.update, {
+				id: projectId,
+				title: "Renamed project",
+			});
+			await drainEvents();
+
+			const notifications = await t.run(async (ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+			expect(
+				notifications.some((n) => n.message === "Client: Acme Co")
+			).toBe(true);
+		});
+
+		it("condition nodes branch on dotted relation fields", async () => {
+			const { asUser } = await setupUser();
+			const acme = await createClientWithProject(asUser, "Acme Co", "active");
+			const other = await createClientWithProject(asUser, "Dormant Co", "lead");
+
+			await asUser.mutation(api.automations.create, {
+				name: "Only active clients",
+				trigger: {
+					type: "record_updated",
+					objectType: "project",
+					fields: ["title"],
+				},
+				nodes: [
+					conditionNode("cond-1", "client.status", "equals", "active", {
+						nextNodeId: "act-1",
+					}),
+					updateFieldActionNode("act-1", "description", "client active"),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.projects.update, {
+				id: acme.projectId,
+				title: "Acme renamed",
+			});
+			await asUser.mutation(api.projects.update, {
+				id: other.projectId,
+				title: "Dormant renamed",
+			});
+			await drainEvents();
+
+			const acmeProject = await t.run(async (ctx) =>
+				ctx.db.get(acme.projectId)
+			);
+			const otherProject = await t.run(async (ctx) =>
+				ctx.db.get(other.projectId)
+			);
+			expect(acmeProject?.description).toBe("client active");
+			expect(otherProject?.description).toBeUndefined();
+		});
+
+		it("entry criteria filter on dotted relation fields before dispatch", async () => {
+			const { asUser } = await setupUser();
+			const acme = await createClientWithProject(asUser, "Acme Co");
+			const other = await createClientWithProject(asUser, "Other Co");
+
+			await asUser.mutation(api.automations.create, {
+				name: "Acme projects only",
+				trigger: {
+					type: "record_updated",
+					objectType: "project",
+					fields: ["title"],
+					entryCriteria: {
+						logic: "and" as const,
+						groups: [
+							{
+								logic: "and" as const,
+								rules: [
+									{
+										field: "client.companyName",
+										operator: "contains" as const,
+										value: { kind: "static" as const, value: "Acme" },
+									},
+								],
+							},
+						],
+					},
+				},
+				nodes: [updateFieldActionNode("act-1", "description", "matched")],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.projects.update, {
+				id: acme.projectId,
+				title: "Acme renamed",
+			});
+			await asUser.mutation(api.projects.update, {
+				id: other.projectId,
+				title: "Other renamed",
+			});
+			await drainEvents();
+
+			const acmeProject = await t.run(async (ctx) =>
+				ctx.db.get(acme.projectId)
+			);
+			const otherProject = await t.run(async (ctx) =>
+				ctx.db.get(other.projectId)
+			);
+			expect(acmeProject?.description).toBe("matched");
+			expect(otherProject?.description).toBeUndefined();
+		});
+
+		it("fetch filters match rows via dotted relation fields", async () => {
+			const { asUser } = await setupUser();
+			const acme = await createClientWithProject(asUser, "Acme Co");
+			// Second Acme project + one project under another client.
+			await asUser.mutation(api.projects.create, {
+				clientId: acme.clientId,
+				title: "Acme second project",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await createClientWithProject(asUser, "Other Co");
+
+			await asUser.mutation(api.automations.create, {
+				name: "Count Acme projects",
+				trigger: {
+					type: "record_updated",
+					objectType: "client",
+					fields: ["notes"],
+				},
+				nodes: [
+					fetchNode(
+						"fetch-1",
+						"project",
+						[
+							{
+								logic: "and",
+								rules: [
+									{
+										field: "client.companyName",
+										operator: "equals",
+										value: { kind: "static", value: "Acme Co" },
+									},
+								],
+							},
+						],
+						{ nextNodeId: "act-1" }
+					),
+					notifyNode("act-1", "Found {{node.fetch-1.count}}"),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.update, {
+				id: acme.clientId,
+				notes: "poke",
+			});
+			await drainEvents();
+
+			const notifications = await t.run(async (ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+			expect(notifications.some((n) => n.message === "Found 2")).toBe(true);
+		});
+
+		it("loop items resolve loop.<id>.item.<relation>.<field>", async () => {
+			const { asUser } = await setupUser();
+			const acme = await createClientWithProject(asUser, "Acme Co");
+			await createClientWithProject(asUser, "Beta LLC");
+
+			await asUser.mutation(api.automations.create, {
+				name: "Notify per project with client",
+				trigger: {
+					type: "record_updated",
+					objectType: "client",
+					fields: ["notes"],
+				},
+				nodes: [
+					fetchNode("fetch-1", "project", [], { nextNodeId: "loop-1" }),
+					{
+						id: "loop-1",
+						type: "loop" as const,
+						config: { kind: "loop" as const, sourceNodeId: "fetch-1" },
+						bodyStartNodeId: "body-1",
+					},
+					notifyNode(
+						"body-1",
+						"Owner: {{loop.loop-1.item.client.companyName}}"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.clients.update, {
+				id: acme.clientId,
+				notes: "poke",
+			});
+			await drainEvents();
+
+			const messages = (
+				await t.run(async (ctx) => ctx.db.query("notifications").collect())
+			).map((n) => n.message);
+			expect(messages).toContain("Owner: Acme Co");
+			expect(messages).toContain("Owner: Beta LLC");
+		});
+
+		it("resolves client indirectly via the project when the record has no clientId", async () => {
+			const { asUser } = await setupUser();
+			const { projectId } = await createClientWithProject(asUser, "Acme Co");
+			const taskId = await asUser.mutation(api.tasks.create, {
+				projectId,
+				type: "internal",
+				title: "Site visit",
+				date: Date.now(),
+				status: "pending",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Task client via project",
+				trigger: {
+					type: "record_updated",
+					objectType: "task",
+					fields: ["title"],
+				},
+				nodes: [
+					notifyNode(
+						"act-1",
+						"Task for {{trigger.record.client.companyName}}"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.tasks.update, {
+				id: taskId,
+				title: "Site visit v2",
+			});
+			await drainEvents();
+
+			const notifications = await t.run(async (ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+			expect(
+				notifications.some((n) => n.message === "Task for Acme Co")
+			).toBe(true);
+		});
+
+		it("a missing relation resolves to the ref fallback", async () => {
+			const { asUser } = await setupUser();
+			// Task with neither client nor project: the relation cannot resolve.
+			const taskId = await asUser.mutation(api.tasks.create, {
+				type: "internal",
+				title: "Orphan task",
+				date: Date.now(),
+				status: "pending",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Fallback on missing client",
+				trigger: {
+					type: "record_updated",
+					objectType: "task",
+					fields: ["title"],
+				},
+				nodes: [
+					updateFromVarWithFallback(
+						"act-1",
+						"description",
+						"trigger.record.client.companyName",
+						"(no client)"
+					),
+				],
+				isActive: true,
+			});
+
+			await asUser.mutation(api.tasks.update, {
+				id: taskId,
+				title: "Orphan task v2",
+			});
+			await drainEvents();
+
+			const task = await t.run(async (ctx) => ctx.db.get(taskId));
+			expect(task?.description).toBe("(no client)");
+		});
+	});
 });

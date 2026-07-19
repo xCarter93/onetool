@@ -90,6 +90,8 @@ export {
 	isCreatableObjectType,
 	operatorsForField,
 	getStatusOptions,
+	parseRelationKey,
+	getFieldDefinitionForKey,
 } from "@onetool/backend/convex/lib/fieldRegistry";
 
 export type {

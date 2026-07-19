@@ -5,6 +5,7 @@ import {
 import { collectLoopBody } from "./graph-utils";
 import {
 	OBJECT_TYPE_LABELS,
+	RELATED_OBJECTS,
 	getFilterableFields,
 	isFetchOnlyObjectType,
 	type AutomationObjectType,
@@ -211,6 +212,36 @@ function fieldOptionLabel(
 }
 
 /**
+ * One-hop related-field options (C6): for every relation in
+ * RELATED_OBJECTS[objectType], its filterable fields as
+ * `<pathPrefix>.<relation>.<fieldKey>`. Grouped per relation ("Trigger ·
+ * Client" / "Loop item · Client") so the picker's groups stay scannable
+ * alongside the flat "Trigger"/"Loop item" group. Cap at one hop — never
+ * recurse into RELATED_OBJECTS[relation].
+ */
+function relationVariableOptions(
+	objectType: AutomationObjectType,
+	pathPrefix: string,
+	labelPrefix: string
+): VariableOption[] {
+	const options: VariableOption[] = [];
+	for (const relation of RELATED_OBJECTS[objectType] ?? []) {
+		const relationLabel = OBJECT_TYPE_LABELS[relation];
+		for (const field of getFilterableFields(relation)) {
+			options.push({
+				path: `${pathPrefix}.${relation}.${field.key}`,
+				label: fieldOptionLabel(`${labelPrefix} → ${relationLabel}`, field),
+				group: `${labelPrefix} · ${relationLabel}`,
+				fieldType: field.type,
+				refType: field.refType,
+				isArray: field.isArray,
+			});
+		}
+	}
+	return options;
+}
+
+/**
  * A record's own `_id` option is refType-compatible with a destination `id`
  * field pointing at the same object type — but `task` and the line-item types
  * aren't valid `refType` values (no id field ever points at one), so those fall
@@ -263,6 +294,9 @@ function triggerVariableOptions(
 				isArray: field.isArray,
 			});
 		}
+		options.push(
+			...relationVariableOptions(triggerObjectType, "trigger.record", "Trigger")
+		);
 	}
 
 	if (effectiveTriggerType(trigger) === "status_changed") {
@@ -399,6 +433,13 @@ export function getAvailableVariables(
 				isArray: field.isArray,
 			});
 		}
+		options.push(
+			...relationVariableOptions(
+				sourceObjectType,
+				`loop.${node.id}.item`,
+				"Loop item"
+			)
+		);
 		options.push({
 			path: `loop.${node.id}.index`,
 			label: "Loop item → Index (0-based)",
@@ -517,6 +558,13 @@ export function getAllVariableOptions(
 				isArray: field.isArray,
 			});
 		}
+		options.push(
+			...relationVariableOptions(
+				sourceObjectType,
+				`loop.${node.id}.item`,
+				"Loop item"
+			)
+		);
 		options.push({
 			path: `loop.${node.id}.index`,
 			label: "Loop item → Index (0-based)",

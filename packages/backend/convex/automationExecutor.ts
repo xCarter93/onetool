@@ -25,8 +25,14 @@ import {
 	evaluateConditionGroups,
 	interpolateTemplate,
 	resolveValueRef,
+	type RelatedRecords,
 	type VariableScope,
 } from "./lib/conditionEval";
+import {
+	collectRelationRefs,
+	dottedRuleFieldCandidates,
+	type RelationRefs,
+} from "./lib/relationRefs";
 import {
 	calendarDayEpoch,
 	getZonedParts,
@@ -39,6 +45,7 @@ import {
 	FREE_MAX_CLIENTS,
 } from "./lib/planLimits";
 import {
+	RELATED_OBJECTS,
 	RELATION_FIELD,
 	getCreatableFields,
 	getFieldDefinition,
@@ -66,6 +73,7 @@ import {
 	type TeamMessageMention,
 	type ValueRef,
 	type AutomationObjectType,
+	type ConditionGroup,
 	type TriggerableObjectType,
 	type AutomationTrigger,
 	type ExecutedNode,
@@ -277,20 +285,23 @@ export const findMatchingAutomations = internalQuery({
 				: null;
 		const actor = actorId ? await ctx.db.get(actorId) : null;
 
-		return automations.filter((automation) => {
+		const relationCache: Map<string, Record<string, unknown> | null> =
+			new Map();
+		const matched: typeof automations = [];
+		for (const automation of automations) {
 			const definition = executableDefinition(automation);
 			const trigger = definition.trigger;
 			const triggerType =
 				"type" in trigger ? trigger.type : "status_changed";
 
 			if (triggerType !== args.triggerType) {
-				return false;
+				continue;
 			}
 			if (
 				"objectType" in trigger &&
 				trigger.objectType !== args.objectType
 			) {
-				return false;
+				continue;
 			}
 
 			const shapeMatches = ((): boolean => {
@@ -331,15 +342,36 @@ export const findMatchingAutomations = internalQuery({
 						return false;
 				}
 			})();
-			if (!shapeMatches) return false;
+			if (!shapeMatches) continue;
 
 			// Entry criteria (A5-2): evaluated against the actual record before
 			// anything is scheduled, with condition-node semantics
 			// (evaluateConditionGroups) scoped to trigger + globals.
 			const criteria =
 				"entryCriteria" in trigger ? trigger.entryCriteria : undefined;
-			if (!criteria || criteria.groups.length === 0) return true;
-			if (!record) return false;
+			if (!criteria || criteria.groups.length === 0) {
+				matched.push(automation);
+				continue;
+			}
+			if (!record) continue;
+			// One-hop relations the criteria reference (value refs and formulas via
+			// the static scan; dotted rule fields directly), hydrated against the
+			// trigger record. The cache is shared across candidates — same record.
+			const refs = collectRelationRefs([], trigger, definition.formulas);
+			for (const candidate of dottedRuleFieldCandidates(criteria.groups)) {
+				refs.trigger.add(candidate);
+			}
+			const related =
+				refs.trigger.size > 0
+					? await hydrateRelations(
+							ctx,
+							args.orgId,
+							args.objectType,
+							record,
+							refs.trigger,
+							relationCache
+						)
+					: undefined;
 			const scope: VariableScope = {
 				trigger: {
 					record,
@@ -347,6 +379,7 @@ export const findMatchingAutomations = internalQuery({
 						args.fromStatus !== undefined || args.toStatus !== undefined
 							? { oldValue: args.fromStatus, newValue: args.toStatus }
 							: undefined,
+					related,
 				},
 				workflow: {
 					now: Date.now(),
@@ -358,14 +391,20 @@ export const findMatchingAutomations = internalQuery({
 					: undefined,
 				formulas: definition.formulas,
 			};
-			return evaluateConditionGroups(
-				criteria.logic,
-				criteria.groups,
-				record,
-				scope,
-				args.objectType
-			);
-		});
+			if (
+				evaluateConditionGroups(
+					criteria.logic,
+					criteria.groups,
+					record,
+					scope,
+					args.objectType,
+					related
+				)
+			) {
+				matched.push(automation);
+			}
+		}
+		return matched;
 	},
 });
 
@@ -856,6 +895,10 @@ type WalkEnv = {
 	dataTruncated: boolean;
 	/** Rows this walk may still scan across all its fetches (WALK_SCAN_BUDGET). */
 	fetchScanBudget: number;
+	/** One-hop relation references statically collected from the definition. */
+	relationRefs: RelationRefs;
+	/** Per-run memo of hydrated related docs, keyed `type:id`. */
+	relationCache: Map<string, Record<string, unknown> | null>;
 	/** Original trigger reference, persisted into resumeState for delays. */
 	trigger: { objectType?: ObjectType; objectId?: string };
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
@@ -1169,10 +1212,18 @@ export const executeAutomation = systemMutation({
 			dataTruncated: false,
 			loopSummaries: [],
 			fetchScanBudget: WALK_SCAN_BUDGET,
+			relationRefs: collectRelationRefs(
+				definition.nodes,
+				definition.trigger,
+				definition.formulas
+			),
+			relationCache: new Map(),
 			trigger: { objectType: args.objectType, objectId: args.objectId },
 			nodeStartedAt: Date.now(),
 			isProduction,
 		};
+
+		await hydrateTriggerRelations(ctx, env, scopeRecord);
 
 		try {
 			if (definition.nodes.length === 0) {
@@ -1371,6 +1422,12 @@ export const resumeExecution = systemMutation({
 				errors: [...l.errors],
 			})),
 			fetchScanBudget: WALK_SCAN_BUDGET,
+			relationRefs: collectRelationRefs(
+				definition.nodes,
+				definition.trigger,
+				definition.formulas
+			),
+			relationCache: new Map(),
 			trigger: { objectType: resume.objectType, objectId: resume.objectId },
 			nodeStartedAt: Date.now(),
 			isProduction,
@@ -1428,6 +1485,8 @@ export const resumeExecution = systemMutation({
 			}
 			return;
 		}
+
+		await hydrateTriggerRelations(ctx, env, scopeRecord);
 
 		try {
 			let outcome: WalkOutcome;
@@ -1971,7 +2030,23 @@ async function runLoopNode(
 			const label = sampleRecordLabel(source.objectType, item);
 			// summary.total is the authoritative loop size (set on the first chunk,
 			// restored on resume) so loop.<id>.count is stable across chunk boundaries.
-			env.scope.loops[node.id] = { item, index, count: summary.total };
+			const loopRelations = env.relationRefs.loops.get(node.id);
+			env.scope.loops[node.id] = {
+				item,
+				index,
+				count: summary.total,
+				objectType: source.objectType,
+				related: loopRelations?.size
+					? await hydrateRelations(
+							ctx,
+							env.orgId,
+							source.objectType,
+							item,
+							loopRelations,
+							env.relationCache
+						)
+					: undefined,
+			};
 			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -2268,7 +2343,7 @@ export async function scanOrgRows(
 	objectType: AutomationObjectType,
 	orgId: Id<"organizations">,
 	opts: {
-		predicate?: (row: Record<string, unknown>) => boolean;
+		predicate?: (row: Record<string, unknown>) => boolean | Promise<boolean>;
 		stopAfterMatches?: number;
 		maxScan?: number;
 		batchSize?: number;
@@ -2291,7 +2366,7 @@ export async function scanOrgRows(
 		if (page.length > 0) cursor = page[page.length - 1]._creationTime;
 		scanned += page.length;
 		for (const row of page) {
-			if (!predicate(row)) continue;
+			if (!(await predicate(row))) continue;
 			matches.push(row);
 			if (
 				opts.stopAfterMatches !== undefined &&
@@ -2314,7 +2389,7 @@ export async function scanOrgRows(
 /** The subset of walk state fetch_records needs; shared by real + dry walks. */
 type FetchEnv = Pick<
 	WalkEnv,
-	"orgId" | "scope" | "fetchOutputs" | "fetchScanBudget"
+	"orgId" | "scope" | "fetchOutputs" | "fetchScanBudget" | "relationCache"
 >;
 
 /**
@@ -2333,26 +2408,59 @@ async function runFetchNode(
 			Math.max(config.limit ?? DEFAULT_FETCH_LIMIT, 1),
 			MAX_FETCH_LIMIT
 		);
+		// Relation-qualified filter fields ("client.companyName") hydrate the
+		// related doc per row (memoized per run); each hydration read consumes
+		// the same scan budget as a scanned row.
+		const dottedRelations = dottedRuleFieldCandidates(config.filters);
+		let hydrationReads = 0;
+		const scanAllowance = Math.min(
+			FETCH_SCAN_CEILING,
+			Math.max(env.fetchScanBudget, 0)
+		);
 		const { matches, scanned, truncated } = await scanOrgRows(
 			ctx,
 			config.objectType,
 			env.orgId,
 			{
-				predicate: (row) =>
-					evaluateConditionGroups(
+				predicate: async (row) => {
+					// Hydration reads get their own allowance equal to the row scan's;
+					// past it the fetch fails loudly instead of brushing Convex's
+					// per-transaction read limits mid-scan.
+					if (hydrationReads >= scanAllowance) {
+						throw new Error(
+							"This filter reads too many related records — narrow the filter or add more specific conditions"
+						);
+					}
+					const related =
+						dottedRelations.size > 0
+							? await hydrateRelations(
+									ctx,
+									env.orgId,
+									config.objectType,
+									row,
+									dottedRelations,
+									env.relationCache,
+									() => {
+										hydrationReads += 1;
+									}
+								)
+							: undefined;
+					return evaluateConditionGroups(
 						"and",
 						config.filters,
 						row,
 						env.scope,
-						config.objectType
-					),
+						config.objectType,
+						related
+					);
+				},
 				// Sorting needs every match in range; without one, rows already
 				// arrive newest-first so the scan can stop at the node's limit.
 				stopAfterMatches: config.sortBy ? undefined : limit,
-				maxScan: Math.min(FETCH_SCAN_CEILING, Math.max(env.fetchScanBudget, 0)),
+				maxScan: scanAllowance,
 			}
 		);
-		env.fetchScanBudget -= scanned;
+		env.fetchScanBudget -= scanned + hydrationReads;
 		let records = matches;
 
 		if (config.sortBy) {
@@ -2590,6 +2698,108 @@ async function getObject(
 }
 
 /**
+ * One-hop related records for `record`, keyed by relation name. Candidate
+ * names not in RELATED_OBJECTS[objectType] are skipped (flat field keys may
+ * contain dots); a missing FK / deleted / cross-org target stores `null` so
+ * resolution degrades to undefined + the ref's fallback. Reads memoize per
+ * run in `cache` (`type:id`) — a 200-item loop sharing one client reads it
+ * once. `onFetch` fires per cache miss (fetch-filter scan-budget accounting).
+ * The indirect client-via-project resolution matches resolveTargetV2.
+ */
+async function hydrateRelations(
+	ctx: { db: QueryCtx["db"] },
+	orgId: Id<"organizations">,
+	objectType: AutomationObjectType,
+	record: Record<string, unknown>,
+	relations: Iterable<string>,
+	cache: Map<string, Record<string, unknown> | null>,
+	onFetch?: () => void
+): Promise<RelatedRecords | undefined> {
+	const fetchCached = async (
+		type: AutomationObjectType,
+		id: string
+	): Promise<Record<string, unknown> | null> => {
+		const key = `${type}:${id}`;
+		const hit = cache.get(key);
+		if (hit !== undefined) return hit;
+		onFetch?.();
+		const doc = await getObject(ctx, type, id, orgId);
+		cache.set(key, doc);
+		return doc;
+	};
+
+	let related: RelatedRecords | undefined;
+	for (const name of relations) {
+		const relatedType = name as TriggerableObjectType;
+		if (!RELATED_OBJECTS[objectType]?.includes(relatedType)) continue;
+		related ??= {};
+		const fkField = RELATION_FIELD[objectType]?.[relatedType];
+		let relatedId = fkField
+			? (record[fkField] as string | undefined)
+			: undefined;
+		if (!relatedId && relatedType === "client") {
+			const projectFk = RELATION_FIELD[objectType]?.project;
+			const projectId = projectFk
+				? (record[projectFk] as string | undefined)
+				: undefined;
+			if (projectId) {
+				relatedId = (await fetchCached("project", projectId))?.clientId as
+					| string
+					| undefined;
+			}
+		}
+		related[name] = relatedId ? await fetchCached(relatedType, relatedId) : null;
+	}
+	return related;
+}
+
+/** Hydrate trigger-record relations referenced anywhere in the definition. */
+async function hydrateTriggerRelations(
+	ctx: { db: QueryCtx["db"] },
+	env: Pick<WalkEnv, "orgId" | "scope" | "relationRefs" | "relationCache">,
+	scopeRecord: ScopeRecord | undefined
+): Promise<void> {
+	if (!scopeRecord || !env.scope.trigger) return;
+	if (env.relationRefs.trigger.size === 0) return;
+	env.scope.trigger.related = await hydrateRelations(
+		ctx,
+		env.orgId,
+		scopeRecord.type,
+		scopeRecord.record,
+		env.relationRefs.trigger,
+		env.relationCache
+	);
+}
+
+/**
+ * Relations named by dotted rule fields ("client.companyName"), hydrated for
+ * the record under evaluation and merged over `related` (names already
+ * hydrated are skipped).
+ */
+async function withLazyRuleRelations(
+	ctx: { db: QueryCtx["db"] },
+	env: Pick<WalkEnv, "orgId" | "relationCache">,
+	groups: ConditionGroup[],
+	record: Record<string, unknown>,
+	recordType: AutomationObjectType | undefined,
+	related: RelatedRecords | undefined
+): Promise<RelatedRecords | undefined> {
+	if (!recordType) return related;
+	const candidates = dottedRuleFieldCandidates(groups);
+	for (const name of Object.keys(related ?? {})) candidates.delete(name);
+	if (candidates.size === 0) return related;
+	const lazy = await hydrateRelations(
+		ctx,
+		env.orgId,
+		recordType,
+		record,
+		candidates,
+		env.relationCache
+	);
+	return lazy ? { ...related, ...lazy } : related;
+}
+
+/**
  * Execute a per-record node (condition/action) via its v2 `config`.
  * Structural kinds (fetch/loop/delay/end) are handled by the walk engine
  * before this is reached.
@@ -2628,6 +2838,7 @@ async function executeNodeV2(
 		case "condition": {
 			let record: Record<string, unknown>;
 			let recordType: AutomationObjectType | undefined;
+			let related: RelatedRecords | undefined;
 			if (config.source && typeof config.source === "object") {
 				const loopScope = env.scope.loops?.[config.source.loopNodeId];
 				if (!loopScope) {
@@ -2638,16 +2849,30 @@ async function executeNodeV2(
 				}
 				record = loopScope.item;
 				recordType = loopScope.objectType;
+				related = loopScope.related;
 			} else {
 				record = scopeRecord?.record ?? {};
 				recordType = scopeRecord?.type;
+				// Inside a loop the scope record IS the current item.
+				related = env.currentLoop
+					? env.scope.loops?.[env.currentLoop.nodeId]?.related
+					: env.scope.trigger?.related;
 			}
+			related = await withLazyRuleRelations(
+				ctx,
+				env,
+				config.groups,
+				record,
+				recordType,
+				related
+			);
 			const conditionMet = evaluateConditionGroups(
 				config.logic,
 				config.groups,
 				record,
 				env.scope,
-				recordType
+				recordType,
+				related
 			);
 			return { success: true, conditionMet };
 		}
@@ -4469,6 +4694,10 @@ type DryEnv = {
 	dataTruncated: boolean;
 	/** Rows this dry run may still scan across all its fetches. */
 	fetchScanBudget: number;
+	/** One-hop relation references statically collected from the working copy. */
+	relationRefs: RelationRefs;
+	/** Per-run memo of hydrated related docs, keyed `type:id`. */
+	relationCache: Map<string, Record<string, unknown> | null>;
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
 	nodeStartedAt: number;
 	/** Per-loop item tallies, same shape production records. */
@@ -4958,6 +5187,7 @@ async function dryExecuteNode(
 	if (config?.kind === "condition") {
 		let record: Record<string, unknown>;
 		let recordType: AutomationObjectType | undefined;
+		let related: RelatedRecords | undefined;
 		if (config.source && typeof config.source === "object") {
 			const loopScope = env.scope.loops?.[config.source.loopNodeId];
 			if (!loopScope) {
@@ -4968,16 +5198,30 @@ async function dryExecuteNode(
 			}
 			record = loopScope.item;
 			recordType = loopScope.objectType;
+			related = loopScope.related;
 		} else {
 			record = scopeRecord?.record ?? {};
 			recordType = scopeRecord?.type;
+			// Inside a loop the scope record IS the current item.
+			related = env.currentLoop
+				? env.scope.loops?.[env.currentLoop.nodeId]?.related
+				: env.scope.trigger?.related;
 		}
+		related = await withLazyRuleRelations(
+			ctx,
+			env,
+			config.groups,
+			record,
+			recordType,
+			related
+		);
 		const conditionMet = evaluateConditionGroups(
 			config.logic,
 			config.groups,
 			record,
 			env.scope,
-			recordType
+			recordType,
+			related
 		);
 		return {
 			success: true,
@@ -5071,7 +5315,23 @@ async function dryRunLoopNode(
 			const label = sampleRecordLabel(source.objectType, item);
 			// `total` (full match), not `sampled`: loop.<id>.count is a data value —
 			// the count production would iterate, matching the real loop.index shown.
-			env.scope.loops[node.id] = { item, index, count: total };
+			const loopRelations = env.relationRefs.loops.get(node.id);
+			env.scope.loops[node.id] = {
+				item,
+				index,
+				count: total,
+				objectType: source.objectType,
+				related: loopRelations?.size
+					? await hydrateRelations(
+							ctx,
+							env.orgId,
+							source.objectType,
+							item,
+							loopRelations,
+							env.relationCache
+						)
+					: undefined,
+			};
 			env.currentLoop = { nodeId: node.id, index, itemId, label };
 			const itemScope: ScopeRecord = {
 				type: source.objectType,
@@ -5345,9 +5605,17 @@ async function buildDryPlan(
 		truncated: false,
 		dataTruncated: false,
 		fetchScanBudget: WALK_SCAN_BUDGET,
+		relationRefs: collectRelationRefs(
+			automation.nodes,
+			automation.trigger,
+			automation.formulas
+		),
+		relationCache: new Map(),
 		nodeStartedAt: Date.now(),
 		loopSummaries: [],
 	};
+
+	await hydrateTriggerRelations(ctx, env, scopeRecord);
 
 	let outcome: DryWalkOutcome = "chain_done";
 	if (automation.nodes.length > 0) {

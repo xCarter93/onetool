@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
+	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
 import {
 	MAX_CONDITION_GROUPS,
 	MAX_RULES_PER_GROUP,
+	RELATED_OBJECTS,
 	VALUELESS_OPERATORS,
 	VARIABLE_LEFT_OPERATORS,
-	getFieldDefinition,
+	OBJECT_TYPE_LABELS,
+	getFieldDefinitionForKey,
 	getFilterableFields,
 	operatorsForField,
 	type AutomationObjectType,
@@ -100,6 +104,15 @@ export function FilterGroupsEditor({
 	formulas,
 }: FilterGroupsEditorProps) {
 	const fields = objectType ? getFilterableFields(objectType) : [];
+	// One-hop related fields (C6): "<relation>.<fieldKey>" values, grouped per
+	// relation ("Client → Company name") alongside the flat field group.
+	const relationFieldGroups = objectType
+		? (RELATED_OBJECTS[objectType] ?? []).map((relation) => ({
+				relation,
+				label: OBJECT_TYPE_LABELS[relation],
+				fields: getFilterableFields(relation),
+			}))
+		: [];
 	const variableOptions = variableLeftOptions ?? [];
 	const canAddRule = fields.length > 0 || variableOptions.length > 0;
 
@@ -226,7 +239,7 @@ export function FilterGroupsEditor({
 							: undefined;
 						const fieldDef =
 							!variableLeft && objectType
-								? getFieldDefinition(objectType, rule.field)
+								? getFieldDefinitionForKey(objectType, rule.field)
 								: undefined;
 						const operators = variableLeft
 							? [...VARIABLE_LEFT_OPERATORS]
@@ -277,6 +290,21 @@ export function FilterGroupsEditor({
 													{f.label}
 												</SelectItem>
 											))}
+											{relationFieldGroups.map(({ relation, label, fields: relFields }) =>
+												relFields.length > 0 ? (
+													<SelectGroup key={relation}>
+														<SelectLabel>{label}</SelectLabel>
+														{relFields.map((f) => (
+															<SelectItem
+																key={`${relation}.${f.key}`}
+																value={`${relation}.${f.key}`}
+															>
+																{`${label} → ${f.label}`}
+															</SelectItem>
+														))}
+													</SelectGroup>
+												) : null
+											)}
 											{variableOptions.map((o) => (
 												<SelectItem
 													key={o.path}

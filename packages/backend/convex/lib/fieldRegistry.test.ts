@@ -5,6 +5,8 @@ import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
 	getFieldDefinition,
+	getFieldDefinitionForKey,
+	parseRelationKey,
 	getWritableFields,
 	getCreatableFields,
 	getFilterableFields,
@@ -421,5 +423,51 @@ describe("date/datetime split (C2-1)", () => {
 		expect(OPERATORS_BY_TYPE.datetime).toContain("on");
 		expect(operatorsForField("invoice", "paidAt")).toContain("on");
 		expect(operatorsForField("invoice", "dueDate")).toContain("on");
+	});
+});
+
+describe("relation-qualified field keys (C6)", () => {
+	it("parses a valid one-hop key into relation + related field", () => {
+		const parsed = parseRelationKey("project", "client.companyName");
+		expect(parsed?.relation).toBe("client");
+		expect(parsed?.fieldKey).toBe("companyName");
+		expect(parsed?.field.type).toBe("text");
+	});
+
+	it("an existing flat key never parses as a relation", () => {
+		expect(parseRelationKey("project", "clientId")).toBeUndefined();
+	});
+
+	it("rejects relations the object type does not have", () => {
+		// client has no outgoing relations at all.
+		expect(parseRelationKey("client", "project.title")).toBeUndefined();
+		// project has no quote relation.
+		expect(parseRelationKey("project", "quote.status")).toBeUndefined();
+	});
+
+	it("rejects unknown fields on the related type", () => {
+		expect(parseRelationKey("project", "client.notAField")).toBeUndefined();
+	});
+
+	it("line items reach only their direct parent", () => {
+		expect(parseRelationKey("quote_line_item", "quote.status")).toBeDefined();
+		expect(
+			parseRelationKey("quote_line_item", "client.companyName")
+		).toBeUndefined();
+	});
+
+	it("getFieldDefinitionForKey covers flat and relation forms", () => {
+		expect(getFieldDefinitionForKey("task", "title")?.key).toBe("title");
+		expect(getFieldDefinitionForKey("task", "client.companyName")?.type).toBe(
+			"text"
+		);
+		expect(getFieldDefinitionForKey("task", "client.nope")).toBeUndefined();
+	});
+
+	it("operatorsForField returns the related field's operators for dotted keys", () => {
+		expect(operatorsForField("project", "client.companyName")).toContain(
+			"contains"
+		);
+		expect(operatorsForField("project", "client.nope")).toEqual([]);
 	});
 });

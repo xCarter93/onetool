@@ -1172,3 +1172,137 @@ describe("formula resolution (formula.<id>)", () => {
 		expect(parseSpy).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("one-hop relation resolution (C6)", () => {
+	const scope: VariableScope = {
+		trigger: {
+			record: {
+				title: "Kitchen remodel",
+				clientId: "client123",
+				"weird.key": "flat wins",
+			},
+			related: {
+				client: { companyName: "Acme Co", status: "active" },
+				// A relation the hydrator looked up but found nothing for.
+				weird: null,
+			},
+		},
+		loops: {
+			loop1: {
+				item: { title: "Task A", projectId: "proj123" },
+				index: 0,
+				count: 2,
+				related: { project: { title: "Kitchen remodel" } },
+			},
+		},
+	};
+
+	it("resolves trigger.record.<relation>.<field> from hydrated related docs", () => {
+		expect(
+			resolveValueRef(
+				{ kind: "var", path: "trigger.record.client.companyName" },
+				scope
+			)
+		).toBe("Acme Co");
+	});
+
+	it("a flat field key containing a dot still wins over relation parsing", () => {
+		expect(
+			resolveValueRef({ kind: "var", path: "trigger.record.weird.key" }, scope)
+		).toBe("flat wins");
+	});
+
+	it("a null related record resolves undefined and takes the fallback", () => {
+		expect(
+			resolveValueRef(
+				{
+					kind: "var",
+					path: "trigger.record.weird.companyName",
+					fallback: "(none)",
+				},
+				scope
+			)
+		).toBe("(none)");
+	});
+
+	it("without hydrated relations the path resolves undefined (old snapshots)", () => {
+		const bare: VariableScope = {
+			trigger: { record: { title: "T" } },
+		};
+		expect(
+			resolveValueRef(
+				{ kind: "var", path: "trigger.record.client.companyName" },
+				bare
+			)
+		).toBeUndefined();
+	});
+
+	it("resolves loop.<id>.item.<relation>.<field>", () => {
+		expect(
+			resolveValueRef(
+				{ kind: "var", path: "loop.loop1.item.project.title" },
+				scope
+			)
+		).toBe("Kitchen remodel");
+	});
+
+	it("interpolates relation tokens in templates", () => {
+		expect(
+			interpolateTemplate("Client: {{trigger.record.client.companyName}}", scope)
+		).toBe("Client: Acme Co");
+	});
+
+	it("evaluateRule resolves a dotted rule.field via the related map", () => {
+		const record = { title: "Kitchen remodel", clientId: "client123" };
+		const related = { client: { companyName: "Acme Co" } };
+		expect(
+			evaluateRule(
+				rule("client.companyName", "equals", staticRef("Acme Co")),
+				record,
+				emptyScope,
+				"project",
+				related
+			)
+		).toBe(true);
+		expect(
+			evaluateRule(
+				rule("client.companyName", "equals", staticRef("Other Co")),
+				record,
+				emptyScope,
+				"project",
+				related
+			)
+		).toBe(false);
+	});
+
+	it("evaluateRule without a related map treats the dotted field as empty", () => {
+		const record = { title: "Kitchen remodel" };
+		expect(
+			evaluateRule(
+				rule("client.companyName", "is_empty"),
+				record,
+				emptyScope,
+				"project"
+			)
+		).toBe(true);
+	});
+
+	it("evaluateGroup threads related through to its rules", () => {
+		const group: ConditionGroup = {
+			logic: "and",
+			rules: [
+				rule("status", "equals", staticRef("planned")),
+				rule("client.companyName", "contains", staticRef("acme")),
+			],
+		};
+		expect(
+			evaluateGroup(
+				group,
+				{ status: "planned" },
+				emptyScope,
+				"project",
+				{ client: { companyName: "Acme Co" } }
+			)
+		).toBe(true);
+	});
+});

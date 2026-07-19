@@ -222,6 +222,56 @@ describe("getAvailableVariables", () => {
 		}
 	});
 
+	// C6: one-hop related-field traversal.
+	it("offers trigger.record.<relation>.<field> for the trigger object type's related objects", () => {
+		const target = actionNode("a1");
+		const projectTrigger: TriggerConfig = { type: "record_created", objectType: "project" };
+		const options = getAvailableVariables([target], projectTrigger, "a1");
+		const relationField = options.find(
+			(o) => o.path === "trigger.record.client.companyName"
+		);
+		expect(relationField).toEqual({
+			path: "trigger.record.client.companyName",
+			label: "Trigger → Client → Company Name",
+			group: "Trigger · Client",
+			fieldType: "text",
+			refType: undefined,
+			isArray: undefined,
+		});
+	});
+
+	it("does not offer a second hop through a related object's own relations", () => {
+		const target = actionNode("a1");
+		// invoice -> quote -> client is two hops from invoice; only the direct
+		// client/project/quote relations off invoice should appear.
+		const invoiceTrigger: TriggerConfig = { type: "record_created", objectType: "invoice" };
+		const options = getAvailableVariables([target], invoiceTrigger, "a1");
+		expect(
+			options.some((o) => o.path === "trigger.record.quote.client.companyName")
+		).toBe(false);
+		expect(options.some((o) => o.path === "trigger.record.quote.status")).toBe(true);
+	});
+
+	it("offers loop.<loopNodeId>.item.<relation>.<field> for the loop source's related objects", () => {
+		const fetch = fetchNode("f1", "task");
+		const loop = loopNode("loop1", "f1", { bodyStartNodeId: "body1" });
+		const bodyAction = actionNode("body1");
+		const nodes = [fetch, loop, bodyAction];
+
+		const options = getAvailableVariables(nodes, statusChangedTrigger, "body1");
+		const relationField = options.find(
+			(o) => o.path === "loop.loop1.item.client.companyName"
+		);
+		expect(relationField).toEqual({
+			path: "loop.loop1.item.client.companyName",
+			label: "Loop item → Client → Company Name",
+			group: "Loop item · Client",
+			fieldType: "text",
+			refType: undefined,
+			isArray: undefined,
+		});
+	});
+
 	it("offers a formula referencing only trigger fields anywhere, but not one referencing a loop item outside the loop", () => {
 		const fetch = fetchNode("f1", "project");
 		const loop = loopNode("loop1", "f1", { bodyStartNodeId: "body1" });
