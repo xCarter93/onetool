@@ -75,6 +75,16 @@ export function formatVariableToken(path: string, format: "text" | "formula"): s
 	return format === "formula" ? `{${path}}` : `{{${path}}}`;
 }
 
+/**
+ * Rows sit under their group heading ("Trigger · Client"), so drop the chained
+ * prefix and show only the final segment ("Company Name"). Full labels stay in
+ * the pickers, where rows can appear without group context (flat search).
+ */
+function shortLabel(label: string): string {
+	const idx = label.lastIndexOf(" → ");
+	return idx === -1 ? label : label.slice(idx + 3);
+}
+
 /** Order-preserving group of variable options by their `group` label. */
 function groupVariables(vars: VariableOption[]): [string, VariableOption[]][] {
 	const groups: [string, VariableOption[]][] = [];
@@ -318,7 +328,7 @@ export function WorkflowDrawer({
 	};
 
 	return (
-		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[280px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[320px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
 			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
 				<span className="text-sm font-semibold">Workflow</span>
 				<Button
@@ -407,7 +417,7 @@ export function WorkflowDrawer({
 														title={`Copy {{${v.path}}} — for text fields`}
 														className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-0 py-0.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 													>
-														<span className="flex-1 truncate text-sm">{v.label}</span>
+														<span className="flex-1 truncate text-sm">{shortLabel(v.label)}</span>
 														{v.fieldType && (
 															<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
 																{v.fieldType}

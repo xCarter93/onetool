@@ -2057,11 +2057,11 @@ const OBJECT_TYPE_TABLE: Record<
  * One-hop related-record fields for the formula editor's live preview (C6).
  * Additive alongside the individual per-type `.get` queries the modal already
  * calls for `trigger.record.<field>` — this supplies
- * `trigger.record.<relation>.<field>`. Read-only preview data already gated by
- * automations:view, so it stays permission-light: org-checked `ctx.db.get`
- * rather than the full per-entity RBAC scoping those `.get` queries do.
- * Capped at one hop via RELATED_OBJECTS (source record + up to
- * RELATED_OBJECTS[entityType].length relations — at most 3 gets total).
+ * `trigger.record.<relation>.<field>`. Mirrors those queries' full RBAC:
+ * per-entity read gates plus each entity's record-scope predicate, and returns
+ * only registry fields rather than whole docs. Capped at one hop via
+ * RELATED_OBJECTS (source record + up to RELATED_OBJECTS[entityType].length
+ * relations — at most 3 gets total).
  */
 export const getSampleRelatedFields = userQuery({
 	args: {
@@ -2085,19 +2085,68 @@ export const getSampleRelatedFields = userQuery({
 		// Per-entity read gates (shadow-aware), matching the per-type sample
 		// queries the modal already calls: a relation the caller can't view is
 		// simply omitted from the preview.
-		if (!(await ctx.gateRead(ENTITY_PERMISSION_OBJECT[args.entityType]!))) {
+		const sourcePermObj = ENTITY_PERMISSION_OBJECT[args.entityType];
+		if (!sourcePermObj || !(await ctx.gateRead(sourcePermObj))) {
 			return {};
 		}
+
+		// Record-scope mirror of each entity's own `.get` query, so the preview
+		// can't show a doc the caller couldn't open directly. requireRecordScope
+		// throws only when enforcement is on (shadow mode logs) — catch => omit.
+		const inRecordScope = async (
+			type: TriggerableObjectType,
+			doc: Record<string, unknown>
+		): Promise<boolean> => {
+			const permObj = ENTITY_PERMISSION_OBJECT[type];
+			if (!permObj) return false;
+			try {
+				await ctx.requireRecordScope(permObj, async () => {
+					switch (type) {
+						case "client":
+							return (await ctx.actorScope()).clientIds.has(
+								doc._id as Id<"clients">
+							);
+						case "project":
+							return (
+								(doc.assignedUserIds as Id<"users">[] | undefined)?.includes(
+									ctx.user._id
+								) ?? false
+							);
+						case "quote":
+						case "invoice": {
+							const s = await ctx.actorScope();
+							return doc.projectId
+								? s.projectIds.has(doc.projectId as Id<"projects">)
+								: s.clientIds.has(doc.clientId as Id<"clients">);
+						}
+						case "task":
+							return doc.assigneeUserId === ctx.user._id;
+					}
+				});
+				return true;
+			} catch {
+				return false;
+			}
+		};
 
 		const sourceTable = OBJECT_TYPE_TABLE[args.entityType];
 		const sourceId = ctx.db.normalizeId(sourceTable, args.entityId);
 		if (!sourceId) return {};
 		const source = await ctx.db.get(sourceId);
 		if (!source || source.orgId !== ctx.orgId) return {};
+		if (
+			!(await inRecordScope(
+				args.entityType,
+				source as unknown as Record<string, unknown>
+			))
+		) {
+			return {};
+		}
 
 		const result: Record<string, Record<string, unknown>> = {};
 		for (const relation of relations) {
-			if (!(await ctx.gateRead(ENTITY_PERMISSION_OBJECT[relation]!))) continue;
+			const relPermObj = ENTITY_PERMISSION_OBJECT[relation];
+			if (!relPermObj || !(await ctx.gateRead(relPermObj))) continue;
 			const fk = RELATION_FIELD[args.entityType]?.[relation];
 			if (!fk) continue;
 			let relatedRaw = (source as Record<string, unknown>)[fk];
@@ -2122,9 +2171,16 @@ export const getSampleRelatedFields = userQuery({
 			const relatedId = ctx.db.normalizeId(relatedTable, relatedRaw);
 			if (!relatedId) continue;
 			const doc = await ctx.db.get(relatedId);
-			if (doc && doc.orgId === ctx.orgId) {
-				result[relation] = doc as unknown as Record<string, unknown>;
+			if (!doc || doc.orgId !== ctx.orgId) continue;
+			const docRecord = doc as unknown as Record<string, unknown>;
+			if (!(await inRecordScope(relation, docRecord))) continue;
+			// Registry fields only — the preview resolves nothing else, and the
+			// raw doc can hold columns outside the automation surface.
+			const fields: Record<string, unknown> = {};
+			for (const key of Object.keys(docRecord)) {
+				if (getFieldDefinition(relation, key)) fields[key] = docRecord[key];
 			}
+			result[relation] = fields;
 		}
 		return result;
 	},

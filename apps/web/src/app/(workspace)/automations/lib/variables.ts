@@ -40,6 +40,11 @@ export type VariableOption = {
 	refType?: FieldDefinition["refType"];
 	/** The option holds an array — feeding it a single-valued field uses the first element. */
 	isArray?: boolean;
+	/**
+	 * Set on one-hop relation options — drives the picker's drill-down page.
+	 * key = the relation objectType (e.g. "client"), label = its display name.
+	 */
+	relation?: { key: string; label: string };
 };
 
 function childrenOf(node: WorkflowNode): string[] {
@@ -235,6 +240,7 @@ function relationVariableOptions(
 				fieldType: field.type,
 				refType: field.refType,
 				isArray: field.isArray,
+				relation: { key: relation, label: relationLabel },
 			});
 		}
 	}
@@ -484,6 +490,52 @@ export function getAvailableVariables(
 	}
 
 	return options;
+}
+
+/** A relation drill-down page: its group id, nav label ("Trigger → Client"), and fields. */
+export type VariableRelationPage = {
+	/** The option `group` this page collects (also the drill-down page id). */
+	id: string;
+	/** Nav-row + back-header label, e.g. "Trigger → Client". */
+	navLabel: string;
+	options: VariableOption[];
+};
+
+/**
+ * Splits variable options into the drill-down root (non-relation groups, in
+ * insertion order) and one navigable page per relation group. Pure, so the
+ * picker's page structure is testable without a DOM. Nav label derives from the
+ * group ("Trigger · Client") + the relation's own label.
+ */
+export function partitionVariableGroups(options: VariableOption[]): {
+	rootGroups: [string, VariableOption[]][];
+	relationPages: VariableRelationPage[];
+} {
+	const rootMap = new Map<string, VariableOption[]>();
+	const relMap = new Map<string, VariableRelationPage>();
+	for (const option of options) {
+		if (option.relation) {
+			let page = relMap.get(option.group);
+			if (!page) {
+				const prefix = option.group.split(" · ")[0];
+				page = {
+					id: option.group,
+					navLabel: `${prefix} → ${option.relation.label}`,
+					options: [],
+				};
+				relMap.set(option.group, page);
+			}
+			page.options.push(option);
+		} else {
+			const list = rootMap.get(option.group) ?? [];
+			list.push(option);
+			rootMap.set(option.group, list);
+		}
+	}
+	return {
+		rootGroups: Array.from(rootMap.entries()),
+		relationPages: Array.from(relMap.values()),
+	};
 }
 
 /**

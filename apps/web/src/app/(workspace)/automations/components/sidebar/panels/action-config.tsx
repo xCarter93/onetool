@@ -52,6 +52,7 @@ import {
 	PanelSection,
 } from "./panel-primitives";
 import { ValueInput, VariableInsertButton } from "./value-input";
+import { PickerChip } from "./picker-chip";
 
 function defaultConfig(objectType: AutomationObjectType): ActionNodeConfig {
 	const firstWritable = getWritableFields(objectType)[0];
@@ -274,7 +275,13 @@ function UpdateFieldsFields({
 										}
 									>
 										<SelectTrigger>
-											<SelectValue placeholder="Select field" />
+											{row.field ? (
+												<PickerChip label={fieldDef?.label ?? row.field} />
+											) : (
+												<span className="truncate text-muted-foreground">
+													Select field
+												</span>
+											)}
 										</SelectTrigger>
 										<SelectContent>
 											{writableFields.map((field) => (
@@ -533,7 +540,13 @@ function CreateRecordFields({
 										}
 									>
 										<SelectTrigger>
-											<SelectValue placeholder="Select field" />
+											{row.field ? (
+												<PickerChip label={fieldDef?.label ?? row.field} />
+											) : (
+												<span className="truncate text-muted-foreground">
+													Select field
+												</span>
+											)}
 										</SelectTrigger>
 										<SelectContent>
 											{availableFields.map((field) => (
@@ -890,7 +903,18 @@ function SendNotificationFields({
 								onValueChange={(field) => field && updateRecordFieldField(field)}
 							>
 								<SelectTrigger>
-									<SelectValue placeholder="Choose a field" />
+									{recordField.field ? (
+										<PickerChip
+											label={
+												fieldOptions.find((f) => f.key === recordField.field)
+													?.label ?? recordField.field
+											}
+										/>
+									) : (
+										<span className="truncate text-muted-foreground">
+											Choose a field
+										</span>
+									)}
 								</SelectTrigger>
 								<SelectContent>
 									{fieldOptions.map((f) => (

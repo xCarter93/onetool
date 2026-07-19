@@ -1,17 +1,26 @@
 "use client";
 
-import React from "react";
-import { Plus, X } from "lucide-react";
+import React, { useState } from "react";
+import { ChevronsUpDown, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
 	Select,
 	SelectContent,
-	SelectGroup,
 	SelectItem,
-	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+	VariableDrillList,
+	type DrillGroup,
+	type DrillPage,
+} from "./variable-drill-list";
 import {
 	MAX_CONDITION_GROUPS,
 	MAX_RULES_PER_GROUP,
@@ -31,6 +40,7 @@ import {
 	type WorkflowNode,
 } from "../../../lib/node-types";
 import { ValueInput } from "./value-input";
+import { PickerChip } from "./picker-chip";
 import { OPERATOR_LABELS } from "../../../lib/condition-sentence";
 import type { VariableOption } from "../../../lib/variables";
 
@@ -66,6 +76,130 @@ function emptyVariableRule(path: string): ConditionRule {
 		operator: "equals",
 		value: { kind: "static", value: "" },
 	};
+}
+
+type FilterableFields = ReturnType<typeof getFilterableFields>;
+
+type RelationFieldGroup = {
+	relation: AutomationObjectType;
+	label: string;
+	fields: FilterableFields;
+};
+
+/**
+ * The rule's left-side field selector, as a drill-down (own fields + one page
+ * per relation) plus the `var:`-prefixed step-result options. Stores the exact
+ * same string the old Select emitted — a field key, `<relation>.<fieldKey>`, or
+ * `var:<path>` — so saved definitions are unchanged; only the UI differs.
+ */
+function FieldPicker({
+	objectType,
+	fields,
+	relationFieldGroups,
+	variableOptions,
+	value,
+	onSelect,
+}: {
+	objectType: AutomationObjectType | null;
+	fields: FilterableFields;
+	relationFieldGroups: RelationFieldGroup[];
+	variableOptions: VariableOption[];
+	value: string;
+	onSelect: (next: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+
+	const label = (() => {
+		if (value.startsWith(VAR_PREFIX)) {
+			const path = value.slice(VAR_PREFIX.length);
+			return variableOptions.find((o) => o.path === path)?.label ?? path;
+		}
+		const dot = value.indexOf(".");
+		if (dot > 0) {
+			const rel = value.slice(0, dot);
+			const key = value.slice(dot + 1);
+			const group = relationFieldGroups.find((g) => g.relation === rel);
+			const field = group?.fields.find((f) => f.key === key);
+			if (group && field) return `${group.label} → ${field.label}`;
+		}
+		return fields.find((f) => f.key === value)?.label ?? value;
+	})();
+
+	const pick = (next: string) => {
+		onSelect(next);
+		setOpen(false);
+	};
+
+	const rootGroups: DrillGroup[] = [];
+	if (fields.length > 0) {
+		rootGroups.push({
+			id: "__fields__",
+			heading: objectType ? OBJECT_TYPE_LABELS[objectType] : undefined,
+			items: fields.map((f) => ({
+				id: f.key,
+				value: f.label,
+				label: f.label,
+				onSelect: () => pick(f.key),
+			})),
+		});
+	}
+	if (variableOptions.length > 0) {
+		rootGroups.push({
+			id: "__vars__",
+			heading: "Step results",
+			items: variableOptions.map((o) => ({
+				id: `${VAR_PREFIX}${o.path}`,
+				value: `${o.group} ${o.label}`,
+				label: o.label,
+				onSelect: () => pick(`${VAR_PREFIX}${o.path}`),
+			})),
+		});
+	}
+
+	const pages: DrillPage[] = relationFieldGroups
+		.filter((g) => g.fields.length > 0)
+		.map((g) => ({
+			id: g.relation,
+			navLabel: g.label,
+			items: g.fields.map((f) => ({
+				id: `${g.relation}.${f.key}`,
+				value: `${g.label} ${f.label}`,
+				label: `${g.label} → ${f.label}`,
+				onSelect: () => pick(`${g.relation}.${f.key}`),
+			})),
+		}));
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger
+				render={
+					<Button
+						variant="outline"
+						className={cn(
+							"w-full justify-between font-normal",
+							!value && "text-muted-foreground"
+						)}
+					/>
+				}
+			>
+				{value ? (
+					<PickerChip label={label} />
+				) : (
+					<span className="truncate">Select field</span>
+				)}
+				<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+			</PopoverTrigger>
+			<PopoverContent align="start" className="w-80 p-0">
+				<VariableDrillList
+					rootGroups={rootGroups}
+					pages={pages}
+					open={open}
+					emptyText="No fields available."
+					placeholder="Search fields..."
+				/>
+			</PopoverContent>
+		</Popover>
+	);
 }
 
 export interface FilterGroupsEditorProps {
@@ -256,11 +390,15 @@ export function FilterGroupsEditor({
 						return (
 							<div key={ruleIndex} className="flex items-start gap-2">
 								<div className="flex-1 space-y-2">
-									<Select
+									<FieldPicker
+										objectType={objectType}
+										fields={fields}
+										relationFieldGroups={relationFieldGroups}
+										variableOptions={variableOptions}
 										value={
 											variableLeft ? `${VAR_PREFIX}${variableLeft.path}` : rule.field
 										}
-										onValueChange={(next) => {
+										onSelect={(next) => {
 											if (!next) return;
 											if (next.startsWith(VAR_PREFIX)) {
 												updateRule(
@@ -280,41 +418,7 @@ export function FilterGroupsEditor({
 													: { kind: "static", value: "" },
 											});
 										}}
-									>
-										<SelectTrigger>
-											<SelectValue placeholder="Field" />
-										</SelectTrigger>
-										<SelectContent>
-											{fields.map((f) => (
-												<SelectItem key={f.key} value={f.key}>
-													{f.label}
-												</SelectItem>
-											))}
-											{relationFieldGroups.map(({ relation, label, fields: relFields }) =>
-												relFields.length > 0 ? (
-													<SelectGroup key={relation}>
-														<SelectLabel>{label}</SelectLabel>
-														{relFields.map((f) => (
-															<SelectItem
-																key={`${relation}.${f.key}`}
-																value={`${relation}.${f.key}`}
-															>
-																{`${label} → ${f.label}`}
-															</SelectItem>
-														))}
-													</SelectGroup>
-												) : null
-											)}
-											{variableOptions.map((o) => (
-												<SelectItem
-													key={o.path}
-													value={`${VAR_PREFIX}${o.path}`}
-												>
-													{o.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									/>
 
 									<Select
 										value={rule.operator}

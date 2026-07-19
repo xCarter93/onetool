@@ -755,4 +755,68 @@ describe("granular RBAC domain-function gating", () => {
 			asMember.query(api.homeStats.getJourneyProgress, {})
 		).resolves.toMatchObject({ hasClient: false });
 	});
+
+	// ── getSampleRelatedFields: record scope + registry-field filtering ──
+
+	it("enforced: related-fields preview omits relations outside the member's record scope", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
+			"org_srf_1",
+			"user_srf_1"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			automations: { level: "view" },
+			tasks: { level: "view" },
+			clients: { level: "view" },
+		});
+
+		const clientId = await asAdmin.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName: "Scoped Co",
+			status: "active",
+		});
+		// Assigned to the member (source task in scope), but the client hangs
+		// off no project the member is assigned to — outside their derived scope.
+		const taskId = await asAdmin.mutation(api.tasks.create, {
+			title: "External visit",
+			type: "external",
+			clientId,
+			assigneeUserId: member.userId,
+			date: Date.now(),
+			status: "pending",
+		});
+
+		const result = await asMember.query(api.automations.getSampleRelatedFields, {
+			entityType: "task",
+			entityId: taskId,
+		});
+		expect(result.client).toBeUndefined();
+	});
+
+	it("related-fields preview returns registry fields only, not whole docs", async () => {
+		const { asAdmin } = await seedOrgWithMember("org_srf_2", "user_srf_2");
+
+		const clientId = await asAdmin.mutation(api.clients.create, {
+			portalAccessId: crypto.randomUUID(),
+			companyName: "Registry Co",
+			status: "active",
+		});
+		const taskId = await asAdmin.mutation(api.tasks.create, {
+			title: "External visit",
+			type: "external",
+			clientId,
+			date: Date.now(),
+			status: "pending",
+		});
+
+		const result = await asAdmin.query(api.automations.getSampleRelatedFields, {
+			entityType: "task",
+			entityId: taskId,
+		});
+		expect(result.client?.companyName).toBe("Registry Co");
+		// Non-registry columns must not leak into the preview payload.
+		expect(result.client?.portalAccessId).toBeUndefined();
+		expect(result.client?._id).toBeUndefined();
+	});
 });
+

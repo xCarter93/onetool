@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity, addMemberToOrg } from "./test.helpers";
 import { api, internal } from "./_generated/api";
-import { isFatalExecutionError, scanOrgRows } from "./automationExecutor";
+import {
+	hydrateRelations,
+	isFatalExecutionError,
+	scanOrgRows,
+} from "./automationExecutor";
 import { projectCountsAggregate } from "./aggregates";
 import { LOOP_FETCH_ONLY_ERROR } from "./lib/workflowTypes";
 import type { Id } from "./_generated/dataModel";
@@ -6672,6 +6676,50 @@ describe("automationExecutor (v2 engine)", () => {
 			});
 			return { clientId, projectId };
 		}
+
+		it("hydration cache keeps later rows free once the fetch budget gate would trip", async () => {
+			const { asUser } = await setupUser();
+			const { projectId } = await createClientWithProject(asUser, "Shared Co");
+
+			await t.run(async (ctx) => {
+				const project = await ctx.db.get(projectId);
+				if (!project) throw new Error("project missing");
+				const cache = new Map<string, Record<string, unknown> | null>();
+				let fetches = 0;
+				const first = await hydrateRelations(
+					ctx,
+					project.orgId,
+					"project",
+					project as unknown as Record<string, unknown>,
+					["client"],
+					cache,
+					() => {
+						fetches += 1;
+					}
+				);
+				expect(
+					(first?.client as Record<string, unknown> | null)?.companyName
+				).toBe("Shared Co");
+				expect(fetches).toBe(1);
+
+				// A later row referencing the same client: the shared-pool gate
+				// would throw on any real read, but a cache hit never invokes it.
+				const second = await hydrateRelations(
+					ctx,
+					project.orgId,
+					"project",
+					project as unknown as Record<string, unknown>,
+					["client"],
+					cache,
+					() => {
+						throw new Error("budget exhausted");
+					}
+				);
+				expect(
+					(second?.client as Record<string, unknown> | null)?.companyName
+				).toBe("Shared Co");
+			});
+		});
 
 		it("interpolates trigger.record.<relation>.<field> in notification messages", async () => {
 			const { asUser } = await setupUser();

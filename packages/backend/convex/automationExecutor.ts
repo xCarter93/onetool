@@ -2409,10 +2409,14 @@ async function runFetchNode(
 			MAX_FETCH_LIMIT
 		);
 		// Relation-qualified filter fields ("client.companyName") hydrate the
-		// related doc per row (memoized per run); each hydration read consumes
-		// the same scan budget as a scanned row.
+		// related doc per row (memoized per run). Rows and hydrations draw from
+		// ONE read pool: each scanned row and each hydration cache miss costs a
+		// unit. A miss past the pool fails loudly instead of brushing Convex's
+		// per-transaction read limits; cache hits stay free even after the pool
+		// is spent, so late rows sharing an already-hydrated relation still match.
 		const dottedRelations = dottedRuleFieldCandidates(config.filters);
 		let hydrationReads = 0;
+		let rowsSeen = 0;
 		const scanAllowance = Math.min(
 			FETCH_SCAN_CEILING,
 			Math.max(env.fetchScanBudget, 0)
@@ -2423,14 +2427,7 @@ async function runFetchNode(
 			env.orgId,
 			{
 				predicate: async (row) => {
-					// Hydration reads get their own allowance equal to the row scan's;
-					// past it the fetch fails loudly instead of brushing Convex's
-					// per-transaction read limits mid-scan.
-					if (hydrationReads >= scanAllowance) {
-						throw new Error(
-							"This filter reads too many related records — narrow the filter or add more specific conditions"
-						);
-					}
+					rowsSeen += 1;
 					const related =
 						dottedRelations.size > 0
 							? await hydrateRelations(
@@ -2441,6 +2438,11 @@ async function runFetchNode(
 									dottedRelations,
 									env.relationCache,
 									() => {
+										if (rowsSeen + hydrationReads >= scanAllowance) {
+											throw new Error(
+												"This filter reads too many related records — narrow the filter or add more specific conditions"
+											);
+										}
 										hydrationReads += 1;
 									}
 								)
@@ -2706,7 +2708,7 @@ async function getObject(
  * once. `onFetch` fires per cache miss (fetch-filter scan-budget accounting).
  * The indirect client-via-project resolution matches resolveTargetV2.
  */
-async function hydrateRelations(
+export async function hydrateRelations(
 	ctx: { db: QueryCtx["db"] },
 	orgId: Id<"organizations">,
 	objectType: AutomationObjectType,

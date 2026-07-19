@@ -4,6 +4,7 @@ import {
 	getAvailableVariables,
 	getScopeObjectType,
 	getUpstreamFetchNodes,
+	partitionVariableGroups,
 } from "./variables";
 import type {
 	FetchNodeConfig,
@@ -237,7 +238,11 @@ describe("getAvailableVariables", () => {
 			fieldType: "text",
 			refType: undefined,
 			isArray: undefined,
+			relation: { key: "client", label: "Client" },
 		});
+		// Non-relation options carry no `relation` marker.
+		const ownField = options.find((o) => o.path === "trigger.record.title");
+		expect(ownField?.relation).toBeUndefined();
 	});
 
 	it("does not offer a second hop through a related object's own relations", () => {
@@ -269,6 +274,7 @@ describe("getAvailableVariables", () => {
 			fieldType: "text",
 			refType: undefined,
 			isArray: undefined,
+			relation: { key: "client", label: "Client" },
 		});
 	});
 
@@ -348,6 +354,34 @@ describe("getAllVariableOptions", () => {
 
 		const all = getAllVariableOptions([target], statusChangedTrigger, formulas);
 		expect(all.some((o) => o.path === "formula.loopItem")).toBe(true);
+	});
+});
+
+describe("partitionVariableGroups", () => {
+	it("splits own-field groups from one navigable page per relation", () => {
+		const target = actionNode("a1");
+		const projectTrigger: TriggerConfig = {
+			type: "record_created",
+			objectType: "project",
+		};
+		const options = getAvailableVariables([target], projectTrigger, "a1");
+		const { rootGroups, relationPages } = partitionVariableGroups(options);
+
+		// Relation options never leak into the root groups.
+		expect(rootGroups.every(([, opts]) => opts.every((o) => !o.relation))).toBe(
+			true
+		);
+		// The trigger's own fields stay at root.
+		expect(rootGroups.some(([group]) => group === "Trigger")).toBe(true);
+
+		const clientPage = relationPages.find((p) => p.id === "Trigger · Client");
+		expect(clientPage?.navLabel).toBe("Trigger → Client");
+		expect(clientPage?.options.length).toBeGreaterThan(0);
+		expect(
+			clientPage?.options.some(
+				(o) => o.path === "trigger.record.client.companyName"
+			)
+		).toBe(true);
 	});
 });
 
