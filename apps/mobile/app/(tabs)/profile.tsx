@@ -6,7 +6,8 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card } from "@/components/ui";
-import { Mail, Building, LogOut, Shield, Trash2 } from "lucide-react-native";
+import { useRouter, type Href } from "expo-router";
+import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight } from "lucide-react-native";
 import { AppHeader } from "@/components/app-header";
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
@@ -21,6 +22,7 @@ export default function ProfileScreen({
 } = {}) {
 	const { user } = useUser();
 	const { signOut } = useAuth();
+	const router = useRouter();
 	const { organization, membership } = useOrganization();
 	const t = useTokens();
 	const isPane = headerMode === "pane";
@@ -243,6 +245,39 @@ export default function ProfileScreen({
 						</View>
 					)}
 				</Card>
+
+				{/* Business details — owner only (backend gates the save to the owner).
+				    Edits the existing org's profile; never creates an org. */}
+				{isOwner && (
+					<Pressable
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							paddingVertical: 16,
+							paddingHorizontal: 16,
+							borderRadius: radii.lg,
+							marginTop: 24,
+							backgroundColor: t.card,
+							borderWidth: 1,
+							borderColor: t.line,
+						}}
+						onPress={() => router.push("/business-details" as Href)}
+					>
+						<SquarePen size={20} color={t.sub} />
+						<Text
+							style={{
+								marginLeft: 12,
+								flex: 1,
+								color: t.ink,
+								fontFamily: fontFamily.semibold,
+								fontSize: 13,
+							}}
+						>
+							Business details
+						</Text>
+						<ChevronRight size={18} color={t.sub} />
+					</Pressable>
+				)}
 
 				{/* Sign Out Button */}
 				<Pressable

@@ -28,7 +28,7 @@ export default function AuthRoutesLayout() {
 		return null;
 	}
 
-	// Signed in: route off the enriched decision (tabs, or the wizard when
+	// Signed in: route off the enriched decision (tabs, or the setup screen when
 	// there's no active org / metadata is incomplete) — never a bare /(tabs).
 	if (isSignedInBool) {
 		return <Redirect href={dest as Href} />;

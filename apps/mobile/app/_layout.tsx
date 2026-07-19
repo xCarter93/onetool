@@ -223,6 +223,9 @@ export default function RootLayout() {
 							    origin tab (client/project/money), not the Money stack. */}
 							<Stack.Screen name="quote/[id]" />
 							<Stack.Screen name="invoice/[id]" />
+							{/* Owner-only business-profile editor (reached from Home
+							    prompt + Profile). Root-level so back returns to origin. */}
+							<Stack.Screen name="business-details" />
 							<Stack.Screen
 								name="org-switch"
 								options={overlayOptions(device, {

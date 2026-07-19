@@ -24,6 +24,7 @@ import {
 	ListRow,
 } from "@/components/ui";
 import { JourneyCard } from "@/components/JourneyCard";
+import { SetupPrompt } from "@/components/SetupPrompt";
 import { formatCurrency } from "@/lib/format";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import {
@@ -317,6 +318,10 @@ export default function HomeScreen({
 						<SegmentedToggle value={viewMode} onChange={setViewMode} />
 					</View>
 				</View>
+
+				{/* Owner-only nudge to finish the org's business profile; self-gates
+				    (renders null unless owner + metadata incomplete). */}
+				<SetupPrompt />
 
 				{viewMode === "dashboard" ? (
 					(() => {
