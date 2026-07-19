@@ -394,7 +394,7 @@ export default function MemberAccessPage() {
 			<div className="flex min-h-[50vh] items-center justify-center p-6">
 				<EmptyState
 					size="md"
-					illustration="app-error"
+					illustration="access-restricted"
 					title="Admin access required"
 					description="Only organization admins can manage member access."
 				/>

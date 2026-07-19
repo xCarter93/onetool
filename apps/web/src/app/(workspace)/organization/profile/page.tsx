@@ -323,7 +323,7 @@ export default function OrganizationProfilePage() {
 									<div className="flex min-h-[40vh] items-center justify-center">
 										<EmptyState
 											size="md"
-											illustration="app-error"
+											illustration="access-restricted"
 											title="You don't have access to this area"
 											description={
 												activeTab === "team"

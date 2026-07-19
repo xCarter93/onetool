@@ -232,12 +232,7 @@ export function PaymentScheduleTab({
 						size="md"
 						illustration="payments-none"
 						title="No payments configured"
-						action={
-							<Button variant="outline" size="sm" onClick={onConfigurePayments}>
-								<Settings className="h-4 w-4" />
-								Configure Payments
-							</Button>
-						}
+						description="Use Configure above to split this invoice into scheduled payments."
 					/>
 				)}
 			</div>

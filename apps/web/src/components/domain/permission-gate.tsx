@@ -40,7 +40,7 @@ export function PermissionGate({
 				<div className="flex min-h-[50vh] items-center justify-center p-6">
 					<EmptyState
 						size="md"
-						illustration="app-error"
+						illustration="access-restricted"
 						title="You don't have access to this area"
 						description="Ask an organization admin to grant you access from the team settings."
 					/>

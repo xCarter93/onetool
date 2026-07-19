@@ -789,7 +789,10 @@
 	opacity: 0.32;
 }
 
-/* --- strokes --- */
+/* --- strokes ---
+   These set stroke-width, so a per-shape override must be an inline `style`,
+   not a bare strokeWidth/opacity attribute — a class rule beats any
+   presentation attribute regardless of source order. */
 .ot-illo .illo-outline {
 	fill: none;
 	stroke: var(--illo-line);

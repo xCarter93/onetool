@@ -68,6 +68,7 @@ export const illustrations = {
 	// --- Line art: concept & object states ---
 	"client-properties-none": {
 		md: Line.ClientPropertiesNone,
+		sm: Compact.ClientPropertiesNoneSm,
 	},
 	"quote-approval-none": {
 		md: Line.QuoteApprovalNone,
@@ -81,12 +82,17 @@ export const illustrations = {
 	},
 	"messages-none": {
 		md: Line.MessagesNone,
+		sm: Compact.MessagesNoneSm,
 	},
 	"documents-none": {
 		md: Line.DocumentsNone,
 	},
 	"select-conversation": {
 		md: Line.SelectConversation,
+	},
+	/** Permission gates — a restricted state, never the destructive app-error art. */
+	"access-restricted": {
+		md: Line.AccessRestricted,
 	},
 	"app-error": {
 		md: Line.AppError,

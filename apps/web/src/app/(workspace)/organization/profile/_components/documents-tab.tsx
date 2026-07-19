@@ -270,18 +270,6 @@ export function DocumentsTab() {
 						size="md"
 						title="No documents uploaded yet"
 						description="Keep licences, insurance certificates and W-9s here so they're on hand when a client asks."
-						action={
-							canUpload ? (
-								<Button
-									variant="outline"
-									onClick={() => fileInputRef.current?.click()}
-									disabled={isUploading}
-								>
-									<Upload className="size-4" />
-									Upload document
-								</Button>
-							) : undefined
-						}
 					/>
 				</div>
 			) : (
