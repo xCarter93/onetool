@@ -42,8 +42,9 @@ export default function TabLayout() {
     return <Redirect href="/(auth)" />;
   }
 
-  // Defensive gate: a signed-in user with no active org / incomplete metadata
-  // resolves to the setup screen — never let them fall through to blank tabs.
+  // Defensive gate: a signed-in user with no active org resolves to the setup
+  // screen — never let them fall through to blank tabs. (Incomplete metadata no
+  // longer routes here; that user reaches tabs and is nudged by the Home prompt.)
   if (dest === SETUP_ROUTE) {
     return <Redirect href={dest as Href} />;
   }

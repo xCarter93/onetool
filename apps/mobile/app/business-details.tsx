@@ -122,6 +122,36 @@ export default function BusinessDetailsScreen() {
 		);
 	}
 
+	// No active org (get() returns null, e.g. deep-linked here without one). This
+	// is a routing dead-end, NOT an authorization failure — say so accurately
+	// rather than falling through to the owner-only message below.
+	if (org === null) {
+		return (
+			<View
+				style={[
+					styles.screen,
+					styles.center,
+					{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
+				]}
+			>
+				<View style={styles.box}>
+					<Text style={styles.title}>Business details</Text>
+					<Text style={styles.mutedBody}>
+						No active workspace. Open one first, then edit its business details.
+					</Text>
+					<View style={styles.cta}>
+						<StyledButton
+							intent="outline"
+							label="Back"
+							showArrow={false}
+							onPress={() => router.back()}
+						/>
+					</View>
+				</View>
+			</View>
+		);
+	}
+
 	// Defensive: entry points are owner-gated, but block a non-owner who reaches
 	// this route directly — only the owner can save (backend enforces it too).
 	if (!isOwner) {

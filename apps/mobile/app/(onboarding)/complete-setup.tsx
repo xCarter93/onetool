@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -33,21 +33,27 @@ export default function CompleteSetupScreen() {
 	// this effect no-ops via the !activeOrg guard — no activation loop.
 	const attemptedRef = useRef(false);
 	const [activationFailed, setActivationFailed] = useState(false);
+	const [signingOut, setSigningOut] = useState(false);
 
 	// Activate an existing membership when the session has none active. Mirrors
-	// the wizard's membership-activation path (async work + state set live in an
-	// IIFE, not the effect body — apps/mobile lints sync setState-in-effect).
+	// the wizard's membership-activation path (async work + state set live in a
+	// callback, not the effect body — apps/mobile lints sync setState-in-effect).
+	// Shared by the one-shot auto-attempt and the manual Retry.
+	const activateFirstMembership = useCallback(async () => {
+		if (!firstOrgId || !setActive) return;
+		setActivationFailed(false);
+		try {
+			await setActive({ organization: firstOrgId });
+		} catch {
+			setActivationFailed(true);
+		}
+	}, [firstOrgId, setActive]);
+
 	useEffect(() => {
 		if (!listLoaded || activeOrg || !firstOrgId || attemptedRef.current) return;
 		attemptedRef.current = true;
-		void (async () => {
-			try {
-				if (setActive) await setActive({ organization: firstOrgId });
-			} catch {
-				setActivationFailed(true);
-			}
-		})();
-	}, [listLoaded, activeOrg, firstOrgId, setActive]);
+		void activateFirstMembership();
+	}, [listLoaded, activeOrg, firstOrgId, activateFirstMembership]);
 
 	// Once an active org exists, this user belongs in the app. Metadata no longer
 	// gates tabs, so navigate unconditionally (routing won't bounce back here).
@@ -57,13 +63,27 @@ export default function CompleteSetupScreen() {
 		}
 	}, [activeOrg, router]);
 
-	// Show the "finish in the web app" dead-end only when we're certain there's
-	// nothing to resolve in-app: no active org and no membership to activate (or
-	// activation failed). Everything else is a transient → spinner.
-	const isDeadEnd =
-		listLoaded && !activeOrg && (!firstOrgId || activationFailed);
+	async function handleSignOut() {
+		setSigningOut(true);
+		try {
+			await signOut();
+		} catch {
+			// Sign-out is this screen's only exit — a silently swallowed failure
+			// would strand the user. Re-enable the button so they can retry.
+			setSigningOut(false);
+		}
+	}
 
-	if (!isDeadEnd) {
+	// A member whose activation failed still HAS an org (transient failure, e.g.
+	// network) — offer Retry, not the web-setup dead-end.
+	const activationError =
+		listLoaded && !activeOrg && Boolean(firstOrgId) && activationFailed;
+	// No membership to activate at all → finish setup in the web app.
+	const noMembership = listLoaded && !activeOrg && !firstOrgId;
+
+	// Anything else (including the moment between a Retry and its result) is a
+	// transient → spinner.
+	if (!activationError && !noMembership) {
 		return (
 			<View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
 				<Text style={styles.body}>Loading your workspace…</Text>
@@ -80,17 +100,29 @@ export default function CompleteSetupScreen() {
 			]}
 		>
 			<View style={styles.box}>
-				<Text style={styles.title}>Almost there</Text>
+				<Text style={styles.title}>
+					{activationError ? "Couldn't open your workspace" : "Almost there"}
+				</Text>
 				<Text style={styles.body}>
-					Finish setting up your business in the OneTool web app, then sign in
-					here to get started.
+					{activationError
+						? "Check your connection and try again."
+						: "Finish setting up your business in the OneTool web app, then sign in here to get started."}
 				</Text>
 				<View style={styles.cta}>
+					{activationError ? (
+						<StyledButton
+							intent="primary"
+							label="Try again"
+							showArrow={false}
+							onPress={activateFirstMembership}
+						/>
+					) : null}
 					<StyledButton
 						intent="outline"
 						label="Sign out"
 						showArrow={false}
-						onPress={() => signOut()}
+						isLoading={signingOut}
+						onPress={handleSignOut}
 					/>
 				</View>
 			</View>
@@ -129,5 +161,6 @@ const styles = StyleSheet.create({
 	cta: {
 		marginTop: spacing.lg,
 		alignSelf: "stretch",
+		gap: spacing.sm,
 	},
 });

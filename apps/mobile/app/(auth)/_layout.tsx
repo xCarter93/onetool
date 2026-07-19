@@ -29,7 +29,7 @@ export default function AuthRoutesLayout() {
 	}
 
 	// Signed in: route off the enriched decision (tabs, or the setup screen when
-	// there's no active org / metadata is incomplete) — never a bare /(tabs).
+	// there's no active org) — never a bare /(tabs).
 	if (isSignedInBool) {
 		return <Redirect href={dest as Href} />;
 	}
