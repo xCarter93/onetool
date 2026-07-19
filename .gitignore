@@ -67,3 +67,4 @@ skills-lock.json
 apps/mobile/APP-STORE-SUBMISSION.md
 
 graphify-out/
+.env.local
