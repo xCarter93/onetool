@@ -4,7 +4,7 @@ import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { FieldKitTabBar } from "@/components/field-kit-tab-bar";
-import { resolveAuthDestination } from "@/lib/postAuthRouting";
+import { resolveAuthDestination, SETUP_ROUTE } from "@/lib/postAuthRouting";
 import { useDevice } from "@/lib/use-device";
 import { IpadShell } from "@/components/ipad/ipad-shell";
 
@@ -42,9 +42,10 @@ export default function TabLayout() {
     return <Redirect href="/(auth)" />;
   }
 
-  // Defensive gate: a signed-in user with no active org / incomplete metadata
-  // resolves to the wizard — never let them fall through to blank tabs.
-  if (dest === "/(onboarding)/create-organization") {
+  // Defensive gate: a signed-in user with no active org resolves to the setup
+  // screen — never let them fall through to blank tabs. (Incomplete metadata no
+  // longer routes here; that user reaches tabs and is nudged by the Home prompt.)
+  if (dest === SETUP_ROUTE) {
     return <Redirect href={dest as Href} />;
   }
 

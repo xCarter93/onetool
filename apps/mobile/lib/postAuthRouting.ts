@@ -18,7 +18,12 @@ export type AuthRoutingState = {
 
 // The (auth) group index host (Clerk AuthView). The signed-out destination.
 const SIGN_IN = "/(auth)";
-const WIZARD = "/(onboarding)/create-organization";
+// Post-auth "finish setup" screen. The mobile app is SIGN-IN ONLY (Apple 3.1.1):
+// it no longer creates organizations. This screen activates an existing
+// membership when the session has none active, and otherwise tells a user with
+// no complete org to finish setup in the web app. Exported so the tabs layout
+// can match it without duplicating the route string.
+export const SETUP_ROUTE = "/(onboarding)/complete-setup";
 const TABS = "/(tabs)";
 const LOADING = "loading";
 
@@ -31,20 +36,19 @@ export function resolveAuthDestination(state: AuthRoutingState): string {
 	// hooks stay unloaded without an active user, which otherwise hangs the auth
 	// layout on a permanent "loading" (blank screen) after sign-out.
 	if (!state.isSignedIn) return SIGN_IN;
-	// Signed in: wait for org context before choosing tabs vs wizard, else a
-	// transiently-null active org flashes the wizard.
+	// Signed in: wait for org context before choosing tabs vs setup, else a
+	// transiently-null active org flashes the setup screen.
 	if (!state.orgLoaded) return LOADING;
 
-	if (state.hasActiveOrg) {
-		// metadata still resolving — avoid a premature tabs/wizard flash
-		if (state.needsMetadata === undefined) return LOADING;
-		// active org but metadata incomplete -> resume the wizard, never tabs
-		if (state.needsMetadata === true) return WIZARD;
-		return TABS;
-	}
+	// Any active org goes straight to tabs. Incomplete org metadata no longer
+	// gates entry — the Home "finish setup" prompt (owner-only) drives the in-app
+	// Business details editor instead. `needsMetadata` stays on the state for
+	// callers but is intentionally NOT a routing gate anymore.
+	if (state.hasActiveOrg) return TABS;
 
-	// Signed in, no active org: existing members (membershipCount>0) and
-	// brand-new users both go to the wizard. The wizard detects existing
-	// memberships and sets one active rather than creating a duplicate org.
-	return WIZARD;
+	// Signed in, no active org: existing members and brand-new accounts both go
+	// to the setup screen. It activates the first existing membership when there
+	// is one, and otherwise directs the user to finish setup in the web app —
+	// org creation is web-only now (sign-in-only app, Apple 3.1.1).
+	return SETUP_ROUTE;
 }

@@ -24,8 +24,8 @@ export default function Index() {
 	});
 
 	// "loading" sentinel: orgs/metadata still resolving — hold the splash, do
-	// NOT redirect. A signed-in no-org user resolves to the wizard, never a
-	// /(tabs) flash on cold start.
+	// NOT redirect. A signed-in no-org user resolves to the setup screen, never
+	// a /(tabs) flash on cold start.
 	if (dest === "loading") {
 		return (
 			<View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>

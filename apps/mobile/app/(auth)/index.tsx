@@ -5,6 +5,9 @@ import { useDevice } from "@/lib/use-device";
 
 // Themed AuthView host. Routing after auth is the layout's job: (auth)/_layout
 // reacts to the verified session and <Redirect>s — this host owns no callback.
+// mode="signIn": the app is SIGN-IN ONLY (Apple 3.1.1) — no in-app account or
+// organization registration. Account sign-up and business setup live in the web
+// app; this screen only authenticates users who already have an account.
 export default function AuthScreen() {
 	const { device } = useDevice();
 	const isPad = device === "ipad";
@@ -15,7 +18,7 @@ export default function AuthScreen() {
 			    phone flex column, a fixed minHeight inside the content-sized iPad
 			    card (a flex:1 child of a content-sized box collapses to 0). */}
 			<View style={isPad ? { minHeight: 480 } : { flex: 1 }}>
-				<AuthView mode="signInOrUp" isDismissible={false} />
+				<AuthView mode="signIn" isDismissible={false} />
 			</View>
 		</AuthScreenShell>
 	);
