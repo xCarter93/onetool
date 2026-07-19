@@ -10,6 +10,12 @@ vi.mock("@ai-sdk/openai", () => ({
 	openai: vi.fn(() => "mock-model"),
 }));
 
+// Stub the analytics dependency so importing the module under test does not
+// pull in @/env (which validates NEXT_PUBLIC_* vars absent from the test env).
+vi.mock("@/lib/posthog-server", () => ({
+	getPostHogServer: () => ({ captureImmediate: vi.fn() }),
+}));
+
 import { generateText } from "ai";
 import { mapCsvSchema } from "./csv-analysis";
 
@@ -116,6 +122,7 @@ describe("mapCsvSchema (LLM-powered)", () => {
 	it("Test 1: returns enriched mappings with dataType, isRequired, and sampleValue from schema when generateText returns valid mappings", async () => {
 		mockedGenerateText.mockResolvedValueOnce({
 			output: validLlmResponse,
+			usage: { inputTokens: 100, outputTokens: 50 },
 		} as never);
 
 		const result = await mapCsvSchema({
@@ -156,6 +163,7 @@ describe("mapCsvSchema (LLM-powered)", () => {
 	it("Test 2: moves column to unmappedColumns when LLM returns a schemaField that does not exist in CLIENT_SCHEMA_FIELDS", async () => {
 		mockedGenerateText.mockResolvedValueOnce({
 			output: responseWithInvalidField,
+			usage: { inputTokens: 100, outputTokens: 50 },
 		} as never);
 
 		const result = await mapCsvSchema({
@@ -179,6 +187,7 @@ describe("mapCsvSchema (LLM-powered)", () => {
 	it("Test 3: resolves duplicate field assignments by keeping highest confidence mapping", async () => {
 		mockedGenerateText.mockResolvedValueOnce({
 			output: responseWithDuplicateField,
+			usage: { inputTokens: 100, outputTokens: 50 },
 		} as never);
 
 		const result = await mapCsvSchema({
@@ -253,6 +262,7 @@ describe("mapCsvSchema (LLM-powered)", () => {
 	it("Test 6: prompt passed to generateText includes all schema field names and mentions dot-namespace convention", async () => {
 		mockedGenerateText.mockResolvedValueOnce({
 			output: validLlmResponse,
+			usage: { inputTokens: 100, outputTokens: 50 },
 		} as never);
 
 		await mapCsvSchema({
@@ -299,6 +309,7 @@ describe("mapCsvSchema (LLM-powered)", () => {
 
 		mockedGenerateText.mockResolvedValueOnce({
 			output: partialResponse,
+			usage: { inputTokens: 100, outputTokens: 50 },
 		} as never);
 
 		const result = await mapCsvSchema({
@@ -329,6 +340,7 @@ describe("mapCsvSchema (LLM-powered)", () => {
 	it("Test 9: returns llmFailed: false when generateText succeeds", async () => {
 		mockedGenerateText.mockResolvedValueOnce({
 			output: validLlmResponse,
+			usage: { inputTokens: 100, outputTokens: 50 },
 		} as never);
 
 		const result = await mapCsvSchema({
