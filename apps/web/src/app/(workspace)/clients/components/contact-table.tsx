@@ -25,8 +25,8 @@ import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/reui/badge";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
-	EnvelopeIcon,
 	PlusIcon,
 	PencilIcon,
 	TrashIcon,
@@ -252,17 +252,12 @@ export function ContactTable({
 			</Table>
 		</div>
 	) : (
-		<div className="flex flex-col items-center justify-center py-12 text-center">
-			<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center mb-4">
-				<EnvelopeIcon className="h-8 w-8 text-gray-400" />
-			</div>
-			<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-				No contacts
-			</h3>
-			<p className="text-gray-600 dark:text-gray-400">
-				No contacts have been added for this client yet.
-			</p>
-		</div>
+		<EmptyState
+			size="md"
+			illustration="client-contacts-none"
+			title="No contacts"
+			description="No contacts have been added for this client yet."
+		/>
 	);
 
 	if (hideCardWrapper) {

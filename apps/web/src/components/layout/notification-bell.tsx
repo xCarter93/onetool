@@ -155,7 +155,8 @@ export function NotificationBell() {
 						</div>
 					) : notifications.length === 0 ? (
 						<EmptyState
-							icon={<Bell />}
+							size="sm"
+							illustration="all-caught-up"
 							title="You're all caught up"
 							description="New notifications will appear here"
 							// ScrollArea's viewport doesn't stretch children, so match its height explicitly

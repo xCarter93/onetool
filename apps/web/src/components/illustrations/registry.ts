@@ -55,6 +55,10 @@ export const illustrations = {
 	"report-chart-no-data": {
 		md: Fragment.ReportChartNoData,
 	},
+	"activity-none": {
+		md: Fragment.ActivityNone,
+		sm: Compact.ActivityNoneSm,
+	},
 
 	// --- Line art: concept & object states ---
 	"client-properties-none": {

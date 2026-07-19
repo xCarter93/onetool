@@ -143,7 +143,7 @@ export function CalendarDetailSidebar({
 			{/* Event details or empty state */}
 			{!event ? (
 				<EmptyState
-					icon={<Calendar />}
+					illustration="select-conversation"
 					title="Select an event to view details"
 					size="md"
 				/>

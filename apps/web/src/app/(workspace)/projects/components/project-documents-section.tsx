@@ -9,9 +9,9 @@ import { usePermissions } from "@/hooks/use-permissions";
 import {
 	FileIcon,
 	Upload,
-	FolderOpen,
 	Loader2,
 } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 import { ProjectDocumentsModal } from "./project-documents-modal";
 
 export type UnifiedProjectDocument = {
@@ -245,10 +245,7 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 			</div>
 
 			{totalCount === 0 ? (
-				<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-					<FolderOpen className="h-4 w-4" />
-					<span>No documents yet</span>
-				</div>
+				<EmptyState illustration="documents-none" title="No documents yet" />
 			) : (
 				<div className="space-y-2">
 					{/* Most recent document */}

@@ -14,15 +14,8 @@ import {
 	PillTabsList,
 	PillTabsTrigger,
 } from "@/components/shared/pill-tabs";
-import {
-	Empty,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-	EmptyDescription,
-} from "@/components/ui/empty";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, Receipt, FileText, ClipboardList } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 
 // Helper function to format status for display
@@ -112,17 +105,12 @@ export function RelatedItemsSection({
 								))}
 							</div>
 						) : (
-							<Empty>
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<FolderOpen />
-									</EmptyMedia>
-									<EmptyTitle>No projects</EmptyTitle>
-									<EmptyDescription>
-										No projects have been created for this client yet.
-									</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState
+								size="md"
+								illustration="projects-none"
+								title="No projects"
+								description="No projects have been created for this client yet."
+							/>
 						)}
 					</PillTabsContent>
 
@@ -168,17 +156,12 @@ export function RelatedItemsSection({
 								))}
 							</div>
 						) : (
-							<Empty>
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<Receipt />
-									</EmptyMedia>
-									<EmptyTitle>No quotes</EmptyTitle>
-									<EmptyDescription>
-										No quotes have been created for this client yet.
-									</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState
+								size="md"
+								illustration="quotes-none"
+								title="No quotes"
+								description="No quotes have been created for this client yet."
+							/>
 						)}
 					</PillTabsContent>
 
@@ -222,17 +205,12 @@ export function RelatedItemsSection({
 								))}
 							</div>
 						) : (
-							<Empty>
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<FileText />
-									</EmptyMedia>
-									<EmptyTitle>No invoices</EmptyTitle>
-									<EmptyDescription>
-										This client hasn&apos;t been billed yet.
-									</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState
+								size="md"
+								illustration="invoices-none"
+								title="No invoices"
+								description="This client hasn't been billed yet."
+							/>
 						)}
 					</PillTabsContent>
 
@@ -277,17 +255,12 @@ export function RelatedItemsSection({
 								))}
 							</div>
 						) : (
-							<Empty>
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<ClipboardList />
-									</EmptyMedia>
-									<EmptyTitle>No tasks</EmptyTitle>
-									<EmptyDescription>
-										No tasks have been scheduled for this client yet.
-									</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState
+								size="md"
+								illustration="tasks-none"
+								title="No tasks"
+								description="No tasks have been scheduled for this client yet."
+							/>
 						)}
 					</PillTabsContent>
 				</PillTabs>

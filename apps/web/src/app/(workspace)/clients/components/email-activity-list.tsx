@@ -1,6 +1,7 @@
 "use client";
 
-import { Mail, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
@@ -55,14 +56,10 @@ export function EmailActivityList({
 }: EmailActivityListProps) {
 	if (emails.length === 0) {
 		return (
-			<div className="text-center py-8">
-				<div className="flex justify-center mb-3">
-					<Mail className="h-12 w-12 text-muted-foreground/40" />
-				</div>
-				<p className="text-sm text-muted-foreground">
-					No emails sent to this client yet
-				</p>
-			</div>
+			<EmptyState
+				illustration="messages-none"
+				title="No emails sent to this client yet"
+			/>
 		);
 	}
 

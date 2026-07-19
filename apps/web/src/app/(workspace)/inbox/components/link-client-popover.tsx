@@ -19,6 +19,7 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
 import { cn } from "@/lib/utils";
 
 interface LinkClientPopoverProps {
@@ -78,9 +79,15 @@ export function LinkClientPopover({
 					<CommandInput placeholder="Search clients…" />
 					<CommandList>
 						<CommandEmpty>
-							{clients === undefined
-								? "Loading clients…"
-								: "No clients found."}
+							{clients === undefined ? (
+								"Loading clients…"
+							) : (
+								<EmptyState
+									size="sm"
+									illustration="no-filter-match"
+									title="No clients found"
+								/>
+							)}
 						</CommandEmpty>
 						{clients && clients.length > 0 && (
 							<CommandGroup heading="Clients">

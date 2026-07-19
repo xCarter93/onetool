@@ -23,12 +23,13 @@
 
 import { useState } from "react";
 import { useQuery } from "convex/react";
-import { Activity, Download, FileText } from "lucide-react";
+import { Download } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Badge as ReuiBadge } from "@/components/reui/badge";
+import { EmptyState } from "@/components/domain/empty-state";
 import { hasCompletedBoldsign } from "./has-completed-boldsign";
 
 type LineItemSnapshot = {
@@ -253,25 +254,20 @@ export function ApprovalAuditTab({
 	if (rows.length === 0) {
 		const completedBoldsign = hasCompletedBoldsign(documentsWithSignatures);
 		return (
-			<div className="flex flex-col items-center justify-center py-12 text-center">
-				<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-					{completedBoldsign ? (
-						<FileText className="h-6 w-6 text-muted-foreground" />
-					) : (
-						<Activity className="h-6 w-6 text-muted-foreground" />
-					)}
-				</div>
-				<p className="text-sm font-medium">
-					{completedBoldsign
+			<EmptyState
+				size="md"
+				illustration="quote-approval-none"
+				title={
+					completedBoldsign
 						? "Approved via BoldSign"
-						: "No portal approval recorded yet"}
-				</p>
-				<p className="mt-1 text-[13px] text-muted-foreground max-w-md">
-					{completedBoldsign
+						: "No portal approval recorded yet"
+				}
+				description={
+					completedBoldsign
 						? "This quote was approved via BoldSign — see the Signatures tab."
-						: "The client has not approved or declined this quote in the portal."}
-				</p>
-			</div>
+						: "The client has not approved or declined this quote in the portal."
+				}
+			/>
 		);
 	}
 

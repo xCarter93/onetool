@@ -345,7 +345,7 @@ function ActiveEmptyState({
 	return (
 		<EmptyState
 			size="md"
-			icon={<Users />}
+			illustration="clients-none"
 			title="No clients yet"
 			description="Create your first client to start organizing relationships and tracking activity."
 			action={
@@ -918,7 +918,13 @@ function ClientsPageContent() {
 					table={table}
 					recordCount={searchedData.length}
 					onRowClick={(row) => openPreview(row.id)}
-					emptyMessage="No clients match your filters."
+					emptyMessage={
+						<EmptyState
+							illustration="no-filter-match"
+							title="No clients match your filters"
+							description="Try a different search term or clear a filter."
+						/>
+					}
 					tableLayout={{
 						width: "auto",
 						headerBackground: true,

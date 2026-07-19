@@ -678,7 +678,13 @@ function QuotesPageContent() {
 					table={table}
 					recordCount={searchedData.length}
 					onRowClick={(row) => openPreview(row._id)}
-					emptyMessage="No quotes match your filters."
+					emptyMessage={
+						<EmptyState
+							illustration="no-filter-match"
+							title="No quotes match your filters"
+							description="Try a different search term or clear a filter."
+						/>
+					}
 					tableLayout={{
 						width: "auto",
 						headerBackground: true,
@@ -722,7 +728,7 @@ function QuotesPageContent() {
 						) : isEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<FileText />}
+								illustration="quotes-none"
 								title="No quotes yet"
 								description="Create your first quote to get started and track proposals in one place."
 								action={

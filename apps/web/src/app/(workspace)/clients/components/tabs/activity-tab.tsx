@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { ActivityWithUser } from "@/app/(workspace)/home/components/activity-item";
 import ActivityItem from "@/app/(workspace)/home/components/activity-item";
 import { Separator } from "@/components/ui/separator";
-import { Activity, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { EmptyState } from "@/components/domain/empty-state";
 
 const ACTIVITIES_PER_PAGE = 15;
 
@@ -79,14 +80,12 @@ export function ActivityTab({ activities }: ActivityTabProps) {
 					)}
 				</>
 			) : (
-				<div className="flex flex-col items-center justify-center py-12 text-center">
-					<div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mb-3">
-						<Activity className="h-6 w-6 text-muted-foreground" />
-					</div>
-					<p className="text-sm text-muted-foreground">
-						No activity recorded for this client yet.
-					</p>
-				</div>
+				<EmptyState
+					illustration="activity-none"
+					size="md"
+					title="No activity yet"
+					description="Changes to this client will show up here."
+				/>
 			)}
 		</div>
 	);

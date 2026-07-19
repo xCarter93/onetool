@@ -111,6 +111,21 @@ export function NoFilterMatchSm() {
 	);
 }
 
+export function ActivityNoneSm() {
+	return (
+		<>
+			<line x1="22" y1="8" x2="22" y2="40" className="illo-hair" />
+			<circle cx="22" cy="14" r="4" className="illo-accent" />
+			<line x1="32" y1="14" x2="60" y2="14" className="illo-bar" />
+			<circle cx="22" cy="28" r="4" className="illo-knock" />
+			<circle cx="22" cy="28" r="4" className="illo-outline" />
+			<line x1="32" y1="28" x2="52" y2="28" className="illo-bar-quiet" />
+			<circle cx="22" cy="40" r="4" className="illo-knock" />
+			<circle cx="22" cy="40" r="4" className="illo-dash" />
+		</>
+	);
+}
+
 export function AllCaughtUpSm() {
 	return (
 		<>

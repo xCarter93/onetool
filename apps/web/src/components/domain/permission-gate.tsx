@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Lock } from "lucide-react";
 import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import { EmptyState } from "@/components/domain/empty-state";
 import { usePermissions, type RequiredLevel } from "@/hooks/use-permissions";
@@ -41,7 +40,7 @@ export function PermissionGate({
 				<div className="flex min-h-[50vh] items-center justify-center p-6">
 					<EmptyState
 						size="md"
-						icon={<Lock className="h-6 w-6" aria-hidden="true" />}
+						illustration="app-error"
 						title="You don't have access to this area"
 						description="Ask an organization admin to grant you access from the team settings."
 					/>

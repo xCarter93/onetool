@@ -103,6 +103,28 @@ export function NoFilterMatch() {
 	);
 }
 
+/**
+ * Timeline rail rather than stacked rows — an activity feed is a list, but it
+ * reads chronologically, and the rail is what distinguishes it from a table.
+ */
+export function ActivityNone() {
+	return (
+		<>
+			<line x1="60" y1="22" x2="60" y2="86" className="illo-hair" />
+			<circle cx="60" cy="30" r="5" className="illo-accent" />
+			<line x1="74" y1="27" x2="140" y2="27" className="illo-bar" />
+			<line x1="74" y1="37" x2="116" y2="37" className="illo-bar-quiet" />
+			<circle cx="60" cy="58" r="5" className="illo-knock" />
+			<circle cx="60" cy="58" r="5" className="illo-outline" />
+			<line x1="74" y1="55" x2="128" y2="55" className="illo-bar-quiet" />
+			<line x1="74" y1="65" x2="104" y2="65" className="illo-bar-quiet" />
+			<circle cx="60" cy="86" r="5" className="illo-knock" />
+			<circle cx="60" cy="86" r="5" className="illo-dash" />
+			<line x1="74" y1="86" x2="118" y2="86" className="illo-dash" />
+		</>
+	);
+}
+
 export function ReportChartNoData() {
 	return (
 		<>

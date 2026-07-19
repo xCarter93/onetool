@@ -48,7 +48,6 @@ import {
 	Eye,
 	Filter as FilterIcon,
 	FolderKanban,
-	FolderOpen,
 	LayoutGrid,
 	Plus,
 	Repeat,
@@ -627,7 +626,13 @@ function ProjectsPageContent() {
 					table={table}
 					recordCount={searchedData.length}
 					onRowClick={(row) => openPreview(row._id)}
-					emptyMessage="No projects match your filters."
+					emptyMessage={
+						<EmptyState
+							illustration="no-filter-match"
+							title="No projects match your filters"
+							description="Try a different search term or clear a filter."
+						/>
+					}
 					tableLayout={{
 						width: "auto",
 						headerBackground: true,
@@ -671,7 +676,7 @@ function ProjectsPageContent() {
 						) : isEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<FolderOpen />}
+								illustration="projects-none"
 								title="No projects yet"
 								description="Get started by creating your first project. Projects help you organize work and track progress."
 								action={

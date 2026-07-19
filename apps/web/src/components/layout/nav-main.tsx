@@ -1,16 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { ChevronRight, Plus, Lock, type LucideIcon } from "lucide-react";
 import {
-	ChevronRight,
-	Plus,
-	UserPlus,
-	FolderPlus,
-	FilePlus,
-	CheckSquare,
-	Lock,
-	type LucideIcon,
-} from "lucide-react";
+	ActionGlyph,
+	type ActionGlyphName,
+} from "@/components/illustrations/glyphs";
 
 import {
 	Collapsible,
@@ -77,25 +72,20 @@ const quickActionRowClass =
 	"group/qa-item flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted/60";
 
 function QuickActionContent({
-	icon: Icon,
-	iconClassName,
+	glyph,
 	title,
 	description,
 }: {
-	icon: LucideIcon;
-	iconClassName: string;
+	glyph: ActionGlyphName;
 	title: string;
 	description: string;
 }) {
 	return (
 		<>
-			<span
-				className={cn(
-					"flex size-9 shrink-0 items-center justify-center rounded-lg",
-					iconClassName
-				)}
-			>
-				<Icon className="size-[18px]" />
+			{/* One accent across all rows: the previous per-item blue/violet/
+			    emerald/rose read as the loudest thing in the sidebar. */}
+			<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/15">
+				<ActionGlyph name={glyph} />
 			</span>
 			<span className="min-w-0">
 				<span className="block text-sm font-medium text-foreground">
@@ -298,8 +288,7 @@ export function NavMain({
 												onClick={handleNewClientClick}
 											>
 												<QuickActionContent
-													icon={UserPlus}
-													iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+													glyph="client"
 													title="New Client"
 													description="Add a new client to your workspace"
 												/>
@@ -326,8 +315,7 @@ export function NavMain({
 														)}
 													>
 														<QuickActionContent
-															icon={UserPlus}
-															iconClassName="bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+															glyph="client"
 															title="New Client"
 															description="Add a new client to your workspace"
 														/>
@@ -360,8 +348,7 @@ export function NavMain({
 												}}
 											>
 												<QuickActionContent
-													icon={FolderPlus}
-													iconClassName="bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
+													glyph="project"
 													title="New Project"
 													description="Start a new project for a client"
 												/>
@@ -379,8 +366,7 @@ export function NavMain({
 												}}
 											>
 												<QuickActionContent
-													icon={FilePlus}
-													iconClassName="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+													glyph="quote"
 													title="New Quote"
 													description="Create a quote for a project"
 												/>
@@ -399,8 +385,7 @@ export function NavMain({
 												}}
 											>
 												<QuickActionContent
-													icon={CheckSquare}
-													iconClassName="bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+													glyph="task"
 													title="New Task"
 													description="Add a task to your schedule"
 												/>

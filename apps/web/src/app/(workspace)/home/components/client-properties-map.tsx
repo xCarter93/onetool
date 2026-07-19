@@ -196,7 +196,7 @@ export default function ClientPropertiesMap({
 							{properties.length === 0 && (
 								<div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
 									<EmptyState
-										icon={<MapPin />}
+										illustration="client-properties-none"
 										title="No properties mapped"
 										description="Add addresses to client properties to see them here."
 										size="sm"

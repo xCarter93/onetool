@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Image from "next/image";
-import { AlertTriangle } from "lucide-react";
+import { Illustration } from "@/components/illustrations";
 import { SecuredByOneTool } from "@/components/portal/powered-by-onetool";
 
 export default function PortalError({
@@ -34,9 +34,7 @@ export default function PortalError({
 
 			<main className="flex flex-1 items-center justify-center px-6 py-10">
 				<div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-					<div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-						<AlertTriangle className="h-7 w-7" aria-hidden="true" />
-					</div>
+					<Illustration name="app-error" size="hero" className="max-w-full" />
 
 					<div className="flex flex-col gap-2">
 						<h1 className="text-[26px] font-semibold tracking-[-0.02em]">

@@ -9,7 +9,7 @@ import {
 	formatRelativeTime,
 	parseMessageParts,
 } from "@/lib/notification-utils";
-import { MessageSquare, Download, FileIcon, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { Download, FileIcon, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import Image from "next/image";
@@ -172,7 +172,7 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 		return (
 			<EmptyState
 				size="sm"
-				icon={<MessageSquare />}
+				illustration="messages-none"
 				title="No messages yet"
 				description="Post an update below — @mention a teammate to notify them, or just leave a note."
 			/>

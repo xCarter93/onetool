@@ -15,10 +15,10 @@ import {
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import { Receipt, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
 import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusBadge } from "@/components/domain/status-badge";
 import {
@@ -285,14 +285,14 @@ export function InvoiceList({
 						{isEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<Receipt />}
+								illustration="invoices-none"
 								title="No invoices yet"
 								description={`When ${businessName} sends you an invoice, you'll see it here.`}
 							/>
 						) : isFilterEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<Search />}
+								illustration="no-filter-match"
 								title="Nothing here right now"
 								description="Try a different filter, or clear the search."
 							/>

@@ -30,6 +30,10 @@ export function Illustration({ name, size = "md", className }: IllustrationProps
 	const resolved: IllustrationSize = variants[size] ? size : "md";
 	const Art = variants[resolved] ?? variants.md;
 
+	// fill="none" below is a failsafe, not styling: `fill` inherits, and a
+	// child's class rule beats an inherited value, so it's a no-op whenever
+	// illustrations.css is loaded. When that stylesheet is missing the artwork
+	// degrades to invisible instead of solid-black blobs.
 	return (
 		<svg
 			viewBox={ILLUSTRATION_VIEWBOX[resolved]}
@@ -39,6 +43,7 @@ export function Illustration({ name, size = "md", className }: IllustrationProps
 				ILLUSTRATION_WIDTH[resolved],
 				className
 			)}
+			fill="none"
 			aria-hidden="true"
 			focusable="false"
 			role="presentation"

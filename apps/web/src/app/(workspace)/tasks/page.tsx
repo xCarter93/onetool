@@ -736,7 +736,11 @@ function TasksPageContent() {
 				<div className="bg-card rounded-lg border">
 					<EmptyState
 						size="md"
-						icon={<Calendar />}
+						illustration={
+							searchQuery || filters.length > 0
+								? "no-filter-match"
+								: "tasks-none"
+						}
 						title="No tasks found"
 						description={
 							searchQuery || filters.length > 0

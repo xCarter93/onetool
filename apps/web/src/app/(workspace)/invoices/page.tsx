@@ -708,7 +708,13 @@ function InvoicesPageContent() {
 					table={table}
 					recordCount={searchedData.length}
 					onRowClick={(row) => openPreview(row._id)}
-					emptyMessage="No invoices match your filters."
+					emptyMessage={
+						<EmptyState
+							illustration="no-filter-match"
+							title="No invoices match your filters"
+							description="Try a different search term or clear a filter."
+						/>
+					}
 					tableLayout={{
 						width: "auto",
 						headerBackground: true,
@@ -752,7 +758,7 @@ function InvoicesPageContent() {
 						) : isEmpty ? (
 							<EmptyState
 								size="md"
-								icon={<Receipt />}
+								illustration="invoices-none"
 								title="No invoices yet"
 								description="Create invoices from approved quotes on the Projects page to get started tracking payments and revenue."
 							/>
