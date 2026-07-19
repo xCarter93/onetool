@@ -10,6 +10,23 @@ import { rateLimiter } from "./rateLimits";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 import { emitRecordCreatedEvent } from "./eventBus";
 import { isAdminRole } from "./lib/permissions";
+import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
+
+/** PostHog rollout gate for editing/publishing community pages (fail-open). */
+async function requireCommunityPagesAccess(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	userId: Id<"users">
+): Promise<void> {
+	const enabled = await isServerFlagEnabled(ctx, {
+		key: FEATURE_FLAGS.COMMUNITY_PAGES,
+		orgId,
+		userId,
+	});
+	if (!enabled) {
+		throw new Error("Community pages are not enabled for your organization");
+	}
+}
 
 // Type definitions
 type CommunityPageDocument = Doc<"communityPages">;
@@ -119,8 +136,9 @@ export const upsert = userMutation({
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await ctx.requireLevel("community", "modify");
-		await getCurrentUserOrThrow(ctx);
+		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
+		await requireCommunityPagesAccess(ctx, userOrgId, user._id);
 		if (args.draftPricingTiers !== undefined) {
 			validatePricingTiers(args.draftPricingTiers);
 		}
@@ -243,8 +261,9 @@ export const publish = userMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
 		await ctx.requireLevel("community", "modify");
-		await getCurrentUserOrThrow(ctx);
+		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
+		await requireCommunityPagesAccess(ctx, userOrgId, user._id);
 
 		const page = await ctx.db
 			.query("communityPages")

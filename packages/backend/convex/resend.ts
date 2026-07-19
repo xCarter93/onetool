@@ -8,6 +8,7 @@ import {
 	bumpThread,
 	plusTagAddress,
 } from "./email/threads";
+import { SERVER_EVENTS, trackServerEvent } from "./lib/posthog";
 
 // Re-export the durable component instance so existing callers (portal/email.ts)
 // keep importing `resend` from here; the instance itself lives in the seam.
@@ -144,6 +145,18 @@ export const sendClientEmail = userMutation({
 			subject: args.subject,
 			preview: messagePreview,
 			direction: "outbound",
+		});
+
+		await trackServerEvent(ctx, {
+			event: SERVER_EVENTS.EMAIL_SENT,
+			orgId,
+			actorUserId: user._id,
+			properties: {
+				email_message_id: emailMessageId,
+				thread_id: threadDocId,
+				client_id: args.clientId,
+				is_reply: false,
+			},
 		});
 
 		// Log activity
@@ -316,6 +329,18 @@ export const replyToEmail = userMutation({
 			subject,
 			preview: messagePreview,
 			direction: "outbound",
+		});
+
+		await trackServerEvent(ctx, {
+			event: SERVER_EVENTS.EMAIL_SENT,
+			orgId,
+			actorUserId: user._id,
+			properties: {
+				email_message_id: emailMessageId,
+				thread_id: threadDocId,
+				client_id: clientId,
+				is_reply: true,
+			},
 		});
 
 		// Log activity

@@ -1,7 +1,11 @@
 import { PostHog } from "@posthog/convex";
+import type { Scheduler } from "convex/server";
 import { components } from "../_generated/api";
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+
+/** Minimal ctx for capture — satisfied by MutationCtx and (http)ActionCtx. */
+export type SchedulerCtx = { scheduler: Scheduler };
 
 /**
  * Server-side PostHog bridge. Mirrors the business events defined (but never
@@ -34,6 +38,7 @@ export const SERVER_EVENTS = {
 	// lifecycle
 	STRIPE_CONNECTED: "stripe_connected",
 	ONBOARDING_COMPLETED: "onboarding_completed",
+	EMAIL_SENT: "email_sent",
 	// TODO: report_generated — generation is a reactive query
 	// (reportData.executeReport); no scheduler ctx to capture from.
 	REPORT_GENERATED: "report_generated",
@@ -41,6 +46,48 @@ export const SERVER_EVENTS = {
 
 export type ServerEventName =
 	(typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];
+
+/** PostHog feature-flag keys enforced server-side (same keys the sidebar gates on). */
+export const FEATURE_FLAGS = {
+	WORKFLOW_AUTOMATIONS: "workflow-automation-access",
+	COMMUNITY_PAGES: "community-pages-access",
+} as const;
+
+export type FeatureFlagKey = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];
+
+/**
+ * Locally-evaluated PostHog flag check (no network call — reads the component's
+ * polled flag-definition cache). Fail-open: flags are rollout gates, not
+ * entitlements (plan limits in lib/permissions.ts are the hard gate), so an
+ * unevaluable flag (cache cold after deploy, key deleted, POSTHOG_PERSONAL_API_KEY
+ * unset) must not lock users out. Only an explicit `false` denies.
+ */
+export async function isServerFlagEnabled(
+	ctx: MutationCtx,
+	args: {
+		key: FeatureFlagKey;
+		orgId: Id<"organizations">;
+		userId?: Id<"users">;
+	}
+): Promise<boolean> {
+	if (process.env.VITEST) return true;
+
+	try {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) return true;
+		const user = args.userId ? await ctx.db.get(args.userId) : null;
+
+		const enabled = await posthog.isFeatureEnabled(ctx, {
+			key: args.key,
+			distinctId: user?.externalId ?? `org:${org.clerkOrganizationId}`,
+			groups: { organization: org.clerkOrganizationId },
+		});
+		return enabled !== false;
+	} catch (error) {
+		console.warn(`PostHog flag "${args.key}" evaluation failed; allowing`, error);
+		return true;
+	}
+}
 
 /**
  * Map an entity status change to its analytics event, or null when the
@@ -143,6 +190,36 @@ export async function trackAiGeneration(
 		},
 		groups: { organization: org.clerkOrganizationId },
 	});
+}
+
+/**
+ * Server-side $exception capture (PostHog error tracking). Needs only a
+ * scheduler, so it works from mutations and httpActions alike. Never throws.
+ */
+export async function trackServerException(
+	ctx: SchedulerCtx,
+	args: {
+		error: unknown;
+		source: string;
+		distinctId?: string;
+		groups?: Record<string, string>;
+		properties?: Record<string, unknown>;
+	}
+): Promise<void> {
+	if (process.env.VITEST) return;
+	try {
+		await posthog.captureException(ctx, {
+			error: args.error,
+			distinctId: args.distinctId,
+			additionalProperties: {
+				source: args.source,
+				...(args.groups ? { $groups: args.groups } : {}),
+				...args.properties,
+			},
+		});
+	} catch (captureError) {
+		console.warn("PostHog captureException failed", captureError);
+	}
 }
 
 export async function trackServerEvent(

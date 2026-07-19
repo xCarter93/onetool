@@ -7,6 +7,7 @@ import {
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
+import { trackServerException } from "./lib/posthog";
 import { AggregateHelpers } from "./lib/aggregates";
 import { roundCents, sumMoney } from "./lib/money";
 import { ActivityHelpers } from "./lib/activities";
@@ -4072,11 +4073,26 @@ async function notifyAutomationFailure(
 	ctx: MutationCtx,
 	automation: AutomationDoc,
 	error: string,
-	// Reserved for future per-run deep-linking; the alert links to /automations.
 	executionId: Id<"workflowExecutions">
 ): Promise<void> {
-	void executionId;
 	try {
+		// Production-run failures also land in PostHog error tracking.
+		const org = await ctx.db.get(automation.orgId);
+		await trackServerException(ctx, {
+			error,
+			source: "automation",
+			...(org
+				? {
+						distinctId: `org:${org.clerkOrganizationId}`,
+						groups: { organization: org.clerkOrganizationId },
+					}
+				: {}),
+			properties: {
+				automation_id: automation._id,
+				execution_id: executionId,
+			},
+		});
+
 		const adminIds = await resolveMemberUserIds(ctx, automation.orgId, true);
 		if (adminIds.length === 0) return;
 

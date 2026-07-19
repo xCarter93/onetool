@@ -101,7 +101,7 @@ http.route({
 					});
 					logWebhookSuccess("Clerk", "organization.created", orgData.id);
 				} catch (error) {
-					logWebhookError("Clerk", "organization.created", error, orgData.id);
+					await logWebhookError("Clerk", "organization.created", error, orgData.id, ctx);
 					// Don't throw - let webhook succeed but log the error
 				}
 				break;
@@ -130,7 +130,7 @@ http.route({
 					});
 					logWebhookSuccess("Clerk", "organization.updated", orgData.id);
 				} catch (error) {
-					logWebhookError("Clerk", "organization.updated", error, orgData.id);
+					await logWebhookError("Clerk", "organization.updated", error, orgData.id, ctx);
 				}
 				break;
 			}
@@ -150,7 +150,7 @@ http.route({
 					});
 					logWebhookSuccess("Clerk", "organization.deleted", orgData.id);
 				} catch (error) {
-					logWebhookError("Clerk", "organization.deleted", error, orgData.id);
+					await logWebhookError("Clerk", "organization.deleted", error, orgData.id, ctx);
 				}
 				break;
 			}
@@ -187,11 +187,12 @@ http.route({
 						`user:${userId} org:${orgId}`
 					);
 				} catch (error) {
-					logWebhookError(
+					await logWebhookError(
 						"Clerk",
 						"organizationMembership.created",
 						error,
-						`user:${userId} org:${orgId}`
+						`user:${userId} org:${orgId}`,
+						ctx
 					);
 				}
 				break;
@@ -229,11 +230,12 @@ http.route({
 						`user:${userId} org:${orgId}`
 					);
 				} catch (error) {
-					logWebhookError(
+					await logWebhookError(
 						"Clerk",
 						"organizationMembership.updated",
 						error,
-						`user:${userId} org:${orgId}`
+						`user:${userId} org:${orgId}`,
+						ctx
 					);
 				}
 				break;
@@ -277,11 +279,12 @@ http.route({
 						`user:${userId}`
 					);
 				} catch (error) {
-					logWebhookError(
+					await logWebhookError(
 						"Clerk",
 						"organizationMembership.deleted",
 						error,
-						`user:${userId}`
+						`user:${userId}`,
+						ctx
 					);
 				}
 				break;
@@ -687,7 +690,13 @@ http.route({
 						});
 						logWebhookSuccess("Resend", "email.received (inbound)", emailId);
 					} catch (error) {
-						logWebhookError("Resend", "email.received (inbound)", error, emailId);
+						await logWebhookError(
+							"Resend",
+							"email.received (inbound)",
+							error,
+							emailId,
+							ctx
+						);
 						// Return 200 anyway to prevent Resend from retrying
 					}
 					break;
@@ -698,7 +707,7 @@ http.route({
 
 			return webhookSuccess("OK");
 		} catch (error) {
-			console.error("Error processing Resend webhook:", error);
+			await logWebhookError("Resend", "webhook", error, undefined, ctx);
 			return webhookError(500, "Internal Server Error");
 		}
 	}),
@@ -757,7 +766,7 @@ http.route({
 				}
 			);
 		} catch (error) {
-			logWebhookError("Stripe", event.type, error, event.id);
+			await logWebhookError("Stripe", event.type, error, event.id, ctx);
 			// Return 500 so Stripe retries transient processing failures.
 			return webhookError(500, "Internal error processing webhook");
 		}
