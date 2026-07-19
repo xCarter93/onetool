@@ -44,6 +44,11 @@ export const illustrations = {
 		md: Fragment.InvoicesNone,
 		sm: Compact.QuotesNoneSm,
 	},
+	/** SKUs are a catalogue of priced line items — the same amount-bearing grid. */
+	"skus-none": {
+		md: Fragment.InvoicesNone,
+		sm: Compact.InvoicesNoneSm,
+	},
 	"tasks-none": {
 		md: Fragment.TasksNone,
 		sm: Compact.TasksNoneSm,
