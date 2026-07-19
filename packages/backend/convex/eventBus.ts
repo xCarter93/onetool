@@ -11,7 +11,9 @@ import {
 	triggerableObjectTypeValidator,
 	type TriggerableObjectType,
 } from "./lib/workflowTypes";
-import { trackServerEvent, statusChangeEvent, createdEvent } from "./lib/posthog";
+import { trackServerEvent, statusChangeEvent, createdEvent,
+	trackServerException,
+} from "./lib/posthog";
 
 /**
  * Emitters accept any MutationCtx; when called from a userMutation the
@@ -366,6 +368,23 @@ export const processEvents = internalMutation({
 						failedAt: Date.now(),
 					});
 					failed++;
+
+					// Dead-letter is terminal — surface it in PostHog error tracking.
+					const org = await ctx.db.get(event.orgId);
+					await trackServerException(ctx, {
+						error,
+						source: "event_bus",
+						...(org
+							? {
+									distinctId: `org:${org.clerkOrganizationId}`,
+									groups: { organization: org.clerkOrganizationId },
+								}
+							: {}),
+						properties: {
+							event_type: event.eventType,
+							attempt_count: attemptCount,
+						},
+					});
 				} else {
 					// Schedule retry
 					await ctx.db.patch(event._id, {

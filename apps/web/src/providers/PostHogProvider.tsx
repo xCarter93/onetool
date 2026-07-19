@@ -22,6 +22,8 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 				// which double-counted on ?tab= query-param changes.
 				capture_pageview: "history_change",
 				capture_pageleave: true,
+				// Privacy policy promises we honor Do-Not-Track — this makes it true.
+				respect_dnt: true,
 				capture_performance: true, // Web vitals & performance metrics
 				autocapture: {
 					dom_event_allowlist: ["click", "change", "submit"],

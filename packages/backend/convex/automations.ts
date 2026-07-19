@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
 import { userMutation, userQuery } from "./lib/factories";
 import {
 	AUTOMATION_OBJECT_TYPES,
@@ -53,6 +54,22 @@ import {
 	type FieldType,
 } from "./lib/fieldRegistry";
 import { computeNextRunAt, validateSchedule } from "./lib/schedule";
+
+/** PostHog rollout gate for creating/activating automations (fail-open). */
+async function requireAutomationAccess(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	userId: Id<"users">
+): Promise<void> {
+	const enabled = await isServerFlagEnabled(ctx, {
+		key: FEATURE_FLAGS.WORKFLOW_AUTOMATIONS,
+		orgId,
+		userId,
+	});
+	if (!enabled) {
+		throw new Error("Workflow automations are not enabled for your organization");
+	}
+}
 
 /**
  * Workflow Automation operations with embedded CRUD helpers
@@ -1378,6 +1395,7 @@ export const create = userMutation({
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const user = await getCurrentUserOrThrow(ctx);
+		await requireAutomationAccess(ctx, userOrgId, user._id);
 		const now = Date.now();
 		const trigger = sanitizeTrigger(args.trigger);
 
@@ -1481,6 +1499,8 @@ export const publish = userMutation({
 	handler: async (ctx, args): Promise<AutomationId> => {
 		await ctx.requireLevel("automations", "modify");
 		const automation = await getAutomationOrThrow(ctx, args.id);
+		const user = await getCurrentUserOrThrow(ctx);
+		await requireAutomationAccess(ctx, automation.orgId, user._id);
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
 		validateFormulas(automation.formulas, automation.trigger);
@@ -1521,6 +1541,10 @@ export const toggleActive = userMutation({
 			});
 			return args.id;
 		}
+
+		// Activation paths only — pausing above stays allowed when the flag is off.
+		const user = await getCurrentUserOrThrow(ctx);
+		await requireAutomationAccess(ctx, automation.orgId, user._id);
 
 		if (automation.publishedSnapshot) {
 			// Resume a previously-published automation on its published version.

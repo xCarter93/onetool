@@ -7,6 +7,7 @@
 
 import type { WebhookEvent } from "@clerk/backend";
 import { Webhook } from "svix";
+import { trackServerException, type SchedulerCtx } from "./posthog";
 
 // ============================================================================
 // Types
@@ -308,16 +309,27 @@ export function logWebhookSuccess(
 /**
  * Log webhook processing error
  */
-export function logWebhookError(
+export async function logWebhookError(
 	service: string,
 	eventType: string,
 	error: unknown,
-	identifier?: string
-): void {
+	identifier?: string,
+	// When provided, also captures to PostHog error tracking. Pass only at
+	// terminal catch sites (route-level / swallowed errors) — rethrown errors
+	// are captured upstream, so passing ctx on both would double-count.
+	ctx?: SchedulerCtx
+): Promise<void> {
 	console.error(
 		`${service} webhook error: ${eventType}${identifier ? ` for ${identifier}` : ""}`,
 		error instanceof Error ? error.message : String(error)
 	);
+	if (ctx) {
+		await trackServerException(ctx, {
+			error,
+			source: "webhook",
+			properties: { service, event_type: eventType, identifier },
+		});
+	}
 }
 
 // ============================================================================
