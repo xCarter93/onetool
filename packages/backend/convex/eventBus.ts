@@ -11,6 +11,7 @@ import {
 	triggerableObjectTypeValidator,
 	type TriggerableObjectType,
 } from "./lib/workflowTypes";
+import { trackServerEvent, statusChangeEvent, createdEvent } from "./lib/posthog";
 
 /**
  * Emitters accept any MutationCtx; when called from a userMutation the
@@ -136,6 +137,20 @@ export async function emitStatusChangeEvent(
 		attemptCount: 0,
 	});
 
+	const analyticsEvent = statusChangeEvent(entityType, newStatus);
+	if (analyticsEvent) {
+		await trackServerEvent(ctx, {
+			event: analyticsEvent,
+			orgId,
+			actorUserId: ctx.user?._id,
+			properties: {
+				entity_id: entityId,
+				entity_type: entityType,
+				status: newStatus,
+			},
+		});
+	}
+
 	// Schedule immediate processing.
 	// [Plan 14-02 Rule 3] Skip the scheduler hop under Vitest so the
 	// processEvents mutation does not fire after the test's parent
@@ -176,6 +191,16 @@ export async function emitRecordCreatedEvent(
 		createdAt: Date.now(),
 		attemptCount: 0,
 	});
+
+	const analyticsEvent = createdEvent(entityType);
+	if (analyticsEvent) {
+		await trackServerEvent(ctx, {
+			event: analyticsEvent,
+			orgId,
+			actorUserId: ctx.user?._id,
+			properties: { entity_id: entityId, entity_type: entityType },
+		});
+	}
 
 	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
 	if (!process.env.VITEST) {

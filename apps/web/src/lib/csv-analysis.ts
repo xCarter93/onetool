@@ -5,6 +5,7 @@ import {
 	CLIENT_SCHEMA_FIELDS,
 	PROJECT_SCHEMA_FIELDS,
 } from "@/types/csv-import";
+import { getPostHogServer } from "@/lib/posthog-server";
 
 // Zod schema for LLM structured output
 // NOTE: Use .nullable() not .optional() for OpenAI structured output compatibility
@@ -34,6 +35,8 @@ export interface MapCsvSchemaInput {
 	entityType: "clients" | "projects";
 	headers: string[];
 	sampleRows?: Record<string, string>[];
+	/** Clerk user id — links the $ai_generation event to the caller in PostHog. */
+	distinctId?: string;
 }
 
 export interface CsvFieldMapping {
@@ -184,6 +187,38 @@ function postProcessMappings(
 	};
 }
 
+/** $ai_generation capture for the CSV-mapping call; must never fail the route. */
+async function trackCsvMappingGeneration(args: {
+	distinctId?: string;
+	startedAt: number;
+	inputTokens: number;
+	outputTokens: number;
+	error?: unknown;
+}): Promise<void> {
+	try {
+		// captureImmediate: serverless — waits for delivery instead of batching.
+		await getPostHogServer().captureImmediate({
+			distinctId: args.distinctId ?? "server",
+			event: "$ai_generation",
+			properties: {
+				source: "web-api",
+				$ai_trace_id: crypto.randomUUID(),
+				$ai_span_name: "csv-schema-mapping",
+				$ai_model: "gpt-5.4-nano",
+				$ai_provider: "openai",
+				$ai_input_tokens: args.inputTokens,
+				$ai_output_tokens: args.outputTokens,
+				$ai_latency: (Date.now() - args.startedAt) / 1000,
+				...(args.error
+					? { $ai_is_error: true, $ai_error: String(args.error) }
+					: {}),
+			},
+		});
+	} catch (captureError) {
+		console.error("PostHog $ai_generation capture failed:", captureError);
+	}
+}
+
 /**
  * Map CSV column headers to Convex schema fields for clients or projects,
  * using an LLM (GPT-5 nano) for the mapping. Returns field mappings with
@@ -192,7 +227,7 @@ function postProcessMappings(
 export async function mapCsvSchema(
 	input: MapCsvSchemaInput,
 ): Promise<MapCsvSchemaResult> {
-	const { entityType, headers, sampleRows } = input;
+	const { entityType, headers, sampleRows, distinctId } = input;
 
 	// Select the appropriate schema
 	const schema =
@@ -200,14 +235,22 @@ export async function mapCsvSchema(
 			? (CLIENT_SCHEMA_FIELDS as unknown as SchemaFields)
 			: (PROJECT_SCHEMA_FIELDS as unknown as SchemaFields);
 
+	const startedAt = Date.now();
 	try {
-		const { output } = await generateText({
+		const { output, usage } = await generateText({
 			model: openai("gpt-5.4-nano"),
 			output: Output.object({ schema: llmMappingSchema }),
 			prompt: buildMappingPrompt(entityType, headers, sampleRows, schema),
 			// Below the route's maxDuration (60s) so a timeout still returns
 			// the llmFailed fallback instead of the platform killing the request.
 			abortSignal: AbortSignal.timeout(45_000),
+		});
+
+		await trackCsvMappingGeneration({
+			distinctId,
+			startedAt,
+			inputTokens: usage.inputTokens ?? 0,
+			outputTokens: usage.outputTokens ?? 0,
 		});
 
 		if (!output) {
@@ -221,6 +264,13 @@ export async function mapCsvSchema(
 	} catch (error) {
 		// LLM failure -- return all columns as unmapped (user maps manually)
 		console.error("mapCsvSchema LLM error:", error);
+		await trackCsvMappingGeneration({
+			distinctId,
+			startedAt,
+			inputTokens: 0,
+			outputTokens: 0,
+			error,
+		});
 		return {
 			mappings: [],
 			unmappedColumns: [...headers],

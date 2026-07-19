@@ -74,6 +74,7 @@ import type * as lib_payments from "../lib/payments.js";
 import type * as lib_permissionKeys from "../lib/permissionKeys.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_planLimits from "../lib/planLimits.js";
+import type * as lib_posthog from "../lib/posthog.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
 import type * as lib_relationRefs from "../lib/relationRefs.js";
@@ -216,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   "lib/permissionKeys": typeof lib_permissionKeys;
   "lib/permissions": typeof lib_permissions;
   "lib/planLimits": typeof lib_planLimits;
+  "lib/posthog": typeof lib_posthog;
   "lib/queries": typeof lib_queries;
   "lib/quoteTotals": typeof lib_quoteTotals;
   "lib/relationRefs": typeof lib_relationRefs;
@@ -322,4 +324,5 @@ export declare const components: {
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
   agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
+  posthog: import("@posthog/convex/_generated/component.js").ComponentApi<"posthog">;
 };

@@ -73,17 +73,3 @@ export function trackEvent(
 ) {
 	posthog.capture(eventName, properties);
 }
-
-/**
- * Track a conversion event (special event type for funnel analysis).
- * Prefixes event name with 'conversion_' and adds is_conversion flag.
- */
-export function trackConversion(
-	conversionType: string,
-	properties?: Record<string, unknown>
-) {
-	posthog.capture(`conversion_${conversionType}`, {
-		...properties,
-		is_conversion: true,
-	});
-}
