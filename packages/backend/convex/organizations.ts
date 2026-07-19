@@ -19,6 +19,7 @@ import {
 	requireMembership,
 } from "./lib/memberships";
 import { optionalUserQuery, userMutation, systemMutation } from "./lib/factories";
+import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 
 /**
  * Get the current user's organization
@@ -219,6 +220,16 @@ export const completeMetadata = userMutation({
 		const updatedOrganization = await ctx.db.get(userOrgId);
 		if (updatedOrganization) {
 			await ActivityHelpers.organizationUpdated(ctx, updatedOrganization);
+		}
+
+		// Metadata can be re-saved from settings — only the first completion is
+		// the onboarding event.
+		if (!organization.isMetadataComplete) {
+			await trackServerEvent(ctx, {
+				event: SERVER_EVENTS.ONBOARDING_COMPLETED,
+				orgId: userOrgId,
+				actorUserId: user._id,
+			});
 		}
 
 		return userOrgId;
@@ -647,6 +658,8 @@ export const updateStripeConnectStatusInternal = systemMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
+		const org = await ctx.db.get(ctx.orgId);
+		const wasChargesEnabled = org?.stripeChargesEnabled === true;
 		await ctx.db.patch(ctx.orgId, {
 			stripeChargesEnabled: args.chargesEnabled,
 			stripePayoutsEnabled: args.payoutsEnabled,
@@ -655,6 +668,14 @@ export const updateStripeConnectStatusInternal = systemMutation({
 			stripeRequirementsDisabledReason: args.requirementsDisabledReason,
 			stripeStatusUpdatedAt: Date.now(),
 		});
+		// Fire once on the false->true charges_enabled edge (actor-less webhook).
+		if (!wasChargesEnabled && args.chargesEnabled) {
+			await trackServerEvent(ctx, {
+				event: SERVER_EVENTS.STRIPE_CONNECTED,
+				orgId: ctx.orgId,
+				actorUserId: org?.ownerUserId,
+			});
+		}
 		return null;
 	},
 });
@@ -694,6 +715,8 @@ export const syncStripeConnectStatusFromLive = userMutation({
 			throw new Error("Only the organization owner can sync Stripe status");
 		}
 
+		const wasChargesEnabled = organization.stripeChargesEnabled === true;
+
 		const patch: Record<string, unknown> = {
 			stripeChargesEnabled: args.chargesEnabled,
 			stripePayoutsEnabled: args.payoutsEnabled,
@@ -710,6 +733,14 @@ export const syncStripeConnectStatusFromLive = userMutation({
 		}
 
 		await ctx.db.patch(ctx.orgId, patch);
+		// Fire once on the false->true charges_enabled edge (self-heal path).
+		if (!wasChargesEnabled && args.chargesEnabled) {
+			await trackServerEvent(ctx, {
+				event: SERVER_EVENTS.STRIPE_CONNECTED,
+				orgId: ctx.orgId,
+				actorUserId: ctx.user._id,
+			});
+		}
 		return null;
 	},
 });

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { assistantTools } from "./assistantTools";
+import { trackAiGeneration } from "./lib/posthog";
 
 export const INSTRUCTIONS = `You are the OneTool assistant — a helpful teammate inside OneTool, a business management platform for small field-service businesses (cleaning, landscaping, HVAC, trades).
 
@@ -55,41 +56,33 @@ export const recordUsage = internalMutation({
 		totalTokens: v.number(),
 	},
 	handler: async (ctx, args) => {
-		if (args.orgId && args.userId) {
-			await ctx.db.insert("agentUsage", {
-				orgId: args.orgId,
-				userId: args.userId,
-				threadId: args.threadId,
-				agentName: args.agentName,
-				model: args.model,
-				provider: args.provider,
-				inputTokens: args.inputTokens,
-				outputTokens: args.outputTokens,
-				totalTokens: args.totalTokens,
-			});
-			return;
+		let orgId = args.orgId;
+		let userId = args.userId;
+
+		if (!orgId || !userId) {
+			const meta = args.threadId
+				? await ctx.db
+						.query("agentThreadMeta")
+						.withIndex("by_thread", (q) => q.eq("threadId", args.threadId!))
+						.unique()
+				: null;
+
+			// Without meta the row has no orgId, so orgCascade's by_org delete would
+			// never reclaim it. Threads always get meta at creation, so skip the
+			// unattributable row rather than orphan it.
+			if (!meta) {
+				console.warn(
+					`agentUsage: no thread meta for threadId=${args.threadId}; skipping usage record`
+				);
+				return;
+			}
+			orgId = meta.orgId;
+			userId = meta.userId;
 		}
 
-		const meta = args.threadId
-			? await ctx.db
-					.query("agentThreadMeta")
-					.withIndex("by_thread", (q) => q.eq("threadId", args.threadId!))
-					.unique()
-			: null;
-
-		// Without meta the row has no orgId, so orgCascade's by_org delete would
-		// never reclaim it. Threads always get meta at creation, so skip the
-		// unattributable row rather than orphan it.
-		if (!meta) {
-			console.warn(
-				`agentUsage: no thread meta for threadId=${args.threadId}; skipping usage record`
-			);
-			return;
-		}
-
-		await ctx.db.insert("agentUsage", {
-			orgId: meta.orgId,
-			userId: meta.userId,
+		const usageId = await ctx.db.insert("agentUsage", {
+			orgId,
+			userId,
 			threadId: args.threadId,
 			agentName: args.agentName,
 			model: args.model,
@@ -97,6 +90,21 @@ export const recordUsage = internalMutation({
 			inputTokens: args.inputTokens,
 			outputTokens: args.outputTokens,
 			totalTokens: args.totalTokens,
+		});
+
+		// LLM observability: thread id groups a conversation into one PostHog
+		// trace; thread-less one-shots get a per-call trace id (usage row id —
+		// Date.now() is per-transaction in Convex, so it can collide).
+		await trackAiGeneration(ctx, {
+			orgId,
+			userId,
+			traceId:
+				args.threadId ?? `oneshot-${args.agentName ?? "agent"}-${usageId}`,
+			spanName: args.agentName,
+			model: args.model,
+			provider: args.provider,
+			inputTokens: args.inputTokens,
+			outputTokens: args.outputTokens,
 		});
 	},
 });

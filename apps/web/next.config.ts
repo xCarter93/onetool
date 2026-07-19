@@ -47,6 +47,23 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
 	poweredByHeader: false,
+	// Required so the PostHog reverse-proxy paths below aren't trailing-slash redirected.
+	skipTrailingSlashRedirect: true,
+	// Same-origin reverse proxy for posthog-js (US cloud). Ingestion + static assets
+	// go through /ingest so ad blockers and a same-origin CSP don't drop events.
+	// proxy.ts excludes /ingest from the Clerk matcher.
+	async rewrites() {
+		return [
+			{
+				source: "/ingest/static/:path*",
+				destination: "https://us-assets.i.posthog.com/static/:path*",
+			},
+			{
+				source: "/ingest/:path*",
+				destination: "https://us.i.posthog.com/:path*",
+			},
+		];
+	},
 	async headers() {
 		return [
 			{

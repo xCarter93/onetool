@@ -21,6 +21,7 @@ import {
 	emitRecordCreatedEvent,
 	emitRecordUpdatedEvent,
 } from "./eventBus";
+import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	optionalUserQuery,
@@ -864,6 +865,17 @@ export const archive = userMutation({
 		const client = await ctx.db.get(args.id);
 		if (client) {
 			await ActivityHelpers.clientUpdated(ctx, client as ClientDocument);
+			// archive bypasses emitStatusChangeEvent, so fire analytics directly.
+			await trackServerEvent(ctx, {
+				event: SERVER_EVENTS.CLIENT_ARCHIVED,
+				orgId: client.orgId,
+				actorUserId: ctx.user?._id,
+				properties: {
+					entity_id: args.id,
+					entity_type: "client",
+					status: "archived",
+				},
+			});
 		}
 
 		return args.id;
@@ -1155,6 +1167,17 @@ export const remove = userMutation({
 		const client = await ctx.db.get(args.id);
 		if (client) {
 			await ActivityHelpers.clientUpdated(ctx, client as ClientDocument);
+			// archive bypasses emitStatusChangeEvent, so fire analytics directly.
+			await trackServerEvent(ctx, {
+				event: SERVER_EVENTS.CLIENT_ARCHIVED,
+				orgId: client.orgId,
+				actorUserId: ctx.user?._id,
+				properties: {
+					entity_id: args.id,
+					entity_type: "client",
+					status: "archived",
+				},
+			});
 		}
 
 		return args.id;

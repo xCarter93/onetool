@@ -1,67 +1,45 @@
 "use client";
 
 import posthog from "posthog-js";
-import { PostHogProvider as PHProvider, usePostHog } from "posthog-js/react";
-import { useEffect, Suspense } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { PostHogProvider as PHProvider } from "posthog-js/react";
+import { useEffect } from "react";
 import { env } from "@/env";
-
-function PostHogPageView() {
-	const pathname = usePathname();
-	const searchParams = useSearchParams();
-	const posthogClient = usePostHog();
-
-	useEffect(() => {
-		if (pathname && posthogClient) {
-			let url = window.origin + pathname;
-			if (searchParams.toString()) {
-				url = url + `?${searchParams.toString()}`;
-			}
-			posthogClient.capture("$pageview", { $current_url: url });
-		}
-	}, [pathname, searchParams, posthogClient]);
-
-	return null;
-}
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
 	useEffect(() => {
 		try {
 			posthog.init(env.NEXT_PUBLIC_POSTHOG_KEY, {
-				api_host: env.NEXT_PUBLIC_POSTHOG_HOST,
-				defaults: "2025-11-30",
-				// Pageview handling
-				capture_pageview: false, // Manual tracking for App Router (see PostHogPageView)
-				capture_pageleave: true, // Track when users leave pages
-				// Performance & debugging (can disable if data volume is a concern)
+				// Same-origin reverse proxy (next.config.ts rewrites + proxy.ts matcher):
+				// survives ad blockers and a same-origin CSP. ui_host keeps the toolbar/links
+				// pointing at the real PostHog app.
+				api_host: "/ingest",
+				ui_host: "https://us.posthog.com",
+				defaults: "2026-05-30",
+				// Only create person profiles for identified (signed-in) users — keeps
+				// anonymous autocapture/pageviews cheap.
+				person_profiles: "identified_only",
+				// SPA pageviews once per real navigation. Replaces the old manual effect,
+				// which double-counted on ?tab= query-param changes.
+				capture_pageview: "history_change",
+				capture_pageleave: true,
 				capture_performance: true, // Web vitals & performance metrics
 				autocapture: {
 					dom_event_allowlist: ["click", "change", "submit"],
 					element_allowlist: ["a", "button", "form", "input", "select", "textarea"],
 				},
 				capture_exceptions: true, // Capture JavaScript errors
-				// Heatmaps (can disable if not using this feature)
 				capture_heatmaps: true,
 				enable_heatmaps: true,
-				// Storage
 				persistence: "localStorage+cookie",
 				loaded: (ph) => {
 					if (process.env.NODE_ENV === "development") ph.debug();
 				},
 			});
 		} catch (error) {
-			// PostHog initialization can fail due to ad blockers, network issues, or invalid config.
-			// Log the error but don't break the app - analytics is non-critical.
+			// PostHog init can fail (ad blockers, network). Analytics is non-critical.
 			console.error("PostHog initialization failed:", error);
 		}
 	}, []);
 
-	return (
-		<PHProvider client={posthog}>
-			<Suspense fallback={null}>
-				<PostHogPageView />
-			</Suspense>
-			{children}
-		</PHProvider>
-	);
+	return <PHProvider client={posthog}>{children}</PHProvider>;
 }

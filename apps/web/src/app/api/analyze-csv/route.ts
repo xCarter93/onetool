@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
 			entityType: resolvedEntityType,
 			headers,
 			sampleRows,
+			distinctId: userId,
 		});
 
 		// Call validateCsvData directly with mapping results

@@ -97,8 +97,10 @@ export default async function proxy(
 
 export const config = {
 	matcher: [
-		// Skip Next.js internals and all static files, unless found in search params
-		"/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+		// Skip Next.js internals, the PostHog reverse-proxy path, and all static
+		// files, unless found in search params. `ingest` must be excluded so the
+		// next.config rewrite to PostHog isn't intercepted by Clerk auth.
+		"/((?!_next|ingest(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
 		// Always run for API routes
 		"/(api|trpc)(.*)",
 	],
