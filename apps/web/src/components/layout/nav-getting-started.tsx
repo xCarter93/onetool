@@ -176,13 +176,13 @@ export function NavGettingStarted() {
 						</FrameHeader>
 					</button>
 					{/* Height-animated rather than mounted/unmounted, so the checklist
-					    slides open instead of popping in. Collapsed keeps a short peek
-					    of the next steps under a fade. */}
+					    slides open instead of popping in. Collapsed is fully closed —
+					    the frame header is all that shows. */}
 					<div
 						id={checklistId}
 						className={cn(
 							"relative overflow-hidden transition-all duration-500 ease-in-out motion-reduce:transition-none",
-							isOpen ? "max-h-[32rem]" : "max-h-16"
+							isOpen ? "max-h-[32rem]" : "max-h-0"
 						)}
 					>
 						<FramePanel>

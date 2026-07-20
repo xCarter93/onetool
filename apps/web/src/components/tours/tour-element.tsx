@@ -22,6 +22,11 @@ export interface TourElementProps<T extends string> {
 	title: string;
 	description: string;
 	tooltipPosition?: "top" | "bottom" | "left" | "right";
+	/** Extra classes for the wrapper. The highlight ring is a ::after on this
+	 * wrapper, so a target that positions itself out of flow (fixed/absolute)
+	 * must hand its positioning here — otherwise the wrapper collapses to 0x0
+	 * and the ring has nothing to draw around. */
+	className?: string;
 }
 
 // ============================================================================
@@ -35,12 +40,14 @@ export function TourElement<T extends string>({
 	title,
 	description,
 	tooltipPosition = "bottom",
+	className,
 }: TourElementProps<T>) {
 	const tourContextValue = useTourContext(TourContext);
 
-	// If no context is available, just render children
+	// No context: render children bare, but keep any positioning the caller
+	// delegated to the wrapper.
 	if (!tourContextValue) {
-		return <>{children}</>;
+		return className ? <div className={className}>{children}</div> : <>{children}</>;
 	}
 
 	return (
@@ -50,6 +57,7 @@ export function TourElement<T extends string>({
 			description={description}
 			tooltipPosition={tooltipPosition}
 			tourContextValue={tourContextValue}
+			className={className}
 		>
 			{children}
 		</TourElementContent>
@@ -67,6 +75,7 @@ interface TourElementContentProps<T extends string> {
 	title: string;
 	description: string;
 	tooltipPosition: "top" | "bottom" | "left" | "right";
+	className?: string;
 }
 
 function TourElementContent<T extends string>({
@@ -76,6 +85,7 @@ function TourElementContent<T extends string>({
 	title,
 	description,
 	tooltipPosition,
+	className,
 }: TourElementContentProps<T>) {
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
@@ -149,7 +159,7 @@ function TourElementContent<T extends string>({
 	return (
 		<div
 			ref={wrapperRef}
-			className="tour-element-wrapper"
+			className={className ? `tour-element-wrapper ${className}` : "tour-element-wrapper"}
 			data-tour-active={isActive}
 			data-tour-step={stepId}
 			aria-expanded={isActive}

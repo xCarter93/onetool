@@ -146,7 +146,11 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 
 				{/* Always visible — free-plan users get an upgrade prompt inside the
 				    panel (and the backend enforces the plan gate regardless). */}
+				{/* The notch positions itself out of flow, so the fixed placement
+				    lives on the tour wrapper — otherwise it collapses to 0x0 and the
+				    highlight ring (a ::after on the wrapper) has nothing to draw. */}
 				<TourElement<HomeTour>
+					className="fixed bottom-0 right-6 z-40 sm:right-12 md:right-24"
 					TourContext={HomeTourContext}
 					stepId={HomeTour.ASSISTANT_NOTCH}
 					title={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].title}
