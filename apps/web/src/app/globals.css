@@ -302,13 +302,16 @@
 		background: rgba(0, 0, 0, 0.65);
 	}
 
-	/* Tour element wrapper - floats above the overlay when active */
-	.tour-element-wrapper {
+	/* Tour element wrapper - floats above the overlay when active.
+	   :where() keeps this at zero specificity so a target that hands its own
+	   positioning to the wrapper (see TourElement's className prop) isn't
+	   forced back into flow — a plain .tour-element-wrapper rule would beat
+	   Tailwind's .fixed on source order. */
+	:where(.tour-element-wrapper) {
 		position: relative;
 	}
 
 	.tour-element-wrapper[data-tour-active="true"] {
-		position: relative;
 		z-index: 9999;
 		border-radius: 8px;
 		/* Provide solid background so semi-transparent children render correctly */
