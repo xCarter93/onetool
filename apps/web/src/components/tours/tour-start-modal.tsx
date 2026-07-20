@@ -200,7 +200,7 @@ export function TourStartModal({
 									</li>
 									<li className="flex items-center gap-2">
 										<div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-										Manage tasks and set revenue goals
+										Stay ahead of overdue work and ask the AI assistant
 									</li>
 								</ul>
 							</div>

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronDownIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	SidebarGroup,
@@ -17,11 +17,7 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 
 interface JourneyProgress {
@@ -121,6 +117,8 @@ export function NavGettingStarted() {
 	const isOrgSwitching = useIsOrgSwitching();
 	const journeyProgress = useQuery(api.homeStats.getJourneyProgress);
 	const { state } = useSidebar();
+	const [isOpen, setIsOpen] = React.useState(false);
+	const checklistId = React.useId();
 
 	// Don't render in collapsed sidebar mode
 	if (state === "collapsed") {
@@ -145,35 +143,52 @@ export function NavGettingStarted() {
 	}
 
 	return (
-		<SidebarGroup className="mt-auto pt-0">
+		<SidebarGroup className="mt-auto pt-0 pb-4">
 			<SidebarGroupContent>
-				<Frame stacked dense spacing="sm" className="w-full">
-					<Collapsible defaultOpen>
-						<CollapsibleTrigger className="flex w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-							<FrameHeader className="flex grow flex-row items-center justify-between gap-2">
-								<div className="flex min-w-0 items-center gap-2.5">
-									{/* Frosted-blue progress ring with % in the center */}
-									<ProgressRing percentage={percentage} />
-									<div className="flex min-w-0 flex-col items-start gap-0.5">
-										<FrameTitle className="text-sm font-medium">
-											Getting started
-										</FrameTitle>
-										<span className="text-muted-foreground truncate text-xs font-normal">
-											{getEncouragingMessage(percentage)}
-										</span>
-									</div>
+				{/* overflow-visible + pb-1 so the floating toggle can hang off the
+				    bottom edge; the group's pb-4 reserves room for it. */}
+				<Frame
+					stacked
+					dense
+					spacing="sm"
+					className="relative w-full overflow-visible pb-1"
+				>
+					<button
+						type="button"
+						onClick={() => setIsOpen((prev) => !prev)}
+						aria-expanded={isOpen}
+						aria-controls={checklistId}
+						className="flex w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+					>
+						<FrameHeader className="flex grow flex-row items-center justify-between gap-2">
+							<div className="flex min-w-0 items-center gap-2.5">
+								{/* Frosted-blue progress ring with % in the center */}
+								<ProgressRing percentage={percentage} />
+								<div className="flex min-w-0 flex-col items-start gap-0.5">
+									<FrameTitle className="text-sm font-medium">
+										Getting started
+									</FrameTitle>
+									<span className="text-muted-foreground truncate text-xs font-normal">
+										{getEncouragingMessage(percentage)}
+									</span>
 								</div>
-								<ChevronRight
-									aria-hidden="true"
-									className="text-muted-foreground size-4 shrink-0 transition-transform in-data-open:rotate-90"
-								/>
-							</FrameHeader>
-						</CollapsibleTrigger>
-						<CollapsibleContent>
-							<FramePanel>
-								{/* Checklist */}
-								<div className="space-y-0.5">
-									{journeySteps.map((step) => {
+							</div>
+						</FrameHeader>
+					</button>
+					{/* Height-animated rather than mounted/unmounted, so the checklist
+					    slides open instead of popping in. Collapsed keeps a short peek
+					    of the next steps under a fade. */}
+					<div
+						id={checklistId}
+						className={cn(
+							"relative overflow-hidden transition-all duration-500 ease-in-out motion-reduce:transition-none",
+							isOpen ? "max-h-[32rem]" : "max-h-16"
+						)}
+					>
+						<FramePanel>
+							{/* Checklist */}
+							<div className="space-y-0.5">
+								{journeySteps.map((step) => {
 										const isCompleted = journeyProgress[step.completionKey];
 										return (
 											<div
@@ -208,9 +223,40 @@ export function NavGettingStarted() {
 										);
 									})}
 								</div>
-							</FramePanel>
-						</CollapsibleContent>
-					</Collapsible>
+						</FramePanel>
+
+						{/* Fades the peek into the panel while collapsed */}
+						<div
+							aria-hidden="true"
+							className={cn(
+								"from-(--frame-panel-bg) pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t to-transparent transition-opacity duration-300 motion-reduce:transition-none",
+								isOpen ? "opacity-0" : "opacity-100"
+							)}
+						/>
+					</div>
+
+					{/* Floating toggle straddling the bottom edge */}
+					<div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2">
+						<Button
+							variant="outline"
+							size="icon-sm"
+							aria-expanded={isOpen}
+							aria-controls={checklistId}
+							onClick={() => setIsOpen((prev) => !prev)}
+							className="bg-background hover:bg-background rounded-full shadow-sm"
+						>
+							<ChevronDownIcon
+								aria-hidden="true"
+								className={cn(
+									"transition-transform duration-300 motion-reduce:transition-none",
+									isOpen && "rotate-180"
+								)}
+							/>
+							<span className="sr-only">
+								{isOpen ? "Collapse" : "Expand"} getting started checklist
+							</span>
+						</Button>
+					</div>
 				</Frame>
 			</SidebarGroupContent>
 		</SidebarGroup>
