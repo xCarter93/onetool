@@ -11,6 +11,7 @@ import {
 	AccordionContent,
 } from "@/components/ui/accordion";
 import { SignatureProgressBar } from "@/app/(workspace)/quotes/components/signature-progress-bar";
+import { getSignatureDisplay } from "@/lib/signature-draft-display";
 
 type SignatureStatus =
 	| "Draft"
@@ -35,6 +36,7 @@ interface DocumentWithSignature {
 		declinedAt?: number;
 		revokedAt?: number;
 		expiredAt?: number;
+		draftSavedAt?: number;
 		sentTo: Array<{
 			name: string;
 			email: string;
@@ -66,31 +68,17 @@ export function SignatureStatusCard({
 					{hasSignatures ? (
 						<Accordion>
 							{documentsWithSignatures.map((doc) => {
-								// Get the most recent timestamp for last update
-								const lastUpdate =
-									doc.boldsign.completedAt ||
-									doc.boldsign.declinedAt ||
-									doc.boldsign.revokedAt ||
-									doc.boldsign.expiredAt ||
-									doc.boldsign.signedAt ||
-									doc.boldsign.viewedAt ||
-									doc.boldsign.sentAt ||
-									doc.generatedAt;
-
-								const formattedDate = new Date(lastUpdate).toLocaleDateString(
-									"en-US",
-									{
-										month: "short",
-										day: "numeric",
-										hour: "2-digit",
-										minute: "2-digit",
-									}
-								);
+								const {
+									formattedDate,
+									statusLabel,
+									timestampLabel,
+									recipientLabel,
+								} = getSignatureDisplay(doc);
 
 								return (
 									<AccordionItem key={doc._id} value={doc._id}>
 										<AccordionTrigger>
-											{`Version ${doc.version} - ${doc.boldsign.status === "Draft" ? "Preparing" : doc.boldsign.status} - ${formattedDate}`}
+											{`Version ${doc.version} - ${statusLabel} - ${formattedDate}`}
 										</AccordionTrigger>
 										<AccordionContent>
 											<div className="space-y-4">
@@ -112,13 +100,11 @@ export function SignatureStatusCard({
 															status={doc.boldsign.status.toLowerCase()}
 															className="text-xs"
 														>
-															{doc.boldsign.status === "Draft"
-																? "Preparing"
-																: doc.boldsign.status}
+															{statusLabel}
 														</StatusBadge>
 													)}
 													<span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
-														Last updated: {formattedDate}
+														{timestampLabel}: {formattedDate}
 													</span>
 												</div>
 
@@ -151,7 +137,7 @@ export function SignatureStatusCard({
 												{/* Recipients info */}
 												<div className="pt-4 border-t border-gray-200 dark:border-gray-700">
 													<p className="font-medium mb-3 text-sm text-gray-900 dark:text-white">
-														Sent to:
+														{recipientLabel}
 													</p>
 													<ul className="space-y-2">
 														{doc.boldsign.sentTo.map((recipient, i) => (

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
@@ -20,7 +21,17 @@ import {
 	AccordionContent,
 } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
-import { Users, User, Mail, FileSignature } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import { getSignatureDisplay } from "@/lib/signature-draft-display";
+import {
+	Users,
+	User,
+	Mail,
+	FileSignature,
+	PenLine,
+	Trash2,
+} from "lucide-react";
 
 type SignatureStatus =
 	| "Draft"
@@ -53,6 +64,7 @@ interface DocumentWithSignature {
 		declinedAt?: number;
 		revokedAt?: number;
 		expiredAt?: number;
+		draftSavedAt?: number;
 		sentTo: Array<{
 			name: string;
 			email: string;
@@ -79,8 +91,21 @@ export function SignaturesTab({
 	documentsWithSignatures,
 }: SignaturesTabProps) {
 	const toast = useToast();
+	const router = useRouter();
 	const users = useQuery(api.users.listByOrg);
 	const updateQuote = useMutation(api.quotes.update);
+	const discardRequest = useAction(
+		api.boldsignActions.discardEmbeddedSignatureRequest
+	);
+
+	// Confirmation for discarding an unsent draft from this tab. Discard always
+	// targets the quote's live draft, which the backend resolves from the latest
+	// document version — the label just names it for the dialog copy.
+	const [discardOpen, setDiscardOpen] = useState(false);
+	const draftVersionLabel = String(
+		documentsWithSignatures?.find((d) => d.boldsign.status === "Draft")
+			?.version ?? ""
+	);
 
 	// Countersigner state
 	const [enabled, setEnabled] = useState(requiresCountersignature);
@@ -372,29 +397,18 @@ export function SignaturesTab({
 				{hasSignatures ? (
 					<Accordion>
 						{documentsWithSignatures.map((doc) => {
-							const lastUpdate =
-								doc.boldsign.completedAt ||
-								doc.boldsign.declinedAt ||
-								doc.boldsign.revokedAt ||
-								doc.boldsign.expiredAt ||
-								doc.boldsign.signedAt ||
-								doc.boldsign.viewedAt ||
-								doc.boldsign.sentAt ||
-								doc.generatedAt;
-
-							const formattedDate = new Date(
-								lastUpdate
-							).toLocaleDateString("en-US", {
-								month: "short",
-								day: "numeric",
-								hour: "2-digit",
-								minute: "2-digit",
-							});
+							const {
+								isDraft,
+								formattedDate,
+								statusLabel,
+								timestampLabel,
+								recipientLabel,
+							} = getSignatureDisplay(doc);
 
 							return (
 								<AccordionItem key={doc._id} value={doc._id}>
 									<AccordionTrigger>
-										{`Version ${doc.version} - ${doc.boldsign.status === "Draft" ? "Preparing" : doc.boldsign.status} - ${formattedDate}`}
+										{`Version ${doc.version} - ${statusLabel} - ${formattedDate}`}
 									</AccordionTrigger>
 									<AccordionContent>
 										<div className="space-y-4">
@@ -418,15 +432,42 @@ export function SignaturesTab({
 														status={doc.boldsign.status.toLowerCase()}
 														className="text-xs"
 													>
-														{doc.boldsign.status === "Draft"
-															? "Preparing"
-															: doc.boldsign.status}
+														{statusLabel}
 													</StatusBadge>
 												)}
 												<span className="text-xs text-muted-foreground ml-auto">
-													Last updated: {formattedDate}
+													{timestampLabel}: {formattedDate}
 												</span>
 											</div>
+
+											{isDraft && (
+												<div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+													<p className="text-sm text-muted-foreground">
+														This draft hasn&apos;t been sent — nobody
+														has been emailed yet. Pick up where you
+														left off, or discard it.
+													</p>
+													<div className="flex shrink-0 gap-2">
+														<Button
+															size="sm"
+															onClick={() =>
+																router.push(`/quotes/${quoteId}/sign`)
+															}
+														>
+															<PenLine className="h-4 w-4" />
+															Resume editing
+														</Button>
+														<Button
+															size="sm"
+															variant="outline"
+															onClick={() => setDiscardOpen(true)}
+														>
+															<Trash2 className="h-4 w-4" />
+															Discard
+														</Button>
+													</div>
+												</div>
+											)}
 
 											<SignatureProgressBar
 												status={doc.boldsign.status}
@@ -463,7 +504,7 @@ export function SignaturesTab({
 
 											<div className="pt-4 border-t border-border">
 												<p className="font-medium mb-3 text-sm text-foreground">
-													Sent to:
+													{recipientLabel}
 												</p>
 												<ul className="space-y-2">
 													{doc.boldsign.sentTo.map(
@@ -518,6 +559,24 @@ export function SignaturesTab({
 					</div>
 				)}
 			</div>
+
+			<DeleteConfirmationModal
+				isOpen={discardOpen}
+				onClose={() => setDiscardOpen(false)}
+				onConfirm={async () => {
+					const result = await discardRequest({ quoteId });
+					if (!result.discarded) {
+						throw new Error(
+							"The draft could not be removed from BoldSign. Please try again."
+						);
+					}
+				}}
+				title="Discard signature draft"
+				itemName={`Version ${draftVersionLabel}`}
+				itemType="Draft"
+				mode="discard"
+				note="This only removes the unsent signature draft. The quote and its PDF stay exactly as they are."
+			/>
 		</div>
 	);
 }

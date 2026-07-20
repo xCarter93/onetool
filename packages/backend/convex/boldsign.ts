@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import {
 	internalMutation,
 	internalQuery,
+	mutation,
 	MutationCtx,
 	QueryCtx,
 } from "./_generated/server";
@@ -84,8 +85,9 @@ type EmbeddedRequestContext = {
 	signers: DerivedSigner[];
 	enableSigningOrder: boolean;
 	usage: { used: number; limit: number | null; overCap: boolean };
-	// A non-expired embedded Draft to reuse instead of minting a new one.
-	existing: { sendUrl: string; boldsignDocumentId: string } | null;
+	// An embedded Draft to resume instead of minting a new document. The edit
+	// URL is minted fresh per visit, so this is not gated on link expiry.
+	existing: { boldsignDocumentId: string } | null;
 };
 
 /**
@@ -118,52 +120,62 @@ async function getLatestQuoteDocument(
 	});
 }
 
+/**
+ * Resolve the caller's org, load the quote, and enforce quotes-modify plus
+ * project/client scope. Every e-sign entry point that reads or mutates a
+ * quote's embedded-signature state must go through this — org membership
+ * alone is not the boundary (PRD §4.4). Shadow-aware.
+ */
+async function authorizeQuoteModify(
+	ctx: QueryCtx | MutationCtx,
+	quoteId: Id<"quotes">
+): Promise<{ quote: Doc<"quotes">; orgId: Id<"organizations"> }> {
+	const orgId = await getCurrentUserOrgId(ctx);
+
+	const quote = await ctx.db.get(quoteId);
+	if (!quote || quote.orgId !== orgId) {
+		throw new Error("Quote does not belong to your organization");
+	}
+
+	await requireLevel(ctx, "quotes", "modify");
+	if (!(await hasAllRecords(ctx, "quotes"))) {
+		const user = await getCurrentUser(ctx);
+		const projects = await ctx.db
+			.query("projects")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+		const mine = projects.filter(
+			(p) => user && p.assignedUserIds?.includes(user._id)
+		);
+		const inScope = quote.projectId
+			? mine.some((p) => p._id === quote.projectId)
+			: mine.some((p) => p.clientId === quote.clientId);
+		if (!inScope) {
+			denyPermission({ object: "quotes", scope: true, userId: user?._id, orgId });
+		}
+	}
+
+	return { quote, orgId };
+}
+
 export const getEmbeddedRequestContext = internalQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args): Promise<EmbeddedRequestContext> => {
-		const orgId = await getCurrentUserOrgId(ctx);
-
-		const quote = await ctx.db.get(args.quoteId);
-		if (!quote || quote.orgId !== orgId) {
-			throw new Error("Quote does not belong to your organization");
-		}
-
-		// E-sign send = quotes modify (PRD §4.4); caller identity flows through
-		// the action into this internal query. Shadow-aware.
-		await requireLevel(ctx, "quotes", "modify");
-		if (!(await hasAllRecords(ctx, "quotes"))) {
-			const user = await getCurrentUser(ctx);
-			const projects = await ctx.db
-				.query("projects")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
-				.collect();
-			const mine = projects.filter(
-				(p) => user && p.assignedUserIds?.includes(user._id)
-			);
-			const inScope = quote.projectId
-				? mine.some((p) => p._id === quote.projectId)
-				: mine.some((p) => p.clientId === quote.clientId);
-			if (!inScope) {
-				denyPermission({ object: "quotes", scope: true, userId: user?._id, orgId });
-			}
-		}
+		// Caller identity flows through the action into this internal query.
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		if (!latest) {
 			throw new Error("No PDF has been generated for this quote yet");
 		}
 
-		// Reuse a non-expired embedded Draft (idempotent /sign visits).
-		const now = Date.now();
+		// Resume any embedded Draft (idempotent /sign visits). Deliberately not
+		// gated on sendUrlExpiresAt: the action mints a fresh edit URL for the
+		// existing document, so a lapsed link no longer strands the draft or
+		// orphans it behind a newly minted replacement.
 		const existing =
-			latest.boldsign?.status === "Draft" &&
-			latest.boldsign.viewUrl &&
-			latest.boldsign.sendUrlExpiresAt &&
-			latest.boldsign.sendUrlExpiresAt > now
-				? {
-						sendUrl: latest.boldsign.viewUrl,
-						boldsignDocumentId: latest.boldsign.documentId,
-					}
+			latest.boldsign?.status === "Draft"
+				? { boldsignDocumentId: latest.boldsign.documentId }
 				: null;
 
 		// Derive default signers (mirrors send-email-sheet.tsx recipient build).
@@ -267,6 +279,7 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 				sentTo: args.sentTo,
 				viewUrl: args.sendUrl,
 				sendUrlExpiresAt: args.sendUrlExpiresAt,
+				draftSavedAt: Date.now(),
 			},
 		});
 
@@ -296,12 +309,8 @@ export const getEmbeddedDraft = internalQuery({
 		documentId: Id<"documents">;
 		boldsignDocumentId: string;
 	} | null> => {
-		const orgId = await getCurrentUserOrgId(ctx);
-
-		const quote = await ctx.db.get(args.quoteId);
-		if (!quote || quote.orgId !== orgId) {
-			throw new Error("Quote does not belong to your organization");
-		}
+		// Discarding a draft is a quote mutation; same boundary as creating one.
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		if (!latest || latest.boldsign?.status !== "Draft") return null;
@@ -334,6 +343,28 @@ export const clearEmbeddedDraft = internalMutation({
 		await ctx.db.patch(args.documentId, {
 			boldsign: undefined,
 			boldsignDocumentId: undefined,
+		});
+		return null;
+	},
+});
+
+/**
+ * Stamp the Draft's save time after the user clicks Save & Close in the editor.
+ * The Signatures tab shows this as "Saved <time>"; without it the tab falls
+ * back to the PDF's generatedAt, which can be weeks stale.
+ */
+export const markEmbeddedDraftSaved = mutation({
+	args: { quoteId: v.id("quotes") },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
+
+		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
+		// Only a live Draft has a save time; a racing Sent webhook wins.
+		if (!latest || latest.boldsign?.status !== "Draft") return null;
+
+		await ctx.db.patch(latest._id, {
+			boldsign: { ...latest.boldsign, draftSavedAt: Date.now() },
 		});
 		return null;
 	},
