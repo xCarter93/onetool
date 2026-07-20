@@ -3,11 +3,17 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAction } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogContent,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -50,12 +56,15 @@ function QuoteSignPageContent() {
 	const discardRequest = useAction(
 		api.boldsignActions.discardEmbeddedSignatureRequest
 	);
+	const markDraftSaved = useMutation(api.boldsign.markEmbeddedDraftSaved);
 
 	const [view, setView] = useState<ViewState>({ kind: "creating" });
 	// True until BoldSign's iframe finishes its own async load (onLoadComplete).
 	const [iframeLoading, setIframeLoading] = useState(true);
 	// True while the abandoned draft is being discarded before navigating back.
 	const [discarding, setDiscarding] = useState(false);
+	// Keep-or-discard prompt shown when leaving the editor with an unsent draft.
+	const [leavePromptOpen, setLeavePromptOpen] = useState(false);
 
 	// Set when the user resolved the editor themselves (sent, or Save & Close),
 	// in which case back-navigation must NOT discard the BoldSign document.
@@ -96,6 +105,37 @@ function QuoteSignPageContent() {
 		router.push(`/quotes/${quoteId}`);
 	}, [discardRequest, router, quoteId, cancelPendingDraftClose]);
 
+	/**
+	 * Leaving the open editor. The draft is only discarded when the user says so
+	 * — previously backing out silently deleted a fresh draft while a resumed one
+	 * survived, with nothing on screen saying which had happened.
+	 */
+	const requestLeave = useCallback(() => {
+		cancelPendingDraftClose();
+		// Sent, or explicitly saved & closed: the editor already resolved it.
+		if (keepDocumentRef.current) {
+			router.push(`/quotes/${quoteId}`);
+			return;
+		}
+		setLeavePromptOpen(true);
+	}, [cancelPendingDraftClose, router, quoteId]);
+
+	const keepDraftAndLeave = useCallback(() => {
+		keepDocumentRef.current = true;
+		setLeavePromptOpen(false);
+		void markDraftSaved({ quoteId }).catch(() => undefined);
+		toast.success(
+			"Draft kept",
+			"Resume anytime from the Signatures tab on this quote."
+		);
+		router.push(`/quotes/${quoteId}`);
+	}, [markDraftSaved, quoteId, router, toast]);
+
+	const discardDraftAndLeave = useCallback(async () => {
+		setLeavePromptOpen(false);
+		await backToQuote();
+	}, [backToQuote]);
+
 	const runCreate = useCallback(async () => {
 		setView({ kind: "creating" });
 		setIframeLoading(true);
@@ -107,9 +147,10 @@ function QuoteSignPageContent() {
 			createPromiseRef.current = promise;
 			const result = await promise;
 			if (result.ok) {
-				// A resumed draft (earlier Save & Close) is the user's saved work —
-				// keep it on back-navigation; only fresh drafts are discardable.
-				keepDocumentRef.current = result.reused;
+				// Deliberately not keyed on result.reused: leaving the editor asks
+				// the user what to do, so a reload (which turns a fresh draft into a
+				// resumed one) no longer silently changes what "Back to quote" does.
+				keepDocumentRef.current = false;
 				setView({ kind: "ready", sendUrl: result.sendUrl });
 			} else if (result.reason === "limit") {
 				setView({ kind: "limit", used: result.used, limit: result.limit });
@@ -178,9 +219,12 @@ function QuoteSignPageContent() {
 					pendingDraftCloseRef.current = setTimeout(() => {
 						pendingDraftCloseRef.current = null;
 						keepDocumentRef.current = true;
+						// Stamp the real save time so the Signatures tab shows when the
+						// draft was saved rather than when its PDF was generated.
+						void markDraftSaved({ quoteId }).catch(() => undefined);
 						toast.success(
 							"Draft saved",
-							"Resume anytime from Send for e-signature."
+							"Resume anytime from the Signatures tab on this quote."
 						);
 						void backToQuote();
 					}, DRAFT_CLOSE_GRACE_MS);
@@ -201,7 +245,14 @@ function QuoteSignPageContent() {
 			window.removeEventListener("message", onMessage);
 			cancelPendingDraftClose();
 		};
-	}, [isReady, toast, backToQuote, cancelPendingDraftClose]);
+	}, [
+		isReady,
+		toast,
+		backToQuote,
+		cancelPendingDraftClose,
+		markDraftSaved,
+		quoteId,
+	]);
 
 	// ---- Ready: the embedded editor ----------------------------------------
 	if (view.kind === "ready") {
@@ -210,7 +261,7 @@ function QuoteSignPageContent() {
 				<div className="flex items-center justify-between py-3">
 					<button
 						type="button"
-						onClick={() => void backToQuote()}
+						onClick={requestLeave}
 						disabled={discarding}
 						className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
 					>
@@ -245,6 +296,44 @@ function QuoteSignPageContent() {
 						className="h-full w-full border-0"
 					/>
 				</div>
+
+				<AlertDialog
+					open={leavePromptOpen}
+					onOpenChange={(open) => {
+						if (!open) setLeavePromptOpen(false);
+					}}
+				>
+					<AlertDialogContent className="max-w-md">
+						<AlertDialogHeader>
+							<AlertDialogTitle>
+								Leave without sending?
+							</AlertDialogTitle>
+						</AlertDialogHeader>
+						<div className="space-y-4">
+							<p className="text-sm text-muted-foreground">
+								This quote hasn&apos;t been sent — nobody has been
+								emailed. Keep the draft to pick up your field
+								placement later from the Signatures tab, or discard it
+								to start fresh next time.
+							</p>
+							<div className="flex justify-end gap-3">
+								<Button
+									variant="secondary"
+									onClick={() => setLeavePromptOpen(false)}
+								>
+									Stay in editor
+								</Button>
+								<Button
+									variant="destructive"
+									onClick={() => void discardDraftAndLeave()}
+								>
+									Discard draft
+								</Button>
+								<Button onClick={keepDraftAndLeave}>Keep draft</Button>
+							</div>
+						</div>
+					</AlertDialogContent>
+				</AlertDialog>
 			</div>
 		);
 	}
