@@ -34,7 +34,9 @@ export type StatusKey =
 	| "refunded"
 	| "paused"
 	| "prospect"
-	| "revoked";
+	| "revoked"
+	| "viewed"
+	| "signed";
 
 const STATUS_ROLE: Record<StatusKey, StatusRole> = {
 	active: "success",
@@ -54,6 +56,10 @@ const STATUS_ROLE: Record<StatusKey, StatusRole> = {
 	scheduled: "info",
 	sent: "info",
 	prospect: "info",
+	// E-signature progress: in flight, not terminal. Without these both fell
+	// through to neutral and read as identical to an unsent Draft.
+	viewed: "info",
+	signed: "warning",
 	inactive: "neutral",
 	archived: "neutral",
 	draft: "neutral",
