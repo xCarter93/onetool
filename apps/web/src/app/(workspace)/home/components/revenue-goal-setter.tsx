@@ -23,7 +23,10 @@ export default function RevenueGoalSetter() {
 	const isOrgSwitching = useIsOrgSwitching();
 	// Get organization data and revenue goal progress
 	const organization = useQuery(api.organizations.get);
-	const revenueGoalProgress = useQuery(api.homeStats.getRevenueGoalProgress);
+	// Aggregate-based stats (O(log n)) — avoids the full-org `.collect()` scans in
+	// api.homeStats that tripped Convex's document-read limit on large orgs.
+	const homeStats = useQuery(api.homeStatsOptimized.getHomeStats, {});
+	const revenueGoalProgress = homeStats?.revenueGoal;
 	const updateOrganization = useMutation(api.organizations.update);
 
 	// Get current goal value from organization data
@@ -66,7 +69,7 @@ export default function RevenueGoalSetter() {
 	if (
 		isOrgSwitching ||
 		organization === undefined ||
-		revenueGoalProgress === undefined
+		homeStats === undefined
 	) {
 		return (
 			<Card className="group relative backdrop-blur-md overflow-hidden ring-1 ring-border/20 dark:ring-border/40">

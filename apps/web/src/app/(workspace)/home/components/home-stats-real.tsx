@@ -130,7 +130,9 @@ const getRangeTotals = (
 
 export default function HomeStatsReal() {
 	const isOrgSwitching = useIsOrgSwitching();
-	const homeStats = useQuery(api.homeStats.getHomeStats);
+	// Aggregate-based stats (O(log n)) — avoids the full-org `.collect()` scans in
+	// api.homeStats.getHomeStats that tripped Convex's document-read limit on large orgs.
+	const homeStats = useQuery(api.homeStatsOptimized.getHomeStats, {});
 
 	const defaultRange: DateRange = useMemo(
 		() => ({
