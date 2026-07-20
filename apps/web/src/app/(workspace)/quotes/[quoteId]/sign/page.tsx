@@ -70,7 +70,17 @@ function QuoteSignPageContent() {
 	);
 	const lastNavAtRef = useRef(0);
 
+	const cancelPendingDraftClose = useCallback(() => {
+		if (pendingDraftCloseRef.current !== null) {
+			clearTimeout(pendingDraftCloseRef.current);
+			pendingDraftCloseRef.current = null;
+		}
+	}, []);
+
 	const backToQuote = useCallback(async () => {
+		// Leaving now supersedes any armed draft-close: without this it could fire
+		// during the discard await and add a stray toast plus a second navigation.
+		cancelPendingDraftClose();
 		// Abandoning before send: delete the BoldSign draft (best-effort) and
 		// clear the local "Preparing" state so the Signatures tab stays truthful.
 		if (!keepDocumentRef.current) {
@@ -84,7 +94,7 @@ function QuoteSignPageContent() {
 			}
 		}
 		router.push(`/quotes/${quoteId}`);
-	}, [discardRequest, router, quoteId]);
+	}, [discardRequest, router, quoteId, cancelPendingDraftClose]);
 
 	const runCreate = useCallback(async () => {
 		setView({ kind: "creating" });
@@ -143,16 +153,10 @@ function QuoteSignPageContent() {
 					// User is moving between editor pages (e.g. "Save and proceed");
 					// any draft-save from the same click must not close the editor.
 					lastNavAtRef.current = Date.now();
-					if (pendingDraftCloseRef.current !== null) {
-						clearTimeout(pendingDraftCloseRef.current);
-						pendingDraftCloseRef.current = null;
-					}
+					cancelPendingDraftClose();
 					break;
 				case "onCreateSuccess":
-					if (pendingDraftCloseRef.current !== null) {
-						clearTimeout(pendingDraftCloseRef.current);
-						pendingDraftCloseRef.current = null;
-					}
+					cancelPendingDraftClose();
 					keepDocumentRef.current = true;
 					toast.success(
 						"Sent for signature",
@@ -163,7 +167,13 @@ function QuoteSignPageContent() {
 				case "onDraftSuccess":
 					// Draft saved. Only a genuine Save & Close (no page navigation
 					// around it) should keep the draft and leave the editor.
-					if (Date.now() - lastNavAtRef.current < DRAFT_CLOSE_GRACE_MS) break;
+					if (Date.now() - lastNavAtRef.current < DRAFT_CLOSE_GRACE_MS) {
+						// Consume the marker: it accounts for this one save, so a real
+						// Save & Close moments later on the next page still closes
+						// (and keeps) the draft rather than being silently dropped.
+						lastNavAtRef.current = 0;
+						break;
+					}
 					if (pendingDraftCloseRef.current !== null) break;
 					pendingDraftCloseRef.current = setTimeout(() => {
 						pendingDraftCloseRef.current = null;
@@ -189,12 +199,9 @@ function QuoteSignPageContent() {
 		window.addEventListener("message", onMessage);
 		return () => {
 			window.removeEventListener("message", onMessage);
-			if (pendingDraftCloseRef.current !== null) {
-				clearTimeout(pendingDraftCloseRef.current);
-				pendingDraftCloseRef.current = null;
-			}
+			cancelPendingDraftClose();
 		};
-	}, [isReady, toast, backToQuote]);
+	}, [isReady, toast, backToQuote, cancelPendingDraftClose]);
 
 	// ---- Ready: the embedded editor ----------------------------------------
 	if (view.kind === "ready") {
