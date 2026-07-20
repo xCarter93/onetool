@@ -266,7 +266,6 @@ const highlights: HighlightProps[] = [
 		title: "Workflow automations",
 		subtitle:
 			"Trigger actions when statuses change — send emails, update projects, and more automatically.",
-		comingSoon: true,
 	},
 	{
 		Icon: Blocks,

@@ -30,6 +30,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/reui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,8 @@ type NavItem = {
 	disabledTooltip?: string;
 	badgeCount?: number;
 	badgeVariant?: "alert";
+	/** Small inline label beside the title (e.g. "Beta"). */
+	badgeLabel?: string;
 	items?: {
 		title: string;
 		url: string;
@@ -515,6 +518,16 @@ export function NavMain({
 									>
 										{item.icon && <item.icon />}
 										<span>{item.title}</span>
+										{item.badgeLabel && (
+											<Badge
+												variant="primary-light"
+												size="xs"
+												radius="full"
+												className="ml-auto group-data-[collapsible=icon]:hidden"
+											>
+												{item.badgeLabel}
+											</Badge>
+										)}
 									</SidebarMenuButton>
 									{typeof item.badgeCount === "number" && item.badgeCount > 0 && (
 										<SidebarMenuBadge

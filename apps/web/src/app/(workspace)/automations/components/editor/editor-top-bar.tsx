@@ -2,6 +2,12 @@
 
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/reui/badge";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	STATUS_BADGE_PROPS,
@@ -65,6 +71,26 @@ export function EditorTopBar({
 			>
 				{STATUS_LABEL[status]}
 			</StatusBadge>
+
+			{/* Sits inline in the top bar rather than floating over the canvas —
+			    that zone already belongs to the unpublished and undo banners. */}
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<Badge
+							variant="primary-light"
+							size="sm"
+							radius="full"
+							className="shrink-0 cursor-default"
+						>
+							Beta
+						</Badge>
+					}
+				/>
+				<TooltipContent side="bottom">
+					Automations is in beta — behaviour and available actions may change.
+				</TooltipContent>
+			</Tooltip>
 
 			<div className="ml-auto flex items-center gap-2">
 				<Button variant="outline" onClick={onSave} disabled={isSaving}>

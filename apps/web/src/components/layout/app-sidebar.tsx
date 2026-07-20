@@ -427,8 +427,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			disabledTooltip: isCommunityDisabled
 				? "Communities feature coming soon"
 				: isAutomationsDisabled
-				? "Automations feature coming soon"
+				? "Automations is temporarily unavailable"
 				: undefined,
+			// Automations is released to everyone but still stabilising.
+			badgeLabel: item.title === "Automations" ? "Beta" : undefined,
 			badgeCount:
 				item.title === "Tasks" && tasksBadgeCount > 0
 					? tasksBadgeCount
