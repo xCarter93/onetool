@@ -118,7 +118,6 @@ const featureItems: {
 		iconClassName: "text-teal-500",
 		label: "Workflow automations",
 		description: "Trigger actions on status changes",
-		comingSoon: true,
 	},
 	{
 		icon: Blocks,

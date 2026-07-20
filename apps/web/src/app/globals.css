@@ -347,13 +347,6 @@
 		z-index: 9999 !important;
 	}
 
-	/* The assistant notch sits at z-40, below the tour overlay — lift it (and
-	   its TourElement wrapper) so the step is actually visible. */
-	body[data-tour-step="assistant-notch"] .tour-element-wrapper:has(.assistant-notch),
-	body[data-tour-step="assistant-notch"] .assistant-notch {
-		z-index: 9999 !important;
-	}
-
 	/* Prevent overflow clipping of tour outlines in sidebar */
 	body[data-tour-step="sidebar-nav"] [data-slot="sidebar-content"],
 	body[data-tour-step="team-switcher"] [data-slot="sidebar-header"],

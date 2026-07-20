@@ -20,7 +20,7 @@ export function AssistantNotch({
 	return (
 		<div
 			className={cn(
-				"fixed bottom-0 right-6 z-40 transition-transform duration-300 ease-out sm:right-12 md:right-24",
+				"transition-transform duration-300 ease-out",
 				open && "pointer-events-none translate-y-12"
 			)}
 		>
