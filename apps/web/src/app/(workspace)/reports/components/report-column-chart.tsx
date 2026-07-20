@@ -87,13 +87,13 @@ export function ReportColumnChart({
 						dataKey="name"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickMargin={10}
 					/>
 					<YAxis
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickFormatter={(value) => formatValue(value)}
 					/>
 					<ChartTooltip

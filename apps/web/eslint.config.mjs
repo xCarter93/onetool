@@ -100,6 +100,19 @@ const eslintConfig = [
 					message:
 						"Currency toLocaleString is banned. Import { formatCurrency } from '@/lib/money'.",
 				},
+				// Theme tokens in globals.css are raw oklch() values, not HSL
+				// triplets. hsl(var(--token)) is invalid CSS, so SVG fills silently
+				// fall back to black — fine-looking in light mode, broken in dark.
+				{
+					selector: "Literal[value=/hsl\\(\\s*var\\(--/]",
+					message:
+						"Theme tokens are oklch(), not HSL triplets — hsl(var(--token)) is invalid CSS and SVG fills fall back to black in dark mode. Use var(--token) directly.",
+				},
+				{
+					selector: "TemplateElement[value.raw=/hsl\\(\\s*var\\(--/]",
+					message:
+						"Theme tokens are oklch(), not HSL triplets — hsl(var(--token)) is invalid CSS and SVG fills fall back to black in dark mode. Use var(--token) directly.",
+				},
 			],
 		},
 	},

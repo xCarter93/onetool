@@ -392,7 +392,7 @@
 
   /* MARK: Chart */
   .cn-chart-tooltip {
-    @apply border-border/50 bg-background gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl;
+    @apply border-border/50 bg-popover text-popover-foreground gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl;
   }
 
   /* MARK: Checkbox */

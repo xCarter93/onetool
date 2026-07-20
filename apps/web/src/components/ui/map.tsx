@@ -337,7 +337,7 @@ function MarkerContent({ children, className }: MarkerContentProps) {
 
 function DefaultMarkerIcon() {
   return (
-    <div className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
+    <div className="relative h-4 w-4 rounded-full border-2 border-background bg-blue-500 shadow-lg" />
   );
 }
 
@@ -1015,6 +1015,9 @@ type MapClusterLayerProps<
   clusterRadius?: number;
   /** Colors for cluster circles: [small, medium, large] based on point count (default: ["#51bbd6", "#f1f075", "#f28cb1"]) */
   clusterColors?: [string, string, string];
+  /** Cluster count label color. Defaults to a dark neutral: the cluster fills
+   * are light pastels, so white labels fail contrast on all three. */
+  clusterTextColor?: string;
   /** Point count thresholds for color/size steps: [medium, large] (default: [100, 750]) */
   clusterThresholds?: [number, number];
   /** Color for unclustered individual points (default: "#3b82f6") */
@@ -1039,6 +1042,7 @@ function MapClusterLayer<
   clusterMaxZoom = 14,
   clusterRadius = 50,
   clusterColors = ["#51bbd6", "#f1f075", "#f28cb1"],
+  clusterTextColor = "#1f2937",
   clusterThresholds = [100, 750],
   pointColor = "#3b82f6",
   onPointClick,
@@ -1053,6 +1057,7 @@ function MapClusterLayer<
 
   const stylePropsRef = useRef({
     clusterColors,
+    clusterTextColor,
     clusterThresholds,
     pointColor,
   });
@@ -1109,7 +1114,7 @@ function MapClusterLayer<
         "text-size": 12,
       },
       paint: {
-        "text-color": "#fff",
+        "text-color": clusterTextColor,
       },
     });
 
@@ -1186,13 +1191,28 @@ function MapClusterLayer<
       map.setPaintProperty(unclusteredLayerId, "circle-color", pointColor);
     }
 
-    stylePropsRef.current = { clusterColors, clusterThresholds, pointColor };
+    // Update cluster count label color
+    if (
+      map.getLayer(clusterCountLayerId) &&
+      prev.clusterTextColor !== clusterTextColor
+    ) {
+      map.setPaintProperty(clusterCountLayerId, "text-color", clusterTextColor);
+    }
+
+    stylePropsRef.current = {
+      clusterColors,
+      clusterTextColor,
+      clusterThresholds,
+      pointColor,
+    };
   }, [
     isLoaded,
     map,
     clusterLayerId,
+    clusterCountLayerId,
     unclusteredLayerId,
     clusterColors,
+    clusterTextColor,
     clusterThresholds,
     pointColor,
   ]);

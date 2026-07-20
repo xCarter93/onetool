@@ -182,13 +182,13 @@ export function TourTooltip({
 			<div
 				className={cn(
 					"relative rounded-xl shadow-2xl overflow-hidden",
-					"bg-white dark:bg-gray-800",
-					"border border-gray-200 dark:border-gray-700",
+					"bg-popover text-popover-foreground",
+					"border border-border",
 					"ring-1 ring-primary/20"
 				)}
 			>
 				{/* Progress bar at top */}
-				<div className="h-1 bg-gray-100 dark:bg-gray-700">
+				<div className="h-1 bg-muted">
 					<motion.div
 						className="h-full bg-linear-to-r from-primary to-primary/80"
 						initial={{ width: 0 }}
@@ -233,7 +233,7 @@ export function TourTooltip({
 										? "bg-primary w-4"
 										: index < currentStep
 										? "bg-primary/50"
-										: "bg-gray-200 dark:bg-gray-600"
+										: "bg-muted-foreground/30"
 								)}
 							/>
 						))}
@@ -264,20 +264,20 @@ export function TourTooltip({
 				</div>
 
 				{/* Keyboard hints */}
-				<div className="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700/50">
+				<div className="px-4 py-2 bg-muted/50 border-t border-border">
 					<div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
 						<span className="flex items-center gap-1.5">
 							<Keyboard className="w-3 h-3" />
-							<kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono">
+							<kbd className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
 								←
 							</kbd>
-							<kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono">
+							<kbd className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
 								→
 							</kbd>
 							<span>Navigate</span>
 						</span>
 						<span className="flex items-center gap-1.5">
-							<kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono">
+							<kbd className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
 								Esc
 							</kbd>
 							<span>Exit</span>

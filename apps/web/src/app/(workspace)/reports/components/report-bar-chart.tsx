@@ -93,7 +93,7 @@ export function ReportBarChart({
 						type="number"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
 						tickFormatter={(value) => formatValue(value)}
 					/>
 					<YAxis
@@ -101,7 +101,7 @@ export function ReportBarChart({
 						dataKey="name"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 12, fill: "hsl(var(--foreground))" }}
+						tick={{ fontSize: 12, fill: "var(--foreground)" }}
 						width={75}
 					/>
 					<ChartTooltip
