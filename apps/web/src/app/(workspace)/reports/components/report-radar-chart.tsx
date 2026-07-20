@@ -84,10 +84,10 @@ export function ReportRadarChart({
 					<PolarGrid stroke="var(--border)" />
 					<PolarAngleAxis
 						dataKey="name"
-						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 					/>
 					<PolarRadiusAxis
-						tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
 						axisLine={false}
 					/>
 					<ChartTooltip content={<ChartTooltipContent />} />

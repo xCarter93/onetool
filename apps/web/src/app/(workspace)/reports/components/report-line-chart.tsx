@@ -87,7 +87,7 @@ export function ReportLineChart({
 					</span>
 					{trend !== 0 && (
 						<span
-							className={`text-xs ${trend > 0 ? "text-green-600" : "text-red-600"}`}
+							className={`text-xs ${trend > 0 ? "text-success" : "text-destructive"}`}
 						>
 							{trend > 0 ? "↑" : "↓"} {Math.abs(trend).toFixed(0)}
 						</span>
@@ -107,13 +107,13 @@ export function ReportLineChart({
 						dataKey="name"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickMargin={10}
 					/>
 					<YAxis
 						axisLine={false}
 						tickLine={false}
-						tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickFormatter={(value) => formatValue(value)}
 						tickMargin={10}
 					/>
@@ -133,13 +133,13 @@ export function ReportLineChart({
 						dot={{
 							r: 5,
 							fill: PRIMARY_BLUE,
-							stroke: "white",
+							stroke: "var(--background)",
 							strokeWidth: 2,
 						}}
 						activeDot={{
 							r: 7,
 							fill: PRIMARY_BLUE,
-							stroke: "white",
+							stroke: "var(--background)",
 							strokeWidth: 2,
 						}}
 					/>

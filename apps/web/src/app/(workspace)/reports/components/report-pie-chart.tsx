@@ -97,7 +97,7 @@ export function ReportPieChart({
 					x={cx}
 					y={cy - 10}
 					textAnchor="middle"
-					fill="hsl(var(--foreground))"
+					fill="var(--foreground)"
 					className="text-sm font-medium"
 				>
 					{payload.name}
@@ -106,7 +106,7 @@ export function ReportPieChart({
 					x={cx}
 					y={cy + 10}
 					textAnchor="middle"
-					fill="hsl(var(--muted-foreground))"
+					fill="var(--muted-foreground)"
 					className="text-xs"
 				>
 					{`${(percent * 100).toFixed(1)}%`}

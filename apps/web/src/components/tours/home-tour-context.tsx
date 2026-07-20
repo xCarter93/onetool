@@ -19,6 +19,8 @@ export const enum HomeTour {
 	CLIENT_MAP = "client-map",
 	TASKS = "tasks",
 	ACTIVITY_FEED = "activity-feed",
+	// Assistant (rendered in the workspace chrome, not the home page)
+	ASSISTANT_NOTCH = "assistant-notch",
 }
 
 // ============================================================================
@@ -35,6 +37,7 @@ export const ORDERED_HOME_TOUR: HomeTour[] = [
 	HomeTour.CLIENT_MAP,
 	HomeTour.TASKS,
 	HomeTour.ACTIVITY_FEED,
+	HomeTour.ASSISTANT_NOTCH,
 ];
 
 // ============================================================================
@@ -91,9 +94,9 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 		tooltipPosition: "left",
 	},
 	[HomeTour.TASKS]: {
-		title: "Manage Your Tasks",
+		title: "Needs Attention",
 		description:
-			"View and manage your upcoming tasks. Click on any task to see details, or use the quick actions to mark tasks complete. Stay organized and never miss a deadline.",
+			"Anything running late surfaces here \u2014 overdue tasks and unpaid invoices, most urgent first. Tick a task off inline, or click through to chase an invoice.",
 		tooltipPosition: "top",
 	},
 	[HomeTour.ACTIVITY_FEED]: {
@@ -101,6 +104,12 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 		description:
 			"Keep track of everything happening in your workspace. See when quotes are approved, invoices are paid, and projects are completed.",
 		tooltipPosition: "top",
+	},
+	[HomeTour.ASSISTANT_NOTCH]: {
+		title: "Ask the Assistant",
+		description:
+			"Your AI teammate lives here. Ask it to draft a quote, find a client, or explain a report \u2014 it already knows the screen you\u2019re on. Available on the paid plan.",
+		tooltipPosition: "left",
 	},
 };
 

@@ -16,9 +16,11 @@ import {
 } from "@/components/ui/sidebar";
 import {
 	TourContextProvider,
+	TourElement,
 	HomeTour,
 	ORDERED_HOME_TOUR,
 	HomeTourContext,
+	HOME_TOUR_CONTENT,
 } from "@/components/tours";
 
 interface SidebarWithHeaderProps {
@@ -144,10 +146,22 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 
 				{/* Always visible — free-plan users get an upgrade prompt inside the
 				    panel (and the backend enforces the plan gate regardless). */}
-				<AssistantNotch
-					open={assistantOpen}
-					onOpen={() => setAssistantOpen(true)}
-				/>
+				<TourElement<HomeTour>
+					TourContext={HomeTourContext}
+					stepId={HomeTour.ASSISTANT_NOTCH}
+					title={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].title}
+					description={
+						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].description
+					}
+					tooltipPosition={
+						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
+					}
+				>
+					<AssistantNotch
+						open={assistantOpen}
+						onOpen={() => setAssistantOpen(true)}
+					/>
+				</TourElement>
 				<AssistantPanel
 					open={assistantOpen}
 					onOpenChange={setAssistantOpen}

@@ -609,7 +609,7 @@ export function StepReviewValues({
 															}
 														>
 															{displayStr || (
-																<span className="italic text-red-400">empty</span>
+																<span className="italic text-red-600 dark:text-red-400">empty</span>
 															)}
 														</TooltipTrigger>
 														<TooltipContent>
