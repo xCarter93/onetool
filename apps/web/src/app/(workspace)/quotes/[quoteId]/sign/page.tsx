@@ -20,6 +20,12 @@ import {
 // BoldSign only posts messages from this origin; hard-guard every event.
 const BOLDSIGN_ORIGIN = "https://app.boldsign.com";
 
+// "Save and proceed" inside the editor saves the draft and fires onDraftSuccess
+// exactly like Save & Close does. Closing must wait out this window so an
+// onPageNavigation from the same click can cancel it; only a draft-save with no
+// accompanying navigation is a real Save & Close.
+const DRAFT_CLOSE_GRACE_MS = 1500;
+
 type ViewState =
 	| { kind: "creating" }
 	| { kind: "ready"; sendUrl: string }
@@ -57,8 +63,24 @@ function QuoteSignPageContent() {
 	// In-flight create, awaited before discarding so a draft persisted after an
 	// early back-click doesn't survive as an orphan.
 	const createPromiseRef = useRef<Promise<unknown> | null>(null);
+	// Pending Save & Close teardown, cancellable by onPageNavigation (see
+	// DRAFT_CLOSE_GRACE_MS).
+	const pendingDraftCloseRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null
+	);
+	const lastNavAtRef = useRef(0);
+
+	const cancelPendingDraftClose = useCallback(() => {
+		if (pendingDraftCloseRef.current !== null) {
+			clearTimeout(pendingDraftCloseRef.current);
+			pendingDraftCloseRef.current = null;
+		}
+	}, []);
 
 	const backToQuote = useCallback(async () => {
+		// Leaving now supersedes any armed draft-close: without this it could fire
+		// during the discard await and add a stray toast plus a second navigation.
+		cancelPendingDraftClose();
 		// Abandoning before send: delete the BoldSign draft (best-effort) and
 		// clear the local "Preparing" state so the Signatures tab stays truthful.
 		if (!keepDocumentRef.current) {
@@ -72,7 +94,7 @@ function QuoteSignPageContent() {
 			}
 		}
 		router.push(`/quotes/${quoteId}`);
-	}, [discardRequest, router, quoteId]);
+	}, [discardRequest, router, quoteId, cancelPendingDraftClose]);
 
 	const runCreate = useCallback(async () => {
 		setView({ kind: "creating" });
@@ -127,7 +149,14 @@ function QuoteSignPageContent() {
 				case "onLoadComplete":
 					setIframeLoading(false);
 					break;
+				case "onPageNavigation":
+					// User is moving between editor pages (e.g. "Save and proceed");
+					// any draft-save from the same click must not close the editor.
+					lastNavAtRef.current = Date.now();
+					cancelPendingDraftClose();
+					break;
 				case "onCreateSuccess":
+					cancelPendingDraftClose();
 					keepDocumentRef.current = true;
 					toast.success(
 						"Sent for signature",
@@ -136,14 +165,25 @@ function QuoteSignPageContent() {
 					void backToQuote();
 					break;
 				case "onDraftSuccess":
-					// User clicked Save & Close inside the editor: keep the draft so
-					// they can resume from the same place later.
-					keepDocumentRef.current = true;
-					toast.success(
-						"Draft saved",
-						"Resume anytime from Send for e-signature."
-					);
-					void backToQuote();
+					// Draft saved. Only a genuine Save & Close (no page navigation
+					// around it) should keep the draft and leave the editor.
+					if (Date.now() - lastNavAtRef.current < DRAFT_CLOSE_GRACE_MS) {
+						// Consume the marker: it accounts for this one save, so a real
+						// Save & Close moments later on the next page still closes
+						// (and keeps) the draft rather than being silently dropped.
+						lastNavAtRef.current = 0;
+						break;
+					}
+					if (pendingDraftCloseRef.current !== null) break;
+					pendingDraftCloseRef.current = setTimeout(() => {
+						pendingDraftCloseRef.current = null;
+						keepDocumentRef.current = true;
+						toast.success(
+							"Draft saved",
+							"Resume anytime from Send for e-signature."
+						);
+						void backToQuote();
+					}, DRAFT_CLOSE_GRACE_MS);
 					break;
 				case "onCreateFailed":
 					setIframeLoading(false);
@@ -157,8 +197,11 @@ function QuoteSignPageContent() {
 			}
 		}
 		window.addEventListener("message", onMessage);
-		return () => window.removeEventListener("message", onMessage);
-	}, [isReady, toast, backToQuote]);
+		return () => {
+			window.removeEventListener("message", onMessage);
+			cancelPendingDraftClose();
+		};
+	}, [isReady, toast, backToQuote, cancelPendingDraftClose]);
 
 	// ---- Ready: the embedded editor ----------------------------------------
 	if (view.kind === "ready") {
