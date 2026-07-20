@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { currentUser } from "@clerk/nextjs/server";
 import { ClerkProviderWithTheme } from "@/providers/ClerkProviderWithTheme";
 import ConvexClientProvider from "@/providers/ConvexClientProvider";
 import { PostHogProvider } from "@/providers/PostHogProvider";
@@ -7,22 +6,20 @@ import { DynamicTitle } from "@/components/shared/dynamic-title";
 import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
-import { AdminFab } from "@/components/layout/admin-fab";
 import { ScreenContextProvider } from "@/components/assistant/use-screen-context";
 import { CreateRecordProvider } from "@/components/domain/create-record-provider";
 import "./workspace-theme.css";
+
+// Every workspace route is auth-gated and user-specific; none may be
+// prerendered. This used to be implied by a currentUser() call in this layout —
+// declare it directly now that the call is gone.
+export const dynamic = "force-dynamic";
 
 export default async function WorkspaceLayout({
 	children,
 }: {
 	children: ReactNode;
 }) {
-	// currentUser() works because clerkMiddleware ran upstream (workspace routes are NOT in isPortalRoute)
-	const user = await currentUser();
-	const hasAdminAccess =
-		(user?.privateMetadata as Record<string, unknown>)
-			?.has_admin_dashboard_access === true;
-
 	return (
 		<ClerkProviderWithTheme>
 			<PostHogProvider>
@@ -40,7 +37,6 @@ export default async function WorkspaceLayout({
 										<SidebarWithHeader>{children}</SidebarWithHeader>
 									</CreateRecordProvider>
 								</ScreenContextProvider>
-								{hasAdminAccess && <AdminFab />}
 							</div>
 						</div>
 					</ConfirmDialogProvider>
