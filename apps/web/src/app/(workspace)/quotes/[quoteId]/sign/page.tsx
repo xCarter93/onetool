@@ -20,6 +20,12 @@ import {
 // BoldSign only posts messages from this origin; hard-guard every event.
 const BOLDSIGN_ORIGIN = "https://app.boldsign.com";
 
+// "Save and proceed" inside the editor saves the draft and fires onDraftSuccess
+// exactly like Save & Close does. Closing must wait out this window so an
+// onPageNavigation from the same click can cancel it; only a draft-save with no
+// accompanying navigation is a real Save & Close.
+const DRAFT_CLOSE_GRACE_MS = 1500;
+
 type ViewState =
 	| { kind: "creating" }
 	| { kind: "ready"; sendUrl: string }
@@ -57,6 +63,12 @@ function QuoteSignPageContent() {
 	// In-flight create, awaited before discarding so a draft persisted after an
 	// early back-click doesn't survive as an orphan.
 	const createPromiseRef = useRef<Promise<unknown> | null>(null);
+	// Pending Save & Close teardown, cancellable by onPageNavigation (see
+	// DRAFT_CLOSE_GRACE_MS).
+	const pendingDraftCloseRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null
+	);
+	const lastNavAtRef = useRef(0);
 
 	const backToQuote = useCallback(async () => {
 		// Abandoning before send: delete the BoldSign draft (best-effort) and
@@ -127,7 +139,20 @@ function QuoteSignPageContent() {
 				case "onLoadComplete":
 					setIframeLoading(false);
 					break;
+				case "onPageNavigation":
+					// User is moving between editor pages (e.g. "Save and proceed");
+					// any draft-save from the same click must not close the editor.
+					lastNavAtRef.current = Date.now();
+					if (pendingDraftCloseRef.current !== null) {
+						clearTimeout(pendingDraftCloseRef.current);
+						pendingDraftCloseRef.current = null;
+					}
+					break;
 				case "onCreateSuccess":
+					if (pendingDraftCloseRef.current !== null) {
+						clearTimeout(pendingDraftCloseRef.current);
+						pendingDraftCloseRef.current = null;
+					}
 					keepDocumentRef.current = true;
 					toast.success(
 						"Sent for signature",
@@ -136,14 +161,19 @@ function QuoteSignPageContent() {
 					void backToQuote();
 					break;
 				case "onDraftSuccess":
-					// User clicked Save & Close inside the editor: keep the draft so
-					// they can resume from the same place later.
-					keepDocumentRef.current = true;
-					toast.success(
-						"Draft saved",
-						"Resume anytime from Send for e-signature."
-					);
-					void backToQuote();
+					// Draft saved. Only a genuine Save & Close (no page navigation
+					// around it) should keep the draft and leave the editor.
+					if (Date.now() - lastNavAtRef.current < DRAFT_CLOSE_GRACE_MS) break;
+					if (pendingDraftCloseRef.current !== null) break;
+					pendingDraftCloseRef.current = setTimeout(() => {
+						pendingDraftCloseRef.current = null;
+						keepDocumentRef.current = true;
+						toast.success(
+							"Draft saved",
+							"Resume anytime from Send for e-signature."
+						);
+						void backToQuote();
+					}, DRAFT_CLOSE_GRACE_MS);
 					break;
 				case "onCreateFailed":
 					setIframeLoading(false);
@@ -157,7 +187,13 @@ function QuoteSignPageContent() {
 			}
 		}
 		window.addEventListener("message", onMessage);
-		return () => window.removeEventListener("message", onMessage);
+		return () => {
+			window.removeEventListener("message", onMessage);
+			if (pendingDraftCloseRef.current !== null) {
+				clearTimeout(pendingDraftCloseRef.current);
+				pendingDraftCloseRef.current = null;
+			}
+		};
 	}, [isReady, toast, backToQuote]);
 
 	// ---- Ready: the embedded editor ----------------------------------------
