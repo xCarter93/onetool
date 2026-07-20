@@ -10,7 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-type ConfirmMode = "delete" | "archive" | "cancel";
+// "discard": the item really is deleted, but it's a disposable working
+// artifact — no record is kept, and nothing it was attached to is affected.
+type ConfirmMode = "delete" | "archive" | "cancel" | "discard";
 
 interface DeleteConfirmationModalProps {
 	isOpen: boolean;
@@ -23,6 +25,8 @@ interface DeleteConfirmationModalProps {
 	mode?: ConfirmMode;
 	/** Shorthand alias for `mode="archive"`; ignored when `mode` is set. */
 	isArchive?: boolean;
+	/** Replaces the callout text in `discard` mode, to name what survives. */
+	note?: React.ReactNode;
 }
 
 const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
@@ -34,6 +38,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 	itemType,
 	mode: modeProp,
 	isArchive,
+	note,
 }) => {
 	const toast = useToast();
 	const mode: ConfirmMode = modeProp ?? (isArchive ? "archive" : "delete");
@@ -52,6 +57,11 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 				toast.success(
 					`${itemType} Cancelled`,
 					`"${itemName}" has been cancelled.`
+				);
+			} else if (mode === "discard") {
+				toast.success(
+					`${itemType} Discarded`,
+					`"${itemName}" has been discarded.`
 				);
 			} else {
 				toast.success(
@@ -123,6 +133,12 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 										This will cancel the <strong>{itemType}</strong> &quot;
 										{itemName}&quot;. No further activity will be recorded
 										against it.
+									</>
+								) : mode === "discard" ? (
+									<>
+										This will discard the <strong>{itemType}</strong> &quot;
+										{itemName}&quot;. You can&apos;t recover it, but nothing
+										else is changed.
 									</>
 								) : (
 									<>
@@ -214,9 +230,19 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 						</div>
 					)}
 
+					{mode === "discard" && note && (
+						<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3">
+							<p className="text-sm text-yellow-700 dark:text-yellow-300">
+								<strong>Note:</strong> {note}
+							</p>
+						</div>
+					)}
+
 					<div className="flex justify-end space-x-3">
 						<Button onClick={onClose} variant="secondary">
-							{mode === "cancel" ? `Keep ${itemType}` : "Cancel"}
+							{mode === "cancel" || mode === "discard"
+								? `Keep ${itemType}`
+								: "Cancel"}
 						</Button>
 						<Button
 							onClick={handleConfirm}
@@ -226,7 +252,9 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 								? `Archive ${itemType}`
 								: mode === "cancel"
 									? `Cancel ${itemType}`
-									: `Delete ${itemType}`}
+									: mode === "discard"
+										? `Discard ${itemType}`
+										: `Delete ${itemType}`}
 						</Button>
 					</div>
 				</div>

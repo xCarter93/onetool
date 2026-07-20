@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import { getSignatureDisplay } from "@/lib/signature-draft-display";
 import {
 	Users,
 	User,
@@ -396,34 +397,18 @@ export function SignaturesTab({
 				{hasSignatures ? (
 					<Accordion>
 						{documentsWithSignatures.map((doc) => {
-							const isDraft = doc.boldsign.status === "Draft";
-							// A draft has no signature events, so without draftSavedAt
-							// this falls back to the PDF's generatedAt — which can be
-							// weeks older than the draft itself.
-							const lastUpdate =
-								doc.boldsign.completedAt ||
-								doc.boldsign.declinedAt ||
-								doc.boldsign.revokedAt ||
-								doc.boldsign.expiredAt ||
-								doc.boldsign.signedAt ||
-								doc.boldsign.viewedAt ||
-								doc.boldsign.sentAt ||
-								doc.boldsign.draftSavedAt ||
-								doc.generatedAt;
-
-							const formattedDate = new Date(
-								lastUpdate
-							).toLocaleDateString("en-US", {
-								month: "short",
-								day: "numeric",
-								hour: "2-digit",
-								minute: "2-digit",
-							});
+							const {
+								isDraft,
+								formattedDate,
+								statusLabel,
+								timestampLabel,
+								recipientLabel,
+							} = getSignatureDisplay(doc);
 
 							return (
 								<AccordionItem key={doc._id} value={doc._id}>
 									<AccordionTrigger>
-										{`Version ${doc.version} - ${isDraft ? "Draft, not sent" : doc.boldsign.status} - ${formattedDate}`}
+										{`Version ${doc.version} - ${statusLabel} - ${formattedDate}`}
 									</AccordionTrigger>
 									<AccordionContent>
 										<div className="space-y-4">
@@ -447,14 +432,11 @@ export function SignaturesTab({
 														status={doc.boldsign.status.toLowerCase()}
 														className="text-xs"
 													>
-														{isDraft
-															? "Draft, not sent"
-															: doc.boldsign.status}
+														{statusLabel}
 													</StatusBadge>
 												)}
 												<span className="text-xs text-muted-foreground ml-auto">
-													{isDraft ? "Saved" : "Last updated"}:{" "}
-													{formattedDate}
+													{timestampLabel}: {formattedDate}
 												</span>
 											</div>
 
@@ -522,7 +504,7 @@ export function SignaturesTab({
 
 											<div className="pt-4 border-t border-border">
 												<p className="font-medium mb-3 text-sm text-foreground">
-													{isDraft ? "Will be sent to:" : "Sent to:"}
+													{recipientLabel}
 												</p>
 												<ul className="space-y-2">
 													{doc.boldsign.sentTo.map(
@@ -592,6 +574,8 @@ export function SignaturesTab({
 				title="Discard signature draft"
 				itemName={`Version ${draftVersionLabel}`}
 				itemType="Draft"
+				mode="discard"
+				note="This only removes the unsent signature draft. The quote and its PDF stay exactly as they are."
 			/>
 		</div>
 	);

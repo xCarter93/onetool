@@ -575,6 +575,10 @@ describe("BoldSign embedded sending", () => {
 	});
 
 	describe("markEmbeddedDraftSaved", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
 		it("stamps draftSavedAt on a live Draft", async () => {
 			const { clerkUserId, clerkOrgId, quoteId, documentId } = await t.run(
 				async (ctx) => {
@@ -625,6 +629,53 @@ describe("BoldSign embedded sending", () => {
 			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
 			expect(doc?.boldsign?.draftSavedAt).toBeUndefined();
 			expect(doc?.boldsign?.status).toBe("Sent");
+		});
+
+		// Enforcement is still shadow-mode in prod, so pin the flag on: this
+		// asserts the gate exists and will bite at the enforcement flip, rather
+		// than passing vacuously because denyPermission only logged.
+		it("denies a view-only member (org membership is not the boundary)", async () => {
+			vi.stubEnv("PERMISSIONS_ENFORCE", "true");
+			const { clerkOrgId, memberClerkUserId, quoteId, documentId } = await t.run(
+				async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, org.orgId);
+					const quoteId = await seedQuote(ctx, org.orgId, clientId);
+					const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+						documentId: "bs_viewer_denied",
+						status: "Draft",
+						viewUrl: "https://boldsign.test/send/viewer",
+						sentTo: [],
+					});
+
+					// Inline rather than addMemberToOrg: the grant has to be on the
+					// membership row at insert time.
+					const memberClerkUserId = "user_viewer";
+					const memberUserId = await ctx.db.insert("users", {
+						name: "View Only",
+						email: "viewer@example.com",
+						image: "https://example.com/viewer.jpg",
+						externalId: memberClerkUserId,
+					});
+					await ctx.db.insert("organizationMemberships", {
+						orgId: org.orgId,
+						userId: memberUserId,
+						role: "member",
+						permissions: { quotes: { level: "view" } },
+					});
+
+					return { ...org, memberClerkUserId, quoteId, documentId };
+				}
+			);
+
+			await expect(
+				t
+					.withIdentity(createTestIdentity(memberClerkUserId, clerkOrgId))
+					.mutation(api.boldsign.markEmbeddedDraftSaved, { quoteId })
+			).rejects.toThrow();
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
+			expect(doc?.boldsign?.draftSavedAt).toBeUndefined();
 		});
 	});
 

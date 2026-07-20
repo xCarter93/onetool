@@ -120,35 +120,49 @@ async function getLatestQuoteDocument(
 	});
 }
 
+/**
+ * Resolve the caller's org, load the quote, and enforce quotes-modify plus
+ * project/client scope. Every e-sign entry point that reads or mutates a
+ * quote's embedded-signature state must go through this — org membership
+ * alone is not the boundary (PRD §4.4). Shadow-aware.
+ */
+async function authorizeQuoteModify(
+	ctx: QueryCtx | MutationCtx,
+	quoteId: Id<"quotes">
+): Promise<{ quote: Doc<"quotes">; orgId: Id<"organizations"> }> {
+	const orgId = await getCurrentUserOrgId(ctx);
+
+	const quote = await ctx.db.get(quoteId);
+	if (!quote || quote.orgId !== orgId) {
+		throw new Error("Quote does not belong to your organization");
+	}
+
+	await requireLevel(ctx, "quotes", "modify");
+	if (!(await hasAllRecords(ctx, "quotes"))) {
+		const user = await getCurrentUser(ctx);
+		const projects = await ctx.db
+			.query("projects")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+		const mine = projects.filter(
+			(p) => user && p.assignedUserIds?.includes(user._id)
+		);
+		const inScope = quote.projectId
+			? mine.some((p) => p._id === quote.projectId)
+			: mine.some((p) => p.clientId === quote.clientId);
+		if (!inScope) {
+			denyPermission({ object: "quotes", scope: true, userId: user?._id, orgId });
+		}
+	}
+
+	return { quote, orgId };
+}
+
 export const getEmbeddedRequestContext = internalQuery({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, args): Promise<EmbeddedRequestContext> => {
-		const orgId = await getCurrentUserOrgId(ctx);
-
-		const quote = await ctx.db.get(args.quoteId);
-		if (!quote || quote.orgId !== orgId) {
-			throw new Error("Quote does not belong to your organization");
-		}
-
-		// E-sign send = quotes modify (PRD §4.4); caller identity flows through
-		// the action into this internal query. Shadow-aware.
-		await requireLevel(ctx, "quotes", "modify");
-		if (!(await hasAllRecords(ctx, "quotes"))) {
-			const user = await getCurrentUser(ctx);
-			const projects = await ctx.db
-				.query("projects")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
-				.collect();
-			const mine = projects.filter(
-				(p) => user && p.assignedUserIds?.includes(user._id)
-			);
-			const inScope = quote.projectId
-				? mine.some((p) => p._id === quote.projectId)
-				: mine.some((p) => p.clientId === quote.clientId);
-			if (!inScope) {
-				denyPermission({ object: "quotes", scope: true, userId: user?._id, orgId });
-			}
-		}
+		// Caller identity flows through the action into this internal query.
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		if (!latest) {
@@ -295,12 +309,8 @@ export const getEmbeddedDraft = internalQuery({
 		documentId: Id<"documents">;
 		boldsignDocumentId: string;
 	} | null> => {
-		const orgId = await getCurrentUserOrgId(ctx);
-
-		const quote = await ctx.db.get(args.quoteId);
-		if (!quote || quote.orgId !== orgId) {
-			throw new Error("Quote does not belong to your organization");
-		}
+		// Discarding a draft is a quote mutation; same boundary as creating one.
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		if (!latest || latest.boldsign?.status !== "Draft") return null;
@@ -347,12 +357,7 @@ export const markEmbeddedDraftSaved = mutation({
 	args: { quoteId: v.id("quotes") },
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
-		const orgId = await getCurrentUserOrgId(ctx);
-
-		const quote = await ctx.db.get(args.quoteId);
-		if (!quote || quote.orgId !== orgId) {
-			throw new Error("Quote does not belong to your organization");
-		}
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		// Only a live Draft has a save time; a racing Sent webhook wins.
