@@ -512,18 +512,28 @@ export function NavMain({
 							return (
 								<SidebarMenuItem key={item.title}>
 									<SidebarMenuButton
-										tooltip={item.title}
+										// Collapsed mode drops the badge, so the tooltip carries it.
+										tooltip={
+											item.badgeLabel
+												? `${item.title} · ${item.badgeLabel}`
+												: item.title
+										}
 										isActive={item.isActive}
 										onClick={() => router.push(item.url)}
 									>
 										{item.icon && <item.icon />}
 										<span>{item.title}</span>
-										{item.badgeLabel && (
+										{/* Must be absent from the DOM when collapsed, not just
+										    hidden: the button truncates its label via
+										    [&>span:last-child], so a trailing sibling would strip
+										    that and let the untruncated label shove the icon out
+										    of the 36px icon-mode button. */}
+										{item.badgeLabel && !isCollapsed && (
 											<Badge
 												variant="primary-light"
 												size="xs"
 												radius="full"
-												className="ml-auto group-data-[collapsible=icon]:hidden"
+												className="ml-auto"
 											>
 												{item.badgeLabel}
 											</Badge>
