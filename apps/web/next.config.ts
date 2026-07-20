@@ -25,7 +25,8 @@ const cspReportOnly = [
 	"font-src 'self' data:",
 	`connect-src 'self'${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}${process.env.NEXT_PUBLIC_POSTHOG_HOST ? ` ${process.env.NEXT_PUBLIC_POSTHOG_HOST}` : ""}`, 
 	// app.boldsign.com: embedded e-signature editor (quotes/[quoteId]/sign).
-	"frame-src https://js.stripe.com https://hooks.stripe.com https://app.boldsign.com",
+	// Convex origin: PDF previews iframe file-storage URLs (quote/invoice sidebars).
+	`frame-src https://js.stripe.com https://hooks.stripe.com https://app.boldsign.com${convexHostname ? ` https://${convexHostname}` : ""}`,
 	"frame-ancestors 'none'",
 	"base-uri 'self'",
 	"form-action 'self' https://checkout.stripe.com",
