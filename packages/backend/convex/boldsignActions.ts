@@ -2,7 +2,12 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { DocumentApi, DocumentSigner, EmbeddedDocumentRequest } from "boldsign";
+import {
+	DocumentApi,
+	DocumentSigner,
+	EmbeddedDocumentEditJsonRequest,
+	EmbeddedDocumentRequest,
+} from "boldsign";
 
 // ============================================================================
 // BoldSign API Configuration
@@ -31,6 +36,27 @@ function createDocumentApi(): InstanceType<typeof DocumentApi> {
 	const documentApi = new DocumentApi();
 	documentApi.setApiKey(apiKey);
 	return documentApi;
+}
+
+/**
+ * Post-send redirect fallback (postMessage is the primary signal). The redirect
+ * fires in the sender's own session, so normalize via URL() and require http(s)
+ * rather than reflecting a raw caller-supplied string.
+ */
+function buildRedirectUrl(
+	origin: string | undefined,
+	quoteId: string
+): string | undefined {
+	if (!origin) return undefined;
+	try {
+		const parsed = new URL(origin);
+		if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+			return `${parsed.origin}/quotes/${quoteId}`;
+		}
+	} catch {
+		// Ignore a malformed caller-provided origin.
+	}
+	return undefined;
 }
 
 // ============================================================================
@@ -81,11 +107,33 @@ export const createEmbeddedSignatureRequest = action({
 			};
 		}
 
-		// Reuse a still-valid embedded Draft (idempotent /sign revisits).
+		// Resume an existing embedded Draft. A fresh edit URL is minted per visit
+		// rather than replaying the stored sendUrl, so the draft stays reachable
+		// after that link lapses instead of being replaced by a new document.
 		if (context.existing) {
+			const editRequest = new EmbeddedDocumentEditJsonRequest();
+			editRequest.showToolbar = true;
+			editRequest.showSendButton = true;
+			editRequest.showPreviewButton = true;
+			editRequest.showNavigationButtons = true;
+			editRequest.sendViewOption =
+				EmbeddedDocumentEditJsonRequest.SendViewOptionEnum.FillingPage;
+			// This link is per-visit; a day is ample for one editing session and
+			// well inside BoldSign's 30-day ceiling.
+			editRequest.linkValidTill = new Date(Date.now() + 24 * 60 * 60 * 1000);
+			editRequest.redirectUrl = buildRedirectUrl(args.origin, args.quoteId);
+
+			const editApi = createDocumentApi();
+			const edited = await editApi.createEmbeddedEditUrl(
+				context.existing.boldsignDocumentId,
+				editRequest
+			);
+			if (!edited.editUrl) {
+				throw new Error("BoldSign did not return an embedded edit URL");
+			}
 			return {
 				ok: true,
-				sendUrl: context.existing.sendUrl,
+				sendUrl: edited.editUrl,
 				boldsignDocumentId: context.existing.boldsignDocumentId,
 				reused: true,
 			};
@@ -138,19 +186,7 @@ export const createEmbeddedSignatureRequest = action({
 
 		const sendUrlExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
 		request.sendLinkValidTill = new Date(sendUrlExpiresAt);
-		// Post-send redirect fallback (postMessage is the primary signal). The
-		// redirect fires in the sender's own session, so we normalize via URL()
-		// and require http(s) rather than reflect a raw caller string.
-		if (args.origin) {
-			try {
-				const parsed = new URL(args.origin);
-				if (parsed.protocol === "https:" || parsed.protocol === "http:") {
-					request.redirectUrl = `${parsed.origin}/quotes/${args.quoteId}`;
-				}
-			} catch {
-				// Ignore a malformed caller-provided origin.
-			}
-		}
+		request.redirectUrl = buildRedirectUrl(args.origin, args.quoteId);
 
 		const documentApi = createDocumentApi();
 		console.log(

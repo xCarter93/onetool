@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import {
 	internalMutation,
 	internalQuery,
+	mutation,
 	MutationCtx,
 	QueryCtx,
 } from "./_generated/server";
@@ -84,8 +85,9 @@ type EmbeddedRequestContext = {
 	signers: DerivedSigner[];
 	enableSigningOrder: boolean;
 	usage: { used: number; limit: number | null; overCap: boolean };
-	// A non-expired embedded Draft to reuse instead of minting a new one.
-	existing: { sendUrl: string; boldsignDocumentId: string } | null;
+	// An embedded Draft to resume instead of minting a new document. The edit
+	// URL is minted fresh per visit, so this is not gated on link expiry.
+	existing: { boldsignDocumentId: string } | null;
 };
 
 /**
@@ -153,17 +155,13 @@ export const getEmbeddedRequestContext = internalQuery({
 			throw new Error("No PDF has been generated for this quote yet");
 		}
 
-		// Reuse a non-expired embedded Draft (idempotent /sign visits).
-		const now = Date.now();
+		// Resume any embedded Draft (idempotent /sign visits). Deliberately not
+		// gated on sendUrlExpiresAt: the action mints a fresh edit URL for the
+		// existing document, so a lapsed link no longer strands the draft or
+		// orphans it behind a newly minted replacement.
 		const existing =
-			latest.boldsign?.status === "Draft" &&
-			latest.boldsign.viewUrl &&
-			latest.boldsign.sendUrlExpiresAt &&
-			latest.boldsign.sendUrlExpiresAt > now
-				? {
-						sendUrl: latest.boldsign.viewUrl,
-						boldsignDocumentId: latest.boldsign.documentId,
-					}
+			latest.boldsign?.status === "Draft"
+				? { boldsignDocumentId: latest.boldsign.documentId }
 				: null;
 
 		// Derive default signers (mirrors send-email-sheet.tsx recipient build).
@@ -267,6 +265,7 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 				sentTo: args.sentTo,
 				viewUrl: args.sendUrl,
 				sendUrlExpiresAt: args.sendUrlExpiresAt,
+				draftSavedAt: Date.now(),
 			},
 		});
 
@@ -334,6 +333,33 @@ export const clearEmbeddedDraft = internalMutation({
 		await ctx.db.patch(args.documentId, {
 			boldsign: undefined,
 			boldsignDocumentId: undefined,
+		});
+		return null;
+	},
+});
+
+/**
+ * Stamp the Draft's save time after the user clicks Save & Close in the editor.
+ * The Signatures tab shows this as "Saved <time>"; without it the tab falls
+ * back to the PDF's generatedAt, which can be weeks stale.
+ */
+export const markEmbeddedDraftSaved = mutation({
+	args: { quoteId: v.id("quotes") },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const orgId = await getCurrentUserOrgId(ctx);
+
+		const quote = await ctx.db.get(args.quoteId);
+		if (!quote || quote.orgId !== orgId) {
+			throw new Error("Quote does not belong to your organization");
+		}
+
+		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
+		// Only a live Draft has a save time; a racing Sent webhook wins.
+		if (!latest || latest.boldsign?.status !== "Draft") return null;
+
+		await ctx.db.patch(latest._id, {
+			boldsign: { ...latest.boldsign, draftSavedAt: Date.now() },
 		});
 		return null;
 	},

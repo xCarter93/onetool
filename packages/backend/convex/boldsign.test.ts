@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -397,12 +397,11 @@ describe("BoldSign embedded sending", () => {
 				);
 
 				expect(result.existing).toEqual({
-					sendUrl: "https://boldsign.test/send/abc",
 					boldsignDocumentId: "bs_draft_reuse",
 				});
 			});
 
-			it("returns no existing draft when the send URL has expired", async () => {
+			it("still resumes the draft after the send URL has expired", async () => {
 				const { clerkUserId, clerkOrgId, quoteId } = await t.run(
 					async (ctx) => {
 						const org = await createTestOrg(ctx);
@@ -413,6 +412,39 @@ describe("BoldSign embedded sending", () => {
 							status: "Draft",
 							viewUrl: "https://boldsign.test/send/expired",
 							sendUrlExpiresAt: Date.now() - 1000,
+							sentTo: [],
+						});
+						return { ...org, quoteId };
+					}
+				);
+
+				const asUser = t.withIdentity(
+					createTestIdentity(clerkUserId, clerkOrgId)
+				);
+
+				const result = await asUser.query(
+					internal.boldsign.getEmbeddedRequestContext,
+					{ quoteId }
+				);
+
+				// A lapsed link no longer strands the draft: the action mints a
+				// fresh edit URL for this documentId rather than minting a new
+				// document and orphaning this one on BoldSign.
+				expect(result.existing).toEqual({
+					boldsignDocumentId: "bs_draft_expired",
+				});
+			});
+
+			it("returns no existing draft once the document is no longer a Draft", async () => {
+				const { clerkUserId, clerkOrgId, quoteId } = await t.run(
+					async (ctx) => {
+						const org = await createTestOrg(ctx);
+						const clientId = await createTestClient(ctx, org.orgId);
+						const quoteId = await seedQuote(ctx, org.orgId, clientId);
+						await seedDocument(ctx, org.orgId, quoteId, 1, {
+							documentId: "bs_draft_sent",
+							status: "Sent",
+							viewUrl: "https://boldsign.test/send/sent",
 							sentTo: [],
 						});
 						return { ...org, quoteId };
@@ -539,6 +571,60 @@ describe("BoldSign embedded sending", () => {
 			});
 
 			expect(result).toBeNull();
+		});
+	});
+
+	describe("markEmbeddedDraftSaved", () => {
+		it("stamps draftSavedAt on a live Draft", async () => {
+			const { clerkUserId, clerkOrgId, quoteId, documentId } = await t.run(
+				async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, org.orgId);
+					const quoteId = await seedQuote(ctx, org.orgId, clientId);
+					const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+						documentId: "bs_draft_saved",
+						status: "Draft",
+						viewUrl: "https://boldsign.test/send/abc",
+						sentTo: [],
+					});
+					return { ...org, quoteId, documentId };
+				}
+			);
+
+			const before = Date.now();
+			await t
+				.withIdentity(createTestIdentity(clerkUserId, clerkOrgId))
+				.mutation(api.boldsign.markEmbeddedDraftSaved, { quoteId });
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
+			expect(doc?.boldsign?.draftSavedAt).toBeGreaterThanOrEqual(before);
+			// The rest of the embedded state must survive the stamp.
+			expect(doc?.boldsign?.documentId).toBe("bs_draft_saved");
+			expect(doc?.boldsign?.status).toBe("Draft");
+		});
+
+		it("leaves a document alone once it is no longer a Draft", async () => {
+			const { clerkUserId, clerkOrgId, quoteId, documentId } = await t.run(
+				async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, org.orgId);
+					const quoteId = await seedQuote(ctx, org.orgId, clientId);
+					const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+						documentId: "bs_already_sent",
+						status: "Sent",
+						sentTo: [],
+					});
+					return { ...org, quoteId, documentId };
+				}
+			);
+
+			await t
+				.withIdentity(createTestIdentity(clerkUserId, clerkOrgId))
+				.mutation(api.boldsign.markEmbeddedDraftSaved, { quoteId });
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
+			expect(doc?.boldsign?.draftSavedAt).toBeUndefined();
+			expect(doc?.boldsign?.status).toBe("Sent");
 		});
 	});
 

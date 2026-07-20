@@ -697,6 +697,9 @@ export default defineSchema({
 				expiredAt: v.optional(v.number()),
 				viewUrl: v.optional(v.string()), // Embedded sendUrl (Draft) or view link
 				sendUrlExpiresAt: v.optional(v.number()), // Expiry for idempotent Draft reuse
+				// When the Draft was created or last saved via Save & Close. Distinct
+				// from generatedAt (the PDF's timestamp), which the UI used to show.
+				draftSavedAt: v.optional(v.number()),
 			})
 		),
 	})
