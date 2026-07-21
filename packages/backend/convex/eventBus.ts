@@ -362,6 +362,12 @@ export const processEvents = internalMutation({
 		const pendingEvents = await selectFairBatch(ctx);
 
 		if (pendingEvents.length === 0) {
+			// A retry wake extends the lease by RETRY_DELAY_MS + CLAIM_TTL_MS; if a
+			// concurrent chain drained the queue first, that lease would gate new
+			// emits until it expires — release it so the next emit wakes promptly.
+			if (!process.env.VITEST) {
+				await releaseClaimLease(ctx);
+			}
 			return { processed: 0 };
 		}
 
@@ -704,7 +710,11 @@ export const kickEventProcessing = internalMutation({
 			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.first();
 		if (pending) {
-			await scheduleEventProcessing(ctx);
+			// Bypass scheduleEventProcessing's live-lease short-circuit: this is
+			// the rescue path for a dropped wake, and a duplicate wake is a
+			// harmless idempotent no-op — schedule unconditionally.
+			await extendClaimLease(ctx, CLAIM_TTL_MS);
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
 		}
 		return null;
 	},

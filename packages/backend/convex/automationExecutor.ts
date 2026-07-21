@@ -803,14 +803,12 @@ export const dispatchScheduledAutomations = internalMutation({
 					continue;
 				}
 
-				const oneMinuteAgo = now - RATE_LIMIT_WINDOW_MS;
-				const recentExecutions = await ctx.db
-					.query("workflowExecutions")
-					.withIndex("by_org_triggeredAt", (q) =>
-						q.eq("orgId", automation.orgId).gte("triggeredAt", oneMinuteAgo)
-					)
-					.take(MAX_EXECUTIONS_PER_WINDOW);
-				if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
+				// Debit the same per-org budget as event-driven run starts so
+				// scheduled + event runs share one 100/min cap.
+				const limit = await rateLimiter.limit(ctx, "automationRunStarts", {
+					key: automation.orgId,
+				});
+				if (!limit.ok) {
 					await ctx.db.insert("workflowExecutions", {
 						orgId: automation.orgId,
 						automationId: automation._id,
