@@ -20,9 +20,10 @@ import {
 	userHasPremiumOverride,
 } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
-import { enqueuePush, enqueuePushViaPool } from "./push";
+import { enqueuePushViaPool } from "./push";
 import { insertTeamMessage } from "./teamMessages";
 import { rateLimiter } from "./rateLimits";
+import { scheduleEventProcessing } from "./eventBus";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -49,7 +50,6 @@ import {
 import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
-	getCreatableFields,
 	getFieldDefinition,
 	getRequiredCreateFields,
 	getStatusOptions,
@@ -67,7 +67,6 @@ import {
 	MAX_LOOP_ITERATIONS,
 	isFetchOnlyObjectType,
 	LOOP_FETCH_ONLY_ERROR,
-	objectTypeValidator,
 	triggerableObjectTypeValidator,
 	triggerRecordObjectType,
 	type ActionTarget,
@@ -573,6 +572,15 @@ async function matchAndScheduleAutomations(
 			executionChain: newChain,
 			recursionDepth: params.recursionDepth,
 			dedupeKey,
+			// Mirrors the executeAutomation args scheduled below — lets the
+			// watchdog re-drive this run from scratch if its first mutation
+			// never committed.
+			startArgs: {
+				objectType: params.entityType,
+				objectId: params.entityId,
+				eventOldValue: params.fromStatus,
+				eventNewValue: params.toStatus,
+			},
 		});
 
 		// Publish automation.triggered event for monitoring
@@ -1740,6 +1748,35 @@ function mergeContinuationFor(
 }
 
 /**
+ * Build a resumeState checkpoint pointing at resumeNodeId/resumeAt. Shared by
+ * the delay checkpoint, the chunked-loop checkpoint (which layers a `loop`
+ * field on top), and the run-level retry checkpoint in finishWalk.
+ */
+function buildResumeState(
+	env: WalkEnv,
+	resumeNodeId: string,
+	resumeAt: number
+): NonNullable<Doc<"workflowExecutions">["resumeState"]> {
+	return {
+		resumeNodeId,
+		resumeAt,
+		// Parked-at timestamp; resume adds (now - checkpointAt) to pausedMs.
+		checkpointAt: Date.now(),
+		eventOldValue: env.scope.trigger?.event?.oldValue as string | undefined,
+		eventNewValue: env.scope.trigger?.event?.newValue as string | undefined,
+		objectType: env.trigger.objectType,
+		objectId: env.trigger.objectId,
+		fetchOutputs: Object.entries(env.fetchOutputs).map(([nodeId, output]) => ({
+			nodeId,
+			objectType: output.objectType,
+			recordIds: output.records.map((r) => String(r._id)),
+			count: output.count,
+		})),
+		nodeResults: collectNodeResults(env.scope),
+	};
+}
+
+/**
  * Walk a node chain from startNodeId. Loop bodies recurse with the loop item
  * as the scope record; delays checkpoint and return "waiting".
  */
@@ -1885,29 +1922,7 @@ async function runWalk(
 				dataTruncated: env.dataTruncated,
 				loopSummary: loopSummaryPatch(env),
 				currentNodeId: delayNextNodeId,
-				resumeState: {
-					resumeNodeId: delayNextNodeId,
-					resumeAt: resume.resumeAt,
-					// Parked-at timestamp; resume adds (now - checkpointAt) to pausedMs.
-					checkpointAt: Date.now(),
-					eventOldValue: env.scope.trigger?.event?.oldValue as
-						| string
-						| undefined,
-					eventNewValue: env.scope.trigger?.event?.newValue as
-						| string
-						| undefined,
-					objectType: env.trigger.objectType,
-					objectId: env.trigger.objectId,
-					fetchOutputs: Object.entries(env.fetchOutputs).map(
-						([nodeId, output]) => ({
-							nodeId,
-							objectType: output.objectType,
-							recordIds: output.records.map((r) => String(r._id)),
-							count: output.count,
-						})
-					),
-					nodeResults: collectNodeResults(env.scope),
-				},
+				resumeState: buildResumeState(env, delayNextNodeId, resume.resumeAt),
 			});
 			await ctx.scheduler.runAt(
 				resume.resumeAt,
@@ -2232,22 +2247,7 @@ async function checkpointLoopChunk(
 		loopSummary: loopSummaryPatch(env),
 		currentNodeId: node.id,
 		resumeState: {
-			resumeNodeId: node.id,
-			resumeAt: now,
-			checkpointAt: now,
-			eventOldValue: env.scope.trigger?.event?.oldValue as string | undefined,
-			eventNewValue: env.scope.trigger?.event?.newValue as string | undefined,
-			objectType: env.trigger.objectType,
-			objectId: env.trigger.objectId,
-			fetchOutputs: Object.entries(env.fetchOutputs).map(
-				([nodeId, output]) => ({
-					nodeId,
-					objectType: output.objectType,
-					recordIds: output.records.map((r) => String(r._id)),
-					count: output.count,
-				})
-			),
-			nodeResults: collectNodeResults(env.scope),
+			...buildResumeState(env, node.id, now),
 			loop: { nodeId: node.id, ...loop },
 		},
 	});
@@ -3075,7 +3075,7 @@ async function applyStatusUpdate(
 			});
 
 			// Trigger event processing
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { success: true };
@@ -3455,7 +3455,7 @@ async function executeUpdateFieldsAction(
 					createdAt: Date.now(),
 					attemptCount: 0,
 				});
-				await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+				await scheduleEventProcessing(ctx);
 			}
 		} catch (error) {
 			return {
@@ -3637,7 +3637,20 @@ async function executeCreateTaskAction(
 
 		const task = await ctx.db.get(taskId);
 		if (task) {
-			await ActivityHelpers.taskCreated(ctx, task);
+			// Attribute the activity to the automation's creator — a scheduled
+			// (cron) run has no ambient authenticated user, so createActivity's
+			// default getCurrentUserOrThrow would throw AFTER the task insert
+			// (node reports failed though the task exists). If that creator has
+			// since left the org, fall back to the org owner (mirrors
+			// executeCreateRecordAction).
+			const org = await ctx.db.get(env.orgId);
+			const creatorId = env.automation.createdBy;
+			const creatorMembership = await getMembership(ctx, creatorId, env.orgId);
+			const actor = {
+				userId: creatorMembership ? creatorId : (org?.ownerUserId ?? creatorId),
+				orgId: env.orgId,
+			};
+			await ActivityHelpers.taskCreated(ctx, task, actor);
 
 			// Emit record_created with the execution chain in metadata so
 			// cascading automations keep recursion protection (the plain
@@ -3660,7 +3673,7 @@ async function executeCreateTaskAction(
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { success: true };
@@ -4065,7 +4078,7 @@ async function executeCreateRecordAction(
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { success: true };
@@ -6192,6 +6205,66 @@ export const failStaleProductionRuns = internalMutation({
 			const resume = execution.resumeState;
 			// Parked with the wake still ahead (or recently passed): leave it be.
 			if (resume && resume.resumeAt >= cutoff) continue;
+
+			const attemptCount = execution.attemptCount ?? 0;
+			// A parked run with a resume checkpoint and attempts left is a missed
+			// wake, not a dead run — reschedule instead of failing it. Bump
+			// resumeAt so this same row isn't picked up again by the next sweep;
+			// checkpointAt stays put so resumeExecution's own pausedMs math still
+			// accounts for the full stall once it actually fires.
+			if (resume && attemptCount < 3) {
+				await ctx.db.patch(execution._id, {
+					attemptCount: attemptCount + 1,
+					resumeState: { ...resume, resumeAt: now },
+				});
+				await ctx.scheduler.runAfter(
+					0,
+					internal.automationExecutor.resumeExecution,
+					{
+						orgId: execution.orgId,
+						executionId: execution._id,
+						automationId: execution.automationId,
+					}
+				);
+				continue;
+			}
+
+			// No resumeState and nothing executed yet: the very first mutation
+			// (executeAutomation) never committed — a dropped runAfter(0) hop, not
+			// a walk that made progress and got stuck. Mutations are atomic, so
+			// zero nodesExecuted means the original invocation wrote nothing;
+			// re-driving from startArgs duplicates nothing. Only possible for
+			// event-driven runs (matchAndScheduleAutomations stamps startArgs);
+			// manual/scheduled runs fall through to the terminal-fail path below.
+			if (
+				!resume &&
+				execution.nodesExecuted.length === 0 &&
+				execution.startArgs &&
+				attemptCount < 3
+			) {
+				await ctx.db.patch(execution._id, {
+					attemptCount: attemptCount + 1,
+				});
+				await ctx.scheduler.runAfter(
+					0,
+					internal.automationExecutor.executeAutomation,
+					{
+						orgId: execution.orgId,
+						executionId: execution._id,
+						automationId: execution.automationId,
+						objectType: execution.startArgs.objectType,
+						objectId: execution.startArgs.objectId,
+						eventOldValue: execution.startArgs.eventOldValue,
+						eventNewValue: execution.startArgs.eventNewValue,
+						executionChain: execution.executionChain ?? [
+							execution.automationId,
+						],
+						// Row stores the pre-increment depth; the original schedule passed +1.
+						recursionDepth: (execution.recursionDepth ?? 0) + 1,
+					}
+				);
+				continue;
+			}
 
 			// A parked run's wait is honest pause, not activity — fold it in so
 			// the derived activeMs stays truthful (mirrors resumeExecution).

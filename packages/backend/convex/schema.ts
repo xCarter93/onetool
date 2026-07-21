@@ -1354,6 +1354,14 @@ export default defineSchema({
 		.index("by_type_status", ["eventType", "status"])
 		.index("by_correlation", ["correlationId"]),
 
+	// Single-row claim doc making processEvents effectively single-flight.
+	// scheduledUntil is a TTL lease (0 = no wake scheduled); generation counts
+	// claims for debugging.
+	eventDispatchState: defineTable({
+		scheduledUntil: v.number(),
+		generation: v.number(),
+	}),
+
 	// Workflow Automations - main automation definition
 	workflowAutomations: defineTable({
 		orgId: v.id("organizations"),
@@ -1528,6 +1536,23 @@ export default defineSchema({
 		// Set only on event-driven runs (matchAndScheduleAutomations); absent on
 		// manual/scheduled runs, which have no retryable source event.
 		dedupeKey: v.optional(v.string()),
+		// Watchdog rescues consumed by this run (failStaleProductionRuns): a
+		// missed-wake resume or a zero-progress re-drive. Bounds both so a run
+		// can't be rescued forever.
+		attemptCount: v.optional(v.number()),
+		// Snapshot of the args executeAutomation was first scheduled with —
+		// enough to re-drive it from scratch if its very first mutation never
+		// committed (executionChain/recursionDepth already live on the row).
+		// Set by matchAndScheduleAutomations (event-driven runs only); absent on
+		// manual/scheduled runs, which the watchdog still terminally fails.
+		startArgs: v.optional(
+			v.object({
+				objectType: triggerableObjectTypeValidator,
+				objectId: v.string(),
+				eventOldValue: v.optional(v.string()),
+				eventNewValue: v.optional(v.string()),
+			})
+		),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_automation", ["automationId"])

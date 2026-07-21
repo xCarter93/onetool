@@ -152,10 +152,25 @@ describe("automationExecutor (v2 engine)", () => {
 		return { ...setup, asUser };
 	}
 
-	/** Drain the pending domainEvents queue and every scheduled function it fans out to. */
+	/**
+	 * Drain the pending domainEvents queue and every scheduled function it
+	 * fans out to. Loops: an action node emitting a new domain event (e.g. a
+	 * chained record_updated) leaves it pending after one processEvents pass
+	 * since scheduleEventProcessing no-ops under Vitest, so drive processEvents
+	 * again until the backlog is actually empty.
+	 */
 	async function drainEvents() {
-		await t.mutation(internal.eventBus.processEvents, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		for (let i = 0; i < 10; i++) {
+			await t.mutation(internal.eventBus.processEvents, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const pending = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("domainEvents")
+					.withIndex("by_status", (q) => q.eq("status", "pending"))
+					.first();
+			});
+			if (!pending) break;
+		}
 	}
 
 	describe("handleRecordEvent — record_created", () => {
@@ -2685,7 +2700,7 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 
 		it("create_task: interpolates title, links project/client, computes a UTC-midnight due date", async () => {
-			const { asUser } = await setupUser();
+			const { asUser, userId } = await setupUser();
 
 			const clientId = await asUser.mutation(api.clients.create, {
 				portalAccessId: crypto.randomUUID(),
@@ -2726,6 +2741,27 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(task.date % 86_400_000).toBe(0);
 			expect(task.date).toBeGreaterThan(Date.now() + 2 * 86_400_000);
 			expect(task.date).toBeLessThan(Date.now() + 4 * 86_400_000);
+
+			// The triggering run (a record_created cascade off project.create,
+			// dispatched with no ambient authenticated user) must not fail: the
+			// task-created activity is attributed to the automation's creator
+			// rather than throwing via getCurrentUserOrThrow.
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions.every((e) => e.status !== "failed")).toBe(true);
+
+			const activities = await t.run(async (ctx) =>
+				ctx.db
+					.query("activities")
+					.withIndex("by_entity", (q) =>
+						q.eq("entityType", "task").eq("entityId", task._id)
+					)
+					.collect()
+			);
+			expect(activities).toHaveLength(1);
+			expect(activities[0].activityType).toBe("task_created");
+			expect(activities[0].userId).toBe(userId);
 		});
 
 		it("aggregate: sum/avg/min/max over fetched records, precise to cents", async () => {
