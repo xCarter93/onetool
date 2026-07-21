@@ -986,6 +986,55 @@ describe("automation runs (test + manual)", () => {
 			expect(rows.fresh?.status).toBe("running");
 			expect(rows.prod?.status).toBe("running");
 		});
+
+		it("drains a backlog larger than one page via self-rechain", async () => {
+			// Regression for the automation-execution-scale PRD (item 0.2): the
+			// watchdog used to .take(100) once per cron tick, so a backlog above
+			// the page size never fully drained. It now rechains on a cursor.
+			const { asUser, orgId } = await setupUser();
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Backlog",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					{ id: "end-1", type: "end" as const, config: { kind: "end" as const } },
+				],
+			});
+
+			const now = Date.now();
+			// 250 stale test runs > the 100-row page, with distinct triggeredAt so
+			// the exclusive cursor advances cleanly past every row.
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 250; i++) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: `test:${i}`,
+						triggeredAt: now - (30 * 60 * 1000 + i),
+						status: "running" as const,
+						mode: "test" as const,
+						dryRun: true,
+						nodesExecuted: [],
+					});
+				}
+			});
+
+			// One invocation processes its own page and schedules the rest; drain
+			// the runAfter(0) rechain (fake timers are active for this suite).
+			await t.mutation(internal.automationExecutor.failStaleTestRuns, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			// Scope to this test's org: assert only the backlog we seeded drained,
+			// not unrelated running rows.
+			const remaining = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_org_status_triggeredAt", (q) =>
+						q.eq("orgId", orgId).eq("status", "running")
+					)
+					.collect()
+			);
+			expect(remaining.length).toBe(0);
+		});
 	});
 
 	describe("failStaleProductionRuns", () => {

@@ -551,20 +551,31 @@ export const replayFailedEvents = internalMutation({
 });
 
 /**
- * Cleanup old processed events (retention policy)
+ * Cleanup old processed events (retention policy).
+ *
+ * Self-rechains while rows remain: a single fixed-size daily pass deletes less
+ * than a busy day inserts, so the table would otherwise grow monotonically.
  */
+const MAX_CLEANUP_PASSES = 200;
+
 export const cleanupOldEvents = internalMutation({
 	args: {
 		olderThanDays: v.optional(v.number()),
 		batchSize: v.optional(v.number()),
+		pass: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ deleted: number; hasMore: boolean }> => {
 		const retentionDays = args.olderThanDays ?? 7; // Default: 7 days for processed events
 		const batchSize = args.batchSize ?? 500;
+		const pass = args.pass ?? 0;
 
 		const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
-		// Only delete completed events
+		// Completed rows only. Failed rows are retained deliberately as dead
+		// letters for replayFailedEvents and are never swept here.
 		const oldEvents = await ctx.db
 			.query("domainEvents")
 			.withIndex("by_status", (q) =>
@@ -578,49 +589,26 @@ export const cleanupOldEvents = internalMutation({
 			deleted++;
 		}
 
-		console.log(
-			`Cleaned up ${deleted} old domain events (older than ${retentionDays} days)`
-		);
-
-		return { deleted };
-	},
-});
-
-/**
- * Get event processing statistics
- */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getEventStats = internalQuery({
-	args: {
-		orgId: v.optional(v.id("organizations")),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const oneDayAgo = now - 24 * 60 * 60 * 1000;
-
-		// Get all events from last 24 hours
-		let recentEvents = await ctx.db
-			.query("domainEvents")
-			.filter((q) => q.gte(q.field("createdAt"), oneDayAgo))
-			.collect();
-
-		if (args.orgId) {
-			recentEvents = recentEvents.filter((e) => e.orgId === args.orgId);
+		// Deletes always make progress, so this terminates; the pass cap is a
+		// runaway guard, not the expected exit.
+		const hasMore = deleted >= batchSize && pass + 1 < MAX_CLEANUP_PASSES;
+		if (hasMore) {
+			await ctx.scheduler.runAfter(0, internal.eventBus.cleanupOldEvents, {
+				olderThanDays: args.olderThanDays,
+				batchSize: args.batchSize,
+				pass: pass + 1,
+			});
+		} else if (deleted >= batchSize) {
+			console.warn(
+				`cleanupOldEvents hit the ${MAX_CLEANUP_PASSES}-pass cap with rows still pending`
+			);
 		}
 
-		return {
-			total: recentEvents.length,
-			pending: recentEvents.filter((e) => e.status === "pending").length,
-			processing: recentEvents.filter((e) => e.status === "processing").length,
-			completed: recentEvents.filter((e) => e.status === "completed").length,
-			failed: recentEvents.filter((e) => e.status === "failed").length,
-			byType: recentEvents.reduce(
-				(acc, e) => {
-					acc[e.eventType] = (acc[e.eventType] || 0) + 1;
-					return acc;
-				},
-				{} as Record<string, number>
-			),
-		};
+		console.log(
+			`Cleaned up ${deleted} old domain events (older than ${retentionDays} days, pass ${pass})`
+		);
+
+		return { deleted, hasMore };
 	},
 });
+

@@ -4566,19 +4566,27 @@ export const bumpTriggerStats = internalMutation({
 
 // Cleanup configuration
 const EXECUTION_LOG_RETENTION_DAYS = 30;
+/** Runaway guard for self-rechaining sweeps; deletes always make progress. */
+const MAX_CLEANUP_PASSES = 200;
 
 /**
- * Clean up old execution logs to prevent unbounded table growth
- * Should be run periodically via cron job
+ * Clean up old execution logs to prevent unbounded table growth.
+ * Runs daily via cron and self-rechains while rows remain — a single
+ * fixed-size pass deletes less than a busy day inserts.
  */
 export const cleanupOldExecutions = internalMutation({
 	args: {
 		olderThanDays: v.optional(v.number()),
 		batchSize: v.optional(v.number()),
+		pass: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ deleted: number; hasMore: boolean }> => {
 		const retentionDays = args.olderThanDays ?? EXECUTION_LOG_RETENTION_DAYS;
 		const batchSize = args.batchSize ?? 500;
+		const pass = args.pass ?? 0;
 
 		const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
@@ -4614,70 +4622,28 @@ export const cleanupOldExecutions = internalMutation({
 			}
 		}
 
-		const hasMore = deleted >= batchSize;
+		const hasMore = deleted >= batchSize && pass + 1 < MAX_CLEANUP_PASSES;
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.cleanupOldExecutions,
+				{
+					olderThanDays: args.olderThanDays,
+					batchSize: args.batchSize,
+					pass: pass + 1,
+				}
+			);
+		} else if (deleted >= batchSize) {
+			console.warn(
+				`cleanupOldExecutions hit the ${MAX_CLEANUP_PASSES}-pass cap with rows still pending`
+			);
+		}
 
 		console.log(
-			`Cleaned up ${deleted} old automation execution logs (older than ${retentionDays} days)`
+			`Cleaned up ${deleted} old automation execution logs (older than ${retentionDays} days, pass ${pass})`
 		);
 
 		return { deleted, hasMore };
-	},
-});
-
-/**
- * Get automation execution statistics for an organization
- */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getExecutionStats = internalQuery({
-	args: {
-		orgId: v.id("organizations"),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const oneDayAgo = now - 24 * 60 * 60 * 1000;
-		const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-		// Get executions from last 24 hours
-		const recentExecutions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_org_triggeredAt", (q) =>
-				q.eq("orgId", args.orgId).gte("triggeredAt", oneDayAgo)
-			)
-			.collect();
-
-		// Get executions from last week
-		const weeklyExecutions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_org_triggeredAt", (q) =>
-				q.eq("orgId", args.orgId).gte("triggeredAt", oneWeekAgo)
-			)
-			.collect();
-
-		const last24h = {
-			total: recentExecutions.length,
-			completed: recentExecutions.filter((e) => e.status === "completed")
-				.length,
-			// Ran to the end with some loop items skipped — counted apart from
-			// `completed` so the buckets still sum to `total`.
-			withErrors: recentExecutions.filter(
-				(e) => e.status === "completed_with_errors"
-			).length,
-			failed: recentExecutions.filter((e) => e.status === "failed").length,
-			skipped: recentExecutions.filter((e) => e.status === "skipped").length,
-		};
-
-		const lastWeek = {
-			total: weeklyExecutions.length,
-			completed: weeklyExecutions.filter((e) => e.status === "completed")
-				.length,
-			withErrors: weeklyExecutions.filter(
-				(e) => e.status === "completed_with_errors"
-			).length,
-			failed: weeklyExecutions.filter((e) => e.status === "failed").length,
-			skipped: weeklyExecutions.filter((e) => e.status === "skipped").length,
-		};
-
-		return { last24h, lastWeek };
 	},
 });
 
@@ -6050,27 +6016,39 @@ export const getSampleRecords = userQuery({
 	},
 });
 
+/** One watchdog page. Rechained via cursor, so this bounds a pass, not a sweep. */
+const WATCHDOG_BATCH_SIZE = 100;
+/** Runaway guard; the cursor advances monotonically so sweeps terminate. */
+const MAX_WATCHDOG_PASSES = 200;
+
 /**
  * Watchdog: fail test runs stuck "running" past STALE_TEST_RUN_MS (a dropped
  * reveal chain). Production runs parked at delays are excluded (mode !== test).
  */
 export const failStaleTestRuns = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ failed: number }> => {
+	args: {
+		cursorTriggeredAt: v.optional(v.number()),
+		pass: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<{ failed: number }> => {
 		const cutoff = Date.now() - STALE_TEST_RUN_MS;
-		const stale = await ctx.db
+		const pass = args.pass ?? 0;
+		// Status-partitioned range lands directly on "running" rows. Scanning
+		// by_triggeredAt instead walks the far larger population of old terminal
+		// rows and can exhaust its budget before reaching any stale run.
+		const candidates = await ctx.db
 			.query("workflowExecutions")
-			.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoff))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "running"),
-					q.eq(q.field("mode"), "test")
-				)
+			.withIndex("by_status_triggeredAt", (q) =>
+				q
+					.eq("status", "running")
+					.gt("triggeredAt", args.cursorTriggeredAt ?? -1)
+					.lt("triggeredAt", cutoff)
 			)
-			.take(100);
+			.take(WATCHDOG_BATCH_SIZE);
 
 		let failed = 0;
-		for (const execution of stale) {
+		for (const execution of candidates) {
+			if (execution.mode !== "test") continue;
 			await ctx.db.patch(execution._id, {
 				status: "failed",
 				completedAt: Date.now(),
@@ -6079,6 +6057,24 @@ export const failStaleTestRuns = internalMutation({
 				error: execution.error ?? "Test run timed out",
 			});
 			failed++;
+		}
+
+		// Cursor on row position, not work done: a full page of skipped rows
+		// (wrong mode) must not stall the sweep. Rows sharing the last row's
+		// exact triggeredAt ms are passed over by the exclusive `gt` bound and
+		// are picked up by the next cron tick, which starts from scratch.
+		if (
+			candidates.length === WATCHDOG_BATCH_SIZE &&
+			pass + 1 < MAX_WATCHDOG_PASSES
+		) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.failStaleTestRuns,
+				{
+					cursorTriggeredAt: candidates[candidates.length - 1].triggeredAt,
+					pass: pass + 1,
+				}
+			);
 		}
 		return { failed };
 	},
@@ -6100,25 +6096,31 @@ const STALE_PRODUCTION_RUN_MS = 30 * 60 * 1000;
  * retention cleanup, and the owner is never told.
  */
 export const failStaleProductionRuns = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ failed: number }> => {
+	args: {
+		cursorTriggeredAt: v.optional(v.number()),
+		pass: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<{ failed: number }> => {
 		const now = Date.now();
 		const cutoff = now - STALE_PRODUCTION_RUN_MS;
+		const pass = args.pass ?? 0;
 		// resumeAt >= triggeredAt always (wake times are computed at park time),
 		// so triggeredAt < cutoff catches both shapes in one indexed read.
+		// Status-partitioned range lands directly on "running" rows; scanning
+		// by_triggeredAt walks the far larger population of old terminal rows.
 		const candidates = await ctx.db
 			.query("workflowExecutions")
-			.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoff))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "running"),
-					q.neq(q.field("mode"), "test")
-				)
+			.withIndex("by_status_triggeredAt", (q) =>
+				q
+					.eq("status", "running")
+					.gt("triggeredAt", args.cursorTriggeredAt ?? -1)
+					.lt("triggeredAt", cutoff)
 			)
-			.take(100);
+			.take(WATCHDOG_BATCH_SIZE);
 
 		let failed = 0;
 		for (const execution of candidates) {
+			if (execution.mode === "test") continue;
 			const resume = execution.resumeState;
 			// Parked with the wake still ahead (or recently passed): leave it be.
 			if (resume && resume.resumeAt >= cutoff) continue;
@@ -6151,6 +6153,24 @@ export const failStaleProductionRuns = internalMutation({
 				await notifyAutomationFailure(ctx, automation, message, execution._id);
 			}
 			// else: no automation doc to name the alert; skip (deleted automation).
+		}
+
+		// Cursor on row position, not work done: a full page of legitimately
+		// parked runs must not stall the sweep. Rows sharing the last row's exact
+		// triggeredAt ms are passed over by the exclusive `gt` bound and are
+		// picked up by the next cron tick, which starts from scratch.
+		if (
+			candidates.length === WATCHDOG_BATCH_SIZE &&
+			pass + 1 < MAX_WATCHDOG_PASSES
+		) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.failStaleProductionRuns,
+				{
+					cursorTriggeredAt: candidates[candidates.length - 1].triggeredAt,
+					pass: pass + 1,
+				}
+			);
 		}
 		return { failed };
 	},
