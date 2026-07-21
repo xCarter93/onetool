@@ -20,8 +20,10 @@ import {
 	userHasPremiumOverride,
 } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
-import { enqueuePush } from "./push";
+import { enqueuePushViaPool } from "./push";
 import { insertTeamMessage } from "./teamMessages";
+import { rateLimiter } from "./rateLimits";
+import { scheduleEventProcessing } from "./eventBus";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -48,7 +50,6 @@ import {
 import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
-	getCreatableFields,
 	getFieldDefinition,
 	getRequiredCreateFields,
 	getStatusOptions,
@@ -66,7 +67,6 @@ import {
 	MAX_LOOP_ITERATIONS,
 	isFetchOnlyObjectType,
 	LOOP_FETCH_ONLY_ERROR,
-	objectTypeValidator,
 	triggerableObjectTypeValidator,
 	triggerRecordObjectType,
 	type ActionTarget,
@@ -410,6 +410,10 @@ export const findMatchingAutomations = internalQuery({
 });
 
 // Configuration constants for safety limits
+// Caps per-run push fan-out for send_notification/send_team_message actions;
+// overflow recipients are skipped and recorded on the run's node output.
+const RECIPIENT_FANOUT_CAP = 50;
+
 const MAX_RECURSION_DEPTH = 5; // Max chain of automations triggering each other
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 const MAX_EXECUTIONS_PER_WINDOW = 100; // Max executions per org per minute
@@ -477,25 +481,6 @@ async function matchAndScheduleAutomations(
 		return { triggered: 0 };
 	}
 
-	// Rate limiting check
-	const oneMinuteAgo = Date.now() - RATE_LIMIT_WINDOW_MS;
-	const recentExecutions = await ctx.db
-		.query("workflowExecutions")
-		.withIndex("by_org_triggeredAt", (q) =>
-			q.eq("orgId", orgId).gte("triggeredAt", oneMinuteAgo)
-		)
-		.take(MAX_EXECUTIONS_PER_WINDOW);
-
-	if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
-		console.warn(
-			`Automation rate limit reached for org ${orgId}. ` +
-				`${recentExecutions.length}+ executions in the last minute.`
-		);
-		return { triggered: 0, rateLimited: true };
-	}
-
-	let triggered = 0;
-
 	// "actor:<userId>" lets buildGlobalsScope resolve user.* globals on
 	// event-triggered runs; falls back to the entity id when no internal user
 	// caused the event (webhooks, portal actions).
@@ -503,9 +488,10 @@ async function matchAndScheduleAutomations(
 		? `actor:${params.actorUserId}`
 		: params.entityId;
 
-	// Schedule execution for each matching automation
+	// Loop-detected automations are logged as skipped immediately and never
+	// count toward the rate limit or the dedupe-filtered candidate set below.
+	const candidates: { automation: AutomationDoc; dedupeKey: string }[] = [];
 	for (const automation of automations) {
-		// Check if this automation is already in the chain (prevent loops)
 		if (params.executionChain.includes(automation._id)) {
 			console.warn(
 				`Automation loop detected: ${automation._id} already in chain. Skipping.`
@@ -526,7 +512,51 @@ async function matchAndScheduleAutomations(
 			});
 			continue;
 		}
+		candidates.push({
+			automation,
+			// WS2c: dedupes a re-dispatch caused by eventBus retrying a failed
+			// domainEvent (attemptCount retry re-invoking handleStatusChangeEvent/
+			// handleRecordEvent for the same event).
+			dedupeKey: `${params.eventId}:${automation._id}`,
+		});
+	}
 
+	// Drop candidates that already have an execution row for this exact
+	// event + automation pair — a duplicate re-dispatch, not a new run.
+	const remaining: { automation: AutomationDoc; dedupeKey: string }[] = [];
+	for (const candidate of candidates) {
+		const existing = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_dedupeKey", (q) =>
+				q.eq("orgId", orgId).eq("dedupeKey", candidate.dedupeKey)
+			)
+			.first();
+		if (existing) continue;
+		remaining.push(candidate);
+	}
+
+	if (remaining.length === 0) {
+		return { triggered: 0 };
+	}
+
+	// Rate limiting check: consumes one unit per run about to start, applied
+	// after loop/dedupe filtering so duplicate re-dispatches don't burn quota.
+	const limit = await rateLimiter.limit(ctx, "automationRunStarts", {
+		key: orgId,
+		count: remaining.length,
+	});
+	if (!limit.ok) {
+		console.warn(
+			`Automation rate limit reached for org ${orgId}. ` +
+				`${remaining.length} run(s) requested this dispatch.`
+		);
+		return { triggered: 0, rateLimited: true };
+	}
+
+	let triggered = 0;
+
+	// Schedule execution for each matching automation
+	for (const { automation, dedupeKey } of remaining) {
 		// Build new execution chain
 		const newChain = [...params.executionChain, automation._id];
 
@@ -541,6 +571,16 @@ async function matchAndScheduleAutomations(
 			nodesExecuted: [],
 			executionChain: newChain,
 			recursionDepth: params.recursionDepth,
+			dedupeKey,
+			// Mirrors the executeAutomation args scheduled below — lets the
+			// watchdog re-drive this run from scratch if its first mutation
+			// never committed.
+			startArgs: {
+				objectType: params.entityType,
+				objectId: params.entityId,
+				eventOldValue: params.fromStatus,
+				eventNewValue: params.toStatus,
+			},
 		});
 
 		// Publish automation.triggered event for monitoring
@@ -763,14 +803,12 @@ export const dispatchScheduledAutomations = internalMutation({
 					continue;
 				}
 
-				const oneMinuteAgo = now - RATE_LIMIT_WINDOW_MS;
-				const recentExecutions = await ctx.db
-					.query("workflowExecutions")
-					.withIndex("by_org_triggeredAt", (q) =>
-						q.eq("orgId", automation.orgId).gte("triggeredAt", oneMinuteAgo)
-					)
-					.take(MAX_EXECUTIONS_PER_WINDOW);
-				if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
+				// Debit the same per-org budget as event-driven run starts so
+				// scheduled + event runs share one 100/min cap.
+				const limit = await rateLimiter.limit(ctx, "automationRunStarts", {
+					key: automation.orgId,
+				});
+				if (!limit.ok) {
 					await ctx.db.insert("workflowExecutions", {
 						orgId: automation.orgId,
 						automationId: automation._id,
@@ -1708,6 +1746,35 @@ function mergeContinuationFor(
 }
 
 /**
+ * Build a resumeState checkpoint pointing at resumeNodeId/resumeAt. Shared by
+ * the delay checkpoint, the chunked-loop checkpoint (which layers a `loop`
+ * field on top), and the run-level retry checkpoint in finishWalk.
+ */
+function buildResumeState(
+	env: WalkEnv,
+	resumeNodeId: string,
+	resumeAt: number
+): NonNullable<Doc<"workflowExecutions">["resumeState"]> {
+	return {
+		resumeNodeId,
+		resumeAt,
+		// Parked-at timestamp; resume adds (now - checkpointAt) to pausedMs.
+		checkpointAt: Date.now(),
+		eventOldValue: env.scope.trigger?.event?.oldValue as string | undefined,
+		eventNewValue: env.scope.trigger?.event?.newValue as string | undefined,
+		objectType: env.trigger.objectType,
+		objectId: env.trigger.objectId,
+		fetchOutputs: Object.entries(env.fetchOutputs).map(([nodeId, output]) => ({
+			nodeId,
+			objectType: output.objectType,
+			recordIds: output.records.map((r) => String(r._id)),
+			count: output.count,
+		})),
+		nodeResults: collectNodeResults(env.scope),
+	};
+}
+
+/**
  * Walk a node chain from startNodeId. Loop bodies recurse with the loop item
  * as the scope record; delays checkpoint and return "waiting".
  */
@@ -1853,29 +1920,7 @@ async function runWalk(
 				dataTruncated: env.dataTruncated,
 				loopSummary: loopSummaryPatch(env),
 				currentNodeId: delayNextNodeId,
-				resumeState: {
-					resumeNodeId: delayNextNodeId,
-					resumeAt: resume.resumeAt,
-					// Parked-at timestamp; resume adds (now - checkpointAt) to pausedMs.
-					checkpointAt: Date.now(),
-					eventOldValue: env.scope.trigger?.event?.oldValue as
-						| string
-						| undefined,
-					eventNewValue: env.scope.trigger?.event?.newValue as
-						| string
-						| undefined,
-					objectType: env.trigger.objectType,
-					objectId: env.trigger.objectId,
-					fetchOutputs: Object.entries(env.fetchOutputs).map(
-						([nodeId, output]) => ({
-							nodeId,
-							objectType: output.objectType,
-							recordIds: output.records.map((r) => String(r._id)),
-							count: output.count,
-						})
-					),
-					nodeResults: collectNodeResults(env.scope),
-				},
+				resumeState: buildResumeState(env, delayNextNodeId, resume.resumeAt),
 			});
 			await ctx.scheduler.runAt(
 				resume.resumeAt,
@@ -1917,6 +1962,7 @@ async function runWalk(
 					? "skipped"
 					: "failed",
 			error: result.error,
+			output: result.output,
 		});
 
 		if (!result.success && !result.skipped) {
@@ -2199,22 +2245,7 @@ async function checkpointLoopChunk(
 		loopSummary: loopSummaryPatch(env),
 		currentNodeId: node.id,
 		resumeState: {
-			resumeNodeId: node.id,
-			resumeAt: now,
-			checkpointAt: now,
-			eventOldValue: env.scope.trigger?.event?.oldValue as string | undefined,
-			eventNewValue: env.scope.trigger?.event?.newValue as string | undefined,
-			objectType: env.trigger.objectType,
-			objectId: env.trigger.objectId,
-			fetchOutputs: Object.entries(env.fetchOutputs).map(
-				([nodeId, output]) => ({
-					nodeId,
-					objectType: output.objectType,
-					recordIds: output.records.map((r) => String(r._id)),
-					count: output.count,
-				})
-			),
-			nodeResults: collectNodeResults(env.scope),
+			...buildResumeState(env, node.id, now),
 			loop: { nodeId: node.id, ...loop },
 		},
 	});
@@ -2817,6 +2848,7 @@ async function executeNode(
 	skipped?: boolean;
 	conditionMet?: boolean;
 	error?: string;
+	output?: Record<string, unknown>;
 }> {
 	return executeNodeV2(ctx, node.config, scopeRecord, env);
 }
@@ -2836,6 +2868,7 @@ async function executeNodeV2(
 	skipped?: boolean;
 	conditionMet?: boolean;
 	error?: string;
+	output?: Record<string, unknown>;
 }> {
 	switch (config.kind) {
 		case "condition": {
@@ -3040,7 +3073,7 @@ async function applyStatusUpdate(
 			});
 
 			// Trigger event processing
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { success: true };
@@ -3177,7 +3210,12 @@ async function executeActionNodeV2(
 	action: AutomationAction,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
 	switch (action.type) {
 		case "update_field":
 			// Legacy single-field variant: same engine as update_fields, one row.
@@ -3415,7 +3453,7 @@ async function executeUpdateFieldsAction(
 					createdAt: Date.now(),
 					attemptCount: 0,
 				});
-				await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+				await scheduleEventProcessing(ctx);
 			}
 		} catch (error) {
 			return {
@@ -3597,7 +3635,20 @@ async function executeCreateTaskAction(
 
 		const task = await ctx.db.get(taskId);
 		if (task) {
-			await ActivityHelpers.taskCreated(ctx, task);
+			// Attribute the activity to the automation's creator — a scheduled
+			// (cron) run has no ambient authenticated user, so createActivity's
+			// default getCurrentUserOrThrow would throw AFTER the task insert
+			// (node reports failed though the task exists). If that creator has
+			// since left the org, fall back to the org owner (mirrors
+			// executeCreateRecordAction).
+			const org = await ctx.db.get(env.orgId);
+			const creatorId = env.automation.createdBy;
+			const creatorMembership = await getMembership(ctx, creatorId, env.orgId);
+			const actor = {
+				userId: creatorMembership ? creatorId : (org?.ownerUserId ?? creatorId),
+				orgId: env.orgId,
+			};
+			await ActivityHelpers.taskCreated(ctx, task, actor);
 
 			// Emit record_created with the execution chain in metadata so
 			// cascading automations keep recursion protection (the plain
@@ -3620,7 +3671,7 @@ async function executeCreateTaskAction(
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { success: true };
@@ -4025,7 +4076,7 @@ async function executeCreateRecordAction(
 				createdAt: Date.now(),
 				attemptCount: 0,
 			});
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { success: true };
@@ -4208,7 +4259,12 @@ async function executeSendNotificationAction(
 	action: Extract<AutomationAction, { type: "send_notification" }>,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
 	let userIds: Id<"users">[];
 	if (action.recipient === "org_admins") {
 		userIds = await resolveMemberUserIds(ctx, env.orgId, true);
@@ -4299,8 +4355,11 @@ async function executeSendNotificationAction(
 		? ((await ctx.db.get(env.orgId))?.clerkOrganizationId ?? "")
 		: "";
 
+	const notifyIds = userIds.slice(0, RECIPIENT_FANOUT_CAP);
+	const skippedCount = userIds.length - notifyIds.length;
+
 	try {
-		for (const userId of userIds) {
+		for (const userId of notifyIds) {
 			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
@@ -4315,7 +4374,7 @@ async function executeSendNotificationAction(
 				sentAt: Date.now(),
 			});
 			if (wantPush) {
-				await enqueuePush(ctx, {
+				await enqueuePushViaPool(ctx, {
 					notificationType: "automation_message",
 					taggedUserId: userId,
 					title: env.automation.name,
@@ -4326,7 +4385,13 @@ async function executeSendNotificationAction(
 				});
 			}
 		}
-		return { success: true };
+		return {
+			success: true,
+			output: {
+				recipientsNotified: notifyIds.length,
+				...(skippedCount > 0 ? { recipientsSkipped: skippedCount } : {}),
+			},
+		};
 	} catch (error) {
 		return {
 			success: false,
@@ -4412,7 +4477,12 @@ async function executeSendTeamMessageAction(
 	action: Extract<AutomationAction, { type: "send_team_message" }>,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
 	// Broadcast recipients (bell + push), unchanged from the legacy behavior.
 	const recipientIds = await resolveTeamMessageRecipients(
 		ctx,
@@ -4476,6 +4546,9 @@ async function executeSendTeamMessageAction(
 		? `/${post.entityType}s/${post.entityId}`
 		: automationActionUrl(scopeRecord);
 
+	const messageBellIds = bellIds.slice(0, RECIPIENT_FANOUT_CAP);
+	const skippedCount = bellIds.length - messageBellIds.length;
+
 	try {
 		if (post) {
 			await insertTeamMessage(ctx, {
@@ -4488,7 +4561,7 @@ async function executeSendTeamMessageAction(
 				mentionedUserIds: mentionIds,
 			});
 		}
-		for (const userId of bellIds) {
+		for (const userId of messageBellIds) {
 			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
@@ -4502,7 +4575,7 @@ async function executeSendTeamMessageAction(
 				sentVia: "in_app",
 				sentAt: Date.now(),
 			});
-			await enqueuePush(ctx, {
+			await enqueuePushViaPool(ctx, {
 				notificationType: "automation_message",
 				taggedUserId: userId,
 				title,
@@ -4512,7 +4585,13 @@ async function executeSendTeamMessageAction(
 				orgId: clerkOrgId,
 			});
 		}
-		return { success: true };
+		return {
+			success: true,
+			output: {
+				recipientsNotified: messageBellIds.length,
+				...(skippedCount > 0 ? { recipientsSkipped: skippedCount } : {}),
+			},
+		};
 	} catch (error) {
 		return {
 			success: false,
@@ -4566,19 +4645,27 @@ export const bumpTriggerStats = internalMutation({
 
 // Cleanup configuration
 const EXECUTION_LOG_RETENTION_DAYS = 30;
+/** Runaway guard for self-rechaining sweeps; deletes always make progress. */
+const MAX_CLEANUP_PASSES = 200;
 
 /**
- * Clean up old execution logs to prevent unbounded table growth
- * Should be run periodically via cron job
+ * Clean up old execution logs to prevent unbounded table growth.
+ * Runs daily via cron and self-rechains while rows remain — a single
+ * fixed-size pass deletes less than a busy day inserts.
  */
 export const cleanupOldExecutions = internalMutation({
 	args: {
 		olderThanDays: v.optional(v.number()),
 		batchSize: v.optional(v.number()),
+		pass: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ deleted: number; hasMore: boolean }> => {
 		const retentionDays = args.olderThanDays ?? EXECUTION_LOG_RETENTION_DAYS;
 		const batchSize = args.batchSize ?? 500;
+		const pass = args.pass ?? 0;
 
 		const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
@@ -4614,70 +4701,28 @@ export const cleanupOldExecutions = internalMutation({
 			}
 		}
 
-		const hasMore = deleted >= batchSize;
+		const hasMore = deleted >= batchSize && pass + 1 < MAX_CLEANUP_PASSES;
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.cleanupOldExecutions,
+				{
+					olderThanDays: args.olderThanDays,
+					batchSize: args.batchSize,
+					pass: pass + 1,
+				}
+			);
+		} else if (deleted >= batchSize) {
+			console.warn(
+				`cleanupOldExecutions hit the ${MAX_CLEANUP_PASSES}-pass cap with rows still pending`
+			);
+		}
 
 		console.log(
-			`Cleaned up ${deleted} old automation execution logs (older than ${retentionDays} days)`
+			`Cleaned up ${deleted} old automation execution logs (older than ${retentionDays} days, pass ${pass})`
 		);
 
 		return { deleted, hasMore };
-	},
-});
-
-/**
- * Get automation execution statistics for an organization
- */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getExecutionStats = internalQuery({
-	args: {
-		orgId: v.id("organizations"),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const oneDayAgo = now - 24 * 60 * 60 * 1000;
-		const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-		// Get executions from last 24 hours
-		const recentExecutions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_org_triggeredAt", (q) =>
-				q.eq("orgId", args.orgId).gte("triggeredAt", oneDayAgo)
-			)
-			.collect();
-
-		// Get executions from last week
-		const weeklyExecutions = await ctx.db
-			.query("workflowExecutions")
-			.withIndex("by_org_triggeredAt", (q) =>
-				q.eq("orgId", args.orgId).gte("triggeredAt", oneWeekAgo)
-			)
-			.collect();
-
-		const last24h = {
-			total: recentExecutions.length,
-			completed: recentExecutions.filter((e) => e.status === "completed")
-				.length,
-			// Ran to the end with some loop items skipped — counted apart from
-			// `completed` so the buckets still sum to `total`.
-			withErrors: recentExecutions.filter(
-				(e) => e.status === "completed_with_errors"
-			).length,
-			failed: recentExecutions.filter((e) => e.status === "failed").length,
-			skipped: recentExecutions.filter((e) => e.status === "skipped").length,
-		};
-
-		const lastWeek = {
-			total: weeklyExecutions.length,
-			completed: weeklyExecutions.filter((e) => e.status === "completed")
-				.length,
-			withErrors: weeklyExecutions.filter(
-				(e) => e.status === "completed_with_errors"
-			).length,
-			failed: weeklyExecutions.filter((e) => e.status === "failed").length,
-			skipped: weeklyExecutions.filter((e) => e.status === "skipped").length,
-		};
-
-		return { last24h, lastWeek };
 	},
 });
 
@@ -6050,27 +6095,39 @@ export const getSampleRecords = userQuery({
 	},
 });
 
+/** One watchdog page. Rechained via cursor, so this bounds a pass, not a sweep. */
+const WATCHDOG_BATCH_SIZE = 100;
+/** Runaway guard; the cursor advances monotonically so sweeps terminate. */
+const MAX_WATCHDOG_PASSES = 200;
+
 /**
  * Watchdog: fail test runs stuck "running" past STALE_TEST_RUN_MS (a dropped
  * reveal chain). Production runs parked at delays are excluded (mode !== test).
  */
 export const failStaleTestRuns = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ failed: number }> => {
+	args: {
+		cursorTriggeredAt: v.optional(v.number()),
+		pass: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<{ failed: number }> => {
 		const cutoff = Date.now() - STALE_TEST_RUN_MS;
-		const stale = await ctx.db
+		const pass = args.pass ?? 0;
+		// Status-partitioned range lands directly on "running" rows. Scanning
+		// by_triggeredAt instead walks the far larger population of old terminal
+		// rows and can exhaust its budget before reaching any stale run.
+		const candidates = await ctx.db
 			.query("workflowExecutions")
-			.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoff))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "running"),
-					q.eq(q.field("mode"), "test")
-				)
+			.withIndex("by_status_triggeredAt", (q) =>
+				q
+					.eq("status", "running")
+					.gt("triggeredAt", args.cursorTriggeredAt ?? -1)
+					.lt("triggeredAt", cutoff)
 			)
-			.take(100);
+			.take(WATCHDOG_BATCH_SIZE);
 
 		let failed = 0;
-		for (const execution of stale) {
+		for (const execution of candidates) {
+			if (execution.mode !== "test") continue;
 			await ctx.db.patch(execution._id, {
 				status: "failed",
 				completedAt: Date.now(),
@@ -6079,6 +6136,24 @@ export const failStaleTestRuns = internalMutation({
 				error: execution.error ?? "Test run timed out",
 			});
 			failed++;
+		}
+
+		// Cursor on row position, not work done: a full page of skipped rows
+		// (wrong mode) must not stall the sweep. Rows sharing the last row's
+		// exact triggeredAt ms are passed over by the exclusive `gt` bound and
+		// are picked up by the next cron tick, which starts from scratch.
+		if (
+			candidates.length === WATCHDOG_BATCH_SIZE &&
+			pass + 1 < MAX_WATCHDOG_PASSES
+		) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.failStaleTestRuns,
+				{
+					cursorTriggeredAt: candidates[candidates.length - 1].triggeredAt,
+					pass: pass + 1,
+				}
+			);
 		}
 		return { failed };
 	},
@@ -6100,28 +6175,94 @@ const STALE_PRODUCTION_RUN_MS = 30 * 60 * 1000;
  * retention cleanup, and the owner is never told.
  */
 export const failStaleProductionRuns = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ failed: number }> => {
+	args: {
+		cursorTriggeredAt: v.optional(v.number()),
+		pass: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<{ failed: number }> => {
 		const now = Date.now();
 		const cutoff = now - STALE_PRODUCTION_RUN_MS;
+		const pass = args.pass ?? 0;
 		// resumeAt >= triggeredAt always (wake times are computed at park time),
 		// so triggeredAt < cutoff catches both shapes in one indexed read.
+		// Status-partitioned range lands directly on "running" rows; scanning
+		// by_triggeredAt walks the far larger population of old terminal rows.
 		const candidates = await ctx.db
 			.query("workflowExecutions")
-			.withIndex("by_triggeredAt", (q) => q.lt("triggeredAt", cutoff))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "running"),
-					q.neq(q.field("mode"), "test")
-				)
+			.withIndex("by_status_triggeredAt", (q) =>
+				q
+					.eq("status", "running")
+					.gt("triggeredAt", args.cursorTriggeredAt ?? -1)
+					.lt("triggeredAt", cutoff)
 			)
-			.take(100);
+			.take(WATCHDOG_BATCH_SIZE);
 
 		let failed = 0;
 		for (const execution of candidates) {
+			if (execution.mode === "test") continue;
 			const resume = execution.resumeState;
 			// Parked with the wake still ahead (or recently passed): leave it be.
 			if (resume && resume.resumeAt >= cutoff) continue;
+
+			const attemptCount = execution.attemptCount ?? 0;
+			// A parked run with a resume checkpoint and attempts left is a missed
+			// wake, not a dead run — reschedule instead of failing it. Bump
+			// resumeAt so this same row isn't picked up again by the next sweep;
+			// checkpointAt stays put so resumeExecution's own pausedMs math still
+			// accounts for the full stall once it actually fires.
+			if (resume && attemptCount < 3) {
+				await ctx.db.patch(execution._id, {
+					attemptCount: attemptCount + 1,
+					resumeState: { ...resume, resumeAt: now },
+				});
+				await ctx.scheduler.runAfter(
+					0,
+					internal.automationExecutor.resumeExecution,
+					{
+						orgId: execution.orgId,
+						executionId: execution._id,
+						automationId: execution.automationId,
+					}
+				);
+				continue;
+			}
+
+			// No resumeState and nothing executed yet: the very first mutation
+			// (executeAutomation) never committed — a dropped runAfter(0) hop, not
+			// a walk that made progress and got stuck. Mutations are atomic, so
+			// zero nodesExecuted means the original invocation wrote nothing;
+			// re-driving from startArgs duplicates nothing. Only possible for
+			// event-driven runs (matchAndScheduleAutomations stamps startArgs);
+			// manual/scheduled runs fall through to the terminal-fail path below.
+			if (
+				!resume &&
+				execution.nodesExecuted.length === 0 &&
+				execution.startArgs &&
+				attemptCount < 3
+			) {
+				await ctx.db.patch(execution._id, {
+					attemptCount: attemptCount + 1,
+				});
+				await ctx.scheduler.runAfter(
+					0,
+					internal.automationExecutor.executeAutomation,
+					{
+						orgId: execution.orgId,
+						executionId: execution._id,
+						automationId: execution.automationId,
+						objectType: execution.startArgs.objectType,
+						objectId: execution.startArgs.objectId,
+						eventOldValue: execution.startArgs.eventOldValue,
+						eventNewValue: execution.startArgs.eventNewValue,
+						executionChain: execution.executionChain ?? [
+							execution.automationId,
+						],
+						// Row stores the pre-increment depth; the original schedule passed +1.
+						recursionDepth: (execution.recursionDepth ?? 0) + 1,
+					}
+				);
+				continue;
+			}
 
 			// A parked run's wait is honest pause, not activity — fold it in so
 			// the derived activeMs stays truthful (mirrors resumeExecution).
@@ -6151,6 +6292,24 @@ export const failStaleProductionRuns = internalMutation({
 				await notifyAutomationFailure(ctx, automation, message, execution._id);
 			}
 			// else: no automation doc to name the alert; skip (deleted automation).
+		}
+
+		// Cursor on row position, not work done: a full page of legitimately
+		// parked runs must not stall the sweep. Rows sharing the last row's exact
+		// triggeredAt ms are passed over by the exclusive `gt` bound and are
+		// picked up by the next cron tick, which starts from scratch.
+		if (
+			candidates.length === WATCHDOG_BATCH_SIZE &&
+			pass + 1 < MAX_WATCHDOG_PASSES
+		) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.failStaleProductionRuns,
+				{
+					cursorTriggeredAt: candidates[candidates.length - 1].triggeredAt,
+					pass: pass + 1,
+				}
+			);
 		}
 		return { failed };
 	},

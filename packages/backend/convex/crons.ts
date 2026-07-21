@@ -64,4 +64,13 @@ crons.interval(
 	{}
 );
 
+// Event bus backlog safety net: rescues a pending backlog if a scheduled
+// processEvents wake was dropped and no new emit arrives to re-claim it.
+crons.interval(
+	"kick event processing",
+	{ minutes: 5 },
+	internal.eventBus.kickEventProcessing,
+	{}
+);
+
 export default crons;

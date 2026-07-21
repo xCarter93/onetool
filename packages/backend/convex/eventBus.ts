@@ -54,6 +54,52 @@ const BATCH_SIZE = 50; // Events to process per batch
 const PER_ORG_BATCH = 10; // Fairness cap: max events one org gets from a batch's round-robin share
 const ORG_DISCOVERY_LIMIT = 32; // Max distinct-org index probes per batch
 const FIFO_RESERVE = 10; // Batch share always filled globally-oldest-first
+const CLAIM_TTL_MS = 30_000; // Lease expiry bounds how long a dropped wake can gate dispatch
+
+/**
+ * Single-flight claim over processEvents scheduling. Every event
+ * insert used to schedule its own processEvents invocation — under a burst
+ * that's hundreds of concurrent invocations racing over the same pending
+ * set, causing OCC retries on the "processing" patch. This collapses a
+ * burst of emits into (at most) one live scheduled wake, via a singleton
+ * TTL-leased claim doc.
+ *
+ * Correctness: Convex serializable transactions make the lost-wakeup race
+ * benign. An emit that runs concurrently with processEvents either
+ * serializes before processEvents' final backlog check (its event is seen
+ * and folded into the already-scheduled rechain) or after processEvents'
+ * claim release (scheduledUntil back to 0), in which case this emit sees a
+ * released claim and schedules a fresh wake itself.
+ */
+export async function scheduleEventProcessing(ctx: MutationCtx): Promise<void> {
+	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent's
+	// original comment: the scheduled mutation would fire after the test's
+	// parent transaction has ended, surfacing as unhandled "Write outside of
+	// transaction" rejections even though every assertion passes.
+	if (process.env.VITEST) {
+		return;
+	}
+
+	let row = await ctx.db.query("eventDispatchState").first();
+	if (!row) {
+		const id = await ctx.db.insert("eventDispatchState", {
+			scheduledUntil: 0,
+			generation: 0,
+		});
+		row = (await ctx.db.get(id))!;
+	}
+
+	if (row.scheduledUntil > Date.now()) {
+		// A live wake already exists; ride it instead of scheduling another.
+		return;
+	}
+
+	await ctx.db.patch(row._id, {
+		scheduledUntil: Date.now() + CLAIM_TTL_MS,
+		generation: row.generation + 1,
+	});
+	await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+}
 
 /**
  * The entity types that emit domain events. Derived from AutomationObjectType
@@ -97,11 +143,8 @@ export const publishEvent = systemMutation({
 			attemptCount: 0,
 		});
 
-		// Schedule immediate processing.
-		// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
-		if (!process.env.VITEST) {
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-		}
+		// Claim (or ride) a single scheduled processEvents wake.
+		await scheduleEventProcessing(ctx);
 
 		return eventId;
 	},
@@ -153,17 +196,8 @@ export async function emitStatusChangeEvent(
 		});
 	}
 
-	// Schedule immediate processing.
-	// [Plan 14-02 Rule 3] Skip the scheduler hop under Vitest so the
-	// processEvents mutation does not fire after the test's parent
-	// transaction has ended (it would patch domainEvents and re-schedule
-	// itself, surfacing as "Write outside of transaction" unhandled
-	// rejections that fail the test process exit even though every
-	// assertion passes). Same gating pattern as portal/otp.ts uses for
-	// the Resend scheduler hop.
-	if (!process.env.VITEST) {
-		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-	}
+	// Claim (or ride) a single scheduled processEvents wake.
+	await scheduleEventProcessing(ctx);
 
 	return eventId;
 }
@@ -204,10 +238,8 @@ export async function emitRecordCreatedEvent(
 		});
 	}
 
-	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
-	if (!process.env.VITEST) {
-		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-	}
+	// Claim (or ride) a single scheduled processEvents wake.
+	await scheduleEventProcessing(ctx);
 
 	return eventId;
 }
@@ -243,10 +275,8 @@ export async function emitRecordUpdatedEvent(
 		attemptCount: 0,
 	});
 
-	// Skip the scheduler hop under Vitest — see emitStatusChangeEvent.
-	if (!process.env.VITEST) {
-		await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-	}
+	// Claim (or ride) a single scheduled processEvents wake.
+	await scheduleEventProcessing(ctx);
 
 	return eventId;
 }
@@ -332,6 +362,12 @@ export const processEvents = internalMutation({
 		const pendingEvents = await selectFairBatch(ctx);
 
 		if (pendingEvents.length === 0) {
+			// A retry wake extends the lease by RETRY_DELAY_MS + CLAIM_TTL_MS; if a
+			// concurrent chain drained the queue first, that lease would gate new
+			// emits until it expires — release it so the next emit wakes promptly.
+			if (!process.env.VITEST) {
+				await releaseClaimLease(ctx);
+			}
 			return { processed: 0 };
 		}
 
@@ -391,7 +427,11 @@ export const processEvents = internalMutation({
 						status: "pending",
 						errorMessage: errorMessage,
 					});
-					// Schedule retry processing
+					// Schedule retry processing, extending the claim lease to
+					// cover the delay plus a fresh dispatch window.
+					if (!process.env.VITEST) {
+						await extendClaimLease(ctx, RETRY_DELAY_MS + CLAIM_TTL_MS);
+					}
 					await ctx.scheduler.runAfter(
 						RETRY_DELAY_MS,
 						internal.eventBus.processEvents,
@@ -401,19 +441,62 @@ export const processEvents = internalMutation({
 			}
 		}
 
-		// If there are more events, schedule another batch
+		// If there are more events, schedule another batch and keep the
+		// claim lease alive; otherwise release it. Execution is never gated
+		// on the claim — a stale duplicate invocation is harmless, it just
+		// re-does (idempotent) lease bookkeeping.
 		const remainingEvents = await ctx.db
 			.query("domainEvents")
 			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.first();
 
 		if (remainingEvents) {
+			if (!process.env.VITEST) {
+				await extendClaimLease(ctx, CLAIM_TTL_MS);
+			}
 			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+		} else if (!process.env.VITEST) {
+			await releaseClaimLease(ctx);
 		}
 
 		return { processed, failed };
 	},
 });
+
+/**
+ * Extend (or create) the singleton claim doc's lease so a live rechain keeps
+ * gating fresh scheduleEventProcessing calls until it's due.
+ */
+async function extendClaimLease(
+	ctx: MutationCtx,
+	extendByMs: number
+): Promise<void> {
+	const row = await ctx.db.query("eventDispatchState").first();
+	if (!row) {
+		await ctx.db.insert("eventDispatchState", {
+			scheduledUntil: Date.now() + extendByMs,
+			generation: 1,
+		});
+		return;
+	}
+	await ctx.db.patch(row._id, {
+		scheduledUntil: Date.now() + extendByMs,
+		generation: row.generation + 1,
+	});
+}
+
+/** Release the singleton claim doc so the next emit re-claims a fresh wake. */
+async function releaseClaimLease(ctx: MutationCtx): Promise<void> {
+	const row = await ctx.db.query("eventDispatchState").first();
+	if (!row) {
+		await ctx.db.insert("eventDispatchState", {
+			scheduledUntil: 0,
+			generation: 0,
+		});
+		return;
+	}
+	await ctx.db.patch(row._id, { scheduledUntil: 0 });
+}
 
 /**
  * Dispatch an event to its registered handlers
@@ -543,7 +626,7 @@ export const replayFailedEvents = internalMutation({
 
 		// Trigger processing
 		if (replayed > 0) {
-			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
+			await scheduleEventProcessing(ctx);
 		}
 
 		return { replayed };
@@ -551,20 +634,31 @@ export const replayFailedEvents = internalMutation({
 });
 
 /**
- * Cleanup old processed events (retention policy)
+ * Cleanup old processed events (retention policy).
+ *
+ * Self-rechains while rows remain: a single fixed-size daily pass deletes less
+ * than a busy day inserts, so the table would otherwise grow monotonically.
  */
+const MAX_CLEANUP_PASSES = 200;
+
 export const cleanupOldEvents = internalMutation({
 	args: {
 		olderThanDays: v.optional(v.number()),
 		batchSize: v.optional(v.number()),
+		pass: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ deleted: number; hasMore: boolean }> => {
 		const retentionDays = args.olderThanDays ?? 7; // Default: 7 days for processed events
 		const batchSize = args.batchSize ?? 500;
+		const pass = args.pass ?? 0;
 
 		const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
-		// Only delete completed events
+		// Completed rows only. Failed rows are retained deliberately as dead
+		// letters for replayFailedEvents and are never swept here.
 		const oldEvents = await ctx.db
 			.query("domainEvents")
 			.withIndex("by_status", (q) =>
@@ -578,49 +672,51 @@ export const cleanupOldEvents = internalMutation({
 			deleted++;
 		}
 
+		// Deletes always make progress, so this terminates; the pass cap is a
+		// runaway guard, not the expected exit.
+		const hasMore = deleted >= batchSize && pass + 1 < MAX_CLEANUP_PASSES;
+		if (hasMore) {
+			await ctx.scheduler.runAfter(0, internal.eventBus.cleanupOldEvents, {
+				olderThanDays: args.olderThanDays,
+				batchSize: args.batchSize,
+				pass: pass + 1,
+			});
+		} else if (deleted >= batchSize) {
+			console.warn(
+				`cleanupOldEvents hit the ${MAX_CLEANUP_PASSES}-pass cap with rows still pending`
+			);
+		}
+
 		console.log(
-			`Cleaned up ${deleted} old domain events (older than ${retentionDays} days)`
+			`Cleaned up ${deleted} old domain events (older than ${retentionDays} days, pass ${pass})`
 		);
 
-		return { deleted };
+		return { deleted, hasMore };
 	},
 });
 
 /**
- * Get event processing statistics
+ * Backlog safety net (run from crons.ts on a 5-minute interval). Rescues a
+ * backlog if a scheduled wake was dropped and no new emit arrives to
+ * re-claim — the lease expires via TTL either way, so this just makes sure
+ * something eventually re-claims it even with zero emit traffic.
  */
-// Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
-export const getEventStats = internalQuery({
-	args: {
-		orgId: v.optional(v.id("organizations")),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const oneDayAgo = now - 24 * 60 * 60 * 1000;
-
-		// Get all events from last 24 hours
-		let recentEvents = await ctx.db
+export const kickEventProcessing = internalMutation({
+	args: {},
+	returns: v.null(),
+	handler: async (ctx) => {
+		const pending = await ctx.db
 			.query("domainEvents")
-			.filter((q) => q.gte(q.field("createdAt"), oneDayAgo))
-			.collect();
-
-		if (args.orgId) {
-			recentEvents = recentEvents.filter((e) => e.orgId === args.orgId);
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
+			.first();
+		if (pending) {
+			// Bypass scheduleEventProcessing's live-lease short-circuit: this is
+			// the rescue path for a dropped wake, and a duplicate wake is a
+			// harmless idempotent no-op — schedule unconditionally.
+			await extendClaimLease(ctx, CLAIM_TTL_MS);
+			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
 		}
-
-		return {
-			total: recentEvents.length,
-			pending: recentEvents.filter((e) => e.status === "pending").length,
-			processing: recentEvents.filter((e) => e.status === "processing").length,
-			completed: recentEvents.filter((e) => e.status === "completed").length,
-			failed: recentEvents.filter((e) => e.status === "failed").length,
-			byType: recentEvents.reduce(
-				(acc, e) => {
-					acc[e.eventType] = (acc[e.eventType] || 0) + 1;
-					return acc;
-				},
-				{} as Record<string, number>
-			),
-		};
+		return null;
 	},
 });
+

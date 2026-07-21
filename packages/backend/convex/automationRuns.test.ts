@@ -866,6 +866,96 @@ describe("automation runs (test + manual)", () => {
 	});
 
 	// ------------------------------------------------------------------
+	// A production node failure is terminal on the first attempt: in-walk
+	// retry was removed (a retry checkpoint commits in the SAME transaction
+	// as the failing node's own partial writes, so retrying can duplicate
+	// that node's effects — e.g. create_task inserting twice). Durability is
+	// now handled two other ways instead: the watchdog's missed-wake resume
+	// (unchanged) and its zero-progress re-drive (see failStaleProductionRuns
+	// below), neither of which re-runs a node that already partially wrote.
+	// ------------------------------------------------------------------
+
+	describe("production node failure", () => {
+		it("terminally fails on the first attempt, without scheduling a resume, and an earlier committed write applies exactly once", async () => {
+			const { asUser, orgId } = await setupUser();
+			// companyName sourced into status via a VAR: this bypasses save-time
+			// static-select validation but resolves to an invalid status at
+			// runtime, so act-2 fails deterministically.
+			const clientId = await makeClient(asUser, "bogus");
+
+			// act-1 commits a real write; act-2 fails deterministically.
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Fails on first attempt",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					notesActionNode("act-1", "before failure", "act-2"),
+					{
+						id: "act-2",
+						type: "action" as const,
+						config: {
+							kind: "action" as const,
+							action: {
+								type: "update_field" as const,
+								target: "self" as const,
+								field: "status",
+								value: {
+									kind: "var" as const,
+									path: "trigger.record.companyName",
+								},
+							},
+						},
+					},
+				],
+			});
+
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "manual:test",
+					triggeredAt: Date.now(),
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+				})
+			);
+
+			await t.mutation(internal.automationExecutor.executeAutomation, {
+				orgId,
+				executionId,
+				automationId,
+				objectType: "client",
+				objectId: clientId,
+				executionChain: [automationId],
+				recursionDepth: 1,
+			});
+
+			const final = await t.run((ctx) => ctx.db.get(executionId));
+			expect(final?.status).toBe("failed");
+			expect(final?.attemptCount ?? 0).toBe(0);
+			expect(final?.resumeState).toBeUndefined();
+			expect(final?.error).toMatch(/not a valid value/i);
+			expect(final?.completedAt).toBeDefined();
+
+			// No resume scheduled — the walk never parks on a node failure.
+			await drainScheduled();
+			const afterDrain = await t.run((ctx) => ctx.db.get(executionId));
+			expect(afterDrain?.status).toBe("failed");
+			expect(afterDrain?.attemptCount ?? 0).toBe(0);
+
+			// act-1's write applied exactly once.
+			const clientFinal = await t.run((ctx) => ctx.db.get(clientId));
+			expect(clientFinal?.notes).toBe("before failure");
+			const act1Entries = final?.nodesExecuted.filter(
+				(n) => n.nodeId === "act-1"
+			);
+			expect(act1Entries).toHaveLength(1);
+		});
+	});
+
+	// ------------------------------------------------------------------
 	// Supporting queries + watchdog
 	// ------------------------------------------------------------------
 
@@ -985,6 +1075,55 @@ describe("automation runs (test + manual)", () => {
 			expect(rows.stale?.error).toMatch(/timed out/i);
 			expect(rows.fresh?.status).toBe("running");
 			expect(rows.prod?.status).toBe("running");
+		});
+
+		it("drains a backlog larger than one page via self-rechain", async () => {
+			// Regression for the automation-execution-scale PRD (item 0.2): the
+			// watchdog used to .take(100) once per cron tick, so a backlog above
+			// the page size never fully drained. It now rechains on a cursor.
+			const { asUser, orgId } = await setupUser();
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Backlog",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					{ id: "end-1", type: "end" as const, config: { kind: "end" as const } },
+				],
+			});
+
+			const now = Date.now();
+			// 250 stale test runs > the 100-row page, with distinct triggeredAt so
+			// the exclusive cursor advances cleanly past every row.
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 250; i++) {
+					await ctx.db.insert("workflowExecutions", {
+						orgId,
+						automationId,
+						triggeredBy: `test:${i}`,
+						triggeredAt: now - (30 * 60 * 1000 + i),
+						status: "running" as const,
+						mode: "test" as const,
+						dryRun: true,
+						nodesExecuted: [],
+					});
+				}
+			});
+
+			// One invocation processes its own page and schedules the rest; drain
+			// the runAfter(0) rechain (fake timers are active for this suite).
+			await t.mutation(internal.automationExecutor.failStaleTestRuns, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			// Scope to this test's org: assert only the backlog we seeded drained,
+			// not unrelated running rows.
+			const remaining = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_org_status_triggeredAt", (q) =>
+						q.eq("orgId", orgId).eq("status", "running")
+					)
+					.collect()
+			);
+			expect(remaining.length).toBe(0);
 		});
 	});
 
@@ -1148,7 +1287,139 @@ describe("automation runs (test + manual)", () => {
 			);
 		});
 
-		it("fails a parked run whose wake passed more than 30 minutes ago, folding the elapsed pause into pausedMs", async () => {
+		it("rescues a parked run with attempts remaining instead of failing it, and the resumed run completes", async () => {
+			const { asUser, orgId } = await setupUser();
+			const now = Date.now();
+			const automationId = await makeAutomation(asUser, "Rescue candidate");
+
+			const checkpointAt = now - 2 * 60 * 60 * 1000; // parked 2h ago
+			const resumeAt = now - 45 * 60 * 1000; // wake was due 45min ago — missed hop
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "schedule",
+					triggeredAt: now - 3 * 60 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					pausedMs: 1000,
+					// Points at end-1 (makeAutomation's only node) so the rescued
+					// resume runs the walk to completion.
+					resumeState: {
+						resumeNodeId: "end-1",
+						resumeAt,
+						checkpointAt,
+						fetchOutputs: [],
+					},
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			// Rescued, not failed.
+			expect(result.failed).toBe(0);
+
+			const rescued = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(rescued?.status).toBe("running");
+			expect(rescued?.attemptCount).toBe(1);
+			// resumeAt bumped forward so the next sweep doesn't re-rescue it;
+			// checkpointAt is untouched so resumeExecution's own pausedMs math
+			// still accounts for the full stall once it actually fires.
+			expect(rescued?.resumeState?.resumeAt).toBeGreaterThanOrEqual(now);
+			expect(rescued?.resumeState?.checkpointAt).toBe(checkpointAt);
+			expect(rescued?.resumeState?.resumeNodeId).toBe("end-1");
+
+			// Drive the rescheduled resume (runAfter(0)) to completion.
+			await drainScheduled();
+
+			const finished = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(finished?.status).toBe("completed");
+			expect(finished?.pausedMs).toBe(1000 + (now - checkpointAt));
+		});
+
+		it("re-drives a zero-progress run via startArgs instead of failing it, and the re-driven run completes", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+			const automationId = await makeAutomation(asUser, "Zero progress re-drive");
+			const now = Date.now();
+
+			// No resumeState, no nodesExecuted: the very first executeAutomation
+			// mutation never committed (a dropped runAfter(0) hop).
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "status_changed",
+					triggeredAt: now - 45 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+					startArgs: {
+						objectType: "client",
+						objectId: clientId,
+					},
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			// Re-driven, not failed.
+			expect(result.failed).toBe(0);
+
+			const rescued = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(rescued?.status).toBe("running");
+			expect(rescued?.attemptCount).toBe(1);
+
+			// Drive the rescheduled executeAutomation (runAfter(0)) to completion.
+			await drainScheduled();
+
+			const finished = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(finished?.status).toBe("completed");
+		});
+
+		it("terminally fails a zero-progress run once re-drive attempts are exhausted", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+			const automationId = await makeAutomation(asUser, "Zero progress exhausted");
+			const now = Date.now();
+
+			const executionId = await t.run(async (ctx) =>
+				ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId,
+					triggeredBy: "status_changed",
+					triggeredAt: now - 45 * 60 * 1000,
+					status: "running",
+					mode: "production",
+					nodesExecuted: [],
+					executionChain: [automationId],
+					recursionDepth: 0,
+					attemptCount: 3,
+					startArgs: {
+						objectType: "client",
+						objectId: clientId,
+					},
+				})
+			);
+
+			const result = await t.mutation(
+				internal.automationExecutor.failStaleProductionRuns,
+				{}
+			);
+			expect(result.failed).toBe(1);
+
+			const row = await t.run(async (ctx) => ctx.db.get(executionId));
+			expect(row?.status).toBe("failed");
+		});
+
+		it("fails a parked run whose wake passed more than 30 minutes ago once attempts are exhausted, folding the elapsed pause into pausedMs", async () => {
 			const { asUser, orgId } = await setupUser();
 			const now = Date.now();
 			const automationId = await makeAutomation(asUser, "Parked expired");
@@ -1165,6 +1436,9 @@ describe("automation runs (test + manual)", () => {
 					mode: "production",
 					nodesExecuted: [],
 					pausedMs: 1000,
+					// Attempts already exhausted — the watchdog must terminally fail
+					// this one rather than rescue it again.
+					attemptCount: 3,
 					resumeState: {
 						resumeNodeId: "delay-1",
 						resumeAt,
@@ -1234,6 +1508,9 @@ describe("automation runs (test + manual)", () => {
 					mode: "production",
 					nodesExecuted: [],
 					pausedMs: 1000,
+					// Attempts exhausted so this sweep terminally fails it (rather
+					// than rescuing) — the scenario under test.
+					attemptCount: 3,
 					resumeState: {
 						resumeNodeId: "delay-1",
 						resumeAt: now - 45 * 60 * 1000,
@@ -1295,6 +1572,163 @@ describe("automation runs (test + manual)", () => {
 			const notes = await automationFailedNotes(userId);
 			expect(notes).toHaveLength(1);
 			expect(notes[0].title).toBe("Flapping");
+		});
+	});
+
+	// ------------------------------------------------------------------
+	// WS1b (rate-limiter component) + WS2c (start-dedupe) on
+	// matchAndScheduleAutomations, driven directly via handleRecordEvent
+	// the way the recursion-depth guard test in automationExecutor.test.ts
+	// does — bypassing eventBus.processEvents so a "retry" is just a second
+	// call with the same eventId.
+	// ------------------------------------------------------------------
+
+	describe("matchAndScheduleAutomations — dedupe + rate limit", () => {
+		it("dedupes a re-dispatch of the same domain event: second call is a no-op", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+			// Drain the client's own record_created event (queue + scheduled
+			// dispatch) before any automation exists — a no-op match — so it
+			// can't also fire once the automation below is created (a stray
+			// unrelated dispatch, not the retry under test).
+			await t.mutation(internal.eventBus.processEvents, {});
+			await drainScheduled();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Welcome note",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "Welcomed!")],
+				isActive: true,
+			});
+
+			const eventId: Id<"domainEvents"> = await t.run(async (ctx) =>
+				ctx.db.insert("domainEvents", {
+					orgId,
+					eventType: "entity.record_created",
+					eventSource: "test",
+					payload: { entityType: "client", entityId: clientId },
+					status: "pending",
+					attemptCount: 0,
+					createdAt: Date.now(),
+				})
+			);
+
+			const first = await t.mutation(
+				internal.automationExecutor.handleRecordEvent,
+				{ eventId, orgId }
+			);
+			expect(first.triggered).toBe(1);
+			await drainScheduled();
+
+			// Same eventId again — simulates eventBus retrying a dropped/failed
+			// dispatch, which must not double-start the run.
+			const second = await t.mutation(
+				internal.automationExecutor.handleRecordEvent,
+				{ eventId, orgId }
+			);
+			expect(second).toEqual({ triggered: 0 });
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) => q.eq("automationId", automationId))
+					.collect()
+			);
+			expect(executions).toHaveLength(1);
+		});
+
+		it("rate-limits run starts past the cap for one org without affecting another org", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+			// Drain the client's own record_created event (queue + scheduled
+			// dispatch) before any automation exists, so it can't sneak in as
+			// an extra dispatch later.
+			await t.mutation(internal.eventBus.processEvents, {});
+			await drainScheduled();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Welcome note",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "Welcomed!")],
+				isActive: true,
+			});
+
+			// Consume well past the 100/min cap with distinct events so none of
+			// them collide on dedupeKey (shards make exact-boundary counts fuzzy).
+			let limitedSeen = false;
+			for (let i = 0; i < 130; i++) {
+				const eventId: Id<"domainEvents"> = await t.run(async (ctx) =>
+					ctx.db.insert("domainEvents", {
+						orgId,
+						eventType: "entity.record_created",
+						eventSource: "test",
+						payload: { entityType: "client", entityId: clientId },
+						status: "pending",
+						attemptCount: 0,
+						createdAt: Date.now(),
+					})
+				);
+				const result = await t.mutation(
+					internal.automationExecutor.handleRecordEvent,
+					{ eventId, orgId }
+				);
+				if (result.rateLimited) limitedSeen = true;
+			}
+			expect(limitedSeen).toBe(true);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) => q.eq("automationId", automationId))
+					.collect()
+			);
+			// Never more runs started than events fired, and strictly fewer than
+			// the 130 attempts once the cap kicks in.
+			expect(executions.length).toBeLessThan(130);
+
+			// A second org's quota is untouched by the first org's burst.
+			const { asUser: asOtherUser, orgId: otherOrgId } = await setupUser({
+				clerkUserId: "other-user",
+				clerkOrgId: "other-org",
+			});
+			const otherClientId = await makeClient(asOtherUser, "Other Co");
+			await t.mutation(internal.eventBus.processEvents, {});
+			await drainScheduled();
+			const otherAutomationId = await asOtherUser.mutation(
+				api.automations.create,
+				{
+					name: "Welcome note (other org)",
+					trigger: clientCreatedTrigger,
+					nodes: [notesActionNode("act-1", "Welcomed!")],
+					isActive: true,
+				}
+			);
+			const otherEventId: Id<"domainEvents"> = await t.run(async (ctx) =>
+				ctx.db.insert("domainEvents", {
+					orgId: otherOrgId,
+					eventType: "entity.record_created",
+					eventSource: "test",
+					payload: { entityType: "client", entityId: otherClientId },
+					status: "pending",
+					attemptCount: 0,
+					createdAt: Date.now(),
+				})
+			);
+			const otherResult = await t.mutation(
+				internal.automationExecutor.handleRecordEvent,
+				{ eventId: otherEventId, orgId: otherOrgId }
+			);
+			expect(otherResult).toEqual({ triggered: 1 });
+
+			const otherExecutions = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) =>
+						q.eq("automationId", otherAutomationId)
+					)
+					.collect()
+			);
+			expect(otherExecutions).toHaveLength(1);
 		});
 	});
 });

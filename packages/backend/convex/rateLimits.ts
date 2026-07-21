@@ -104,4 +104,10 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: HOUR,
 		capacity: 10,
 	},
+
+	// WS1b: replaces the old sliding-window workflowExecutions doc scan
+	// (100 run starts/min/org). Unsharded: batch reservations (count = fan-out
+	// size) must fit a single shard or large fan-outs would never be admitted;
+	// per-org keys at 100/min don't need shard-level contention relief.
+	automationRunStarts: { kind: "fixed window", rate: 100, period: MINUTE },
 });

@@ -1,4 +1,5 @@
 import { register as registerAgentComponent } from "@convex-dev/agent/test";
+import { register as registerWorkpoolComponent } from "@convex-dev/workpool/test";
 import { convexTest } from "convex-test";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -158,6 +159,10 @@ export function setupConvexTest() {
 
 	// AI assistant agent component (ships its own test registration helper)
 	registerAgentComponent(t);
+
+	// externalIoPool component (ships its own test registration helper, same
+	// pattern as the agent component). Name must match convex.config.ts.
+	registerWorkpoolComponent(t, "externalIoPool");
 
 	return t;
 }
