@@ -104,4 +104,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: HOUR,
 		capacity: 10,
 	},
+
+	// WS1b: replaces the old sliding-window workflowExecutions doc scan
+	// (100 run starts/min/org) in matchAndScheduleAutomations.
+	automationRunStarts: { kind: "fixed window", rate: 100, period: MINUTE, shards: 4 },
 });

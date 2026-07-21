@@ -6,6 +6,7 @@ import rateLimiter from "@convex-dev/rate-limiter/convex.config";
 import migrations from "@convex-dev/migrations/convex.config";
 import agent from "@convex-dev/agent/convex.config";
 import posthog from "@posthog/convex/convex.config.js";
+import workpool from "@convex-dev/workpool/convex.config";
 
 // PostHog credentials live in the deployment env (`npx convex env set`);
 // declared here so `app.use(posthog, { env })` binds them by reference.
@@ -36,6 +37,10 @@ app.use(migrations);
 
 // AI assistant agent (threads/messages/streaming)
 app.use(agent);
+
+// Bounds external-I/O fan-out (push notifications today) so a burst can't
+// monopolize the deployment's scheduled-function slots.
+app.use(workpool, { name: "externalIoPool" });
 
 // Server-side PostHog analytics (fires business events from Convex)
 app.use(posthog, {

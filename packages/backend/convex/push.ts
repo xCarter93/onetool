@@ -20,6 +20,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./lib/auth";
+import { externalIoPool } from "./externalIoPool";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_CHUNK_SIZE = 100;
@@ -187,6 +188,35 @@ export async function enqueuePush(
 ) {
 	if (!PUSHABLE_TYPES.has(args.notificationType)) return;
 	await ctx.scheduler.runAfter(0, internal.push.sendNotificationPush, {
+		taggedUserId: args.taggedUserId,
+		title: args.title,
+		body: args.body,
+		url: args.url,
+		notificationId: args.notificationId,
+		orgId: args.orgId,
+	});
+}
+
+// Pool-routed variant of enqueuePush: same PUSHABLE_TYPES gate and payload,
+// but dispatches sendNotificationPush through the shared externalIoPool
+// (maxParallelism-bounded) instead of a raw scheduler.runAfter. Used by
+// automation fan-out sites (send_notification/send_team_message), which can
+// enqueue many recipients per run and would otherwise burst the deployment's
+// scheduled-function slots. Other enqueuePush callers are unaffected.
+export async function enqueuePushViaPool(
+	ctx: { runMutation: MutationCtx["runMutation"]; runQuery: MutationCtx["runQuery"] },
+	args: {
+		notificationType: string;
+		taggedUserId: Id<"users">;
+		title: string;
+		body: string;
+		url: string;
+		notificationId: Id<"notifications">;
+		orgId: string;
+	}
+) {
+	if (!PUSHABLE_TYPES.has(args.notificationType)) return;
+	await externalIoPool.enqueueAction(ctx, internal.push.sendNotificationPush, {
 		taggedUserId: args.taggedUserId,
 		title: args.title,
 		body: args.body,

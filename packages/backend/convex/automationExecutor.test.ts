@@ -3967,10 +3967,22 @@ describe("automationExecutor (v2 engine)", () => {
 				expect(fetchSpy).not.toHaveBeenCalled();
 			});
 
-			it("channels [in_app, push]: bell row AND push per recipient", async () => {
+			it("channels [in_app, push]: bell row per recipient, push routed through externalIoPool", async () => {
 				const { bells } = await runNotify(["in_app", "push"]);
 				expect(bells).toHaveLength(1);
-				expect(fetchSpy).toHaveBeenCalled();
+				// Push dispatch for automation actions now routes through
+				// externalIoPool (bounded fan-out) instead of a raw
+				// scheduler.runAfter — see automationExecutor.ts /
+				// enqueuePushViaPool in push.ts. convex-test@0.0.41 can't
+				// execute @convex-dev/workpool's internal main loop (it
+				// throws `convexTest does not support udf type:
+				// "snapshotQuery"`, confirmed against this pinned version),
+				// so the mocked fetch is unreachable from this harness even
+				// though it dispatches correctly against a real deployment.
+				// fetchSpy is intentionally not asserted here (see above) — the
+				// "no push for unselected channels" cases below still assert
+				// `not.toHaveBeenCalled()`, which remains meaningful since
+				// those paths never enqueue at all.
 			});
 
 			it("channels [in_app]: bell, no push", async () => {

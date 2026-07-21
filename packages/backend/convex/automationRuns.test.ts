@@ -1346,4 +1346,161 @@ describe("automation runs (test + manual)", () => {
 			expect(notes[0].title).toBe("Flapping");
 		});
 	});
+
+	// ------------------------------------------------------------------
+	// WS1b (rate-limiter component) + WS2c (start-dedupe) on
+	// matchAndScheduleAutomations, driven directly via handleRecordEvent
+	// the way the recursion-depth guard test in automationExecutor.test.ts
+	// does — bypassing eventBus.processEvents so a "retry" is just a second
+	// call with the same eventId.
+	// ------------------------------------------------------------------
+
+	describe("matchAndScheduleAutomations — dedupe + rate limit", () => {
+		it("dedupes a re-dispatch of the same domain event: second call is a no-op", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+			// Drain the client's own record_created event (queue + scheduled
+			// dispatch) before any automation exists — a no-op match — so it
+			// can't also fire once the automation below is created (a stray
+			// unrelated dispatch, not the retry under test).
+			await t.mutation(internal.eventBus.processEvents, {});
+			await drainScheduled();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Welcome note",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "Welcomed!")],
+				isActive: true,
+			});
+
+			const eventId: Id<"domainEvents"> = await t.run(async (ctx) =>
+				ctx.db.insert("domainEvents", {
+					orgId,
+					eventType: "entity.record_created",
+					eventSource: "test",
+					payload: { entityType: "client", entityId: clientId },
+					status: "pending",
+					attemptCount: 0,
+					createdAt: Date.now(),
+				})
+			);
+
+			const first = await t.mutation(
+				internal.automationExecutor.handleRecordEvent,
+				{ eventId, orgId }
+			);
+			expect(first.triggered).toBe(1);
+			await drainScheduled();
+
+			// Same eventId again — simulates eventBus retrying a dropped/failed
+			// dispatch, which must not double-start the run.
+			const second = await t.mutation(
+				internal.automationExecutor.handleRecordEvent,
+				{ eventId, orgId }
+			);
+			expect(second).toEqual({ triggered: 0 });
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) => q.eq("automationId", automationId))
+					.collect()
+			);
+			expect(executions).toHaveLength(1);
+		});
+
+		it("rate-limits run starts past the cap for one org without affecting another org", async () => {
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+			// Drain the client's own record_created event (queue + scheduled
+			// dispatch) before any automation exists, so it can't sneak in as
+			// an extra dispatch later.
+			await t.mutation(internal.eventBus.processEvents, {});
+			await drainScheduled();
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Welcome note",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "Welcomed!")],
+				isActive: true,
+			});
+
+			// Consume well past the 100/min cap with distinct events so none of
+			// them collide on dedupeKey (shards make exact-boundary counts fuzzy).
+			let limitedSeen = false;
+			for (let i = 0; i < 130; i++) {
+				const eventId: Id<"domainEvents"> = await t.run(async (ctx) =>
+					ctx.db.insert("domainEvents", {
+						orgId,
+						eventType: "entity.record_created",
+						eventSource: "test",
+						payload: { entityType: "client", entityId: clientId },
+						status: "pending",
+						attemptCount: 0,
+						createdAt: Date.now(),
+					})
+				);
+				const result = await t.mutation(
+					internal.automationExecutor.handleRecordEvent,
+					{ eventId, orgId }
+				);
+				if (result.rateLimited) limitedSeen = true;
+			}
+			expect(limitedSeen).toBe(true);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) => q.eq("automationId", automationId))
+					.collect()
+			);
+			// Never more runs started than events fired, and strictly fewer than
+			// the 130 attempts once the cap kicks in.
+			expect(executions.length).toBeLessThan(130);
+
+			// A second org's quota is untouched by the first org's burst.
+			const { asUser: asOtherUser, orgId: otherOrgId } = await setupUser({
+				clerkUserId: "other-user",
+				clerkOrgId: "other-org",
+			});
+			const otherClientId = await makeClient(asOtherUser, "Other Co");
+			await t.mutation(internal.eventBus.processEvents, {});
+			await drainScheduled();
+			const otherAutomationId = await asOtherUser.mutation(
+				api.automations.create,
+				{
+					name: "Welcome note (other org)",
+					trigger: clientCreatedTrigger,
+					nodes: [notesActionNode("act-1", "Welcomed!")],
+					isActive: true,
+				}
+			);
+			const otherEventId: Id<"domainEvents"> = await t.run(async (ctx) =>
+				ctx.db.insert("domainEvents", {
+					orgId: otherOrgId,
+					eventType: "entity.record_created",
+					eventSource: "test",
+					payload: { entityType: "client", entityId: otherClientId },
+					status: "pending",
+					attemptCount: 0,
+					createdAt: Date.now(),
+				})
+			);
+			const otherResult = await t.mutation(
+				internal.automationExecutor.handleRecordEvent,
+				{ eventId: otherEventId, orgId: otherOrgId }
+			);
+			expect(otherResult).toEqual({ triggered: 1 });
+
+			const otherExecutions = await t.run(async (ctx) =>
+				ctx.db
+					.query("workflowExecutions")
+					.withIndex("by_automation", (q) =>
+						q.eq("automationId", otherAutomationId)
+					)
+					.collect()
+			);
+			expect(otherExecutions).toHaveLength(1);
+		});
+	});
 });

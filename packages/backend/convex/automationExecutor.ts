@@ -20,8 +20,9 @@ import {
 	userHasPremiumOverride,
 } from "./lib/permissions";
 import { getMembership, listMembershipsByOrg } from "./lib/memberships";
-import { enqueuePush } from "./push";
+import { enqueuePush, enqueuePushViaPool } from "./push";
 import { insertTeamMessage } from "./teamMessages";
+import { rateLimiter } from "./rateLimits";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -410,6 +411,10 @@ export const findMatchingAutomations = internalQuery({
 });
 
 // Configuration constants for safety limits
+// Caps per-run push fan-out for send_notification/send_team_message actions;
+// overflow recipients are skipped and recorded on the run's node output.
+const RECIPIENT_FANOUT_CAP = 50;
+
 const MAX_RECURSION_DEPTH = 5; // Max chain of automations triggering each other
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 const MAX_EXECUTIONS_PER_WINDOW = 100; // Max executions per org per minute
@@ -477,25 +482,6 @@ async function matchAndScheduleAutomations(
 		return { triggered: 0 };
 	}
 
-	// Rate limiting check
-	const oneMinuteAgo = Date.now() - RATE_LIMIT_WINDOW_MS;
-	const recentExecutions = await ctx.db
-		.query("workflowExecutions")
-		.withIndex("by_org_triggeredAt", (q) =>
-			q.eq("orgId", orgId).gte("triggeredAt", oneMinuteAgo)
-		)
-		.take(MAX_EXECUTIONS_PER_WINDOW);
-
-	if (recentExecutions.length >= MAX_EXECUTIONS_PER_WINDOW) {
-		console.warn(
-			`Automation rate limit reached for org ${orgId}. ` +
-				`${recentExecutions.length}+ executions in the last minute.`
-		);
-		return { triggered: 0, rateLimited: true };
-	}
-
-	let triggered = 0;
-
 	// "actor:<userId>" lets buildGlobalsScope resolve user.* globals on
 	// event-triggered runs; falls back to the entity id when no internal user
 	// caused the event (webhooks, portal actions).
@@ -503,9 +489,10 @@ async function matchAndScheduleAutomations(
 		? `actor:${params.actorUserId}`
 		: params.entityId;
 
-	// Schedule execution for each matching automation
+	// Loop-detected automations are logged as skipped immediately and never
+	// count toward the rate limit or the dedupe-filtered candidate set below.
+	const candidates: { automation: AutomationDoc; dedupeKey: string }[] = [];
 	for (const automation of automations) {
-		// Check if this automation is already in the chain (prevent loops)
 		if (params.executionChain.includes(automation._id)) {
 			console.warn(
 				`Automation loop detected: ${automation._id} already in chain. Skipping.`
@@ -526,7 +513,51 @@ async function matchAndScheduleAutomations(
 			});
 			continue;
 		}
+		candidates.push({
+			automation,
+			// WS2c: dedupes a re-dispatch caused by eventBus retrying a failed
+			// domainEvent (attemptCount retry re-invoking handleStatusChangeEvent/
+			// handleRecordEvent for the same event).
+			dedupeKey: `${params.eventId}:${automation._id}`,
+		});
+	}
 
+	// Drop candidates that already have an execution row for this exact
+	// event + automation pair — a duplicate re-dispatch, not a new run.
+	const remaining: { automation: AutomationDoc; dedupeKey: string }[] = [];
+	for (const candidate of candidates) {
+		const existing = await ctx.db
+			.query("workflowExecutions")
+			.withIndex("by_org_dedupeKey", (q) =>
+				q.eq("orgId", orgId).eq("dedupeKey", candidate.dedupeKey)
+			)
+			.first();
+		if (existing) continue;
+		remaining.push(candidate);
+	}
+
+	if (remaining.length === 0) {
+		return { triggered: 0 };
+	}
+
+	// Rate limiting check: consumes one unit per run about to start, applied
+	// after loop/dedupe filtering so duplicate re-dispatches don't burn quota.
+	const limit = await rateLimiter.limit(ctx, "automationRunStarts", {
+		key: orgId,
+		count: remaining.length,
+	});
+	if (!limit.ok) {
+		console.warn(
+			`Automation rate limit reached for org ${orgId}. ` +
+				`${remaining.length} run(s) requested this dispatch.`
+		);
+		return { triggered: 0, rateLimited: true };
+	}
+
+	let triggered = 0;
+
+	// Schedule execution for each matching automation
+	for (const { automation, dedupeKey } of remaining) {
 		// Build new execution chain
 		const newChain = [...params.executionChain, automation._id];
 
@@ -541,6 +572,7 @@ async function matchAndScheduleAutomations(
 			nodesExecuted: [],
 			executionChain: newChain,
 			recursionDepth: params.recursionDepth,
+			dedupeKey,
 		});
 
 		// Publish automation.triggered event for monitoring
@@ -1917,6 +1949,7 @@ async function runWalk(
 					? "skipped"
 					: "failed",
 			error: result.error,
+			output: result.output,
 		});
 
 		if (!result.success && !result.skipped) {
@@ -2817,6 +2850,7 @@ async function executeNode(
 	skipped?: boolean;
 	conditionMet?: boolean;
 	error?: string;
+	output?: Record<string, unknown>;
 }> {
 	return executeNodeV2(ctx, node.config, scopeRecord, env);
 }
@@ -2836,6 +2870,7 @@ async function executeNodeV2(
 	skipped?: boolean;
 	conditionMet?: boolean;
 	error?: string;
+	output?: Record<string, unknown>;
 }> {
 	switch (config.kind) {
 		case "condition": {
@@ -3177,7 +3212,12 @@ async function executeActionNodeV2(
 	action: AutomationAction,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
 	switch (action.type) {
 		case "update_field":
 			// Legacy single-field variant: same engine as update_fields, one row.
@@ -4208,7 +4248,12 @@ async function executeSendNotificationAction(
 	action: Extract<AutomationAction, { type: "send_notification" }>,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
 	let userIds: Id<"users">[];
 	if (action.recipient === "org_admins") {
 		userIds = await resolveMemberUserIds(ctx, env.orgId, true);
@@ -4299,8 +4344,11 @@ async function executeSendNotificationAction(
 		? ((await ctx.db.get(env.orgId))?.clerkOrganizationId ?? "")
 		: "";
 
+	const notifyIds = userIds.slice(0, RECIPIENT_FANOUT_CAP);
+	const skippedCount = userIds.length - notifyIds.length;
+
 	try {
-		for (const userId of userIds) {
+		for (const userId of notifyIds) {
 			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
@@ -4315,7 +4363,7 @@ async function executeSendNotificationAction(
 				sentAt: Date.now(),
 			});
 			if (wantPush) {
-				await enqueuePush(ctx, {
+				await enqueuePushViaPool(ctx, {
 					notificationType: "automation_message",
 					taggedUserId: userId,
 					title: env.automation.name,
@@ -4326,7 +4374,13 @@ async function executeSendNotificationAction(
 				});
 			}
 		}
-		return { success: true };
+		return {
+			success: true,
+			output: {
+				recipientsNotified: notifyIds.length,
+				...(skippedCount > 0 ? { recipientsSkipped: skippedCount } : {}),
+			},
+		};
 	} catch (error) {
 		return {
 			success: false,
@@ -4412,7 +4466,12 @@ async function executeSendTeamMessageAction(
 	action: Extract<AutomationAction, { type: "send_team_message" }>,
 	scopeRecord: ScopeRecord | undefined,
 	env: WalkEnv
-): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
 	// Broadcast recipients (bell + push), unchanged from the legacy behavior.
 	const recipientIds = await resolveTeamMessageRecipients(
 		ctx,
@@ -4476,6 +4535,9 @@ async function executeSendTeamMessageAction(
 		? `/${post.entityType}s/${post.entityId}`
 		: automationActionUrl(scopeRecord);
 
+	const messageBellIds = bellIds.slice(0, RECIPIENT_FANOUT_CAP);
+	const skippedCount = bellIds.length - messageBellIds.length;
+
 	try {
 		if (post) {
 			await insertTeamMessage(ctx, {
@@ -4488,7 +4550,7 @@ async function executeSendTeamMessageAction(
 				mentionedUserIds: mentionIds,
 			});
 		}
-		for (const userId of bellIds) {
+		for (const userId of messageBellIds) {
 			const notificationId = await ctx.db.insert("notifications", {
 				orgId: env.orgId,
 				userId,
@@ -4502,7 +4564,7 @@ async function executeSendTeamMessageAction(
 				sentVia: "in_app",
 				sentAt: Date.now(),
 			});
-			await enqueuePush(ctx, {
+			await enqueuePushViaPool(ctx, {
 				notificationType: "automation_message",
 				taggedUserId: userId,
 				title,
@@ -4512,7 +4574,13 @@ async function executeSendTeamMessageAction(
 				orgId: clerkOrgId,
 			});
 		}
-		return { success: true };
+		return {
+			success: true,
+			output: {
+				recipientsNotified: messageBellIds.length,
+				...(skippedCount > 0 ? { recipientsSkipped: skippedCount } : {}),
+			},
+		};
 	} catch (error) {
 		return {
 			success: false,

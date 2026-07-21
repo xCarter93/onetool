@@ -39,6 +39,7 @@ import type * as emailThreads from "../emailThreads.js";
 import type * as emails_invoiceReady from "../emails/invoiceReady.js";
 import type * as emails_portalOtp from "../emails/portalOtp.js";
 import type * as eventBus from "../eventBus.js";
+import type * as externalIoPool from "../externalIoPool.js";
 import type * as favorites from "../favorites.js";
 import type * as homeStats from "../homeStats.js";
 import type * as homeStatsOptimized from "../homeStatsOptimized.js";
@@ -182,6 +183,7 @@ declare const fullApi: ApiFromModules<{
   "emails/invoiceReady": typeof emails_invoiceReady;
   "emails/portalOtp": typeof emails_portalOtp;
   eventBus: typeof eventBus;
+  externalIoPool: typeof externalIoPool;
   favorites: typeof favorites;
   homeStats: typeof homeStats;
   homeStatsOptimized: typeof homeStatsOptimized;
@@ -324,5 +326,6 @@ export declare const components: {
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
   agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
+  externalIoPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"externalIoPool">;
   posthog: import("@posthog/convex/_generated/component.js").ComponentApi<"posthog">;
 };

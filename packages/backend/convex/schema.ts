@@ -1524,6 +1524,10 @@ export default defineSchema({
 				),
 			})
 		),
+		// De-dupe key for event-retry re-dispatch: `${domainEvents._id}:${automationId}`.
+		// Set only on event-driven runs (matchAndScheduleAutomations); absent on
+		// manual/scheduled runs, which have no retryable source event.
+		dedupeKey: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_automation", ["automationId"])
@@ -1532,7 +1536,8 @@ export default defineSchema({
 		.index("by_triggeredAt", ["triggeredAt"])
 		// Retention cleanup: lets terminal-status rows be ranged by age without
 		// re-scanning stuck "running" rows on every pass.
-		.index("by_status_triggeredAt", ["status", "triggeredAt"]),
+		.index("by_status_triggeredAt", ["status", "triggeredAt"])
+		.index("by_org_dedupeKey", ["orgId", "dedupeKey"]),
 
 	// Client Documents - files uploaded directly to client records
 	clientDocuments: defineTable({
