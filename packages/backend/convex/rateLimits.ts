@@ -1,6 +1,14 @@
 import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
 
+/**
+ * Shared automation run-start budget. Enforced twice: the `automationRunStarts`
+ * component limiter below (event-driven + scheduled runs) and startManualRun's
+ * direct workflowExecutions window scan. Both must draw from these constants.
+ */
+export const AUTOMATION_RUN_WINDOW_MS = MINUTE;
+export const MAX_AUTOMATION_RUNS_PER_WINDOW = 100;
+
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// Limit community page interest form submissions per slug
 	communityInterest: { kind: "fixed window", rate: 10, period: MINUTE },
@@ -109,5 +117,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// (100 run starts/min/org). Unsharded: batch reservations (count = fan-out
 	// size) must fit a single shard or large fan-outs would never be admitted;
 	// per-org keys at 100/min don't need shard-level contention relief.
-	automationRunStarts: { kind: "fixed window", rate: 100, period: MINUTE },
+	automationRunStarts: {
+		kind: "fixed window",
+		rate: MAX_AUTOMATION_RUNS_PER_WINDOW,
+		period: AUTOMATION_RUN_WINDOW_MS,
+	},
 });
