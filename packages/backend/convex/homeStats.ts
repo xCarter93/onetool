@@ -1,14 +1,20 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { DateUtils } from "./lib/shared";
 import {
 	getDateRangeBounds,
 	getMonthComparisonPeriods,
 	getWeekRange,
-	toChartData,
 } from "./lib/queries";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+import { optionalUserQuery } from "./lib/factories";
+import {
+	clientCountsAggregate,
+	projectCountsAggregate,
+	quoteCountsAggregate,
+	invoiceCountsAggregate,
+	invoiceRevenueAggregate,
+} from "./aggregates";
+import { computeHomeStats } from "./homeStatsOptimized";
 
 /**
  * Home dashboard statistics queries
@@ -115,7 +121,12 @@ const EMPTY_HOME_STATS: HomeStats = {
 };
 
 /**
- * Get comprehensive home dashboard statistics
+ * Get comprehensive home dashboard statistics.
+ *
+ * Delegates to the aggregate-based {@link computeHomeStats} so a single query
+ * never scans an entire org table (which tripped Convex's document-read limit
+ * on large orgs). This mirrors what the web and mobile dashboards call
+ * directly via `homeStatsOptimized.getHomeStats`.
  */
 export const getHomeStats = optionalUserQuery({
 	args: {},
@@ -128,215 +139,7 @@ export const getHomeStats = optionalUserQuery({
 		await ctx.requireLevel("invoices", "view");
 		await ctx.requireLevel("tasks", "view");
 
-		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
-			getMonthComparisonPeriods();
-		const weekRange = getWeekRange();
-
-		// Get organization to fetch revenue target
-		const organization = await ctx.db.get(userOrgId);
-
-		// Parallel queries for better performance
-		const [allClients, allProjects, allQuotes, allInvoices, allTasks] =
-			await Promise.all([
-				// Get all clients
-				ctx.db
-					.query("clients")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-
-				// Get all projects
-				ctx.db
-					.query("projects")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-
-				// Get all quotes
-				ctx.db
-					.query("quotes")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-
-				// Get all invoices
-				ctx.db
-					.query("invoices")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-
-				// Get all tasks
-				ctx.db
-					.query("tasks")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-			]);
-
-		// Calculate client statistics
-		const clientsThisMonth = allClients.filter(
-			(client) => client._creationTime >= thisMonthStart
-		).length;
-		const clientsLastMonth = allClients.filter(
-			(client) =>
-				client._creationTime >= lastMonthStart &&
-				client._creationTime <= lastMonthEnd
-		).length;
-		const clientsChange = clientsThisMonth - clientsLastMonth;
-
-		// Calculate completed projects statistics
-		// Count all projects with status = 'completed' that were completed this month
-		const completedProjectsThisMonth = allProjects.filter(
-			(project) =>
-				project.status === "completed" &&
-				project.completedAt &&
-				project.completedAt >= thisMonthStart
-		);
-		const completedProjectsLastMonth = allProjects.filter(
-			(project) =>
-				project.status === "completed" &&
-				project.completedAt &&
-				project.completedAt >= lastMonthStart &&
-				project.completedAt <= lastMonthEnd
-		);
-		const projectsChange =
-			completedProjectsThisMonth.length - completedProjectsLastMonth.length;
-
-		// Calculate project value by summing approved quotes for completed projects
-		const completedProjectIds = new Set(
-			completedProjectsThisMonth.map((p) => p._id)
-		);
-		const projectsValue = allQuotes
-			.filter(
-				(quote) =>
-					quote.status === "approved" &&
-					quote.projectId &&
-					completedProjectIds.has(quote.projectId)
-			)
-			.reduce((sum, quote) => sum + quote.total, 0);
-
-		// Calculate approved quotes statistics
-		const approvedQuotesThisMonth = allQuotes.filter(
-			(quote) =>
-				quote.status === "approved" &&
-				(quote.approvedAt ? quote.approvedAt >= thisMonthStart : false)
-		);
-		const approvedQuotesLastMonth = allQuotes.filter(
-			(quote) =>
-				quote.status === "approved" &&
-				quote.approvedAt &&
-				quote.approvedAt >= lastMonthStart &&
-				quote.approvedAt <= lastMonthEnd
-		);
-		const quotesChange =
-			approvedQuotesThisMonth.length - approvedQuotesLastMonth.length;
-		const quotesTotalValue = approvedQuotesThisMonth.reduce(
-			(sum, quote) => sum + quote.total,
-			0
-		);
-
-		// Calculate invoice statistics - only paid invoices
-		const invoicesThisMonth = allInvoices.filter(
-			(invoice) =>
-				invoice.status === "paid" &&
-				invoice.paidAt &&
-				invoice.paidAt >= thisMonthStart
-		);
-		const invoicesLastMonth = allInvoices.filter(
-			(invoice) =>
-				invoice.status === "paid" &&
-				invoice.paidAt &&
-				invoice.paidAt >= lastMonthStart &&
-				invoice.paidAt <= lastMonthEnd
-		);
-		const invoicesChange = invoicesThisMonth.length - invoicesLastMonth.length;
-		const invoicesTotalValue = invoicesThisMonth.reduce(
-			(sum, invoice) => sum + invoice.total,
-			0
-		);
-		const outstandingInvoices = allInvoices
-			.filter(
-				(invoice) => invoice.status === "sent" || invoice.status === "overdue"
-			)
-			.reduce((sum, invoice) => sum + invoice.total, 0);
-
-		// Calculate revenue goal progress
-		// Use only paid invoices for revenue tracking
-		const monthlyTarget = organization?.monthlyRevenueTarget || 50000; // Default target
-		const currentRevenue = invoicesThisMonth
-			.filter((invoice) => invoice.status === "paid")
-			.reduce((sum, invoice) => sum + invoice.total, 0);
-		const currentPercentage = Math.round(
-			(currentRevenue / monthlyTarget) * 100
-		);
-
-		// Calculate last month's revenue from paid invoices only
-		const lastMonthRevenue = invoicesLastMonth
-			.filter((invoice) => invoice.status === "paid")
-			.reduce((sum, invoice) => sum + invoice.total, 0);
-		const lastMonthPercentage = Math.round(
-			(lastMonthRevenue / monthlyTarget) * 100
-		);
-		const revenuePercentageChange = currentPercentage - lastMonthPercentage;
-
-		const totalCompletedProjects = allProjects.filter(
-			(project) => project.status === "completed" && project.completedAt
-		).length;
-
-		const totalApprovedQuotes = allQuotes.filter(
-			(quote) => quote.status === "approved" && quote.approvedAt
-		).length;
-
-		const totalPaidInvoices = allInvoices.filter(
-			(invoice) => invoice.status === "paid" && invoice.paidAt
-		).length;
-
-		// Calculate pending tasks using shared week range
-		const pendingTasks = allTasks.filter(
-			(task) => task.status === "pending" || task.status === "in-progress"
-		);
-		const tasksThisWeek = pendingTasks.filter(
-			(task) => task.date >= weekRange.start && task.date < weekRange.end
-		).length;
-
-		return {
-			totalClients: {
-				current: allClients.length,
-				previous: allClients.length - clientsThisMonth + clientsLastMonth,
-				change: Math.abs(clientsChange),
-				changeType: getChangeType(clientsChange),
-			},
-			completedProjects: {
-				current: totalCompletedProjects,
-				previous: totalCompletedProjects - completedProjectsThisMonth.length,
-				change: Math.abs(projectsChange),
-				changeType: getChangeType(projectsChange),
-				totalValue: projectsValue,
-			},
-			approvedQuotes: {
-				current: totalApprovedQuotes,
-				previous: totalApprovedQuotes - approvedQuotesThisMonth.length,
-				change: Math.abs(quotesChange),
-				changeType: getChangeType(quotesChange),
-				totalValue: quotesTotalValue,
-			},
-			invoicesSent: {
-				current: totalPaidInvoices,
-				previous: totalPaidInvoices - invoicesThisMonth.length,
-				change: Math.abs(invoicesChange),
-				changeType: getChangeType(invoicesChange),
-				totalValue: invoicesTotalValue,
-				outstanding: outstandingInvoices,
-			},
-			revenueGoal: {
-				percentage: currentPercentage,
-				current: currentRevenue,
-				target: monthlyTarget,
-				previousPercentage: lastMonthPercentage,
-				changePercentage: Math.abs(revenuePercentageChange),
-				changeType: getChangeType(revenuePercentageChange),
-			},
-			pendingTasks: {
-				total: pendingTasks.length,
-				dueThisWeek: tasksThisWeek,
-			},
-		};
+		return computeHomeStats(ctx, userOrgId);
 	},
 });
 
@@ -403,25 +206,27 @@ export const getClientsStats = optionalUserQuery({
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
 
-		const allClients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.collect();
-
-		const thisMonth = allClients.filter(
-			(client) => client._creationTime >= thisMonthStart
-		).length;
-
-		const lastMonth = allClients.filter(
-			(client) =>
-				client._creationTime >= lastMonthStart &&
-				client._creationTime <= lastMonthEnd
-		).length;
+		// Aggregate reads instead of a full-table `.collect()` so this never
+		// scans the entire clients table for large orgs.
+		const [total, thisMonth, lastMonth] = await Promise.all([
+			clientCountsAggregate.count(ctx, { namespace: userOrgId }),
+			clientCountsAggregate.count(ctx, {
+				namespace: userOrgId,
+				bounds: { lower: { key: thisMonthStart, inclusive: true } },
+			}),
+			clientCountsAggregate.count(ctx, {
+				namespace: userOrgId,
+				bounds: {
+					lower: { key: lastMonthStart, inclusive: true },
+					upper: { key: lastMonthEnd, inclusive: true },
+				},
+			}),
+		]);
 
 		const change = thisMonth - lastMonth;
 
 		return {
-			total: allClients.length,
+			total,
 			thisMonth,
 			lastMonth,
 			change: Math.abs(change),
@@ -458,24 +263,19 @@ export const getRevenueGoalProgress = optionalUserQuery({
 		const organization = await ctx.db.get(userOrgId);
 		const monthlyTarget = organization?.monthlyRevenueTarget || 50000;
 
-		// Get this month's paid invoices
+		// Sum this month's paid invoices via aggregate instead of collecting them,
+		// so this query never scans the entire invoices table.
 		const { thisMonthStart } = getMonthComparisonPeriods();
-		const paidInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "paid"),
-					q.gte(q.field("paidAt"), thisMonthStart)
-				)
-			)
-			.collect();
+		const now = Date.now();
+		const currentRevenue =
+			(await invoiceRevenueAggregate.sum(ctx, {
+				namespace: userOrgId,
+				bounds: {
+					lower: { key: ["paid", thisMonthStart], inclusive: true },
+					upper: { key: ["paid", now], inclusive: true },
+				},
+			})) || 0;
 
-		// Use only paid invoices for revenue tracking
-		const currentRevenue = paidInvoices.reduce(
-			(sum, invoice) => sum + invoice.total,
-			0
-		);
 		const percentage = Math.round((currentRevenue / monthlyTarget) * 100);
 
 		// Consider "on track" if we're at least at the expected percentage for this point in the month
@@ -547,11 +347,12 @@ export const getClientsCreatedByDateRange = optionalUserQuery({
 			)
 			.collect();
 
-		const clientsBeforeRange = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.filter((q) => q.lt(q.field("_creationTime"), start))
-			.collect();
+		// Count clients created before the range via aggregate instead of
+		// collecting the whole table.
+		const baselineCount = await clientCountsAggregate.count(ctx, {
+			namespace: userOrgId,
+			bounds: { upper: { key: start, inclusive: false } },
+		});
 
 		const data = clientsThisMonth.map((client: Doc<"clients">) => ({
 			date: DateUtils.toLocalDateString(client._creationTime, timezone),
@@ -561,7 +362,6 @@ export const getClientsCreatedByDateRange = optionalUserQuery({
 		}));
 
 		const totalInRange = data.reduce((sum, item) => sum + item.count, 0);
-		const baselineCount = clientsBeforeRange.length;
 
 		// Include baseline so charts can render cumulative totals across the selected window
 		return {
@@ -626,30 +426,20 @@ export const getProjectsCompletedByDateRange = optionalUserQuery({
 			)
 			.collect();
 
-		const projectsBeforeRange = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "completed"),
-					q.neq(q.field("completedAt"), null),
-					q.lt(q.field("completedAt"), start)
-				)
-			)
-			.collect();
+		// Count completed projects before the range via aggregate (keyed on
+		// [status, completedAt]); the lower bound of 1 excludes null completedAt.
+		const baselineCount = await projectCountsAggregate.count(ctx, {
+			namespace: userOrgId,
+			bounds: {
+				lower: { key: ["completed", 1], inclusive: true },
+				upper: { key: ["completed", start], inclusive: false },
+			},
+		});
 
 		const projectsThisMonthWithCompletedAt = projectsThisMonth.filter(
 			(
 				project
 			): project is (typeof projectsThisMonth)[number] & {
-				completedAt: number;
-			} => typeof project.completedAt === "number"
-		);
-
-		const projectsBeforeRangeWithCompletedAt = projectsBeforeRange.filter(
-			(
-				project
-			): project is (typeof projectsBeforeRange)[number] & {
 				completedAt: number;
 			} => typeof project.completedAt === "number"
 		);
@@ -661,7 +451,6 @@ export const getProjectsCompletedByDateRange = optionalUserQuery({
 		}));
 
 		const totalInRange = data.reduce((sum, item) => sum + item.count, 0);
-		const baselineCount = projectsBeforeRangeWithCompletedAt.length;
 
 		return {
 			baselineCount,
@@ -723,16 +512,15 @@ export const getQuotesApprovedByDateRange = optionalUserQuery({
 			)
 			.collect();
 
-		const quotesBeforeRange = await ctx.db
-			.query("quotes")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "approved"),
-					q.lt(q.field("approvedAt"), start)
-				)
-			)
-			.collect();
+		// Count approved quotes before the range via aggregate instead of
+		// collecting the whole table.
+		const baselineCount = await quoteCountsAggregate.count(ctx, {
+			namespace: userOrgId,
+			bounds: {
+				lower: { key: ["approved", 0], inclusive: true },
+				upper: { key: ["approved", start], inclusive: false },
+			},
+		});
 
 		const data = quotesThisMonth.map((quote) => ({
 			date: DateUtils.toLocalDateString(quote.approvedAt!, timezone),
@@ -741,7 +529,6 @@ export const getQuotesApprovedByDateRange = optionalUserQuery({
 		}));
 
 		const totalInRange = data.reduce((sum, item) => sum + item.count, 0);
-		const baselineCount = quotesBeforeRange.length;
 
 		return {
 			baselineCount,
@@ -804,29 +591,20 @@ export const getInvoicesPaidByDateRange = optionalUserQuery({
 			)
 			.collect();
 
-		const invoicesBeforeRange = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.filter((q) =>
-				q.and(
-					q.eq(q.field("status"), "paid"),
-					q.neq(q.field("paidAt"), null),
-					q.lt(q.field("paidAt"), start)
-				)
-			)
-			.collect();
+		// Count paid invoices before the range via aggregate (keyed on
+		// [status, paidAt]); the lower bound of 1 excludes null paidAt.
+		const baselineCount = await invoiceCountsAggregate.count(ctx, {
+			namespace: userOrgId,
+			bounds: {
+				lower: { key: ["paid", 1], inclusive: true },
+				upper: { key: ["paid", start], inclusive: false },
+			},
+		});
 
 		const invoicesThisMonthWithPaidAt = invoicesThisMonth.filter(
 			(
 				invoice
 			): invoice is (typeof invoicesThisMonth)[number] & { paidAt: number } =>
-				typeof invoice.paidAt === "number"
-		);
-
-		const invoicesBeforeRangeWithPaidAt = invoicesBeforeRange.filter(
-			(
-				invoice
-			): invoice is (typeof invoicesBeforeRange)[number] & { paidAt: number } =>
 				typeof invoice.paidAt === "number"
 		);
 
@@ -837,7 +615,6 @@ export const getInvoicesPaidByDateRange = optionalUserQuery({
 		}));
 
 		const totalInRange = data.reduce((sum, item) => sum + item.count, 0);
-		const baselineCount = invoicesBeforeRangeWithPaidAt.length;
 
 		return {
 			baselineCount,
