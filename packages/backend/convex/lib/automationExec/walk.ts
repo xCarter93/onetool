@@ -551,11 +551,6 @@ export async function runWalk(
 }
 
 /**
- * Run a loop node: iterate the source fetch output, walking the body chain
- * once per item with that item as the scope record and loop.<id>.item/.index
- * variables in scope.
- */
-/**
  * Iterations executed per mutation. Longer loops checkpoint into resumeState
  * and continue in a scheduled follow-up mutation: each chunk's writes commit
  * with its own transaction (commit-per-chunk), so a failure in a later chunk
@@ -565,6 +560,11 @@ const LOOP_CHUNK_SIZE = 25;
 
 type LoopResumeState = { nextIndex: number; remainingItemIds: string[] };
 
+/**
+ * Run a loop node: iterate the source fetch output, walking the body chain
+ * once per item with that item as the scope record and loop.<id>.item/.index
+ * variables in scope.
+ */
 export async function runLoopNode(
 	ctx: MutationCtx,
 	env: WalkEnv,

@@ -242,19 +242,19 @@ async function dryUpdateFieldsAction(
 			return { success: false, error: coerced.error };
 		}
 		if (field === "status") {
-				if (typeof coerced.value !== "string") {
-					return {
-						success: false,
-						error: `Status value for ${targetInfo.type} must be a string`,
-					};
-				}
-				if (!isValidStatus(targetInfo.type, coerced.value)) {
-					return {
-						success: false,
-						error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
-					};
-				}
+			if (typeof coerced.value !== "string") {
+				return {
+					success: false,
+					error: `Status value for ${targetInfo.type} must be a string`,
+				};
 			}
+			if (!isValidStatus(targetInfo.type, coerced.value)) {
+				return {
+					success: false,
+					error: `Invalid status "${coerced.value}" for ${targetInfo.type}`,
+				};
+			}
+		}
 		writes.push({ field, value: coerced.value });
 	}
 

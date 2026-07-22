@@ -119,8 +119,12 @@ export function runMetadata(
 
 // Configuration constants for safety limits
 const MAX_RECURSION_DEPTH = 5; // Max chain of automations triggering each other
-export const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-export const MAX_EXECUTIONS_PER_WINDOW = 100; // Max executions per org per minute
+// Run-start budget lives in rateLimits.ts next to the automationRunStarts
+// limiter config so the two enforcement legs cannot drift.
+export {
+	AUTOMATION_RUN_WINDOW_MS as RATE_LIMIT_WINDOW_MS,
+	MAX_AUTOMATION_RUNS_PER_WINDOW as MAX_EXECUTIONS_PER_WINDOW,
+} from "../../rateLimits";
 
 export type MatchAndScheduleResult = {
 	triggered: number;
