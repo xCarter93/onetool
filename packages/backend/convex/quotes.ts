@@ -294,15 +294,17 @@ export const get = optionalUserQuery({
 		if (!orgId) return null;
 		await ctx.requireLevel("quotes", "view");
 
-		let quote: QuoteDocument;
+		let quote: QuoteDocument | null;
 		try {
-			quote = await ctx.orgEntity("quotes", args.id);
+			quote = await ctx.orgEntity("quotes", args.id, { onMismatch: "skip" });
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in quotes:")) {
 				return null;
 			}
 			throw error;
 		}
+		// Cross-org quote: degrade to an empty state instead of throwing.
+		if (!quote) return null;
 		await ctx.requireRecordScope("quotes", () =>
 			ctx.actorScope().then((s) =>
 				quote.projectId
@@ -393,9 +395,9 @@ export const getPreview = optionalUserQuery({
 		if (!orgId) return null;
 		await ctx.requireLevel("quotes", "view");
 
-		let quote: QuoteDocument;
+		let quote: QuoteDocument | null;
 		try {
-			quote = await ctx.orgEntity("quotes", args.id);
+			quote = await ctx.orgEntity("quotes", args.id, { onMismatch: "skip" });
 		} catch (error) {
 			if (
 				error instanceof Error &&
@@ -405,6 +407,8 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		// Cross-org quote: degrade to an empty state instead of throwing.
+		if (!quote) return null;
 		await ctx.requireRecordScope("quotes", () =>
 			ctx.actorScope().then((s) =>
 				quote.projectId

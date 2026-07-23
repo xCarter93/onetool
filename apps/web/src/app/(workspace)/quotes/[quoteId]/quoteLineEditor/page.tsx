@@ -79,7 +79,12 @@ function QuoteLineEditorPageContent() {
 		api.projects.get,
 		quote?.projectId ? { id: quote.projectId } : "skip"
 	);
-	const lineItems = useQuery(api.quoteLineItems.listByQuote, { quoteId });
+	// Gate on the quote resolving: a cross-org id makes quotes.get return null,
+	// so skip listByQuote rather than let it throw an org-mismatch error.
+	const lineItems = useQuery(
+		api.quoteLineItems.listByQuote,
+		quote ? { quoteId } : "skip"
+	);
 
 	// Mutations
 	const updateQuote = useMutation(api.quotes.update);

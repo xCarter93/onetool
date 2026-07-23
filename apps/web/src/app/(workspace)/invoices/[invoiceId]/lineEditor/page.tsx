@@ -75,7 +75,12 @@ function InvoiceLineEditorPageContent() {
 		api.projects.get,
 		invoice?.projectId ? { id: invoice.projectId } : "skip"
 	);
-	const lineItems = useQuery(api.invoiceLineItems.listByInvoice, { invoiceId });
+	// Gate on the invoice resolving: a cross-org id makes invoices.get return
+	// null, so skip listByInvoice rather than let it throw an org-mismatch error.
+	const lineItems = useQuery(
+		api.invoiceLineItems.listByInvoice,
+		invoice ? { invoiceId } : "skip"
+	);
 
 	// Mutations
 	const updateInvoice = useMutation(api.invoices.update);

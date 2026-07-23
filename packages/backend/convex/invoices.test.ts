@@ -608,5 +608,42 @@ describe("Invoices", () => {
 			expect(invoices).toHaveLength(1);
 			expect(invoices[0].invoiceNumber).toBe("ORG1-001");
 		});
+
+		it("returns null instead of throwing for a cross-org invoice id", async () => {
+			// Opening an invoice belonging to another org (stale bookmark, shared
+			// link, or after switching orgs) must degrade to an empty state rather
+			// than throw an uncaught "does not belong to your organization" error.
+			const { invoiceId1, clerkUserId2, clerkOrgId2 } = await t.run(
+				async (ctx) => {
+					const { orgId: orgId1 } = await createTestOrg(ctx, {
+						clerkUserId: "user_1",
+						clerkOrgId: "org_1",
+					});
+					const clientId1 = await createTestClient(ctx, orgId1);
+					const invoiceId1 = await createTestInvoice(ctx, orgId1, clientId1, {
+						invoiceNumber: "ORG1-001",
+					});
+
+					const { clerkUserId: clerkUserId2, clerkOrgId: clerkOrgId2 } =
+						await createTestOrg(ctx, {
+							clerkUserId: "user_2",
+							clerkOrgId: "org_2",
+						});
+
+					return { invoiceId1, clerkUserId2, clerkOrgId2 };
+				}
+			);
+
+			const asUser2 = t.withIdentity(
+				createTestIdentity(clerkUserId2, clerkOrgId2)
+			);
+
+			await expect(
+				asUser2.query(api.invoices.get, { id: invoiceId1 })
+			).resolves.toBeNull();
+			await expect(
+				asUser2.query(api.invoices.getWithPayments, { id: invoiceId1 })
+			).resolves.toBeNull();
+		});
 	});
 });
