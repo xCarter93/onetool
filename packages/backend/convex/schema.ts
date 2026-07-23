@@ -305,6 +305,50 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_primary", ["clientId", "isPrimary"]),
 
+	// Planned multi-stop routes (Routing page)
+	routes: defineTable({
+		orgId: v.id("organizations"),
+		name: v.string(),
+		date: v.optional(v.number()), // planned day, UTC midnight
+		status: v.union(v.literal("draft"), v.literal("finalized")),
+
+		start: v.object({
+			kind: v.union(v.literal("org"), v.literal("manual")),
+			label: v.string(),
+			latitude: v.number(),
+			longitude: v.number(),
+		}),
+		roundTrip: v.boolean(),
+
+		stops: v.array(
+			v.object({
+				propertyId: v.optional(v.id("clientProperties")), // absent for manual stops
+				label: v.string(),
+				latitude: v.number(),
+				longitude: v.number(),
+				order: v.number(),
+			})
+		),
+
+		// Computed route result; cleared whenever start/stops/roundTrip change
+		optimized: v.optional(v.boolean()), // order came from the optimizer
+		approximate: v.optional(v.boolean()), // local heuristic (stop count over API cap)
+		geometry: v.optional(v.string()), // encoded polyline
+		totalDistanceMeters: v.optional(v.number()),
+		totalDurationSeconds: v.optional(v.number()),
+		legs: v.optional(
+			v.array(
+				v.object({
+					distanceMeters: v.number(),
+					durationSeconds: v.number(),
+				})
+			)
+		),
+		computedAt: v.optional(v.number()),
+
+		createdBy: v.id("users"),
+	}).index("by_org", ["orgId"]),
+
 	// Projects
 	projects: defineTable({
 		orgId: v.id("organizations"),

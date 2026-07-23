@@ -75,6 +75,21 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 10,
 	},
 
+	// Routing page: each compute is 1 Mapbox Directions/Optimization request.
+	routeCompute: {
+		kind: "token bucket",
+		rate: 60,
+		period: HOUR,
+		capacity: 10,
+	},
+	// Routing page: gas-station search-along-route lookups.
+	routeGasSearch: {
+		kind: "token bucket",
+		rate: 120,
+		period: HOUR,
+		capacity: 20,
+	},
+
 	// PUB-28: bound touchSession write amplification per session row.
 	portalSessionTouch: {
 		kind: "token bucket",

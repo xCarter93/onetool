@@ -18,6 +18,7 @@ import {
 	BarChart3,
 	Globe,
 	Zap,
+	Route,
 } from "lucide-react";
 
 import { NavMain } from "@/components/layout/nav-main";
@@ -116,6 +117,11 @@ const data = {
 					url: "/invoices",
 					icon: Receipt,
 				},
+				{
+					title: "Routing",
+					url: "/routing",
+					icon: Route,
+				},
 			],
 		},
 		{
@@ -198,6 +204,7 @@ const NAV_ITEM_PERMISSIONS: Partial<Record<string, PermissionObject>> = {
 	Tasks: "tasks",
 	Quotes: "quotes",
 	Invoices: "invoices",
+	Routing: "clients", // routing plots client property addresses
 	Reports: "reports",
 	Automations: "automations",
 	Community: "community",
