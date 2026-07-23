@@ -526,6 +526,37 @@ describe("Quotes", () => {
 			const quotes = await asUser1.query(api.quotes.getAwaitingSigning, {});
 			expect(quotes).toHaveLength(0);
 		});
+
+		it("returns null instead of throwing for a cross-org quote id", async () => {
+			// Opening a quote belonging to another org must degrade to an empty
+			// state rather than throw an uncaught org-mismatch error.
+			const { quoteId1, clerkUserId2, clerkOrgId2 } = await t.run(
+				async (ctx) => {
+					const { orgId: orgId1 } = await createTestOrg(ctx, {
+						clerkUserId: "user_1",
+						clerkOrgId: "org_1",
+					});
+					const clientId1 = await createTestClient(ctx, orgId1);
+					const quoteId1 = await createTestQuote(ctx, orgId1, clientId1);
+
+					const { clerkUserId: clerkUserId2, clerkOrgId: clerkOrgId2 } =
+						await createTestOrg(ctx, {
+							clerkUserId: "user_2",
+							clerkOrgId: "org_2",
+						});
+
+					return { quoteId1, clerkUserId2, clerkOrgId2 };
+				}
+			);
+
+			const asUser2 = t.withIdentity(
+				createTestIdentity(clerkUserId2, clerkOrgId2)
+			);
+
+			await expect(
+				asUser2.query(api.quotes.get, { id: quoteId1 })
+			).resolves.toBeNull();
+		});
 	});
 
 	describe("getStats", () => {
