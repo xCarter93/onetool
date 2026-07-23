@@ -1,4 +1,5 @@
 import { convexTest } from "convex-test";
+import { ConvexError } from "convex/values";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
@@ -173,6 +174,53 @@ describe("routingActions", () => {
 			});
 			expect(fetchSpy).toHaveBeenCalledTimes(2);
 			expect(String(fetchSpy.mock.calls[1][0])).toContain("directions/v5");
+		});
+
+		it("flags unreachable stops via a Matrix probe on NoRoute", async () => {
+			const { asUser, routeId } = await setupRoute();
+			fetchSpy
+				.mockResolvedValueOnce(jsonResponse({ code: "NoRoute" }))
+				// Matrix row: [start, stop0, stop1, stop2] — stop1 unreachable.
+				.mockResolvedValueOnce(
+					jsonResponse({ code: "Ok", durations: [[0, 100, null, 200]] })
+				);
+
+			const error = await asUser
+				.action(api.routingActions.computeRoute, {
+					routeId,
+					optimize: false,
+				})
+				.then(
+					() => null,
+					(e: unknown) => e
+				);
+
+			expect(error).toBeInstanceOf(ConvexError);
+			// convex-test surfaces ConvexError data as its JSON serialization.
+			const data: unknown = (error as ConvexError<string>).data;
+			expect(typeof data === "string" ? JSON.parse(data) : data).toMatchObject({
+				code: "unreachable_stops",
+				stopIndices: [1],
+			});
+			expect(String(fetchSpy.mock.calls[1][0])).toContain(
+				"directions-matrix/v1/mapbox/driving"
+			);
+		});
+
+		it("rethrows the original error when the probe finds every stop reachable", async () => {
+			const { asUser, routeId } = await setupRoute();
+			fetchSpy
+				.mockResolvedValueOnce(jsonResponse({ code: "NoRoute" }))
+				.mockResolvedValueOnce(
+					jsonResponse({ code: "Ok", durations: [[0, 100, 150, 200]] })
+				);
+
+			await expect(
+				asUser.action(api.routingActions.computeRoute, {
+					routeId,
+					optimize: false,
+				})
+			).rejects.toThrow(/No drivable route/);
 		});
 
 		it("rejects non-premium users", async () => {

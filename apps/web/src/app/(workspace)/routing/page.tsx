@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useAction } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { PermissionGate } from "@/components/domain/permission-gate";
@@ -73,6 +75,12 @@ function RoutingWorkspace() {
 	const [draftStops, setDraftStops] = useState<StopDraft[]>([]);
 	const [dirty, setDirty] = useState(false);
 	const [computing, setComputing] = useState(false);
+	// Positions (display order) of stops the last compute flagged as
+	// unreachable by road. Index-based because stop keys regenerate when the
+	// draft/saved views swap; a failed compute never reorders stops.
+	const [unreachableIndices, setUnreachableIndices] = useState<
+		ReadonlySet<number>
+	>(new Set());
 
 	const [gasEnabled, setGasEnabled] = useState(false);
 	const [gasDeviation, setGasDeviation] = useState<GasDeviation>("10");
@@ -154,6 +162,7 @@ function RoutingWorkspace() {
 		beginEdit();
 		setDraftStops(stops);
 		setDirty(true);
+		setUnreachableIndices(new Set());
 	};
 
 	const resetToNewRoute = () => {
@@ -163,6 +172,7 @@ function RoutingWorkspace() {
 		setDraftRoundTrip(true);
 		setDraftStops([]);
 		setDirty(false);
+		setUnreachableIndices(new Set());
 		setGasEnabled(false);
 		setGasStations([]);
 		setGasForGeometry(null);
@@ -171,6 +181,7 @@ function RoutingWorkspace() {
 	const selectRoute = (routeId: Id<"routes">) => {
 		setSelectedRouteId(routeId);
 		setDirty(false);
+		setUnreachableIndices(new Set());
 		setGasEnabled(false);
 		setGasStations([]);
 		setGasForGeometry(null);
@@ -211,6 +222,7 @@ function RoutingWorkspace() {
 		if (displayStops.length === 0) return;
 
 		setComputing(true);
+		setUnreachableIndices(new Set());
 		try {
 			const payload = {
 				name: displayName.trim() || "Untitled route",
@@ -254,6 +266,19 @@ function RoutingWorkspace() {
 				setGasForGeometry("pending-refresh");
 			}
 		} catch (error) {
+			const data =
+				error instanceof ConvexError
+					? (error.data as { code?: string; stopIndices?: number[] })
+					: null;
+			if (data?.code === "unreachable_stops" && data.stopIndices) {
+				// Indices refer to the order-sorted stops, which is display order.
+				setUnreachableIndices(new Set(data.stopIndices));
+				toast.error(
+					"Some stops can't be reached by road",
+					"They're flagged in the stop list — remove them or fix their addresses, then recompute."
+				);
+				return;
+			}
 			toast.error(
 				"Route computation failed",
 				error instanceof Error ? error.message : undefined
@@ -320,9 +345,17 @@ function RoutingWorkspace() {
 		return (
 			<div className="flex h-full min-h-[60vh] items-center justify-center p-6">
 				<EmptyState
-					illustration="client-properties-none"
+					illustration="access-restricted"
 					title="Routing is a Business plan feature"
 					description="Plan optimized multi-stop routes between client properties with the Business plan."
+					action={
+						<Button
+							size="sm"
+							render={<Link href="/organization/profile?tab=billing" />}
+						>
+							View plans
+						</Button>
+					}
 					size="md"
 				/>
 			</div>
@@ -431,6 +464,7 @@ function RoutingWorkspace() {
 						}}
 						stops={displayStops}
 						onStopsChange={editStops}
+						unreachableIndices={unreachableIndices}
 						properties={properties}
 						route={dirty ? null : selectedRoute}
 						dirty={dirty}
@@ -450,6 +484,7 @@ function RoutingWorkspace() {
 						stops={displayStops}
 						geometry={routeGeometry}
 						gasStations={visibleGasStations}
+						unreachableIndices={unreachableIndices}
 					/>
 				</div>
 			</div>

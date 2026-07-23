@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { action, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
@@ -113,6 +113,16 @@ type DirectionsRoute = {
 	legs: Array<{ distance: number; duration: number }>;
 };
 
+/** Directions/Optimization non-Ok response, with the Mapbox code preserved. */
+class MapboxRouteError extends Error {
+	constructor(
+		public readonly code: string,
+		message: string
+	) {
+		super(message);
+	}
+}
+
 async function fetchDirections(
 	coords: string[],
 	token: string
@@ -123,7 +133,8 @@ async function fetchDirections(
 		`?overview=full&geometries=polyline&access_token=${token}`;
 	const data = await mapboxGet(url);
 	if (data.code !== "Ok") {
-		throw new Error(
+		throw new MapboxRouteError(
+			String(data.code),
 			data.code === "NoRoute"
 				? "No drivable route found between these stops."
 				: `Route computation failed (${String(data.code)}).`
@@ -132,6 +143,34 @@ async function fetchDirections(
 	const route = (data.routes as DirectionsRoute[] | undefined)?.[0];
 	if (!route) throw new Error("Route computation returned no routes.");
 	return route;
+}
+
+/**
+ * Best-effort diagnosis of which stops the road network can't reach from the
+ * start. One Matrix API call (mapbox/driving — 25-coord cap vs 10 for
+ * driving-traffic); null durations mark unreachable coordinates. Returns
+ * indices into the order-sorted stops array; [] when diagnosis fails.
+ */
+async function findUnreachableStops(
+	start: { latitude: number; longitude: number },
+	stops: Array<{ latitude: number; longitude: number }>,
+	token: string
+): Promise<number[]> {
+	try {
+		const coords = [coordPair(start), ...stops.map(coordPair)];
+		const url =
+			`https://api.mapbox.com/directions-matrix/v1/mapbox/driving/` +
+			coords.join(";") +
+			`?sources=0&annotations=duration&access_token=${token}`;
+		const data = await mapboxGet(url);
+		if (data.code !== "Ok") return [];
+		const row = (data.durations as Array<Array<number | null>> | undefined)?.[0];
+		if (!row) return [];
+		return stops.flatMap((_, i) => (row[i + 1] == null ? [i] : []));
+	} catch (error) {
+		console.warn("Unreachable-stop diagnosis failed", error);
+		return [];
+	}
 }
 
 type OptimizationResponse = {
@@ -264,40 +303,64 @@ export const computeRoute = action({
 		let optimized = false;
 		let approximate = false;
 
-		const coordCount = stops.length + 1;
-		if (args.optimize && stops.length > 1) {
-			let solved: { trip: DirectionsRoute; stopOrder: number[] } | null =
-				null;
-			if (coordCount <= OPTIMIZATION_MAX_COORDS) {
-				solved = await fetchOptimizedTrip(
-					[startPair, ...stops.map(coordPair)],
-					route.roundTrip,
-					token
-				);
-			}
-			if (solved) {
-				orderedStops = solved.stopOrder.map((idx) => stops[idx]);
-				trip = solved.trip;
-				optimized = true;
+		try {
+			const coordCount = stops.length + 1;
+			if (args.optimize && stops.length > 1) {
+				let solved: { trip: DirectionsRoute; stopOrder: number[] } | null =
+					null;
+				if (coordCount <= OPTIMIZATION_MAX_COORDS) {
+					solved = await fetchOptimizedTrip(
+						[startPair, ...stops.map(coordPair)],
+						route.roundTrip,
+						token
+					);
+				}
+				if (solved) {
+					orderedStops = solved.stopOrder.map((idx) => stops[idx]);
+					trip = solved.trip;
+					optimized = true;
+				} else {
+					// Over the v1 cap (or unsupported combination): order locally,
+					// then fetch geometry for that order.
+					const heuristicOrder = solveStopOrder(
+						route.start as LatLng,
+						stops as LatLng[],
+						route.roundTrip
+					);
+					orderedStops = heuristicOrder.map((idx) => stops[idx]);
+					const coords = [startPair, ...orderedStops.map(coordPair)];
+					if (route.roundTrip) coords.push(startPair);
+					trip = await fetchDirections(coords, token);
+					optimized = true;
+					approximate = true;
+				}
 			} else {
-				// Over the v1 cap (or unsupported combination): order locally,
-				// then fetch geometry for that order.
-				const heuristicOrder = solveStopOrder(
-					route.start as LatLng,
-					stops as LatLng[],
-					route.roundTrip
-				);
-				orderedStops = heuristicOrder.map((idx) => stops[idx]);
-				const coords = [startPair, ...orderedStops.map(coordPair)];
+				const coords = [startPair, ...stops.map(coordPair)];
 				if (route.roundTrip) coords.push(startPair);
 				trip = await fetchDirections(coords, token);
-				optimized = true;
-				approximate = true;
 			}
-		} else {
-			const coords = [startPair, ...stops.map(coordPair)];
-			if (route.roundTrip) coords.push(startPair);
-			trip = await fetchDirections(coords, token);
+		} catch (error) {
+			// Directions can't say which coordinate broke the route; a Matrix
+			// probe from the start can. Indices refer to the order-sorted stops.
+			if (
+				error instanceof MapboxRouteError &&
+				(error.code === "NoRoute" || error.code === "NoSegment")
+			) {
+				const unreachable = await findUnreachableStops(
+					route.start,
+					stops,
+					token
+				);
+				if (unreachable.length > 0) {
+					throw new ConvexError({
+						code: "unreachable_stops",
+						stopIndices: unreachable,
+						message:
+							"Some stops can't be reached by road from the start location.",
+					});
+				}
+			}
+			throw error;
 		}
 
 		const legs: RouteLeg[] = trip.legs.map((leg) => ({

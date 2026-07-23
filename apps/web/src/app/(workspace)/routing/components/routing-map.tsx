@@ -10,6 +10,7 @@ import {
 	useMap,
 } from "@/components/ui/map";
 import { env } from "@/env";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { decodePolyline } from "@/lib/polyline";
 import { cn } from "@/lib/utils";
 import { Fuel } from "lucide-react";
@@ -61,6 +62,8 @@ type RoutingMapProps = {
 	stops: MapStop[];
 	geometry?: string;
 	gasStations: MapGasStation[];
+	/** Positions of stops the road network can't reach; alert markers. */
+	unreachableIndices?: ReadonlySet<number>;
 	className?: string;
 };
 
@@ -70,6 +73,8 @@ function MapBoundsHandler({
 	points: Array<{ latitude: number; longitude: number }>;
 }) {
 	const { map, isLoaded } = useMap();
+	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+	const duration = reducedMotion ? 0 : 800;
 	// Refit whenever the point set changes (stops added/removed, route loaded).
 	const signature = points
 		.map((p) => `${p.longitude.toFixed(5)},${p.latitude.toFixed(5)}`)
@@ -85,7 +90,7 @@ function MapBoundsHandler({
 			map.flyTo({
 				center: [points[0].longitude, points[0].latitude],
 				zoom: 11,
-				duration: 800,
+				duration,
 			});
 			return;
 		}
@@ -96,9 +101,9 @@ function MapBoundsHandler({
 				[Math.min(...lngs), Math.min(...lats)],
 				[Math.max(...lngs), Math.max(...lats)],
 			],
-			{ padding: 80, duration: 800, maxZoom: 13 }
+			{ padding: 80, duration, maxZoom: 13 }
 		);
-	}, [map, isLoaded, points, signature]);
+	}, [map, isLoaded, points, signature, duration]);
 
 	return null;
 }
@@ -108,6 +113,7 @@ export function RoutingMap({
 	stops,
 	geometry,
 	gasStations,
+	unreachableIndices,
 	className,
 }: RoutingMapProps) {
 	const routeCoordinates = useMemo(
@@ -176,8 +182,17 @@ export function RoutingMap({
 					>
 						<MarkerContent>
 							<div
-								className="flex size-7 items-center justify-center rounded-full border-2 border-white bg-sky-600 text-[11px] font-bold text-white shadow-md"
-								title={stop.label}
+								className={cn(
+									"flex size-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white shadow-md",
+									unreachableIndices?.has(index)
+										? "bg-destructive"
+										: "bg-sky-600"
+								)}
+								title={
+									unreachableIndices?.has(index)
+										? `${stop.label} — unreachable by road`
+										: stop.label
+								}
 							>
 								{index + 1}
 							</div>

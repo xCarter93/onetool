@@ -63,6 +63,8 @@ type StopListPanelProps = {
 	onRoundTripChange: (roundTrip: boolean) => void;
 	stops: StopDraft[];
 	onStopsChange: (stops: StopDraft[]) => void;
+	/** Positions of stops the last compute flagged as unreachable by road. */
+	unreachableIndices: ReadonlySet<number>;
 	properties: GeocodedProperty[];
 	route: Doc<"routes"> | null;
 	dirty: boolean;
@@ -237,6 +239,7 @@ export function StopListPanel({
 	onRoundTripChange,
 	stops,
 	onStopsChange,
+	unreachableIndices,
 	properties,
 	route,
 	dirty,
@@ -426,17 +429,31 @@ export function StopListPanel({
 						itemClassName="p-2"
 						renderItem={(item, index) => (
 							<div className="flex min-w-0 items-center gap-2.5">
-								<span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-sky-600 text-[10px] font-bold text-white">
+								<span
+									className={cn(
+										"flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
+										unreachableIndices.has(index)
+											? "bg-destructive"
+											: "bg-sky-600"
+									)}
+								>
 									{index + 1}
 								</span>
 								<div className="min-w-0 flex-1">
 									<span className="block truncate text-sm">{item.label}</span>
-									{legs && legs[index] && (
-										<span className="block text-xs text-muted-foreground">
-											{formatDistance(legs[index].distanceMeters)} ·{" "}
-											{formatDuration(legs[index].durationSeconds)} from
-											previous
+									{unreachableIndices.has(index) ? (
+										<span className="block text-xs text-destructive">
+											Unreachable by road — remove it or fix the address
 										</span>
+									) : (
+										legs &&
+										legs[index] && (
+											<span className="block text-xs text-muted-foreground">
+												{formatDistance(legs[index].distanceMeters)} ·{" "}
+												{formatDuration(legs[index].durationSeconds)} from
+												previous
+											</span>
+										)
 									)}
 								</div>
 								<Button
