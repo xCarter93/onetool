@@ -309,8 +309,15 @@ export default defineSchema({
 	routes: defineTable({
 		orgId: v.id("organizations"),
 		name: v.string(),
-		date: v.optional(v.number()), // planned day, UTC midnight
+		// undefined (pre-kind rows) reads as "saved"
+		kind: v.optional(v.union(v.literal("daily"), v.literal("saved"))),
+		date: v.optional(v.number()), // planned day, UTC midnight; required when kind === "daily"
+		// daily-singleton key part: undefined = org-wide route
+		assigneeUserId: v.optional(v.id("users")),
 		status: v.union(v.literal("draft"), v.literal("finalized")),
+		// Run state (daily routes): set when the route is started/finished in the field
+		startedAt: v.optional(v.number()),
+		completedAt: v.optional(v.number()),
 
 		start: v.object({
 			kind: v.union(v.literal("org"), v.literal("manual")),
@@ -323,10 +330,22 @@ export default defineSchema({
 		stops: v.array(
 			v.object({
 				propertyId: v.optional(v.id("clientProperties")), // absent for manual stops
+				// Seed provenance: which schedule item produced this stop
+				taskId: v.optional(v.id("tasks")),
+				projectId: v.optional(v.id("projects")),
 				label: v.string(),
 				latitude: v.number(),
 				longitude: v.number(),
 				order: v.number(),
+				// Completion tracking (daily routes); absent = pending
+				status: v.optional(
+					v.union(
+						v.literal("pending"),
+						v.literal("visited"),
+						v.literal("skipped")
+					)
+				),
+				visitedAt: v.optional(v.number()),
 			})
 		),
 
@@ -347,7 +366,9 @@ export default defineSchema({
 		computedAt: v.optional(v.number()),
 
 		createdBy: v.id("users"),
-	}).index("by_org", ["orgId"]),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_date", ["orgId", "date"]),
 
 	// Projects
 	projects: defineTable({

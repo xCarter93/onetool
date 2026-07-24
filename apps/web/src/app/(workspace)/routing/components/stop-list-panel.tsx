@@ -33,6 +33,11 @@ export type StopDraft = {
 	/** dnd + React key; stable per row */
 	key: string;
 	propertyId?: Id<"clientProperties">;
+	// Passthrough fields (daily routes): preserved on save, never edited here
+	taskId?: Id<"tasks">;
+	projectId?: Id<"projects">;
+	status?: "pending" | "visited" | "skipped";
+	visitedAt?: number;
 	label: string;
 	latitude: number;
 	longitude: number;

@@ -8,7 +8,16 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectTrigger,
+	SelectContent,
+	SelectValue,
+	SelectItem,
+} from "@/components/ui/select";
+import { todayUtcMidnightMs } from "@/lib/dates";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -25,7 +34,13 @@ import {
 	type GeocodedProperty,
 	type StopDraft,
 } from "./components/stop-list-panel";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import {
+	CalendarCheck,
+	CalendarPlus,
+	ChevronDown,
+	Plus,
+	Trash2,
+} from "lucide-react";
 
 type StartDraft = {
 	kind: "org" | "manual";
@@ -47,11 +62,17 @@ function stopsFromRoute(route: Doc<"routes">): StopDraft[] {
 		.map((s, i) => ({
 			key: `${s.propertyId ?? `${s.latitude},${s.longitude}`}-${i}`,
 			propertyId: s.propertyId,
+			taskId: s.taskId,
+			projectId: s.projectId,
+			status: s.status,
+			visitedAt: s.visitedAt,
 			label: s.label,
 			latitude: s.latitude,
 			longitude: s.longitude,
 		}));
 }
+
+type RoutingView = "today" | "saved";
 
 function RoutingWorkspace() {
 	const { hasPremiumAccess, isLoading: accessLoading } = useFeatureAccess();
@@ -60,13 +81,23 @@ function RoutingWorkspace() {
 	const savedRoutes = useQuery(api.routes.list);
 	const organization = useQuery(api.organizations.get);
 	const propertiesData = useQuery(api.clientProperties.listGeocodedWithClients);
+	const currentUser = useQuery(api.users.current);
+	const members = useQuery(api.users.listByOrg);
 
 	const createRoute = useMutation(api.routes.create);
 	const updateRoute = useMutation(api.routes.update);
 	const removeRoute = useMutation(api.routes.remove);
+	const seedFromSchedule = useMutation(api.routes.seedFromSchedule);
+	const copyToDaily = useMutation(api.routes.copyToDaily);
 	const computeRoute = useAction(api.routingActions.computeRoute);
 	const searchGas = useAction(api.routingActions.searchGasAlongRoute);
 
+	const [view, setView] = useState<RoutingView>("today");
+	// null until members load; then "me" in multi-member orgs, org-wide solo (D3)
+	const [assignee, setAssignee] = useState<Id<"users"> | "everyone" | null>(
+		null
+	);
+	const [seeding, setSeeding] = useState(false);
 	const [selectedRouteId, setSelectedRouteId] =
 		useState<Id<"routes"> | null>(null);
 	const [draftName, setDraftName] = useState("");
@@ -92,6 +123,32 @@ function RoutingWorkspace() {
 	const selectedRoute = useMemo(
 		() => savedRoutes?.find((r) => r._id === selectedRouteId) ?? null,
 		[savedRoutes, selectedRouteId]
+	);
+
+	// Default the assignee once org members load (render-time, runs once)
+	if (assignee === null && members !== undefined && currentUser !== undefined) {
+		setAssignee(
+			members.length > 1 && currentUser ? currentUser._id : "everyone"
+		);
+	}
+
+	const today = todayUtcMidnightMs();
+	const assigneeUserId =
+		assignee === null || assignee === "everyone" ? undefined : assignee;
+	const dailyRoute = useMemo(
+		() =>
+			savedRoutes?.find(
+				(r) =>
+					r.kind === "daily" &&
+					r.date === today &&
+					r.assigneeUserId === assigneeUserId
+			) ?? null,
+		[savedRoutes, today, assigneeUserId]
+	);
+	// Legacy pre-kind rows read as saved
+	const savedLibrary = useMemo(
+		() => (savedRoutes ?? []).filter((r) => r.kind !== "daily"),
+		[savedRoutes]
 	);
 
 	const orgStart: StartDraft | null = useMemo(() => {
@@ -187,6 +244,87 @@ function RoutingWorkspace() {
 		setGasForGeometry(null);
 	};
 
+	// Keep the Today view pointed at the daily singleton once it loads/changes
+	if (
+		view === "today" &&
+		!dirty &&
+		dailyRoute &&
+		selectedRouteId !== dailyRoute._id
+	) {
+		setSelectedRouteId(dailyRoute._id);
+	}
+
+	const switchView = (next: RoutingView) => {
+		if (next === view) return;
+		setView(next);
+		if (next === "today" && dailyRoute) {
+			selectRoute(dailyRoute._id);
+		} else {
+			resetToNewRoute();
+		}
+	};
+
+	const handleAssigneeChange = (value: Id<"users"> | "everyone") => {
+		setAssignee(value);
+		const nextAssignee = value === "everyone" ? undefined : value;
+		const nextDaily = savedRoutes?.find(
+			(r) =>
+				r.kind === "daily" &&
+				r.date === today &&
+				r.assigneeUserId === nextAssignee
+		);
+		if (nextDaily) selectRoute(nextDaily._id);
+		else resetToNewRoute();
+	};
+
+	const handleSeed = async () => {
+		setSeeding(true);
+		try {
+			const result = await seedFromSchedule({ date: today, assigneeUserId });
+			selectRoute(result.routeId);
+			const detail = [
+				result.skippedNoAddress > 0
+					? `${result.skippedNoAddress} skipped (no mapped address)`
+					: null,
+				result.truncated > 0
+					? `${result.truncated} dropped (stop limit)`
+					: null,
+			]
+				.filter(Boolean)
+				.join(" · ");
+			toast.success(
+				`Planned ${result.stopCount} ${result.stopCount === 1 ? "stop" : "stops"} from the schedule`,
+				detail || undefined
+			);
+		} catch (error) {
+			toast.error(
+				"Couldn't plan from the schedule",
+				error instanceof Error ? error.message : undefined
+			);
+		} finally {
+			setSeeding(false);
+		}
+	};
+
+	const handleUseToday = async () => {
+		if (!selectedRouteId) return;
+		try {
+			const routeId = await copyToDaily({
+				routeId: selectedRouteId,
+				date: today,
+				assigneeUserId,
+			});
+			setView("today");
+			selectRoute(routeId);
+			toast.success("Added to today's route");
+		} catch (error) {
+			toast.error(
+				"Couldn't use this route today",
+				error instanceof Error ? error.message : undefined
+			);
+		}
+	};
+
 	const fetchGasStations = useCallback(
 		async (
 			routeId: Id<"routes">,
@@ -230,6 +368,10 @@ function RoutingWorkspace() {
 				roundTrip: displayRoundTrip,
 				stops: displayStops.map((s, i) => ({
 					propertyId: s.propertyId,
+					taskId: s.taskId,
+					projectId: s.projectId,
+					status: s.status,
+					visitedAt: s.visitedAt,
 					label: s.label,
 					latitude: s.latitude,
 					longitude: s.longitude,
@@ -239,7 +381,12 @@ function RoutingWorkspace() {
 
 			let routeId = selectedRouteId;
 			if (!routeId) {
-				routeId = await createRoute(payload);
+				routeId = await createRoute({
+					...payload,
+					kind: view === "today" ? "daily" : "saved",
+					date: view === "today" ? today : undefined,
+					assigneeUserId: view === "today" ? assigneeUserId : undefined,
+				});
 				setSelectedRouteId(routeId);
 			} else if (dirty) {
 				await updateRoute({ routeId, ...payload });
@@ -375,56 +522,158 @@ function RoutingWorkspace() {
 						</p>
 					</div>
 				</div>
-				<div className="flex items-center gap-2">
-					<DropdownMenu>
-						<DropdownMenuTrigger
-							render={
-								<Button variant="outline" size="sm" className="gap-1.5">
-									{selectedRoute ? selectedRoute.name : "Saved routes"}
-									<ChevronDown className="size-3.5" aria-hidden />
-								</Button>
-							}
-						/>
-						<DropdownMenuContent align="end" className="min-w-56">
-							{(savedRoutes ?? []).length === 0 ? (
-								<DropdownMenuItem disabled>
-									No saved routes yet
-								</DropdownMenuItem>
-							) : (
-								(savedRoutes ?? []).map((route) => (
-									<DropdownMenuItem
-										key={route._id}
-										onClick={() => selectRoute(route._id)}
-									>
-										{route.name}
-									</DropdownMenuItem>
-								))
+				<div className="flex flex-wrap items-center gap-2">
+					<SegmentedControl<RoutingView>
+						value={view}
+						onValueChange={switchView}
+						options={[
+							{ value: "today", label: "Today" },
+							{ value: "saved", label: "Saved routes" },
+						]}
+					/>
+					{view === "today" ? (
+						<>
+							{(members?.length ?? 0) > 1 && (
+								<Select<Id<"users"> | "everyone">
+									value={assignee ?? "everyone"}
+									onValueChange={(value) =>
+										handleAssigneeChange(value as Id<"users"> | "everyone")
+									}
+								>
+									<SelectTrigger className="h-8 w-44" aria-label="Route assignee">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{(members ?? []).map((member) => (
+											<SelectItem key={member._id} value={member._id}>
+												{member._id === currentUser?._id
+													? "My route"
+													: member.name || member.email}
+											</SelectItem>
+										))}
+										<SelectItem value="everyone">Whole team</SelectItem>
+									</SelectContent>
+								</Select>
 							)}
-						</DropdownMenuContent>
-					</DropdownMenu>
-					<Button
-						variant="outline"
-						size="sm"
-						className="gap-1.5"
-						onClick={resetToNewRoute}
-					>
-						<Plus className="size-3.5" aria-hidden />
-						New route
-					</Button>
-					{selectedRouteId && (
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							aria-label="Delete route"
-							onClick={handleDeleteRoute}
-						>
-							<Trash2 className="size-4" aria-hidden />
-						</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								className="gap-1.5"
+								onClick={() => void handleSeed()}
+								disabled={seeding}
+							>
+								<CalendarPlus className="size-3.5" aria-hidden />
+								{seeding
+									? "Planning…"
+									: dailyRoute
+										? "Re-plan from schedule"
+										: "Plan from schedule"}
+							</Button>
+							{dailyRoute && selectedRouteId === dailyRoute._id && (
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Delete today's route"
+									onClick={handleDeleteRoute}
+								>
+									<Trash2 className="size-4" aria-hidden />
+								</Button>
+							)}
+						</>
+					) : (
+						<>
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									render={
+										<Button variant="outline" size="sm" className="gap-1.5">
+											{selectedRoute ? selectedRoute.name : "Saved routes"}
+											<ChevronDown className="size-3.5" aria-hidden />
+										</Button>
+									}
+								/>
+								<DropdownMenuContent align="end" className="min-w-56">
+									{savedLibrary.length === 0 ? (
+										<DropdownMenuItem disabled>
+											No saved routes yet
+										</DropdownMenuItem>
+									) : (
+										savedLibrary.map((route) => (
+											<DropdownMenuItem
+												key={route._id}
+												onClick={() => selectRoute(route._id)}
+											>
+												{route.name}
+											</DropdownMenuItem>
+										))
+									)}
+								</DropdownMenuContent>
+							</DropdownMenu>
+							{selectedRouteId && !dirty && (
+								<Button
+									variant="outline"
+									size="sm"
+									className="gap-1.5"
+									onClick={() => void handleUseToday()}
+								>
+									<CalendarCheck className="size-3.5" aria-hidden />
+									Use today
+								</Button>
+							)}
+							<Button
+								variant="outline"
+								size="sm"
+								className="gap-1.5"
+								onClick={resetToNewRoute}
+							>
+								<Plus className="size-3.5" aria-hidden />
+								New route
+							</Button>
+							{selectedRouteId && (
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Delete route"
+									onClick={handleDeleteRoute}
+								>
+									<Trash2 className="size-4" aria-hidden />
+								</Button>
+							)}
+						</>
 					)}
 				</div>
 			</div>
 
-			{/* Workspace: panel + map */}
+			{/* Today with no route yet: offer the two on-ramps instead of the editor */}
+			{view === "today" && !dailyRoute && !dirty ? (
+				<div className="flex min-h-0 flex-1 items-center justify-center">
+					<EmptyState
+						illustration="tasks-none"
+						title="No route for today yet"
+						description="Build one from today's scheduled tasks and projects, or reuse a saved route."
+						action={
+							<div className="flex items-center gap-2">
+								<Button
+									size="sm"
+									className="gap-1.5"
+									onClick={() => void handleSeed()}
+									disabled={seeding}
+								>
+									<CalendarPlus className="size-3.5" aria-hidden />
+									{seeding ? "Planning…" : "Plan from schedule"}
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => switchView("saved")}
+								>
+									Browse saved routes
+								</Button>
+							</div>
+						}
+						size="md"
+					/>
+				</div>
+			) : (
 			<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
 				<div className="w-full shrink-0 rounded-xl border border-border bg-background lg:w-[26rem] lg:overflow-hidden">
 					<StopListPanel
@@ -488,6 +737,7 @@ function RoutingWorkspace() {
 					/>
 				</div>
 			</div>
+			)}
 		</div>
 	);
 }
