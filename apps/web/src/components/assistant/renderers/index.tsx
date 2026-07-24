@@ -67,6 +67,10 @@ export const TOOL_LABELS: Record<string, { done: string; active: string }> = {
 	},
 	getDocuments: { done: "Looked up documents", active: "Looking up documents…" },
 	getActivity: { done: "Checked recent activity", active: "Checking recent activity…" },
+	getRoute: { done: "Looked up a route", active: "Looking up a route…" },
+	planRoute: { done: "Planned a route", active: "Planning a route…" },
+	updateRoute: { done: "Updated the route", active: "Updating the route…" },
+	optimizeRoute: { done: "Optimized the route", active: "Optimizing the route…" },
 	navigate: { done: "Opened a page", active: "Opening a page…" },
 };
 

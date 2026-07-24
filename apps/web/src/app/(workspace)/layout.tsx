@@ -7,6 +7,7 @@ import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
 import { ScreenContextProvider } from "@/components/assistant/use-screen-context";
+import { CurrentRecordProvider } from "@/components/assistant/use-current-record";
 import { CreateRecordProvider } from "@/components/domain/create-record-provider";
 import "./workspace-theme.css";
 
@@ -33,9 +34,11 @@ export default async function WorkspaceLayout({
 							    (but under the card and notches), tinting the frame unevenly. */}
 							<div className="relative bg-background min-h-screen">
 								<ScreenContextProvider>
-									<CreateRecordProvider>
-										<SidebarWithHeader>{children}</SidebarWithHeader>
-									</CreateRecordProvider>
+									<CurrentRecordProvider>
+										<CreateRecordProvider>
+											<SidebarWithHeader>{children}</SidebarWithHeader>
+										</CreateRecordProvider>
+									</CurrentRecordProvider>
 								</ScreenContextProvider>
 							</div>
 						</div>

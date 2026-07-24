@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
+import { usePublishCurrentRecord } from "@/components/assistant/use-current-record";
 import type { AddressData } from "@/components/ui/address-autocomplete";
 import { RoutingMap } from "./components/routing-map";
 import {
@@ -89,6 +91,8 @@ function RoutingWorkspace() {
 	const removeRoute = useMutation(api.routes.remove);
 	const seedFromSchedule = useMutation(api.routes.seedFromSchedule);
 	const copyToDaily = useMutation(api.routes.copyToDaily);
+	const setStopStatus = useMutation(api.routes.setStopStatus);
+	const updateTask = useMutation(api.tasks.update);
 	const computeRoute = useAction(api.routingActions.computeRoute);
 	const searchGas = useAction(api.routingActions.searchGasAlongRoute);
 
@@ -105,6 +109,7 @@ function RoutingWorkspace() {
 	const [draftRoundTrip, setDraftRoundTrip] = useState(true);
 	const [draftStops, setDraftStops] = useState<StopDraft[]>([]);
 	const [dirty, setDirty] = useState(false);
+	const [saving, setSaving] = useState(false);
 	const [computing, setComputing] = useState(false);
 	// Positions (display order) of stops the last compute flagged as
 	// unreachable by road. Index-based because stop keys regenerate when the
@@ -151,6 +156,15 @@ function RoutingWorkspace() {
 		[savedRoutes]
 	);
 
+	// Assistant screen context: view parameters and IDs only, never data
+	usePublishScreenContext(() => ({
+		routingView: view,
+		routeId: selectedRouteId ?? undefined,
+		routeKind: selectedRoute ? (selectedRoute.kind ?? "saved") : undefined,
+		assigneeUserId,
+		hasUnsavedChanges: dirty,
+	}));
+
 	const orgStart: StartDraft | null = useMemo(() => {
 		if (organization?.latitude == null || organization.longitude == null) {
 			return null;
@@ -179,6 +193,21 @@ function RoutingWorkspace() {
 	const displayRoundTrip =
 		!dirty && selectedRoute ? selectedRoute.roundTrip : draftRoundTrip;
 	const displayName = !dirty && selectedRoute ? selectedRoute.name : draftName;
+
+	// "In context" pill in the assistant panel (no record ID in the URL here)
+	usePublishCurrentRecord(
+		selectedRoute || dirty
+			? {
+					kindLabel: "Route",
+					name: displayName.trim() || "Untitled route",
+					status: dirty
+						? "unsaved changes"
+						: selectedRoute?.kind === "daily"
+							? `${displayStops.filter((s) => s.status === "visited").length} of ${displayStops.length} visited`
+							: "saved",
+				}
+			: null
+	);
 
 	const properties: GeocodedProperty[] = useMemo(
 		() =>
@@ -352,46 +381,106 @@ function RoutingWorkspace() {
 		[searchGas, toast]
 	);
 
-	const handleCompute = async (optimize: boolean) => {
+	// Persist the current draft (create or update). Returns null when the
+	// draft isn't saveable yet; shared by Save and the compute buttons.
+	const persistDraft = async (): Promise<Id<"routes"> | null> => {
 		if (!displayStart) {
 			toast.warning("Set a start location first");
-			return;
+			return null;
 		}
-		if (displayStops.length === 0) return;
+		if (displayStops.length === 0) return null;
 
+		const payload = {
+			name: displayName.trim() || "Untitled route",
+			start: displayStart,
+			roundTrip: displayRoundTrip,
+			stops: displayStops.map((s, i) => ({
+				propertyId: s.propertyId,
+				taskId: s.taskId,
+				projectId: s.projectId,
+				status: s.status,
+				visitedAt: s.visitedAt,
+				label: s.label,
+				latitude: s.latitude,
+				longitude: s.longitude,
+				order: i,
+			})),
+		};
+
+		let routeId = selectedRouteId;
+		if (!routeId) {
+			routeId = await createRoute({
+				...payload,
+				kind: view === "today" ? "daily" : "saved",
+				date: view === "today" ? today : undefined,
+				assigneeUserId: view === "today" ? assigneeUserId : undefined,
+			});
+			setSelectedRouteId(routeId);
+		} else if (dirty) {
+			await updateRoute({ routeId, ...payload });
+		}
+		setDirty(false);
+		return routeId;
+	};
+
+	const handleSave = async () => {
+		setSaving(true);
+		try {
+			const routeId = await persistDraft();
+			if (routeId) toast.success("Route saved");
+		} catch (error) {
+			toast.error(
+				"Couldn't save the route",
+				error instanceof Error ? error.message : undefined
+			);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const handleDiscard = () => {
+		if (selectedRouteId) {
+			// Fall back to the saved doc as the display source
+			setDirty(false);
+			setUnreachableIndices(new Set());
+		} else {
+			resetToNewRoute();
+		}
+	};
+
+	const handleStopStatus = async (
+		order: number,
+		status: "pending" | "visited"
+	) => {
+		if (!selectedRouteId) return;
+		const stop = displayStops[order];
+		try {
+			await setStopStatus({ routeId: selectedRouteId, order, status });
+			if (status === "visited" && stop?.taskId) {
+				const taskId = stop.taskId;
+				toast.success("Stop marked visited", undefined, {
+					action: {
+						label: "Mark task done too",
+						onClick: () => {
+							void updateTask({ id: taskId, status: "completed" });
+						},
+					},
+				});
+			}
+		} catch (error) {
+			toast.error(
+				"Couldn't update the stop",
+				error instanceof Error ? error.message : undefined
+			);
+		}
+	};
+
+	const handleCompute = async (optimize: boolean) => {
 		setComputing(true);
 		setUnreachableIndices(new Set());
 		try {
-			const payload = {
-				name: displayName.trim() || "Untitled route",
-				start: displayStart,
-				roundTrip: displayRoundTrip,
-				stops: displayStops.map((s, i) => ({
-					propertyId: s.propertyId,
-					taskId: s.taskId,
-					projectId: s.projectId,
-					status: s.status,
-					visitedAt: s.visitedAt,
-					label: s.label,
-					latitude: s.latitude,
-					longitude: s.longitude,
-					order: i,
-				})),
-			};
-
-			let routeId = selectedRouteId;
-			if (!routeId) {
-				routeId = await createRoute({
-					...payload,
-					kind: view === "today" ? "daily" : "saved",
-					date: view === "today" ? today : undefined,
-					assigneeUserId: view === "today" ? assigneeUserId : undefined,
-				});
-				setSelectedRouteId(routeId);
-			} else if (dirty) {
-				await updateRoute({ routeId, ...payload });
-			}
-			setDirty(false);
+			const routeId = await persistDraft();
+			if (!routeId) return;
 
 			const result = await computeRoute({ routeId, optimize });
 			if (!result.applied) {
@@ -716,7 +805,22 @@ function RoutingWorkspace() {
 						unreachableIndices={unreachableIndices}
 						properties={properties}
 						route={dirty ? null : selectedRoute}
+						routeKind={
+							selectedRoute
+								? selectedRoute.kind === "daily"
+									? "daily"
+									: "saved"
+								: null
+						}
 						dirty={dirty}
+						saving={saving}
+						onSave={() => void handleSave()}
+						onDiscard={handleDiscard}
+						onStopStatusChange={
+							!dirty && selectedRoute?.kind === "daily"
+								? (order, status) => void handleStopStatus(order, status)
+								: null
+						}
 						computing={computing}
 						onCompute={(optimize) => void handleCompute(optimize)}
 						gasEnabled={gasEnabled}

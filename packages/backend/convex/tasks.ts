@@ -231,6 +231,38 @@ async function updateTaskWithValidation(
 	await ctx.db.patch(id, updates);
 }
 
+/**
+ * One-directional: mark this task's stop visited on any daily route for its
+ * date. Never called on un-completion, so stops never revert.
+ */
+async function markTaskStopsVisited(
+	ctx: UserMutationCtx,
+	orgId: Id<"organizations">,
+	task: TaskDocument
+): Promise<void> {
+	if (task.date === undefined) return;
+
+	const sameDay = await ctx.db
+		.query("routes")
+		.withIndex("by_org_date", (q) => q.eq("orgId", orgId).eq("date", task.date))
+		.collect();
+	const dailyRoutes = sameDay.filter((r) => r.kind === "daily");
+
+	for (const route of dailyRoutes) {
+		let changed = false;
+		const stops = route.stops.map((s) => {
+			if (s.taskId === task._id && s.status !== "visited") {
+				changed = true;
+				return { ...s, status: "visited" as const, visitedAt: Date.now() };
+			}
+			return s;
+		});
+		if (changed) {
+			await ctx.db.patch(route._id, { stops });
+		}
+	}
+}
+
 // Interface for task statistics
 interface TaskStats {
 	total: number;
@@ -646,6 +678,7 @@ export const update = userMutation({
 		if (task) {
 			if (isBeingCompleted) {
 				await ActivityHelpers.taskCompleted(ctx, task as TaskDocument);
+				await markTaskStopsVisited(ctx, task.orgId, task as TaskDocument);
 			}
 
 			// Emit status change event if status changed
@@ -705,6 +738,11 @@ export const complete = userMutation({
 		const updatedTask = await ctx.db.get(args.id);
 		if (updatedTask) {
 			await ActivityHelpers.taskCompleted(ctx, updatedTask as TaskDocument);
+			await markTaskStopsVisited(
+				ctx,
+				updatedTask.orgId,
+				updatedTask as TaskDocument
+			);
 
 			await emitStatusChangeEvent(
 				ctx,

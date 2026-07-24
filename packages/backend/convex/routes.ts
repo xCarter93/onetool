@@ -253,6 +253,39 @@ export const remove = userMutation({
 	},
 });
 
+/** Mark a single stop's completion status on a daily route (not input data — computed fields are untouched). */
+export const setStopStatus = userMutation({
+	args: {
+		routeId: v.id("routes"),
+		order: v.number(),
+		status: stopStatusValidator,
+	},
+	handler: async (ctx, args): Promise<void> => {
+		await requirePremium(ctx);
+		await ctx.requireLevel("clients", "view");
+
+		const route = await ctx.orgEntity("routes", args.routeId);
+		if (route.kind !== "daily") {
+			throw new Error("Only daily routes track stop completion");
+		}
+		if (!route.stops.some((s) => s.order === args.order)) {
+			throw new Error("Stop not found");
+		}
+
+		const stops = route.stops.map((s) =>
+			s.order === args.order
+				? {
+						...s,
+						status: args.status,
+						visitedAt: args.status === "visited" ? Date.now() : undefined,
+					}
+				: s
+		);
+
+		await ctx.db.patch(route._id, { stops });
+	},
+});
+
 // ============================================================================
 // Daily routes (seed-from-schedule + saved-route copy)
 // ============================================================================

@@ -20,7 +20,10 @@ import { ListProvider } from "@/components/shared/sortable-list";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { cn } from "@/lib/utils";
 import {
+	Bookmark,
 	Building2,
+	CalendarCheck,
+	Check,
 	Fuel,
 	Loader2,
 	MapPin,
@@ -72,7 +75,16 @@ type StopListPanelProps = {
 	unreachableIndices: ReadonlySet<number>;
 	properties: GeocodedProperty[];
 	route: Doc<"routes"> | null;
+	/** Kind of the selected persisted route; null when building a new one. */
+	routeKind: "daily" | "saved" | null;
 	dirty: boolean;
+	saving: boolean;
+	onSave: () => void;
+	onDiscard: () => void;
+	/** Daily-route check-off; null hides the control (saved routes, dirty drafts). */
+	onStopStatusChange:
+		| ((order: number, status: "pending" | "visited") => void)
+		| null;
 	computing: boolean;
 	onCompute: (optimize: boolean) => void;
 	gasEnabled: boolean;
@@ -247,7 +259,12 @@ export function StopListPanel({
 	unreachableIndices,
 	properties,
 	route,
+	routeKind,
 	dirty,
+	saving,
+	onSave,
+	onDiscard,
+	onStopStatusChange,
 	computing,
 	onCompute,
 	gasEnabled,
@@ -276,9 +293,28 @@ export function StopListPanel({
 		<div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
 			{/* Route name */}
 			<div className="space-y-1.5">
-				<Label htmlFor="route-name" className="text-xs">
-					Route name
-				</Label>
+				<div className="flex items-center justify-between gap-2">
+					<Label htmlFor="route-name" className="text-xs">
+						Route name
+					</Label>
+					<div className="flex items-center gap-1.5">
+						{routeKind === "daily" ? (
+							<Badge variant="primary-light" size="sm" className="gap-1">
+								<CalendarCheck className="size-3" aria-hidden />
+								Today&apos;s route
+							</Badge>
+						) : routeKind === "saved" ? (
+							<Badge variant="secondary" size="sm" className="gap-1">
+								<Bookmark className="size-3" aria-hidden />
+								Saved route
+							</Badge>
+						) : (
+							<Badge variant="outline" size="sm">
+								Not saved yet
+							</Badge>
+						)}
+					</div>
+				</div>
 				<Input
 					id="route-name"
 					value={name}
@@ -356,7 +392,11 @@ export function StopListPanel({
 				<div className="flex items-center justify-between">
 					<Label className="text-xs">
 						Stops{" "}
-						<span className="text-muted-foreground">({stops.length})</span>
+						<span className="text-muted-foreground">
+							{onStopStatusChange
+								? `(${stops.filter((s) => s.status === "visited").length} of ${stops.length} visited)`
+								: `(${stops.length})`}
+						</span>
 					</Label>
 					<div className="flex gap-1.5">
 						<PropertyPicker
@@ -434,18 +474,63 @@ export function StopListPanel({
 						itemClassName="p-2"
 						renderItem={(item, index) => (
 							<div className="flex min-w-0 items-center gap-2.5">
-								<span
-									className={cn(
-										"flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
-										unreachableIndices.has(index)
-											? "bg-destructive"
-											: "bg-sky-600"
-									)}
-								>
-									{index + 1}
-								</span>
+								{onStopStatusChange && !unreachableIndices.has(index) ? (
+									<button
+										type="button"
+										aria-label={
+											item.status === "visited"
+												? `Mark ${item.label} not visited`
+												: `Mark ${item.label} visited`
+										}
+										className={cn(
+											"group/check flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white transition-colors",
+											item.status === "visited"
+												? "bg-emerald-600 hover:bg-emerald-700"
+												: "bg-sky-600 hover:bg-emerald-600"
+										)}
+										onClick={() =>
+											onStopStatusChange(
+												index,
+												item.status === "visited" ? "pending" : "visited"
+											)
+										}
+									>
+										{item.status === "visited" ? (
+											<Check className="size-3.5" aria-hidden />
+										) : (
+											<>
+												<span className="group-hover/check:hidden">
+													{index + 1}
+												</span>
+												<Check
+													className="hidden size-3.5 group-hover/check:block"
+													aria-hidden
+												/>
+											</>
+										)}
+									</button>
+								) : (
+									<span
+										className={cn(
+											"flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
+											unreachableIndices.has(index)
+												? "bg-destructive"
+												: "bg-sky-600"
+										)}
+									>
+										{index + 1}
+									</span>
+								)}
 								<div className="min-w-0 flex-1">
-									<span className="block truncate text-sm">{item.label}</span>
+									<span
+										className={cn(
+											"block truncate text-sm",
+											item.status === "visited" &&
+												"text-muted-foreground line-through"
+										)}
+									>
+										{item.label}
+									</span>
 									{unreachableIndices.has(index) ? (
 										<span className="block text-xs text-destructive">
 											Unreachable by road — remove it or fix the address
@@ -476,6 +561,35 @@ export function StopListPanel({
 					/>
 				)}
 			</div>
+
+			{/* Save bar: edits persist only on Save (or on compute below) */}
+			{dirty && (
+				<div className="flex items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2">
+					<span className="text-xs font-medium text-foreground">
+						Unsaved changes
+					</span>
+					<div className="flex gap-1.5">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={onDiscard}
+							disabled={saving}
+						>
+							Discard
+						</Button>
+						<Button
+							size="sm"
+							disabled={saving || stops.length === 0 || !startLabel}
+							onClick={onSave}
+						>
+							{saving ? (
+								<Loader2 className="size-3.5 animate-spin" aria-hidden />
+							) : null}
+							{routeKind ? "Save changes" : "Save route"}
+						</Button>
+					</div>
+				</div>
+			)}
 
 			{/* Compute */}
 			<div className="flex gap-2">
