@@ -231,6 +231,108 @@ export function getEventColor(
 }
 
 /**
+ * Parse an "HH:MM" time string into minutes since midnight.
+ * Returns null for missing or malformed values (the field is free-form in the schema).
+ */
+export function parseTimeToMinutes(time?: string): number | null {
+	if (!time) return null;
+	const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+	if (!match) return null;
+	const hours = Number(match[1]);
+	const minutes = Number(match[2]);
+	if (hours > 23 || minutes > 59) return null;
+	return hours * 60 + minutes;
+}
+
+export interface TimedEventLayout {
+	event: CalendarEvent;
+	/** px from the top of the day grid */
+	top: number;
+	/** px */
+	height: number;
+	/** % from the left of the events column */
+	left: number;
+	/** % of the events column */
+	width: number;
+}
+
+/**
+ * Compute absolute positions for timed events in the day-view grid.
+ * Events are clamped to the visible hour range (with a minimum display
+ * duration so short tasks stay clickable); overlapping events split the
+ * column into side-by-side lanes.
+ */
+export function layoutTimedDayEvents(
+	events: CalendarEvent[],
+	opts: { dayStartHour: number; dayEndHour: number; hourHeight: number }
+): TimedEventLayout[] {
+	const { dayStartHour, dayEndHour, hourHeight } = opts;
+	const gridStart = dayStartHour * 60;
+	const gridEnd = dayEndHour * 60;
+	const MIN_DURATION = 30;
+
+	const timed = events.flatMap((event) => {
+		const start = parseTimeToMinutes(event.startTime);
+		if (start === null) return [];
+		const parsedEnd = parseTimeToMinutes(event.endTime);
+		// Missing or inverted end time renders as a default one-hour block
+		const end = parsedEnd !== null && parsedEnd > start ? parsedEnd : start + 60;
+		const clampedStart = Math.min(
+			Math.max(start, gridStart),
+			gridEnd - MIN_DURATION
+		);
+		const clampedEnd = Math.min(
+			Math.max(end, clampedStart + MIN_DURATION),
+			gridEnd
+		);
+		return [{ event, start: clampedStart, end: clampedEnd }];
+	});
+
+	timed.sort((a, b) => a.start - b.start || b.end - a.end);
+
+	// Greedy lane assignment within overlap clusters
+	const layouts: TimedEventLayout[] = [];
+	let cluster: { start: number; end: number; lane: number; event: CalendarEvent }[] = [];
+	let clusterEnd = -1;
+
+	const flushCluster = () => {
+		if (cluster.length === 0) return;
+		const laneCount = Math.max(...cluster.map((c) => c.lane)) + 1;
+		const width = 100 / laneCount;
+		for (const item of cluster) {
+			layouts.push({
+				event: item.event,
+				top: ((item.start - gridStart) / 60) * hourHeight,
+				height: ((item.end - item.start) / 60) * hourHeight,
+				left: item.lane * width,
+				width,
+			});
+		}
+		cluster = [];
+	};
+
+	const laneEnds: number[] = [];
+	for (const item of timed) {
+		if (item.start >= clusterEnd) {
+			flushCluster();
+			laneEnds.length = 0;
+		}
+		let lane = laneEnds.findIndex((end) => end <= item.start);
+		if (lane === -1) {
+			lane = laneEnds.length;
+			laneEnds.push(item.end);
+		} else {
+			laneEnds[lane] = item.end;
+		}
+		cluster.push({ ...item, lane });
+		clusterEnd = Math.max(clusterEnd, item.end);
+	}
+	flushCluster();
+
+	return layouts;
+}
+
+/**
  * Format time string to 12-hour format
  */
 export function formatTime(time: string): string {
