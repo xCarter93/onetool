@@ -7,6 +7,7 @@ import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
 import {
 	validateParentAccess,
+	validatePropertyClientAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
@@ -147,6 +148,16 @@ async function createTaskWithOrg(
 		await validateProjectAccess(ctx, data.projectId, ctx.orgId);
 	}
 
+	// Validate property belongs to the task's client if provided
+	if (data.propertyId) {
+		await validatePropertyClientAccess(
+			ctx,
+			data.propertyId,
+			data.clientId,
+			ctx.orgId
+		);
+	}
+
 	// Validate assignee if provided
 	if (data.assigneeUserId) {
 		await validateUserAccess(ctx, data.assigneeUserId, ctx.orgId);
@@ -193,6 +204,22 @@ async function updateTaskWithValidation(
 	// Validate new project if being updated
 	if (updates.projectId) {
 		await validateProjectAccess(ctx, updates.projectId, ctx.orgId);
+	}
+
+	// Validate property against the effective client (either may be changing)
+	const effectivePropertyId =
+		updates.propertyId !== undefined
+			? updates.propertyId
+			: existingTask.propertyId;
+	if (effectivePropertyId) {
+		const effectiveClientId =
+			updates.clientId !== undefined ? updates.clientId : existingTask.clientId;
+		await validatePropertyClientAccess(
+			ctx,
+			effectivePropertyId,
+			effectiveClientId,
+			ctx.orgId
+		);
 	}
 
 	// Validate new assignee if being updated
@@ -368,6 +395,7 @@ export const create = userMutation({
 	args: {
 		clientId: v.optional(v.id("clients")),
 		projectId: v.optional(v.id("projects")),
+		propertyId: v.optional(v.id("clientProperties")),
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
 		title: v.string(),
 		description: v.optional(v.string()),
@@ -523,6 +551,7 @@ export const update = userMutation({
 		id: v.id("tasks"),
 		clientId: v.optional(v.id("clients")),
 		projectId: v.optional(v.id("projects")),
+		propertyId: v.optional(v.id("clientProperties")),
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),

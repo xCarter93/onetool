@@ -65,8 +65,8 @@ function ProjectDetailPageContent() {
 			? { clientId: project.clientId }
 			: "skip"
 	);
-	const primaryProperty = useQuery(
-		api.clientProperties.getPrimaryProperty,
+	const properties = useQuery(
+		api.clientProperties.listByClient,
 		project?.clientId && can("clients")
 			? { clientId: project.clientId }
 			: "skip"
@@ -155,7 +155,7 @@ function ProjectDetailPageContent() {
 					activities={activities}
 					client={client}
 					primaryContact={primaryContact}
-					primaryProperty={primaryProperty}
+					properties={properties}
 					onAddTask={() => setIsTaskSheetOpen(true)}
 				/>
 			</div>

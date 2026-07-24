@@ -29,13 +29,16 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	CalendarIcon,
+	Clock,
 	User,
 	Building2,
 	FolderOpen,
+	MapPin,
 	Activity,
 	Loader2,
 } from "lucide-react";
 import { Task } from "@/types/task";
+import { PropertyPicker } from "@/components/shared/property-picker";
 import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
@@ -83,7 +86,10 @@ export function TaskSheet({
 		type: "external" as "internal" | "external",
 		clientId: "" as Id<"clients"> | "",
 		projectId: "" as Id<"projects"> | "",
+		propertyId: "" as Id<"clientProperties"> | "",
 		date: undefined as Date | undefined,
+		startTime: "",
+		endTime: "",
 		assigneeUserId: "" as Id<"users"> | "",
 		status: "pending" as Task["status"],
 		repeat: "none" as Task["repeat"],
@@ -109,6 +115,12 @@ export function TaskSheet({
 			: "skip"
 	);
 	const users = useQuery(api.users.listByOrg, sheetOpen ? {} : "skip");
+	const clientProperties = useQuery(
+		api.clientProperties.listByClient,
+		sheetOpen && can("clients") && formData.clientId
+			? { clientId: formData.clientId as Id<"clients"> }
+			: "skip"
+	);
 
 	// Mutations
 	const createTask = useMutation(api.tasks.create);
@@ -134,7 +146,10 @@ export function TaskSheet({
 				type: task.type || "external",
 				clientId: task.clientId || "",
 				projectId: task.projectId || "",
+				propertyId: task.propertyId || "",
 				date: utcMidnightMsToLocalDate(task.date),
+				startTime: task.startTime || "",
+				endTime: task.endTime || "",
 				assigneeUserId: task.assigneeUserId || "",
 				status: task.status,
 				repeat: task.repeat || "none",
@@ -151,7 +166,10 @@ export function TaskSheet({
 				type: "external",
 				clientId: initialValues?.clientId || "",
 				projectId: initialValues?.projectId || "",
+				propertyId: "",
 				date: today,
+				startTime: "",
+				endTime: "",
 				assigneeUserId: "",
 				status: "pending",
 				repeat: "none",
@@ -163,11 +181,29 @@ export function TaskSheet({
 	const handleInputChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }));
 
-		// Clear project when client changes
+		// Clear project and property when client changes
 		if (field === "clientId") {
-			setFormData((prev) => ({ ...prev, projectId: "" }));
+			setFormData((prev) => ({ ...prev, projectId: "", propertyId: "" }));
 		}
 	};
+
+	// Default to the client's primary property once properties load. Runs at
+	// render time (same pattern as the init block); setting propertyId makes
+	// the condition false on the next pass.
+	if (
+		formData.clientId &&
+		!formData.propertyId &&
+		clientProperties &&
+		clientProperties.length > 0
+	) {
+		const defaultProperty =
+			clientProperties.find((p) => p.isPrimary) ?? clientProperties[0];
+		setFormData((prev) =>
+			prev.clientId === formData.clientId && !prev.propertyId
+				? { ...prev, propertyId: defaultProperty._id }
+				: prev
+		);
+	}
 
 	const handleSubmit = async (e?: React.FormEvent) => {
 		e?.preventDefault();
@@ -184,6 +220,15 @@ export function TaskSheet({
 
 		if (!formData.date) {
 			error("Error", "Please select a date");
+			return;
+		}
+
+		if (
+			formData.startTime &&
+			formData.endTime &&
+			formData.startTime >= formData.endTime
+		) {
+			error("Error", "End time must be after start time");
 			return;
 		}
 
@@ -214,7 +259,13 @@ export function TaskSheet({
 				projectId: formData.projectId
 					? (formData.projectId as Id<"projects">)
 					: undefined,
+				propertyId:
+					formData.clientId && formData.propertyId
+						? (formData.propertyId as Id<"clientProperties">)
+						: undefined,
 				date: taskDate,
+				startTime: formData.startTime || undefined,
+				endTime: formData.endTime || undefined,
 				assigneeUserId: formData.assigneeUserId
 					? (formData.assigneeUserId as Id<"users">)
 					: undefined,
@@ -405,6 +456,24 @@ export function TaskSheet({
 							</div>
 						)}
 
+						{/* Property Selection - only when the client has 2+ properties
+						    (single-property clients auto-fill silently) */}
+						{formData.type === "external" &&
+							formData.clientId &&
+							(clientProperties?.length ?? 0) >= 2 && (
+								<div className="space-y-2.5">
+									<label className="text-sm font-semibold text-foreground flex items-center gap-2">
+										<MapPin className="h-4 w-4 text-primary" />
+										Property
+									</label>
+									<PropertyPicker
+										properties={clientProperties ?? []}
+										value={formData.propertyId}
+										onChange={(id) => handleInputChange("propertyId", id)}
+									/>
+								</div>
+							)}
+
 						{/* Date */}
 						<div className="space-y-2.5">
 							<label className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -420,6 +489,46 @@ export function TaskSheet({
 									}
 								}}
 							/>
+						</div>
+
+						{/* Time */}
+						<div className="grid grid-cols-2 gap-4">
+							<div className="space-y-2.5">
+								<Label
+									htmlFor="start-time"
+									className="text-sm font-semibold text-foreground flex items-center gap-2"
+								>
+									<Clock className="h-4 w-4 text-primary" />
+									Start Time
+								</Label>
+								<Input
+									id="start-time"
+									type="time"
+									value={formData.startTime}
+									onChange={(e) =>
+										handleInputChange("startTime", e.target.value)
+									}
+									className="w-full"
+								/>
+							</div>
+							<div className="space-y-2.5">
+								<Label
+									htmlFor="end-time"
+									className="text-sm font-semibold text-foreground flex items-center gap-2"
+								>
+									<Clock className="h-4 w-4 text-primary" />
+									End Time
+								</Label>
+								<Input
+									id="end-time"
+									type="time"
+									value={formData.endTime}
+									onChange={(e) =>
+										handleInputChange("endTime", e.target.value)
+									}
+									className="w-full"
+								/>
+							</div>
 						</div>
 
 						{/* Status */}

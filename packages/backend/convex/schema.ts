@@ -353,6 +353,7 @@ export default defineSchema({
 	projects: defineTable({
 		orgId: v.id("organizations"),
 		clientId: v.id("clients"),
+		propertyId: v.optional(v.id("clientProperties")), // Which client property the work happens at
 
 		// Basic info
 		title: v.string(),
@@ -388,6 +389,7 @@ export default defineSchema({
 		orgId: v.id("organizations"),
 		projectId: v.optional(v.id("projects")),
 		clientId: v.optional(v.id("clients")), // Optional to support internal tasks
+		propertyId: v.optional(v.id("clientProperties")), // Which client property the work happens at
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
 
 		title: v.string(),

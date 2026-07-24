@@ -8,6 +8,7 @@ import * as z from "zod/v3";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { PropertyPicker } from "@/components/shared/property-picker";
 
 import { CreateRecordDialog } from "@/components/domain/create-record-dialog";
 import { SegmentedControl } from "@/components/domain/segmented-control";
@@ -34,10 +35,12 @@ import { useToast } from "@/hooks/use-toast";
 import { localDateToUtcMidnightMs } from "@/lib/dates";
 
 type ClientId = Id<"clients">;
+type PropertyId = Id<"clientProperties">;
 type UserId = Id<"users">;
 
 const projectSchema = z.object({
 	clientId: z.string().min(1, "Client selection is required"),
+	propertyId: z.string(),
 	title: z.string().trim().min(1, "Project title is required"),
 	description: z.string(),
 	projectType: z.enum(["one-off", "recurring"]),
@@ -55,6 +58,7 @@ type ProjectFormValues = z.infer<typeof projectSchema>;
 
 const EMPTY_VALUES: ProjectFormValues = {
 	clientId: "",
+	propertyId: "",
 	title: "",
 	description: "",
 	projectType: "one-off",
@@ -100,6 +104,9 @@ export function NewProjectDialog({
 			try {
 				const projectId = await createProject({
 					clientId: value.clientId as ClientId,
+					propertyId: value.propertyId
+						? (value.propertyId as PropertyId)
+						: undefined,
 					title,
 					description: value.description.trim() || undefined,
 					status: "planned",
@@ -133,17 +140,38 @@ export function NewProjectDialog({
 	});
 
 	const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+	const clientId = useStore(form.store, (state) => state.values.clientId);
+
+	// Skip without the clients grant, dialog closed, or no client picked yet.
+	const properties = useQuery(
+		api.clientProperties.listByClient,
+		open && canReadClients && clientId ? { clientId: clientId as ClientId } : "skip"
+	);
 
 	// Seed only on the false→true transition. A later re-render (defaultClientId
 	// changing while open) must not fire a second reset and wipe what the user
 	// already typed.
 	const wasOpenRef = useRef(false);
+	// Tracks the client the property default was last computed for, so a fresh
+	// properties fetch for the same client (e.g. Convex refetch) doesn't clobber
+	// a manual property selection.
+	const propertyDefaultedForClientRef = useRef<string | undefined>(undefined);
 	useEffect(() => {
 		const isOpening = open && !wasOpenRef.current;
 		wasOpenRef.current = open;
 		if (!isOpening) return;
+		propertyDefaultedForClientRef.current = undefined;
 		form.reset({ ...EMPTY_VALUES, clientId: defaultClientId ?? "" });
 	}, [open, defaultClientId, form]);
+
+	useEffect(() => {
+		if (!properties || propertyDefaultedForClientRef.current === clientId) return;
+		propertyDefaultedForClientRef.current = clientId;
+		const primary = properties.find((property) => property.isPrimary);
+		const defaultProperty =
+			primary ?? (properties.length === 1 ? properties[0] : undefined);
+		form.setFieldValue("propertyId", defaultProperty?._id ?? "");
+	}, [clientId, properties, form]);
 
 	const userOptions = useMemo(
 		() =>
@@ -210,6 +238,23 @@ export function NewProjectDialog({
 						);
 					}}
 				/>
+
+				{clientId && properties && properties.length > 0 && (
+					<form.Field
+						name="propertyId"
+						children={(field) => (
+							<Field className="sm:col-span-2">
+								<FieldLabel htmlFor={field.name}>Property</FieldLabel>
+								<PropertyPicker
+									properties={properties}
+									value={field.state.value as Id<"clientProperties"> | ""}
+									onChange={(id) => field.handleChange(id)}
+									disabled={isSubmitting}
+								/>
+							</Field>
+						)}
+					/>
+				)}
 
 				<form.Field
 					name="title"

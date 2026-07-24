@@ -9,6 +9,7 @@ export interface Task {
 	description?: string;
 	clientId?: Id<"clients">;
 	projectId?: Id<"projects">;
+	propertyId?: Id<"clientProperties">;
 	type?: "internal" | "external";
 	date: number;
 	startTime?: string;
