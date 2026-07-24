@@ -63,8 +63,8 @@ interface StepClasses {
 
 export function StatusProgressBar({
 	status,
-	steps: baseSteps,
-	events = [],
+	steps,
+	events,
 	failureStatuses = [],
 	successStatuses = [],
 	variantOverride,
@@ -73,6 +73,12 @@ export function StatusProgressBar({
 	onStatusChange,
 	statusButtonLabel = "Change Status",
 }: StatusProgressBarProps) {
+	// Coerce potentially undefined/null props into arrays so the `.find`/`.some`
+	// helpers below never dereference a non-array (guards against a hard render
+	// crash if a caller passes undefined steps/events).
+	const baseSteps = Array.isArray(steps) ? steps : [];
+	const safeEvents = Array.isArray(events) ? events : [];
+
 	// Check if we have a terminal failure state
 	const isFailure = failureStatuses.includes(status);
 	const isSuccess = successStatuses.includes(status);
@@ -94,7 +100,7 @@ export function StatusProgressBar({
 
 	// Helper to get event timestamp
 	const getEventTimestamp = (eventType: string): number | undefined => {
-		const event = events.find((e) => e.type === eventType);
+		const event = safeEvents.find((e) => e.type === eventType);
 		return event?.timestamp;
 	};
 
