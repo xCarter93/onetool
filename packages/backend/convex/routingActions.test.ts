@@ -1,5 +1,6 @@
 import { convexTest } from "convex-test";
 import { ConvexError } from "convex/values";
+import type { FunctionArgs } from "convex/server";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
@@ -58,7 +59,13 @@ describe("routingActions", () => {
 		vi.unstubAllEnvs();
 	});
 
-	async function setupRoute(stops = [stop(0), stop(1), stop(2)]) {
+	async function setupRoute(
+		stops: FunctionArgs<typeof api.routes.create>["stops"] = [
+			stop(0),
+			stop(1),
+			stop(2),
+		]
+	) {
 		const { clerkUserId, clerkOrgId } = await t.run(
 			async (ctx) => await createTestOrg(ctx)
 		);
@@ -154,6 +161,28 @@ describe("routingActions", () => {
 				"Stop 2",
 			]);
 			expect(route!.geometry).toBe("dir_geom");
+		});
+
+		it("applies results for stops carrying seed/completion fields", async () => {
+			// Regression: applyRouteResult's validator once lacked taskId/projectId/
+			// status, so any seeded or tracked stop failed the write-back.
+			const { asUser, routeId } = await setupRoute([
+				{ ...stop(0), status: "pending" as const },
+				{ ...stop(1), status: "visited" as const, visitedAt: 123 },
+			]);
+
+			const result = await asUser.action(api.routingActions.computeRoute, {
+				routeId,
+				optimize: false,
+			});
+
+			expect(result).toMatchObject({ applied: true });
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.stops.map((s) => s.status)).toEqual([
+				"pending",
+				"visited",
+			]);
+			expect(route!.stops[1].visitedAt).toBe(123);
 		});
 
 		it("falls back to the local heuristic when v1 is unsupported", async () => {

@@ -36,7 +36,7 @@ const stopStatusValidator = v.union(
 	v.literal("skipped")
 );
 
-const stopValidator = v.object({
+export const stopValidator = v.object({
 	propertyId: v.optional(v.id("clientProperties")),
 	taskId: v.optional(v.id("tasks")),
 	projectId: v.optional(v.id("projects")),

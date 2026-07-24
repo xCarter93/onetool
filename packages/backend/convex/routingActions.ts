@@ -6,6 +6,7 @@ import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { hasPremiumAccess } from "./lib/permissions";
 import { rateLimiter } from "./rateLimits";
 import { solveStopOrder, type LatLng } from "./lib/tsp";
+import { stopValidator } from "./routes";
 import { shrinkPolylineForQuery } from "./lib/polylineCodec";
 
 /**
@@ -233,15 +234,7 @@ export const applyRouteResult = internalMutation({
 	args: {
 		routeId: v.id("routes"),
 		inputsFingerprint: v.string(),
-		stops: v.array(
-			v.object({
-				propertyId: v.optional(v.id("clientProperties")),
-				label: v.string(),
-				latitude: v.number(),
-				longitude: v.number(),
-				order: v.number(),
-			})
-		),
+		stops: v.array(stopValidator),
 		optimized: v.boolean(),
 		approximate: v.boolean(),
 		geometry: v.string(),
