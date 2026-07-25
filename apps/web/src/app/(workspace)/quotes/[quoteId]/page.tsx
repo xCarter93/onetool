@@ -76,7 +76,12 @@ function QuoteDetailPageContent() {
 		api.projects.get,
 		quote?.projectId ? { id: quote.projectId } : "skip"
 	);
-	const lineItems = useQuery(api.quoteLineItems.listByQuote, { quoteId });
+	// Gate on the quote resolving: a cross-org id makes quotes.get return null,
+	// so skip listByQuote rather than let it throw an org-mismatch error.
+	const lineItems = useQuery(
+		api.quoteLineItems.listByQuote,
+		quote ? { quoteId } : "skip"
+	);
 	const organization = useQuery(api.organizations.get, {});
 	// Skip document queries without the documents grant — they call
 	// requireLevel("documents","view") server-side and throw FORBIDDEN otherwise.
