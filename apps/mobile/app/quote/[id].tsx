@@ -9,7 +9,7 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Badge, Card, Eyebrow, TotalsBlock } from "@/components/ui";
+import { Badge, Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 // Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
@@ -66,6 +66,7 @@ export function QuoteDetailBody({
 	if (quote === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{renderHeader()}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
@@ -91,6 +92,7 @@ export function QuoteDetailBody({
 	if (quote === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{renderHeader("Quote")}
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>
@@ -153,6 +155,7 @@ export function QuoteDetailBody({
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{renderHeader(headerTitle)}
 			<ScrollView contentContainerStyle={styles.scroll}>
 				<Card style={styles.docCard}>

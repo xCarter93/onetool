@@ -20,27 +20,7 @@ export type AgendaTask = {
 	status?: string;
 	/** Client / project line shown under the title. */
 	context?: string;
-};
-
-export type AgendaGroupKey =
-	| "morning"
-	| "afternoon"
-	| "evening"
-	| "anytime"
-	| "overdue";
-
-export type AgendaGroup = {
-	key: AgendaGroupKey;
-	label: string;
-	tasks: AgendaTask[];
-};
-
-const GROUP_LABEL: Record<AgendaGroupKey, string> = {
-	morning: "Morning",
-	afternoon: "Afternoon",
-	evening: "Evening",
-	anytime: "Anytime",
-	overdue: "Overdue",
+	assigneeUserId?: string;
 };
 
 /**
@@ -79,14 +59,6 @@ export function formatClockLabel(time?: string): string | undefined {
 	return `${h12}:${String(m).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`;
 }
 
-function slotFor(task: AgendaTask): Exclude<AgendaGroupKey, "overdue"> {
-	const mins = minutesFromHHMM(task.startTime);
-	if (mins === null) return "anytime";
-	if (mins < 12 * 60) return "morning";
-	if (mins < 17 * 60) return "afternoon";
-	return "evening";
-}
-
 function byStartTime(a: AgendaTask, b: AgendaTask): number {
 	const am = minutesFromHHMM(a.startTime);
 	const bm = minutesFromHHMM(b.startTime);
@@ -103,78 +75,157 @@ export function isDoneStatus(status?: string): boolean {
 	return DONE.has(status ?? "");
 }
 
+export type AgendaProject = {
+	_id: string;
+	title: string;
+	status: string;
+	startDate?: number;
+	endDate?: number;
+	/** Client name, shown as the secondary line. */
+	context?: string;
+	assignedUserIds?: string[];
+};
+
+/** Day-plan visibility scope: my work (default) or the whole team's. */
+export type DayScope = "me" | "team";
+
 /**
- * Group one day's tasks into the Today feed's sections.
- *
- * Overdue is spillover, so it sorts LAST (after the day's own work) and only
- * appears when the selected day is today or later — looking back at Monday
- * should not show Monday's work as "overdue".
+ * "Me" includes UNASSIGNED work on purpose — in a shop that doesn't assign
+ * everything, an unassigned job is still yours to action, and the default tab
+ * must never show a confidently empty day. A null meId (profile still loading)
+ * fails open to visible rather than flashing an empty plan.
  */
-export function buildAgenda(
+export function taskInScope(
+	task: Pick<AgendaTask, "assigneeUserId">,
+	meId: string | null,
+	scope: DayScope,
+): boolean {
+	if (scope === "team" || meId === null) return true;
+	return task.assigneeUserId === undefined || task.assigneeUserId === meId;
+}
+
+export function projectInScope(
+	project: Pick<AgendaProject, "assignedUserIds">,
+	meId: string | null,
+	scope: DayScope,
+): boolean {
+	if (scope === "team" || meId === null) return true;
+	return (
+		project.assignedUserIds === undefined ||
+		project.assignedUserIds.length === 0 ||
+		project.assignedUserIds.includes(meId)
+	);
+}
+
+/**
+ * Projects whose scheduled span covers `dayMs`, open ones only.
+ *
+ * A project carries dates but no start/end TIME, so it can never be a timeline
+ * block — it is a day-level band that renders above the agenda in BOTH
+ * representations, the same argument that hoisted the attention line.
+ * Bounds are UTC-midnight date-ids: compare in UTC (see lib/date.ts).
+ */
+export function projectsForDay(
+	projects: readonly AgendaProject[],
+	dayMs: number,
+): AgendaProject[] {
+	const day = utcDayStartMs(dayMs);
+	return projects
+		.filter((p) => {
+			if (p.startDate === undefined || isDoneStatus(p.status)) return false;
+			const start = utcDayStartMs(p.startDate);
+			// A project with no end date occupies its start day only.
+			const end = p.endDate === undefined ? start : utcDayStartMs(p.endDate);
+			return day >= start && day <= end;
+		})
+		.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+export type DayPlan = {
+	/** The day's timed tasks, in start order. */
+	timed: AgendaTask[];
+	/** The day's untimed tasks, title order. */
+	anytime: AgendaTask[];
+	/** Open spillover from earlier days, oldest first. */
+	overdue: AgendaTask[];
+	/** Task to emphasize as "next up"; null off-today or when the day is done. */
+	nextUpId: string | null;
+	/**
+	 * `timed` index the now-separator renders BEFORE (== timed.length → after
+	 * the last row); -1 = don't render (browsing another day, or no timed work).
+	 */
+	nowIndex: number;
+};
+
+/**
+ * One chronological plan for the selected day — the single representation that
+ * replaced the Agenda/Timeline split (an hour grid isn't glanceable at phone
+ * width; every field-service app defaults techs to a list).
+ *
+ * Overdue is spillover anchored to *today*, not the browsed day, so it stays
+ * stable while flicking through the week strip and never brands a past day's
+ * own work "overdue".
+ */
+export function buildDayPlan(
 	tasks: AgendaTask[],
 	selectedDayMs: number,
 	todayMs: number,
-): AgendaGroup[] {
+	/** Local minutes-since-midnight; only read when the selected day is today. */
+	nowMinutes: number,
+): DayPlan {
 	const day = utcDayStartMs(selectedDayMs);
 	const today = utcDayStartMs(todayMs);
 
-	const onDay: AgendaTask[] = [];
+	const timed: AgendaTask[] = [];
+	const anytime: AgendaTask[] = [];
 	const overdue: AgendaTask[] = [];
 
 	for (const task of tasks) {
 		if (task.date === undefined) continue;
 		const taskDay = utcDayStartMs(task.date);
 		if (taskDay === day) {
-			onDay.push(task);
+			(minutesFromHHMM(task.startTime) === null ? anytime : timed).push(task);
 		} else if (taskDay < today && day >= today && !DONE.has(task.status ?? "")) {
-			// Spillover is anchored to *today*, not to the browsed day, so it stays
-			// stable while flicking through the week strip.
 			overdue.push(task);
 		}
 	}
 
-	const slots: Record<Exclude<AgendaGroupKey, "overdue">, AgendaTask[]> = {
-		morning: [],
-		afternoon: [],
-		evening: [],
-		anytime: [],
-	};
-	for (const task of onDay) slots[slotFor(task)].push(task);
+	timed.sort(byStartTime);
+	anytime.sort((a, b) => a.title.localeCompare(b.title));
+	// Oldest first — the thing you've ignored longest leads.
+	overdue.sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
 
-	const groups: AgendaGroup[] = [];
-	for (const key of ["morning", "afternoon", "evening", "anytime"] as const) {
-		if (slots[key].length === 0) continue;
-		groups.push({
-			key,
-			label: GROUP_LABEL[key],
-			tasks: slots[key].sort(byStartTime),
-		});
+	let nowIndex = -1;
+	let nextUpId: string | null = null;
+	if (day === today && timed.length > 0) {
+		const firstUpcoming = timed.findIndex(
+			(t) => (minutesFromHHMM(t.startTime) ?? 0) >= nowMinutes,
+		);
+		nowIndex = firstUpcoming === -1 ? timed.length : firstUpcoming;
+		// Next up = the first upcoming task still open; a done row isn't "next".
+		nextUpId =
+			timed.slice(nowIndex).find((t) => !DONE.has(t.status ?? ""))?._id ?? null;
 	}
-	if (overdue.length > 0) {
-		groups.push({
-			key: "overdue",
-			label: GROUP_LABEL.overdue,
-			// Oldest first — the thing you've ignored longest leads.
-			tasks: overdue.sort((a, b) => (a.date ?? 0) - (b.date ?? 0)),
-		});
-	}
-	return groups;
+
+	return { timed, anytime, overdue, nextUpId, nowIndex };
 }
 
 /**
- * Per-day workload dots for the week strip. Capped at 3 — the strip conveys
- * "light / normal / heavy", not a count (that's what the day-sheet is for).
+ * Width fraction (0-1) for a day's workload bar, scaled against the busiest day
+ * in view. Relative rather than absolute so the strip reads as a shape for any
+ * shop size — 2 jobs is a full bar for someone whose peak is 2.
+ *
+ * A day with work never returns less than MIN_BAR: a 1-of-12 day must still be
+ * visibly non-empty, which is the whole signal.
  */
-export const MAX_WORKLOAD_DOTS = 3;
+export const MIN_WORKLOAD_BAR = 0.28;
 
-export function workloadDots(taskCount: number): number {
-	if (taskCount <= 0) return 0;
-	if (taskCount <= 2) return 1;
-	if (taskCount <= 4) return 2;
-	return MAX_WORKLOAD_DOTS;
+export function workloadBar(count: number, maxCount: number): number {
+	if (count <= 0 || maxCount <= 0) return 0;
+	return Math.max(MIN_WORKLOAD_BAR, Math.min(1, count / maxCount));
 }
 
-/** Task counts keyed by UTC-midnight ms, for the week strip's dots. */
+/** Task counts keyed by UTC-midnight ms, for the week strip's bars. */
 export function countTasksByDay(tasks: AgendaTask[]): Map<number, number> {
 	const counts = new Map<number, number>();
 	for (const task of tasks) {

@@ -1,37 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { useUser } from "@clerk/expo";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, tracking, type, useTokens } from "@/lib/theme";
+import { useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { Button, SegmentedToggle, SCROLL_TOP_INSET } from "@/components/ui";
+import {
+	DotGrid,
+	SegmentedToggle,
+	ScrollFade,
+	SCROLL_TOP_INSET,
+	type Segment,
+} from "@/components/ui";
+import { useShellNav } from "@/lib/shell-nav";
 import { WeekStrip } from "@/components/today/week-strip";
 import {
 	AttentionLine,
 	attentionItems,
 } from "@/components/today/attention-line";
-import { AgendaRow } from "@/components/today/agenda-row";
 import { TomorrowPeek } from "@/components/today/tomorrow-peek";
-import { DayTimeline } from "@/components/today/day-timeline";
+import { DayPlanView, type Assignee } from "@/components/today/day-plan";
 import {
-	buildAgenda,
+	buildDayPlan,
 	countTasksByDay,
+	formatClockLabel,
 	isDoneStatus,
+	projectInScope,
+	projectsForDay,
+	taskInScope,
 	tomorrowPeek,
 	weekDaysFor,
+	type AgendaProject,
 	type AgendaTask,
+	type DayScope,
 } from "@/lib/agenda";
-import { localDayStartMs, utcDayStartMs } from "@/lib/date";
+import { localDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
-import { useViewMode } from "@/lib/useViewMode";
-import { Plus } from "lucide-react-native";
+import { useDayScope } from "@/lib/useDayScope";
+import { Plus, User, Users } from "lucide-react-native";
 import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
 const WORK: Href = "/(tabs)/work" as Href;
+
+const SCOPE_SEGMENTS: readonly Segment<DayScope>[] = [
+	{ value: "me", label: "Me", Icon: User },
+	{ value: "team", label: "Team", Icon: Users },
+];
 
 function greetingFor(hour: number): string {
 	if (hour < 12) return "Good morning";
@@ -39,10 +56,21 @@ function greetingFor(hour: number): string {
 	return "Good evening";
 }
 
+/** "Pat Carter" → "PC"; single-word names take their first two letters. */
+function initialsFor(name: string, email: string): string {
+	const words = name.trim().split(/\s+/).filter(Boolean);
+	if (words.length >= 2) {
+		return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+	}
+	const base = words[0] ?? email;
+	return base.slice(0, 2).toUpperCase();
+}
+
 /**
- * Today — the agenda-first landing surface. Two orthogonal controls: the week
- * strip picks the DATE, the Agenda/Timeline toggle picks the REPRESENTATION.
- * Both stay pinned above the scroll so neither can scroll away.
+ * Today — the action hub for the selected day. Two pinned controls: the week
+ * strip picks the DATE, the Me/Team toggle picks the SCOPE. Everything else
+ * (attention, all-day projects, the chronological day plan, tomorrow peek) is
+ * ONE scroll — the old pinned-band layout left most of the page inert.
  *
  * Task dates are UTC-midnight date-ids, so they are COMPARED in UTC — but
  * "today" is derived from the instant via the LOCAL calendar (see lib/date.ts).
@@ -59,11 +87,13 @@ export default function TodayScreen({
 	const t = useTokens();
 	const { user } = useUser();
 	const pane = headerMode === "pane";
-	const { viewMode, setViewMode, hydrated } = useViewMode();
+	// iPad only — null on iPhone, where navigation falls back to the router.
+	const shellNav = useShellNav();
+	const { scope, setScope, hydrated } = useDayScope();
 
-	// Ticks once a minute so the greeting and the now-line stay honest across a
-	// long session. Async setState — not the synchronous-in-effect pattern this
-	// app lints as an error.
+	// Ticks once a minute so the greeting and the now separator stay honest
+	// across a long session. Async setState — not the synchronous-in-effect
+	// pattern this app lints as an error.
 	const [nowMs, setNowMs] = useState(() => Date.now());
 	useEffect(() => {
 		const id = setInterval(() => setNowMs(Date.now()), 60_000);
@@ -78,8 +108,8 @@ export default function TodayScreen({
 		localDayStartMs(Date.now()),
 	);
 
-	// The strip is DERIVED from the selection, so jumping to tomorrow from the
-	// peek row rolls the strip into next week with no paging chrome.
+	// The strip is DERIVED from the selection, so jumping to a day in another
+	// week rolls the whole strip there.
 	const days = useMemo(() => weekDaysFor(selectedDayMs), [selectedDayMs]);
 
 	// One task subscription covers the visible week plus a day of overflow, so a
@@ -91,8 +121,16 @@ export default function TodayScreen({
 	// Spillover can predate the window, so it needs its own query.
 	const overdue = useQuery(api.tasks.getOverdue, {});
 	const clients = useQuery(api.clients.list, {});
+	// Scheduled project work — filtered client-side: `projects` has no date
+	// index, and adding one needs a Convex deploy. Revisit if an org's project
+	// count gets large.
+	const projects = useQuery(api.projects.list, {});
 	const sentQuotes = useQuery(api.quotes.list, { status: "sent" });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
+	// Scope plumbing: me = current user's Convex id; org members drive both the
+	// toggle's visibility (solo orgs never see it) and Team-mode assignee chips.
+	const me = useQuery(api.users.current, {});
+	const orgUsers = useQuery(api.users.listByOrg, {});
 	const completeTask = useMutation(api.tasks.complete);
 	const updateTask = useMutation(api.tasks.update);
 
@@ -107,8 +145,15 @@ export default function TodayScreen({
 		return m;
 	}, [clients]);
 
-	// Merge week + overdue, de-duped: an overdue task earlier in the visible week
-	// arrives from both queries.
+	const meId = me?._id ?? null;
+	const multiMember = (orgUsers?.length ?? 0) > 1;
+	// A solo org's scope control would be a no-op — never render it, and treat
+	// the data as team-wide so a stale persisted "me" can't hide anything.
+	const effectiveScope: DayScope = multiMember ? scope : "team";
+
+	// Merge week + overdue, de-duped (an overdue task earlier in the visible
+	// week arrives from both queries), then scope. Scoping BEFORE the derived
+	// feeds means the week-strip bars and tomorrow peek reflect what you see.
 	const tasks = useMemo<AgendaTask[]>(() => {
 		const byId = new Map<string, AgendaTask>();
 		for (const task of [...(weekTasks ?? []), ...(overdue ?? [])]) {
@@ -120,14 +165,38 @@ export default function TodayScreen({
 				endTime: task.endTime,
 				status: task.status,
 				context: task.clientId ? clientNames.get(task.clientId) : undefined,
+				assigneeUserId: task.assigneeUserId,
 			});
 		}
-		return [...byId.values()];
-	}, [weekTasks, overdue, clientNames]);
+		return [...byId.values()].filter((task) =>
+			taskInScope(task, meId, effectiveScope),
+		);
+	}, [weekTasks, overdue, clientNames, meId, effectiveScope]);
 
-	const groups = useMemo(
-		() => buildAgenda(tasks, selectedDayMs, todayMs),
-		[tasks, selectedDayMs, todayMs],
+	const dayProjects = useMemo<AgendaProject[]>(
+		() =>
+			projectsForDay(
+				(projects ?? [])
+					.map((p) => ({
+						_id: p._id,
+						title: p.title,
+						status: p.status,
+						startDate: p.startDate,
+						endDate: p.endDate,
+						context: clientNames.get(p.clientId),
+						assignedUserIds: p.assignedUserIds,
+					}))
+					.filter((p) => projectInScope(p, meId, effectiveScope)),
+				selectedDayMs,
+			),
+		[projects, clientNames, selectedDayMs, meId, effectiveScope],
+	);
+
+	const nowDate = new Date(nowMs);
+	const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
+	const plan = useMemo(
+		() => buildDayPlan(tasks, selectedDayMs, todayMs, nowMinutes),
+		[tasks, selectedDayMs, todayMs, nowMinutes],
 	);
 	const counts = useMemo(() => countTasksByDay(tasks), [tasks]);
 	// The subscription follows the SELECTED week, so browsing away puts actual
@@ -137,17 +206,9 @@ export default function TodayScreen({
 	const peekInRange =
 		tomorrowMs >= days[0] && tomorrowMs <= days[6] + 2 * DAY_MS - 1;
 	const peek = useMemo(() => tomorrowPeek(tasks, todayMs), [tasks, todayMs]);
-	const dayTasks = useMemo(
-		() =>
-			tasks.filter(
-				(task) =>
-					task.date !== undefined && utcDayStartMs(task.date) === selectedDayMs,
-			),
-		[tasks, selectedDayMs],
-	);
 
-	// Effective done state = optimistic override, else server status. Derived (not
-	// an override log) so it collapses back to the server value on its own.
+	// Effective done state = optimistic override, else server status. Derived
+	// (not an override log) so it collapses back to the server value on its own.
 	const doneIds = useMemo(
 		() =>
 			new Set(
@@ -157,6 +218,21 @@ export default function TodayScreen({
 			),
 		[tasks, overrides],
 	);
+
+	// Team mode labels rows with who owns them; in Me mode a chip would repeat
+	// the tab you're on.
+	const assigneeFor = useMemo(() => {
+		if (effectiveScope !== "team" || !multiMember) return undefined;
+		const byId = new Map<string, Assignee>();
+		for (const u of orgUsers ?? []) {
+			byId.set(u._id, {
+				initials: initialsFor(u.name, u.email),
+				name: u.name || u.email,
+			});
+		}
+		return (task: AgendaTask) =>
+			task.assigneeUserId ? byId.get(task.assigneeUserId) : undefined;
+	}, [effectiveScope, multiMember, orgUsers]);
 
 	const attention = useMemo(
 		() =>
@@ -174,6 +250,33 @@ export default function TodayScreen({
 			]),
 		[sentQuotes, overdueInvoices],
 	);
+
+	// The line names a specific problem, so the tap has to land on it. One record
+	// → open it; one category → Work scoped to that chip; mixed → Work unscoped.
+	const openAttention = () => {
+		const quotes = sentQuotes ?? [];
+		const invoices = overdueInvoices ?? [];
+		const only =
+			quotes.length && !invoices.length
+				? ({ kind: "quote", rows: quotes } as const)
+				: invoices.length && !quotes.length
+					? ({ kind: "invoice", rows: invoices } as const)
+					: null;
+		if (!only) {
+			if (shellNav) shellNav.browse("quote");
+			else router.push(WORK);
+			return;
+		}
+		if (only.rows.length === 1) {
+			const id = only.rows[0]._id;
+			if (shellNav) return shellNav.open({ kind: only.kind, id });
+			return router.push(
+				(only.kind === "quote" ? `/quote/${id}` : `/invoice/${id}`) as Href,
+			);
+		}
+		if (shellNav) return shellNav.browse(only.kind);
+		router.push(`/(tabs)/work?kind=${only.kind}` as Href);
+	};
 
 	// Optimistic toggle: flip locally, then call; drop the override on throw.
 	// `tasks.complete` throws on an already-completed task, so the un-complete
@@ -205,9 +308,14 @@ export default function TodayScreen({
 		}
 	};
 
-	const nowDate = new Date(nowMs);
 	const greeting = greetingFor(nowDate.getHours());
 	const firstName = user?.firstName ?? null;
+	const nowLabel =
+		formatClockLabel(
+			`${String(nowDate.getHours()).padStart(2, "0")}:${String(
+				nowDate.getMinutes(),
+			).padStart(2, "0")}`,
+		) ?? "";
 	// selectedDayMs is UTC-midnight — render in UTC or the label shows the prior
 	// evening in a western timezone.
 	const dateLabel = new Date(selectedDayMs).toLocaleDateString("en-US", {
@@ -219,6 +327,9 @@ export default function TodayScreen({
 
 	return (
 		<View style={[styles.screen, { backgroundColor: t.bg }]}>
+			{/* Page canvas, matching web's .workspace-canvas. First child so every
+			    surface paints over it. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{pane ? (
 				<PaneHeader
 					title={firstName ? `${greeting}, ${firstName}` : greeting}
@@ -236,12 +347,15 @@ export default function TodayScreen({
 					mode="root"
 					title={firstName ? `${greeting}, ${firstName}` : greeting}
 					sub={dateLabel}
+					halftone
+					// Week strip below is pinned, so this screen places the fade itself.
+					fade={false}
 					onAdd={() => router.push(TASK_FORM)}
 					addLabel="New task"
 				/>
 			)}
 
-			{/* Pinned date + representation controls — "persistent" is the point. */}
+			{/* Pinned date + scope controls — "persistent" is the point. */}
 			<View style={styles.controls}>
 				<WeekStrip
 					days={days}
@@ -249,77 +363,45 @@ export default function TodayScreen({
 					todayMs={todayMs}
 					counts={counts}
 					onSelectDay={setSelectedDayMs}
+					onPageWeek={(dir) => setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)}
 				/>
-				<SegmentedToggle value={viewMode} onChange={setViewMode} />
+				{multiMember ? (
+					<SegmentedToggle
+						segments={SCOPE_SEGMENTS}
+						value={scope}
+						onChange={setScope}
+					/>
+				) : null}
+				{/* At the real chrome/scroll boundary. In AppHeader it painted over
+				    the week strip, which has no inset to absorb it. */}
+				<ScrollFade edge="top" />
 			</View>
 
-			{/* Urgency is representation-independent — a Timeline user (the mode is
-			    persisted) must still see it. */}
-			<View style={styles.attention}>
-				<AttentionLine items={attention} onPress={() => router.push(WORK)} />
-			</View>
-
-			{!hydrated ? null : viewMode === "timeline" ? (
-				<DayTimeline
-					dayMs={selectedDayMs}
-					tasks={dayTasks}
-					todayMs={todayMs}
-					nowMinutes={nowDate.getHours() * 60 + nowDate.getMinutes()}
-					onPressTask={(id) => router.push(`/tasks/form?taskId=${id}` as Href)}
-					onToggleComplete={handleToggle}
-					completedIds={doneIds}
-					updatingIds={updatingIds}
-				/>
-			) : (
+			{!hydrated ? null : (
 				<ScrollView
 					style={styles.scroll}
 					contentContainerStyle={styles.scrollBody}
 					showsVerticalScrollIndicator={false}
 				>
-					{groups.length === 0 ? (
-						<View style={[styles.empty, { borderColor: t.line }]}>
-							<Text style={[styles.emptyTitle, { color: t.ink }]}>
-								Nothing scheduled
-							</Text>
-							<Text style={[styles.emptyCopy, { color: t.sub }]}>
-								This day is clear.
-							</Text>
-							<Button
-								title="New task"
-								onPress={() => router.push(TASK_FORM)}
-								style={styles.emptyAction}
-							/>
-						</View>
-					) : (
-						groups.map((group) => (
-							<View key={group.key} style={styles.group}>
-								<Text style={[styles.groupLabel, { color: t.faint }]}>
-									{group.label.toUpperCase()}
-								</Text>
-								<View
-									style={[
-										styles.groupCard,
-										{ backgroundColor: t.card, borderColor: t.line },
-									]}
-								>
-									{group.tasks.map((task, i) => (
-										<AgendaRow
-											key={task._id}
-											task={task}
-											completed={doneIds.has(task._id)}
-											updating={updatingIds.has(task._id)}
-											last={i === group.tasks.length - 1}
-											onToggle={() => handleToggle(task._id)}
-											onOpen={() =>
-												router.push(`/tasks/form?taskId=${task._id}` as Href)
-											}
-										/>
-									))}
-								</View>
-							</View>
-						))
-					)}
-
+					<AttentionLine items={attention} onPress={openAttention} />
+					<DayPlanView
+						plan={plan}
+						projects={dayProjects}
+						nowLabel={nowLabel}
+						completedIds={doneIds}
+						updatingIds={updatingIds}
+						onToggleTask={handleToggle}
+						onOpenTask={(id) =>
+							router.push(`/tasks/form?taskId=${id}` as Href)
+						}
+						onOpenProject={(id) =>
+							shellNav
+								? shellNav.open({ kind: "project", id })
+								: router.push(`/projects/${id}` as Href)
+						}
+						onNewTask={() => router.push(TASK_FORM)}
+						assigneeFor={assigneeFor}
+					/>
 					{peekInRange ? (
 						<TomorrowPeek
 							count={peek.count}
@@ -341,9 +423,8 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 18,
 		gap: 10,
 		paddingBottom: 12,
-	},
-	attention: {
-		paddingHorizontal: 18,
+		// Anchors the ScrollFade to this block's bottom edge.
+		position: "relative",
 	},
 	scroll: {
 		flex: 1,
@@ -353,39 +434,5 @@ const styles = StyleSheet.create({
 		paddingTop: 2,
 		paddingBottom: SCROLL_TOP_INSET + 40,
 		gap: 18,
-	},
-	group: {
-		gap: 7,
-	},
-	groupLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.eyebrow,
-		letterSpacing: tracking.groupLabel,
-	},
-	groupCard: {
-		borderWidth: 1,
-		borderRadius: radii.card,
-		overflow: "hidden",
-	},
-	empty: {
-		alignItems: "center",
-		gap: 4,
-		borderWidth: 1,
-		borderStyle: "dashed",
-		borderRadius: radii.card,
-		paddingVertical: 30,
-		paddingHorizontal: 24,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-	},
-	emptyCopy: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-	},
-	emptyAction: {
-		marginTop: 12,
-		alignSelf: "stretch",
 	},
 });

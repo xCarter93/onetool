@@ -247,6 +247,44 @@ describe("Activities", () => {
 		});
 	});
 
+	describe("feed (paginated)", () => {
+		it("returns pages newest-first and continues via cursor", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx);
+				for (let i = 0; i < 5; i++) {
+					await createTestActivity(ctx, setup.orgId, setup.userId, {
+						entityName: `Entity ${i}`,
+						timestamp: 1000 + i,
+					});
+				}
+				return setup;
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const first = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 3, cursor: null },
+			});
+			expect(first.isDone).toBe(false);
+			expect(first.page.map((a) => a.entityName)).toEqual([
+				"Entity 4",
+				"Entity 3",
+				"Entity 2",
+			]);
+			// Same enriched shape as getRecent.
+			expect(first.page[0].user.email).toBeTruthy();
+
+			const second = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 3, cursor: first.continueCursor },
+			});
+			expect(second.page.map((a) => a.entityName)).toEqual([
+				"Entity 1",
+				"Entity 0",
+			]);
+			expect(second.isDone).toBe(true);
+		});
+	});
+
 	describe("getByType", () => {
 		it("should filter activities by type", async () => {
 			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {

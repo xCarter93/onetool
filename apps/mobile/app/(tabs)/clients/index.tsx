@@ -14,7 +14,7 @@ import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Plus, X } from "lucide-react-native";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import { Avatar, Badge, SCROLL_TOP_INSET } from "@/components/ui";
+import { Avatar, Badge, DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 import { useShellNav } from "@/lib/shell-nav";
 
@@ -215,6 +215,8 @@ export default function ClientsScreen({
 			style={{ flex: 1, backgroundColor: t.surface }}
 			edges={[]}
 		>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
 			    per pane — locked convention). iPhone: AppHeader mode="root". */}
 			{isPane ? null : <AppHeader mode="root" title="Clients" />}

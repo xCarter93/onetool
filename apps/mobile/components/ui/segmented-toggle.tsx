@@ -1,35 +1,38 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { ListChecks, Clock, type LucideIcon } from "lucide-react-native";
+import { type LucideIcon } from "lucide-react-native";
 import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
-import type { ViewMode } from "@/lib/useViewMode";
 
-// Re-export the single source of the type.
-export type { ViewMode };
-
-interface SegmentedToggleProps {
-	value: ViewMode;
-	onChange: (mode: ViewMode) => void;
+export interface Segment<V extends string> {
+	value: V;
+	label: string;
+	Icon: LucideIcon;
 }
 
-const SEGMENTS: { mode: ViewMode; label: string; Icon: LucideIcon }[] = [
-	{ mode: "agenda", label: "Agenda", Icon: ListChecks },
-	{ mode: "timeline", label: "Timeline", Icon: Clock },
-];
+interface SegmentedToggleProps<V extends string> {
+	segments: readonly Segment<V>[];
+	value: V;
+	onChange: (value: V) => void;
+}
 
-export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
+/** Equal-width pill toggle (Today's Me | Team scope, etc.). */
+export function SegmentedToggle<V extends string>({
+	segments,
+	value,
+	onChange,
+}: SegmentedToggleProps<V>) {
 	const t = useTokens();
 	return (
 		<View
 			style={[styles.container, { backgroundColor: t.secondary }]}
 			accessibilityRole="tablist"
 		>
-			{SEGMENTS.map(({ mode, label, Icon }) => {
-				const active = value === mode;
+			{segments.map(({ value: segment, label, Icon }) => {
+				const active = value === segment;
 				return (
 					<Pressable
-						key={mode}
-						onPress={() => onChange(mode)}
+						key={segment}
+						onPress={() => onChange(segment)}
 						accessibilityRole="tab"
 						accessibilityState={{ selected: active }}
 						style={[

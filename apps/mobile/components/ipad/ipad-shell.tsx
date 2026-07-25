@@ -17,6 +17,7 @@ import {
 	tabFromPathname,
 	type ShellTab,
 } from "@/lib/shell-routes";
+import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
@@ -167,6 +168,9 @@ function IpadShellInner() {
 	const frame = (children: React.ReactNode) => (
 		<ShellNavProvider value={shellNav}>
 			<View style={[styles.root, { backgroundColor: t.surface }]}>
+				{/* Shell canvas, matching web's .workspace-canvas — covers the rail and
+				    inter-pane gaps; panes with opaque roots paint their own grid over it. */}
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{sidebar}
 				{children}
 			</View>

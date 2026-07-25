@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Activity as ActivityGlyph } from "lucide-react-native";
@@ -16,7 +16,7 @@ import {
 	useTokens,
 } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { SCROLL_TOP_INSET } from "@/components/ui";
+import { DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import {
 	ActivityDayHeader,
 	ActivityRow,
@@ -28,13 +28,9 @@ import {
 } from "@/lib/activity-feed";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 
-// `api.activities.getRecent` takes a `limit` and has no paginated variant, so
-// "load older" re-runs the query with a bigger take. PAGE keeps the first paint
-// cheap; MAX is a hard ceiling (the query enriches every row with a user lookup).
-// The footer states the ceiling out loud — a silently truncated feed reads as
-// complete history.
-const PAGE = 100;
-const MAX = 500;
+// Cursor-paginated feed: each "load older" fetches only the next page, so
+// there's no hard ceiling. PAGE_SIZE keeps the first paint cheap.
+const PAGE_SIZE = 100;
 
 /**
  * ActivityLink → detail-pane ref, for the iPad shell's onSelect. Null for
@@ -74,14 +70,17 @@ export default function ActivityScreen({
 	const t = useTokens();
 	const router = useRouter();
 	const isPane = headerMode === "pane";
-	const [limit, setLimit] = useState(PAGE);
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [nowMs] = useState(() => Date.now());
 
-	const activities = useQuery(api.activities.getRecent, { limit });
+	const {
+		results: activities,
+		status,
+		loadMore,
+	} = usePaginatedQuery(api.activities.feed, {}, { initialNumItems: PAGE_SIZE });
 
 	const items = useMemo(
-		() => buildActivityFeed(activities ?? [], nowMs),
+		() => buildActivityFeed(activities, nowMs),
 		[activities, nowMs],
 	);
 
@@ -172,33 +171,39 @@ export default function ActivityScreen({
 		</View>
 	);
 
-	const atCeiling = limit >= MAX;
+	const loadingMore = status === "LoadingMore";
 	const Footer =
-		items.length === 0 ? null : atCeiling ? (
+		items.length === 0 ? null : status === "Exhausted" ? (
 			<Text style={[styles.footerNote, { color: t.sub }]}>
-				Showing the {MAX} most recent events. Older history lives on the web.
+				{"You're all caught up — that's everything."}
 			</Text>
 		) : (
 			<Pressable
-				onPress={() => setLimit((n) => Math.min(n + PAGE, MAX))}
+				onPress={() => loadMore(PAGE_SIZE)}
+				disabled={loadingMore}
 				accessibilityRole="button"
 				accessibilityLabel="Load older activity"
 				style={({ pressed }) => [
 					styles.loadMore,
 					{ borderColor: t.line, backgroundColor: t.card },
 					pressed && styles.pressed,
+					loadingMore && styles.pressed,
 				]}
 			>
 				<Text style={[styles.loadMoreText, { color: t.frostedInk }]}>
-					Load older activity
+					{loadingMore ? "Loading older activity…" : "Load older activity"}
 				</Text>
 			</Pressable>
 		);
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			{!isPane ? <AppHeader mode="root" title="Activity" /> : null}
-			{activities === undefined ? (
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
+			{/* Feed scrolls straight under the header, so the header's own fade is
+			    correct here — no relocation needed. */}
+			{!isPane ? <AppHeader mode="root" title="Activity" halftone /> : null}
+			{status === "LoadingFirstPage" ? (
 				<View style={styles.listContent}>{Skeleton}</View>
 			) : (
 				<FlashList

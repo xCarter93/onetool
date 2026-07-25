@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
 		borderRadius: radii.ctrl,
 		paddingVertical: 9,
 		paddingHorizontal: 12,
-		marginBottom: 14,
+		// Spacing belongs to the day plan's gap container now, not the line.
 	},
 	text: {
 		flex: 1,

@@ -8,7 +8,14 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { Badge, Eyebrow, ListRow, Toggle2, SCROLL_TOP_INSET } from "@/components/ui";
+import {
+	Badge,
+	DotGrid,
+	Eyebrow,
+	ListRow,
+	Toggle2,
+	SCROLL_TOP_INSET,
+} from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 type Tab = "invoices" | "quotes";
@@ -262,6 +269,8 @@ export default function MoneyScreen({
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
 			    per pane — locked convention). iPhone: AppHeader mode="root". */}
 			{isPane ? null : <AppHeader mode="root" title="Money" />}

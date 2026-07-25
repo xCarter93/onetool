@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { Map } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { DotGrid } from "@/components/ui";
 
 // Routes tab — P2 placeholder. P4 replaces this body with the native Mapbox map
 // (idle: saved routes in a bottom sheet; running: instrument panel). Route
@@ -20,6 +21,7 @@ export default function RoutesScreen({
 
 	return (
 		<View style={[styles.screen, { backgroundColor: t.bg }]}>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{!isPane ? <AppHeader mode="root" title="Routes" /> : null}
 			<View style={styles.body}>
 				<View style={[styles.mark, { backgroundColor: t.muted }]}>

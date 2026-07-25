@@ -21,6 +21,8 @@ interface AgendaRowProps {
 	last: boolean;
 	onToggle: () => void;
 	onOpen: () => void;
+	/** Assignee chip (Team scope). Undefined = no chip. */
+	assignee?: { initials: string; name: string };
 }
 
 /**
@@ -35,6 +37,7 @@ export function AgendaRow({
 	last,
 	onToggle,
 	onOpen,
+	assignee,
 }: AgendaRowProps) {
 	const t = useTokens();
 	const done = completed || task.status === "completed";
@@ -81,7 +84,14 @@ export function AgendaRow({
 				onPress={onOpen}
 				style={styles.body}
 				accessibilityRole="button"
-				accessibilityLabel={`${task.title}${timeLabel ? `, ${timeLabel}` : ""}`}
+				accessibilityLabel={[
+					task.title,
+					timeLabel,
+					// The chip only shows initials — the full name belongs here.
+					assignee && `assigned to ${assignee.name}`,
+				]
+					.filter(Boolean)
+					.join(", ")}
 			>
 				<View style={styles.titleLine}>
 					{timeLabel ? (
@@ -115,6 +125,19 @@ export function AgendaRow({
 					</Text>
 				) : null}
 			</Pressable>
+
+			{assignee ? (
+				// Announced via the body label; the chip itself is decoration.
+				<View
+					style={[styles.assignee, { backgroundColor: t.secondary }]}
+					accessibilityElementsHidden
+					importantForAccessibility="no-hide-descendants"
+				>
+					<Text style={[styles.assigneeText, { color: t.frostedInk }]}>
+						{assignee.initials}
+					</Text>
+				</View>
+			) : null}
 		</View>
 	);
 }
@@ -168,5 +191,17 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.regular,
 		fontSize: type.meta,
 		marginTop: 2,
+	},
+	assignee: {
+		width: 26,
+		height: 26,
+		borderRadius: 13,
+		alignItems: "center",
+		justifyContent: "center",
+		marginLeft: 8,
+	},
+	assigneeText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 10,
 	},
 });

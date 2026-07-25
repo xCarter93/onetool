@@ -21,7 +21,14 @@ import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
-import { Card, Avatar, Badge, SectionHeader, ListRow } from "@/components/ui";
+import {
+	Card,
+	Avatar,
+	Badge,
+	DotGrid,
+	SectionHeader,
+	ListRow,
+} from "@/components/ui";
 import {
 	Phone,
 	Mail,
@@ -140,6 +147,7 @@ export function ClientDetailBody({
 				style={[styles.flex, { backgroundColor: t.bg }]}
 				edges={[]}
 			>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{isPane ? (
 					<PaneHeader onBack={onBack} />
 				) : (
@@ -189,6 +197,7 @@ export function ClientDetailBody({
 			style={[styles.flex, { backgroundColor: t.bg }]}
 			edges={[]}
 		>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{isPane ? (
 				<PaneHeader title={client.companyName} onBack={onBack} />
 			) : (

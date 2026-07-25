@@ -8,7 +8,7 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Badge, Card, Eyebrow, TotalsBlock } from "@/components/ui";
+import { Badge, Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 // Read-only itemized invoice detail (MONEY-02). Itemized like the quote detail
@@ -69,6 +69,7 @@ export function InvoiceDetailBody({
 	if (invoice === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{renderHeader()}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
@@ -92,6 +93,7 @@ export function InvoiceDetailBody({
 	if (invoice === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{renderHeader()}
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>Not found</Text>
@@ -154,6 +156,7 @@ export function InvoiceDetailBody({
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{renderHeader(invoice.invoiceNumber)}
 			<ScrollView contentContainerStyle={styles.scroll}>
 				{/* Header block — number, effective status badge, client */}

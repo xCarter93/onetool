@@ -15,7 +15,7 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown, Plus } from "lucide-react-native";
 import { fontFamily, radii, tokens, tracking, type, useTokens } from "@/lib/theme";
-import { Avatar, ScrollFade } from "@/components/ui";
+import { Avatar, HalftoneBg, ScrollFade } from "@/components/ui";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -34,6 +34,16 @@ interface AppHeaderProps {
 	onAdd?: () => void;
 	/** Required whenever `onAdd` is set — the ＋ is icon-only. */
 	addLabel?: string;
+	/**
+	 * Set false when the screen pins its own controls directly below the header
+	 * (Today's week strip, Work's search field). The fade paints 28px BELOW the
+	 * header onto the next sibling, which only works if that sibling is scroll
+	 * content carrying SCROLL_TOP_INSET — over a pinned control it just clips it.
+	 * Those screens render the fade themselves, under their controls block.
+	 */
+	fade?: boolean;
+	/** Halftone wash behind the header. Off for map surfaces (Routes). */
+	halftone?: boolean;
 }
 
 function initialsFrom(name?: string | null, email?: string | null): string {
@@ -54,6 +64,8 @@ export function AppHeader({
 	titleSize,
 	onAdd,
 	addLabel,
+	fade = true,
+	halftone = false,
 }: AppHeaderProps) {
 	const t = useTokens();
 	const router = useRouter();
@@ -144,6 +156,18 @@ export function AppHeader({
 							intensity={90}
 							style={StyleSheet.absoluteFill}
 						/>
+						{/* Halftone wash. Sits UNDER the bg tint, so the effective opacity
+						    is roughly brand*0.45+0.3 times the tint's transmission — the two
+						    knobs if it reads too strong or too faint. Needs the measured
+						    height box above it: absoluteFill in an indefinite-height parent
+						    escapes to full-screen on Fabric. */}
+						{halftone ? (
+							<HalftoneBg
+								brand={0.2}
+								imageFit="width"
+								style={StyleSheet.absoluteFill}
+							/>
+						) : null}
 						<View
 							style={[
 								StyleSheet.absoluteFill,
@@ -267,9 +291,9 @@ export function AppHeader({
 				</View>
 			) : null}
 
-			{/* Soft fade so scroll content dissolves into the header (skip on Home —
-			    its dark halftone hero must not fade to the light surface). */}
-			{!home ? <ScrollFade edge="top" /> : null}
+			{/* Soft fade so scroll content dissolves into the header. Screens that pin
+			    controls under the header pass fade={false} and place it themselves. */}
+			{!home && fade ? <ScrollFade edge="top" /> : null}
 		</View>
 	);
 }

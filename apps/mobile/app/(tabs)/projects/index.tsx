@@ -15,7 +15,7 @@ import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Calendar, X } from "lucide-react-native";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import { Badge, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
+import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 
 type Project = Doc<"projects">;
@@ -220,6 +220,8 @@ export default function ProjectsScreen({
 			style={{ flex: 1, backgroundColor: t.surface }}
 			edges={[]}
 		>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: shell mounts PaneHeader title="Work" above this body.
 			    iPhone: AppHeader mode="detail" title="Work" (byte-identical). */}
 			{isPane ? null : <AppHeader mode="detail" title="Work" />}

@@ -3,13 +3,18 @@ import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
-import { useRouter, type Href } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { icons } from "lucide-react-native";
 import { AppHeader } from "@/components/app-header";
 import { SearchField } from "@/components/work/search-field";
 import { TypeChips } from "@/components/work/type-chips";
-import { ListRow, SCROLL_TOP_INSET } from "@/components/ui";
+import {
+	DotGrid,
+	ListRow,
+	SCROLL_TOP_INSET,
+	ScrollFade,
+} from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import {
@@ -35,6 +40,9 @@ import {
 	type WorkKind,
 	type WorkRecord,
 } from "@/lib/work-search";
+
+const isWorkKind = (v: unknown): v is WorkKind =>
+	typeof v === "string" && v in KIND_LABEL;
 
 // Leading tile glyph per record kind (tints come from theme's recordTint).
 const KIND_ICON: Record<WorkKind, keyof typeof icons> = {
@@ -92,7 +100,20 @@ export default function WorkScreen({
 		return () => clearTimeout(id);
 	}, [raw]);
 
-	const [localKind, setLocalKind] = useState<WorkKind | null>(null);
+	// Deep-link chip seed: Today's attention line pushes ?kind=quote. Unknown
+	// values fall back to no chip rather than being cast in.
+	const { kind: kindParam } = useLocalSearchParams<{ kind?: string }>();
+	const rawParam = kindParam ?? null;
+	const [appliedParam, setAppliedParam] = useState<string | null>(rawParam);
+	const [localKind, setLocalKind] = useState<WorkKind | null>(
+		isWorkKind(rawParam) ? rawParam : null,
+	);
+	// Re-seed at render time (set-state-in-effect is error-level here) and only
+	// when the param VALUE changes, so a later chip tap still wins.
+	if (rawParam !== appliedParam) {
+		setAppliedParam(rawParam);
+		if (isWorkKind(rawParam)) setLocalKind(rawParam);
+	}
 	const kind = kindProp !== undefined ? kindProp : localKind;
 	const setKind = (next: WorkKind | null) =>
 		onKindChange ? onKindChange(next) : setLocalKind(next);
@@ -265,20 +286,21 @@ export default function WorkScreen({
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
-			    per pane — locked convention); it owns the +. iPhone: contextual
-			    create where the active chip decides the record type. Clients is
-			    the default because it is the only other create surface mobile hosts
-			    (quotes/invoices/projects stay web-only at 2.0). */}
+			    per pane — locked convention); it owns the +. On iPhone the ＋ is
+			    unconditional: client is the only record type mobile can create here
+			    (quotes/invoices/projects stay web-only at 2.0), and a ＋ that
+			    disappears on some chips reads as a bug. */}
 			{isPane ? null : (
 				<AppHeader
 					mode="root"
 					title="Work"
-					onAdd={
-						kind === null || kind === "client"
-							? () => router.push("/clients/new" as Href)
-							: undefined
-					}
+					halftone
+					// Controls below are pinned, so this screen places the fade itself.
+					fade={false}
+					onAdd={() => router.push("/clients/new" as Href)}
 					addLabel="New client"
 				/>
 			)}
@@ -288,6 +310,9 @@ export default function WorkScreen({
 			<View style={styles.controls}>
 				<SearchField value={raw} onChangeText={setRaw} />
 				<TypeChips value={kind} onChange={setKind} counts={counts} />
+				{/* At the real chrome/scroll boundary. In AppHeader it painted over
+				    the search field, which has no inset to absorb it. */}
+				{isPane ? null : <ScrollFade edge="top" />}
 			</View>
 
 			{loading ? (
@@ -332,6 +357,10 @@ export default function WorkScreen({
 					getItemType={(item) => item.type}
 					renderItem={renderRow}
 					contentContainerStyle={styles.listContent}
+					// On by default in FlashList v2. Four independent subscriptions
+					// resolve at different times into a recency-sorted list, so rows
+					// land above the anchor and the offset creeps down. Not a chat.
+					maintainVisibleContentPosition={{ disabled: true }}
 					keyboardShouldPersistTaps="handled"
 					keyboardDismissMode="on-drag"
 					ListEmptyComponent={
@@ -355,6 +384,8 @@ const styles = StyleSheet.create({
 		paddingHorizontal: spacing.gutter,
 		paddingBottom: 12,
 		gap: 10,
+		// Anchors the ScrollFade to this block's bottom edge.
+		position: "relative",
 	},
 	listContent: {
 		paddingHorizontal: spacing.gutter,

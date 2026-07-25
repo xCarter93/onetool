@@ -18,7 +18,15 @@ import { fontFamily, radii, touch, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
-import { Badge, Card, Eyebrow, ListRow, Ring, SectionHeader } from "@/components/ui";
+import {
+	Badge,
+	Card,
+	DotGrid,
+	Eyebrow,
+	ListRow,
+	Ring,
+	SectionHeader,
+} from "@/components/ui";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
@@ -210,6 +218,7 @@ export function ProjectDetailBody({
 				style={{ flex: 1, backgroundColor: t.bg }}
 				edges={[]}
 			>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{isPane ? (
 					<PaneHeader onBack={onBack} />
 				) : (
@@ -244,6 +253,7 @@ export function ProjectDetailBody({
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={[]}>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{isPane ? (
 				<PaneHeader title={project.title} onBack={onBack} />
 			) : (

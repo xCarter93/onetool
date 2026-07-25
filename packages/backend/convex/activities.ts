@@ -1,5 +1,6 @@
 import { query, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc } from "./_generated/dataModel";
 import { emptyListResult } from "./lib/queries";
 import {
@@ -131,6 +132,42 @@ export const getRecent = optionalUserQuery({
 			ctx,
 			await filterByEntityGrant(ctx, activities)
 		);
+	},
+});
+
+/**
+ * Paginated activity feed for the current organization, newest first.
+ * Cursor-based (`.paginate`) so long-tenured orgs never re-scan the whole
+ * feed on "load more"; same org scoping, visibility, permission gating, and
+ * user enrichment as `getRecent`.
+ */
+export const feed = optionalUserQuery({
+	args: {
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<PaginationResult<ActivityWithUser>> => {
+		if (!ctx.orgId) {
+			return { page: [], isDone: true, continueCursor: "" };
+		}
+		const orgId = ctx.orgId;
+
+		const result = await ctx.db
+			.query("activities")
+			.withIndex("by_org_timestamp", (q) => q.eq("orgId", orgId))
+			.order("desc")
+			.filter((q) => q.eq(q.field("isVisible"), true))
+			.paginate(args.paginationOpts);
+
+		return {
+			...result,
+			page: await enrichActivitiesWithUsers(
+				ctx,
+				await filterByEntityGrant(ctx, result.page)
+			),
+		};
 	},
 });
 
