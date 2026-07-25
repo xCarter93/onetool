@@ -493,13 +493,10 @@ function RoutingWorkspace() {
 
 			if (gasEnabled) {
 				// Refresh gas results for the new geometry once the doc updates;
-				// simplest correct behavior is to re-run the search now.
-				const fresh = await searchGas({
-					routeId,
-					timeDeviationMinutes: Number(gasDeviation) as 5 | 10 | 15,
-				});
-				setGasStations(fresh);
-				setGasForGeometry("pending-refresh");
+				// simplest correct behavior is to re-run the search now. Goes through
+				// the shared helper so a gas failure reports itself rather than
+				// surfacing as "Route computation failed".
+				await fetchGasStations(routeId, gasDeviation, "pending-refresh");
 			}
 		} catch (error) {
 			const data =

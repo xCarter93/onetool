@@ -3,7 +3,7 @@ import { action, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { hasPremiumAccess } from "./lib/permissions";
+import { hasPremiumAccess, requireLevel } from "./lib/permissions";
 import { rateLimiter } from "./rateLimits";
 import { solveStopOrder, type LatLng } from "./lib/tsp";
 import { stopValidator } from "./routes";
@@ -186,10 +186,15 @@ async function fetchOptimizedTrip(
 	roundTrip: boolean,
 	token: string
 ): Promise<{ trip: DirectionsRoute; stopOrder: number[] } | null> {
+	// v1 only implements roundtrip=false with source=first AND destination=last;
+	// omitting destination there defaults it to `any` and returns NotImplemented.
+	// Round trips keep the default `any` — pinning the last stop would only
+	// constrain the optimizer for no gain.
 	const url =
 		`https://api.mapbox.com/optimized-trips/v1/${DIRECTIONS_PROFILE}/` +
 		coords.join(";") +
 		`?source=first&roundtrip=${roundTrip}` +
+		(roundTrip ? "" : "&destination=last") +
 		`&overview=full&geometries=polyline&access_token=${token}`;
 	const data = (await mapboxGet(url)) as unknown as OptimizationResponse;
 	if (data.code !== "Ok" || !data.trips?.[0] || !data.waypoints) {
@@ -218,6 +223,9 @@ export const authorizeRoute = internalMutation({
 	handler: async (ctx, args): Promise<Doc<"routes">> => {
 		await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
+		// Matches every read/write in routes.ts: route data exposes client
+		// property addresses, so it gates on clients:view before premium.
+		await requireLevel(ctx, "clients", "view");
 		if (!(await hasPremiumAccess(ctx))) {
 			throw new Error(PREMIUM_REQUIRED_MESSAGE);
 		}
