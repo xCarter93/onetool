@@ -27,6 +27,7 @@ import {
 	Ring,
 	SectionHeader,
 } from "@/components/ui";
+import { Illustration } from "@/components/illustrations";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
@@ -431,6 +432,7 @@ export function ProjectDetailBody({
 						</Card>
 					) : (
 						<Card style={styles.emptyCard}>
+							<Illustration name="quotes-none" size="sm" knockout={t.card} />
 							<Text style={[styles.emptyText, { color: t.faint }]}>
 								No quotes yet
 							</Text>
@@ -466,6 +468,7 @@ export function ProjectDetailBody({
 						</Card>
 					) : (
 						<Card style={styles.emptyCard}>
+							<Illustration name="invoices-none" size="sm" knockout={t.card} />
 							<Text style={[styles.emptyText, { color: t.faint }]}>
 								No invoices yet
 							</Text>
@@ -707,6 +710,7 @@ const styles = StyleSheet.create({
 		marginTop: 10,
 		alignItems: "center",
 		paddingVertical: 20,
+		gap: 8,
 	},
 	emptyText: {
 		fontFamily: fontFamily.regular,

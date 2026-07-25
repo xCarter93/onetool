@@ -30,6 +30,10 @@ import {
 	ListRow,
 } from "@/components/ui";
 import {
+	Illustration,
+	type IllustrationName,
+} from "@/components/illustrations";
+import {
 	Phone,
 	Mail,
 	MessageSquare,
@@ -377,7 +381,8 @@ export function ClientDetailBody({
 							})}
 						</Card>
 					) : (
-						<EmptyRow text="No contacts yet" />
+						// Web aliases client-contacts-none onto the clients art — same here.
+						<EmptyRow text="No contacts yet" illo="clients-none" />
 					)}
 				</View>
 
@@ -447,7 +452,7 @@ export function ClientDetailBody({
 							})}
 						</Card>
 					) : (
-						<EmptyRow text="No properties yet" />
+						<EmptyRow text="No properties yet" illo="client-properties-none" />
 					)}
 				</View>
 
@@ -479,7 +484,7 @@ export function ClientDetailBody({
 							))}
 						</Card>
 					) : (
-						<EmptyRow text="No projects yet" />
+						<EmptyRow text="No projects yet" illo="projects-none" />
 					)}
 				</View>
 
@@ -507,7 +512,7 @@ export function ClientDetailBody({
 							))}
 						</Card>
 					) : (
-						<EmptyRow text="No quotes yet" />
+						<EmptyRow text="No quotes yet" illo="quotes-none" />
 					)}
 				</View>
 
@@ -535,7 +540,7 @@ export function ClientDetailBody({
 							))}
 						</Card>
 					) : (
-						<EmptyRow text="No invoices yet" />
+						<EmptyRow text="No invoices yet" illo="invoices-none" />
 					)}
 				</View>
 
@@ -564,7 +569,7 @@ function countSuffix(n: number) {
 	return n > 0 ? `  ·  ${n}` : "";
 }
 
-function EmptyRow({ text }: { text: string }) {
+function EmptyRow({ text, illo }: { text: string; illo: IllustrationName }) {
 	const t = useTokens();
 	return (
 		<View
@@ -573,6 +578,8 @@ function EmptyRow({ text }: { text: string }) {
 				{ backgroundColor: t.muted, borderColor: t.line },
 			]}
 		>
+			{/* Knockout = the row's own bg, so cut-out shapes don't show card-white. */}
+			<Illustration name={illo} size="sm" knockout={t.muted} />
 			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
 		</View>
 	);
@@ -663,6 +670,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		paddingVertical: 18,
 		alignItems: "center",
+		gap: 8,
 	},
 	emptyText: { fontFamily: fontFamily.regular, fontSize: 12 },
 });

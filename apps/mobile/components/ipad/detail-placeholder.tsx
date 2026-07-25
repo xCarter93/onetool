@@ -1,27 +1,25 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Activity, Briefcase } from "lucide-react-native";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { fontFamily, type, useTokens } from "@/lib/theme";
 import type { SelectionTab } from "@/lib/selection-context";
+import { Illustration } from "@/components/illustrations";
 
 // "Select an item" empty state for the landscape detail pane. Intentional product
 // copy, NOT a fallback — NEVER auto-select the first list item. Copy is VERBATIM
 // and locked (UI-SPEC Copywriting Contract).
 
-const GLYPH: Record<SelectionTab, typeof Activity> = {
-	work: Briefcase,
-	activity: Activity,
-};
-
-export function DetailPlaceholder({ context }: { context: SelectionTab }) {
+export function DetailPlaceholder({ context: _context }: { context: SelectionTab }) {
 	const t = useTokens();
-	const Glyph = GLYPH[context];
 
 	return (
 		<View style={styles.root}>
-			<View style={[styles.tile, { backgroundColor: t.secondary }]}>
-				<Glyph size={34} color={t.sub} strokeWidth={2} />
-			</View>
+			{/* Generous width: this pane is ~60% of the screen in landscape. */}
+			<Illustration
+				name="select-conversation"
+				knockout={t.bg}
+				width={280}
+				style={styles.art}
+			/>
 			<Text style={[styles.heading, { color: t.ink }]}>Select an item</Text>
 			<Text style={[styles.body, { color: t.sub }]}>
 				Choose from the list to see full details here.
@@ -38,13 +36,8 @@ const styles = StyleSheet.create({
 		gap: 12,
 		padding: 40,
 	},
-	tile: {
-		width: 72,
-		height: 72,
-		borderRadius: radii.card,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: 2,
+	art: {
+		marginBottom: 6,
 	},
 	heading: {
 		fontFamily: fontFamily.semibold,

@@ -9,6 +9,7 @@ import {
 	useTokens,
 } from "@/lib/theme";
 import { Button, ListRow } from "@/components/ui";
+import { Illustration } from "@/components/illustrations";
 import { AgendaRow } from "@/components/today/agenda-row";
 import type { AgendaProject, AgendaTask, DayPlan } from "@/lib/agenda";
 
@@ -60,6 +61,7 @@ export function DayPlanView({
 	if (empty) {
 		return (
 			<View style={[styles.empty, { borderColor: t.line }]}>
+				<Illustration name="all-caught-up" knockout={t.bg} style={styles.emptyArt} />
 				<Text style={[styles.emptyTitle, { color: t.ink }]}>
 					Nothing scheduled
 				</Text>
@@ -226,6 +228,9 @@ const styles = StyleSheet.create({
 		borderRadius: radii.card,
 		paddingVertical: 30,
 		paddingHorizontal: 24,
+	},
+	emptyArt: {
+		marginBottom: 6,
 	},
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,

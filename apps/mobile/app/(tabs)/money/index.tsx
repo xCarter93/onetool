@@ -17,6 +17,7 @@ import {
 	SCROLL_TOP_INSET,
 } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
+import { Illustration } from "@/components/illustrations";
 
 type Tab = "invoices" | "quotes";
 
@@ -256,6 +257,11 @@ export default function MoneyScreen({
 
 	const Empty = (
 		<View style={styles.emptyState}>
+			<Illustration
+				name={tab === "invoices" ? "invoices-none" : "quotes-none"}
+				knockout={t.bg}
+				style={styles.emptyArt}
+			/>
 			<Text style={[styles.emptyTitle, { color: t.ink }]}>
 				{tab === "invoices" ? "No invoices yet" : "No quotes yet"}
 			</Text>
@@ -409,6 +415,9 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		paddingVertical: 64,
 		paddingHorizontal: 24,
+	},
+	emptyArt: {
+		marginBottom: 16,
 	},
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,

@@ -12,7 +12,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { BellOff, BellRing, X } from "lucide-react-native";
+import { BellRing, X } from "lucide-react-native";
+import { Illustration } from "@/components/illustrations";
 import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 import {
 	formatRelativeTime,
@@ -142,9 +143,8 @@ export default function NotificationsSheet() {
 				</View>
 			) : notifications.length === 0 ? (
 				<View style={styles.state}>
-					<View style={[styles.emptyTile, { backgroundColor: t.muted }]}>
-						<BellOff size={42} color={t.faint} />
-					</View>
+					{/* Sheet body sits on t.card — knockout must match it. */}
+					<Illustration name="all-caught-up" knockout={t.card} />
 					<Text style={[styles.emptyTitle, { color: t.ink }]}>
 						No notifications
 					</Text>
@@ -319,14 +319,6 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		paddingHorizontal: spacing.xl,
 		gap: 10,
-	},
-	emptyTile: {
-		width: 72,
-		height: 72,
-		borderRadius: radii.pill,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: spacing.xs,
 	},
 	emptyTitle: {
 		fontSize: type.body,

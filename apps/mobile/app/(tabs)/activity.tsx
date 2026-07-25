@@ -5,7 +5,6 @@ import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Activity as ActivityGlyph } from "lucide-react-native";
 import {
 	fontFamily,
 	radii,
@@ -16,6 +15,7 @@ import {
 	useTokens,
 } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { Illustration } from "@/components/illustrations";
 import { DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import {
 	ActivityDayHeader,
@@ -158,9 +158,7 @@ export default function ActivityScreen({
 
 	const Empty = (
 		<View style={styles.emptyState}>
-			<View style={[styles.emptyIcon, { backgroundColor: t.secondary }]}>
-				<ActivityGlyph size={22} color={t.sub} />
-			</View>
+			<Illustration name="activity-none" knockout={t.bg} style={styles.emptyArt} />
 			<Text style={[styles.emptyTitle, { color: t.ink }]}>
 				Nothing has happened yet
 			</Text>
@@ -259,12 +257,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 72,
 		paddingHorizontal: spacing.lg,
 	},
-	emptyIcon: {
-		width: 44,
-		height: 44,
-		borderRadius: radii.card,
-		alignItems: "center",
-		justifyContent: "center",
+	emptyArt: {
 		marginBottom: spacing.md,
 	},
 	emptyTitle: {

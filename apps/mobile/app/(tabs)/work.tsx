@@ -15,6 +15,7 @@ import {
 	SCROLL_TOP_INSET,
 	ScrollFade,
 } from "@/components/ui";
+import { Illustration, type IllustrationName } from "@/components/illustrations";
 import { formatCurrency } from "@/lib/format";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import {
@@ -263,22 +264,38 @@ export default function WorkScreen({
 		);
 	};
 
-	const emptyCopy = () => {
+	// Per-kind fragment art previews the records about to land there.
+	const KIND_ILLO: Record<WorkKind, IllustrationName> = {
+		client: "clients-none",
+		project: "projects-none",
+		quote: "quotes-none",
+		invoice: "invoices-none",
+	};
+
+	const emptyCopy = (): {
+		title: string;
+		body: string;
+		illo: IllustrationName;
+	} => {
 		if (q) {
 			return {
 				title: "No matches",
 				body: "Try a different name or number.",
+				illo: "no-filter-match",
 			};
 		}
 		if (kind) {
 			return {
 				title: `No ${KIND_LABEL[kind].toLowerCase()} yet`,
 				body: "Records you create on the web show up here.",
+				illo: KIND_ILLO[kind],
 			};
 		}
 		return {
 			title: "Nothing here yet",
 			body: "Clients, projects, quotes and invoices show up here as you add them.",
+			// Generic record-rows fragment — the mixed default body is still a list.
+			illo: "clients-none",
 		};
 	};
 
@@ -365,6 +382,11 @@ export default function WorkScreen({
 					keyboardDismissMode="on-drag"
 					ListEmptyComponent={
 						<View style={styles.emptyState}>
+							<Illustration
+								name={empty.illo}
+								knockout={t.bg}
+								style={styles.emptyArt}
+							/>
 							<Text style={[styles.emptyTitle, { color: t.ink }]}>
 								{empty.title}
 							</Text>
@@ -438,6 +460,9 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		paddingVertical: 64,
 		paddingHorizontal: 24,
+	},
+	emptyArt: {
+		marginBottom: 16,
 	},
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,
