@@ -1,30 +1,26 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Folder, Receipt, Users } from "lucide-react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { Activity, Briefcase } from "lucide-react-native";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import type { SelectionTab } from "@/lib/selection-context";
 
 // "Select an item" empty state for the landscape detail pane. Intentional product
 // copy, NOT a fallback — NEVER auto-select the first list item. Copy is VERBATIM
 // and locked (UI-SPEC Copywriting Contract).
 
-interface DetailPlaceholderProps {
-	tab: "clients" | "projects" | "money";
-}
+const GLYPH: Record<SelectionTab, typeof Activity> = {
+	work: Briefcase,
+	activity: Activity,
+};
 
-const GLYPH = {
-	clients: Users,
-	projects: Folder,
-	money: Receipt,
-} as const;
-
-export function DetailPlaceholder({ tab }: DetailPlaceholderProps) {
+export function DetailPlaceholder({ context }: { context: SelectionTab }) {
 	const t = useTokens();
-	const Glyph = GLYPH[tab];
+	const Glyph = GLYPH[context];
 
 	return (
 		<View style={styles.root}>
-			<View style={[styles.tile, { backgroundColor: t.accentSoft }]}>
-				<Glyph size={38} color={t.accent} />
+			<View style={[styles.tile, { backgroundColor: t.secondary }]}>
+				<Glyph size={34} color={t.sub} strokeWidth={2} />
 			</View>
 			<Text style={[styles.heading, { color: t.ink }]}>Select an item</Text>
 			<Text style={[styles.body, { color: t.sub }]}>
@@ -39,23 +35,25 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 14,
+		gap: 12,
 		padding: 40,
 	},
 	tile: {
-		width: 84,
-		height: 84,
-		borderRadius: 26,
+		width: 72,
+		height: 72,
+		borderRadius: radii.card,
 		alignItems: "center",
 		justifyContent: "center",
+		marginBottom: 2,
 	},
 	heading: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 18,
+		fontSize: type.h2,
 	},
 	body: {
 		fontFamily: fontFamily.regular,
-		fontSize: 14,
+		fontSize: type.body,
+		lineHeight: 20,
 		textAlign: "center",
 		maxWidth: 280,
 	},

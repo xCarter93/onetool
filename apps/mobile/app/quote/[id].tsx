@@ -276,7 +276,7 @@ export function QuoteDetailBody({
 									// Approved (audit row): contact email + date + signature.
 									<>
 										<View style={styles.approvalRow}>
-											<CheckCircle2 size={18} color={"#1f9d57"} />
+											<CheckCircle2 size={18} color={t.success} />
 											<Text style={[styles.approvalLabel, { color: t.ink }]}>
 												Approved
 											</Text>
@@ -292,7 +292,10 @@ export function QuoteDetailBody({
 												accessibilityRole="image"
 												resizeMode="contain"
 												onError={() => setSigError(true)}
-												style={[styles.signature, { borderColor: t.line }]}
+												style={[
+													styles.signature,
+													{ borderColor: t.line, backgroundColor: t.card },
+												]}
 											/>
 										) : latest.signatureUrl && sigError ? (
 											<Text
@@ -306,9 +309,9 @@ export function QuoteDetailBody({
 									// Declined (audit row): decline reason.
 									<>
 										<View style={styles.approvalRow}>
-											<XCircle size={18} color={"#e23b3b"} />
+											<XCircle size={18} color={t.danger} />
 											<Text
-												style={[styles.approvalLabel, { color: "#e23b3b" }]}
+												style={[styles.approvalLabel, { color: t.danger }]}
 											>
 												Declined
 											</Text>
@@ -328,7 +331,7 @@ export function QuoteDetailBody({
 									// Approved (resolved-without-audit): status + approvedAt, no email/signature.
 									<>
 										<View style={styles.approvalRow}>
-											<CheckCircle2 size={18} color={"#1f9d57"} />
+											<CheckCircle2 size={18} color={t.success} />
 											<Text style={[styles.approvalLabel, { color: t.ink }]}>
 												Approved
 											</Text>
@@ -345,9 +348,9 @@ export function QuoteDetailBody({
 									// Declined (resolved-without-audit): status + declinedAt, no reason.
 									<>
 										<View style={styles.approvalRow}>
-											<XCircle size={18} color={"#e23b3b"} />
+											<XCircle size={18} color={t.danger} />
 											<Text
-												style={[styles.approvalLabel, { color: "#e23b3b" }]}
+												style={[styles.approvalLabel, { color: t.danger }]}
 											>
 												Declined
 											</Text>
@@ -470,7 +473,6 @@ const styles = StyleSheet.create({
 		height: 64,
 		borderRadius: radii.md,
 		borderWidth: 1,
-		backgroundColor: "#fff",
 	},
 
 	notFound: {

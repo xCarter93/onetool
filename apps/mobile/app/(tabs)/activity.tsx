@@ -26,6 +26,7 @@ import {
 	type ActivityFeedItem,
 	type ActivityLink,
 } from "@/lib/activity-feed";
+import { sameRef, type RecordRef } from "@/lib/selection-context";
 
 // `api.activities.getRecent` takes a `limit` and has no paginated variant, so
 // "load older" re-runs the query with a bigger take. PAGE keeps the first paint
@@ -35,9 +36,44 @@ import {
 const PAGE = 100;
 const MAX = 500;
 
-export default function ActivityScreen() {
+/**
+ * ActivityLink → detail-pane ref, for the iPad shell's onSelect. Null for
+ * links with no detail body (payment/user/organization events, which already
+ * carry a null `link` upstream — the default case is defensive, not reachable
+ * through the current ActivityLink union).
+ */
+export function refFromActivityLink(link: ActivityLink): RecordRef | null {
+	switch (link.pathname) {
+		case "/clients/[clientId]":
+			return { kind: "client", id: link.params.clientId };
+		case "/projects/[projectId]":
+			return { kind: "project", id: link.params.projectId };
+		case "/quote/[id]":
+			return { kind: "quote", id: link.params.id };
+		case "/invoice/[id]":
+			return { kind: "invoice", id: link.params.id };
+		default:
+			return null;
+	}
+}
+
+// headerMode/onSelect/selected default off → the iPhone path (router.push, its
+// own AppHeader, no selected highlight) is byte-identical. The iPad shell
+// renders this as the Activity pane: headerMode="pane" suppresses the self-
+// mounted AppHeader (shell mounts PaneHeader), onSelect drives the detail pane
+// via the shell selection instead of a route push, selected marks the row.
+export default function ActivityScreen({
+	headerMode = "root",
+	onSelect,
+	selected = null,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (ref: RecordRef) => void;
+	selected?: RecordRef | null;
+} = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const isPane = headerMode === "pane";
 	const [limit, setLimit] = useState(PAGE);
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [nowMs] = useState(() => Date.now());
@@ -49,8 +85,19 @@ export default function ActivityScreen() {
 		[activities, nowMs],
 	);
 
-	const openRecord = (link: ActivityLink) =>
+	// On iPad pane: a row tap drives the shell selection when the link resolves
+	// to a detail ref. Otherwise (iPhone, or a link with no detail pane body)
+	// push the route exactly as before.
+	const openRecord = (link: ActivityLink) => {
+		if (onSelect) {
+			const ref = refFromActivityLink(link);
+			if (ref) {
+				onSelect(ref);
+				return;
+			}
+		}
 		router.push(link as unknown as Href);
+	};
 
 	const renderItem = ({
 		item,
@@ -64,17 +111,23 @@ export default function ActivityScreen() {
 		}
 		// Drop the hairline on the last row of a day group (and of the whole list).
 		const next = items[index + 1];
+		const ref = item.activity.link
+			? refFromActivityLink(item.activity.link)
+			: null;
+		const isSelected = isPane && sameRef(ref, selected);
 		return (
-			<ActivityRow
-				activity={item.activity}
-				nowMs={nowMs}
-				last={!next || next.kind === "header"}
-				onPress={
-					item.activity.link
-						? () => openRecord(item.activity.link!)
-						: undefined
-				}
-			/>
+			<View style={isSelected ? { backgroundColor: t.secondary } : undefined}>
+				<ActivityRow
+					activity={item.activity}
+					nowMs={nowMs}
+					last={!next || next.kind === "header"}
+					onPress={
+						item.activity.link
+							? () => openRecord(item.activity.link!)
+							: undefined
+					}
+				/>
+			</View>
 		);
 	};
 
@@ -144,7 +197,7 @@ export default function ActivityScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			<AppHeader mode="root" title="Activity" />
+			{!isPane ? <AppHeader mode="root" title="Activity" /> : null}
 			{activities === undefined ? (
 				<View style={styles.listContent}>{Skeleton}</View>
 			) : (

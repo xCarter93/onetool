@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { fontFamily, radii, touch, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
@@ -216,12 +216,23 @@ export function ProjectDetailBody({
 					<AppHeader mode={appHeaderMode} />
 				)}
 				<ScrollView contentContainerStyle={styles.scroll}>
-					<View style={[styles.skeletonHeader, { backgroundColor: t.card }]} />
 					<View
-						style={[styles.skeletonBlock, { backgroundColor: t.card }]}
+						style={[
+							styles.skeletonHeader,
+							{ backgroundColor: t.card, borderColor: t.line },
+						]}
 					/>
 					<View
-						style={[styles.skeletonBlock, { backgroundColor: t.card }]}
+						style={[
+							styles.skeletonBlock,
+							{ backgroundColor: t.card, borderColor: t.line },
+						]}
+					/>
+					<View
+						style={[
+							styles.skeletonBlock,
+							{ backgroundColor: t.card, borderColor: t.line },
+						]}
 					/>
 				</ScrollView>
 			</SafeAreaView>
@@ -262,9 +273,10 @@ export function ProjectDetailBody({
 							<Pressable
 								onPress={() =>
 									shellNav
-										? shellNav.open("clients", project.clientId)
+										? shellNav.open({ kind: "client", id: project.clientId })
 										: router.push(`/clients/${project.clientId}`)
 								}
+								hitSlop={8}
 								style={({ pressed }) => [
 									styles.clientLink,
 									pressed && styles.pressed,
@@ -272,8 +284,8 @@ export function ProjectDetailBody({
 								accessibilityRole="button"
 								accessibilityLabel="View client"
 							>
-								<Building2 size={14} color={t.accent} />
-								<Text style={[styles.clientLinkText, { color: t.accent }]}>
+								<Building2 size={14} color={t.frostedInk} />
+								<Text style={[styles.clientLinkText, { color: t.frostedInk }]}>
 									{clientName}
 								</Text>
 							</Pressable>
@@ -305,9 +317,9 @@ export function ProjectDetailBody({
 								pct={taskProgress.pct}
 								size={72}
 								stroke={9}
-								track="#eef1f5"
+								track={t.secondary}
 								color={
-									project.status === "completed" ? t.success : t.accent
+									project.status === "completed" ? t.success : t.primarySolid
 								}
 							>
 								<Text style={[styles.ringText, { color: t.ink }]}>
@@ -354,12 +366,12 @@ export function ProjectDetailBody({
 					accessibilityLabel="Open team chat"
 					style={({ pressed }) => [
 						styles.teamChat,
-						{ backgroundColor: t.accentSoft },
+						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
 						pressed && styles.pressed,
 					]}
 				>
-					<MessageSquare size={18} color={t.accent} />
-					<Text style={[styles.teamChatText, { color: t.accent }]}>
+					<MessageSquare size={18} color={t.frostedInk} />
+					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
 						Team chat
 					</Text>
 				</Pressable>
@@ -493,6 +505,7 @@ export function ProjectDetailBody({
 									onPress={() => setDateField(null)}
 									accessibilityRole="button"
 									accessibilityLabel="Close"
+									hitSlop={10}
 								>
 									<X size={24} color={t.ink} />
 								</TouchableOpacity>
@@ -541,13 +554,13 @@ const styles = StyleSheet.create({
 		height: 140,
 		borderRadius: radii.rLg,
 		marginBottom: 14,
-		boxShadow: shadow.card,
+		borderWidth: 1,
 	},
 	skeletonBlock: {
 		height: 80,
 		borderRadius: radii.rLg,
 		marginBottom: 14,
-		boxShadow: shadow.card,
+		borderWidth: 1,
 	},
 	headerTop: {
 		flexDirection: "row",
@@ -653,6 +666,10 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "baseline",
 		justifyContent: "space-between",
+		// Painted height, not hitSlop: Start and Due are adjacent, so 8pt of slop
+		// each left a 16pt band that could open the wrong date picker.
+		minHeight: touch.min,
+		paddingVertical: 11,
 	},
 	kvLabel: {
 		fontFamily: fontFamily.regular,

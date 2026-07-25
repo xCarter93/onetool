@@ -191,16 +191,29 @@ export function InvoiceDetailBody({
 									>
 										<View style={styles.itemBody}>
 											<View
-												style={[styles.skeleton, { width: "60%", height: 14 }]}
+												style={[
+													styles.skeleton,
+													{ width: "60%", height: 14, backgroundColor: t.muted },
+												]}
 											/>
 											<View
 												style={[
 													styles.skeleton,
-													{ width: "35%", height: 12, marginTop: 6 },
+													{
+														width: "35%",
+														height: 12,
+														marginTop: 6,
+														backgroundColor: t.muted,
+													},
 												]}
 											/>
 										</View>
-										<View style={[styles.skeleton, { width: 56, height: 14 }]} />
+										<View
+											style={[
+												styles.skeleton,
+												{ width: 56, height: 14, backgroundColor: t.muted },
+											]}
+										/>
 									</View>
 								))}
 							</>
@@ -270,7 +283,7 @@ export function InvoiceDetailBody({
 							<View
 								style={[
 									styles.barFill,
-									{ backgroundColor: t.accent, width: `${pct}%` },
+									{ backgroundColor: t.primarySolid, width: `${pct}%` },
 								]}
 							/>
 						</View>
@@ -405,8 +418,7 @@ const styles = StyleSheet.create({
 		borderRadius: radii.r,
 	},
 	skeleton: {
-		backgroundColor: "#e9edf2",
-		borderRadius: 6,
+		borderRadius: radii.sm,
 	},
 
 	notFound: {
@@ -476,18 +488,18 @@ const styles = StyleSheet.create({
 
 	barTrack: {
 		height: 6,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		marginVertical: 8,
 		width: "100%",
 		overflow: "hidden",
 	},
 	barFill: {
 		height: 6,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 	},
 	barSkeleton: {
 		height: 14,
-		borderRadius: 6,
+		borderRadius: radii.sm,
 		width: "70%",
 		marginTop: 2,
 	},

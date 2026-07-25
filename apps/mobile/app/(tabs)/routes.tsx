@@ -2,20 +2,25 @@ import { StyleSheet, Text, View } from "react-native";
 import { Map } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { useDevice } from "@/lib/use-device";
 
 // Routes tab — P2 placeholder. P4 replaces this body with the native Mapbox map
 // (idle: saved routes in a bottom sheet; running: instrument panel). Route
 // CREATION stays web-only at v1, which is why this says "on the web" rather than
 // offering a create action.
-export default function RoutesScreen() {
+//
+// headerMode default "root" → the iPhone path (own AppHeader) is byte-identical.
+// The iPad shell passes "pane" (no detail body, so it has no onSelect/selected).
+export default function RoutesScreen({
+	headerMode = "root",
+}: {
+	headerMode?: "root" | "pane";
+} = {}) {
 	const t = useTokens();
-	const { device } = useDevice();
-	const pane = device === "ipad";
+	const isPane = headerMode === "pane";
 
 	return (
 		<View style={[styles.screen, { backgroundColor: t.bg }]}>
-			{!pane ? <AppHeader mode="root" title="Routes" /> : null}
+			{!isPane ? <AppHeader mode="root" title="Routes" /> : null}
 			<View style={styles.body}>
 				<View style={[styles.mark, { backgroundColor: t.muted }]}>
 					<Map size={26} color={t.sub} strokeWidth={2} />

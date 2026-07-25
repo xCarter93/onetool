@@ -105,7 +105,7 @@ export default function ClientsScreen({
 	// (tabs) sibling, which slides the whole shell). iPhone has no provider →
 	// fall back to the full-screen create route (byte-identical).
 	const goToNew = () =>
-		shellNav ? shellNav.startCreate("clients") : router.push("/clients/new");
+		shellNav ? shellNav.startCreate() : router.push("/clients/new");
 
 	// On iPad pane: row tap drives the shell selection (no route push — the
 	// (tabs) group has no in-group navigator, so a push slides the whole shell).

@@ -11,6 +11,7 @@ import { SearchField } from "@/components/work/search-field";
 import { TypeChips } from "@/components/work/type-chips";
 import { ListRow, SCROLL_TOP_INSET } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { sameRef, type RecordRef } from "@/lib/selection-context";
 import {
 	fontFamily,
 	radii,
@@ -59,9 +60,29 @@ type Row =
 			last: boolean;
 	  };
 
-export default function WorkScreen() {
+// headerMode/onSelect/selected/kind default off → the iPhone path (router.push,
+// AppHeader mode="root", no selected highlight, uncontrolled chip) is byte-
+// identical. The iPad shell renders this as a list pane: headerMode="pane"
+// suppresses the self-mounted AppHeader (shell mounts PaneHeader), onSelect
+// drives the detail pane via the shell selection instead of a route push,
+// selected marks the row, and kind/onKindChange let the shell drive the chip
+// (e.g. "View all projects").
+export default function WorkScreen({
+	headerMode = "root",
+	onSelect,
+	selected = null,
+	kind: kindProp,
+	onKindChange,
+}: {
+	headerMode?: "root" | "pane";
+	onSelect?: (ref: RecordRef) => void;
+	selected?: RecordRef | null;
+	kind?: WorkKind | null;
+	onKindChange?: (kind: WorkKind | null) => void;
+} = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const isPane = headerMode === "pane";
 
 	// Raw input drives the field; `q` (debounced 250ms) drives filtering.
 	const [raw, setRaw] = useState("");
@@ -71,7 +92,10 @@ export default function WorkScreen() {
 		return () => clearTimeout(id);
 	}, [raw]);
 
-	const [kind, setKind] = useState<WorkKind | null>(null);
+	const [localKind, setLocalKind] = useState<WorkKind | null>(null);
+	const kind = kindProp !== undefined ? kindProp : localKind;
+	const setKind = (next: WorkKind | null) =>
+		onKindChange ? onKindChange(next) : setLocalKind(next);
 	// Seed "now" once — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
 
@@ -173,8 +197,12 @@ export default function WorkScreen() {
 		return out;
 	}, [sections]);
 
+	// On iPad pane: row tap drives the shell selection (no route push — a push
+	// would slide the whole shell). On iPhone: push the detail route as before.
 	const open = (record: WorkRecord) =>
-		router.push(pathForRecord(record) as Href);
+		onSelect
+			? onSelect({ kind: record.kind, id: record.id })
+			: router.push(pathForRecord(record) as Href);
 
 	const renderRow = ({ item }: { item: Row }) => {
 		if (item.type === "header") {
@@ -201,6 +229,9 @@ export default function WorkScreen() {
 				sub={sub}
 				status={record.status}
 				onPress={() => open(record)}
+				selected={
+					isPane && sameRef(selected, { kind: record.kind, id: record.id })
+				}
 				containerStyle={[
 					styles.rowCard,
 					{ backgroundColor: t.card, borderColor: t.line },
@@ -234,19 +265,23 @@ export default function WorkScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			{/* Contextual create: the active chip decides the record type. Clients is
+			{/* Pane mode: the shell mounts PaneHeader above this body (one header
+			    per pane — locked convention); it owns the +. iPhone: contextual
+			    create where the active chip decides the record type. Clients is
 			    the default because it is the only other create surface mobile hosts
 			    (quotes/invoices/projects stay web-only at 2.0). */}
-			<AppHeader
-				mode="root"
-				title="Work"
-				onAdd={
-					kind === null || kind === "client"
-						? () => router.push("/clients/new" as Href)
-						: undefined
-				}
-				addLabel="New client"
-			/>
+			{isPane ? null : (
+				<AppHeader
+					mode="root"
+					title="Work"
+					onAdd={
+						kind === null || kind === "client"
+							? () => router.push("/clients/new" as Href)
+							: undefined
+					}
+					addLabel="New client"
+				/>
+			)}
 
 			{/* Controls stay pinned — a search-first surface must not scroll its
 			    own search field away. */}

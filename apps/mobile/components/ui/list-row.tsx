@@ -58,14 +58,21 @@ export function ListRow({
 			style={({ pressed }) => [
 				styles.row,
 				{ borderBottomColor: t.lineSoft, borderBottomWidth: last ? 0 : 1 },
+				containerStyle,
+				// AFTER containerStyle: a caller's base card style is usually
+				// `backgroundColor: t.card` too, so ordering this first made the
+				// highlight invisible — the iPad detail pane had no visible source row.
+				// Frosted fill (an active state, not chrome) but the border is
+				// primarySolid: frostedBg alone composites to 1.10:1 on the page and
+				// frostedBorder to 1.34:1, so neither can carry a state indicator.
+				// primarySolid is 4.8:1 on the page and 4.4:1 on the fill.
 				selected && {
-					backgroundColor: t.card,
+					backgroundColor: t.frostedBg,
 					borderWidth: 1,
-					borderColor: t.line,
+					borderColor: t.primarySolid,
 					borderRadius: radii.xl,
 					borderBottomWidth: 1,
 				},
-				containerStyle,
 				pressed && styles.pressed,
 			]}
 		>

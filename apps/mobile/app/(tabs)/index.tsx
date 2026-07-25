@@ -27,7 +27,8 @@ import {
 import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useViewMode } from "@/lib/useViewMode";
-import { useDevice } from "@/lib/use-device";
+import { Plus } from "lucide-react-native";
+import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
 const WORK: Href = "/(tabs)/work" as Href;
@@ -47,11 +48,17 @@ function greetingFor(hour: number): string {
  * "today" is derived from the instant via the LOCAL calendar (see lib/date.ts).
  * Mixing those up is what made Today roll over at 5pm Pacific.
  */
-export default function TodayScreen() {
+export default function TodayScreen({
+	headerMode = "root",
+}: {
+	/** "pane" = the iPad shell's Today pane: a light title row, no bell/avatar/org
+	 * (the rail owns those). Today keeps its OWN header either way because the
+	 * greeting and selected date are its identity. */
+	headerMode?: "root" | "pane";
+} = {}) {
 	const t = useTokens();
 	const { user } = useUser();
-	const { device } = useDevice();
-	const pane = device === "ipad";
+	const pane = headerMode === "pane";
 	const { viewMode, setViewMode, hydrated } = useViewMode();
 
 	// Ticks once a minute so the greeting and the now-line stay honest across a
@@ -212,7 +219,19 @@ export default function TodayScreen() {
 
 	return (
 		<View style={[styles.screen, { backgroundColor: t.bg }]}>
-			{!pane ? (
+			{pane ? (
+				<PaneHeader
+					title={firstName ? `${greeting}, ${firstName}` : greeting}
+					sub={dateLabel}
+					right={
+						<PaneAction
+							icon={Plus}
+							label="New task"
+							onPress={() => router.push(TASK_FORM)}
+						/>
+					}
+				/>
+			) : (
 				<AppHeader
 					mode="root"
 					title={firstName ? `${greeting}, ${firstName}` : greeting}
@@ -220,7 +239,7 @@ export default function TodayScreen() {
 					onAdd={() => router.push(TASK_FORM)}
 					addLabel="New task"
 				/>
-			) : null}
+			)}
 
 			{/* Pinned date + representation controls — "persistent" is the point. */}
 			<View style={styles.controls}>

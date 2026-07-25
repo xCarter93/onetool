@@ -9,7 +9,7 @@ import {
 	KeyboardTypeOptions,
 } from "react-native";
 import { Check, X } from "lucide-react-native";
-import { fontFamily, radii, useTokens } from "@/lib/theme";
+import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 
 interface EditableFieldProps {
 	label: string;
@@ -91,7 +91,9 @@ export function EditableField({
 						style={[
 							styles.input,
 							{
-								borderColor: t.accent,
+								// Solid ring (not translucent frostedBorder) — needs to read as a
+								// focus indicator on its own, no adjacent icon/label backing it up.
+								borderColor: t.ring,
 								color: t.ink,
 								backgroundColor: t.card,
 							},
@@ -112,7 +114,7 @@ export function EditableField({
 					/>
 					<View style={styles.actions}>
 						{isSaving ? (
-							<ActivityIndicator size="small" color={t.accent} />
+							<ActivityIndicator size="small" color={t.frostedInk} />
 						) : (
 							<>
 								<Pressable
@@ -121,11 +123,11 @@ export function EditableField({
 									accessibilityLabel="Save changes"
 									style={({ pressed }) => [
 										styles.actionButton,
-										{ borderColor: t.accent, backgroundColor: t.accentSoft },
+										{ borderColor: t.frostedBorder, backgroundColor: t.frostedBg },
 										pressed && styles.actionPressed,
 									]}
 								>
-									<Check size={16} color={t.accent} />
+									<Check size={16} color={t.frostedInk} />
 								</Pressable>
 								<Pressable
 									onPress={handleCancel}
@@ -159,25 +161,33 @@ export function EditableField({
 				accessibilityLabel={editable ? `Edit ${label || "field"}` : undefined}
 				style={({ pressed }) => [
 					styles.valueContainer,
-					// Editable values carry a quiet dotted underline — the single,
-					// consistent "tap to edit" affordance across text/status/dates.
-					editable && { ...styles.editableUnderline, borderBottomColor: t.faint },
 					pressed && editable && styles.actionPressed,
 				]}
 			>
-				{renderValue ? (
-					renderValue(value)
-				) : (
-					<Text
-						style={[
-							styles.value,
-							{ color: t.ink },
-							!value && [styles.placeholder, { color: t.faint }],
-						]}
-					>
-						{value || placeholder}
-					</Text>
-				)}
+				{/* Underline hugs the text; the Pressable's own padding carries the
+				44pt touch target so the tap area grows without the "tap to edit"
+				affordance visually drifting away from the text. */}
+				<View
+					style={
+						editable
+							? [styles.editableUnderline, { borderBottomColor: t.faint }]
+							: undefined
+					}
+				>
+					{renderValue ? (
+						renderValue(value)
+					) : (
+						<Text
+							style={[
+								styles.value,
+								{ color: t.ink },
+								!value && [styles.placeholder, { color: t.faint }],
+							]}
+						>
+							{value || placeholder}
+						</Text>
+					)}
+				</View>
 			</Pressable>
 		</View>
 	);
@@ -185,18 +195,19 @@ export function EditableField({
 
 const styles = StyleSheet.create({
 	container: {
-		marginBottom: 16,
+		marginBottom: spacing.md,
 	},
 	label: {
-		fontSize: 14,
+		fontSize: type.body,
 		fontFamily: fontFamily.semibold,
-		marginBottom: 4,
+		marginBottom: spacing.xs,
 	},
 	valueContainer: {
-		minHeight: 24,
+		minHeight: touch.min,
+		justifyContent: "center",
+		alignSelf: "flex-start",
 	},
 	editableUnderline: {
-		alignSelf: "flex-start",
 		minWidth: 120,
 		paddingBottom: 6,
 		borderBottomWidth: 1,
@@ -211,7 +222,7 @@ const styles = StyleSheet.create({
 	editRow: {
 		flexDirection: "row",
 		alignItems: "flex-start",
-		gap: 8,
+		gap: spacing.sm,
 	},
 	input: {
 		flex: 1,
@@ -219,6 +230,7 @@ const styles = StyleSheet.create({
 		borderRadius: radii.lg,
 		paddingHorizontal: 12,
 		paddingVertical: 10,
+		minHeight: touch.min,
 		fontSize: 13,
 		fontFamily: fontFamily.regular,
 	},
@@ -227,8 +239,8 @@ const styles = StyleSheet.create({
 		gap: 6,
 	},
 	actionButton: {
-		width: 36,
-		height: 36,
+		width: touch.min,
+		height: touch.min,
 		borderRadius: radii.lg,
 		alignItems: "center",
 		justifyContent: "center",
