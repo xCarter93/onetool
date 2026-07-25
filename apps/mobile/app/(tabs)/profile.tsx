@@ -22,6 +22,12 @@ import { AppHeader } from "@/components/app-header";
 // single comfortable centered pane: headerMode="pane" suppresses the AppHeader
 // (shell mounts the one PaneHeader title="Profile") and the content is bounded
 // to a centered column so it is not stretched edge-to-edge.
+/** Clerk roles are "org:admin" / "org:member" — show "Admin" / "Member". */
+function formatRole(role: string): string {
+	const bare = role.replace(/^org:/, "");
+	return bare.charAt(0).toUpperCase() + bare.slice(1);
+}
+
 export default function ProfileScreen({
 	headerMode = "root",
 }: {
@@ -247,8 +253,7 @@ export default function ProfileScreen({
 									Role
 								</Text>
 								<Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: t.ink }}>
-									{membership.role.charAt(0).toUpperCase() +
-										membership.role.slice(1)}
+									{formatRole(membership.role)}
 								</Text>
 							</View>
 						</View>

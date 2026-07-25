@@ -14,7 +14,7 @@ import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Calendar, X } from "lucide-react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 
@@ -129,7 +129,7 @@ export default function ProjectsScreen({
 			<Pressable
 				style={({ pressed }) => [
 					styles.card,
-					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					isSelected && { borderColor: t.primarySolid, backgroundColor: t.frostedBg },
 					pressed && styles.cardPressed,
 				]}
 				onPress={() => openProject(item._id)}
@@ -324,7 +324,6 @@ const styles = StyleSheet.create({
 		borderRadius: radii.rLg,
 		borderWidth: 1,
 		borderColor: "#e9edf2",
-		boxShadow: shadow.card,
 		padding: 16,
 	},
 	cardPressed: {

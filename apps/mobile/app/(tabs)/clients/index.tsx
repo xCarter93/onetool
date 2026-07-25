@@ -120,7 +120,7 @@ export default function ClientsScreen({
 			<Pressable
 				style={({ pressed }) => [
 					styles.card,
-					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					isSelected && { borderColor: t.primarySolid, backgroundColor: t.frostedBg },
 					pressed && styles.cardPressed,
 				]}
 				onPress={() => openClient(item.id)}
@@ -149,7 +149,7 @@ export default function ClientsScreen({
 				onPress={goToNew}
 				style={({ pressed }) => [
 					styles.newBtn,
-					{ backgroundColor: t.accent },
+					{ backgroundColor: t.primarySolid },
 					pressed && { opacity: 0.9 },
 				]}
 				accessibilityRole="button"
@@ -189,17 +189,23 @@ export default function ClientsScreen({
 							style={[
 								styles.chip,
 								active
-									? { backgroundColor: t.accent, borderColor: t.accent }
+									? { backgroundColor: t.frostedBg, borderColor: t.primarySolid }
 									: { backgroundColor: t.card, borderColor: t.line },
 							]}
 						>
 							<Text
-								style={[styles.chipLabel, { color: active ? "#fff" : t.sub }]}
+								style={[
+									styles.chipLabel,
+									{ color: active ? t.frostedInk : t.sub },
+								]}
 							>
 								{chip.label}
 							</Text>
 							<Text
-								style={[styles.chipCount, { color: active ? "#fff" : t.faint }]}
+								style={[
+									styles.chipCount,
+									{ color: active ? t.frostedInk : t.faint },
+								]}
 							>
 								{counts[chip.value]}
 							</Text>
@@ -260,7 +266,7 @@ export default function ClientsScreen({
 										style={({ pressed }) => [
 											styles.newBtn,
 											styles.emptyBtn,
-											{ backgroundColor: t.accent },
+											{ backgroundColor: t.primarySolid },
 											pressed && { opacity: 0.9 },
 										]}
 										accessibilityRole="button"
@@ -356,7 +362,6 @@ const styles = StyleSheet.create({
 		borderRadius: radii.rLg,
 		borderWidth: 1,
 		borderColor: "#e9edf2",
-		boxShadow: shadow.card,
 		padding: 13,
 		minHeight: 44,
 	},
