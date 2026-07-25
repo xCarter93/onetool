@@ -240,15 +240,20 @@ export const get = optionalUserQuery({
 	handler: async (ctx, args): Promise<InvoiceDocument | null> => {
 		if (!ctx.orgId) return null;
 		await ctx.requireLevel("invoices", "view");
-		let invoice: InvoiceDocument;
+		let invoice: InvoiceDocument | null;
 		try {
-			invoice = await ctx.orgEntity("invoices", args.id);
+			invoice = await ctx.orgEntity("invoices", args.id, {
+				onMismatch: "skip",
+			});
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in invoices:")) {
 				return null;
 			}
 			throw error;
 		}
+		// Cross-org invoice (stale bookmark, shared link, or org switch): degrade
+		// to an empty state instead of throwing an uncaught org-mismatch error.
+		if (!invoice) return null;
 		await ctx.requireRecordScope("invoices", () =>
 			ctx.actorScope().then((s) =>
 				invoice.projectId
@@ -1150,15 +1155,20 @@ export const getWithPayments = optionalUserQuery({
 	handler: async (ctx, args) => {
 		if (!ctx.orgId) return null;
 		await ctx.requireLevel("invoices", "view");
-		let invoice: InvoiceDocument;
+		let invoice: InvoiceDocument | null;
 		try {
-			invoice = await ctx.orgEntity("invoices", args.id);
+			invoice = await ctx.orgEntity("invoices", args.id, {
+				onMismatch: "skip",
+			});
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in invoices:")) {
 				return null;
 			}
 			throw error;
 		}
+		// Cross-org invoice (stale bookmark, shared link, or org switch): degrade
+		// to an empty state instead of throwing an uncaught org-mismatch error.
+		if (!invoice) return null;
 		await ctx.requireRecordScope("invoices", () =>
 			ctx.actorScope().then((s) =>
 				invoice.projectId
@@ -1272,9 +1282,11 @@ export const getPreview = optionalUserQuery({
 		if (!orgId) return null;
 		await ctx.requireLevel("invoices", "view");
 
-		let invoice: InvoiceDocument;
+		let invoice: InvoiceDocument | null;
 		try {
-			invoice = await ctx.orgEntity("invoices", args.id);
+			invoice = await ctx.orgEntity("invoices", args.id, {
+				onMismatch: "skip",
+			});
 		} catch (error) {
 			if (
 				error instanceof Error &&
@@ -1284,6 +1296,8 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
+		// Cross-org invoice: degrade to an empty state instead of throwing.
+		if (!invoice) return null;
 		await ctx.requireRecordScope("invoices", () =>
 			ctx.actorScope().then((s) =>
 				invoice.projectId

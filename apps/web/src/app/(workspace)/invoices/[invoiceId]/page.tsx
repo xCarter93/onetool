@@ -73,9 +73,12 @@ function InvoiceDetailPageContent() {
 		api.projects.get,
 		invoice?.projectId ? { id: invoice.projectId } : "skip"
 	);
-	const lineItems = useQuery(api.invoiceLineItems.listByInvoice, {
-		invoiceId,
-	});
+	// Gate on the invoice resolving: a cross-org id makes getWithPayments return
+	// null, so skip listByInvoice rather than let it throw an org-mismatch error.
+	const lineItems = useQuery(
+		api.invoiceLineItems.listByInvoice,
+		invoice ? { invoiceId } : "skip"
+	);
 	const organization = useQuery(api.organizations.get, {});
 	// Skip document queries without the documents grant — they call
 	// requireLevel("documents","view") server-side and throw FORBIDDEN otherwise.
