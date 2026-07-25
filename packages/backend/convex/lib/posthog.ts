@@ -42,6 +42,9 @@ export const SERVER_EVENTS = {
 	// TODO: report_generated — generation is a reactive query
 	// (reportData.executeReport); no scheduler ctx to capture from.
 	REPORT_GENERATED: "report_generated",
+	// Mapbox usage (billing-relevant): backend server-side calls +
+	// mobile client-side geocoding, see routingActions.ts / clientTelemetry.ts.
+	MAPBOX_API_REQUEST: "mapbox_api_request",
 } as const;
 
 export type ServerEventName =

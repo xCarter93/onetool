@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { action, internalMutation } from "./_generated/server";
+import { action, ActionCtx, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
@@ -8,6 +8,9 @@ import { rateLimiter } from "./rateLimits";
 import { solveStopOrder, type LatLng } from "./lib/tsp";
 import { stopValidator } from "./routes";
 import { shrinkPolylineForQuery } from "./lib/polylineCodec";
+import { SERVER_EVENTS, trackServerEvent } from "./lib/posthog";
+
+type MapboxService = "directions" | "matrix" | "optimization" | "search_box" | "isochrone";
 
 /**
  * Mapbox route computation + gas-station search for the Routing page.
@@ -126,13 +129,18 @@ class MapboxRouteError extends Error {
 
 async function fetchDirections(
 	coords: string[],
-	token: string
+	token: string,
+	ctx: ActionCtx,
+	orgId: Id<"organizations">
 ): Promise<DirectionsRoute> {
 	const url =
 		`https://api.mapbox.com/directions/v5/${DIRECTIONS_PROFILE}/` +
 		coords.join(";") +
 		`?overview=full&geometries=polyline&access_token=${token}`;
 	const data = await mapboxGet(url);
+	// Mapbox bills the request once it returns a response body, regardless of
+	// the business-logic `code` (NoRoute is still a billed lookup).
+	await captureMapboxUsage(ctx, orgId, "directions");
 	if (data.code !== "Ok") {
 		throw new MapboxRouteError(
 			String(data.code),
@@ -155,7 +163,9 @@ async function fetchDirections(
 async function findUnreachableStops(
 	start: { latitude: number; longitude: number },
 	stops: Array<{ latitude: number; longitude: number }>,
-	token: string
+	token: string,
+	ctx: ActionCtx,
+	orgId: Id<"organizations">
 ): Promise<number[]> {
 	try {
 		const coords = [coordPair(start), ...stops.map(coordPair)];
@@ -164,6 +174,7 @@ async function findUnreachableStops(
 			coords.join(";") +
 			`?sources=0&annotations=duration&access_token=${token}`;
 		const data = await mapboxGet(url);
+		await captureMapboxUsage(ctx, orgId, "matrix");
 		if (data.code !== "Ok") return [];
 		const row = (data.durations as Array<Array<number | null>> | undefined)?.[0];
 		if (!row) return [];
@@ -184,7 +195,9 @@ type OptimizationResponse = {
 async function fetchOptimizedTrip(
 	coords: string[],
 	roundTrip: boolean,
-	token: string
+	token: string,
+	ctx: ActionCtx,
+	orgId: Id<"organizations">
 ): Promise<{ trip: DirectionsRoute; stopOrder: number[] } | null> {
 	// v1 only implements roundtrip=false with source=first AND destination=last;
 	// omitting destination there defaults it to `any` and returns NotImplemented.
@@ -197,6 +210,7 @@ async function fetchOptimizedTrip(
 		(roundTrip ? "" : "&destination=last") +
 		`&overview=full&geometries=polyline&access_token=${token}`;
 	const data = (await mapboxGet(url)) as unknown as OptimizationResponse;
+	await captureMapboxUsage(ctx, orgId, "optimization");
 	if (data.code !== "Ok" || !data.trips?.[0] || !data.waypoints) {
 		console.warn(`Optimization v1 returned ${data.code}; using local heuristic`);
 		return null;
@@ -214,6 +228,35 @@ async function fetchOptimizedTrip(
 // ============================================================================
 // Internal authorization + persistence
 // ============================================================================
+
+export const trackMapboxUsageEvent = internalMutation({
+	args: { orgId: v.id("organizations"), service: v.string() },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		await trackServerEvent(ctx, {
+			event: SERVER_EVENTS.MAPBOX_API_REQUEST,
+			orgId: args.orgId,
+			properties: { service: args.service, count: 1, platform: "backend" },
+		});
+		return null;
+	},
+});
+
+/** Capture a successful backend Mapbox call; never breaks the routing flow. */
+async function captureMapboxUsage(
+	ctx: ActionCtx,
+	orgId: Id<"organizations">,
+	service: MapboxService
+): Promise<void> {
+	try {
+		await ctx.runMutation(internal.routingActions.trackMapboxUsageEvent, {
+			orgId,
+			service,
+		});
+	} catch (error) {
+		console.warn(`Mapbox usage capture failed (${service})`, error);
+	}
+}
 
 export const authorizeRoute = internalMutation({
 	args: {
@@ -313,7 +356,9 @@ export const computeRoute = action({
 					solved = await fetchOptimizedTrip(
 						[startPair, ...stops.map(coordPair)],
 						route.roundTrip,
-						token
+						token,
+						ctx,
+						route.orgId
 					);
 				}
 				if (solved) {
@@ -331,14 +376,14 @@ export const computeRoute = action({
 					orderedStops = heuristicOrder.map((idx) => stops[idx]);
 					const coords = [startPair, ...orderedStops.map(coordPair)];
 					if (route.roundTrip) coords.push(startPair);
-					trip = await fetchDirections(coords, token);
+					trip = await fetchDirections(coords, token, ctx, route.orgId);
 					optimized = true;
 					approximate = true;
 				}
 			} else {
 				const coords = [startPair, ...stops.map(coordPair)];
 				if (route.roundTrip) coords.push(startPair);
-				trip = await fetchDirections(coords, token);
+				trip = await fetchDirections(coords, token, ctx, route.orgId);
 			}
 		} catch (error) {
 			// Directions can't say which coordinate broke the route; a Matrix
@@ -350,7 +395,9 @@ export const computeRoute = action({
 				const unreachable = await findUnreachableStops(
 					route.start,
 					stops,
-					token
+					token,
+					ctx,
+					route.orgId
 				);
 				if (unreachable.length > 0) {
 					throw new ConvexError({
@@ -422,6 +469,9 @@ export const searchGasAlongRoute = action({
 			`&time_deviation=${args.timeDeviationMinutes}` +
 			`&limit=25&access_token=${token}`;
 		const data = await mapboxGet(url);
+		// sar_type=isochrone bills both the Search Box and Isochrone meters.
+		await captureMapboxUsage(ctx, route.orgId, "search_box");
+		await captureMapboxUsage(ctx, route.orgId, "isochrone");
 
 		const features =
 			(data.features as Array<{

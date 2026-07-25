@@ -50,6 +50,9 @@ export const AnalyticsEvents = {
 	// Marketing
 	DEMO_REQUEST_SUBMITTED: "demo_request_submitted",
 
+	// Mapbox usage (billing visibility)
+	MAPBOX_API_REQUEST: "mapbox_api_request",
+
 	// Onboarding
 	ONBOARDING_STARTED: "onboarding_started",
 	ONBOARDING_COMPLETED: "onboarding_completed",
@@ -106,4 +109,10 @@ export interface ProjectEventProperties {
 	client_id: string;
 	project_status: string;
 	previous_status?: string;
+}
+
+export interface MapboxApiRequestProperties {
+	service: "autofill_session" | "static_tiles";
+	count: number;
+	platform: "web";
 }

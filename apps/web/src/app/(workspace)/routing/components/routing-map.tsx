@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
 	Map,
 	MapControls,
@@ -13,8 +13,53 @@ import { env } from "@/env";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { decodePolyline } from "@/lib/polyline";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
+import { AnalyticsEvents } from "@/lib/analytics-events";
 import { Fuel } from "lucide-react";
-import type { StyleSpecification } from "maplibre-gl";
+import type { RequestTransformFunction, StyleSpecification } from "maplibre-gl";
+
+const TILE_FLUSH_INTERVAL_MS = 30_000;
+
+/** Counts and batches Mapbox static-tile requests issued via transformRequest. */
+function useMapboxTileUsageTracking() {
+	const countRef = useRef(0);
+
+	const flush = useCallback(() => {
+		const count = countRef.current;
+		if (count === 0) return;
+		countRef.current = 0;
+		trackEvent(AnalyticsEvents.MAPBOX_API_REQUEST, {
+			service: "static_tiles",
+			count,
+			platform: "web",
+		});
+	}, []);
+
+	const transformRequest = useCallback<RequestTransformFunction>((url) => {
+		if (url.startsWith("https://api.mapbox.com/") && url.includes("/tiles/")) {
+			countRef.current += 1;
+		}
+		return { url };
+	}, []);
+
+	useEffect(() => {
+		const interval = setInterval(flush, TILE_FLUSH_INTERVAL_MS);
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "hidden") flush();
+		};
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		window.addEventListener("pagehide", flush);
+
+		return () => {
+			clearInterval(interval);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			window.removeEventListener("pagehide", flush);
+			flush();
+		};
+	}, [flush]);
+
+	return transformRequest;
+}
 
 // Mapbox basemap (not the app-wide CARTO default): route data comes from
 // Mapbox APIs, whose terms expect display on Mapbox maps. Served as Static
@@ -128,6 +173,8 @@ export function RoutingMap({
 		return pts;
 	}, [start, stops]);
 
+	const transformRequest = useMapboxTileUsageTracking();
+
 	return (
 		<div
 			className={cn(
@@ -143,6 +190,7 @@ export function RoutingMap({
 				}
 				zoom={start ? 10 : 4}
 				styles={MAPBOX_STYLES}
+				transformRequest={transformRequest}
 			>
 				<MapBoundsHandler points={boundsPoints} />
 				<MapControls position="bottom-right" showZoom />
