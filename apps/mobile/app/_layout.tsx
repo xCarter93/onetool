@@ -236,25 +236,7 @@ export default function RootLayout() {
 								})}
 							/>
 							<Stack.Screen
-								name="day-sheet"
-								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.52, 0.9],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
-									sheetCornerRadius: 30,
-								})}
-							/>
-							<Stack.Screen
 								name="notifications"
-								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.52, 0.9],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
-									sheetCornerRadius: 30,
-								})}
-							/>
-							<Stack.Screen
-								name="journey"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
@@ -271,25 +253,14 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								})}
 							/>
-							{/* Short fixed detent — two create rows + title (hand-tune in <verification>). */}
+							{/* Assistant sheet over the current context (§4). P2 ships the neutral
+							    unavailable state; P3 adds the gated chat. */}
 							<Stack.Screen
-								name="create"
+								name="assistant"
 								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.4],
+									sheetAllowedDetents: [0.5, 0.95],
 									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
-									sheetCornerRadius: 30,
-								})}
-							/>
-							{/* Near-full search overlay. Opens at 0.9 (draggable to full) so the
-							    input clears the status bar — a single [1.0] detent renders content
-							    under the notch (matches tasks/form's [0.9, 1.0] pattern). */}
-							<Stack.Screen
-								name="search"
-								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.9, 1.0],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
+									sheetGrabberVisible: true,
 									sheetCornerRadius: 30,
 								})}
 							/>

@@ -1,18 +1,26 @@
 import { useEffect, useState, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export type ViewMode = "dashboard" | "calendar";
+/**
+ * Today's two representations of the selected day. The week strip picks the
+ * DATE; this picks the REPRESENTATION — the two controls are orthogonal, which
+ * is why they coexist.
+ */
+export type ViewMode = "agenda" | "timeline";
+
+const VALID: readonly ViewMode[] = ["agenda", "timeline"];
 
 // Single source of the storage key — only the non-sensitive viewMode string is
-// ever written here (never org/financial data).
-export const VIEW_MODE_STORAGE_KEY = "home.viewMode";
+// ever written here (never org/financial data). Distinct from the retired
+// `home.viewMode` key, so a stale dashboard/calendar value can't be rehydrated.
+export const VIEW_MODE_STORAGE_KEY = "today.viewMode";
 
 export function useViewMode(): {
 	viewMode: ViewMode;
 	setViewMode: (m: ViewMode) => void;
 	hydrated: boolean;
 } {
-	const [viewMode, setViewModeState] = useState<ViewMode>("dashboard");
+	const [viewMode, setViewModeState] = useState<ViewMode>("agenda");
 	const [hydrated, setHydrated] = useState(false);
 
 	useEffect(() => {
@@ -20,8 +28,8 @@ export function useViewMode(): {
 		AsyncStorage.getItem(VIEW_MODE_STORAGE_KEY)
 			.then((stored) => {
 				if (!active) return;
-				if (stored === "calendar" || stored === "dashboard") {
-					setViewModeState(stored);
+				if (VALID.includes(stored as ViewMode)) {
+					setViewModeState(stored as ViewMode);
 				}
 				setHydrated(true);
 			})

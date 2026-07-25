@@ -14,7 +14,6 @@ import {
 	ChevronDown,
 	Folder,
 	Home,
-	ListChecks,
 	Plus,
 	Receipt,
 	Users,
@@ -27,7 +26,10 @@ import { Avatar } from "@/components/ui";
 // Pure chrome: routing for the rest is injected by ipad-shell via props; only the
 // org-switch push is kept inline (it has no shell dependency).
 
-export type SidebarTab = "home" | "clients" | "projects" | "tasks" | "money";
+// NOTE: this rail still mirrors the PRE-P2 tab set. §6 (mirror the new lineup
+// 1:1 + pin the assistant at the rail bottom) is a separate P2 pass. Tasks is
+// gone because it merged into Today.
+export type SidebarTab = "home" | "clients" | "projects" | "money";
 
 interface PadSidebarProps {
 	activeTab: SidebarTab;
@@ -41,7 +43,6 @@ const NAV: { id: SidebarTab; label: string; Icon: typeof Home }[] = [
 	{ id: "home", label: "Home", Icon: Home },
 	{ id: "clients", label: "Clients", Icon: Users },
 	{ id: "projects", label: "Work", Icon: Folder },
-	{ id: "tasks", label: "Tasks", Icon: ListChecks },
 	{ id: "money", label: "Money", Icon: Receipt },
 ];
 

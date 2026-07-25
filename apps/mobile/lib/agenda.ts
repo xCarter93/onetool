@@ -65,6 +65,20 @@ export function minutesFromHHMM(time?: string): number | null {
 	return h * 60 + min;
 }
 
+/**
+ * "HH:MM" → a 12-hour label ("8:00 AM"). Returns undefined for untimed or
+ * unparseable input so callers can fall back to "Anytime" rather than printing
+ * a broken time.
+ */
+export function formatClockLabel(time?: string): string | undefined {
+	const mins = minutesFromHHMM(time);
+	if (mins === null) return undefined;
+	const h24 = Math.floor(mins / 60);
+	const m = mins % 60;
+	const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+	return `${h12}:${String(m).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`;
+}
+
 function slotFor(task: AgendaTask): Exclude<AgendaGroupKey, "overdue"> {
 	const mins = minutesFromHHMM(task.startTime);
 	if (mins === null) return "anytime";

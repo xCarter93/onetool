@@ -25,8 +25,7 @@ import {
 import ClientsScreen from "@/app/(tabs)/clients/index";
 import ProjectsScreen from "@/app/(tabs)/projects/index";
 import MoneyScreen from "@/app/(tabs)/money/index";
-import HomeScreen from "@/app/(tabs)/index";
-import TasksScreen from "@/app/(tabs)/tasks";
+import TodayScreen from "@/app/(tabs)/index";
 import ProfileScreen from "@/app/(tabs)/profile";
 import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
 import { ClientCreateBody } from "@/app/(tabs)/clients/new";
@@ -94,7 +93,6 @@ function tabFromPathname(pathname: string): ShellTab {
 	if (/^\/clients\b/.test(pathname)) return "clients";
 	if (/^\/projects\b/.test(pathname)) return "projects";
 	if (/^\/(money|quote|invoice)\b/.test(pathname)) return "money";
-	if (/^\/tasks\b/.test(pathname)) return "tasks";
 	if (/^\/profile\b/.test(pathname)) return "profile";
 	return "home";
 }
@@ -117,7 +115,7 @@ function isStackRoute(pathname: string): boolean {
 // crashing with "Maximum update depth exceeded". The shell ignores them: the
 // underlying tab stays put while an overlay is open.
 function isOverlayRoute(pathname: string): boolean {
-	if (/^\/(notifications|create|search|org-switch|day-sheet|journey)(\/|$)/.test(pathname)) {
+	if (/^\/(notifications|assistant|org-switch)(\/|$)/.test(pathname)) {
 		return true;
 	}
 	if (/^\/tasks\/(form|new)(\/|$)/.test(pathname)) return true;
@@ -234,7 +232,10 @@ function IpadShellInner() {
 		<PadSidebar
 			activeTab={activeTab as SidebarTab}
 			onNavigate={onNavigate}
-			onCreate={() => router.push("/create" as Href)}
+			/* The /create mega-menu is gone. The rail still needs its P2 pass (§6:
+			   mirror the new tab lineup 1:1 + pin the assistant at the bottom); until
+			   then Create goes straight to the in-pane new-client surface. */
+			onCreate={() => router.push("/clients/new" as Href)}
 			onProfile={() => setActiveTab("profile")}
 			onNotifications={() => router.push("/notifications" as Href)}
 		/>
@@ -446,15 +447,7 @@ function NonMasterDetailPane({
 }) {
 	const t = useTokens();
 	let body: React.ReactNode = null;
-	if (tab === "tasks") {
-		// Shell owns the one header; Tasks fills the pane as a single wide list.
-		body = (
-			<>
-				<PaneHeader title="Tasks" />
-				<TasksScreen headerMode="pane" />
-			</>
-		);
-	} else if (tab === "profile") {
+	if (tab === "profile") {
 		body = (
 			<>
 				<PaneHeader title="Profile" />
@@ -462,13 +455,10 @@ function NonMasterDetailPane({
 			</>
 		);
 	} else if (tab === "home") {
-		// Home: 2-column in landscape (wide), single column in portrait. Home owns
-		// its own greeting hero + in-content search pill (the header affordance), so
-		// the shell does NOT mount a redundant PaneHeader for it — still one header
-		// per pane (locked single-header convention).
-		body = (
-			<HomeScreen headerMode="pane" wide={orientation === "landscape"} />
-		);
+		// Today owns its own greeting + week strip, so the shell mounts no
+		// PaneHeader for it (locked single-header-per-pane convention). Today reads
+		// the iPad branch off useDevice itself, so it needs no pane props.
+		body = <TodayScreen />;
 	}
 	return (
 		<View

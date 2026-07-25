@@ -13,7 +13,7 @@ import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
+import { ArrowLeft, Bell, ChevronDown, Plus } from "lucide-react-native";
 import { fontFamily, radii, tracking, type, useTokens } from "@/lib/theme";
 import { Avatar, ScrollFade } from "@/components/ui";
 
@@ -26,6 +26,14 @@ interface AppHeaderProps {
 	mode?: HeaderMode;
 	home?: boolean;
 	titleSize?: number;
+	/**
+	 * Contextual create. Each surface supplies the ONE record type it can create
+	 * (Today → task, Work→Clients → client), which is what replaced the /create
+	 * mega-menu. Omit and no ＋ renders.
+	 */
+	onAdd?: () => void;
+	/** Required whenever `onAdd` is set — the ＋ is icon-only. */
+	addLabel?: string;
 }
 
 function initialsFrom(name?: string | null, email?: string | null): string {
@@ -44,6 +52,8 @@ export function AppHeader({
 	mode = "root",
 	home,
 	titleSize,
+	onAdd,
+	addLabel,
 }: AppHeaderProps) {
 	const t = useTokens();
 	const router = useRouter();
@@ -191,6 +201,18 @@ export function AppHeader({
 				<View style={{ flex: 1 }} />
 
 				{/* Constant right cluster (root + detail) */}
+				{onAdd ? (
+					<Pressable
+						onPress={onAdd}
+						style={styles.bareBtn}
+						hitSlop={10}
+						accessibilityRole="button"
+						accessibilityLabel={addLabel ?? "Create"}
+					>
+						<Plus size={22} color={t.ink} strokeWidth={2.2} />
+					</Pressable>
+				) : null}
+
 				<Pressable
 					onPress={() => router.push(NOTIFICATIONS)}
 					style={styles.bareBtn}

@@ -5,11 +5,11 @@ import { useRouter, type Href } from "expo-router";
 // BottomTabBarProps is vendored by expo-router (no standalone @react-navigation/bottom-tabs dep).
 import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs";
 import {
-	Home,
-	Users,
-	ListChecks,
-	Receipt,
-	Plus,
+	CalendarCheck,
+	Briefcase,
+	Route as RouteIcon,
+	Activity,
+	Sparkles,
 	type LucideIcon,
 } from "lucide-react-native";
 import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
@@ -18,13 +18,14 @@ import { ScrollFade } from "@/components/ui";
 // 10.5px labels need 4.5:1 — #8b9096 measured 3.22:1 on white.
 const INACTIVE = "#5f646b";
 
-// The four visible bar tabs in display order. The ＋ FAB is a non-route center
-// column rendered between Clients and Tasks.
+// Tabs are MODES, not entities — new record types land inside Work, new
+// day-surfaces inside Today, so the bar never runs out of slots again.
+// Symmetric 2+2 around the center assistant FAB (a non-route column).
 const TABS: { name: string; label: string; Icon: LucideIcon }[] = [
-	{ name: "index", label: "Home", Icon: Home },
-	{ name: "clients", label: "Clients", Icon: Users },
-	{ name: "tasks", label: "Tasks", Icon: ListChecks },
-	{ name: "money", label: "Money", Icon: Receipt },
+	{ name: "index", label: "Today", Icon: CalendarCheck },
+	{ name: "work", label: "Work", Icon: Briefcase },
+	{ name: "routes", label: "Routes", Icon: RouteIcon },
+	{ name: "activity", label: "Activity", Icon: Activity },
 ];
 
 export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
@@ -32,8 +33,8 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
 
-	// Route content for /create is supplied by Plan 24; cast keeps the typed router clean.
-	const CREATE: Href = "/create" as Href;
+	// Form-sheet route, not yet in the generated route types.
+	const ASSISTANT: Href = "/assistant" as Href;
 
 	const renderItem = (tab: (typeof TABS)[number]) => {
 		const routeIndex = state.routes.findIndex(
@@ -112,14 +113,16 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 				{renderItem(TABS[3])}
 			</View>
 
+			{/* The center column is the ASSISTANT, not create — manual creation moved
+			    to each surface's contextual header ＋. */}
 			<View style={styles.fabLayer} pointerEvents="box-none">
 				<Pressable
-					onPress={() => router.push(CREATE)}
+					onPress={() => router.push(ASSISTANT)}
 					style={[styles.fab, { backgroundColor: t.primarySolid }]}
 					accessibilityRole="button"
-					accessibilityLabel="Create"
+					accessibilityLabel="Assistant"
 				>
-					<Plus size={26} color="#fff" strokeWidth={2.4} />
+					<Sparkles size={25} color="#fff" strokeWidth={2.2} />
 				</Pressable>
 			</View>
 		</View>

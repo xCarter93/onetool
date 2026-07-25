@@ -13,16 +13,17 @@ interface WeekStripProps {
 	todayMs: number;
 	/** Open-task counts keyed by UTC-midnight ms (see `countTasksByDay`). */
 	counts: Map<number, number>;
-	/** Tapping a different day scopes the agenda to it. */
+	/** Tapping a day scopes the agenda to it. */
 	onSelectDay: (dayMs: number) => void;
-	/** Tapping the ALREADY-selected day opens the timed day-sheet. */
-	onOpenDay: (dayMs: number) => void;
 }
 
 /**
  * The persistent week strip under Today's greeting. It is the agenda's date
  * lens (it replaced the retired `Today | All tasks` segmented control) and a
  * passive weekly-workload read via the per-day dots.
+ *
+ * It picks the DATE only. The Agenda/Timeline toggle beneath it picks the
+ * representation — deliberately orthogonal, so neither control hides the other.
  */
 export function WeekStrip({
 	days,
@@ -30,7 +31,6 @@ export function WeekStrip({
 	todayMs,
 	counts,
 	onSelectDay,
-	onOpenDay,
 }: WeekStripProps) {
 	const t = useTokens();
 	const selected = utcDayStartMs(selectedDayMs);
@@ -53,14 +53,8 @@ export function WeekStrip({
 						accessibilityLabel={
 							isToday ? `Today, ${label}` : label
 						}
-						accessibilityHint={
-							isSelected
-								? "Opens the timed schedule for this day"
-								: "Shows this day's work"
-						}
-						onPress={() =>
-							isSelected ? onOpenDay(dayMs) : onSelectDay(dayMs)
-						}
+						accessibilityHint="Shows this day's work"
+						onPress={() => onSelectDay(dayMs)}
 						style={[
 							styles.cell,
 							isSelected && { backgroundColor: t.primarySolid },
@@ -69,7 +63,9 @@ export function WeekStrip({
 						<Text
 							style={[
 								styles.dow,
-								{ color: isSelected ? "rgba(255,255,255,0.85)" : t.faint },
+								// Full white, not 85% — 0.85 alpha composites to ~#d9eaf4 on
+									// primarySolid, which is 4.18:1 and fails AA at 10px.
+									{ color: isSelected ? "#ffffff" : t.faint },
 							]}
 						>
 							{DOW[d.getUTCDay()].toUpperCase()}

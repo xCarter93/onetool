@@ -1,10 +1,10 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { LayoutDashboard, CalendarDays } from "lucide-react-native";
+import { ListChecks, Clock, type LucideIcon } from "lucide-react-native";
 import { fontFamily, shadow, type, useTokens } from "@/lib/theme";
 import type { ViewMode } from "@/lib/useViewMode";
 
-// Re-export the single source of the type so consumers migrate off ViewToggle.tsx.
+// Re-export the single source of the type.
 export type { ViewMode };
 
 interface SegmentedToggleProps {
@@ -12,9 +12,9 @@ interface SegmentedToggleProps {
 	onChange: (mode: ViewMode) => void;
 }
 
-const SEGMENTS: { mode: ViewMode; label: string; Icon: typeof LayoutDashboard }[] = [
-	{ mode: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
-	{ mode: "calendar", label: "Calendar", Icon: CalendarDays },
+const SEGMENTS: { mode: ViewMode; label: string; Icon: LucideIcon }[] = [
+	{ mode: "agenda", label: "Agenda", Icon: ListChecks },
+	{ mode: "timeline", label: "Timeline", Icon: Clock },
 ];
 
 export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildAgenda,
 	countTasksByDay,
+	formatClockLabel,
 	minutesFromHHMM,
 	tomorrowPeek,
 	weekDaysFor,
@@ -192,5 +193,37 @@ describe("tomorrowPeek", () => {
 			count: 0,
 			firstStart: undefined,
 		});
+	});
+});
+
+describe("formatClockLabel", () => {
+	it("renders morning and afternoon times in 12-hour form", () => {
+		expect(formatClockLabel("08:00")).toBe("8:00 AM");
+		expect(formatClockLabel("8:05")).toBe("8:05 AM");
+		expect(formatClockLabel("13:30")).toBe("1:30 PM");
+		expect(formatClockLabel("17:45")).toBe("5:45 PM");
+	});
+
+	// The two hours where 12-hour arithmetic normally breaks.
+	it("renders both midnights as 12, not 0", () => {
+		expect(formatClockLabel("00:00")).toBe("12:00 AM");
+		expect(formatClockLabel("00:30")).toBe("12:30 AM");
+		expect(formatClockLabel("12:00")).toBe("12:00 PM");
+		expect(formatClockLabel("12:59")).toBe("12:59 PM");
+	});
+
+	it("crosses noon at the right minute", () => {
+		expect(formatClockLabel("11:59")).toBe("11:59 AM");
+		expect(formatClockLabel("23:59")).toBe("11:59 PM");
+	});
+
+	// Undefined (not a broken string) so callers can fall back to "Anytime".
+	it("returns undefined for untimed or unparseable input", () => {
+		expect(formatClockLabel(undefined)).toBeUndefined();
+		expect(formatClockLabel("")).toBeUndefined();
+		expect(formatClockLabel("noon")).toBeUndefined();
+		expect(formatClockLabel("24:00")).toBeUndefined();
+		expect(formatClockLabel("12:60")).toBeUndefined();
+		expect(formatClockLabel("8")).toBeUndefined();
 	});
 });
