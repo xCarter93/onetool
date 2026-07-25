@@ -42,7 +42,9 @@ export function TypeChips({ value, onChange, counts }: TypeChipsProps) {
 							selected
 								? {
 										backgroundColor: t.frostedBg,
-										borderColor: t.frostedBorder,
+										// A 10% wash reads as "white chip" in sunlight; the border does
+										// the real work at 4.8:1 against the surface.
+										borderColor: t.primarySolid,
 									}
 								: { backgroundColor: t.card, borderColor: t.line },
 							pressed && styles.pressed,

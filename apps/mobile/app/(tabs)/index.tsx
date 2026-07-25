@@ -19,11 +19,12 @@ import { DayTimeline } from "@/components/today/day-timeline";
 import {
 	buildAgenda,
 	countTasksByDay,
+	isDoneStatus,
 	tomorrowPeek,
 	weekDaysFor,
 	type AgendaTask,
 } from "@/lib/agenda";
-import { utcDayStartMs } from "@/lib/date";
+import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useViewMode } from "@/lib/useViewMode";
 import { useDevice } from "@/lib/use-device";
@@ -42,16 +43,16 @@ function greetingFor(hour: number): string {
  * strip picks the DATE, the Agenda/Timeline toggle picks the REPRESENTATION.
  * Both stay pinned above the scroll so neither can scroll away.
  *
- * Task dates are UTC-midnight ms (see lib/date.ts), so every day boundary here
- * is a UTC boundary. The greeting and the timeline's now-line are the only
- * local-clock reads — those track the human, not the record.
+ * Task dates are UTC-midnight date-ids, so they are COMPARED in UTC — but
+ * "today" is derived from the instant via the LOCAL calendar (see lib/date.ts).
+ * Mixing those up is what made Today roll over at 5pm Pacific.
  */
 export default function TodayScreen() {
 	const t = useTokens();
 	const { user } = useUser();
 	const { device } = useDevice();
 	const pane = device === "ipad";
-	const { viewMode, setViewMode } = useViewMode();
+	const { viewMode, setViewMode, hydrated } = useViewMode();
 
 	// Ticks once a minute so the greeting and the now-line stay honest across a
 	// long session. Async setState — not the synchronous-in-effect pattern this
@@ -62,9 +63,12 @@ export default function TodayScreen() {
 		return () => clearInterval(id);
 	}, []);
 
-	const todayMs = utcDayStartMs(nowMs);
+	// LOCAL calendar, not UTC — see lib/date.ts. Flooring the instant in UTC rolls
+	// "today" over at 5pm Pacific, which opened Today on tomorrow and marked the
+	// evening's in-progress jobs Overdue.
+	const todayMs = localDayStartMs(nowMs);
 	const [selectedDayMs, setSelectedDayMs] = useState(() =>
-		utcDayStartMs(Date.now()),
+		localDayStartMs(Date.now()),
 	);
 
 	// The strip is DERIVED from the selection, so jumping to tomorrow from the
@@ -83,8 +87,11 @@ export default function TodayScreen() {
 	const sentQuotes = useQuery(api.quotes.list, { status: "sent" });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
 	const completeTask = useMutation(api.tasks.complete);
+	const updateTask = useMutation(api.tasks.update);
 
-	const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+	// id -> optimistic done value. A Set can only express "became done", but the
+	// checkbox is a real toggle, so un-completing needs a false to store.
+	const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
 	const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
 
 	const clientNames = useMemo(() => {
@@ -116,6 +123,12 @@ export default function TodayScreen() {
 		[tasks, selectedDayMs, todayMs],
 	);
 	const counts = useMemo(() => countTasksByDay(tasks), [tasks]);
+	// The subscription follows the SELECTED week, so browsing away puts actual
+	// tomorrow outside it — and a zero count would render a confident, false
+	// "Nothing scheduled". Only show the peek when tomorrow is really in range.
+	const tomorrowMs = todayMs + DAY_MS;
+	const peekInRange =
+		tomorrowMs >= days[0] && tomorrowMs <= days[6] + 2 * DAY_MS - 1;
 	const peek = useMemo(() => tomorrowPeek(tasks, todayMs), [tasks, todayMs]);
 	const dayTasks = useMemo(
 		() =>
@@ -124,6 +137,18 @@ export default function TodayScreen() {
 					task.date !== undefined && utcDayStartMs(task.date) === selectedDayMs,
 			),
 		[tasks, selectedDayMs],
+	);
+
+	// Effective done state = optimistic override, else server status. Derived (not
+	// an override log) so it collapses back to the server value on its own.
+	const doneIds = useMemo(
+		() =>
+			new Set(
+				tasks
+					.filter((task) => overrides.get(task._id) ?? isDoneStatus(task.status))
+					.map((task) => task._id),
+			),
+		[tasks, overrides],
 	);
 
 	const attention = useMemo(
@@ -143,18 +168,26 @@ export default function TodayScreen() {
 		[sentQuotes, overdueInvoices],
 	);
 
-	// Optimistic complete: flip locally, then call; roll the flip back on throw.
+	// Optimistic toggle: flip locally, then call; drop the override on throw.
+	// `tasks.complete` throws on an already-completed task, so the un-complete
+	// direction has to go through `update` — a checkbox that only ever completes
+	// would make its own "Mark not done" label a lie.
 	const handleToggle = async (id: string) => {
 		if (updatingIds.has(id)) return;
-		setCompletedIds((prev) => new Set(prev).add(id));
+		const next = !doneIds.has(id);
+		setOverrides((prev) => new Map(prev).set(id, next));
 		setUpdatingIds((prev) => new Set(prev).add(id));
 		try {
-			await completeTask({ id: id as Id<"tasks"> });
+			if (next) {
+				await completeTask({ id: id as Id<"tasks"> });
+			} else {
+				await updateTask({ id: id as Id<"tasks">, status: "pending" });
+			}
 		} catch {
-			setCompletedIds((prev) => {
-				const next = new Set(prev);
-				next.delete(id);
-				return next;
+			setOverrides((prev) => {
+				const m = new Map(prev);
+				m.delete(id);
+				return m;
 			});
 		} finally {
 			setUpdatingIds((prev) => {
@@ -201,7 +234,13 @@ export default function TodayScreen() {
 				<SegmentedToggle value={viewMode} onChange={setViewMode} />
 			</View>
 
-			{viewMode === "timeline" ? (
+			{/* Urgency is representation-independent — a Timeline user (the mode is
+			    persisted) must still see it. */}
+			<View style={styles.attention}>
+				<AttentionLine items={attention} onPress={() => router.push(WORK)} />
+			</View>
+
+			{!hydrated ? null : viewMode === "timeline" ? (
 				<DayTimeline
 					dayMs={selectedDayMs}
 					tasks={dayTasks}
@@ -209,7 +248,7 @@ export default function TodayScreen() {
 					nowMinutes={nowDate.getHours() * 60 + nowDate.getMinutes()}
 					onPressTask={(id) => router.push(`/tasks/form?taskId=${id}` as Href)}
 					onToggleComplete={handleToggle}
-					completedIds={completedIds}
+					completedIds={doneIds}
 					updatingIds={updatingIds}
 				/>
 			) : (
@@ -218,8 +257,6 @@ export default function TodayScreen() {
 					contentContainerStyle={styles.scrollBody}
 					showsVerticalScrollIndicator={false}
 				>
-					<AttentionLine items={attention} onPress={() => router.push(WORK)} />
-
 					{groups.length === 0 ? (
 						<View style={[styles.empty, { borderColor: t.line }]}>
 							<Text style={[styles.emptyTitle, { color: t.ink }]}>
@@ -250,7 +287,7 @@ export default function TodayScreen() {
 										<AgendaRow
 											key={task._id}
 											task={task}
-											completed={completedIds.has(task._id)}
+											completed={doneIds.has(task._id)}
 											updating={updatingIds.has(task._id)}
 											last={i === group.tasks.length - 1}
 											onToggle={() => handleToggle(task._id)}
@@ -264,11 +301,13 @@ export default function TodayScreen() {
 						))
 					)}
 
-					<TomorrowPeek
-						count={peek.count}
-						firstStart={peek.firstStart}
-						onPress={() => setSelectedDayMs(todayMs + DAY_MS)}
-					/>
+					{peekInRange ? (
+						<TomorrowPeek
+							count={peek.count}
+							firstStart={peek.firstStart}
+							onPress={() => setSelectedDayMs(tomorrowMs)}
+						/>
+					) : null}
 				</ScrollView>
 			)}
 		</View>
@@ -283,6 +322,9 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 18,
 		gap: 10,
 		paddingBottom: 12,
+	},
+	attention: {
+		paddingHorizontal: 18,
 	},
 	scroll: {
 		flex: 1,

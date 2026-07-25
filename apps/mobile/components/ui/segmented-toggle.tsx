@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { ListChecks, Clock, type LucideIcon } from "lucide-react-native";
-import { fontFamily, shadow, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
 import type { ViewMode } from "@/lib/useViewMode";
 
 // Re-export the single source of the type.
@@ -20,14 +20,17 @@ const SEGMENTS: { mode: ViewMode; label: string; Icon: LucideIcon }[] = [
 export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
 	const t = useTokens();
 	return (
-		<View style={[styles.container, { backgroundColor: t.secondary }]}>
+		<View
+			style={[styles.container, { backgroundColor: t.secondary }]}
+			accessibilityRole="tablist"
+		>
 			{SEGMENTS.map(({ mode, label, Icon }) => {
 				const active = value === mode;
 				return (
 					<Pressable
 						key={mode}
 						onPress={() => onChange(mode)}
-						accessibilityRole="button"
+						accessibilityRole="tab"
 						accessibilityState={{ selected: active }}
 						style={[
 							styles.segment,
@@ -61,7 +64,7 @@ export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
 const styles = StyleSheet.create({
 	container: {
 		flexDirection: "row",
-		borderRadius: 9,
+		borderRadius: radii.xl,
 		padding: 3,
 	},
 	segment: {
@@ -73,7 +76,7 @@ const styles = StyleSheet.create({
 		minHeight: 44,
 		paddingVertical: 8,
 		paddingHorizontal: 16,
-		borderRadius: 7,
+		borderRadius: radii.sm,
 	},
 	label: {
 		fontSize: type.sm,

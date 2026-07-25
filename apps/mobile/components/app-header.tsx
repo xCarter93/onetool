@@ -14,7 +14,7 @@ import { useOrganization, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown, Plus } from "lucide-react-native";
-import { fontFamily, radii, tracking, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, tokens, tracking, type, useTokens } from "@/lib/theme";
 import { Avatar, ScrollFade } from "@/components/ui";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
@@ -148,7 +148,7 @@ export function AppHeader({
 							style={[
 								StyleSheet.absoluteFill,
 								{
-									backgroundColor: "rgba(246,247,248,0.55)",
+									backgroundColor: `${t.bg}8C`,
 									borderBottomWidth: 1,
 									borderBottomColor: t.line,
 								},
@@ -205,7 +205,6 @@ export function AppHeader({
 					<Pressable
 						onPress={onAdd}
 						style={styles.bareBtn}
-						hitSlop={10}
 						accessibilityRole="button"
 						accessibilityLabel={addLabel ?? "Create"}
 					>
@@ -216,7 +215,6 @@ export function AppHeader({
 				<Pressable
 					onPress={() => router.push(NOTIFICATIONS)}
 					style={styles.bareBtn}
-					hitSlop={10}
 					accessibilityRole="button"
 					accessibilityLabel={
 						unreadCount > 0
@@ -237,7 +235,7 @@ export function AppHeader({
 
 				<Pressable
 					onPress={() => router.push("/(tabs)/profile")}
-					hitSlop={10}
+					style={styles.bareBtn}
 					accessibilityRole="button"
 					accessibilityLabel="Profile"
 				>
@@ -280,7 +278,7 @@ const styles = StyleSheet.create({
 	topRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 14,
+		gap: 6,
 		paddingHorizontal: 18,
 		// Breathing room below the icon row so screen content / the title block
 		// never sits flush against it (notably on detail screens with no title).
@@ -291,7 +289,7 @@ const styles = StyleSheet.create({
 		width: 40,
 		height: 40,
 		borderRadius: radii.xl,
-		backgroundColor: "#fff",
+		backgroundColor: tokens.card,
 		borderWidth: 1,
 		alignItems: "center",
 		justifyContent: "center",
@@ -310,8 +308,8 @@ const styles = StyleSheet.create({
 		position: "relative",
 		alignItems: "center",
 		justifyContent: "center",
-		width: 24,
-		height: 24,
+		width: 44,
+		height: 44,
 		flexShrink: 0,
 	},
 	orgTile: {
@@ -319,7 +317,7 @@ const styles = StyleSheet.create({
 		height: 26,
 		borderRadius: 7,
 		experimental_backgroundImage:
-			"linear-gradient(135deg, #00a6f4, #0077c2)",
+			`linear-gradient(135deg, ${tokens.primary}, ${tokens.primarySolid})`,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
@@ -337,14 +335,17 @@ const styles = StyleSheet.create({
 	// Presence dot, not a counter — the count lives on the notifications screen.
 	unreadDot: {
 		position: "absolute",
-		top: -1,
-		right: -1,
+		top: 10,
+		right: 10,
 		width: 8,
 		height: 8,
 		borderRadius: 4,
 		borderWidth: 1.5,
 	},
 	paneTitle: {
+		// topRow's gap tightened to 6 for the 44pt right-cluster buttons; the pane
+		// title still wants breathing room from the back arrow.
+		marginLeft: 8,
 		fontFamily: fontFamily.semibold,
 		fontSize: type.h2,
 		flexShrink: 1,

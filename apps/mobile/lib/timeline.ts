@@ -8,15 +8,21 @@
 
 import { minutesFromHHMM, type AgendaTask } from "@/lib/agenda";
 
-/** Pixels per hour. 72 ⇒ a 30-minute job is 36px, tall enough for a checkbox. */
-export const HOUR_HEIGHT = 72;
+/**
+ * Pixels per hour. 88, not 72, so a 30-MINUTE job paints exactly 44px and can
+ * therefore carry a completion checkbox (see `CHECKBOX_MIN_HEIGHT`). Half-hour
+ * visits are the common case in field service; at 72 they fell 8px short and lost
+ * the control. Lowering this silently takes that control away again — the
+ * `minutesToPx(30) >= CHECKBOX_MIN_HEIGHT` assertion is the guard.
+ */
+export const HOUR_HEIGHT = 88;
 
 /** A start with no usable end (missing, or at/before the start) gets one hour. */
 export const DEFAULT_DURATION_MINUTES = 60;
 
 /**
- * Floor on a block's rendered duration (24px at HOUR_HEIGHT 72) — enough for one
- * line of title, so no block can be too short to name itself. Collision
+ * Floor on a block's rendered duration (29.3px at HOUR_HEIGHT 88) — enough for
+ * one line of title, so no block can be too short to name itself. Collision
  * detection uses the SAME floored interval, so two 5-minute jobs 10 minutes
  * apart still split into columns instead of painting over each other.
  */
@@ -33,8 +39,14 @@ export const MAX_HOUR = 24;
 /** Project touch minimum, mirrored here so this module stays RN-free. */
 export const TOUCH_MIN = 44;
 
-/** Below this painted height a block has no room for a complete-checkbox. */
-export const CHECKBOX_MIN_HEIGHT = 34;
+/**
+ * Below this painted height a block offers no complete-checkbox. It equals
+ * `TOUCH_MIN` because RN does not hit-test outside a parent's bounds: a checkbox
+ * inside a shorter block could never reach 44pt vertically, and a near-miss would
+ * fall through to the block's own press (opening the form instead of completing
+ * the job). Short blocks are completed from the Agenda view mode instead.
+ */
+export const CHECKBOX_MIN_HEIGHT = TOUCH_MIN;
 
 /** Below this painted height a block shows its title only (no context line). */
 export const BLOCK_META_MIN_HEIGHT = 52;
@@ -210,11 +222,16 @@ function applyHitSlop(blocks: TimelineBlock[], gridHeight: number): void {
 		}
 		freeAbove = Math.max(0, freeAbove);
 		freeBelow = Math.max(0, freeBelow);
-		let slopTop = Math.min(freeAbove, Math.floor(need / 2));
+		// Deliberately NOT rounded to whole pixels. Block heights are fractional at
+		// most HOUR_HEIGHT values (20 min at 88 paints 29.33px), so truncating the
+		// two halves lost up to 1px and put the target UNDER 44. Each side is still
+		// capped at half the gap, which is what makes tap areas non-overlapping —
+		// that bound holds for fractional values exactly as it did for integers.
+		let slopTop = Math.min(freeAbove, need / 2);
 		const slopBottom = Math.min(freeBelow, need - slopTop);
 		slopTop = Math.min(freeAbove, need - slopBottom);
-		block.hitSlopTop = Math.floor(slopTop);
-		block.hitSlopBottom = Math.floor(slopBottom);
+		block.hitSlopTop = slopTop;
+		block.hitSlopBottom = slopBottom;
 	}
 }
 

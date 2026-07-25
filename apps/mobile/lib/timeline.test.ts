@@ -40,11 +40,17 @@ describe("constants", () => {
 	it("keep the block thresholds ordered and the grid legible", () => {
 		expect(minutesToPx(60)).toBe(HOUR_HEIGHT);
 		expect(minutesToPx(MIN_BLOCK_MINUTES)).toBeGreaterThan(0);
-		// A floored block must fit one line of title; a 30-minute job must clear the
-		// checkbox threshold; the context line needs strictly more room again.
+		// A floored block must fit one line of title; the context line needs strictly
+		// more room again.
 		expect(minutesToPx(MIN_BLOCK_MINUTES)).toBeGreaterThanOrEqual(20);
-		expect(minutesToPx(30)).toBeGreaterThanOrEqual(CHECKBOX_MIN_HEIGHT);
 		expect(BLOCK_META_MIN_HEIGHT).toBeGreaterThan(CHECKBOX_MIN_HEIGHT);
+		// The reason HOUR_HEIGHT is 88: a HALF-HOUR visit — the common case in field
+		// service — must be tall enough to carry its own completion checkbox. Drop
+		// the density and this fails rather than silently removing the control.
+		expect(minutesToPx(30)).toBeGreaterThanOrEqual(CHECKBOX_MIN_HEIGHT);
+		// RN clips hit-testing at the parent's bounds, so a block may only offer a
+		// checkbox when it is itself tall enough to contain a 44pt target.
+		expect(CHECKBOX_MIN_HEIGHT).toBeGreaterThanOrEqual(TOUCH_MIN);
 		expect(DEFAULT_END_HOUR).toBeGreaterThan(DEFAULT_START_HOUR);
 	});
 });
@@ -283,6 +289,43 @@ describe("layoutDay — columns", () => {
 		for (const b of blocks) expect(b.columnCount).toBe(2);
 	});
 
+	it("breaks an exact start+end tie deterministically, whatever the input order", () => {
+		// Identical intervals exhaust the time comparators, so title then _id decide.
+		const forward = layoutDay([
+			task("alpha", "09:00", "10:00"),
+			task("beta", "09:00", "10:00"),
+		]);
+		const reversed = layoutDay([
+			task("beta", "09:00", "10:00"),
+			task("alpha", "09:00", "10:00"),
+		]);
+		for (const layout of [forward, reversed]) {
+			const map = byId(layout.blocks);
+			expect(map.get("alpha")!.columnIndex).toBe(0);
+			expect(map.get("beta")!.columnIndex).toBe(1);
+			expect(map.get("alpha")!.columnCount).toBe(2);
+			expect(map.get("alpha")!.top).toBe(map.get("beta")!.top);
+			expect(map.get("alpha")!.height).toBe(map.get("beta")!.height);
+		}
+		expect(ids(forward.blocks)).toEqual(ids(reversed.blocks));
+
+		// Same interval AND same title: _id is the last resort and still total.
+		const same = { title: "Same job" };
+		const byIdForward = layoutDay([
+			task("z-late", "09:00", "10:00", same),
+			task("a-early", "09:00", "10:00", same),
+		]);
+		const byIdReversed = layoutDay([
+			task("a-early", "09:00", "10:00", same),
+			task("z-late", "09:00", "10:00", same),
+		]);
+		for (const layout of [byIdForward, byIdReversed]) {
+			expect(byId(layout.blocks).get("a-early")!.columnIndex).toBe(0);
+			expect(byId(layout.blocks).get("z-late")!.columnIndex).toBe(1);
+		}
+		expect(ids(byIdForward.blocks)).toEqual(ids(byIdReversed.blocks));
+	});
+
 	it("starts a fresh cluster after a gap so a later pair is unaffected", () => {
 		const { blocks } = layoutDay([
 			task("solo", "08:00", "08:45"),
@@ -448,6 +491,20 @@ describe("layoutDay — geometry invariants", () => {
 		);
 	});
 
+	it("keeps every tap area inside the grid, slop included", () => {
+		const layout = layoutDay(messy);
+		for (const b of layout.blocks) {
+			// Slop may never reach above the grid origin or past its painted bottom;
+			// either would put a tap target on chrome the user cannot see.
+			expect(b.top - b.hitSlopTop).toBeGreaterThanOrEqual(0);
+			expect(b.top + b.height + b.hitSlopBottom).toBeLessThanOrEqual(
+				layout.gridHeight,
+			);
+			expect(b.hitSlopTop).toBeGreaterThanOrEqual(0);
+			expect(b.hitSlopBottom).toBeGreaterThanOrEqual(0);
+		}
+	});
+
 	it("positions tops proportionally to the grid origin", () => {
 		const layout = layoutDay([task("a", "09:00", "10:00")]);
 		expect(layout.range.startHour).toBe(DEFAULT_START_HOUR);
@@ -478,6 +535,55 @@ describe("layoutDay — hit slop", () => {
 		expect(
 			block.height + block.hitSlopTop + block.hitSlopBottom,
 		).toBeLessThanOrEqual(TOUCH_MIN);
+	});
+
+	it("reaches the full 44pt for a short block with open space both sides", () => {
+		// The load-bearing assertion: the slop must make up the WHOLE deficit, not
+		// merely "some" of it. Both halves are exact — no whole-pixel truncation,
+		// which at HOUR_HEIGHT 88 would land at 43.33 and miss the gate.
+		const block = layoutDay([task("quick", "09:00", "09:05")]).blocks[0];
+		const need = TOUCH_MIN - minutesToPx(MIN_BLOCK_MINUTES);
+		expect(block.height).toBe(minutesToPx(MIN_BLOCK_MINUTES));
+		expect(block.hitSlopTop).toBe(need / 2);
+		expect(block.hitSlopBottom).toBe(need / 2);
+		expect(block.height + block.hitSlopTop + block.hitSlopBottom).toBe(TOUCH_MIN);
+	});
+
+	it("ignores a block that overlaps it in another column when granting slop", () => {
+		// The tall job spans the short one, so it is neither above nor below it and
+		// must not eat into either half-gap; the columns already separate them.
+		const layout = layoutDay([
+			task("long", "09:00", "11:00"),
+			task("short", "09:30", "09:35"),
+		]);
+		const map = byId(layout.blocks);
+		const long = map.get("long")!;
+		const short = map.get("short")!;
+		expect(long.columnIndex).not.toBe(short.columnIndex);
+		expect(short.top).toBeGreaterThan(long.top);
+		expect(short.top + short.height).toBeLessThan(long.top + long.height);
+		expect(short.height + short.hitSlopTop + short.hitSlopBottom).toBe(TOUCH_MIN);
+	});
+
+	it("redistributes slop upward when the space below is too tight", () => {
+		// The 5-minute gap below is claimable only up to its half, so the remainder
+		// must come out of the open sky above rather than being forfeited.
+		const gapBelow = 5;
+		const layout = layoutDay([
+			task("short", "09:00", "09:05"),
+			task("below", `09:${MIN_BLOCK_MINUTES + gapBelow}`, "10:00"),
+		]);
+		const short = byId(layout.blocks).get("short")!;
+		const need = TOUCH_MIN - short.height;
+		const claimableBelow = minutesToPx(gapBelow) / 2;
+		// toBeCloseTo for the two halves only: the implementation derives the gap from
+		// absolute grid pixels (~1000px), so its low-order bits differ from this
+		// small-number derivation by ~1e-14. The totals below are exact.
+		expect(short.hitSlopBottom).toBeCloseTo(claimableBelow, 9);
+		expect(short.hitSlopTop).toBeCloseTo(need - claimableBelow, 9);
+		expect(short.hitSlopTop).toBeGreaterThan(need / 2);
+		expect(short.hitSlopTop + short.hitSlopBottom).toBe(need);
+		expect(short.height + short.hitSlopTop + short.hitSlopBottom).toBe(TOUCH_MIN);
 	});
 
 	it("gives a tall block no slop at all", () => {

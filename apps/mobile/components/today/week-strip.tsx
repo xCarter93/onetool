@@ -1,6 +1,13 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { fontFamily, radii, touch, tracking, useTokens } from "@/lib/theme";
+import {
+	fontFamily,
+	radii,
+	touch,
+	tracking,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { MAX_WORKLOAD_DOTS, workloadDots } from "@/lib/agenda";
 import { utcDayStartMs } from "@/lib/date";
 
@@ -42,7 +49,8 @@ export function WeekStrip({
 				const isSelected = dayMs === selected;
 				const isToday = dayMs === today;
 				const d = new Date(dayMs);
-				const dots = workloadDots(counts.get(dayMs) ?? 0);
+				const count = counts.get(dayMs) ?? 0;
+				const dots = workloadDots(count);
 				const label = `${DOW[d.getUTCDay()]} ${d.getUTCDate()}`;
 
 				return (
@@ -50,9 +58,11 @@ export function WeekStrip({
 						key={dayMs}
 						accessibilityRole="tab"
 						accessibilityState={{ selected: isSelected }}
-						accessibilityLabel={
-							isToday ? `Today, ${label}` : label
-						}
+						accessibilityLabel={[
+							isToday ? `Today, ${label}` : label,
+							// The dots encode workload but are invisible to a screen reader.
+							count > 0 ? `${count} ${count === 1 ? "task" : "tasks"}` : "no tasks",
+						].join(", ")}
 						accessibilityHint="Shows this day's work"
 						onPress={() => onSelectDay(dayMs)}
 						style={[
@@ -129,7 +139,7 @@ const styles = StyleSheet.create({
 	},
 	dow: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 10,
+		fontSize: type.micro,
 		letterSpacing: tracking.groupLabel,
 	},
 	num: {

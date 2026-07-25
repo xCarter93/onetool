@@ -114,7 +114,9 @@ export const tokens = {
 	// Control boundaries and information-carrying dots need 3:1. The mockup's
 	// #c8cdd2 is 1.6:1 — an effectively invisible checkbox.
 	checkbox: "#8b9096", // 3.22 / 3.00
-	dot: "#8b9096", // week-strip workload dots (they encode load, so 3:1 applies)
+	// Workload dots encode load, so 3:1 applies. #8b9096 measured exactly 3.00 on
+	// `bg` — no margin at all — so `dot` is a step darker than `checkbox`.
+	dot: "#82878d", // 3.38 on bg
 
 	// Chart ramp (web parity)
 	chart1: "#0084d1",

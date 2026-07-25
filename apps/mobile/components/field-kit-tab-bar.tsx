@@ -15,8 +15,8 @@ import {
 import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
 import { ScrollFade } from "@/components/ui";
 
-// 10.5px labels need 4.5:1 — #8b9096 measured 3.22:1 on white.
-const INACTIVE = "#5f646b";
+// 10.5px labels need 4.5:1 — #8b9096 measured 3.22:1 on white, so inactive
+// items take the secondary ink ramp (5.96:1).
 
 // Tabs are MODES, not entities — new record types land inside Work, new
 // day-surfaces inside Today, so the bar never runs out of slots again.
@@ -43,8 +43,8 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 		const active = routeIndex !== -1 && state.index === routeIndex;
 		// A glyph only needs 3:1, so the icon keeps the lighter blue; the LABEL
 		// needs 4.5:1, so it takes the deeper frostedInk.
-		const iconColor = active ? t.primaryInk : INACTIVE;
-		const labelColor = active ? t.frostedInk : INACTIVE;
+		const iconColor = active ? t.primaryInk : t.sub;
+		const labelColor = active ? t.frostedInk : t.sub;
 		const { Icon } = tab;
 
 		const onPress = () => {
@@ -107,8 +107,12 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 				<ScrollFade edge="bottom" />
 				{renderItem(TABS[0])}
 				{renderItem(TABS[1])}
-				{/* Reserved center slot — the FAB itself is positioned by the wrapper. */}
-				<View style={styles.fabSlot} />
+				{/* Reserved center slot — the FAB floats above it, so the caption lives
+				    here and the bar keeps all five columns labelled. An unlabelled glyph
+				    in the most prominent slot reads as "create" to everyone. */}
+				<View style={styles.fabSlot}>
+					<Text style={[styles.fabLabel, { color: t.sub }]}>Assistant</Text>
+				</View>
 				{renderItem(TABS[2])}
 				{renderItem(TABS[3])}
 			</View>
@@ -154,6 +158,14 @@ const styles = StyleSheet.create({
 	fabSlot: {
 		width: 80,
 		flexShrink: 0,
+		alignItems: "center",
+		// Mirrors an item's icon+gap stack so the caption baselines align.
+		paddingTop: 5 + 22 + 3,
+		paddingBottom: 4,
+	},
+	fabLabel: {
+		fontSize: type.micro,
+		fontFamily: fontFamily.medium,
 	},
 	item: {
 		flex: 1,

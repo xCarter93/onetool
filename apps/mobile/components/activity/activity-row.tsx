@@ -111,7 +111,9 @@ export function ActivityRow({
 				</View>
 			</View>
 			<Text style={[styles.stamp, { color: t.faint }]}>{stamp}</Text>
-			{onPress ? <ChevronRight size={16} color={t.faintDecor} /> : null}
+			{onPress ? <ChevronRight size={16} color={// Informational, not decorative: the chevron is the only cue that this
+					// row navigates while an unlinked neighbour does not, so it owes 3:1.
+					t.checkbox} /> : null}
 		</Pressable>
 	);
 }

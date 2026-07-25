@@ -43,7 +43,7 @@ export function SearchField({
 					// Painted box is 26 wide but fills the 46pt bar height; hitSlop
 					// widens it to 44 WITHOUT leaving the bar's bounds (RN does not
 					// hit-test outside a parent).
-					hitSlop={{ left: 9, right: 9 }}
+					hitSlop={{ left: 4, right: 9 }}
 					style={styles.clear}
 					accessibilityRole="button"
 					accessibilityLabel="Clear search"

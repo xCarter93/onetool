@@ -98,6 +98,11 @@ function byStartTime(a: AgendaTask, b: AgendaTask): number {
 
 const DONE = new Set(["completed", "cancelled"]);
 
+/** Single source of "this task is finished" — statuses that end a task's life. */
+export function isDoneStatus(status?: string): boolean {
+	return DONE.has(status ?? "");
+}
+
 /**
  * Group one day's tasks into the Today feed's sections.
  *

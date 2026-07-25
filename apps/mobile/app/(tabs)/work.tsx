@@ -234,7 +234,19 @@ export default function WorkScreen() {
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			<AppHeader mode="root" title="Work" />
+			{/* Contextual create: the active chip decides the record type. Clients is
+			    the default because it is the only other create surface mobile hosts
+			    (quotes/invoices/projects stay web-only at 2.0). */}
+			<AppHeader
+				mode="root"
+				title="Work"
+				onAdd={
+					kind === null || kind === "client"
+						? () => router.push("/clients/new" as Href)
+						: undefined
+				}
+				addLabel="New client"
+			/>
 
 			{/* Controls stay pinned — a search-first surface must not scroll its
 			    own search field away. */}

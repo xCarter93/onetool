@@ -9,7 +9,7 @@ import {
 	type DimensionValue,
 } from "react-native";
 import { CalendarClock, Check } from "lucide-react-native";
-import type { AgendaTask } from "@/lib/agenda";
+import { isDoneStatus, type AgendaTask } from "@/lib/agenda";
 import { utcDayStartMs } from "@/lib/date";
 import {
 	BLOCK_META_MIN_HEIGHT,
@@ -58,8 +58,8 @@ const CHECKBOX = 22;
 const RAIL = 3;
 /** Inset between adjacent columns so overlapping blocks read as separate. */
 const COLUMN_GAP = 3;
-
-const DONE_STATUSES = new Set(["completed", "cancelled"]);
+/** 22 + 11 + 11 = 44 exactly. Any less and the checkbox misses the touch gate. */
+const CHECKBOX_SLOP = 11;
 
 // Semantic block color comes from the shared maps only. `pending` is the ABSENCE
 // of signal, so it takes the neutral task record tint instead of STATUS's warn
@@ -117,13 +117,17 @@ export function DayTimeline({
 	// Mount anchor is frozen so a clock tick can never yank the user's scroll
 	// position back to "now". `contentOffset` applies it before first paint.
 	const [initialOffset] = useState(() => initialScrollOffset(layout, nowOffset));
-	const scrolledDayRef = useRef(day);
+	const anchoredRef = useRef({ day, startHour: layout.range.startHour });
 
-	// Re-anchor only when the caller swaps in a different day; the guard makes the
-	// per-minute `nowOffset` churn a no-op.
+	// Re-anchor on a day swap, and on a `startHour` change — a cold start that
+	// mounted with zero tasks froze `initialOffset` against the default window, so
+	// when the query resolves with earlier work the grid origin moves under the
+	// already-applied offset. Both guards make per-minute `nowOffset` churn a no-op.
 	useEffect(() => {
-		if (scrolledDayRef.current === day) return;
-		scrolledDayRef.current = day;
+		const { startHour } = layout.range;
+		const anchored = anchoredRef.current;
+		if (anchored.day === day && anchored.startHour === startHour) return;
+		anchoredRef.current = { day, startHour };
 		scrollRef.current?.scrollTo({
 			y: initialScrollOffset(layout, nowOffset),
 			animated: false,
@@ -165,8 +169,7 @@ export function DayTimeline({
 					<View style={styles.chips}>
 						{layout.untimed.map((task) => {
 							const isDone =
-								completedIds.has(task._id) ||
-								DONE_STATUSES.has(task.status ?? "");
+								completedIds.has(task._id) || isDoneStatus(task.status);
 							return (
 								<Pressable
 									key={task._id}
@@ -231,7 +234,7 @@ export function DayTimeline({
 							block={block}
 							isDone={
 								completedIds.has(block.task._id) ||
-								DONE_STATUSES.has(block.task.status ?? "")
+								isDoneStatus(block.task.status)
 							}
 							isUpdating={updatingIds.has(block.task._id)}
 							onPressTask={onPressTask}
@@ -282,8 +285,9 @@ function Block({
 	const { task, height } = block;
 	const tone = toneFor(task.status, isDone);
 	const showMeta = height >= BLOCK_META_MIN_HEIGHT && Boolean(task.context);
-	// A block shorter than this cannot host a checkbox at all — tapping it opens
-	// the task, and the Agenda view mode carries the full-size checkbox.
+	// A shorter block cannot honor a 44pt checkbox (RN clips hit-testing at the
+	// parent's bounds), so it offers none — tapping it opens the task, and the
+	// Agenda view mode carries the full-size checkbox.
 	const showBox = height >= CHECKBOX_MIN_HEIGHT;
 	const timeText = `${clockLabel(block.startMinutes)} – ${clockLabel(
 		block.endMinutes,
@@ -378,7 +382,7 @@ function CompleteBox({
 		<Pressable
 			onPress={onPress}
 			disabled={isUpdating}
-			hitSlop={10}
+			hitSlop={CHECKBOX_SLOP}
 			accessibilityRole="checkbox"
 			accessibilityState={{ checked: isDone, disabled: isUpdating }}
 			accessibilityLabel={`${isDone ? "Mark not complete" : "Mark complete"}: ${title}`}
@@ -405,6 +409,9 @@ const styles = StyleSheet.create({
 	root: {
 		flex: 1,
 		gap: 10,
+		// Matches the gutter the Today screen's pinned controls and Agenda body use,
+		// so switching view modes doesn't shift the content frame.
+		marginHorizontal: 18,
 	},
 
 	// --- Anytime strip ---------------------------------------------------------
@@ -553,6 +560,8 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
+		// Same gutter as `root`, so an empty day doesn't shift the content edge.
+		marginHorizontal: 18,
 		paddingHorizontal: spacing.lg,
 		paddingVertical: 48,
 	},
