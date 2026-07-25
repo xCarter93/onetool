@@ -8,12 +8,14 @@ import {
 	type ViewStyle,
 } from "react-native";
 import { ChevronRight, icons } from "lucide-react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Badge } from "./badge";
 
 interface ListRowProps {
 	icon?: keyof typeof icons;
 	iconColor?: string;
+	/** Tile fill; defaults to a 8%-alpha wash of `iconColor`. */
+	iconBg?: string;
 	avatar?: React.ReactNode;
 	title: string;
 	sub?: string;
@@ -31,6 +33,7 @@ interface ListRowProps {
 export function ListRow({
 	icon,
 	iconColor,
+	iconBg,
 	avatar,
 	title,
 	sub,
@@ -44,27 +47,44 @@ export function ListRow({
 }: ListRowProps) {
 	const t = useTokens();
 	const Glyph = icon ? icons[icon] : null;
-	const tileColor = iconColor || t.accent;
+	// Neutral by default — blue is for actions and active states, not list chrome.
+	const tileColor = iconColor || t.sub;
 
 	return (
 		<Pressable
+			accessibilityRole={onPress ? "button" : undefined}
+			accessibilityState={selected ? { selected: true } : undefined}
 			onPress={onPress}
 			style={({ pressed }) => [
 				styles.row,
-				{ borderBottomColor: t.line, borderBottomWidth: last ? 0 : 1 },
-				selected && {
-					backgroundColor: t.accentSoft,
-					borderLeftWidth: 3,
-					borderLeftColor: t.accent,
-				},
+				{ borderBottomColor: t.lineSoft, borderBottomWidth: last ? 0 : 1 },
 				containerStyle,
+				// AFTER containerStyle: a caller's base card style is usually
+				// `backgroundColor: t.card` too, so ordering this first made the
+				// highlight invisible — the iPad detail pane had no visible source row.
+				// Frosted fill (an active state, not chrome) but the border is
+				// primarySolid: frostedBg alone composites to 1.10:1 on the page and
+				// frostedBorder to 1.34:1, so neither can carry a state indicator.
+				// primarySolid is 4.8:1 on the page and 4.4:1 on the fill.
+				selected && {
+					backgroundColor: t.frostedBg,
+					borderWidth: 1,
+					borderColor: t.primarySolid,
+					borderRadius: radii.xl,
+					borderBottomWidth: 1,
+				},
 				pressed && styles.pressed,
 			]}
 		>
 			{avatar}
 			{Glyph && !avatar ? (
-				<View style={[styles.tile, { backgroundColor: tileColor + "14" }]}>
-					<Glyph size={20} color={tileColor} />
+				<View
+					style={[
+						styles.tile,
+						{ backgroundColor: iconBg ?? tileColor + "14" },
+					]}
+				>
+					<Glyph size={17} color={tileColor} />
 				</View>
 			) : null}
 			<View style={styles.body}>
@@ -79,7 +99,7 @@ export function ListRow({
 			</View>
 			{status ? <Badge status={status} /> : null}
 			{right}
-			{showChevron ? <ChevronRight size={18} color={t.faint} /> : null}
+			{showChevron ? <ChevronRight size={17} color={t.faint} /> : null}
 		</Pressable>
 	);
 }
@@ -88,14 +108,14 @@ const styles = StyleSheet.create({
 	row: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
+		gap: 11,
 		paddingVertical: 12,
-		paddingHorizontal: 4,
+		paddingHorizontal: 12,
 	},
 	tile: {
-		width: 40,
-		height: 40,
-		borderRadius: 12,
+		width: 32,
+		height: 32,
+		borderRadius: 9,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
@@ -106,11 +126,11 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 13,
+		fontSize: type.rowTitle,
 	},
 	sub: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12,
+		fontSize: type.meta,
 		marginTop: 2,
 	},
 	pressed: {

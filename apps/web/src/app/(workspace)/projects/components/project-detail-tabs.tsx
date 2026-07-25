@@ -25,7 +25,7 @@ interface ProjectDetailTabsProps {
 	activities: ActivityWithUser[] | undefined;
 	client: Doc<"clients"> | null | undefined;
 	primaryContact: Doc<"clientContacts"> | null | undefined;
-	primaryProperty: Doc<"clientProperties"> | null | undefined;
+	properties: Doc<"clientProperties">[] | undefined;
 	// Actions
 	onAddTask: () => void;
 }
@@ -41,7 +41,7 @@ export function ProjectDetailTabs({
 	activities,
 	client,
 	primaryContact,
-	primaryProperty,
+	properties,
 	onAddTask,
 }: ProjectDetailTabsProps) {
 	return (
@@ -89,7 +89,7 @@ export function ProjectDetailTabs({
 							projectId={projectId}
 							client={client}
 							primaryContact={primaryContact}
-							primaryProperty={primaryProperty}
+							properties={properties}
 							quotes={quotes}
 							invoices={invoices}
 						/>
@@ -104,7 +104,7 @@ export function ProjectDetailTabs({
 					projectId={projectId}
 					client={client}
 					primaryContact={primaryContact}
-					primaryProperty={primaryProperty}
+					properties={properties}
 					quotes={quotes}
 					invoices={invoices}
 				/>

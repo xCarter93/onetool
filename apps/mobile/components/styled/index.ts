@@ -8,6 +8,3 @@
 export { StyledButton } from "./StyledButton";
 export type { StyledButtonProps } from "./StyledButton";
 
-export { StyledBadge } from "./StyledBadge";
-export type { StyledBadgeProps } from "./StyledBadge";
-

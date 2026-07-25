@@ -1064,6 +1064,7 @@ async function permanentlyDeleteSystemHandler(
 	}
 
 	for (const project of projects) {
+		await AggregateHelpers.removeProject(ctx, project);
 		await ctx.db.delete(project._id);
 	}
 
@@ -1090,6 +1091,7 @@ async function permanentlyDeleteSystemHandler(
 			await ctx.db.delete(document._id);
 		}
 
+		await AggregateHelpers.removeQuote(ctx, quote);
 		await ctx.db.delete(quote._id);
 	}
 
@@ -1116,6 +1118,7 @@ async function permanentlyDeleteSystemHandler(
 			await ctx.db.delete(document._id);
 		}
 
+		await AggregateHelpers.removeInvoice(ctx, invoice);
 		await ctx.db.delete(invoice._id);
 	}
 

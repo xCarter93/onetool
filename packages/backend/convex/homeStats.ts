@@ -37,7 +37,7 @@ export interface HomeStats {
 		changeType: "increase" | "decrease" | "neutral";
 		totalValue: number;
 	};
-	invoicesSent: {
+	invoicesPaid: {
 		current: number;
 		previous: number;
 		change: number;
@@ -92,7 +92,7 @@ const EMPTY_HOME_STATS: HomeStats = {
 		changeType: "neutral",
 		totalValue: 0,
 	},
-	invoicesSent: {
+	invoicesPaid: {
 		current: 0,
 		previous: 0,
 		change: 0,
@@ -316,7 +316,7 @@ export const getHomeStats = optionalUserQuery({
 				changeType: getChangeType(quotesChange),
 				totalValue: quotesTotalValue,
 			},
-			invoicesSent: {
+			invoicesPaid: {
 				current: totalPaidInvoices,
 				previous: totalPaidInvoices - invoicesThisMonth.length,
 				change: Math.abs(invoicesChange),

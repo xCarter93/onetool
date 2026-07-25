@@ -5,13 +5,12 @@ import {
 	StyleSheet,
 	View,
 } from "react-native";
-import { useTokens } from "@/lib/theme";
+import { radii, shadow, tokens, useTokens } from "@/lib/theme";
 
-// Reusable iPad scrim + centered card wrapper for overlays (Create / Search /
-// Notifications / day-sheet / org-switch on iPad). Plan 26-05 wraps each overlay
-// body in this. When `maxHeight` is given it becomes a DEFINITE card height so
-// the overlay's flex:1 body resolves (an auto-height parent collapses flex:1 to
-// 0); without it the card stays content-sized (e.g. the short Create sheet).
+// Reusable iPad scrim + centered card wrapper for overlays (Notifications,
+// org-switch, assistant). When `maxHeight` is given it becomes a DEFINITE card
+// height so the overlay's flex:1 body resolves (an auto-height parent collapses
+// flex:1 to 0); without it the card stays content-sized.
 
 interface CenteredModalProps {
 	children: React.ReactNode;
@@ -54,13 +53,16 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
-		backgroundColor: "rgba(11,18,32,0.42)",
+		// Scrim derived from the ink token rather than a one-off navy.
+		backgroundColor: `${tokens.ink}6B`,
 		padding: 24,
 	},
 	card: {
 		width: "100%",
 		maxWidth: 520,
-		borderRadius: 28,
+		borderRadius: radii.sheet,
 		overflow: "hidden",
+		// A modal genuinely floats, so it keeps its shadow while cards went flat.
+		boxShadow: shadow.lg,
 	},
 });

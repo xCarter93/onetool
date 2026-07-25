@@ -305,10 +305,76 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_primary", ["clientId", "isPrimary"]),
 
+	// Planned multi-stop routes (Routing page)
+	routes: defineTable({
+		orgId: v.id("organizations"),
+		name: v.string(),
+		// undefined (pre-kind rows) reads as "saved"
+		kind: v.optional(v.union(v.literal("daily"), v.literal("saved"))),
+		date: v.optional(v.number()), // planned day, UTC midnight; required when kind === "daily"
+		// daily-singleton key part: undefined = org-wide route
+		assigneeUserId: v.optional(v.id("users")),
+		status: v.union(v.literal("draft"), v.literal("finalized")),
+		// Run state (daily routes): set when the route is started/finished in the field
+		startedAt: v.optional(v.number()),
+		completedAt: v.optional(v.number()),
+
+		start: v.object({
+			kind: v.union(v.literal("org"), v.literal("manual")),
+			label: v.string(),
+			latitude: v.number(),
+			longitude: v.number(),
+		}),
+		roundTrip: v.boolean(),
+
+		stops: v.array(
+			v.object({
+				propertyId: v.optional(v.id("clientProperties")), // absent for manual stops
+				// Seed provenance: which schedule item produced this stop
+				taskId: v.optional(v.id("tasks")),
+				projectId: v.optional(v.id("projects")),
+				label: v.string(),
+				latitude: v.number(),
+				longitude: v.number(),
+				order: v.number(),
+				// Completion tracking (daily routes); absent = pending
+				status: v.optional(
+					v.union(
+						v.literal("pending"),
+						v.literal("visited"),
+						v.literal("skipped")
+					)
+				),
+				visitedAt: v.optional(v.number()),
+			})
+		),
+
+		// Computed route result; cleared whenever start/stops/roundTrip change
+		optimized: v.optional(v.boolean()), // order came from the optimizer
+		approximate: v.optional(v.boolean()), // local heuristic (stop count over API cap)
+		geometry: v.optional(v.string()), // encoded polyline
+		totalDistanceMeters: v.optional(v.number()),
+		totalDurationSeconds: v.optional(v.number()),
+		legs: v.optional(
+			v.array(
+				v.object({
+					distanceMeters: v.number(),
+					durationSeconds: v.number(),
+				})
+			)
+		),
+		computedAt: v.optional(v.number()),
+
+		createdBy: v.id("users"),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_date", ["orgId", "date"]),
+
 	// Projects
 	projects: defineTable({
 		orgId: v.id("organizations"),
 		clientId: v.id("clients"),
+		propertyId: v.optional(v.id("clientProperties")), // Which client property the work happens at
 
 		// Basic info
 		title: v.string(),
@@ -344,6 +410,7 @@ export default defineSchema({
 		orgId: v.id("organizations"),
 		projectId: v.optional(v.id("projects")),
 		clientId: v.optional(v.id("clients")), // Optional to support internal tasks
+		propertyId: v.optional(v.id("clientProperties")), // Which client property the work happens at
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
 
 		title: v.string(),
@@ -733,6 +800,7 @@ export default defineSchema({
 			v.literal("payments_configured"),
 			v.literal("task_created"),
 			v.literal("task_completed"),
+			v.literal("route_completed"),
 			v.literal("user_invited"),
 			v.literal("user_removed"),
 			v.literal("member_permissions_updated"),
@@ -749,6 +817,7 @@ export default defineSchema({
 			v.literal("invoice"),
 			v.literal("payment"),
 			v.literal("task"),
+			v.literal("route"),
 			v.literal("user"),
 			v.literal("organization")
 		),

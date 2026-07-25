@@ -3,18 +3,24 @@
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
-import { ListTodo, FileText, Receipt, Trash2 } from "lucide-react";
+import { ListTodo, FileText, Receipt, Route, Trash2 } from "lucide-react";
 import {
 	ActionButtonGroup,
 	type RecordAction,
 } from "@/components/domain/action-button-group";
 import { AnimatePresence, motion } from "motion/react";
+import {
+	isRoutableProperty,
+	useAddToRoute,
+} from "@/components/shared/add-to-route";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 interface ProjectDetailHeaderProps {
 	project: Doc<"projects">;
 	hasApprovedQuotes: boolean;
+	/** The project's client's properties; undefined while still loading. */
+	properties: Doc<"clientProperties">[] | undefined;
 	onAddTask: () => void;
 	onAddQuote: () => void;
 	onGenerateInvoice: () => void;
@@ -24,12 +30,35 @@ interface ProjectDetailHeaderProps {
 export function ProjectDetailHeader({
 	project,
 	hasApprovedQuotes,
+	properties,
 	onAddTask,
 	onAddQuote,
 	onGenerateInvoice,
 	onDelete,
 }: ProjectDetailHeaderProps) {
 	const { can } = usePermissions();
+	const {
+		addToRoute,
+		isAdding,
+		disabled: routeDisabled,
+		disabledReason: routeDisabledReason,
+	} = useAddToRoute();
+
+	// Mirrors the backend's resolution: the project's own property, else the
+	// client's primary. Undefined properties means "still loading" — don't
+	// blame the project for an address the query hasn't returned yet.
+	const propertiesLoading = properties === undefined;
+	const routeTarget = project.propertyId
+		? properties?.find((p) => p._id === project.propertyId)
+		: properties?.find((p) => p.isPrimary);
+	const routeBlockedReason = propertiesLoading
+		? undefined
+		: (routeDisabledReason ??
+			(!routeTarget
+				? "This project has no property address"
+				: !isRoutableProperty(routeTarget)
+					? "This project's address isn't mapped yet"
+					: undefined));
 
 	const actions: RecordAction[] = [
 		{
@@ -63,6 +92,23 @@ export function ProjectDetailHeader({
 			disabledReason: !hasApprovedQuotes
 				? "Requires an approved quote"
 				: "You don't have permission to generate invoices",
+		},
+		{
+			key: "add-to-route",
+			label: "Add to Route",
+			icon: <Route className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: () =>
+				void addToRoute({
+					propertyId: routeTarget?._id,
+					clientId: project.clientId,
+					projectId: project._id,
+				}),
+			loading: isAdding,
+			loadingLabel: "Adding…",
+			disabled: propertiesLoading || routeDisabled || !!routeBlockedReason,
+			disabledReason: routeBlockedReason,
 		},
 		{
 			key: "delete",

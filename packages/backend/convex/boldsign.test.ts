@@ -53,7 +53,11 @@ describe("BoldSign embedded sending", () => {
 		sendUrlExpiresAt?: number;
 	};
 
-	/** Insert a quotes row directly (aggregates are untouched by boldsign.ts). */
+	/**
+	 * Insert a quotes row directly. These tests assert webhook/document behavior,
+	 * not aggregate counts — see aggregateMaintenance.test.ts for the latter,
+	 * which seeds via the API so the aggregates are initialized.
+	 */
 	async function seedQuote(
 		ctx: SeedCtx,
 		orgId: Id<"organizations">,

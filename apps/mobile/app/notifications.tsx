@@ -12,8 +12,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { BellOff, BellRing, X } from "lucide-react-native";
-import { fontFamily, type, useTokens } from "@/lib/theme";
+import { BellRing, X } from "lucide-react-native";
+import { Illustration } from "@/components/illustrations";
+import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 import {
 	formatRelativeTime,
 	truncateText,
@@ -125,26 +126,25 @@ export default function NotificationsSheet() {
 					style={({ pressed }) => [
 						styles.enableRow,
 						{
-							backgroundColor: pressed ? t.accentMid : t.accentSoft,
-							borderColor: t.accent,
+							backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
+							borderColor: t.frostedBorder,
 						},
 					]}
 				>
-					<BellRing size={18} color={t.accent} />
-					<Text style={[styles.enableLabel, { color: t.accent }]}>
+					<BellRing size={18} color={t.frostedInk} />
+					<Text style={[styles.enableLabel, { color: t.frostedInk }]}>
 						Enable push notifications
 					</Text>
 				</Pressable>
 			) : null}
 			{loading ? (
 				<View style={styles.state}>
-					<ActivityIndicator size="small" color={t.accent} />
+					<ActivityIndicator size="small" color={t.sub} />
 				</View>
 			) : notifications.length === 0 ? (
 				<View style={styles.state}>
-					<View style={[styles.emptyTile, { backgroundColor: t.muted }]}>
-						<BellOff size={42} color={t.faint} />
-					</View>
+					{/* Sheet body sits on t.card — knockout must match it. */}
+					<Illustration name="all-caught-up" knockout={t.card} />
 					<Text style={[styles.emptyTitle, { color: t.ink }]}>
 						No notifications
 					</Text>
@@ -165,13 +165,13 @@ export default function NotificationsSheet() {
 								styles.row,
 								{ borderBottomColor: t.line },
 								i === notifications.length - 1 && styles.rowLast,
-								!n.isRead && { backgroundColor: t.accentSoft },
+								!n.isRead && { backgroundColor: t.secondary },
 								pressed && { backgroundColor: t.surface },
 							]}
 						>
 							<View style={styles.dotCol}>
 								{!n.isRead ? (
-									<View style={[styles.dot, { backgroundColor: t.accent }]} />
+									<View style={[styles.dot, { backgroundColor: t.dot }]} />
 								) : null}
 							</View>
 							<View style={styles.rowBody}>
@@ -238,44 +238,44 @@ export default function NotificationsSheet() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
+		borderTopLeftRadius: radii.sheet,
+		borderTopRightRadius: radii.sheet,
 		overflow: "hidden",
 	},
 	// iPad card (CenteredModal supplies the shell + radius + definite height).
 	// flex:1 (not flexShrink) so the body's flex:1 list/state resolves a basis.
 	padCard: {
 		flex: 1,
-		paddingTop: 18,
+		paddingTop: spacing.gutter,
 	},
 	grabber: {
 		alignSelf: "center",
 		width: 44,
 		height: 5,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		marginTop: 10,
-		marginBottom: 16,
+		marginBottom: spacing.md,
 	},
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
 		paddingHorizontal: 20,
-		paddingBottom: 18,
+		paddingBottom: spacing.gutter,
 	},
 	titleWrap: {
 		flex: 2,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 8,
+		gap: spacing.sm,
 	},
 	title: {
-		fontSize: 21,
+		fontSize: type.h2,
 		lineHeight: 30,
 		fontFamily: fontFamily.bold,
 	},
 	badge: {
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		minWidth: 22,
 		paddingHorizontal: 6,
 		paddingVertical: 2,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
 	},
 	badgeText: {
 		color: "#fff",
-		fontSize: 11,
+		fontSize: type.micro,
 		fontFamily: fontFamily.semibold,
 	},
 	headerAction: {
@@ -291,9 +291,9 @@ const styles = StyleSheet.create({
 		alignItems: "flex-end",
 	},
 	closeBtn: {
-		width: 32,
-		height: 32,
-		borderRadius: 999,
+		width: touch.min,
+		height: touch.min,
+		borderRadius: radii.pill,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -301,11 +301,12 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 8,
+		gap: spacing.sm,
 		marginHorizontal: 20,
 		marginBottom: 14,
 		paddingVertical: 12,
-		borderRadius: 14,
+		minHeight: touch.min,
+		borderRadius: radii["4xl"],
 		borderWidth: 1,
 	},
 	enableLabel: {
@@ -316,16 +317,8 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
-		paddingHorizontal: 32,
+		paddingHorizontal: spacing.xl,
 		gap: 10,
-	},
-	emptyTile: {
-		width: 72,
-		height: 72,
-		borderRadius: 36,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: 4,
 	},
 	emptyTitle: {
 		fontSize: type.body,
@@ -358,21 +351,21 @@ const styles = StyleSheet.create({
 	dot: {
 		width: 8,
 		height: 8,
-		borderRadius: 4,
+		borderRadius: radii.xs,
 	},
 	rowBody: {
 		flex: 1,
 	},
 	rowTitle: {
-		fontSize: 13,
+		fontSize: type.rowTitle,
 		fontFamily: fontFamily.semibold,
-		marginBottom: 4,
+		marginBottom: spacing.xs,
 	},
 	rowMessage: {
-		fontSize: 12,
+		fontSize: type.meta,
 		lineHeight: 18,
 		fontFamily: fontFamily.regular,
-		marginBottom: 4,
+		marginBottom: spacing.xs,
 	},
 	rowTime: {
 		fontSize: 11,

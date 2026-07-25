@@ -8,6 +8,8 @@ import {
 	View,
 } from "react-native";
 import { MapPin, Search } from "lucide-react-native";
+import { useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
 import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 // Output shape mirrors clientProperties.create args (web-parity field mapping).
@@ -116,6 +118,7 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 	// Monotonic request id — drop responses that resolve out of order (a slow
 	// earlier fetch must not overwrite a newer query's suggestions).
 	const requestSeqRef = useRef(0);
+	const trackMapboxUsage = useMutation(api.clientTelemetry.trackMapboxUsage);
 
 	// Re-sync local UI from a controlled `value` that changes after mount (edit
 	// flows load the address async). Render-time derivation (NOT setState-in-
@@ -140,6 +143,8 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 		try {
 			const res = await fetch(buildUrl(trimmed));
 			if (!res.ok) throw new Error(`Mapbox request failed: ${res.status}`);
+			// Fire-and-forget usage tracking — never block or affect the suggestion flow.
+			trackMapboxUsage({ service: "geocoding", count: 1 }).catch(() => {});
 			const data: { features?: MapboxFeature[] } = await res.json();
 			if (seq !== requestSeqRef.current) return;
 			setSuggestions(data.features ?? []);
@@ -150,7 +155,7 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 		} finally {
 			if (seq === requestSeqRef.current) setLoading(false);
 		}
-	}, []);
+	}, [trackMapboxUsage]);
 
 	const handleChangeText = (text: string) => {
 		setQuery(text);

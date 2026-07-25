@@ -11,6 +11,7 @@ import {
 	SelectItem,
 } from "@/components/ui/select";
 import { MultiSelector } from "@/components/shared/multi-selector";
+import { PropertyPicker } from "@/components/shared/property-picker";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -74,16 +75,35 @@ const TYPE_OPTIONS = [
 	{ value: "recurring", label: "Recurring" },
 ];
 
-type EditingField = "title" | "status" | "projectType" | "startDate" | "endDate" | "assignedUserIds" | null;
+type EditingField =
+	| "title"
+	| "status"
+	| "projectType"
+	| "startDate"
+	| "endDate"
+	| "assignedUserIds"
+	| "propertyId"
+	| null;
 
 interface ProjectDetailSidebarProps {
 	project: Doc<"projects">;
 	projectId: Id<"projects">;
 	client: Doc<"clients"> | null | undefined;
 	primaryContact: Doc<"clientContacts"> | null | undefined;
-	primaryProperty: Doc<"clientProperties"> | null | undefined;
+	properties: Doc<"clientProperties">[] | undefined;
 	quotes: Doc<"quotes">[] | undefined;
 	invoices: Doc<"invoices">[] | undefined;
+}
+
+/** Address string shared by the display row and the property Select's options. */
+function formatPropertyAddress(property: Doc<"clientProperties">) {
+	return [
+		property.streetAddress,
+		property.city,
+		[property.state, property.zipCode].filter(Boolean).join(" "),
+	]
+		.filter(Boolean)
+		.join(", ");
 }
 
 export function ProjectDetailSidebar({
@@ -91,7 +111,7 @@ export function ProjectDetailSidebar({
 	projectId,
 	client,
 	primaryContact,
-	primaryProperty,
+	properties,
 	quotes,
 	invoices,
 }: ProjectDetailSidebarProps) {
@@ -106,6 +126,12 @@ export function ProjectDetailSidebar({
 	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
 		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
 	}`;
+
+	// The project's own property wins; fall back to the client's primary.
+	const selectedProperty = properties
+		? (properties.find((p) => p._id === project.propertyId) ??
+			properties.find((p) => p.isPrimary))
+		: undefined;
 
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
@@ -151,6 +177,7 @@ export function ProjectDetailSidebar({
 				startDate: "Start date",
 				endDate: "End date",
 				assignedUserIds: "Assigned users",
+				propertyId: "Property",
 			};
 			const label = labels[field] || field;
 			toast.success("Updated", `${label} saved.`);
@@ -515,23 +542,43 @@ export function ProjectDetailSidebar({
 						</>
 					)}
 
-					{primaryProperty && (
-						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
+					{properties && properties.length > 0 && (
+						<div
+							className={rowClass}
+							onClick={() =>
+								editingField !== "propertyId" &&
+								startEditing("propertyId", selectedProperty?._id ?? "")
+							}
+						>
 							<MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 							<span className="text-sm text-muted-foreground w-28 shrink-0">Address</span>
-							<div className="flex-1 min-w-0">
-								<span className="text-sm text-foreground">
-									{[
-										primaryProperty.streetAddress,
-										primaryProperty.city,
-										[primaryProperty.state, primaryProperty.zipCode]
-											.filter(Boolean)
-											.join(" "),
-									]
-										.filter(Boolean)
-										.join(", ")}
-								</span>
+							<div
+								className="flex-1 min-w-0"
+								onClick={(e) => editingField === "propertyId" && e.stopPropagation()}
+							>
+								{editingField === "propertyId" ? (
+									<PropertyPicker
+										properties={properties}
+										value={editValue as Id<"clientProperties"> | ""}
+										onChange={(id) => setEditValue(id)}
+										className="h-8"
+									/>
+								) : selectedProperty ? (
+									<span className="text-sm text-foreground">
+										{formatPropertyAddress(selectedProperty)}
+									</span>
+								) : (
+									<span className="text-muted-foreground italic">Not set</span>
+								)}
 							</div>
+							{editingField === "propertyId"
+								? renderActions(() => {
+										// No selection → nothing to patch (empty updates throw)
+										if (editValue) saveField("propertyId", editValue);
+										else cancelEditing();
+									})
+								: renderPencil()
+							}
 						</div>
 					)}
 

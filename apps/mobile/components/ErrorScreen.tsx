@@ -8,6 +8,7 @@ import {
 import type { ErrorBoundaryProps } from "expo-router";
 import { ConvexError } from "convex/values";
 import { fontFamily } from "@/lib/theme";
+import { Illustration } from "@/components/illustrations";
 
 // Route-level error screen (expo-router ErrorBoundary convention). Deliberately
 // self-contained — the root boundary can render while app providers are down,
@@ -27,6 +28,15 @@ export function ErrorScreen({ error, retry }: ErrorBoundaryProps) {
 		<View
 			style={[styles.container, { backgroundColor: dark ? "#0b1220" : "#f6f8fa" }]}
 		>
+			{/* Light-only art (app is locked light; the dark branch here is a
+			    defensive fallback, so the illustration simply sits out of it). */}
+			{!dark ? (
+				<Illustration
+					name={forbidden ? "access-restricted" : "app-error"}
+					knockout="#f6f8fa"
+					style={styles.art}
+				/>
+			) : null}
 			<Text style={[styles.title, { color: dark ? "#f1f5f9" : "#0f172a" }]}>
 				{title}
 			</Text>
@@ -52,6 +62,9 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		paddingHorizontal: 32,
 		gap: 10,
+	},
+	art: {
+		marginBottom: 8,
 	},
 	title: {
 		fontSize: 20,

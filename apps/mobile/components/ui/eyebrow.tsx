@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { fontFamily, tracking, type, useTokens } from "@/lib/theme";
 
 interface EyebrowProps {
 	children: React.ReactNode;
@@ -18,8 +18,8 @@ export function Eyebrow({ children, color }: EyebrowProps) {
 const styles = StyleSheet.create({
 	text: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 11,
-		letterSpacing: 0.7,
+		fontSize: type.eyebrow,
+		letterSpacing: tracking.eyebrow,
 		textTransform: "uppercase",
 	},
 });

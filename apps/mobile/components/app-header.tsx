@@ -13,9 +13,9 @@ import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
-import { Avatar, ScrollFade } from "@/components/ui";
+import { ArrowLeft, Bell, ChevronDown, Plus } from "lucide-react-native";
+import { fontFamily, radii, tokens, tracking, type, useTokens } from "@/lib/theme";
+import { Avatar, HalftoneBg, ScrollFade } from "@/components/ui";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -26,6 +26,24 @@ interface AppHeaderProps {
 	mode?: HeaderMode;
 	home?: boolean;
 	titleSize?: number;
+	/**
+	 * Contextual create. Each surface supplies the ONE record type it can create
+	 * (Today → task, Work→Clients → client), which is what replaced the /create
+	 * mega-menu. Omit and no ＋ renders.
+	 */
+	onAdd?: () => void;
+	/** Required whenever `onAdd` is set — the ＋ is icon-only. */
+	addLabel?: string;
+	/**
+	 * Set false when the screen pins its own controls directly below the header
+	 * (Today's week strip, Work's search field). The fade paints 28px BELOW the
+	 * header onto the next sibling, which only works if that sibling is scroll
+	 * content carrying SCROLL_TOP_INSET — over a pinned control it just clips it.
+	 * Those screens render the fade themselves, under their controls block.
+	 */
+	fade?: boolean;
+	/** Halftone wash behind the header. Off for map surfaces (Routes). */
+	halftone?: boolean;
 }
 
 function initialsFrom(name?: string | null, email?: string | null): string {
@@ -44,6 +62,10 @@ export function AppHeader({
 	mode = "root",
 	home,
 	titleSize,
+	onAdd,
+	addLabel,
+	fade = true,
+	halftone = false,
 }: AppHeaderProps) {
 	const t = useTokens();
 	const router = useRouter();
@@ -91,6 +113,7 @@ export function AppHeader({
 				<View style={styles.topRow}>
 					<Pressable
 						onPress={() => router.back()}
+						hitSlop={4}
 						style={[styles.iconBtn, { borderColor: t.line }]}
 						accessibilityRole="button"
 						accessibilityLabel="Go back"
@@ -114,6 +137,9 @@ export function AppHeader({
 		<View
 			style={{ paddingTop: insets.top + 8, zIndex: 3 }}
 			onLayout={onHeaderLayout}
+			// box-none: on overlay surfaces (Routes map) the header must not
+			// swallow touches outside its interactive children.
+			pointerEvents="box-none"
 		>
 			{!home ? (
 				<View
@@ -128,16 +154,31 @@ export function AppHeader({
 					pointerEvents="none"
 				>
 					<>
+						{/* intensity must stay 100: fractional intensities use expo-blur's
+						    paused-animator hack, which renders unreliably over Metal-backed
+						    views (the Mapbox map showed through nearly un-blurred). */}
 						<BlurView
-							tint="light"
-							intensity={90}
+							tint="systemThickMaterialLight"
+							intensity={100}
 							style={StyleSheet.absoluteFill}
 						/>
+						{/* Halftone wash. Sits UNDER the bg tint, so the effective opacity
+						    is roughly brand*0.45+0.3 times the tint's transmission — the two
+						    knobs if it reads too strong or too faint. Needs the measured
+						    height box above it: absoluteFill in an indefinite-height parent
+						    escapes to full-screen on Fabric. */}
+						{halftone ? (
+							<HalftoneBg
+								brand={0.2}
+								imageFit="width"
+								style={StyleSheet.absoluteFill}
+							/>
+						) : null}
 						<View
 							style={[
 								StyleSheet.absoluteFill,
 								{
-									backgroundColor: "rgba(245,247,249,0.55)",
+									backgroundColor: `${t.bg}8C`,
 									borderBottomWidth: 1,
 									borderBottomColor: t.line,
 								},
@@ -148,10 +189,11 @@ export function AppHeader({
 			) : null}
 
 			{/* Top row */}
-			<View style={styles.topRow}>
+			<View style={styles.topRow} pointerEvents="box-none">
 				{detail ? (
 					<Pressable
 						onPress={() => router.back()}
+						hitSlop={4}
 						style={[styles.iconBtn, { borderColor: t.line }]}
 						accessibilityRole="button"
 						accessibilityLabel="Go back"
@@ -161,6 +203,7 @@ export function AppHeader({
 				) : (
 					<Pressable
 						onPress={() => router.push(ORG_SWITCH)}
+						hitSlop={6}
 						style={[styles.orgChip, { borderColor: t.line }]}
 						accessibilityRole="button"
 						accessibilityLabel="Switch organization"
@@ -171,9 +214,7 @@ export function AppHeader({
 								style={styles.orgTile}
 							/>
 						) : (
-							<View
-								style={[styles.orgTile, { backgroundColor: t.accent }]}
-							>
+							<View style={styles.orgTile}>
 								<Text style={styles.orgTileText}>{orgInitials}</Text>
 							</View>
 						)}
@@ -187,33 +228,50 @@ export function AppHeader({
 					</Pressable>
 				)}
 
-				<View style={{ flex: 1 }} />
+				<View style={{ flex: 1 }} pointerEvents="none" />
 
 				{/* Constant right cluster (root + detail) */}
+				{onAdd ? (
+					<Pressable
+						onPress={onAdd}
+						style={styles.bareBtn}
+						accessibilityRole="button"
+						accessibilityLabel={addLabel ?? "Create"}
+					>
+						<Plus size={22} color={t.ink} strokeWidth={2.2} />
+					</Pressable>
+				) : null}
+
 				<Pressable
 					onPress={() => router.push(NOTIFICATIONS)}
-					style={[styles.iconBtn, { borderColor: t.line }]}
+					style={styles.bareBtn}
 					accessibilityRole="button"
-					accessibilityLabel="Notifications"
+					accessibilityLabel={
+						unreadCount > 0
+							? `Notifications, ${unreadCount} unread`
+							: "Notifications"
+					}
 				>
-					<Bell size={20} color={t.ink} />
+					<Bell size={21} color={t.ink} strokeWidth={2} />
 					{unreadCount > 0 && (
-						<View style={[styles.badge, { backgroundColor: t.danger }]}>
-							<Text style={styles.badgeText}>
-								{unreadCount > 9 ? "9+" : unreadCount}
-							</Text>
-						</View>
+						<View
+							style={[
+								styles.unreadDot,
+								{ backgroundColor: t.danger, borderColor: t.bg },
+							]}
+						/>
 					)}
 				</Pressable>
 
 				<Pressable
 					onPress={() => router.push("/(tabs)/profile")}
+					style={styles.bareBtn}
 					accessibilityRole="button"
 					accessibilityLabel="Profile"
 				>
 					<Avatar
 						text={userInitials}
-						size={40}
+						size={30}
 						imageUrl={user?.hasImage ? user.imageUrl : null}
 					/>
 				</Pressable>
@@ -223,14 +281,14 @@ export function AppHeader({
 			{title ? (
 				<View style={styles.titleBlock}>
 					{sub ? (
-						<Text style={[styles.eyebrow, { color: t.accent }]}>
+						<Text style={[styles.eyebrow, { color: t.sub }]}>
 							{sub.toUpperCase()}
 						</Text>
 					) : null}
 					<Text
 						style={[
 							styles.title,
-							{ color: t.ink, fontSize: titleSize ?? 25 },
+							{ color: t.ink, fontSize: titleSize ?? type.h1 },
 						]}
 						numberOfLines={1}
 					>
@@ -239,9 +297,9 @@ export function AppHeader({
 				</View>
 			) : null}
 
-			{/* Soft fade so scroll content dissolves into the header (skip on Home —
-			    its dark halftone hero must not fade to the light surface). */}
-			{!home ? <ScrollFade edge="top" /> : null}
+			{/* Soft fade so scroll content dissolves into the header. Screens that pin
+			    controls under the header pass fade={false} and place it themselves. */}
+			{!home && fade ? <ScrollFade edge="top" /> : null}
 		</View>
 	);
 }
@@ -250,8 +308,8 @@ const styles = StyleSheet.create({
 	topRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 10,
-		paddingHorizontal: 16,
+		gap: 6,
+		paddingHorizontal: 18,
 		// Breathing room below the icon row so screen content / the title block
 		// never sits flush against it (notably on detail screens with no title).
 		paddingBottom: 10,
@@ -260,81 +318,82 @@ const styles = StyleSheet.create({
 		position: "relative",
 		width: 40,
 		height: 40,
-		borderRadius: 13,
-		backgroundColor: "#fff",
+		borderRadius: radii.xl,
+		backgroundColor: tokens.card,
 		borderWidth: 1,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
 	},
+	// Bare chip — no pill, no border. Chrome recedes; the org mark carries it.
 	orgChip: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderRadius: 999,
 		paddingVertical: 5,
-		paddingLeft: 5,
-		paddingRight: 11,
 		flexShrink: 1,
 		minWidth: 0,
 	},
+	bareBtn: {
+		position: "relative",
+		alignItems: "center",
+		justifyContent: "center",
+		width: 44,
+		height: 44,
+		flexShrink: 0,
+	},
 	orgTile: {
-		width: 28,
-		height: 28,
-		borderRadius: 9,
+		width: 26,
+		height: 26,
+		borderRadius: 7,
+		experimental_backgroundImage:
+			`linear-gradient(135deg, ${tokens.primary}, ${tokens.primarySolid})`,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
 	},
 	orgTileText: {
 		fontFamily: fontFamily.bold,
-		fontSize: 11,
+		fontSize: 11.5,
 		color: "#fff",
 	},
 	orgName: {
-		fontFamily: fontFamily.bold,
-		fontSize: 13,
-		maxWidth: 150,
+		fontFamily: fontFamily.semibold,
+		fontSize: type.body,
+		maxWidth: 170,
 	},
-	badge: {
+	// Presence dot, not a counter — the count lives on the notifications screen.
+	unreadDot: {
 		position: "absolute",
-		top: -4,
-		right: -4,
-		minWidth: 16,
-		height: 16,
-		paddingHorizontal: 4,
-		borderRadius: 8,
-		alignItems: "center",
-		justifyContent: "center",
-		borderWidth: 2,
-		borderColor: "#fff",
-	},
-	badgeText: {
-		fontFamily: fontFamily.bold,
-		fontSize: 10,
-		color: "#fff",
+		top: 10,
+		right: 10,
+		width: 8,
+		height: 8,
+		borderRadius: 4,
+		borderWidth: 1.5,
 	},
 	paneTitle: {
+		// topRow's gap tightened to 6 for the 44pt right-cluster buttons; the pane
+		// title still wants breathing room from the back arrow.
+		marginLeft: 8,
 		fontFamily: fontFamily.semibold,
-		fontSize: 18,
+		fontSize: type.h2,
 		flexShrink: 1,
 	},
 	titleBlock: {
-		paddingHorizontal: 16,
+		paddingHorizontal: 18,
 		paddingBottom: 12,
 		paddingTop: 2,
 	},
 	eyebrow: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 11.5,
-		letterSpacing: 0.6,
-		marginBottom: 2,
+		fontSize: type.eyebrow,
+		letterSpacing: tracking.eyebrow,
+		marginBottom: 3,
 	},
 	title: {
-		fontFamily: fontFamily.bold,
-		letterSpacing: -0.5,
-		lineHeight: 28,
+		fontFamily: fontFamily.semibold,
+		letterSpacing: tracking.title,
+		lineHeight: 30,
 	},
 });

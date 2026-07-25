@@ -356,6 +356,16 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 			paidAt: Date.now(),
 		});
 
+		// Aggregates key on [status, paidAt] — skipping this drifts revenue stats.
+		const paidInvoice = await ctx.db.get(invoice._id);
+		if (paidInvoice) {
+			await AggregateHelpers.updateInvoice(
+				ctx,
+				invoice as InvoiceDocument,
+				paidInvoice as InvoiceDocument
+			);
+		}
+
 		// Settle installment payment rows like the workspace paid paths do, so a
 		// webhook-paid invoice never leaves pending rows behind.
 		await settleOutstandingPaymentsForInvoice(ctx, invoice._id);
@@ -735,6 +745,13 @@ export const markPaid = userMutation({
 		// Log activity
 		const updatedInvoice = await ctx.db.get(args.id);
 		if (updatedInvoice) {
+			// Aggregates key on [status, paidAt] — skipping this drifts revenue stats.
+			await AggregateHelpers.updateInvoice(
+				ctx,
+				invoice as InvoiceDocument,
+				updatedInvoice as InvoiceDocument
+			);
+
 			const client = await ctx.db.get(updatedInvoice.clientId);
 			await ActivityHelpers.invoicePaid(
 				ctx,

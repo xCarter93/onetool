@@ -14,8 +14,8 @@ import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Calendar, X } from "lucide-react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import { Badge, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
+import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 
 type Project = Doc<"projects">;
@@ -129,7 +129,7 @@ export default function ProjectsScreen({
 			<Pressable
 				style={({ pressed }) => [
 					styles.card,
-					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					isSelected && { borderColor: t.primarySolid, backgroundColor: t.frostedBg },
 					pressed && styles.cardPressed,
 				]}
 				onPress={() => openProject(item._id)}
@@ -220,6 +220,8 @@ export default function ProjectsScreen({
 			style={{ flex: 1, backgroundColor: t.surface }}
 			edges={[]}
 		>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: shell mounts PaneHeader title="Work" above this body.
 			    iPhone: AppHeader mode="detail" title="Work" (byte-identical). */}
 			{isPane ? null : <AppHeader mode="detail" title="Work" />}
@@ -322,7 +324,6 @@ const styles = StyleSheet.create({
 		borderRadius: radii.rLg,
 		borderWidth: 1,
 		borderColor: "#e9edf2",
-		boxShadow: shadow.card,
 		padding: 16,
 	},
 	cardPressed: {

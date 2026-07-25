@@ -1,0 +1,63 @@
+import { StyleSheet, Text, View } from "react-native";
+import { Sparkles } from "lucide-react-native";
+import { useQuery } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { AssistantChat } from "./assistant-chat";
+
+// Server-truth plan gate around the chat. The locked copy states unavailability
+// and NOTHING else — no upsell, no "upgrade on the web", no billing link
+// (Apple anti-steering treats even directional text as a violation).
+export function AssistantHost({ screenContext }: { screenContext?: string }) {
+	const premium = useQuery(api.permissions.hasPremiumAccess);
+
+	if (premium === undefined) return <View style={styles.fill} />;
+	if (!premium) return <LockedBody />;
+	return <AssistantChat screenContext={screenContext} />;
+}
+
+function LockedBody() {
+	const t = useTokens();
+	return (
+		<View style={styles.locked}>
+			<View style={[styles.mark, { backgroundColor: t.frostedBg }]}>
+				<Sparkles size={26} color={t.frostedInk} strokeWidth={2.2} />
+			</View>
+			<Text style={[styles.title, { color: t.ink }]}>Assistant</Text>
+			<Text style={[styles.copy, { color: t.sub }]}>
+				The assistant isn&apos;t included in your plan.
+			</Text>
+		</View>
+	);
+}
+
+const styles = StyleSheet.create({
+	fill: {
+		flex: 1,
+	},
+	locked: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 10,
+		paddingHorizontal: 32,
+	},
+	mark: {
+		width: 56,
+		height: 56,
+		borderRadius: radii.card,
+		alignItems: "center",
+		justifyContent: "center",
+		marginBottom: 4,
+	},
+	title: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.h2,
+	},
+	copy: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.body,
+		lineHeight: 20,
+		textAlign: "center",
+	},
+});

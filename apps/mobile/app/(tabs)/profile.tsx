@@ -1,11 +1,18 @@
 import { useState } from "react";
-import { View, Text, ScrollView, Alert, Pressable } from "react-native";
+import {
+	View,
+	Text,
+	ScrollView,
+	Alert,
+	Pressable,
+	StyleSheet,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useTokens, radii, fontFamily } from "@/lib/theme";
-import { Avatar, Card } from "@/components/ui";
+import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
 import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight } from "lucide-react-native";
 import { AppHeader } from "@/components/app-header";
@@ -15,6 +22,12 @@ import { AppHeader } from "@/components/app-header";
 // single comfortable centered pane: headerMode="pane" suppresses the AppHeader
 // (shell mounts the one PaneHeader title="Profile") and the content is bounded
 // to a centered column so it is not stretched edge-to-edge.
+/** Clerk roles are "org:admin" / "org:member" — show "Admin" / "Member". */
+function formatRole(role: string): string {
+	const bare = role.replace(/^org:/, "");
+	return bare.charAt(0).toUpperCase() + bare.slice(1);
+}
+
 export default function ProfileScreen({
 	headerMode = "root",
 }: {
@@ -144,6 +157,8 @@ export default function ProfileScreen({
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* iPad pane: shell mounts the one PaneHeader title="Profile" (single-header
 			    convention) so the self-mounted AppHeader is suppressed. */}
 			{isPane ? null : <AppHeader mode="root" title="Profile" />}
@@ -238,8 +253,7 @@ export default function ProfileScreen({
 									Role
 								</Text>
 								<Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: t.ink }}>
-									{membership.role.charAt(0).toUpperCase() +
-										membership.role.slice(1)}
+									{formatRole(membership.role)}
 								</Text>
 							</View>
 						</View>

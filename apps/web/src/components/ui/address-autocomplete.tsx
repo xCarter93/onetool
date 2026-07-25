@@ -7,6 +7,8 @@ import { useTheme } from "next-themes";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { env } from "@/env";
+import { trackEvent } from "@/lib/analytics";
+import { AnalyticsEvents } from "@/lib/analytics-events";
 
 // @mapbox/search-js-react touches `document` at module init, so it can't be statically imported in an RSC graph.
 const AddressAutofill = dynamic<
@@ -169,6 +171,26 @@ export const AddressAutocomplete = React.forwardRef<
 	// Forward ref to input
 	React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
 
+	// Mapbox bills Address Autofill per session (a typing burst ending in a
+	// retrieve or abandonment). Approximate: fire once per burst, re-arm after
+	// a retrieve so the next burst counts as a new session.
+	const sessionOpenRef = React.useRef(false);
+
+	const handleAutofillInputChange = React.useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			if (!sessionOpenRef.current) {
+				sessionOpenRef.current = true;
+				trackEvent(AnalyticsEvents.MAPBOX_API_REQUEST, {
+					service: "autofill_session",
+					count: 1,
+					platform: "web",
+				});
+			}
+			onChange(e.target.value);
+		},
+		[onChange]
+	);
+
 	// Check if Mapbox is available
 	const mapboxToken = env.NEXT_PUBLIC_MAPBOX_API_KEY;
 	const isMapboxAvailable = Boolean(mapboxToken);
@@ -216,6 +238,8 @@ export const AddressAutocomplete = React.forwardRef<
 			};
 
 			onAddressSelect(addressData);
+			// Retrieve ends this session; the next keystroke starts a new one.
+			sessionOpenRef.current = false;
 		},
 		[onAddressSelect]
 	);
@@ -283,7 +307,7 @@ export const AddressAutocomplete = React.forwardRef<
 				ref={inputRef}
 				autoComplete="street-address"
 				value={value}
-				onChange={(e) => onChange(e.target.value)}
+				onChange={handleAutofillInputChange}
 				placeholder={placeholder}
 				disabled={disabled}
 				className={cn(className)}

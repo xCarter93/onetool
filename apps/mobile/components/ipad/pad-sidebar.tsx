@@ -10,16 +10,15 @@ import {
 import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
 import {
+	Activity,
 	Bell,
+	Briefcase,
+	CalendarCheck,
 	ChevronDown,
-	Folder,
-	Home,
-	ListChecks,
-	Plus,
-	Receipt,
-	Users,
+	Route as RouteIcon,
+	Sparkles,
 } from "lucide-react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { fontFamily, radii, tokens, touch, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
 
 // 230px persistent iPad sidebar (full variant only — the prototype's `rail`
@@ -27,22 +26,24 @@ import { Avatar } from "@/components/ui";
 // Pure chrome: routing for the rest is injected by ipad-shell via props; only the
 // org-switch push is kept inline (it has no shell dependency).
 
-export type SidebarTab = "home" | "clients" | "projects" | "tasks" | "money";
+export type SidebarTab = "today" | "work" | "routes" | "activity";
+/** "profile" highlights NO nav row — Profile is reached via the footer. */
+export type SidebarActive = SidebarTab | "profile";
 
 interface PadSidebarProps {
-	activeTab: SidebarTab;
+	activeTab: SidebarActive;
 	onNavigate: (tab: SidebarTab) => void;
-	onCreate: () => void;
+	onAssistant: () => void;
 	onProfile: () => void;
 	onNotifications: () => void;
 }
 
-const NAV: { id: SidebarTab; label: string; Icon: typeof Home }[] = [
-	{ id: "home", label: "Home", Icon: Home },
-	{ id: "clients", label: "Clients", Icon: Users },
-	{ id: "projects", label: "Work", Icon: Folder },
-	{ id: "tasks", label: "Tasks", Icon: ListChecks },
-	{ id: "money", label: "Money", Icon: Receipt },
+// Mirrors field-kit-tab-bar.tsx's TABS 1:1 (icon set + label wording).
+const NAV: { id: SidebarTab; label: string; Icon: typeof CalendarCheck }[] = [
+	{ id: "today", label: "Today", Icon: CalendarCheck },
+	{ id: "work", label: "Work", Icon: Briefcase },
+	{ id: "routes", label: "Routes", Icon: RouteIcon },
+	{ id: "activity", label: "Activity", Icon: Activity },
 ];
 
 function initialsFrom(name?: string | null): string {
@@ -52,16 +53,24 @@ function initialsFrom(name?: string | null): string {
 	return words[0].slice(0, 2).toUpperCase();
 }
 
+// Clerk returns roles like "org:admin" — strip the prefix before title-casing,
+// a bare capitalize would render "Org:admin" (see app/(tabs)/profile.tsx bug).
+function roleLabel(role?: string | null): string {
+	if (!role) return "Member";
+	const bare = role.replace(/^org:/, "");
+	return bare.charAt(0).toUpperCase() + bare.slice(1);
+}
+
 export function PadSidebar({
 	activeTab,
 	onNavigate,
-	onCreate,
+	onAssistant,
 	onProfile,
 	onNotifications,
 }: PadSidebarProps) {
 	const t = useTokens();
 	const router = useRouter();
-	const { organization } = useOrganization();
+	const { organization, membership } = useOrganization();
 	const { user } = useUser();
 
 	// Measure the brand block so the BG.png wash sits in a DEFINITE-height box
@@ -75,7 +84,7 @@ export function PadSidebar({
 	const orgInitials = initialsFrom(orgName);
 	const userName = user?.fullName ?? user?.firstName ?? "You";
 	const userInitials = initialsFrom(userName);
-	const role = "Member";
+	const role = roleLabel(membership?.role);
 
 	return (
 		<View style={[styles.root, { backgroundColor: t.card, borderRightColor: t.line }]}>
@@ -93,7 +102,7 @@ export function PadSidebar({
 					<View
 						style={[
 							StyleSheet.absoluteFill,
-							{ backgroundColor: "rgba(255,255,255,0.65)" },
+							{ backgroundColor: `${tokens.card}A6` },
 						]}
 					/>
 				</View>
@@ -118,8 +127,10 @@ export function PadSidebar({
 				{organization?.imageUrl ? (
 					<Image source={{ uri: organization.imageUrl }} style={styles.orgTile} />
 				) : (
-					<View style={[styles.orgTile, { backgroundColor: t.accent }]}>
-						<Text style={styles.orgTileText}>{orgInitials}</Text>
+					<View style={[styles.orgTile, { backgroundColor: t.primarySolid }]}>
+						<Text style={[styles.orgTileText, { color: tokens.card }]}>
+							{orgInitials}
+						</Text>
 					</View>
 				)}
 				<View style={{ flex: 1, minWidth: 0 }}>
@@ -132,7 +143,7 @@ export function PadSidebar({
 			</Pressable>
 
 			{/* Nav stack */}
-			<View style={styles.nav}>
+			<View style={styles.nav} accessibilityRole="tablist">
 				{NAV.map(({ id, label, Icon }) => {
 					const active = activeTab === id;
 					return (
@@ -141,18 +152,18 @@ export function PadSidebar({
 							onPress={() => onNavigate(id)}
 							style={[
 								styles.navRow,
-								active && { backgroundColor: t.accentSoft },
+								active && { backgroundColor: t.secondary },
 							]}
-							accessibilityRole="button"
+							accessibilityRole="tab"
 							accessibilityLabel={label}
 							accessibilityState={{ selected: active }}
 						>
-							<Icon size={21} color={active ? t.accent : t.sub} />
+							<Icon size={21} color={active ? t.primaryInk : t.sub} />
 							<Text
 								style={[
 									styles.navLabel,
 									{
-										color: active ? t.accent : t.ink,
+										color: t.ink,
 										fontFamily: active
 											? fontFamily.semibold
 											: fontFamily.regular,
@@ -164,51 +175,58 @@ export function PadSidebar({
 						</Pressable>
 					);
 				})}
+			</View>
 
-				{/* ＋ Create */}
+			{/* Assistant sits OUTSIDE the tablist — it is a button, not a fifth tab —
+			    and after the flex:1 nav, which is what pins it to the rail bottom (§6:
+			    no floating FAB on iPad). */}
+			<View style={styles.assistantWrap}>
 				<Pressable
-					onPress={onCreate}
-					style={[styles.createBtn, { backgroundColor: t.accent }]}
+					onPress={onAssistant}
+					style={[
+						styles.assistantRow,
+						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
+					]}
 					accessibilityRole="button"
-					accessibilityLabel="Create"
+					accessibilityLabel="Assistant"
 				>
-					<Plus size={20} color="#fff" />
-					<Text style={styles.createLabel}>Create</Text>
+					<Sparkles size={20} color={t.frostedInk} />
+					<Text style={[styles.assistantLabel, { color: t.frostedInk }]}>
+						Assistant
+					</Text>
 				</Pressable>
 			</View>
 
-			{/* Footer: profile + bell */}
-			<Pressable
-				onPress={onProfile}
-				style={[styles.footer, { borderTopColor: t.line }]}
-				accessibilityRole="button"
-				accessibilityLabel="Profile"
-			>
-				<Avatar
-					text={userInitials}
-					size={40}
-					imageUrl={user?.hasImage ? user.imageUrl : null}
-				/>
-				<View style={{ flex: 1, minWidth: 0 }}>
-					<Text style={[styles.userName, { color: t.ink }]} numberOfLines={1}>
-						{userName}
-					</Text>
-					<Text style={[styles.userRole, { color: t.sub }]}>{role}</Text>
-				</View>
+			{/* Footer: profile + bell, sibling Pressables (not nested). */}
+			<View style={[styles.footer, { borderTopColor: t.line }]}>
 				<Pressable
-					onPress={(e) => {
-						e.stopPropagation();
-						onNotifications();
-					}}
-					hitSlop={8}
+					onPress={onProfile}
+					style={styles.profileArea}
+					accessibilityRole="button"
+					accessibilityLabel="Profile"
+				>
+					<Avatar
+						text={userInitials}
+						size={40}
+						imageUrl={user?.hasImage ? user.imageUrl : null}
+					/>
+					<View style={{ flex: 1, minWidth: 0 }}>
+						<Text style={[styles.userName, { color: t.ink }]} numberOfLines={1}>
+							{userName}
+						</Text>
+						<Text style={[styles.userRole, { color: t.sub }]}>{role}</Text>
+					</View>
+				</Pressable>
+				<Pressable
+					onPress={onNotifications}
 					accessibilityRole="button"
 					accessibilityLabel="Notifications"
 					style={styles.bellWrap}
 				>
 					<Bell size={20} color={t.sub} />
-					<View style={styles.bellDot} />
+					<View style={[styles.bellDot, { backgroundColor: tokens.danger }]} />
 				</Pressable>
-			</Pressable>
+			</View>
 		</View>
 	);
 }
@@ -252,29 +270,28 @@ const styles = StyleSheet.create({
 		gap: 10,
 		paddingVertical: 9,
 		paddingHorizontal: 10,
-		borderRadius: 13,
+		borderRadius: radii.card,
 		borderWidth: 1,
 	},
 	orgTile: {
 		width: 30,
 		height: 30,
-		borderRadius: 9,
+		borderRadius: radii.md,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
 	},
 	orgTileText: {
 		fontFamily: fontFamily.bold,
-		fontSize: 13,
-		color: "#fff",
+		fontSize: type.sm,
 	},
 	orgName: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
+		fontSize: type.body,
 	},
 	orgSub: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12,
+		fontSize: type.meta,
 	},
 	nav: {
 		flex: 1,
@@ -286,26 +303,31 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
+		minHeight: touch.min,
 		paddingVertical: 11,
 		paddingHorizontal: 13,
-		borderRadius: 13,
+		borderRadius: radii.card,
 	},
 	navLabel: {
-		fontSize: 14,
+		fontSize: type.body,
 	},
-	createBtn: {
+	assistantWrap: {
+		paddingHorizontal: 12,
+		paddingBottom: 10,
+	},
+	assistantRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
-		marginTop: 8,
+		minHeight: touch.min,
 		paddingVertical: 12,
-		borderRadius: 14,
+		borderRadius: radii.ctrl,
+		borderWidth: 1,
 	},
-	createLabel: {
+	assistantLabel: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
-		color: "#fff",
+		fontSize: type.body,
 	},
 	footer: {
 		flexDirection: "row",
@@ -314,24 +336,35 @@ const styles = StyleSheet.create({
 		padding: 16,
 		borderTopWidth: 1,
 	},
+	profileArea: {
+		flex: 1,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 11,
+		minWidth: 0,
+	},
 	userName: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 14,
+		fontSize: type.body,
 	},
 	userRole: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12,
+		fontSize: type.meta,
 	},
 	bellWrap: {
-		position: "relative",
+		width: touch.min,
+		height: touch.min,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	bellDot: {
 		position: "absolute",
-		top: -4,
-		right: -4,
+		// Centers on the 20px icon's top-right corner within the 44px touch box
+		// ((44-20)/2 = 12 icon inset, minus half the 8px dot).
+		top: 8,
+		right: 8,
 		width: 8,
 		height: 8,
-		borderRadius: 8,
-		backgroundColor: "#e23b3b",
+		borderRadius: radii.xs,
 	},
 });

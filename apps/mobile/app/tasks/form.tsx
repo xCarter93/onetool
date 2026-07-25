@@ -21,7 +21,7 @@ import { Button } from "@/components/ui";
 import { FieldMenu } from "@/components/FieldMenu";
 import { AppCalendar } from "@/components/AppCalendar";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
-import { utcMsFromDateId, todayUtcDateId, dateIdFromUtcMs } from "@/lib/date";
+import { utcMsFromDateId, todayDateId, dateIdFromUtcMs } from "@/lib/date";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
 
@@ -96,7 +96,7 @@ export default function TaskFormSheet() {
 	const [projectId, setProjectId] = useState<Id<"projects"> | "">(
 		(params.projectId as Id<"projects">) || ""
 	);
-	const [dateId, setDateId] = useState<string>(todayUtcDateId());
+	const [dateId, setDateId] = useState<string>(todayDateId());
 	const [assigneeUserId, setAssigneeUserId] = useState<Id<"users"> | "">("");
 	const [status, setStatus] = useState<TaskStatus>("pending");
 	const [repeat, setRepeat] = useState<TaskRepeat>("none");
