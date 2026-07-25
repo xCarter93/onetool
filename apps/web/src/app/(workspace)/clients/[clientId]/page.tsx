@@ -137,6 +137,7 @@ function ClientDetailPageContent() {
 				<ClientDetailHeader
 					client={client}
 					clientId={clientId}
+					properties={clientProperties}
 					onComposeEmail={handleComposeEmail}
 					onAddTask={() => setIsTaskSheetOpen(true)}
 					onCreateProject={() =>

@@ -287,7 +287,7 @@ export default function HomeStatsReal() {
 		homeStats?.completedProjects.current
 	);
 	const approvedQuotesCurrent = safeNumber(homeStats?.approvedQuotes.current);
-	const invoicesSentCurrent = safeNumber(homeStats?.invoicesSent.current);
+	const invoicesPaidCurrent = safeNumber(homeStats?.invoicesPaid.current);
 
 	const clientsTotals = useMemo(
 		() => getRangeTotals(clientsSeries, totalClientsCurrent),
@@ -305,8 +305,8 @@ export default function HomeStatsReal() {
 	);
 
 	const invoicesTotals = useMemo(
-		() => getRangeTotals(invoicesSeries, invoicesSentCurrent),
-		[invoicesSeries, invoicesSentCurrent]
+		() => getRangeTotals(invoicesSeries, invoicesPaidCurrent),
+		[invoicesSeries, invoicesPaidCurrent]
 	);
 
 	const metrics: MetricDefinition[] = useMemo(() => {

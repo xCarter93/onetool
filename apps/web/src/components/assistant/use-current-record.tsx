@@ -4,6 +4,14 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { usePathname } from "next/navigation";
+import {
+	createContext,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+	type ReactNode,
+} from "react";
 
 /**
  * Identifies the record detail page the user is on (client/project/quote/
@@ -23,7 +31,37 @@ export interface CurrentRecord {
 // segments (new, import) and garbage URLs from being sent to v.id validators.
 const RECORD_PATH = /^\/(clients|projects|quotes|invoices)\/([a-z0-9]{20,40})$/;
 
+// Override channel for pages whose "current record" isn't URL-derivable
+// (e.g. /routing, where the selected route lives in page state).
+const CurrentRecordOverrideContext = createContext<{
+	record: CurrentRecord | null;
+	setRecord: (record: CurrentRecord | null) => void;
+} | null>(null);
+
+export function CurrentRecordProvider({ children }: { children: ReactNode }) {
+	const [record, setRecord] = useState<CurrentRecord | null>(null);
+	const value = useMemo(() => ({ record, setRecord }), [record]);
+	return (
+		<CurrentRecordOverrideContext.Provider value={value}>
+			{children}
+		</CurrentRecordOverrideContext.Provider>
+	);
+}
+
+/** Publish the page's current record for the assistant panel; cleared on unmount. */
+export function usePublishCurrentRecord(record: CurrentRecord | null) {
+	const setRecord = useContext(CurrentRecordOverrideContext)?.setRecord;
+	// Primitive deps so re-renders with an equal record don't republish (loop).
+	const { kindLabel, name, status } = record ?? {};
+	useEffect(() => {
+		if (!setRecord) return;
+		setRecord(kindLabel ? { kindLabel, name, status } : null);
+		return () => setRecord(null);
+	}, [setRecord, kindLabel, name, status]);
+}
+
 export function useCurrentRecord(): CurrentRecord | null {
+	const override = useContext(CurrentRecordOverrideContext)?.record ?? null;
 	const pathname = usePathname();
 	const match = pathname?.match(RECORD_PATH);
 	const kind = match?.[1];
@@ -46,6 +84,7 @@ export function useCurrentRecord(): CurrentRecord | null {
 		kind === "invoices" ? { id: id as Id<"invoices"> } : "skip"
 	);
 
+	if (override) return override;
 	if (!kind || !id) return null;
 
 	switch (kind) {

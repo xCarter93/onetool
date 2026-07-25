@@ -85,7 +85,7 @@ export function ListItem<T extends ListItemData>({
 			>
 				<GripVertical className="h-4 w-4" />
 			</button>
-			<div className="flex-1">{renderContent(item, index)}</div>
+			<div className="min-w-0 flex-1">{renderContent(item, index)}</div>
 		</div>
 	);
 }

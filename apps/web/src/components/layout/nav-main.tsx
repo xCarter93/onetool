@@ -551,6 +551,23 @@ export function NavMain({
 											{item.badgeCount}
 										</SidebarMenuBadge>
 									)}
+									{/* Icon-rail mode hides SidebarMenuBadge via CSS; show a
+									    corner-anchored mini count instead */}
+									{typeof item.badgeCount === "number" &&
+										item.badgeCount > 0 &&
+										isCollapsed && (
+											<span
+												aria-hidden="true"
+												className={cn(
+													"pointer-events-none absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums text-white",
+													item.badgeVariant === "alert"
+														? "bg-destructive"
+														: "bg-primary"
+												)}
+											>
+												{item.badgeCount > 99 ? "99+" : item.badgeCount}
+											</span>
+										)}
 								</SidebarMenuItem>
 							);
 						})}

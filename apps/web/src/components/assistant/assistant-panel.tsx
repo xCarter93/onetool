@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,8 +52,17 @@ const SUGGESTIONS = [
 /** Empty-state prompts tailored to what's currently in context. */
 function suggestionsFor(
 	builderMounted: boolean,
-	record: CurrentRecord | null
+	record: CurrentRecord | null,
+	pathname?: string | null
 ): string[] {
+	if (pathname === "/routing") {
+		return [
+			"What's on my route today?",
+			"Plan today's route from my schedule",
+			"Optimize the stop order",
+			"How long will my route take?",
+		];
+	}
 	if (builderMounted) {
 		return [
 			"Show only this month",
@@ -284,6 +293,7 @@ export function AssistantPanel({
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const toast = useToast();
 	const router = useRouter();
+	const pathname = usePathname();
 	const getScreenContext = useScreenContext();
 	const applyReportConfig = useApplyReportConfig();
 	const builderMounted = useReportBuilderMounted();
@@ -578,7 +588,7 @@ export function AssistantPanel({
 										across your whole workspace.
 									</p>
 									<div className="flex w-full max-w-sm flex-col gap-2">
-										{suggestionsFor(builderMounted, currentRecord).map((s) => (
+										{suggestionsFor(builderMounted, currentRecord, pathname).map((s) => (
 											<button
 												key={s}
 												type="button"

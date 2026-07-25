@@ -6,6 +6,7 @@ import {
 	createTestOrg,
 	createTestClient,
 	createTestProject,
+	createTestClientProperty,
 	createTestIdentity,
 } from "./test.helpers";
 
@@ -259,6 +260,119 @@ describe("Projects", () => {
 
 			const project = await asUser.query(api.projects.get, { id: projectId });
 			expect(project?.status).toBe("completed");
+		});
+	});
+
+	describe("propertyId", () => {
+		// Coverage for propertyId threading through projects.create/update and
+		// validatePropertyClientAccess (lib/crud.ts): property must exist, belong
+		// to the caller's org, and its clientId must match the effective clientId.
+
+		it("create with a valid propertyId round-trips via get", async () => {
+			const { clientId, propertyId, clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => {
+					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, orgId);
+					const propertyId = await createTestClientProperty(ctx, orgId, clientId);
+					return { clientId, propertyId, clerkUserId, clerkOrgId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const projectId = await asUser.mutation(api.projects.create, {
+				title: "Project With Property",
+				clientId,
+				propertyId,
+				status: "planned",
+				projectType: "one-off",
+			});
+
+			const project = await asUser.query(api.projects.get, { id: projectId });
+			expect(project?.propertyId).toEqual(propertyId);
+		});
+
+		it("create with a propertyId belonging to a different client throws", async () => {
+			const { clientId, propertyId, clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => {
+					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, orgId);
+					const otherClientId = await createTestClient(ctx, orgId, {
+						companyName: "Other Client",
+					});
+					const propertyId = await createTestClientProperty(
+						ctx,
+						orgId,
+						otherClientId
+					);
+					return { clientId, propertyId, clerkUserId, clerkOrgId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.mutation(api.projects.create, {
+					title: "Project With Mismatched Property",
+					clientId,
+					propertyId,
+					status: "planned",
+					projectType: "one-off",
+				})
+			).rejects.toThrow(/does not belong to the selected client/);
+		});
+
+		it("update setting a valid propertyId persists", async () => {
+			const { projectId, propertyId, clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => {
+					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, orgId);
+					const propertyId = await createTestClientProperty(ctx, orgId, clientId);
+					const projectId = await createTestProject(ctx, orgId, clientId);
+					return { projectId, propertyId, clerkUserId, clerkOrgId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await asUser.mutation(api.projects.update, {
+				id: projectId,
+				propertyId,
+			});
+
+			const project = await asUser.query(api.projects.get, { id: projectId });
+			expect(project?.propertyId).toEqual(propertyId);
+		});
+
+		it("update changing clientId while the existing propertyId belongs to the old client throws", async () => {
+			const { projectId, newClientId, clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => {
+					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+					const oldClientId = await createTestClient(ctx, orgId, {
+						companyName: "Old Client",
+					});
+					const newClientId = await createTestClient(ctx, orgId, {
+						companyName: "New Client",
+					});
+					const propertyId = await createTestClientProperty(
+						ctx,
+						orgId,
+						oldClientId
+					);
+					const projectId = await createTestProject(ctx, orgId, oldClientId);
+					await ctx.db.patch(projectId, { propertyId });
+					return { projectId, newClientId, clerkUserId, clerkOrgId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.mutation(api.projects.update, {
+					id: projectId,
+					clientId: newClientId,
+				})
+			).rejects.toThrow(/does not belong to the selected client/);
 		});
 	});
 

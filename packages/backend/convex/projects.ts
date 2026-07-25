@@ -8,6 +8,7 @@ import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
 import {
 	validateParentAccess,
+	validatePropertyClientAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
@@ -77,6 +78,16 @@ async function createProjectWithOrg(
 	// Validate client access
 	await validateClientAccess(ctx, data.clientId, ctx.orgId);
 
+	// Validate property belongs to the project's client if provided
+	if (data.propertyId) {
+		await validatePropertyClientAccess(
+			ctx,
+			data.propertyId,
+			data.clientId,
+			ctx.orgId
+		);
+	}
+
 	// Validate assigned users if provided
 	if (data.assignedUserIds && data.assignedUserIds.length > 0) {
 		await validateUserAccess(ctx, data.assignedUserIds, ctx.orgId);
@@ -118,11 +129,29 @@ async function updateProjectWithValidation(
 	updates: Partial<Doc<"projects">>
 ): Promise<void> {
 	// Validate project exists and belongs to user's org
-	await ctx.orgEntity("projects", id);
+	const existingProject = await ctx.orgEntity("projects", id);
 
 	// Validate new client if being updated
 	if (updates.clientId) {
 		await validateClientAccess(ctx, updates.clientId, ctx.orgId);
+	}
+
+	// Validate property against the effective client (either may be changing)
+	const effectivePropertyId =
+		updates.propertyId !== undefined
+			? updates.propertyId
+			: existingProject.propertyId;
+	if (effectivePropertyId) {
+		const effectiveClientId =
+			updates.clientId !== undefined
+				? updates.clientId
+				: existingProject.clientId;
+		await validatePropertyClientAccess(
+			ctx,
+			effectivePropertyId,
+			effectiveClientId,
+			ctx.orgId
+		);
 	}
 
 	// Validate assigned users if being updated
@@ -518,6 +547,7 @@ export const getPreview = optionalUserQuery({
 export const create = userMutation({
 	args: {
 		clientId: v.id("clients"),
+		propertyId: v.optional(v.id("clientProperties")),
 		title: v.string(),
 		description: v.optional(v.string()),
 		projectNumber: v.optional(v.string()),
@@ -715,6 +745,7 @@ export const update = userMutation({
 	args: {
 		id: v.id("projects"),
 		clientId: v.optional(v.id("clients")),
+		propertyId: v.optional(v.id("clientProperties")),
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),
 		projectNumber: v.optional(v.string()),
@@ -898,6 +929,7 @@ export const remove = userMutation({
 			}
 
 			// Delete the quote itself
+			await AggregateHelpers.removeQuote(ctx, quote);
 			await ctx.db.delete(quote._id);
 		}
 
@@ -938,6 +970,7 @@ export const remove = userMutation({
 			}
 
 			// Delete the invoice itself
+			await AggregateHelpers.removeInvoice(ctx, invoice);
 			await ctx.db.delete(invoice._id);
 		}
 

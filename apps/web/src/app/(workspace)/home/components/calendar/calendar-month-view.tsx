@@ -4,7 +4,6 @@ import React from "react";
 import { CalendarEvent } from "@/types/calendar";
 import { format } from "date-fns";
 import { getMonthDays, isEventOnDate } from "@/lib/calendar-utils";
-import { CalendarEventIcon } from "./calendar-event-icon";
 import { CalendarEventBar } from "./calendar-event-bar";
 
 interface CalendarMonthViewProps {
@@ -50,10 +49,12 @@ export function CalendarMonthView({
 			</div>
 
 			{/* Calendar Grid */}
+			{/* Rows keep a floor height and the grid scrolls when a dense month
+			    can't fit, instead of clipping the last row */}
 			<div
-				className="flex-1 grid grid-cols-7 auto-rows-fr"
+				className="flex-1 min-h-0 overflow-y-auto grid grid-cols-7"
 				style={{
-					gridTemplateRows: `repeat(${weeks.length}, 1fr)`,
+					gridTemplateRows: `repeat(${weeks.length}, minmax(8rem, 1fr))`,
 				}}
 			>
 				{weeks.map((week, weekIndex) => (
@@ -63,17 +64,19 @@ export function CalendarMonthView({
 								isEventOnDate(event, dayCell.date)
 							);
 							const projects = dayEvents.filter((e) => e.type === "project");
-							const tasks = dayEvents.filter((e) => e.type === "task");
+							const tasks = dayEvents
+								.filter((e) => e.type === "task")
+								.sort((a, b) =>
+									(a.startTime ?? "99").localeCompare(b.startTime ?? "99")
+								);
 
-							// Limit visible events to avoid overflow
-							const maxVisibleProjects = 2;
-							const maxVisibleTasks = 6;
-							const visibleProjects = projects.slice(0, maxVisibleProjects);
-							const visibleTasks = tasks.slice(0, maxVisibleTasks);
-							const hiddenCount =
-								projects.length -
-								visibleProjects.length +
-								(tasks.length - visibleTasks.length);
+							// Fixed row budget per cell so height never grows with volume
+							const MAX_VISIBLE = 3;
+							const visibleEvents = [...projects, ...tasks].slice(
+								0,
+								MAX_VISIBLE
+							);
+							const hiddenCount = dayEvents.length - visibleEvents.length;
 
 							return (
 								<div
@@ -83,7 +86,7 @@ export function CalendarMonthView({
 											border-border
 											p-2 cursor-pointer
 											hover:bg-muted/50 transition-colors
-											flex flex-col
+											flex flex-col min-h-0 overflow-hidden
 											${dayCell.isToday ? "bg-primary/5" : ""}
 											${!dayCell.isCurrentMonth ? "bg-muted/20" : ""}
 										`}
@@ -112,41 +115,23 @@ export function CalendarMonthView({
 										)}
 									</div>
 
-									{/* Events */}
+									{/* Events — uniform single-line chips, capped at MAX_VISIBLE */}
 									<div className="space-y-1">
-										{/* Projects */}
-										{visibleProjects.map((project) => (
+										{visibleEvents.map((event) => (
 											<div
-												key={project.id}
+												key={event.id}
 												onClick={(e) => {
 													e.stopPropagation();
-													handleEventClick(project, dayCell.date);
+													handleEventClick(event, dayCell.date);
 												}}
 											>
-												<CalendarEventBar event={project} isMultiDay={true} />
+												<CalendarEventBar event={event} compact />
 											</div>
 										))}
 
-										{/* Tasks */}
-										{visibleTasks.length > 0 && (
-											<div className="flex flex-wrap gap-1">
-												{visibleTasks.map((task) => (
-													<div
-														key={task.id}
-														onClick={(e) => {
-															e.stopPropagation();
-															handleEventClick(task, dayCell.date);
-														}}
-													>
-														<CalendarEventIcon event={task} size="sm" />
-													</div>
-												))}
-											</div>
-										)}
-
-										{/* More Indicator */}
+										{/* More Indicator — cell click opens the day view */}
 										{hiddenCount > 0 && (
-											<div className="text-xs text-muted-foreground mt-1">
+											<div className="text-[11px] font-medium text-muted-foreground hover:text-foreground mt-0.5">
 												+{hiddenCount} more
 											</div>
 										)}

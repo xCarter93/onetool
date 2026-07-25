@@ -2,7 +2,7 @@
 
 import React from "react";
 import { CalendarEvent } from "@/types/calendar";
-import { getEventColor } from "@/lib/calendar-utils";
+import { formatTime, getEventColor } from "@/lib/calendar-utils";
 import {
 	Tooltip,
 	TooltipContent,
@@ -17,6 +17,8 @@ interface CalendarEventBarProps {
 	style?: React.CSSProperties;
 	onClick?: () => void;
 	isMultiDay?: boolean;
+	/** Slim single-line chip for dense contexts (month cells) */
+	compact?: boolean;
 }
 
 export function CalendarEventBar({
@@ -24,6 +26,7 @@ export function CalendarEventBar({
 	style,
 	onClick,
 	isMultiDay = false,
+	compact = false,
 }: CalendarEventBarProps) {
 	const colors = getEventColor(event.type, event.status);
 
@@ -77,10 +80,13 @@ export function CalendarEventBar({
 						<div
 							className={`
 								${colors.bg} ${colors.border} ${colors.text} ${colors.hover}
-								border rounded px-2 py-1 text-xs font-medium
+								border rounded font-medium
 								truncate cursor-pointer transition-colors
-								shadow-sm
-								${isMultiDay ? "min-h-[28px]" : "h-full"}
+								${
+									compact
+										? "px-1.5 py-0.5 text-[11px] leading-4"
+										: `px-2 py-1 text-xs shadow-sm ${isMultiDay ? "min-h-[28px]" : "h-full"}`
+								}
 							`}
 							style={style}
 							onClick={onClick}
@@ -89,6 +95,11 @@ export function CalendarEventBar({
 				>
 					<div className="flex items-center gap-1">
 						{getStatusIcon()}
+						{compact && event.type === "task" && event.startTime && (
+							<span className="shrink-0 opacity-70 tabular-nums">
+								{formatTime(event.startTime)}
+							</span>
+						)}
 						<span className="truncate flex-1">{event.title}</span>
 					</div>
 				</TooltipTrigger>

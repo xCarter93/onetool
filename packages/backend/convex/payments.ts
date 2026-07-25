@@ -128,45 +128,6 @@ function validateSortOrder(sortOrder: number): void {
 	}
 }
 
-/**
- * Check if all payments for an invoice are paid
- */
-async function checkAllPaymentsPaid(
-	ctx: MutationCtx,
-	invoiceId: InvoiceId,
-	currentPaymentId: PaymentId
-): Promise<boolean> {
-	const allPayments = await ctx.db
-		.query("payments")
-		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
-		.collect();
-
-	return allPayments.every(
-		(p) => p._id === currentPaymentId || p.status === "paid"
-	);
-}
-
-/**
- * Update invoice status to paid if all payments are complete
- */
-async function updateInvoiceStatusIfFullyPaid(
-	ctx: MutationCtx,
-	invoiceId: InvoiceId,
-	paymentId: PaymentId
-): Promise<void> {
-	const allPaid = await checkAllPaymentsPaid(ctx, invoiceId, paymentId);
-
-	if (allPaid) {
-		const invoice = await ctx.db.get(invoiceId);
-		if (invoice && invoice.status !== "paid") {
-			await ctx.db.patch(invoiceId, {
-				status: "paid",
-				paidAt: Date.now(),
-			});
-		}
-	}
-}
-
 // ============================================================================
 // Queries
 // ============================================================================

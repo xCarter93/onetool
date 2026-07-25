@@ -65,8 +65,8 @@ function ProjectDetailPageContent() {
 			? { clientId: project.clientId }
 			: "skip"
 	);
-	const primaryProperty = useQuery(
-		api.clientProperties.getPrimaryProperty,
+	const properties = useQuery(
+		api.clientProperties.listByClient,
 		project?.clientId && can("clients")
 			? { clientId: project.clientId }
 			: "skip"
@@ -137,6 +137,7 @@ function ProjectDetailPageContent() {
 				<ProjectDetailHeader
 					project={project}
 					hasApprovedQuotes={approvedQuotes.length > 0}
+					properties={properties}
 					onAddTask={() => setIsTaskSheetOpen(true)}
 					onAddQuote={() => openCreate({ type: "quote", projectId })}
 					onGenerateInvoice={() => setIsInvoiceModalOpen(true)}
@@ -155,7 +156,7 @@ function ProjectDetailPageContent() {
 					activities={activities}
 					client={client}
 					primaryContact={primaryContact}
-					primaryProperty={primaryProperty}
+					properties={properties}
 					onAddTask={() => setIsTaskSheetOpen(true)}
 				/>
 			</div>

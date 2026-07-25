@@ -361,7 +361,7 @@ export default function HomeScreen({
 										<StatCard
 											label="Unpaid"
 											value={formatCurrency(
-												homeStats?.invoicesSent.outstanding ?? 0
+												homeStats?.invoicesPaid.outstanding ?? 0
 											)}
 											foot={`${overdueInvoices?.length ?? 0} overdue`}
 											icon="Receipt"
@@ -411,7 +411,7 @@ export default function HomeScreen({
 										<StatCard
 											label="Unpaid"
 											value={formatCurrency(
-												homeStats?.invoicesSent.outstanding ?? 0
+												homeStats?.invoicesPaid.outstanding ?? 0
 											)}
 											foot={`${overdueInvoices?.length ?? 0} overdue`}
 											icon="Receipt"

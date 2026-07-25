@@ -7,6 +7,7 @@ import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
 import {
 	validateParentAccess,
+	validatePropertyClientAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
@@ -147,6 +148,16 @@ async function createTaskWithOrg(
 		await validateProjectAccess(ctx, data.projectId, ctx.orgId);
 	}
 
+	// Validate property belongs to the task's client if provided
+	if (data.propertyId) {
+		await validatePropertyClientAccess(
+			ctx,
+			data.propertyId,
+			data.clientId,
+			ctx.orgId
+		);
+	}
+
 	// Validate assignee if provided
 	if (data.assigneeUserId) {
 		await validateUserAccess(ctx, data.assigneeUserId, ctx.orgId);
@@ -195,6 +206,22 @@ async function updateTaskWithValidation(
 		await validateProjectAccess(ctx, updates.projectId, ctx.orgId);
 	}
 
+	// Validate property against the effective client (either may be changing)
+	const effectivePropertyId =
+		updates.propertyId !== undefined
+			? updates.propertyId
+			: existingTask.propertyId;
+	if (effectivePropertyId) {
+		const effectiveClientId =
+			updates.clientId !== undefined ? updates.clientId : existingTask.clientId;
+		await validatePropertyClientAccess(
+			ctx,
+			effectivePropertyId,
+			effectiveClientId,
+			ctx.orgId
+		);
+	}
+
 	// Validate new assignee if being updated
 	if (updates.assigneeUserId) {
 		await validateUserAccess(ctx, updates.assigneeUserId, ctx.orgId);
@@ -202,6 +229,38 @@ async function updateTaskWithValidation(
 
 	// Update the task
 	await ctx.db.patch(id, updates);
+}
+
+/**
+ * One-directional: mark this task's stop visited on any daily route for its
+ * date. Never called on un-completion, so stops never revert.
+ */
+async function markTaskStopsVisited(
+	ctx: UserMutationCtx,
+	orgId: Id<"organizations">,
+	task: TaskDocument
+): Promise<void> {
+	if (task.date === undefined) return;
+
+	const sameDay = await ctx.db
+		.query("routes")
+		.withIndex("by_org_date", (q) => q.eq("orgId", orgId).eq("date", task.date))
+		.collect();
+	const dailyRoutes = sameDay.filter((r) => r.kind === "daily");
+
+	for (const route of dailyRoutes) {
+		let changed = false;
+		const stops = route.stops.map((s) => {
+			if (s.taskId === task._id && s.status !== "visited") {
+				changed = true;
+				return { ...s, status: "visited" as const, visitedAt: Date.now() };
+			}
+			return s;
+		});
+		if (changed) {
+			await ctx.db.patch(route._id, { stops });
+		}
+	}
 }
 
 // Interface for task statistics
@@ -368,6 +427,7 @@ export const create = userMutation({
 	args: {
 		clientId: v.optional(v.id("clients")),
 		projectId: v.optional(v.id("projects")),
+		propertyId: v.optional(v.id("clientProperties")),
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
 		title: v.string(),
 		description: v.optional(v.string()),
@@ -523,6 +583,7 @@ export const update = userMutation({
 		id: v.id("tasks"),
 		clientId: v.optional(v.id("clients")),
 		projectId: v.optional(v.id("projects")),
+		propertyId: v.optional(v.id("clientProperties")),
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),
@@ -617,6 +678,7 @@ export const update = userMutation({
 		if (task) {
 			if (isBeingCompleted) {
 				await ActivityHelpers.taskCompleted(ctx, task as TaskDocument);
+				await markTaskStopsVisited(ctx, task.orgId, task as TaskDocument);
 			}
 
 			// Emit status change event if status changed
@@ -676,6 +738,11 @@ export const complete = userMutation({
 		const updatedTask = await ctx.db.get(args.id);
 		if (updatedTask) {
 			await ActivityHelpers.taskCompleted(ctx, updatedTask as TaskDocument);
+			await markTaskStopsVisited(
+				ctx,
+				updatedTask.orgId,
+				updatedTask as TaskDocument
+			);
 
 			await emitStatusChangeEvent(
 				ctx,

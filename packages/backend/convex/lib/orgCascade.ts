@@ -49,6 +49,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"emailMessages",
 	"emailThreads",
 	"emailSuppressions",
+	"routes", // stops reference clientProperties — drain before them
 	"clientContacts",
 	"clientProperties",
 	"tasks",

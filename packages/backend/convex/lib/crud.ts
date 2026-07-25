@@ -56,6 +56,29 @@ export async function validateParentAccess<T extends TableNames>(
 	return parent;
 }
 
+/**
+ * Validate that a client property exists, belongs to the user's organization,
+ * and belongs to the given client.
+ */
+export async function validatePropertyClientAccess(
+	ctx: QueryCtx | MutationCtx,
+	propertyId: Id<"clientProperties">,
+	clientId: Id<"clients"> | undefined,
+	existingOrgId?: Id<"organizations">
+): Promise<Doc<"clientProperties">> {
+	const property = await validateParentAccess(
+		ctx,
+		"clientProperties",
+		propertyId,
+		"Property",
+		existingOrgId
+	);
+	if (!clientId || property.clientId !== clientId) {
+		throw new Error("Property does not belong to the selected client");
+	}
+	return property;
+}
+
 // ============================================================================
 // Common Update Helpers
 // ============================================================================

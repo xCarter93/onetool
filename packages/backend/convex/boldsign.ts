@@ -9,6 +9,7 @@ import {
 import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { internal, api } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
+import { AggregateHelpers } from "./lib/aggregates";
 import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
 import {
 	denyPermission,
@@ -560,6 +561,10 @@ async function handleQuoteStatusUpdate(
 
 	if (Object.keys(quoteUpdates).length > 0) {
 		await ctx.db.patch(quote._id, quoteUpdates);
+		const updatedQuote = await ctx.db.get(quote._id);
+		if (updatedQuote) {
+			await AggregateHelpers.updateQuote(ctx, quote, updatedQuote);
+		}
 	}
 }
 

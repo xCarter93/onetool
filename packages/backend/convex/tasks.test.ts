@@ -1059,6 +1059,231 @@ describe("Tasks", () => {
 		});
 	});
 
+	describe("propertyId", () => {
+		// Coverage for propertyId threading through tasks.create/update and
+		// validatePropertyClientAccess (lib/crud.ts): property must exist, belong
+		// to the caller's org, and its clientId must match the effective clientId.
+
+		const date = Date.UTC(2026, 5, 10);
+
+		async function seedOrgUser(ctx: any) {
+			const userId = await ctx.db.insert("users", {
+				name: "Test User",
+				email: "test@example.com",
+				image: "https://example.com/image.jpg",
+				externalId: "user_123",
+			});
+
+			const orgId = await ctx.db.insert("organizations", {
+				clerkOrganizationId: "org_123",
+				name: "Test Org",
+				ownerUserId: userId,
+			});
+
+			await ctx.db.insert("organizationMemberships", {
+				orgId,
+				userId,
+				role: "admin",
+			});
+
+			return { userId, orgId };
+		}
+
+		function asUser() {
+			return t.withIdentity({ subject: "user_123", activeOrgId: "org_123" });
+		}
+
+		it("create with a valid propertyId round-trips via get", async () => {
+			const { clientId, propertyId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				const propertyId = await ctx.db.insert("clientProperties", {
+					orgId,
+					clientId,
+					streetAddress: "123 Main St",
+					city: "Test City",
+					state: "TS",
+					zipCode: "12345",
+					isPrimary: true,
+				});
+				return { clientId, propertyId };
+			});
+
+			const user = asUser();
+
+			const taskId = await user.mutation(api.tasks.create, {
+				title: "Task With Property",
+				date,
+				status: "pending",
+				clientId,
+				propertyId,
+				type: "external",
+			});
+
+			const task = await user.query(api.tasks.get, { id: taskId });
+			expect(task?.propertyId).toEqual(propertyId);
+		});
+
+		it("create with a propertyId belonging to a different client throws", async () => {
+			const { clientId, propertyId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				const otherClientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Other Client",
+					status: "active",
+				});
+				const propertyId = await ctx.db.insert("clientProperties", {
+					orgId,
+					clientId: otherClientId,
+					streetAddress: "456 Other St",
+					city: "Other City",
+					state: "OT",
+					zipCode: "54321",
+					isPrimary: true,
+				});
+				return { clientId, propertyId };
+			});
+
+			const user = asUser();
+
+			await expect(
+				user.mutation(api.tasks.create, {
+					title: "Task With Mismatched Property",
+					date,
+					status: "pending",
+					clientId,
+					propertyId,
+					type: "external",
+				})
+			).rejects.toThrow(/does not belong to the selected client/);
+		});
+
+		it("update setting a valid propertyId persists", async () => {
+			const { clientId, propertyId, taskId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				const propertyId = await ctx.db.insert("clientProperties", {
+					orgId,
+					clientId,
+					streetAddress: "123 Main St",
+					city: "Test City",
+					state: "TS",
+					zipCode: "12345",
+					isPrimary: true,
+				});
+				const taskId = await ctx.db.insert("tasks", {
+					orgId,
+					clientId,
+					title: "Existing Task",
+					date,
+					status: "pending",
+					type: "external",
+				});
+				return { clientId, propertyId, taskId };
+			});
+
+			const user = asUser();
+
+			await user.mutation(api.tasks.update, {
+				id: taskId,
+				propertyId,
+			});
+
+			const task = await user.query(api.tasks.get, { id: taskId });
+			expect(task?.propertyId).toEqual(propertyId);
+		});
+
+		it("update changing clientId while the existing propertyId belongs to the old client throws", async () => {
+			const { newClientId, taskId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const oldClientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Old Client",
+					status: "active",
+				});
+				const newClientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "New Client",
+					status: "active",
+				});
+				const propertyId = await ctx.db.insert("clientProperties", {
+					orgId,
+					clientId: oldClientId,
+					streetAddress: "123 Main St",
+					city: "Test City",
+					state: "TS",
+					zipCode: "12345",
+					isPrimary: true,
+				});
+				const taskId = await ctx.db.insert("tasks", {
+					orgId,
+					clientId: oldClientId,
+					propertyId,
+					title: "Existing Task",
+					date,
+					status: "pending",
+					type: "external",
+				});
+				return { newClientId, taskId };
+			});
+
+			const user = asUser();
+
+			await expect(
+				user.mutation(api.tasks.update, {
+					id: taskId,
+					clientId: newClientId,
+				})
+			).rejects.toThrow(/does not belong to the selected client/);
+		});
+
+		it("create an internal task with a propertyId but no client throws", async () => {
+			const { propertyId } = await t.run(async (ctx) => {
+				const { orgId } = await seedOrgUser(ctx);
+				const clientId = await ctx.db.insert("clients", {
+					orgId,
+					companyName: "Test Client",
+					status: "active",
+				});
+				const propertyId = await ctx.db.insert("clientProperties", {
+					orgId,
+					clientId,
+					streetAddress: "123 Main St",
+					city: "Test City",
+					state: "TS",
+					zipCode: "12345",
+					isPrimary: true,
+				});
+				return { propertyId };
+			});
+
+			const user = asUser();
+
+			await expect(
+				user.mutation(api.tasks.create, {
+					title: "Internal Task With Property",
+					date,
+					status: "pending",
+					propertyId,
+					type: "internal",
+				})
+			).rejects.toThrow(/does not belong to the selected client/);
+		});
+	});
+
 	describe("complete", () => {
 		it("should mark task as completed", async () => {
 			const { userId, clientId, taskId } = await t.run(async (ctx) => {

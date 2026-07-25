@@ -72,6 +72,12 @@ function dayEndMs(date: string) {
 	return Date.parse(`${date}T23:59:59.999Z`);
 }
 
+// Routing tools default to "today" in UTC — the org's date field is stored
+// UTC-midnight, same as tasks/projects.
+export function resolveDateMs(date?: string): number {
+	return dayStartMs(date ?? new Date().toISOString().slice(0, 10));
+}
+
 // Dates go to the model as ISO strings, never epoch ms — the LLM cannot do
 // reliable arithmetic on 13-digit timestamps. Day-precision fields (stored
 // UTC-midnight) become YYYY-MM-DD; event instants keep the full timestamp.
@@ -370,7 +376,7 @@ type WriteResult<T> = ({ ok: true } & T) | { ok: false; error: string };
 
 // ConvexError.data can arrive (double-)JSON-stringified across function-call
 // boundaries; unwrap until it's an object.
-function forbiddenErrorData(e: unknown): Record<string, unknown> | null {
+function convexErrorData(e: unknown): Record<string, unknown> | null {
 	if (!(e instanceof ConvexError)) return null;
 	let data: unknown = e.data;
 	try {
@@ -378,14 +384,14 @@ function forbiddenErrorData(e: unknown): Record<string, unknown> | null {
 	} catch {
 		return null;
 	}
-	if (
-		typeof data === "object" &&
-		data !== null &&
-		(data as Record<string, unknown>).code === "FORBIDDEN"
-	) {
-		return data as Record<string, unknown>;
-	}
-	return null;
+	return typeof data === "object" && data !== null
+		? (data as Record<string, unknown>)
+		: null;
+}
+
+function forbiddenErrorData(e: unknown): Record<string, unknown> | null {
+	const data = convexErrorData(e);
+	return data && data.code === "FORBIDDEN" ? data : null;
 }
 
 function noPermissionResult(data: Record<string, unknown>): {
@@ -432,10 +438,219 @@ const NAVIGATE_ALLOWED_PATHS: RegExp[] = [
 	/^\/automations$/,
 	/^\/subscription$/,
 	/^\/organization\/profile$/,
+	/^\/routing$/,
 ];
 
 export function isAllowedWorkspacePath(path: string): boolean {
 	return NAVIGATE_ALLOWED_PATHS.some((pattern) => pattern.test(path));
+}
+
+// ---------------------------------------------------------------------------
+// Routing helpers (exported for unit tests, pure — no ctx)
+// ---------------------------------------------------------------------------
+
+type RouteDoc = Doc<"routes">;
+type RouteStopDoc = RouteDoc["stops"][number];
+
+interface ShapedRouteStop {
+	number: number;
+	label: string;
+	status?: "pending" | "visited" | "skipped";
+	visited?: boolean;
+	taskId?: string;
+	projectId?: string;
+}
+
+interface ShapedRoute {
+	id: string;
+	name: string;
+	kind: "daily" | "saved";
+	date?: string;
+	assigneeUserId?: string;
+	roundTrip: boolean;
+	startLabel: string;
+	optimized?: boolean;
+	approximate?: boolean;
+	totalDistanceMeters?: number;
+	totalDurationSeconds?: number;
+	stops: ShapedRouteStop[];
+}
+
+// No lat/lng, no geometry in the model-facing shape — token bloat, and the
+// model never needs raw coordinates.
+export function shapeRoute(route: RouteDoc): ShapedRoute {
+	const kind = route.kind ?? "saved";
+	const isDaily = kind === "daily";
+	return {
+		id: route._id,
+		name: route.name,
+		kind,
+		date: isoDay(route.date),
+		assigneeUserId: route.assigneeUserId,
+		roundTrip: route.roundTrip,
+		startLabel: route.start.label,
+		optimized: route.optimized,
+		approximate: route.approximate,
+		totalDistanceMeters: route.totalDistanceMeters,
+		totalDurationSeconds: route.totalDurationSeconds,
+		stops: [...route.stops]
+			.sort((a, b) => a.order - b.order)
+			.map((s) => ({
+				number: s.order + 1,
+				label: s.label,
+				...(isDaily
+					? { status: s.status ?? "pending", visited: s.status === "visited" }
+					: {}),
+				taskId: s.taskId,
+				projectId: s.projectId,
+			})),
+	};
+}
+
+type RouteResolution =
+	| { found: true; route: RouteDoc }
+	| { found: false; reason: "ambiguous"; candidates: string[] }
+	| { found: false; reason: "not_found" };
+
+/**
+ * Resolve a route from the org's route list: by saved-route name
+ * (exact-then-substring, case-insensitive; ambiguous substring matches are
+ * surfaced instead of guessed), or by the (date, assigneeUserId) daily
+ * singleton — undefined assigneeUserId means the whole-team/org-wide route.
+ */
+export function resolveRouteFromList(
+	routes: RouteDoc[],
+	criteria: {
+		date?: number;
+		assigneeUserId?: Id<"users">;
+		savedRouteName?: string;
+	}
+): RouteResolution {
+	if (criteria.savedRouteName) {
+		const savedRoutes = routes.filter((r) => (r.kind ?? "saved") !== "daily");
+		const term = criteria.savedRouteName.trim().toLowerCase();
+		const exact = savedRoutes.find((r) => r.name.toLowerCase() === term);
+		if (exact) return { found: true, route: exact };
+		const matches = savedRoutes.filter((r) => r.name.toLowerCase().includes(term));
+		if (matches.length === 1) return { found: true, route: matches[0] };
+		if (matches.length > 1) {
+			return { found: false, reason: "ambiguous", candidates: matches.map((r) => r.name) };
+		}
+		return { found: false, reason: "not_found" };
+	}
+	const route = routes.find(
+		(r) =>
+			(r.kind ?? "saved") === "daily" &&
+			r.date === criteria.date &&
+			r.assigneeUserId === criteria.assigneeUserId
+	);
+	return route ? { found: true, route } : { found: false, reason: "not_found" };
+}
+
+interface StopAdditionCandidate {
+	propertyId: Id<"clientProperties">;
+	label: string;
+	latitude: number;
+	longitude: number;
+}
+
+interface StopEditResult {
+	stops: RouteStopDoc[];
+	removed: string[];
+	added: string[];
+	unmatched: string[];
+	error?: string;
+}
+
+/**
+ * Apply remove → reorder → add edits to a route's stop list, in that order.
+ * Returns sequential order values (0..n-1) and preserves each surviving
+ * stop's propertyId/taskId/projectId/status/visitedAt untouched.
+ */
+export function applyStopEdits(
+	currentStops: RouteStopDoc[],
+	edits: {
+		removeStops?: string[];
+		reorder?: number[];
+		additions?: StopAdditionCandidate[];
+	}
+): StopEditResult {
+	const numbered = [...currentStops]
+		.sort((a, b) => a.order - b.order)
+		.map((stop, i) => ({ stop, number: i + 1 }));
+
+	const unmatched: string[] = [];
+	const removed: string[] = [];
+	let remaining = numbered;
+
+	if (edits.removeStops?.length) {
+		const toRemove = new Set<number>();
+		for (const entry of edits.removeStops) {
+			const trimmed = entry.trim();
+			if (/^\d+$/.test(trimmed)) {
+				const match = numbered.find((n) => n.number === Number(trimmed));
+				if (match) toRemove.add(match.number);
+				else unmatched.push(entry);
+				continue;
+			}
+			const term = trimmed.toLowerCase();
+			const matches = numbered.filter((n) => n.stop.label.toLowerCase().includes(term));
+			if (matches.length === 0) {
+				unmatched.push(entry);
+				continue;
+			}
+			for (const m of matches) toRemove.add(m.number);
+		}
+		for (const n of numbered) if (toRemove.has(n.number)) removed.push(n.stop.label);
+		remaining = numbered.filter((n) => !toRemove.has(n.number));
+	}
+
+	let orderedStops = remaining.map((n) => n.stop);
+	let error: string | undefined;
+
+	if (edits.reorder?.length) {
+		const remainingNumbers = remaining.map((n) => n.number).sort((a, b) => a - b);
+		const sortedReorder = [...edits.reorder].sort((a, b) => a - b);
+		const isPermutation =
+			edits.reorder.length === remainingNumbers.length &&
+			sortedReorder.every((v, i) => v === remainingNumbers[i]);
+		if (!isPermutation) {
+			error = `reorder must include every remaining stop number exactly once (${remainingNumbers.join(", ")})`;
+		} else {
+			const byNumber = new Map(remaining.map((n) => [n.number, n.stop]));
+			orderedStops = edits.reorder.map((num) => byNumber.get(num)!);
+		}
+	}
+
+	const added: string[] = [];
+	if (!error && edits.additions?.length) {
+		const existingPropertyIds = new Set(
+			orderedStops.flatMap((s) => (s.propertyId ? [s.propertyId] : []))
+		);
+		for (const candidate of edits.additions) {
+			if (existingPropertyIds.has(candidate.propertyId)) continue;
+			existingPropertyIds.add(candidate.propertyId);
+			orderedStops = [
+				...orderedStops,
+				{
+					propertyId: candidate.propertyId,
+					label: candidate.label,
+					latitude: candidate.latitude,
+					longitude: candidate.longitude,
+					order: 0, // reassigned below
+				},
+			];
+			added.push(candidate.label);
+		}
+	}
+
+	return {
+		stops: orderedStops.map((s, i) => ({ ...s, order: i })),
+		removed,
+		added,
+		unmatched,
+		error,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -1419,10 +1634,328 @@ export const updateProject = createTool({
 	},
 });
 
+// ---------------------------------------------------------------------------
+// Routing tools
+// ---------------------------------------------------------------------------
+
+export const getRoute = createTool({
+	description:
+		"Fetch a route including per-stop completion. Defaults to today's whole-team daily route; pass assigneeUserId for a specific person's daily route, or savedRouteName to fetch a saved (reusable) route by name instead.",
+	inputSchema: z.object({
+		date: isoDate.optional().describe("YYYY-MM-DD; defaults to today"),
+		assigneeUserId: z
+			.string()
+			.optional()
+			.describe("resolve with getTeamMembers; omit for the whole-team route"),
+		savedRouteName: z
+			.string()
+			.optional()
+			.describe("fetch a saved route by name instead of a daily route"),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<
+		| { found: true; route: ShapedRoute }
+		| { found: false; savedRouteNames: string[]; hint: string }
+	> => {
+		const routes = await ctx.runQuery(api.routes.list, {});
+		const resolution = resolveRouteFromList(routes, {
+			date: resolveDateMs(input.date),
+			assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
+			savedRouteName: input.savedRouteName,
+		});
+		if (resolution.found) return { found: true, route: shapeRoute(resolution.route) };
+
+		// Daily-lookup miss: if exactly one daily route exists for the date,
+		// return it — the user usually means "my route" whatever its assignee.
+		if (!input.savedRouteName) {
+			const sameDay = routes.filter(
+				(r) => r.kind === "daily" && r.date === resolveDateMs(input.date)
+			);
+			if (sameDay.length === 1) {
+				return { found: true, route: shapeRoute(sameDay[0]) };
+			}
+		}
+
+		const savedRouteNames = routes
+			.filter((r) => (r.kind ?? "saved") !== "daily")
+			.map((r) => r.name)
+			.slice(0, 20);
+		const hint =
+			resolution.reason === "ambiguous"
+				? `Multiple saved routes match "${input.savedRouteName}": ${resolution.candidates.join(", ")}. Ask the user which one.`
+				: input.savedRouteName
+					? `No saved route named "${input.savedRouteName}" found.`
+					: "No daily route for that day/assignee yet — use planRoute to build one.";
+		return { found: false, savedRouteNames, hint };
+	},
+});
+
+export const planRoute = createTool({
+	description:
+		"Build/refresh a daily route from the schedule, or start today's route from a saved route (fromSavedRouteName). Seeding from the schedule REPLACES the day's existing stop list — warn the user if they've already customized today's route.",
+	inputSchema: z.object({
+		date: isoDate.optional(),
+		assigneeUserId: z.string().optional(),
+		fromSavedRouteName: z
+			.string()
+			.optional()
+			.describe("copy this saved route into the day instead of seeding from the schedule"),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<
+		WriteResult<{
+			routeId: string;
+			stopCount?: number;
+			skippedNoAddress?: number;
+			truncated?: number;
+		}>
+	> => {
+		const dateMs = resolveDateMs(input.date);
+		const assigneeUserId = input.assigneeUserId as Id<"users"> | undefined;
+		try {
+			if (input.fromSavedRouteName) {
+				const routes = await ctx.runQuery(api.routes.list, {});
+				const resolution = resolveRouteFromList(routes, {
+					savedRouteName: input.fromSavedRouteName,
+				});
+				if (!resolution.found) {
+					const savedRouteNames = routes
+						.filter((r) => (r.kind ?? "saved") !== "daily")
+						.map((r) => r.name);
+					return {
+						ok: false,
+						error:
+							resolution.reason === "ambiguous"
+								? `Multiple saved routes match "${input.fromSavedRouteName}": ${resolution.candidates.join(", ")}.`
+								: `No saved route named "${input.fromSavedRouteName}" found. Saved routes: ${savedRouteNames.join(", ") || "none"}.`,
+					};
+				}
+				const routeId = await ctx.runMutation(api.routes.copyToDaily, {
+					routeId: resolution.route._id,
+					date: dateMs,
+					assigneeUserId,
+				});
+				return { ok: true, routeId };
+			}
+			const result = await ctx.runMutation(api.routes.seedFromSchedule, {
+				date: dateMs,
+				assigneeUserId,
+			});
+			return {
+				ok: true,
+				routeId: result.routeId,
+				stopCount: result.stopCount,
+				skippedNoAddress: result.skippedNoAddress,
+				truncated: result.truncated,
+			};
+		} catch (e) {
+			return writeError(e);
+		}
+	},
+});
+
+export const updateRoute = createTool({
+	description:
+		"Edit today's (or a given day's) daily route — rename, round-trip, remove stops, reorder stops, or add client-property stops. Never edits saved routes. Editing stops clears the route's computed driving order/times — suggest optimizeRoute afterward.",
+	inputSchema: z.object({
+		date: isoDate.optional(),
+		assigneeUserId: z.string().optional(),
+		rename: z.string().optional(),
+		roundTrip: z.boolean().optional(),
+		removeStops: z
+			.array(z.string())
+			.optional()
+			.describe("stop numbers as shown by getRoute, or label fragments"),
+		addPropertyStops: z
+			.array(z.string())
+			.optional()
+			.describe("client or property names to add as stops"),
+		reorder: z
+			.array(z.number())
+			.optional()
+			.describe(
+				"new visiting order as current stop numbers, e.g. [3,1,2]; must include every stop exactly once"
+			),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<
+		WriteResult<{ stopCount: number; removed: string[]; added: string[]; unmatched?: string[] }>
+	> => {
+		try {
+			const routes = await ctx.runQuery(api.routes.list, {});
+			const assigneeUserId = input.assigneeUserId as Id<"users"> | undefined;
+			const resolution = resolveRouteFromList(routes, {
+				date: resolveDateMs(input.date),
+				assigneeUserId,
+			});
+			if (!resolution.found) {
+				return { ok: false, error: "No daily route for that day — use planRoute first." };
+			}
+			const route = resolution.route;
+			if ((route.kind ?? "saved") !== "daily") {
+				return {
+					ok: false,
+					error: "That resolved to a saved route; updateRoute only edits daily routes.",
+				};
+			}
+
+			const additions: {
+				propertyId: Id<"clientProperties">;
+				label: string;
+				latitude: number;
+				longitude: number;
+			}[] = [];
+			const unmatchedAdds: string[] = [];
+			if (input.addPropertyStops?.length) {
+				const { properties } = await ctx.runQuery(
+					api.clientProperties.listGeocodedWithClients,
+					{}
+				);
+				for (const term of input.addPropertyStops) {
+					const needle = term.toLowerCase();
+					const match = properties.find(
+						(p) =>
+							p.propertyName?.toLowerCase().includes(needle) ||
+							p.clientCompanyName.toLowerCase().includes(needle)
+					);
+					if (!match) {
+						unmatchedAdds.push(term);
+						continue;
+					}
+					additions.push({
+						propertyId: match._id,
+						label: match.propertyName ?? match.streetAddress,
+						latitude: match.latitude,
+						longitude: match.longitude,
+					});
+				}
+			}
+
+			const hasStopEdits = Boolean(
+				input.removeStops?.length || input.reorder?.length || additions.length
+			);
+			if (!hasStopEdits && input.rename === undefined && input.roundTrip === undefined) {
+				return { ok: false, error: "No changes provided." };
+			}
+
+			const edit = applyStopEdits(route.stops, {
+				removeStops: input.removeStops,
+				reorder: input.reorder,
+				additions,
+			});
+			if (edit.error) return { ok: false, error: edit.error };
+
+			await ctx.runMutation(api.routes.update, {
+				routeId: route._id,
+				name: input.rename,
+				roundTrip: input.roundTrip,
+				stops: hasStopEdits ? edit.stops : undefined,
+			});
+
+			const unmatched = [...edit.unmatched, ...unmatchedAdds];
+			return {
+				ok: true,
+				stopCount: (hasStopEdits ? edit.stops : route.stops).length,
+				removed: edit.removed,
+				added: edit.added,
+				...(unmatched.length ? { unmatched } : {}),
+			};
+		} catch (e) {
+			return writeError(e);
+		}
+	},
+});
+
+export const optimizeRoute = createTool({
+	description:
+		"Compute/optimize driving order and drive times for a daily or saved route. Spends a Mapbox call; rate-limited. Pass keepOrder:true to compute times for the current order instead of optimizing.",
+	inputSchema: z.object({
+		date: isoDate.optional(),
+		assigneeUserId: z.string().optional(),
+		savedRouteName: z.string().optional(),
+		keepOrder: z
+			.boolean()
+			.optional()
+			.describe("true = compute times for the current order instead of optimizing"),
+	}),
+	execute: async (
+		ctx,
+		input
+	): Promise<
+		| ({ ok: true } & {
+				optimized: boolean;
+				approximate: boolean;
+				totalDistanceMeters: number;
+				totalDurationSeconds: number;
+				stopOrder: string[];
+			})
+		| { ok: false; error: string; unreachableStopNumbers?: number[] }
+	> => {
+		try {
+			const routes = await ctx.runQuery(api.routes.list, {});
+			const resolution = resolveRouteFromList(routes, {
+				date: resolveDateMs(input.date),
+				assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
+				savedRouteName: input.savedRouteName,
+			});
+			if (!resolution.found) {
+				return {
+					ok: false,
+					error:
+						resolution.reason === "ambiguous"
+							? `Multiple saved routes match "${input.savedRouteName}": ${resolution.candidates.join(", ")}.`
+							: input.savedRouteName
+								? `No saved route named "${input.savedRouteName}" found.`
+								: "No route found for that day/assignee.",
+				};
+			}
+
+			const routeId = resolution.route._id;
+			await ctx.runAction(api.routingActions.computeRoute, {
+				routeId,
+				optimize: !input.keepOrder,
+			});
+			const updated = await ctx.runQuery(api.routes.get, { routeId });
+			if (!updated) return { ok: false, error: "Route not found after computation." };
+			const stopOrder = [...updated.stops]
+				.sort((a, b) => a.order - b.order)
+				.map((s) => s.label);
+			return {
+				ok: true,
+				optimized: updated.optimized ?? false,
+				approximate: updated.approximate ?? false,
+				totalDistanceMeters: updated.totalDistanceMeters ?? 0,
+				totalDurationSeconds: updated.totalDurationSeconds ?? 0,
+				stopOrder,
+			};
+		} catch (e) {
+			const data = convexErrorData(e);
+			if (data?.code === "unreachable_stops") {
+				const stopIndices = Array.isArray(data.stopIndices)
+					? (data.stopIndices as number[])
+					: [];
+				const unreachableStopNumbers = stopIndices.map((i) => i + 1);
+				return {
+					ok: false,
+					error: `Stops ${unreachableStopNumbers.join(", ")} can't be reached by road — remove them or fix their addresses`,
+					unreachableStopNumbers,
+				};
+			}
+			return writeError(e);
+		}
+	},
+});
+
 export const navigate = createTool({
 	description: [
 		"Open a page in the app for the user. Use when they ask to go somewhere, or after resolving the record they want to see.",
-		"Valid paths: /home, /clients, /clients/{clientId}, /clients/import, /projects, /projects/{projectId}, /quotes, /quotes/{quoteId}, /invoices, /invoices/{invoiceId}, /tasks, /reports, /reports/{reportId}, /reports/new, /automations, /subscription, /organization/profile.",
+		"Valid paths: /home, /clients, /clients/{clientId}, /clients/import, /projects, /projects/{projectId}, /quotes, /quotes/{quoteId}, /invoices, /invoices/{invoiceId}, /tasks, /reports, /reports/{reportId}, /reports/new, /automations, /subscription, /organization/profile, /routing.",
 		"Clients, projects and quotes are created in a dialog, not at a URL — there is no /clients/new, /projects/new or /quotes/new. To create one, send the user to the relevant list page and tell them to press the create button.",
 		"IDs must come from lookup tools — never guess an ID.",
 		"Never navigate while the user has the report builder open (current-screen has reportBuilderConfig) unless they explicitly ask to go somewhere else.",
@@ -1538,5 +2071,9 @@ export const assistantTools = withPermissionFallbackAll({
 	updateTask,
 	updateClient,
 	updateProject,
+	getRoute,
+	planRoute,
+	updateRoute,
+	optimizeRoute,
 	navigate,
 });

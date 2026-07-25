@@ -39,7 +39,7 @@ export const getHomeStats = optionalUserQuery({
 				changeType: "neutral",
 				totalValue: 0,
 			},
-			invoicesSent: {
+			invoicesPaid: {
 				current: 0,
 				previous: 0,
 				change: 0,
@@ -99,7 +99,6 @@ export const getHomeStats = optionalUserQuery({
 			lastMonthRevenue,
 			sentInvoicesValue,
 			overdueInvoicesValue,
-			sentInvoicesThisMonthValue,
 		] = await Promise.all([
 			// Total clients
 			clientCountsAggregate.count(ctx, { namespace: userOrgId }),
@@ -212,15 +211,6 @@ export const getHomeStats = optionalUserQuery({
 			invoiceRevenueAggregate.sum(ctx, {
 				namespace: userOrgId,
 				bounds: { prefix: ["overdue"] },
-			}),
-
-			// Sent invoices total value this month
-			invoiceRevenueAggregate.sum(ctx, {
-				namespace: userOrgId,
-				bounds: {
-					lower: { key: ["sent", thisMonthStart], inclusive: true },
-					upper: { key: ["sent", now], inclusive: true },
-				},
 			}),
 		]);
 
@@ -336,14 +326,13 @@ export const getHomeStats = optionalUserQuery({
 				changeType: getChangeType(quotesChange),
 				totalValue: quotesTotalValue || 0,
 			},
-			invoicesSent: {
+			invoicesPaid: {
 				current: invoicesThisMonth,
 				previous: invoicesLastMonth,
 				change: Math.abs(invoicesChange),
 				changeType: getChangeType(invoicesChange),
-				// Fixed: totalValue now reflects sent invoices this month (matching field name)
-				// Previously was set to currentRevenueValue (paid invoices), causing semantic mismatch
-				totalValue: sentInvoicesThisMonthValue || 0,
+				totalValue: currentRevenue || 0,
+				// The one unpaid figure here: value of sent + overdue invoices.
 				outstanding: outstandingInvoices,
 			},
 			revenueGoal: {
