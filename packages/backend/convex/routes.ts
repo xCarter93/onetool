@@ -5,6 +5,7 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import { ActivityHelpers } from "./lib/activities";
 import { getMembership } from "./lib/memberships";
 import { hasPremiumAccess } from "./lib/permissions";
 import { emptyListResult } from "./lib/queries";
@@ -297,6 +298,60 @@ export const setStopStatus = userMutation({
 		);
 
 		await ctx.db.patch(route._id, { stops });
+	},
+});
+
+/**
+ * Mark a daily route as started. Idempotent while in progress; calling on a
+ * previously completed route restarts it (clears completedAt, resets startedAt).
+ */
+export const startRoute = userMutation({
+	args: { routeId: v.id("routes") },
+	handler: async (ctx, args): Promise<void> => {
+		await requirePremium(ctx);
+		await ctx.requireLevel("clients", "view");
+
+		const route = await ctx.orgEntity("routes", args.routeId);
+		if (route.kind !== "daily") {
+			throw new Error("Only daily routes track completion");
+		}
+
+		if (route.completedAt !== undefined) {
+			// Restart: clear completion and begin a fresh run.
+			await ctx.db.patch(route._id, {
+				startedAt: Date.now(),
+				completedAt: undefined,
+			});
+			return;
+		}
+		if (route.startedAt !== undefined) return; // already started
+		await ctx.db.patch(route._id, { startedAt: Date.now() });
+	},
+});
+
+/**
+ * Mark a daily route as completed. Idempotent; the first transition to
+ * completed records a route_completed activity feed entry.
+ */
+export const completeRoute = userMutation({
+	args: { routeId: v.id("routes") },
+	handler: async (ctx, args): Promise<void> => {
+		await requirePremium(ctx);
+		await ctx.requireLevel("clients", "view");
+
+		const route = await ctx.orgEntity("routes", args.routeId);
+		if (route.kind !== "daily") {
+			throw new Error("Only daily routes track completion");
+		}
+		if (route.completedAt !== undefined) return; // already completed
+
+		const now = Date.now();
+		await ctx.db.patch(route._id, {
+			completedAt: now,
+			// Defensive: a route completed without an explicit start still gets one.
+			startedAt: route.startedAt ?? now,
+		});
+		await ActivityHelpers.routeCompleted(ctx, route);
 	},
 });
 

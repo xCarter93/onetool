@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { StyledButton } from "@/components/styled";
+import { DotGrid } from "@/components/ui";
 import { fontFamily, spacing, tokens, type } from "@/lib/theme";
 
 // Post-auth "finish setup" screen. The app is SIGN-IN ONLY (Apple 3.1.1) — it no
@@ -86,6 +87,7 @@ export default function CompleteSetupScreen() {
 	if (!activationError && !noMembership) {
 		return (
 			<View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				<Text style={styles.body}>Loading your workspace…</Text>
 			</View>
 		);
@@ -99,6 +101,7 @@ export default function CompleteSetupScreen() {
 				{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
 			]}
 		>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			<View style={styles.box}>
 				<Text style={styles.title}>
 					{activationError ? "Couldn't open your workspace" : "Almost there"}

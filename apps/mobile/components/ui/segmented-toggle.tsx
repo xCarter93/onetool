@@ -1,41 +1,49 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { LayoutDashboard, CalendarDays } from "lucide-react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import type { ViewMode } from "@/lib/useViewMode";
+import { type LucideIcon } from "lucide-react-native";
+import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
 
-// Re-export the single source of the type so consumers migrate off ViewToggle.tsx.
-export type { ViewMode };
-
-interface SegmentedToggleProps {
-	value: ViewMode;
-	onChange: (mode: ViewMode) => void;
+export interface Segment<V extends string> {
+	value: V;
+	label: string;
+	Icon: LucideIcon;
 }
 
-const SEGMENTS: { mode: ViewMode; label: string; Icon: typeof LayoutDashboard }[] = [
-	{ mode: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
-	{ mode: "calendar", label: "Calendar", Icon: CalendarDays },
-];
+interface SegmentedToggleProps<V extends string> {
+	segments: readonly Segment<V>[];
+	value: V;
+	onChange: (value: V) => void;
+}
 
-export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
+/** Equal-width pill toggle (Today's Me | Team scope, etc.). */
+export function SegmentedToggle<V extends string>({
+	segments,
+	value,
+	onChange,
+}: SegmentedToggleProps<V>) {
 	const t = useTokens();
 	return (
-		<View style={[styles.container, { backgroundColor: t.muted }]}>
-			{SEGMENTS.map(({ mode, label, Icon }) => {
-				const active = value === mode;
+		<View
+			style={[styles.container, { backgroundColor: t.secondary }]}
+			accessibilityRole="tablist"
+		>
+			{segments.map(({ value: segment, label, Icon }) => {
+				const active = value === segment;
 				return (
 					<Pressable
-						key={mode}
-						onPress={() => onChange(mode)}
+						key={segment}
+						onPress={() => onChange(segment)}
+						accessibilityRole="tab"
+						accessibilityState={{ selected: active }}
 						style={[
 							styles.segment,
 							active && {
 								backgroundColor: t.card,
-								boxShadow: shadow.sm,
+								boxShadow: shadow.segmented,
 							},
 						]}
 					>
-						<Icon size={16} color={active ? t.accent : t.faint} />
+						<Icon size={16} color={active ? t.frostedInk : t.sub} />
 						<Text
 							style={[
 								styles.label,
@@ -68,11 +76,12 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 6,
+		minHeight: 44,
 		paddingVertical: 8,
 		paddingHorizontal: 16,
-		borderRadius: radii.xl,
+		borderRadius: radii.sm,
 	},
 	label: {
-		fontSize: 12,
+		fontSize: type.sm,
 	},
 });

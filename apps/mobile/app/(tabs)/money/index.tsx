@@ -1,27 +1,23 @@
 import { useMemo, useState } from "react";
-import {
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-	type ViewStyle,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
-import { Badge, Eyebrow, ListRow, Toggle2, SCROLL_TOP_INSET } from "@/components/ui";
+import {
+	Badge,
+	DotGrid,
+	Eyebrow,
+	ListRow,
+	Toggle2,
+	SCROLL_TOP_INSET,
+} from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
-
-// Dark hero gradient — RN ignores CSS gradient strings on backgroundColor; apply
-// via New-Arch experimental_backgroundImage (revenue-gauge.tsx precedent).
-const HERO_GRADIENT: ViewStyle = {
-	experimental_backgroundImage: "linear-gradient(135deg,#0b1220,#1c2734)",
-} as unknown as ViewStyle;
+import { Illustration } from "@/components/illustrations";
 
 type Tab = "invoices" | "quotes";
 
@@ -83,19 +79,23 @@ export default function MoneyScreen({
 	}, [clients]);
 
 	const Hero = (
-		<View style={[styles.hero, HERO_GRADIENT]}>
-			<Eyebrow color="rgba(255,255,255,0.7)">Outstanding</Eyebrow>
+		<View style={[styles.hero, { backgroundColor: t.card, borderColor: t.line }]}>
+			<Eyebrow>Outstanding</Eyebrow>
 			{stats === undefined ? (
 				<>
-					<View style={styles.heroAmountSkeleton} />
-					<View style={styles.heroSublineSkeleton} />
+					<View
+						style={[styles.heroAmountSkeleton, { backgroundColor: t.lineSoft }]}
+					/>
+					<View
+						style={[styles.heroSublineSkeleton, { backgroundColor: t.lineSoft }]}
+					/>
 				</>
 			) : (
 				<>
-					<Text style={styles.heroAmount}>
+					<Text style={[styles.heroAmount, { color: t.ink }]}>
 						{formatCurrency(stats.totalOutstanding)}
 					</Text>
-					<Text style={styles.heroSubline}>
+					<Text style={[styles.heroSubline, { color: t.sub }]}>
 						{stats.byStatus.overdue} overdue · {stats.byStatus.sent} sent
 					</Text>
 				</>
@@ -129,7 +129,7 @@ export default function MoneyScreen({
 				? t.success
 				: displayStatus === "overdue"
 					? t.danger
-					: t.accent;
+					: t.sub;
 		const client = clientName.get(item.clientId) ?? "Client";
 		const isSelected =
 			isPane && selected?.kind === "invoice" && selected.id === item._id;
@@ -171,7 +171,12 @@ export default function MoneyScreen({
 				style={({ pressed }) => [
 					styles.quoteCard,
 					{ backgroundColor: t.card, borderColor: t.line },
-					isSelected && { borderColor: t.accent, backgroundColor: t.accentSoft },
+					// primarySolid border, matching ui/list-row's selected state —
+					// frostedBorder composites to ~1.4:1 and cannot carry a state.
+					isSelected && {
+						borderColor: t.primarySolid,
+						backgroundColor: t.frostedBg,
+					},
 					pressed && styles.pressed,
 				]}
 				onPress={() =>
@@ -188,7 +193,9 @@ export default function MoneyScreen({
 				<View style={styles.quoteTop}>
 					<View style={styles.quoteHead}>
 						{item.quoteNumber ? (
-							<Eyebrow>{item.quoteNumber}</Eyebrow>
+							// Default t.faint fails AA (4.23:1) once the selected state's
+							// frostedBg tint is behind it — t.sub clears both backdrops.
+							<Eyebrow color={t.sub}>{item.quoteNumber}</Eyebrow>
 						) : null}
 						<Text
 							style={[styles.quoteTitle, { color: t.ink }]}
@@ -203,10 +210,10 @@ export default function MoneyScreen({
 					<Badge status={item.status} />
 				</View>
 				<View style={[styles.quoteBottom, { borderTopColor: t.line }]}>
-					<Text style={[styles.quoteDate, { color: t.faint }]}>
+					<Text style={[styles.quoteDate, { color: t.sub }]}>
 						{formatDocumentDate(item._creationTime)}
 					</Text>
-					<Text style={[styles.quoteAmount, { color: t.accent }]}>
+					<Text style={[styles.quoteAmount, { color: t.ink }]}>
 						{formatCurrency(item.total, { exact: true })}
 					</Text>
 				</View>
@@ -221,13 +228,25 @@ export default function MoneyScreen({
 		<View style={styles.skeletonBlock}>
 			{[0, 1, 2, 3].map((i) => (
 				<View key={i} style={styles.skeletonRow}>
-					<View style={styles.skeletonTile} />
+					<View
+						style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]}
+					/>
 					<View style={styles.skeletonBody}>
-						<View style={[styles.skeleton, { width: "55%", height: 14 }]} />
 						<View
 							style={[
 								styles.skeleton,
-								{ width: "35%", height: 12, marginTop: 6 },
+								{ width: "55%", height: 14, backgroundColor: t.lineSoft },
+							]}
+						/>
+						<View
+							style={[
+								styles.skeleton,
+								{
+									width: "35%",
+									height: 12,
+									marginTop: 6,
+									backgroundColor: t.lineSoft,
+								},
 							]}
 						/>
 					</View>
@@ -238,6 +257,11 @@ export default function MoneyScreen({
 
 	const Empty = (
 		<View style={styles.emptyState}>
+			<Illustration
+				name={tab === "invoices" ? "invoices-none" : "quotes-none"}
+				knockout={t.bg}
+				style={styles.emptyArt}
+			/>
 			<Text style={[styles.emptyTitle, { color: t.ink }]}>
 				{tab === "invoices" ? "No invoices yet" : "No quotes yet"}
 			</Text>
@@ -251,6 +275,8 @@ export default function MoneyScreen({
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
 			    per pane — locked convention). iPhone: AppHeader mode="root". */}
 			{isPane ? null : <AppHeader mode="root" title="Money" />}
@@ -296,30 +322,26 @@ const styles = StyleSheet.create({
 	hero: {
 		padding: 24,
 		borderRadius: radii.r,
-		backgroundColor: "#0b1220",
+		borderWidth: 1,
 		gap: 8,
 	},
 	heroAmount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h1,
-		color: "#ffffff",
 	},
 	heroSubline: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.h4,
-		color: "rgba(255,255,255,0.7)",
 	},
 	heroAmountSkeleton: {
 		width: 160,
 		height: 32,
-		borderRadius: 8,
-		backgroundColor: "rgba(255,255,255,0.14)",
+		borderRadius: radii.md,
 	},
 	heroSublineSkeleton: {
 		width: 120,
 		height: 14,
-		borderRadius: 6,
-		backgroundColor: "rgba(255,255,255,0.1)",
+		borderRadius: radii.sm,
 	},
 	amount: {
 		fontFamily: fontFamily.bold,
@@ -328,7 +350,6 @@ const styles = StyleSheet.create({
 	quoteCard: {
 		borderRadius: radii.rLg,
 		borderWidth: 1,
-		boxShadow: shadow.card,
 		padding: 16,
 		gap: 12,
 	},
@@ -382,20 +403,21 @@ const styles = StyleSheet.create({
 	skeletonTile: {
 		width: 40,
 		height: 40,
-		borderRadius: 12,
-		backgroundColor: "#e9edf2",
+		borderRadius: radii["2xl"],
 	},
 	skeletonBody: {
 		flex: 1,
 	},
 	skeleton: {
-		backgroundColor: "#e9edf2",
-		borderRadius: 6,
+		borderRadius: radii.sm,
 	},
 	emptyState: {
 		alignItems: "center",
 		paddingVertical: 64,
 		paddingHorizontal: 24,
+	},
+	emptyArt: {
+		marginBottom: 16,
 	},
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,

@@ -19,7 +19,7 @@ import * as Crypto from "expo-crypto";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Button } from "@/components/ui";
+import { Button, DotGrid } from "@/components/ui";
 import { useDevice } from "@/lib/use-device";
 import {
 	AddressAutocomplete,
@@ -187,6 +187,8 @@ export function ClientCreateBody({
 			edges={[]}
 			style={[styles.screen, { backgroundColor: t.bg }]}
 		>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode (iPad full-width stack slot): one header, with a back
 			    affordance to the clients list. iPhone: AppHeader (byte-identical). */}
 			{isPane ? (

@@ -236,14 +236,16 @@ function getActivityStyle(activityType: string): {
 		activityType === "project_completed" ||
 		activityType === "quote_approved" ||
 		activityType === "payment_paid" ||
-		activityType === "task_completed"
+		activityType === "task_completed" ||
+		activityType === "route_completed"
 	) {
 		const icon =
 			activityType === "invoice_paid" || activityType === "payment_paid"
 				? CurrencyDollarIcon
 				: activityType === "project_completed"
 					? BriefcaseIcon
-					: activityType === "task_completed"
+					: activityType === "task_completed" ||
+						  activityType === "route_completed"
 						? ClipboardDocumentListIcon
 						: DocumentTextIcon;
 		return {
@@ -395,6 +397,7 @@ function getActivityLabel(activityType: string): string | null {
 		payments_configured: "Payments",
 		task_created: "Task",
 		task_completed: "Completed",
+		route_completed: "Route Done",
 		email_sent: "Email",
 		email_delivered: "Delivered",
 		email_opened: "Opened",

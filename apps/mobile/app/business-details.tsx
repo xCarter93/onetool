@@ -16,7 +16,7 @@ import {
 	AddressAutocomplete,
 	type AddressValue,
 } from "@/components/AddressAutocomplete.native";
-import { Card } from "@/components/ui";
+import { Card, DotGrid } from "@/components/ui";
 import { StyledButton } from "@/components/styled";
 import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
 
@@ -117,6 +117,7 @@ export default function BusinessDetailsScreen() {
 	if (org === undefined || me === undefined) {
 		return (
 			<View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				<Text style={styles.mutedBody}>Loading…</Text>
 			</View>
 		);
@@ -134,6 +135,7 @@ export default function BusinessDetailsScreen() {
 					{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
 				]}
 			>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				<View style={styles.box}>
 					<Text style={styles.title}>Business details</Text>
 					<Text style={styles.mutedBody}>
@@ -163,6 +165,7 @@ export default function BusinessDetailsScreen() {
 					{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
 				]}
 			>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				<View style={styles.box}>
 					<Text style={styles.title}>Business details</Text>
 					<Text style={styles.mutedBody}>
@@ -183,6 +186,7 @@ export default function BusinessDetailsScreen() {
 
 	return (
 		<View style={[styles.screen, { paddingTop: insets.top + spacing.lg }]}>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			<ScrollView
 				contentContainerStyle={styles.scroll}
 				keyboardShouldPersistTaps="handled"

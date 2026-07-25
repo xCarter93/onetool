@@ -16,6 +16,8 @@ import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
+// Required once at the root for @gorhom/bottom-sheet gestures (Routes sheet).
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { useDevice } from "@/lib/use-device";
@@ -202,6 +204,7 @@ export default function RootLayout() {
 	}
 
 	return (
+		<GestureHandlerRootView style={{ flex: 1 }}>
 		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
 				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap
@@ -226,17 +229,10 @@ export default function RootLayout() {
 							{/* Owner-only business-profile editor (reached from Home
 							    prompt + Profile). Root-level so back returns to origin. */}
 							<Stack.Screen name="business-details" />
+							{/* Manual route builder — create/edit, pushed from Routes tab. */}
+							<Stack.Screen name="route-edit" />
 							<Stack.Screen
 								name="org-switch"
-								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.52, 0.9],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
-									sheetCornerRadius: 30,
-								})}
-							/>
-							<Stack.Screen
-								name="day-sheet"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
@@ -254,15 +250,6 @@ export default function RootLayout() {
 								})}
 							/>
 							<Stack.Screen
-								name="journey"
-								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.52, 0.9],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
-									sheetCornerRadius: 30,
-								})}
-							/>
-							<Stack.Screen
 								name="tasks/form"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.9, 1.0],
@@ -271,25 +258,15 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								})}
 							/>
-							{/* Short fixed detent — two create rows + title (hand-tune in <verification>). */}
+							{/* Assistant sheet over the current context (§4). P2 ships the neutral
+							    unavailable state; P3 adds the gated chat. */}
 							<Stack.Screen
-								name="create"
+								name="assistant"
 								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.4],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
-									sheetCornerRadius: 30,
-								})}
-							/>
-							{/* Near-full search overlay. Opens at 0.9 (draggable to full) so the
-							    input clears the status bar — a single [1.0] detent renders content
-							    under the notch (matches tasks/form's [0.9, 1.0] pattern). */}
-							<Stack.Screen
-								name="search"
-								options={overlayOptions(device, {
-									sheetAllowedDetents: [0.9, 1.0],
-									sheetInitialDetentIndex: 0,
-									sheetGrabberVisible: false,
+									// Opens tall — at half height the empty state + composer clip.
+									sheetAllowedDetents: [0.5, 0.95],
+									sheetInitialDetentIndex: 1,
+									sheetGrabberVisible: true,
 									sheetCornerRadius: 30,
 								})}
 							/>
@@ -300,5 +277,6 @@ export default function RootLayout() {
 				</PushRegistrationHost>
 			</LaunchHost>
 		</ClerkProvider>
+		</GestureHandlerRootView>
 	);
 }

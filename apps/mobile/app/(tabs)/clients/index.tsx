@@ -14,7 +14,7 @@ import { useState, useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Search, Plus, X } from "lucide-react-native";
 import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
-import { Avatar, Badge, SCROLL_TOP_INSET } from "@/components/ui";
+import { Avatar, Badge, DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 import { useShellNav } from "@/lib/shell-nav";
 
@@ -105,7 +105,7 @@ export default function ClientsScreen({
 	// (tabs) sibling, which slides the whole shell). iPhone has no provider →
 	// fall back to the full-screen create route (byte-identical).
 	const goToNew = () =>
-		shellNav ? shellNav.startCreate("clients") : router.push("/clients/new");
+		shellNav ? shellNav.startCreate() : router.push("/clients/new");
 
 	// On iPad pane: row tap drives the shell selection (no route push — the
 	// (tabs) group has no in-group navigator, so a push slides the whole shell).
@@ -215,6 +215,8 @@ export default function ClientsScreen({
 			style={{ flex: 1, backgroundColor: t.surface }}
 			edges={[]}
 		>
+			{/* Page canvas, matching web's .workspace-canvas. */}
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
 			    per pane — locked convention). iPhone: AppHeader mode="root". */}
 			{isPane ? null : <AppHeader mode="root" title="Clients" />}

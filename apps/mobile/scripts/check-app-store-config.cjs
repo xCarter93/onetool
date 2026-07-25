@@ -16,8 +16,8 @@ const ios = expo.ios || {};
 const infoPlist = ios.infoPlist || {};
 const pm = ios.privacyManifests;
 
-// (a) version pinned to 1.0.0
-if (expo.version !== "1.0.0") fail(`expo.version must be "1.0.0", got ${JSON.stringify(expo.version)}`);
+// (a) version pinned to 2.0.0
+if (expo.version !== "2.0.0") fail(`expo.version must be "2.0.0", got ${JSON.stringify(expo.version)}`);
 
 // (b) ios.buildNumber must be absent (EAS remote autoIncrement owns CFBundleVersion)
 if (ios.buildNumber != null) fail("expo.ios.buildNumber must be absent (EAS autoIncrement owns it)");

@@ -13,7 +13,7 @@ import { useOrganizationList, useOrganization } from "@clerk/expo";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, Building, RefreshCw, X } from "lucide-react-native";
-import { fontFamily, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
@@ -109,7 +109,7 @@ export default function OrgSwitchSheet() {
 
 			{loadingMemberships ? (
 				<View style={styles.state}>
-					<ActivityIndicator size="small" color={t.accent} />
+					<ActivityIndicator size="small" color={t.sub} />
 				</View>
 			) : membershipIsError ? (
 				<View style={styles.state}>
@@ -125,12 +125,12 @@ export default function OrgSwitchSheet() {
 						style={({ pressed }) => [
 							styles.retryButton,
 							{
-								backgroundColor: pressed ? t.accentMid : t.accentSoft,
+								backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
 							},
 						]}
 					>
-						<RefreshCw size={16} color={t.accent} />
-						<Text style={[styles.retryText, { color: t.accent }]}>Retry</Text>
+						<RefreshCw size={16} color={t.frostedInk} />
+						<Text style={[styles.retryText, { color: t.frostedInk }]}>Retry</Text>
 					</Pressable>
 				</View>
 			) : (
@@ -157,11 +157,14 @@ export default function OrgSwitchSheet() {
 										styles.row,
 										{
 											backgroundColor: isActive
-												? t.surface
+												? t.frostedBg
 												: pressed
 													? t.surface
 													: "transparent",
-											borderColor: isActive ? t.accent : t.line,
+											// primarySolid, not frostedBorder: a 30%-alpha border
+										// composites to ~1.4:1, and here the border is the only
+										// structural difference between active and inactive.
+										borderColor: isActive ? t.primarySolid : t.line,
 										},
 									]}
 								>
@@ -194,7 +197,7 @@ export default function OrgSwitchSheet() {
 											</Text>
 										</View>
 									</View>
-									{isActive && <Check size={20} color={t.accent} />}
+									{isActive && <Check size={20} color={t.frostedInk} />}
 								</Pressable>
 							);
 						})
@@ -212,7 +215,7 @@ export default function OrgSwitchSheet() {
 
 					{membershipIsFetching && organizationList.length > 0 ? (
 						<View style={styles.loadingMore}>
-							<ActivityIndicator size="small" color={t.accent} />
+							<ActivityIndicator size="small" color={t.sub} />
 						</View>
 					) : null}
 				</ScrollView>
@@ -223,10 +226,10 @@ export default function OrgSwitchSheet() {
 					style={[
 						StyleSheet.absoluteFill,
 						styles.overlay,
-						{ backgroundColor: "rgba(255,255,255,0.9)" },
+						{ backgroundColor: t.card },
 					]}
 				>
-					<ActivityIndicator size="large" color={t.accent} />
+					<ActivityIndicator size="large" color={t.sub} />
 					<Text style={[styles.overlayText, { color: t.ink }]}>
 						Switching organization...
 					</Text>
@@ -266,34 +269,34 @@ export default function OrgSwitchSheet() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
+		borderTopLeftRadius: radii.sheet,
+		borderTopRightRadius: radii.sheet,
 		overflow: "hidden",
 	},
 	// iPad card (CenteredModal supplies the shell + radius + definite height).
 	// flex:1 (not flexShrink) so the body's flex:1 list/state resolves a basis.
 	padCard: {
 		flex: 1,
-		paddingTop: 18,
+		paddingTop: spacing.gutter,
 	},
 	grabber: {
 		alignSelf: "center",
 		width: 44,
 		height: 5,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		marginTop: 10,
-		marginBottom: 16,
+		marginBottom: spacing.md,
 	},
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
 		paddingHorizontal: 20,
-		paddingBottom: 18,
+		paddingBottom: spacing.gutter,
 	},
 	title: {
 		flex: 2,
 		textAlign: "center",
-		fontSize: 21,
+		fontSize: type.h2,
 		lineHeight: 30,
 		fontFamily: fontFamily.bold,
 	},
@@ -302,9 +305,9 @@ const styles = StyleSheet.create({
 		alignItems: "flex-end",
 	},
 	closeBtn: {
-		width: 32,
-		height: 32,
-		borderRadius: 999,
+		width: touch.min,
+		height: touch.min,
+		borderRadius: radii.pill,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -312,15 +315,15 @@ const styles = StyleSheet.create({
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
-		paddingHorizontal: 32,
+		paddingHorizontal: spacing.xl,
 		gap: 10,
 	},
 	list: {
 		flex: 1,
 	},
 	listContent: {
-		paddingHorizontal: 16,
-		paddingBottom: 24,
+		paddingHorizontal: spacing.md,
+		paddingBottom: spacing.lg,
 	},
 	emptyListContent: {
 		flexGrow: 1,
@@ -331,9 +334,9 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		padding: 12,
-		borderRadius: 14,
+		borderRadius: radii["4xl"],
 		borderWidth: 1,
-		marginBottom: 8,
+		marginBottom: spacing.sm,
 	},
 	rowLeft: {
 		flexDirection: "row",
@@ -344,7 +347,7 @@ const styles = StyleSheet.create({
 	orgImage: {
 		width: 40,
 		height: 40,
-		borderRadius: 12,
+		borderRadius: radii.card,
 	},
 	rowText: {
 		flex: 1,
@@ -360,12 +363,12 @@ const styles = StyleSheet.create({
 	empty: {
 		alignItems: "center",
 		paddingVertical: 48,
-		gap: 8,
+		gap: spacing.sm,
 	},
 	emptyTitle: {
 		fontSize: type.body,
 		fontFamily: fontFamily.semibold,
-		marginTop: 8,
+		marginTop: spacing.sm,
 		textAlign: "center",
 	},
 	emptySub: {
@@ -376,11 +379,12 @@ const styles = StyleSheet.create({
 	retryButton: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
-		borderRadius: 999,
+		gap: spacing.sm,
+		borderRadius: radii.pill,
 		paddingHorizontal: 14,
 		paddingVertical: 10,
-		marginTop: 8,
+		minHeight: touch.min,
+		marginTop: spacing.sm,
 	},
 	retryText: {
 		fontSize: type.sm,

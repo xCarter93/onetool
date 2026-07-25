@@ -21,18 +21,27 @@ importers:
       '@clerk/expo':
         specifier: 3.4.2
         version: 3.4.2(08f0c880c816922864719ccc76ee555d)
+      '@convex-dev/agent':
+        specifier: 0.6.4
+        version: 0.6.4(@ai-sdk/provider-utils@4.0.35(zod@4.3.4))(ai@6.0.218(zod@4.3.4))(convex-helpers@0.1.113(@standard-schema/spec@1.1.0)(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(hono@4.11.3)(react@19.2.3)(typescript@6.0.3)(zod@4.3.4))(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
       '@expo-google-fonts/outfit':
         specifier: ^0.2.3
         version: 0.2.3
       '@expo/ui':
         specifier: ~56.0.16
         version: 56.0.16(94346998af484511c4f886182959f669)
+      '@gorhom/bottom-sheet':
+        specifier: 5.2.14
+        version: 5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.31.2(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native-reanimated@4.3.1(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
       '@onetool/backend':
         specifier: workspace:*
         version: link:../../packages/backend
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0
         version: 2.2.0(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      '@rnmapbox/maps':
+        specifier: 10.3.5
+        version: 10.3.5(expo@56.0.9)(react-dom@19.2.7(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
       '@shopify/flash-list':
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.28.4)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
@@ -75,9 +84,15 @@ importers:
       expo-image-picker:
         specifier: ~56.0.18
         version: 56.0.18(expo@56.0.9)
+      expo-keep-awake:
+        specifier: ~56.0.3
+        version: 56.0.3(expo@56.0.9)(react@19.2.3)
       expo-linear-gradient:
         specifier: ~56.0.4
         version: 56.0.4(expo@56.0.9)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo-location:
+        specifier: ~56.0.22
+        version: 56.0.22(expo@56.0.9)(typescript@6.0.3)
       expo-notifications:
         specifier: ~56.0.17
         version: 56.0.17(expo@56.0.9)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)
@@ -1993,6 +2008,9 @@ packages:
   '@expo/image-utils@0.10.1':
     resolution: {integrity: sha512-YDeefvmYdihS7Wp3ESDUVnOgOSWmj2Cczm9lVNDdm4MqQLdAKm/LPYg83HtFQPfefRlAxyHrQR/O9kIXN9C1Wg==}
 
+  '@expo/image-utils@0.10.4':
+    resolution: {integrity: sha512-QGdC9eeNyF7vozMV77wQQwX4z3ZJK8D707WSTcBTE/XI19T41g5NtGVM/BMqb1oBV+zSZlNwpOA6bXbbvtC2UA==}
+
   '@expo/inline-modules@0.0.11':
     resolution: {integrity: sha512-ZlIfKL61DPnW8YUTdMEjMA31xrDDV6p7Xi8rWYyhd5qXBV8MwGwjuJ7vKeaVaMjRqxJk1N9lv7zlfyvQpRCNNw==}
 
@@ -2053,6 +2071,14 @@ packages:
     resolution: {integrity: sha512-KyLeOn/zzQSvuPpV5YhB/FPKnpQytno4luN918bGdPDssLBoS3N/0UbC3W0rJAn9kSFu+XpfR81eABRVsSdfgQ==}
     peerDependencies:
       typescript: ^5.0.0 || ^5.0.0-0 || ^6.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@expo/require-utils@56.1.6':
+    resolution: {integrity: sha512-e68r6X+c7yPxJP0gac/CaJc/RCHeLB2Bf4MyCuqfNM4YXfl1ONmQbQlRL0RbwBfEHn6A6UZKj+5UX9j0Im646g==}
+    peerDependencies:
+      typescript: ^5.0.0 || ^5.0.0-0 || ^6.0.0 || ^7.0.0
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -2163,6 +2189,27 @@ packages:
 
   '@fontsource/caveat@5.2.8':
     resolution: {integrity: sha512-9fUUfFE2IQFKbx+xOcaeQxxmh8iJguEb8z+j1PeueO4UUx+XfT4pRm/B04ZDvFA794/iRxY/IibmP8ZKtIf4rw==}
+
+  '@gorhom/bottom-sheet@5.2.14':
+    resolution: {integrity: sha512-uLQFlDjp9z+jrOFcMSEldPqL5JdaXL3vXOh+juhwoNvXgTsEorJLjHTugXu+YccAG/0KJnShzKCrb71MHBsvJg==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-native': '*'
+      react: 19.2.3
+      react-native: '*'
+      react-native-gesture-handler: '>=2.16.1'
+      react-native-reanimated: '>=3.16.0 || >=4.0.0-'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-native':
+        optional: true
+
+  '@gorhom/portal@1.0.14':
+    resolution: {integrity: sha512-MXyL4xvCjmgaORr/rtryDNFy3kU4qUbKlwtQqqsygd0xX3mhKjOLn6mQK8wfu0RkoE0pBE0nAasRoHua+/QZ7A==}
+    peerDependencies:
+      react: 19.2.3
+      react-native: '*'
 
   '@headlessui/react@2.2.9':
     resolution: {integrity: sha512-Mb+Un58gwBn0/yWZfyrCh0TJyurtT+dETj7YHleylHk5od3dv2XqETPGWMyQ5/7sYN7oWdyM1u9MvC0OC8UmzQ==}
@@ -3279,6 +3326,22 @@ packages:
   '@remirror/core-constants@3.0.0':
     resolution: {integrity: sha512-42aWfPrimMfDKDi4YegyS7x+/0tlzaqwPQCULLanv3DMIlu96KTJR0fM5isWX2UViOqlGnX6YFgqWepcX+XMNg==}
 
+  '@rnmapbox/maps@10.3.5':
+    resolution: {integrity: sha512-ShQppktl1H4HHPp/aninsEVK7+tsHmN48ULxpB1rfmx7W3WogB21Q1NAEw7CzxERnLZveijyutszJG2y3EBn2Q==}
+    peerDependencies:
+      expo: '>=47.0.0'
+      mapbox-gl: ^2.9.0
+      react: 19.2.3
+      react-dom: 19.2.3
+      react-native: '>=0.79'
+    peerDependenciesMeta:
+      expo:
+        optional: true
+      mapbox-gl:
+        optional: true
+      react-dom:
+        optional: true
+
   '@rollup/rollup-android-arm-eabi@4.54.0':
     resolution: {integrity: sha512-OywsdRHrFvCdvsewAInDKCNyR3laPA2mc9bRYJ6LBp5IyvF3fvXbbNR0bSzHlZVFtn6E0xw2oZlyjg4rKCVcng==}
     cpu: [arm]
@@ -3960,6 +4023,48 @@ packages:
   '@ts-morph/common@0.27.0':
     resolution: {integrity: sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ==}
 
+  '@turf/along@6.5.0':
+    resolution: {integrity: sha512-LLyWQ0AARqJCmMcIEAXF4GEu8usmd4Kbz3qk1Oy5HoRNpZX47+i5exQtmIWKdqJ1MMhW26fCTXgpsEs5zgJ5gw==}
+
+  '@turf/bbox@7.3.5':
+    resolution: {integrity: sha512-oG1ya/HtBjAIg4TimbWx+nOYPbY0bCvt82Bq8tm6sBw3qqtbOyRSfDz79Sq90TnH7DXJprJ1qnVGKNtZ6jemfw==}
+
+  '@turf/bearing@6.5.0':
+    resolution: {integrity: sha512-dxINYhIEMzgDOztyMZc20I7ssYVNEpSv04VbMo5YPQsqa80KO3TFvbuCahMsCAW5z8Tncc8dwBlEFrmRjJG33A==}
+
+  '@turf/destination@6.5.0':
+    resolution: {integrity: sha512-4cnWQlNC8d1tItOz9B4pmJdWpXqS0vEvv65bI/Pj/genJnsL7evI0/Xw42RvEGROS481MPiU80xzvwxEvhQiMQ==}
+
+  '@turf/distance@6.5.0':
+    resolution: {integrity: sha512-xzykSLfoURec5qvQJcfifw/1mJa+5UwByZZ5TZ8iaqjGYN0vomhV9aiSLeYdUGtYRESZ+DYC/OzY+4RclZYgMg==}
+
+  '@turf/helpers@6.5.0':
+    resolution: {integrity: sha512-VbI1dV5bLFzohYYdgqwikdMVpe7pJ9X3E+dlr425wa2/sMJqYDhTO++ec38/pcPvPE6oD9WEEeU3Xu3gza+VPw==}
+
+  '@turf/helpers@7.3.5':
+    resolution: {integrity: sha512-E/NMGV5MwbjjP7AJXBtsanC3yY8N2MQ87IGdIgkB2ji5AtBpwnH4L3gEqpYN4RlCJJWbLbzO91BbKv2waUd0eg==}
+
+  '@turf/invariant@6.5.0':
+    resolution: {integrity: sha512-Wv8PRNCtPD31UVbdJE/KVAWKe7l6US+lJItRR/HOEW3eh+U/JwRCSUl/KZ7bmjM/C+zLNoreM2TU6OoLACs4eg==}
+
+  '@turf/length@6.5.0':
+    resolution: {integrity: sha512-5pL5/pnw52fck3oRsHDcSGrj9HibvtlrZ0QNy2OcW8qBFDNgZ4jtl6U7eATVoyWPKBHszW3dWETW+iLV7UARig==}
+
+  '@turf/line-intersect@6.5.0':
+    resolution: {integrity: sha512-CS6R1tZvVQD390G9Ea4pmpM6mJGPWoL82jD46y0q1KSor9s6HupMIo1kY4Ny+AEYQl9jd21V3Scz20eldpbTVA==}
+
+  '@turf/line-segment@6.5.0':
+    resolution: {integrity: sha512-jI625Ho4jSuJESNq66Mmi290ZJ5pPZiQZruPVpmHkUw257Pew0alMmb6YrqYNnLUuiVVONxAAKXUVeeUGtycfw==}
+
+  '@turf/meta@6.5.0':
+    resolution: {integrity: sha512-RrArvtsV0vdsCBegoBtOalgdSOfkBrTJ07VkpiCnq/491W67hnMWmDu7e6Ztw0C3WldRYTXkg3SumfdzZxLBHA==}
+
+  '@turf/meta@7.3.5':
+    resolution: {integrity: sha512-r+ohqxoyqeigFB0oFrQx/YEHIkOKqcKpCjvZkvZs7Tkv+IFco5MezAd2zd4rzK+0DfFgDP3KpJc7HqrYjvEjhg==}
+
+  '@turf/nearest-point-on-line@6.5.0':
+    resolution: {integrity: sha512-WthrvddddvmymnC+Vf7BrkHGbDOUu6Z3/6bFYUGv1kxw8tiZ6n83/VG6kHz4poHOfS0RaNflzXSkmCi64fLBlg==}
+
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
 
@@ -4035,6 +4140,9 @@ packages:
 
   '@types/geojson@7946.0.16':
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
+
+  '@types/geojson@7946.0.8':
+    resolution: {integrity: sha512-1rkryxURpr6aWP7R786/UQOkJ3PcpQiWkAXBmdWc7ryFWqN6a4xfK7BtjXvFBKO9LjQ+MWQSWxYeZX1OApnArA==}
 
   '@types/hammerjs@2.0.46':
     resolution: {integrity: sha512-ynRvcq6wvqexJ9brDMS4BnBLzmr0e14d6ZJTEShTBWKymQiHwlAyGu0ZPEFI2Fh1U53F7tN9ufClWM5KvqkKOw==}
@@ -5999,6 +6107,11 @@ packages:
       react: 19.2.3
       react-native: '*'
 
+  expo-location@56.0.22:
+    resolution: {integrity: sha512-gX4WlukHV3s7N7qyhHbkZ88DsbJ2sOS04CHDaxAHGN/1b0hcJv0SqpJ4z+DyFZ4AT223Vd8RhYejiPkU1N+3kA==}
+    peerDependencies:
+      expo: '*'
+
   expo-manifests@56.0.4:
     resolution: {integrity: sha512-Fokawl2UkiExIF0bqGoblRFA8lYpROVD+EpvDwSW4LgqQyPwNua1gLSgHZjdl5GsVugfRMMWE3LHaibDyX93hw==}
     peerDependencies:
@@ -6359,6 +6472,9 @@ packages:
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
     engines: {node: '>=6.9.0'}
+
+  geojson-rbush@3.2.0:
+    resolution: {integrity: sha512-oVltQTXolxvsz1sZnutlSuLDEcQAKYC/uXt9zDzJJ6bu0W+baTI8LZBaTup5afzibEH4N3jlq2p+a152wlBJ7w==}
 
   geojson-vt@4.0.2:
     resolution: {integrity: sha512-AV9ROqlNqoZEIJGfm1ncNjEXfkz2hdFlZf0qkVfmkwdKa8vj7H16YUOT81rJw1rdFhyEDlN2Tds91p/glzbl5A==}
@@ -8253,6 +8369,9 @@ packages:
   queue@6.0.2:
     resolution: {integrity: sha512-iHZWu+q3IdFZFX36ro/lKBkSvfkztY5Y7HMiPlOUjhupPcG2JMfst2KKEpu5XndviX/3UhFbRngUPNKtgvtZiA==}
 
+  quickselect@2.0.0:
+    resolution: {integrity: sha512-RKJ22hX8mHe3Y6wH/N3wCM6BWtjaxIyyUIkpHOvfFnxdI4yD4tBXEBKSbriGujF6jnSVkJrffuo6vxACiSSxIw==}
+
   quickselect@3.0.0:
     resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
 
@@ -8263,6 +8382,9 @@ packages:
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
+
+  rbush@3.0.1:
+    resolution: {integrity: sha512-XRaVO0YecOpEuIvbhbpTrZgoiI6xBlz6hnlr6EHhd+0x9ase6EmeN+hdwwUaJvLcsFFQ8iWVF1GAK1yB0BWi0w==}
 
   react-day-picker@9.14.0:
     resolution: {integrity: sha512-tBaoDWjPwe0M5pGrum4H0SR6Lyk+BO9oHnp9JbKpGKW2mlraNPgP9BMfsg5pWpwrssARmeqk7YBl2oXutZTaHA==}
@@ -10938,6 +11060,16 @@ snapshots:
       '@ungap/structured-clone': 1.3.0
       react: 19.2.3
 
+  '@convex-dev/agent@0.6.4(@ai-sdk/provider-utils@4.0.35(zod@4.3.4))(ai@6.0.218(zod@4.3.4))(convex-helpers@0.1.113(@standard-schema/spec@1.1.0)(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(hono@4.11.3)(react@19.2.3)(typescript@6.0.3)(zod@4.3.4))(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+    dependencies:
+      '@ai-sdk/provider-utils': 4.0.35(zod@4.3.4)
+      ai: 6.0.218(zod@4.3.4)
+      convex: 1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      convex-helpers: 0.1.113(@standard-schema/spec@1.1.0)(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(hono@4.11.3)(react@19.2.3)(typescript@6.0.3)(zod@4.3.4)
+    optionalDependencies:
+      '@ungap/structured-clone': 1.3.0
+      react: 19.2.3
+
   '@convex-dev/agent@0.6.4(@ai-sdk/provider-utils@4.0.35(zod@4.3.4))(ai@6.0.218(zod@4.3.4))(convex-helpers@0.1.113(@standard-schema/spec@1.1.0)(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(hono@4.11.3)(react@19.2.7)(typescript@5.9.3)(zod@4.3.4))(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)':
     dependencies:
       '@ai-sdk/provider-utils': 4.0.35(zod@4.3.4)
@@ -11549,6 +11681,19 @@ snapshots:
       - supports-color
       - typescript
 
+  '@expo/image-utils@0.10.4(typescript@6.0.3)':
+    dependencies:
+      '@expo/require-utils': 56.1.6(typescript@6.0.3)
+      '@expo/spawn-async': 1.8.0
+      chalk: 4.1.2
+      getenv: 2.0.0
+      jimp-compact: 0.16.1
+      parse-png: 2.1.0
+      semver: 7.8.2
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
+
   '@expo/inline-modules@0.0.11(typescript@6.0.3)':
     dependencies:
       '@expo/config-plugins': 56.0.8(typescript@6.0.3)
@@ -11702,6 +11847,16 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@expo/require-utils@56.1.6(typescript@6.0.3)':
+    dependencies:
+      '@babel/code-frame': 7.29.7
+      '@babel/core': 7.29.7
+      '@babel/plugin-transform-modules-commonjs': 7.29.7(@babel/core@7.29.7)
+    optionalDependencies:
+      typescript: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
+
   '@expo/router-server@56.0.13(@expo/metro-runtime@56.0.14)(expo-constants@56.0.17)(expo-font@56.0.5)(expo-router@56.2.9)(expo-server@56.0.5)(expo@56.0.9)(react-dom@19.2.7(react@19.2.3))(react@19.2.3)':
     dependencies:
       debug: 4.4.3
@@ -11800,6 +11955,23 @@ snapshots:
   '@floating-ui/utils@0.2.11': {}
 
   '@fontsource/caveat@5.2.8': {}
+
+  '@gorhom/bottom-sheet@5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.31.2(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native-reanimated@4.3.1(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+    dependencies:
+      '@gorhom/portal': 1.0.14(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      invariant: 2.2.4
+      react: 19.2.3
+      react-native: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native-gesture-handler: 2.31.2(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      react-native-reanimated: 4.3.1(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+    optionalDependencies:
+      '@types/react': 19.2.17
+
+  '@gorhom/portal@1.0.14(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+    dependencies:
+      nanoid: 3.3.12
+      react: 19.2.3
+      react-native: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
 
   '@headlessui/react@2.2.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -13149,6 +13321,21 @@ snapshots:
 
   '@remirror/core-constants@3.0.0': {}
 
+  '@rnmapbox/maps@10.3.5(expo@56.0.9)(react-dom@19.2.7(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+    dependencies:
+      '@turf/along': 6.5.0
+      '@turf/distance': 6.5.0
+      '@turf/helpers': 6.5.0
+      '@turf/length': 6.5.0
+      '@turf/nearest-point-on-line': 6.5.0
+      '@types/geojson': 7946.0.16
+      debounce: 2.2.0
+      react: 19.2.3
+      react-native: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+    optionalDependencies:
+      expo: 56.0.9(@babel/core@7.29.7)(@expo/dom-webview@56.0.5)(@expo/metro-runtime@56.0.14)(bufferutil@4.1.0)(expo-router@56.2.9)(react-dom@19.2.7(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      react-dom: 19.2.7(react@19.2.3)
+
   '@rollup/rollup-android-arm-eabi@4.54.0':
     optional: true
 
@@ -13860,6 +14047,87 @@ snapshots:
       minimatch: 10.2.5
       path-browserify: 1.0.1
 
+  '@turf/along@6.5.0':
+    dependencies:
+      '@turf/bearing': 6.5.0
+      '@turf/destination': 6.5.0
+      '@turf/distance': 6.5.0
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+
+  '@turf/bbox@7.3.5':
+    dependencies:
+      '@turf/helpers': 7.3.5
+      '@turf/meta': 7.3.5
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
+  '@turf/bearing@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+
+  '@turf/destination@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+
+  '@turf/distance@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+
+  '@turf/helpers@6.5.0': {}
+
+  '@turf/helpers@7.3.5':
+    dependencies:
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
+  '@turf/invariant@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+
+  '@turf/length@6.5.0':
+    dependencies:
+      '@turf/distance': 6.5.0
+      '@turf/helpers': 6.5.0
+      '@turf/meta': 6.5.0
+
+  '@turf/line-intersect@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+      '@turf/line-segment': 6.5.0
+      '@turf/meta': 6.5.0
+      geojson-rbush: 3.2.0
+
+  '@turf/line-segment@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+      '@turf/meta': 6.5.0
+
+  '@turf/meta@6.5.0':
+    dependencies:
+      '@turf/helpers': 6.5.0
+
+  '@turf/meta@7.3.5':
+    dependencies:
+      '@turf/helpers': 7.3.5
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
+  '@turf/nearest-point-on-line@6.5.0':
+    dependencies:
+      '@turf/bearing': 6.5.0
+      '@turf/destination': 6.5.0
+      '@turf/distance': 6.5.0
+      '@turf/helpers': 6.5.0
+      '@turf/invariant': 6.5.0
+      '@turf/line-intersect': 6.5.0
+      '@turf/meta': 6.5.0
+
   '@tybys/wasm-util@0.10.1':
     dependencies:
       tslib: 2.8.1
@@ -13940,6 +14208,8 @@ snapshots:
       '@types/geojson': 7946.0.16
 
   '@types/geojson@7946.0.16': {}
+
+  '@types/geojson@7946.0.8': {}
 
   '@types/hammerjs@2.0.46': {}
 
@@ -15244,6 +15514,16 @@ snapshots:
       typescript: 5.9.3
       zod: 4.3.4
 
+  convex-helpers@0.1.113(@standard-schema/spec@1.1.0)(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(hono@4.11.3)(react@19.2.3)(typescript@6.0.3)(zod@4.3.4):
+    dependencies:
+      convex: 1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+    optionalDependencies:
+      '@standard-schema/spec': 1.1.0
+      hono: 4.11.3
+      react: 19.2.3
+      typescript: 6.0.3
+      zod: 4.3.4
+
   convex-helpers@0.1.113(@standard-schema/spec@1.1.0)(convex@1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(hono@4.11.3)(react@19.2.7)(typescript@5.9.3)(zod@4.3.4):
     dependencies:
       convex: 1.40.0(@clerk/clerk-react@5.59.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.9.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6)
@@ -16417,6 +16697,14 @@ snapshots:
       - expo
       - supports-color
 
+  expo-location@56.0.22(expo@56.0.9)(typescript@6.0.3):
+    dependencies:
+      '@expo/image-utils': 0.10.4(typescript@6.0.3)
+      expo: 56.0.9(@babel/core@7.29.7)(@expo/dom-webview@56.0.5)(@expo/metro-runtime@56.0.14)(bufferutil@4.1.0)(expo-router@56.2.9)(react-dom@19.2.7(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
+
   expo-manifests@56.0.4(expo@56.0.9):
     dependencies:
       expo: 56.0.9(@babel/core@7.29.7)(@expo/dom-webview@56.0.5)(@expo/metro-runtime@56.0.14)(bufferutil@4.1.0)(expo-router@56.2.9)(react-dom@19.2.7(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
@@ -16840,6 +17128,14 @@ snapshots:
   generator-function@2.0.1: {}
 
   gensync@1.0.0-beta.2: {}
+
+  geojson-rbush@3.2.0:
+    dependencies:
+      '@turf/bbox': 7.3.5
+      '@turf/helpers': 6.5.0
+      '@turf/meta': 6.5.0
+      '@types/geojson': 7946.0.8
+      rbush: 3.0.1
 
   geojson-vt@4.0.2: {}
 
@@ -19112,6 +19408,8 @@ snapshots:
     dependencies:
       inherits: 2.0.4
 
+  quickselect@2.0.0: {}
+
   quickselect@3.0.0: {}
 
   range-parser@1.2.1: {}
@@ -19122,6 +19420,10 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.1
       unpipe: 1.0.0
+
+  rbush@3.0.1:
+    dependencies:
+      quickselect: 2.0.0
 
   react-day-picker@9.14.0(react@19.2.3):
     dependencies:

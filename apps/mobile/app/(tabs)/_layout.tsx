@@ -60,12 +60,17 @@ export default function TabLayout() {
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <FieldKitTabBar {...props} />}
     >
-      <Tabs.Screen name="index" options={{ title: "Home" }} />
-      <Tabs.Screen name="clients" options={{ title: "Clients" }} />
-      <Tabs.Screen name="tasks" options={{ title: "Tasks" }} />
-      <Tabs.Screen name="money" options={{ title: "Money" }} />
-      {/* Work kept routable, OFF the bar (per CONTEXT) */}
+      {/* Bar order: Today · Work · [assistant FAB] · Routes · Activity. The FAB
+          is a non-route center column owned by FieldKitTabBar. */}
+      <Tabs.Screen name="index" options={{ title: "Today" }} />
+      <Tabs.Screen name="work" options={{ title: "Work" }} />
+      <Tabs.Screen name="routes" options={{ title: "Routes" }} />
+      <Tabs.Screen name="activity" options={{ title: "Activity" }} />
+      {/* Record surfaces stay routable for detail navigation but are reached
+          THROUGH Work, so they hold no bar slot. */}
+      <Tabs.Screen name="clients" options={{ href: null }} />
       <Tabs.Screen name="projects" options={{ href: null }} />
+      <Tabs.Screen name="money" options={{ href: null }} />
       {/* Profile reached via the header avatar (per CONTEXT) */}
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>

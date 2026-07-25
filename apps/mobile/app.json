@@ -2,7 +2,7 @@
   "expo": {
     "name": "OneTool",
     "slug": "onetool-mg3hyu",
-    "version": "1.0.1",
+    "version": "2.0.0",
     "scheme": "onetool",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -16,12 +16,21 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "OneTool uses Face ID to securely keep you signed in."
+        "NSFaceIDUsageDescription": "OneTool uses Face ID to securely keep you signed in.",
+        "LSApplicationQueriesSchemes": ["comgooglemaps"]
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
         "NSPrivacyTrackingDomains": [],
         "NSPrivacyCollectedDataTypes": [
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePreciseLocation",
+            "NSPrivacyCollectedDataTypeLinked": false,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
           {
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeName",
             "NSPrivacyCollectedDataTypeLinked": true,
@@ -92,6 +101,13 @@
       }
     },
     "plugins": [
+      "@rnmapbox/maps",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "OneTool shows your position on the route map while you drive your day's stops."
+        }
+      ],
       "expo-router",
       "expo-secure-store",
       "expo-font",

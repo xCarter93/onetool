@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { fontFamily, shadow, type, useTokens } from "@/lib/theme";
 
 interface Toggle2Props<T extends string> {
 	value: T;
@@ -15,7 +15,7 @@ export function Toggle2<T extends string>({
 }: Toggle2Props<T>) {
 	const t = useTokens();
 	return (
-		<View style={[styles.container, { backgroundColor: t.muted }]}>
+		<View style={[styles.container, { backgroundColor: t.secondary }]}>
 			{options.map((option) => {
 				const active = option.value === value;
 				return (
@@ -28,7 +28,7 @@ export function Toggle2<T extends string>({
 							styles.segment,
 							active && {
 								backgroundColor: t.card,
-								boxShadow: shadow.sm,
+								boxShadow: shadow.segmented,
 							},
 						]}
 					>
@@ -55,7 +55,7 @@ export function Toggle2<T extends string>({
 const styles = StyleSheet.create({
 	container: {
 		flexDirection: "row",
-		borderRadius: radii.xl,
+		borderRadius: 9,
 		padding: 3,
 	},
 	segment: {
@@ -66,9 +66,9 @@ const styles = StyleSheet.create({
 		minHeight: 44,
 		paddingVertical: 8,
 		paddingHorizontal: 16,
-		borderRadius: radii.xl,
+		borderRadius: 7,
 	},
 	label: {
-		fontSize: 12,
+		fontSize: type.sm,
 	},
 });

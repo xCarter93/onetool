@@ -13,6 +13,7 @@ import Svg, {
 	Rect,
 	Stop,
 } from "react-native-svg";
+import { tokens } from "@/lib/theme";
 
 interface HalftoneBgProps {
 	brand?: number;
@@ -23,7 +24,7 @@ interface HalftoneBgProps {
 }
 
 const BG_ASPECT_RATIO = 1264 / 842;
-const FADE_COLOR = "#f5f7f9";
+const FADE_COLOR = tokens.bg;
 
 type FadeStop = {
 	offset: string;

@@ -13,7 +13,7 @@ import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, useTokens, STATUS } from "@/lib/theme";
+import { fontFamily, radii, STATUS, touch, useTokens } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
@@ -21,7 +21,18 @@ import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
-import { Card, Avatar, Badge, SectionHeader, ListRow } from "@/components/ui";
+import {
+	Card,
+	Avatar,
+	Badge,
+	DotGrid,
+	SectionHeader,
+	ListRow,
+} from "@/components/ui";
+import {
+	Illustration,
+	type IllustrationName,
+} from "@/components/illustrations";
 import {
 	Phone,
 	Mail,
@@ -140,6 +151,7 @@ export function ClientDetailBody({
 				style={[styles.flex, { backgroundColor: t.bg }]}
 				edges={[]}
 			>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{isPane ? (
 					<PaneHeader onBack={onBack} />
 				) : (
@@ -189,6 +201,7 @@ export function ClientDetailBody({
 			style={[styles.flex, { backgroundColor: t.bg }]}
 			edges={[]}
 		>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{isPane ? (
 				<PaneHeader title={client.companyName} onBack={onBack} />
 			) : (
@@ -251,12 +264,12 @@ export function ClientDetailBody({
 					accessibilityLabel="Open team chat"
 					style={({ pressed }) => [
 						styles.teamChat,
-						{ backgroundColor: t.accentSoft },
+						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
 						pressed && styles.pressed,
 					]}
 				>
-					<MessageSquare size={18} color={t.accent} />
-					<Text style={[styles.teamChatText, { color: t.accent }]}>
+					<MessageSquare size={18} color={t.frostedInk} />
+					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
 						Team chat
 					</Text>
 				</Pressable>
@@ -307,10 +320,10 @@ export function ClientDetailBody({
 											<View
 												style={[
 													styles.contactIcon,
-													{ backgroundColor: t.accentSoft },
+													{ backgroundColor: t.secondary },
 												]}
 											>
-												<User size={16} color={t.accent} />
+												<User size={16} color={t.sub} />
 											</View>
 											<View style={styles.contactInfo}>
 												<Text
@@ -347,14 +360,15 @@ export function ClientDetailBody({
 													onPress={() => Linking.openURL(`tel:${contact.phone}`)}
 													accessibilityRole="button"
 													accessibilityLabel={`Call ${name}`}
+													hitSlop={8}
 													style={({ pressed }) => [
 														styles.callRow,
 														pressed && styles.pressed,
 													]}
 												>
-													<Phone size={14} color={t.accent} />
+													<Phone size={14} color={t.frostedInk} />
 													<Text
-														style={[styles.callText, { color: t.accent }]}
+														style={[styles.callText, { color: t.frostedInk }]}
 														numberOfLines={1}
 													>
 														{contact.phone}
@@ -367,7 +381,8 @@ export function ClientDetailBody({
 							})}
 						</Card>
 					) : (
-						<EmptyRow text="No contacts yet" />
+						// Web aliases client-contacts-none onto the clients art — same here.
+						<EmptyRow text="No contacts yet" illo="clients-none" />
 					)}
 				</View>
 
@@ -409,10 +424,10 @@ export function ClientDetailBody({
 											<View
 												style={[
 													styles.contactIcon,
-													{ backgroundColor: t.accentSoft },
+													{ backgroundColor: t.secondary },
 												]}
 											>
-												<MapPin size={16} color={t.accent} />
+												<MapPin size={16} color={t.sub} />
 											</View>
 											<View style={styles.contactInfo}>
 												<Text
@@ -437,7 +452,7 @@ export function ClientDetailBody({
 							})}
 						</Card>
 					) : (
-						<EmptyRow text="No properties yet" />
+						<EmptyRow text="No properties yet" illo="client-properties-none" />
 					)}
 				</View>
 
@@ -447,7 +462,8 @@ export function ClientDetailBody({
 						title={`Projects${countSuffix(projects.length)}`}
 						action={projects.length > 0 ? "View all" : undefined}
 						onAction={() =>
-							shellNav ? shellNav.open("projects") : router.push("/projects")
+							// iPad: scope Work's chip to Projects. iPhone keeps the route.
+							shellNav ? shellNav.browse("project") : router.push("/projects")
 						}
 					/>
 					{recentProjects.length > 0 ? (
@@ -460,7 +476,7 @@ export function ClientDetailBody({
 									showChevron={false}
 									onPress={() =>
 										shellNav
-											? shellNav.open("projects", project._id)
+											? shellNav.open({ kind: "project", id: project._id })
 											: router.push(`/projects/${project._id}`)
 									}
 									last={i === recentProjects.length - 1}
@@ -468,7 +484,7 @@ export function ClientDetailBody({
 							))}
 						</Card>
 					) : (
-						<EmptyRow text="No projects yet" />
+						<EmptyRow text="No projects yet" illo="projects-none" />
 					)}
 				</View>
 
@@ -496,7 +512,7 @@ export function ClientDetailBody({
 							))}
 						</Card>
 					) : (
-						<EmptyRow text="No quotes yet" />
+						<EmptyRow text="No quotes yet" illo="quotes-none" />
 					)}
 				</View>
 
@@ -524,7 +540,7 @@ export function ClientDetailBody({
 							))}
 						</Card>
 					) : (
-						<EmptyRow text="No invoices yet" />
+						<EmptyRow text="No invoices yet" illo="invoices-none" />
 					)}
 				</View>
 
@@ -553,7 +569,7 @@ function countSuffix(n: number) {
 	return n > 0 ? `  ·  ${n}` : "";
 }
 
-function EmptyRow({ text }: { text: string }) {
+function EmptyRow({ text, illo }: { text: string; illo: IllustrationName }) {
 	const t = useTokens();
 	return (
 		<View
@@ -562,6 +578,8 @@ function EmptyRow({ text }: { text: string }) {
 				{ backgroundColor: t.muted, borderColor: t.line },
 			]}
 		>
+			{/* Knockout = the row's own bg, so cut-out shapes don't show card-white. */}
+			<Illustration name={illo} size="sm" knockout={t.muted} />
 			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
 		</View>
 	);
@@ -610,6 +628,7 @@ const styles = StyleSheet.create({
 		gap: 8,
 		height: 44,
 		borderRadius: radii.rSm,
+		borderWidth: 1,
 		marginTop: 12,
 	},
 	teamChatText: {
@@ -626,7 +645,7 @@ const styles = StyleSheet.create({
 	contactIcon: {
 		width: 32,
 		height: 32,
-		borderRadius: 9,
+		borderRadius: radii.xl,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -641,6 +660,8 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 8,
 		alignSelf: "flex-start",
+		// Painted, not hitSlop — alignSelf keeps the width content-sized.
+		minHeight: touch.min,
 	},
 	callText: { fontFamily: fontFamily.semibold, fontSize: 12 },
 
@@ -649,6 +670,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		paddingVertical: 18,
 		alignItems: "center",
+		gap: 8,
 	},
 	emptyText: { fontFamily: fontFamily.regular, fontSize: 12 },
 });

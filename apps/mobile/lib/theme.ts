@@ -1,12 +1,20 @@
 import { StyleSheet, Platform } from "react-native";
 
 // ============================================================================
-// Field Kit design tokens — LIGHT MODE ONLY.
-// Web globals.css OKLCH→hex wins where a web token exists; the prototype's aTok
-// fills the gaps. Dark mode is deferred (MOBILE-F01) — no dark branches here.
+// OneTool mobile design tokens — LIGHT MODE ONLY (locked decision, PRD §5).
+//
+// Values are ported literally from the approved 2.0 redesign mockup
+// (PRD-mobile-redesign §10, artifact 44bc71a9). Direction: tighten, don't
+// rebrand — Outfit stays, radii drop (cards 28→12, controls →8), sky blue is
+// demoted to primary actions + active states, chrome goes neutral.
+//
+// Names are semantic (`surface`/`ink`/`line`) so dark mode stays a cheap future
+// option even though it is explicitly out of scope.
 // ============================================================================
 
 // Font family - Outfit, matching the web app. Names map to @expo-google-fonts/outfit.
+// Only 400/500/600/700 are loaded (app/_layout.tsx) — the mockup's 550/650 weights
+// round to medium/semibold.
 export const fontFamily = {
 	regular: Platform.select({
 		ios: "Outfit_400Regular",
@@ -31,48 +39,86 @@ export const fontFamily = {
 };
 
 // ----------------------------------------------------------------------------
-// Field Kit palette — the single token source. Literal hex.
+// Palette — the single token source. Literal hex, mockup `--app-*` variables.
 // ----------------------------------------------------------------------------
 export const tokens = {
-	// Brand / accent (web wins)
+	// Brand / accent — actions and active states ONLY, never chrome decoration.
 	brand: "#00a6f4",
 	accent: "#00a6f4",
 	primary: "#00a6f4",
+	primaryInk: "#0084d1", // active-tab label, pressed states
+	primaryTint: "#e6f5fd", // soft blue fill behind primary glyphs
+	/** @deprecated Decoration-era aliases. New code should reach for `frosted*`,
+	 * `primarySolid` or `primaryInk` — a bare `accent*` tint is how sky blue got
+	 * back into the chrome in the first place. ~30 pre-P1 screen call sites still
+	 * bind to these; they get cleaned up as P2 rewrites each screen. */
 	accentSoft: "#00a6f41A", // 10% blue
 	accentMid: "#00a6f433", // 20% blue
 
-	// Semantic (web wins over aTok)
-	success: "#009966", // web; aTok had #1f9d57
-	warning: "#ffb900", // web; aTok had #e8930c
-	danger: "#e7000b", // web; aTok had #e23b3b
-	destructive: "#e7000b",
+	// "Frosted blue" primary actions — parity with web's `.cn-button-variant-default`
+	// (`bg-primary/10 text-primary border-primary/30 shadow-sm backdrop-blur-sm`).
+	// The label is a DEEPER blue than web's `text-primary`: #00a6f4 on the 10% tint
+	// is only 2.4:1, which fails AA and is unreadable in sunlight. #0369a1 keeps the
+	// same blue family at 5.35:1.
+	frostedBg: "#00a6f41A", // primary @ 10%
+	frostedBgPressed: "#00a6f426", // primary @ 15% (web's hover)
+	frostedBorder: "#00a6f44D", // primary @ 30%
+	frostedInk: "#0369a1",
+	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
+	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but
+	 * short of the 4.5:1 a solid button's label needs. #0072b5 is 5.15:1, so one
+	 * token covers both the FAB and text-bearing solids. */
+	primarySolid: "#0072b5",
 
-	// Ink / text
-	fg: "#09090b", // web; aTok had #10151c
-	foreground: "#09090b",
-	ink: "#09090b",
-	sub: "#5b6675", // gap (aTok)
-	faint: "#8a94a3", // gap (aTok)
-	mutedForeground: "#71717b",
-	warningFg: "#461901", // gap (aTok)
+	// Semantic
+	success: "#0a9d6c",
+	warning: "#b45309",
+	warningBg: "#fef7ec",
+	warningLine: "#f3e3c8",
+	danger: "#dc2626",
+	destructive: "#dc2626",
+	info: "#075985",
+
+	// Ink / text — the whole ramp is AA-verified against BOTH `card` (#fff) and
+	// `bg` (#f6f7f8). The mockup's grays (#71767d / #9aa0a6) measured 4.27:1 and
+	// 2.64:1, i.e. two of the three text tiers failed AA and dissolved in
+	// sunlight. These are the darkened equivalents; hierarchy is preserved.
+	fg: "#17181a",
+	foreground: "#17181a",
+	ink: "#17181a", // 17.8:1 — primary
+	sub: "#5f646b", // 5.96 / 5.56 — secondary, metadata
+	muted2: "#5f646b",
+	faint: "#6b7075", // 5.00 / 4.66 — tertiary: eyebrows, group labels
+	mutedForeground: "#5f646b",
+	warningFg: "#b45309",
+	/** NON-TEXT decoration only (chevrons redundant with a labelled row). Never
+	 * put text in this color — it is 2.6:1. */
+	faintDecor: "#9aa0a6",
 
 	// Surfaces
-	bg: "#f5f5f5",
-	background: "#f5f5f5",
+	bg: "#f6f7f8",
+	background: "#f6f7f8",
 	card: "#ffffff",
 	popover: "#ffffff",
-	muted: "#f4f4f5",
-	secondary: "#e4e4e7",
-	sidebar: "#fafafa",
-	surface: "#f5f7f9", // gap (aTok) — cool elevation canvas behind cards
-	line: "#e9edf2", // gap (aTok) — cool card border
+	muted: "#f6f7f8",
+	secondary: "#eceef0", // segmented track
+	sidebar: "#ffffff",
+	surface: "#f6f7f8",
 
-	// Lines / inputs
-	border: "#e1e1e5",
-	input: "#d4d4d8",
+	// Lines
+	line: "#e4e6e8", // card / control borders
+	lineSoft: "#edeff1", // in-card row dividers (hairlines)
+	border: "#e4e6e8",
+	input: "#e4e6e8",
 	ring: "#0084d1",
+	// Control boundaries and information-carrying dots need 3:1. The mockup's
+	// #c8cdd2 is 1.6:1 — an effectively invisible checkbox.
+	checkbox: "#8b9096", // 3.22 / 3.00
+	// Workload dots encode load, so 3:1 applies. #8b9096 measured exactly 3.00 on
+	// `bg` — no margin at all — so `dot` is a step darker than `checkbox`.
+	dot: "#82878d", // 3.38 on bg
 
-	// Chart ramp (web)
+	// Chart ramp (web parity)
 	chart1: "#0084d1",
 	chart2: "#00bcff",
 	chart3: "#74d4ff",
@@ -88,41 +134,77 @@ export function useTokens() {
 }
 
 // ----------------------------------------------------------------------------
-// STATUS pill color map — copied verbatim from direction-a.jsx (aTok colors
-// intentionally retained here). Pill background = color + '18'.
+// Badge tones — soft-tint pairs, quieter than the old saturated pills.
+// ----------------------------------------------------------------------------
+export type BadgeTone = "ok" | "info" | "warn" | "late" | "mute";
+
+// Backgrounds are the mockup's; three foregrounds are darkened because the
+// mockup pairs failed AA at 10.5px (ok 3.12, late 4.25, mute 4.20).
+export const badgeTone: Record<BadgeTone, { fg: string; bg: string }> = {
+	ok: { fg: "#0a7d57", bg: "#e9f6f0" }, // 4.63
+	info: { fg: "#075985", bg: "#e6f2f9" }, // 6.64
+	warn: { fg: "#b45309", bg: "#fef7ec" }, // 4.72
+	late: { fg: "#b91c1c", bg: "#fceded" }, // 5.69
+	mute: { fg: "#4b5563", bg: "#eef1f4" }, // 6.67
+};
+
+// ----------------------------------------------------------------------------
+// STATUS map — canonical status → label + tone. `c` (solid color) is kept for
+// back-compat with callers that tint their own glyphs.
 // ----------------------------------------------------------------------------
 export const STATUS = {
-	active: { label: "Active", c: "#1f9d57" },
-	lead: { label: "Lead", c: "#00a6f4" },
-	inactive: { label: "Inactive", c: "#8a94a3" },
-	archived: { label: "Archived", c: "#8a94a3" },
-	planned: { label: "Planned", c: "#00a6f4" },
-	"in-progress": { label: "In Progress", c: "#e8930c" },
-	completed: { label: "Completed", c: "#1f9d57" },
-	cancelled: { label: "Cancelled", c: "#e23b3b" },
-	draft: { label: "Draft", c: "#8a94a3" },
-	sent: { label: "Sent", c: "#00a6f4" },
-	approved: { label: "Approved", c: "#1f9d57" },
-	paid: { label: "Paid", c: "#1f9d57" },
-	overdue: { label: "Overdue", c: "#e23b3b" },
-	declined: { label: "Declined", c: "#e23b3b" },
-	expired: { label: "Expired", c: "#8a94a3" },
-	pending: { label: "Pending", c: "#e8930c" },
-	refunded: { label: "Refunded", c: "#8a94a3" },
+	active: { label: "Active", tone: "ok", c: badgeTone.ok.fg },
+	lead: { label: "Lead", tone: "info", c: badgeTone.info.fg },
+	inactive: { label: "Inactive", tone: "mute", c: badgeTone.mute.fg },
+	archived: { label: "Archived", tone: "mute", c: badgeTone.mute.fg },
+	planned: { label: "Planned", tone: "info", c: badgeTone.info.fg },
+	"in-progress": { label: "In Progress", tone: "warn", c: badgeTone.warn.fg },
+	completed: { label: "Completed", tone: "ok", c: badgeTone.ok.fg },
+	cancelled: { label: "Cancelled", tone: "late", c: badgeTone.late.fg },
+	draft: { label: "Draft", tone: "mute", c: badgeTone.mute.fg },
+	sent: { label: "Sent", tone: "info", c: badgeTone.info.fg },
+	approved: { label: "Approved", tone: "ok", c: badgeTone.ok.fg },
+	paid: { label: "Paid", tone: "ok", c: badgeTone.ok.fg },
+	overdue: { label: "Overdue", tone: "late", c: badgeTone.late.fg },
+	declined: { label: "Declined", tone: "late", c: badgeTone.late.fg },
+	expired: { label: "Expired", tone: "mute", c: badgeTone.mute.fg },
+	pending: { label: "Pending", tone: "warn", c: badgeTone.warn.fg },
+	refunded: { label: "Refunded", tone: "mute", c: badgeTone.mute.fg },
+	visited: { label: "Visited", tone: "ok", c: badgeTone.ok.fg },
+	skipped: { label: "Skipped", tone: "mute", c: badgeTone.mute.fg },
+	saved: { label: "Saved", tone: "mute", c: badgeTone.mute.fg },
+} as const satisfies Record<
+	string,
+	{ label: string; tone: BadgeTone; c: string }
+>;
+
+// ----------------------------------------------------------------------------
+// Record-type tints — the Work list's leading type icon (bg + glyph color).
+// ----------------------------------------------------------------------------
+export const recordTint = {
+	client: { bg: "#e7f3fb", fg: "#0369a1" },
+	project: { bg: "#eef2e9", fg: "#4d7c0f" },
+	quote: { bg: "#f5eefa", fg: "#7e22ce" },
+	invoice: { bg: "#fdf0e7", fg: "#c2410c" },
+	route: { bg: "#e9f0f4", fg: "#33566b" },
+	task: { bg: "#edf1f5", fg: "#475569" },
 } as const;
 
-// Create-sheet glyph colors (gap — consumed by P24's create sheet).
+export type RecordKind = keyof typeof recordTint;
+
+// Create-sheet glyph colors (legacy — the /create mega-menu is on the kill list,
+// contextual header "+" replaces it).
 export const createGlyph = {
-	task: "#00a6f4",
-	quote: "#1f9d57",
-	invoice: "#e8930c",
-	client: "#7c5cff",
-	project: "#e23b3b",
+	task: tokens.primary,
+	quote: badgeTone.ok.fg,
+	invoice: badgeTone.warn.fg,
+	client: recordTint.client.fg,
+	project: recordTint.project.fg,
 } as const;
 
 // ----------------------------------------------------------------------------
-// Legacy export names — re-pointed at the Field Kit palette so wrapped screens
-// reskin automatically. KEEP these names; downstream screens import them.
+// Legacy export names — re-pointed at the palette so wrapped screens reskin
+// automatically. KEEP these names; downstream screens import them.
 // ----------------------------------------------------------------------------
 export const colors = {
 	primary: tokens.primary,
@@ -145,117 +227,169 @@ export const colors = {
 	destructive: tokens.destructive,
 } as const;
 
-// Spacing constants
+// Spacing constants — 4px base unit; 18 is the screen gutter from the mockup.
 export const spacing = {
 	xs: 4,
 	sm: 8,
 	md: 16,
+	gutter: 18,
 	lg: 24,
 	xl: 32,
 } as const;
 
-// Legacy radius export (kept for back-compat).
-export const radius = {
-	sm: 4,
-	md: 8,
-	lg: 12,
-	xl: 16,
-	full: 9999,
-} as const;
-
-// Field Kit radii scale — mobile favors the softer prototype values (r/rSm/rLg).
+// ----------------------------------------------------------------------------
+// Radii — the visual-tightening core. Cards 12, controls 8; nothing above 20
+// except pills. The old soft 20/24/28 values are re-pointed, not deleted, so
+// existing callers tighten without edits.
+// ----------------------------------------------------------------------------
 export const radii = {
 	xs: 4,
 	sm: 6,
-	md: 7,
+	md: 8,
 	lg: 8,
 	xl: 10,
 	"2xl": 12,
-	"3xl": 16,
-	"4xl": 24,
-	r: 20,
-	rSm: 14,
-	rLg: 28,
+	"3xl": 12,
+	"4xl": 14,
+	// semantic aliases — prefer these in new code
+	card: 12,
+	ctrl: 8,
+	chip: 999,
+	pill: 999,
+	sheet: 20, // bottom-sheet top corners
+	fab: 18,
+	// legacy names (were 20 / 14 / 28)
+	r: 12,
+	rSm: 10,
+	rLg: 12,
 } as const;
 
-// Type scale (Outfit, px). eyebrow is UPPERCASE +0.06em; headings semibold -0.02em.
-export const type = {
-	display: 63,
-	h1: 28,
-	h2: 21,
-	h3: 18,
-	h4: 14,
-	body: 13,
-	sm: 12,
-	xs: 11,
-	eyebrow: 11,
-} as const;
-
-// Shadow strings — use boxShadow (NEVER legacy shadow*/elevation props).
-export const shadow = {
-	xs: "0 1px 2px rgba(0,0,0,0.04)",
-	sm: "0 1px 2px rgba(0,0,0,0.05)",
-	md: "0 4px 12px -2px rgba(0,0,0,0.08)",
-	lg: "0 10px 30px -5px rgba(0,0,0,0.1)",
-	card: "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -16px rgba(15,23,42,0.18)",
-	fab: "0 10px 22px -6px rgba(0,166,244,0.8), 0 0 0 5px #fff",
+// Legacy `radius` export — now a pure alias of `radii` so the two maps can
+// never disagree on a shared key name again.
+export const radius = {
+	sm: radii.sm,
+	md: radii.ctrl,
+	lg: radii.card,
+	xl: radii.card,
+	full: radii.pill,
 } as const;
 
 // ----------------------------------------------------------------------------
-// Common styles — read the new palette values (color-only change).
+// Type scale (Outfit, px) — mockup values. Stronger hierarchy: big semibold
+// titles, uppercase tracked eyebrows, dense 13.5/12 list rows.
+// ----------------------------------------------------------------------------
+export const type = {
+	display: 34,
+	h1: 24, // greeting / screen title
+	h2: 20, // pane titles (iPad)
+	h3: 16, // sheet titles
+	h4: 14,
+	body: 14,
+	rowTitle: 13.5, // dense list row primary
+	sm: 12.5,
+	meta: 12, // row metadata
+	xs: 11.5,
+	eyebrow: 11.5, // uppercase + 0.1em tracking
+	micro: 10.5, // badges, tab labels
+} as const;
+
+// Letter spacing for the tracked/uppercase roles.
+export const tracking = {
+	eyebrow: 1.2, // ~0.1em at 11.5px
+	groupLabel: 1, // ~0.09em at 11.5px
+	title: -0.24, // ~-0.01em at 24px
+} as const;
+
+// ----------------------------------------------------------------------------
+// Shadows — use boxShadow (NEVER legacy shadow*/elevation props).
+// Cards are FLAT (border only) by decision; shadow is reserved for things that
+// genuinely float: the FAB, bottom sheets, floating map chips.
+// ----------------------------------------------------------------------------
+export const shadow = {
+	xs: "0 1px 2px rgba(23,24,26,0.04)",
+	sm: "0 1px 2px rgba(0,0,0,0.06)",
+	md: "0 2px 10px rgba(0,0,0,0.08)",
+	lg: "0 8px 20px -6px rgba(0,0,0,0.18)",
+	/** @deprecated Cards are flat now (border only) — `ui/card.tsx` no longer uses
+	 * this. Six pre-P1 screens still do; they lose it as P2 rewrites them. */
+	card: "0 1px 2px rgba(23,24,26,0.04)",
+	fab: "0 8px 20px -6px rgba(0,132,209,0.55)",
+	sheet: "0 -8px 32px rgba(15,30,40,0.16)",
+	floatChip: "0 2px 10px rgba(0,0,0,0.08)",
+	segmented: "0 1px 2px rgba(0,0,0,0.06)",
+} as const;
+
+// Minimum tappable size (WCAG 2.1 AA / Apple HIG). Pair with hitSlop on
+// anything whose painted box is smaller.
+export const touch = { min: 44 } as const;
+
+// ----------------------------------------------------------------------------
+// Common styles — read the palette values.
 // ----------------------------------------------------------------------------
 export const styles = StyleSheet.create({
 	heading: {
-		fontSize: 21,
-		fontFamily: fontFamily.bold,
+		fontSize: type.h2,
+		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 	},
 	cardTitle: {
-		fontSize: 14,
+		fontSize: type.body,
 		fontFamily: fontFamily.semibold,
 		color: colors.foreground,
 	},
 	text: {
-		fontSize: 13,
+		fontSize: type.body,
 		fontFamily: fontFamily.regular,
 		color: colors.foreground,
 	},
 	mutedText: {
-		fontSize: 13,
+		fontSize: type.sm,
 		fontFamily: fontFamily.regular,
 		color: colors.mutedForeground,
 	},
 
+	// Padding matches ui/card.tsx — the same "card" concept must not have two values.
 	card: {
 		backgroundColor: colors.card,
-		borderRadius: radius.lg,
-		padding: spacing.md,
+		borderRadius: radii.card,
+		padding: 14,
 		borderWidth: 1,
-		borderColor: colors.border,
+		borderColor: tokens.line,
 	},
 
+	// Frosted-blue primary — parity with web's default button variant.
 	primaryButton: {
-		backgroundColor: colors.primary,
-		borderRadius: radius.md,
-		paddingVertical: spacing.sm + 4,
+		backgroundColor: tokens.frostedBg,
+		borderWidth: 1,
+		borderColor: tokens.frostedBorder,
+		borderRadius: radii.ctrl,
+		minHeight: 44,
+		paddingVertical: 12,
 		paddingHorizontal: spacing.md,
 		alignItems: "center" as const,
 		justifyContent: "center" as const,
 	},
 	primaryButtonText: {
-		color: colors.primaryForeground,
-		fontSize: 14,
-		fontWeight: "600",
+		color: tokens.frostedInk,
+		fontSize: type.body,
+		fontFamily: fontFamily.semibold,
 	},
 
 	input: {
-		backgroundColor: colors.background,
+		backgroundColor: colors.card,
 		borderWidth: 1,
-		borderColor: colors.border,
-		borderRadius: radius.md,
-		paddingVertical: spacing.sm + 4,
-		paddingHorizontal: spacing.md,
-		fontSize: 14,
+		borderColor: tokens.line,
+		borderRadius: radii.ctrl,
+		paddingVertical: 11,
+		paddingHorizontal: 12,
+		fontSize: type.body,
+		fontFamily: fontFamily.regular,
 		color: colors.foreground,
+	},
+
+	/** Hairline divider between rows inside a card. */
+	hairline: {
+		borderTopWidth: 1,
+		borderTopColor: tokens.lineSoft,
 	},
 });

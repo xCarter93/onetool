@@ -8,7 +8,7 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Badge, Card, Eyebrow, TotalsBlock } from "@/components/ui";
+import { Badge, Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 // Read-only itemized invoice detail (MONEY-02). Itemized like the quote detail
@@ -69,6 +69,7 @@ export function InvoiceDetailBody({
 	if (invoice === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{renderHeader()}
 				<ScrollView contentContainerStyle={styles.scroll}>
 					<View
@@ -92,6 +93,7 @@ export function InvoiceDetailBody({
 	if (invoice === null) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
 				{renderHeader()}
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>Not found</Text>
@@ -154,6 +156,7 @@ export function InvoiceDetailBody({
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
+			<DotGrid style={StyleSheet.absoluteFill} />
 			{renderHeader(invoice.invoiceNumber)}
 			<ScrollView contentContainerStyle={styles.scroll}>
 				{/* Header block — number, effective status badge, client */}
@@ -191,16 +194,29 @@ export function InvoiceDetailBody({
 									>
 										<View style={styles.itemBody}>
 											<View
-												style={[styles.skeleton, { width: "60%", height: 14 }]}
+												style={[
+													styles.skeleton,
+													{ width: "60%", height: 14, backgroundColor: t.muted },
+												]}
 											/>
 											<View
 												style={[
 													styles.skeleton,
-													{ width: "35%", height: 12, marginTop: 6 },
+													{
+														width: "35%",
+														height: 12,
+														marginTop: 6,
+														backgroundColor: t.muted,
+													},
 												]}
 											/>
 										</View>
-										<View style={[styles.skeleton, { width: 56, height: 14 }]} />
+										<View
+											style={[
+												styles.skeleton,
+												{ width: 56, height: 14, backgroundColor: t.muted },
+											]}
+										/>
 									</View>
 								))}
 							</>
@@ -270,7 +286,7 @@ export function InvoiceDetailBody({
 							<View
 								style={[
 									styles.barFill,
-									{ backgroundColor: t.accent, width: `${pct}%` },
+									{ backgroundColor: t.primarySolid, width: `${pct}%` },
 								]}
 							/>
 						</View>
@@ -405,8 +421,7 @@ const styles = StyleSheet.create({
 		borderRadius: radii.r,
 	},
 	skeleton: {
-		backgroundColor: "#e9edf2",
-		borderRadius: 6,
+		borderRadius: radii.sm,
 	},
 
 	notFound: {
@@ -476,18 +491,18 @@ const styles = StyleSheet.create({
 
 	barTrack: {
 		height: 6,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		marginVertical: 8,
 		width: "100%",
 		overflow: "hidden",
 	},
 	barFill: {
 		height: 6,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 	},
 	barSkeleton: {
 		height: 14,
-		borderRadius: 6,
+		borderRadius: radii.sm,
 		width: "70%",
 		marginTop: 2,
 	},
