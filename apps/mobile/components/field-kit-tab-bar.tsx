@@ -12,10 +12,10 @@ import {
 	Plus,
 	type LucideIcon,
 } from "lucide-react-native";
-import { fontFamily, shadow, useTokens } from "@/lib/theme";
+import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
 import { ScrollFade } from "@/components/ui";
 
-const INACTIVE = "#9aa4b2";
+const INACTIVE = "#8b9096";
 
 // The four visible bar tabs in display order. The ＋ FAB is a non-route center
 // column rendered between Clients and Tasks.
@@ -39,7 +39,7 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 			(r: (typeof state.routes)[number]) => r.name === tab.name,
 		);
 		const active = routeIndex !== -1 && state.index === routeIndex;
-		const color = active ? t.accent : INACTIVE;
+		const color = active ? t.primaryInk : INACTIVE;
 		const { Icon } = tab;
 
 		const onPress = () => {
@@ -64,18 +64,16 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 				accessibilityLabel={tab.label}
 				accessibilityState={{ selected: active }}
 			>
-				{active && (
-					<View style={[styles.tick, { backgroundColor: t.accent }]} />
-				)}
-				<View
+				<Icon size={22} color={color} strokeWidth={active ? 2.3 : 2} />
+				<Text
 					style={[
-						styles.iconTile,
-						{ backgroundColor: active ? t.accentSoft : "transparent" },
+						styles.label,
+						{
+							color,
+							fontFamily: active ? fontFamily.semibold : fontFamily.medium,
+						},
 					]}
 				>
-					<Icon size={22} color={color} strokeWidth={active ? 2.4 : 2} />
-				</View>
-				<Text style={[styles.label, { color, fontWeight: active ? "700" : "500" }]}>
 					{tab.label}
 				</Text>
 			</Pressable>
@@ -87,6 +85,7 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 			style={[
 				styles.container,
 				{
+					backgroundColor: t.card,
 					borderTopColor: t.line,
 					paddingBottom: insets.bottom + 8,
 				},
@@ -102,13 +101,12 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 				<Pressable
 					// TODO(P24): /create sheet content is supplied by Plan 24.
 					onPress={() => router.push(CREATE)}
-					style={[styles.fab, { backgroundColor: t.accent }]}
+					style={[styles.fab, { backgroundColor: t.primarySolid }]}
 					accessibilityRole="button"
 					accessibilityLabel="Create"
 				>
-					<Plus size={27} color="#fff" strokeWidth={2.6} />
+					<Plus size={26} color="#fff" strokeWidth={2.4} />
 				</Pressable>
-				<Text style={styles.createLabel}>Create</Text>
 			</View>
 
 			{renderItem(TABS[2])}
@@ -119,7 +117,6 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
 	container: {
-		backgroundColor: "#ffffff",
 		borderTopWidth: 1,
 		flexDirection: "row",
 		alignItems: "flex-start",
@@ -130,27 +127,12 @@ const styles = StyleSheet.create({
 		flex: 1,
 		flexDirection: "column",
 		alignItems: "center",
-		gap: 4,
-		paddingVertical: 4,
-		position: "relative",
-	},
-	tick: {
-		position: "absolute",
-		top: -10,
-		width: 22,
-		height: 3,
-		borderRadius: 3,
-	},
-	iconTile: {
-		width: 40,
-		height: 28,
-		borderRadius: 10,
-		alignItems: "center",
-		justifyContent: "center",
+		gap: 3,
+		paddingTop: 5,
+		paddingBottom: 4,
 	},
 	label: {
-		fontFamily: fontFamily.medium,
-		fontSize: 10.5,
+		fontSize: type.micro,
 	},
 	fabColumn: {
 		width: 80,
@@ -161,17 +143,11 @@ const styles = StyleSheet.create({
 	},
 	fab: {
 		marginTop: -22,
-		width: 56,
-		height: 56,
-		borderRadius: 19,
+		width: 54,
+		height: 54,
+		borderRadius: radii.fab,
 		alignItems: "center",
 		justifyContent: "center",
 		boxShadow: shadow.fab,
-	},
-	createLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 10.5,
-		color: INACTIVE,
-		marginTop: 1,
 	},
 });

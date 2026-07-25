@@ -1,14 +1,15 @@
 import React from "react";
 import { StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { tokens } from "@/lib/theme";
 
 // Dissolves scroll content into the surrounding chrome: opaque surface at the
 // header/footer edge, fading to clear over FADE_HEIGHT. Rendered by AppHeader
 // (top) and the tab bar (bottom) so the effect is global without touching screens.
 // Zero-alpha stop uses the surface RGB (not the `transparent` keyword) to avoid
 // the grey mid-gradient darkening seen on Android.
-const SURFACE = "#f5f7f9";
-const CLEAR = "rgba(245,247,249,0)";
+const SURFACE = tokens.bg;
+const CLEAR = "rgba(246,247,248,0)";
 export const FADE_HEIGHT = 28;
 
 // Top padding list/scroll screens apply so their first item clears the fade zone

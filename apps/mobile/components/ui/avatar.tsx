@@ -12,7 +12,7 @@ interface AvatarProps {
 
 export function Avatar({ text, size = 44, tone, imageUrl }: AvatarProps) {
 	const t = useTokens();
-	const color = tone || t.accent;
+	const color = tone || t.sub;
 	const radius = size * 0.32;
 
 	if (imageUrl) {
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 	},
 	text: {
-		fontFamily: fontFamily.bold,
+		fontFamily: fontFamily.semibold,
 		letterSpacing: 0.3,
 	},
 });

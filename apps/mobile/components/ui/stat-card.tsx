@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { icons } from "lucide-react-native";
-import { fontFamily, radii, useTokens } from "@/lib/theme";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Card } from "./card";
 import { Eyebrow } from "./eyebrow";
 
@@ -33,14 +33,14 @@ export function StatCard({
 	// eslint import/namespace.
 	const iconMap = icons;
 	const Glyph = icon ? iconMap[icon] : null;
-	const tint = tone || t.accent;
+	const tint = tone || t.sub;
 
 	return (
 		<Card onPress={onPress} style={style}>
 			{Glyph && watermark ? (
 				<View style={styles.watermarkClip} pointerEvents="none">
 					<View style={styles.watermark}>
-						<Glyph size={132} color={tint} strokeWidth={2} />
+						<Glyph size={72} color={tint} strokeWidth={2} />
 					</View>
 				</View>
 			) : null}
@@ -72,20 +72,20 @@ const styles = StyleSheet.create({
 	},
 	watermark: {
 		position: "absolute",
-		right: -26,
-		bottom: -32,
-		opacity: 0.16,
+		right: -14,
+		bottom: -18,
+		opacity: 0.06,
 	},
 	label: {
 		marginBottom: 10,
 	},
 	value: {
-		fontFamily: fontFamily.bold,
-		fontSize: 24,
+		fontFamily: fontFamily.semibold,
+		fontSize: type.h1,
 	},
 	foot: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12,
+		fontSize: type.meta,
 		marginTop: 4,
 	},
 });

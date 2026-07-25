@@ -36,12 +36,12 @@ export function TotalsBlock({ rows, total }: TotalsBlockProps) {
 					</Text>
 				</View>
 			))}
-			<View style={[styles.divider, { backgroundColor: t.line }]} />
+			<View style={[styles.divider, { backgroundColor: t.lineSoft }]} />
 			<View style={styles.totalRow}>
 				<Text style={[styles.totalLabel, { color: t.ink }]}>
 					{total.label}
 				</Text>
-				<Text style={[styles.totalValue, { color: t.accent }]}>
+				<Text style={[styles.totalValue, { color: t.ink }]}>
 					{total.value}
 				</Text>
 			</View>
@@ -75,11 +75,11 @@ const styles = StyleSheet.create({
 		paddingVertical: 4,
 	},
 	totalLabel: {
-		fontFamily: fontFamily.bold,
+		fontFamily: fontFamily.semibold,
 		fontSize: type.h3,
 	},
 	totalValue: {
-		fontFamily: fontFamily.bold,
+		fontFamily: fontFamily.semibold,
 		fontSize: type.h1,
 	},
 });

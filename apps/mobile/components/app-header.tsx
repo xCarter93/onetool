@@ -14,7 +14,7 @@ import { useOrganization, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, ChevronDown } from "lucide-react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { fontFamily, radii, tracking, type, useTokens } from "@/lib/theme";
 import { Avatar, ScrollFade } from "@/components/ui";
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
@@ -137,7 +137,7 @@ export function AppHeader({
 							style={[
 								StyleSheet.absoluteFill,
 								{
-									backgroundColor: "rgba(245,247,249,0.55)",
+									backgroundColor: "rgba(246,247,248,0.55)",
 									borderBottomWidth: 1,
 									borderBottomColor: t.line,
 								},
@@ -171,9 +171,7 @@ export function AppHeader({
 								style={styles.orgTile}
 							/>
 						) : (
-							<View
-								style={[styles.orgTile, { backgroundColor: t.accent }]}
-							>
+							<View style={styles.orgTile}>
 								<Text style={styles.orgTileText}>{orgInitials}</Text>
 							</View>
 						)}
@@ -192,28 +190,35 @@ export function AppHeader({
 				{/* Constant right cluster (root + detail) */}
 				<Pressable
 					onPress={() => router.push(NOTIFICATIONS)}
-					style={[styles.iconBtn, { borderColor: t.line }]}
+					style={styles.bareBtn}
+					hitSlop={10}
 					accessibilityRole="button"
-					accessibilityLabel="Notifications"
+					accessibilityLabel={
+						unreadCount > 0
+							? `Notifications, ${unreadCount} unread`
+							: "Notifications"
+					}
 				>
-					<Bell size={20} color={t.ink} />
+					<Bell size={21} color={t.ink} strokeWidth={2} />
 					{unreadCount > 0 && (
-						<View style={[styles.badge, { backgroundColor: t.danger }]}>
-							<Text style={styles.badgeText}>
-								{unreadCount > 9 ? "9+" : unreadCount}
-							</Text>
-						</View>
+						<View
+							style={[
+								styles.unreadDot,
+								{ backgroundColor: t.danger, borderColor: t.bg },
+							]}
+						/>
 					)}
 				</Pressable>
 
 				<Pressable
 					onPress={() => router.push("/(tabs)/profile")}
+					hitSlop={10}
 					accessibilityRole="button"
 					accessibilityLabel="Profile"
 				>
 					<Avatar
 						text={userInitials}
-						size={40}
+						size={30}
 						imageUrl={user?.hasImage ? user.imageUrl : null}
 					/>
 				</Pressable>
@@ -223,14 +228,14 @@ export function AppHeader({
 			{title ? (
 				<View style={styles.titleBlock}>
 					{sub ? (
-						<Text style={[styles.eyebrow, { color: t.accent }]}>
+						<Text style={[styles.eyebrow, { color: t.sub }]}>
 							{sub.toUpperCase()}
 						</Text>
 					) : null}
 					<Text
 						style={[
 							styles.title,
-							{ color: t.ink, fontSize: titleSize ?? 25 },
+							{ color: t.ink, fontSize: titleSize ?? type.h1 },
 						]}
 						numberOfLines={1}
 					>
@@ -250,8 +255,8 @@ const styles = StyleSheet.create({
 	topRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 10,
-		paddingHorizontal: 16,
+		gap: 14,
+		paddingHorizontal: 18,
 		// Breathing room below the icon row so screen content / the title block
 		// never sits flush against it (notably on detail screens with no title).
 		paddingBottom: 10,
@@ -260,81 +265,79 @@ const styles = StyleSheet.create({
 		position: "relative",
 		width: 40,
 		height: 40,
-		borderRadius: 13,
+		borderRadius: radii.xl,
 		backgroundColor: "#fff",
 		borderWidth: 1,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
 	},
+	// Bare chip — no pill, no border. Chrome recedes; the org mark carries it.
 	orgChip: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderRadius: 999,
 		paddingVertical: 5,
-		paddingLeft: 5,
-		paddingRight: 11,
 		flexShrink: 1,
 		minWidth: 0,
 	},
+	bareBtn: {
+		position: "relative",
+		alignItems: "center",
+		justifyContent: "center",
+		width: 24,
+		height: 24,
+		flexShrink: 0,
+	},
 	orgTile: {
-		width: 28,
-		height: 28,
-		borderRadius: 9,
+		width: 26,
+		height: 26,
+		borderRadius: 7,
+		experimental_backgroundImage:
+			"linear-gradient(135deg, #00a6f4, #0077c2)",
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
 	},
 	orgTileText: {
 		fontFamily: fontFamily.bold,
-		fontSize: 11,
+		fontSize: 11.5,
 		color: "#fff",
 	},
 	orgName: {
-		fontFamily: fontFamily.bold,
-		fontSize: 13,
-		maxWidth: 150,
+		fontFamily: fontFamily.semibold,
+		fontSize: type.body,
+		maxWidth: 170,
 	},
-	badge: {
+	// Presence dot, not a counter — the count lives on the notifications screen.
+	unreadDot: {
 		position: "absolute",
-		top: -4,
-		right: -4,
-		minWidth: 16,
-		height: 16,
-		paddingHorizontal: 4,
-		borderRadius: 8,
-		alignItems: "center",
-		justifyContent: "center",
-		borderWidth: 2,
-		borderColor: "#fff",
-	},
-	badgeText: {
-		fontFamily: fontFamily.bold,
-		fontSize: 10,
-		color: "#fff",
+		top: -1,
+		right: -1,
+		width: 8,
+		height: 8,
+		borderRadius: 4,
+		borderWidth: 1.5,
 	},
 	paneTitle: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 18,
+		fontSize: type.h2,
 		flexShrink: 1,
 	},
 	titleBlock: {
-		paddingHorizontal: 16,
+		paddingHorizontal: 18,
 		paddingBottom: 12,
 		paddingTop: 2,
 	},
 	eyebrow: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 11.5,
-		letterSpacing: 0.6,
-		marginBottom: 2,
+		fontSize: type.eyebrow,
+		letterSpacing: tracking.eyebrow,
+		marginBottom: 3,
 	},
 	title: {
-		fontFamily: fontFamily.bold,
-		letterSpacing: -0.5,
-		lineHeight: 28,
+		fontFamily: fontFamily.semibold,
+		letterSpacing: tracking.title,
+		lineHeight: 30,
 	},
 });

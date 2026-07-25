@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { LayoutDashboard, CalendarDays } from "lucide-react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { fontFamily, shadow, type, useTokens } from "@/lib/theme";
 import type { ViewMode } from "@/lib/useViewMode";
 
 // Re-export the single source of the type so consumers migrate off ViewToggle.tsx.
@@ -20,22 +20,24 @@ const SEGMENTS: { mode: ViewMode; label: string; Icon: typeof LayoutDashboard }[
 export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
 	const t = useTokens();
 	return (
-		<View style={[styles.container, { backgroundColor: t.muted }]}>
+		<View style={[styles.container, { backgroundColor: t.secondary }]}>
 			{SEGMENTS.map(({ mode, label, Icon }) => {
 				const active = value === mode;
 				return (
 					<Pressable
 						key={mode}
 						onPress={() => onChange(mode)}
+						accessibilityRole="button"
+						accessibilityState={{ selected: active }}
 						style={[
 							styles.segment,
 							active && {
 								backgroundColor: t.card,
-								boxShadow: shadow.sm,
+								boxShadow: shadow.segmented,
 							},
 						]}
 					>
-						<Icon size={16} color={active ? t.accent : t.faint} />
+						<Icon size={16} color={active ? t.primary : t.faint} />
 						<Text
 							style={[
 								styles.label,
@@ -59,7 +61,7 @@ export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
 const styles = StyleSheet.create({
 	container: {
 		flexDirection: "row",
-		borderRadius: radii.xl,
+		borderRadius: 9,
 		padding: 3,
 	},
 	segment: {
@@ -70,9 +72,9 @@ const styles = StyleSheet.create({
 		gap: 6,
 		paddingVertical: 8,
 		paddingHorizontal: 16,
-		borderRadius: radii.xl,
+		borderRadius: 7,
 	},
 	label: {
-		fontSize: 12,
+		fontSize: type.sm,
 	},
 });

@@ -1,13 +1,13 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { fontFamily, useTokens } from "@/lib/theme";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 interface DashChipProps {
 	children: React.ReactNode;
 	soft?: boolean;
 }
 
-// The OneTool signature flourish — a 1.5px dashed brand chip.
+// Neutral outline chip — retired the dashed brand flourish, tightened radius.
 export function DashChip({ children, soft }: DashChipProps) {
 	const t = useTokens();
 
@@ -16,12 +16,13 @@ export function DashChip({ children, soft }: DashChipProps) {
 			style={[
 				styles.chip,
 				{
-					borderColor: t.accent,
-					backgroundColor: soft ? t.accentSoft : "transparent",
+					borderColor: t.line,
+					backgroundColor: soft ? t.bg : "transparent",
+					borderRadius: radii.ctrl,
 				},
 			]}
 		>
-			<Text style={[styles.text, { color: t.accent }]} numberOfLines={1}>
+			<Text style={[styles.text, { color: t.ink }]} numberOfLines={1}>
 				{children}
 			</Text>
 		</View>
@@ -31,13 +32,11 @@ export function DashChip({ children, soft }: DashChipProps) {
 const styles = StyleSheet.create({
 	chip: {
 		alignSelf: "flex-start",
-		borderWidth: 1.5,
-		borderStyle: "dashed",
-		borderRadius: 11,
+		borderWidth: 1,
 		paddingVertical: 1,
 		paddingHorizontal: 9,
 	},
 	text: {
-		fontFamily: fontFamily.bold,
+		fontFamily: fontFamily.semibold,
 	},
 });
