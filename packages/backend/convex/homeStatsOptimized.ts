@@ -39,7 +39,7 @@ export const getHomeStats = optionalUserQuery({
 				changeType: "neutral",
 				totalValue: 0,
 			},
-			invoicesSent: {
+			invoicesPaid: {
 				current: 0,
 				previous: 0,
 				change: 0,
@@ -326,15 +326,13 @@ export const getHomeStats = optionalUserQuery({
 				changeType: getChangeType(quotesChange),
 				totalValue: quotesTotalValue || 0,
 			},
-			invoicesSent: {
+			invoicesPaid: {
 				current: invoicesThisMonth,
 				previous: invoicesLastMonth,
 				change: Math.abs(invoicesChange),
 				changeType: getChangeType(invoicesChange),
-				// Despite the legacy `invoicesSent` key, every metric here is
-				// paid-based (current/previous count paid invoices), so totalValue
-				// is the value of invoices paid this month.
 				totalValue: currentRevenue || 0,
+				// The one unpaid figure here: value of sent + overdue invoices.
 				outstanding: outstandingInvoices,
 			},
 			revenueGoal: {
