@@ -404,6 +404,7 @@ export default function WorkScreen({
 const styles = StyleSheet.create({
 	controls: {
 		paddingHorizontal: spacing.gutter,
+		paddingTop: 12,
 		paddingBottom: 12,
 		gap: 10,
 		// Anchors the ScrollFade to this block's bottom edge.

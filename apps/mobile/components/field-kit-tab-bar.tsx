@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter, type Href } from "expo-router";
+import { useRouter, usePathname, type Href } from "expo-router";
 // BottomTabBarProps is vendored by expo-router (no standalone @react-navigation/bottom-tabs dep).
 import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs";
 import {
@@ -38,6 +38,7 @@ const TABS: { name: string; label: string; Icon: LucideIcon }[] = [
 export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 	const t = useTokens();
 	const router = useRouter();
+	const pathname = usePathname();
 	const insets = useSafeAreaInsets();
 
 	// Form-sheet route, not yet in the generated route types.
@@ -163,7 +164,10 @@ export function FieldKitTabBar({ state, navigation }: BottomTabBarProps) {
 			    to each surface's contextual header ＋. */}
 			<View style={styles.fabLayer} pointerEvents="box-none">
 				<Pressable
-					onPress={() => router.push(ASSISTANT)}
+					// ctx tells the assistant which screen it was opened over.
+					onPress={() =>
+						router.push({ pathname: ASSISTANT as never, params: { ctx: pathname } })
+					}
 					style={[styles.fab, { backgroundColor: t.primarySolid }]}
 					accessibilityRole="button"
 					accessibilityLabel="Assistant"

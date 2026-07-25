@@ -86,8 +86,9 @@ describe("refFromPathname", () => {
 });
 
 describe("isStackRoute", () => {
-	it("claims the full-screen create route only", () => {
+	it("claims the full-screen create route and the route builder", () => {
 		expect(isStackRoute("/clients/new")).toBe(true);
+		expect(isStackRoute("/route-edit")).toBe(true);
 		expect(isStackRoute("/clients/c1")).toBe(false);
 		expect(isStackRoute("/work")).toBe(false);
 	});

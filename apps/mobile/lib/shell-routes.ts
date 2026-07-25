@@ -49,7 +49,7 @@ export function refFromPathname(pathname: string): RecordRef | null {
  * transparentModal, so the shell must stay mounted underneath it.
  */
 export function isStackRoute(pathname: string): boolean {
-	return /^\/clients\/new(\/|$)/.test(pathname);
+	return /^\/(clients\/new|route-edit)(\/|$)/.test(pathname);
 }
 
 /**

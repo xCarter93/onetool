@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { Check } from "lucide-react-native";
-import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 import { KIND_LABEL, KIND_ORDER, type WorkKind } from "@/lib/work-search";
 
 interface TypeChipsProps {
@@ -20,6 +20,10 @@ export function TypeChips({ value, onChange, counts }: TypeChipsProps) {
 		<ScrollView
 			horizontal
 			showsHorizontalScrollIndicator={false}
+			// Bleed past the parent's gutter so chips scroll to the screen edge
+			// instead of clipping at the padded bound; the content padding puts
+			// the resting position back on the gutter grid.
+			style={styles.bleed}
 			contentContainerStyle={styles.row}
 			keyboardShouldPersistTaps="handled"
 		>
@@ -78,9 +82,12 @@ export function TypeChips({ value, onChange, counts }: TypeChipsProps) {
 }
 
 const styles = StyleSheet.create({
+	bleed: {
+		marginHorizontal: -spacing.gutter,
+	},
 	row: {
 		gap: 8,
-		paddingRight: 18,
+		paddingHorizontal: spacing.gutter,
 		alignItems: "center",
 	},
 	chip: {

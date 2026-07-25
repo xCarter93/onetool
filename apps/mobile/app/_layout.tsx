@@ -16,6 +16,8 @@ import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
+// Required once at the root for @gorhom/bottom-sheet gestures (Routes sheet).
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { useDevice } from "@/lib/use-device";
@@ -202,6 +204,7 @@ export default function RootLayout() {
 	}
 
 	return (
+		<GestureHandlerRootView style={{ flex: 1 }}>
 		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
 				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap
@@ -226,6 +229,8 @@ export default function RootLayout() {
 							{/* Owner-only business-profile editor (reached from Home
 							    prompt + Profile). Root-level so back returns to origin. */}
 							<Stack.Screen name="business-details" />
+							{/* Manual route builder — create/edit, pushed from Routes tab. */}
+							<Stack.Screen name="route-edit" />
 							<Stack.Screen
 								name="org-switch"
 								options={overlayOptions(device, {
@@ -258,8 +263,9 @@ export default function RootLayout() {
 							<Stack.Screen
 								name="assistant"
 								options={overlayOptions(device, {
+									// Opens tall — at half height the empty state + composer clip.
 									sheetAllowedDetents: [0.5, 0.95],
-									sheetInitialDetentIndex: 0,
+									sheetInitialDetentIndex: 1,
 									sheetGrabberVisible: true,
 									sheetCornerRadius: 30,
 								})}
@@ -271,5 +277,6 @@ export default function RootLayout() {
 				</PushRegistrationHost>
 			</LaunchHost>
 		</ClerkProvider>
+		</GestureHandlerRootView>
 	);
 }

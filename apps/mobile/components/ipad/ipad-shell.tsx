@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import { Plus } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Plus, X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
-import { useTokens } from "@/lib/theme";
+import { fontFamily, type, useTokens } from "@/lib/theme";
 import {
 	SelectionProvider,
 	useSelection,
@@ -28,6 +28,8 @@ import RoutesScreen from "@/app/(tabs)/routes";
 import ActivityScreen from "@/app/(tabs)/activity";
 import ProfileScreen from "@/app/(tabs)/profile";
 import { ClientCreateBody } from "@/app/(tabs)/clients/new";
+import { AssistantHost } from "@/components/assistant/assistant-host";
+import { buildScreenContext } from "@/lib/screen-context";
 
 // ============================================================================
 // IpadShell — top-level iPad layout (gated on device === "ipad" in (tabs)/
@@ -101,6 +103,9 @@ function IpadShellInner() {
 	// In-pane create surface. Clients is the only record type mobile can create,
 	// so this is a boolean rather than a per-tab enum.
 	const [creating, setCreating] = useState(false);
+	// §4: landscape gets the assistant as a companion right panel; portrait
+	// falls back to the pushed sheet route the iPhone FAB uses.
+	const [assistantOpen, setAssistantOpen] = useState(false);
 
 	// Work's chip lives here so `browse(kind)` ("View all projects" from a client
 	// detail) can scope the list without a route push.
@@ -156,13 +161,29 @@ function IpadShellInner() {
 		<PadSidebar
 			activeTab={activeTab}
 			onNavigate={onNavigate}
-			// P3 turns this into a right-side panel in landscape (§4). Until then it
-			// pushes the same route the iPhone FAB does — a transparentModal, so the
-			// shell stays mounted underneath.
-			onAssistant={() => router.push("/assistant" as Href)}
+			onAssistant={() => {
+				if (orientation === "landscape") {
+					setAssistantOpen((open) => !open);
+				} else {
+					router.push("/assistant" as Href);
+				}
+			}}
 			onProfile={() => setActiveTab("profile")}
 			onNotifications={() => router.push("/notifications" as Href)}
 		/>
+	);
+
+	// Assistant context: the active mode plus the pane's current selection —
+	// ids only, never data values (same rule as web's use-screen-context).
+	const selectionRef =
+		activeTab === "work" || activeTab === "activity"
+			? state[activeTab]
+			: null;
+	const assistantContext = buildScreenContext(
+		activeTab === "today" ? "/" : `/${activeTab}`,
+		selectionRef
+			? { recordKind: selectionRef.kind, recordId: selectionRef.id }
+			: undefined
 	);
 
 	const frame = (children: React.ReactNode) => (
@@ -173,6 +194,12 @@ function IpadShellInner() {
 				<DotGrid style={StyleSheet.absoluteFill} />
 				{sidebar}
 				{children}
+				{assistantOpen && orientation === "landscape" ? (
+					<AssistantPanel
+						screenContext={assistantContext}
+						onClose={() => setAssistantOpen(false)}
+					/>
+				) : null}
 			</View>
 		</ShellNavProvider>
 	);
@@ -336,6 +363,42 @@ export function IpadShell() {
 	);
 }
 
+// §4's landscape companion panel — same chat as the pushed sheet, docked as a
+// third column so the workspace stays visible beside it.
+function AssistantPanel({
+	screenContext,
+	onClose,
+}: {
+	screenContext?: string;
+	onClose: () => void;
+}) {
+	const t = useTokens();
+	return (
+		<View
+			style={[
+				styles.assistantPanel,
+				{ backgroundColor: t.card, borderLeftColor: t.border },
+			]}
+		>
+			<View style={[styles.assistantHeader, { borderBottomColor: t.border }]}>
+				<Text style={[styles.assistantTitle, { color: t.ink }]}>
+					Assistant
+				</Text>
+				<Pressable
+					onPress={onClose}
+					hitSlop={10}
+					accessibilityRole="button"
+					accessibilityLabel="Close assistant"
+					style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+				>
+					<X size={18} color={t.sub} strokeWidth={2.25} />
+				</Pressable>
+			</View>
+			<AssistantHost screenContext={screenContext} />
+		</View>
+	);
+}
+
 const styles = StyleSheet.create({
 	root: {
 		flex: 1,
@@ -367,5 +430,23 @@ const styles = StyleSheet.create({
 		width: "100%",
 		maxWidth: TODAY_MAX_WIDTH,
 		alignSelf: "center",
+	},
+	assistantPanel: {
+		width: 380,
+		flexShrink: 0,
+		borderLeftWidth: 1,
+		overflow: "hidden",
+	},
+	assistantHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+		borderBottomWidth: StyleSheet.hairlineWidth,
+	},
+	assistantTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.h3,
 	},
 });

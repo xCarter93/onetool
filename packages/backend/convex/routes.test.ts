@@ -1494,4 +1494,164 @@ describe("Routes", () => {
 			expect(route!.stops[0].projectId).toBe(projectId);
 		});
 	});
+
+	describe("startRoute / completeRoute", () => {
+		async function setupDailyRoute() {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: false,
+				stops: [stop(0), stop(1)],
+			});
+			return { asUser, routeId, orgId };
+		}
+
+		async function routeCompletedActivities(orgId: Id<"organizations">) {
+			return await t.run(async (ctx) => {
+				const activities = await ctx.db.query("activities").collect();
+				return activities.filter(
+					(a) => a.orgId === orgId && a.activityType === "route_completed"
+				);
+			});
+		}
+
+		it("sets startedAt and is idempotent while in progress", async () => {
+			const { asUser, routeId } = await setupDailyRoute();
+
+			await asUser.mutation(api.routes.startRoute, { routeId });
+			let route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.startedAt).toBeTypeOf("number");
+			expect(route!.completedAt).toBeUndefined();
+
+			// Pin startedAt to a sentinel: a second start must not overwrite it.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(routeId, { startedAt: 12345 });
+			});
+			await asUser.mutation(api.routes.startRoute, { routeId });
+			route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.startedAt).toBe(12345);
+		});
+
+		it("restarts a completed route: clears completedAt, resets startedAt", async () => {
+			const { asUser, routeId } = await setupDailyRoute();
+
+			await asUser.mutation(api.routes.startRoute, { routeId });
+			await asUser.mutation(api.routes.completeRoute, { routeId });
+			await t.run(async (ctx) => {
+				await ctx.db.patch(routeId, { startedAt: 12345 });
+			});
+
+			await asUser.mutation(api.routes.startRoute, { routeId });
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.completedAt).toBeUndefined();
+			expect(route!.startedAt).not.toBe(12345);
+			expect(route!.startedAt).toBeTypeOf("number");
+		});
+
+		it("completeRoute sets completedAt, backfills startedAt, and logs one activity", async () => {
+			const { asUser, routeId, orgId } = await setupDailyRoute();
+
+			// Never explicitly started — completion backfills startedAt.
+			await asUser.mutation(api.routes.completeRoute, { routeId });
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.completedAt).toBeTypeOf("number");
+			expect(route!.startedAt).toBe(route!.completedAt);
+
+			const activities = await routeCompletedActivities(orgId);
+			expect(activities).toHaveLength(1);
+			expect(activities[0]).toMatchObject({
+				entityType: "route",
+				entityId: routeId,
+				entityName: "Daily",
+			});
+			expect(activities[0].description).toContain("Daily");
+			expect(activities[0].description).toContain("2 stops");
+		});
+
+		it("a repeat completeRoute is a no-op and logs no second activity", async () => {
+			const { asUser, routeId, orgId } = await setupDailyRoute();
+
+			await asUser.mutation(api.routes.completeRoute, { routeId });
+			const first = await asUser.query(api.routes.get, { routeId });
+			await asUser.mutation(api.routes.completeRoute, { routeId });
+			const second = await asUser.query(api.routes.get, { routeId });
+
+			expect(second!.completedAt).toBe(first!.completedAt);
+			expect(await routeCompletedActivities(orgId)).toHaveLength(1);
+		});
+
+		it("rejects saved-kind routes", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Saved",
+				start: START,
+				roundTrip: false,
+				stops: [stop(0)],
+			});
+
+			await expect(
+				asUser.mutation(api.routes.startRoute, { routeId })
+			).rejects.toThrow(/Only daily routes/);
+			await expect(
+				asUser.mutation(api.routes.completeRoute, { routeId })
+			).rejects.toThrow(/Only daily routes/);
+		});
+
+		it("rejects a route belonging to another org", async () => {
+			const { asUser, routeId } = await setupDailyRoute();
+			void asUser;
+			const orgB = await t.run(
+				async (ctx) =>
+					await createTestOrg(ctx, {
+						clerkUserId: "user_b3",
+						clerkOrgId: "org_b3",
+					})
+			);
+			const asB = t.withIdentity(
+				createPremiumTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
+			);
+
+			await expect(
+				asB.mutation(api.routes.startRoute, { routeId })
+			).rejects.toThrow(/organization/i);
+			await expect(
+				asB.mutation(api.routes.completeRoute, { routeId })
+			).rejects.toThrow(/organization/i);
+		});
+	});
+
+	describe("permissions.hasPremiumAccess", () => {
+		it("returns true for a premium identity", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			expect(await asUser.query(api.permissions.hasPremiumAccess, {})).toBe(
+				true
+			);
+		});
+
+		it("returns false for a non-premium identity", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
+			expect(await asUser.query(api.permissions.hasPremiumAccess, {})).toBe(
+				false
+			);
+		});
+
+		it("returns false (not a throw) for unauthenticated callers", async () => {
+			expect(await t.query(api.permissions.hasPremiumAccess, {})).toBe(false);
+		});
+	});
 });

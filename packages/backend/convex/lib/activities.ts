@@ -329,6 +329,18 @@ export const ActivityHelpers = {
 		});
 	},
 
+	async routeCompleted(ctx: MutationCtx, route: Doc<"routes">) {
+		const stopCount = route.stops.length;
+		return createActivity(ctx, {
+			activityType: "route_completed",
+			entityType: "route",
+			entityId: route._id,
+			entityName: route.name,
+			description: `Completed route: ${route.name} (${stopCount} ${stopCount === 1 ? "stop" : "stops"})`,
+			metadata: { stopCount },
+		});
+	},
+
 	async organizationUpdated(
 		ctx: MutationCtx,
 		organization: Doc<"organizations">

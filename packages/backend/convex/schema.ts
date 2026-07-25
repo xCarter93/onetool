@@ -800,6 +800,7 @@ export default defineSchema({
 			v.literal("payments_configured"),
 			v.literal("task_created"),
 			v.literal("task_completed"),
+			v.literal("route_completed"),
 			v.literal("user_invited"),
 			v.literal("user_removed"),
 			v.literal("member_permissions_updated"),
@@ -816,6 +817,7 @@ export default defineSchema({
 			v.literal("invoice"),
 			v.literal("payment"),
 			v.literal("task"),
+			v.literal("route"),
 			v.literal("user"),
 			v.literal("organization")
 		),

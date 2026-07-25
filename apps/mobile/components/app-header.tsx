@@ -137,6 +137,9 @@ export function AppHeader({
 		<View
 			style={{ paddingTop: insets.top + 8, zIndex: 3 }}
 			onLayout={onHeaderLayout}
+			// box-none: on overlay surfaces (Routes map) the header must not
+			// swallow touches outside its interactive children.
+			pointerEvents="box-none"
 		>
 			{!home ? (
 				<View
@@ -151,9 +154,12 @@ export function AppHeader({
 					pointerEvents="none"
 				>
 					<>
+						{/* intensity must stay 100: fractional intensities use expo-blur's
+						    paused-animator hack, which renders unreliably over Metal-backed
+						    views (the Mapbox map showed through nearly un-blurred). */}
 						<BlurView
-							tint="light"
-							intensity={90}
+							tint="systemThickMaterialLight"
+							intensity={100}
 							style={StyleSheet.absoluteFill}
 						/>
 						{/* Halftone wash. Sits UNDER the bg tint, so the effective opacity
@@ -183,7 +189,7 @@ export function AppHeader({
 			) : null}
 
 			{/* Top row */}
-			<View style={styles.topRow}>
+			<View style={styles.topRow} pointerEvents="box-none">
 				{detail ? (
 					<Pressable
 						onPress={() => router.back()}
@@ -222,7 +228,7 @@ export function AppHeader({
 					</Pressable>
 				)}
 
-				<View style={{ flex: 1 }} />
+				<View style={{ flex: 1 }} pointerEvents="none" />
 
 				{/* Constant right cluster (root + detail) */}
 				{onAdd ? (

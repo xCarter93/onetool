@@ -12,6 +12,7 @@ import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import {
 	getEffectivePermissions,
 	getEffectivePermissionsFor,
+	hasPremiumAccess as checkPremiumAccess,
 	isAdminRole,
 	type EffectivePermissions,
 } from "./lib/permissions";
@@ -171,6 +172,18 @@ export const myPermissions = optionalUserQuery({
 		return effective === "all"
 			? { all: true, grants: {} }
 			: { all: false, grants: effective };
+	},
+});
+
+/**
+ * Whether the caller has premium (plan or metadata override) access.
+ * False — never a throw — for unauthenticated callers or users without an org.
+ */
+export const hasPremiumAccess = optionalUserQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		if (!ctx.user) return false;
+		return await checkPremiumAccess(ctx);
 	},
 });
 

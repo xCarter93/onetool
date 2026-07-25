@@ -42,6 +42,8 @@ export const ENTITY_PERMISSION_OBJECT: Partial<Record<string, PermissionObject>>
 	quote: "quotes",
 	invoice: "invoices",
 	task: "tasks",
+	// Route reads gate on clients:view (routes.ts) — mirror that in the feed.
+	route: "clients",
 };
 
 /**
