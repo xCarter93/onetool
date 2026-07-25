@@ -6,9 +6,11 @@ import {
 	createTestOrg,
 	createTestOrgWithAddress,
 	createTestClient,
+	createTestProject,
 	createTestClientProperty,
 	createTestIdentity,
 	createPremiumTestIdentity,
+	addMemberToOrg,
 } from "./test.helpers";
 import { MAX_STOPS } from "./routes";
 import type { Id } from "./_generated/dataModel";
@@ -1137,6 +1139,359 @@ describe("Routes", () => {
 			await expect(
 				asUser.mutation(api.tasks.complete, { id: taskId })
 			).rejects.toThrow(/already completed/);
+		});
+	});
+
+	describe("addPropertyStop", () => {
+		/** Geocoded property on its own client, in the caller's org. */
+		async function setupProperty(
+			orgId: Id<"organizations">,
+			overrides: Record<string, unknown> = {}
+		) {
+			return await t.run(async (ctx) => {
+				const clientId = await createTestClient(ctx, orgId);
+				const propertyId = await createTestClientProperty(
+					ctx,
+					orgId,
+					clientId,
+					{ latitude: 40.71, longitude: -74.01, ...overrides }
+				);
+				return { clientId, propertyId };
+			});
+		}
+
+		it("creates the daily route when none exists", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId, {
+				propertyName: "North Yard",
+			});
+
+			const result = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				propertyId,
+			});
+			expect(result).toMatchObject({
+				created: true,
+				added: true,
+				stopCount: 1,
+				label: "North Yard",
+			});
+			// Solo org → org-wide daily route (no assignee).
+			expect(result.assigneeUserId).toBeUndefined();
+
+			const route = await asUser.query(api.routes.get, {
+				routeId: result.routeId,
+			});
+			expect(route).toMatchObject({
+				kind: "daily",
+				date: DATE,
+				roundTrip: true,
+				status: "draft",
+			});
+			expect(route!.stops).toHaveLength(1);
+			expect(route!.stops[0]).toMatchObject({
+				propertyId,
+				label: "North Yard",
+				order: 0,
+				status: "pending",
+			});
+		});
+
+		it("defaults the assignee to the caller in a multi-member org", async () => {
+			const { clerkUserId, clerkOrgId, orgId, userId } =
+				await setupOrgWithAddress();
+			await t.run(
+				async (ctx) => await addMemberToOrg(ctx, orgId, { role: "member" })
+			);
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+
+			const result = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				propertyId,
+			});
+			expect(result.assigneeUserId).toBe(userId);
+
+			const route = await asUser.query(api.routes.get, {
+				routeId: result.routeId,
+			});
+			expect(route!.assigneeUserId).toBe(userId);
+		});
+
+		it("appends to an existing daily route and clears computed fields", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: true,
+				stops: [stop(0)],
+			});
+			await t.run(async (ctx) => {
+				await ctx.db.patch(routeId, {
+					geometry: "abc123",
+					totalDistanceMeters: 1000,
+					computedAt: 1234567890,
+				});
+			});
+
+			const result = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				propertyId,
+			});
+			expect(result).toMatchObject({
+				routeId,
+				created: false,
+				added: true,
+				stopCount: 2,
+			});
+
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.stops.map((s) => s.order)).toEqual([0, 1]);
+			expect(route!.stops[1].propertyId).toBe(propertyId);
+			expect(route!.geometry).toBeUndefined();
+			expect(route!.totalDistanceMeters).toBeUndefined();
+			expect(route!.computedAt).toBeUndefined();
+		});
+
+		it("dedupes a repeat add of the same property", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+
+			const first = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				propertyId,
+			});
+			const second = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				propertyId,
+			});
+
+			expect(second).toMatchObject({
+				routeId: first.routeId,
+				added: false,
+				created: false,
+				stopCount: 1,
+				label: first.label,
+			});
+			const route = await asUser.query(api.routes.get, {
+				routeId: first.routeId,
+			});
+			expect(route!.stops).toHaveLength(1);
+		});
+
+		it("resolves the client's primary property when only clientId is passed", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const clientId = await t.run(async (ctx) => {
+				const clientId = await createTestClient(ctx, orgId);
+				await createTestClientProperty(ctx, orgId, clientId, {
+					isPrimary: true,
+					propertyName: "Primary Site",
+					latitude: 40.71,
+					longitude: -74.01,
+				});
+				return clientId;
+			});
+
+			const result = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				clientId,
+			});
+			expect(result).toMatchObject({ added: true, label: "Primary Site" });
+		});
+
+		it("throws when the client has no primary property", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const clientId = await t.run(
+				async (ctx) => await createTestClient(ctx, orgId)
+			);
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, { date: DATE, clientId })
+			).rejects.toThrow(/no property to add to a route/);
+		});
+
+		it("throws when neither a property nor a client is given", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, { date: DATE })
+			).rejects.toThrow(/property or client is required/);
+		});
+
+		it("throws for an ungeocoded property", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId, {
+				latitude: undefined,
+				longitude: undefined,
+			});
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, { date: DATE, propertyId })
+			).rejects.toThrow(/mapped address/);
+		});
+
+		it("throws when the org has no address and no daily route exists yet", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, { date: DATE, propertyId })
+			).rejects.toThrow(/organization's address/);
+		});
+
+		it("throws when the daily route is already at the stop cap", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+
+			await asUser.mutation(api.routes.create, {
+				name: "Full daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: true,
+				stops: Array.from({ length: MAX_STOPS }, (_, i) => stop(i)),
+			});
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, { date: DATE, propertyId })
+			).rejects.toThrow(/at most 23/);
+		});
+
+		it("rejects a property belonging to another org", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const foreignPropertyId = await t.run(async (ctx) => {
+				const other = await createTestOrg(ctx, {
+					clerkUserId: "user_other_stop",
+					clerkOrgId: "org_other_stop",
+				});
+				const clientId = await createTestClient(ctx, other.orgId);
+				return await createTestClientProperty(ctx, other.orgId, clientId, {
+					latitude: 40.71,
+					longitude: -74.01,
+				});
+			});
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, {
+					date: DATE,
+					propertyId: foreignPropertyId,
+				})
+			).rejects.toThrow(/organization/i);
+		});
+
+		it("rejects an assignee who isn't a member of the org", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+			const foreignUserId = await t.run(async (ctx) => {
+				const other = await createTestOrg(ctx, {
+					clerkUserId: "user_other_assignee",
+					clerkOrgId: "org_other_assignee",
+				});
+				return other.userId;
+			});
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, {
+					date: DATE,
+					propertyId,
+					assigneeUserId: foreignUserId,
+				})
+			).rejects.toThrow(/not a member/i);
+		});
+
+		it("rejects a project belonging to another org", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await setupProperty(orgId);
+			const foreignProjectId = await t.run(async (ctx) => {
+				const other = await createTestOrg(ctx, {
+					clerkUserId: "user_other_project",
+					clerkOrgId: "org_other_project",
+				});
+				const clientId = await createTestClient(ctx, other.orgId);
+				return await createTestProject(ctx, other.orgId, clientId);
+			});
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, {
+					date: DATE,
+					propertyId,
+					projectId: foreignProjectId,
+				})
+			).rejects.toThrow(/organization/i);
+		});
+
+		it("rejects non-premium orgs", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const { propertyId } = await setupProperty(orgId);
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
+
+			await expect(
+				asUser.mutation(api.routes.addPropertyStop, { date: DATE, propertyId })
+			).rejects.toThrow(/Business plan/);
+		});
+
+		it("stores projectId provenance when passed", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { clientId, propertyId } = await setupProperty(orgId);
+			const projectId = await insertProject(orgId, clientId, { propertyId });
+
+			const result = await asUser.mutation(api.routes.addPropertyStop, {
+				date: DATE,
+				propertyId,
+				projectId,
+			});
+
+			const route = await asUser.query(api.routes.get, {
+				routeId: result.routeId,
+			});
+			expect(route!.stops[0].projectId).toBe(projectId);
 		});
 	});
 });

@@ -5,6 +5,7 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import { getMembership } from "./lib/memberships";
 import { hasPremiumAccess } from "./lib/permissions";
 import { emptyListResult } from "./lib/queries";
 
@@ -105,6 +106,17 @@ async function requirePremium(ctx: UserMutationCtx): Promise<void> {
 	}
 }
 
+/** A route may only be assigned to a member of the calling org. */
+async function assertAssigneeMember(
+	ctx: UserMutationCtx,
+	assigneeUserId: Id<"users"> | undefined
+): Promise<void> {
+	if (!assigneeUserId) return;
+	if (!(await getMembership(ctx, assigneeUserId, ctx.orgId))) {
+		throw new Error("Assignee is not a member of this organization");
+	}
+}
+
 /** Computed-result fields, reset whenever route inputs change. */
 const CLEARED_COMPUTED_FIELDS = {
 	optimized: undefined,
@@ -166,6 +178,8 @@ export const create = userMutation({
 	handler: async (ctx, args): Promise<Id<"routes">> => {
 		await requirePremium(ctx);
 		await ctx.requireLevel("clients", "view");
+
+		await assertAssigneeMember(ctx, args.assigneeUserId);
 
 		const name = args.name.trim();
 		if (!name) throw new Error("Route name is required");
@@ -334,7 +348,7 @@ async function buildOrgStart(ctx: UserMutationCtx): Promise<RouteStart> {
 	const org = await ctx.db.get(ctx.orgId);
 	if (!org || org.latitude == null || org.longitude == null) {
 		throw new Error(
-			"Add your organization's address (in Settings) before planning from the schedule"
+			"Add your organization's address (in Settings) before building a route"
 		);
 	}
 	return {
@@ -368,6 +382,7 @@ export const seedFromSchedule = userMutation({
 		await requirePremium(ctx);
 		await ctx.requireLevel("clients", "view");
 		if (!Number.isFinite(args.date)) throw new Error("Invalid date");
+		await assertAssigneeMember(ctx, args.assigneeUserId);
 
 		const tasks = await ctx.db
 			.query("tasks")
@@ -524,6 +539,7 @@ export const copyToDaily = userMutation({
 		await requirePremium(ctx);
 		await ctx.requireLevel("clients", "view");
 		if (!Number.isFinite(args.date)) throw new Error("Invalid date");
+		await assertAssigneeMember(ctx, args.assigneeUserId);
 
 		const saved = await ctx.orgEntity("routes", args.routeId);
 		if (saved.kind === "daily") {
@@ -578,5 +594,169 @@ export const copyToDaily = userMutation({
 			...CLEARED_COMPUTED_FIELDS,
 		});
 		return existing._id;
+	},
+});
+
+/**
+ * "Add to today's route" from a project/client detail page: upserts the daily
+ * singleton for the date and appends one property-derived stop, deduping by
+ * property (a repeat add is a no-op that reports the existing stop).
+ */
+export const addPropertyStop = userMutation({
+	args: {
+		date: v.number(),
+		propertyId: v.optional(v.id("clientProperties")),
+		clientId: v.optional(v.id("clients")),
+		projectId: v.optional(v.id("projects")),
+		assigneeUserId: v.optional(v.id("users")),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		routeId: Id<"routes">;
+		routeName: string;
+		label: string;
+		added: boolean;
+		created: boolean;
+		stopCount: number;
+		assigneeUserId?: Id<"users">;
+	}> => {
+		await requirePremium(ctx);
+		await ctx.requireLevel("clients", "view");
+		if (!Number.isFinite(args.date)) throw new Error("Invalid date");
+		await assertAssigneeMember(ctx, args.assigneeUserId);
+		if (args.projectId) {
+			// Provenance is stored on the stop — keep it inside the org.
+			await ctx.orgEntity("projects", args.projectId);
+		}
+
+		let property: Doc<"clientProperties"> | null;
+		if (args.propertyId) {
+			// Throws when the property belongs to another org.
+			property = await ctx.orgEntity("clientProperties", args.propertyId);
+		} else if (args.clientId) {
+			const clientId = args.clientId;
+			property = await ctx.db
+				.query("clientProperties")
+				.withIndex("by_primary", (q) =>
+					q.eq("clientId", clientId).eq("isPrimary", true)
+				)
+				.first();
+			if (!property || property.orgId !== ctx.orgId) {
+				throw new Error("This client has no property to add to a route yet");
+			}
+		} else {
+			throw new Error("A property or client is required");
+		}
+
+		if (property.latitude == null || property.longitude == null) {
+			throw new Error(
+				"This property doesn't have a mapped address yet — check its address before adding it to a route"
+			);
+		}
+		const label = property.propertyName ?? property.streetAddress;
+
+		// Mirrors the Routing page's default assignee (D3): the current user in a
+		// multi-member org, org-wide when solo. Counts resolvable members only, so
+		// an orphaned membership row can't shift the default off the route the
+		// page shows (users.listByOrg drops those rows too).
+		let assigneeUserId = args.assigneeUserId;
+		if (!assigneeUserId) {
+			const memberships = await ctx.db
+				.query("organizationMemberships")
+				.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+				.collect();
+			let liveMembers = 0;
+			for (const membership of memberships) {
+				if (await ctx.db.get(membership.userId)) liveMembers++;
+				if (liveMembers > 1) break;
+			}
+			assigneeUserId = liveMembers > 1 ? ctx.user._id : undefined;
+		}
+
+		const existing = await findDailyRoute(ctx, args.date, assigneeUserId);
+
+		if (!existing) {
+			const start = await buildOrgStart(ctx);
+			const name = `Daily route — ${new Date(args.date).toISOString().slice(0, 10)}`;
+			const routeId = await ctx.db.insert("routes", {
+				orgId: ctx.orgId,
+				name,
+				kind: "daily",
+				date: args.date,
+				assigneeUserId,
+				status: "draft",
+				start,
+				roundTrip: true,
+				stops: [
+					{
+						propertyId: property._id,
+						projectId: args.projectId,
+						label,
+						latitude: property.latitude,
+						longitude: property.longitude,
+						order: 0,
+						status: "pending" as const,
+					},
+				],
+				createdBy: ctx.user._id,
+			});
+			return {
+				routeId,
+				routeName: name,
+				label,
+				added: true,
+				created: true,
+				stopCount: 1,
+				assigneeUserId,
+			};
+		}
+
+		const duplicate = existing.stops.find(
+			(s) => s.propertyId === property._id
+		);
+		if (duplicate) {
+			return {
+				routeId: existing._id,
+				routeName: existing.name,
+				label: duplicate.label,
+				added: false,
+				created: false,
+				stopCount: existing.stops.length,
+				assigneeUserId,
+			};
+		}
+
+		if (existing.stops.length >= MAX_STOPS) {
+			throw new Error(`A route can have at most ${MAX_STOPS} stops`);
+		}
+
+		const stops: RouteStop[] = [
+			...existing.stops,
+			{
+				propertyId: property._id,
+				projectId: args.projectId,
+				label,
+				latitude: property.latitude,
+				longitude: property.longitude,
+				order: existing.stops.length,
+				status: "pending",
+			},
+		];
+		await ctx.db.patch(existing._id, {
+			stops,
+			...CLEARED_COMPUTED_FIELDS,
+		});
+
+		return {
+			routeId: existing._id,
+			routeName: existing.name,
+			label,
+			added: true,
+			created: false,
+			stopCount: stops.length,
+			assigneeUserId,
+		};
 	},
 });

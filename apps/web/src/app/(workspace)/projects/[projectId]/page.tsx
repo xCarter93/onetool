@@ -137,6 +137,7 @@ function ProjectDetailPageContent() {
 				<ProjectDetailHeader
 					project={project}
 					hasApprovedQuotes={approvedQuotes.length > 0}
+					properties={properties}
 					onAddTask={() => setIsTaskSheetOpen(true)}
 					onAddQuote={() => openCreate({ type: "quote", projectId })}
 					onGenerateInvoice={() => setIsInvoiceModalOpen(true)}
