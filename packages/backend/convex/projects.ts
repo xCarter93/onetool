@@ -929,6 +929,7 @@ export const remove = userMutation({
 			}
 
 			// Delete the quote itself
+			await AggregateHelpers.removeQuote(ctx, quote);
 			await ctx.db.delete(quote._id);
 		}
 
@@ -969,6 +970,7 @@ export const remove = userMutation({
 			}
 
 			// Delete the invoice itself
+			await AggregateHelpers.removeInvoice(ctx, invoice);
 			await ctx.db.delete(invoice._id);
 		}
 
