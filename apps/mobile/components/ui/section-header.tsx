@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
-import { fontFamily, touch, type, useTokens } from "@/lib/theme";
+import { fontFamily, type, useTokens } from "@/lib/theme";
 
 interface SectionHeaderProps {
 	title: string;
@@ -20,17 +20,17 @@ export function SectionHeader({ title, action, onAction }: SectionHeaderProps) {
 			{action ? (
 				<Pressable
 					onPress={onAction}
-					hitSlop={touch.min}
+					hitSlop={12}
 					accessibilityRole="button"
 					style={({ pressed }) => [styles.action, pressed && styles.pressed]}
 				>
 					<Text
-						style={[styles.actionText, { color: t.primary }]}
+						style={[styles.actionText, { color: t.frostedInk }]}
 						numberOfLines={1}
 					>
 						{action}
 					</Text>
-					<ChevronRight size={15} color={t.primary} />
+					<ChevronRight size={15} color={t.frostedInk} />
 				</Pressable>
 			) : null}
 		</View>

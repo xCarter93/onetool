@@ -50,10 +50,12 @@ export function Button({
 	const fill = (pressed: boolean): ViewStyle => {
 		switch (variant) {
 			case "primary":
+				// The tint step alone is a 1.05:1 delta — imperceptible. The border
+				// does the perceptible work on press.
 				return {
 					backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
 					borderWidth: 1,
-					borderColor: t.frostedBorder,
+					borderColor: pressed ? t.primaryInk : t.frostedBorder,
 					boxShadow: shadow.xs,
 				};
 			case "solid":

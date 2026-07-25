@@ -37,7 +37,7 @@ export function SegmentedToggle({ value, onChange }: SegmentedToggleProps) {
 							},
 						]}
 					>
-						<Icon size={16} color={active ? t.primary : t.faint} />
+						<Icon size={16} color={active ? t.frostedInk : t.sub} />
 						<Text
 							style={[
 								styles.label,
@@ -70,6 +70,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 6,
+		minHeight: 44,
 		paddingVertical: 8,
 		paddingHorizontal: 16,
 		borderRadius: 7,

@@ -48,6 +48,10 @@ export const tokens = {
 	primary: "#00a6f4",
 	primaryInk: "#0084d1", // active-tab label, pressed states
 	primaryTint: "#e6f5fd", // soft blue fill behind primary glyphs
+	/** @deprecated Decoration-era aliases. New code should reach for `frosted*`,
+	 * `primarySolid` or `primaryInk` — a bare `accent*` tint is how sky blue got
+	 * back into the chrome in the first place. ~30 pre-P1 screen call sites still
+	 * bind to these; they get cleaned up as P2 rewrites each screen. */
 	accentSoft: "#00a6f41A", // 10% blue
 	accentMid: "#00a6f433", // 20% blue
 
@@ -60,9 +64,11 @@ export const tokens = {
 	frostedBgPressed: "#00a6f426", // primary @ 15% (web's hover)
 	frostedBorder: "#00a6f44D", // primary @ 30%
 	frostedInk: "#0369a1",
-	/** Solid blue fills that carry WHITE glyphs (FAB): #00a6f4 + white is 2.7:1,
-	 * under the 3:1 non-text minimum. #0084d1 + white is 4.0:1. */
-	primarySolid: "#0084d1",
+	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
+	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but
+	 * short of the 4.5:1 a solid button's label needs. #0072b5 is 5.15:1, so one
+	 * token covers both the FAB and text-bearing solids. */
+	primarySolid: "#0072b5",
 
 	// Semantic
 	success: "#0a9d6c",
@@ -73,15 +79,21 @@ export const tokens = {
 	destructive: "#dc2626",
 	info: "#075985",
 
-	// Ink / text
+	// Ink / text — the whole ramp is AA-verified against BOTH `card` (#fff) and
+	// `bg` (#f6f7f8). The mockup's grays (#71767d / #9aa0a6) measured 4.27:1 and
+	// 2.64:1, i.e. two of the three text tiers failed AA and dissolved in
+	// sunlight. These are the darkened equivalents; hierarchy is preserved.
 	fg: "#17181a",
 	foreground: "#17181a",
-	ink: "#17181a",
-	sub: "#71767d", // secondary / metadata
-	muted2: "#71767d",
-	faint: "#9aa0a6", // group labels, chevrons, placeholders
-	mutedForeground: "#71767d",
+	ink: "#17181a", // 17.8:1 — primary
+	sub: "#5f646b", // 5.96 / 5.56 — secondary, metadata
+	muted2: "#5f646b",
+	faint: "#6b7075", // 5.00 / 4.66 — tertiary: eyebrows, group labels
+	mutedForeground: "#5f646b",
 	warningFg: "#b45309",
+	/** NON-TEXT decoration only (chevrons redundant with a labelled row). Never
+	 * put text in this color — it is 2.6:1. */
+	faintDecor: "#9aa0a6",
 
 	// Surfaces
 	bg: "#f6f7f8",
@@ -99,7 +111,10 @@ export const tokens = {
 	border: "#e4e6e8",
 	input: "#e4e6e8",
 	ring: "#0084d1",
-	checkbox: "#c8cdd2",
+	// Control boundaries and information-carrying dots need 3:1. The mockup's
+	// #c8cdd2 is 1.6:1 — an effectively invisible checkbox.
+	checkbox: "#8b9096", // 3.22 / 3.00
+	dot: "#8b9096", // week-strip workload dots (they encode load, so 3:1 applies)
 
 	// Chart ramp (web parity)
 	chart1: "#0084d1",
@@ -121,12 +136,14 @@ export function useTokens() {
 // ----------------------------------------------------------------------------
 export type BadgeTone = "ok" | "info" | "warn" | "late" | "mute";
 
+// Backgrounds are the mockup's; three foregrounds are darkened because the
+// mockup pairs failed AA at 10.5px (ok 3.12, late 4.25, mute 4.20).
 export const badgeTone: Record<BadgeTone, { fg: string; bg: string }> = {
-	ok: { fg: "#0a9d6c", bg: "#e9f6f0" },
-	info: { fg: "#075985", bg: "#e6f2f9" },
-	warn: { fg: "#b45309", bg: "#fef7ec" },
-	late: { fg: "#dc2626", bg: "#fceded" },
-	mute: { fg: "#64748b", bg: "#eef1f4" },
+	ok: { fg: "#0a7d57", bg: "#e9f6f0" }, // 4.63
+	info: { fg: "#075985", bg: "#e6f2f9" }, // 6.64
+	warn: { fg: "#b45309", bg: "#fef7ec" }, // 4.72
+	late: { fg: "#b91c1c", bg: "#fceded" }, // 5.69
+	mute: { fg: "#4b5563", bg: "#eef1f4" }, // 6.67
 };
 
 // ----------------------------------------------------------------------------
@@ -245,13 +262,14 @@ export const radii = {
 	rLg: 12,
 } as const;
 
-// Legacy radius export (kept for back-compat).
+// Legacy `radius` export — now a pure alias of `radii` so the two maps can
+// never disagree on a shared key name again.
 export const radius = {
-	sm: 4,
+	sm: radii.sm,
 	md: radii.ctrl,
 	lg: radii.card,
 	xl: radii.card,
-	full: 9999,
+	full: radii.pill,
 } as const;
 
 // ----------------------------------------------------------------------------
@@ -290,7 +308,8 @@ export const shadow = {
 	sm: "0 1px 2px rgba(0,0,0,0.06)",
 	md: "0 2px 10px rgba(0,0,0,0.08)",
 	lg: "0 8px 20px -6px rgba(0,0,0,0.18)",
-	/** Near-invisible; cards should normally carry no shadow at all. */
+	/** @deprecated Cards are flat now (border only) — `ui/card.tsx` no longer uses
+	 * this. Six pre-P1 screens still do; they lose it as P2 rewrites them. */
 	card: "0 1px 2px rgba(23,24,26,0.04)",
 	fab: "0 8px 20px -6px rgba(0,132,209,0.55)",
 	sheet: "0 -8px 32px rgba(15,30,40,0.16)",
@@ -327,10 +346,11 @@ export const styles = StyleSheet.create({
 		color: colors.mutedForeground,
 	},
 
+	// Padding matches ui/card.tsx — the same "card" concept must not have two values.
 	card: {
 		backgroundColor: colors.card,
 		borderRadius: radii.card,
-		padding: spacing.md,
+		padding: 14,
 		borderWidth: 1,
 		borderColor: tokens.line,
 	},

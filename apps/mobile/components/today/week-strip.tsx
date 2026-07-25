@@ -98,7 +98,7 @@ export function WeekStrip({
 											{
 												backgroundColor: isSelected
 													? "rgba(255,255,255,0.8)"
-													: t.checkbox,
+													: t.dot,
 											},
 										]}
 									/>

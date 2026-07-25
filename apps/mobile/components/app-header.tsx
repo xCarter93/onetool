@@ -91,6 +91,7 @@ export function AppHeader({
 				<View style={styles.topRow}>
 					<Pressable
 						onPress={() => router.back()}
+						hitSlop={4}
 						style={[styles.iconBtn, { borderColor: t.line }]}
 						accessibilityRole="button"
 						accessibilityLabel="Go back"
@@ -152,6 +153,7 @@ export function AppHeader({
 				{detail ? (
 					<Pressable
 						onPress={() => router.back()}
+						hitSlop={4}
 						style={[styles.iconBtn, { borderColor: t.line }]}
 						accessibilityRole="button"
 						accessibilityLabel="Go back"
@@ -161,6 +163,7 @@ export function AppHeader({
 				) : (
 					<Pressable
 						onPress={() => router.push(ORG_SWITCH)}
+						hitSlop={6}
 						style={[styles.orgChip, { borderColor: t.line }]}
 						accessibilityRole="button"
 						accessibilityLabel="Switch organization"
