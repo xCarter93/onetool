@@ -11,6 +11,7 @@ import { AccentCTA } from "@/app/components/landing/accent-cta";
 import { motion, AnimatePresence } from "motion/react";
 import {
 	Blocks,
+	BookOpen,
 	Briefcase,
 	Calendar,
 	ChartColumn,
@@ -19,7 +20,9 @@ import {
 	FileText,
 	Globe,
 	Handshake,
+	LifeBuoy,
 	Mail,
+	Rocket,
 	Shield,
 	Smartphone,
 	Users,
@@ -29,9 +32,46 @@ import {
 
 const navigationLinks = [
 	{ href: "#features", label: "Features" },
+	{ href: "/help", label: "Resources" },
 	{ href: "#how-it-works", label: "How it Works" },
 	{ href: "#faq", label: "FAQ" },
 	{ href: "#pricing", label: "Pricing" },
+];
+
+const resourceItems: {
+	icon: LucideIcon;
+	iconClassName: string;
+	label: string;
+	description: string;
+	href: string;
+}[] = [
+	{
+		icon: BookOpen,
+		iconClassName: "text-blue-500",
+		label: "Help Center",
+		description: "Guides for every part of OneTool",
+		href: "/help",
+	},
+	{
+		icon: Rocket,
+		iconClassName: "text-emerald-600",
+		label: "Getting started",
+		description: "Set up OneTool step by step",
+		href: "/help/getting-started",
+	},
+	{
+		icon: LifeBuoy,
+		iconClassName: "text-amber-500",
+		label: "Contact support",
+		description: "Email our team for a hand",
+		href: "mailto:support@onetool.biz",
+	},
+];
+
+const legalItems = [
+	{ label: "Terms of Service", href: "/terms-of-service" },
+	{ label: "Privacy Policy", href: "/privacy-policy" },
+	{ label: "Data Security", href: "/data-security" },
 ];
 
 const featureItems: {
@@ -261,6 +301,111 @@ function FeaturesFlyout({
 	);
 }
 
+function ResourcesFlyout() {
+	const [open, setOpen] = useState(false);
+
+	return (
+		<div
+			className="relative"
+			onMouseEnter={() => setOpen(true)}
+			onMouseLeave={() => setOpen(false)}
+		>
+			<Link
+				href="/help"
+				onClick={() => setOpen(false)}
+				onFocus={() => setOpen(true)}
+				aria-expanded={open}
+				className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+			>
+				Resources
+				<span
+					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
+					className="absolute -bottom-1.5 left-0 right-0 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out"
+				/>
+			</Link>
+			<AnimatePresence>
+				{open && (
+					<motion.div
+						initial={{ opacity: 0, y: 12 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 12 }}
+						transition={{ duration: 0.25, ease: "easeOut" }}
+						style={{ translateX: "-50%" }}
+						className="absolute left-1/2 top-full pt-4"
+					>
+						<div className="relative w-108 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20">
+							<div
+								className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border-l border-t border-border bg-popover"
+								aria-hidden="true"
+							/>
+							<div className="grid grid-cols-[1.5fr_1fr] gap-1">
+								<div>
+									<p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+										Support
+									</p>
+									{resourceItems.map((item) => {
+										const inner = (
+											<>
+												<item.icon
+													className={`mt-0.5 h-4 w-4 shrink-0 ${item.iconClassName}`}
+												/>
+												<span>
+													<span className="block text-sm font-medium text-foreground">
+														{item.label}
+													</span>
+													<span className="block text-xs text-muted-foreground">
+														{item.description}
+													</span>
+												</span>
+											</>
+										);
+										const itemClassName =
+											"flex items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-accent";
+										return item.href.startsWith("/") ? (
+											<Link
+												key={item.label}
+												href={item.href}
+												onClick={() => setOpen(false)}
+												className={itemClassName}
+											>
+												{inner}
+											</Link>
+										) : (
+											<a
+												key={item.label}
+												href={item.href}
+												onClick={() => setOpen(false)}
+												className={itemClassName}
+											>
+												{inner}
+											</a>
+										);
+									})}
+								</div>
+								<div className="border-l border-border pl-4">
+									<p className="pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+										Legal
+									</p>
+									{legalItems.map((item) => (
+										<Link
+											key={item.label}
+											href={item.href}
+											onClick={() => setOpen(false)}
+											className="block rounded-lg py-2 pr-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+										>
+											{item.label}
+										</Link>
+									))}
+								</div>
+							</div>
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	);
+}
+
 function AppNavBar() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const router = useRouter();
@@ -290,6 +435,8 @@ function AppNavBar() {
 						{navigationLinks.map((link) =>
 							link.href === "#features" ? (
 								<FeaturesFlyout key={link.href} onNavigate={scrollToSection} />
+							) : link.href === "/help" ? (
+								<ResourcesFlyout key={link.href} />
 							) : (
 								<button
 									key={link.href}
@@ -353,18 +500,29 @@ function AppNavBar() {
 							className="md:hidden overflow-hidden border-t border-border"
 						>
 							<div className="px-4 py-3 space-y-1">
-								{navigationLinks.map((link) => (
-									<button
-										key={link.href}
-										onClick={() => {
-											scrollToSection(link.href);
-											setIsMenuOpen(false);
-										}}
-										className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-									>
-										{link.label}
-									</button>
-								))}
+								{navigationLinks.map((link) =>
+									link.href === "/help" ? (
+										<Link
+											key={link.href}
+											href="/help"
+											onClick={() => setIsMenuOpen(false)}
+											className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+										>
+											Help Center
+										</Link>
+									) : (
+										<button
+											key={link.href}
+											onClick={() => {
+												scrollToSection(link.href);
+												setIsMenuOpen(false);
+											}}
+											className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+										>
+											{link.label}
+										</button>
+									)
+								)}
 								<div className="pt-3 mt-2 border-t border-border flex items-center justify-center gap-2">
 									<SignedOut>
 										<SignInButton mode="modal" forceRedirectUrl="/home">
