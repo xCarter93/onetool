@@ -1,10 +1,9 @@
-import type { LucideIcon } from "lucide-react";
-
 /**
- * Help center content model. Articles are plain data (no JSX) so the same
- * content can later be searched from the backend (AI assistant) without a
- * build step. Inline strings support `**bold**` for UI labels and
- * `[text](href)` for links; nothing else.
+ * Help center content model. Articles are plain data (no JSX, no React
+ * imports) so the same content is rendered by the web help center and
+ * searched from the Convex backend (AI assistant) without a build step.
+ * Inline strings support `**bold**` for UI labels and `[text](href)` for
+ * links; nothing else.
  */
 
 export type HelpBlock =
@@ -49,7 +48,6 @@ export interface HelpCategoryMeta {
 	slug: string;
 	name: string;
 	description: string;
-	icon: LucideIcon;
 	group: "start" | "features";
 	/** Ordered categories render numbered article badges (a suggested reading order). */
 	ordered?: boolean;

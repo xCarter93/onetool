@@ -1,5 +1,5 @@
 import { Info, Lightbulb } from "lucide-react";
-import type { HelpBlock, HelpSection } from "@/lib/help/types";
+import type { HelpBlock, HelpSection } from "@/lib/help";
 import { slugifyHeading } from "@/lib/help";
 import { renderInlineText } from "./inline-text";
 import { MediaPlaceholder } from "./media-placeholder";

@@ -1,5 +1,12 @@
 import { createTool } from "@convex-dev/agent";
 import {
+	HELP_CATEGORIES,
+	helpArticleMarkdown,
+	resolveHelpRef,
+	searchHelpArticles,
+	type HelpSearchHit,
+} from "@onetool/help-content";
+import {
 	triggerRecordObjectType,
 	type AutomationTrigger,
 } from "./lib/workflowTypes";
@@ -2009,6 +2016,79 @@ export const describeSchema = createTool({
 	},
 });
 
+type HelpCatalogCategory = {
+	slug: string;
+	name: string;
+	articles: { ref: string; title: string }[];
+};
+
+export const searchHelp = createTool({
+	description: [
+		"Search the OneTool help center — the official how-to guides and feature explanations for the app itself.",
+		"Use it whenever the user asks how to do something in OneTool, what a feature does, or which plan includes a feature. It covers the app, not the user's business data.",
+		'Call with { query } to find matching articles. Call with { article: "category-slug/article-slug" } (a ref from a result) to fetch the full article as markdown. Call with no arguments to list every category and article.',
+		"Answer from the article content and include a markdown link to the article's url (a same-domain path like /help/quotes/e-signatures) so the user can read more.",
+	].join("\n"),
+	inputSchema: z.object({
+		query: z
+			.string()
+			.optional()
+			.describe(
+				'What the user wants to do or learn, e.g. "import clients from a spreadsheet"'
+			),
+		article: z
+			.string()
+			.optional()
+			.describe(
+				'Exact "category-slug/article-slug" ref from a prior search or listing.'
+			),
+	}),
+	execute: async (
+		_ctx,
+		input
+	): Promise<
+		| { results: HelpSearchHit[]; note?: string }
+		| { ref: string; url: string; title: string; markdown: string }
+		| { categories: HelpCatalogCategory[] }
+		| { error: string }
+	> => {
+		if (input.article) {
+			const resolved = resolveHelpRef(input.article);
+			if (!resolved) {
+				return {
+					error: `Unknown article "${input.article}". Call searchHelp with a query, or with no arguments to list valid refs.`,
+				};
+			}
+			return {
+				ref: input.article,
+				url: `/help/${resolved.category.slug}/${resolved.article.slug}`,
+				title: resolved.article.title,
+				markdown: helpArticleMarkdown(resolved.article),
+			};
+		}
+		if (input.query) {
+			const results = searchHelpArticles(input.query, 5);
+			if (results.length === 0) {
+				return {
+					results,
+					note: "No matching help articles. Tell the user the help center does not cover this yet — do not guess.",
+				};
+			}
+			return { results };
+		}
+		return {
+			categories: HELP_CATEGORIES.map((category) => ({
+				slug: category.slug,
+				name: category.name,
+				articles: category.articles.map((article) => ({
+					ref: `${category.slug}/${article.slug}`,
+					title: article.title,
+				})),
+			})),
+		};
+	},
+});
+
 // Permission denials become structured tool results instead of failing the
 // whole turn — the model tells the user they lack access to that area.
 function withPermissionFallback<T extends { execute?: unknown }>(tool: T): T {
@@ -2049,6 +2129,7 @@ export const assistantTools = withPermissionFallbackAll({
 	createReport,
 	configureReport,
 	describeSchema,
+	searchHelp,
 	listClients,
 	getClient,
 	listProjects,

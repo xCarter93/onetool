@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useRoleAccess } from "@/hooks/use-role-access";
 
@@ -45,6 +46,13 @@ export function PremiumGate({ children }: { children: ReactNode }) {
 							</Button>
 						)}
 					</div>
+					{isAdmin && !hasPremiumAccess && (
+						<LearnMoreLink
+							article="automations/automations-overview"
+							label="Learn what automations can do"
+							className="mt-3"
+						/>
+					)}
 				</div>
 			</div>
 		);

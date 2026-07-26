@@ -10,6 +10,7 @@ import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	DateFilterValue,
@@ -732,12 +733,15 @@ function QuotesPageContent() {
 								title="No quotes yet"
 								description="Create your first quote to get started and track proposals in one place."
 								action={
-									canModifyQuotes ? (
-										<Button onClick={() => openCreate({ type: "quote" })}>
-											<Plus className="h-4 w-4" />
-											Create Your First Quote
-										</Button>
-									) : undefined
+									<div className="flex flex-col items-center gap-2">
+										{canModifyQuotes ? (
+											<Button onClick={() => openCreate({ type: "quote" })}>
+												<Plus className="h-4 w-4" />
+												Create Your First Quote
+											</Button>
+										) : undefined}
+										<LearnMoreLink article="quotes/creating-a-quote" />
+									</div>
 								}
 							/>
 						) : viewMode === "table" ? (

@@ -9,6 +9,7 @@ import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -582,12 +583,18 @@ function RoutingWorkspace() {
 					title="Routing is a Business plan feature"
 					description="Plan optimized multi-stop routes between client properties with the Business plan."
 					action={
-						<Button
-							size="sm"
-							render={<Link href="/organization/profile?tab=billing" />}
-						>
-							View plans
-						</Button>
+						<div className="flex flex-col items-center gap-2">
+							<Button
+								size="sm"
+								render={<Link href="/organization/profile?tab=billing" />}
+							>
+								View plans
+							</Button>
+							<LearnMoreLink
+								article="routing/planning-a-route"
+								label="Learn how routing works"
+							/>
+						</div>
 					}
 					size="md"
 				/>

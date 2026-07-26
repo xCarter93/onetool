@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { useCreateRecord } from "@/components/domain/create-record-provider";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
@@ -349,29 +350,32 @@ function ActiveEmptyState({
 			title="No clients yet"
 			description="Create your first client to start organizing relationships and tracking activity."
 			action={
-				canModify ? (
-					<Tooltip>
-						<TooltipTrigger render={<span className="inline-block" />}>
-							<Button onClick={onAdd} disabled={!canPerform}>
-								<Plus className="h-4 w-4" />
-								Add Your First Client
-							</Button>
-						</TooltipTrigger>
-						{!canPerform && (
-							<TooltipContent>
-								<div className="space-y-1">
-									<p className="font-semibold">Upgrade Required</p>
-									<p>{reason || "You've reached your client limit"}</p>
-									{limit && limit !== "unlimited" && currentUsage !== undefined && (
-										<p className="text-muted-foreground">
-											{currentUsage}/{limit} clients
-										</p>
-									)}
-								</div>
-							</TooltipContent>
-						)}
-					</Tooltip>
-				) : undefined
+				<div className="flex flex-col items-center gap-2">
+					{canModify ? (
+						<Tooltip>
+							<TooltipTrigger render={<span className="inline-block" />}>
+								<Button onClick={onAdd} disabled={!canPerform}>
+									<Plus className="h-4 w-4" />
+									Add Your First Client
+								</Button>
+							</TooltipTrigger>
+							{!canPerform && (
+								<TooltipContent>
+									<div className="space-y-1">
+										<p className="font-semibold">Upgrade Required</p>
+										<p>{reason || "You've reached your client limit"}</p>
+										{limit && limit !== "unlimited" && currentUsage !== undefined && (
+											<p className="text-muted-foreground">
+												{currentUsage}/{limit} clients
+											</p>
+										)}
+									</div>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					) : undefined}
+					<LearnMoreLink article="clients/managing-clients" />
+				</div>
 			}
 		/>
 	);

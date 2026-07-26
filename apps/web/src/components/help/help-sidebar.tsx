@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { HELP_CATEGORIES } from "@/lib/help";
-import type { HelpCategory } from "@/lib/help/types";
+import type { HelpCategory } from "@/lib/help";
 import { cn } from "@/lib/utils";
 
 function CategoryNavItem({ category }: { category: HelpCategory }) {

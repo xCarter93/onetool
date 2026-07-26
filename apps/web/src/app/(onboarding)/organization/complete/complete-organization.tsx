@@ -27,6 +27,7 @@ import { OnboardingPageBackground } from "@/components/blocks/onboarding-2/compo
 import { OnboardingHeader } from "@/components/blocks/onboarding-2/components/onboarding-header";
 import { OnboardingStepper } from "@/components/blocks/onboarding-2/components/onboarding-stepper";
 import type { OnboardingStep } from "@/components/blocks/onboarding-2/components/data";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import Image from "next/image";
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
@@ -1184,6 +1185,11 @@ export function CompleteOrganizationMetadata() {
 							clients and projects in bulk. You can skip this step and add them
 							manually later.
 						</p>
+						<LearnMoreLink
+							article="clients/importing-clients"
+							label="How importing works"
+							className="mt-2"
+						/>
 					</div>
 				</div>
 			)}
