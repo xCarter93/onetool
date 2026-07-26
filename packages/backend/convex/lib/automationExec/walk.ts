@@ -526,10 +526,12 @@ export async function runWalk(
 
 		pushEntry(env, {
 			nodeId: node.id,
-			result: result.success
-				? "success"
-				: result.skipped
-					? "skipped"
+			// skipped wins: guard skips return success:true + skipped:true so the
+			// walk continues, but the entry must read as skipped, not a green check.
+			result: result.skipped
+				? "skipped"
+				: result.success
+					? "success"
 					: "failed",
 			error: result.error,
 			output: result.output,

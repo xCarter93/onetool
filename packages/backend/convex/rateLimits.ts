@@ -9,6 +9,9 @@ import { components } from "./_generated/api";
 export const AUTOMATION_RUN_WINDOW_MS = MINUTE;
 export const MAX_AUTOMATION_RUNS_PER_WINDOW = 100;
 
+/** DEC-2 adopted default: automation emails per org per day (premium orgs only). */
+export const AUTOMATION_EMAIL_DAILY_CAP = 200;
+
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// Limit community page interest form submissions per slug
 	communityInterest: { kind: "fixed window", rate: 10, period: MINUTE },
@@ -136,5 +139,13 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		kind: "fixed window",
 		rate: MAX_AUTOMATION_RUNS_PER_WINDOW,
 		period: AUTOMATION_RUN_WINDOW_MS,
+	},
+
+	// DEC-2: per-org daily cap on automation send_email deliveries. Reserved
+	// per recipient; over-cap sends record the node as skipped, never failed.
+	automationEmailSends: {
+		kind: "fixed window",
+		rate: AUTOMATION_EMAIL_DAILY_CAP,
+		period: 24 * HOUR,
 	},
 });

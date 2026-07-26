@@ -337,13 +337,38 @@ export const sendTeamMessageActionValidator = v.object({
 	message: v.string(),
 });
 
+/**
+ * D1: templated, org-branded email to the client on the record in scope.
+ * The client is auto-resolved (scope record itself, or its client relation —
+ * including the project hop) rather than configured via an ActionTarget: every
+ * scoped entity reaches exactly one client. `primary_contact` emails that
+ * client's primary contact; `custom` sends to explicit addresses (validated at
+ * save) and still threads to the resolved client when one exists. Subject and
+ * body support {{}} interpolation. Delivery guards (suppression, daily cap,
+ * communicationPreference, missing email/client) skip the node — they never
+ * fail the run.
+ */
+/** Ceiling on a send_email custom-address list (save-validated both sides). */
+export const AUTOMATION_EMAIL_RECIPIENT_CAP = 10;
+
+export const sendEmailActionValidator = v.object({
+	type: v.literal("send_email"),
+	recipient: v.union(
+		v.object({ kind: v.literal("primary_contact") }),
+		v.object({ kind: v.literal("custom"), addresses: v.array(v.string()) })
+	),
+	subject: v.string(),
+	body: v.string(),
+});
+
 export const actionValidator = v.union(
 	updateFieldActionValidator,
 	updateFieldsActionValidator,
 	createTaskActionValidator,
 	createRecordActionValidator,
 	sendNotificationActionValidator,
-	sendTeamMessageActionValidator
+	sendTeamMessageActionValidator,
+	sendEmailActionValidator
 );
 
 export type AutomationAction = Infer<typeof actionValidator>;

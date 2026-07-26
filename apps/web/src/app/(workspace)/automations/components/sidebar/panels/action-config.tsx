@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { Info, Plus, X } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { AUTOMATION_EMAIL_RECIPIENT_CAP } from "@onetool/backend/convex/lib/workflowTypes";
 import { ACTION_META } from "../../../lib/action-meta";
 import { normalizeNodeConfig } from "../../../lib/legacy-load";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { TagsInput } from "@/components/shared/tags-input";
 import {
 	Select,
 	SelectContent,
@@ -36,6 +38,7 @@ import {
 	type CreateRecordAction,
 	type CreateTaskAction,
 	type FormulaResource,
+	type SendEmailAction,
 	type SendNotificationAction,
 	type SendTeamMessageAction,
 	type TriggerConfig,
@@ -75,29 +78,40 @@ function defaultConfig(objectType: AutomationObjectType): ActionNodeConfig {
 }
 
 
-/** Splices `{{path}}` into a message string at the textarea's cursor position. */
-function useMessageInsertion(message: string, onChange: (message: string) => void) {
-	const ref = useRef<HTMLTextAreaElement>(null);
+/**
+ * Splices `{{path}}` into a message string at the field's cursor position.
+ * Generic over input/textarea so a single-line Input (e.g. an email subject)
+ * gets the same insertion behavior as a multi-line Textarea; existing
+ * textarea call sites are unaffected by the default type param.
+ */
+function useMessageInsertion<T extends HTMLInputElement | HTMLTextAreaElement = HTMLTextAreaElement>(
+	message: string,
+	onChange: (message: string) => void
+) {
+	const ref = useRef<T>(null);
 
 	const insert = (path: string) => {
 		const token = `{{${path}}}`;
-		const textarea = ref.current;
-		if (!textarea) {
+		const field = ref.current;
+		if (!field) {
 			onChange(`${message}${token}`);
 			return;
 		}
-		const start = textarea.selectionStart ?? message.length;
-		const end = textarea.selectionEnd ?? message.length;
+		const start = field.selectionStart ?? message.length;
+		const end = field.selectionEnd ?? message.length;
 		onChange(`${message.slice(0, start)}${token}${message.slice(end)}`);
 		requestAnimationFrame(() => {
-			textarea.focus();
+			field.focus();
 			const cursor = start + token.length;
-			textarea.setSelectionRange(cursor, cursor);
+			field.setSelectionRange(cursor, cursor);
 		});
 	};
 
 	return { ref, insert };
 }
+
+/** Mirrors the backend's save-time check (workflowTypes.ts sendEmailActionValidator). */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface ActionFieldsProps<TAction> {
 	config: ActionNodeConfig;
@@ -1284,6 +1298,149 @@ function SendTeamMessageFields({
 	);
 }
 
+function SendEmailFields({
+	config,
+	action,
+	triggerObjectType,
+	nodes,
+	trigger,
+	nodeId,
+	formulas,
+	commit,
+}: ActionFieldsProps<SendEmailAction> & {
+	triggerObjectType: TriggerableObjectType | null;
+}) {
+	// The client is auto-resolved from the record in scope — with no record
+	// (scheduled/record-agnostic), only "custom" addresses can send.
+	const scope = getScopeObjectType(nodes, nodeId, triggerObjectType);
+	const scopeObjectType = scope.objectType;
+
+	const update = (patch: Partial<SendEmailAction>) => {
+		commit({ ...config, action: { ...action, ...patch } });
+	};
+
+	const { ref: subjectRef, insert: insertSubject } = useMessageInsertion<HTMLInputElement>(
+		action.subject,
+		(subject) => update({ subject })
+	);
+	const { ref: bodyRef, insert: insertBody } = useMessageInsertion(action.body, (body) =>
+		update({ body })
+	);
+
+	const recipient = action.recipient;
+	const addresses = recipient.kind === "custom" ? recipient.addresses : [];
+
+	// TagsInput takes a full setState dispatcher, but only ever calls it with a
+	// plain array (never the functional-update form) — resolve either shape.
+	const setAddresses: React.Dispatch<React.SetStateAction<string[]>> = (next) => {
+		const resolved = typeof next === "function" ? next(addresses) : next;
+		update({ recipient: { kind: "custom", addresses: resolved } });
+	};
+
+	const invalidAddresses = addresses.filter((address) => !EMAIL_REGEX.test(address));
+	let addressesError: string | undefined;
+	if (recipient.kind === "custom") {
+		if (addresses.length === 0) {
+			addressesError = "Add at least one recipient address";
+		} else if (addresses.length > AUTOMATION_EMAIL_RECIPIENT_CAP) {
+			addressesError = `No more than ${AUTOMATION_EMAIL_RECIPIENT_CAP} addresses are allowed`;
+		} else if (invalidAddresses.length > 0) {
+			addressesError = `Not a valid email address: ${invalidAddresses.join(", ")}`;
+		}
+	}
+
+	return (
+		<PanelSection title="Inputs">
+			<PanelField label="Send to">
+				<Select
+					value={recipient.kind}
+					onValueChange={(value) => {
+						if (value === "primary_contact") {
+							update({ recipient: { kind: "primary_contact" } });
+						} else if (value === "custom") {
+							update({ recipient: { kind: "custom", addresses: [] } });
+						}
+					}}
+				>
+					<SelectTrigger>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="primary_contact">
+							Client&apos;s primary contact
+						</SelectItem>
+						<SelectItem value="custom">Specific addresses</SelectItem>
+					</SelectContent>
+				</Select>
+				{recipient.kind === "primary_contact" && !scopeObjectType && (
+					<p className="mt-1.5 text-xs text-destructive">
+						This automation runs on a schedule, so there is no record to find
+						the client from. Add a Find records step and move this action
+						inside a Loop, or switch to specific addresses.
+					</p>
+				)}
+			</PanelField>
+
+			{recipient.kind === "custom" && (
+				<PanelField
+					label="Addresses"
+					error={addressesError}
+					helper={
+						addressesError
+							? undefined
+							: `Up to ${AUTOMATION_EMAIL_RECIPIENT_CAP} addresses.`
+					}
+				>
+					<TagsInput
+						tags={addresses}
+						setTags={setAddresses}
+						placeholder="Add an email address..."
+					/>
+				</PanelField>
+			)}
+
+			<PanelField label="Subject">
+				<Input
+					ref={subjectRef}
+					value={action.subject}
+					onChange={(e) => update({ subject: e.target.value })}
+					placeholder="Email subject"
+				/>
+				<VariableInsertButton
+					nodes={nodes}
+					trigger={trigger}
+					targetNodeId={nodeId}
+					formulas={formulas}
+					onInsert={insertSubject}
+					className="mt-1.5"
+				/>
+			</PanelField>
+
+			<PanelField
+				label="Body"
+				helper="Insert variable adds a placeholder that's filled in from the record when this runs."
+			>
+				<div className="space-y-1.5">
+					<Textarea
+						ref={bodyRef}
+						value={action.body}
+						onChange={(e) => update({ body: e.target.value })}
+						rows={6}
+						placeholder="Write your email..."
+					/>
+					<VariableInsertButton
+						nodes={nodes}
+						trigger={trigger}
+						targetNodeId={nodeId}
+						formulas={formulas}
+						onInsert={insertBody}
+					/>
+				</div>
+			</PanelField>
+		</PanelSection>
+	);
+}
+
 export function ActionConfigPanel({
 	nodeId,
 	trigger,
@@ -1383,6 +1540,18 @@ export function ActionConfigPanel({
 				)}
 				{config.action.type === "send_team_message" && (
 					<SendTeamMessageFields
+						config={config}
+						action={config.action}
+						triggerObjectType={triggerObjectType}
+						nodes={workflowNodes}
+						trigger={trigger}
+						nodeId={nodeId}
+						formulas={formulas}
+						commit={commit}
+					/>
+				)}
+				{config.action.type === "send_email" && (
+					<SendEmailFields
 						config={config}
 						action={config.action}
 						triggerObjectType={triggerObjectType}

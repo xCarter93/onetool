@@ -1,5 +1,6 @@
 import { register as registerAgentComponent } from "@convex-dev/agent/test";
 import { register as registerWorkpoolComponent } from "@convex-dev/workpool/test";
+import { register as registerResendComponent } from "@convex-dev/resend/test";
 import { convexTest } from "convex-test";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -163,6 +164,11 @@ export function setupConvexTest() {
 	// externalIoPool component (ships its own test registration helper, same
 	// pattern as the agent component). Name must match convex.config.ts.
 	registerWorkpoolComponent(t, "externalIoPool");
+
+	// Durable email component (send_email automations / sendOutbound). Its
+	// internal delivery loop doesn't run under convex-test — sends enqueue into
+	// component tables and return an id, which is all the app contract needs.
+	registerResendComponent(t);
 
 	return t;
 }

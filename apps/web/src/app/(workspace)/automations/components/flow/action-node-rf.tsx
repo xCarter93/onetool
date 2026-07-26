@@ -102,6 +102,17 @@ function getSummary(config: ActionNodeConfig | undefined): {
 				description: action.title || action.message || "Write a message...",
 				isConfigured: !!(action.title && action.message),
 			};
+		case "send_email":
+			return {
+				title: "Send Email",
+				description: action.subject || "Write a subject...",
+				isConfigured: !!(
+					action.subject.trim() &&
+					action.body.trim() &&
+					(action.recipient.kind !== "custom" ||
+						action.recipient.addresses.length > 0)
+				),
+			};
 		default:
 			return { title: "Configure action", description: "Select an action type...", isConfigured: false };
 	}
