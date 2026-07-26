@@ -40,8 +40,12 @@ export const LOOP_PAD_RIGHT = 32;
  * source is a condition's yes-terminal that dip starts 50px lower).
  */
 export const LOOP_BOTTOM_CLEARANCE = 72;
-/** Gap between the container's bottom edge and the After-Last target's top. */
-export const AFTER_GAP = 64;
+/**
+ * Gap between the container's bottom edge and the After-Last target's top.
+ * Sized so the edge's horizontal run + rounded corner + 48px vertical entry
+ * stub (edge-geometry's AFTER_LAST_ENTRY_STUB) all fit inside the corridor.
+ */
+export const AFTER_GAP = 72;
 /** Clearance between the container's right edge and the After-Last edge's vertical run. */
 export const AFTER_ROUTE_CLEARANCE = 24;
 /** Inset from the container's left edge to the loop-back edge's vertical run. */
@@ -335,8 +339,9 @@ export function computeDerivedLayout(
 	function placeChild(ref: ChildRef | undefined, spineX: number, topY: number) {
 		if (!ref) return;
 		if (ref.isTerminal) {
-			// Terminal node is a 1x1 point at the stub's end (the "+" button).
-			positions.set(ref.id, { x: spineX, y: topY + TERMINAL_DROP });
+			// Terminal node is a 1x1 point at the stub's end (the "+" button);
+			// like every node, its top-LEFT converts from the spine center.
+			positions.set(ref.id, { x: spineX - 0.5, y: topY + TERMINAL_DROP });
 			return;
 		}
 		place(ref.id, spineX, topY);

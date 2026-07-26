@@ -384,6 +384,8 @@ export type LoopNodeData = {
 	nodeType: "loop";
 	config?: LoopNodeConfig;
 	triggerObjectType: TriggerableObjectType | null;
+	/** Human title of the step the loop iterates over (resolved by the adapter). */
+	sourceStepLabel?: string;
 };
 
 export type AggregateNodeData = {

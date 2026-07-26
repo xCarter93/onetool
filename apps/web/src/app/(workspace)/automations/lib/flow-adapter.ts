@@ -23,6 +23,25 @@ import {
 	type DerivedLayoutResult,
 } from "./derived-layout";
 
+/**
+ * Arrowheads on edges that enter a real node. Colors reference the
+ * `--flow-edge-*` palette from flow-theme.css so markers always match their
+ * stroke; edges into synthetic targets (terminal stubs, ghost cards, merge
+ * dots) carry none — the "+" or card caps those lines instead.
+ */
+const EDGE_ARROW = {
+	type: MarkerType.ArrowClosed,
+	width: 18,
+	height: 18,
+	color: "var(--flow-edge)",
+} as const;
+const LOOP_ARROW = {
+	type: MarkerType.ArrowClosed,
+	width: 18,
+	height: 18,
+	color: "var(--flow-edge-loop)",
+} as const;
+
 export const TRIGGER_NODE_ID = "__trigger__";
 export const TRIGGER_PLACEHOLDER_ID = "__trigger_placeholder__";
 export const TERMINAL_PREFIX = "__terminal__";
@@ -175,6 +194,8 @@ function addTerminalStub(
 		data: { nodeType: "terminal" },
 		position: { x: 0, y: 0 },
 		draggable: false,
+		selectable: false,
+		focusable: false,
 	} as AppNode);
 
 	rfEdges.push({
@@ -202,12 +223,15 @@ function addBranchGhost(
 	const ghostId = ghostIdFor(sourceId, sourceHandle);
 	const edgeId = `e-${sourceId}-${sourceHandle}-${ghostId}`;
 
+	// Focusable (it's a keyboard-activatable button) but never selectable —
+	// a selection ring on a ghost card would imply a real, configurable step.
 	rfNodes.push({
 		id: ghostId,
 		type: RF_NODE_TYPES.branchGhost,
 		data: { nodeType: "branchGhost", edgeId },
 		position: { x: 0, y: 0 },
 		draggable: false,
+		selectable: false,
 	} as AppNode);
 
 	rfEdges.push({
@@ -331,7 +355,29 @@ function planConditionMerges(nodes: EditorNode[]): Map<string, MergeExit[]> {
 	return merges;
 }
 
-function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
+/** Human title for the step a loop iterates over (never the raw node id). */
+function loopSourceStepLabel(
+	sourceNodeId: string | undefined,
+	nodes: EditorNode[]
+): string | undefined {
+	if (!sourceNodeId) return undefined;
+	const source = nodes.find((n) => n.id === sourceNodeId);
+	if (!source || isPlaceholderEntry(source)) return undefined;
+	switch (source.type) {
+		case "fetch_records":
+			return "Find Records";
+		case "aggregate":
+			return "Aggregate";
+		default:
+			return "the previous step";
+	}
+}
+
+function buildNodeData(
+	node: EditorNode,
+	trigger: TriggerConfig,
+	allNodes: EditorNode[]
+) {
 	const triggerObjectType = triggerScopeObjectType(trigger);
 
 	if (isPlaceholderEntry(node)) {
@@ -362,6 +408,10 @@ function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
 				nodeType: "loop" as const,
 				config: node.config as LoopNodeConfig | undefined,
 				triggerObjectType,
+				sourceStepLabel: loopSourceStepLabel(
+					(node.config as LoopNodeConfig | undefined)?.sourceNodeId,
+					allNodes
+				),
 			};
 		case "aggregate":
 			return {
@@ -406,8 +456,9 @@ function buildNodeData(node: EditorNode, trigger: TriggerConfig) {
  * Every leaf output gets a terminal stub with an always-visible "+" button.
  * When no trigger is set, shows a dashed placeholder trigger node instead.
  *
- * Condition nodes emit edges from separate yes/no handles.
- * No merge points are generated -- branches stay independent.
+ * Condition nodes emit edges from separate yes/no handles; every condition
+ * also gets a synthetic merge dot (planConditionMerges) where its branch
+ * lanes reconverge before flow continues at the condition's mergeNodeId.
  */
 export function automationToReactFlow(
 	trigger: TriggerConfig | null,
@@ -505,6 +556,7 @@ export function automationToReactFlow(
 			target: rootNode.id,
 			type: RF_EDGE_TYPES.straight,
 			data: { branchType: "next" as const },
+			markerEnd: EDGE_ARROW,
 		});
 	} else {
 		addTerminalStub(rfNodes, rfEdges, TRIGGER_NODE_ID, undefined, RF_EDGE_TYPES.straight, {
@@ -521,7 +573,7 @@ export function automationToReactFlow(
 		rfNodes.push({
 			id: node.id,
 			type: rfNodeType,
-			data: buildNodeData(node, trigger),
+			data: buildNodeData(node, trigger, nodes),
 			position: { x: 0, y: 0 },
 		} as AppNode);
 
@@ -537,6 +589,7 @@ export function automationToReactFlow(
 					sourceHandle: "yes",
 					type: RF_EDGE_TYPES.branchLabel,
 					data: { label: "Yes", variant: "yes", branchType: "yes" as const },
+					markerEnd: EDGE_ARROW,
 				} as AppEdge);
 			} else {
 				addBranchGhost(rfNodes, rfEdges, node.id, "yes", {
@@ -555,6 +608,7 @@ export function automationToReactFlow(
 					sourceHandle: "no",
 					type: RF_EDGE_TYPES.branchLabel,
 					data: { label: "No", variant: "no", branchType: "no" as const },
+					markerEnd: EDGE_ARROW,
 				} as AppEdge);
 			} else {
 				addBranchGhost(rfNodes, rfEdges, node.id, "no", {
@@ -575,6 +629,7 @@ export function automationToReactFlow(
 					sourceHandle: "each",
 					type: RF_EDGE_TYPES.branchLabel,
 					data: { label: "For Each", variant: "yes", branchType: "each" as const },
+					markerEnd: LOOP_ARROW,
 				} as AppEdge);
 			} else {
 				addBranchGhost(rfNodes, rfEdges, node.id, "each", {
@@ -593,6 +648,7 @@ export function automationToReactFlow(
 					sourceHandle: "after",
 					type: RF_EDGE_TYPES.afterLast,
 					data: { label: "After Last", variant: "no", branchType: "after" as const },
+					markerEnd: LOOP_ARROW,
 				} as AppEdge);
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, "after", RF_EDGE_TYPES.afterLast, {
@@ -624,12 +680,7 @@ export function automationToReactFlow(
 						branchType: "loop_back" as const,
 						isTerminal: false,
 					},
-					markerEnd: {
-						type: MarkerType.ArrowClosed,
-						width: 16,
-						height: 16,
-						color: "var(--color-border)",
-					},
+					markerEnd: LOOP_ARROW,
 				} as AppEdge);
 			}
 		} else {
@@ -641,6 +692,7 @@ export function automationToReactFlow(
 					target: node.nextNodeId,
 					type: RF_EDGE_TYPES.straight,
 					data: { branchType: "next" as const },
+					markerEnd: EDGE_ARROW,
 				});
 			} else {
 				addTerminalStub(rfNodes, rfEdges, node.id, undefined, RF_EDGE_TYPES.straight, {
@@ -690,6 +742,7 @@ export function automationToReactFlow(
 				target: mergeTargetId,
 				type: RF_EDGE_TYPES.straight,
 				data: { branchType: "merge" as const },
+				markerEnd: EDGE_ARROW,
 			} as AppEdge);
 		} else {
 			addTerminalStub(rfNodes, rfEdges, mergeId, undefined, RF_EDGE_TYPES.straight, {
@@ -716,6 +769,10 @@ export function automationToReactFlow(
 	for (const e of rfEdges) {
 		if (bodyNodeIds.has(syntheticOwnerId(e.source))) {
 			e.data = { ...e.data, inLoop: true };
+			// Arrowheads track their stroke: in-body edges render orange.
+			if (typeof e.markerEnd === "object" && e.markerEnd !== null) {
+				e.markerEnd = { ...e.markerEnd, color: LOOP_ARROW.color };
+			}
 		}
 	}
 

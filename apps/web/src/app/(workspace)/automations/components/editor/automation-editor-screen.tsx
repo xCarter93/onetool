@@ -9,6 +9,8 @@ import { useAutomationEditor } from "../../hooks/use-automation-editor";
 import { useKeyboardShortcuts } from "../../hooks/use-keyboard-shortcuts";
 import { useSidebarState } from "../../hooks/use-sidebar-state";
 import {
+	MERGE_PREFIX,
+	TERMINAL_PREFIX,
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
 	isGhostId,
@@ -18,7 +20,7 @@ import { EditorTopBar } from "./editor-top-bar";
 import { UndoBanner } from "./undo-banner";
 import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
-import { runStatusRingClass } from "../../lib/run-status";
+import { runEdgeFlowClass, runStatusRingClass } from "../../lib/run-status";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -75,11 +77,31 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		[editor, sidebar]
 	);
 
-	// Inject onInsertNode callback into edges
-	const flowEdges = useMemo(
-		() => editor.layoutedEdges.map((e) => ({ ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } })),
-		[editor.layoutedEdges, handleEdgeInsert]
-	);
+	// Inject onInsertNode into every edge; during a live run, animate the
+	// executed path (dashes flow along edges the run has traversed). Synthetic
+	// edge endpoints resolve to the real node whose status they carry: the
+	// trigger implicitly succeeded once the run is live, merge dots carry
+	// their condition's status, terminal stubs their owner's.
+	const isLiveRun = editor.execution?.status === "running";
+	const flowEdges = useMemo(() => {
+		const statusFor = (id: string) => {
+			if (id === TRIGGER_NODE_ID) return "success" as const;
+			let real = id;
+			if (real.startsWith(TERMINAL_PREFIX)) {
+				real = real.slice(TERMINAL_PREFIX.length).replace(/-(after|yes|no)$/, "");
+			}
+			if (real.startsWith(MERGE_PREFIX)) real = real.slice(MERGE_PREFIX.length);
+			return editor.runStatuses[real];
+		};
+		return editor.layoutedEdges.map((e) => {
+			const withInsert = { ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } };
+			if (!isLiveRun) return withInsert;
+			const flow = runEdgeFlowClass(statusFor(e.source), statusFor(e.target));
+			return flow
+				? { ...withInsert, className: cn(withInsert.className, flow) }
+				: withInsert;
+		});
+	}, [editor.layoutedEdges, editor.runStatuses, handleEdgeInsert, isLiveRun]);
 
 	// Paint each node's live run status onto its React Flow wrapper (ring/pulse);
 	// ghost "Choose a step" cards get the insert callback (they insert via

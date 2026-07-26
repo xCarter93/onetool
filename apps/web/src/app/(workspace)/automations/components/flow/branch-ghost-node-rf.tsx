@@ -36,7 +36,7 @@ export const BranchGhostNodeRF = memo(({ data }: NodeProps<BranchGhostRFNode>) =
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
 					<div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
-						<Plus className="h-5 w-5 text-muted-foreground" />
+						<Plus className="h-4 w-4 text-muted-foreground" />
 					</div>
 					<span className="text-sm text-muted-foreground">Choose a step</span>
 				</div>

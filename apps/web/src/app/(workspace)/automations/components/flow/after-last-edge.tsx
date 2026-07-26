@@ -1,21 +1,19 @@
 "use client";
 
-import {
-	BaseEdge,
-	EdgeLabelRenderer,
-	type EdgeProps,
-} from "@xyflow/react";
-import { Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { getAfterLastGeometry } from "./edge-geometry";
 import { NextItemMarker } from "./next-item-marker";
-import { LOOP_EDGE_STYLE } from "./edge-style";
+import { edgeStroke } from "./edge-style";
+import { EdgeInsertButton } from "./edge-insert-button";
+import { EdgeLabelPill } from "./edge-label-pill";
+import { useEdgeHovered } from "./edge-hover-context";
 
 /**
  * Custom edge for the "After Last" branch of loop nodes.
- * Routes from the loop's right-side handle: right → curve down → straight
- * down alongside the loop body → curve left → to target below.
- * Mirrors LoopBackEdge's left-side routing but on the right going downward.
+ * Routes from the loop's right-side handle: right → down the corridor outside
+ * the container → left onto the spine below the container → rounded corner
+ * into a vertical drop that enters the target from directly above, so the
+ * node after a loop connects exactly like any other spine node.
  *
  * Insertion works like every other edge: "+" adds a placeholder and the
  * sidebar step picker opens. The picker is graph-position-scoped, so it
@@ -30,8 +28,12 @@ export function AfterLastEdge({
 	targetY,
 	data,
 	style,
+	markerEnd,
+	selected,
+	interactionWidth,
 }: EdgeProps) {
 	const isTerminal = data?.isTerminal === true;
+	const hovered = useEdgeHovered(id);
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
@@ -45,45 +47,27 @@ export function AfterLastEdge({
 		<>
 			<BaseEdge
 				path={geometry.edgePath}
-				style={{ ...style, ...LOOP_EDGE_STYLE }}
+				markerEnd={markerEnd}
+				interactionWidth={interactionWidth}
+				style={{
+					...style,
+					...edgeStroke({ loop: true, dashed: isTerminal, hovered, selected }),
+				}}
 			/>
 			<EdgeLabelRenderer>
-				<div
-					className="nodrag nopan pointer-events-none"
-					style={{
-						position: "absolute",
-						transform: `translate(-50%, -50%) translate(${geometry.labelX}px, ${geometry.labelY}px)`,
-					}}
-				>
-					<span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-						After Last
-					</span>
-				</div>
-				<div
-					className="nodrag nopan pointer-events-auto absolute"
-					style={{
-						transform: `translate(-50%, -50%) translate(${geometry.plusX}px, ${geometry.plusY}px)`,
-						zIndex: 10,
-					}}
-				>
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							onInsertNode?.(id, "placeholder");
-						}}
-						className={cn(
-							"nodrag nopan w-7 h-7 rounded-full bg-background border border-border hover:border-primary flex items-center justify-center shadow-sm transition-colors cursor-pointer",
-							isTerminal
-								? "opacity-100"
-								: "opacity-0 hover:opacity-100 focus:opacity-100",
-						)}
-						aria-label="Add step"
-					>
-						<Plus className="h-3.5 w-3.5 text-muted-foreground" />
-					</button>
-				</div>
+				<EdgeLabelPill x={geometry.labelX} y={geometry.labelY} loop>
+					After Last
+				</EdgeLabelPill>
+				<EdgeInsertButton
+					edgeId={id}
+					x={geometry.plusX}
+					y={isTerminal ? targetY : geometry.plusY}
+					onInsert={onInsertNode}
+					variant={isTerminal ? "stub" : "inline"}
+					edgeHovered={hovered}
+				/>
 				{isTerminal && data?.impliedNextItem === true && (
-					<NextItemMarker x={geometry.plusX} y={geometry.plusY + 20} />
+					<NextItemMarker x={geometry.plusX} y={targetY + 20} />
 				)}
 			</EdgeLabelRenderer>
 		</>

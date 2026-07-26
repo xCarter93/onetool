@@ -8,24 +8,34 @@ import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
 import type { LoopNodeConfig } from "../../lib/node-types";
 
-function getSummary(config: LoopNodeConfig | undefined): {
+function getSummary(
+	config: LoopNodeConfig | undefined,
+	sourceStepLabel: string | undefined
+): {
 	title: string;
 	description: string;
 	isConfigured: boolean;
 } {
 	if (!config || !config.sourceNodeId) {
-		return { title: "Loop", description: "Not available yet", isConfigured: false };
+		return {
+			title: "Loop",
+			description: "Choose records to loop over...",
+			isConfigured: false,
+		};
 	}
 	return {
 		title: "Loop",
-		description: `Iterate over records from "${config.sourceNodeId}"`,
+		description: `For each record from ${sourceStepLabel ?? "the previous step"}`,
 		isConfigured: true,
 	};
 }
 
 export const LoopNodeRF = memo(({ data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as LoopNodeConfig | undefined;
-	const { title, description, isConfigured } = getSummary(config);
+	const sourceStepLabel = (data as Record<string, unknown>)?.sourceStepLabel as
+		| string
+		| undefined;
+	const { title, description, isConfigured } = getSummary(config, sourceStepLabel);
 
 	return (
 		<BaseNode

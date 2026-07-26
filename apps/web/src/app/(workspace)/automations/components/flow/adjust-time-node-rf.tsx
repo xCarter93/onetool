@@ -18,7 +18,7 @@ function getSummary(config: AdjustTimeNodeConfig | undefined): {
 	isConfigured: boolean;
 } {
 	if (!config || !config.amount) {
-		return { title: "Adjust time", description: "Not configured", isConfigured: false };
+		return { title: "Adjust time", description: "Choose a date to adjust...", isConfigured: false };
 	}
 	const verb = config.direction === "subtract" ? "Subtract" : "Add";
 	const baseLabel = config.base.kind === "var" ? "a variable" : "the base time";
@@ -56,7 +56,7 @@ export const AdjustTimeNodeRF = memo(({ data }: NodeProps) => {
 						</div>
 					</div>
 					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						Utility
+						Utilities
 					</span>
 				</div>
 			</BaseNodeContent>

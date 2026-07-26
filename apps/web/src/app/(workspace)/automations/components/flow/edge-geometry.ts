@@ -1,34 +1,20 @@
 const AFTER_LAST_MIN_OFFSET_X = 56;
 
-export function getNoBranchGeometry(
-	sourceX: number,
-	sourceY: number,
-	targetX: number,
-	targetY: number
-) {
-	const offsetX = 50;
-	const rightX = Math.max(sourceX + offsetX, targetX + 16);
-	const cr = 16;
-	const effectiveTargetY = Math.max(targetY, sourceY + cr * 3);
+/**
+ * Length of the After-Last edge's final vertical entry into its target: the
+ * path finishes with a straight drop INTO the node's top handle (or terminal
+ * "+" stub) so the node after a loop reads as connected from above, exactly
+ * like every other spine node. derived-layout's AFTER_GAP reserves the
+ * vertical corridor this stub and its corner occupy.
+ */
+export const AFTER_LAST_ENTRY_STUB = 48;
 
-	return {
-		rightX,
-		cr,
-		effectiveTargetY,
-		labelX: rightX,
-		labelY: sourceY + cr * 2,
-		plusX: targetX,
-		plusY: effectiveTargetY,
-		edgePath: [
-			`M ${sourceX} ${sourceY}`,
-			`L ${rightX - cr} ${sourceY}`,
-			`Q ${rightX} ${sourceY} ${rightX} ${sourceY + cr}`,
-			`L ${rightX} ${effectiveTargetY}`,
-			`L ${targetX} ${effectiveTargetY}`,
-		].join(" "),
-	};
-}
-
+/**
+ * Orthogonal route for the loop's After-Last exit: from the loop header's
+ * right handle, right into the corridor outside the container, down past the
+ * container, left onto the spine, then a rounded corner into a vertical drop
+ * that enters the target from directly above.
+ */
 export function getAfterLastGeometry(
 	sourceX: number,
 	sourceY: number,
@@ -36,29 +22,42 @@ export function getAfterLastGeometry(
 	targetY: number,
 	options?: { routeRightX?: number }
 ) {
+	const cr = 16;
 	const rightX = Math.max(
 		sourceX + AFTER_LAST_MIN_OFFSET_X,
-		targetX + 8,
+		targetX + cr * 2,
 		options?.routeRightX ?? Number.NEGATIVE_INFINITY
 	);
-	const cr = 16;
-	const effectiveTargetY = Math.max(targetY, sourceY + cr * 4);
+	// Horizontal run sits one entry-stub above the target's top edge. Clamps
+	// keep the path drawable if a caller ever feeds a target tighter than the
+	// derived layout guarantees: never above the source's exit corner, and
+	// always leaving room for the final corner + a visible drop.
+	const midY = Math.min(
+		Math.max(sourceY + cr * 2, targetY - AFTER_LAST_ENTRY_STUB),
+		targetY - cr - 4
+	);
+	// Corridor descent never backtracks upward, even out of contract.
+	const corridorEndY = Math.max(sourceY + cr, midY - cr);
 
 	return {
 		rightX,
 		cr,
-		effectiveTargetY,
+		midY,
 		labelX: rightX,
 		labelY: sourceY + cr * 2,
+		// "+" centered on the visible part of the final drop, clear of both
+		// the target's top edge and the arrowhead entering it.
 		plusX: targetX,
-		plusY: effectiveTargetY,
+		plusY: targetY - 22,
 		edgePath: [
 			`M ${sourceX} ${sourceY}`,
 			`L ${rightX - cr} ${sourceY}`,
 			`Q ${rightX} ${sourceY} ${rightX} ${sourceY + cr}`,
-			`L ${rightX} ${effectiveTargetY - cr}`,
-			`Q ${rightX} ${effectiveTargetY} ${rightX - cr} ${effectiveTargetY}`,
-			`L ${targetX} ${effectiveTargetY}`,
+			`L ${rightX} ${corridorEndY}`,
+			`Q ${rightX} ${midY} ${rightX - cr} ${midY}`,
+			`L ${targetX + cr} ${midY}`,
+			`Q ${targetX} ${midY} ${targetX} ${midY + cr}`,
+			`L ${targetX} ${targetY}`,
 		].join(" "),
 	};
 }

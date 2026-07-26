@@ -65,6 +65,23 @@ export function computeNodeStatuses(
 }
 
 /**
+ * Class applied to a React Flow edge wrapper while a live run flows through
+ * it: the source has been traversed and execution has reached the target.
+ * Callers resolve synthetic canvas ids (trigger, merge dots, terminal stubs)
+ * to the real node whose status they carry before looking statuses up.
+ * flow-theme.css animates the dashes along the executed path; callers gate on
+ * the execution actually being live so finished runs leave a calm canvas.
+ */
+export function runEdgeFlowClass(
+	source: NodeRunStatus | undefined,
+	target: NodeRunStatus | undefined
+): string {
+	const sourceTraversed = source === "success" || source === "running";
+	const targetReached = target !== undefined && target !== "idle";
+	return sourceTraversed && targetReached ? "flow-edge-running" : "";
+}
+
+/**
  * Ring/pulse classes applied to a React Flow node wrapper for its run status.
  * The pulse is gated behind motion-safe (prefers-reduced-motion). Color is
  * paired with the test-run status line ("Failed at step N") so it's never the

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeStatuses, runStatusRingClass } from "./run-status";
+import { computeNodeStatuses, runEdgeFlowClass, runStatusRingClass } from "./run-status";
 
 describe("computeNodeStatuses", () => {
 	it("returns an empty map for no execution", () => {
@@ -73,5 +73,25 @@ describe("runStatusRingClass", () => {
 
 	it("gates the running pulse behind motion-safe", () => {
 		expect(runStatusRingClass("running")).toContain("motion-safe:animate-pulse");
+	});
+});
+
+describe("runEdgeFlowClass", () => {
+	it("flows when the source succeeded and the target was reached", () => {
+		expect(runEdgeFlowClass("success", "success")).toBe("flow-edge-running");
+	});
+
+	it("flows when the source and target are both running", () => {
+		expect(runEdgeFlowClass("running", "running")).toBe("flow-edge-running");
+	});
+
+	it("returns empty when the target hasn't been reached", () => {
+		expect(runEdgeFlowClass("success", undefined)).toBe("");
+		expect(runEdgeFlowClass("success", "idle")).toBe("");
+	});
+
+	it("returns empty when the source was skipped or failed", () => {
+		expect(runEdgeFlowClass("skipped", "success")).toBe("");
+		expect(runEdgeFlowClass("failed", "success")).toBe("");
 	});
 });
