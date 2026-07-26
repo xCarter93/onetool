@@ -370,6 +370,38 @@ describe("deriveConnectStatusFromV2Account", () => {
 		);
 	});
 
+	it("returns detailsSubmitted=false for a fresh account with empty entries and no active capability", () => {
+		// A never-onboarded v2 account also returns requirements.entries: [] —
+		// without an active capability that must not read as "submitted".
+		const account = {
+			configuration: {
+				merchant: { capabilities: { card_payments: { status: "pending" } } },
+				recipient: {
+					capabilities: {
+						stripe_balance: { stripe_transfers: { status: "pending" } },
+					},
+				},
+			},
+			requirements: { entries: [] },
+		} as unknown as Stripe.V2.Core.Account;
+		expect(deriveConnectStatusFromV2Account(account).detailsSubmitted).toBe(
+			false
+		);
+	});
+
+	it("returns detailsSubmitted=true while submitted details are under Stripe review", () => {
+		const account = {
+			configuration: {
+				merchant: { capabilities: { card_payments: { status: "pending" } } },
+				recipient: { capabilities: {} },
+			},
+			requirements: { entries: [{ awaiting_action_from: "stripe" }] },
+		} as unknown as Stripe.V2.Core.Account;
+		expect(deriveConnectStatusFromV2Account(account).detailsSubmitted).toBe(
+			true
+		);
+	});
+
 	it("returns detailsSubmitted=false when a requirement awaits user action", () => {
 		const account = {
 			configuration: { merchant: {}, recipient: {} },

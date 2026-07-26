@@ -4,15 +4,12 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { centsToDollars } from "./lib/money";
+import { createStripeSdkClient } from "./lib/stripeSdk";
 
 type StripeClient = InstanceType<typeof StripeImport>;
 // Test seam: tests pass a mock via runHandleEvent; production resolves at call-time.
 function defaultStripeClientFactory(): StripeClient {
-	const config: { apiVersion: string } = {
-		apiVersion: "2026-04-22.dahlia",
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return new StripeImport(process.env.STRIPE_SECRET_KEY ?? "", config as any);
+	return createStripeSdkClient();
 }
 
 // Test-override seam (REVIEWS ISSUE-7): tests assign a mock here before
@@ -258,6 +255,79 @@ export const handleEvent = internalAction({
 					);
 					break;
 				}
+				case "charge.dispute.updated":
+				case "charge.dispute.closed": {
+					const dispute = args.data.object as Stripe.Dispute;
+					const piId =
+						typeof dispute.payment_intent === "string"
+							? dispute.payment_intent
+							: dispute.payment_intent?.id;
+					if (!piId) {
+						console.warn(
+							`${args.eventType} missing payment_intent for dispute ${dispute.id}`
+						);
+						break;
+					}
+					await ctx.runMutation(
+						internal.payments.syncDisputeFromWebhookInternal,
+						{
+							orgId: org!._id,
+							paymentIntentId: piId,
+							disputeId: dispute.id,
+							disputeStatus: dispute.status,
+							closed: args.eventType === "charge.dispute.closed",
+							resolvedAt: args.created * 1000,
+						}
+					);
+					break;
+				}
+				case "charge.refund.updated": {
+					const refund = args.data.object as Stripe.Refund;
+					// Only the failed transition needs compensation; other refund
+					// states are covered by charge.refunded.
+					if (refund.status !== "failed") break;
+					const refundPiId =
+						typeof refund.payment_intent === "string"
+							? refund.payment_intent
+							: refund.payment_intent?.id;
+					if (!refundPiId) {
+						console.warn(
+							`charge.refund.updated missing payment_intent for refund ${refund.id}`
+						);
+						break;
+					}
+					await ctx.runMutation(
+						internal.payments.revertFailedRefundFromWebhookInternal,
+						{
+							orgId: org!._id,
+							paymentIntentId: refundPiId,
+							refundId: refund.id,
+							failureReason: refund.failure_reason ?? undefined,
+						}
+					);
+					break;
+				}
+				case "checkout.session.expired": {
+					const session = args.data.object as Stripe.Checkout.Session;
+					await ctx.runMutation(
+						internal.payments.clearExpiredCheckoutSessionInternal,
+						{
+							orgId: org!._id,
+							sessionId: session.id,
+						}
+					);
+					break;
+				}
+				case "account.application.deauthorized": {
+					await ctx.runMutation(
+						internal.organizations.markStripeConnectDeauthorizedInternal,
+						{
+							orgId: org!._id,
+							eventCreatedSec: args.created,
+						}
+					);
+					break;
+				}
 				case "account.updated": {
 					const account = args.data.object as Stripe.Account;
 					await ctx.runMutation(
@@ -271,6 +341,7 @@ export const handleEvent = internalAction({
 								account.requirements?.currently_due ?? [],
 							requirementsDisabledReason:
 								account.requirements?.disabled_reason ?? undefined,
+							eventCreatedSec: args.created,
 						}
 					);
 					break;
@@ -321,6 +392,7 @@ export const handleEvent = internalAction({
 								capability.requirements?.currently_due ?? [],
 							requirementsDisabledReason:
 								capability.requirements?.disabled_reason ?? undefined,
+							eventCreatedSec: args.created,
 						}
 					);
 					break;

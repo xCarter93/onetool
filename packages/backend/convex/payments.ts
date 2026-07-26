@@ -1102,6 +1102,169 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 });
 
 /**
+ * Sync dispute lifecycle (charge.dispute.updated / .closed) onto the payment.
+ * Lost disputes stay flagged `disputed` — the funds were withdrawn — but the
+ * payment status is left untouched so the invoice paid-sum invariant holds;
+ * the notification tells the owner to adjust manually if they re-bill.
+ */
+export const syncDisputeFromWebhookInternal = systemMutation({
+	args: {
+		paymentIntentId: v.string(),
+		disputeId: v.string(),
+		disputeStatus: v.string(),
+		closed: v.boolean(),
+		resolvedAt: v.optional(v.number()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		if (!payment) {
+			console.warn(
+				`syncDisputeFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
+			);
+			return null;
+		}
+
+		const won = args.disputeStatus === "won";
+		const lost = args.disputeStatus === "lost";
+
+		await ctx.db.patch(payment._id, {
+			disputeId: args.disputeId,
+			disputeStatus: args.disputeStatus,
+			...(args.closed
+				? {
+						disputed: lost,
+						disputeResolvedAt: args.resolvedAt ?? Date.now(),
+					}
+				: {}),
+		});
+
+		if (!args.closed) return null;
+
+		// Same-status event so workflow automations can react to the outcome.
+		await emitStatusChangeEvent(
+			ctx,
+			payment.orgId,
+			"invoice",
+			payment.invoiceId,
+			payment.status,
+			payment.status,
+			`stripeWebhookActions.charge.dispute.closed:${args.disputeStatus}`
+		);
+
+		const message = won
+			? `Dispute ${args.disputeId} was resolved in your favor - the funds return to your balance.`
+			: lost
+				? `Dispute ${args.disputeId} was lost. The payment amount and dispute fee were withdrawn from your Stripe balance. The invoice payment is still recorded as paid - adjust it manually if you re-bill your client.`
+				: args.disputeStatus === "warning_closed"
+					? `Dispute inquiry ${args.disputeId} closed without escalating to a chargeback.`
+					: `Dispute ${args.disputeId} closed with status "${args.disputeStatus}".`;
+		await ctx.runMutation(
+			internal.notifications.createWebhookNotificationInternal,
+			{
+				orgId: ctx.orgId,
+				type: "dispute_resolved",
+				paymentId: payment._id,
+				priority: lost ? "high" : "normal",
+				message,
+			}
+		);
+		return null;
+	},
+});
+
+/**
+ * Revert a payment when an initiated refund later fails (charge.refund.updated
+ * with refund.status === "failed", e.g. bank-transfer-backed refunds).
+ */
+export const revertFailedRefundFromWebhookInternal = systemMutation({
+	args: {
+		paymentIntentId: v.string(),
+		refundId: v.string(),
+		failureReason: v.optional(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+			.filter((q) =>
+				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			)
+			.first();
+		if (!payment) {
+			console.warn(
+				`revertFailedRefundFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
+			);
+			return null;
+		}
+		// Only revert a refund we actually recorded; a refund that failed before
+		// charge.refunded ever fired needs no compensation.
+		if (payment.status !== "refunded") return null;
+
+		await ctx.db.patch(payment._id, {
+			status: "paid",
+			refundedAt: undefined,
+		});
+		await emitStatusChangeEvent(
+			ctx,
+			payment.orgId,
+			"invoice",
+			payment.invoiceId,
+			"refunded",
+			"paid",
+			"stripeWebhookActions.charge.refund.updated"
+		);
+		await ctx.runMutation(
+			internal.notifications.createWebhookNotificationInternal,
+			{
+				orgId: ctx.orgId,
+				type: "refund_failed",
+				paymentId: payment._id,
+				priority: "high",
+				message:
+					`Refund ${args.refundId} failed` +
+					(args.failureReason ? ` (${args.failureReason})` : "") +
+					` and the money was not returned to your client. The payment is` +
+					` recorded as paid again - retry the refund from your Payments tab.`,
+			}
+		);
+		return null;
+	},
+});
+
+/**
+ * Clear a payment's cached Checkout Session when Stripe expires it
+ * (checkout.session.expired), so stale pending fields don't linger.
+ */
+export const clearExpiredCheckoutSessionInternal = systemMutation({
+	args: { sessionId: v.string() },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const payment = await ctx.db
+			.query("payments")
+			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+			.filter((q) =>
+				q.eq(q.field("pendingCheckoutSessionId"), args.sessionId)
+			)
+			.first();
+		if (!payment) return null;
+		await ctx.db.patch(payment._id, {
+			pendingCheckoutSessionId: undefined,
+			pendingCheckoutSessionUrl: undefined,
+			pendingCheckoutSessionExpiresAt: undefined,
+		});
+		return null;
+	},
+});
+
+/**
  * Cancel a payment
  */
 export const cancel = userMutation({

@@ -721,13 +721,18 @@ http.route({
 	path: "/stripe-webhook",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
-		const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
-		if (!secret) {
+		// _NEXT holds the incoming secret during a rotation so events signed with
+		// either secret verify — see CLAUDE.md "Stripe Connect Webhook Ops".
+		const secrets = [
+			process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+			process.env.STRIPE_CONNECT_WEBHOOK_SECRET_NEXT,
+		].filter((s): s is string => Boolean(s));
+		if (secrets.length === 0) {
 			console.error("STRIPE_CONNECT_WEBHOOK_SECRET not configured");
 			return webhookError(500, "Webhook verification not configured");
 		}
 
-		const verification = await verifyStripeWebhook(request, secret);
+		const verification = await verifyStripeWebhook(request, secrets);
 		if (!verification.valid || !verification.payload) {
 			console.error(
 				"Stripe webhook verification failed:",

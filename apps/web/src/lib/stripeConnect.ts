@@ -147,13 +147,22 @@ export function deriveConnectStatusFromV2Account(
 				.filter((e) => e.awaiting_action_from === "user")
 				.map((e) => e.description)
 		: [];
+	const chargesEnabled = merchantCaps?.card_payments?.status === "active";
+	const payoutsEnabled =
+		recipientCaps?.stripe_balance?.stripe_transfers?.status === "active";
 	return {
-		chargesEnabled: merchantCaps?.card_payments?.status === "active",
-		payoutsEnabled:
-			recipientCaps?.stripe_balance?.stripe_transfers?.status === "active",
+		chargesEnabled,
+		payoutsEnabled,
 		// Treat missing requirements as "not yet submitted" — a freshly created
 		// v2 account can return requirements:null before Stripe analyses it.
-		detailsSubmitted: Array.isArray(entries) && currentlyDue.length === 0,
+		// An empty entries array alone is ambiguous: a never-onboarded account
+		// also returns entries:[] — require a positive signal (a non-empty
+		// entries list under Stripe review, or an already-active capability)
+		// before reporting the owner's details as submitted.
+		detailsSubmitted:
+			Array.isArray(entries) &&
+			currentlyDue.length === 0 &&
+			(entries.length > 0 || chargesEnabled || payoutsEnabled),
 		requirements: account.requirements
 			? { currently_due: currentlyDue, entries: entries ?? [] }
 			: null,
@@ -181,5 +190,12 @@ export function mapConnectError(
 							: message.startsWith("DUPLICATE_CONNECT_ACCOUNT")
 								? 409
 								: 500;
+	if (status === 500) {
+		// Unclassified failure: log the real error server-side but never echo
+		// raw exception text (Stripe request ids, internal identifiers) to the
+		// browser.
+		console.error("Stripe Connect route error:", err);
+		return NextResponse.json({ error: fallback }, { status });
+	}
 	return NextResponse.json({ error: message }, { status });
 }

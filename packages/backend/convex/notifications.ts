@@ -100,12 +100,15 @@ interface NotificationStats {
 		// Stripe webhook lifecycle types.
 		payment_failed: number;
 		dispute_created: number;
+		dispute_resolved: number;
 		charge_refunded: number;
+		refund_failed: number;
 		// Connect lifecycle additions.
 		payout_paid: number;
 		payout_failed: number;
 		capability_degraded: number;
 		bank_account_changed: number;
+		stripe_disconnected: number;
 		// Workflow-automation messages.
 		automation_message: number;
 		// Workflow-automation production failure alerts.
@@ -131,11 +134,14 @@ function createEmptyNotificationStats(): NotificationStats {
 			quote_mention: 0,
 			payment_failed: 0,
 			dispute_created: 0,
+			dispute_resolved: 0,
 			charge_refunded: 0,
+			refund_failed: 0,
 			payout_paid: 0,
 			payout_failed: 0,
 			capability_degraded: 0,
 			bank_account_changed: 0,
+			stripe_disconnected: 0,
 			automation_message: 0,
 			automation_failed: 0,
 		},
@@ -830,11 +836,14 @@ export const createWebhookNotificationInternal = systemMutation({
 		type: v.union(
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
+			v.literal("dispute_resolved"),
 			v.literal("charge_refunded"),
+			v.literal("refund_failed"),
 			v.literal("payout_paid"),
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
-			v.literal("bank_account_changed")
+			v.literal("bank_account_changed"),
+			v.literal("stripe_disconnected")
 		),
 		paymentId: v.optional(v.id("payments")),
 		priority: v.union(v.literal("normal"), v.literal("high")),
@@ -853,11 +862,14 @@ export const createWebhookNotificationInternal = systemMutation({
 		const TITLE_BY_TYPE: Record<typeof args.type, string> = {
 			payment_failed: "Payment failed",
 			dispute_created: "Dispute filed",
+			dispute_resolved: "Dispute resolved",
 			charge_refunded: "Refund issued",
+			refund_failed: "Refund failed",
 			payout_paid: "Payout sent",
 			payout_failed: "Payout failed",
 			capability_degraded: "Stripe capability disabled",
 			bank_account_changed: "Bank account updated",
+			stripe_disconnected: "Stripe account disconnected",
 		};
 		const title = TITLE_BY_TYPE[args.type];
 

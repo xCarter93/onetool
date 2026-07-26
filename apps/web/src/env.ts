@@ -15,7 +15,9 @@ export const env = createEnv({
 		CLERK_ISSUER_DOMAIN: z.string().min(1),
 		RESEND_API_KEY: z.string().min(1),
 		RESEND_WEBHOOK_SECRET: z.string().min(1),
-		STRIPE_APPLICATION_FEE_CENTS: z.coerce.number().int().nonnegative().default(100),
+		STRIPE_SECRET_KEY: z.string().min(1),
+		// NOTE: the application fee is charged by the Convex backend, which reads
+		// STRIPE_APPLICATION_FEE_CENTS from the Convex deployment env — not here.
 		MAPBOX_API_KEY: z.string().min(1),
 		// Server-only portal session JWT keys.
 		PORTAL_JWT_PRIVATE_KEY: z

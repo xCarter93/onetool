@@ -1,10 +1,10 @@
 "use node";
 
-import Stripe from "stripe";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { createStripeSdkClient } from "../lib/stripeSdk";
 
 interface ConnectOrgRow {
 	_id: Id<"organizations">;
@@ -34,11 +34,7 @@ export const run = internalAction({
 		retrievalFailures: v.number(),
 	}),
 	handler: async (ctx): Promise<RevalidateResult> => {
-		const apiKey = process.env.STRIPE_SECRET_KEY;
-		if (!apiKey) {
-			throw new Error("STRIPE_SECRET_KEY not configured");
-		}
-		const stripe = new Stripe(apiKey, { apiVersion: "2026-04-22.dahlia" });
+		const stripe = createStripeSdkClient();
 
 		const orgs: ConnectOrgRow[] = await ctx.runQuery(
 			internal.organizations.listAllWithConnectAccountInternal,

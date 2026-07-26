@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
 import { ExternalLink } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 
 const LINKS: { href: string; label: string }[] = [
 	{ href: "https://docs.stripe.com/connect", label: "Stripe Connect overview" },
@@ -18,12 +19,23 @@ const LINKS: { href: string; label: string }[] = [
 	{ href: "https://docs.stripe.com/disputes", label: "Disputes" },
 ];
 
-export function StripeDocLinks() {
+export function StripeDocLinks({ columns = 1 }: { columns?: 1 | 2 }) {
 	return (
 		<section aria-label="Stripe documentation" className="space-y-1">
-			<ul className="divide-y divide-border/60">
+			<ul
+				className={cn(
+					columns === 2
+						? "grid grid-cols-1 gap-x-10 sm:grid-cols-2 [&>li:last-child]:border-b-0 sm:[&>li:nth-last-child(-n+2)]:border-b-0"
+						: "divide-y divide-border/60",
+				)}
+			>
 				{LINKS.map((link) => (
-					<li key={link.href}>
+					<li
+						key={link.href}
+						className={
+							columns === 2 ? "border-b border-border/60" : undefined
+						}
+					>
 						<a
 							href={link.href}
 							target="_blank"

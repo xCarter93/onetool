@@ -5,9 +5,10 @@
 // transient failure does not burn the next idempotency key.
 import Stripe from "stripe";
 import { action } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import { dollarsToCents } from "../lib/money";
+import { createStripeSdkClient } from "../lib/stripeSdk";
 
 const REUSE_BUFFER_MS = 60_000;
 
@@ -18,12 +19,7 @@ export function __setStripeFactoryForTests(factory: (() => Stripe) | null) {
 }
 function buildStripeClient(): Stripe {
 	if (stripeFactoryOverride) return stripeFactoryOverride();
-	// SDK 22.x type union for `apiVersion` does not list 2026-04-22.dahlia yet.
-	const config: { apiVersion: string } = {
-		apiVersion: "2026-04-22.dahlia",
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return new Stripe(process.env.STRIPE_SECRET_KEY ?? "", config as any);
+	return createStripeSdkClient();
 }
 
 type CreatePaymentIntentResult = {
@@ -121,7 +117,10 @@ export const createPaymentIntent = action({
 			{
 				amount: amountCents,
 				currency: "usd",
-				application_fee_amount: applicationFeeCents,
+				// Omit entirely when no fee — never claim an explicit $0 fee.
+				...(applicationFeeCents > 0
+					? { application_fee_amount: applicationFeeCents }
+					: {}),
 				receipt_email: resolved.contact.email,
 				automatic_payment_methods: { enabled: true },
 				metadata: {

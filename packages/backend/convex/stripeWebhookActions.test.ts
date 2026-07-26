@@ -146,6 +146,159 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(paymentAfterSecond?.paidAt).toBe(paidAtFirst);
 	});
 
+	it("charge.dispute.closed (lost) records the outcome and keeps the payment flagged", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_lost",
+			paymentAmount: 75,
+			paymentIntentId: "pi_disp_lost",
+		});
+		const event = buildStripeEvent({
+			id: "evt_disp_lost",
+			type: "charge.dispute.closed",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "dp_lost_1",
+					payment_intent: "pi_disp_lost",
+					status: "lost",
+				} as never,
+			},
+		});
+		const res = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		expect(res.orgFound).toBe(true);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputeStatus).toBe("lost");
+		expect(payment?.disputed).toBe(true);
+		expect(payment?.disputeResolvedAt).toBeTypeOf("number");
+	});
+
+	it("charge.dispute.closed (won) clears the disputed flag", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_won",
+			paymentAmount: 75,
+			paymentIntentId: "pi_disp_won",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { disputed: true, disputeId: "dp_won_1" })
+		);
+		const event = buildStripeEvent({
+			id: "evt_disp_won",
+			type: "charge.dispute.closed",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "dp_won_1",
+					payment_intent: "pi_disp_won",
+					status: "won",
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputeStatus).toBe("won");
+		expect(payment?.disputed).toBe(false);
+	});
+
+	it("charge.refund.updated (failed) reverts a recorded refund to paid", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_fail",
+			paymentAmount: 120,
+			paymentIntentId: "pi_refund_fail",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { status: "refunded", refundedAt: Date.now() })
+		);
+		const event = buildStripeEvent({
+			id: "evt_refund_fail",
+			type: "charge.refund.updated",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "re_fail_1",
+					payment_intent: "pi_refund_fail",
+					status: "failed",
+					failure_reason: "insufficient_funds",
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.refundedAt).toBeUndefined();
+	});
+
+	it("account.application.deauthorized disables payment gating on the org", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, {
+				stripeChargesEnabled: true,
+				stripePayoutsEnabled: true,
+			})
+		);
+		const event = buildStripeEvent({
+			id: "evt_deauth",
+			type: "account.application.deauthorized",
+			account: "acct_test_webhook",
+			data: { object: { id: "ca_app_1", object: "application" } as never },
+		});
+		const res = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		expect(res.orgFound).toBe(true);
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeChargesEnabled).toBe(false);
+		expect(org?.stripePayoutsEnabled).toBe(false);
+		expect(org?.stripeRequirementsDisabledReason).toBe(
+			"platform.disconnected"
+		);
+	});
+
+	it("checkout.session.expired clears the cached pending session fields", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_cs_expired",
+			paymentAmount: 40,
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, {
+				pendingCheckoutSessionId: "cs_expired_1",
+				pendingCheckoutSessionUrl: "https://checkout.stripe.com/c/expired",
+				pendingCheckoutSessionExpiresAt: Date.now() + 60_000,
+			})
+		);
+		const event = buildStripeEvent({
+			id: "evt_cs_expired",
+			type: "checkout.session.expired",
+			account: "acct_test_webhook",
+			data: { object: { id: "cs_expired_1" } as never },
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.pendingCheckoutSessionId).toBeUndefined();
+		expect(payment?.pendingCheckoutSessionUrl).toBeUndefined();
+		expect(payment?.pendingCheckoutSessionExpiresAt).toBeUndefined();
+	});
+
 	it("account.updated patches org Connect status cache", async () => {
 		const { orgId } = await seedConnectedOrg(t);
 
