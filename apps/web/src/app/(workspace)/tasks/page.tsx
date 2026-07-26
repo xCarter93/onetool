@@ -26,9 +26,11 @@ import {
   DataGridContainer,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
 import {
   ColumnDef,
   getCoreRowModel,
+  getPaginationRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import {
@@ -317,10 +319,14 @@ function GroupTable({
   group: TaskGroup;
   columns: ColumnDef<Task>[];
 }) {
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
   const table = useReactTable({
     data: group.tasks,
     columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
 
   return (
@@ -347,6 +353,11 @@ function GroupTable({
         <DataGridContainer className="rounded-lg border">
           <DataGridTable />
         </DataGridContainer>
+        {group.tasks.length > pagination.pageSize && (
+          <div className="px-1 py-2">
+            <DataGridPagination />
+          </div>
+        )}
       </DataGrid>
     </div>
   );
