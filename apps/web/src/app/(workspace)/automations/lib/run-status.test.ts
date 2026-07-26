@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeStatuses, runEdgeFlowClass, runStatusRingClass } from "./run-status";
+import {
+	computeLiveTraversalStatuses,
+	computeNodeStatuses,
+	runEdgeFlowClass,
+	runStatusRingClass,
+} from "./run-status";
 
 describe("computeNodeStatuses", () => {
 	it("returns an empty map for no execution", () => {
@@ -73,6 +78,60 @@ describe("runStatusRingClass", () => {
 
 	it("gates the running pulse behind motion-safe", () => {
 		expect(runStatusRingClass("running")).toContain("motion-safe:animate-pulse");
+	});
+});
+
+describe("computeLiveTraversalStatuses", () => {
+	it("only counts loop-body entries from the latest revealed iteration", () => {
+		// A loop condition alternating branches: iteration 0 took yes,
+		// iteration 1 took no — only the current (no) branch should light up.
+		const statuses = computeLiveTraversalStatuses({
+			status: "running",
+			nodesExecuted: [
+				{ nodeId: "yes-head", result: "success", loopNodeId: "loop", loopIndex: 0 },
+				{ nodeId: "no-head", result: "success", loopNodeId: "loop", loopIndex: 1 },
+			],
+		});
+		expect(statuses["yes-head"]).toBeUndefined();
+		expect(statuses["no-head"]).toBe("success");
+	});
+
+	it("keeps entries outside any loop and merges within the kept iteration", () => {
+		const statuses = computeLiveTraversalStatuses({
+			status: "completed",
+			nodesExecuted: [
+				{ nodeId: "before", result: "success" },
+				{ nodeId: "body", result: "failed", loopNodeId: "loop", loopIndex: 0 },
+				{ nodeId: "body", result: "success", loopNodeId: "loop", loopIndex: 1 },
+			],
+		});
+		expect(statuses.before).toBe("success");
+		expect(statuses.body).toBe("success");
+	});
+
+	it("tracks each loop's latest iteration independently", () => {
+		const statuses = computeLiveTraversalStatuses({
+			status: "running",
+			nodesExecuted: [
+				{ nodeId: "a-body", result: "success", loopNodeId: "loop-a", loopIndex: 2 },
+				{ nodeId: "b-body", result: "success", loopNodeId: "loop-b", loopIndex: 0 },
+			],
+		});
+		expect(statuses["a-body"]).toBe("success");
+		expect(statuses["b-body"]).toBe("success");
+	});
+
+	it("marks the current node running while the run is in progress", () => {
+		const statuses = computeLiveTraversalStatuses({
+			status: "running",
+			currentNodeId: "next",
+			nodesExecuted: [
+				{ nodeId: "stale", result: "success", loopNodeId: "loop", loopIndex: 0 },
+				{ nodeId: "fresh", result: "success", loopNodeId: "loop", loopIndex: 1 },
+			],
+		});
+		expect(statuses.next).toBe("running");
+		expect(statuses.stale).toBeUndefined();
 	});
 });
 

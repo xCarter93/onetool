@@ -165,6 +165,12 @@ function AutomationFlowInner({
 		if (idsSig !== idsSigRef.current) {
 			idsSigRef.current = idsSig;
 			pendingFitRef.current = true;
+			// An in-flight tween captured the pre-edit graph; its remaining
+			// frames would overwrite the new node array with the old one.
+			if (animRef.current !== null) {
+				cancelAnimationFrame(animRef.current);
+				animRef.current = null;
+			}
 			const entering = new Set<string>();
 			for (const n of incomingNodes) {
 				if (!seenIdsRef.current.has(n.id)) entering.add(n.id);

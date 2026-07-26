@@ -78,10 +78,12 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	);
 
 	// Inject onInsertNode into every edge; during a live run, animate the
-	// executed path (dashes flow along edges the run has traversed). Synthetic
-	// edge endpoints resolve to the real node whose status they carry: the
-	// trigger implicitly succeeded once the run is live, merge dots carry
-	// their condition's status, terminal stubs their owner's.
+	// executed path (dashes flow along edges the run has traversed). Statuses
+	// are iteration-scoped so a loop condition lights only the branch the
+	// current iteration took. Synthetic edge endpoints resolve to the real
+	// node whose status they carry: the trigger implicitly succeeded once the
+	// run is live, merge dots carry their condition's status, terminal stubs
+	// their owner's.
 	const isLiveRun = editor.execution?.status === "running";
 	const flowEdges = useMemo(() => {
 		const statusFor = (id: string) => {
@@ -91,7 +93,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				real = real.slice(TERMINAL_PREFIX.length).replace(/-(after|yes|no)$/, "");
 			}
 			if (real.startsWith(MERGE_PREFIX)) real = real.slice(MERGE_PREFIX.length);
-			return editor.runStatuses[real];
+			return editor.liveTraversalStatuses[real];
 		};
 		return editor.layoutedEdges.map((e) => {
 			const withInsert = { ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } };
@@ -101,7 +103,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				? { ...withInsert, className: cn(withInsert.className, flow) }
 				: withInsert;
 		});
-	}, [editor.layoutedEdges, editor.runStatuses, handleEdgeInsert, isLiveRun]);
+	}, [editor.layoutedEdges, editor.liveTraversalStatuses, handleEdgeInsert, isLiveRun]);
 
 	// Paint each node's live run status onto its React Flow wrapper (ring/pulse);
 	// ghost "Choose a step" cards get the insert callback (they insert via

@@ -15,21 +15,17 @@ function formatUntilValue(value: string | number | boolean | null): string {
 		return `Resumes at ${value}`;
 	}
 	// Numeric values are UTC-midnight epoch ms (see value-input's
-	// localDateToUtcMidnightMs) — format the calendar date in UTC or US
-	// timezones render it a day early.
-	if (typeof value === "number") {
-		const dateLabel = date.toLocaleDateString(undefined, {
-			month: "short",
-			day: "numeric",
-			year: "numeric",
-			timeZone: "UTC",
-		});
-		return `Resumes at ${dateLabel}`;
-	}
+	// localDateToUtcMidnightMs) and YYYY-MM-DD strings parse as UTC midnight —
+	// format those calendar dates in UTC or US timezones render a day early.
+	// T-bearing datetimes parse local and stay localized.
+	const utcCalendarDate =
+		typeof value === "number" ||
+		(typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value));
 	const dateLabel = date.toLocaleDateString(undefined, {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
+		...(utcCalendarDate ? { timeZone: "UTC" } : {}),
 	});
 	// Only string values (e.g. ISO datetimes) can carry a time component here.
 	const hasTimeComponent = typeof value === "string" && value.includes("T");

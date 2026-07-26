@@ -42,7 +42,7 @@ import {
 	validateWorkflowForSave,
 } from "../lib/validation";
 import { definitionSignature } from "../lib/editor-signature";
-import { computeNodeStatuses } from "../lib/run-status";
+import { computeLiveTraversalStatuses, computeNodeStatuses } from "../lib/run-status";
 import { getScopeObjectType } from "../lib/variables";
 
 /** A record the test/manual runner can target. */
@@ -922,6 +922,11 @@ export function useAutomationEditor(automationId: string | null) {
 		() => computeNodeStatuses(execution),
 		[execution]
 	);
+	// Iteration-scoped variant for the edge-flow animation (see run-status.ts).
+	const liveTraversalStatuses = useMemo(
+		() => computeLiveTraversalStatuses(execution),
+		[execution]
+	);
 	const isRunning = execution?.status === "running";
 	const sampleScopeObjectType = triggerScopeObjectType(trigger);
 	const sampleRecords = useQuery(
@@ -1105,6 +1110,7 @@ export function useAutomationEditor(automationId: string | null) {
 		sampleRecords: sampleRecords ?? [],
 		execution,
 		runStatuses,
+		liveTraversalStatuses,
 		isRunning,
 		isStartingTest,
 		hasActiveRun: activeExecutionId !== null,
