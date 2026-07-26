@@ -1947,9 +1947,14 @@ export async function resolveEmailRecipients(
 			{ email, name: `${contact.firstName} ${contact.lastName}` },
 		];
 	} else {
+		const seen = new Set<string>();
 		candidates = action.recipient.addresses
 			.map((a) => a.trim())
-			.filter(Boolean)
+			.filter((email) => {
+				if (!email || seen.has(email.toLowerCase())) return false;
+				seen.add(email.toLowerCase());
+				return true;
+			})
 			.slice(0, AUTOMATION_EMAIL_RECIPIENT_CAP)
 			.map((email) => ({ email }));
 		if (candidates.length === 0) {
@@ -2035,8 +2040,12 @@ async function executeSendEmailAction(
 		return { success: false, error: "Email body resolved to an empty value" };
 	}
 
-	// DEC-2: reserve the whole recipient batch against the daily cap, or skip.
-	const cap = await rateLimiter.limit(ctx, "automationEmailSends", {
+	// DEC-2: require capacity for the whole batch up front (non-consuming so a
+	// skip never burns quota); each recipient's token is consumed only after a
+	// successful enqueue below — failed or deduplicated sends stay free. Check
+	// and consume see one snapshot (same transaction), so the batch can't lose
+	// capacity between the two.
+	const cap = await rateLimiter.check(ctx, "automationEmailSends", {
 		key: env.orgId,
 		count: recipients.length,
 	});
@@ -2064,8 +2073,7 @@ async function executeSendEmailAction(
 	let sent = 0;
 	let duplicates = 0;
 	const failedRecipients: { email: string; reason: string }[] = [];
-	for (let i = 0; i < recipients.length; i++) {
-		const recipient = recipients[i];
+	for (const recipient of recipients) {
 		const html = buildEmailHtml({
 			logoUrl: org.logoUrl,
 			organizationName: org.name,
@@ -2084,7 +2092,9 @@ async function executeSendEmailAction(
 			html,
 			// Re-drive belt-and-braces: one logical send per run node (x loop
 			// iteration x recipient), permanent via emailMessages.by_idempotency_key.
-			idempotencyKey: `automation-${env.executionId}-${nodeId}${loopSuffix}-r${i}`,
+			// Address-keyed so a suppression change between drives can't shift
+			// which recipient a key belongs to.
+			idempotencyKey: `automation-${env.executionId}-${nodeId}${loopSuffix}-r${recipient.email.toLowerCase()}`,
 		};
 		try {
 			const result = await runExternalEffect(ctx, env.executionId, nodeId, {
@@ -2130,6 +2140,10 @@ async function executeSendEmailAction(
 				subject,
 				preview,
 				direction: "outbound",
+			});
+			// Capacity guaranteed by the batch check above (same transaction).
+			await rateLimiter.limit(ctx, "automationEmailSends", {
+				key: env.orgId,
 			});
 			sent++;
 		} catch (error) {

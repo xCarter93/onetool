@@ -10,7 +10,10 @@
  * surfaces the same errors before the user hits Save.
  */
 
-import { AUTOMATION_EMAIL_RECIPIENT_CAP } from "@onetool/backend/convex/lib/workflowTypes";
+import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
+	EMAIL_ADDRESS_PATTERN,
+} from "@onetool/backend/convex/lib/workflowTypes";
 import { collectLoopBody } from "./graph-utils";
 import type { EditorNode } from "./flow-adapter";
 import {
@@ -253,9 +256,6 @@ function validateConditionNode(
 		});
 	}
 }
-
-/** Mirrors the backend's save-time check (workflowTypes.ts sendEmailActionValidator). */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validateActionNode(
 	nodeId: string,
@@ -694,7 +694,9 @@ function validateActionNode(
 						message: `No more than ${AUTOMATION_EMAIL_RECIPIENT_CAP} recipient addresses are allowed`,
 						nodeId,
 					});
-				} else if (addresses.some((address) => !EMAIL_REGEX.test(address))) {
+				} else if (
+					addresses.some((address) => !EMAIL_ADDRESS_PATTERN.test(address))
+				) {
 					errors.push({
 						type: "missing_required_config",
 						message: "One or more recipient addresses aren't valid",

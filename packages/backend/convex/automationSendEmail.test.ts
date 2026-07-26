@@ -11,6 +11,7 @@ import {
 } from "./test.helpers";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "./rateLimits";
 
 /**
  * Coverage for the D1 send_email automation action
@@ -310,13 +311,67 @@ describe("send_email automation action (D1)", () => {
 			expect(message.status).toBe("sent");
 			expect(message.clientId).toBe(clientId);
 			expect(message.resendEmailId).toBeTruthy();
-			expect(message.idempotencyKey).toMatch(/^automation-.+-email-1-r0$/);
+			expect(message.idempotencyKey).toMatch(
+				/^automation-.+-email-1-rprimary@example\.com$/
+			);
 			expect(message.threadDocId).toBeDefined();
 
 			const threads = await getEmailThreads();
 			expect(threads).toHaveLength(1);
 			expect(threads[0].clientId).toBe(clientId);
 			expect(threads[0].messageCount).toBe(1);
+		});
+
+		it("daily cap exhausted: node skips without failing the run, zero rows written", async () => {
+			const { asUser, orgId } = await setupUser();
+			await makeOrgPremium(orgId);
+
+			// Exhaust today's window through the same limiter the executor checks.
+			await t.run(async (ctx) => {
+				await rateLimiter.limit(ctx, "automationEmailSends", {
+					key: orgId,
+					count: AUTOMATION_EMAIL_DAILY_CAP,
+				});
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Capped email",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					sendEmailNode(
+						"email-1",
+						{ kind: "primary_contact" },
+						"Hello",
+						"Body"
+					),
+				],
+				isActive: true,
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+			await t.run(async (ctx) =>
+				createTestClientContact(ctx, orgId, clientId, {
+					isPrimary: true,
+					email: "primary@example.com",
+				})
+			);
+
+			await drainEvents();
+
+			const executions = await getExecutions();
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("completed");
+			const entry = executions[0].nodesExecuted.find(
+				(n) => n.nodeId === "email-1"
+			);
+			expect(entry?.result).toBe("skipped");
+			expect(entry?.error).toMatch(/daily automation email cap/i);
+			expect(await getEmailMessages()).toHaveLength(0);
+			expect(await getEmailThreads()).toHaveLength(0);
 		});
 	});
 

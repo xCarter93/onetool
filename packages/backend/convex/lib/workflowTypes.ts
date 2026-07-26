@@ -351,6 +351,10 @@ export const sendTeamMessageActionValidator = v.object({
 /** Ceiling on a send_email custom-address list (save-validated both sides). */
 export const AUTOMATION_EMAIL_RECIPIENT_CAP = 10;
 
+/** Light-touch shape check for send_email custom addresses, shared by backend
+ * save validation and the web editor (full RFC left to the provider). */
+export const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const sendEmailActionValidator = v.object({
 	type: v.literal("send_email"),
 	recipient: v.union(

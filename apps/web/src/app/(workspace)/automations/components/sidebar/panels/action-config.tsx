@@ -5,7 +5,10 @@ import { useQuery } from "convex/react";
 import { Info, Plus, X } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { AUTOMATION_EMAIL_RECIPIENT_CAP } from "@onetool/backend/convex/lib/workflowTypes";
+import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
+	EMAIL_ADDRESS_PATTERN,
+} from "@onetool/backend/convex/lib/workflowTypes";
 import { ACTION_META } from "../../../lib/action-meta";
 import { normalizeNodeConfig } from "../../../lib/legacy-load";
 import { Button } from "@/components/ui/button";
@@ -109,9 +112,6 @@ function useMessageInsertion<T extends HTMLInputElement | HTMLTextAreaElement = 
 
 	return { ref, insert };
 }
-
-/** Mirrors the backend's save-time check (workflowTypes.ts sendEmailActionValidator). */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface ActionFieldsProps<TAction> {
 	config: ActionNodeConfig;
@@ -1337,7 +1337,9 @@ function SendEmailFields({
 		update({ recipient: { kind: "custom", addresses: resolved } });
 	};
 
-	const invalidAddresses = addresses.filter((address) => !EMAIL_REGEX.test(address));
+	const invalidAddresses = addresses.filter(
+		(address) => !EMAIL_ADDRESS_PATTERN.test(address)
+	);
 	let addressesError: string | undefined;
 	if (recipient.kind === "custom") {
 		if (addresses.length === 0) {

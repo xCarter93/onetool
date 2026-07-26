@@ -1,7 +1,10 @@
 import { QueryCtx, MutationCtx, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { AUTOMATION_EMAIL_RECIPIENT_CAP } from "./lib/workflowTypes";
+import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
+	EMAIL_ADDRESS_PATTERN,
+} from "./lib/workflowTypes";
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
@@ -424,9 +427,6 @@ function validateConditionGroups(
  * validating relation reachability from the scope type. Shared by
  * send_notification's recordField recipient and send_team_message's target.
  */
-/** Light-touch shape check for send_email custom addresses (full RFC left to the provider). */
-const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function resolveActionTargetType(
 	nodeId: string,
 	target: ActionTarget,
@@ -923,6 +923,8 @@ function validateWorkflowDefinition(
 						const addresses = recipient.addresses
 							.map((a) => a.trim())
 							.filter(Boolean);
+						// Persist the normalized list — validated nodes are stored as-is.
+						recipient.addresses = addresses;
 						if (addresses.length === 0) {
 							throw new Error(
 								`Node ${node.id}: add at least one recipient address`

@@ -73,11 +73,11 @@ describe("branch plus placement", () => {
 		expect(plusY).toBeGreaterThanOrEqual(512 + 28);
 	});
 
-	it("stays above the target card when there is room", () => {
+	it("prioritizes pill clearance when the lane can't fit both clearances", () => {
+		// Lane of 40px: pill clearance (pillY+28) and target clearance
+		// (targetY-16) conflict — the pill wins, even at the target's expense.
 		const plusY = getBranchPlusY(100, 140, true);
 
-		expect(plusY).toBeGreaterThanOrEqual(100 + 28);
-		// Pill clearance wins over target clearance when both can't fit.
 		expect(plusY).toBe(128);
 	});
 

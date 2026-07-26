@@ -8,6 +8,10 @@ import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
 import { ACTION_META } from "../../lib/action-meta";
 import { OBJECT_TYPE_LABELS, type ActionNodeConfig } from "../../lib/node-types";
+import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
+	EMAIL_ADDRESS_PATTERN,
+} from "@onetool/backend/convex/lib/workflowTypes";
 
 function getSummary(config: ActionNodeConfig | undefined): {
 	title: string;
@@ -110,7 +114,12 @@ function getSummary(config: ActionNodeConfig | undefined): {
 					action.subject.trim() &&
 					action.body.trim() &&
 					(action.recipient.kind !== "custom" ||
-						action.recipient.addresses.length > 0)
+						(action.recipient.addresses.length > 0 &&
+							action.recipient.addresses.length <=
+								AUTOMATION_EMAIL_RECIPIENT_CAP &&
+							action.recipient.addresses.every((address) =>
+								EMAIL_ADDRESS_PATTERN.test(address.trim())
+							)))
 				),
 			};
 		default:
