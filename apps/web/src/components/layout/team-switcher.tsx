@@ -13,7 +13,11 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { markOrgSwitching } from "@/hooks/use-is-org-switching";
-import { BRAND } from "@/lib/brand";
+import {
+	clerkBrandVariables,
+	clerkPopoverCardClass,
+} from "@/lib/clerk-appearance";
+import { cn } from "@/lib/utils";
 
 // Detail routes whose [id] segment refers to an org-scoped entity that won't
 // exist in the new org — fall back to the list page on switch.
@@ -71,58 +75,59 @@ export function TeamSwitcher() {
 	);
 	useMarkOrgSwitchingOnClerkClick();
 	const shouldInvert = organization?.logoInvertInDarkMode ?? true;
-	const avatarImageClass = `w-8 h-8 rounded-lg object-cover ${
-		shouldInvert ? "dark:invert dark:brightness-0" : ""
-	}`;
+	const avatarImageClass = cn(
+		"w-8 h-8 rounded-lg object-cover",
+		shouldInvert && "dark:invert dark:brightness-0"
+	);
+	// Clerk re-diffs its theme whenever `appearance` changes identity, so only
+	// rebuild it when the inputs actually change.
+	const appearance = React.useMemo(
+		() => ({
+			elements: {
+				rootBox: isCollapsed ? "w-10 h-10" : "w-full",
+				organizationSwitcherTrigger: isCollapsed
+					? "mx-auto w-10 h-10 justify-center p-0 border-0 bg-transparent hover:bg-sidebar-accent rounded-md text-foreground transition-colors duration-200 overflow-hidden [&>*:not(:first-child)]:hidden"
+					: "w-full justify-start gap-2 p-2 border-0 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-md text-foreground transition-colors duration-200 [&_svg:last-child]:w-3 [&_svg:last-child]:h-3 [&_svg:last-child]:text-muted-foreground",
+				organizationSwitcherTriggerIcon:
+					"bg-sidebar-primary text-sidebar-primary-foreground size-8 rounded-lg",
+				organizationPreview: isCollapsed ? "flex-1 text-left pl-1.5" : "flex-1 text-left",
+				organizationPreviewMainIdentifier:
+					"text-sm font-semibold truncate text-foreground",
+				organizationPreviewSecondaryIdentifier:
+					"text-xs text-muted-foreground truncate",
+				organizationPreviewAvatarBox:
+					"size-8 rounded-lg bg-muted flex items-center justify-center",
+				organizationPreviewAvatarImage: avatarImageClass,
+				// Popover card — matches the header popovers (rounded-xl, theme tokens)
+				organizationSwitcherPopoverCard: cn(clerkPopoverCardClass, "p-2"),
+				organizationSwitcherPopoverMain: "bg-popover",
+				organizationSwitcherPreviewButton:
+					"w-full p-2 rounded-lg bg-transparent hover:bg-muted/60 transition-colors text-left text-foreground",
+				organizationSwitcherPopoverActionButton:
+					"rounded-lg hover:bg-muted/60 transition-colors",
+				organizationSwitcherPopoverActionButtonIcon: "text-muted-foreground",
+				organizationSwitcherPopoverActionButtonText:
+					"text-sm font-medium text-foreground",
+				organizationSwitcherPopoverFooter: "border-t border-border mt-2 pt-2",
+			},
+			variables: { ...clerkBrandVariables, fontSize: "0.875rem" },
+		}),
+		[isCollapsed, avatarImageClass]
+	);
 	return (
 		<SidebarMenu>
 			<SidebarMenuItem>
 				{/* In collapsed mode, show only a centered org logo trigger. */}
 				<div
-					className={`flex items-center ${
+					className={cn(
+						"flex items-center",
 						isCollapsed
 							? "w-10 h-10 justify-center overflow-hidden mx-auto"
 							: "w-full"
-					}`}
+					)}
 				>
 					<OrganizationSwitcher
-						appearance={{
-							elements: {
-								rootBox: isCollapsed ? "w-10 h-10" : "w-full",
-								organizationSwitcherTrigger: isCollapsed
-									? "mx-auto w-10 h-10 justify-center p-0 border-0 bg-transparent hover:bg-sidebar-accent rounded-md text-foreground transition-colors duration-200 overflow-hidden [&>*:not(:first-child)]:hidden"
-									: "w-full justify-start gap-2 p-2 border-0 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-md text-foreground transition-colors duration-200 [&_svg:last-child]:w-3 [&_svg:last-child]:h-3 [&_svg:last-child]:text-muted-foreground",
-								organizationSwitcherTriggerIcon:
-									"bg-sidebar-primary text-sidebar-primary-foreground size-8 rounded-lg",
-								organizationPreview: isCollapsed ? "flex-1 text-left pl-1.5" : "flex-1 text-left",
-								organizationPreviewMainIdentifier:
-									"text-sm font-semibold truncate text-foreground",
-								organizationPreviewSecondaryIdentifier:
-									"text-xs text-muted-foreground truncate",
-								organizationPreviewAvatarBox:
-									"size-8 rounded-lg bg-muted flex items-center justify-center",
-								organizationPreviewAvatarImage: avatarImageClass,
-								// Popover card — matches the header popovers (rounded-xl, theme tokens)
-								organizationSwitcherPopoverCard:
-									"bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2",
-								organizationSwitcherPopoverMain: "bg-popover",
-								organizationSwitcherPreviewButton:
-									"w-full p-2 rounded-lg bg-transparent hover:bg-muted/60 transition-colors text-left text-foreground",
-								organizationSwitcherPopoverActionButton:
-									"rounded-lg hover:bg-muted/60 transition-colors",
-								organizationSwitcherPopoverActionButtonIcon: "text-muted-foreground",
-								organizationSwitcherPopoverActionButtonText:
-									"text-sm font-medium text-foreground",
-								organizationSwitcherPopoverFooter: "border-t border-border mt-2 pt-2",
-							},
-							variables: {
-								colorPrimary: BRAND.primary,
-								colorTextOnPrimaryBackground: BRAND.onPrimary,
-								fontFamily: "inherit",
-								fontSize: "0.875rem",
-								borderRadius: "0.5rem",
-							},
-						}}
+						appearance={appearance}
 						createOrganizationMode="navigation"
 						createOrganizationUrl="/organization/complete?creating=true"
 						organizationProfileUrl="/organization/profile"

@@ -16,7 +16,7 @@ import "./workspace-theme.css";
 // declare it directly now that the call is gone.
 export const dynamic = "force-dynamic";
 
-export default async function WorkspaceLayout({
+export default function WorkspaceLayout({
 	children,
 }: {
 	children: ReactNode;
@@ -27,7 +27,7 @@ export default async function WorkspaceLayout({
 				<ConvexClientProvider>
 					<DynamicTitle />
 					<ConfirmDialogProvider>
-						<div className="workspace-zone min-h-screen flex-1 md:min-h-min">
+						<div className="workspace-zone min-h-screen md:min-h-min">
 							<AnalyticsIdentity />
 							{/* No ambient blobs / grid overlays here: absolutely-positioned
 							    decorations paint over the static picture-frame background

@@ -1,20 +1,17 @@
 "use client";
 
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode } from "react";
 import { AssistantNotch } from "@/components/assistant/assistant-notch";
-import { AssistantOpenerContext } from "@/components/assistant/assistant-opener-context";
+import {
+	AssistantSurfaceProvider,
+	useAssistantSurface,
+} from "@/components/assistant/assistant-surface-context";
 import { ReportConfigApplyProvider } from "@/components/assistant/report-config-apply-context";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
-import { HelpMenu } from "@/components/help/help-menu";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { NotificationBell } from "@/components/layout/notification-bell";
-import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
-import { SettingsPopover } from "@/components/layout/settings-popover";
-import {
-	SidebarInset,
-	SidebarProvider,
-	SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { CommandPaletteProvider } from "@/components/layout/command-palette";
+import { WorkspaceHeader } from "@/components/layout/workspace-header";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
 	TourContextProvider,
 	TourElement,
@@ -28,156 +25,87 @@ interface SidebarWithHeaderProps {
 	children: ReactNode;
 }
 
-/**
- * A notch that bulges downward from the picture-frame band above the content
- * card. The whole outline — the ogee (S-curve) side sweeps and the floor — is
- * a single `border-shape` path (see .header-notch in globals.css), so the
- * sidebar-colored background follows the geometry. The 56px side padding
- * reserves the sweep region so content sits on the flat floor;
- * `border-shape`-unaware browsers fall back to a plain rounded-b tab.
+/*
+ * Shell stacking ladder (fixed/sticky layers, bottom to top):
+ *   z-10 sidebar container (ui/sidebar) → z-20 sidebar rail →
+ *   z-30 sticky WorkspaceHeader (its notch rail is z-10 within it) →
+ *   z-40 MobileFloatingHeader + AssistantNotchDock →
+ *   z-50 floating assistant panel and portaled overlays (sheet, popovers) →
+ *   z-[9999] ui/modal portals above everything.
+ * The docked assistant column is in-flow and carries no z-index on purpose.
+ *
+ * Two scroll contexts: on md+ the card interior ([data-workspace-scroller])
+ * scrolls and the frame/notches stay put; below md the document scrolls.
+ * Page code resolves the live one via lib/workspace-scroller.ts.
  */
-function NotchedItem({
-	children,
-	contentClassName,
-}: {
-	children: ReactNode;
-	contentClassName?: string;
-}) {
+
+/**
+ * The bottom assistant notch wrapped in its tour step. Always visible —
+ * free-plan users get an upgrade prompt inside the panel (and the backend
+ * enforces the plan gate regardless).
+ *
+ * The notch positions itself out of flow, so the fixed placement lives on the
+ * tour wrapper — otherwise it collapses to 0x0 and the highlight ring (a
+ * ::after on the wrapper) has nothing to draw. The right-* offsets are
+ * placement along the bottom frame band; md:right-24 also keeps the tab's
+ * sweep clear of the card's bottom-right rounded corner.
+ */
+function AssistantNotchDock() {
+	const { open, setOpen } = useAssistantSurface();
 	return (
-		<div
-			className={`header-notch px-14 rounded-b-xl flex items-center ${contentClassName ?? ""}`}
+		<TourElement<HomeTour>
+			className="fixed bottom-0 right-6 z-40 sm:right-12 md:right-24"
+			TourContext={HomeTourContext}
+			stepId={HomeTour.ASSISTANT_NOTCH}
+			title={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].title}
+			description={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].description}
+			tooltipPosition={
+				HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
+			}
 		>
-			{children}
-		</div>
+			<AssistantNotch open={open} onOpen={() => setOpen(true)} />
+		</TourElement>
 	);
 }
-
-/**
- * Floating pill-shaped header for mobile viewports.
- * Two pill groups: left (sidebar toggle) and right (notifications, settings).
- * Only visible below the md breakpoint. The assistant opens from the bottom
- * notch instead.
- */
-function MobileFloatingHeader() {
-	return (
-		<div className="fixed top-2 left-3 right-3 z-40 flex justify-between pointer-events-none md:hidden">
-			{/* Left pill — sidebar toggle */}
-			<div className="pointer-events-auto flex items-center bg-sidebar/90 backdrop-blur-sm rounded-lg border border-border/40 px-1.5 py-1">
-				<SidebarTrigger className="h-5 w-5 text-muted-foreground [&_svg]:size-3.5" />
-			</div>
-
-			{/* Right pill — help, notifications, settings */}
-			<div className="pointer-events-auto flex items-center bg-sidebar/90 backdrop-blur-sm rounded-lg border border-border/40 px-1.5 py-1 [&_button]:p-1.5 [&_button]:rounded-md [&_svg]:size-3.5">
-				<HelpMenu />
-				<NotificationBell />
-				<SettingsPopover />
-			</div>
-		</div>
-	);
-}
-
-const ASSISTANT_PINNED_KEY = "assistant-panel-pinned";
 
 export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
-	const [assistantOpen, setAssistantOpen] = useState(false);
-	// Lazy localStorage read is hydration-safe here: nothing pin-dependent
-	// is in the HTML while the panel is closed (its initial state).
-	const [assistantPinned, setAssistantPinned] = useState(
-		() =>
-			typeof window !== "undefined" &&
-			localStorage.getItem(ASSISTANT_PINNED_KEY) === "true"
-	);
-	const toggleAssistantPinned = useCallback(() => {
-		setAssistantPinned((prev) => {
-			const next = !prev;
-			localStorage.setItem(ASSISTANT_PINNED_KEY, String(next));
-			return next;
-		});
-	}, []);
-	const openAssistant = useCallback(() => setAssistantOpen(true), []);
-
 	return (
 		<TourContextProvider<HomeTour>
 			TourContext={HomeTourContext}
 			orderedStepIds={ORDERED_HOME_TOUR}
 		>
-			<AssistantOpenerContext.Provider value={openAssistant}>
-			<ReportConfigApplyProvider>
-			<SidebarProvider>
-				{/* variant="inset" picture-frames the content: the wrapper turns
-				    sidebar-colored and SidebarInset becomes a rounded card floating
-				    inside it, so the assistant notch below has a frame to rise from. */}
-				<AppSidebar variant="inset" />
-				<SidebarInset className="min-w-0 md:h-[calc(100svh-1rem)] md:overflow-hidden">
-					{/* Thin navbar with notched items */}
-					<header className="sticky top-0 z-30">
-						{/* Mobile floating pill header */}
-						<MobileFloatingHeader />
+			<AssistantSurfaceProvider>
+				<ReportConfigApplyProvider>
+					<SidebarProvider>
+						{/* Inside SidebarProvider so the sidebar trigger can consume it;
+						    the dialog itself portals to the body. */}
+						<CommandPaletteProvider>
+							{/* variant="inset" picture-frames the content: the wrapper turns
+						    sidebar-colored and SidebarInset becomes a rounded card floating
+						    inside it, so the assistant notch below has a frame to rise from. */}
+							<AppSidebar variant="inset" />
+							<SidebarInset className="min-w-0 md:h-[calc(100svh-1rem)] md:overflow-hidden">
+								<WorkspaceHeader />
 
-						{/* Notch rail (desktop only). The frame band above the card IS
-						    the navbar — no strip inside the card. Notches start at y=0,
-						    fusing with the same-colored frame through the card's top
-						    edge, and their elements hang down from it. pr-6 keeps the
-						    right notch clear of the card's rounded corner. */}
-						<div className="relative z-10 hidden md:flex items-start justify-between h-5 pr-6">
-							{/* Left spacer */}
-							<div className="flex-1" />
+								{/* Card interior scrolls; the frame and notch stay put.
+							    data-workspace-scroller is the lookup contract for page code
+							    (lib/workspace-scroller.ts); .workspace-canvas stays for CSS. */}
+								<div
+									data-workspace-scroller
+									className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0 md:min-h-0 md:overflow-y-auto"
+								>
+									{children}
+								</div>
+							</SidebarInset>
 
-							{/* Center — Service Status notch */}
-							<NotchedItem>
-								<ServiceStatusBadge />
-							</NotchedItem>
-
-							{/* Right spacer */}
-							<div className="flex-1" />
-
-							{/* Right side controls notch — both ears now that it no
-							    longer runs flush to the screen edge */}
-							<NotchedItem contentClassName="gap-1">
-								<HelpMenu />
-								<NotificationBell />
-								<SettingsPopover />
-							</NotchedItem>
-						</div>
-					</header>
-
-					{/* Card interior scrolls; the frame and notch stay put. */}
-					<div className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0 md:min-h-0 md:overflow-y-auto">
-						{children}
-					</div>
-				</SidebarInset>
-
-				{/* Always visible — free-plan users get an upgrade prompt inside the
-				    panel (and the backend enforces the plan gate regardless). */}
-				{/* The notch positions itself out of flow, so the fixed placement
-				    lives on the tour wrapper — otherwise it collapses to 0x0 and the
-				    highlight ring (a ::after on the wrapper) has nothing to draw. */}
-				<TourElement<HomeTour>
-					className="fixed bottom-0 right-6 z-40 sm:right-12 md:right-24"
-					TourContext={HomeTourContext}
-					stepId={HomeTour.ASSISTANT_NOTCH}
-					title={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].title}
-					description={
-						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].description
-					}
-					tooltipPosition={
-						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
-					}
-				>
-					<AssistantNotch
-						open={assistantOpen}
-						onOpen={() => setAssistantOpen(true)}
-					/>
-				</TourElement>
-				<AssistantPanel
-					open={assistantOpen}
-					onOpenChange={setAssistantOpen}
-					pinned={assistantPinned}
-					onTogglePin={toggleAssistantPinned}
-				/>
-			</SidebarProvider>
-			</ReportConfigApplyProvider>
-			</AssistantOpenerContext.Provider>
+							<AssistantNotchDock />
+							{/* When docked, the panel is the next flex sibling of the card;
+						    other surfaces portal/position themselves. */}
+							<AssistantPanel />
+						</CommandPaletteProvider>
+					</SidebarProvider>
+				</ReportConfigApplyProvider>
+			</AssistantSurfaceProvider>
 		</TourContextProvider>
 	);
 }

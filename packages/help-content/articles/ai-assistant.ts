@@ -31,11 +31,11 @@ export const aiAssistantArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Assistant** tab sits at the bottom of every workspace page. Click it to open the chat panel, and press Escape or the close button to put it away.",
+						text: "The **Assistant** tab sits at the bottom of every workspace page. Click it to open the chat panel, and press Escape or the close button to put it away. On a phone the chat slides up from the bottom edge instead.",
 					},
 					{
 						type: "paragraph",
-						text: "By default the panel floats above the page, so you can keep it open while you move around. On desktop you can also pin it, which docks the chat as a sidebar on the right until you unpin it.",
+						text: "By default the panel floats above the page, so you can keep it open while you move around. On larger screens you can also pin it, which docks the chat as a side column on the right until you unpin it.",
 					},
 					{
 						type: "paragraph",

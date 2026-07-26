@@ -9,10 +9,46 @@ import {
 } from "@/components/ui/popover";
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle2, AlertTriangle, AlertCircle } from "lucide-react";
-import { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import { headerIconButtonClass } from "@/components/layout/header-icon-button";
 import { cn } from "@/lib/utils";
 
 type Health = "operational" | "degraded" | "outage";
+
+function statusMeta(status: string) {
+	switch (status) {
+		case "operational":
+			return {
+				dot: "bg-success",
+				label: "Operational",
+				text: "text-success-foreground",
+			};
+		case "degraded":
+		case "partial_outage":
+			return {
+				dot: "bg-warning",
+				label: "Degraded",
+				text: "text-warning-foreground",
+			};
+		case "major_outage":
+			return {
+				dot: "bg-destructive",
+				label: "Outage",
+				text: "text-destructive-foreground",
+			};
+		default:
+			return {
+				dot: "bg-muted-foreground",
+				label: "Unknown",
+				text: "text-muted-foreground",
+			};
+	}
+}
+
+function getDisplayName(serviceName: string) {
+	if (serviceName === "boldsign_esignature") return "E-Signature";
+	return serviceName.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+}
 
 export function ServiceStatusBadge() {
 	const services = useQuery(api.serviceStatus.getAll);
@@ -34,21 +70,18 @@ export function ServiceStatusBadge() {
 	const theme = {
 		operational: {
 			dot: "bg-success",
-			pill: "bg-success/10 text-success-foreground ring-success/20 hover:bg-success/15",
 			tile: "bg-success/10 text-success-foreground",
 			icon: CheckCircle2,
 			label: "All systems operational",
 		},
 		degraded: {
 			dot: "bg-warning",
-			pill: "bg-warning/10 text-warning-foreground ring-warning/20 hover:bg-warning/15",
 			tile: "bg-warning/10 text-warning-foreground",
 			icon: AlertTriangle,
 			label: `${operationalCount}/${totalCount} operational`,
 		},
 		outage: {
 			dot: "bg-destructive",
-			pill: "bg-destructive/10 text-destructive-foreground ring-destructive/20 hover:bg-destructive/15",
 			tile: "bg-destructive/10 text-destructive-foreground",
 			icon: AlertCircle,
 			label: `${operationalCount}/${totalCount} operational`,
@@ -62,14 +95,15 @@ export function ServiceStatusBadge() {
 			<PopoverTrigger
 				render={
 					<button
-						className={cn(
-							"inline-flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-							theme.pill
-						)}
+						type="button"
+						aria-label={`Service status: ${theme.label}`}
+						className={cn("relative", headerIconButtonClass)}
 					/>
 				}
 			>
-				<span className="relative flex size-2">
+				<HealthIcon className="size-5" />
+				{/* Status dot rides the icon's corner, like the bell's unread badge. */}
+				<span className="absolute right-1 top-1 flex size-2">
 					<span
 						className={cn(
 							"absolute inline-flex h-full w-full rounded-full opacity-75",
@@ -79,15 +113,14 @@ export function ServiceStatusBadge() {
 					/>
 					<span
 						className={cn(
-							"relative inline-flex size-2 rounded-full",
+							"relative inline-flex size-2 rounded-full ring-2 ring-sidebar",
 							theme.dot
 						)}
 					/>
 				</span>
-				<span className="whitespace-nowrap">{theme.label}</span>
 			</PopoverTrigger>
 			<PopoverContent
-				align="center"
+				align="end"
 				sideOffset={10}
 				className="w-80 rounded-xl border-border p-0 shadow-xl"
 			>
@@ -120,44 +153,7 @@ export function ServiceStatusBadge() {
 }
 
 function ServiceStatusItem({ service }: { service: Doc<"serviceStatus"> }) {
-	const meta = (status: string) => {
-		switch (status) {
-			case "operational":
-				return {
-					dot: "bg-success",
-					label: "Operational",
-					text: "text-success-foreground",
-				};
-			case "degraded":
-			case "partial_outage":
-				return {
-					dot: "bg-warning",
-					label: "Degraded",
-					text: "text-warning-foreground",
-				};
-			case "major_outage":
-				return {
-					dot: "bg-destructive",
-					label: "Outage",
-					text: "text-destructive-foreground",
-				};
-			default:
-				return {
-					dot: "bg-muted-foreground",
-					label: "Unknown",
-					text: "text-muted-foreground",
-				};
-		}
-	};
-
-	const getDisplayName = (serviceName: string) => {
-		if (serviceName === "boldsign_esignature") return "E-Signature";
-		return serviceName
-			.replace(/_/g, " ")
-			.replace(/\b\w/g, (l) => l.toUpperCase());
-	};
-
-	const m = meta(service.status);
+	const m = statusMeta(service.status);
 
 	return (
 		<div className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/60">

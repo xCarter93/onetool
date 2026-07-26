@@ -25,6 +25,7 @@ import { Badge } from "@/components/reui/badge";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { Scrollspy } from "@/components/reui/scrollspy";
 import { cn } from "@/lib/utils";
+import { useWorkspaceScrollTarget } from "@/lib/workspace-scroller";
 import { useCommunityPageForm, SECTION_LIST } from "./use-community-page-form";
 import type { SectionId } from "./use-community-page-form";
 import { MainSettingsSection } from "./sections/main-settings-section";
@@ -71,19 +72,9 @@ export default function CommunityEditContent() {
 	const isPageLoaded = !isLoading && !isRedirecting;
 	const [previewOpen, setPreviewOpen] = useState(false);
 
-	// The workspace card interior (.workspace-canvas) is the real scroller on
-	// desktop; the window scrolls on mobile. Point Scrollspy at whichever is live.
-	const scrollTargetRef = useRef<HTMLElement | Document | null>(null);
-	useEffect(() => {
-		const canvas = document.querySelector<HTMLElement>(".workspace-canvas");
-		const mq = window.matchMedia("(min-width: 768px)");
-		const update = () => {
-			scrollTargetRef.current = mq.matches && canvas ? canvas : document;
-		};
-		update();
-		mq.addEventListener("change", update);
-		return () => mq.removeEventListener("change", update);
-	}, []);
+	// Point Scrollspy at whichever scroll context is live (workspace card on
+	// desktop, window on mobile).
+	const scrollTargetRef = useWorkspaceScrollTarget();
 
 	// Sentinel-based sticky header detection
 	const sentinelRef = useRef<HTMLDivElement>(null);

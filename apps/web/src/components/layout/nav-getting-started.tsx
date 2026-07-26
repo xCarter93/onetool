@@ -19,17 +19,12 @@ import {
 } from "@/components/reui/frame";
 import { Button } from "@/components/ui/button";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import type { FunctionReturnType } from "convex/server";
 
-interface JourneyProgress {
-	hasOrganization: boolean;
-	hasClient: boolean;
-	hasProject: boolean;
-	hasQuote: boolean;
-	hasESignature: boolean;
-	hasInvoice: boolean;
-	hasStripeConnect: boolean;
-	hasPayment: boolean;
-}
+// Derived from the backend query so the step list can't drift from the API.
+type JourneyProgress = NonNullable<
+	FunctionReturnType<typeof api.homeStats.getJourneyProgress>
+>;
 
 interface JourneyStep {
 	id: string;
@@ -125,9 +120,14 @@ export function NavGettingStarted() {
 		return null;
 	}
 
-	// Loading state
-	if (isOrgSwitching || !journeyProgress) {
+	// Loading state (the org-switch grace window counts as loading)
+	if (isOrgSwitching || journeyProgress === undefined) {
 		return <NavGettingStartedSkeleton />;
+	}
+
+	// Users without the cross-object read grants get null — hide, don't spin.
+	if (journeyProgress === null) {
+		return null;
 	}
 
 	// Calculate completion

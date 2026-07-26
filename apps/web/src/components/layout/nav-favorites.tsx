@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Heart, X, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import {
 	SidebarGroup,
@@ -24,6 +23,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useQuery, useMutation } from "convex/react";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_FAVORITES = 3;
@@ -33,7 +33,7 @@ export function NavFavorites() {
 	const favorites = useQuery(api.favorites.list);
 	const toggleFavorite = useMutation(api.favorites.toggle);
 	const [popoverOpen, setPopoverOpen] = React.useState(false);
-	const router = useRouter();
+	const toast = useToast();
 
 	// Suppress data during the switch grace window so the previous org's
 	// favorites don't flash before the new org's list resolves.
@@ -45,7 +45,11 @@ export function NavFavorites() {
 	const isEmpty = !isLoading && favorites.length === 0;
 
 	const handleUnfavorite = async (clientId: Id<"clients">) => {
-		await toggleFavorite({ clientId });
+		try {
+			await toggleFavorite({ clientId });
+		} catch {
+			toast.error("Couldn't update favorites", "Please try again.");
+		}
 	};
 
 	return (
@@ -68,19 +72,17 @@ export function NavFavorites() {
 						</div>
 					</SidebarMenuItem>
 				) : (
-					<>
-						{visibleFavorites.map((favorite) => (
-							<SidebarMenuItem key={favorite._id}>
-								<SidebarMenuButton
-									tooltip={favorite.companyName}
-									onClick={() => router.push(`/clients/${favorite.clientId}`)}
-								>
-									<Heart className="fill-rose-500 text-rose-500" />
-									<span className="truncate">{favorite.companyName}</span>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						))}
-					</>
+					visibleFavorites.map((favorite) => (
+						<SidebarMenuItem key={favorite._id}>
+							<SidebarMenuButton
+								tooltip={favorite.companyName}
+								render={<Link href={`/clients/${favorite.clientId}`} />}
+							>
+								<Heart className="fill-rose-500 text-rose-500" />
+								<span className="truncate">{favorite.companyName}</span>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+					))
 				)}
 
 				{hasOverflow && favorites && (
@@ -123,9 +125,10 @@ export function NavFavorites() {
 													{favorite.companyName}
 												</Link>
 												<Button
+													type="button"
 													variant="ghost"
 													size="icon-xs"
-													className="size-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+													className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
 													onClick={() => handleUnfavorite(favorite.clientId)}
 												>
 													<X className="size-3" />

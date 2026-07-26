@@ -26,6 +26,12 @@ import { usePathname, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Textarea } from "@/components/ui/textarea";
+import {
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetTitle,
+} from "@/components/ui/sheet";
 import { HelpArticleDrawer, LearnMoreLink } from "@/components/help/learn-more";
 import { resolveHelpRef } from "@/lib/help";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
@@ -37,7 +43,7 @@ import {
 } from "./renderers";
 import { useCurrentRecord, type CurrentRecord } from "./use-current-record";
 import { useScreenContext } from "./use-screen-context";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useAssistantSurface } from "./assistant-surface-context";
 import {
 	useApplyReportConfig,
 	useReportBuilderMounted,
@@ -311,20 +317,9 @@ function UpgradePrompt() {
 	);
 }
 
-interface AssistantPanelProps {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	/** Docked to the workspace's right edge instead of floating (md+ only). */
-	pinned: boolean;
-	onTogglePin: () => void;
-}
-
-export function AssistantPanel({
-	open,
-	onOpenChange,
-	pinned,
-	onTogglePin,
-}: AssistantPanelProps) {
+export function AssistantPanel() {
+	const { surface, open, setOpen, pinned, togglePinned, canDock } =
+		useAssistantSurface();
 	const [threadId, setThreadId] = useState<string | null>(null);
 	const [showHistory, setShowHistory] = useState(false);
 	const [input, setInput] = useState("");
@@ -344,9 +339,6 @@ export function AssistantPanel({
 	const applyReportConfig = useApplyReportConfig();
 	const builderMounted = useReportBuilderMounted();
 	const currentRecord = useCurrentRecord();
-	const isMobile = useIsMobile();
-	// Pinning is a desktop layout mode; on mobile the panel always floats.
-	const docked = pinned && !isMobile;
 	// While access is loading, show the normal chat UI (no upgrade-prompt flash
 	// for premium users); the backend gate blocks any send that sneaks in.
 	const { planLimits, isLoading: accessLoading } = useFeatureAccess();
@@ -412,11 +404,18 @@ export function AssistantPanel({
 	useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onOpenChange(false);
+			if (event.key === "Escape") setOpen(false);
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [open, onOpenChange]);
+	}, [open, setOpen]);
+
+	// The docked column keeps the panel mounted while closed, so the composer's
+	// autoFocus never re-fires — focus it explicitly when the panel opens.
+	const inputRef = useRef<HTMLTextAreaElement>(null);
+	useEffect(() => {
+		if (open && surface === "docked") inputRef.current?.focus();
+	}, [open, surface]);
 
 	// Client-executed tools: the server only validates/generates; the actual
 	// side effect happens here when a new tool result streams in — navigate
@@ -552,13 +551,15 @@ export function AssistantPanel({
 									</HeaderButton>
 								</>
 							)}
+							{/* Docked mode needs xl (sidebar + panel + usable content),
+							    so the pin toggle only exists there. */}
 							<HeaderButton
-								onClick={onTogglePin}
+								onClick={togglePinned}
 								label={
 									pinned ? "Unpin assistant" : "Pin assistant to the side"
 								}
 								active={pinned}
-								className="hidden md:inline-flex"
+								className="hidden xl:inline-flex"
 							>
 								{pinned ? (
 									<PinOff className="size-4" />
@@ -567,7 +568,7 @@ export function AssistantPanel({
 								)}
 							</HeaderButton>
 							<HeaderButton
-								onClick={() => onOpenChange(false)}
+								onClick={() => setOpen(false)}
 								label="Close assistant"
 							>
 								<X className="size-4" />
@@ -663,7 +664,11 @@ export function AssistantPanel({
 											Thinking…
 										</div>
 									)}
-									<div ref={bottomRef} />
+									<div
+										ref={(el) => {
+											if (el) bottomRef.current = el;
+										}}
+									/>
 								</div>
 							)}
 						</div>
@@ -673,6 +678,12 @@ export function AssistantPanel({
 						<div className="shrink-0 border-t border-border p-3">
 							<div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
 								<Textarea
+									// During the pin handoff the exiting overlay copy unmounts
+									// after the docked copy mounts — ignore its null assignment
+									// so the ref keeps pointing at the live composer.
+									ref={(el) => {
+										if (el) inputRef.current = el;
+									}}
 									value={input}
 									onChange={(e) => setInput(e.target.value)}
 									onKeyDown={(e) => {
@@ -710,36 +721,72 @@ export function AssistantPanel({
 		</>
 	);
 
-	// Docked: an in-flow flex child of the sidebar wrapper — same tree slot
-	// as the floating variant, so thread state survives pin toggles.
-	if (docked) {
-		return open ? (
-			<div
-				role="dialog"
-				aria-label="Assistant chat"
-				className="relative z-40 my-2 mr-2 hidden w-[26rem] shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-sm md:flex md:h-[calc(100svh-1rem)]"
-			>
-				{content}
-			</div>
-		) : null;
+	// Below md: bottom sheet — continues the notch metaphor and keeps the
+	// composer by the keyboard.
+	if (surface === "sheet") {
+		return (
+			<Sheet open={open} onOpenChange={setOpen}>
+				<SheetContent
+					side="bottom"
+					showCloseButton={false}
+					className="flex h-[90svh] flex-col overflow-hidden rounded-t-2xl border-border p-0"
+				>
+					<SheetTitle className="sr-only">Assistant chat</SheetTitle>
+					<SheetDescription className="sr-only">
+						Chat with the assistant about your business.
+					</SheetDescription>
+					{content}
+				</SheetContent>
+			</Sheet>
+		);
 	}
 
+	const docked = surface === "docked";
+
+	// md+: the dock column and the floating overlay coexist so pin/unpin can
+	// animate — the column stays mounted whenever the viewport can dock and
+	// width-animates on pin/open changes (block-18 mechanism; `starting:w-0`
+	// covers the mount-while-open edge), while the floating panel slides
+	// in/out through AnimatePresence at the same time. The column is an
+	// in-flow flex sibling of the workspace card — genuinely in layout, so
+	// there is no z-index tie with the notch. `inert` keeps its controls out
+	// of the tab order while hidden.
 	return (
-		<AnimatePresence>
-			{open && (
-				<motion.div
-					key="assistant-panel"
-					role="dialog"
+		<>
+			{canDock && (
+				<div
+					role="complementary"
 					aria-label="Assistant chat"
-					initial={{ y: "110%" }}
-					animate={{ y: 0 }}
-					exit={{ y: "110%" }}
-					transition={{ type: "tween", duration: 0.25, ease: "easeOut" }}
-					className="fixed inset-x-0 bottom-0 z-50 flex h-[min(85dvh,640px)] flex-col overflow-hidden rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-2 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-2xl"
+					aria-hidden={!(docked && open)}
+					inert={!(docked && open)}
+					className={cn(
+						"shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out",
+						docked && open ? "w-[26.5rem] starting:w-0" : "w-0"
+					)}
 				>
-					{content}
-				</motion.div>
+					{docked && (
+						<div className="my-2 mr-2 flex h-[calc(100svh-1rem)] w-[26rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+							{content}
+						</div>
+					)}
+				</div>
 			)}
-		</AnimatePresence>
+			<AnimatePresence>
+				{open && !docked && (
+					<motion.div
+						key="assistant-panel"
+						role="dialog"
+						aria-label="Assistant chat"
+						initial={{ y: "110%" }}
+						animate={{ y: 0 }}
+						exit={{ y: "110%" }}
+						transition={{ type: "tween", duration: 0.25, ease: "easeOut" }}
+						className="fixed inset-x-0 bottom-0 z-50 flex h-[min(85dvh,640px)] flex-col overflow-hidden rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-2 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-2xl"
+					>
+						{content}
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</>
 	);
 }

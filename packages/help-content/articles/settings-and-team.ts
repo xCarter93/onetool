@@ -320,6 +320,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "Open your organization settings and select the **Billing** tab. A badge at the top shows whether you are on the **Free plan** or the **Business plan**. On the Free plan, usage meters show how many of your included clients and monthly e-signatures you have used.",
 					},
+					{
+						type: "paragraph",
+						text: "On the Free plan the same meters also sit in a small card at the bottom of the sidebar, so you can keep an eye on your limits from any page. Its Upgrade button takes you straight to the Billing tab.",
+					},
 				],
 			},
 			{

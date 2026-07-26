@@ -21,6 +21,7 @@ export function AssistantNotch({
 		<div
 			className={cn(
 				"transition-transform duration-300 ease-out",
+				// translate must exceed --notch-depth to hide the tab fully.
 				open && "pointer-events-none translate-y-12"
 			)}
 		>
@@ -28,10 +29,8 @@ export function AssistantNotch({
 				type="button"
 				onClick={onOpen}
 				disabled={open}
-				tabIndex={open ? -1 : undefined}
-				aria-hidden={open}
 				aria-label="Open assistant chat"
-				className="assistant-notch flex h-10 min-w-64 cursor-pointer items-center justify-center gap-2 rounded-t-xl px-14 text-sm font-medium text-muted-foreground transition-[transform,color] duration-200 ease-out hover:-translate-y-1 hover:text-foreground focus-visible:-translate-y-1 focus-visible:text-foreground focus-visible:outline-none"
+				className="assistant-notch flex h-(--notch-depth) min-w-64 cursor-pointer items-center justify-center gap-2 rounded-t-xl px-(--notch-sweep) text-sm font-medium text-muted-foreground transition-[transform,color] duration-200 ease-out hover:-translate-y-1 hover:text-foreground focus-visible:-translate-y-1 focus-visible:text-foreground focus-visible:outline-none"
 			>
 				<Sparkles className="size-4 text-primary" />
 				Assistant

@@ -8,17 +8,16 @@ import {
 } from "@/components/ui/popover";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { PlanBadge } from "@/components/layout/plan-badge";
-import { useState } from "react";
+import { headerIconButtonClass } from "@/components/layout/header-icon-button";
 
 export function SettingsPopover() {
-	const [open, setOpen] = useState(false);
-
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover>
 			<PopoverTrigger
 				render={
 					<button
-						className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 data-[state=open]:bg-foreground/[0.08] data-[state=open]:text-foreground"
+						type="button"
+						className={headerIconButtonClass}
 						aria-label="Settings"
 					/>
 				}

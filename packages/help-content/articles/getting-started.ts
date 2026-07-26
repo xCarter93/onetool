@@ -232,8 +232,80 @@ export const gettingStartedArticles: HelpArticle[] = [
 			},
 		],
 		related: [
+			"getting-started/search-your-workspace",
 			"getting-started/add-your-first-client",
 			"settings-and-team/member-permissions",
+		],
+	},
+	{
+		slug: "search-your-workspace",
+		title: "Search your workspace",
+		subtitle: "Jump to any record, page, or create action from one search box.",
+		kind: "howto",
+		availability: "all",
+		heroMedia: {
+			media: "image",
+			caption: "The search palette open over the workspace",
+		},
+		keywords: [
+			"search",
+			"command palette",
+			"cmd k",
+			"ctrl k",
+			"find",
+			"quick open",
+			"shortcut",
+		],
+		sections: [
+			{
+				heading: "Opening search",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Press **⌘K** on a Mac or **Ctrl+K** on Windows from anywhere in the workspace, or click the **Search** box at the top of the sidebar. Press Escape to close it.",
+					},
+				],
+			},
+			{
+				heading: "What it finds",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Type at least two characters and results appear grouped by type:",
+					},
+					{
+						type: "list",
+						items: [
+							"**Clients**, matched by company name, notes, or tags, and also by a contact's name or a property's address, so searching \"Henderson\" or \"Maple St\" finds the right client.",
+							"**Projects**, by title, description, or project number.",
+							"**Quotes**, by title, quote number, or their message text.",
+							"**Invoices**, by invoice number.",
+							"**Tasks**, by title or description. Selecting a task opens it right there for editing.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "Selecting any other result takes you to that record's page.",
+					},
+				],
+			},
+			{
+				heading: "Navigate and create",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Before you type, the palette lists the workspace pages you can open and quick **Create** actions for a new client, project, quote, or task, matching the sidebar's Quick Actions menu.",
+					},
+					{
+						type: "note",
+						text: "Search respects your permissions. Members only see pages, actions, and records their role gives them access to.",
+					},
+				],
+			},
+		],
+		related: [
+			"getting-started/navigating-the-workspace",
+			"ai-assistant/meet-the-assistant",
 		],
 	},
 	{
