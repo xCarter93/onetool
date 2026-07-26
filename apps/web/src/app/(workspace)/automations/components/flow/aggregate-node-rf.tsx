@@ -21,7 +21,7 @@ function getSummary(config: AggregateNodeConfig | undefined): {
 	isConfigured: boolean;
 } {
 	if (!config || !config.sourceNodeId || !config.field || !OP_LABELS[config.op]) {
-		return { title: "Aggregate", description: "Not configured", isConfigured: false };
+		return { title: "Aggregate", description: "Choose records to aggregate...", isConfigured: false };
 	}
 	return {
 		title: "Aggregate",
@@ -57,7 +57,7 @@ export const AggregateNodeRF = memo(({ data }: NodeProps) => {
 						</div>
 					</div>
 					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						Utility
+						Utilities
 					</span>
 				</div>
 			</BaseNodeContent>

@@ -129,8 +129,8 @@ export const ActionNodeRF = memo(({ data }: NodeProps) => {
 					<div
 						className={cn(
 							"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-							meta?.bg ?? "bg-green-50 dark:bg-green-950/40",
-							meta?.fg ?? "text-green-600 dark:text-green-400",
+							meta?.bg ?? "bg-green-100 dark:bg-green-400/15",
+							meta?.fg ?? "text-green-700 dark:text-green-300",
 						)}
 					>
 						<Icon className="h-4 w-4" />

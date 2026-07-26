@@ -66,7 +66,7 @@ export const ConditionNodeRF = memo(({ data }: NodeProps) => {
 				// dark: variant needed so tw-merge drops the dark accent class too
 				isFieldInvalid && "border-yellow-400 dark:border-yellow-400",
 			)}
-			aria-label={`Condition: ${description}`}
+			aria-label={`Condition: ${title} - ${description}`}
 		>
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">

@@ -6,12 +6,18 @@ import {
 	getStraightPath,
 	type EdgeProps,
 } from "@xyflow/react";
-import { ButtonEdge as RFButtonEdge } from "@/components/button-edge";
-import { Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { NextItemMarker } from "./next-item-marker";
-import { EDGE_STYLE, LOOP_EDGE_STYLE } from "./edge-style";
+import { edgeStroke } from "./edge-style";
+import { EdgeInsertButton } from "./edge-insert-button";
+import { useEdgeHovered } from "./edge-hover-context";
 
+/**
+ * Spine connector between sequential steps (and trigger → first step, merge
+ * dot → continuation). Layout keeps both endpoints on the same vertical
+ * spine, so the path is a straight drop. Every non-terminal edge carries an
+ * always-visible insert "+" at its midpoint; terminal edges render the fixed
+ * 50px stub with the prominent terminal "+".
+ */
 export function PlusButtonEdge(props: EdgeProps) {
 	const {
 		id,
@@ -21,10 +27,14 @@ export function PlusButtonEdge(props: EdgeProps) {
 		targetY,
 		data,
 		style,
+		markerEnd,
+		selected,
+		interactionWidth,
 	} = props;
 	const isTerminal = data?.isTerminal === true;
 	const impliedNextItem = data?.impliedNextItem === true;
-	const edgeStyle = data?.inLoop === true ? LOOP_EDGE_STYLE : EDGE_STYLE;
+	const loop = data?.inLoop === true;
+	const hovered = useEdgeHovered(id);
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
@@ -39,56 +49,54 @@ export function PlusButtonEdge(props: EdgeProps) {
 			targetX: sourceX,
 			targetY: fixedTargetY,
 		});
-		const plusX = sourceX;
-		const plusY = fixedTargetY;
 
 		return (
 			<>
-				<BaseEdge path={edgePath} style={{ ...style, ...edgeStyle }} />
+				<BaseEdge
+					path={edgePath}
+					interactionWidth={interactionWidth}
+					style={{ ...style, ...edgeStroke({ loop, dashed: true, hovered, selected }) }}
+				/>
 				<EdgeLabelRenderer>
-					<div
-						className="nodrag nopan pointer-events-auto absolute"
-						style={{
-							transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
-							zIndex: 10,
-						}}
-					>
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								onInsertNode?.(id, "placeholder");
-							}}
-							className="nodrag nopan w-7 h-7 rounded-full bg-background border border-border hover:border-primary flex items-center justify-center shadow-sm transition-colors cursor-pointer"
-							aria-label="Add step"
-						>
-							<Plus className="h-3.5 w-3.5 text-muted-foreground" />
-						</button>
-					</div>
-					{impliedNextItem && <NextItemMarker x={plusX} y={plusY + 18} />}
+					<EdgeInsertButton
+						edgeId={id}
+						x={sourceX}
+						y={fixedTargetY}
+						onInsert={onInsertNode}
+						variant="stub"
+						edgeHovered={hovered}
+					/>
+					{impliedNextItem && <NextItemMarker x={sourceX} y={fixedTargetY + 18} />}
 				</EdgeLabelRenderer>
 			</>
 		);
 	}
 
-	// Non-terminal edges: use RF UI ButtonEdge (bezier path with midpoint children)
+	// Non-terminal: straight vertical drop with a midpoint insert "+".
+	const [edgePath, labelX, labelY] = getStraightPath({
+		sourceX,
+		sourceY,
+		targetX,
+		targetY,
+	});
+
 	return (
-		<RFButtonEdge
-			{...props}
-			style={{ ...style, ...edgeStyle }}
-		>
-			<button
-				onClick={(e) => {
-					e.stopPropagation();
-					onInsertNode?.(id, "placeholder");
-				}}
-				className={cn(
-					"nodrag nopan w-7 h-7 rounded-full bg-background border border-border hover:border-primary flex items-center justify-center shadow-sm transition-colors cursor-pointer",
-					"opacity-0 hover:opacity-100 focus:opacity-100",
-				)}
-				aria-label="Add step"
-			>
-				<Plus className="h-3.5 w-3.5 text-muted-foreground" />
-			</button>
-		</RFButtonEdge>
+		<>
+			<BaseEdge
+				path={edgePath}
+				markerEnd={markerEnd}
+				interactionWidth={interactionWidth}
+				style={{ ...style, ...edgeStroke({ loop, hovered, selected }) }}
+			/>
+			<EdgeLabelRenderer>
+				<EdgeInsertButton
+					edgeId={id}
+					x={labelX}
+					y={labelY}
+					onInsert={onInsertNode}
+					edgeHovered={hovered}
+				/>
+			</EdgeLabelRenderer>
+		</>
 	);
 }

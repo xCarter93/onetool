@@ -11,20 +11,24 @@
 	   their own lighter card + border. */
 	background-color: var(--background);
 
+	/* Connector palette — the single source every edge stroke, arrowhead, and
+	   label pill reads from (see edge-style.ts). */
+	--flow-edge: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+	--flow-edge-strong: color-mix(in oklch, var(--muted-foreground) 85%, transparent);
+	--flow-edge-selected: var(--primary);
+	--flow-edge-loop: var(--color-orange-400);
+	--flow-edge-loop-strong: var(--color-orange-500);
+
 	/* Edges managed by React Flow. Custom edges set their own inline stroke
 	   (see edge-style.ts); this covers anything that falls through. */
-	--xy-edge-stroke-default: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
+	--xy-edge-stroke-default: var(--flow-edge);
 	--xy-edge-stroke-width-default: 1.5;
-	--xy-edge-stroke-selected-default: var(--primary);
+	--xy-edge-stroke-selected-default: var(--flow-edge-selected);
 
 	/* Drag-to-connect line (unused today — connections are derived — themed for
 	   consistency in case it is ever enabled). */
 	--xy-connectionline-stroke-default: var(--primary);
 	--xy-connectionline-stroke-width-default: 1.5;
-
-	/* Handles: BaseHandle paints the visible dot; these theme any default. */
-	--xy-handle-background-color-default: var(--secondary);
-	--xy-handle-border-color-default: var(--border);
 
 	/* Marquee / box selection. */
 	--xy-selection-background-color-default: color-mix(in oklch, var(--primary) 8%, transparent);
@@ -39,6 +43,49 @@
 	--xy-node-boxshadow-selected-default: none;
 }
 
+/* Connections are fully derived — port dots carry no meaning on this canvas,
+   so hide them. Handles keep their geometry (edges still anchor to them). */
+.react-flow .react-flow__handle {
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* Newly inserted nodes settle in with a soft fade-drop. The class is applied
+   to the node wrapper; the inner card animates so React Flow's positioning
+   transform on the wrapper is never touched. */
+.react-flow__node.flow-node-enter > * {
+	animation: flow-node-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes flow-node-enter {
+	from {
+		opacity: 0;
+		transform: translateY(-6px) scale(0.97);
+	}
+}
+
+/* Debug/test-run replay: the executed path flows. Applied per-edge via
+   className when a run traversed the edge. */
+.react-flow__edge.flow-edge-running .react-flow__edge-path {
+	stroke-dasharray: 6 4;
+	animation: flow-edge-dash 700ms linear infinite;
+}
+
+@keyframes flow-edge-dash {
+	to {
+		stroke-dashoffset: -10;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.react-flow__node.flow-node-enter > * {
+		animation: none;
+	}
+	.react-flow__edge.flow-edge-running .react-flow__edge-path {
+		animation: none;
+	}
+}
+
 /* Light: a slightly darker hairline than the workspace default so cards read
    cleanly against the near-white paper. */
 html:not(.dark) .react-flow {
@@ -47,14 +94,16 @@ html:not(.dark) .react-flow {
 
 /* Dark: the default card and canvas are near-identical in lightness, so nodes
    vanish into the background. Deepen the canvas AND raise the card to a clearly
-   lighter "raised surface", with a crisper border — scoped to the flow so the
+   lighter "raised surface", with a crisper border, scoped to the flow so the
    rest of the workspace is untouched. `bg-card` / `border-border` on the node
-   cards resolve these overrides (Tailwind v4 `@theme inline`). */
+   cards resolve these overrides (Tailwind v4 `@theme inline`).
+   The token itself is overridden (not just background-color) so on-canvas
+   maskers using bg-background (trigger eyebrow, label pills, plus buttons)
+   keep matching the deepened canvas; the loop hover emphasis also softens
+   against the deep canvas. */
 .dark .react-flow {
-	/* Override the token itself (not just background-color) so on-canvas
-	   maskers using bg-background (trigger eyebrow, branch-label pills,
-	   plus buttons) keep matching the deepened canvas. */
 	--background: oklch(0.125 0.022 264);
 	--card: oklch(0.205 0.009 264);
 	--border: oklch(0.32 0.012 270);
+	--flow-edge-loop-strong: var(--color-orange-300);
 }

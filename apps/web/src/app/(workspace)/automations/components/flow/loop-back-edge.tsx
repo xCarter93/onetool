@@ -1,8 +1,14 @@
 "use client";
 
 import { BaseEdge, type EdgeProps } from "@xyflow/react";
-import { LOOP_EDGE_STYLE } from "./edge-style";
+import { edgeStroke } from "./edge-style";
 
+/**
+ * Iteration return: from the loop body's tail, down past the terminal stub,
+ * left into the container's inner lane, up, and into the loop header's left
+ * handle. Non-insertable by design — appending to the body happens on the
+ * tail's own "+" stub, which is the same operation.
+ */
 export function LoopBackEdge({
 	sourceX,
 	sourceY,
@@ -11,6 +17,8 @@ export function LoopBackEdge({
 	data,
 	markerEnd,
 	style,
+	selected,
+	interactionWidth,
 }: EdgeProps) {
 	const offsetX = 50;
 	// Vertical run: hug the loop container's left lane when the derived layout
@@ -41,7 +49,8 @@ export function LoopBackEdge({
 		<BaseEdge
 			path={edgePath}
 			markerEnd={markerEnd}
-			style={{ ...style, ...LOOP_EDGE_STYLE }}
+			interactionWidth={interactionWidth}
+			style={{ ...style, ...edgeStroke({ loop: true, selected }) }}
 		/>
 	);
 }

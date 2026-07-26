@@ -16,7 +16,7 @@ export const TriggerPlaceholderNodeRF = memo(() => {
 					"w-[280px] border-dashed border-amber-300/50 dark:border-amber-400/30",
 					"cursor-pointer hover:border-amber-400 transition-colors",
 				)}
-				aria-label="Trigger placeholder -- click to configure"
+				aria-label="Trigger placeholder — click to configure"
 			>
 				<BaseNodeContent className="p-3">
 					<div className="flex items-center gap-3">

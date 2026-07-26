@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ReactFlow,
 	Background,
 	BackgroundVariant,
+	PanOnScrollMode,
 	useNodesState,
 	useEdgesState,
 	useReactFlow,
@@ -14,6 +15,8 @@ import {
 	type NodeMouseHandler,
 } from "@xyflow/react";
 import { Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { HoveredEdgeContext } from "./edge-hover-context";
 import { ZoomSlider } from "@/components/zoom-slider";
 import {
 	applyDerivedLayout,
@@ -85,6 +88,10 @@ const edgeTypes = {
 
 const LAYOUT_ANIMATION_MS = 220;
 
+// Module constant: React Flow syncs this into its store by reference equality,
+// so an inline literal would re-render every edge on every host render.
+const DEFAULT_EDGE_OPTIONS = { interactionWidth: 24 } as const;
+
 // Per-side fitView padding so auto-fit keeps nodes clear of the floating chrome:
 // the left WorkflowDrawer (~320px), the right config panel (~440px), and the
 // bottom assistant notch. maxZoom:1 means small graphs re-center rather than shrink.
@@ -126,14 +133,23 @@ function AutomationFlowInner({
 	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(incomingEdges);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+	const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
 
 	const nodesRef = useRef(nodes);
-	nodesRef.current = nodes;
+	// Synced in an effect (not during render) — defined before the layout
+	// effect below so it always sees fresh nodes.
+	useEffect(() => {
+		nodesRef.current = nodes;
+	}, [nodes]);
 	const animRef = useRef<number | null>(null);
 	const layoutSigRef = useRef("");
 	const idsSigRef = useRef(incomingNodes.map((n) => n.id).join(","));
 	// True at mount so the first measured layout refits (estimate heights may be off).
 	const pendingFitRef = useRef(true);
+	// Ids ever seen — newly appearing nodes get the flow-node-enter settle
+	// animation stamped on their very first commit (before measurement lands),
+	// so the animation's first visible frame is the node's first visible frame.
+	const seenIdsRef = useRef<Set<string>>(new Set(incomingNodes.map((n) => n.id)));
 
 	useEffect(() => {
 		return () => {
@@ -142,17 +158,45 @@ function AutomationFlowInner({
 	}, []);
 
 	useEffect(() => {
-		setNodes(incomingNodes);
-		setEdges(incomingEdges);
-
 		// Structural change (insert/delete/replace) -> refit once the measured
 		// re-layout lands. Measurement-only changes never move the viewport.
 		const idsSig = incomingNodes.map((n) => n.id).join(",");
+		let nodesToSet = incomingNodes;
 		if (idsSig !== idsSigRef.current) {
 			idsSigRef.current = idsSig;
 			pendingFitRef.current = true;
+			// An in-flight tween captured the pre-edit graph; its remaining
+			// frames would overwrite the new node array with the old one.
+			if (animRef.current !== null) {
+				cancelAnimationFrame(animRef.current);
+				animRef.current = null;
+			}
+			const entering = new Set<string>();
+			for (const n of incomingNodes) {
+				if (!seenIdsRef.current.has(n.id)) entering.add(n.id);
+			}
+			seenIdsRef.current = new Set(incomingNodes.map((n) => n.id));
+			if (entering.size > 0) {
+				nodesToSet = incomingNodes.map((n) =>
+					entering.has(n.id)
+						? { ...n, className: cn(n.className, "flow-node-enter") }
+						: n
+				);
+			}
 		}
+		setNodes(nodesToSet);
+		setEdges(incomingEdges);
 	}, [incomingEdges, incomingNodes, setEdges, setNodes]);
+
+	// An edge the pointer was over may have been removed (insert replaces it);
+	// validate at render so no edge is ever stuck in the hovered state.
+	const validHoveredEdgeId = useMemo(
+		() =>
+			hoveredEdgeId && edges.some((e) => e.id === hoveredEdgeId)
+				? hoveredEdgeId
+				: null,
+		[edges, hoveredEdgeId]
+	);
 
 	/**
 	 * Tween node positions to the new layout so edges (which derive from node
@@ -299,13 +343,25 @@ function AutomationFlowInner({
 
 	const handleNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {
-			// Ghost cards handle their own click (insert via their edge).
-			if (isContainerId(node.id) || isMergeId(node.id) || isGhostId(node.id))
+			// Ghost cards handle their own click (insert via their edge);
+			// terminal stubs' interaction is their edge's "+" button.
+			if (
+				isContainerId(node.id) ||
+				isMergeId(node.id) ||
+				isGhostId(node.id) ||
+				isTerminalId(node.id)
+			)
 				return;
 			onNodeClick?.(node.id);
 		},
 		[onNodeClick]
 	);
+
+	const handleEdgeMouseEnter = useCallback(
+		(_event: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id),
+		[]
+	);
+	const handleEdgeMouseLeave = useCallback(() => setHoveredEdgeId(null), []);
 
 	// Close context menu on any click outside or scroll
 	useEffect(() => {
@@ -345,11 +401,12 @@ function AutomationFlowInner({
 
 	const handlePaneClickInternal = useCallback(() => {
 		setContextMenu(null);
+		setHoveredEdgeId(null);
 		onPaneClick?.();
 	}, [onPaneClick]);
 
 	return (
-		<>
+		<HoveredEdgeContext.Provider value={validHoveredEdgeId}>
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
@@ -358,6 +415,8 @@ function AutomationFlowInner({
 				onNodeClick={handleNodeClick}
 				onPaneClick={handlePaneClickInternal}
 				onNodeContextMenu={handleNodeContextMenu}
+				onEdgeMouseEnter={handleEdgeMouseEnter}
+				onEdgeMouseLeave={handleEdgeMouseLeave}
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				fitView
@@ -366,9 +425,19 @@ function AutomationFlowInner({
 				nodesFocusable={true}
 				edgesFocusable={true}
 				nodesConnectable={false}
+				edgesReconnectable={false}
 				elementsSelectable={true}
 				panOnDrag={true}
-				zoomOnScroll={true}
+				// Wheel/trackpad scrolls the canvas like a page (the natural
+				// gesture for a vertical builder); pinch or ⌘/Ctrl+wheel zooms.
+				panOnScroll={true}
+				panOnScrollMode={PanOnScrollMode.Free}
+				zoomOnScroll={false}
+				zoomOnPinch={true}
+				zoomOnDoubleClick={false}
+				// Widened invisible hit path (custom edges forward it to
+				// BaseEdge) so hovering near an edge lights up its insert "+".
+				defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
 				deleteKeyCode={null}
 				minZoom={0.3}
 				maxZoom={2}
@@ -407,7 +476,7 @@ function AutomationFlowInner({
 					</button>
 				</div>
 			)}
-		</>
+		</HoveredEdgeContext.Provider>
 	);
 }
 

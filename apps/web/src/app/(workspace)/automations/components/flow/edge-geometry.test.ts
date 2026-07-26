@@ -1,38 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { getNoBranchGeometry, getAfterLastGeometry } from "./edge-geometry";
+import { AFTER_LAST_ENTRY_STUB, getAfterLastGeometry } from "./edge-geometry";
 
-describe("edge geometry", () => {
-	it("draws the No branch with a direct final segment into the target", () => {
-		const noBranch = getNoBranchGeometry(520, 420, 750, 560);
+describe("after-last geometry", () => {
+	it("ends with a vertical entry into the target's top handle", () => {
+		const g = getAfterLastGeometry(540, 300, 390, 700);
 
-		expect((noBranch.edgePath.match(/Q/g) || []).length).toBe(1);
-		expect(noBranch.edgePath.endsWith(`L 750 ${noBranch.effectiveTargetY}`)).toBe(true);
+		expect(g.edgePath.endsWith(`L 390 700`)).toBe(true);
+		// The horizontal run sits one entry stub above the target, so the final
+		// segment is a straight drop from directly above.
+		expect(g.midY).toBe(700 - AFTER_LAST_ENTRY_STUB);
 	});
 
-	it("keeps the After Last corridor to the outer right of a nested No branch when routing requires it", () => {
-		const noBranch = getNoBranchGeometry(520, 420, 750, 560);
-		const afterLast = getAfterLastGeometry(540, 300, 390, 700, {
-			routeRightX: noBranch.rightX + 48,
+	it("places the insert '+' on the entry drop, clear of the target's top edge", () => {
+		const g = getAfterLastGeometry(540, 300, 390, 700);
+
+		expect(g.plusX).toBe(390);
+		expect(g.plusY).toBeLessThan(700);
+		expect(g.plusY).toBeGreaterThan(g.midY);
+	});
+
+	it("keeps the entry drop drawable when the target is tighter than the layout guarantees", () => {
+		const sourceY = 300;
+		const targetY = 340; // pathologically close — derived layout never produces this
+		const g = getAfterLastGeometry(540, sourceY, 390, targetY);
+
+		// The run never rises above the source's exit corner, and always leaves
+		// room for the final corner + a visible drop.
+		expect(g.midY).toBeLessThanOrEqual(targetY - g.cr - 4);
+		expect(g.edgePath.endsWith(`L 390 ${targetY}`)).toBe(true);
+	});
+
+	it("keeps the After Last corridor to the outer right of a nested branch when routing requires it", () => {
+		const nestedRightX = 800;
+		const g = getAfterLastGeometry(540, 300, 390, 700, {
+			routeRightX: nestedRightX + 48,
 		});
 
-		expect(afterLast.rightX).toBeGreaterThan(noBranch.rightX);
+		expect(g.rightX).toBeGreaterThan(nestedRightX);
 	});
 
 	it("keeps the After Last corridor to the outer right of the full No placeholder width when routing requires it", () => {
 		const noPlaceholderCenterX = 750;
 		const noPlaceholderRightX = noPlaceholderCenterX + 130;
-		const afterLast = getAfterLastGeometry(540, 300, 390, 700, {
+		const g = getAfterLastGeometry(540, 300, 390, 700, {
 			routeRightX: noPlaceholderRightX + 48,
 		});
 
-		expect(afterLast.rightX).toBeGreaterThan(noPlaceholderRightX);
+		expect(g.rightX).toBeGreaterThan(noPlaceholderRightX);
 	});
 
 	it("honors an explicit After Last corridor override", () => {
-		const afterLast = getAfterLastGeometry(540, 300, 390, 700, {
-			routeRightX: 1080,
-		});
+		const g = getAfterLastGeometry(540, 300, 390, 700, { routeRightX: 1080 });
 
-		expect(afterLast.rightX).toBe(1080);
+		expect(g.rightX).toBe(1080);
 	});
 });

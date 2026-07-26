@@ -6,7 +6,7 @@ import {
 	Position,
 	type EdgeProps,
 } from "@xyflow/react";
-import { EDGE_STYLE, LOOP_EDGE_STYLE } from "./edge-style";
+import { edgeStroke } from "./edge-style";
 
 /**
  * Clearance below a terminal stub's "+" button before the connector starts:
@@ -29,6 +29,8 @@ export function MergeInEdge({
 	targetY,
 	data,
 	style,
+	selected,
+	interactionWidth,
 }: EdgeProps) {
 	const startY =
 		data?.fromTerminalStub === true ? sourceY + STUB_CLEARANCE : sourceY;
@@ -45,9 +47,10 @@ export function MergeInEdge({
 	return (
 		<BaseEdge
 			path={edgePath}
+			interactionWidth={interactionWidth}
 			style={{
 				...style,
-				...(data?.inLoop === true ? LOOP_EDGE_STYLE : EDGE_STYLE),
+				...edgeStroke({ loop: data?.inLoop === true, selected }),
 			}}
 		/>
 	);

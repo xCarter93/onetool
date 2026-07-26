@@ -7,10 +7,11 @@ import {
 	Position,
 	type EdgeProps,
 } from "@xyflow/react";
-import { Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { NextItemMarker } from "./next-item-marker";
-import { EDGE_STYLE, LOOP_EDGE_STYLE } from "./edge-style";
+import { edgeStroke } from "./edge-style";
+import { EdgeInsertButton } from "./edge-insert-button";
+import { EdgeLabelPill } from "./edge-label-pill";
+import { useEdgeHovered } from "./edge-hover-context";
 
 /** Vertical stem below the source before the fan-out turns toward its lane. */
 const FAN_DROP = 24;
@@ -28,11 +29,22 @@ function displayLabel(label: string | undefined, branchType: string): string {
  * Condition/loop branch edge, Salesforce-Flow style: a short stem drops from
  * the source, turns toward the branch lane with rounded corners, and runs
  * down the lane. The label pill sits on the fan-out corner at the lane's top;
- * the "+" lives in the lane (always visible on empty branches, hover-revealed
- * on populated ones).
+ * the always-visible "+" lives in the lane (prominent stub "+" on empty
+ * branches, compact inline "+" on populated ones).
  */
 export function BranchLabelEdge(props: EdgeProps) {
-	const { id, sourceX, sourceY, targetX, targetY, data, style } = props;
+	const {
+		id,
+		sourceX,
+		sourceY,
+		targetX,
+		targetY,
+		data,
+		style,
+		markerEnd,
+		selected,
+		interactionWidth,
+	} = props;
 	const branchType =
 		(data?.branchType as string) || (data?.variant as string) || "yes";
 	const rawLabel = data?.label as string | undefined;
@@ -43,8 +55,8 @@ export function BranchLabelEdge(props: EdgeProps) {
 	const ghostTarget = data?.ghostTarget === true;
 	const impliedNextItem = data?.impliedNextItem === true;
 	const isLoopBranch = branchType === "each";
-	const edgeStyle =
-		isLoopBranch || data?.inLoop === true ? LOOP_EDGE_STYLE : EDGE_STYLE;
+	const loop = isLoopBranch || data?.inLoop === true;
+	const hovered = useEdgeHovered(id);
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string) => void)
 		| undefined;
@@ -75,44 +87,30 @@ export function BranchLabelEdge(props: EdgeProps) {
 
 	return (
 		<>
-			<BaseEdge path={edgePath} style={{ ...style, ...edgeStyle }} />
+			<BaseEdge
+				path={edgePath}
+				markerEnd={markerEnd}
+				interactionWidth={interactionWidth}
+				style={{
+					...style,
+					...edgeStroke({ loop, dashed: isTerminal || ghostTarget, hovered, selected }),
+				}}
+			/>
 			<EdgeLabelRenderer>
 				{label && (
-					<div
-						className="nodrag nopan pointer-events-none absolute"
-						style={{
-							transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-						}}
-					>
-						<span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground select-none whitespace-nowrap">
-							{label}
-						</span>
-					</div>
+					<EdgeLabelPill x={labelX} y={labelY} loop={loop}>
+						{label}
+					</EdgeLabelPill>
 				)}
 				{!ghostTarget && (
-					<div
-						className="nodrag nopan pointer-events-auto absolute"
-						style={{
-							transform: `translate(-50%, -50%) translate(${plusX}px, ${plusY}px)`,
-							zIndex: 10,
-						}}
-					>
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								onInsertNode?.(id, "placeholder");
-							}}
-							className={cn(
-								"nodrag nopan w-7 h-7 rounded-full bg-background border border-border hover:border-primary flex items-center justify-center shadow-sm transition-colors cursor-pointer",
-								isTerminal
-									? "opacity-100"
-									: "opacity-0 hover:opacity-100 focus:opacity-100",
-							)}
-							aria-label="Add step"
-						>
-							<Plus className="h-3.5 w-3.5 text-muted-foreground" />
-						</button>
-					</div>
+					<EdgeInsertButton
+						edgeId={id}
+						x={plusX}
+						y={plusY}
+						onInsert={onInsertNode}
+						variant={isTerminal ? "stub" : "inline"}
+						edgeHovered={hovered}
+					/>
 				)}
 				{impliedNextItem && <NextItemMarker x={plusX} y={plusY + 18} />}
 			</EdgeLabelRenderer>

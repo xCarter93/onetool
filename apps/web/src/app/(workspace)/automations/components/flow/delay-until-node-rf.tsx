@@ -8,6 +8,37 @@ import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
 import type { DelayUntilNodeConfig } from "../../lib/node-types";
 
+/** Humanizes a stored static "until" value; falls back to the raw value if it doesn't parse as a date. */
+function formatUntilValue(value: string | number | boolean | null): string {
+	const date = new Date(value as never);
+	if (isNaN(date.getTime())) {
+		return `Resumes at ${value}`;
+	}
+	// Numeric values are UTC-midnight epoch ms (see value-input's
+	// localDateToUtcMidnightMs) and YYYY-MM-DD strings parse as UTC midnight —
+	// format those calendar dates in UTC or US timezones render a day early.
+	// T-bearing datetimes parse local and stay localized.
+	const utcCalendarDate =
+		typeof value === "number" ||
+		(typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value));
+	const dateLabel = date.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		...(utcCalendarDate ? { timeZone: "UTC" } : {}),
+	});
+	// Only string values (e.g. ISO datetimes) can carry a time component here.
+	const hasTimeComponent = typeof value === "string" && value.includes("T");
+	if (!hasTimeComponent) {
+		return `Resumes at ${dateLabel}`;
+	}
+	const timeLabel = date.toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+	});
+	return `Resumes at ${dateLabel}, ${timeLabel}`;
+}
+
 function getSummary(config: DelayUntilNodeConfig | undefined): {
 	title: string;
 	description: string;
@@ -18,7 +49,9 @@ function getSummary(config: DelayUntilNodeConfig | undefined): {
 		return { title: "Wait until a date", description: "Choose a date...", isConfigured: false };
 	}
 	const description =
-		until.kind === "var" ? `Resumes at ${until.path}` : `Resumes at ${until.value}`;
+		until.kind === "var"
+			? "Resumes at a date from earlier steps"
+			: formatUntilValue(until.value);
 	return { title: "Wait until a date", description, isConfigured: true };
 }
 
