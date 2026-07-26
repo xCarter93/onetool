@@ -3,6 +3,7 @@ import {
 	Briefcase,
 	ChartColumn,
 	FileText,
+	Globe,
 	Handshake,
 	Mail,
 	Receipt,
@@ -34,6 +35,8 @@ export type {
 	HelpSection,
 } from "@onetool/help-content";
 export { getAdjacentArticles, slugifyHeading };
+export { searchHelpArticles } from "@onetool/help-content";
+export type { HelpSearchHit } from "@onetool/help-content";
 
 export interface HelpCategory extends HelpCategoryData {
 	icon: LucideIcon;
@@ -51,6 +54,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 	"ai-assistant": Sparkles,
 	routing: Route,
 	reports: ChartColumn,
+	community: Globe,
 	"settings-and-team": Settings,
 	"mobile-app": Smartphone,
 };

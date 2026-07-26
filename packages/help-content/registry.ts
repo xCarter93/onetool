@@ -11,6 +11,7 @@ import { automationsArticles } from "./articles/automations";
 import { aiAssistantArticles } from "./articles/ai-assistant";
 import { routingArticles } from "./articles/routing";
 import { reportsArticles } from "./articles/reports";
+import { communityArticles } from "./articles/community";
 import { settingsAndTeamArticles } from "./articles/settings-and-team";
 import { mobileAppArticles } from "./articles/mobile-app";
 
@@ -26,6 +27,7 @@ const ARTICLES_BY_CATEGORY: Record<string, HelpArticle[]> = {
 	"ai-assistant": aiAssistantArticles,
 	routing: routingArticles,
 	reports: reportsArticles,
+	community: communityArticles,
 	"settings-and-team": settingsAndTeamArticles,
 	"mobile-app": mobileAppArticles,
 };

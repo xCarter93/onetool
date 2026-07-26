@@ -69,6 +69,12 @@ export const HELP_CATEGORY_META: HelpCategoryMeta[] = [
 		group: "features",
 	},
 	{
+		slug: "community",
+		name: "Community page",
+		description: "A free public page for your business that showcases your work and captures leads.",
+		group: "features",
+	},
+	{
 		slug: "settings-and-team",
 		name: "Settings and team",
 		description: "Branding, billing, payments setup, and who can access what.",

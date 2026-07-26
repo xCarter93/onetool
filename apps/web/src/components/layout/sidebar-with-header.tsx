@@ -5,6 +5,7 @@ import { AssistantNotch } from "@/components/assistant/assistant-notch";
 import { AssistantOpenerContext } from "@/components/assistant/assistant-opener-context";
 import { ReportConfigApplyProvider } from "@/components/assistant/report-config-apply-context";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
+import { HelpMenu } from "@/components/help/help-menu";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
@@ -65,8 +66,9 @@ function MobileFloatingHeader() {
 				<SidebarTrigger className="h-5 w-5 text-muted-foreground [&_svg]:size-3.5" />
 			</div>
 
-			{/* Right pill — notifications, settings */}
+			{/* Right pill — help, notifications, settings */}
 			<div className="pointer-events-auto flex items-center bg-sidebar/90 backdrop-blur-sm rounded-lg border border-border/40 px-1.5 py-1 [&_button]:p-1.5 [&_button]:rounded-md [&_svg]:size-3.5">
+				<HelpMenu />
 				<NotificationBell />
 				<SettingsPopover />
 			</div>
@@ -132,6 +134,7 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 							{/* Right side controls notch — both ears now that it no
 							    longer runs flush to the screen edge */}
 							<NotchedItem contentClassName="gap-1">
+								<HelpMenu />
 								<NotificationBell />
 								<SettingsPopover />
 							</NotchedItem>

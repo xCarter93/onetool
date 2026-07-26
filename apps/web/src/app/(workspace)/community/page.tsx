@@ -1,6 +1,7 @@
 "use client";
 
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import React, { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -517,6 +518,11 @@ function CommunityPageContent() {
 											</li>
 										))}
 									</ul>
+
+									<LearnMoreLink
+										article="community/your-public-page"
+										label="Learn more about community pages"
+									/>
 								</div>
 							</div>
 

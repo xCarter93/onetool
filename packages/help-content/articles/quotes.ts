@@ -96,7 +96,7 @@ export const quotesArticles: HelpArticle[] = [
 			},
 			{
 				question: "Can I delete a quote?",
-				answer: "Yes. Delete is available in the quote header in every status.",
+				answer: "Yes, unless an invoice has been created from it. Delete is available in the quote header in every status, but a converted quote cannot be deleted until you remove or unlink its invoice.",
 			},
 		],
 		related: [
@@ -141,7 +141,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "**Send for e-signature**, **Generate PDF**, and **Delete** are available in every status.",
+						text: "**Send for e-signature**, **Generate PDF**, and **Delete** are available in every status. The one exception: once an invoice has been created from a quote, the quote cannot be deleted until you remove or unlink that invoice.",
 					},
 				],
 			},
