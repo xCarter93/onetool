@@ -314,8 +314,8 @@ export default function TermsOfServicePage() {
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>Subscription payments are processed through Stripe</li>
 						<li>
-							Invoice payments from your clients are processed through Stripe
-							Checkout
+							Invoice payments from your clients are processed securely by
+							Stripe through your client portal
 						</li>
 						<li>
 							With Stripe Connect, payments go directly to your
@@ -323,7 +323,7 @@ export default function TermsOfServicePage() {
 						</li>
 						<li>
 							OneTool may deduct platform fees from invoice payments as
-							disclosed in your subscription plan
+							disclosed in your organization&apos;s payments settings
 						</li>
 						<li>
 							Payment processing is subject to Stripe&apos;s Terms of Service
@@ -333,6 +333,25 @@ export default function TermsOfServicePage() {
 							You agree to comply with Stripe&apos;s acceptable use policies
 						</li>
 					</ul>
+					<p className="text-muted-foreground leading-relaxed mt-4">
+						Your organization is the merchant of record for all client invoice
+						payments processed through your connected Stripe account, and is
+						solely responsible for refunds, chargebacks, and disputes arising
+						from those payments, including any associated fees. Payment
+						disputes are resolved directly between your organization, your
+						client, and Stripe; OneTool has no obligation to mediate, refund,
+						or indemnify either party in connection with a payment dispute. By
+						enabling payments, you also agree to the{" "}
+						<a
+							href="https://stripe.com/connect-account/legal"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="text-primary underline underline-offset-2"
+						>
+							Stripe Connected Account Agreement
+						</a>
+						, as amended by Stripe from time to time.
+					</p>
 					<p className="text-muted-foreground leading-relaxed mt-4">
 						You are responsible for ensuring compliance with all applicable laws
 						regarding payment processing in your jurisdiction. OneTool does not

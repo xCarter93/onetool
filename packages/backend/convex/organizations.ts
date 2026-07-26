@@ -655,10 +655,22 @@ export const updateStripeConnectStatusInternal = systemMutation({
 		detailsSubmitted: v.boolean(),
 		requirementsCurrentlyDue: v.array(v.string()),
 		requirementsDisabledReason: v.optional(v.string()),
+		// Stripe event `created` (epoch seconds) — see staleness guard below.
+		eventCreatedSec: v.optional(v.number()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
 		const org = await ctx.db.get(ctx.orgId);
+		// Stripe does not guarantee webhook ordering: drop snapshots older than
+		// the last applied one so a delayed redelivery can't resurrect stale
+		// charges/requirements state.
+		if (
+			args.eventCreatedSec !== undefined &&
+			org?.stripeStatusEventCreated !== undefined &&
+			args.eventCreatedSec < org.stripeStatusEventCreated
+		) {
+			return null;
+		}
 		const wasChargesEnabled = org?.stripeChargesEnabled === true;
 		await ctx.db.patch(ctx.orgId, {
 			stripeChargesEnabled: args.chargesEnabled,
@@ -667,6 +679,9 @@ export const updateStripeConnectStatusInternal = systemMutation({
 			stripeRequirementsCurrentlyDue: args.requirementsCurrentlyDue,
 			stripeRequirementsDisabledReason: args.requirementsDisabledReason,
 			stripeStatusUpdatedAt: Date.now(),
+			...(args.eventCreatedSec !== undefined
+				? { stripeStatusEventCreated: args.eventCreatedSec }
+				: {}),
 		});
 		// Fire once on the false->true charges_enabled edge (actor-less webhook).
 		if (!wasChargesEnabled && args.chargesEnabled) {
@@ -722,6 +737,9 @@ export const syncStripeConnectStatusFromLive = userMutation({
 			stripePayoutsEnabled: args.payoutsEnabled,
 			stripeDetailsSubmitted: args.detailsSubmitted,
 			stripeStatusUpdatedAt: Date.now(),
+			// A live API read is authoritative "now": advance the event watermark
+			// so a delayed older webhook can't overwrite this fresher snapshot.
+			stripeStatusEventCreated: Math.floor(Date.now() / 1000),
 		};
 
 		// Only touch bank fields when Stripe returned an external account, so a
@@ -832,11 +850,21 @@ export const updateStripeCapabilityInternal = systemMutation({
 		),
 		requirementsCurrentlyDue: v.array(v.string()),
 		requirementsDisabledReason: v.optional(v.string()),
+		// Stripe event `created` (epoch seconds) — see staleness guard below.
+		eventCreatedSec: v.optional(v.number()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
 		const org = await ctx.db.get(ctx.orgId);
 		if (!org) return null;
+		// Same out-of-order guard as updateStripeConnectStatusInternal.
+		if (
+			args.eventCreatedSec !== undefined &&
+			org.stripeStatusEventCreated !== undefined &&
+			args.eventCreatedSec < org.stripeStatusEventCreated
+		) {
+			return null;
+		}
 
 		// Payout capability events still use the v1 "transfers" capability id.
 		const isCharges = args.capabilityId === "card_payments";
@@ -856,9 +884,14 @@ export const updateStripeCapabilityInternal = systemMutation({
 		const isDegradation = priorValue === true && newValue === false;
 
 		// Only patch requirement fields on degradation to avoid clobbering account.updated.
+		// Advancing the watermark here is required: without it an older
+		// account.updated snapshot would still pass the guard and undo this event.
 		const patch: Record<string, unknown> = {
 			[fieldName]: newValue,
 			stripeStatusUpdatedAt: Date.now(),
+			...(args.eventCreatedSec !== undefined
+				? { stripeStatusEventCreated: args.eventCreatedSec }
+				: {}),
 		};
 		if (isDegradation) {
 			patch.stripeRequirementsCurrentlyDue = args.requirementsCurrentlyDue;
@@ -879,6 +912,48 @@ export const updateStripeCapabilityInternal = systemMutation({
 				}
 			);
 		}
+		return null;
+	},
+});
+
+// The connected account revoked the platform's access (account.application.
+// deauthorized): disable payment gating immediately. The account id is kept
+// for the audit trail; re-onboarding overwrites it.
+export const markStripeConnectDeauthorizedInternal = systemMutation({
+	args: {
+		eventCreatedSec: v.optional(v.number()),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const org = await ctx.db.get(ctx.orgId);
+		if (!org) return null;
+		// Same out-of-order guard as the other Stripe status mutations.
+		if (
+			args.eventCreatedSec !== undefined &&
+			org.stripeStatusEventCreated !== undefined &&
+			args.eventCreatedSec < org.stripeStatusEventCreated
+		) {
+			return null;
+		}
+		await ctx.db.patch(ctx.orgId, {
+			stripeChargesEnabled: false,
+			stripePayoutsEnabled: false,
+			stripeRequirementsDisabledReason: "platform.disconnected",
+			stripeStatusUpdatedAt: Date.now(),
+			...(args.eventCreatedSec !== undefined
+				? { stripeStatusEventCreated: args.eventCreatedSec }
+				: {}),
+		});
+		await ctx.runMutation(
+			internal.notifications.createWebhookNotificationInternal,
+			{
+				orgId: ctx.orgId,
+				type: "stripe_disconnected",
+				priority: "high",
+				message:
+					"Your Stripe account disconnected from OneTool, so invoice payments are disabled. Re-run onboarding from the Payments tab to reconnect.",
+			}
+		);
 		return null;
 	},
 });

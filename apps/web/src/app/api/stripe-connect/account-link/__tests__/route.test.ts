@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { ConnectContext } from "@/lib/stripeConnect";
 
 // Hoisted mocks --------------------------------------------------------------
@@ -52,9 +52,23 @@ function ctxWithAccount(accountId: string | null): ConnectContext {
 	};
 }
 
+let originalAppUrl: string | undefined;
+
 beforeEach(() => {
 	accountLinksCreateMock.mockReset();
 	getOrgConnectAccountForCallerMock.mockReset();
+	// The route derives the redirect origin from NEXT_PUBLIC_APP_URL, never
+	// from the client-controlled Origin header.
+	originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+	process.env.NEXT_PUBLIC_APP_URL = "https://example.com";
+});
+
+afterEach(() => {
+	if (originalAppUrl === undefined) {
+		delete process.env.NEXT_PUBLIC_APP_URL;
+	} else {
+		process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+	}
 });
 
 describe("POST /api/stripe-connect/account-link", () => {
@@ -116,6 +130,25 @@ describe("POST /api/stripe-connect/account-link", () => {
 		const [params] = accountLinksCreateMock.mock.calls[0];
 		expect(params.use_case.account_onboarding.return_url).toBe(
 			"https://example.com/organization/profile?tab=payments"
+		);
+	});
+
+	it("ignores an attacker-controlled Origin header when building return/refresh URLs", async () => {
+		getOrgConnectAccountForCallerMock.mockResolvedValue(
+			ctxWithAccount("acct_123")
+		);
+		accountLinksCreateMock.mockResolvedValue({
+			url: "https://connect.stripe.com/setup/s/AcctLinkUrl",
+			expires_at: "2026-05-13T10:00:00Z",
+		});
+		const { POST } = await import("../route");
+		await POST(makeReq({ body: {}, origin: "https://evil.example" }));
+		const [params] = accountLinksCreateMock.mock.calls[0];
+		expect(params.use_case.account_onboarding.return_url).toBe(
+			"https://example.com/organization/profile?tab=payments"
+		);
+		expect(params.use_case.account_onboarding.refresh_url).toBe(
+			"https://example.com/organization/profile?tab=payments&refresh=1"
 		);
 	});
 

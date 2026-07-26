@@ -174,12 +174,20 @@ function bytesToHex(bytes: ArrayBuffer): string {
 
 /**
  * Verify Stripe's timestamped v1 HMAC signature without loading the Stripe SDK.
+ *
+ * Accepts multiple candidate secrets so a signing-secret rotation can stage
+ * the new secret alongside the old one with zero dropped events (Stripe does
+ * not retry 400s).
  */
 export async function verifyStripeWebhook(
 	request: Request,
-	secret: string,
+	secret: string | readonly string[],
 	nowMs: number = Date.now()
 ): Promise<WebhookVerificationResult<Record<string, unknown>>> {
+	const secrets = typeof secret === "string" ? [secret] : secret;
+	if (secrets.length === 0) {
+		return { valid: false, error: "No webhook secret configured" };
+	}
 	const rawBody = await request.text();
 	const sigHeader = request.headers.get("stripe-signature");
 
@@ -213,23 +221,26 @@ export async function verifyStripeWebhook(
 	const signedPayload = `${timestamp}.${rawBody}`;
 
 	try {
-		const key = await crypto.subtle.importKey(
-			"raw",
-			encoder.encode(secret),
-			{ name: "HMAC", hash: "SHA-256" },
-			false,
-			["sign"]
-		);
-		const expectedBytes = await crypto.subtle.sign(
-			"HMAC",
-			key,
-			encoder.encode(signedPayload)
-		);
-		const expectedHex = bytesToHex(expectedBytes);
-
-		const matched = signatures.some((sig) =>
-			constantTimeEqualHex(sig, expectedHex)
-		);
+		let matched = false;
+		for (const candidate of secrets) {
+			const key = await crypto.subtle.importKey(
+				"raw",
+				encoder.encode(candidate),
+				{ name: "HMAC", hash: "SHA-256" },
+				false,
+				["sign"]
+			);
+			const expectedBytes = await crypto.subtle.sign(
+				"HMAC",
+				key,
+				encoder.encode(signedPayload)
+			);
+			const expectedHex = bytesToHex(expectedBytes);
+			if (signatures.some((sig) => constantTimeEqualHex(sig, expectedHex))) {
+				matched = true;
+				break;
+			}
+		}
 		if (!matched) {
 			return { valid: false, error: "Stripe webhook signature mismatch" };
 		}

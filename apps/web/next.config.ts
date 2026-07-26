@@ -19,14 +19,21 @@ const cspReportOnly = [
 	"default-src 'self'",
 	// 'unsafe-inline'/'unsafe-eval' stay for now: Next.js emits inline bootstrap
 	// scripts. Replace with a nonce before enforcing.
-	`script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com`,
+	// connect-js.stripe.com: Connect embedded components (payouts management).
+	`script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.js.stripe.com https://connect-js.stripe.com`,
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' https: data: blob:",
-	"font-src 'self' data:",
-	`connect-src 'self'${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}${process.env.NEXT_PUBLIC_POSTHOG_HOST ? ` ${process.env.NEXT_PUBLIC_POSTHOG_HOST}` : ""}`, 
+	// fonts.gstatic.com: Outfit font files referenced by the Google Fonts CSS
+	// passed to Connect embedded components via `fonts: [{ cssSrc }]`.
+	"font-src 'self' data: https://fonts.gstatic.com",
+	// api/errors/m.stripe: Stripe.js Payment Element XHR + fraud-signal beacons.
+	// fonts.googleapis.com: Connect.js fetches the `fonts` cssSrc from the parent
+	// page, so the stylesheet URL must be allowed in connect-src (Stripe docs).
+	`connect-src 'self' https://api.stripe.com https://errors.stripe.com https://m.stripe.com https://m.stripe.network https://fonts.googleapis.com${convexHostname ? ` https://${convexHostname} wss://${convexHostname}` : ""}${process.env.NEXT_PUBLIC_POSTHOG_HOST ? ` ${process.env.NEXT_PUBLIC_POSTHOG_HOST}` : ""}`,
 	// app.boldsign.com: embedded e-signature editor (quotes/[quoteId]/sign).
 	// Convex origin: PDF previews iframe file-storage URLs (quote/invoice sidebars).
-	`frame-src https://js.stripe.com https://hooks.stripe.com https://app.boldsign.com${convexHostname ? ` https://${convexHostname}` : ""}`,
+	// m.stripe.network: Stripe.js fraud-detection frame; connect-js: embedded Connect UI.
+	`frame-src https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://connect-js.stripe.com https://m.stripe.network https://app.boldsign.com${convexHostname ? ` https://${convexHostname}` : ""}`,
 	"frame-ancestors 'none'",
 	"base-uri 'self'",
 	"form-action 'self' https://checkout.stripe.com",

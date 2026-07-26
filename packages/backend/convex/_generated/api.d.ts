@@ -98,6 +98,7 @@ import type * as lib_schemaIntrospection from "../lib/schemaIntrospection.js";
 import type * as lib_shared from "../lib/shared.js";
 import type * as lib_storage from "../lib/storage.js";
 import type * as lib_stripe from "../lib/stripe.js";
+import type * as lib_stripeSdk from "../lib/stripeSdk.js";
 import type * as lib_tsp from "../lib/tsp.js";
 import type * as lib_webhooks from "../lib/webhooks.js";
 import type * as lib_workflowTypes from "../lib/workflowTypes.js";
@@ -255,6 +256,7 @@ declare const fullApi: ApiFromModules<{
   "lib/shared": typeof lib_shared;
   "lib/storage": typeof lib_storage;
   "lib/stripe": typeof lib_stripe;
+  "lib/stripeSdk": typeof lib_stripeSdk;
   "lib/tsp": typeof lib_tsp;
   "lib/webhooks": typeof lib_webhooks;
   "lib/workflowTypes": typeof lib_workflowTypes;

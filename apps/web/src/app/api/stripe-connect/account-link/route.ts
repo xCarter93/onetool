@@ -23,8 +23,18 @@ export async function POST(request: NextRequest) {
 		const body = (await request.json().catch(() => ({}))) as {
 			returnPath?: string;
 		};
+		// The Origin header is client-controlled and feeds Stripe's post-onboarding
+		// redirect target, so never trust it directly: use the configured app
+		// origin, and fall back to a localhost Origin only when none is configured.
+		const appOrigin = process.env.NEXT_PUBLIC_APP_URL
+			? new URL(process.env.NEXT_PUBLIC_APP_URL).origin
+			: null;
+		const requestOrigin = request.headers.get("origin");
 		const origin =
-			request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL;
+			appOrigin ??
+			(requestOrigin && /^https?:\/\/localhost(:\d+)?$/.test(requestOrigin)
+				? requestOrigin
+				: null);
 		if (!origin) {
 			return NextResponse.json(
 				{

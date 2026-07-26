@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { env } from "@/env";
 
 const API_VERSION = "2026-04-22.dahlia" as const;
 
@@ -6,21 +7,13 @@ const API_VERSION = "2026-04-22.dahlia" as const;
 
 /**
  * Shared Stripe client factory.
- * - Validates the secret key is present.
+ * - Key presence is enforced at boot by the t3-env schema.
  * - Pins the requested API version.
  * - Enables built-in retry on transient network/5xx errors.
  */
 export function getStripeClient() {
-	const secretKey = process.env.STRIPE_SECRET_KEY;
-
-	if (!secretKey) {
-		throw new Error(
-			"STRIPE_SECRET_KEY is missing. Add it to your environment and redeploy."
-		);
-	}
-
 	// Instantiate per-call to avoid accidental reuse with stale config in dev.
-	return new Stripe(secretKey, {
+	return new Stripe(env.STRIPE_SECRET_KEY, {
 		apiVersion: API_VERSION,
 		maxNetworkRetries: 2,
 	});

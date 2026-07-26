@@ -142,6 +142,9 @@ export default defineSchema({
 		stripeRequirementsCurrentlyDue: v.optional(v.array(v.string())),
 		stripeRequirementsDisabledReason: v.optional(v.string()),
 		stripeStatusUpdatedAt: v.optional(v.number()),
+		// Stripe event `created` (epoch seconds) of the last applied status write.
+		// Guards against out-of-order webhook redeliveries clobbering fresher state.
+		stripeStatusEventCreated: v.optional(v.number()),
 		// External bank-account fingerprint from Stripe webhooks.
 		stripeExternalAccountLast4: v.optional(v.string()),
 		stripeExternalAccountBankName: v.optional(v.string()),
@@ -695,6 +698,9 @@ export default defineSchema({
 		// Webhook-driven Stripe lifecycle state.
 		disputed: v.optional(v.boolean()),
 		disputeId: v.optional(v.string()),
+		// Latest Stripe dispute status (needs_response, under_review, won, lost, …).
+		disputeStatus: v.optional(v.string()),
+		disputeResolvedAt: v.optional(v.number()),
 		refundedAt: v.optional(v.number()),
 		// Shared counter — advances for any flow that mints a new Stripe object (Checkout Session or PaymentIntent).
 		checkoutAttemptCounter: v.optional(v.number()),
@@ -851,12 +857,15 @@ export default defineSchema({
 			// Stripe webhook lifecycle notifications.
 			v.literal("payment_failed"),
 			v.literal("dispute_created"),
+			v.literal("dispute_resolved"),
 			v.literal("charge_refunded"),
+			v.literal("refund_failed"),
 			// Stripe Connect lifecycle additions.
 			v.literal("payout_paid"),
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
 			v.literal("bank_account_changed"),
+			v.literal("stripe_disconnected"),
 			// Workflow-automation messages (send_notification / send_team_message).
 			v.literal("automation_message"),
 			// Workflow-automation production failure alert (admins, in-app only —

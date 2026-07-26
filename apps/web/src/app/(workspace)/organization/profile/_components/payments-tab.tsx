@@ -3,6 +3,7 @@
 import {
 	useCallback,
 	useEffect,
+	useId,
 	useRef,
 	useState,
 	type ReactNode,
@@ -15,13 +16,19 @@ import {
 	ChevronDown,
 	Wallet,
 	ShieldCheck,
+	ShieldAlert,
+	Settings2,
 	ListChecks,
 	Landmark,
 } from "lucide-react";
 import {
 	ConnectPayouts,
+	ConnectDisputesList,
+	ConnectAccountManagement,
+	ConnectNotificationBanner,
 	ConnectComponentsProvider,
 } from "@stripe/react-connect-js";
+import type { StripeConnectInstance } from "@stripe/connect-js";
 
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/domain/status-badge";
@@ -69,6 +76,9 @@ export function PaymentsTab() {
 	const [onboardingLoading, setOnboardingLoading] = useState(false);
 	const [statusLoading, setStatusLoading] = useState(false);
 	const [payoutsOpen, setPayoutsOpen] = useState(false);
+	const [disputesOpen, setDisputesOpen] = useState(false);
+	const [accountMgmtOpen, setAccountMgmtOpen] = useState(false);
+	const [bannerNoticeCount, setBannerNoticeCount] = useState(0);
 	const [stripeStatus, setStripeStatus] = useState<StripeAccountStatus | null>(
 		null,
 	);
@@ -271,8 +281,11 @@ export function PaymentsTab() {
 		: 0;
 	const currentlyDue = stripeStatus?.requirements?.currently_due ?? [];
 
-	return (
-		<div className="space-y-6">
+	const connectAccountId = organization?.stripeConnectAccountId;
+
+	const renderTab = (connectInstance: StripeConnectInstance | null) => (
+		// pb-4 reserves room for the floating collapse toggle on the last frame.
+		<div className="space-y-6 pb-4">
 			<SectionHeading
 				title="Payments"
 				description="Onboard to Stripe to accept payments on behalf of your organization. Status is fetched live from Stripe each time you open this tab."
@@ -379,6 +392,26 @@ export function PaymentsTab() {
 						)}
 					</FrameHeader>
 
+					{/* Stripe-maintained requirement/risk alerts. Renders nothing unless
+					    Stripe has an open task, so the wrapper only pads once notices
+					    exist — never hide it, or the count callback would starve. */}
+					{connectInstance && (
+						<div
+							className={cn(
+								"px-(--frame-panel-header-px)",
+								bannerNoticeCount > 0 && "pb-2",
+							)}
+						>
+							<ConnectComponentsProvider connectInstance={connectInstance}>
+								<ConnectNotificationBanner
+									onNotificationsChange={({ total }) =>
+										setBannerNoticeCount(total)
+									}
+								/>
+							</ConnectComponentsProvider>
+						</div>
+					)}
+
 					{stripeStatus && (
 						<FramePanel className="isolate overflow-hidden [&::before]:z-0">
 							<DotField className="text-primary opacity-[0.35] [mask-image:radial-gradient(120%_140%_at_100%_0%,black,transparent_75%)]" />
@@ -463,6 +496,51 @@ export function PaymentsTab() {
 							)}
 						</FrameFooter>
 					)}
+
+					{/* Stripe-hosted management surfaces live inside this container as
+					    collapsible rows. Hidden until onboarding completes — Stripe
+					    rejects sessions for these components on restricted accounts.
+					    Payouts keeps the change-bank scroll target id. */}
+					{onboardingComplete && isOwner && connectAccountId && (
+						<>
+							<ConnectSection
+								id="payouts"
+								icon={<Wallet className="size-4" aria-hidden="true" />}
+								title="Payouts"
+								description="Payout schedule, history, and instant or manual payouts."
+								open={payoutsOpen}
+								onToggle={() => setPayoutsOpen((v) => !v)}
+								connectInstance={connectInstance}
+								loadingLabel="Loading payouts..."
+							>
+								<ConnectPayouts />
+							</ConnectSection>
+							<ConnectSection
+								id="disputes"
+								icon={<ShieldAlert className="size-4" aria-hidden="true" />}
+								title="Disputes"
+								description="Respond to chargebacks — submit evidence, accept, or refund to resolve."
+								open={disputesOpen}
+								onToggle={() => setDisputesOpen((v) => !v)}
+								connectInstance={connectInstance}
+								loadingLabel="Loading disputes..."
+							>
+								<ConnectDisputesList />
+							</ConnectSection>
+							<ConnectSection
+								id="account-management"
+								icon={<Settings2 className="size-4" aria-hidden="true" />}
+								title="Account details"
+								description="Update the business and verification details Stripe has on file."
+								open={accountMgmtOpen}
+								onToggle={() => setAccountMgmtOpen((v) => !v)}
+								connectInstance={connectInstance}
+								loadingLabel="Loading account details..."
+							>
+								<ConnectAccountManagement />
+							</ConnectSection>
+						</>
+					)}
 				</Frame>
 			)}
 
@@ -470,147 +548,234 @@ export function PaymentsTab() {
 			    left as its own frame so it doesn't read as a card-within-a-card. */}
 			<PaymentsFlow />
 
-			{/* Fees & reference */}
+			{/* Fees & reference — collapsed by default; badges surface what needs
+			    attention without opening. */}
 			<div className="grid items-start gap-6 lg:grid-cols-2">
-				<Frame>
-					<FrameHeader>
-						<FrameTitle className="text-base">
-							Fees and responsibilities
-						</FrameTitle>
-						<FrameDescription className="text-xs">
-							Who is charged, how much, and who sets it.
-						</FrameDescription>
-					</FrameHeader>
-					<FramePanel>
-						<FeeDisclosureTable />
-					</FramePanel>
-				</Frame>
-				<div className="space-y-6">
-					{hasAccount && (
-						<Frame>
-							<FrameHeader className="flex flex-row items-center justify-between gap-3">
-								<div className="flex items-center gap-2.5">
-									<span className="grid size-9 shrink-0 place-content-center rounded-lg border border-border bg-muted text-muted-foreground">
-										<ListChecks className="size-4" aria-hidden="true" />
-									</span>
-									<FrameTitle className="text-base">
-										Onboarding requirements
-									</FrameTitle>
-								</div>
-								{Boolean(stripeStatus) && currentlyDue.length > 0 && (
-									<Badge
-										variant="warning-light"
-										radius="full"
-										className="shrink-0 px-2.5"
-									>
-										{currentlyDue.length} required
-									</Badge>
-								)}
-							</FrameHeader>
-							<FramePanel>
-								<RequirementsSummary
-									loaded={Boolean(stripeStatus)}
-									currentlyDue={currentlyDue}
-								/>
-							</FramePanel>
-						</Frame>
-					)}
-					<Frame>
-						<FrameHeader>
-							<FrameTitle className="text-base">Learn more</FrameTitle>
-							<FrameDescription className="text-xs">
-								Stripe documentation, opens in a new tab.
-							</FrameDescription>
-						</FrameHeader>
-						<FramePanel>
-							<StripeDocLinks />
-						</FramePanel>
-					</Frame>
-				</div>
-			</div>
-
-			{/* Payouts (Stripe Connect embedded component) — keeps its own
-			    collapsible header + the change-bank scroll target */}
-			{onboardingComplete && isOwner && organization?.stripeConnectAccountId && (
-				<Frame>
-					<h3 id="payouts-accordion-header" className="sr-only">
-						Payouts
-					</h3>
-					<button
-						type="button"
-						onClick={() => setPayoutsOpen((v) => !v)}
-						aria-expanded={payoutsOpen}
-						aria-controls="payouts-accordion-panel"
-						className="group flex w-full items-center justify-between gap-4 rounded-(--frame-radius) px-(--frame-panel-header-px) py-(--frame-panel-header-py) text-left transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-					>
-						<div className="flex min-w-0 items-center gap-3">
-							<span className="grid size-9 shrink-0 place-content-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
-								<Wallet className="size-4" aria-hidden="true" />
+				<CollapsibleFrame
+					title="Fees and responsibilities"
+					description="Who is charged, how much, and who sets it."
+					className={hasAccount ? undefined : "lg:col-span-2"}
+				>
+					<FeeDisclosureTable />
+				</CollapsibleFrame>
+				{hasAccount && (
+					<CollapsibleFrame
+						title="Onboarding requirements"
+						description="What Stripe still needs from your account."
+						icon={
+							<span className="grid size-9 shrink-0 place-content-center rounded-lg border border-border bg-muted text-muted-foreground">
+								<ListChecks className="size-4" aria-hidden="true" />
 							</span>
-							<div className="min-w-0">
-								<div className="flex items-center gap-2">
-									<p className="text-sm font-semibold text-foreground">
-										Payouts
-									</p>
-									<span className="whitespace-nowrap rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-										via Stripe
-									</span>
-								</div>
-								<p className="text-sm text-muted-foreground">
-									Payout schedule, history, and instant or manual payouts.
-								</p>
-							</div>
-						</div>
-						<div className="flex shrink-0 items-center gap-2 text-sm font-medium text-muted-foreground group-hover:text-foreground">
-							<span className="hidden sm:inline">
-								{payoutsOpen ? "Hide" : "Show"}
-							</span>
-							<ChevronDown
-								className={cn(
-									"size-4 transition-transform duration-200",
-									payoutsOpen && "rotate-180",
-								)}
-								aria-hidden="true"
-							/>
-						</div>
-					</button>
-					<div
-						id="payouts-accordion-panel"
-						role="region"
-						aria-labelledby="payouts-accordion-header"
-						hidden={!payoutsOpen}
-					>
-						{payoutsOpen && (
-							<FramePanel>
-								<StripeConnectProvider
-									accountId={organization.stripeConnectAccountId}
+						}
+						meta={
+							Boolean(stripeStatus) &&
+							currentlyDue.length > 0 && (
+								<Badge
+									variant="warning-light"
+									radius="full"
+									className="shrink-0 px-2.5"
 								>
-									{(connectInstance) => {
-										if (!connectInstance) {
-											return (
-												<div className="flex items-center justify-center py-8">
-													<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-													<span className="ml-2 text-sm text-muted-foreground">
-														Loading payouts...
-													</span>
-												</div>
-											);
-										}
-										return (
-											<ConnectComponentsProvider
-												connectInstance={connectInstance}
-											>
-												<ConnectPayouts />
-											</ConnectComponentsProvider>
-										);
-									}}
-								</StripeConnectProvider>
-							</FramePanel>
+									{currentlyDue.length} required
+								</Badge>
+							)
+						}
+					>
+						<RequirementsSummary
+							loaded={Boolean(stripeStatus)}
+							currentlyDue={currentlyDue}
+						/>
+					</CollapsibleFrame>
+				)}
+			</div>
+			<CollapsibleFrame
+				title="Learn more"
+				description="Stripe documentation, opens in a new tab."
+			>
+				<StripeDocLinks columns={2} />
+			</CollapsibleFrame>
+		</div>
+	);
+
+	// One Connect session powers the banner and every embedded section.
+	if (hasAccount && isOwner && connectAccountId) {
+		return (
+			<StripeConnectProvider accountId={connectAccountId}>
+				{(connectInstance) => renderTab(connectInstance)}
+			</StripeConnectProvider>
+		);
+	}
+	return renderTab(null);
+}
+
+/** Collapsible panel row inside the main status frame, hosting one Stripe
+ *  Connect embedded component. */
+function ConnectSection({
+	id,
+	icon,
+	title,
+	description,
+	open,
+	onToggle,
+	connectInstance,
+	loadingLabel,
+	children,
+}: {
+	id: string;
+	icon: ReactNode;
+	title: string;
+	description: string;
+	open: boolean;
+	onToggle: () => void;
+	connectInstance: StripeConnectInstance | null;
+	loadingLabel: string;
+	children: ReactNode;
+}) {
+	return (
+		<FramePanel className="p-0" fit>
+			<h3 id={`${id}-accordion-header`} className="sr-only">
+				{title}
+			</h3>
+			<button
+				type="button"
+				onClick={onToggle}
+				aria-expanded={open}
+				aria-controls={`${id}-accordion-panel`}
+				className="group flex w-full items-center justify-between gap-4 px-(--frame-panel-px) py-3 text-left transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+			>
+				<div className="flex min-w-0 items-center gap-3">
+					<span className="grid size-9 shrink-0 place-content-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+						{icon}
+					</span>
+					<div className="min-w-0">
+						<div className="flex items-center gap-2">
+							<p className="text-sm font-semibold text-foreground">{title}</p>
+							<span className="whitespace-nowrap rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+								via Stripe
+							</span>
+						</div>
+						<p className="text-sm text-muted-foreground">{description}</p>
+					</div>
+				</div>
+				<div className="flex shrink-0 items-center gap-2 text-sm font-medium text-muted-foreground group-hover:text-foreground">
+					<span className="hidden sm:inline">{open ? "Hide" : "Show"}</span>
+					<ChevronDown
+						className={cn(
+							"size-4 transition-transform duration-200",
+							open && "rotate-180",
+						)}
+						aria-hidden="true"
+					/>
+				</div>
+			</button>
+			<div
+				id={`${id}-accordion-panel`}
+				role="region"
+				aria-labelledby={`${id}-accordion-header`}
+				hidden={!open}
+			>
+				{open && (
+					<div className="border-t border-border/60 px-(--frame-panel-px) py-(--frame-panel-py)">
+						{!connectInstance ? (
+							<div className="flex items-center justify-center py-8">
+								<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+								<span className="ml-2 text-sm text-muted-foreground">
+									{loadingLabel}
+								</span>
+							</div>
+						) : (
+							<ConnectComponentsProvider connectInstance={connectInstance}>
+								{children}
+							</ConnectComponentsProvider>
 						)}
 					</div>
-				</Frame>
-			)}
-		</div>
+				)}
+			</div>
+		</FramePanel>
+	);
+}
+
+/** Collapsible content frame styled after the sidebar "Getting started" card:
+ *  clickable header, height-animated panel, floating round chevron toggle
+ *  straddling the bottom edge. */
+function CollapsibleFrame({
+	title,
+	description,
+	icon,
+	meta,
+	className,
+	children,
+}: {
+	title: string;
+	description: string;
+	icon?: ReactNode;
+	meta?: ReactNode;
+	className?: string;
+	children: ReactNode;
+}) {
+	const [open, setOpen] = useState(false);
+	const panelId = useId();
+	return (
+		// overflow-visible + pb-1 so the floating toggle can hang off the bottom
+		// edge; surrounding grid/stack gaps reserve room for it.
+		<Frame stacked className={cn("relative w-full overflow-visible pb-1", className)}>
+			<button
+				type="button"
+				onClick={() => setOpen((prev) => !prev)}
+				aria-expanded={open}
+				aria-controls={panelId}
+				className="flex w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+			>
+				<FrameHeader className="flex grow flex-row items-center justify-between gap-3">
+					<div className="flex min-w-0 items-center gap-2.5">
+						{icon}
+						<div className="flex min-w-0 flex-col items-start">
+							<FrameTitle className="text-base">{title}</FrameTitle>
+							<FrameDescription className="text-xs">
+								{description}
+							</FrameDescription>
+						</div>
+					</div>
+					{meta && <div className="shrink-0">{meta}</div>}
+				</FrameHeader>
+			</button>
+			{/* Height-animated (grid-rows 0fr→1fr) rather than mounted/unmounted,
+			    so the panel slides open to its natural height with no clipping cap.
+			    `inert` drops collapsed content out of tab order and the AT tree. */}
+			<div
+				id={panelId}
+				inert={!open}
+				className={cn(
+					"grid transition-[grid-template-rows] duration-500 ease-in-out motion-reduce:transition-none",
+					open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+				)}
+			>
+				<div className="min-h-0 overflow-hidden">
+					<FramePanel>{children}</FramePanel>
+				</div>
+			</div>
+			{/* Floating toggle straddling the bottom edge */}
+			<div className="absolute -bottom-3.5 left-1/2 z-10 -translate-x-1/2">
+				<Button
+					variant="outline"
+					size="icon-sm"
+					aria-expanded={open}
+					aria-controls={panelId}
+					onClick={() => setOpen((prev) => !prev)}
+					className="rounded-full bg-background shadow-sm hover:bg-background"
+				>
+					<ChevronDown
+						aria-hidden="true"
+						className={cn(
+							"transition-transform duration-300 motion-reduce:transition-none",
+							open && "rotate-180",
+						)}
+					/>
+					<span className="sr-only">
+						{open ? "Collapse" : "Expand"} {title}
+					</span>
+				</Button>
+			</div>
+		</Frame>
 	);
 }
 
@@ -628,6 +793,7 @@ function ProgressRing({ doneCount }: { doneCount: number }) {
 	const c = 2 * Math.PI * r;
 	const fraction = doneCount / 3;
 	const dash = fraction * c;
+	const complete = doneCount === 3;
 	return (
 		<div className="relative grid size-[70px] shrink-0 place-content-center">
 			<svg width={70} height={70} viewBox="0 0 70 70" className="-rotate-90">
@@ -637,7 +803,9 @@ function ProgressRing({ doneCount }: { doneCount: number }) {
 					r={r}
 					fill="none"
 					strokeWidth={6}
-					className="stroke-amber-500/20"
+					className={cn(
+						complete ? "stroke-emerald-500/20" : "stroke-amber-500/20",
+					)}
 				/>
 				<circle
 					cx={35}
@@ -647,7 +815,12 @@ function ProgressRing({ doneCount }: { doneCount: number }) {
 					strokeWidth={6}
 					strokeLinecap="round"
 					strokeDasharray={`${dash} ${c}`}
-					className="stroke-amber-500 transition-[stroke-dasharray] duration-500 ease-out dark:stroke-amber-400"
+					className={cn(
+						"transition-[stroke-dasharray] duration-500 ease-out",
+						complete
+							? "stroke-emerald-500 dark:stroke-emerald-400"
+							: "stroke-amber-500 dark:stroke-amber-400",
+					)}
 				/>
 			</svg>
 			<span className="absolute inset-0 flex items-center justify-center text-[13px] font-bold tabular-nums text-foreground">

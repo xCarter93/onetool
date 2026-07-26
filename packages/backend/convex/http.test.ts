@@ -24,11 +24,14 @@ async function seedConnectedOrg(t: ReturnType<typeof convexTest>) {
 describe("POST /stripe-webhook (Convex httpAction)", () => {
 	let t: ReturnType<typeof convexTest>;
 	let originalSecret: string | undefined;
+	let originalNextSecret: string | undefined;
 
 	beforeEach(() => {
 		t = setupConvexTest();
 		originalSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+		originalNextSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET_NEXT;
 		process.env.STRIPE_CONNECT_WEBHOOK_SECRET = TEST_SECRET;
+		delete process.env.STRIPE_CONNECT_WEBHOOK_SECRET_NEXT;
 	});
 
 	afterEach(() => {
@@ -36,6 +39,11 @@ describe("POST /stripe-webhook (Convex httpAction)", () => {
 			delete process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 		} else {
 			process.env.STRIPE_CONNECT_WEBHOOK_SECRET = originalSecret;
+		}
+		if (originalNextSecret === undefined) {
+			delete process.env.STRIPE_CONNECT_WEBHOOK_SECRET_NEXT;
+		} else {
+			process.env.STRIPE_CONNECT_WEBHOOK_SECRET_NEXT = originalNextSecret;
 		}
 	});
 
@@ -120,6 +128,31 @@ describe("POST /stripe-webhook (Convex httpAction)", () => {
 		expect(res.status).toBe(500);
 	});
 
+	it("accepts events signed with the staged rotation secret (STRIPE_CONNECT_WEBHOOK_SECRET_NEXT)", async () => {
+		// During rotation the old secret stays primary while Stripe signs with
+		// the new one staged in _NEXT — neither window may drop events.
+		process.env.STRIPE_CONNECT_WEBHOOK_SECRET_NEXT = "whsec_test_rotated";
+		const event = buildStripeEvent({
+			id: "evt_http_rotation",
+			type: "checkout.session.completed",
+			account: "acct_unknown_rotation",
+			data: { object: { id: "cs_rotation" } as never },
+		});
+		const { rawBody, signature } = buildSignedWebhookRequest(
+			event,
+			"whsec_test_rotated"
+		);
+		const res = await t.fetch("/stripe-webhook", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"stripe-signature": signature,
+			},
+			body: rawBody,
+		});
+		expect(res.status).toBe(200);
+	});
+
 	it("returns 200 on valid signed payload for an unknown account (orgFound:false)", async () => {
 		// No org seeded — handleEvent should resolve with orgFound:false and 200.
 		const event = buildStripeEvent({
@@ -186,6 +219,60 @@ describe("POST /stripe-webhook (Convex httpAction)", () => {
 		const org = await t.run((ctx) => ctx.db.get(orgId));
 		expect(org?.stripeChargesEnabled).toBe(true);
 		expect(org?.stripePayoutsEnabled).toBe(true);
+	});
+
+	it("drops an out-of-order account.updated whose event.created is older than the applied snapshot", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const nowSec = Math.floor(Date.now() / 1000);
+		const accountObject = (chargesEnabled: boolean) =>
+			({
+				id: "acct_http_webhook",
+				charges_enabled: chargesEnabled,
+				payouts_enabled: chargesEnabled,
+				details_submitted: true,
+				requirements: { currently_due: [], disabled_reason: null },
+			}) as never;
+
+		const fresh = buildStripeEvent({
+			id: "evt_http_fresh",
+			type: "account.updated",
+			account: "acct_http_webhook",
+			created: nowSec,
+			data: { object: accountObject(true) },
+		});
+		const freshSigned = buildSignedWebhookRequest(fresh, TEST_SECRET);
+		await t.fetch("/stripe-webhook", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"stripe-signature": freshSigned.signature,
+			},
+			body: freshSigned.rawBody,
+		});
+
+		// Delayed redelivery of an older snapshot (event.created in the past;
+		// the delivery signature itself is fresh, mirroring a Stripe retry).
+		const stale = buildStripeEvent({
+			id: "evt_http_stale",
+			type: "account.updated",
+			account: "acct_http_webhook",
+			created: nowSec - 600,
+			data: { object: accountObject(false) },
+		});
+		const staleSigned = buildSignedWebhookRequest(stale, TEST_SECRET);
+		const res = await t.fetch("/stripe-webhook", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"stripe-signature": staleSigned.signature,
+			},
+			body: staleSigned.rawBody,
+		});
+		expect(res.status).toBe(200);
+
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeChargesEnabled).toBe(true);
+		expect(org?.stripeStatusEventCreated).toBe(nowSec);
 	});
 
 	it("returns 200 when the same event is replayed (idempotent: duplicate=true)", async () => {
