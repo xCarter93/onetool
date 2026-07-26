@@ -53,6 +53,10 @@ interface TaskSheetProps {
 	initialValues?: {
 		clientId?: Id<"clients">;
 		projectId?: Id<"projects">;
+		/** Prefill for create mode (e.g. a clicked calendar slot). */
+		date?: Date;
+		startTime?: string;
+		endTime?: string;
 	};
 }
 
@@ -133,7 +137,7 @@ export function TaskSheet({
 	// Initialize form with task data when editing, or reset for create mode.
 	// Done during render via the previous-value pattern (keyed on the inputs
 	// that should trigger a re-init) instead of a setState-in-effect.
-	const initKey = `${mode ?? ""}|${isEditMode}|${isCreateMode}|${task?._id ?? ""}|${task?.date ?? ""}|${initialValues?.clientId ?? ""}|${initialValues?.projectId ?? ""}`;
+	const initKey = `${mode ?? ""}|${isEditMode}|${isCreateMode}|${task?._id ?? ""}|${task?.date ?? ""}|${initialValues?.clientId ?? ""}|${initialValues?.projectId ?? ""}|${initialValues?.date?.getTime() ?? ""}|${initialValues?.startTime ?? ""}|${initialValues?.endTime ?? ""}`;
 	// Sentinel null so the init block runs on first render (edit sheets mount
 	// with the task already present, so prevInitKey must differ initially).
 	const [prevInitKey, setPrevInitKey] = useState<string | null>(null);
@@ -167,9 +171,9 @@ export function TaskSheet({
 				clientId: initialValues?.clientId || "",
 				projectId: initialValues?.projectId || "",
 				propertyId: "",
-				date: today,
-				startTime: "",
-				endTime: "",
+				date: initialValues?.date ?? today,
+				startTime: initialValues?.startTime || "",
+				endTime: initialValues?.endTime || "",
 				assigneeUserId: "",
 				status: "pending",
 				repeat: "none",

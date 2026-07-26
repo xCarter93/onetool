@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ActivityFeed from "@/app/(workspace)/home/components/activity-feed";
 import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
-import { CalendarContainer } from "@/app/(workspace)/home/components/calendar/calendar-container";
+import { HomeCalendar } from "@/app/(workspace)/home/components/calendar/home-calendar";
 import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
 import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
 import { Frame, FramePanel } from "@/components/reui/frame";
@@ -296,7 +296,7 @@ export default function Page() {
 						transition={{ duration: 0.3 }}
 						className="flex-1 min-h-0 bg-background rounded-lg border border-border shadow-sm overflow-hidden"
 					>
-						<CalendarContainer />
+						<HomeCalendar />
 					</motion.div>
 				)}
 			</div>
