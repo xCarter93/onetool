@@ -33,22 +33,23 @@ export function AssigneeStack({
 	max?: number;
 	size?: string;
 }) {
-	const shown = ids.slice(0, max);
-	const extra = ids.length - shown.length;
+	// Resolve first so the "+N" overflow always matches the avatars actually
+	// rendered (unknown ids would otherwise inflate the count).
+	const resolved = ids
+		.map((id) => usersById.get(id))
+		.filter((user): user is OrgUser => Boolean(user));
+	const shown = resolved.slice(0, max);
+	const extra = resolved.length - shown.length;
 	return (
 		<AvatarGroup>
-			{shown.map((id) => {
-				const user = usersById.get(id);
-				if (!user) return null;
-				return (
-					<Avatar key={id} className={size}>
-						<AvatarImage src={user.image} alt="" loading="lazy" />
-						<AvatarFallback className="text-[8px]">
-							{userInitials(user.name)}
-						</AvatarFallback>
-					</Avatar>
-				);
-			})}
+			{shown.map((user) => (
+				<Avatar key={user._id} className={size}>
+					<AvatarImage src={user.image} alt="" loading="lazy" />
+					<AvatarFallback className="text-[8px]">
+						{userInitials(user.name)}
+					</AvatarFallback>
+				</Avatar>
+			))}
 			{extra > 0 && (
 				<AvatarGroupCount
 					className={cn(

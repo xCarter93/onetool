@@ -134,14 +134,17 @@ function EventCalendarMonthView({
     const rows: Date[][] = []
     for (let i = 0; i < days.length; i += 7) rows.push(days.slice(i, i + 7))
     if (effective.weekends) return rows
-    return rows.map((row) =>
-      row.filter(
+    return rows.map((row) => {
+      const filtered = row.filter(
         (day) =>
           !settings.weekendDays.includes(
             toZoned(day, settings.timeZone).getDay()
           )
       )
-    )
+      // A weekendDays set covering the whole week would empty the row; keep
+      // the unfiltered days instead (same guard as the time grid).
+      return filtered.length ? filtered : row
+    })
   }, [
     visibleRange,
     settings.timeZone,

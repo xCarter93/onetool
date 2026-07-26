@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { addDays, format, startOfDay, startOfMonth, startOfWeek, subDays } from "date-fns";
+import { useMemo } from "react";
+import { addDays, format, startOfDay, startOfWeek, subDays } from "date-fns";
 import { DayButton } from "react-day-picker";
 import { getDayKey } from "@/components/reui/event-calendar/event-calendar-lib";
 import { expandRecurrence } from "@/components/reui/event-calendar/event-calendar-recurrence";
@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
+	AGENDA_DAYS,
 	EVENT_KINDS,
 	type HomeCalendarEvent,
 	type HomeEventData,
@@ -18,9 +19,6 @@ import {
 // passed; matching it keeps the rail's dots aligned with the grid's days.
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-/** How far ahead the Up Next agenda looks. */
-const AGENDA_DAYS = 60;
-
 /**
  * The calendar's left rail: a mini month picker sharing the workspace date
  * (dots mark days with visible events), an Up Next agenda, and per-kind
@@ -29,6 +27,8 @@ const AGENDA_DAYS = 60;
 export function CalendarRail({
 	date,
 	onDateChange,
+	month,
+	onMonthChange,
 	events,
 	hidden,
 	onToggleKind,
@@ -37,23 +37,16 @@ export function CalendarRail({
 }: {
 	date: Date;
 	onDateChange: (date: Date) => void;
+	/** Browsed mini-calendar month — owned by the parent so the fetch window
+	 *  can cover it. */
+	month: Date;
+	onMonthChange: (month: Date) => void;
 	events: HomeCalendarEvent[];
 	hidden: Set<string>;
 	onToggleKind: (id: string) => void;
 	onOpenOccurrence: (occurrence: EventCalendarOccurrence<HomeEventData>) => void;
 	className?: string;
 }) {
-	// The month the mini calendar paints. Its own state so the user can browse
-	// ahead without moving the grid; pulled back during render (never in an
-	// effect) whenever the workspace date lands in another month.
-	const dateMonth = startOfMonth(date);
-	const [month, setMonth] = useState(dateMonth);
-	const [syncedMonth, setSyncedMonth] = useState(dateMonth);
-	if (dateMonth.getTime() !== syncedMonth.getTime()) {
-		setSyncedMonth(dateMonth);
-		setMonth(dateMonth);
-	}
-
 	// The 6-week grid actually on screen — dots must describe the month the
 	// user is looking at, not the month the workspace date happens to be in.
 	const monthRange = useMemo(() => {
@@ -113,7 +106,7 @@ export function CalendarRail({
 						required
 						selected={date}
 						month={month}
-						onMonthChange={setMonth}
+						onMonthChange={onMonthChange}
 						onSelect={(next) => next && onDateChange(next)}
 						buttonVariant="ghost"
 						className="w-full bg-transparent p-0 [--cell-size:--spacing(8)]"

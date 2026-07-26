@@ -23,6 +23,10 @@ export const EVENT_KINDS: EventKind[] = [
 
 export const KIND_BY_ID = new Map(EVENT_KINDS.map((k) => [k.id, k]));
 
+/** How far ahead the rail's Up Next agenda looks. Shared with the fetch
+ *  window so the agenda never outruns the loaded data. */
+export const AGENDA_DAYS = 60;
+
 export interface HomeEventData {
 	kind: "project" | "task";
 	status: string;

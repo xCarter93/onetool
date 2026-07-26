@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { differenceInCalendarDays, format, subDays } from "date-fns";
 import {
 	Building2Icon,
 	CalendarIcon,
@@ -48,15 +48,14 @@ function Dot() {
 /** The "when" line: date plus (for timed events) the time range. */
 function WhenDetail({ occurrence }: { occurrence: HomeOccurrence }) {
 	const { start, end, allDay } = occurrence;
-	// All-day ends are exclusive; step back for the inclusive last day.
-	const lastDay = allDay ? new Date(end.getTime() - 86_400_000) : end;
+	// All-day ends are exclusive; step back for the inclusive last day
+	// (calendar-day math, so DST transitions can't shift the day).
+	const lastDay = allDay ? subDays(end, 1) : end;
 	const sameDay =
 		start.getFullYear() === lastDay.getFullYear() &&
 		start.getMonth() === lastDay.getMonth() &&
 		start.getDate() === lastDay.getDate();
-	const days = allDay
-		? Math.round((lastDay.getTime() - start.getTime()) / 86_400_000) + 1
-		: 0;
+	const days = allDay ? differenceInCalendarDays(lastDay, start) + 1 : 0;
 	return (
 		<>
 			<div className="text-foreground flex flex-wrap items-center gap-x-1.5">

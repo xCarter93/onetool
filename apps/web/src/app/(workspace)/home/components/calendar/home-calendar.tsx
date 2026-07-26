@@ -3,17 +3,21 @@
 import {
 	useCallback,
 	useMemo,
+	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import {
+	addDays,
 	differenceInCalendarDays,
 	format,
 	isSameDay,
 	setHours,
 	startOfDay,
+	startOfMonth,
+	startOfWeek,
 	subDays,
 	subMinutes,
 } from "date-fns";
@@ -52,6 +56,7 @@ import { cn } from "@/lib/utils";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import { AssigneeStack, type OrgUser } from "./assignee-stack";
 import {
+	AGENDA_DAYS,
 	EVENT_KINDS,
 	mapCalendarEvents,
 	type HomeEventData,
@@ -62,6 +67,14 @@ import { CalendarEventSheet, type HomeOccurrence } from "./event-sheet";
 const VIEW_STORAGE_KEY = "home-calendar-view";
 const HIDDEN_STORAGE_KEY = "home-calendar-hidden";
 const VIEWS: CalendarView[] = ["month", "week", "day", "agenda"];
+
+/** Matches the primitive's default i18n viewShortcuts hints (M/W/D/A). */
+const VIEW_BY_SHORTCUT: Record<string, CalendarView> = {
+	m: "month",
+	w: "week",
+	d: "day",
+	a: "agenda",
+};
 
 /** Quick-add lands on a working hour, never midnight. */
 const QUICK_ADD_HOUR = 9;
@@ -100,8 +113,23 @@ export function HomeCalendar() {
 	const [selected, setSelected] = useState<HomeOccurrence | null>(null);
 	const [taskSheet, setTaskSheet] = useState<TaskSheetState | null>(null);
 	const [overrides, setOverrides] = useState<
-		Map<string, { start: Date; end: Date; allDay: boolean }>
+		Map<string, { start: Date; end: Date; allDay: boolean; commit: number }>
 	>(() => new Map());
+	// Monotonic tag so a stale mutation failure can't clear a newer override
+	// for the same event.
+	const commitSeq = useRef(0);
+
+	// The rail's browsed mini-calendar month, lifted here so the fetch window
+	// can cover it (busy dots need data for the month on screen, not just the
+	// grid's range). Pulled back to the workspace date's month during render
+	// whenever that date lands in another month.
+	const [railMonth, setRailMonth] = useState(() => startOfMonth(new Date()));
+	const dateMonth = startOfMonth(date);
+	const [syncedMonth, setSyncedMonth] = useState(dateMonth);
+	if (dateMonth.getTime() !== syncedMonth.getTime()) {
+		setSyncedMonth(dateMonth);
+		setRailMonth(dateMonth);
+	}
 
 	// Restore persisted view + kind filters once after hydration (localStorage
 	// is unavailable during SSR); render-time guard, not an effect.
@@ -154,9 +182,32 @@ export function HomeCalendar() {
 		});
 	}, []);
 
+	// Fetch the union of everything on screen: the grid's visible range, the
+	// rail's browsed 6-week mini-calendar grid, and Up Next's look-ahead — a
+	// week/day view alone would starve the rail of events outside its window.
+	const queryRange = useMemo(() => {
+		if (!range) return null;
+		const today = startOfDay(new Date());
+		const railStart = startOfWeek(railMonth);
+		return {
+			startMs: Math.min(
+				range.startMs,
+				localDateToUtcMidnightMs(today),
+				localDateToUtcMidnightMs(railStart)
+			),
+			endMs: Math.max(
+				range.endMs,
+				localDateToUtcMidnightMs(addDays(today, AGENDA_DAYS)) - 1,
+				localDateToUtcMidnightMs(addDays(railStart, 42)) - 1
+			),
+		};
+	}, [range, railMonth]);
+
 	const calendarData = useQuery(
 		api.calendar.getCalendarEvents,
-		range ? { startDate: range.startMs, endDate: range.endMs } : "skip"
+		queryRange
+			? { startDate: queryRange.startMs, endDate: queryRange.endMs }
+			: "skip"
 	);
 	const orgUsers = useQuery(api.users.listByOrg, {});
 	const usersById = useMemo(
@@ -213,7 +264,14 @@ export function HomeCalendar() {
 	const events = useMemo(() => {
 		const withOverrides = mapped.map((event) => {
 			const override = overrides.get(event.id);
-			const merged = override ? { ...event, ...override } : event;
+			const merged = override
+				? {
+						...event,
+						start: override.start,
+						end: override.end,
+						allDay: override.allDay,
+					}
+				: event;
 			const kind = merged.data!.kind;
 			const editable = kind === "task" ? canEditTasks : canEditProjects;
 			return {
@@ -230,15 +288,22 @@ export function HomeCalendar() {
 	}, [mapped, overrides, hidden, canEditTasks, canEditProjects]);
 
 	const applyOverride = useCallback(
-		(id: string, start: Date, end: Date, allDay: boolean) => {
-			setOverrides((prev) => new Map(prev).set(id, { start, end, allDay }));
+		(id: string, start: Date, end: Date, allDay: boolean): number => {
+			const commit = ++commitSeq.current;
+			setOverrides((prev) =>
+				new Map(prev).set(id, { start, end, allDay, commit })
+			);
+			return commit;
 		},
 		[]
 	);
 
-	const clearOverride = useCallback((id: string) => {
+	/** Clears only the override the failed commit painted — a newer reschedule
+	 *  of the same event keeps its own pending position. */
+	const clearOverride = useCallback((id: string, commit: number) => {
 		setOverrides((prev) => {
-			if (!prev.has(id)) return prev;
+			const entry = prev.get(id);
+			if (!entry || entry.commit !== commit) return prev;
 			const next = new Map(prev);
 			next.delete(id);
 			return next;
@@ -285,7 +350,7 @@ export function HomeCalendar() {
 						toast.info("Tasks are single-day.");
 						return false;
 					}
-					applyOverride(event.id, start, end, allDay);
+					const commit = applyOverride(event.id, start, end, allDay);
 					updateTask({ id, date: dateMs })
 						.then(() => {
 							toast.success(
@@ -293,7 +358,7 @@ export function HomeCalendar() {
 							);
 						})
 						.catch((error) => {
-							clearOverride(event.id);
+							clearOverride(event.id, commit);
 							toast.error(
 								errorMessage(error, "Couldn't reschedule the task.")
 							);
@@ -320,7 +385,7 @@ export function HomeCalendar() {
 				const clampedEnd = endsAtMidnight
 					? subMinutes(effectiveEnd, 1)
 					: effectiveEnd;
-				applyOverride(event.id, start, clampedEnd, false);
+				const commit = applyOverride(event.id, start, clampedEnd, false);
 				updateTask({
 					id,
 					date: dateMs,
@@ -336,7 +401,7 @@ export function HomeCalendar() {
 						);
 					})
 					.catch((error) => {
-						clearOverride(event.id);
+						clearOverride(event.id, commit);
 						toast.error(errorMessage(error, "Couldn't reschedule the task."));
 					});
 				// Accept-with-adjustment so the grid paints the clamped end, not
@@ -352,7 +417,7 @@ export function HomeCalendar() {
 				return false;
 			}
 			const lastDay = subDays(end, 1);
-			applyOverride(event.id, start, end, allDay);
+			const commit = applyOverride(event.id, start, end, allDay);
 			updateProject({
 				id: event.id as Id<"projects">,
 				startDate: localDateToUtcMidnightMs(start),
@@ -372,7 +437,7 @@ export function HomeCalendar() {
 					);
 				})
 				.catch((error) => {
-					clearOverride(event.id);
+					clearOverride(event.id, commit);
 					toast.error(errorMessage(error, "Couldn't reschedule the project."));
 				});
 			return true;
@@ -541,12 +606,35 @@ export function HomeCalendar() {
 		[usersById]
 	);
 
+	// The nav's view-switcher menu advertises these keys; honor them here with
+	// focus-within scope (the primitive renders the hints but ships no
+	// listener). Portaled sheets don't bubble into this container.
+	const handleShortcuts = useCallback(
+		(keyEvent: React.KeyboardEvent<HTMLDivElement>) => {
+			if (keyEvent.metaKey || keyEvent.ctrlKey || keyEvent.altKey) return;
+			const target = keyEvent.target as HTMLElement;
+			if (target.closest("input, textarea, select, [contenteditable=true]"))
+				return;
+			const next = VIEW_BY_SHORTCUT[keyEvent.key.toLowerCase()];
+			if (next) {
+				keyEvent.preventDefault();
+				handleViewChange(next);
+			}
+		},
+		[handleViewChange]
+	);
+
 	return (
-		<div className="bg-background flex h-full w-full min-w-0 flex-row">
+		<div
+			className="bg-background flex h-full w-full min-w-0 flex-row"
+			onKeyDown={handleShortcuts}
+		>
 			<CalendarRail
 				className="hidden w-72 shrink-0 flex-col border-e lg:flex"
 				date={date}
 				onDateChange={setDate}
+				month={railMonth}
+				onMonthChange={setRailMonth}
 				events={events}
 				hidden={hidden}
 				onToggleKind={toggleKind}
