@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AFTER_LAST_ENTRY_STUB, getAfterLastGeometry } from "./edge-geometry";
+import {
+	AFTER_LAST_ENTRY_STUB,
+	getAfterLastGeometry,
+	getBranchPlusY,
+} from "./edge-geometry";
 
 describe("after-last geometry", () => {
 	it("ends with a vertical entry into the target's top handle", () => {
@@ -53,5 +57,31 @@ describe("after-last geometry", () => {
 		const g = getAfterLastGeometry(540, 300, 390, 700, { routeRightX: 1080 });
 
 		expect(g.rightX).toBe(1080);
+	});
+});
+
+describe("branch plus placement", () => {
+	it("uses the lane midpoint on long lanes", () => {
+		expect(getBranchPlusY(100, 300, true)).toBe(200);
+	});
+
+	it("clears the label pill on short lanes instead of landing on it", () => {
+		// pillY 512, target 535 — the regression case: raw midpoint is 11.5px
+		// below the pill center, inside its box.
+		const plusY = getBranchPlusY(512, 535, true);
+
+		expect(plusY).toBeGreaterThanOrEqual(512 + 28);
+	});
+
+	it("prioritizes pill clearance when the lane can't fit both clearances", () => {
+		// Lane of 40px: pill clearance (pillY+28) and target clearance
+		// (targetY-16) conflict — the pill wins, even at the target's expense.
+		const plusY = getBranchPlusY(100, 140, true);
+
+		expect(plusY).toBe(128);
+	});
+
+	it("without a pill, only keeps clear of the target card", () => {
+		expect(getBranchPlusY(512, 535, false)).toBe(535 - 16);
 	});
 });

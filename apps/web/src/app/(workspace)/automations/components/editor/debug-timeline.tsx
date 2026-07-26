@@ -19,15 +19,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { formatDuration } from "../../lib/run-format";
 import { TRIGGER_NODE_ID } from "../../lib/flow-adapter";
+import { ACTION_META } from "../../lib/action-meta";
+import type { ActionNodeConfig } from "../../lib/node-types";
 
 type ExecutedNode = Doc<"workflowExecutions">["nodesExecuted"][number];
 
 const NODE_TYPE_LABELS: Record<string, string> = {
 	trigger: "Trigger",
 	condition: "Condition",
-	action: "Update record",
-	send_notification: "Send notification",
-	create_record: "Create record",
+	action: "Action",
 	fetch_records: "Fetch records",
 	loop: "Loop",
 	aggregate: "Aggregate",
@@ -37,13 +37,22 @@ const NODE_TYPE_LABELS: Record<string, string> = {
 	end: "End",
 };
 
-/** Executed node ids map onto canvas node ids; the trigger is the fixed id. */
+/**
+ * Executed node ids map onto canvas node ids; the trigger is the fixed id.
+ * Every action node's `data.nodeType` is the generic "action" — the action
+ * subtype (Update Record, Send Email, ...) lives on `data.config.action.type`,
+ * so it's resolved through ACTION_META rather than NODE_TYPE_LABELS.
+ */
 function resolveLabel(nodeId: string, rfNodes: Node[]): string {
 	if (nodeId === TRIGGER_NODE_ID) return "Trigger";
 	const node = rfNodes.find((n) => n.id === nodeId);
-	const nt = (node?.data as Record<string, unknown> | undefined)?.nodeType as
-		| string
-		| undefined;
+	const data = node?.data as Record<string, unknown> | undefined;
+	const nt = data?.nodeType as string | undefined;
+	if (nt === "action") {
+		const config = data?.config as ActionNodeConfig | undefined;
+		if (config) return ACTION_META[config.action.type].name;
+		return NODE_TYPE_LABELS.action;
+	}
 	if (nt) return NODE_TYPE_LABELS[nt] ?? nt;
 	// Node was edited away after this run — keep it in the list, no canvas ring.
 	return "Removed step";

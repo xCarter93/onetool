@@ -3,10 +3,23 @@ import { MutationCtx } from "../../_generated/server";
 import { trackServerException } from "../posthog";
 import { AggregateHelpers } from "../aggregates";
 import { ActivityHelpers } from "../activities";
-import { isAdminRole, orgHasPremiumPlan } from "../permissions";
+import {
+	isAdminRole,
+	orgHasPremiumPlan,
+	userHasPremiumOverride,
+} from "../permissions";
 import { getMembership, listMembershipsByOrg } from "../memberships";
-import { enqueuePushViaPool } from "../../push";
 import { insertTeamMessage } from "../../teamMessages";
+import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
+import { buildEmailHtml, resolveFromEmail } from "../../email/branding";
+import {
+	getOrCreateOutboundThread,
+	bumpThread,
+	plusTagAddress,
+} from "../../email/threads";
+import { isSuppressed } from "../../email/suppressions";
+import type { OutboundMessage } from "../../email/types";
+import { runExternalEffect } from "./externalEffects";
 import { scheduleEventProcessing } from "../../eventBus";
 import {
 	evaluateConditionGroups,
@@ -29,6 +42,7 @@ import {
 	type FieldDefinition,
 } from "../fieldRegistry";
 import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
 	type ActionTarget,
 	type AutomationAction,
 	type AutomationObjectType,
@@ -91,6 +105,7 @@ export async function executeNode(
 	error?: string;
 	output?: Record<string, unknown>;
 }> {
+	env.currentNodeId = node.id;
 	return executeNodeV2(ctx, node.config, scopeRecord, env);
 }
 
@@ -483,6 +498,8 @@ async function executeActionNodeV2(
 			return executeSendNotificationAction(ctx, action, scopeRecord, env);
 		case "send_team_message":
 			return executeSendTeamMessageAction(ctx, action, scopeRecord, env);
+		case "send_email":
+			return executeSendEmailAction(ctx, action, scopeRecord, env);
 		default: {
 			const _exhaustive: never = action;
 			return _exhaustive;
@@ -1615,7 +1632,8 @@ async function executeSendNotificationAction(
 				sentAt: Date.now(),
 			});
 			if (wantPush) {
-				await enqueuePushViaPool(ctx, {
+				await runExternalEffect(ctx, env.executionId, env.currentNodeId ?? "", {
+					kind: "push",
 					notificationType: "automation_message",
 					taggedUserId: userId,
 					title: env.automation.name,
@@ -1816,7 +1834,8 @@ async function executeSendTeamMessageAction(
 				sentVia: "in_app",
 				sentAt: Date.now(),
 			});
-			await enqueuePushViaPool(ctx, {
+			await runExternalEffect(ctx, env.executionId, env.currentNodeId ?? "", {
+				kind: "push",
 				notificationType: "automation_message",
 				taggedUserId: userId,
 				title,
@@ -1840,4 +1859,320 @@ async function executeSendTeamMessageAction(
 				error instanceof Error ? error.message : "Failed to send team message",
 		};
 	}
+}
+
+
+// ---------------------------------------------------------------------------
+// D1: send_email
+// ---------------------------------------------------------------------------
+
+type EmailRecipient = { email: string; name?: string };
+
+/**
+ * Resolve the client for the record in scope: the record itself, or its
+ * client relation (including the indirect project hop resolveTargetV2 does).
+ * There is no target knob — every scoped entity reaches exactly one client.
+ */
+export async function resolveClientInScope(
+	ctx: MutationCtx,
+	scopeRecord: ScopeRecord | undefined,
+	orgId: Id<"organizations">
+): Promise<Doc<"clients"> | null> {
+	if (!scopeRecord) return null;
+	let clientId: Id<"clients"> | undefined;
+	if (scopeRecord.type === "client") {
+		clientId = scopeRecord.id as Id<"clients">;
+	} else {
+		const resolved = await resolveTargetV2(
+			ctx,
+			{ related: "client" },
+			scopeRecord.type,
+			scopeRecord.id,
+			scopeRecord.record,
+			orgId
+		);
+		if (resolved?.type === "client") clientId = resolved.id as Id<"clients">;
+	}
+	if (!clientId) return null;
+	const client = await ctx.db.get(clientId);
+	return client && client.orgId === orgId ? client : null;
+}
+
+/**
+ * Resolve the send_email recipient list, or a skip reason. Suppression is
+ * pre-checked here (sendOutbound re-checks) so an all-suppressed node never
+ * creates an empty thread.
+ */
+export async function resolveEmailRecipients(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "send_email" }>,
+	scopeRecord: ScopeRecord | undefined,
+	client: Doc<"clients"> | null,
+	orgId: Id<"organizations">
+): Promise<
+	| { ok: true; recipients: EmailRecipient[]; suppressed: string[] }
+	| { ok: false; reason: string }
+> {
+	let candidates: EmailRecipient[];
+	if (action.recipient.kind === "primary_contact") {
+		if (!scopeRecord) {
+			return { ok: false, reason: NO_SCOPE_RECORD_ERROR };
+		}
+		if (!client) {
+			return {
+				ok: false,
+				reason: "No client related to the record in scope",
+			};
+		}
+		if (client.communicationPreference === "phone") {
+			return {
+				ok: false,
+				reason: "Client's communication preference is phone — email skipped",
+			};
+		}
+		const contact = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q) =>
+				q.eq("clientId", client._id).eq("isPrimary", true)
+			)
+			.first();
+		const email = contact?.email?.trim();
+		if (!contact || !email) {
+			return {
+				ok: false,
+				reason: "Client's primary contact has no email address",
+			};
+		}
+		candidates = [
+			{ email, name: `${contact.firstName} ${contact.lastName}` },
+		];
+	} else {
+		const seen = new Set<string>();
+		candidates = action.recipient.addresses
+			.map((a) => a.trim())
+			.filter((email) => {
+				if (!email || seen.has(email.toLowerCase())) return false;
+				seen.add(email.toLowerCase());
+				return true;
+			})
+			.slice(0, AUTOMATION_EMAIL_RECIPIENT_CAP)
+			.map((email) => ({ email }));
+		if (candidates.length === 0) {
+			return { ok: false, reason: "No recipient addresses configured" };
+		}
+	}
+
+	const recipients: EmailRecipient[] = [];
+	const suppressed: string[] = [];
+	for (const candidate of candidates) {
+		if (await isSuppressed(ctx, orgId, candidate.email)) {
+			suppressed.push(candidate.email);
+		} else {
+			recipients.push(candidate);
+		}
+	}
+	return { ok: true, recipients, suppressed };
+}
+
+/**
+ * Send an org-branded, client-threaded email via the WS3 choke point (durable
+ * resend component — transactional, no scheduler hop). Delivery-guard
+ * failures (no client, no email, suppressed, cap, preference, free plan)
+ * skip the node; only empty subject/body resolution fails the run, matching
+ * send_notification's empty-message semantics.
+ */
+async function executeSendEmailAction(
+	ctx: MutationCtx,
+	action: Extract<AutomationAction, { type: "send_email" }>,
+	scopeRecord: ScopeRecord | undefined,
+	env: WalkEnv
+): Promise<{
+	success: boolean;
+	skipped?: boolean;
+	error?: string;
+	output?: Record<string, unknown>;
+}> {
+	const org = await ctx.db.get(env.orgId);
+	if (!org) {
+		return { success: true, skipped: true, error: "Organization not found" };
+	}
+
+	// Identity-less premium gate (cron/event runs have no JWT) — same pair of
+	// webhook-synced signals the scheduled-run gate uses. Free plan sends 0.
+	const premium =
+		orgHasPremiumPlan(org) ||
+		userHasPremiumOverride(await ctx.db.get(env.automation.createdBy));
+	if (!premium) {
+		return {
+			success: true,
+			skipped: true,
+			error: "Sending email requires a premium plan",
+		};
+	}
+
+	const client = await resolveClientInScope(ctx, scopeRecord, env.orgId);
+	const resolved = await resolveEmailRecipients(
+		ctx,
+		action,
+		scopeRecord,
+		client,
+		env.orgId
+	);
+	if (!resolved.ok) {
+		return { success: true, skipped: true, error: resolved.reason };
+	}
+	const { recipients, suppressed } = resolved;
+	if (recipients.length === 0) {
+		return {
+			success: true,
+			skipped: true,
+			error: "All recipient addresses are suppressed",
+			output: { recipientsSuppressed: suppressed },
+		};
+	}
+
+	const subject = interpolateTemplate(action.subject, env.scope).trim();
+	if (!subject) {
+		return { success: false, error: "Email subject resolved to an empty value" };
+	}
+	const body = interpolateTemplate(action.body, env.scope).trim();
+	if (!body) {
+		return { success: false, error: "Email body resolved to an empty value" };
+	}
+
+	// DEC-2: require capacity for the whole batch up front (non-consuming so a
+	// skip never burns quota); each recipient's token is consumed only after a
+	// successful enqueue below — failed or deduplicated sends stay free. Check
+	// and consume see one snapshot (same transaction), so the batch can't lose
+	// capacity between the two.
+	const cap = await rateLimiter.check(ctx, "automationEmailSends", {
+		key: env.orgId,
+		count: recipients.length,
+	});
+	if (!cap.ok) {
+		return {
+			success: true,
+			skipped: true,
+			error: `Daily automation email cap reached (${AUTOMATION_EMAIL_DAILY_CAP}/day)`,
+		};
+	}
+
+	const fromEmail = resolveFromEmail(org);
+	const fromName = org.name || "OneTool";
+	const threadDocId = await getOrCreateOutboundThread(ctx, {
+		orgId: env.orgId,
+		clientId: client?._id ?? null,
+		subject,
+	});
+	const replyTo = plusTagAddress(fromEmail, threadDocId);
+	const preview = body.substring(0, 100);
+
+	const nodeId = env.currentNodeId ?? "";
+	const loopSuffix = env.currentLoop ? `-l${env.currentLoop.index}` : "";
+
+	let sent = 0;
+	let duplicates = 0;
+	const failedRecipients: { email: string; reason: string }[] = [];
+	for (const recipient of recipients) {
+		const html = buildEmailHtml({
+			logoUrl: org.logoUrl,
+			organizationName: org.name,
+			organizationEmail: org.email,
+			organizationPhone: org.phone,
+			organizationAddress: org.address,
+			clientName: recipient.name,
+			messageBody: body,
+			senderName: org.name,
+		});
+		const message: OutboundMessage = {
+			from: `${fromName} <${fromEmail}>`,
+			to: [recipient.email],
+			replyTo: [replyTo],
+			subject,
+			html,
+			// Re-drive belt-and-braces: one logical send per run node (x loop
+			// iteration x recipient), permanent via emailMessages.by_idempotency_key.
+			// Address-keyed so a suppression change between drives can't shift
+			// which recipient a key belongs to.
+			idempotencyKey: `automation-${env.executionId}-${nodeId}${loopSuffix}-r${recipient.email.toLowerCase()}`,
+		};
+		try {
+			const result = await runExternalEffect(ctx, env.executionId, nodeId, {
+				kind: "email",
+				orgId: env.orgId,
+				message,
+			});
+			if (result.kind !== "email") continue;
+			const send = result.send;
+			if (send.skipped === "duplicate") {
+				duplicates++;
+				continue;
+			}
+			if (send.skipped === "suppressed" || !send.resendEmailId) {
+				failedRecipients.push({
+					email: recipient.email,
+					reason:
+						send.skipped === "suppressed" ? "suppressed" : "send failed",
+				});
+				continue;
+			}
+			await ctx.db.insert("emailMessages", {
+				orgId: env.orgId,
+				clientId: client?._id ?? null,
+				resendEmailId: send.resendEmailId,
+				direction: "outbound",
+				threadId: threadDocId,
+				threadDocId,
+				subject,
+				messageBody: body,
+				messagePreview: preview,
+				fromEmail,
+				fromName,
+				toEmail: recipient.email,
+				toName: recipient.name ?? recipient.email,
+				status: "sent",
+				sentAt: Date.now(),
+				idempotencyKey: message.idempotencyKey,
+			});
+			await bumpThread(ctx, threadDocId, {
+				sentAt: Date.now(),
+				participantEmail: recipient.email,
+				subject,
+				preview,
+				direction: "outbound",
+			});
+			// Capacity guaranteed by the batch check above (same transaction).
+			await rateLimiter.limit(ctx, "automationEmailSends", {
+				key: env.orgId,
+			});
+			sent++;
+		} catch (error) {
+			failedRecipients.push({
+				email: recipient.email,
+				reason:
+					error instanceof Error ? error.message : "Failed to enqueue email",
+			});
+		}
+	}
+
+	const output: Record<string, unknown> = {
+		emailsSent: sent,
+		subject,
+		...(duplicates > 0 ? { duplicates } : {}),
+		...(suppressed.length > 0 ? { recipientsSuppressed: suppressed } : {}),
+		...(failedRecipients.length > 0
+			? { recipientsFailed: failedRecipients }
+			: {}),
+	};
+	if (sent === 0 && duplicates === 0) {
+		return {
+			success: true,
+			skipped: true,
+			error: failedRecipients[0]
+				? `No email sent — ${failedRecipients[0].reason}`
+				: "No email sent",
+			output,
+		};
+	}
+	return { success: true, output };
 }

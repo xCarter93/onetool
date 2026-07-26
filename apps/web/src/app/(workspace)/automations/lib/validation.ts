@@ -10,6 +10,10 @@
  * surfaces the same errors before the user hits Save.
  */
 
+import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
+	EMAIL_ADDRESS_PATTERN,
+} from "@onetool/backend/convex/lib/workflowTypes";
 import { collectLoopBody } from "./graph-utils";
 import type { EditorNode } from "./flow-adapter";
 import {
@@ -657,6 +661,57 @@ function validateActionNode(
 						"Nothing to send — this target has no Team Communication feed and nobody is tagged",
 					nodeId,
 				});
+			}
+			break;
+		}
+		case "send_email": {
+			if (!action.subject.trim()) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Write a subject",
+					nodeId,
+				});
+			}
+			if (!action.body.trim()) {
+				errors.push({
+					type: "missing_required_config",
+					message: "Write a message body",
+					nodeId,
+				});
+			}
+
+			if (action.recipient.kind === "custom") {
+				const addresses = action.recipient.addresses;
+				if (addresses.length === 0) {
+					errors.push({
+						type: "missing_required_config",
+						message: "Add at least one recipient address",
+						nodeId,
+					});
+				} else if (addresses.length > AUTOMATION_EMAIL_RECIPIENT_CAP) {
+					errors.push({
+						type: "missing_required_config",
+						message: `No more than ${AUTOMATION_EMAIL_RECIPIENT_CAP} recipient addresses are allowed`,
+						nodeId,
+					});
+				} else if (
+					addresses.some((address) => !EMAIL_ADDRESS_PATTERN.test(address))
+				) {
+					errors.push({
+						type: "missing_required_config",
+						message: "One or more recipient addresses aren't valid",
+						nodeId,
+					});
+				}
+			} else if (!scopeObjectType) {
+				if (scheduledTopLevel) {
+					errors.push({
+						type: "no_trigger_record",
+						message:
+							"Send Email needs a record in scope to find the client — add Find records + Loop steps, or use specific addresses",
+						nodeId,
+					});
+				}
 			}
 			break;
 		}

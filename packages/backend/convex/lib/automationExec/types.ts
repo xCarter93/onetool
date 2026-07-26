@@ -56,6 +56,8 @@ export type WalkEnv = {
 	trigger: { objectType?: ObjectType; objectId?: string };
 	/** Wall-clock start of the node currently executing; stamped onto each entry. */
 	nodeStartedAt: number;
+	/** Definition id of the node currently executing (set by executeNode). */
+	currentNodeId?: string;
 	/** True for real runs (not test/dry); gates failure notifications. */
 	isProduction: boolean;
 	/**

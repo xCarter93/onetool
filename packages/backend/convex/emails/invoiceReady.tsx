@@ -27,17 +27,7 @@ interface InvoiceReadyEmailProps {
 	clientName?: string;
 }
 
-// Same brand mark used by resend.ts's buildEmailHtml() "Powered by OneTool" footer.
-const ONETOOL_MARK_URL = "https://onetool.biz/OneTool-mark.png";
-
-// Two-letter monogram fallback when the org hasn't uploaded a logo — mirrors
-// resend.ts's getOrgInitials so the two email surfaces render identically.
-function getOrgInitials(name: string): string {
-	const words = name.trim().split(/\s+/).filter(Boolean);
-	if (words.length === 0) return "?";
-	if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-	return (words[0][0] + words[1][0]).toUpperCase();
-}
+import { ONETOOL_MARK_URL, getOrgInitials } from "../email/branding";
 
 export function InvoiceReadyEmail({
 	businessName,

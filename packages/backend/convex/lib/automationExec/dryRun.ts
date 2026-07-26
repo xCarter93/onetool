@@ -9,7 +9,8 @@ import {
 } from "../conditionEval";
 import { collectRelationRefs, type RelationRefs } from "../relationRefs";
 import { getFieldDefinition, isCreatableObjectType } from "../fieldRegistry";
-import { orgHasPremiumPlan } from "../permissions";
+import { orgHasPremiumPlan, userHasPremiumOverride } from "../permissions";
+import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import { getMembership } from "../memberships";
 import {
 	MAX_LOOP_ITEM_ERRORS,
@@ -52,6 +53,8 @@ import {
 	resolveRecordFieldUsers,
 	resolveTeamMessageMention,
 	resolveTeamMessageRecipients,
+	resolveClientInScope,
+	resolveEmailRecipients,
 } from "./actions";
 import {
 	MAX_EXECUTED_ENTRIES,
@@ -82,6 +85,8 @@ export const STALE_TEST_RUN_MS = 5 * 60 * 1000;
 type DryEnv = {
 	orgId: Id<"organizations">;
 	automationName: string;
+	/** Automation author — premium-override half of the identity-less gate. */
+	createdBy: Id<"users">;
 	nodesById: Map<string, AutomationNode>;
 	scope: VariableScope;
 	fetchOutputs: Record<string, FetchOutput>;
@@ -536,6 +541,73 @@ async function dryExecuteAction(
 				},
 			};
 		}
+		case "send_email": {
+			const org = await ctx.db.get(env.orgId);
+			const premium =
+				orgHasPremiumPlan(org) ||
+				userHasPremiumOverride(await ctx.db.get(env.createdBy));
+			if (!premium) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "Sending email requires a premium plan" },
+				};
+			}
+			const client = await resolveClientInScope(ctx, scopeRecord, env.orgId);
+			const resolved = await resolveEmailRecipients(
+				ctx,
+				action,
+				scopeRecord,
+				client,
+				env.orgId
+			);
+			if (!resolved.ok) {
+				return { success: true, skipped: true, output: { note: resolved.reason } };
+			}
+			if (resolved.recipients.length === 0) {
+				return {
+					success: true,
+					skipped: true,
+					output: { note: "All recipient addresses are suppressed" },
+				};
+			}
+			const subject = interpolateTemplate(action.subject, env.scope).trim();
+			if (!subject) {
+				return {
+					success: false,
+					error: "Email subject resolved to an empty value",
+				};
+			}
+			const bodyText = interpolateTemplate(action.body, env.scope).trim();
+			if (!bodyText) {
+				return { success: false, error: "Email body resolved to an empty value" };
+			}
+			// Peek — a preview must never consume the daily budget.
+			const cap = await rateLimiter.check(ctx, "automationEmailSends", {
+				key: env.orgId,
+				count: resolved.recipients.length,
+			});
+			if (!cap.ok) {
+				return {
+					success: true,
+					skipped: true,
+					output: {
+						note: `Daily automation email cap reached (${AUTOMATION_EMAIL_DAILY_CAP}/day)`,
+					},
+				};
+			}
+			return {
+				success: true,
+				output: {
+					summary: `Would email ${resolved.recipients.length} recipient(s): "${subject}"`,
+				},
+				input: {
+					to: resolved.recipients.map((r) => r.email),
+					subject,
+					body: bodyText,
+				},
+			};
+		}
 		default: {
 			const _exhaustive: never = action;
 			return _exhaustive;
@@ -912,10 +984,12 @@ async function dryRunWalk(
 		const result = await dryExecuteNode(ctx, node, scopeRecord, env);
 		pushDry(env, {
 			nodeId: node.id,
-			result: result.success
-				? "success"
-				: result.skipped
-					? "skipped"
+			// skipped wins: guard skips return success:true + skipped:true so the
+			// walk continues, but the entry must read as skipped, not a green check.
+			result: result.skipped
+				? "skipped"
+				: result.success
+					? "success"
 					: "failed",
 			error: result.error,
 			input: result.input,
@@ -955,6 +1029,7 @@ export async function buildDryPlan(
 	const env: DryEnv = {
 		orgId: automation.orgId,
 		automationName: automation.name,
+		createdBy: automation.createdBy,
 		nodesById: new Map(automation.nodes.map((n) => [n.id, n])),
 		scope: {
 			trigger: {

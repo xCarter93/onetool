@@ -2,6 +2,7 @@ import {
 	Bell,
 	FilePlus,
 	ListTodo,
+	Mail,
 	MessagesSquare,
 	Play,
 	type LucideIcon,
@@ -85,5 +86,14 @@ export const ACTION_META: Record<
 		name: "Send Team Message",
 		description:
 			"Post to this record's (or a related record's) Team Communication feed, optionally tagging members.",
+	},
+	send_email: {
+		icon: Mail,
+		bg: "bg-sky-100 dark:bg-sky-400/15",
+		fg: "text-sky-700 dark:text-sky-300",
+		accent: "border-l-sky-500 dark:border-l-sky-400",
+		badge: "Communication",
+		name: "Send Email",
+		description: "Email the client's primary contact or specific addresses.",
 	},
 };

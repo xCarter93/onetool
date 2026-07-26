@@ -199,6 +199,7 @@ export type SendTeamMessageAction = Extract<
 	AutomationAction,
 	{ type: "send_team_message" }
 >;
+export type SendEmailAction = Extract<AutomationAction, { type: "send_email" }>;
 
 // ---------------------------------------------------------------------------
 // 4. Editor node — mirrors automations.ts nodeArgValidator, except `config`

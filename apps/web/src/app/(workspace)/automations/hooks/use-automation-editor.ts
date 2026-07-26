@@ -154,6 +154,13 @@ function buildAction(actionType?: string): AutomationAction {
 				title: "",
 				message: "",
 			};
+		case "send_email":
+			return {
+				type: "send_email",
+				recipient: { kind: "primary_contact" },
+				subject: "",
+				body: "",
+			};
 		case "update_field":
 		case "update_fields":
 		default:

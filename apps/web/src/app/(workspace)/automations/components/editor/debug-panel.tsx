@@ -274,7 +274,8 @@ export function DebugPanel({
 		<div className="flex flex-col gap-3 p-3">
 			<p className="text-xs text-muted-foreground">
 				Dry-run this workflow against a sample record to inspect each step&apos;s
-				input and output. No records are changed and no messages are sent.
+				input and output. No records are changed and no messages or emails are
+				sent.
 			</p>
 
 			{needsRecord && (

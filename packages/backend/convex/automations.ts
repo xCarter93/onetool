@@ -1,6 +1,10 @@
 import { QueryCtx, MutationCtx, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import {
+	AUTOMATION_EMAIL_RECIPIENT_CAP,
+	EMAIL_ADDRESS_PATTERN,
+} from "./lib/workflowTypes";
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
@@ -903,6 +907,48 @@ function validateWorkflowDefinition(
 						if (noMention && noRecipients) {
 							throw new Error(
 								`Node ${node.id}: nothing to send — this target has no Team Communication feed and nobody is tagged`
+							);
+						}
+					}
+				}
+				if (config.action.type === "send_email") {
+					if (!config.action.subject.trim()) {
+						throw new Error(`Node ${node.id}: email subject is required`);
+					}
+					if (!config.action.body.trim()) {
+						throw new Error(`Node ${node.id}: email body is required`);
+					}
+					const recipient = config.action.recipient;
+					if (recipient.kind === "custom") {
+						const addresses = recipient.addresses
+							.map((a) => a.trim())
+							.filter(Boolean);
+						// Persist the normalized list — validated nodes are stored as-is.
+						recipient.addresses = addresses;
+						if (addresses.length === 0) {
+							throw new Error(
+								`Node ${node.id}: add at least one recipient address`
+							);
+						}
+						if (addresses.length > AUTOMATION_EMAIL_RECIPIENT_CAP) {
+							throw new Error(
+								`Node ${node.id}: at most ${AUTOMATION_EMAIL_RECIPIENT_CAP} recipient addresses per email step`
+							);
+						}
+						for (const address of addresses) {
+							if (!EMAIL_ADDRESS_PATTERN.test(address)) {
+								throw new Error(
+									`Node ${node.id}: "${address}" is not a valid email address`
+								);
+							}
+						}
+					} else {
+						const scopeType = bodyScopeType.has(node.id)
+							? bodyScopeType.get(node.id)
+							: objectType;
+						if (!scopeType) {
+							throw new Error(
+								`Node ${node.id}: emailing the client's primary contact needs a record in scope — use Find records + Loop steps, or switch to custom addresses`
 							);
 						}
 					}
