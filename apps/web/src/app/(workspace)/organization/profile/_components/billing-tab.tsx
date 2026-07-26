@@ -31,6 +31,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/reui/badge";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatLimit, getUsagePercentage } from "@/lib/plan-limits";
@@ -369,22 +370,28 @@ export function BillingTab() {
 							toolkit on Business.
 						</p>
 					</div>
-					{!hasPremiumAccess && (
-						<SegmentedControl<BillingPeriod>
-							value={period}
-							onValueChange={setPeriod}
-							options={[
-								{ value: "month", label: "Monthly" },
-								{
-									value: "annual",
-									label:
-										annualSavingsPercent > 0
-											? `Annual · save ${annualSavingsPercent}%`
-											: "Annual",
-								},
-							]}
+					<div className="flex items-center gap-3">
+						<LearnMoreLink
+							article="settings-and-team/plans-and-billing"
+							label="Compare plans in detail"
 						/>
-					)}
+						{!hasPremiumAccess && (
+							<SegmentedControl<BillingPeriod>
+								value={period}
+								onValueChange={setPeriod}
+								options={[
+									{ value: "month", label: "Monthly" },
+									{
+										value: "annual",
+										label:
+											annualSavingsPercent > 0
+												? `Annual · save ${annualSavingsPercent}%`
+												: "Annual",
+									},
+								]}
+							/>
+						)}
+					</div>
 				</SettingsCardHeader>
 				<div className="overflow-x-auto">
 					<table className="w-full min-w-[560px] border-t border-border">

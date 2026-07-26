@@ -21,6 +21,7 @@ import {
 } from "@/components/reui/frame";
 import { SectionHeading } from "./settings-card";
 import { EmptyState } from "@/components/domain/empty-state";
+import { LearnMoreLink } from "@/components/help/learn-more";
 
 const DROPZONE_TEXTURE =
 	"text-primary opacity-90 [mask-image:radial-gradient(150%_150%_at_50%_0%,black,transparent_88%)] [-webkit-mask-image:radial-gradient(150%_150%_at_50%_0%,black,transparent_88%)]";
@@ -270,6 +271,9 @@ export function DocumentsTab() {
 						size="md"
 						title="No documents uploaded yet"
 						description="Keep licences, insurance certificates and W-9s here so they're on hand when a client asks."
+						action={
+							<LearnMoreLink article="settings-and-team/documents-and-skus" />
+						}
 					/>
 				</div>
 			) : (

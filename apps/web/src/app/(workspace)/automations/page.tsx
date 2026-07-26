@@ -12,6 +12,7 @@ import {
 } from "@/components/shared/pill-tabs";
 import { Button } from "@/components/ui/button";
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { RunMetricsTiles } from "./components/run-metrics-tiles";
@@ -74,9 +75,16 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 									: "Workflow automations are available on the Business plan. Upgrade to automate your workflows and save time."}
 							</p>
 							{!hasPremiumAccess && isAdmin && (
-								<Button onClick={() => router.push("/organization/profile?tab=billing")}>
-									Upgrade to Business
-								</Button>
+								<>
+									<Button onClick={() => router.push("/organization/profile?tab=billing")}>
+										Upgrade to Business
+									</Button>
+									<LearnMoreLink
+										article="automations/automations-overview"
+										label="Learn what automations can do"
+										className="mt-3"
+									/>
+								</>
 							)}
 						</div>
 					</CardContent>

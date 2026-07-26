@@ -8,11 +8,16 @@ import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
 
 const navigation = {
 	solutions: [
-		"Client Management",
-		"Project Tracking",
-		"Quoting & Invoicing",
-		"Task Scheduling",
-		"Mobile Access",
+		{ name: "Client Management", href: "/help/clients" },
+		{ name: "Project Tracking", href: "/help/projects-and-tasks" },
+		{ name: "Quoting & Invoicing", href: "/help/quotes" },
+		{ name: "Task Scheduling", href: "/help/projects-and-tasks" },
+		{ name: "Mobile Access", href: "/help/mobile-app" },
+	],
+	resources: [
+		{ name: "Help Center", href: "/help" },
+		{ name: "Getting Started", href: "/help/getting-started" },
+		{ name: "Contact Support", href: "mailto:support@onetool.biz" },
 	],
 	legal: [
 		{ name: "Terms of Service", href: "/terms-of-service" },
@@ -124,7 +129,7 @@ export default function Footer() {
 						</div>
 
 						{/* Navigation Links */}
-						<div className="grid grid-cols-2 gap-4 sm:gap-8 lg:col-span-2">
+						<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-8 lg:col-span-2">
 							{/* Solutions */}
 							<div>
 								<h3 className="text-sm font-semibold text-white">
@@ -132,10 +137,32 @@ export default function Footer() {
 								</h3>
 								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
 									{navigation.solutions.map((item) => (
-										<li key={item}>
-											<span className="text-sm text-white/60">
-												{item}
-											</span>
+										<li key={item.name}>
+											<a
+												href={item.href}
+												className="text-sm text-white/60 hover:text-white transition-colors"
+											>
+												{item.name}
+											</a>
+										</li>
+									))}
+								</ul>
+							</div>
+
+							{/* Resources */}
+							<div>
+								<h3 className="text-sm font-semibold text-white">
+									Resources
+								</h3>
+								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
+									{navigation.resources.map((item) => (
+										<li key={item.name}>
+											<a
+												href={item.href}
+												className="text-sm text-white/60 hover:text-white transition-colors"
+											>
+												{item.name}
+											</a>
 										</li>
 									))}
 								</ul>

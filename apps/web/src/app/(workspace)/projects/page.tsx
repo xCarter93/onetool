@@ -11,6 +11,7 @@ import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	DateFilterValue,
@@ -680,10 +681,13 @@ function ProjectsPageContent() {
 								title="No projects yet"
 								description="Get started by creating your first project. Projects help you organize work and track progress."
 								action={
-									<Button onClick={() => openCreate({ type: "project" })} disabled={!canModifyProjects}>
-										<Plus className="h-4 w-4" />
-										Create Your First Project
-									</Button>
+									<div className="flex flex-col items-center gap-2">
+										<Button onClick={() => openCreate({ type: "project" })} disabled={!canModifyProjects}>
+											<Plus className="h-4 w-4" />
+											Create Your First Project
+										</Button>
+										<LearnMoreLink article="projects-and-tasks/creating-and-managing-projects" />
+									</div>
 								}
 							/>
 						) : viewMode === "table" ? (

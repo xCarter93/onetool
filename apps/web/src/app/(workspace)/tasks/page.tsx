@@ -20,6 +20,7 @@ import {
 } from "@/components/filters/date-filter";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/domain/empty-state";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import {
   DataGrid,
   DataGridContainer,
@@ -725,17 +726,20 @@ function TasksPageContent() {
                 : "You haven't created any tasks yet. Create your first task to get started."
             }
             action={
-              !isNarrowed ? (
-                <TaskSheet
-                  mode="create"
-                  trigger={
-                    <Button disabled={!canModifyTasks}>
-                      <Plus className="h-4 w-4" />
-                      Create Your First Task
-                    </Button>
-                  }
-                />
-              ) : undefined
+              <div className="flex flex-col items-center gap-2">
+                {!isNarrowed ? (
+                  <TaskSheet
+                    mode="create"
+                    trigger={
+                      <Button disabled={!canModifyTasks}>
+                        <Plus className="h-4 w-4" />
+                        Create Your First Task
+                      </Button>
+                    }
+                  />
+                ) : undefined}
+                <LearnMoreLink article="projects-and-tasks/working-with-tasks" />
+              </div>
             }
           />
         </div>

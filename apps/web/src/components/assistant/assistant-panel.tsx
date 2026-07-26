@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import {
 	useSmoothText,
 	useUIMessages,
@@ -26,6 +26,8 @@ import { usePathname, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Textarea } from "@/components/ui/textarea";
+import { HelpArticleDrawer, LearnMoreLink } from "@/components/help/learn-more";
+import { resolveHelpRef } from "@/lib/help";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -101,11 +103,50 @@ const MARKDOWN_CLASS = [
 	"[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
 ].join(" ");
 
+// searchHelp replies link help articles as /help/... paths — open those in the
+// in-app drawer instead of navigating the workspace away mid-conversation.
+function MarkdownLink({
+	href,
+	children,
+	node: _node, // react-markdown's hast node — must not spread onto the DOM
+	...props
+}: ComponentProps<"a"> & { node?: unknown }) {
+	const [open, setOpen] = useState(false);
+	const ref =
+		typeof href === "string" && href.startsWith("/help/")
+			? href.replace("/help/", "")
+			: undefined;
+	if (!ref || !resolveHelpRef(ref)) {
+		return (
+			<a href={href} {...props}>
+				{children}
+			</a>
+		);
+	}
+	return (
+		<>
+			<button
+				type="button"
+				onClick={() => setOpen(true)}
+				className="cursor-pointer text-primary underline"
+			>
+				{children}
+			</button>
+			<HelpArticleDrawer article={ref} open={open} onOpenChange={setOpen} />
+		</>
+	);
+}
+
 function TextPart({ text, streaming }: { text: string; streaming: boolean }) {
 	const [visibleText] = useSmoothText(text, { startStreaming: streaming });
 	return (
 		<div className={MARKDOWN_CLASS}>
-			<ReactMarkdown remarkPlugins={[remarkGfm]}>{visibleText}</ReactMarkdown>
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				components={{ a: MarkdownLink }}
+			>
+				{visibleText}
+			</ReactMarkdown>
 		</div>
 	);
 }
@@ -261,6 +302,11 @@ function UpgradePrompt() {
 			>
 				View plans
 			</Link>
+			<LearnMoreLink
+				article="ai-assistant/meet-the-assistant"
+				label="See what the assistant can do"
+				className="text-xs"
+			/>
 		</div>
 	);
 }
@@ -600,6 +646,11 @@ export function AssistantPanel({
 											</button>
 										))}
 									</div>
+									<LearnMoreLink
+										article="ai-assistant/what-you-can-ask"
+										label="What can I ask?"
+										className="text-xs"
+									/>
 								</div>
 							) : (
 								<div className="flex flex-col gap-4">
