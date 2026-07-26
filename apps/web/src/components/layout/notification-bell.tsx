@@ -21,8 +21,10 @@ import {
 	resolveNotificationHref,
 } from "@/lib/notification-utils";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { useToast } from "@/hooks/use-toast";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { headerIconButtonClass } from "@/components/layout/header-icon-button";
 
 export function NotificationBell() {
 	const router = useRouter();
@@ -37,6 +39,7 @@ export function NotificationBell() {
 	const markAsRead = useMutation(api.notifications.markRead);
 	const markAllRead = useMutation(api.notifications.markAllRead);
 	const [markingAll, setMarkingAll] = useState(false);
+	const toast = useToast();
 
 	// Treat the switch grace window as loading so the previous org's unread
 	// count and notification list don't flash.
@@ -46,18 +49,16 @@ export function NotificationBell() {
 
 	// Handle notification click. `href` is a pre-resolved, known-good route
 	// (or null when the notification isn't navigable).
-	const handleNotificationClick = async (
+	const handleNotificationClick = (
 		notificationId: Id<"notifications">,
 		href: string | null,
 		isRead?: boolean
 	) => {
-		// Mark as read if not already
+		// Fire-and-forget so navigation isn't blocked on the round-trip.
 		if (!isRead) {
-			try {
-				await markAsRead({ id: notificationId });
-			} catch (error) {
-				console.error("Failed to mark notification as read:", error);
-			}
+			markAsRead({ id: notificationId }).catch(() => {
+				toast.error("Couldn't mark notification as read", "Please try again.");
+			});
 		}
 
 		// Navigate only when the notification points at a real page.
@@ -72,8 +73,8 @@ export function NotificationBell() {
 		setMarkingAll(true);
 		try {
 			await markAllRead({});
-		} catch (error) {
-			console.error("Failed to mark all notifications as read:", error);
+		} catch {
+			toast.error("Couldn't mark all as read", "Please try again.");
 		} finally {
 			setMarkingAll(false);
 		}
@@ -89,7 +90,8 @@ export function NotificationBell() {
 								? `Notifications, ${unreadCount} unread`
 								: "Notifications"
 						}
-						className="relative inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 data-[state=open]:bg-foreground/[0.08] data-[state=open]:text-foreground"
+						type="button"
+						className={cn("relative", headerIconButtonClass)}
 					/>
 				}
 			>
@@ -169,6 +171,7 @@ export function NotificationBell() {
 								return (
 									<button
 										key={notification._id}
+										type="button"
 										onClick={() =>
 											handleNotificationClick(
 												notification._id,
@@ -186,7 +189,11 @@ export function NotificationBell() {
 												"mt-1.5 size-2 shrink-0 rounded-full",
 												notification.isRead ? "bg-transparent" : "bg-primary"
 											)}
-										/>
+										>
+											{!notification.isRead && (
+												<span className="sr-only">Unread</span>
+											)}
+										</span>
 										<div className="min-w-0 flex-1">
 											<p className="text-sm font-medium text-foreground">
 												{notification.title}

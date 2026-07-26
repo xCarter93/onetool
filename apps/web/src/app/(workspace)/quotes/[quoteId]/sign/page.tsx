@@ -7,6 +7,7 @@ import { useAction, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
 import {
 	AlertDialog,
@@ -397,6 +398,10 @@ function QuoteSignPageContent() {
 								Back to quote
 							</Button>
 						</div>
+						<LearnMoreLink
+							article="quotes/e-signatures"
+							label="How e-signatures work"
+						/>
 					</div>
 				)}
 

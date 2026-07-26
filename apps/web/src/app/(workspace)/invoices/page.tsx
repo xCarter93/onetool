@@ -10,6 +10,7 @@ import { FiltersWithClear } from "@/components/filters/radius-full";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	DateFilterValue,
@@ -761,6 +762,9 @@ function InvoicesPageContent() {
 								illustration="invoices-none"
 								title="No invoices yet"
 								description="Create invoices from approved quotes on the Projects page to get started tracking payments and revenue."
+								action={
+									<LearnMoreLink article="invoices-and-payments/creating-an-invoice" />
+								}
 							/>
 						) : viewMode === "table" ? (
 							<div className="overflow-x-auto">

@@ -37,7 +37,6 @@ import { cn } from "@/lib/utils";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateRecord } from "@/components/domain/create-record-provider";
-import { useRouter } from "next/navigation";
 import {
 	Tooltip,
 	TooltipContent,
@@ -70,7 +69,7 @@ type NavGroup = {
 
 // Shared row styling for every "Create new" quick action so hover and keyboard
 // focus highlight identically. `focus:bg-muted/60` on the wrapping menu item
-// matches the hover color for the item Radix focuses on pointer-over.
+// matches the hover color for the item the menu focuses on pointer-over.
 const quickActionRowClass =
 	"group/qa-item flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted/60";
 
@@ -150,7 +149,6 @@ export function NavMain({
 	const { state: sidebarState } = useSidebar();
 	const isCollapsed = sidebarState === "collapsed";
 	const toast = useToast();
-	const router = useRouter();
 	const openCreate = useCreateRecord();
 	const openTimerRef = React.useRef<number | null>(null);
 	const closeTimerRef = React.useRef<number | null>(null);
@@ -416,7 +414,7 @@ export function NavMain({
 											<SidebarMenuButton
 												tooltip={item.title}
 												isActive={item.isActive}
-												onClick={() => router.push(item.url)}
+												render={<Link href={item.url} />}
 											>
 												{item.icon && <item.icon />}
 												<span>{item.title}</span>
@@ -519,7 +517,7 @@ export function NavMain({
 												: item.title
 										}
 										isActive={item.isActive}
-										onClick={() => router.push(item.url)}
+										render={<Link href={item.url} />}
 									>
 										{item.icon && <item.icon />}
 										<span>{item.title}</span>

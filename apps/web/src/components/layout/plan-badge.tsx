@@ -10,27 +10,12 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Crown,
-	Users,
-	FileSignature,
-	Briefcase,
-	ArrowUpRight,
-	Check,
-} from "lucide-react";
-import { formatLimit, getUsagePercentage } from "@/lib/plan-limits";
+import { Crown, Users, ArrowUpRight, Check } from "lucide-react";
 
 export function PlanBadge() {
 	const [open, setOpen] = useState(false);
-	const {
-		hasPremiumAccess,
-		planLimits,
-		currentUsage,
-		isLoading,
-		hasOrganization,
-	} = useFeatureAccess();
+	const { hasPremiumAccess, isLoading, hasOrganization } = useFeatureAccess();
 	const isAdmin = useIsAdmin();
 	const router = useRouter();
 
@@ -93,53 +78,6 @@ export function PlanBadge() {
 							: "You're on the free plan with limited features"}
 					</p>
 				</div>
-
-				{/* Usage Stats for Free Plan */}
-				{!hasPremiumAccess && hasOrganization && currentUsage && (
-					<div className="p-4 space-y-4 bg-background">
-						{/* Clients Usage */}
-						<div className="space-y-2">
-							<div className="flex items-center justify-between text-sm">
-								<div className="flex items-center gap-2">
-									<Briefcase className="h-4 w-4 text-muted-foreground" />
-									<span className="font-medium">Clients</span>
-								</div>
-								<span className="text-muted-foreground">
-									{currentUsage.clientsCount} /{" "}
-									{formatLimit(planLimits.clients)}
-								</span>
-							</div>
-							<Progress
-								value={getUsagePercentage(
-									currentUsage.clientsCount,
-									planLimits.clients
-								)}
-								className="h-2"
-							/>
-						</div>
-
-						{/* E-signatures Usage */}
-						<div className="space-y-2">
-							<div className="flex items-center justify-between text-sm">
-								<div className="flex items-center gap-2">
-									<FileSignature className="h-4 w-4 text-muted-foreground" />
-									<span className="font-medium">E-signatures (monthly)</span>
-								</div>
-								<span className="text-muted-foreground">
-									{currentUsage.esignaturesSentThisMonth} /{" "}
-									{formatLimit(planLimits.esignaturesPerMonth)}
-								</span>
-							</div>
-							<Progress
-								value={getUsagePercentage(
-									currentUsage.esignaturesSentThisMonth,
-									planLimits.esignaturesPerMonth
-								)}
-								className="h-2"
-							/>
-						</div>
-					</div>
-				)}
 
 				{/* No Organization CTA */}
 				{!hasOrganization && (

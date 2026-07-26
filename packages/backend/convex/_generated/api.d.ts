@@ -148,6 +148,7 @@ import type * as resendReceiving from "../resendReceiving.js";
 import type * as resendWebhook from "../resendWebhook.js";
 import type * as routes from "../routes.js";
 import type * as routingActions from "../routingActions.js";
+import type * as search from "../search.js";
 import type * as serviceStatus from "../serviceStatus.js";
 import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
@@ -306,6 +307,7 @@ declare const fullApi: ApiFromModules<{
   resendWebhook: typeof resendWebhook;
   routes: typeof routes;
   routingActions: typeof routingActions;
+  search: typeof search;
   serviceStatus: typeof serviceStatus;
   serviceStatusActions: typeof serviceStatusActions;
   skus: typeof skus;

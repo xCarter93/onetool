@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { useToast } from "@/hooks/use-toast";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { formatRelativeTime } from "@/lib/notification-utils";
@@ -289,6 +290,12 @@ export function PaymentsTab() {
 			<SectionHeading
 				title="Payments"
 				description="Onboard to Stripe to accept payments on behalf of your organization. Status is fetched live from Stripe each time you open this tab."
+				aside={
+					<LearnMoreLink
+						article="settings-and-team/setting-up-online-payments"
+						label="How payments setup works"
+					/>
+				}
 			/>
 
 			{/* Connection & status */}

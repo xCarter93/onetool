@@ -270,3 +270,60 @@ describe("applyStopEdits", () => {
 		expect(jones?.propertyId).toBe(propB);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// searchHelp
+// ---------------------------------------------------------------------------
+
+describe("searchHelp", () => {
+	// Same invocation shape the agent runtime uses (ctx spread onto the tool).
+	function invoke(input: unknown): Promise<Record<string, unknown>> {
+		const injected: Record<string, unknown> = {
+			...(assistantTools.searchHelp as unknown as Record<string, unknown>),
+			ctx: {},
+		};
+		const execute = injected.execute as (
+			this: unknown,
+			...args: unknown[]
+		) => Promise<Record<string, unknown>>;
+		return execute.call(injected, input, { toolCallId: "call_1", messages: [] });
+	}
+
+	it("lists the full catalog when called with no arguments", async () => {
+		const result = await invoke({});
+		const categories = result.categories as {
+			slug: string;
+			articles: { ref: string; title: string }[];
+		}[];
+		expect(categories.length).toBeGreaterThanOrEqual(13);
+		const gettingStarted = categories.find((c) => c.slug === "getting-started");
+		expect(gettingStarted?.articles.length).toBeGreaterThan(0);
+		expect(gettingStarted?.articles[0]?.ref).toMatch(/^getting-started\//);
+	});
+
+	it("finds the CSV import article for an import query", async () => {
+		const result = await invoke({ query: "import clients from a spreadsheet" });
+		const results = result.results as { ref: string; url: string }[];
+		expect(results.length).toBeGreaterThan(0);
+		expect(results[0]?.ref).toBe("clients/importing-clients");
+		expect(results[0]?.url).toBe("/help/clients/importing-clients");
+	});
+
+	it("returns a full article as markdown", async () => {
+		const result = await invoke({ article: "getting-started/welcome-to-onetool" });
+		expect(result.url).toBe("/help/getting-started/welcome-to-onetool");
+		expect(result.markdown).toContain("# ");
+		expect(String(result.markdown)).toContain("Available on");
+	});
+
+	it("returns an error for an unknown article ref", async () => {
+		const result = await invoke({ article: "nope/not-real" });
+		expect(String(result.error)).toContain("Unknown article");
+	});
+
+	it("returns empty results with guidance for an unmatched query", async () => {
+		const result = await invoke({ query: "zxqv wvutq" });
+		expect(result.results).toEqual([]);
+		expect(String(result.note)).toContain("No matching help articles");
+	});
+});
