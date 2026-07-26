@@ -9,6 +9,28 @@ const AFTER_LAST_MIN_OFFSET_X = 56;
  */
 export const AFTER_LAST_ENTRY_STUB = 48;
 
+/** Min gap between the branch label pill's center and the "+" center: pill
+ * half-height (~11) + "+" hovered half-height (~11) + breathing room. */
+const BRANCH_PLUS_PILL_CLEARANCE = 28;
+/** Min gap between the "+" center and the target card's top edge. */
+const BRANCH_PLUS_TARGET_CLEARANCE = 16;
+
+/**
+ * Vertical position of a branch lane's inline "+": the lane midpoint, clamped
+ * below the label pill (which sits on the fan-out corner at `pillY`) and above
+ * the target card. On short lanes the raw midpoint lands on the pill, so pill
+ * clearance wins over target clearance when both can't be satisfied.
+ */
+export function getBranchPlusY(
+	pillY: number,
+	targetY: number,
+	hasPill: boolean
+) {
+	const midY = (pillY + targetY) / 2;
+	const clamped = Math.min(midY, targetY - BRANCH_PLUS_TARGET_CLEARANCE);
+	return hasPill ? Math.max(clamped, pillY + BRANCH_PLUS_PILL_CLEARANCE) : clamped;
+}
+
 /**
  * Orthogonal route for the loop's After-Last exit: from the loop header's
  * right handle, right into the corridor outside the container, down past the

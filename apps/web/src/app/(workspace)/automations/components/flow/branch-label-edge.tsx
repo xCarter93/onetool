@@ -8,6 +8,7 @@ import {
 	type EdgeProps,
 } from "@xyflow/react";
 import { NextItemMarker } from "./next-item-marker";
+import { getBranchPlusY } from "./edge-geometry";
 import { edgeStroke } from "./edge-style";
 import { EdgeInsertButton } from "./edge-insert-button";
 import { EdgeLabelPill } from "./edge-label-pill";
@@ -83,7 +84,7 @@ export function BranchLabelEdge(props: EdgeProps) {
 	const plusX = targetX;
 	const plusY = isTerminal
 		? effectiveTargetY
-		: (sourceY + FAN_DROP + effectiveTargetY) / 2;
+		: getBranchPlusY(labelY, effectiveTargetY, Boolean(label));
 
 	return (
 		<>
