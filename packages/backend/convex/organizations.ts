@@ -884,9 +884,14 @@ export const updateStripeCapabilityInternal = systemMutation({
 		const isDegradation = priorValue === true && newValue === false;
 
 		// Only patch requirement fields on degradation to avoid clobbering account.updated.
+		// Advancing the watermark here is required: without it an older
+		// account.updated snapshot would still pass the guard and undo this event.
 		const patch: Record<string, unknown> = {
 			[fieldName]: newValue,
 			stripeStatusUpdatedAt: Date.now(),
+			...(args.eventCreatedSec !== undefined
+				? { stripeStatusEventCreated: args.eventCreatedSec }
+				: {}),
 		};
 		if (isDegradation) {
 			patch.stripeRequirementsCurrentlyDue = args.requirementsCurrentlyDue;
@@ -922,6 +927,14 @@ export const markStripeConnectDeauthorizedInternal = systemMutation({
 	handler: async (ctx, args) => {
 		const org = await ctx.db.get(ctx.orgId);
 		if (!org) return null;
+		// Same out-of-order guard as the other Stripe status mutations.
+		if (
+			args.eventCreatedSec !== undefined &&
+			org.stripeStatusEventCreated !== undefined &&
+			args.eventCreatedSec < org.stripeStatusEventCreated
+		) {
+			return null;
+		}
 		await ctx.db.patch(ctx.orgId, {
 			stripeChargesEnabled: false,
 			stripePayoutsEnabled: false,

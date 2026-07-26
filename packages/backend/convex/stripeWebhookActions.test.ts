@@ -267,6 +267,171 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(org?.stripeRequirementsDisabledReason).toBe(
 			"platform.disconnected"
 		);
+		expect(org?.stripeStatusEventCreated).toBe(event.created);
+		const notifications = await t.run((ctx) =>
+			ctx.db.query("notifications").collect()
+		);
+		const disconnected = notifications.find(
+			(n) => n.notificationType === "stripe_disconnected"
+		);
+		expect(disconnected).toBeDefined();
+		expect(disconnected?.priority).toBe("high");
+	});
+
+	it("account.application.deauthorized older than the watermark is ignored", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const nowSec = Math.floor(Date.now() / 1000);
+		await t.run((ctx) =>
+			ctx.db.patch(orgId, {
+				stripeChargesEnabled: true,
+				stripePayoutsEnabled: true,
+				stripeStatusEventCreated: nowSec,
+			})
+		);
+		const event = buildStripeEvent({
+			id: "evt_deauth_stale",
+			type: "account.application.deauthorized",
+			account: "acct_test_webhook",
+			created: nowSec - 100,
+			data: { object: { id: "ca_app_2", object: "application" } as never },
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		const org = await t.run((ctx) => ctx.db.get(orgId));
+		expect(org?.stripeChargesEnabled).toBe(true);
+		expect(org?.stripePayoutsEnabled).toBe(true);
+	});
+
+	it("capability.updated advances the watermark so an older account.updated cannot undo it", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const nowSec = Math.floor(Date.now() / 1000);
+		await t.run((ctx) => ctx.db.patch(orgId, { stripeChargesEnabled: false }));
+		const capabilityEvent = buildStripeEvent({
+			id: "evt_cap_watermark",
+			type: "capability.updated",
+			account: "acct_test_webhook",
+			created: nowSec,
+			data: {
+				object: {
+					id: "card_payments",
+					object: "capability",
+					account: "acct_test_webhook",
+					status: "active",
+					requirements: { currently_due: [], disabled_reason: null },
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(capabilityEvent)
+		);
+		const afterCapability = await t.run((ctx) => ctx.db.get(orgId));
+		expect(afterCapability?.stripeChargesEnabled).toBe(true);
+		expect(afterCapability?.stripeStatusEventCreated).toBe(nowSec);
+
+		// Older full snapshot delivered late must not undo the newer capability.
+		const staleAccountEvent = buildStripeEvent({
+			id: "evt_acct_stale_vs_cap",
+			type: "account.updated",
+			account: "acct_test_webhook",
+			created: nowSec - 60,
+			data: {
+				object: {
+					id: "acct_test_webhook",
+					charges_enabled: false,
+					payouts_enabled: false,
+					details_submitted: true,
+					requirements: { currently_due: [], disabled_reason: null },
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(staleAccountEvent)
+		);
+		const afterStale = await t.run((ctx) => ctx.db.get(orgId));
+		expect(afterStale?.stripeChargesEnabled).toBe(true);
+	});
+
+	it("charge.dispute.updated (open) records the interim status without resolving", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_open",
+			paymentAmount: 60,
+			paymentIntentId: "pi_disp_open",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { disputed: true, disputeId: "dp_open_1" })
+		);
+		const event = buildStripeEvent({
+			id: "evt_disp_open",
+			type: "charge.dispute.updated",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "dp_open_1",
+					payment_intent: "pi_disp_open",
+					status: "needs_response",
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputeStatus).toBe("needs_response");
+		expect(payment?.disputed).toBe(true);
+		expect(payment?.disputeResolvedAt).toBeUndefined();
+	});
+
+	it("late charge.dispute.updated after close does not overwrite the outcome", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_late",
+			paymentAmount: 90,
+			paymentIntentId: "pi_disp_late",
+		});
+		const closedEvent = buildStripeEvent({
+			id: "evt_disp_late_closed",
+			type: "charge.dispute.closed",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "dp_late_1",
+					payment_intent: "pi_disp_late",
+					status: "lost",
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(closedEvent)
+		);
+		const lateUpdate = buildStripeEvent({
+			id: "evt_disp_late_update",
+			type: "charge.dispute.updated",
+			account: "acct_test_webhook",
+			data: {
+				object: {
+					id: "dp_late_1",
+					payment_intent: "pi_disp_late",
+					status: "under_review",
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(lateUpdate)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputeStatus).toBe("lost");
+		expect(payment?.disputed).toBe(true);
+		expect(payment?.disputeResolvedAt).toBeTypeOf("number");
 	});
 
 	it("checkout.session.expired clears the cached pending session fields", async () => {

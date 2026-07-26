@@ -1071,6 +1071,12 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 		await ctx.db.patch(payment._id, {
 			disputed: true,
 			disputeId: args.disputeId,
+			// A new dispute id restarts the lifecycle; stale resolution fields from
+			// a prior dispute would trip syncDisputeFromWebhookInternal's guard.
+			...(payment.disputeId !== undefined &&
+			payment.disputeId !== args.disputeId
+				? { disputeStatus: undefined, disputeResolvedAt: undefined }
+				: {}),
 		});
 
 		// Workflow automations get notified; status itself doesn't change.
@@ -1128,6 +1134,17 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 			console.warn(
 				`syncDisputeFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
 			);
+			return null;
+		}
+
+		// A late non-closing update for an already-resolved dispute must not
+		// overwrite the final won/lost status. Updates for a different (new)
+		// dispute id still apply.
+		if (
+			!args.closed &&
+			payment.disputeResolvedAt !== undefined &&
+			payment.disputeId === args.disputeId
+		) {
 			return null;
 		}
 

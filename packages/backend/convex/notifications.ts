@@ -880,6 +880,8 @@ export const createWebhookNotificationInternal = systemMutation({
 		const isInvoiceEntity =
 			args.type === "payment_failed" ||
 			args.type === "dispute_created" ||
+			args.type === "dispute_resolved" ||
+			args.type === "refund_failed" ||
 			args.type === "charge_refunded";
 		let invoiceEntityId: Id<"invoices"> | undefined;
 		if (isInvoiceEntity && args.paymentId) {

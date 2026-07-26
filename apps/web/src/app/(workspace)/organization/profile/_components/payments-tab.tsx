@@ -554,7 +554,6 @@ export function PaymentsTab() {
 				<CollapsibleFrame
 					title="Fees and responsibilities"
 					description="Who is charged, how much, and who sets it."
-					maxHeightClass="max-h-[44rem]"
 					className={hasAccount ? undefined : "lg:col-span-2"}
 				>
 					<FeeDisclosureTable />
@@ -580,7 +579,6 @@ export function PaymentsTab() {
 								</Badge>
 							)
 						}
-						maxHeightClass="max-h-[44rem]"
 					>
 						<RequirementsSummary
 							loaded={Boolean(stripeStatus)}
@@ -592,7 +590,6 @@ export function PaymentsTab() {
 			<CollapsibleFrame
 				title="Learn more"
 				description="Stripe documentation, opens in a new tab."
-				maxHeightClass="max-h-[30rem]"
 			>
 				<StripeDocLinks columns={2} />
 			</CollapsibleFrame>
@@ -705,7 +702,6 @@ function CollapsibleFrame({
 	description,
 	icon,
 	meta,
-	maxHeightClass,
 	className,
 	children,
 }: {
@@ -713,7 +709,6 @@ function CollapsibleFrame({
 	description: string;
 	icon?: ReactNode;
 	meta?: ReactNode;
-	maxHeightClass: string;
 	className?: string;
 	children: ReactNode;
 }) {
@@ -743,16 +738,20 @@ function CollapsibleFrame({
 					{meta && <div className="shrink-0">{meta}</div>}
 				</FrameHeader>
 			</button>
-			{/* Height-animated rather than mounted/unmounted, so the panel slides
-			    open instead of popping in. */}
+			{/* Height-animated (grid-rows 0fr→1fr) rather than mounted/unmounted,
+			    so the panel slides open to its natural height with no clipping cap.
+			    `inert` drops collapsed content out of tab order and the AT tree. */}
 			<div
 				id={panelId}
+				inert={!open}
 				className={cn(
-					"relative overflow-hidden transition-all duration-500 ease-in-out motion-reduce:transition-none",
-					open ? maxHeightClass : "max-h-0",
+					"grid transition-[grid-template-rows] duration-500 ease-in-out motion-reduce:transition-none",
+					open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
 				)}
 			>
-				<FramePanel>{children}</FramePanel>
+				<div className="min-h-0 overflow-hidden">
+					<FramePanel>{children}</FramePanel>
+				</div>
 			</div>
 			{/* Floating toggle straddling the bottom edge */}
 			<div className="absolute -bottom-3.5 left-1/2 z-10 -translate-x-1/2">
