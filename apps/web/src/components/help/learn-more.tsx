@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { ArticleSections } from "@/components/help/article-blocks";
 import { renderInlineText } from "@/components/help/inline-text";
-import { MediaPlaceholder } from "@/components/help/media-placeholder";
+import { HelpMedia } from "@/components/help/help-media";
 import { resolveHelpRef } from "@/lib/help";
 import { cn } from "@/lib/utils";
 
@@ -120,9 +120,10 @@ export function HelpArticleDrawer({
 						onClickCapture={handleBodyClick}
 					>
 						{current.heroMedia && (
-							<MediaPlaceholder
+							<HelpMedia
 								media={current.heroMedia.media}
 								caption={current.heroMedia.caption}
+								asset={current.heroMedia.asset}
 							/>
 						)}
 

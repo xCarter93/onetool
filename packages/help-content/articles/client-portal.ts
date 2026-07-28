@@ -10,6 +10,7 @@ export const clientPortalArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The client portal Home page",
+			asset: "client-portal/what-your-clients-see/hero",
 		},
 		keywords: ["customer portal", "portal link", "client access", "branded", "self serve", "client view"],
 		sections: [
@@ -113,6 +114,7 @@ export const clientPortalArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The portal sign in screen",
+						asset: "client-portal/portal-sign-in/portal-sign-in-screen",
 					},
 					{
 						type: "note",
@@ -192,6 +194,7 @@ export const clientPortalArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The signature panel on a quote in the client portal",
+						asset: "client-portal/approving-quotes-and-paying-invoices/signature-panel-on-a-quote-in",
 					},
 					{
 						type: "note",
@@ -241,6 +244,7 @@ export const clientPortalArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The embedded payment form on a portal invoice",
+						asset: "client-portal/approving-quotes-and-paying-invoices/embedded-payment-form-on-a-portal",
 					},
 					{
 						type: "note",

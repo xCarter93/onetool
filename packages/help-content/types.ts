@@ -13,7 +13,7 @@ export type HelpBlock =
 	| { type: "list"; items: string[] }
 	| { type: "note"; text: string }
 	| { type: "tip"; text: string }
-	| { type: "media"; media: "image" | "video"; caption: string };
+	| { type: "media"; media: "image" | "video"; caption: string; asset: string };
 
 export interface HelpSection {
 	heading: string;
@@ -35,7 +35,7 @@ export interface HelpArticle {
 	availability: "all" | "business";
 	/** Who can perform the action, e.g. "Admins and the organization owner". */
 	permission?: string;
-	heroMedia?: { media: "image" | "video"; caption: string };
+	heroMedia?: { media: "image" | "video"; caption: string; asset: string };
 	sections: HelpSection[];
 	faq?: HelpFaqItem[];
 	/** Cross links as "category-slug/article-slug". */

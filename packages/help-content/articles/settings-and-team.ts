@@ -33,6 +33,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The organization settings tabs",
+						asset: "settings-and-team/organization-profile/organization-settings-tabs",
 					},
 					{
 						type: "note",
@@ -76,6 +77,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Business Info tab with the logo preview",
+						asset: "settings-and-team/organization-profile/business-info-tab-with-the-logo",
 					},
 					{
 						type: "note",
@@ -151,6 +153,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Team tab with the invite form",
+						asset: "settings-and-team/inviting-your-team/team-tab-with-the-invite-form",
 					},
 					{
 						type: "paragraph",
@@ -245,6 +248,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The per-member access editor",
+						asset: "settings-and-team/member-permissions/per-member-access-editor",
 					},
 					{
 						type: "note",
@@ -369,6 +373,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Billing tab with the plan comparison",
+						asset: "settings-and-team/plans-and-billing/billing-tab-with-the-plan-comparison",
 					},
 					{
 						type: "paragraph",
@@ -444,6 +449,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Payments tab before onboarding",
+						asset: "settings-and-team/setting-up-online-payments/payments-tab-before-onboarding",
 					},
 					{
 						type: "paragraph",
@@ -568,6 +574,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The SKU catalog in organization settings",
+						asset: "settings-and-team/documents-and-skus/sku-catalog-in-organization-settings",
 					},
 					{
 						type: "tip",

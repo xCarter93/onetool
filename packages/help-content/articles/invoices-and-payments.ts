@@ -34,6 +34,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Converting an approved quote into an invoice",
+						asset: "invoices-and-payments/creating-an-invoice/converting-an-approved-quote-into-an",
 					},
 					{
 						type: "note",
@@ -93,6 +94,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The invoice header with its status actions",
+						asset: "invoices-and-payments/creating-an-invoice/invoice-header-with-its-status-actions",
 					},
 				],
 			},
@@ -159,6 +161,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Configuring a payment schedule",
+						asset: "invoices-and-payments/payment-schedules/configuring-a-payment-schedule",
 					},
 					{
 						type: "note",
@@ -244,6 +247,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Paying an invoice in the client portal",
+						asset: "invoices-and-payments/getting-paid/paying-an-invoice-in-the-client",
 					},
 				],
 			},
@@ -267,6 +271,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Marking an invoice as paid",
+						asset: "invoices-and-payments/getting-paid/marking-an-invoice-as-paid",
 					},
 				],
 			},
@@ -300,6 +305,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The Disputes panel in the Payments tab",
+			asset: "invoices-and-payments/refunds-and-disputes/hero",
 		},
 		keywords: ["chargeback", "stripe", "evidence", "reopened balance", "card payment", "reversal"],
 		sections: [

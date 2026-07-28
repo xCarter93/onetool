@@ -39,6 +39,7 @@ export const inboxArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The inbox, with conversations on the left and an open thread on the right",
+						asset: "inbox/unified-inbox/inbox-with-conversations-on-the-left",
 					},
 					{
 						type: "note",
@@ -90,6 +91,7 @@ export const inboxArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Linking a conversation to a client",
+						asset: "inbox/unified-inbox/linking-a-conversation-to-a-client",
 					},
 				],
 			},
@@ -170,6 +172,7 @@ export const inboxArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Composing an email from a client's page",
+						asset: "inbox/emailing-from-a-client-record/composing-an-email-from-a-clients",
 					},
 				],
 			},
@@ -201,6 +204,7 @@ export const inboxArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "An incoming message with a downloadable attachment",
+						asset: "inbox/emailing-from-a-client-record/incoming-message-with-a-downloadable-attachment",
 					},
 					{
 						type: "note",

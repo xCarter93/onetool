@@ -67,6 +67,7 @@ export const routingArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Adding stops from client properties and typed addresses",
+						asset: "routing/planning-a-route/adding-stops-from-client-properties-and",
 					},
 					{
 						type: "note",
@@ -93,6 +94,7 @@ export const routingArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "An optimized route drawn on the map",
+						asset: "routing/planning-a-route/optimized-route-drawn-on-the-map",
 					},
 					{
 						type: "paragraph",
@@ -175,6 +177,7 @@ export const routingArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Naming and saving a route",
+						asset: "routing/saved-routes/naming-and-saving-a-route",
 					},
 					{
 						type: "tip",

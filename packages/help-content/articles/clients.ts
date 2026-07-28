@@ -29,6 +29,7 @@ export const clientsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Clients list in the table view",
+						asset: "clients/managing-clients/clients-list-in-the-table-view",
 					},
 					{
 						type: "note",
@@ -114,6 +115,7 @@ export const clientsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "A client detail page with the Overview tab open",
+						asset: "clients/managing-clients/client-detail-page-with-the-overview",
 					},
 				],
 			},
@@ -171,6 +173,7 @@ export const clientsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Properties & Contacts tab on a client record",
+						asset: "clients/contacts-and-properties/properties-and-contacts-tab-on-a",
 					},
 					{
 						type: "note",
@@ -293,6 +296,7 @@ export const clientsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Map Columns step with suggested matches",
+						asset: "clients/importing-clients/map-columns-step-with-suggested-matches",
 					},
 				],
 			},

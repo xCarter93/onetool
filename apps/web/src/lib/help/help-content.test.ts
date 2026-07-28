@@ -135,4 +135,36 @@ describe("help content registry", () => {
 			}
 		}
 	});
+
+	it("media assets are unique and namespaced to their own article", () => {
+		const seen = new Map<string, string>();
+		for (const category of HELP_CATEGORIES) {
+			for (const article of category.articles) {
+				const slots = [
+					...(article.heroMedia ? [article.heroMedia] : []),
+					...article.sections.flatMap((section) =>
+						section.blocks.filter((block) => block.type === "media")
+					),
+				];
+				const prefix = `${category.slug}/${article.slug}/`;
+				for (const slot of slots) {
+					const where = `${category.slug}/${article.slug} "${slot.caption}"`;
+					// A stray ID silently points the article at another article's screenshot.
+					expect(
+						slot.asset.startsWith(prefix),
+						`${where} asset outside ${prefix}`
+					).toBe(true);
+					expect(
+						slot.asset.slice(prefix.length),
+						`${where} asset not kebab-case`
+					).toMatch(SLUG_PATTERN);
+					expect(
+						seen.get(slot.asset),
+						`${where} duplicates ${seen.get(slot.asset)}`
+					).toBeUndefined();
+					seen.set(slot.asset, where);
+				}
+			}
+		}
+	});
 });

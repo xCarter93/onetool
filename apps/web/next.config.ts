@@ -23,6 +23,8 @@ const cspReportOnly = [
 	`script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.js.stripe.com https://connect-js.stripe.com`,
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' https: data: blob:",
+	// Help center recordings; without this they fall back to default-src 'self'.
+	"media-src 'self' https://res.cloudinary.com",
 	// fonts.gstatic.com: Outfit font files referenced by the Google Fonts CSS
 	// passed to Connect embedded components via `fonts: [{ cssSrc }]`.
 	"font-src 'self' data: https://fonts.gstatic.com",
